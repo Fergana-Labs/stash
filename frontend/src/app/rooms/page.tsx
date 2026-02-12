@@ -168,19 +168,18 @@ export default function RoomsPage() {
 
         <section>
           <h2 className="text-lg font-medium text-white mb-3">Public Rooms</h2>
-          {publicRooms.length === 0 ? (
-            <p className="text-gray-500 text-sm">No public rooms yet.</p>
-          ) : (
-            <div className="grid gap-3 sm:grid-cols-2">
-              {publicRooms.map((room) => (
-                <RoomCard
-                  key={room.id}
-                  room={room}
-                  isMember={myRoomIds.has(room.id)}
-                />
-              ))}
-            </div>
-          )}
+          {(() => {
+            const filtered = publicRooms.filter((r) => !myRoomIds.has(r.id));
+            return filtered.length === 0 ? (
+              <p className="text-gray-500 text-sm">No public rooms yet.</p>
+            ) : (
+              <div className="grid gap-3 sm:grid-cols-2">
+                {filtered.map((room) => (
+                  <RoomCard key={room.id} room={room} isMember={false} />
+                ))}
+              </div>
+            );
+          })()}
         </section>
       </main>
     </div>
