@@ -154,3 +154,50 @@ export async function getMessages(
   const qs = searchParams.toString();
   return apiFetch(`/api/v1/rooms/${roomId}/messages${qs ? `?${qs}` : ""}`);
 }
+
+export async function searchMessages(
+  roomId: string,
+  query: string,
+  limit?: number
+): Promise<{ messages: Message[]; has_more: boolean }> {
+  const searchParams = new URLSearchParams({ q: query });
+  if (limit) searchParams.set("limit", String(limit));
+  return apiFetch(
+    `/api/v1/rooms/${roomId}/messages/search?${searchParams.toString()}`
+  );
+}
+
+// --- Access Lists ---
+export async function addToAccessList(
+  roomId: string,
+  userName: string,
+  listType: "allow" | "block"
+): Promise<{ added: boolean }> {
+  return apiFetch(`/api/v1/rooms/${roomId}/access-list`, {
+    method: "POST",
+    body: JSON.stringify({ user_name: userName, list_type: listType }),
+  });
+}
+
+export async function removeFromAccessList(
+  roomId: string,
+  userName: string,
+  listType: "allow" | "block"
+): Promise<void> {
+  await apiFetch(`/api/v1/rooms/${roomId}/access-list`, {
+    method: "DELETE",
+    body: JSON.stringify({ user_name: userName, list_type: listType }),
+  });
+}
+
+export interface AccessListEntry {
+  user_name: string;
+  created_at: string;
+}
+
+export async function getAccessList(
+  roomId: string,
+  listType: "allow" | "block"
+): Promise<{ entries: AccessListEntry[] }> {
+  return apiFetch(`/api/v1/rooms/${roomId}/access-list/${listType}`);
+}

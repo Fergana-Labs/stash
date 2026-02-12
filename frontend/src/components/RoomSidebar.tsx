@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useState } from "react";
+import type { AccessListEntry } from "../lib/api";
 import { Room, RoomMember } from "../lib/types";
 
 interface RoomSidebarProps {
@@ -12,6 +13,9 @@ interface RoomSidebarProps {
   onDeleteRoom: () => void;
   onKickMember: (userId: string) => void;
   onUpdateRoom: (data: { name?: string; description?: string }) => void;
+  onAddToAccessList?: (userName: string, listType: "allow" | "block") => Promise<void>;
+  onRemoveFromAccessList?: (userName: string, listType: "allow" | "block") => Promise<void>;
+  onGetAccessList?: (listType: "allow" | "block") => Promise<AccessListEntry[]>;
 }
 
 export default function RoomSidebar({
@@ -23,6 +27,9 @@ export default function RoomSidebar({
   onDeleteRoom,
   onKickMember,
   onUpdateRoom,
+  onAddToAccessList,
+  onRemoveFromAccessList,
+  onGetAccessList,
 }: RoomSidebarProps) {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [editing, setEditing] = useState(false);
@@ -31,9 +38,66 @@ export default function RoomSidebar({
     room.description || ""
   );
 
+  // Access list state
+  const [showAccessList, setShowAccessList] = useState(false);
+  const [activeListTab, setActiveListTab] = useState<"allow" | "block">("allow");
+  const [accessEntries, setAccessEntries] = useState<AccessListEntry[]>([]);
+  const [accessLoading, setAccessLoading] = useState(false);
+  const [newAccessName, setNewAccessName] = useState("");
+
   const copyInvite = () => {
     const url = `${window.location.origin}/join/${room.invite_code}`;
     navigator.clipboard.writeText(url);
+  };
+
+  const loadAccessList = useCallback(
+    async (listType: "allow" | "block") => {
+      if (!onGetAccessList) return;
+      setAccessLoading(true);
+      try {
+        const entries = await onGetAccessList(listType);
+        setAccessEntries(entries);
+      } catch {
+        setAccessEntries([]);
+      } finally {
+        setAccessLoading(false);
+      }
+    },
+    [onGetAccessList]
+  );
+
+  const handleToggleAccessList = () => {
+    const next = !showAccessList;
+    setShowAccessList(next);
+    if (next) {
+      loadAccessList(activeListTab);
+    }
+  };
+
+  const handleTabSwitch = (tab: "allow" | "block") => {
+    setActiveListTab(tab);
+    loadAccessList(tab);
+  };
+
+  const handleAddEntry = async () => {
+    if (!newAccessName.trim() || !onAddToAccessList) return;
+    try {
+      await onAddToAccessList(newAccessName.trim(), activeListTab);
+      setNewAccessName("");
+      loadAccessList(activeListTab);
+    } catch {
+      // Ignore
+    }
+  };
+
+  const handleRemoveEntry = async (userName: string) => {
+    if (!onRemoveFromAccessList) return;
+    try {
+      await onRemoveFromAccessList(userName, activeListTab);
+      loadAccessList(activeListTab);
+    } catch {
+      // Ignore
+    }
   };
 
   return (
@@ -157,6 +221,89 @@ export default function RoomSidebar({
             </div>
           ))}
         </div>
+
+        {isOwner && onGetAccessList && (
+          <div className="mt-4">
+            <button
+              onClick={handleToggleAccessList}
+              className="text-xs uppercase tracking-wider text-gray-500 hover:text-gray-300 flex items-center gap-1 mb-2"
+            >
+              <span className={`transition-transform ${showAccessList ? "rotate-90" : ""}`}>
+                &#9654;
+              </span>
+              Access Lists
+            </button>
+
+            {showAccessList && (
+              <div className="space-y-2">
+                <div className="flex border border-gray-700 rounded overflow-hidden">
+                  <button
+                    onClick={() => handleTabSwitch("allow")}
+                    className={`flex-1 text-xs py-1 ${
+                      activeListTab === "allow"
+                        ? "bg-blue-600 text-white"
+                        : "bg-gray-800 text-gray-400 hover:text-white"
+                    }`}
+                  >
+                    Allow
+                  </button>
+                  <button
+                    onClick={() => handleTabSwitch("block")}
+                    className={`flex-1 text-xs py-1 ${
+                      activeListTab === "block"
+                        ? "bg-red-600 text-white"
+                        : "bg-gray-800 text-gray-400 hover:text-white"
+                    }`}
+                  >
+                    Block
+                  </button>
+                </div>
+
+                <div className="flex gap-1">
+                  <input
+                    type="text"
+                    value={newAccessName}
+                    onChange={(e) => setNewAccessName(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && handleAddEntry()}
+                    placeholder="Username..."
+                    className="flex-1 bg-gray-800 border border-gray-700 rounded px-2 py-1 text-xs text-white focus:outline-none focus:border-blue-500"
+                  />
+                  <button
+                    onClick={handleAddEntry}
+                    className="text-xs bg-gray-700 hover:bg-gray-600 text-white px-2 py-1 rounded"
+                  >
+                    Add
+                  </button>
+                </div>
+
+                {accessLoading ? (
+                  <div className="text-xs text-gray-500">Loading...</div>
+                ) : accessEntries.length === 0 ? (
+                  <div className="text-xs text-gray-600">No entries.</div>
+                ) : (
+                  <div className="space-y-1">
+                    {accessEntries.map((entry) => (
+                      <div
+                        key={entry.user_name}
+                        className="flex items-center justify-between text-xs bg-gray-800 rounded px-2 py-1"
+                      >
+                        <span className="text-gray-300 truncate">
+                          {entry.user_name}
+                        </span>
+                        <button
+                          onClick={() => handleRemoveEntry(entry.user_name)}
+                          className="text-red-400 hover:text-red-300 ml-2 flex-shrink-0"
+                        >
+                          &times;
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       <div className="p-4 border-t border-gray-800 space-y-2">

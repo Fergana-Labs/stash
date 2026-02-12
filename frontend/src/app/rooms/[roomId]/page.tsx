@@ -9,16 +9,21 @@ import RoomSidebar from "../../../components/RoomSidebar";
 import { useAuth } from "../../../hooks/useAuth";
 import { useWebSocket } from "../../../hooks/useWebSocket";
 import {
+  addToAccessList,
   deleteRoom,
+  getAccessList,
   getMessages,
   getRoom,
   getRoomMembers,
   joinRoom,
   kickMember,
   leaveRoom,
+  removeFromAccessList,
+  searchMessages,
   sendMessage,
   updateRoom,
 } from "../../../lib/api";
+import type { AccessListEntry } from "../../../lib/api";
 import { Message, Room, RoomMember, WSEvent } from "../../../lib/types";
 
 export default function ChatRoomPage() {
@@ -33,6 +38,12 @@ export default function ChatRoomPage() {
   const [joining, setJoining] = useState(false);
   const [typingUser, setTypingUser] = useState<string | null>(null);
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Search state
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<Message[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
+  const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const token =
     typeof window !== "undefined"
@@ -95,6 +106,31 @@ export default function ChatRoomPage() {
         if (err.message.includes("Not a member")) setIsMember(false);
       });
   }, [roomId, user, router]);
+
+  // Debounced search
+  const handleSearchChange = useCallback(
+    (query: string) => {
+      setSearchQuery(query);
+      if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current);
+      if (!query.trim()) {
+        setSearchResults([]);
+        setIsSearching(false);
+        return;
+      }
+      setIsSearching(true);
+      searchTimeoutRef.current = setTimeout(async () => {
+        try {
+          const result = await searchMessages(roomId, query.trim());
+          setSearchResults(result.messages);
+        } catch {
+          setSearchResults([]);
+        } finally {
+          setIsSearching(false);
+        }
+      }, 300);
+    },
+    [roomId]
+  );
 
   const handleSend = useCallback(
     async (content: string) => {
@@ -171,6 +207,29 @@ export default function ChatRoomPage() {
     }
   }, [roomId, router]);
 
+  // Access list callbacks
+  const handleAddToAccessList = useCallback(
+    async (userName: string, listType: "allow" | "block") => {
+      await addToAccessList(roomId, userName, listType);
+    },
+    [roomId]
+  );
+
+  const handleRemoveFromAccessList = useCallback(
+    async (userName: string, listType: "allow" | "block") => {
+      await removeFromAccessList(roomId, userName, listType);
+    },
+    [roomId]
+  );
+
+  const handleGetAccessList = useCallback(
+    async (listType: "allow" | "block"): Promise<AccessListEntry[]> => {
+      const result = await getAccessList(roomId, listType);
+      return result.entries;
+    },
+    [roomId]
+  );
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center text-gray-500">
@@ -183,6 +242,8 @@ export default function ChatRoomPage() {
     router.push("/login");
     return null;
   }
+
+  const displayMessages = searchQuery.trim() ? searchResults : messages;
 
   return (
     <div className="h-screen flex flex-col">
@@ -232,9 +293,12 @@ export default function ChatRoomPage() {
           ) : (
             <>
               <MessageList
-                messages={messages}
+                messages={displayMessages}
                 currentUserId={user.id}
                 typingUser={typingUser}
+                searchQuery={searchQuery}
+                onSearchChange={handleSearchChange}
+                isSearching={isSearching}
               />
 
               <div className="px-4 py-3 border-t border-gray-800">
@@ -254,6 +318,9 @@ export default function ChatRoomPage() {
             onDeleteRoom={handleDeleteRoom}
             onKickMember={handleKickMember}
             onUpdateRoom={handleUpdateRoom}
+            onAddToAccessList={handleAddToAccessList}
+            onRemoveFromAccessList={handleRemoveFromAccessList}
+            onGetAccessList={handleGetAccessList}
           />
         )}
       </div>

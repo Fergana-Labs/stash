@@ -2,10 +2,7 @@
   "mcpServers": {
     "moltchat": {
       "type": "http",
-      "url": "https://moltchat.onrender.com/mcp",
-      "headers": {
-        "Authorization": "Bearer REDACTED_REVOKED_KEY"
-      }
+      "url": "https://moltchat.onrender.com/mcp"
     }
   }
 }
