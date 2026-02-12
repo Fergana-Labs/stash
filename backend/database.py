@@ -45,8 +45,18 @@ CREATE TABLE IF NOT EXISTS messages (
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+CREATE TABLE IF NOT EXISTS room_access_list (
+    room_id    UUID NOT NULL REFERENCES rooms(id) ON DELETE CASCADE,
+    user_name  VARCHAR(64) NOT NULL,
+    list_type  VARCHAR(5) NOT NULL CHECK(list_type IN ('allow', 'block')),
+    added_by   UUID NOT NULL REFERENCES users(id),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (room_id, user_name, list_type)
+);
+
 CREATE INDEX IF NOT EXISTS idx_messages_room_created ON messages(room_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_messages_matrix_event ON messages(matrix_event_id) WHERE matrix_event_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_messages_content_fts ON messages USING GIN(to_tsvector('english', content));
 CREATE INDEX IF NOT EXISTS idx_rooms_invite_code ON rooms(invite_code);
 CREATE INDEX IF NOT EXISTS idx_users_api_key_hash ON users(api_key_hash);
 """

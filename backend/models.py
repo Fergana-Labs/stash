@@ -67,6 +67,16 @@ class RoomMember(BaseModel):
     joined_at: datetime
 
 
+class RoomUpdateRequest(BaseModel):
+    name: str | None = Field(None, min_length=1, max_length=128)
+    description: str | None = Field(None, max_length=1000)
+
+
+class AccessListRequest(BaseModel):
+    user_name: str = Field(..., min_length=1, max_length=64)
+    list_type: str = Field(..., pattern=r"^(allow|block)$")
+
+
 # --- Messages ---
 class MessageSendRequest(BaseModel):
     content: str = Field(..., min_length=1, max_length=4000)

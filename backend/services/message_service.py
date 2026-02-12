@@ -82,6 +82,31 @@ async def set_matrix_event_id(message_id: UUID, matrix_event_id: str):
     )
 
 
+async def search_messages(
+    room_id: UUID,
+    query: str,
+    limit: int = 50,
+) -> tuple[list[dict], bool]:
+    pool = get_pool()
+    limit = min(limit, 100)
+    rows = await pool.fetch(
+        "SELECT m.id, m.room_id, m.sender_id, m.content, m.message_type, "
+        "m.reply_to_id, m.matrix_event_id, m.created_at, "
+        "u.name AS sender_name, u.display_name AS sender_display_name, u.type AS sender_type "
+        "FROM messages m INNER JOIN users u ON m.sender_id = u.id "
+        "WHERE m.room_id = $1 "
+        "AND to_tsvector('english', m.content) @@ websearch_to_tsquery('english', $2) "
+        "ORDER BY ts_rank(to_tsvector('english', m.content), websearch_to_tsquery('english', $2)) DESC "
+        "LIMIT $3",
+        room_id,
+        query,
+        limit + 1,
+    )
+    has_more = len(rows) > limit
+    messages = [dict(r) for r in rows[:limit]]
+    return messages, has_more
+
+
 async def message_exists_by_matrix_event(matrix_event_id: str) -> bool:
     pool = get_pool()
     row = await pool.fetchrow(

@@ -30,6 +30,24 @@ async def send_message(
     return MessageResponse(**msg)
 
 
+@router.get("/search", response_model=MessageListResponse)
+async def search_messages(
+    room_id: UUID,
+    q: str = Query(..., min_length=1),
+    limit: int = Query(50, ge=1, le=100),
+    current_user: dict = Depends(get_current_user),
+):
+    if not await room_service.is_member(room_id, current_user["id"]):
+        raise HTTPException(status_code=403, detail="Not a member of this room")
+    messages, has_more = await message_service.search_messages(
+        room_id=room_id, query=q, limit=limit
+    )
+    return MessageListResponse(
+        messages=[MessageResponse(**m) for m in messages],
+        has_more=has_more,
+    )
+
+
 @router.get("", response_model=MessageListResponse)
 async def get_messages(
     room_id: UUID,

@@ -49,7 +49,7 @@ services:
       - backend
 
   conduit:
-    image: famedly/conduit:latest
+    image: matrixconduit/matrix-conduit:latest
     restart: unless-stopped
     ports:
       - "6167:6167"
