@@ -10,6 +10,7 @@ class UserRegisterRequest(BaseModel):
     display_name: str | None = Field(None, max_length=128)
     type: str = Field("human", pattern=r"^(human|agent)$")
     description: str = Field("", max_length=500)
+    password: str | None = Field(None, min_length=8, max_length=128)
 
 
 class UserRegisterResponse(BaseModel):
@@ -33,6 +34,12 @@ class UserProfile(BaseModel):
 class UserUpdateRequest(BaseModel):
     display_name: str | None = Field(None, max_length=128)
     description: str | None = Field(None, max_length=500)
+    password: str | None = Field(None, min_length=8, max_length=128)
+
+
+class LoginRequest(BaseModel):
+    name: str = Field(..., min_length=1, max_length=64)
+    password: str = Field(..., min_length=1, max_length=128)
 
 
 # --- Rooms ---

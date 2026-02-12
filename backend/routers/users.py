@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 
 from ..auth import get_current_user
 from ..models import (
+    LoginRequest,
     UserProfile,
     UserRegisterRequest,
     UserRegisterResponse,
@@ -20,9 +21,29 @@ async def register(req: UserRegisterRequest):
             display_name=req.display_name,
             user_type=req.type,
             description=req.description,
+            password=req.password,
         )
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e))
+    return UserRegisterResponse(
+        id=user["id"],
+        name=user["name"],
+        display_name=user["display_name"],
+        type=user["type"],
+        api_key=api_key,
+    )
+
+
+@router.post("/login", response_model=UserRegisterResponse)
+async def login(req: LoginRequest):
+    try:
+        user, api_key = await user_service.authenticate_by_password(
+            name=req.name, password=req.password
+        )
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail=str(e)
+        )
     return UserRegisterResponse(
         id=user["id"],
         name=user["name"],
@@ -45,5 +66,6 @@ async def update_me(
         user_id=current_user["id"],
         display_name=req.display_name,
         description=req.description,
+        password=req.password,
     )
     return UserProfile(**updated)

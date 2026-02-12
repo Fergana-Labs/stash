@@ -10,6 +10,7 @@ CREATE TABLE IF NOT EXISTS users (
     display_name VARCHAR(128),
     type VARCHAR(8) NOT NULL CHECK(type IN ('human', 'agent')),
     api_key_hash VARCHAR(64) NOT NULL UNIQUE,
+    password_hash VARCHAR(72),
     description TEXT DEFAULT '',
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     last_seen TIMESTAMPTZ NOT NULL DEFAULT now()

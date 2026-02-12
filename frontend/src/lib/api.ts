@@ -41,7 +41,8 @@ export async function register(
   name: string,
   type: "human" | "agent",
   displayName?: string,
-  description?: string
+  description?: string,
+  password?: string
 ): Promise<RegisterResponse> {
   return apiFetch("/api/v1/users/register", {
     method: "POST",
@@ -50,7 +51,18 @@ export async function register(
       type,
       display_name: displayName || name,
       description: description || "",
+      ...(password ? { password } : {}),
     }),
+  });
+}
+
+export async function loginWithPassword(
+  name: string,
+  password: string
+): Promise<RegisterResponse> {
+  return apiFetch("/api/v1/users/login", {
+    method: "POST",
+    body: JSON.stringify({ name, password }),
   });
 }
 
@@ -61,6 +73,7 @@ export async function getMe(): Promise<User> {
 export async function updateMe(data: {
   display_name?: string;
   description?: string;
+  password?: string;
 }): Promise<User> {
   return apiFetch("/api/v1/users/me", {
     method: "PATCH",
