@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import Header from "../../components/Header";
 import { useAuth } from "../../hooks/useAuth";
-import { register, setToken } from "../../lib/api";
+import { loginWithPassword, register, setToken } from "../../lib/api";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -13,24 +13,68 @@ export default function LoginPage() {
   const [displayName, setDisplayName] = useState("");
   const [type, setType] = useState<"human" | "agent">("human");
   const [description, setDescription] = useState("");
+  const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [apiKeyInput, setApiKeyInput] = useState("");
   const [showApiKey, setShowApiKey] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [mode, setMode] = useState<"register" | "login">("register");
+  const [loginMode, setLoginMode] = useState<"password" | "apikey">("password");
+  const [loginName, setLoginName] = useState("");
+  const [loginPassword, setLoginPassword] = useState("");
 
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
+    if (type === "human") {
+      if (password.length < 8) {
+        setError("Password must be at least 8 characters");
+        return;
+      }
+      if (password !== confirmPassword) {
+        setError("Passwords do not match");
+        return;
+      }
+    }
     try {
-      const res = await register(name, type, displayName, description);
-      setShowApiKey(res.api_key);
-      setToken(res.api_key);
+      const res = await register(
+        name,
+        type,
+        displayName,
+        description,
+        type === "human" ? password : undefined
+      );
+      if (type === "human") {
+        // Auto-login for humans — skip API key screen
+        setToken(res.api_key);
+        router.push("/rooms");
+      } else {
+        // Show API key for agents
+        setShowApiKey(res.api_key);
+        setToken(res.api_key);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Registration failed");
     }
   };
 
-  const handleLogin = async (e: React.FormEvent) => {
+  const handlePasswordLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError("");
+    if (!loginName.trim() || !loginPassword) {
+      setError("Please enter username and password");
+      return;
+    }
+    try {
+      const res = await loginWithPassword(loginName.trim(), loginPassword);
+      setToken(res.api_key);
+      router.push("/rooms");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Login failed");
+    }
+  };
+
+  const handleApiKeyLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
     if (!apiKeyInput.trim()) {
@@ -171,6 +215,38 @@ export default function LoginPage() {
                       placeholder="A helpful assistant"
                     />
                   </div>
+                  {type === "human" && (
+                    <>
+                      <div>
+                        <label className="block text-sm text-gray-400 mb-1">
+                          Password
+                        </label>
+                        <input
+                          type="password"
+                          value={password}
+                          onChange={(e) => setPassword(e.target.value)}
+                          required
+                          minLength={8}
+                          className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500"
+                          placeholder="Min 8 characters"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm text-gray-400 mb-1">
+                          Confirm Password
+                        </label>
+                        <input
+                          type="password"
+                          value={confirmPassword}
+                          onChange={(e) => setConfirmPassword(e.target.value)}
+                          required
+                          minLength={8}
+                          className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500"
+                          placeholder="Confirm password"
+                        />
+                      </div>
+                    </>
+                  )}
                   <button
                     type="submit"
                     className="w-full bg-blue-600 hover:bg-blue-500 text-white py-2.5 rounded text-sm font-medium"
@@ -179,26 +255,79 @@ export default function LoginPage() {
                   </button>
                 </form>
               ) : (
-                <form onSubmit={handleLogin} className="space-y-4">
-                  <div>
-                    <label className="block text-sm text-gray-400 mb-1">
-                      API Key
-                    </label>
-                    <input
-                      type="text"
-                      value={apiKeyInput}
-                      onChange={(e) => setApiKeyInput(e.target.value)}
-                      className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm text-white font-mono focus:outline-none focus:border-blue-500"
-                      placeholder="mc_..."
-                    />
-                  </div>
-                  <button
-                    type="submit"
-                    className="w-full bg-blue-600 hover:bg-blue-500 text-white py-2.5 rounded text-sm font-medium"
-                  >
-                    Login
-                  </button>
-                </form>
+                <>
+                  {loginMode === "password" ? (
+                    <form onSubmit={handlePasswordLogin} className="space-y-4">
+                      <div>
+                        <label className="block text-sm text-gray-400 mb-1">
+                          Username
+                        </label>
+                        <input
+                          type="text"
+                          value={loginName}
+                          onChange={(e) => setLoginName(e.target.value)}
+                          required
+                          className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500"
+                          placeholder="Username"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm text-gray-400 mb-1">
+                          Password
+                        </label>
+                        <input
+                          type="password"
+                          value={loginPassword}
+                          onChange={(e) => setLoginPassword(e.target.value)}
+                          required
+                          className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500"
+                          placeholder="Password"
+                        />
+                      </div>
+                      <button
+                        type="submit"
+                        className="w-full bg-blue-600 hover:bg-blue-500 text-white py-2.5 rounded text-sm font-medium"
+                      >
+                        Login
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setLoginMode("apikey")}
+                        className="w-full text-sm text-gray-500 hover:text-gray-300"
+                      >
+                        Login with API key instead
+                      </button>
+                    </form>
+                  ) : (
+                    <form onSubmit={handleApiKeyLogin} className="space-y-4">
+                      <div>
+                        <label className="block text-sm text-gray-400 mb-1">
+                          API Key
+                        </label>
+                        <input
+                          type="text"
+                          value={apiKeyInput}
+                          onChange={(e) => setApiKeyInput(e.target.value)}
+                          className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm text-white font-mono focus:outline-none focus:border-blue-500"
+                          placeholder="mc_..."
+                        />
+                      </div>
+                      <button
+                        type="submit"
+                        className="w-full bg-blue-600 hover:bg-blue-500 text-white py-2.5 rounded text-sm font-medium"
+                      >
+                        Login
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setLoginMode("password")}
+                        className="w-full text-sm text-gray-500 hover:text-gray-300"
+                      >
+                        Login with password instead
+                      </button>
+                    </form>
+                  )}
+                </>
               )}
             </>
           )}

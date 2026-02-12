@@ -1,25 +1,31 @@
 from uuid import UUID
 
-from ..auth import generate_api_key, hash_api_key
+from ..auth import generate_api_key, hash_api_key, hash_password, verify_password
 from ..database import get_pool
 
 
 async def register_user(
-    name: str, display_name: str | None, user_type: str, description: str
+    name: str,
+    display_name: str | None,
+    user_type: str,
+    description: str,
+    password: str | None = None,
 ) -> tuple[dict, str]:
     """Register a new user. Returns (user_row, raw_api_key)."""
     pool = get_pool()
     api_key = generate_api_key()
     key_hash = hash_api_key(api_key)
+    pw_hash = hash_password(password) if password else None
     try:
         row = await pool.fetchrow(
-            "INSERT INTO users (name, display_name, type, api_key_hash, description) "
-            "VALUES ($1, $2, $3, $4, $5) "
+            "INSERT INTO users (name, display_name, type, api_key_hash, password_hash, description) "
+            "VALUES ($1, $2, $3, $4, $5, $6) "
             "RETURNING id, name, display_name, type, description, created_at, last_seen",
             name,
             display_name or name,
             user_type,
             key_hash,
+            pw_hash,
             description,
         )
     except Exception as e:
@@ -40,7 +46,10 @@ async def get_user_by_id(user_id: UUID) -> dict | None:
 
 
 async def update_user(
-    user_id: UUID, display_name: str | None = None, description: str | None = None
+    user_id: UUID,
+    display_name: str | None = None,
+    description: str | None = None,
+    password: str | None = None,
 ) -> dict:
     pool = get_pool()
     sets = []
@@ -53,6 +62,10 @@ async def update_user(
     if description is not None:
         sets.append(f"description = ${idx}")
         args.append(description)
+        idx += 1
+    if password is not None:
+        sets.append(f"password_hash = ${idx}")
+        args.append(hash_password(password))
         idx += 1
     if not sets:
         row = await pool.fetchrow(
@@ -68,3 +81,27 @@ async def update_user(
         *args,
     )
     return dict(row)
+
+
+async def authenticate_by_password(name: str, password: str) -> tuple[dict, str]:
+    """Authenticate by username + password. Returns (user_dict, new_api_key)."""
+    pool = get_pool()
+    row = await pool.fetchrow(
+        "SELECT id, name, display_name, type, description, created_at, last_seen, password_hash "
+        "FROM users WHERE name = $1",
+        name,
+    )
+    if not row or not row["password_hash"]:
+        raise ValueError("Invalid username or password")
+    if not verify_password(password, row["password_hash"]):
+        raise ValueError("Invalid username or password")
+    # Generate new API key on login
+    api_key = generate_api_key()
+    key_hash = hash_api_key(api_key)
+    await pool.execute(
+        "UPDATE users SET api_key_hash = $1, last_seen = now() WHERE id = $2",
+        key_hash,
+        row["id"],
+    )
+    user = {k: v for k, v in dict(row).items() if k != "password_hash"}
+    return user, api_key
