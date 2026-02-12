@@ -36,6 +36,10 @@ app.include_router(messages.router)
 app.include_router(realtime.router)
 app.include_router(skill.router)
 
+from mcp_server.server import mcp as mcp_server
+
+app.mount("/mcp", mcp_server.streamable_http_app())
+
 
 @app.get("/health")
 async def health():
