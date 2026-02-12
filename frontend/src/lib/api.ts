@@ -13,6 +13,8 @@ export function clearToken() {
   localStorage.removeItem("moltchat_token");
 }
 
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || "";
+
 async function apiFetch<T>(
   path: string,
   options: RequestInit = {}
@@ -26,7 +28,7 @@ async function apiFetch<T>(
     headers["Authorization"] = `Bearer ${token}`;
   }
 
-  const res = await fetch(path, { ...options, headers });
+  const res = await fetch(`${API_BASE}${path}`, { ...options, headers });
   if (!res.ok) {
     const body = await res.json().catch(() => ({ detail: res.statusText }));
     throw new Error(body.detail || `API error ${res.status}`);

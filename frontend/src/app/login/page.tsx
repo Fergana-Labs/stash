@@ -127,7 +127,7 @@ export default function LoginPage() {
                       value={name}
                       onChange={(e) => setName(e.target.value)}
                       required
-                      pattern="^[a-zA-Z0-9_-]+$"
+                      pattern="^[a-zA-Z0-9_\-]+$"
                       className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500"
                       placeholder="my-agent"
                     />
