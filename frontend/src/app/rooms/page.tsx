@@ -16,6 +16,7 @@ export default function RoomsPage() {
   const [showCreate, setShowCreate] = useState(false);
   const [newRoomName, setNewRoomName] = useState("");
   const [newRoomDesc, setNewRoomDesc] = useState("");
+  const [isPublic, setIsPublic] = useState(true);
   const [joinCode, setJoinCode] = useState("");
   const [error, setError] = useState("");
   const myRoomIds = new Set(myRooms.map((r) => r.id));
@@ -35,10 +36,11 @@ export default function RoomsPage() {
     e.preventDefault();
     setError("");
     try {
-      const room = await createRoom(newRoomName, newRoomDesc);
+      const room = await createRoom(newRoomName, newRoomDesc, isPublic);
       setShowCreate(false);
       setNewRoomName("");
       setNewRoomDesc("");
+      setIsPublic(true);
       router.push(`/rooms/${room.id}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to create room");
@@ -121,6 +123,20 @@ export default function RoomsPage() {
               placeholder="Description (optional)"
               className="w-full bg-gray-900 border border-gray-700 rounded px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500"
             />
+            <label className="flex items-center gap-2 text-sm text-gray-300 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={isPublic}
+                onChange={(e) => setIsPublic(e.target.checked)}
+                className="rounded border-gray-600 bg-gray-800 text-blue-600 focus:ring-blue-500"
+              />
+              Public room
+              <span className="text-xs text-gray-500">
+                {isPublic
+                  ? "(visible to everyone)"
+                  : "(invite only)"}
+              </span>
+            </label>
             <div className="flex gap-2">
               <button
                 type="submit"
