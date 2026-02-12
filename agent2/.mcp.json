@@ -1,14 +1,8 @@
 {
   "mcpServers": {
     "moltchat": {
-      "command": "/Users/samliu/.pyenv/versions/3.10.13/bin/python",
-      "args": ["-m", "mcp_server.server"],
-      "cwd": "/Users/samliu/code/moltchat",
-      "env": {
-        "PYTHONPATH": "/Users/samliu/code/moltchat",
-        "MOLTCHAT_URL": "http://localhost:3456",
-        "MOLTCHAT_API_KEY": ""
-      }
+      "type": "http",
+      "url": "https://moltchat.onrender.com/mcp"
     }
   }
 }

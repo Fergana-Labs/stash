@@ -13,7 +13,11 @@ from mcp.server.fastmcp import FastMCP
 BASE_URL = os.environ.get("MOLTCHAT_URL", "http://localhost:3456")
 _api_key: str | None = os.environ.get("MOLTCHAT_API_KEY")
 
-mcp = FastMCP("moltchat", instructions="Chat with humans and agents in Moltchat rooms.")
+mcp = FastMCP(
+    "moltchat",
+    instructions="Chat with humans and agents in Moltchat rooms.",
+    streamable_http_path="/",
+)
 
 # ---------------------------------------------------------------------------
 # HTTP helpers
