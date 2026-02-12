@@ -12,6 +12,7 @@ import {
   getMessages,
   getRoom,
   getRoomMembers,
+  joinRoom,
   leaveRoom,
   sendMessage,
 } from "../../../lib/api";
@@ -25,6 +26,8 @@ export default function ChatRoomPage() {
   const [room, setRoom] = useState<Room | null>(null);
   const [members, setMembers] = useState<RoomMember[]>([]);
   const [messages, setMessages] = useState<Message[]>([]);
+  const [isMember, setIsMember] = useState(true);
+  const [joining, setJoining] = useState(false);
   const [typingUser, setTypingUser] = useState<string | null>(null);
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -71,8 +74,16 @@ export default function ChatRoomPage() {
   useEffect(() => {
     if (!roomId || !user) return;
     getRoom(roomId).then(setRoom).catch(() => router.push("/rooms"));
-    getRoomMembers(roomId).then(setMembers).catch(() => {});
-    getMessages(roomId).then((r) => setMessages(r.messages)).catch(() => {});
+    getRoomMembers(roomId)
+      .then(setMembers)
+      .catch((err: Error) => {
+        if (err.message.includes("Not a member")) setIsMember(false);
+      });
+    getMessages(roomId)
+      .then((r) => setMessages(r.messages))
+      .catch((err: Error) => {
+        if (err.message.includes("Not a member")) setIsMember(false);
+      });
   }, [roomId, user, router]);
 
   const handleSend = useCallback(
@@ -93,6 +104,21 @@ export default function ChatRoomPage() {
     },
     [connected, wsSendMessage, roomId]
   );
+
+  const handleJoin = useCallback(async () => {
+    if (!room?.invite_code) return;
+    setJoining(true);
+    try {
+      await joinRoom(room.invite_code);
+      setIsMember(true);
+      getRoomMembers(roomId).then(setMembers).catch(() => {});
+      getMessages(roomId).then((r) => setMessages(r.messages)).catch(() => {});
+    } catch {
+      // Ignore
+    } finally {
+      setJoining(false);
+    }
+  }, [room, roomId]);
 
   const handleLeave = useCallback(async () => {
     try {
@@ -133,27 +159,50 @@ export default function ChatRoomPage() {
                 {room.name}
               </span>
             )}
-            <span
-              className={`ml-auto text-xs ${
-                connected ? "text-green-400" : "text-yellow-400"
-              }`}
-            >
-              {connected ? "Connected" : "Reconnecting..."}
-            </span>
+            {isMember && (
+              <span
+                className={`ml-auto text-xs ${
+                  connected ? "text-green-400" : "text-yellow-400"
+                }`}
+              >
+                {connected ? "Connected" : "Reconnecting..."}
+              </span>
+            )}
           </div>
 
-          <MessageList
-            messages={messages}
-            currentUserId={user.id}
-            typingUser={typingUser}
-          />
+          {!isMember ? (
+            <div className="flex-1 flex items-center justify-center">
+              <div className="text-center space-y-4">
+                <p className="text-gray-400">
+                  You&apos;re not a member of this room.
+                </p>
+                {room?.invite_code && (
+                  <button
+                    onClick={handleJoin}
+                    disabled={joining}
+                    className="bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white px-6 py-2 rounded text-sm"
+                  >
+                    {joining ? "Joining..." : "Join Room"}
+                  </button>
+                )}
+              </div>
+            </div>
+          ) : (
+            <>
+              <MessageList
+                messages={messages}
+                currentUserId={user.id}
+                typingUser={typingUser}
+              />
 
-          <div className="px-4 py-3 border-t border-gray-800">
-            <ChatInput onSend={handleSend} onTyping={sendTyping} />
-          </div>
+              <div className="px-4 py-3 border-t border-gray-800">
+                <ChatInput onSend={handleSend} onTyping={sendTyping} />
+              </div>
+            </>
+          )}
         </div>
 
-        {room && (
+        {room && isMember && (
           <RoomSidebar room={room} members={members} onLeave={handleLeave} />
         )}
       </div>

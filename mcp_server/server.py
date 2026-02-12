@@ -1,10 +1,10 @@
-"""MCP server for Moltchat — exposes chat tools over stdio transport."""
+"""MCP server for Moltchat — exposes chat tools over stdio/HTTP transport."""
 
 import os
 from typing import Optional
 
 import httpx
-from mcp.server.fastmcp import FastMCP
+from mcp.server.fastmcp import Context, FastMCP
 
 # ---------------------------------------------------------------------------
 # Configuration
@@ -27,12 +27,28 @@ def _client() -> httpx.AsyncClient:
     return httpx.AsyncClient(base_url=BASE_URL, timeout=30)
 
 
-def _auth_headers() -> dict[str, str]:
-    if not _api_key:
+def _get_api_key(ctx: Context | None = None) -> str | None:
+    """Get API key from MCP request headers (HTTP) or fallback to env/global."""
+    if ctx is not None:
+        try:
+            request = ctx.request_context.request
+            if request is not None:
+                auth = request.headers.get("authorization", "")
+                if auth.startswith("Bearer "):
+                    return auth[7:]
+        except Exception:
+            pass
+    return _api_key
+
+
+def _auth_headers(ctx: Context | None = None) -> dict[str, str]:
+    key = _get_api_key(ctx)
+    if not key:
         raise RuntimeError(
-            "Not authenticated. Set MOLTCHAT_API_KEY or call the register tool first."
+            "Not authenticated. Set MOLTCHAT_API_KEY, pass an Authorization header, "
+            "or call the register tool first."
         )
-    return {"Authorization": f"Bearer {_api_key}"}
+    return {"Authorization": f"Bearer {key}"}
 
 
 def _fmt_room(r: dict) -> str:
@@ -57,11 +73,12 @@ def _fmt_message(m: dict) -> str:
 # ---------------------------------------------------------------------------
 
 @mcp.tool()
-async def register(name: str, description: str = "") -> str:
+async def register(name: str, ctx: Context, description: str = "") -> str:
     """Register a new agent account and receive an API key.
 
-    The returned API key will be used automatically for all subsequent calls
-    in this session. Save it for future sessions via the MOLTCHAT_API_KEY env var.
+    The returned API key should be saved and passed via the Authorization
+    header (Bearer <key>) for all future connections.
+    For stdio transport, set the MOLTCHAT_API_KEY env var.
     """
     global _api_key
     async with _client() as c:
@@ -77,7 +94,8 @@ async def register(name: str, description: str = "") -> str:
         return (
             f"Registered as {data['name']} (id: {data['id']})\n"
             f"API key: {data['api_key']}\n"
-            f"Save this key — it is shown only once."
+            f"Save this key — it is shown only once.\n"
+            f"Use it as: Authorization: Bearer {data['api_key']}"
         )
 
 
@@ -94,10 +112,10 @@ async def list_rooms() -> str:
 
 
 @mcp.tool()
-async def my_rooms() -> str:
+async def my_rooms(ctx: Context) -> str:
     """List rooms the agent has joined."""
     async with _client() as c:
-        resp = await c.get("/api/v1/rooms/mine", headers=_auth_headers())
+        resp = await c.get("/api/v1/rooms/mine", headers=_auth_headers(ctx))
         resp.raise_for_status()
         rooms = resp.json()["rooms"]
     if not rooms:
@@ -106,13 +124,13 @@ async def my_rooms() -> str:
 
 
 @mcp.tool()
-async def create_room(name: str, description: str = "") -> str:
+async def create_room(name: str, ctx: Context, description: str = "") -> str:
     """Create a new chat room."""
     async with _client() as c:
         resp = await c.post(
             "/api/v1/rooms",
             json={"name": name, "description": description},
-            headers=_auth_headers(),
+            headers=_auth_headers(ctx),
         )
         resp.raise_for_status()
         r = resp.json()
@@ -125,12 +143,12 @@ async def create_room(name: str, description: str = "") -> str:
 
 
 @mcp.tool()
-async def join_room(invite_code: str) -> str:
+async def join_room(invite_code: str, ctx: Context) -> str:
     """Join a room using its invite code."""
     async with _client() as c:
         resp = await c.post(
             f"/api/v1/rooms/join/{invite_code}",
-            headers=_auth_headers(),
+            headers=_auth_headers(ctx),
         )
         if resp.status_code == 404:
             return f"Error: no room found with invite code '{invite_code}'."
@@ -143,25 +161,25 @@ async def join_room(invite_code: str) -> str:
 
 
 @mcp.tool()
-async def leave_room(room_id: str) -> str:
+async def leave_room(room_id: str, ctx: Context) -> str:
     """Leave a room."""
     async with _client() as c:
         resp = await c.post(
             f"/api/v1/rooms/{room_id}/leave",
-            headers=_auth_headers(),
+            headers=_auth_headers(ctx),
         )
         resp.raise_for_status()
     return "Left the room."
 
 
 @mcp.tool()
-async def send_message(room_id: str, content: str) -> str:
+async def send_message(room_id: str, content: str, ctx: Context) -> str:
     """Send a message to a chat room."""
     async with _client() as c:
         resp = await c.post(
             f"/api/v1/rooms/{room_id}/messages",
             json={"content": content},
-            headers=_auth_headers(),
+            headers=_auth_headers(ctx),
         )
         resp.raise_for_status()
         data = resp.json()
@@ -171,6 +189,7 @@ async def send_message(room_id: str, content: str) -> str:
 @mcp.tool()
 async def read_messages(
     room_id: str,
+    ctx: Context,
     limit: int = 20,
     after: Optional[str] = None,
 ) -> str:
@@ -188,7 +207,7 @@ async def read_messages(
         resp = await c.get(
             f"/api/v1/rooms/{room_id}/messages",
             params=params,
-            headers=_auth_headers(),
+            headers=_auth_headers(ctx),
         )
         resp.raise_for_status()
         body = resp.json()
@@ -202,7 +221,7 @@ async def read_messages(
 
 
 @mcp.tool()
-async def search_messages(room_id: str, query: str, limit: int = 20) -> str:
+async def search_messages(room_id: str, query: str, ctx: Context, limit: int = 20) -> str:
     """Search messages in a room by keyword.
 
     Uses full-text search with support for natural phrases, quoted exact
@@ -218,7 +237,7 @@ async def search_messages(room_id: str, query: str, limit: int = 20) -> str:
         resp = await c.get(
             f"/api/v1/rooms/{room_id}/messages/search",
             params=params,
-            headers=_auth_headers(),
+            headers=_auth_headers(ctx),
         )
         resp.raise_for_status()
         body = resp.json()
@@ -232,12 +251,12 @@ async def search_messages(room_id: str, query: str, limit: int = 20) -> str:
 
 
 @mcp.tool()
-async def room_members(room_id: str) -> str:
+async def room_members(room_id: str, ctx: Context) -> str:
     """List members of a room."""
     async with _client() as c:
         resp = await c.get(
             f"/api/v1/rooms/{room_id}/members",
-            headers=_auth_headers(),
+            headers=_auth_headers(ctx),
         )
         resp.raise_for_status()
         members = resp.json()
@@ -253,12 +272,12 @@ async def room_members(room_id: str) -> str:
 
 
 @mcp.tool()
-async def room_info(room_id: str) -> str:
+async def room_info(room_id: str, ctx: Context) -> str:
     """Get details of a room."""
     async with _client() as c:
         resp = await c.get(
             f"/api/v1/rooms/{room_id}",
-            headers=_auth_headers(),
+            headers=_auth_headers(ctx),
         )
         if resp.status_code == 404:
             return "Room not found."
@@ -276,10 +295,10 @@ async def room_info(room_id: str) -> str:
 
 
 @mcp.tool()
-async def whoami() -> str:
+async def whoami(ctx: Context) -> str:
     """Show the agent's own profile information."""
     async with _client() as c:
-        resp = await c.get("/api/v1/users/me", headers=_auth_headers())
+        resp = await c.get("/api/v1/users/me", headers=_auth_headers(ctx))
         resp.raise_for_status()
         u = resp.json()
     return (
@@ -295,6 +314,7 @@ async def whoami() -> str:
 
 @mcp.tool()
 async def update_profile(
+    ctx: Context,
     display_name: Optional[str] = None,
     description: Optional[str] = None,
 ) -> str:
@@ -313,7 +333,7 @@ async def update_profile(
         return "Nothing to update — provide display_name and/or description."
     async with _client() as c:
         resp = await c.patch(
-            "/api/v1/users/me", json=body, headers=_auth_headers()
+            "/api/v1/users/me", json=body, headers=_auth_headers(ctx)
         )
         resp.raise_for_status()
         u = resp.json()
@@ -325,7 +345,7 @@ async def update_profile(
 
 
 @mcp.tool()
-async def delete_room(room_id: str) -> str:
+async def delete_room(room_id: str, ctx: Context) -> str:
     """Delete a room (owner only).
 
     Args:
@@ -333,7 +353,7 @@ async def delete_room(room_id: str) -> str:
     """
     async with _client() as c:
         resp = await c.delete(
-            f"/api/v1/rooms/{room_id}", headers=_auth_headers()
+            f"/api/v1/rooms/{room_id}", headers=_auth_headers(ctx)
         )
         if resp.status_code == 403:
             return "Error: only the room owner can delete a room."
@@ -342,7 +362,7 @@ async def delete_room(room_id: str) -> str:
 
 
 @mcp.tool()
-async def kick_member(room_id: str, user_id: str) -> str:
+async def kick_member(room_id: str, user_id: str, ctx: Context) -> str:
     """Kick a member from a room (owner only).
 
     Args:
@@ -352,7 +372,7 @@ async def kick_member(room_id: str, user_id: str) -> str:
     async with _client() as c:
         resp = await c.post(
             f"/api/v1/rooms/{room_id}/kick/{user_id}",
-            headers=_auth_headers(),
+            headers=_auth_headers(ctx),
         )
         if resp.status_code == 403:
             detail = resp.json().get("detail", "Permission denied")
@@ -367,6 +387,7 @@ async def kick_member(room_id: str, user_id: str) -> str:
 @mcp.tool()
 async def update_room(
     room_id: str,
+    ctx: Context,
     name: Optional[str] = None,
     description: Optional[str] = None,
 ) -> str:
@@ -388,7 +409,7 @@ async def update_room(
         resp = await c.patch(
             f"/api/v1/rooms/{room_id}",
             json=body,
-            headers=_auth_headers(),
+            headers=_auth_headers(ctx),
         )
         if resp.status_code == 403:
             detail = resp.json().get("detail", "Permission denied")
@@ -404,6 +425,7 @@ async def manage_access_list(
     action: str,
     user_name: str,
     list_type: str,
+    ctx: Context,
 ) -> str:
     """Add or remove a username from a room's allow/block list (owner only).
 
@@ -424,14 +446,14 @@ async def manage_access_list(
             resp = await c.post(
                 f"/api/v1/rooms/{room_id}/access-list",
                 json=body,
-                headers=_auth_headers(),
+                headers=_auth_headers(ctx),
             )
         else:
             resp = await c.request(
                 "DELETE",
                 f"/api/v1/rooms/{room_id}/access-list",
                 json=body,
-                headers=_auth_headers(),
+                headers=_auth_headers(ctx),
             )
         if resp.status_code == 403:
             detail = resp.json().get("detail", "Permission denied")
@@ -450,7 +472,7 @@ async def manage_access_list(
 
 
 @mcp.tool()
-async def view_access_list(room_id: str, list_type: str) -> str:
+async def view_access_list(room_id: str, list_type: str, ctx: Context) -> str:
     """View a room's allow or block list (owner only).
 
     Args:
@@ -462,7 +484,7 @@ async def view_access_list(room_id: str, list_type: str) -> str:
     async with _client() as c:
         resp = await c.get(
             f"/api/v1/rooms/{room_id}/access-list/{list_type}",
-            headers=_auth_headers(),
+            headers=_auth_headers(ctx),
         )
         if resp.status_code == 403:
             detail = resp.json().get("detail", "Permission denied")

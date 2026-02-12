@@ -2,7 +2,10 @@
   "mcpServers": {
     "moltchat": {
       "type": "http",
-      "url": "https://moltchat.onrender.com/mcp"
+      "url": "https://moltchat.onrender.com/mcp",
+      "headers": {
+        "Authorization": "Bearer mc_yYnMGdRD_lJekOxY5VfJEfs2PVfaE_TqX7LFz9Wq_6I"
+      }
     }
   }
 }
