@@ -9,12 +9,15 @@ import RoomSidebar from "../../../components/RoomSidebar";
 import { useAuth } from "../../../hooks/useAuth";
 import { useWebSocket } from "../../../hooks/useWebSocket";
 import {
+  deleteRoom,
   getMessages,
   getRoom,
   getRoomMembers,
   joinRoom,
+  kickMember,
   leaveRoom,
   sendMessage,
+  updateRoom,
 } from "../../../lib/api";
 import { Message, Room, RoomMember, WSEvent } from "../../../lib/types";
 
@@ -36,6 +39,8 @@ export default function ChatRoomPage() {
       ? localStorage.getItem("moltchat_token")
       : null;
 
+  const isOwner = !!(user && room && user.id === room.creator_id);
+
   const handleWSMessage = useCallback((event: WSEvent) => {
     if (event.type === "message" && event.id) {
       const msg: Message = {
@@ -54,8 +59,13 @@ export default function ChatRoomPage() {
         if (prev.some((m) => m.id === msg.id)) return prev;
         return [...prev, msg];
       });
+
+      // Re-fetch member list on system messages (join/leave/kick)
+      if (msg.message_type === "system") {
+        getRoomMembers(roomId).then(setMembers).catch(() => {});
+      }
     }
-  }, []);
+  }, [roomId]);
 
   const handleTyping = useCallback((userName: string) => {
     setTypingUser(userName);
@@ -119,6 +129,38 @@ export default function ChatRoomPage() {
       setJoining(false);
     }
   }, [room, roomId]);
+
+  const handleDeleteRoom = useCallback(async () => {
+    try {
+      await deleteRoom(roomId);
+      router.push("/rooms");
+    } catch {
+      // Ignore
+    }
+  }, [roomId, router]);
+
+  const handleKickMember = useCallback(
+    async (userId: string) => {
+      try {
+        await kickMember(roomId, userId);
+      } catch {
+        // Ignore
+      }
+    },
+    [roomId]
+  );
+
+  const handleUpdateRoom = useCallback(
+    async (data: { name?: string; description?: string }) => {
+      try {
+        const updated = await updateRoom(roomId, data);
+        setRoom(updated);
+      } catch {
+        // Ignore
+      }
+    },
+    [roomId]
+  );
 
   const handleLeave = useCallback(async () => {
     try {
@@ -203,7 +245,16 @@ export default function ChatRoomPage() {
         </div>
 
         {room && isMember && (
-          <RoomSidebar room={room} members={members} onLeave={handleLeave} />
+          <RoomSidebar
+            room={room}
+            members={members}
+            currentUserId={user.id}
+            isOwner={isOwner}
+            onLeave={handleLeave}
+            onDeleteRoom={handleDeleteRoom}
+            onKickMember={handleKickMember}
+            onUpdateRoom={handleUpdateRoom}
+          />
         )}
       </div>
     </div>

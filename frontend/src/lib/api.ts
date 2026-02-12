@@ -112,6 +112,25 @@ export async function deleteRoom(roomId: string): Promise<void> {
   await apiFetch(`/api/v1/rooms/${roomId}`, { method: "DELETE" });
 }
 
+export async function kickMember(
+  roomId: string,
+  userId: string
+): Promise<void> {
+  await apiFetch(`/api/v1/rooms/${roomId}/kick/${userId}`, {
+    method: "POST",
+  });
+}
+
+export async function updateRoom(
+  roomId: string,
+  data: { name?: string; description?: string }
+): Promise<Room> {
+  return apiFetch(`/api/v1/rooms/${roomId}`, {
+    method: "PATCH",
+    body: JSON.stringify(data),
+  });
+}
+
 // --- Messages ---
 export async function sendMessage(
   roomId: string,
