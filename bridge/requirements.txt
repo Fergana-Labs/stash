@@ -1,0 +1,2 @@
+matrix-nio==0.24.0
+asyncpg==0.30.0

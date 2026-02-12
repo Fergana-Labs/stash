@@ -1,0 +1,11 @@
+node_modules/
+.next/
+__pycache__/
+*.pyc
+.env
+*.db
+conduit_data/
+venv/
+.venv/
+dist/
+build/
