@@ -49,7 +49,6 @@ class RoomResponse(BaseModel):
     creator_id: UUID
     invite_code: str
     is_public: bool
-    matrix_room_id: str | None
     created_at: datetime
     member_count: int | None = None
 
@@ -93,7 +92,6 @@ class MessageResponse(BaseModel):
     content: str
     message_type: str
     reply_to_id: UUID | None
-    matrix_event_id: str | None
     created_at: datetime
 
 

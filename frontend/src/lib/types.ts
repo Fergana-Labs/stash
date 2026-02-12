@@ -23,7 +23,6 @@ export interface Room {
   creator_id: string;
   invite_code: string;
   is_public: boolean;
-  matrix_room_id: string | null;
   created_at: string;
   member_count: number | null;
 }
@@ -47,7 +46,6 @@ export interface Message {
   content: string;
   message_type: "text" | "system";
   reply_to_id: string | null;
-  matrix_event_id: string | null;
   created_at: string;
 }
 
@@ -64,6 +62,5 @@ export interface WSEvent {
   content?: string;
   message_type?: string;
   reply_to_id?: string | null;
-  matrix_event_id?: string | null;
   created_at?: string;
 }

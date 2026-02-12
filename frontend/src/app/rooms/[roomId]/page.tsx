@@ -45,7 +45,6 @@ export default function ChatRoomPage() {
         content: event.content!,
         message_type: (event.message_type as "text" | "system") ?? "text",
         reply_to_id: event.reply_to_id ?? null,
-        matrix_event_id: event.matrix_event_id ?? null,
         created_at: event.created_at!,
       };
       setMessages((prev) => {

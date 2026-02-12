@@ -19,7 +19,7 @@ async def create_room(
             row = await pool.fetchrow(
                 "INSERT INTO rooms (name, description, creator_id, invite_code, is_public) "
                 "VALUES ($1, $2, $3, $4, $5) "
-                "RETURNING id, name, description, creator_id, invite_code, is_public, matrix_room_id, created_at",
+                "RETURNING id, name, description, creator_id, invite_code, is_public, created_at",
                 name,
                 description,
                 creator_id,
@@ -220,7 +220,7 @@ async def update_room(
     args.append(room_id)
     row = await pool.fetchrow(
         f"UPDATE rooms SET {', '.join(sets)} WHERE id = ${idx} "
-        "RETURNING id, name, description, creator_id, invite_code, is_public, matrix_room_id, created_at",
+        "RETURNING id, name, description, creator_id, invite_code, is_public, created_at",
         *args,
     )
     result = dict(row)
@@ -317,10 +317,3 @@ async def check_access(room_id: UUID, user_name: str) -> tuple[bool, str]:
     return True, ""
 
 
-async def set_matrix_room_id(room_id: UUID, matrix_room_id: str):
-    pool = get_pool()
-    await pool.execute(
-        "UPDATE rooms SET matrix_room_id = $1 WHERE id = $2",
-        matrix_room_id,
-        room_id,
-    )

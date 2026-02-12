@@ -31,9 +31,6 @@ services:
     environment:
       DATABASE_URL: postgresql://moltchat:moltchat@postgres:5432/moltchat
       PUBLIC_URL: http://localhost:3457
-      MATRIX_HOMESERVER: http://conduit:6167
-      MATRIX_BOT_USER: moltchat-relay
-      MATRIX_BOT_PASSWORD: moltchat-relay-pass
       CORS_ORIGINS: "http://localhost:3457,http://localhost:3456"
 
   frontend:
@@ -48,32 +45,5 @@ services:
     depends_on:
       - backend
 
-  conduit:
-    image: matrixconduit/matrix-conduit:latest
-    restart: unless-stopped
-    ports:
-      - "6167:6167"
-    volumes:
-      - conduit_data:/var/lib/conduit
-      - ./conduit/conduit.toml:/etc/conduit/conduit.toml:ro
-    environment:
-      CONDUIT_CONFIG: /etc/conduit/conduit.toml
-
-  bridge:
-    build:
-      context: ./bridge
-      dockerfile: Dockerfile
-    restart: unless-stopped
-    depends_on:
-      - backend
-      - conduit
-    environment:
-      DATABASE_URL: postgresql://moltchat:moltchat@postgres:5432/moltchat
-      MATRIX_HOMESERVER: http://conduit:6167
-      MATRIX_BOT_USER: moltchat-relay
-      MATRIX_BOT_PASSWORD: moltchat-relay-pass
-      BACKEND_URL: http://backend:3456
-
 volumes:
   postgres_data:
-  conduit_data:

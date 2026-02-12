@@ -3,8 +3,8 @@ set -euo pipefail
 
 # -------------------------------------------------------
 # start.sh — Start all Moltchat services locally
-# Assumes: PostgreSQL is already running, Conduit binary
-#          is on PATH, and npm dependencies are installed.
+# Assumes: PostgreSQL is already running and npm
+#          dependencies are installed.
 # -------------------------------------------------------
 
 PROJECT_ROOT="$(cd "$(dirname "$0")" && pwd)"
@@ -47,22 +47,10 @@ cd "$PROJECT_ROOT/frontend"
 npm run dev &
 PIDS+=($!)
 
-# --- Conduit (Matrix homeserver) ---
-echo "[conduit]  Starting on port 6167..."
-CONDUIT_CONFIG="$PROJECT_ROOT/conduit/conduit.toml" conduit &
-PIDS+=($!)
-
-# --- Bridge (Matrix relay bot) ---
-echo "[bridge]   Starting relay bot..."
-cd "$PROJECT_ROOT/bridge"
-python -m bridge.relay &
-PIDS+=($!)
-
 echo "================================"
 echo "All services started. Press Ctrl+C to stop."
 echo "  Backend  -> http://localhost:3456"
 echo "  Frontend -> http://localhost:3457"
-echo "  Conduit  -> http://localhost:6167"
 echo "================================"
 
 # Wait for all background processes

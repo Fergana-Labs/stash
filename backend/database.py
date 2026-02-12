@@ -22,7 +22,6 @@ CREATE TABLE IF NOT EXISTS rooms (
     creator_id UUID NOT NULL REFERENCES users(id),
     invite_code VARCHAR(12) NOT NULL UNIQUE,
     is_public BOOLEAN NOT NULL DEFAULT true,
-    matrix_room_id VARCHAR(255),
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
@@ -41,7 +40,6 @@ CREATE TABLE IF NOT EXISTS messages (
     content TEXT NOT NULL,
     message_type VARCHAR(8) DEFAULT 'text' CHECK(message_type IN ('text', 'system')),
     reply_to_id UUID REFERENCES messages(id),
-    matrix_event_id VARCHAR(255),
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
@@ -55,7 +53,6 @@ CREATE TABLE IF NOT EXISTS room_access_list (
 );
 
 CREATE INDEX IF NOT EXISTS idx_messages_room_created ON messages(room_id, created_at);
-CREATE INDEX IF NOT EXISTS idx_messages_matrix_event ON messages(matrix_event_id) WHERE matrix_event_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_messages_content_fts ON messages USING GIN(to_tsvector('english', content));
 CREATE INDEX IF NOT EXISTS idx_rooms_invite_code ON rooms(invite_code);
 CREATE INDEX IF NOT EXISTS idx_users_api_key_hash ON users(api_key_hash);
