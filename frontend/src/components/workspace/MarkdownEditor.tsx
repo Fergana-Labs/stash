@@ -98,39 +98,47 @@ export default function MarkdownEditor({ workspaceId, file, onSave }: MarkdownEd
     };
   }, [token, workspaceId, file.id, ydoc, userName, userColor]);
 
+  const extensions = useMemo(() => {
+    const exts = [
+      StarterKit.configure({
+        codeBlock: false, // Use lowlight version instead
+        history: false, // Collaboration has its own undo/redo
+      }),
+      CodeBlockLowlight.configure({
+        lowlight,
+      }),
+      LinkExtension.configure({
+        openOnClick: false,
+        HTMLAttributes: {
+          class: "text-blue-400 underline cursor-pointer",
+        },
+      }),
+      TaskList,
+      TaskItem.configure({
+        nested: true,
+      }),
+      Placeholder.configure({
+        placeholder: "Start typing...",
+      }),
+      Collaboration.configure({
+        document: ydoc,
+      }),
+    ];
+
+    if (provider) {
+      exts.push(
+        CollaborationCursor.configure({
+          provider,
+        })
+      );
+    }
+
+    return exts;
+  }, [ydoc, provider]);
+
   const editor = useEditor(
     {
-      extensions: [
-        StarterKit.configure({
-          codeBlock: false, // Use lowlight version instead
-        }),
-        CodeBlockLowlight.configure({
-          lowlight,
-        }),
-        LinkExtension.configure({
-          openOnClick: false,
-          HTMLAttributes: {
-            class: "text-blue-400 underline cursor-pointer",
-          },
-        }),
-        TaskList,
-        TaskItem.configure({
-          nested: true,
-        }),
-        Placeholder.configure({
-          placeholder: "Start typing...",
-        }),
-        Collaboration.configure({
-          document: ydoc,
-        }),
-        ...(provider
-          ? [
-              CollaborationCursor.configure({
-                provider,
-              }),
-            ]
-          : []),
-      ],
+      extensions,
       editorProps: {
         attributes: {
           class:
@@ -142,10 +150,10 @@ export default function MarkdownEditor({ workspaceId, file, onSave }: MarkdownEd
             "prose-li:text-gray-300 prose-strong:text-white prose-em:text-gray-200",
         },
       },
-      // If no Yjs, load initial content from file
+      // When using Collaboration, content comes from Yjs doc
       content: provider ? undefined : file.content_markdown || "",
     },
-    [provider, ydoc]
+    [extensions]
   );
 
   // Keyboard shortcut: Ctrl+S to save
