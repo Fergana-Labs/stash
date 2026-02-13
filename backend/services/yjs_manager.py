@@ -269,12 +269,14 @@ class YjsManager:
             # Clear existing XmlFragment content, then apply new state —
             # all on the same doc so deletes propagate to clients via CRDT.
             from pycrdt import XmlFragment
-            if "default" not in (handle.doc.keys() if hasattr(handle.doc, 'keys') else []):
-                handle.doc["default"] = XmlFragment()
+            handle.doc["default"] = XmlFragment()
             fragment = handle.doc["default"]
-            n = len(fragment.children)
-            if n > 0:
-                del fragment.children[0:n]
+            try:
+                n = len(fragment.children)
+                if n > 0:
+                    del fragment.children[0:n]
+            except Exception:
+                pass  # Fragment was empty or not yet populated
 
             # Apply the new content from a temp doc into the existing doc
             # by computing what the temp doc has that ours doesn't
