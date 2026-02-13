@@ -47,6 +47,7 @@ class RoomCreateRequest(BaseModel):
     name: str = Field(..., min_length=1, max_length=128)
     description: str = Field("", max_length=1000)
     is_public: bool = True
+    type: str = Field("chat", pattern=r"^(chat|workspace)$")
 
 
 class RoomResponse(BaseModel):
@@ -56,6 +57,7 @@ class RoomResponse(BaseModel):
     creator_id: UUID
     invite_code: str
     is_public: bool
+    type: str = "chat"
     created_at: datetime
     member_count: int | None = None
 
@@ -134,3 +136,66 @@ class WSMessage(BaseModel):
     type: str = "message"  # "message" | "typing" | "system"
     content: str | None = None
     reply_to_id: UUID | None = None
+
+
+# --- Workspace Files & Folders ---
+class WorkspaceFileCreateRequest(BaseModel):
+    name: str = Field(..., min_length=1, max_length=255)
+    folder_id: UUID | None = None
+    content: str = ""
+
+
+class WorkspaceFileUpdateRequest(BaseModel):
+    name: str | None = Field(None, min_length=1, max_length=255)
+    folder_id: UUID | None = None
+    content: str | None = None
+    move_to_root: bool = False  # Set True to move file out of a folder to root
+
+
+class WorkspaceFileResponse(BaseModel):
+    id: UUID
+    workspace_id: UUID
+    folder_id: UUID | None
+    name: str
+    content_markdown: str
+    created_by: UUID
+    updated_by: UUID | None
+    created_at: datetime
+    updated_at: datetime
+
+
+class WorkspaceFolderCreateRequest(BaseModel):
+    name: str = Field(..., min_length=1, max_length=255)
+
+
+class WorkspaceFolderUpdateRequest(BaseModel):
+    name: str = Field(..., min_length=1, max_length=255)
+
+
+class WorkspaceFolderResponse(BaseModel):
+    id: UUID
+    workspace_id: UUID
+    name: str
+    created_by: UUID
+    created_at: datetime
+    updated_at: datetime
+
+
+class WorkspaceFileTreeFile(BaseModel):
+    id: UUID
+    name: str
+    folder_id: UUID | None
+    created_at: datetime
+    updated_at: datetime
+
+
+class WorkspaceFileTreeFolder(BaseModel):
+    id: UUID
+    name: str
+    files: list[WorkspaceFileTreeFile]
+    created_at: datetime
+
+
+class WorkspaceFileTreeResponse(BaseModel):
+    folders: list[WorkspaceFileTreeFolder]
+    root_files: list[WorkspaceFileTreeFile]

@@ -1,4 +1,4 @@
-import { Message, RegisterResponse, Room, RoomMember, User } from "./types";
+import { Message, RegisterResponse, Room, RoomMember, User, WorkspaceFile, WorkspaceFolder, FileTree } from "./types";
 
 function getToken(): string | null {
   if (typeof window === "undefined") return null;
@@ -85,7 +85,8 @@ export async function updateMe(data: {
 export async function createRoom(
   name: string,
   description?: string,
-  isPublic?: boolean
+  isPublic?: boolean,
+  type?: "chat" | "workspace"
 ): Promise<Room> {
   return apiFetch("/api/v1/rooms", {
     method: "POST",
@@ -93,6 +94,7 @@ export async function createRoom(
       name,
       description: description || "",
       is_public: isPublic ?? true,
+      type: type || "chat",
     }),
   });
 }
@@ -213,4 +215,84 @@ export async function getAccessList(
   listType: "allow" | "block"
 ): Promise<{ entries: AccessListEntry[] }> {
   return apiFetch(`/api/v1/rooms/${roomId}/access-list/${listType}`);
+}
+
+// --- Workspaces ---
+export async function listWorkspaceFiles(
+  workspaceId: string
+): Promise<FileTree> {
+  return apiFetch(`/api/v1/workspaces/${workspaceId}/files`);
+}
+
+export async function createWorkspaceFile(
+  workspaceId: string,
+  name: string,
+  folderId?: string,
+  content?: string
+): Promise<WorkspaceFile> {
+  return apiFetch(`/api/v1/workspaces/${workspaceId}/files`, {
+    method: "POST",
+    body: JSON.stringify({
+      name,
+      folder_id: folderId || null,
+      content: content || "",
+    }),
+  });
+}
+
+export async function getWorkspaceFile(
+  workspaceId: string,
+  fileId: string
+): Promise<WorkspaceFile> {
+  return apiFetch(`/api/v1/workspaces/${workspaceId}/files/${fileId}`);
+}
+
+export async function updateWorkspaceFile(
+  workspaceId: string,
+  fileId: string,
+  data: { name?: string; folder_id?: string; content?: string; move_to_root?: boolean }
+): Promise<WorkspaceFile> {
+  return apiFetch(`/api/v1/workspaces/${workspaceId}/files/${fileId}`, {
+    method: "PATCH",
+    body: JSON.stringify(data),
+  });
+}
+
+export async function deleteWorkspaceFile(
+  workspaceId: string,
+  fileId: string
+): Promise<void> {
+  await apiFetch(`/api/v1/workspaces/${workspaceId}/files/${fileId}`, {
+    method: "DELETE",
+  });
+}
+
+export async function createWorkspaceFolder(
+  workspaceId: string,
+  name: string
+): Promise<WorkspaceFolder> {
+  return apiFetch(`/api/v1/workspaces/${workspaceId}/folders`, {
+    method: "POST",
+    body: JSON.stringify({ name }),
+  });
+}
+
+export async function renameWorkspaceFolder(
+  workspaceId: string,
+  folderId: string,
+  name: string
+): Promise<WorkspaceFolder> {
+  return apiFetch(`/api/v1/workspaces/${workspaceId}/folders/${folderId}`, {
+    method: "PATCH",
+    body: JSON.stringify({ name }),
+  });
+}
+
+export async function deleteWorkspaceFolder(
+  workspaceId: string,
+  folderId: string
+): Promise<void> {
+  await apiFetch(`/api/v1/workspaces/${workspaceId}/folders/${folderId}`, {
+    method: "DELETE",
+  });
 }

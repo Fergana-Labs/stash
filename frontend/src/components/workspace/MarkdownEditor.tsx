@@ -1,0 +1,189 @@
+"use client";
+
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { EditorContent, useEditor } from "@tiptap/react";
+import StarterKit from "@tiptap/starter-kit";
+import Collaboration from "@tiptap/extension-collaboration";
+import CollaborationCursor from "@tiptap/extension-collaboration-cursor";
+import CodeBlockLowlight from "@tiptap/extension-code-block-lowlight";
+import LinkExtension from "@tiptap/extension-link";
+import TaskList from "@tiptap/extension-task-list";
+import TaskItem from "@tiptap/extension-task-item";
+import Placeholder from "@tiptap/extension-placeholder";
+import { common, createLowlight } from "lowlight";
+import * as Y from "yjs";
+import { WebsocketProvider } from "y-websocket";
+import EditorToolbar from "./EditorToolbar";
+import { WorkspaceFile } from "../../lib/types";
+
+const lowlight = createLowlight(common);
+
+// User colors for collaboration cursors
+const COLORS = [
+  "#958DF1", "#F98181", "#FBBC88", "#FAF594",
+  "#70CFF8", "#94FADB", "#B9F18D", "#C3A4F0",
+];
+
+function getRandomColor() {
+  return COLORS[Math.floor(Math.random() * COLORS.length)];
+}
+
+interface MarkdownEditorProps {
+  workspaceId: string;
+  file: WorkspaceFile;
+  onSave: (content: string) => void;
+}
+
+export default function MarkdownEditor({ workspaceId, file, onSave }: MarkdownEditorProps) {
+  const [connected, setConnected] = useState(false);
+  const [synced, setSynced] = useState(false);
+
+  // Get auth token and user info
+  const token = typeof window !== "undefined" ? localStorage.getItem("moltchat_token") : null;
+  const userName = useMemo(() => {
+    // We don't have direct access to user here, use a simple approach
+    return "User";
+  }, []);
+  const userColor = useMemo(() => getRandomColor(), []);
+
+  // Create Y.Doc and provider
+  const [ydoc] = useState(() => new Y.Doc());
+  const [provider, setProvider] = useState<WebsocketProvider | null>(null);
+
+  useEffect(() => {
+    if (!token) return;
+
+    const apiBase = process.env.NEXT_PUBLIC_API_URL || "";
+    let wsBase: string;
+    if (apiBase) {
+      wsBase = apiBase.replace(/^http/, "ws");
+    } else {
+      const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+      wsBase = `${protocol}//${window.location.host}`;
+    }
+
+    // y-websocket constructs URL as: serverUrl + '/' + roomname + '?params'
+    // So we set serverUrl to path up to /files/{id} and roomname to 'yjs'
+    const prov = new WebsocketProvider(
+      `${wsBase}/api/v1/workspaces/${workspaceId}/files/${file.id}`,
+      "yjs",
+      ydoc,
+      {
+        connect: true,
+        params: { token },
+      }
+    );
+
+    prov.on("status", ({ status }: { status: string }) => {
+      setConnected(status === "connected");
+    });
+
+    prov.on("sync", (isSynced: boolean) => {
+      setSynced(isSynced);
+    });
+
+    prov.awareness.setLocalStateField("user", {
+      name: userName,
+      color: userColor,
+    });
+
+    setProvider(prov);
+
+    return () => {
+      prov.disconnect();
+      prov.destroy();
+      setProvider(null);
+      setConnected(false);
+      setSynced(false);
+    };
+  }, [token, workspaceId, file.id, ydoc, userName, userColor]);
+
+  const editor = useEditor(
+    {
+      extensions: [
+        StarterKit.configure({
+          codeBlock: false, // Use lowlight version instead
+        }),
+        CodeBlockLowlight.configure({
+          lowlight,
+        }),
+        LinkExtension.configure({
+          openOnClick: false,
+          HTMLAttributes: {
+            class: "text-blue-400 underline cursor-pointer",
+          },
+        }),
+        TaskList,
+        TaskItem.configure({
+          nested: true,
+        }),
+        Placeholder.configure({
+          placeholder: "Start typing...",
+        }),
+        Collaboration.configure({
+          document: ydoc,
+        }),
+        ...(provider
+          ? [
+              CollaborationCursor.configure({
+                provider,
+              }),
+            ]
+          : []),
+      ],
+      editorProps: {
+        attributes: {
+          class:
+            "prose prose-invert prose-sm max-w-none px-6 py-4 min-h-full focus:outline-none " +
+            "prose-headings:text-white prose-p:text-gray-300 prose-a:text-blue-400 " +
+            "prose-code:text-green-400 prose-code:bg-gray-800 prose-code:px-1 prose-code:rounded " +
+            "prose-pre:bg-gray-800 prose-pre:border prose-pre:border-gray-700 " +
+            "prose-blockquote:border-gray-600 prose-blockquote:text-gray-400 " +
+            "prose-li:text-gray-300 prose-strong:text-white prose-em:text-gray-200",
+        },
+      },
+      // If no Yjs, load initial content from file
+      content: provider ? undefined : file.content_markdown || "",
+    },
+    [provider, ydoc]
+  );
+
+  // Keyboard shortcut: Ctrl+S to save
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === "s") {
+        e.preventDefault();
+        if (editor) {
+          onSave(editor.getText());
+        }
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [editor, onSave]);
+
+  return (
+    <div className="flex flex-col h-full">
+      {/* File header */}
+      <div className="flex items-center justify-between px-4 py-2 bg-gray-900 border-b border-gray-800">
+        <div className="flex items-center gap-3">
+          <span className="text-white text-sm font-medium">{file.name}</span>
+          <span
+            className={`w-2 h-2 rounded-full ${
+              connected ? "bg-green-400" : "bg-yellow-400"
+            }`}
+            title={connected ? (synced ? "Connected & synced" : "Connected, syncing...") : "Disconnected"}
+          />
+        </div>
+      </div>
+
+      {/* Toolbar */}
+      <EditorToolbar editor={editor} />
+
+      {/* Editor */}
+      <div className="flex-1 overflow-y-auto bg-gray-950">
+        <EditorContent editor={editor} className="h-full" />
+      </div>
+    </div>
+  );
+}

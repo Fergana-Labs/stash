@@ -73,7 +73,42 @@ CREATE INDEX IF NOT EXISTS idx_users_api_key_hash ON users(api_key_hash);
 MIGRATIONS = """
 ALTER TABLE users ADD COLUMN IF NOT EXISTS password_hash VARCHAR(72);
 ALTER TABLE users ADD COLUMN IF NOT EXISTS description TEXT DEFAULT '';
+ALTER TABLE rooms ADD COLUMN IF NOT EXISTS type VARCHAR(12) DEFAULT 'chat';
+
+CREATE TABLE IF NOT EXISTS workspace_folders (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    workspace_id UUID NOT NULL REFERENCES rooms(id) ON DELETE CASCADE,
+    name VARCHAR(255) NOT NULL,
+    created_by UUID NOT NULL REFERENCES users(id),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE(workspace_id, name)
+);
+
+CREATE TABLE IF NOT EXISTS workspace_files (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    workspace_id UUID NOT NULL REFERENCES rooms(id) ON DELETE CASCADE,
+    folder_id UUID REFERENCES workspace_folders(id) ON DELETE CASCADE,
+    name VARCHAR(255) NOT NULL,
+    content_markdown TEXT NOT NULL DEFAULT '',
+    yjs_state BYTEA,
+    created_by UUID NOT NULL REFERENCES users(id),
+    updated_by UUID REFERENCES users(id),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_workspace_files_workspace ON workspace_files(workspace_id);
+CREATE INDEX IF NOT EXISTS idx_workspace_files_folder ON workspace_files(folder_id);
 """
+
+# Partial unique indexes (need separate execution due to WHERE clause)
+_PARTIAL_INDEXES = [
+    """CREATE UNIQUE INDEX IF NOT EXISTS idx_workspace_files_root_unique
+       ON workspace_files(workspace_id, name) WHERE folder_id IS NULL""",
+    """CREATE UNIQUE INDEX IF NOT EXISTS idx_workspace_files_folder_unique
+       ON workspace_files(workspace_id, folder_id, name) WHERE folder_id IS NOT NULL""",
+]
 
 
 async def init_db():
@@ -82,6 +117,8 @@ async def init_db():
     async with pool.acquire() as conn:
         await conn.execute(SCHEMA)
         await conn.execute(MIGRATIONS)
+        for idx_sql in _PARTIAL_INDEXES:
+            await conn.execute(idx_sql)
 
 
 async def close_db():
