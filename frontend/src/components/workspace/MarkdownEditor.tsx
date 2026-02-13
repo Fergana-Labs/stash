@@ -2,10 +2,13 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { EditorContent, useEditor } from "@tiptap/react";
-import { Extension } from "@tiptap/core";
 import StarterKit from "@tiptap/starter-kit";
 import Collaboration from "@tiptap/extension-collaboration";
-import { yCursorPlugin } from "@tiptap/y-tiptap";
+import Heading from "@tiptap/extension-heading";
+import Bold from "@tiptap/extension-bold";
+import Italic from "@tiptap/extension-italic";
+import Link from "@tiptap/extension-link";
+import Underline from "@tiptap/extension-underline";
 import Subscript from "@tiptap/extension-subscript";
 import Superscript from "@tiptap/extension-superscript";
 import Typography from "@tiptap/extension-typography";
@@ -110,7 +113,6 @@ export default function MarkdownEditor({ workspaceId, file, onSave }: MarkdownEd
       {provider ? (
         <CollaborativeEditor
           ydoc={ydoc}
-          provider={provider}
           onSave={onSave}
         />
       ) : (
@@ -124,42 +126,42 @@ export default function MarkdownEditor({ workspaceId, file, onSave }: MarkdownEd
 
 function CollaborativeEditor({
   ydoc,
-  provider,
   onSave,
 }: {
   ydoc: Y.Doc;
-  provider: WebsocketProvider;
   onSave: (content: string) => void;
 }) {
   const editor = useEditor({
     extensions: [
-      // Must match collab server's createTiptapExtensions() in server.ts
-      // StarterKit v3.19 includes: Document, Paragraph, Text, HardBreak,
-      // BulletList, OrderedList, ListItem, ListKeymap, Strike, Code,
-      // Dropcursor, Gapcursor, HorizontalRule, Bold, Italic, Heading,
-      // Link, Underline, UndoRedo, TrailingNode
-      // Disable only what's incompatible or unused.
+      // Match collab server's createTiptapExtensions() exactly
       StarterKit.configure({
         blockquote: false,
         codeBlock: false,
-        heading: { levels: [1, 2, 3] },
-        link: { openOnClick: false, HTMLAttributes: { class: "text-blue-400 underline cursor-pointer" } },
-        undoRedo: false,
+        heading: false,
+        bold: false,
+        italic: false,
+        undoRedo: false, // Disable undo/redo when using YJS collaboration
       }),
+      Heading.configure({
+        levels: [1, 2, 3],
+      }),
+      Bold,
+      Italic,
+      Underline,
       Subscript,
       Superscript,
       Typography,
+      Link.configure({
+        openOnClick: false,
+        HTMLAttributes: {
+          class: "text-blue-400 underline cursor-pointer",
+        },
+      }),
       Placeholder.configure({
         placeholder: "Start typing...",
       }),
       Collaboration.configure({
         document: ydoc,
-      }),
-      Extension.create({
-        name: "collaborationCursor",
-        addProseMirrorPlugins() {
-          return [yCursorPlugin(provider.awareness)];
-        },
       }),
     ],
     editorProps: {
