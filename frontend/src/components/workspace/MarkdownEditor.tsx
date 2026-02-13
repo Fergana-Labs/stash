@@ -6,11 +6,6 @@ import { Extension } from "@tiptap/core";
 import StarterKit from "@tiptap/starter-kit";
 import Collaboration from "@tiptap/extension-collaboration";
 import { yCursorPlugin } from "@tiptap/y-tiptap";
-import Heading from "@tiptap/extension-heading";
-import Bold from "@tiptap/extension-bold";
-import Italic from "@tiptap/extension-italic";
-import LinkExtension from "@tiptap/extension-link";
-import Underline from "@tiptap/extension-underline";
 import Subscript from "@tiptap/extension-subscript";
 import Superscript from "@tiptap/extension-superscript";
 import Typography from "@tiptap/extension-typography";
@@ -139,36 +134,21 @@ function CollaborativeEditor({
   const editor = useEditor({
     extensions: [
       // Must match collab server's createTiptapExtensions() in server.ts
-      // Must match collab server's createTiptapExtensions() in server.ts
       // StarterKit v3.19 includes: Document, Paragraph, Text, HardBreak,
       // BulletList, OrderedList, ListItem, ListKeymap, Strike, Code,
       // Dropcursor, Gapcursor, HorizontalRule, Bold, Italic, Heading,
       // Link, Underline, UndoRedo, TrailingNode
-      // We disable extensions that the collab server configures separately
-      // or that conflict with Collaboration (undoRedo).
+      // Disable only what's incompatible or unused.
       StarterKit.configure({
         blockquote: false,
         codeBlock: false,
-        heading: false,
-        bold: false,
-        italic: false,
-        link: false,
-        underline: false,
+        heading: { levels: [1, 2, 3] },
+        link: { openOnClick: false, HTMLAttributes: { class: "text-blue-400 underline cursor-pointer" } },
         undoRedo: false,
       }),
-      Heading.configure({ levels: [1, 2, 3] }),
-      Bold,
-      Italic,
-      Underline,
       Subscript,
       Superscript,
       Typography,
-      LinkExtension.configure({
-        openOnClick: false,
-        HTMLAttributes: {
-          class: "text-blue-400 underline cursor-pointer",
-        },
-      }),
       Placeholder.configure({
         placeholder: "Start typing...",
       }),
