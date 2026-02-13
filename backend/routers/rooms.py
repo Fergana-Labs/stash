@@ -1,3 +1,4 @@
+import asyncio
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -11,7 +12,7 @@ from ..models import (
     RoomResponse,
     RoomUpdateRequest,
 )
-from ..services import room_service, message_service, user_service
+from ..services import room_service, message_service, user_service, webhook_service
 from ..services.connection_manager import manager
 
 router = APIRouter(prefix="/api/v1/rooms", tags=["rooms"])
@@ -76,7 +77,9 @@ async def join_room(invite_code: str, current_user: dict = Depends(get_current_u
             content=f"{current_user['display_name'] or current_user['name']} joined the room",
             message_type="system",
         )
-        await manager.broadcast(room["id"], {"type": "message", **msg})
+        event = {"type": "message", **msg}
+        await manager.broadcast(room["id"], event)
+        asyncio.create_task(webhook_service.dispatch_webhooks(room["id"], event))
     return RoomResponse(**room)
 
 
@@ -92,7 +95,9 @@ async def leave_room(room_id: UUID, current_user: dict = Depends(get_current_use
         content=f"{current_user['display_name'] or current_user['name']} left the room",
         message_type="system",
     )
-    await manager.broadcast(room_id, {"type": "message", **msg})
+    event = {"type": "message", **msg}
+    await manager.broadcast(room_id, event)
+    asyncio.create_task(webhook_service.dispatch_webhooks(room_id, event))
     return {"ok": True}
 
 
@@ -138,7 +143,9 @@ async def kick_member(
         content=f"{requester_name} kicked {target_name} from the room",
         message_type="system",
     )
-    await manager.broadcast(room_id, {"type": "message", **msg})
+    event = {"type": "message", **msg}
+    await manager.broadcast(room_id, event)
+    asyncio.create_task(webhook_service.dispatch_webhooks(room_id, event))
     return {"ok": True}
 
 

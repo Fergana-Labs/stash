@@ -7,7 +7,7 @@ from starlette.responses import StreamingResponse
 
 from ..auth import get_current_user, get_user_from_api_key
 from ..models import WSMessage
-from ..services import message_service, room_service
+from ..services import message_service, room_service, webhook_service
 from ..services.connection_manager import manager
 
 router = APIRouter(tags=["realtime"])
@@ -47,7 +47,9 @@ async def websocket_endpoint(room_id: UUID, websocket: WebSocket, token: str = Q
                     content=ws_msg.content,
                     reply_to_id=ws_msg.reply_to_id,
                 )
-                await manager.broadcast(room_id, {"type": "message", **msg})
+                event = {"type": "message", **msg}
+                await manager.broadcast(room_id, event)
+                asyncio.create_task(webhook_service.dispatch_webhooks(room_id, event))
     except WebSocketDisconnect:
         pass
     finally:

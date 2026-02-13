@@ -53,6 +53,16 @@ CREATE TABLE IF NOT EXISTS room_access_list (
     PRIMARY KEY (room_id, user_name, list_type)
 );
 
+CREATE TABLE IF NOT EXISTS webhooks (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
+    url TEXT NOT NULL,
+    secret VARCHAR(128),
+    is_active BOOLEAN NOT NULL DEFAULT true,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 CREATE INDEX IF NOT EXISTS idx_messages_room_created ON messages(room_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_messages_content_fts ON messages USING GIN(to_tsvector('english', content));
 CREATE INDEX IF NOT EXISTS idx_rooms_invite_code ON rooms(invite_code);

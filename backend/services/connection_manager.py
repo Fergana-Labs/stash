@@ -62,6 +62,30 @@ class ConnectionManager:
             for q in dead_queues:
                 self._sse_queues[room_id].discard(q)
 
+    async def ping_all(self):
+        """Send a ping to every WebSocket; remove any that fail."""
+        total_removed = 0
+        for room_id in list(self._ws_connections.keys()):
+            conns = self._ws_connections.get(room_id)
+            if not conns:
+                continue
+            dead = []
+            for ws in list(conns):
+                try:
+                    await ws.send_text('{"type":"ping"}')
+                except Exception:
+                    dead.append(ws)
+            for ws in dead:
+                conns.discard(ws)
+            total_removed += len(dead)
+            if not conns:
+                del self._ws_connections[room_id]
+        if total_removed:
+            import logging
+            logging.getLogger("moltchat").info(
+                f"ping_all: removed {total_removed} dead connection(s)"
+            )
+
     async def broadcast_typing(self, room_id: UUID, user_name: str, sender_ws: WebSocket | None = None):
         """Broadcast typing indicator, excluding the sender."""
         data = json.dumps({"type": "typing", "user": user_name})
