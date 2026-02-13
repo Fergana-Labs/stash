@@ -74,6 +74,13 @@ class YjsDocHandle:
         if state:
             try:
                 self.doc.apply_update(state)
+                # Validate: if the old state used Y.Text instead of Y.XmlFragment
+                # under "default", it's incompatible with TipTap. Discard it.
+                from pycrdt import XmlFragment
+                keys = list(self.doc.keys()) if hasattr(self.doc, 'keys') else []
+                if "default" in keys and not isinstance(self.doc["default"], XmlFragment):
+                    logger.warning(f"Incompatible Yjs type for file {self.file_id}, resetting")
+                    self.doc = Doc()
             except Exception:
                 logger.warning(f"Failed to apply stored Yjs state for file {self.file_id}, starting fresh")
                 self.doc = Doc()
