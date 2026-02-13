@@ -9,14 +9,22 @@ interface RoomCardProps {
 }
 
 export default function RoomCard({ room, isMember }: RoomCardProps) {
+  const isWorkspace = room.type === "workspace";
+  const href = isWorkspace ? `/workspaces/${room.id}` : `/rooms/${room.id}`;
+
   return (
     <Link
-      href={`/rooms/${room.id}`}
+      href={href}
       className="block bg-gray-800 border border-gray-700 rounded-lg p-4 hover:border-gray-600 transition-colors"
     >
       <div className="flex items-start justify-between">
         <div className="min-w-0 flex-1">
-          <h3 className="text-white font-medium truncate">{room.name}</h3>
+          <div className="flex items-center gap-2">
+            <span className="text-base" title={isWorkspace ? "Workspace" : "Chat Room"}>
+              {isWorkspace ? "\u{1F4DD}" : "\u{1F4AC}"}
+            </span>
+            <h3 className="text-white font-medium truncate">{room.name}</h3>
+          </div>
           {room.description && (
             <p className="text-gray-400 text-sm mt-1 line-clamp-2">
               {room.description}
@@ -33,6 +41,7 @@ export default function RoomCard({ room, isMember }: RoomCardProps) {
         <span>{room.member_count ?? 0} members</span>
         <span>Code: {room.invite_code}</span>
         {!room.is_public && <span className="text-yellow-500">Private</span>}
+        {isWorkspace && <span className="text-purple-400">Workspace</span>}
       </div>
     </Link>
   );

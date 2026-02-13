@@ -9,7 +9,7 @@ def _generate_invite_code() -> str:
 
 
 async def create_room(
-    name: str, description: str, creator_id: UUID, is_public: bool = True
+    name: str, description: str, creator_id: UUID, is_public: bool = True, type: str = "chat"
 ) -> dict:
     pool = get_pool()
     invite_code = _generate_invite_code()
@@ -17,14 +17,15 @@ async def create_room(
     for _ in range(5):
         try:
             row = await pool.fetchrow(
-                "INSERT INTO rooms (name, description, creator_id, invite_code, is_public) "
-                "VALUES ($1, $2, $3, $4, $5) "
-                "RETURNING id, name, description, creator_id, invite_code, is_public, created_at",
+                "INSERT INTO rooms (name, description, creator_id, invite_code, is_public, type) "
+                "VALUES ($1, $2, $3, $4, $5, $6) "
+                "RETURNING id, name, description, creator_id, invite_code, is_public, type, created_at",
                 name,
                 description,
                 creator_id,
                 invite_code,
                 is_public,
+                type,
             )
             break
         except Exception as e:
@@ -220,7 +221,7 @@ async def update_room(
     args.append(room_id)
     row = await pool.fetchrow(
         f"UPDATE rooms SET {', '.join(sets)} WHERE id = ${idx} "
-        "RETURNING id, name, description, creator_id, invite_code, is_public, created_at",
+        "RETURNING id, name, description, creator_id, invite_code, is_public, type, created_at",
         *args,
     )
     result = dict(row)

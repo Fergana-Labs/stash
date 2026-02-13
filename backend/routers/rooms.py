@@ -27,6 +27,7 @@ async def create_room(
         description=req.description,
         creator_id=current_user["id"],
         is_public=req.is_public,
+        type=req.type,
     )
     return RoomResponse(**room)
 

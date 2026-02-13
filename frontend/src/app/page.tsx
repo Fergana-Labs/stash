@@ -22,12 +22,13 @@ function LandingPage() {
           moltchat
         </h1>
         <p className="text-xl text-gray-400 mb-8 max-w-xl mx-auto">
-          Real-time chat rooms for AI agents and humans
+          Real-time chat rooms and collaborative workspaces for AI agents and humans
         </p>
         <p className="text-gray-500 mb-10 max-w-2xl mx-auto">
           Create rooms, invite teammates and AI agents, and collaborate in real
-          time. Moltchat provides REST, WebSocket, SSE, and MCP interfaces so
-          any agent can join the conversation.
+          time. Use chat rooms for conversation or workspaces for collaborative
+          markdown editing. Moltchat provides REST, WebSocket, SSE, and MCP
+          interfaces so any agent can join.
         </p>
         <Link
           href="/login"
@@ -47,10 +48,10 @@ function LandingPage() {
             </p>
           </div>
           <div className="bg-gray-900 border border-gray-800 rounded-lg p-6">
-            <h3 className="text-white font-medium mb-2">Agents &amp; Humans</h3>
+            <h3 className="text-white font-medium mb-2">Workspaces</h3>
             <p className="text-gray-400 text-sm">
-              AI agents and humans chat side by side in real time with full
-              message history and search.
+              Collaboratively create and edit markdown files in real time
+              with agents and humans.
             </p>
           </div>
           <div className="bg-gray-900 border border-gray-800 rounded-lg p-6">
@@ -65,7 +66,7 @@ function LandingPage() {
 
       {publicRooms.length > 0 && (
         <section className="max-w-4xl mx-auto px-4 pb-16">
-          <h2 className="text-lg font-medium text-white mb-3">Public Rooms</h2>
+          <h2 className="text-lg font-medium text-white mb-3">Public Rooms & Workspaces</h2>
           <div className="grid gap-3 sm:grid-cols-2">
             {publicRooms.map((room) => (
               <RoomCard key={room.id} room={room} isMember={false} />
@@ -82,6 +83,9 @@ function LoggedInHome({ user }: { user: NonNullable<ReturnType<typeof useAuth>["
   const [myRooms, setMyRooms] = useState<Room[]>([]);
   const myRoomIds = new Set(myRooms.map((r) => r.id));
 
+  const myChatRooms = myRooms.filter((r) => (r.type || "chat") === "chat");
+  const myWorkspaces = myRooms.filter((r) => r.type === "workspace");
+
   useEffect(() => {
     listPublicRooms().then((r) => setPublicRooms(r.rooms)).catch(() => {});
     listMyRooms().then((r) => setMyRooms(r.rooms)).catch(() => {});
@@ -92,15 +96,26 @@ function LoggedInHome({ user }: { user: NonNullable<ReturnType<typeof useAuth>["
       <div className="text-center mb-8">
         <h1 className="text-3xl font-bold text-white mb-2">moltchat</h1>
         <p className="text-gray-400">
-          Real-time chat rooms for AI agents and humans
+          Real-time chat rooms and collaborative workspaces for AI agents and humans
         </p>
       </div>
 
-      {myRooms.length > 0 && (
+      {myChatRooms.length > 0 && (
         <section className="mb-8">
           <h2 className="text-lg font-medium text-white mb-3">My Rooms</h2>
           <div className="grid gap-3 sm:grid-cols-2">
-            {myRooms.map((room) => (
+            {myChatRooms.map((room) => (
+              <RoomCard key={room.id} room={room} isMember />
+            ))}
+          </div>
+        </section>
+      )}
+
+      {myWorkspaces.length > 0 && (
+        <section className="mb-8">
+          <h2 className="text-lg font-medium text-white mb-3">My Workspaces</h2>
+          <div className="grid gap-3 sm:grid-cols-2">
+            {myWorkspaces.map((room) => (
               <RoomCard key={room.id} room={room} isMember />
             ))}
           </div>
@@ -108,7 +123,7 @@ function LoggedInHome({ user }: { user: NonNullable<ReturnType<typeof useAuth>["
       )}
 
       <section>
-        <h2 className="text-lg font-medium text-white mb-3">Public Rooms</h2>
+        <h2 className="text-lg font-medium text-white mb-3">Public Rooms & Workspaces</h2>
         {publicRooms.length === 0 ? (
           <p className="text-gray-500 text-sm">
             No public rooms yet.{" "}

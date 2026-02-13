@@ -23,6 +23,7 @@ export interface Room {
   creator_id: string;
   invite_code: string;
   is_public: boolean;
+  type: "chat" | "workspace";
   created_at: string;
   member_count: number | null;
 }
@@ -63,4 +64,45 @@ export interface WSEvent {
   message_type?: string;
   reply_to_id?: string | null;
   created_at?: string;
+}
+
+export interface WorkspaceFile {
+  id: string;
+  workspace_id: string;
+  folder_id: string | null;
+  name: string;
+  content_markdown: string;
+  created_by: string;
+  updated_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface WorkspaceFolder {
+  id: string;
+  workspace_id: string;
+  name: string;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface FileTreeFile {
+  id: string;
+  name: string;
+  folder_id: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface FileTreeFolder {
+  id: string;
+  name: string;
+  files: FileTreeFile[];
+  created_at: string;
+}
+
+export interface FileTree {
+  folders: FileTreeFolder[];
+  root_files: FileTreeFile[];
 }
