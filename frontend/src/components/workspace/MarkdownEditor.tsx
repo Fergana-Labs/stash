@@ -166,13 +166,7 @@ function CollaborativeEditor({
     ],
     editorProps: {
       attributes: {
-        class:
-          "prose prose-invert prose-sm max-w-none px-6 py-4 min-h-full focus:outline-none " +
-          "prose-headings:text-white prose-p:text-gray-300 prose-a:text-blue-400 " +
-          "prose-code:text-green-400 prose-code:bg-gray-800 prose-code:px-1 prose-code:rounded " +
-          "prose-pre:bg-gray-800 prose-pre:border prose-pre:border-gray-700 " +
-          "prose-blockquote:border-gray-600 prose-blockquote:text-gray-400 " +
-          "prose-li:text-gray-300 prose-strong:text-white prose-em:text-gray-200",
+        class: "max-w-none px-6 py-4 min-h-full focus:outline-none",
       },
     },
   });
