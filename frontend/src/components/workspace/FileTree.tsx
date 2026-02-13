@@ -13,6 +13,7 @@ interface FileTreeProps {
   onDeleteFolder: (folderId: string) => void;
   onRenameFile: (fileId: string, currentName: string) => void;
   onRenameFolder: (folderId: string, currentName: string) => void;
+  onMoveFile: (fileId: string, folderId: string | null) => void;
 }
 
 export default function FileTreeComponent({
@@ -25,6 +26,7 @@ export default function FileTreeComponent({
   onDeleteFolder,
   onRenameFile,
   onRenameFolder,
+  onMoveFile,
 }: FileTreeProps) {
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(
     new Set(tree.folders.map((f) => f.id))
@@ -180,6 +182,35 @@ export default function FileTreeComponent({
             >
               New file here
             </button>
+          )}
+          {contextMenu.type === "file" && (
+            <>
+              {contextMenu.folderId && (
+                <button
+                  onClick={() => {
+                    onMoveFile(contextMenu.id, null);
+                    closeContextMenu();
+                  }}
+                  className="w-full text-left px-3 py-1.5 text-sm text-gray-300 hover:bg-gray-700"
+                >
+                  Move to root
+                </button>
+              )}
+              {tree.folders
+                .filter((f) => f.id !== contextMenu.folderId)
+                .map((folder) => (
+                  <button
+                    key={folder.id}
+                    onClick={() => {
+                      onMoveFile(contextMenu.id, folder.id);
+                      closeContextMenu();
+                    }}
+                    className="w-full text-left px-3 py-1.5 text-sm text-gray-300 hover:bg-gray-700"
+                  >
+                    Move to {folder.name}
+                  </button>
+                ))}
+            </>
           )}
           <button
             onClick={() => {

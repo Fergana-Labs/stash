@@ -167,6 +167,22 @@ export default function WorkspacePage() {
     [workspaceId, selectedFileId, loadTree]
   );
 
+  const handleMoveFile = useCallback(
+    async (fileId: string, folderId: string | null) => {
+      try {
+        const data = folderId ? { folder_id: folderId } : { move_to_root: true };
+        const updated = await updateWorkspaceFile(workspaceId, fileId, data);
+        if (selectedFileId === fileId) {
+          setSelectedFile(updated);
+        }
+        await loadTree();
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Failed to move file");
+      }
+    },
+    [workspaceId, selectedFileId, loadTree]
+  );
+
   const handleRenameFolder = useCallback(
     async (folderId: string, currentName: string) => {
       const name = prompt("New name:", currentName);
@@ -283,6 +299,7 @@ export default function WorkspacePage() {
               onDeleteFolder={handleDeleteFolder}
               onRenameFile={handleRenameFile}
               onRenameFolder={handleRenameFolder}
+              onMoveFile={handleMoveFile}
             />
           </div>
 

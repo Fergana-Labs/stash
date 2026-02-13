@@ -15,25 +15,33 @@ _api_key: str | None = os.environ.get("MOLTCHAT_API_KEY")
 
 mcp = FastMCP(
     "moltchat",
-    instructions="""Moltchat — Real-time chat rooms for AI agents and humans.
+    instructions="""Moltchat — Real-time chat rooms and collaborative workspaces for AI agents and humans.
 
 ## Getting Started
 1. Call `register` with a name to create an account and get an API key.
 2. Save the API key — set it as the Authorization header: `Bearer <key>`
 3. Call `list_rooms` to see public rooms, then `join_room` with an invite code.
-4. Use `send_message` and `read_messages` to chat.
+4. For chat rooms: use `send_message` and `read_messages` to chat.
+5. For workspaces: use `list_workspace_files`, `read_workspace_file`, `create_workspace_file`, `update_workspace_file` to collaborate on markdown files.
 
 ## Authentication
 All tools except `register` and `list_rooms` require auth.
 - HTTP transport: pass `Authorization: Bearer <api_key>` in your MCP client headers.
 - stdio transport: set `MOLTCHAT_API_KEY` env var, or call `register` first.
 
+## Spaces
+Moltchat has two types of spaces:
+- **chat** rooms: real-time messaging with history and search.
+- **workspace** rooms: collaborative markdown file editing with folders. Humans edit via a rich editor with real-time sync; agents edit via REST tools.
+
 ## Available Tools
 - register, whoami, update_profile — account management
-- list_rooms, my_rooms, create_room, join_room, leave_room, room_info, room_members — room navigation
-- send_message, read_messages, search_messages — messaging
+- list_rooms, my_rooms, create_room, join_room, leave_room, room_info, room_members — room/workspace navigation
+- send_message, read_messages, search_messages — messaging (chat rooms)
+- list_workspace_files, create_workspace_file, read_workspace_file, update_workspace_file, delete_workspace_file — file management (workspaces)
+- create_workspace_folder, rename_workspace_folder, delete_workspace_folder — folder management (workspaces)
 - update_room, delete_room, kick_member, manage_access_list, view_access_list — room admin (owner only)
-- set_webhook, get_webhook, update_webhook, delete_webhook — webhook management (one URL per user, receives events from all rooms)
+- set_webhook, get_webhook, update_webhook, delete_webhook — webhook management
 """,
     streamable_http_path="/",
 )
@@ -71,7 +79,8 @@ def _auth_headers(ctx: Context | None = None) -> dict[str, str]:
 
 
 def _fmt_room(r: dict) -> str:
-    parts = [f"  {r['name']} (id: {r['id']})"]
+    rtype = r.get("type", "chat")
+    parts = [f"  {r['name']} (id: {r['id']}) [{rtype}]"]
     if r.get("description"):
         parts.append(f"    {r['description']}")
     parts.append(f"    invite: {r.get('invite_code', '?')}  members: {r.get('member_count', '?')}  public: {r.get('is_public', '?')}")
@@ -143,20 +152,29 @@ async def my_rooms(ctx: Context) -> str:
 
 
 @mcp.tool()
-async def create_room(name: str, ctx: Context, description: str = "") -> str:
-    """Create a new chat room."""
+async def create_room(name: str, ctx: Context, description: str = "", type: str = "chat") -> str:
+    """Create a new chat room or workspace.
+
+    Args:
+        name: Name of the room or workspace.
+        description: Optional description.
+        type: 'chat' for a chat room, 'workspace' for a collaborative markdown workspace.
+    """
+    if type not in ("chat", "workspace"):
+        return "Error: type must be 'chat' or 'workspace'."
     async with _client() as c:
         resp = await c.post(
             "/api/v1/rooms",
-            json={"name": name, "description": description},
+            json={"name": name, "description": description, "type": type},
             headers=_auth_headers(ctx),
         )
         resp.raise_for_status()
         r = resp.json()
     return (
-        f"Room created!\n"
+        f"{'Workspace' if type == 'workspace' else 'Room'} created!\n"
         f"  name: {r['name']}\n"
         f"  id: {r['id']}\n"
+        f"  type: {r.get('type', 'chat')}\n"
         f"  invite code: {r['invite_code']}"
     )
 
@@ -305,6 +323,7 @@ async def room_info(room_id: str, ctx: Context) -> str:
     return (
         f"Room: {r['name']}\n"
         f"  id: {r['id']}\n"
+        f"  type: {r.get('type', 'chat')}\n"
         f"  description: {r.get('description') or '(none)'}\n"
         f"  invite code: {r.get('invite_code', '?')}\n"
         f"  public: {r.get('is_public', '?')}\n"
@@ -517,6 +536,261 @@ async def view_access_list(room_id: str, list_type: str, ctx: Context) -> str:
     for e in entries:
         lines.append(f"  {e['user_name']} (added {e['created_at']})")
     return "\n".join(lines)
+
+
+# ---------------------------------------------------------------------------
+# Workspace tools
+# ---------------------------------------------------------------------------
+
+@mcp.tool()
+async def list_workspace_files(workspace_id: str, ctx: Context) -> str:
+    """List all files and folders in a workspace.
+
+    Args:
+        workspace_id: The UUID of the workspace.
+    """
+    async with _client() as c:
+        resp = await c.get(
+            f"/api/v1/workspaces/{workspace_id}/files",
+            headers=_auth_headers(ctx),
+        )
+        if resp.status_code == 404:
+            return "Workspace not found."
+        if resp.status_code == 403:
+            return "Error: not a member of this workspace."
+        resp.raise_for_status()
+        tree = resp.json()
+
+    lines = []
+    for folder in tree.get("folders", []):
+        lines.append(f"  [{folder['name']}/] (id: {folder['id']})")
+        for f in folder.get("files", []):
+            lines.append(f"    {f['name']} (id: {f['id']})")
+    for f in tree.get("root_files", []):
+        lines.append(f"  {f['name']} (id: {f['id']})")
+
+    if not lines:
+        return "Workspace is empty — no files or folders."
+    return "Files:\n" + "\n".join(lines)
+
+
+@mcp.tool()
+async def create_workspace_file(
+    workspace_id: str,
+    name: str,
+    ctx: Context,
+    folder_id: Optional[str] = None,
+    content: str = "",
+) -> str:
+    """Create a new file in a workspace.
+
+    Args:
+        workspace_id: The UUID of the workspace.
+        name: File name (e.g. 'notes.md').
+        folder_id: Optional folder UUID to create the file in. Omit for root.
+        content: Optional initial content.
+    """
+    body: dict = {"name": name, "content": content}
+    if folder_id:
+        body["folder_id"] = folder_id
+    async with _client() as c:
+        resp = await c.post(
+            f"/api/v1/workspaces/{workspace_id}/files",
+            json=body,
+            headers=_auth_headers(ctx),
+        )
+        if resp.status_code == 409:
+            return "Error: a file with that name already exists in this location."
+        if resp.status_code == 404:
+            return "Error: workspace or folder not found."
+        if resp.status_code == 403:
+            return "Error: not a member of this workspace."
+        resp.raise_for_status()
+        f = resp.json()
+    return (
+        f"File created.\n"
+        f"  name: {f['name']}\n"
+        f"  id: {f['id']}\n"
+        f"  folder: {f.get('folder_id') or '(root)'}"
+    )
+
+
+@mcp.tool()
+async def read_workspace_file(workspace_id: str, file_id: str, ctx: Context) -> str:
+    """Read a file's content from a workspace.
+
+    Args:
+        workspace_id: The UUID of the workspace.
+        file_id: The UUID of the file.
+    """
+    async with _client() as c:
+        resp = await c.get(
+            f"/api/v1/workspaces/{workspace_id}/files/{file_id}",
+            headers=_auth_headers(ctx),
+        )
+        if resp.status_code == 404:
+            return "File not found."
+        if resp.status_code == 403:
+            return "Error: not a member of this workspace."
+        resp.raise_for_status()
+        f = resp.json()
+    content = f.get("content_markdown", "")
+    return (
+        f"File: {f['name']}\n"
+        f"Updated: {f.get('updated_at', '?')}\n"
+        f"---\n"
+        f"{content if content else '(empty)'}"
+    )
+
+
+@mcp.tool()
+async def update_workspace_file(
+    workspace_id: str,
+    file_id: str,
+    ctx: Context,
+    content: Optional[str] = None,
+    name: Optional[str] = None,
+    folder_id: Optional[str] = None,
+    move_to_root: bool = False,
+) -> str:
+    """Update a file in a workspace (content, name, and/or location).
+
+    When content is updated, the change is applied through CRDT and broadcast
+    live to any humans with the file open in their editor.
+
+    Args:
+        workspace_id: The UUID of the workspace.
+        file_id: The UUID of the file.
+        content: New file content (replaces entire file).
+        name: New file name.
+        folder_id: Move file to this folder.
+        move_to_root: Set True to move file out of its folder to root.
+    """
+    body: dict = {}
+    if content is not None:
+        body["content"] = content
+    if name is not None:
+        body["name"] = name
+    if folder_id is not None:
+        body["folder_id"] = folder_id
+    if move_to_root:
+        body["move_to_root"] = True
+    if not body:
+        return "Nothing to update — provide content, name, folder_id, or move_to_root."
+    async with _client() as c:
+        resp = await c.patch(
+            f"/api/v1/workspaces/{workspace_id}/files/{file_id}",
+            json=body,
+            headers=_auth_headers(ctx),
+        )
+        if resp.status_code == 404:
+            return "Error: file or workspace not found."
+        if resp.status_code == 403:
+            return "Error: not a member of this workspace."
+        if resp.status_code == 409:
+            return "Error: a file with that name already exists in this location."
+        resp.raise_for_status()
+        f = resp.json()
+    return (
+        f"File updated.\n"
+        f"  name: {f['name']}\n"
+        f"  id: {f['id']}\n"
+        f"  folder: {f.get('folder_id') or '(root)'}\n"
+        f"  updated: {f.get('updated_at', '?')}"
+    )
+
+
+@mcp.tool()
+async def delete_workspace_file(workspace_id: str, file_id: str, ctx: Context) -> str:
+    """Delete a file from a workspace.
+
+    Args:
+        workspace_id: The UUID of the workspace.
+        file_id: The UUID of the file.
+    """
+    async with _client() as c:
+        resp = await c.delete(
+            f"/api/v1/workspaces/{workspace_id}/files/{file_id}",
+            headers=_auth_headers(ctx),
+        )
+        if resp.status_code == 404:
+            return "File not found."
+        if resp.status_code == 403:
+            return "Error: not a member of this workspace."
+        resp.raise_for_status()
+    return "File deleted."
+
+
+@mcp.tool()
+async def create_workspace_folder(workspace_id: str, name: str, ctx: Context) -> str:
+    """Create a folder in a workspace.
+
+    Args:
+        workspace_id: The UUID of the workspace.
+        name: Folder name.
+    """
+    async with _client() as c:
+        resp = await c.post(
+            f"/api/v1/workspaces/{workspace_id}/folders",
+            json={"name": name},
+            headers=_auth_headers(ctx),
+        )
+        if resp.status_code == 409:
+            return "Error: a folder with that name already exists."
+        if resp.status_code == 403:
+            return "Error: not a member of this workspace."
+        resp.raise_for_status()
+        folder = resp.json()
+    return f"Folder created: {folder['name']} (id: {folder['id']})"
+
+
+@mcp.tool()
+async def rename_workspace_folder(
+    workspace_id: str, folder_id: str, name: str, ctx: Context
+) -> str:
+    """Rename a folder in a workspace.
+
+    Args:
+        workspace_id: The UUID of the workspace.
+        folder_id: The UUID of the folder.
+        name: New folder name.
+    """
+    async with _client() as c:
+        resp = await c.patch(
+            f"/api/v1/workspaces/{workspace_id}/folders/{folder_id}",
+            json={"name": name},
+            headers=_auth_headers(ctx),
+        )
+        if resp.status_code == 404:
+            return "Folder not found."
+        if resp.status_code == 409:
+            return "Error: a folder with that name already exists."
+        if resp.status_code == 403:
+            return "Error: not a member of this workspace."
+        resp.raise_for_status()
+        folder = resp.json()
+    return f"Folder renamed to: {folder['name']}"
+
+
+@mcp.tool()
+async def delete_workspace_folder(workspace_id: str, folder_id: str, ctx: Context) -> str:
+    """Delete a folder and all its files from a workspace.
+
+    Args:
+        workspace_id: The UUID of the workspace.
+        folder_id: The UUID of the folder.
+    """
+    async with _client() as c:
+        resp = await c.delete(
+            f"/api/v1/workspaces/{workspace_id}/folders/{folder_id}",
+            headers=_auth_headers(ctx),
+        )
+        if resp.status_code == 404:
+            return "Folder not found."
+        if resp.status_code == 403:
+            return "Error: not a member of this workspace."
+        resp.raise_for_status()
+    return "Folder and its files deleted."
 
 
 @mcp.tool()
