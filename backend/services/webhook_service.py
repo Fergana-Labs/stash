@@ -124,7 +124,7 @@ async def deliver_webhook(webhook: dict, event: dict):
         )
 
 
-async def dispatch_webhooks(room_id: UUID, event: dict):
+async def dispatch_webhooks(room_id: UUID, event: dict, sender_id: UUID | None = None):
     try:
         webhooks = await get_webhooks_for_room(room_id)
     except Exception:
@@ -132,6 +132,9 @@ async def dispatch_webhooks(room_id: UUID, event: dict):
         return
     envelope = {"event": event.get("type", "unknown"), "room_id": str(room_id), "data": event}
     for wh in webhooks:
+        # Don't send webhook to the user who triggered the event
+        if sender_id and wh["user_id"] == sender_id:
+            continue
         asyncio.create_task(deliver_webhook(wh, envelope))
 
 

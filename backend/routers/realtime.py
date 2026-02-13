@@ -49,7 +49,7 @@ async def websocket_endpoint(room_id: UUID, websocket: WebSocket, token: str = Q
                 )
                 event = {"type": "message", **msg}
                 await manager.broadcast(room_id, event)
-                asyncio.create_task(webhook_service.dispatch_webhooks(room_id, event))
+                asyncio.create_task(webhook_service.dispatch_webhooks(room_id, event, sender_id=user["id"]))
     except WebSocketDisconnect:
         pass
     finally:

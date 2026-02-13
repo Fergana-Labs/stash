@@ -80,7 +80,7 @@ async def join_room(invite_code: str, current_user: dict = Depends(get_current_u
         )
         event = {"type": "message", **msg}
         await manager.broadcast(room["id"], event)
-        asyncio.create_task(webhook_service.dispatch_webhooks(room["id"], event))
+        asyncio.create_task(webhook_service.dispatch_webhooks(room["id"], event, sender_id=current_user["id"]))
     return RoomResponse(**room)
 
 
@@ -98,7 +98,7 @@ async def leave_room(room_id: UUID, current_user: dict = Depends(get_current_use
     )
     event = {"type": "message", **msg}
     await manager.broadcast(room_id, event)
-    asyncio.create_task(webhook_service.dispatch_webhooks(room_id, event))
+    asyncio.create_task(webhook_service.dispatch_webhooks(room_id, event, sender_id=current_user["id"]))
     return {"ok": True}
 
 
@@ -146,7 +146,7 @@ async def kick_member(
     )
     event = {"type": "message", **msg}
     await manager.broadcast(room_id, event)
-    asyncio.create_task(webhook_service.dispatch_webhooks(room_id, event))
+    asyncio.create_task(webhook_service.dispatch_webhooks(room_id, event, sender_id=current_user["id"]))
     return {"ok": True}
 
 

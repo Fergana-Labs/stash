@@ -6,6 +6,7 @@ import { useCallback, useEffect, useState } from "react";
 import Header from "../../../components/Header";
 import FileTreeComponent from "../../../components/workspace/FileTree";
 import MarkdownEditor from "../../../components/workspace/MarkdownEditor";
+import WorkspaceSidebar from "../../../components/workspace/WorkspaceSidebar";
 import { useAuth } from "../../../hooks/useAuth";
 import {
   createWorkspaceFile,
@@ -19,6 +20,14 @@ import {
   updateWorkspaceFile,
   joinRoom as apiJoinRoom,
   getRoomMembers,
+  leaveRoom,
+  deleteRoom,
+  kickMember,
+  updateRoom,
+  addToAccessList,
+  removeFromAccessList,
+  getAccessList,
+  type AccessListEntry,
 } from "../../../lib/api";
 import { FileTree, Room, RoomMember, WorkspaceFile } from "../../../lib/types";
 
@@ -36,6 +45,7 @@ export default function WorkspacePage() {
   const [isMember, setIsMember] = useState(false);
   const [error, setError] = useState("");
   const [sidebarWidth] = useState(260);
+  const [showManageSidebar, setShowManageSidebar] = useState(false);
 
   const loadWorkspace = useCallback(async () => {
     try {
@@ -221,6 +231,60 @@ export default function WorkspacePage() {
     }
   };
 
+  const handleLeave = async () => {
+    if (!confirm("Leave this workspace?")) return;
+    try {
+      await leaveRoom(workspaceId);
+      router.push("/rooms");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to leave workspace");
+    }
+  };
+
+  const handleDeleteWorkspace = async () => {
+    try {
+      await deleteRoom(workspaceId);
+      router.push("/rooms");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to delete workspace");
+    }
+  };
+
+  const handleKickMember = async (userId: string) => {
+    try {
+      await kickMember(workspaceId, userId);
+      await loadMembers();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to kick member");
+    }
+  };
+
+  const handleUpdateWorkspace = async (data: { name?: string; description?: string }) => {
+    try {
+      const updated = await updateRoom(workspaceId, data);
+      setWorkspace(updated);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to update workspace");
+    }
+  };
+
+  const handleAddToAccessList = async (userName: string, listType: "allow" | "block") => {
+    await addToAccessList(workspaceId, userName, listType);
+  };
+
+  const handleRemoveFromAccessList = async (userName: string, listType: "allow" | "block") => {
+    await removeFromAccessList(workspaceId, userName, listType);
+  };
+
+  const handleGetAccessList = async (listType: "allow" | "block"): Promise<AccessListEntry[]> => {
+    const res = await getAccessList(workspaceId, listType);
+    return res.entries;
+  };
+
+  const isOwner = members.some(
+    (m) => m.user_id === user?.id && m.role === "owner"
+  );
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center text-gray-500">
@@ -255,10 +319,17 @@ export default function WorkspacePage() {
           <span className="text-xs text-gray-500">
             {members.length} member{members.length !== 1 ? "s" : ""}
           </span>
-          {workspace && (
-            <span className="text-xs text-gray-600">
-              Code: {workspace.invite_code}
-            </span>
+          {isMember && (
+            <button
+              onClick={() => setShowManageSidebar(!showManageSidebar)}
+              className={`text-xs px-3 py-1 rounded border ${
+                showManageSidebar
+                  ? "bg-purple-600 border-purple-500 text-white"
+                  : "bg-gray-800 border-gray-700 text-gray-400 hover:text-white hover:border-gray-600"
+              }`}
+            >
+              Settings
+            </button>
           )}
         </div>
       </div>
@@ -321,6 +392,23 @@ export default function WorkspacePage() {
               </div>
             )}
           </div>
+
+          {/* Management sidebar */}
+          {showManageSidebar && workspace && user && (
+            <WorkspaceSidebar
+              workspace={workspace}
+              members={members}
+              currentUserId={user.id}
+              isOwner={isOwner}
+              onLeave={handleLeave}
+              onDelete={handleDeleteWorkspace}
+              onKickMember={handleKickMember}
+              onUpdateWorkspace={handleUpdateWorkspace}
+              onAddToAccessList={isOwner ? handleAddToAccessList : undefined}
+              onRemoveFromAccessList={isOwner ? handleRemoveFromAccessList : undefined}
+              onGetAccessList={isOwner ? handleGetAccessList : undefined}
+            />
+          )}
         </div>
       )}
     </div>

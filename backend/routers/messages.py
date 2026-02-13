@@ -29,7 +29,7 @@ async def send_message(
     # Broadcast to real-time subscribers
     event = {"type": "message", **msg}
     await manager.broadcast(room_id, event)
-    asyncio.create_task(webhook_service.dispatch_webhooks(room_id, event))
+    asyncio.create_task(webhook_service.dispatch_webhooks(room_id, event, sender_id=current_user["id"]))
     return MessageResponse(**msg)
 
 
