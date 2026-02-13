@@ -1,5 +1,8 @@
 "use client";
 
+import { memo, useMemo } from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { Message } from "../lib/types";
 
 interface ChatMessageProps {
@@ -7,7 +10,9 @@ interface ChatMessageProps {
   isOwn: boolean;
 }
 
-export default function ChatMessage({ message, isOwn }: ChatMessageProps) {
+const remarkPlugins = [remarkGfm];
+
+function ChatMessage({ message, isOwn }: ChatMessageProps) {
   if (message.message_type === "system") {
     return (
       <div className="text-center text-xs text-gray-500 py-1">
@@ -20,6 +25,15 @@ export default function ChatMessage({ message, isOwn }: ChatMessageProps) {
     hour: "2-digit",
     minute: "2-digit",
   });
+
+  const renderedContent = useMemo(
+    () => (
+      <ReactMarkdown remarkPlugins={remarkPlugins}>
+        {message.content}
+      </ReactMarkdown>
+    ),
+    [message.content]
+  );
 
   return (
     <div className={`flex gap-3 py-1.5 ${isOwn ? "flex-row-reverse" : ""}`}>
@@ -49,15 +63,17 @@ export default function ChatMessage({ message, isOwn }: ChatMessageProps) {
           )}
         </div>
         <div
-          className={`inline-block rounded-lg px-3 py-2 text-sm ${
+          className={`inline-block rounded-lg px-3 py-2 text-sm markdown-content ${
             isOwn
               ? "bg-blue-600 text-white"
               : "bg-gray-800 text-gray-200 border border-gray-700"
           }`}
         >
-          {message.content}
+          {renderedContent}
         </div>
       </div>
     </div>
   );
 }
+
+export default memo(ChatMessage);
