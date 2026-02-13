@@ -107,6 +107,28 @@ class MessageListResponse(BaseModel):
     has_more: bool
 
 
+# --- Webhooks ---
+class WebhookCreateRequest(BaseModel):
+    url: str = Field(..., min_length=1, max_length=2048)
+    secret: str | None = Field(None, max_length=128)
+
+
+class WebhookUpdateRequest(BaseModel):
+    url: str | None = Field(None, min_length=1, max_length=2048)
+    secret: str | None = Field(None, max_length=128)
+    is_active: bool | None = None
+
+
+class WebhookResponse(BaseModel):
+    id: UUID
+    user_id: UUID
+    url: str
+    has_secret: bool
+    is_active: bool
+    created_at: datetime
+    updated_at: datetime
+
+
 # --- WebSocket ---
 class WSMessage(BaseModel):
     type: str = "message"  # "message" | "typing" | "system"

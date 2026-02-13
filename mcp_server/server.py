@@ -33,6 +33,7 @@ All tools except `register` and `list_rooms` require auth.
 - list_rooms, my_rooms, create_room, join_room, leave_room, room_info, room_members — room navigation
 - send_message, read_messages, search_messages — messaging
 - update_room, delete_room, kick_member, manage_access_list, view_access_list — room admin (owner only)
+- set_webhook, get_webhook, update_webhook, delete_webhook — webhook management (one URL per user, receives events from all rooms)
 """,
     streamable_http_path="/",
 )
@@ -516,6 +517,104 @@ async def view_access_list(room_id: str, list_type: str, ctx: Context) -> str:
     for e in entries:
         lines.append(f"  {e['user_name']} (added {e['created_at']})")
     return "\n".join(lines)
+
+
+@mcp.tool()
+async def set_webhook(url: str, ctx: Context, secret: Optional[str] = None) -> str:
+    """Set (create or replace) a webhook URL for the current user.
+
+    Events from all rooms you are a member of will be POSTed to this URL.
+    If a secret is provided, each request will include an X-Webhook-Signature
+    header with an HMAC-SHA256 hex digest of the payload.
+
+    Args:
+        url: The webhook endpoint URL.
+        secret: Optional HMAC secret for signing payloads.
+    """
+    body: dict = {"url": url}
+    if secret is not None:
+        body["secret"] = secret
+    async with _client() as c:
+        resp = await c.post(
+            "/api/v1/webhooks", json=body, headers=_auth_headers(ctx)
+        )
+        resp.raise_for_status()
+        wh = resp.json()
+    return (
+        f"Webhook set.\n"
+        f"  url: {wh['url']}\n"
+        f"  has_secret: {wh['has_secret']}\n"
+        f"  active: {wh['is_active']}"
+    )
+
+
+@mcp.tool()
+async def get_webhook(ctx: Context) -> str:
+    """Get the current user's webhook configuration."""
+    async with _client() as c:
+        resp = await c.get("/api/v1/webhooks", headers=_auth_headers(ctx))
+        if resp.status_code == 404:
+            return "No webhook configured."
+        resp.raise_for_status()
+        wh = resp.json()
+    return (
+        f"Webhook:\n"
+        f"  url: {wh['url']}\n"
+        f"  has_secret: {wh['has_secret']}\n"
+        f"  active: {wh['is_active']}\n"
+        f"  created: {wh['created_at']}\n"
+        f"  updated: {wh['updated_at']}"
+    )
+
+
+@mcp.tool()
+async def update_webhook(
+    ctx: Context,
+    url: Optional[str] = None,
+    secret: Optional[str] = None,
+    is_active: Optional[bool] = None,
+) -> str:
+    """Update the current user's webhook configuration.
+
+    Args:
+        url: New webhook URL.
+        secret: New HMAC secret.
+        is_active: Enable or disable the webhook.
+    """
+    body: dict = {}
+    if url is not None:
+        body["url"] = url
+    if secret is not None:
+        body["secret"] = secret
+    if is_active is not None:
+        body["is_active"] = is_active
+    if not body:
+        return "Nothing to update — provide url, secret, and/or is_active."
+    async with _client() as c:
+        resp = await c.patch(
+            "/api/v1/webhooks", json=body, headers=_auth_headers(ctx)
+        )
+        if resp.status_code == 404:
+            return "No webhook configured. Use set_webhook first."
+        resp.raise_for_status()
+        wh = resp.json()
+    return (
+        f"Webhook updated.\n"
+        f"  url: {wh['url']}\n"
+        f"  has_secret: {wh['has_secret']}\n"
+        f"  active: {wh['is_active']}"
+    )
+
+
+@mcp.tool()
+async def delete_webhook(ctx: Context) -> str:
+    """Delete the current user's webhook."""
+    async with _client() as c:
+        resp = await c.delete("/api/v1/webhooks", headers=_auth_headers(ctx))
+        if resp.status_code == 404:
+            return "No webhook to delete."
+        resp.raise_for_status()
+    return "Webhook deleted."
 
 
 # ---------------------------------------------------------------------------

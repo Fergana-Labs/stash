@@ -1,3 +1,4 @@
+import asyncio
 from datetime import datetime
 from uuid import UUID
 
@@ -5,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 
 from ..auth import get_current_user
 from ..models import MessageListResponse, MessageResponse, MessageSendRequest
-from ..services import message_service, room_service
+from ..services import message_service, room_service, webhook_service
 from ..services.connection_manager import manager
 
 router = APIRouter(prefix="/api/v1/rooms/{room_id}/messages", tags=["messages"])
@@ -26,7 +27,9 @@ async def send_message(
         reply_to_id=req.reply_to_id,
     )
     # Broadcast to real-time subscribers
-    await manager.broadcast(room_id, {"type": "message", **msg})
+    event = {"type": "message", **msg}
+    await manager.broadcast(room_id, event)
+    asyncio.create_task(webhook_service.dispatch_webhooks(room_id, event))
     return MessageResponse(**msg)
 
 
