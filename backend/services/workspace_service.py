@@ -158,13 +158,23 @@ async def list_file_tree(workspace_id: UUID) -> dict:
     }
 
 
-async def save_yjs_state(file_id: UUID, workspace_id: UUID, yjs_state: bytes, content_markdown: str) -> None:
+async def save_yjs_state(
+    file_id: UUID, workspace_id: UUID,
+    yjs_state: bytes, content_markdown: str | None = None,
+) -> None:
     pool = get_pool()
-    await pool.execute(
-        "UPDATE workspace_files SET yjs_state = $1, content_markdown = $2, updated_at = now() "
-        "WHERE id = $3 AND workspace_id = $4",
-        yjs_state, content_markdown, file_id, workspace_id,
-    )
+    if content_markdown is not None:
+        await pool.execute(
+            "UPDATE workspace_files SET yjs_state = $1, content_markdown = $2, updated_at = now() "
+            "WHERE id = $3 AND workspace_id = $4",
+            yjs_state, content_markdown, file_id, workspace_id,
+        )
+    else:
+        await pool.execute(
+            "UPDATE workspace_files SET yjs_state = $1, updated_at = now() "
+            "WHERE id = $2 AND workspace_id = $3",
+            yjs_state, file_id, workspace_id,
+        )
 
 
 async def get_yjs_state(file_id: UUID, workspace_id: UUID) -> bytes | None:
