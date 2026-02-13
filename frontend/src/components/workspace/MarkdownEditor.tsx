@@ -2,9 +2,10 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { EditorContent, useEditor } from "@tiptap/react";
+import { Extension } from "@tiptap/core";
 import StarterKit from "@tiptap/starter-kit";
 import Collaboration from "@tiptap/extension-collaboration";
-import CollaborationCursor from "@tiptap/extension-collaboration-cursor";
+import { yCursorPlugin } from "@tiptap/y-tiptap";
 import CodeBlockLowlight from "@tiptap/extension-code-block-lowlight";
 import LinkExtension from "@tiptap/extension-link";
 import TaskList from "@tiptap/extension-task-list";
@@ -160,8 +161,11 @@ function CollaborativeEditor({
       Collaboration.configure({
         document: ydoc,
       }),
-      CollaborationCursor.configure({
-        provider,
+      Extension.create({
+        name: "collaborationCursor",
+        addProseMirrorPlugins() {
+          return [yCursorPlugin(provider.awareness)];
+        },
       }),
     ],
     editorProps: {
