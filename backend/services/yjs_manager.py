@@ -6,14 +6,19 @@ Speaks the y-websocket binary protocol:
   - messageAwareness = 1
 """
 import asyncio
+import base64
 import logging
+import os
 from uuid import UUID
 
+import httpx
 from fastapi import WebSocket
 
 from pycrdt import Doc
 
 from ..services import workspace_service
+
+COLLAB_SERVER_URL = os.environ.get("COLLAB_SERVER_URL", "http://localhost:1235")
 
 logger = logging.getLogger("moltchat.yjs")
 
@@ -99,12 +104,13 @@ class YjsDocHandle:
         self._dirty = True
 
     async def save_to_db(self):
-        """Persist current Yjs binary state to database."""
+        """Persist current Yjs binary state and extracted markdown to database."""
         if not self._dirty:
             return
         state = self.doc.get_update()
+        markdown = await yjs_manager._yjs_to_markdown(state)
         await workspace_service.save_yjs_state(
-            self.file_id, self.workspace_id, state
+            self.file_id, self.workspace_id, state, content_markdown=markdown
         )
         self._dirty = False
         logger.debug(f"Saved Yjs state for file {self.file_id}")
@@ -250,12 +256,56 @@ class YjsManager:
             pass
 
     async def apply_rest_update(self, file_id: UUID, workspace_id: UUID, content: str) -> None:
-        """Save content via REST. The Yjs doc state is managed by the frontend
-        via WebSocket; REST updates only persist the markdown content."""
-        # Content is saved through the normal file update path in the router.
-        # We don't modify the Yjs doc here since TipTap uses XmlFragment
-        # which can't be manipulated as plain text from the backend.
-        pass
+        """Convert markdown to Yjs state and update the in-memory doc + broadcast to connected editors."""
+        yjs_state = await self._markdown_to_yjs(content)
+        if yjs_state is None:
+            return
+
+        handle = self._docs.get(file_id)
+        if handle:
+            # Replace doc content with new state
+            handle.doc = Doc()
+            handle.doc.apply_update(yjs_state)
+            handle._dirty = True
+            # Broadcast to connected WebSocket clients
+            update_msg = bytes([MSG_SYNC, SYNC_UPDATE]) + _encode_varint(len(yjs_state)) + yjs_state
+            for client in handle.clients:
+                try:
+                    await client.send_bytes(update_msg)
+                except Exception:
+                    pass
+            await handle.save_to_db()
+        else:
+            # No editors connected — just save yjs_state directly to DB
+            await workspace_service.save_yjs_state(file_id, workspace_id, yjs_state)
+
+    async def _markdown_to_yjs(self, markdown: str) -> bytes | None:
+        """Convert markdown to Yjs binary state via the collab server."""
+        try:
+            async with httpx.AsyncClient(timeout=5) as client:
+                resp = await client.post(
+                    f"{COLLAB_SERVER_URL}/convert/markdown-to-yjs",
+                    json={"markdown": markdown},
+                )
+                resp.raise_for_status()
+                return base64.b64decode(resp.json()["yjs_state"])
+        except Exception:
+            logger.warning("Failed to convert markdown to Yjs via collab server", exc_info=True)
+            return None
+
+    async def _yjs_to_markdown(self, yjs_state: bytes) -> str | None:
+        """Convert Yjs binary state to markdown via the collab server."""
+        try:
+            async with httpx.AsyncClient(timeout=5) as client:
+                resp = await client.post(
+                    f"{COLLAB_SERVER_URL}/convert/yjs-to-markdown",
+                    json={"yjs_state": base64.b64encode(yjs_state).decode()},
+                )
+                resp.raise_for_status()
+                return resp.json()["markdown"]
+        except Exception:
+            logger.warning("Failed to convert Yjs to markdown via collab server", exc_info=True)
+            return None
 
 
 yjs_manager = YjsManager()
