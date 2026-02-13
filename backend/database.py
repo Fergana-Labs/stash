@@ -69,12 +69,19 @@ CREATE INDEX IF NOT EXISTS idx_rooms_invite_code ON rooms(invite_code);
 CREATE INDEX IF NOT EXISTS idx_users_api_key_hash ON users(api_key_hash);
 """
 
+# Idempotent column/table additions for existing databases
+MIGRATIONS = """
+ALTER TABLE users ADD COLUMN IF NOT EXISTS password_hash VARCHAR(72);
+ALTER TABLE users ADD COLUMN IF NOT EXISTS description TEXT DEFAULT '';
+"""
+
 
 async def init_db():
     global pool
     pool = await asyncpg.create_pool(settings.DATABASE_URL, min_size=2, max_size=10)
     async with pool.acquire() as conn:
         await conn.execute(SCHEMA)
+        await conn.execute(MIGRATIONS)
 
 
 async def close_db():
