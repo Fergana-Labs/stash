@@ -6,18 +6,19 @@ import { Extension } from "@tiptap/core";
 import StarterKit from "@tiptap/starter-kit";
 import Collaboration from "@tiptap/extension-collaboration";
 import { yCursorPlugin } from "@tiptap/y-tiptap";
-import CodeBlockLowlight from "@tiptap/extension-code-block-lowlight";
+import Heading from "@tiptap/extension-heading";
+import Bold from "@tiptap/extension-bold";
+import Italic from "@tiptap/extension-italic";
 import LinkExtension from "@tiptap/extension-link";
-import TaskList from "@tiptap/extension-task-list";
-import TaskItem from "@tiptap/extension-task-item";
+import Underline from "@tiptap/extension-underline";
+import Subscript from "@tiptap/extension-subscript";
+import Superscript from "@tiptap/extension-superscript";
+import Typography from "@tiptap/extension-typography";
 import Placeholder from "@tiptap/extension-placeholder";
-import { common, createLowlight } from "lowlight";
 import * as Y from "yjs";
 import { WebsocketProvider } from "y-websocket";
 import EditorToolbar from "./EditorToolbar";
 import { WorkspaceFile } from "../../lib/types";
-
-const lowlight = createLowlight(common);
 
 // User colors for collaboration cursors
 const COLORS = [
@@ -137,23 +138,27 @@ function CollaborativeEditor({
 }) {
   const editor = useEditor({
     extensions: [
+      // Must match collab server's createTiptapExtensions() in server.ts
       StarterKit.configure({
+        blockquote: false,
         codeBlock: false,
+        heading: false,
+        bold: false,
+        italic: false,
         undoRedo: false,
-        link: false, // Using custom LinkExtension below
       }),
-      CodeBlockLowlight.configure({
-        lowlight,
-      }),
+      Heading.configure({ levels: [1, 2, 3] }),
+      Bold,
+      Italic,
+      Underline,
+      Subscript,
+      Superscript,
+      Typography,
       LinkExtension.configure({
         openOnClick: false,
         HTMLAttributes: {
           class: "text-blue-400 underline cursor-pointer",
         },
-      }),
-      TaskList,
-      TaskItem.configure({
-        nested: true,
       }),
       Placeholder.configure({
         placeholder: "Start typing...",

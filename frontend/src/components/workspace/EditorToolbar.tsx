@@ -113,30 +113,8 @@ export default function EditorToolbar({ editor }: EditorToolbarProps) {
       >
         1. List
       </ToolbarButton>
-      <ToolbarButton
-        onClick={() => editor.chain().focus().toggleTaskList().run()}
-        isActive={editor.isActive("taskList")}
-        title="Task list"
-      >
-        &#9744; Tasks
-      </ToolbarButton>
-
       <Separator />
 
-      <ToolbarButton
-        onClick={() => editor.chain().focus().toggleCodeBlock().run()}
-        isActive={editor.isActive("codeBlock")}
-        title="Code block"
-      >
-        &#123;&#125;
-      </ToolbarButton>
-      <ToolbarButton
-        onClick={() => editor.chain().focus().toggleBlockquote().run()}
-        isActive={editor.isActive("blockquote")}
-        title="Blockquote"
-      >
-        &ldquo;
-      </ToolbarButton>
       <ToolbarButton
         onClick={() => editor.chain().focus().setHorizontalRule().run()}
         title="Horizontal rule"
