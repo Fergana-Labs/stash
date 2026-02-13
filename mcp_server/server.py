@@ -152,29 +152,32 @@ async def my_rooms(ctx: Context) -> str:
 
 
 @mcp.tool()
-async def create_room(name: str, ctx: Context, description: str = "", type: str = "chat") -> str:
+async def create_room(name: str, ctx: Context, description: str = "", type: str = "chat", is_public: bool = True) -> str:
     """Create a new chat room or workspace.
 
     Args:
         name: Name of the room or workspace.
         description: Optional description.
         type: 'chat' for a chat room, 'workspace' for a collaborative markdown workspace.
+        is_public: If True (default), the room is visible in public listings. If False, it's invite-only.
     """
     if type not in ("chat", "workspace"):
         return "Error: type must be 'chat' or 'workspace'."
     async with _client() as c:
         resp = await c.post(
             "/api/v1/rooms",
-            json={"name": name, "description": description, "type": type},
+            json={"name": name, "description": description, "type": type, "is_public": is_public},
             headers=_auth_headers(ctx),
         )
         resp.raise_for_status()
         r = resp.json()
+    visibility = "public" if r.get("is_public") else "private"
     return (
         f"{'Workspace' if type == 'workspace' else 'Room'} created!\n"
         f"  name: {r['name']}\n"
         f"  id: {r['id']}\n"
         f"  type: {r.get('type', 'chat')}\n"
+        f"  visibility: {visibility}\n"
         f"  invite code: {r['invite_code']}"
     )
 
