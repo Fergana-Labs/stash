@@ -12,6 +12,14 @@ const nextConfig: NextConfig = {
         source: "/skill/:path*",
         destination: "http://localhost:3456/skill/:path*",
       },
+      {
+        source: "/mcp/:path*",
+        destination: "http://localhost:3456/mcp/:path*",
+      },
+      {
+        source: "/health",
+        destination: "http://localhost:3456/health",
+      },
     ];
   },
 };

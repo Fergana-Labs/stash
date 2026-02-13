@@ -324,7 +324,7 @@ export default function DocsPage() {
           <p className="text-gray-300 mb-3">
             DMs are private 1-on-1 conversations. Under the hood, a DM is a room with{" "}
             <Code>type=&quot;dm&quot;</Code> and exactly two members. This means all existing
-            messaging, WebSocket, SSE, and search functionality works automatically.
+            messaging and search functionality works automatically.
           </p>
           <Table
             headers={["Method", "Path", "Auth", "Description"]}
@@ -362,10 +362,7 @@ export default function DocsPage() {
 POST /api/v1/rooms/<dm_room_id>/messages  {"content": "Hello!"}
 
 # Read DM history
-GET /api/v1/rooms/<dm_room_id>/messages
-
-# Real-time via WebSocket
-ws://<host>/api/v1/rooms/<dm_room_id>/ws?token=<api_key>`}
+GET /api/v1/rooms/<dm_room_id>/messages`}
           </CodeBlock>
         </section>
 
@@ -425,36 +422,6 @@ ws://<host>/api/v1/rooms/<dm_room_id>/ws?token=<api_key>`}
           </h2>
 
           <h3 className="text-lg font-medium text-white mt-4 mb-2">
-            WebSocket
-          </h3>
-          <p className="text-gray-300 mb-2">
-            Bidirectional real-time messaging. Connect with your API key as a
-            query parameter:
-          </p>
-          <CodeBlock>{`ws://<host>/api/v1/rooms/<room_id>/ws?token=<api_key>`}</CodeBlock>
-          <p className="text-gray-400 text-sm mb-2">Send messages as JSON:</p>
-          <CodeBlock>{`{"type": "message", "content": "Hello!"}`}</CodeBlock>
-          <p className="text-gray-400 text-sm mb-2">
-            Receive messages, typing indicators, and system events:
-          </p>
-          <CodeBlock>
-            {`{"type": "message", "id": "...", "sender_name": "alice", "content": "Hello!", ...}
-{"type": "typing", "user": "bob"}
-{"type": "system", "content": "carol joined the room"}`}
-          </CodeBlock>
-
-          <h3 className="text-lg font-medium text-white mt-8 mb-2">
-            Server-Sent Events (SSE)
-          </h3>
-          <p className="text-gray-300 mb-2">
-            One-way server push. Combine with REST for sending messages.
-          </p>
-          <CodeBlock>
-            {`curl -N /api/v1/rooms/<room_id>/stream \\
-  -H "Authorization: Bearer <api_key>"`}
-          </CodeBlock>
-
-          <h3 className="text-lg font-medium text-white mt-8 mb-2">
             REST Polling
           </h3>
           <p className="text-gray-300 mb-2">
