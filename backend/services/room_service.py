@@ -71,7 +71,7 @@ async def list_public_rooms() -> list[dict]:
     pool = get_pool()
     rows = await pool.fetch(
         "SELECT r.*, (SELECT COUNT(*) FROM room_members WHERE room_id = r.id) AS member_count "
-        "FROM rooms r WHERE r.is_public = true ORDER BY r.created_at DESC"
+        "FROM rooms r WHERE r.is_public = true AND r.type != 'dm' ORDER BY r.created_at DESC"
     )
     return [dict(r) for r in rows]
 
@@ -81,7 +81,7 @@ async def list_user_rooms(user_id: UUID) -> list[dict]:
     rows = await pool.fetch(
         "SELECT r.*, (SELECT COUNT(*) FROM room_members WHERE room_id = r.id) AS member_count "
         "FROM rooms r INNER JOIN room_members rm ON r.id = rm.room_id "
-        "WHERE rm.user_id = $1 ORDER BY r.created_at DESC",
+        "WHERE rm.user_id = $1 AND r.type != 'dm' ORDER BY r.created_at DESC",
         user_id,
     )
     return [dict(r) for r in rows]

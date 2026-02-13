@@ -3,10 +3,11 @@
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Header from "../../components/Header";
+import NewDMDialog from "../../components/NewDMDialog";
 import RoomCard from "../../components/RoomCard";
 import { useAuth } from "../../hooks/useAuth";
-import { createRoom, listMyRooms, listPublicRooms } from "../../lib/api";
-import { Room } from "../../lib/types";
+import { createRoom, listDMs, listMyRooms, listPublicRooms } from "../../lib/api";
+import { DMConversation, Room } from "../../lib/types";
 
 export default function RoomsPage() {
   const router = useRouter();
@@ -20,6 +21,8 @@ export default function RoomsPage() {
   const [createType, setCreateType] = useState<"chat" | "workspace">("chat");
   const [joinCode, setJoinCode] = useState("");
   const [error, setError] = useState("");
+  const [dms, setDMs] = useState<DMConversation[]>([]);
+  const [showNewDM, setShowNewDM] = useState(false);
   const myRoomIds = useMemo(() => new Set(myRooms.map((r) => r.id)), [myRooms]);
 
   const myChatRooms = myRooms.filter((r) => (r.type || "chat") === "chat");
@@ -32,9 +35,13 @@ export default function RoomsPage() {
     const myPromise = user
       ? listMyRooms().then((r) => r.rooms).catch(() => [] as Room[])
       : Promise.resolve([] as Room[]);
-    const [pub, mine] = await Promise.all([publicPromise, myPromise]);
+    const dmPromise = user
+      ? listDMs().then((r) => r.dms).catch(() => [] as DMConversation[])
+      : Promise.resolve([] as DMConversation[]);
+    const [pub, mine, dmList] = await Promise.all([publicPromise, myPromise, dmPromise]);
     setPublicRooms(pub);
     setMyRooms(mine);
+    setDMs(dmList);
   }, [user]);
 
   useEffect(() => {
@@ -198,6 +205,58 @@ export default function RoomsPage() {
             </div>
           </form>
         )}
+
+        {user && (
+          <section className="mb-8">
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="text-lg font-medium text-white">Direct Messages</h2>
+              <button
+                onClick={() => setShowNewDM(true)}
+                className="text-sm bg-gray-800 hover:bg-gray-700 text-gray-300 px-3 py-1.5 rounded border border-gray-700"
+              >
+                New Message
+              </button>
+            </div>
+            {dms.length === 0 ? (
+              <p className="text-gray-500 text-sm">No conversations yet.</p>
+            ) : (
+              <div className="space-y-1">
+                {dms.map((dm) => {
+                  const other = dm.other_user;
+                  const displayName = other?.display_name || other?.name || "Unknown";
+                  return (
+                    <a
+                      key={dm.id}
+                      href={`/rooms/${dm.id}`}
+                      className="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-gray-800 transition-colors"
+                    >
+                      <div
+                        className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 ${
+                          other?.type === "agent"
+                            ? "bg-purple-900 text-purple-300"
+                            : "bg-blue-900 text-blue-300"
+                        }`}
+                      >
+                        {displayName.charAt(0).toUpperCase()}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="text-sm text-white truncate">{displayName}</div>
+                        <div className="text-xs text-gray-500">@{other?.name || "unknown"}</div>
+                      </div>
+                      {dm.last_message_at && (
+                        <div className="text-xs text-gray-600 flex-shrink-0">
+                          {new Date(dm.last_message_at).toLocaleDateString()}
+                        </div>
+                      )}
+                    </a>
+                  );
+                })}
+              </div>
+            )}
+          </section>
+        )}
+
+        <NewDMDialog open={showNewDM} onClose={() => { setShowNewDM(false); loadRooms(); }} />
 
         {user && myChatRooms.length > 0 && (
           <section className="mb-8">

@@ -51,6 +51,15 @@ export default function ChatRoomPage() {
       : null;
 
   const isOwner = !!(user && room && user.id === room.creator_id);
+  const isDM = room?.type === "dm";
+
+  // For DMs, find the other user from the members list
+  const dmOtherUser = isDM
+    ? members.find((m) => m.user_id !== user?.id)
+    : null;
+  const dmDisplayName = dmOtherUser
+    ? dmOtherUser.display_name || dmOtherUser.name
+    : null;
 
   const handleWSMessage = useCallback((event: WSEvent) => {
     if (event.type === "message" && event.id) {
@@ -255,11 +264,11 @@ export default function ChatRoomPage() {
               onClick={() => router.push("/rooms")}
               className="text-gray-400 hover:text-white text-sm"
             >
-              &larr; Rooms
+              &larr; {isDM ? "Messages" : "Rooms"}
             </button>
             {room && (
               <span className="text-white font-medium text-sm">
-                {room.name}
+                {isDM ? dmDisplayName || "DM" : room.name}
               </span>
             )}
             {isMember && (
@@ -314,6 +323,8 @@ export default function ChatRoomPage() {
             members={members}
             currentUserId={user.id}
             isOwner={isOwner}
+            isDM={isDM}
+            dmOtherUser={dmOtherUser || undefined}
             onLeave={handleLeave}
             onDeleteRoom={handleDeleteRoom}
             onKickMember={handleKickMember}

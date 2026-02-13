@@ -199,3 +199,41 @@ class WorkspaceFileTreeFolder(BaseModel):
 class WorkspaceFileTreeResponse(BaseModel):
     folders: list[WorkspaceFileTreeFolder]
     root_files: list[WorkspaceFileTreeFile]
+
+
+# --- Direct Messages ---
+class DMCreateRequest(BaseModel):
+    user_id: UUID | None = None
+    username: str | None = None
+
+
+class DMOtherUser(BaseModel):
+    id: UUID
+    name: str
+    display_name: str | None
+    type: str
+
+
+class DMResponse(BaseModel):
+    id: UUID
+    name: str
+    description: str
+    creator_id: UUID
+    invite_code: str
+    is_public: bool
+    type: str
+    created_at: datetime
+    member_count: int | None = None
+    other_user: DMOtherUser | None = None
+    last_message_at: str | None = None
+
+
+class DMListResponse(BaseModel):
+    dms: list[DMResponse]
+
+
+class UserSearchResult(BaseModel):
+    id: UUID
+    name: str
+    display_name: str | None
+    type: str

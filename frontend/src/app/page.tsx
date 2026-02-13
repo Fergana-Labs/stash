@@ -3,10 +3,11 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import Header from "../components/Header";
+import NewDMDialog from "../components/NewDMDialog";
 import RoomCard from "../components/RoomCard";
 import { useAuth } from "../hooks/useAuth";
-import { listMyRooms, listPublicRooms } from "../lib/api";
-import { Room } from "../lib/types";
+import { listDMs, listMyRooms, listPublicRooms } from "../lib/api";
+import { DMConversation, Room } from "../lib/types";
 
 function LandingPage() {
   const [publicRooms, setPublicRooms] = useState<Room[]>([]);
@@ -81,19 +82,27 @@ function LandingPage() {
 function LoggedInHome({ user }: { user: NonNullable<ReturnType<typeof useAuth>["user"]> }) {
   const [publicRooms, setPublicRooms] = useState<Room[]>([]);
   const [myRooms, setMyRooms] = useState<Room[]>([]);
+  const [dms, setDMs] = useState<DMConversation[]>([]);
+  const [showNewDM, setShowNewDM] = useState(false);
   const myRoomIds = useMemo(() => new Set(myRooms.map((r) => r.id)), [myRooms]);
 
   const myChatRooms = myRooms.filter((r) => (r.type || "chat") === "chat");
   const myWorkspaces = myRooms.filter((r) => r.type === "workspace");
 
-  useEffect(() => {
+  const loadData = () => {
     Promise.all([
       listPublicRooms().then((r) => r.rooms).catch(() => [] as Room[]),
       listMyRooms().then((r) => r.rooms).catch(() => [] as Room[]),
-    ]).then(([pub, mine]) => {
+      listDMs().then((r) => r.dms).catch(() => [] as DMConversation[]),
+    ]).then(([pub, mine, dmList]) => {
       setPublicRooms(pub);
       setMyRooms(mine);
+      setDMs(dmList);
     });
+  };
+
+  useEffect(() => {
+    loadData();
   }, []);
 
   return (
@@ -104,6 +113,56 @@ function LoggedInHome({ user }: { user: NonNullable<ReturnType<typeof useAuth>["
           Real-time chat rooms and collaborative workspaces for AI agents and humans
         </p>
       </div>
+
+      <section className="mb-8">
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-lg font-medium text-white">Direct Messages</h2>
+          <button
+            onClick={() => setShowNewDM(true)}
+            className="text-sm bg-gray-800 hover:bg-gray-700 text-gray-300 px-3 py-1.5 rounded border border-gray-700"
+          >
+            New Message
+          </button>
+        </div>
+        {dms.length === 0 ? (
+          <p className="text-gray-500 text-sm">No conversations yet.</p>
+        ) : (
+          <div className="space-y-1">
+            {dms.map((dm) => {
+              const other = dm.other_user;
+              const displayName = other?.display_name || other?.name || "Unknown";
+              return (
+                <a
+                  key={dm.id}
+                  href={`/rooms/${dm.id}`}
+                  className="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-gray-800 transition-colors"
+                >
+                  <div
+                    className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 ${
+                      other?.type === "agent"
+                        ? "bg-purple-900 text-purple-300"
+                        : "bg-blue-900 text-blue-300"
+                    }`}
+                  >
+                    {displayName.charAt(0).toUpperCase()}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="text-sm text-white truncate">{displayName}</div>
+                    <div className="text-xs text-gray-500">@{other?.name || "unknown"}</div>
+                  </div>
+                  {dm.last_message_at && (
+                    <div className="text-xs text-gray-600 flex-shrink-0">
+                      {new Date(dm.last_message_at).toLocaleDateString()}
+                    </div>
+                  )}
+                </a>
+              );
+            })}
+          </div>
+        )}
+      </section>
+
+      <NewDMDialog open={showNewDM} onClose={() => { setShowNewDM(false); loadData(); }} />
 
       {myChatRooms.length > 0 && (
         <section className="mb-8">

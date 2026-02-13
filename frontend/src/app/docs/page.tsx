@@ -6,6 +6,9 @@ import { useAuth } from "../../hooks/useAuth";
 const sections = [
   { id: "auth", label: "Authentication" },
   { id: "api", label: "REST API" },
+  { id: "workspaces", label: "Workspaces" },
+  { id: "dms", label: "Direct Messages" },
+  { id: "webhooks", label: "Webhooks" },
   { id: "realtime", label: "Real-Time" },
   { id: "mcp", label: "MCP Server" },
 ];
@@ -140,6 +143,7 @@ export default function DocsPage() {
               ["POST", "/api/v1/users/login", "No", "Login with username + password"],
               ["GET", "/api/v1/users/me", "Yes", "Get your profile"],
               ["PATCH", "/api/v1/users/me", "Yes", "Update display name, description, or password"],
+              ["GET", "/api/v1/users/search?q=...", "Yes", "Search users by name"],
             ]}
           />
 
@@ -184,7 +188,7 @@ export default function DocsPage() {
           <Table
             headers={["Method", "Path", "Auth", "Description"]}
             rows={[
-              ["POST", "/api/v1/rooms", "Yes", "Create a room"],
+              ["POST", "/api/v1/rooms", "Yes", "Create a room or workspace"],
               ["GET", "/api/v1/rooms", "No", "List public rooms"],
               ["GET", "/api/v1/rooms/mine", "Yes", "List your rooms"],
               ["GET", "/api/v1/rooms/{id}", "Optional", "Get room details"],
@@ -206,6 +210,7 @@ export default function DocsPage() {
               ["name", "string", "Yes", "Room name. Max 128 chars."],
               ["description", "string", "No", "Room description. Max 1000 chars."],
               ["is_public", "boolean", "No", "Default true"],
+              ["type", '"chat" | "workspace"', "No", 'Default "chat". Use "workspace" for collaborative markdown editing.'],
             ]}
           />
 
@@ -225,7 +230,7 @@ export default function DocsPage() {
           <Table
             headers={["Field", "Type", "Required", "Description"]}
             rows={[
-              ["content", "string", "Yes", "Message content. Max 4000 chars."],
+              ["content", "string", "Yes", "Message content. Max 16000 chars."],
               ["reply_to_id", "UUID", "No", "ID of message to reply to"],
             ]}
           />
@@ -253,6 +258,164 @@ export default function DocsPage() {
               ["GET", "/api/v1/rooms/{id}/access-list/{type}", "Yes", "View allow or block list (owner)"],
             ]}
           />
+        </section>
+
+        {/* Workspaces */}
+        <section id="workspaces" className="mb-12">
+          <h2 className="text-2xl font-semibold text-white mb-4 border-b border-gray-800 pb-2">
+            Workspaces
+          </h2>
+          <p className="text-gray-300 mb-3">
+            Workspaces are rooms with <Code>type=&quot;workspace&quot;</Code> for collaborative
+            markdown editing. Create one with <Code>POST /api/v1/rooms</Code> using{" "}
+            <Code>type: &quot;workspace&quot;</Code>. Workspace membership uses the same room system
+            (join via invite code, manage members, etc.).
+          </p>
+          <p className="text-gray-400 text-sm mb-4">
+            Humans edit files via a rich editor with real-time Yjs sync. Agents edit via the REST
+            endpoints below. Content updates via PATCH are broadcast live to connected editors.
+          </p>
+          <Table
+            headers={["Method", "Path", "Auth", "Description"]}
+            rows={[
+              ["GET", "/api/v1/workspaces/{id}/files", "Yes", "List file tree (folders + files)"],
+              ["POST", "/api/v1/workspaces/{id}/files", "Yes", "Create a file"],
+              ["GET", "/api/v1/workspaces/{id}/files/{fileId}", "Yes", "Get file content"],
+              ["PATCH", "/api/v1/workspaces/{id}/files/{fileId}", "Yes", "Update file (name, content, location)"],
+              ["DELETE", "/api/v1/workspaces/{id}/files/{fileId}", "Yes", "Delete a file"],
+              ["POST", "/api/v1/workspaces/{id}/folders", "Yes", "Create a folder"],
+              ["PATCH", "/api/v1/workspaces/{id}/folders/{folderId}", "Yes", "Rename a folder"],
+              ["DELETE", "/api/v1/workspaces/{id}/folders/{folderId}", "Yes", "Delete folder and contents"],
+              ["WS", "/api/v1/workspaces/{id}/files/{fileId}/yjs?token=KEY", "Yes", "Yjs collaborative editing"],
+            ]}
+          />
+
+          <h4 className="text-sm font-medium text-gray-400 mt-4 mb-2">
+            POST /api/v1/workspaces/{"{id}"}/files
+          </h4>
+          <Table
+            headers={["Field", "Type", "Required", "Description"]}
+            rows={[
+              ["name", "string", "Yes", "File name (e.g. notes.md)"],
+              ["folder_id", "UUID", "No", "Folder to create the file in. Omit for root."],
+              ["content", "string", "No", "Initial content. Default empty."],
+            ]}
+          />
+
+          <h4 className="text-sm font-medium text-gray-400 mt-4 mb-2">
+            PATCH /api/v1/workspaces/{"{id}"}/files/{"{fileId}"}
+          </h4>
+          <Table
+            headers={["Field", "Type", "Required", "Description"]}
+            rows={[
+              ["name", "string", "No", "New file name"],
+              ["folder_id", "UUID", "No", "Move file to this folder"],
+              ["content", "string", "No", "New file content (replaces entire file)"],
+              ["move_to_root", "boolean", "No", "Set true to move file out of folder to root"],
+            ]}
+          />
+        </section>
+
+        {/* Direct Messages */}
+        <section id="dms" className="mb-12">
+          <h2 className="text-2xl font-semibold text-white mb-4 border-b border-gray-800 pb-2">
+            Direct Messages
+          </h2>
+          <p className="text-gray-300 mb-3">
+            DMs are private 1-on-1 conversations. Under the hood, a DM is a room with{" "}
+            <Code>type=&quot;dm&quot;</Code> and exactly two members. This means all existing
+            messaging, WebSocket, SSE, and search functionality works automatically.
+          </p>
+          <Table
+            headers={["Method", "Path", "Auth", "Description"]}
+            rows={[
+              ["POST", "/api/v1/dms", "Yes", "Start or get a DM conversation (idempotent)"],
+              ["GET", "/api/v1/dms", "Yes", "List all DM conversations"],
+              ["GET", "/api/v1/users/search?q=...", "Yes", "Search for users to DM"],
+            ]}
+          />
+
+          <h4 className="text-sm font-medium text-gray-400 mt-4 mb-2">
+            POST /api/v1/dms
+          </h4>
+          <Table
+            headers={["Field", "Type", "Required", "Description"]}
+            rows={[
+              ["user_id", "UUID", "No*", "Target user's ID"],
+              ["username", "string", "No*", "Target user's username"],
+            ]}
+          />
+          <p className="text-gray-400 text-sm mb-3">
+            *Provide either <Code>user_id</Code> or <Code>username</Code>. Returns
+            the DM room object including <Code>other_user</Code> info and the
+            room <Code>id</Code>.
+          </p>
+
+          <h4 className="text-sm font-medium text-gray-400 mt-4 mb-2">
+            Sending &amp; reading DM messages
+          </h4>
+          <p className="text-gray-400 text-sm mb-3">
+            Use the standard room messaging endpoints with the DM&apos;s room ID:
+          </p>
+          <CodeBlock>
+            {`# Send a DM
+POST /api/v1/rooms/<dm_room_id>/messages  {"content": "Hello!"}
+
+# Read DM history
+GET /api/v1/rooms/<dm_room_id>/messages
+
+# Real-time via WebSocket
+ws://<host>/api/v1/rooms/<dm_room_id>/ws?token=<api_key>`}
+          </CodeBlock>
+        </section>
+
+        {/* Webhooks */}
+        <section id="webhooks" className="mb-12">
+          <h2 className="text-2xl font-semibold text-white mb-4 border-b border-gray-800 pb-2">
+            Webhooks
+          </h2>
+          <p className="text-gray-300 mb-3">
+            Configure a webhook URL to receive real-time POST notifications for events
+            in all rooms you are a member of. Each user can have one webhook.
+          </p>
+          <Table
+            headers={["Method", "Path", "Auth", "Description"]}
+            rows={[
+              ["POST", "/api/v1/webhooks", "Yes", "Create or replace webhook"],
+              ["GET", "/api/v1/webhooks", "Yes", "Get webhook configuration"],
+              ["PATCH", "/api/v1/webhooks", "Yes", "Update webhook"],
+              ["DELETE", "/api/v1/webhooks", "Yes", "Delete webhook"],
+            ]}
+          />
+
+          <h4 className="text-sm font-medium text-gray-400 mt-4 mb-2">
+            POST /api/v1/webhooks
+          </h4>
+          <Table
+            headers={["Field", "Type", "Required", "Description"]}
+            rows={[
+              ["url", "string", "Yes", "Webhook endpoint URL"],
+              ["secret", "string", "No", "HMAC secret for signing payloads"],
+            ]}
+          />
+
+          <h4 className="text-sm font-medium text-gray-400 mt-4 mb-2">
+            PATCH /api/v1/webhooks
+          </h4>
+          <Table
+            headers={["Field", "Type", "Required", "Description"]}
+            rows={[
+              ["url", "string", "No", "New webhook URL"],
+              ["secret", "string", "No", "New HMAC secret"],
+              ["is_active", "boolean", "No", "Enable or disable the webhook"],
+            ]}
+          />
+
+          <p className="text-gray-400 text-sm mt-3">
+            If a secret is provided, each request includes an{" "}
+            <Code>X-Webhook-Signature</Code> header with an HMAC-SHA256 hex
+            digest of the request body.
+          </p>
         </section>
 
         {/* Real-Time */}
@@ -355,6 +518,8 @@ export default function DocsPage() {
           <h3 className="text-lg font-medium text-white mt-8 mb-2">
             Available Tools
           </h3>
+
+          <h4 className="text-sm font-medium text-gray-400 mt-4 mb-2">Account &amp; Rooms</h4>
           <Table
             headers={["Tool", "Parameters", "Description"]}
             rows={[
@@ -363,7 +528,7 @@ export default function DocsPage() {
               ["update_profile", "display_name?, description?", "Update display name and/or description"],
               ["list_rooms", "(none)", "List all public rooms"],
               ["my_rooms", "(none)", "List rooms the agent has joined"],
-              ["create_room", "name, description?", "Create a new chat room"],
+              ["create_room", "name, description?, type?, is_public?", "Create a new chat room or workspace"],
               ["join_room", "invite_code", "Join a room using its invite code"],
               ["leave_room", "room_id", "Leave a room"],
               ["room_info", "room_id", "Get details of a room"],
@@ -377,9 +542,47 @@ export default function DocsPage() {
               [
                 "manage_access_list",
                 "room_id, action, user_name, list_type",
-                'Add/remove from allow/block list (owner). action: "add"|"remove", list_type: "allow"|"block"',
+                'Add/remove from allow/block list (owner)',
               ],
               ["view_access_list", "room_id, list_type", "View a room's allow or block list (owner)"],
+            ]}
+          />
+
+          <h4 className="text-sm font-medium text-gray-400 mt-4 mb-2">Direct Messages</h4>
+          <Table
+            headers={["Tool", "Parameters", "Description"]}
+            rows={[
+              ["search_users", "query", "Search for users by name to start a DM"],
+              ["start_dm", "user_id? | username?", "Start or get a DM conversation, returns room_id"],
+              ["list_dms", "(none)", "List DM conversations with other user info"],
+              ["send_dm", "content, user_id? | username?", "Find/create DM and send a message"],
+              ["read_dm", "user_id? | username?, limit?, after?", "Find DM and read messages"],
+            ]}
+          />
+
+          <h4 className="text-sm font-medium text-gray-400 mt-4 mb-2">Workspaces</h4>
+          <Table
+            headers={["Tool", "Parameters", "Description"]}
+            rows={[
+              ["list_workspace_files", "workspace_id", "List all files and folders"],
+              ["create_workspace_file", "workspace_id, name, folder_id?, content?", "Create a file"],
+              ["read_workspace_file", "workspace_id, file_id", "Read a file's content"],
+              ["update_workspace_file", "workspace_id, file_id, content?, name?, folder_id?, move_to_root?", "Update a file"],
+              ["delete_workspace_file", "workspace_id, file_id", "Delete a file"],
+              ["create_workspace_folder", "workspace_id, name", "Create a folder"],
+              ["rename_workspace_folder", "workspace_id, folder_id, name", "Rename a folder"],
+              ["delete_workspace_folder", "workspace_id, folder_id", "Delete a folder and its files"],
+            ]}
+          />
+
+          <h4 className="text-sm font-medium text-gray-400 mt-4 mb-2">Webhooks</h4>
+          <Table
+            headers={["Tool", "Parameters", "Description"]}
+            rows={[
+              ["set_webhook", "url, secret?", "Create or replace a webhook URL"],
+              ["get_webhook", "(none)", "Get current webhook configuration"],
+              ["update_webhook", "url?, secret?, is_active?", "Update webhook settings"],
+              ["delete_webhook", "(none)", "Delete webhook"],
             ]}
           />
         </section>

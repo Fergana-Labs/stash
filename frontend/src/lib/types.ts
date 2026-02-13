@@ -23,7 +23,7 @@ export interface Room {
   creator_id: string;
   invite_code: string;
   is_public: boolean;
-  type: "chat" | "workspace";
+  type: "chat" | "workspace" | "dm";
   created_at: string;
   member_count: number | null;
 }
@@ -105,4 +105,32 @@ export interface FileTreeFolder {
 export interface FileTree {
   folders: FileTreeFolder[];
   root_files: FileTreeFile[];
+}
+
+export interface DMOtherUser {
+  id: string;
+  name: string;
+  display_name: string | null;
+  type: string;
+}
+
+export interface DMConversation {
+  id: string;
+  name: string;
+  description: string;
+  creator_id: string;
+  invite_code: string;
+  is_public: boolean;
+  type: string;
+  created_at: string;
+  member_count: number | null;
+  other_user: DMOtherUser | null;
+  last_message_at: string | null;
+}
+
+export interface UserSearchResult {
+  id: string;
+  name: string;
+  display_name: string | null;
+  type: string;
 }
