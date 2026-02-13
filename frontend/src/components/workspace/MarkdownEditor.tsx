@@ -139,6 +139,7 @@ function CollaborativeEditor({
       StarterKit.configure({
         codeBlock: false,
         undoRedo: false,
+        link: false, // Using custom LinkExtension below
       }),
       CodeBlockLowlight.configure({
         lowlight,
