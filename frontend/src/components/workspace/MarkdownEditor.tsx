@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { EditorContent, useEditor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import Collaboration from "@tiptap/extension-collaboration";
@@ -41,7 +41,6 @@ export default function MarkdownEditor({ workspaceId, file, onSave }: MarkdownEd
   // Get auth token and user info
   const token = typeof window !== "undefined" ? localStorage.getItem("moltchat_token") : null;
   const userName = useMemo(() => {
-    // We don't have direct access to user here, use a simple approach
     return "User";
   }, []);
   const userColor = useMemo(() => getRandomColor(), []);
@@ -62,8 +61,6 @@ export default function MarkdownEditor({ workspaceId, file, onSave }: MarkdownEd
       wsBase = `${protocol}//${window.location.host}`;
     }
 
-    // y-websocket constructs URL as: serverUrl + '/' + roomname + '?params'
-    // So we set serverUrl to path up to /files/{id} and roomname to 'yjs'
     const prov = new WebsocketProvider(
       `${wsBase}/api/v1/workspaces/${workspaceId}/files/${file.id}`,
       "yjs",
@@ -98,11 +95,50 @@ export default function MarkdownEditor({ workspaceId, file, onSave }: MarkdownEd
     };
   }, [token, workspaceId, file.id, ydoc, userName, userColor]);
 
-  const extensions = useMemo(() => {
-    const exts = [
+  return (
+    <div className="flex flex-col h-full">
+      {/* File header */}
+      <div className="flex items-center justify-between px-4 py-2 bg-gray-900 border-b border-gray-800">
+        <div className="flex items-center gap-3">
+          <span className="text-white text-sm font-medium">{file.name}</span>
+          <span
+            className={`w-2 h-2 rounded-full ${
+              connected ? "bg-green-400" : "bg-yellow-400"
+            }`}
+            title={connected ? (synced ? "Connected & synced" : "Connected, syncing...") : "Disconnected"}
+          />
+        </div>
+      </div>
+
+      {provider ? (
+        <CollaborativeEditor
+          ydoc={ydoc}
+          provider={provider}
+          onSave={onSave}
+        />
+      ) : (
+        <div className="flex-1 flex items-center justify-center bg-gray-950 text-gray-500">
+          Connecting...
+        </div>
+      )}
+    </div>
+  );
+}
+
+function CollaborativeEditor({
+  ydoc,
+  provider,
+  onSave,
+}: {
+  ydoc: Y.Doc;
+  provider: WebsocketProvider;
+  onSave: (content: string) => void;
+}) {
+  const editor = useEditor({
+    extensions: [
       StarterKit.configure({
-        codeBlock: false, // Use lowlight version instead
-        history: false, // Collaboration has its own undo/redo
+        codeBlock: false,
+        undoRedo: false,
       }),
       CodeBlockLowlight.configure({
         lowlight,
@@ -123,38 +159,22 @@ export default function MarkdownEditor({ workspaceId, file, onSave }: MarkdownEd
       Collaboration.configure({
         document: ydoc,
       }),
-    ];
-
-    if (provider) {
-      exts.push(
-        CollaborationCursor.configure({
-          provider,
-        })
-      );
-    }
-
-    return exts;
-  }, [ydoc, provider]);
-
-  const editor = useEditor(
-    {
-      extensions,
-      editorProps: {
-        attributes: {
-          class:
-            "prose prose-invert prose-sm max-w-none px-6 py-4 min-h-full focus:outline-none " +
-            "prose-headings:text-white prose-p:text-gray-300 prose-a:text-blue-400 " +
-            "prose-code:text-green-400 prose-code:bg-gray-800 prose-code:px-1 prose-code:rounded " +
-            "prose-pre:bg-gray-800 prose-pre:border prose-pre:border-gray-700 " +
-            "prose-blockquote:border-gray-600 prose-blockquote:text-gray-400 " +
-            "prose-li:text-gray-300 prose-strong:text-white prose-em:text-gray-200",
-        },
+      CollaborationCursor.configure({
+        provider,
+      }),
+    ],
+    editorProps: {
+      attributes: {
+        class:
+          "prose prose-invert prose-sm max-w-none px-6 py-4 min-h-full focus:outline-none " +
+          "prose-headings:text-white prose-p:text-gray-300 prose-a:text-blue-400 " +
+          "prose-code:text-green-400 prose-code:bg-gray-800 prose-code:px-1 prose-code:rounded " +
+          "prose-pre:bg-gray-800 prose-pre:border prose-pre:border-gray-700 " +
+          "prose-blockquote:border-gray-600 prose-blockquote:text-gray-400 " +
+          "prose-li:text-gray-300 prose-strong:text-white prose-em:text-gray-200",
       },
-      // When using Collaboration, content comes from Yjs doc
-      content: provider ? undefined : file.content_markdown || "",
     },
-    [extensions]
-  );
+  });
 
   // Keyboard shortcut: Ctrl+S to save
   useEffect(() => {
@@ -171,27 +191,11 @@ export default function MarkdownEditor({ workspaceId, file, onSave }: MarkdownEd
   }, [editor, onSave]);
 
   return (
-    <div className="flex flex-col h-full">
-      {/* File header */}
-      <div className="flex items-center justify-between px-4 py-2 bg-gray-900 border-b border-gray-800">
-        <div className="flex items-center gap-3">
-          <span className="text-white text-sm font-medium">{file.name}</span>
-          <span
-            className={`w-2 h-2 rounded-full ${
-              connected ? "bg-green-400" : "bg-yellow-400"
-            }`}
-            title={connected ? (synced ? "Connected & synced" : "Connected, syncing...") : "Disconnected"}
-          />
-        </div>
-      </div>
-
-      {/* Toolbar */}
+    <>
       <EditorToolbar editor={editor} />
-
-      {/* Editor */}
       <div className="flex-1 overflow-y-auto bg-gray-950">
         <EditorContent editor={editor} className="h-full" />
       </div>
-    </div>
+    </>
   );
 }
