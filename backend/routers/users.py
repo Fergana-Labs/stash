@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from ..auth import get_current_user
 from ..models import (
@@ -6,9 +6,10 @@ from ..models import (
     UserProfile,
     UserRegisterRequest,
     UserRegisterResponse,
+    UserSearchResult,
     UserUpdateRequest,
 )
-from ..services import user_service
+from ..services import user_service, dm_service
 
 router = APIRouter(prefix="/api/v1/users", tags=["users"])
 
@@ -69,3 +70,13 @@ async def update_me(
         password=req.password,
     )
     return UserProfile(**updated)
+
+
+@router.get("/search", response_model=list[UserSearchResult])
+async def search_users(
+    q: str = Query(..., min_length=1, max_length=64),
+    current_user: dict = Depends(get_current_user),
+):
+    """Search for users by name or display name."""
+    results = await dm_service.find_users(q, current_user["id"])
+    return results

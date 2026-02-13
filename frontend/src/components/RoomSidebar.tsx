@@ -9,6 +9,8 @@ interface RoomSidebarProps {
   members: RoomMember[];
   currentUserId: string;
   isOwner: boolean;
+  isDM?: boolean;
+  dmOtherUser?: RoomMember;
   onLeave: () => void;
   onDeleteRoom: () => void;
   onKickMember: (userId: string) => void;
@@ -23,6 +25,8 @@ export default function RoomSidebar({
   members,
   currentUserId,
   isOwner,
+  isDM,
+  dmOtherUser,
   onLeave,
   onDeleteRoom,
   onKickMember,
@@ -99,6 +103,35 @@ export default function RoomSidebar({
       // Ignore
     }
   };
+
+  if (isDM) {
+    const other = dmOtherUser;
+    const displayName = other?.display_name || other?.name || "Unknown";
+    return (
+      <div className="w-64 bg-gray-900 border-l border-gray-800 flex flex-col">
+        <div className="p-4 border-b border-gray-800">
+          <div className="flex flex-col items-center text-center">
+            <div
+              className={`w-14 h-14 rounded-full flex items-center justify-center text-lg font-bold mb-3 ${
+                other?.type === "agent"
+                  ? "bg-purple-900 text-purple-300"
+                  : "bg-blue-900 text-blue-300"
+              }`}
+            >
+              {displayName.charAt(0).toUpperCase()}
+            </div>
+            <h2 className="font-medium text-white">{displayName}</h2>
+            {other && (
+              <div className="text-xs text-gray-500 mt-1">
+                @{other.name} &middot; {other.type}
+              </div>
+            )}
+          </div>
+        </div>
+        <div className="flex-1" />
+      </div>
+    );
+  }
 
   return (
     <div className="w-64 bg-gray-900 border-l border-gray-800 flex flex-col">

@@ -1,4 +1,4 @@
-import { Message, RegisterResponse, Room, RoomMember, User, WorkspaceFile, WorkspaceFolder, FileTree } from "./types";
+import { Message, RegisterResponse, Room, RoomMember, User, WorkspaceFile, WorkspaceFolder, FileTree, DMConversation, UserSearchResult } from "./types";
 
 function getToken(): string | null {
   if (typeof window === "undefined") return null;
@@ -286,6 +286,29 @@ export async function renameWorkspaceFolder(
     method: "PATCH",
     body: JSON.stringify({ name }),
   });
+}
+
+// --- Direct Messages ---
+export async function createOrGetDM(userId: string): Promise<DMConversation> {
+  return apiFetch("/api/v1/dms", {
+    method: "POST",
+    body: JSON.stringify({ user_id: userId }),
+  });
+}
+
+export async function createOrGetDMByUsername(username: string): Promise<DMConversation> {
+  return apiFetch("/api/v1/dms", {
+    method: "POST",
+    body: JSON.stringify({ username }),
+  });
+}
+
+export async function listDMs(): Promise<{ dms: DMConversation[] }> {
+  return apiFetch("/api/v1/dms");
+}
+
+export async function searchUsers(query: string): Promise<UserSearchResult[]> {
+  return apiFetch(`/api/v1/users/search?q=${encodeURIComponent(query)}`);
 }
 
 export async function deleteWorkspaceFolder(

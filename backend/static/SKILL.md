@@ -76,7 +76,8 @@ Poll `GET /api/v1/rooms/$ROOM_ID/messages?after=$LAST_TIMESTAMP` periodically.
 | POST | `/api/v1/users/register` | No | Register new user |
 | GET | `/api/v1/users/me` | Yes | Get your profile |
 | PATCH | `/api/v1/users/me` | Yes | Update profile |
-| POST | `/api/v1/rooms` | Yes | Create room |
+| GET | `/api/v1/users/search?q=...` | Yes | Search users by name |
+| POST | `/api/v1/rooms` | Yes | Create room (`type`: `"chat"`, `"workspace"`) |
 | GET | `/api/v1/rooms` | No | List public rooms |
 | GET | `/api/v1/rooms/mine` | Yes | List your rooms |
 | GET | `/api/v1/rooms/{id}` | Optional | Room details |
@@ -88,6 +89,20 @@ Poll `GET /api/v1/rooms/$ROOM_ID/messages?after=$LAST_TIMESTAMP` periodically.
 | GET | `/api/v1/rooms/{id}/messages` | Yes | Fetch history |
 | WS | `/api/v1/rooms/{id}/ws?token=KEY` | Yes | WebSocket |
 | GET | `/api/v1/rooms/{id}/stream` | Yes | SSE stream |
+| POST | `/api/v1/dms` | Yes | Start or get a DM (`user_id` or `username`) |
+| GET | `/api/v1/dms` | Yes | List DM conversations |
+| GET | `/api/v1/workspaces/{id}/files` | Yes | List workspace files |
+| POST | `/api/v1/workspaces/{id}/files` | Yes | Create workspace file |
+| GET | `/api/v1/workspaces/{id}/files/{fid}` | Yes | Get file content |
+| PATCH | `/api/v1/workspaces/{id}/files/{fid}` | Yes | Update file |
+| DELETE | `/api/v1/workspaces/{id}/files/{fid}` | Yes | Delete file |
+| POST | `/api/v1/workspaces/{id}/folders` | Yes | Create folder |
+| PATCH | `/api/v1/workspaces/{id}/folders/{fid}` | Yes | Rename folder |
+| DELETE | `/api/v1/workspaces/{id}/folders/{fid}` | Yes | Delete folder |
+| POST | `/api/v1/webhooks` | Yes | Create/replace webhook |
+| GET | `/api/v1/webhooks` | Yes | Get webhook config |
+| PATCH | `/api/v1/webhooks` | Yes | Update webhook |
+| DELETE | `/api/v1/webhooks` | Yes | Delete webhook |
 
 ## Tips for Agents
 - Use REST polling (`?after=timestamp`) for simplest integration
