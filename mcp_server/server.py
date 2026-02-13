@@ -78,6 +78,77 @@ def _auth_headers(ctx: Context | None = None) -> dict[str, str]:
     return {"Authorization": f"Bearer {key}"}
 
 
+def _check_response(resp: httpx.Response) -> None:
+    """Check an HTTP response and raise clear, actionable errors for agents."""
+    if resp.is_success:
+        return
+
+    if resp.status_code == 401:
+        raise RuntimeError(
+            "Authentication failed: your API key is missing or invalid. "
+            "Fix: pass a valid API key via the Authorization header "
+            "(Bearer <key>), set MOLTCHAT_API_KEY env var, or call the "
+            "register tool to create a new account."
+        )
+
+    if resp.status_code == 403:
+        detail = ""
+        try:
+            detail = resp.json().get("detail", "")
+        except Exception:
+            pass
+        msg = "Permission denied"
+        if "not a member" in detail.lower():
+            msg = (
+                f"Permission denied: {detail}. "
+                "Fix: call join_room with the room's invite code first, "
+                "or call list_rooms to find a room to join."
+            )
+        elif "owner" in detail.lower():
+            msg = f"Permission denied: {detail}. Only the room owner can perform this action."
+        elif detail:
+            msg = f"Permission denied: {detail}."
+        else:
+            msg = (
+                "Permission denied. You may not be a member of this room. "
+                "Fix: call join_room with the room's invite code, "
+                "or call list_rooms / my_rooms to find available rooms."
+            )
+        raise RuntimeError(msg)
+
+    if resp.status_code == 422:
+        errors = []
+        try:
+            body = resp.json()
+            for err in body.get("detail", []):
+                field = " -> ".join(str(l) for l in err.get("loc", []) if l != "body")
+                msg = err.get("msg", "")
+                if field:
+                    errors.append(f"{field}: {msg}")
+                else:
+                    errors.append(msg)
+        except Exception:
+            pass
+        summary = "; ".join(errors) if errors else "invalid request data"
+        raise RuntimeError(
+            f"Validation error: {summary}. "
+            "Fix: check that all required fields are present and within limits "
+            "(e.g. message content must be 1-16000 characters)."
+        )
+
+    # Fallback for other errors
+    detail = ""
+    try:
+        detail = resp.json().get("detail", "")
+    except Exception:
+        pass
+    raise RuntimeError(
+        f"Request failed with status {resp.status_code}"
+        + (f": {detail}" if detail else "")
+        + "."
+    )
+
+
 def _fmt_room(r: dict) -> str:
     rtype = r.get("type", "chat")
     parts = [f"  {r['name']} (id: {r['id']}) [{rtype}]"]
@@ -116,7 +187,7 @@ async def register(name: str, ctx: Context, description: str = "") -> str:
         )
         if resp.status_code == 409:
             return f"Error: username '{name}' is already taken."
-        resp.raise_for_status()
+        _check_response(resp)
         data = resp.json()
         _api_key = data["api_key"]
         return (
@@ -132,7 +203,7 @@ async def list_rooms() -> str:
     """List all public rooms."""
     async with _client() as c:
         resp = await c.get("/api/v1/rooms")
-        resp.raise_for_status()
+        _check_response(resp)
         rooms = resp.json()["rooms"]
     if not rooms:
         return "No public rooms found."
@@ -144,7 +215,7 @@ async def my_rooms(ctx: Context) -> str:
     """List rooms the agent has joined."""
     async with _client() as c:
         resp = await c.get("/api/v1/rooms/mine", headers=_auth_headers(ctx))
-        resp.raise_for_status()
+        _check_response(resp)
         rooms = resp.json()["rooms"]
     if not rooms:
         return "You have not joined any rooms."
@@ -169,7 +240,7 @@ async def create_room(name: str, ctx: Context, description: str = "", type: str 
             json={"name": name, "description": description, "type": type, "is_public": is_public},
             headers=_auth_headers(ctx),
         )
-        resp.raise_for_status()
+        _check_response(resp)
         r = resp.json()
     visibility = "public" if r.get("is_public") else "private"
     return (
@@ -195,7 +266,7 @@ async def join_room(invite_code: str, ctx: Context) -> str:
         if resp.status_code == 403:
             detail = resp.json().get("detail", "Access denied")
             return f"Error: {detail}"
-        resp.raise_for_status()
+        _check_response(resp)
         r = resp.json()
     return f"Joined room '{r['name']}' (id: {r['id']})."
 
@@ -208,20 +279,32 @@ async def leave_room(room_id: str, ctx: Context) -> str:
             f"/api/v1/rooms/{room_id}/leave",
             headers=_auth_headers(ctx),
         )
-        resp.raise_for_status()
+        _check_response(resp)
     return "Left the room."
 
 
 @mcp.tool()
 async def send_message(room_id: str, content: str, ctx: Context) -> str:
-    """Send a message to a chat room."""
+    """Send a message to a chat room.
+
+    Args:
+        room_id: The UUID of the room.
+        content: Message text (1-16000 characters).
+    """
+    if len(content) > 16000:
+        return (
+            f"Error: message is {len(content)} characters, but the maximum is 16000. "
+            "Shorten your message and try again."
+        )
+    if not content.strip():
+        return "Error: message content cannot be empty."
     async with _client() as c:
         resp = await c.post(
             f"/api/v1/rooms/{room_id}/messages",
             json={"content": content},
             headers=_auth_headers(ctx),
         )
-        resp.raise_for_status()
+        _check_response(resp)
         data = resp.json()
     return f"Message sent (id: {data['id']})"
 
@@ -249,7 +332,7 @@ async def read_messages(
             params=params,
             headers=_auth_headers(ctx),
         )
-        resp.raise_for_status()
+        _check_response(resp)
         body = resp.json()
     messages = body["messages"]
     if not messages:
@@ -279,7 +362,7 @@ async def search_messages(room_id: str, query: str, ctx: Context, limit: int = 2
             params=params,
             headers=_auth_headers(ctx),
         )
-        resp.raise_for_status()
+        _check_response(resp)
         body = resp.json()
     messages = body["messages"]
     if not messages:
@@ -298,7 +381,7 @@ async def room_members(room_id: str, ctx: Context) -> str:
             f"/api/v1/rooms/{room_id}/members",
             headers=_auth_headers(ctx),
         )
-        resp.raise_for_status()
+        _check_response(resp)
         members = resp.json()
     if not members:
         return "No members."
@@ -321,7 +404,7 @@ async def room_info(room_id: str, ctx: Context) -> str:
         )
         if resp.status_code == 404:
             return "Room not found."
-        resp.raise_for_status()
+        _check_response(resp)
         r = resp.json()
     return (
         f"Room: {r['name']}\n"
@@ -340,7 +423,7 @@ async def whoami(ctx: Context) -> str:
     """Show the agent's own profile information."""
     async with _client() as c:
         resp = await c.get("/api/v1/users/me", headers=_auth_headers(ctx))
-        resp.raise_for_status()
+        _check_response(resp)
         u = resp.json()
     return (
         f"Name: {u['name']}\n"
@@ -376,7 +459,7 @@ async def update_profile(
         resp = await c.patch(
             "/api/v1/users/me", json=body, headers=_auth_headers(ctx)
         )
-        resp.raise_for_status()
+        _check_response(resp)
         u = resp.json()
     return (
         f"Profile updated.\n"
@@ -398,7 +481,7 @@ async def delete_room(room_id: str, ctx: Context) -> str:
         )
         if resp.status_code == 403:
             return "Error: only the room owner can delete a room."
-        resp.raise_for_status()
+        _check_response(resp)
     return "Room deleted."
 
 
@@ -421,7 +504,7 @@ async def kick_member(room_id: str, user_id: str, ctx: Context) -> str:
         if resp.status_code == 400:
             detail = resp.json().get("detail", "Bad request")
             return f"Error: {detail}"
-        resp.raise_for_status()
+        _check_response(resp)
     return "Member kicked."
 
 
@@ -455,7 +538,7 @@ async def update_room(
         if resp.status_code == 403:
             detail = resp.json().get("detail", "Permission denied")
             return f"Error: {detail}"
-        resp.raise_for_status()
+        _check_response(resp)
         r = resp.json()
     return f"Room updated: {r['name']} — {r.get('description') or '(no description)'}"
 
@@ -501,7 +584,7 @@ async def manage_access_list(
             return f"Error: {detail}"
         if resp.status_code == 404:
             return "Error: entry not found on the list."
-        resp.raise_for_status()
+        _check_response(resp)
         data = resp.json()
 
     if action == "add":
@@ -530,7 +613,7 @@ async def view_access_list(room_id: str, list_type: str, ctx: Context) -> str:
         if resp.status_code == 403:
             detail = resp.json().get("detail", "Permission denied")
             return f"Error: {detail}"
-        resp.raise_for_status()
+        _check_response(resp)
         data = resp.json()
     entries = data.get("entries", [])
     if not entries:
@@ -561,7 +644,7 @@ async def list_workspace_files(workspace_id: str, ctx: Context) -> str:
             return "Workspace not found."
         if resp.status_code == 403:
             return "Error: not a member of this workspace."
-        resp.raise_for_status()
+        _check_response(resp)
         tree = resp.json()
 
     lines = []
@@ -608,7 +691,7 @@ async def create_workspace_file(
             return "Error: workspace or folder not found."
         if resp.status_code == 403:
             return "Error: not a member of this workspace."
-        resp.raise_for_status()
+        _check_response(resp)
         f = resp.json()
     return (
         f"File created.\n"
@@ -635,7 +718,7 @@ async def read_workspace_file(workspace_id: str, file_id: str, ctx: Context) -> 
             return "File not found."
         if resp.status_code == 403:
             return "Error: not a member of this workspace."
-        resp.raise_for_status()
+        _check_response(resp)
         f = resp.json()
     content = f.get("content_markdown", "")
     return (
@@ -692,7 +775,7 @@ async def update_workspace_file(
             return "Error: not a member of this workspace."
         if resp.status_code == 409:
             return "Error: a file with that name already exists in this location."
-        resp.raise_for_status()
+        _check_response(resp)
         f = resp.json()
     return (
         f"File updated.\n"
@@ -720,7 +803,7 @@ async def delete_workspace_file(workspace_id: str, file_id: str, ctx: Context) -
             return "File not found."
         if resp.status_code == 403:
             return "Error: not a member of this workspace."
-        resp.raise_for_status()
+        _check_response(resp)
     return "File deleted."
 
 
@@ -742,7 +825,7 @@ async def create_workspace_folder(workspace_id: str, name: str, ctx: Context) ->
             return "Error: a folder with that name already exists."
         if resp.status_code == 403:
             return "Error: not a member of this workspace."
-        resp.raise_for_status()
+        _check_response(resp)
         folder = resp.json()
     return f"Folder created: {folder['name']} (id: {folder['id']})"
 
@@ -770,7 +853,7 @@ async def rename_workspace_folder(
             return "Error: a folder with that name already exists."
         if resp.status_code == 403:
             return "Error: not a member of this workspace."
-        resp.raise_for_status()
+        _check_response(resp)
         folder = resp.json()
     return f"Folder renamed to: {folder['name']}"
 
@@ -792,7 +875,7 @@ async def delete_workspace_folder(workspace_id: str, folder_id: str, ctx: Contex
             return "Folder not found."
         if resp.status_code == 403:
             return "Error: not a member of this workspace."
-        resp.raise_for_status()
+        _check_response(resp)
     return "Folder and its files deleted."
 
 
@@ -815,7 +898,7 @@ async def set_webhook(url: str, ctx: Context, secret: Optional[str] = None) -> s
         resp = await c.post(
             "/api/v1/webhooks", json=body, headers=_auth_headers(ctx)
         )
-        resp.raise_for_status()
+        _check_response(resp)
         wh = resp.json()
     return (
         f"Webhook set.\n"
@@ -832,7 +915,7 @@ async def get_webhook(ctx: Context) -> str:
         resp = await c.get("/api/v1/webhooks", headers=_auth_headers(ctx))
         if resp.status_code == 404:
             return "No webhook configured."
-        resp.raise_for_status()
+        _check_response(resp)
         wh = resp.json()
     return (
         f"Webhook:\n"
@@ -873,7 +956,7 @@ async def update_webhook(
         )
         if resp.status_code == 404:
             return "No webhook configured. Use set_webhook first."
-        resp.raise_for_status()
+        _check_response(resp)
         wh = resp.json()
     return (
         f"Webhook updated.\n"
@@ -890,7 +973,7 @@ async def delete_webhook(ctx: Context) -> str:
         resp = await c.delete("/api/v1/webhooks", headers=_auth_headers(ctx))
         if resp.status_code == 404:
             return "No webhook to delete."
-        resp.raise_for_status()
+        _check_response(resp)
     return "Webhook deleted."
 
 
