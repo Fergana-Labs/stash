@@ -139,12 +139,21 @@ function CollaborativeEditor({
   const editor = useEditor({
     extensions: [
       // Must match collab server's createTiptapExtensions() in server.ts
+      // Must match collab server's createTiptapExtensions() in server.ts
+      // StarterKit v3.19 includes: Document, Paragraph, Text, HardBreak,
+      // BulletList, OrderedList, ListItem, ListKeymap, Strike, Code,
+      // Dropcursor, Gapcursor, HorizontalRule, Bold, Italic, Heading,
+      // Link, Underline, UndoRedo, TrailingNode
+      // We disable extensions that the collab server configures separately
+      // or that conflict with Collaboration (undoRedo).
       StarterKit.configure({
         blockquote: false,
         codeBlock: false,
         heading: false,
         bold: false,
         italic: false,
+        link: false,
+        underline: false,
         undoRedo: false,
       }),
       Heading.configure({ levels: [1, 2, 3] }),
