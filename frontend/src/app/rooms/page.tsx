@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Header from "../../components/Header";
 import RoomCard from "../../components/RoomCard";
 import { useAuth } from "../../hooks/useAuth";
@@ -20,7 +20,7 @@ export default function RoomsPage() {
   const [createType, setCreateType] = useState<"chat" | "workspace">("chat");
   const [joinCode, setJoinCode] = useState("");
   const [error, setError] = useState("");
-  const myRoomIds = new Set(myRooms.map((r) => r.id));
+  const myRoomIds = useMemo(() => new Set(myRooms.map((r) => r.id)), [myRooms]);
 
   const myChatRooms = myRooms.filter((r) => (r.type || "chat") === "chat");
   const myWorkspaces = myRooms.filter((r) => r.type === "workspace");
@@ -28,10 +28,13 @@ export default function RoomsPage() {
   const publicWorkspaces = publicRooms.filter((r) => r.type === "workspace");
 
   const loadRooms = useCallback(async () => {
-    listPublicRooms().then((r) => setPublicRooms(r.rooms)).catch(() => {});
-    if (user) {
-      listMyRooms().then((r) => setMyRooms(r.rooms)).catch(() => {});
-    }
+    const publicPromise = listPublicRooms().then((r) => r.rooms).catch(() => [] as Room[]);
+    const myPromise = user
+      ? listMyRooms().then((r) => r.rooms).catch(() => [] as Room[])
+      : Promise.resolve([] as Room[]);
+    const [pub, mine] = await Promise.all([publicPromise, myPromise]);
+    setPublicRooms(pub);
+    setMyRooms(mine);
   }, [user]);
 
   useEffect(() => {

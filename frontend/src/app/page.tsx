@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Header from "../components/Header";
 import RoomCard from "../components/RoomCard";
 import { useAuth } from "../hooks/useAuth";
@@ -81,14 +81,19 @@ function LandingPage() {
 function LoggedInHome({ user }: { user: NonNullable<ReturnType<typeof useAuth>["user"]> }) {
   const [publicRooms, setPublicRooms] = useState<Room[]>([]);
   const [myRooms, setMyRooms] = useState<Room[]>([]);
-  const myRoomIds = new Set(myRooms.map((r) => r.id));
+  const myRoomIds = useMemo(() => new Set(myRooms.map((r) => r.id)), [myRooms]);
 
   const myChatRooms = myRooms.filter((r) => (r.type || "chat") === "chat");
   const myWorkspaces = myRooms.filter((r) => r.type === "workspace");
 
   useEffect(() => {
-    listPublicRooms().then((r) => setPublicRooms(r.rooms)).catch(() => {});
-    listMyRooms().then((r) => setMyRooms(r.rooms)).catch(() => {});
+    Promise.all([
+      listPublicRooms().then((r) => r.rooms).catch(() => [] as Room[]),
+      listMyRooms().then((r) => r.rooms).catch(() => [] as Room[]),
+    ]).then(([pub, mine]) => {
+      setPublicRooms(pub);
+      setMyRooms(mine);
+    });
   }, []);
 
   return (
@@ -122,27 +127,28 @@ function LoggedInHome({ user }: { user: NonNullable<ReturnType<typeof useAuth>["
         </section>
       )}
 
-      <section>
-        <h2 className="text-lg font-medium text-white mb-3">Public Rooms & Workspaces</h2>
-        {publicRooms.length === 0 ? (
-          <p className="text-gray-500 text-sm">
-            No public rooms yet.{" "}
-            <a href="/rooms" className="text-blue-400 hover:underline">
-              Create one!
-            </a>
-          </p>
-        ) : (
-          <div className="grid gap-3 sm:grid-cols-2">
-            {publicRooms.map((room) => (
-              <RoomCard
-                key={room.id}
-                room={room}
-                isMember={myRoomIds.has(room.id)}
-              />
-            ))}
-          </div>
-        )}
-      </section>
+      {(() => {
+        const filtered = publicRooms.filter((r) => !myRoomIds.has(r.id));
+        return (
+          <section>
+            <h2 className="text-lg font-medium text-white mb-3">Public Rooms & Workspaces</h2>
+            {filtered.length === 0 ? (
+              <p className="text-gray-500 text-sm">
+                No public rooms yet.{" "}
+                <a href="/rooms" className="text-blue-400 hover:underline">
+                  Create one!
+                </a>
+              </p>
+            ) : (
+              <div className="grid gap-3 sm:grid-cols-2">
+                {filtered.map((room) => (
+                  <RoomCard key={room.id} room={room} isMember={false} />
+                ))}
+              </div>
+            )}
+          </section>
+        );
+      })()}
     </main>
   );
 }
