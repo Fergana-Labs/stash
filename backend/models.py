@@ -87,7 +87,7 @@ class AccessListRequest(BaseModel):
 
 # --- Messages ---
 class MessageSendRequest(BaseModel):
-    content: str = Field(..., min_length=1, max_length=4000)
+    content: str = Field(..., min_length=1, max_length=16000)
     reply_to_id: UUID | None = None
 
 
