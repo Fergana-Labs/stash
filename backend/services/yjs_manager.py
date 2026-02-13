@@ -11,7 +11,7 @@ from uuid import UUID
 
 from fastapi import WebSocket
 
-from pycrdt import Doc, Text
+from pycrdt import Doc
 
 from ..services import workspace_service
 
@@ -59,7 +59,6 @@ class YjsDocHandle:
         self.file_id = file_id
         self.workspace_id = workspace_id
         self.doc = Doc()
-        self.text: Text = self.doc.get("default", type=Text)
         self.clients: set[WebSocket] = set()
         self.awareness_states: dict[int, bytes] = {}
         self._save_task: asyncio.Task | None = None
@@ -76,7 +75,8 @@ class YjsDocHandle:
             try:
                 self.doc.apply_update(state)
             except Exception:
-                logger.warning(f"Failed to apply stored Yjs state for file {self.file_id}")
+                logger.warning(f"Failed to apply stored Yjs state for file {self.file_id}, starting fresh")
+                self.doc = Doc()
         self._loaded = True
 
     def get_state_vector(self) -> bytes:
@@ -91,30 +91,13 @@ class YjsDocHandle:
         self.doc.apply_update(update)
         self._dirty = True
 
-    def get_content_markdown(self) -> str:
-        return str(self.text)
-
-    def set_full_content(self, content: str) -> bytes:
-        """Replace all text content. Returns the Yjs update bytes (diff from before)."""
-        sv_before = self.doc.get_state()
-        with self.doc.transaction():
-            current = str(self.text)
-            if current:
-                del self.text[0:len(current)]
-            if content:
-                self.text.insert(0, content)
-        self._dirty = True
-        # Return only the diff update
-        return self.doc.get_update(sv_before)
-
     async def save_to_db(self):
-        """Persist current state to database."""
+        """Persist current Yjs binary state to database."""
         if not self._dirty:
             return
         state = self.doc.get_update()
-        content = self.get_content_markdown()
         await workspace_service.save_yjs_state(
-            self.file_id, self.workspace_id, state, content
+            self.file_id, self.workspace_id, state
         )
         self._dirty = False
         logger.debug(f"Saved Yjs state for file {self.file_id}")
@@ -259,37 +242,13 @@ class YjsManager:
         except asyncio.CancelledError:
             pass
 
-    async def apply_rest_update(self, file_id: UUID, workspace_id: UUID, content: str) -> bytes | None:
-        """Apply a REST content update through Yjs and broadcast to connected clients.
-        Returns the update bytes, or None if no handle exists."""
-        handle = await self.get_or_create_handle(file_id, workspace_id)
-
-        # Apply the full text replacement
-        update = handle.set_full_content(content)
-
-        # Save to DB
-        state = handle.doc.get_update()
-        await workspace_service.save_yjs_state(
-            file_id, workspace_id, state, content
-        )
-        handle._dirty = False
-
-        # Broadcast the update to connected WebSocket clients
-        if handle.has_clients:
-            msg = bytes([MSG_SYNC, SYNC_UPDATE]) + _encode_varint(len(update)) + update
-            for client in handle.clients:
-                try:
-                    await client.send_bytes(msg)
-                except Exception:
-                    pass
-
-        # Clean up if no clients
-        if not handle.has_clients:
-            handle._unload_task = asyncio.create_task(
-                self._delayed_unload(file_id)
-            )
-
-        return update
+    async def apply_rest_update(self, file_id: UUID, workspace_id: UUID, content: str) -> None:
+        """Save content via REST. The Yjs doc state is managed by the frontend
+        via WebSocket; REST updates only persist the markdown content."""
+        # Content is saved through the normal file update path in the router.
+        # We don't modify the Yjs doc here since TipTap uses XmlFragment
+        # which can't be manipulated as plain text from the backend.
+        pass
 
 
 yjs_manager = YjsManager()
