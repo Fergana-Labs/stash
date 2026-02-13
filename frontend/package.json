@@ -11,7 +11,7 @@
   "dependencies": {
     "@tiptap/extension-code-block-lowlight": "^3.19.0",
     "@tiptap/extension-collaboration": "^3.19.0",
-    "@tiptap/extension-collaboration-cursor": "^2.26.2",
+    "@tiptap/extension-collaboration-cursor": "^3.0.0",
     "@tiptap/extension-link": "^3.19.0",
     "@tiptap/extension-placeholder": "^3.19.0",
     "@tiptap/extension-task-item": "^3.19.0",
