@@ -263,12 +263,28 @@ class YjsManager:
 
         handle = self._docs.get(file_id)
         if handle:
-            # Replace doc content with new state
-            handle.doc = Doc()
-            handle.doc.apply_update(yjs_state)
+            # Capture state before so we can compute a delta update for clients
+            sv_before = handle.doc.get_state()
+
+            # Clear existing XmlFragment content, then apply new state —
+            # all on the same doc so deletes propagate to clients via CRDT.
+            from pycrdt import XmlFragment
+            fragment = handle.doc.get("default", type=XmlFragment)
+            if len(fragment) > 0:
+                del fragment[0:len(fragment)]
+
+            # Apply the new content from a temp doc into the existing doc
+            # by computing what the temp doc has that ours doesn't
+            temp_doc = Doc()
+            temp_doc.apply_update(yjs_state)
+            diff = temp_doc.get_update(sv_before)
+            handle.doc.apply_update(diff)
+
             handle._dirty = True
-            # Broadcast to connected WebSocket clients
-            update_msg = bytes([MSG_SYNC, SYNC_UPDATE]) + _encode_varint(len(yjs_state)) + yjs_state
+
+            # Compute the full update (delete + insert) relative to pre-edit state
+            update = handle.doc.get_update(sv_before)
+            update_msg = bytes([MSG_SYNC, SYNC_UPDATE]) + _encode_varint(len(update)) + update
             for client in handle.clients:
                 try:
                     await client.send_bytes(update_msg)
