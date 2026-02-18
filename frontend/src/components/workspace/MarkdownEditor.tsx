@@ -52,14 +52,8 @@ export default function MarkdownEditor({ workspaceId, file, onSave }: MarkdownEd
   useEffect(() => {
     if (!token) return;
 
-    const apiBase = process.env.NEXT_PUBLIC_API_URL || "";
-    let wsBase: string;
-    if (apiBase) {
-      wsBase = apiBase.replace(/^http/, "ws");
-    } else {
-      const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-      wsBase = `${protocol}//${window.location.host}`;
-    }
+    const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+    const wsBase = `${protocol}//${window.location.host}`;
 
     const prov = new WebsocketProvider(
       `${wsBase}/api/v1/workspaces/${workspaceId}/files/${file.id}`,

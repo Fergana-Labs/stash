@@ -29,16 +29,9 @@ export function useWebSocket({
   const connect = useCallback(() => {
     if (!token || !roomId) return;
 
-    const apiBase = process.env.NEXT_PUBLIC_API_URL || "";
-    let wsUrl: string;
-    if (apiBase) {
-      // Convert http(s) URL to ws(s)
-      wsUrl = apiBase.replace(/^http/, "ws") + `/api/v1/rooms/${roomId}/ws?token=${token}`;
-    } else {
-      const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-      const host = window.location.host;
-      wsUrl = `${protocol}//${host}/api/v1/rooms/${roomId}/ws?token=${token}`;
-    }
+    const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+    const host = window.location.host;
+    const wsUrl = `${protocol}//${host}/api/v1/rooms/${roomId}/ws?token=${token}`;
     const ws = new WebSocket(wsUrl);
 
     ws.onopen = () => {

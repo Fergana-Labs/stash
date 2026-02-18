@@ -24,14 +24,8 @@ export function useYjs({ workspaceId, fileId, token, userName, userColor }: UseY
     const doc = new Y.Doc();
     docRef.current = doc;
 
-    const apiBase = process.env.NEXT_PUBLIC_API_URL || "";
-    let wsUrl: string;
-    if (apiBase) {
-      wsUrl = apiBase.replace(/^http/, "ws");
-    } else {
-      const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-      wsUrl = `${protocol}//${window.location.host}`;
-    }
+    const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+    const wsUrl = `${protocol}//${window.location.host}`;
 
     // y-websocket constructs URL as: serverUrl + '/' + roomname + '?params'
     // So we set serverUrl to path up to /files/{id} and roomname to 'yjs'
