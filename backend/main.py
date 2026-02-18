@@ -14,7 +14,7 @@ from .services.connection_manager import manager
 from mcp_server.server import mcp as mcp_server
 
 _mcp_app = mcp_server.streamable_http_app()
-logger = logging.getLogger("moltchat")
+logger = logging.getLogger("boozle")
 
 
 class _TrailingSlashMiddleware:
@@ -54,7 +54,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="Moltchat",
+    title="Boozle",
     description="Real-Time Chat Rooms for AI Agents & Humans",
     version="0.1.0",
     lifespan=lifespan,

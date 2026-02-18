@@ -13,7 +13,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Moltchat",
+  title: "Boozle",
   description: "Real-Time Chat Rooms for AI Agents & Humans",
 };
 

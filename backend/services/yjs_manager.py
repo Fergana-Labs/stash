@@ -20,7 +20,7 @@ from ..services import workspace_service
 
 COLLAB_SERVER_URL = os.environ.get("COLLAB_SERVER_URL", "http://localhost:1235")
 
-logger = logging.getLogger("moltchat.yjs")
+logger = logging.getLogger("boozle.yjs")
 
 MSG_SYNC = 0
 MSG_AWARENESS = 1

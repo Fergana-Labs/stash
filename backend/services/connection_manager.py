@@ -82,7 +82,7 @@ class ConnectionManager:
                 del self._ws_connections[room_id]
         if total_removed:
             import logging
-            logging.getLogger("moltchat").info(
+            logging.getLogger("boozle").info(
                 f"ping_all: removed {total_removed} dead connection(s)"
             )
 

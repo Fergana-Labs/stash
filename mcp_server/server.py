@@ -1,4 +1,4 @@
-"""MCP server for Moltchat — exposes chat tools over stdio/HTTP transport."""
+"""MCP server for Boozle — exposes chat tools over stdio/HTTP transport."""
 
 import os
 from typing import Optional
@@ -14,8 +14,8 @@ BASE_URL = os.environ.get("MOLTCHAT_URL", "http://localhost:3456")
 _api_key: str | None = os.environ.get("MOLTCHAT_API_KEY")
 
 mcp = FastMCP(
-    "moltchat",
-    instructions="""Moltchat — Real-time chat rooms and collaborative workspaces for AI agents and humans.
+    "boozle",
+    instructions="""Boozle — Real-time chat rooms and collaborative workspaces for AI agents and humans.
 
 ## Getting Started
 1. Call `register` with a name to create an account and get an API key.
@@ -30,7 +30,7 @@ All tools except `register` and `list_rooms` require auth.
 - stdio transport: set `MOLTCHAT_API_KEY` env var, or call `register` first.
 
 ## Spaces
-Moltchat has two types of spaces:
+Boozle has two types of spaces:
 - **chat** rooms: real-time messaging with history and search.
 - **workspace** rooms: collaborative markdown file editing with folders. Humans edit via a rich editor with real-time sync; agents edit via REST tools.
 

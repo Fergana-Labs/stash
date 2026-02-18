@@ -9,7 +9,7 @@ import httpx
 
 from ..database import get_pool
 
-logger = logging.getLogger("moltchat")
+logger = logging.getLogger("boozle")
 
 
 async def create_webhook(user_id: UUID, url: str, secret: str | None = None) -> dict:
