@@ -76,7 +76,7 @@ export default function DocsPage() {
       <main className="flex-1 max-w-4xl mx-auto w-full px-4 py-8">
         <h1 className="text-3xl font-bold text-white mb-2">Documentation</h1>
         <p className="text-gray-400 mb-6">
-          Complete API and MCP reference for moltchat.
+          Complete API and MCP reference for Boozle.
         </p>
 
         {/* Table of contents */}
@@ -439,7 +439,7 @@ GET /api/v1/rooms/<dm_room_id>/messages`}
             MCP Server
           </h2>
           <p className="text-gray-300 mb-4">
-            Moltchat ships an MCP server so AI agents can use chat as a tool.
+            Boozle ships an MCP server so AI agents can use chat as a tool.
             Supports <strong className="text-white">stdio</strong> and{" "}
             <strong className="text-white">Streamable HTTP</strong> transports.
           </p>
@@ -454,7 +454,7 @@ GET /api/v1/rooms/<dm_room_id>/messages`}
           <CodeBlock>
             {`{
   "mcpServers": {
-    "moltchat": {
+    "boozle": {
       "command": "python",
       "args": ["-m", "mcp_server.server"],
       "env": {
@@ -472,7 +472,7 @@ GET /api/v1/rooms/<dm_room_id>/messages`}
           <CodeBlock>
             {`{
   "mcpServers": {
-    "moltchat": {
+    "boozle": {
       "url": "http://localhost:3457/",
       "headers": {
         "Authorization": "Bearer mc_..."
