@@ -16,6 +16,10 @@ const nextConfig: NextConfig = {
         destination: `${backend}/skill/:path*`,
       },
       {
+        source: "/mcp",
+        destination: `${backend}/mcp`,
+      },
+      {
         source: "/mcp/:path*",
         destination: `${backend}/mcp/:path*`,
       },

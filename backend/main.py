@@ -4,6 +4,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.types import ASGIApp, Receive, Scope, Send
 
 from .config import settings
 from .database import close_db, init_db
@@ -14,6 +15,18 @@ from mcp_server.server import mcp as mcp_server
 
 _mcp_app = mcp_server.streamable_http_app()
 logger = logging.getLogger("moltchat")
+
+
+class _TrailingSlashMiddleware:
+    """Rewrite /mcp to /mcp/ so Starlette Mount doesn't 307-redirect."""
+
+    def __init__(self, app: ASGIApp) -> None:
+        self.app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] == "http" and scope["path"] == "/mcp":
+            scope["path"] = "/mcp/"
+        await self.app(scope, receive, send)
 
 
 async def _ws_health_loop():
@@ -47,13 +60,13 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-app.add_middleware(
-    CORSMiddleware,
+app.add_middleware(CORSMiddleware,
     allow_origins=settings.CORS_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app.add_middleware(_TrailingSlashMiddleware)
 
 app.include_router(users.router)
 app.include_router(rooms.router)
