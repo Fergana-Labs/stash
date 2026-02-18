@@ -13,7 +13,7 @@ export function clearToken() {
   localStorage.removeItem("moltchat_token");
 }
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "";
+const API_BASE = "";
 
 async function apiFetch<T>(
   path: string,
