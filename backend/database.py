@@ -100,6 +100,48 @@ CREATE TABLE IF NOT EXISTS workspace_files (
 
 CREATE INDEX IF NOT EXISTS idx_workspace_files_workspace ON workspace_files(workspace_id);
 CREATE INDEX IF NOT EXISTS idx_workspace_files_folder ON workspace_files(folder_id);
+
+-- ai-collab: collaborative AI session history
+CREATE TABLE IF NOT EXISTS ai_collab_sessions (
+    id              TEXT PRIMARY KEY,
+    repo_url        TEXT NOT NULL,
+    user_name       TEXT NOT NULL,
+    agent_type      TEXT NOT NULL DEFAULT 'claude-code',
+    branch          TEXT,
+    head_sha_start  TEXT,
+    head_sha_end    TEXT,
+    cwd             TEXT,
+    started_at      TIMESTAMPTZ DEFAULT now(),
+    ended_at        TIMESTAMPTZ
+);
+
+CREATE TABLE IF NOT EXISTS ai_collab_events (
+    id              BIGSERIAL PRIMARY KEY,
+    session_id      TEXT REFERENCES ai_collab_sessions(id),
+    event_type      TEXT NOT NULL,
+    head_sha        TEXT NOT NULL,
+    timestamp       TIMESTAMPTZ DEFAULT now(),
+    data            JSONB NOT NULL,
+    summary         TEXT
+);
+
+CREATE TABLE IF NOT EXISTS ai_collab_commits (
+    sha             TEXT PRIMARY KEY,
+    session_id      TEXT REFERENCES ai_collab_sessions(id),
+    repo_url        TEXT NOT NULL,
+    message         TEXT,
+    author          TEXT,
+    created_at      TIMESTAMPTZ DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_ai_collab_events_session ON ai_collab_events(session_id);
+CREATE INDEX IF NOT EXISTS idx_ai_collab_events_sha ON ai_collab_events(head_sha);
+CREATE INDEX IF NOT EXISTS idx_ai_collab_events_type ON ai_collab_events(event_type);
+CREATE INDEX IF NOT EXISTS idx_ai_collab_sessions_repo ON ai_collab_sessions(repo_url);
+CREATE INDEX IF NOT EXISTS idx_ai_collab_commits_session ON ai_collab_commits(session_id);
+CREATE INDEX IF NOT EXISTS idx_ai_collab_commits_repo ON ai_collab_commits(repo_url);
+CREATE INDEX IF NOT EXISTS idx_ai_collab_events_summary_fts
+    ON ai_collab_events USING GIN(to_tsvector('english', coalesce(summary, '')));
 """
 
 # Partial unique indexes (need separate execution due to WHERE clause)

@@ -3,21 +3,21 @@
     "SessionStart": [
       {
         "type": "command",
-        "command": "ai-collab record",
+        "command": "/Users/user/code/moltchat/.venv/bin/ai-collab record",
         "blocking": true
       }
     ],
     "UserPromptSubmit": [
       {
         "type": "command",
-        "command": "ai-collab record",
+        "command": "/Users/user/code/moltchat/.venv/bin/ai-collab record",
         "blocking": false
       }
     ],
     "PostToolUse": [
       {
         "type": "command",
-        "command": "ai-collab record",
+        "command": "/Users/user/code/moltchat/.venv/bin/ai-collab record",
         "blocking": false,
         "matcher": "Bash|Write|Edit"
       }
@@ -25,7 +25,7 @@
     "Stop": [
       {
         "type": "command",
-        "command": "ai-collab record",
+        "command": "/Users/user/code/moltchat/.venv/bin/ai-collab record",
         "blocking": false
       }
     ]

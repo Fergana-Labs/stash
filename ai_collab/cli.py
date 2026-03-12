@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
+import sys
 from pathlib import Path
 
 import click
@@ -100,6 +102,18 @@ def _find_repo_root() -> Path | None:
     return Path(root) if root else None
 
 
+def _cli_bin() -> str:
+    """Resolve the absolute path to the ai-collab binary."""
+    # Prefer the binary next to the current Python interpreter
+    bin_dir = Path(sys.executable).parent
+    candidate = bin_dir / "ai-collab"
+    if candidate.exists():
+        return str(candidate)
+    # Fall back to PATH lookup
+    found = shutil.which("ai-collab")
+    return found or "ai-collab"
+
+
 def _setup_hooks(repo_root: Path) -> None:
     """Write Claude Code hooks to .claude/settings.json."""
     claude_dir = repo_root / ".claude"
@@ -114,42 +128,19 @@ def _setup_hooks(repo_root: Path) -> None:
         config = {}
 
     hooks = config.setdefault("hooks", {})
+    record_cmd = f"{_cli_bin()} record"
 
-    # SessionStart hook (sync)
     hooks["SessionStart"] = [
-        {
-            "type": "command",
-            "command": "ai-collab record",
-            "blocking": True,
-        }
+        {"type": "command", "command": record_cmd, "blocking": True}
     ]
-
-    # UserPromptSubmit hook (async)
     hooks["UserPromptSubmit"] = [
-        {
-            "type": "command",
-            "command": "ai-collab record",
-            "blocking": False,
-        }
+        {"type": "command", "command": record_cmd, "blocking": False}
     ]
-
-    # PostToolUse hook — only for Bash, Write, Edit (async)
     hooks["PostToolUse"] = [
-        {
-            "type": "command",
-            "command": "ai-collab record",
-            "blocking": False,
-            "matcher": "Bash|Write|Edit",
-        }
+        {"type": "command", "command": record_cmd, "blocking": False, "matcher": "Bash|Write|Edit"}
     ]
-
-    # Stop hook (async)
     hooks["Stop"] = [
-        {
-            "type": "command",
-            "command": "ai-collab record",
-            "blocking": False,
-        }
+        {"type": "command", "command": record_cmd, "blocking": False}
     ]
 
     with open(settings_path, "w") as f:
@@ -172,11 +163,8 @@ def _setup_mcp(repo_root: Path) -> None:
     servers = config.setdefault("mcpServers", {})
     servers["ai-collab"] = {
         "type": "stdio",
-        "command": "ai-collab",
+        "command": _cli_bin(),
         "args": ["serve"],
-        "env": {
-            "AI_COLLAB_DATABASE_URL": "${AI_COLLAB_DATABASE_URL}",
-        },
     }
 
     with open(mcp_path, "w") as f:
