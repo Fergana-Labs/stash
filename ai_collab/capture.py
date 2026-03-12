@@ -1,12 +1,15 @@
-"""Hook event processing: reads Claude Code hook JSON from stdin, writes to DB."""
+"""Hook event processing: reads Claude Code hook JSON from stdin, POSTs to Boozle API."""
 
 from __future__ import annotations
 
 import json
 import sys
+import urllib.request
+import urllib.error
 from typing import Any
 
-from . import db, git_utils
+from . import git_utils
+from .config import settings
 
 MAX_PAYLOAD_CHARS = 2000
 MAX_SUMMARY_CHARS = 200
@@ -46,7 +49,6 @@ def _extract_summary(event_type: str, data: dict[str, Any]) -> str | None:
             return _truncate(prompt, MAX_SUMMARY_CHARS)
 
     if event_type == "Stop":
-        # Try to get last assistant message
         stop_reason = data.get("stop_reason", "")
         summary_parts = []
         if stop_reason:
@@ -81,11 +83,33 @@ def _detect_git_commit(event_type: str, data: dict[str, Any]) -> str | None:
     command = tool_input.get("command", "") if isinstance(tool_input, dict) else ""
     if not isinstance(command, str):
         return None
-    # Check if command contains a git commit
     if "git commit" in command or "git merge" in command:
-        # Get the current HEAD which should be the new commit
         return git_utils.head_sha()
     return None
+
+
+def _api_post(path: str, body: dict) -> None:
+    """POST JSON to the Boozle API. Fails silently on error to avoid blocking hooks."""
+    api_url = settings.API_URL
+    api_key = settings.API_KEY
+    if not api_url or not api_key:
+        return
+
+    url = f"{api_url.rstrip('/')}{path}"
+    data = json.dumps(body).encode()
+    req = urllib.request.Request(
+        url,
+        data=data,
+        headers={
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {api_key}",
+        },
+        method="POST",
+    )
+    try:
+        urllib.request.urlopen(req, timeout=5)
+    except (urllib.error.URLError, OSError):
+        pass
 
 
 def process_hook_event(raw: str) -> None:
@@ -108,46 +132,46 @@ def process_hook_event(raw: str) -> None:
     current_branch = git_utils.branch()
     cwd = data.get("cwd", "")
 
-    # Handle SessionStart: create/update session row
+    # Handle SessionStart: create/update session
     if event_type == "SessionStart":
-        db.upsert_session(
-            session_id=session_id,
-            repo_url=repo_url,
-            user_name=git_utils.user_name(),
-            branch=current_branch,
-            head_sha=sha,
-            cwd=cwd,
-        )
+        _api_post("/api/v1/ai-collab/sessions", {
+            "session_id": session_id,
+            "repo_url": repo_url,
+            "branch": current_branch,
+            "head_sha": sha,
+            "cwd": cwd,
+        })
         return
 
-    # Handle Stop: also end the session
+    # Handle Stop: end the session
     if event_type == "Stop":
-        db.end_session(session_id, head_sha=sha)
+        _api_post(f"/api/v1/ai-collab/sessions/{session_id}/end", {
+            "head_sha": sha,
+        })
 
-    # Sanitize and store event
+    # Sanitize and record event
     sanitized = _sanitize_data(data)
     summary = _extract_summary(event_type, data)
 
-    db.insert_event(
-        session_id=session_id,
-        event_type=event_type,
-        head_sha=sha,
-        data=sanitized,
-        summary=summary,
-    )
+    _api_post("/api/v1/ai-collab/events", {
+        "session_id": session_id,
+        "event_type": event_type,
+        "head_sha": sha,
+        "data": sanitized,
+        "summary": summary,
+    })
 
-    # Check for git commit in PostToolUse Bash events
+    # Check for git commit
     commit_sha = _detect_git_commit(event_type, data)
     if commit_sha and commit_sha != "unknown":
         tool_input = data.get("tool_input", {})
         command = tool_input.get("command", "") if isinstance(tool_input, dict) else ""
-        db.insert_commit(
-            sha=commit_sha,
-            session_id=session_id,
-            repo_url=repo_url,
-            message=_truncate(command, MAX_SUMMARY_CHARS),
-            author=git_utils.user_name(),
-        )
+        _api_post("/api/v1/ai-collab/commits", {
+            "sha": commit_sha,
+            "session_id": session_id,
+            "repo_url": repo_url,
+            "message": _truncate(command, MAX_SUMMARY_CHARS),
+        })
 
 
 def record_from_stdin() -> None:

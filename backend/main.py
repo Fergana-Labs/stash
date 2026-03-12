@@ -8,7 +8,7 @@ from starlette.types import ASGIApp, Receive, Scope, Send
 
 from .config import settings
 from .database import close_db, init_db
-from .routers import dms, messages, realtime, rooms, skill, users, webhooks, workspaces
+from .routers import ai_collab, dms, messages, realtime, rooms, skill, users, webhooks, workspaces
 from .services.connection_manager import manager
 
 from mcp_server.server import mcp as mcp_server
@@ -76,6 +76,7 @@ app.include_router(skill.router)
 app.include_router(webhooks.router)
 app.include_router(workspaces.router)
 app.include_router(dms.router)
+app.include_router(ai_collab.router)
 
 app.mount("/mcp", _mcp_app)
 

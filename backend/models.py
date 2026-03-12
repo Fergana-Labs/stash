@@ -237,3 +237,48 @@ class UserSearchResult(BaseModel):
     name: str
     display_name: str | None
     type: str
+
+
+# --- AI Collab ---
+class AICollabSessionStart(BaseModel):
+    session_id: str = Field(..., min_length=1, max_length=256)
+    repo_url: str = Field(..., min_length=1, max_length=2048)
+    branch: str | None = Field(None, max_length=256)
+    head_sha: str | None = Field(None, max_length=64)
+    cwd: str | None = Field(None, max_length=2048)
+
+
+class AICollabEvent(BaseModel):
+    session_id: str = Field(..., min_length=1, max_length=256)
+    event_type: str = Field(..., min_length=1, max_length=64)
+    head_sha: str = Field(..., min_length=1, max_length=64)
+    data: dict = Field(default_factory=dict)
+    summary: str | None = Field(None, max_length=2000)
+
+
+class AICollabCommit(BaseModel):
+    sha: str = Field(..., min_length=1, max_length=64)
+    session_id: str = Field(..., min_length=1, max_length=256)
+    repo_url: str = Field(..., min_length=1, max_length=2048)
+    message: str | None = Field(None, max_length=2000)
+
+
+class AICollabSessionResponse(BaseModel):
+    id: str
+    user_name: str
+    agent_type: str
+    branch: str | None
+    head_sha_start: str | None
+    head_sha_end: str | None
+    started_at: datetime
+    ended_at: datetime | None
+
+
+class AICollabEventResponse(BaseModel):
+    id: int
+    session_id: str
+    event_type: str
+    head_sha: str
+    timestamp: datetime
+    summary: str | None
+    data: dict | None = None

@@ -48,11 +48,28 @@ def serve() -> None:
 
 @cli.command()
 def init() -> None:
-    """Configure Claude Code hooks and MCP for this repo."""
+    """Configure API credentials, Claude Code hooks, and MCP for this repo."""
+    from .config import CONFIG_PATH, _load_local_config, _save_local_config
+
     repo_root = _find_repo_root()
     if not repo_root:
         click.echo("Error: not inside a git repository.", err=True)
         raise SystemExit(1)
+
+    # Prompt for API credentials
+    existing = _load_local_config()
+    default_url = existing.get("api_url", "https://moltchat.onrender.com")
+    default_key = existing.get("api_key", "")
+
+    api_url = click.prompt("Boozle API URL", default=default_url)
+    api_key = click.prompt(
+        "Boozle API key (mc_...)",
+        default=default_key or None,
+        hide_input=False,
+    )
+
+    _save_local_config({"api_url": api_url, "api_key": api_key})
+    click.echo(f"  Credentials saved to {CONFIG_PATH}")
 
     _setup_hooks(repo_root)
     _setup_mcp(repo_root)
