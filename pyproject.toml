@@ -1,0 +1,21 @@
+[project]
+name = "ai-collab"
+version = "0.1.0"
+description = "Collaborative AI session history for Boozle — captures Claude Code sessions to shared PostgreSQL"
+requires-python = ">=3.12"
+dependencies = [
+    "psycopg[binary]>=3.1",
+    "click>=8.0",
+    "mcp>=1.0",
+    "pydantic>=2.0",
+]
+
+[project.scripts]
+ai-collab = "ai_collab.cli:cli"
+
+[tool.setuptools.packages.find]
+include = ["ai_collab*"]
+
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"

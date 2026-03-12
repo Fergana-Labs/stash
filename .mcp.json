@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "ai-collab": {
+      "type": "stdio",
+      "command": "ai-collab",
+      "args": ["serve"],
+      "env": {
+        "AI_COLLAB_DATABASE_URL": "${AI_COLLAB_DATABASE_URL}"
+      }
+    }
+  }
+}
