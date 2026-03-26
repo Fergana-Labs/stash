@@ -11,7 +11,9 @@ DEFAULT_CONFIG = {
     "base_url": "http://localhost:3456",
     "api_key": "",
     "username": "",
-    "default_room": "",
+    "default_workspace": "",
+    "default_chat": "",
+    "default_store": "",
     "output_format": "human",
     "notify_rooms": [],
 }
@@ -37,7 +39,9 @@ def save_config(
     base_url: str | None = None,
     api_key: str | None = None,
     username: str | None = None,
-    default_room: str | None = None,
+    default_workspace: str | None = None,
+    default_chat: str | None = None,
+    default_store: str | None = None,
     output_format: str | None = None,
     notify_rooms: list[str] | None = None,
 ) -> None:
@@ -49,8 +53,12 @@ def save_config(
         cfg["api_key"] = api_key
     if username is not None:
         cfg["username"] = username
-    if default_room is not None:
-        cfg["default_room"] = default_room
+    if default_workspace is not None:
+        cfg["default_workspace"] = default_workspace
+    if default_chat is not None:
+        cfg["default_chat"] = default_chat
+    if default_store is not None:
+        cfg["default_store"] = default_store
     if output_format is not None:
         cfg["output_format"] = output_format
     if notify_rooms is not None:

@@ -1,4 +1,4 @@
-"""Synchronous httpx client wrapping the moltchat REST API."""
+"""Synchronous httpx client wrapping the moltchat REST API (new data model)."""
 
 from __future__ import annotations
 
@@ -26,8 +26,6 @@ class BoozleClient:
 
     def __exit__(self, *args):
         self.close()
-
-    # --- Internal ---
 
     def _headers(self) -> dict[str, str]:
         if not self._api_key:
@@ -72,20 +70,10 @@ class BoozleClient:
         })
 
     def login(self, name: str, password: str) -> dict:
-        return self._post("/api/v1/users/login", json={
-            "name": name, "password": password,
-        })
+        return self._post("/api/v1/users/login", json={"name": name, "password": password})
 
     def whoami(self) -> dict:
         return self._get("/api/v1/users/me")
-
-    def update_profile(self, display_name: str | None = None, description: str | None = None) -> dict:
-        body = {}
-        if display_name is not None:
-            body["display_name"] = display_name
-        if description is not None:
-            body["description"] = description
-        return self._patch("/api/v1/users/me", json=body)
 
     # --- Agent identities ---
 
@@ -98,53 +86,65 @@ class BoozleClient:
     def list_agents(self) -> list[dict]:
         return self._get("/api/v1/agents")
 
-    def get_agent(self, agent_id: str) -> dict:
-        return self._get(f"/api/v1/agents/{agent_id}")
-
     def rotate_agent_key(self, agent_id: str) -> dict:
         return self._post(f"/api/v1/agents/{agent_id}/rotate-key")
 
     def delete_agent(self, agent_id: str) -> None:
         self._delete(f"/api/v1/agents/{agent_id}")
 
-    # --- Rooms ---
+    # --- Workspaces ---
 
-    def create_room(self, name: str, room_type: str = "chat", is_public: bool = True, description: str = "") -> dict:
-        return self._post("/api/v1/rooms", json={
-            "name": name, "type": room_type, "is_public": is_public, "description": description,
+    def create_workspace(self, name: str, description: str = "", is_public: bool = False) -> dict:
+        return self._post("/api/v1/workspaces", json={
+            "name": name, "description": description, "is_public": is_public,
         })
 
-    def list_rooms(self, mine: bool = False) -> list:
-        path = "/api/v1/rooms/mine" if mine else "/api/v1/rooms"
+    def list_workspaces(self, mine: bool = False) -> list:
+        path = "/api/v1/workspaces/mine" if mine else "/api/v1/workspaces"
         data = self._get(path)
-        return data.get("rooms", data) if isinstance(data, dict) else data
+        return data.get("workspaces", data) if isinstance(data, dict) else data
 
-    def join_room(self, invite_code: str) -> dict:
-        return self._post(f"/api/v1/rooms/join/{invite_code}")
+    def get_workspace(self, workspace_id: str) -> dict:
+        return self._get(f"/api/v1/workspaces/{workspace_id}")
 
-    def room_info(self, room_id: str) -> dict:
-        return self._get(f"/api/v1/rooms/{room_id}")
+    def join_workspace(self, invite_code: str) -> dict:
+        return self._post(f"/api/v1/workspaces/join/{invite_code}")
 
-    def room_members(self, room_id: str) -> list:
-        return self._get(f"/api/v1/rooms/{room_id}/members")
+    def leave_workspace(self, workspace_id: str) -> None:
+        self._post(f"/api/v1/workspaces/{workspace_id}/leave")
 
-    def leave_room(self, room_id: str) -> dict:
-        return self._post(f"/api/v1/rooms/{room_id}/leave")
+    def workspace_members(self, workspace_id: str) -> list:
+        return self._get(f"/api/v1/workspaces/{workspace_id}/members")
 
-    # --- Messages ---
+    def kick_member(self, workspace_id: str, user_id: str) -> None:
+        self._post(f"/api/v1/workspaces/{workspace_id}/kick/{user_id}")
 
-    def send_message(self, room_id: str, content: str) -> dict:
-        return self._post(f"/api/v1/rooms/{room_id}/messages", json={"content": content})
+    # --- Chats ---
 
-    def read_messages(self, room_id: str, limit: int = 50, after: str | None = None) -> list:
+    def create_chat(self, workspace_id: str, name: str, description: str = "") -> dict:
+        return self._post(f"/api/v1/workspaces/{workspace_id}/chats", json={
+            "name": name, "description": description,
+        })
+
+    def list_chats(self, workspace_id: str) -> list:
+        data = self._get(f"/api/v1/workspaces/{workspace_id}/chats")
+        return data.get("chats", data) if isinstance(data, dict) else data
+
+    def send_message(self, workspace_id: str, chat_id: str, content: str) -> dict:
+        return self._post(
+            f"/api/v1/workspaces/{workspace_id}/chats/{chat_id}/messages",
+            json={"content": content},
+        )
+
+    def read_messages(self, workspace_id: str, chat_id: str, limit: int = 50, after: str | None = None) -> list:
         params: dict = {"limit": limit}
         if after:
             params["after"] = after
-        data = self._get(f"/api/v1/rooms/{room_id}/messages", **params)
+        data = self._get(f"/api/v1/workspaces/{workspace_id}/chats/{chat_id}/messages", **params)
         return data.get("messages", data) if isinstance(data, dict) else data
 
-    def search_messages(self, room_id: str, query: str, limit: int = 20) -> list:
-        data = self._get(f"/api/v1/rooms/{room_id}/messages/search", q=query, limit=limit)
+    def search_messages(self, workspace_id: str, chat_id: str, query: str, limit: int = 20) -> list:
+        data = self._get(f"/api/v1/workspaces/{workspace_id}/chats/{chat_id}/messages/search", q=query, limit=limit)
         return data.get("messages", data) if isinstance(data, dict) else data
 
     # --- DMs ---
@@ -158,40 +158,118 @@ class BoozleClient:
 
     def send_dm(self, username: str, content: str) -> dict:
         dm = self.start_dm(username)
-        return self.send_message(dm["id"], content)
+        return self._post(f"/api/v1/dms/{dm['id']}/messages", json={"content": content})
 
-    # --- Workspace files ---
+    def read_dm_messages(self, chat_id: str, limit: int = 50, after: str | None = None) -> list:
+        params: dict = {"limit": limit}
+        if after:
+            params["after"] = after
+        data = self._get(f"/api/v1/dms/{chat_id}/messages", **params)
+        return data.get("messages", data) if isinstance(data, dict) else data
 
-    def list_files(self, workspace_id: str) -> dict:
-        return self._get(f"/api/v1/workspaces/{workspace_id}/files")
+    # --- Notebooks ---
 
-    def create_file(self, workspace_id: str, name: str, content: str = "", folder_id: str | None = None) -> dict:
+    def list_notebooks(self, workspace_id: str) -> dict:
+        return self._get(f"/api/v1/workspaces/{workspace_id}/notebooks")
+
+    def create_notebook(self, workspace_id: str, name: str, content: str = "", folder_id: str | None = None) -> dict:
         body: dict = {"name": name, "content": content}
         if folder_id:
             body["folder_id"] = folder_id
-        return self._post(f"/api/v1/workspaces/{workspace_id}/files", json=body)
+        return self._post(f"/api/v1/workspaces/{workspace_id}/notebooks", json=body)
 
-    def read_file(self, workspace_id: str, file_id: str) -> dict:
-        return self._get(f"/api/v1/workspaces/{workspace_id}/files/{file_id}")
+    def read_notebook(self, workspace_id: str, notebook_id: str) -> dict:
+        return self._get(f"/api/v1/workspaces/{workspace_id}/notebooks/{notebook_id}")
 
-    def update_file(self, workspace_id: str, file_id: str, content: str | None = None, name: str | None = None) -> dict:
+    def update_notebook(self, workspace_id: str, notebook_id: str, content: str | None = None, name: str | None = None) -> dict:
         body = {}
         if content is not None:
             body["content"] = content
         if name is not None:
             body["name"] = name
-        return self._patch(f"/api/v1/workspaces/{workspace_id}/files/{file_id}", json=body)
+        return self._patch(f"/api/v1/workspaces/{workspace_id}/notebooks/{notebook_id}", json=body)
 
-    def delete_file(self, workspace_id: str, file_id: str) -> None:
-        self._delete(f"/api/v1/workspaces/{workspace_id}/files/{file_id}")
+    def delete_notebook(self, workspace_id: str, notebook_id: str) -> None:
+        self._delete(f"/api/v1/workspaces/{workspace_id}/notebooks/{notebook_id}")
 
-    def create_folder(self, workspace_id: str, name: str) -> dict:
-        return self._post(f"/api/v1/workspaces/{workspace_id}/folders", json={"name": name})
+    def create_notebook_folder(self, workspace_id: str, name: str) -> dict:
+        return self._post(f"/api/v1/workspaces/{workspace_id}/notebooks/folders", json={"name": name})
 
-    def delete_folder(self, workspace_id: str, folder_id: str) -> None:
-        self._delete(f"/api/v1/workspaces/{workspace_id}/folders/{folder_id}")
+    def delete_notebook_folder(self, workspace_id: str, folder_id: str) -> None:
+        self._delete(f"/api/v1/workspaces/{workspace_id}/notebooks/folders/{folder_id}")
+
+    # --- Memory stores ---
+
+    def create_memory_store(self, workspace_id: str, name: str, description: str = "") -> dict:
+        return self._post(f"/api/v1/workspaces/{workspace_id}/memory", json={
+            "name": name, "description": description,
+        })
+
+    def list_memory_stores(self, workspace_id: str) -> list:
+        data = self._get(f"/api/v1/workspaces/{workspace_id}/memory")
+        return data.get("stores", data) if isinstance(data, dict) else data
+
+    def push_memory_event(
+        self, workspace_id: str, store_id: str,
+        agent_name: str, event_type: str, content: str,
+        session_id: str | None = None, tool_name: str | None = None,
+        metadata: dict | None = None,
+    ) -> dict:
+        body: dict = {"agent_name": agent_name, "event_type": event_type, "content": content}
+        if session_id:
+            body["session_id"] = session_id
+        if tool_name:
+            body["tool_name"] = tool_name
+        if metadata:
+            body["metadata"] = metadata
+        return self._post(f"/api/v1/workspaces/{workspace_id}/memory/{store_id}/events", json=body)
+
+    def push_memory_events_batch(self, workspace_id: str, store_id: str, events: list[dict]) -> list:
+        resp = self._request("POST", f"/api/v1/workspaces/{workspace_id}/memory/{store_id}/events/batch", json={"events": events})
+        return resp.json()
+
+    def query_memory_events(
+        self, workspace_id: str, store_id: str,
+        agent_name: str | None = None, session_id: str | None = None,
+        event_type: str | None = None, limit: int = 50,
+        after: str | None = None,
+    ) -> list:
+        params: dict = {"limit": limit}
+        if agent_name:
+            params["agent_name"] = agent_name
+        if session_id:
+            params["session_id"] = session_id
+        if event_type:
+            params["event_type"] = event_type
+        if after:
+            params["after"] = after
+        data = self._get(f"/api/v1/workspaces/{workspace_id}/memory/{store_id}/events", **params)
+        return data.get("events", data) if isinstance(data, dict) else data
+
+    def search_memory_events(self, workspace_id: str, store_id: str, query: str, limit: int = 50) -> list:
+        data = self._get(f"/api/v1/workspaces/{workspace_id}/memory/{store_id}/events/search", q=query, limit=limit)
+        return data.get("events", data) if isinstance(data, dict) else data
+
+    # --- Webhooks ---
+
+    def set_webhook(self, workspace_id: str, url: str, secret: str | None = None) -> dict:
+        body: dict = {"url": url}
+        if secret:
+            body["secret"] = secret
+        return self._post(f"/api/v1/workspaces/{workspace_id}/webhooks", json=body)
+
+    def get_webhook(self, workspace_id: str) -> dict | None:
+        try:
+            return self._get(f"/api/v1/workspaces/{workspace_id}/webhooks")
+        except BoozleError as e:
+            if e.status_code == 404:
+                return None
+            raise
+
+    def delete_webhook(self, workspace_id: str) -> None:
+        self._delete(f"/api/v1/workspaces/{workspace_id}/webhooks")
 
     # --- User search ---
 
     def search_users(self, query: str) -> list:
-        return self._get("/api/v1/users/search", q=query)
+        return self._get("/api/v1/dms/users/search", q=query)
