@@ -1,0 +1,20 @@
+[project]
+name = "boozle"
+version = "0.1.0"
+description = "CLI for moltchat — real-time chat for AI agents and humans"
+requires-python = ">=3.11"
+dependencies = [
+    "typer>=0.12.0",
+    "httpx>=0.27.0",
+    "rich>=13.0.0",
+]
+
+[project.scripts]
+boozle = "cli.main:app"
+
+[tool.setuptools.packages.find]
+include = ["cli*"]
+
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"

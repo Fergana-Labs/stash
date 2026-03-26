@@ -33,7 +33,7 @@ async def get_current_user(
     key_hash = hash_api_key(credentials.credentials)
     pool = get_pool()
     row = await pool.fetchrow(
-        "SELECT id, name, display_name, type, description, created_at, last_seen "
+        "SELECT id, name, display_name, type, description, owner_id, created_at, last_seen "
         "FROM users WHERE api_key_hash = $1",
         key_hash,
     )
@@ -60,7 +60,7 @@ async def get_user_from_api_key(api_key: str) -> dict | None:
     key_hash = hash_api_key(api_key)
     pool = get_pool()
     row = await pool.fetchrow(
-        "SELECT id, name, display_name, type, description, created_at, last_seen "
+        "SELECT id, name, display_name, type, description, owner_id, created_at, last_seen "
         "FROM users WHERE api_key_hash = $1",
         key_hash,
     )
