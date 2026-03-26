@@ -1,226 +1,114 @@
+"""Workspace router: CRUD, membership, invite codes."""
+
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, Depends, HTTPException, status
 
-from ..auth import get_current_user, get_user_from_api_key
+from ..auth import get_current_user, get_current_user_optional
 from ..models import (
-    WorkspaceFileCreateRequest,
-    WorkspaceFileResponse,
-    WorkspaceFileTreeResponse,
-    WorkspaceFileUpdateRequest,
-    WorkspaceFolderCreateRequest,
-    WorkspaceFolderResponse,
-    WorkspaceFolderUpdateRequest,
+    WorkspaceCreateRequest,
+    WorkspaceListResponse,
+    WorkspaceMember,
+    WorkspaceResponse,
+    WorkspaceUpdateRequest,
 )
-from ..services import room_service, workspace_service
-from ..services.yjs_manager import yjs_manager
+from ..services import workspace_service
 
 router = APIRouter(prefix="/api/v1/workspaces", tags=["workspaces"])
 
 
-async def _check_workspace_membership(workspace_id: UUID, user_id: UUID):
-    """Verify the room exists, is a workspace, and user is a member."""
-    room = await room_service.get_room(workspace_id)
-    if not room:
+@router.post("", response_model=WorkspaceResponse, status_code=201)
+async def create_workspace(
+    req: WorkspaceCreateRequest, current_user: dict = Depends(get_current_user),
+):
+    ws = await workspace_service.create_workspace(
+        name=req.name, description=req.description,
+        creator_id=current_user["id"], is_public=req.is_public,
+    )
+    return WorkspaceResponse(**ws)
+
+
+@router.get("", response_model=WorkspaceListResponse)
+async def list_workspaces(current_user: dict | None = Depends(get_current_user_optional)):
+    workspaces = await workspace_service.list_public_workspaces()
+    return WorkspaceListResponse(workspaces=[WorkspaceResponse(**w) for w in workspaces])
+
+
+@router.get("/mine", response_model=WorkspaceListResponse)
+async def list_my_workspaces(current_user: dict = Depends(get_current_user)):
+    workspaces = await workspace_service.list_user_workspaces(current_user["id"])
+    return WorkspaceListResponse(workspaces=[WorkspaceResponse(**w) for w in workspaces])
+
+
+@router.get("/{workspace_id}", response_model=WorkspaceResponse)
+async def get_workspace(
+    workspace_id: UUID, current_user: dict | None = Depends(get_current_user_optional),
+):
+    ws = await workspace_service.get_workspace(workspace_id)
+    if not ws:
         raise HTTPException(status_code=404, detail="Workspace not found")
-    if room.get("type", "chat") != "workspace":
-        raise HTTPException(status_code=400, detail="Room is not a workspace")
-    if not await room_service.is_member(workspace_id, user_id):
-        raise HTTPException(status_code=403, detail="Not a member of this workspace")
-    return room
+    return WorkspaceResponse(**ws)
 
 
-# --- File Tree ---
-
-@router.get("/{workspace_id}/files", response_model=WorkspaceFileTreeResponse)
-async def list_files(workspace_id: UUID, current_user: dict = Depends(get_current_user)):
-    await _check_workspace_membership(workspace_id, current_user["id"])
-    tree = await workspace_service.list_file_tree(workspace_id)
-    return tree
-
-
-# --- Files ---
-
-@router.post("/{workspace_id}/files", response_model=WorkspaceFileResponse, status_code=201)
-async def create_file(
-    workspace_id: UUID,
-    req: WorkspaceFileCreateRequest,
+@router.patch("/{workspace_id}", response_model=WorkspaceResponse)
+async def update_workspace(
+    workspace_id: UUID, req: WorkspaceUpdateRequest,
     current_user: dict = Depends(get_current_user),
 ):
-    await _check_workspace_membership(workspace_id, current_user["id"])
-    if req.folder_id:
-        folder = await workspace_service.get_folder(req.folder_id, workspace_id)
-        if not folder:
-            raise HTTPException(status_code=404, detail="Folder not found")
-    try:
-        f = await workspace_service.create_file(
-            workspace_id=workspace_id,
-            name=req.name,
-            created_by=current_user["id"],
-            folder_id=req.folder_id,
-            content=req.content,
-        )
-    except Exception as e:
-        if "unique" in str(e).lower() or "duplicate" in str(e).lower():
-            raise HTTPException(status_code=409, detail="A file with that name already exists in this location")
-        raise
-    return WorkspaceFileResponse(**f)
+    role = await workspace_service.get_member_role(workspace_id, current_user["id"])
+    if role not in ("owner", "admin"):
+        raise HTTPException(status_code=403, detail="Only owner/admin can update workspace")
+    ws = await workspace_service.update_workspace(
+        workspace_id, name=req.name, description=req.description,
+    )
+    if not ws:
+        raise HTTPException(status_code=404, detail="Workspace not found")
+    return WorkspaceResponse(**ws)
 
 
-@router.get("/{workspace_id}/files/{file_id}", response_model=WorkspaceFileResponse)
-async def get_file(
-    workspace_id: UUID, file_id: UUID,
-    current_user: dict = Depends(get_current_user),
+@router.delete("/{workspace_id}", status_code=204)
+async def delete_workspace(
+    workspace_id: UUID, current_user: dict = Depends(get_current_user),
 ):
-    await _check_workspace_membership(workspace_id, current_user["id"])
-    f = await workspace_service.get_file(file_id, workspace_id)
-    if not f:
-        raise HTTPException(status_code=404, detail="File not found")
-    return WorkspaceFileResponse(**{k: v for k, v in f.items() if k != "yjs_state"})
-
-
-@router.patch("/{workspace_id}/files/{file_id}", response_model=WorkspaceFileResponse)
-async def update_file(
-    workspace_id: UUID, file_id: UUID,
-    req: WorkspaceFileUpdateRequest,
-    current_user: dict = Depends(get_current_user),
-):
-    await _check_workspace_membership(workspace_id, current_user["id"])
-
-    existing = await workspace_service.get_file(file_id, workspace_id)
-    if not existing:
-        raise HTTPException(status_code=404, detail="File not found")
-
-    if req.folder_id:
-        folder = await workspace_service.get_folder(req.folder_id, workspace_id)
-        if not folder:
-            raise HTTPException(status_code=404, detail="Folder not found")
-
-    # If content is being updated, route through Yjs manager for real-time sync
-    if req.content is not None:
-        await yjs_manager.apply_rest_update(file_id, workspace_id, req.content)
-
-    try:
-        f = await workspace_service.update_file(
-            file_id=file_id,
-            workspace_id=workspace_id,
-            updated_by=current_user["id"],
-            name=req.name,
-            folder_id=req.folder_id,
-            content=req.content,
-            move_to_root=req.move_to_root,
-        )
-    except Exception as e:
-        if "unique" in str(e).lower() or "duplicate" in str(e).lower():
-            raise HTTPException(status_code=409, detail="A file with that name already exists in this location")
-        raise
-
-    if not f:
-        raise HTTPException(status_code=404, detail="File not found")
-    return WorkspaceFileResponse(**f)
-
-
-@router.delete("/{workspace_id}/files/{file_id}")
-async def delete_file(
-    workspace_id: UUID, file_id: UUID,
-    current_user: dict = Depends(get_current_user),
-):
-    await _check_workspace_membership(workspace_id, current_user["id"])
-    deleted = await workspace_service.delete_file(file_id, workspace_id)
+    deleted = await workspace_service.delete_workspace(workspace_id, current_user["id"])
     if not deleted:
-        raise HTTPException(status_code=404, detail="File not found")
-    return {"ok": True}
+        raise HTTPException(status_code=403, detail="Only workspace owner can delete")
 
 
-# --- Folders ---
+@router.post("/join/{invite_code}", response_model=WorkspaceResponse)
+async def join_workspace(
+    invite_code: str, current_user: dict = Depends(get_current_user),
+):
+    ws = await workspace_service.join_by_invite(invite_code, current_user["id"])
+    if not ws:
+        raise HTTPException(status_code=404, detail="Invalid invite code")
+    return WorkspaceResponse(**ws)
 
-@router.post("/{workspace_id}/folders", response_model=WorkspaceFolderResponse, status_code=201)
-async def create_folder(
-    workspace_id: UUID,
-    req: WorkspaceFolderCreateRequest,
+
+@router.post("/{workspace_id}/leave", status_code=204)
+async def leave_workspace(
+    workspace_id: UUID, current_user: dict = Depends(get_current_user),
+):
+    left = await workspace_service.leave_workspace(workspace_id, current_user["id"])
+    if not left:
+        raise HTTPException(status_code=400, detail="Cannot leave (owner cannot leave)")
+
+
+@router.get("/{workspace_id}/members", response_model=list[WorkspaceMember])
+async def get_members(
+    workspace_id: UUID, current_user: dict = Depends(get_current_user),
+):
+    if not await workspace_service.is_member(workspace_id, current_user["id"]):
+        raise HTTPException(status_code=403, detail="Not a workspace member")
+    members = await workspace_service.get_members(workspace_id)
+    return [WorkspaceMember(**m) for m in members]
+
+
+@router.post("/{workspace_id}/kick/{user_id}", status_code=204)
+async def kick_member(
+    workspace_id: UUID, user_id: UUID,
     current_user: dict = Depends(get_current_user),
 ):
-    await _check_workspace_membership(workspace_id, current_user["id"])
-    try:
-        folder = await workspace_service.create_folder(
-            workspace_id=workspace_id,
-            name=req.name,
-            created_by=current_user["id"],
-        )
-    except Exception as e:
-        if "unique" in str(e).lower() or "duplicate" in str(e).lower():
-            raise HTTPException(status_code=409, detail="A folder with that name already exists")
-        raise
-    return WorkspaceFolderResponse(**folder)
-
-
-@router.patch("/{workspace_id}/folders/{folder_id}", response_model=WorkspaceFolderResponse)
-async def rename_folder(
-    workspace_id: UUID, folder_id: UUID,
-    req: WorkspaceFolderUpdateRequest,
-    current_user: dict = Depends(get_current_user),
-):
-    await _check_workspace_membership(workspace_id, current_user["id"])
-    try:
-        folder = await workspace_service.rename_folder(folder_id, workspace_id, req.name)
-    except Exception as e:
-        if "unique" in str(e).lower() or "duplicate" in str(e).lower():
-            raise HTTPException(status_code=409, detail="A folder with that name already exists")
-        raise
-    if not folder:
-        raise HTTPException(status_code=404, detail="Folder not found")
-    return WorkspaceFolderResponse(**folder)
-
-
-@router.delete("/{workspace_id}/folders/{folder_id}")
-async def delete_folder(
-    workspace_id: UUID, folder_id: UUID,
-    current_user: dict = Depends(get_current_user),
-):
-    await _check_workspace_membership(workspace_id, current_user["id"])
-    deleted = await workspace_service.delete_folder(folder_id, workspace_id)
-    if not deleted:
-        raise HTTPException(status_code=404, detail="Folder not found")
-    return {"ok": True}
-
-
-# --- Yjs WebSocket ---
-
-@router.websocket("/{workspace_id}/files/{file_id}/yjs")
-async def yjs_websocket(
-    workspace_id: UUID, file_id: UUID,
-    websocket: WebSocket, token: str = Query(...),
-):
-    user = await get_user_from_api_key(token)
-    if not user:
-        await websocket.close(code=4001, reason="Invalid token")
-        return
-
-    if not await room_service.is_member(workspace_id, user["id"]):
-        await websocket.close(code=4003, reason="Not a member")
-        return
-
-    # Verify workspace and file exist
-    room = await room_service.get_room(workspace_id)
-    if not room or room.get("type", "chat") != "workspace":
-        await websocket.close(code=4004, reason="Not a workspace")
-        return
-
-    f = await workspace_service.get_file(file_id, workspace_id)
-    if not f:
-        await websocket.close(code=4004, reason="File not found")
-        return
-
-    await websocket.accept()
-    await yjs_manager.handle_ws_connect(websocket, file_id, workspace_id)
-
-    try:
-        while True:
-            data = await websocket.receive_bytes()
-            await yjs_manager.handle_ws_message(websocket, file_id, data)
-    except WebSocketDisconnect:
-        pass
-    except Exception:
-        pass
-    finally:
-        await yjs_manager.handle_ws_disconnect(websocket, file_id)
+    kicked = await workspace_service.kick_member(workspace_id, user_id, current_user["id"])
+    if not kicked:
+        raise HTTPException(status_code=403, detail="Cannot kick this member")

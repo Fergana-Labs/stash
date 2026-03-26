@@ -1,186 +1,179 @@
+"""Workspace service: CRUD, membership, invite codes."""
+
+import secrets
 from uuid import UUID
 
 from ..database import get_pool
 
 
-# --- Folders ---
-
-async def create_folder(workspace_id: UUID, name: str, created_by: UUID) -> dict:
-    pool = get_pool()
-    row = await pool.fetchrow(
-        "INSERT INTO workspace_folders (workspace_id, name, created_by) "
-        "VALUES ($1, $2, $3) "
-        "RETURNING id, workspace_id, name, created_by, created_at, updated_at",
-        workspace_id, name, created_by,
-    )
-    return dict(row)
-
-
-async def rename_folder(folder_id: UUID, workspace_id: UUID, name: str) -> dict | None:
-    pool = get_pool()
-    row = await pool.fetchrow(
-        "UPDATE workspace_folders SET name = $1, updated_at = now() "
-        "WHERE id = $2 AND workspace_id = $3 "
-        "RETURNING id, workspace_id, name, created_by, created_at, updated_at",
-        name, folder_id, workspace_id,
-    )
-    return dict(row) if row else None
-
-
-async def delete_folder(folder_id: UUID, workspace_id: UUID) -> bool:
-    pool = get_pool()
-    result = await pool.execute(
-        "DELETE FROM workspace_folders WHERE id = $1 AND workspace_id = $2",
-        folder_id, workspace_id,
-    )
-    return result == "DELETE 1"
-
-
-async def get_folder(folder_id: UUID, workspace_id: UUID) -> dict | None:
-    pool = get_pool()
-    row = await pool.fetchrow(
-        "SELECT id, workspace_id, name, created_by, created_at, updated_at "
-        "FROM workspace_folders WHERE id = $1 AND workspace_id = $2",
-        folder_id, workspace_id,
-    )
-    return dict(row) if row else None
-
-
-# --- Files ---
-
-async def create_file(
-    workspace_id: UUID, name: str, created_by: UUID,
-    folder_id: UUID | None = None, content: str = "",
+async def create_workspace(
+    name: str, description: str, creator_id: UUID, is_public: bool = False,
 ) -> dict:
+    """Create a workspace with the creator as owner."""
     pool = get_pool()
+    invite_code = ""
+    for _ in range(5):
+        invite_code = secrets.token_urlsafe(6)[:8]
+        exists = await pool.fetchval(
+            "SELECT 1 FROM workspaces WHERE invite_code = $1", invite_code,
+        )
+        if not exists:
+            break
+
     row = await pool.fetchrow(
-        "INSERT INTO workspace_files (workspace_id, folder_id, name, content_markdown, created_by, updated_by) "
-        "VALUES ($1, $2, $3, $4, $5, $5) "
-        "RETURNING id, workspace_id, folder_id, name, content_markdown, "
-        "created_by, updated_by, created_at, updated_at",
-        workspace_id, folder_id, name, content, created_by,
+        "INSERT INTO workspaces (name, description, creator_id, invite_code, is_public) "
+        "VALUES ($1, $2, $3, $4, $5) "
+        "RETURNING id, name, description, creator_id, invite_code, is_public, created_at, updated_at",
+        name, description, creator_id, invite_code, is_public,
     )
-    return dict(row)
+    ws = dict(row)
+    # Auto-add creator as owner
+    await pool.execute(
+        "INSERT INTO workspace_members (workspace_id, user_id, role) VALUES ($1, $2, 'owner')",
+        ws["id"], creator_id,
+    )
+    ws["member_count"] = 1
+    return ws
 
 
-async def get_file(file_id: UUID, workspace_id: UUID) -> dict | None:
+async def get_workspace(workspace_id: UUID) -> dict | None:
     pool = get_pool()
     row = await pool.fetchrow(
-        "SELECT id, workspace_id, folder_id, name, content_markdown, yjs_state, "
-        "created_by, updated_by, created_at, updated_at "
-        "FROM workspace_files WHERE id = $1 AND workspace_id = $2",
-        file_id, workspace_id,
+        "SELECT w.*, (SELECT COUNT(*) FROM workspace_members wm WHERE wm.workspace_id = w.id) AS member_count "
+        "FROM workspaces w WHERE w.id = $1",
+        workspace_id,
     )
     return dict(row) if row else None
 
 
-async def update_file(
-    file_id: UUID, workspace_id: UUID, updated_by: UUID,
-    name: str | None = None, folder_id: UUID | None = None,
-    content: str | None = None, yjs_state: bytes | None = None,
-    move_to_root: bool = False,
+async def list_public_workspaces() -> list[dict]:
+    pool = get_pool()
+    rows = await pool.fetch(
+        "SELECT w.*, (SELECT COUNT(*) FROM workspace_members wm WHERE wm.workspace_id = w.id) AS member_count "
+        "FROM workspaces w WHERE w.is_public = true ORDER BY w.created_at DESC",
+    )
+    return [dict(r) for r in rows]
+
+
+async def list_user_workspaces(user_id: UUID) -> list[dict]:
+    pool = get_pool()
+    rows = await pool.fetch(
+        "SELECT w.*, (SELECT COUNT(*) FROM workspace_members wm WHERE wm.workspace_id = w.id) AS member_count "
+        "FROM workspaces w "
+        "JOIN workspace_members wm ON wm.workspace_id = w.id "
+        "WHERE wm.user_id = $1 ORDER BY w.created_at DESC",
+        user_id,
+    )
+    return [dict(r) for r in rows]
+
+
+async def update_workspace(
+    workspace_id: UUID, name: str | None = None, description: str | None = None,
 ) -> dict | None:
     pool = get_pool()
-    sets = ["updated_at = now()", "updated_by = $1"]
-    args: list = [updated_by]
-    idx = 2
-
+    sets, args, idx = [], [], 1
     if name is not None:
         sets.append(f"name = ${idx}")
         args.append(name)
         idx += 1
-    if move_to_root:
-        sets.append(f"folder_id = NULL")
-    elif folder_id is not None:
-        sets.append(f"folder_id = ${idx}")
-        args.append(folder_id)
+    if description is not None:
+        sets.append(f"description = ${idx}")
+        args.append(description)
         idx += 1
-    if content is not None:
-        sets.append(f"content_markdown = ${idx}")
-        args.append(content)
-        idx += 1
-    if yjs_state is not None:
-        sets.append(f"yjs_state = ${idx}")
-        args.append(yjs_state)
-        idx += 1
-
-    args.append(file_id)
+    if not sets:
+        return await get_workspace(workspace_id)
+    sets.append("updated_at = now()")
     args.append(workspace_id)
     row = await pool.fetchrow(
-        f"UPDATE workspace_files SET {', '.join(sets)} "
-        f"WHERE id = ${idx} AND workspace_id = ${idx + 1} "
-        "RETURNING id, workspace_id, folder_id, name, content_markdown, "
-        "created_by, updated_by, created_at, updated_at",
+        f"UPDATE workspaces SET {', '.join(sets)} WHERE id = ${idx} "
+        "RETURNING id, name, description, creator_id, invite_code, is_public, created_at, updated_at",
         *args,
     )
     return dict(row) if row else None
 
 
-async def delete_file(file_id: UUID, workspace_id: UUID) -> bool:
+async def delete_workspace(workspace_id: UUID, user_id: UUID) -> bool:
+    """Delete workspace. Only owner can delete."""
+    pool = get_pool()
+    role = await get_member_role(workspace_id, user_id)
+    if role != "owner":
+        return False
+    result = await pool.execute("DELETE FROM workspaces WHERE id = $1", workspace_id)
+    return result == "DELETE 1"
+
+
+async def join_workspace(workspace_id: UUID, user_id: UUID) -> dict | None:
+    pool = get_pool()
+    exists = await pool.fetchval(
+        "SELECT 1 FROM workspace_members WHERE workspace_id = $1 AND user_id = $2",
+        workspace_id, user_id,
+    )
+    if exists:
+        return await get_workspace(workspace_id)
+    await pool.execute(
+        "INSERT INTO workspace_members (workspace_id, user_id, role) VALUES ($1, $2, 'member')",
+        workspace_id, user_id,
+    )
+    return await get_workspace(workspace_id)
+
+
+async def join_by_invite(invite_code: str, user_id: UUID) -> dict | None:
+    pool = get_pool()
+    ws = await pool.fetchrow(
+        "SELECT id FROM workspaces WHERE invite_code = $1", invite_code,
+    )
+    if not ws:
+        return None
+    return await join_workspace(ws["id"], user_id)
+
+
+async def leave_workspace(workspace_id: UUID, user_id: UUID) -> bool:
     pool = get_pool()
     result = await pool.execute(
-        "DELETE FROM workspace_files WHERE id = $1 AND workspace_id = $2",
-        file_id, workspace_id,
+        "DELETE FROM workspace_members WHERE workspace_id = $1 AND user_id = $2 AND role != 'owner'",
+        workspace_id, user_id,
     )
     return result == "DELETE 1"
 
 
-async def list_file_tree(workspace_id: UUID) -> dict:
+async def get_members(workspace_id: UUID) -> list[dict]:
     pool = get_pool()
-    folders = await pool.fetch(
-        "SELECT id, workspace_id, name, created_by, created_at, updated_at "
-        "FROM workspace_folders WHERE workspace_id = $1 ORDER BY name",
+    rows = await pool.fetch(
+        "SELECT u.id AS user_id, u.name, u.display_name, u.type, wm.role, wm.joined_at "
+        "FROM workspace_members wm JOIN users u ON u.id = wm.user_id "
+        "WHERE wm.workspace_id = $1 ORDER BY wm.joined_at",
         workspace_id,
     )
-    files = await pool.fetch(
-        "SELECT id, workspace_id, folder_id, name, created_at, updated_at "
-        "FROM workspace_files WHERE workspace_id = $1 ORDER BY name",
-        workspace_id,
-    )
-
-    folder_map: dict[UUID, dict] = {}
-    for f in folders:
-        fd = dict(f)
-        fd["files"] = []
-        folder_map[fd["id"]] = fd
-
-    root_files = []
-    for fi in files:
-        fid = dict(fi)
-        if fid["folder_id"] and fid["folder_id"] in folder_map:
-            folder_map[fid["folder_id"]]["files"].append(fid)
-        else:
-            root_files.append(fid)
-
-    return {
-        "folders": list(folder_map.values()),
-        "root_files": root_files,
-    }
+    return [dict(r) for r in rows]
 
 
-async def save_yjs_state(
-    file_id: UUID, workspace_id: UUID,
-    yjs_state: bytes, content_markdown: str | None = None,
-) -> None:
-    pool = get_pool()
-    if content_markdown is not None:
-        await pool.execute(
-            "UPDATE workspace_files SET yjs_state = $1, content_markdown = $2, updated_at = now() "
-            "WHERE id = $3 AND workspace_id = $4",
-            yjs_state, content_markdown, file_id, workspace_id,
-        )
-    else:
-        await pool.execute(
-            "UPDATE workspace_files SET yjs_state = $1, updated_at = now() "
-            "WHERE id = $2 AND workspace_id = $3",
-            yjs_state, file_id, workspace_id,
-        )
-
-
-async def get_yjs_state(file_id: UUID, workspace_id: UUID) -> bytes | None:
+async def get_member_role(workspace_id: UUID, user_id: UUID) -> str | None:
     pool = get_pool()
     row = await pool.fetchrow(
-        "SELECT yjs_state FROM workspace_files WHERE id = $1 AND workspace_id = $2",
-        file_id, workspace_id,
+        "SELECT role FROM workspace_members WHERE workspace_id = $1 AND user_id = $2",
+        workspace_id, user_id,
     )
-    return row["yjs_state"] if row else None
+    return row["role"] if row else None
+
+
+async def is_member(workspace_id: UUID, user_id: UUID) -> bool:
+    return await get_member_role(workspace_id, user_id) is not None
+
+
+async def kick_member(workspace_id: UUID, target_user_id: UUID, kicker_id: UUID) -> bool:
+    pool = get_pool()
+    kicker_role = await get_member_role(workspace_id, kicker_id)
+    target_role = await get_member_role(workspace_id, target_user_id)
+    if not kicker_role or not target_role:
+        return False
+    if target_role == "owner":
+        return False
+    if kicker_role == "member":
+        return False
+    if kicker_role == "admin" and target_role == "admin":
+        return False
+    result = await pool.execute(
+        "DELETE FROM workspace_members WHERE workspace_id = $1 AND user_id = $2",
+        workspace_id, target_user_id,
+    )
+    return result == "DELETE 1"

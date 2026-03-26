@@ -5,6 +5,8 @@ from pydantic import BaseModel, Field
 
 
 # --- Users ---
+
+
 class UserRegisterRequest(BaseModel):
     name: str = Field(..., min_length=1, max_length=64, pattern=r"^[a-zA-Z0-9_-]+$")
     display_name: str | None = Field(None, max_length=128)
@@ -18,7 +20,7 @@ class UserRegisterResponse(BaseModel):
     name: str
     display_name: str | None
     type: str
-    api_key: str  # Only shown once
+    api_key: str
 
 
 class UserProfile(BaseModel):
@@ -43,196 +45,6 @@ class LoginRequest(BaseModel):
     password: str = Field(..., min_length=1, max_length=128)
 
 
-# --- Rooms ---
-class RoomCreateRequest(BaseModel):
-    name: str = Field(..., min_length=1, max_length=128)
-    description: str = Field("", max_length=1000)
-    is_public: bool = True
-    type: str = Field("chat", pattern=r"^(chat|workspace)$")
-
-
-class RoomResponse(BaseModel):
-    id: UUID
-    name: str
-    description: str
-    creator_id: UUID
-    invite_code: str
-    is_public: bool
-    type: str = "chat"
-    created_at: datetime
-    member_count: int | None = None
-
-
-class RoomListResponse(BaseModel):
-    rooms: list[RoomResponse]
-
-
-class RoomMember(BaseModel):
-    user_id: UUID
-    name: str
-    display_name: str | None
-    type: str
-    role: str
-    joined_at: datetime
-
-
-class RoomUpdateRequest(BaseModel):
-    name: str | None = Field(None, min_length=1, max_length=128)
-    description: str | None = Field(None, max_length=1000)
-
-
-class AccessListRequest(BaseModel):
-    user_name: str = Field(..., min_length=1, max_length=64)
-    list_type: str = Field(..., pattern=r"^(allow|block)$")
-
-
-# --- Messages ---
-class MessageSendRequest(BaseModel):
-    content: str = Field(..., min_length=1, max_length=16000)
-    reply_to_id: UUID | None = None
-
-
-class MessageResponse(BaseModel):
-    id: UUID
-    room_id: UUID
-    sender_id: UUID
-    sender_name: str
-    sender_display_name: str | None
-    sender_type: str
-    content: str
-    message_type: str
-    reply_to_id: UUID | None
-    created_at: datetime
-
-
-class MessageListResponse(BaseModel):
-    messages: list[MessageResponse]
-    has_more: bool
-
-
-# --- Webhooks ---
-class WebhookCreateRequest(BaseModel):
-    url: str = Field(..., min_length=1, max_length=2048)
-    secret: str | None = Field(None, max_length=128)
-
-
-class WebhookUpdateRequest(BaseModel):
-    url: str | None = Field(None, min_length=1, max_length=2048)
-    secret: str | None = Field(None, max_length=128)
-    is_active: bool | None = None
-
-
-class WebhookResponse(BaseModel):
-    id: UUID
-    user_id: UUID
-    url: str
-    has_secret: bool
-    is_active: bool
-    created_at: datetime
-    updated_at: datetime
-
-
-# --- WebSocket ---
-class WSMessage(BaseModel):
-    type: str = "message"  # "message" | "typing" | "system"
-    content: str | None = None
-    reply_to_id: UUID | None = None
-
-
-# --- Workspace Files & Folders ---
-class WorkspaceFileCreateRequest(BaseModel):
-    name: str = Field(..., min_length=1, max_length=255)
-    folder_id: UUID | None = None
-    content: str = ""
-
-
-class WorkspaceFileUpdateRequest(BaseModel):
-    name: str | None = Field(None, min_length=1, max_length=255)
-    folder_id: UUID | None = None
-    content: str | None = None
-    move_to_root: bool = False  # Set True to move file out of a folder to root
-
-
-class WorkspaceFileResponse(BaseModel):
-    id: UUID
-    workspace_id: UUID
-    folder_id: UUID | None
-    name: str
-    content_markdown: str
-    created_by: UUID
-    updated_by: UUID | None
-    created_at: datetime
-    updated_at: datetime
-
-
-class WorkspaceFolderCreateRequest(BaseModel):
-    name: str = Field(..., min_length=1, max_length=255)
-
-
-class WorkspaceFolderUpdateRequest(BaseModel):
-    name: str = Field(..., min_length=1, max_length=255)
-
-
-class WorkspaceFolderResponse(BaseModel):
-    id: UUID
-    workspace_id: UUID
-    name: str
-    created_by: UUID
-    created_at: datetime
-    updated_at: datetime
-
-
-class WorkspaceFileTreeFile(BaseModel):
-    id: UUID
-    name: str
-    folder_id: UUID | None
-    created_at: datetime
-    updated_at: datetime
-
-
-class WorkspaceFileTreeFolder(BaseModel):
-    id: UUID
-    name: str
-    files: list[WorkspaceFileTreeFile]
-    created_at: datetime
-
-
-class WorkspaceFileTreeResponse(BaseModel):
-    folders: list[WorkspaceFileTreeFolder]
-    root_files: list[WorkspaceFileTreeFile]
-
-
-# --- Direct Messages ---
-class DMCreateRequest(BaseModel):
-    user_id: UUID | None = None
-    username: str | None = None
-
-
-class DMOtherUser(BaseModel):
-    id: UUID
-    name: str
-    display_name: str | None
-    type: str
-
-
-class DMResponse(BaseModel):
-    id: UUID
-    name: str
-    description: str
-    creator_id: UUID
-    invite_code: str
-    is_public: bool
-    type: str
-    created_at: datetime
-    member_count: int | None = None
-    other_user: DMOtherUser | None = None
-    last_message_at: str | None = None
-
-
-class DMListResponse(BaseModel):
-    dms: list[DMResponse]
-
-
 class UserSearchResult(BaseModel):
     id: UUID
     name: str
@@ -241,6 +53,8 @@ class UserSearchResult(BaseModel):
 
 
 # --- Agent Identities ---
+
+
 class AgentCreateRequest(BaseModel):
     name: str = Field(..., min_length=1, max_length=64, pattern=r"^[a-zA-Z0-9_-]+$")
     display_name: str | None = Field(None, max_length=128)
@@ -258,7 +72,7 @@ class AgentResponse(BaseModel):
     display_name: str | None
     type: str
     description: str
-    api_key: str  # Only shown on creation/rotation
+    api_key: str
     owner_id: UUID
     created_at: datetime
 
@@ -272,3 +86,295 @@ class AgentProfile(BaseModel):
     owner_id: UUID
     created_at: datetime
     last_seen: datetime
+
+
+# --- Workspaces ---
+
+
+class WorkspaceCreateRequest(BaseModel):
+    name: str = Field(..., min_length=1, max_length=128)
+    description: str = Field("", max_length=1000)
+    is_public: bool = False
+
+
+class WorkspaceUpdateRequest(BaseModel):
+    name: str | None = Field(None, min_length=1, max_length=128)
+    description: str | None = Field(None, max_length=1000)
+
+
+class WorkspaceResponse(BaseModel):
+    id: UUID
+    name: str
+    description: str
+    creator_id: UUID
+    invite_code: str
+    is_public: bool
+    created_at: datetime
+    updated_at: datetime
+    member_count: int | None = None
+
+
+class WorkspaceListResponse(BaseModel):
+    workspaces: list[WorkspaceResponse]
+
+
+class WorkspaceMember(BaseModel):
+    user_id: UUID
+    name: str
+    display_name: str | None
+    type: str
+    role: str
+    joined_at: datetime
+
+
+# --- Chats ---
+
+
+class ChatCreateRequest(BaseModel):
+    name: str = Field(..., min_length=1, max_length=128)
+    description: str = Field("", max_length=1000)
+
+
+class ChatResponse(BaseModel):
+    id: UUID
+    workspace_id: UUID | None
+    name: str
+    description: str
+    creator_id: UUID
+    is_dm: bool
+    created_at: datetime
+    updated_at: datetime
+
+
+class ChatListResponse(BaseModel):
+    chats: list[ChatResponse]
+
+
+class ChatMessageSendRequest(BaseModel):
+    content: str = Field(..., min_length=1, max_length=16000)
+    reply_to_id: UUID | None = None
+
+
+class ChatMessageResponse(BaseModel):
+    id: UUID
+    chat_id: UUID
+    sender_id: UUID
+    sender_name: str
+    sender_display_name: str | None
+    sender_type: str
+    content: str
+    message_type: str
+    reply_to_id: UUID | None
+    created_at: datetime
+
+
+class ChatMessageListResponse(BaseModel):
+    messages: list[ChatMessageResponse]
+    has_more: bool
+
+
+# --- DMs ---
+
+
+class DMCreateRequest(BaseModel):
+    user_id: UUID | None = None
+    username: str | None = None
+
+
+class DMOtherUser(BaseModel):
+    id: UUID
+    name: str
+    display_name: str | None
+    type: str
+
+
+class DMResponse(BaseModel):
+    id: UUID
+    other_user: DMOtherUser | None = None
+    last_message_at: str | None = None
+    created_at: datetime
+
+
+class DMListResponse(BaseModel):
+    dms: list[DMResponse]
+
+
+# --- Notebooks ---
+
+
+class NotebookCreateRequest(BaseModel):
+    name: str = Field(..., min_length=1, max_length=255)
+    folder_id: UUID | None = None
+    content: str = ""
+
+
+class NotebookUpdateRequest(BaseModel):
+    name: str | None = Field(None, min_length=1, max_length=255)
+    folder_id: UUID | None = None
+    content: str | None = None
+    move_to_root: bool = False
+
+
+class NotebookResponse(BaseModel):
+    id: UUID
+    workspace_id: UUID
+    folder_id: UUID | None
+    name: str
+    content_markdown: str
+    created_by: UUID
+    updated_by: UUID | None
+    created_at: datetime
+    updated_at: datetime
+
+
+class NotebookFolderCreateRequest(BaseModel):
+    name: str = Field(..., min_length=1, max_length=255)
+
+
+class NotebookFolderUpdateRequest(BaseModel):
+    name: str = Field(..., min_length=1, max_length=255)
+
+
+class NotebookFolderResponse(BaseModel):
+    id: UUID
+    workspace_id: UUID
+    name: str
+    created_by: UUID
+    created_at: datetime
+    updated_at: datetime
+
+
+class NotebookTreeFile(BaseModel):
+    id: UUID
+    name: str
+    folder_id: UUID | None
+    created_at: datetime
+    updated_at: datetime
+
+
+class NotebookTreeFolder(BaseModel):
+    id: UUID
+    name: str
+    files: list[NotebookTreeFile]
+    created_at: datetime
+
+
+class NotebookTreeResponse(BaseModel):
+    folders: list[NotebookTreeFolder]
+    root_files: list[NotebookTreeFile]
+
+
+# --- Memory Stores ---
+
+
+class MemoryStoreCreateRequest(BaseModel):
+    name: str = Field(..., min_length=1, max_length=128)
+    description: str = Field("", max_length=1000)
+
+
+class MemoryStoreResponse(BaseModel):
+    id: UUID
+    workspace_id: UUID
+    name: str
+    description: str
+    created_by: UUID
+    created_at: datetime
+    event_count: int | None = None
+
+
+class MemoryStoreListResponse(BaseModel):
+    stores: list[MemoryStoreResponse]
+
+
+class MemoryEventCreateRequest(BaseModel):
+    agent_name: str = Field(..., min_length=1, max_length=64)
+    event_type: str = Field(..., min_length=1, max_length=64)
+    content: str = Field(..., min_length=1)
+    session_id: str | None = Field(None, max_length=64)
+    tool_name: str | None = Field(None, max_length=128)
+    metadata: dict = Field(default_factory=dict)
+
+
+class MemoryEventBatchRequest(BaseModel):
+    events: list[MemoryEventCreateRequest] = Field(..., min_length=1, max_length=100)
+
+
+class MemoryEventResponse(BaseModel):
+    id: UUID
+    store_id: UUID
+    agent_name: str
+    event_type: str
+    session_id: str | None
+    tool_name: str | None
+    content: str
+    metadata: dict
+    created_at: datetime
+
+
+class MemoryEventListResponse(BaseModel):
+    events: list[MemoryEventResponse]
+    has_more: bool
+
+
+# --- Object Permissions ---
+
+
+class PermissionResponse(BaseModel):
+    object_type: str
+    object_id: UUID
+    visibility: str  # inherit, private, public
+    shares: list["ShareResponse"] = []
+
+
+class SetVisibilityRequest(BaseModel):
+    visibility: str = Field(..., pattern=r"^(inherit|private|public)$")
+
+
+class ShareRequest(BaseModel):
+    user_id: UUID
+    permission: str = Field("read", pattern=r"^(read|write|admin)$")
+
+
+class ShareResponse(BaseModel):
+    user_id: UUID
+    user_name: str
+    permission: str
+    granted_by: UUID
+    created_at: datetime
+
+
+# --- Webhooks ---
+
+
+class WebhookCreateRequest(BaseModel):
+    url: str = Field(..., min_length=1, max_length=2048)
+    secret: str | None = Field(None, max_length=128)
+    event_filter: list[str] = Field(default_factory=list)
+
+
+class WebhookUpdateRequest(BaseModel):
+    url: str | None = Field(None, min_length=1, max_length=2048)
+    secret: str | None = Field(None, max_length=128)
+    event_filter: list[str] | None = None
+    is_active: bool | None = None
+
+
+class WebhookResponse(BaseModel):
+    id: UUID
+    workspace_id: UUID
+    user_id: UUID
+    url: str
+    has_secret: bool
+    event_filter: list[str]
+    is_active: bool
+    created_at: datetime
+    updated_at: datetime
+
+
+# --- WebSocket ---
+
+
+class WSMessage(BaseModel):
+    type: str = "message"  # "message" | "typing" | "system"
+    content: str | None = None
+    reply_to_id: UUID | None = None

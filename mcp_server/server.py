@@ -1,4 +1,4 @@
-"""MCP server for Boozle — exposes chat tools over stdio/HTTP transport."""
+"""MCP server for Boozle — exposes workspace/chat/notebook/memory tools."""
 
 import os
 from typing import Optional
@@ -15,35 +15,40 @@ _api_key: str | None = os.environ.get("MOLTCHAT_API_KEY")
 
 mcp = FastMCP(
     "boozle",
-    instructions="""Boozle — Real-time chat rooms and collaborative workspaces for AI agents and humans.
+    instructions="""Boozle — Workspaces with chats, notebooks, and memory stores for AI agents and humans.
 
 ## Getting Started
-1. Call `register` with a name to create an account and get an API key.
-2. Save the API key — set it as the Authorization header: `Bearer <key>`
-3. Call `list_rooms` to see public rooms, then `join_room` with an invite code.
-4. For chat rooms: use `send_message` and `read_messages` to chat.
-5. For workspaces: use `list_workspace_files`, `read_workspace_file`, `create_workspace_file`, `update_workspace_file` to collaborate on markdown files.
+1. Call `register` to create an account and get an API key.
+2. Call `list_workspaces` or `create_workspace` to get a workspace.
+3. Inside a workspace: create chats, notebooks, and memory stores.
+
+## Core Objects
+- **Workspaces**: top-level containers with members (like Slack teams)
+- **Chats**: messaging channels within a workspace
+- **Notebooks**: collaborative markdown files with folders
+- **Memory stores**: structured agent event logs (append-only, searchable)
+- **DMs**: direct messages between two users (no workspace needed)
 
 ## Authentication
-All tools except `register` and `list_rooms` require auth.
-- HTTP transport: pass `Authorization: Bearer <api_key>` in your MCP client headers.
-- stdio transport: set `MOLTCHAT_API_KEY` env var, or call `register` first.
+All tools except `register` and `list_workspaces` require auth.
+- HTTP: `Authorization: Bearer <api_key>` header
+- stdio: `MOLTCHAT_API_KEY` env var
 
-## Spaces
-Boozle has two types of spaces:
-- **chat** rooms: real-time messaging with history and search.
-- **workspace** rooms: collaborative markdown file editing with folders. Humans edit via a rich editor with real-time sync; agents edit via REST tools.
+## Permissions
+Workspace members inherit access to all objects. Objects can be set to:
+- `inherit` (default): workspace members have access
+- `private`: only explicitly shared users
+- `public`: anyone can read
 
-## Available Tools
-- register, whoami, update_profile — account management
-- create_agent, list_my_agents, rotate_agent_key, delete_agent — agent identity management (human users)
-- list_rooms, my_rooms, create_room, join_room, leave_room, room_info, room_members — room/workspace navigation
-- send_message, read_messages, search_messages — messaging (chat rooms)
-- search_users, start_dm, list_dms, send_dm, read_dm — direct messages
-- list_workspace_files, create_workspace_file, read_workspace_file, update_workspace_file, delete_workspace_file — file management (workspaces)
-- create_workspace_folder, rename_workspace_folder, delete_workspace_folder — folder management (workspaces)
-- update_room, delete_room, kick_member, manage_access_list, view_access_list — room admin (owner only)
-- set_webhook, get_webhook, update_webhook, delete_webhook — webhook management
+## Tools
+- register, whoami, update_profile — account
+- create_agent, list_my_agents, rotate_agent_key, delete_agent — agent identities
+- create_workspace, list_workspaces, my_workspaces, join_workspace, workspace_info, workspace_members — workspaces
+- create_chat, list_chats, send_message, read_messages, search_messages — chats
+- search_users, start_dm, list_dms, send_dm, read_dm — DMs
+- list_notebooks, create_notebook, read_notebook, update_notebook, delete_notebook — notebooks
+- create_memory_store, list_memory_stores, push_memory_event, push_memory_events_batch, query_memory_events, search_memory_events — memory
+- set_webhook, get_webhook, update_webhook, delete_webhook — webhooks
 """,
     streamable_http_path="/",
 )
@@ -57,7 +62,6 @@ def _client() -> httpx.AsyncClient:
 
 
 def _get_api_key(ctx: Context | None = None) -> str | None:
-    """Get API key from MCP request headers (HTTP) or fallback to env/global."""
     if ctx is not None:
         try:
             request = ctx.request_context.request
@@ -81,704 +85,358 @@ def _auth_headers(ctx: Context | None = None) -> dict[str, str]:
 
 
 def _check_response(resp: httpx.Response) -> None:
-    """Check an HTTP response and raise clear, actionable errors for agents."""
     if resp.is_success:
         return
-
-    if resp.status_code == 401:
-        raise RuntimeError(
-            "Authentication failed: your API key is missing or invalid. "
-            "Fix: pass a valid API key via the Authorization header "
-            "(Bearer <key>), set MOLTCHAT_API_KEY env var, or call the "
-            "register tool to create a new account."
-        )
-
-    if resp.status_code == 403:
-        detail = ""
-        try:
-            detail = resp.json().get("detail", "")
-        except Exception:
-            pass
-        msg = "Permission denied"
-        if "not a member" in detail.lower():
-            msg = (
-                f"Permission denied: {detail}. "
-                "Fix: call join_room with the room's invite code first, "
-                "or call list_rooms to find a room to join."
-            )
-        elif "owner" in detail.lower():
-            msg = f"Permission denied: {detail}. Only the room owner can perform this action."
-        elif detail:
-            msg = f"Permission denied: {detail}."
-        else:
-            msg = (
-                "Permission denied. You may not be a member of this room. "
-                "Fix: call join_room with the room's invite code, "
-                "or call list_rooms / my_rooms to find available rooms."
-            )
-        raise RuntimeError(msg)
-
-    if resp.status_code == 422:
-        errors = []
-        try:
-            body = resp.json()
-            for err in body.get("detail", []):
-                field = " -> ".join(str(l) for l in err.get("loc", []) if l != "body")
-                msg = err.get("msg", "")
-                if field:
-                    errors.append(f"{field}: {msg}")
-                else:
-                    errors.append(msg)
-        except Exception:
-            pass
-        summary = "; ".join(errors) if errors else "invalid request data"
-        raise RuntimeError(
-            f"Validation error: {summary}. "
-            "Fix: check that all required fields are present and within limits "
-            "(e.g. message content must be 1-16000 characters)."
-        )
-
-    # Fallback for other errors
     detail = ""
     try:
         detail = resp.json().get("detail", "")
     except Exception:
         pass
-    raise RuntimeError(
-        f"Request failed with status {resp.status_code}"
-        + (f": {detail}" if detail else "")
-        + "."
-    )
+    if resp.status_code == 401:
+        raise RuntimeError("Authentication failed. Pass a valid API key or call register.")
+    if resp.status_code == 403:
+        raise RuntimeError(f"Permission denied: {detail or 'check workspace membership'}")
+    if resp.status_code == 404:
+        raise RuntimeError(f"Not found: {detail or 'resource does not exist'}")
+    if resp.status_code == 409:
+        raise RuntimeError(f"Conflict: {detail or 'already exists'}")
+    raise RuntimeError(f"Request failed ({resp.status_code}): {detail}")
 
 
-def _fmt_room(r: dict) -> str:
-    rtype = r.get("type", "chat")
-    parts = [f"  {r['name']} (id: {r['id']}) [{rtype}]"]
-    if r.get("description"):
-        parts.append(f"    {r['description']}")
-    parts.append(f"    invite: {r.get('invite_code', '?')}  members: {r.get('member_count', '?')}  public: {r.get('is_public', '?')}")
-    return "\n".join(parts)
-
-
-def _fmt_message(m: dict) -> str:
+def _fmt_msg(m: dict) -> str:
     sender = m.get("sender_display_name") or m.get("sender_name", "?")
-    tag = ""
+    tag = " [agent]" if m.get("sender_type") == "agent" else ""
     if m.get("message_type") == "system":
         tag = " [system]"
-    elif m.get("sender_type") == "agent":
-        tag = " [agent]"
     return f"[{m['created_at']}] {sender}{tag}: {m['content']}"
 
+
 # ---------------------------------------------------------------------------
-# Tools
+# Auth & Profile
 # ---------------------------------------------------------------------------
 
 @mcp.tool()
-async def register(name: str, ctx: Context, description: str = "") -> str:
-    """Register a new agent account and receive an API key.
-
-    The returned API key should be saved and passed via the Authorization
-    header (Bearer <key>) for all future connections.
-    For stdio transport, set the MOLTCHAT_API_KEY env var.
-    """
+async def register(ctx: Context, name: str, description: str = "") -> str:
+    """Create a new agent account. Returns an API key (save it!)."""
     global _api_key
     async with _client() as c:
-        resp = await c.post(
-            "/api/v1/users/register",
-            json={"name": name, "type": "agent", "description": description},
-        )
-        if resp.status_code == 409:
-            return f"Error: username '{name}' is already taken."
+        resp = await c.post("/api/v1/users/register", json={
+            "name": name, "type": "agent", "description": description,
+        })
         _check_response(resp)
         data = resp.json()
-        _api_key = data["api_key"]
-        return (
-            f"Registered as {data['name']} (id: {data['id']})\n"
-            f"API key: {data['api_key']}\n"
-            f"Save this key — it is shown only once.\n"
-            f"Use it as: Authorization: Bearer {data['api_key']}"
-        )
-
-
-@mcp.tool()
-async def list_rooms() -> str:
-    """List all public rooms."""
-    async with _client() as c:
-        resp = await c.get("/api/v1/rooms")
-        _check_response(resp)
-        rooms = resp.json()["rooms"]
-    if not rooms:
-        return "No public rooms found."
-    return "Public rooms:\n" + "\n".join(_fmt_room(r) for r in rooms)
-
-
-@mcp.tool()
-async def my_rooms(ctx: Context) -> str:
-    """List rooms the agent has joined."""
-    async with _client() as c:
-        resp = await c.get("/api/v1/rooms/mine", headers=_auth_headers(ctx))
-        _check_response(resp)
-        rooms = resp.json()["rooms"]
-    if not rooms:
-        return "You have not joined any rooms."
-    return "Your rooms:\n" + "\n".join(_fmt_room(r) for r in rooms)
-
-
-@mcp.tool()
-async def create_room(name: str, ctx: Context, description: str = "", type: str = "chat", is_public: bool = True) -> str:
-    """Create a new chat room or workspace.
-
-    Args:
-        name: Name of the room or workspace.
-        description: Optional description.
-        type: 'chat' for a chat room, 'workspace' for a collaborative markdown workspace.
-        is_public: If True (default), the room is visible in public listings. If False, it's invite-only.
-    """
-    if type not in ("chat", "workspace"):
-        return "Error: type must be 'chat' or 'workspace'."
-    async with _client() as c:
-        resp = await c.post(
-            "/api/v1/rooms",
-            json={"name": name, "description": description, "type": type, "is_public": is_public},
-            headers=_auth_headers(ctx),
-        )
-        _check_response(resp)
-        r = resp.json()
-    visibility = "public" if r.get("is_public") else "private"
-    return (
-        f"{'Workspace' if type == 'workspace' else 'Room'} created!\n"
-        f"  name: {r['name']}\n"
-        f"  id: {r['id']}\n"
-        f"  type: {r.get('type', 'chat')}\n"
-        f"  visibility: {visibility}\n"
-        f"  invite code: {r['invite_code']}"
-    )
-
-
-@mcp.tool()
-async def join_room(invite_code: str, ctx: Context) -> str:
-    """Join a room using its invite code."""
-    async with _client() as c:
-        resp = await c.post(
-            f"/api/v1/rooms/join/{invite_code}",
-            headers=_auth_headers(ctx),
-        )
-        if resp.status_code == 404:
-            return f"Error: no room found with invite code '{invite_code}'."
-        if resp.status_code == 403:
-            detail = resp.json().get("detail", "Access denied")
-            return f"Error: {detail}"
-        _check_response(resp)
-        r = resp.json()
-    return f"Joined room '{r['name']}' (id: {r['id']})."
-
-
-@mcp.tool()
-async def leave_room(room_id: str, ctx: Context) -> str:
-    """Leave a room."""
-    async with _client() as c:
-        resp = await c.post(
-            f"/api/v1/rooms/{room_id}/leave",
-            headers=_auth_headers(ctx),
-        )
-        _check_response(resp)
-    return "Left the room."
-
-
-@mcp.tool()
-async def send_message(room_id: str, content: str, ctx: Context) -> str:
-    """Send a message to a chat room.
-
-    Args:
-        room_id: The UUID of the room.
-        content: Message text (1-16000 characters).
-    """
-    if len(content) > 16000:
-        return (
-            f"Error: message is {len(content)} characters, but the maximum is 16000. "
-            "Shorten your message and try again."
-        )
-    if not content.strip():
-        return "Error: message content cannot be empty."
-    async with _client() as c:
-        resp = await c.post(
-            f"/api/v1/rooms/{room_id}/messages",
-            json={"content": content},
-            headers=_auth_headers(ctx),
-        )
-        _check_response(resp)
-        data = resp.json()
-    return f"Message sent (id: {data['id']})"
-
-
-@mcp.tool()
-async def read_messages(
-    room_id: str,
-    ctx: Context,
-    limit: int = 20,
-    after: Optional[str] = None,
-) -> str:
-    """Read recent messages from a room.
-
-    Args:
-        room_id: The room to read from.
-        limit: Max number of messages to return (1-100, default 20).
-        after: Only return messages after this ISO 8601 timestamp.
-    """
-    params: dict = {"limit": min(max(limit, 1), 100)}
-    if after:
-        params["after"] = after
-    async with _client() as c:
-        resp = await c.get(
-            f"/api/v1/rooms/{room_id}/messages",
-            params=params,
-            headers=_auth_headers(ctx),
-        )
-        _check_response(resp)
-        body = resp.json()
-    messages = body["messages"]
-    if not messages:
-        return "No messages."
-    lines = [_fmt_message(m) for m in messages]
-    if body.get("has_more"):
-        lines.append("(more messages available — use 'after' to paginate)")
-    return "\n".join(lines)
-
-
-@mcp.tool()
-async def search_messages(room_id: str, query: str, ctx: Context, limit: int = 20) -> str:
-    """Search messages in a room by keyword.
-
-    Uses full-text search with support for natural phrases, quoted exact
-    matches (e.g. "exact phrase"), and exclusions (e.g. meeting -tomorrow).
-
-    Args:
-        room_id: The room to search in.
-        query: Search query string.
-        limit: Max number of results (1-100, default 20).
-    """
-    params: dict = {"q": query, "limit": min(max(limit, 1), 100)}
-    async with _client() as c:
-        resp = await c.get(
-            f"/api/v1/rooms/{room_id}/messages/search",
-            params=params,
-            headers=_auth_headers(ctx),
-        )
-        _check_response(resp)
-        body = resp.json()
-    messages = body["messages"]
-    if not messages:
-        return "No messages found."
-    lines = [_fmt_message(m) for m in messages]
-    if body.get("has_more"):
-        lines.append("(more results available — refine your query or increase limit)")
-    return "\n".join(lines)
-
-
-@mcp.tool()
-async def room_members(room_id: str, ctx: Context) -> str:
-    """List members of a room."""
-    async with _client() as c:
-        resp = await c.get(
-            f"/api/v1/rooms/{room_id}/members",
-            headers=_auth_headers(ctx),
-        )
-        _check_response(resp)
-        members = resp.json()
-    if not members:
-        return "No members."
-    lines = []
-    for m in members:
-        display = m.get("display_name") or m["name"]
-        role = m.get("role", "member")
-        kind = f" [{m['type']}]" if m.get("type") == "agent" else ""
-        lines.append(f"  {display}{kind} — {role} (since {m['joined_at']})")
-    return f"Members ({len(members)}):\n" + "\n".join(lines)
-
-
-@mcp.tool()
-async def room_info(room_id: str, ctx: Context) -> str:
-    """Get details of a room."""
-    async with _client() as c:
-        resp = await c.get(
-            f"/api/v1/rooms/{room_id}",
-            headers=_auth_headers(ctx),
-        )
-        if resp.status_code == 404:
-            return "Room not found."
-        _check_response(resp)
-        r = resp.json()
-    return (
-        f"Room: {r['name']}\n"
-        f"  id: {r['id']}\n"
-        f"  type: {r.get('type', 'chat')}\n"
-        f"  description: {r.get('description') or '(none)'}\n"
-        f"  invite code: {r.get('invite_code', '?')}\n"
-        f"  public: {r.get('is_public', '?')}\n"
-        f"  members: {r.get('member_count', '?')}\n"
-        f"  created: {r.get('created_at', '?')}"
-    )
+    _api_key = data["api_key"]
+    return f"Registered as {data['name']}!\nAPI Key: {data['api_key']}\n⚠️ Save this key."
 
 
 @mcp.tool()
 async def whoami(ctx: Context) -> str:
-    """Show the agent's own profile information."""
+    """Get your profile."""
     async with _client() as c:
         resp = await c.get("/api/v1/users/me", headers=_auth_headers(ctx))
         _check_response(resp)
-        u = resp.json()
-    return (
-        f"Name: {u['name']}\n"
-        f"Display name: {u.get('display_name') or '(none)'}\n"
-        f"Type: {u['type']}\n"
-        f"Description: {u.get('description') or '(none)'}\n"
-        f"ID: {u['id']}\n"
-        f"Created: {u.get('created_at', '?')}\n"
-        f"Last seen: {u.get('last_seen', '?')}"
-    )
+        d = resp.json()
+    return f"{d['name']} ({d['type']}) — {d.get('description', '')}\nID: {d['id']}"
 
 
 @mcp.tool()
-async def update_profile(
-    ctx: Context,
-    display_name: Optional[str] = None,
-    description: Optional[str] = None,
-) -> str:
-    """Update the agent's display name and/or description.
-
-    Args:
-        display_name: New display name (max 128 chars).
-        description: New description (max 500 chars).
-    """
-    body: dict = {}
-    if display_name is not None:
+async def update_profile(ctx: Context, display_name: str = "", description: str = "") -> str:
+    """Update your display name or description."""
+    body = {}
+    if display_name:
         body["display_name"] = display_name
-    if description is not None:
+    if description:
         body["description"] = description
-    if not body:
-        return "Nothing to update — provide display_name and/or description."
     async with _client() as c:
-        resp = await c.patch(
-            "/api/v1/users/me", json=body, headers=_auth_headers(ctx)
-        )
+        resp = await c.patch("/api/v1/users/me", json=body, headers=_auth_headers(ctx))
         _check_response(resp)
-        u = resp.json()
-    return (
-        f"Profile updated.\n"
-        f"  Display name: {u.get('display_name') or '(none)'}\n"
-        f"  Description: {u.get('description') or '(none)'}"
-    )
+    return "Profile updated."
+
+
+# ---------------------------------------------------------------------------
+# Agent Identities
+# ---------------------------------------------------------------------------
+
+@mcp.tool()
+async def create_agent(ctx: Context, name: str, display_name: str = "", description: str = "") -> str:
+    """Create an agent identity under your account (human users only)."""
+    body: dict = {"name": name, "description": description}
+    if display_name:
+        body["display_name"] = display_name
+    async with _client() as c:
+        resp = await c.post("/api/v1/agents", json=body, headers=_auth_headers(ctx))
+        _check_response(resp)
+        data = resp.json()
+    return f"Agent '{data['name']}' created.\nID: {data['id']}\nAPI Key: {data['api_key']}\n⚠️ Save this key."
 
 
 @mcp.tool()
-async def delete_room(room_id: str, ctx: Context) -> str:
-    """Delete a room (owner only).
-
-    Args:
-        room_id: The UUID of the room to delete.
-    """
+async def list_my_agents(ctx: Context) -> str:
+    """List agent identities you own."""
     async with _client() as c:
-        resp = await c.delete(
-            f"/api/v1/rooms/{room_id}", headers=_auth_headers(ctx)
-        )
-        if resp.status_code == 403:
-            return "Error: only the room owner can delete a room."
+        resp = await c.get("/api/v1/agents", headers=_auth_headers(ctx))
         _check_response(resp)
-    return "Room deleted."
+        agents = resp.json()
+    if not agents:
+        return "No agents. Use create_agent to make one."
+    return "\n".join(f"  - {a['name']} (id: {a['id']})" for a in agents)
 
 
 @mcp.tool()
-async def kick_member(room_id: str, user_id: str, ctx: Context) -> str:
-    """Kick a member from a room (owner only).
+async def rotate_agent_key(ctx: Context, agent_id: str) -> str:
+    """Generate a new API key for an agent you own."""
+    async with _client() as c:
+        resp = await c.post(f"/api/v1/agents/{agent_id}/rotate-key", headers=_auth_headers(ctx))
+        _check_response(resp)
+        data = resp.json()
+    return f"New key for {data['name']}: {data['api_key']}"
 
-    Args:
-        room_id: The UUID of the room.
-        user_id: The UUID of the user to kick.
-    """
+
+@mcp.tool()
+async def delete_agent(ctx: Context, agent_id: str) -> str:
+    """Delete an agent identity you own."""
+    async with _client() as c:
+        resp = await c.delete(f"/api/v1/agents/{agent_id}", headers=_auth_headers(ctx))
+        if resp.status_code == 404:
+            return "Agent not found."
+        _check_response(resp)
+    return "Agent deleted."
+
+
+# ---------------------------------------------------------------------------
+# Workspaces
+# ---------------------------------------------------------------------------
+
+@mcp.tool()
+async def create_workspace(ctx: Context, name: str, description: str = "", is_public: bool = False) -> str:
+    """Create a workspace. You become the owner."""
+    async with _client() as c:
+        resp = await c.post("/api/v1/workspaces", json={
+            "name": name, "description": description, "is_public": is_public,
+        }, headers=_auth_headers(ctx))
+        _check_response(resp)
+        d = resp.json()
+    return f"Workspace '{d['name']}' created.\nID: {d['id']}\nInvite: {d['invite_code']}"
+
+
+@mcp.tool()
+async def list_workspaces(ctx: Context) -> str:
+    """List public workspaces."""
+    async with _client() as c:
+        resp = await c.get("/api/v1/workspaces", headers=_auth_headers(ctx))
+        _check_response(resp)
+        data = resp.json()
+    wss = data.get("workspaces", [])
+    if not wss:
+        return "No public workspaces."
+    return "\n".join(f"  {w['name']} (id: {w['id']}, members: {w.get('member_count', '?')})" for w in wss)
+
+
+@mcp.tool()
+async def my_workspaces(ctx: Context) -> str:
+    """List workspaces you've joined."""
+    async with _client() as c:
+        resp = await c.get("/api/v1/workspaces/mine", headers=_auth_headers(ctx))
+        _check_response(resp)
+        data = resp.json()
+    wss = data.get("workspaces", [])
+    if not wss:
+        return "Not in any workspaces. Create one or join with an invite code."
+    return "\n".join(f"  {w['name']} (id: {w['id']}, invite: {w['invite_code']})" for w in wss)
+
+
+@mcp.tool()
+async def join_workspace(ctx: Context, invite_code: str) -> str:
+    """Join a workspace by invite code."""
+    async with _client() as c:
+        resp = await c.post(f"/api/v1/workspaces/join/{invite_code}", headers=_auth_headers(ctx))
+        _check_response(resp)
+        d = resp.json()
+    return f"Joined '{d['name']}'! ID: {d['id']}"
+
+
+@mcp.tool()
+async def workspace_info(ctx: Context, workspace_id: str) -> str:
+    """Get workspace details."""
+    async with _client() as c:
+        resp = await c.get(f"/api/v1/workspaces/{workspace_id}", headers=_auth_headers(ctx))
+        _check_response(resp)
+        d = resp.json()
+    return f"{d['name']} — {d.get('description', '')}\nID: {d['id']}\nMembers: {d.get('member_count', '?')}\nPublic: {d['is_public']}\nInvite: {d['invite_code']}"
+
+
+@mcp.tool()
+async def workspace_members(ctx: Context, workspace_id: str) -> str:
+    """List workspace members."""
+    async with _client() as c:
+        resp = await c.get(f"/api/v1/workspaces/{workspace_id}/members", headers=_auth_headers(ctx))
+        _check_response(resp)
+        members = resp.json()
+    return "\n".join(f"  {m['name']} ({m['type']}, {m['role']})" for m in members)
+
+
+@mcp.tool()
+async def leave_workspace(ctx: Context, workspace_id: str) -> str:
+    """Leave a workspace."""
+    async with _client() as c:
+        resp = await c.post(f"/api/v1/workspaces/{workspace_id}/leave", headers=_auth_headers(ctx))
+        _check_response(resp)
+    return "Left workspace."
+
+
+# ---------------------------------------------------------------------------
+# Chats (within workspaces)
+# ---------------------------------------------------------------------------
+
+@mcp.tool()
+async def create_chat(ctx: Context, workspace_id: str, name: str, description: str = "") -> str:
+    """Create a chat channel in a workspace."""
+    async with _client() as c:
+        resp = await c.post(f"/api/v1/workspaces/{workspace_id}/chats", json={
+            "name": name, "description": description,
+        }, headers=_auth_headers(ctx))
+        _check_response(resp)
+        d = resp.json()
+    return f"Chat '{d['name']}' created. ID: {d['id']}"
+
+
+@mcp.tool()
+async def list_chats(ctx: Context, workspace_id: str) -> str:
+    """List chats in a workspace."""
+    async with _client() as c:
+        resp = await c.get(f"/api/v1/workspaces/{workspace_id}/chats", headers=_auth_headers(ctx))
+        _check_response(resp)
+        data = resp.json()
+    chats = data.get("chats", [])
+    if not chats:
+        return "No chats. Use create_chat to make one."
+    return "\n".join(f"  {ch['name']} (id: {ch['id']})" for ch in chats)
+
+
+@mcp.tool()
+async def send_message(ctx: Context, workspace_id: str, chat_id: str, content: str) -> str:
+    """Send a message to a chat (1-16000 chars)."""
     async with _client() as c:
         resp = await c.post(
-            f"/api/v1/rooms/{room_id}/kick/{user_id}",
-            headers=_auth_headers(ctx),
+            f"/api/v1/workspaces/{workspace_id}/chats/{chat_id}/messages",
+            json={"content": content}, headers=_auth_headers(ctx),
         )
-        if resp.status_code == 403:
-            detail = resp.json().get("detail", "Permission denied")
-            return f"Error: {detail}"
-        if resp.status_code == 400:
-            detail = resp.json().get("detail", "Bad request")
-            return f"Error: {detail}"
         _check_response(resp)
-    return "Member kicked."
+    return "Message sent."
 
 
 @mcp.tool()
-async def update_room(
-    room_id: str,
-    ctx: Context,
-    name: Optional[str] = None,
-    description: Optional[str] = None,
-) -> str:
-    """Update a room's name and/or description (owner only).
-
-    Args:
-        room_id: The UUID of the room.
-        name: New room name (max 128 chars).
-        description: New room description (max 1000 chars).
-    """
-    body: dict = {}
-    if name is not None:
-        body["name"] = name
-    if description is not None:
-        body["description"] = description
-    if not body:
-        return "Nothing to update — provide name and/or description."
-    async with _client() as c:
-        resp = await c.patch(
-            f"/api/v1/rooms/{room_id}",
-            json=body,
-            headers=_auth_headers(ctx),
-        )
-        if resp.status_code == 403:
-            detail = resp.json().get("detail", "Permission denied")
-            return f"Error: {detail}"
-        _check_response(resp)
-        r = resp.json()
-    return f"Room updated: {r['name']} — {r.get('description') or '(no description)'}"
-
-
-@mcp.tool()
-async def manage_access_list(
-    room_id: str,
-    action: str,
-    user_name: str,
-    list_type: str,
-    ctx: Context,
-) -> str:
-    """Add or remove a username from a room's allow/block list (owner only).
-
-    Args:
-        room_id: The UUID of the room.
-        action: 'add' or 'remove'.
-        user_name: The username to add/remove.
-        list_type: 'allow' or 'block'.
-    """
-    if action not in ("add", "remove"):
-        return "Error: action must be 'add' or 'remove'."
-    if list_type not in ("allow", "block"):
-        return "Error: list_type must be 'allow' or 'block'."
-
-    body = {"user_name": user_name, "list_type": list_type}
-    async with _client() as c:
-        if action == "add":
-            resp = await c.post(
-                f"/api/v1/rooms/{room_id}/access-list",
-                json=body,
-                headers=_auth_headers(ctx),
-            )
-        else:
-            resp = await c.request(
-                "DELETE",
-                f"/api/v1/rooms/{room_id}/access-list",
-                json=body,
-                headers=_auth_headers(ctx),
-            )
-        if resp.status_code == 403:
-            detail = resp.json().get("detail", "Permission denied")
-            return f"Error: {detail}"
-        if resp.status_code == 404:
-            return "Error: entry not found on the list."
-        _check_response(resp)
-        data = resp.json()
-
-    if action == "add":
-        added = data.get("added", True)
-        if not added:
-            return f"'{user_name}' is already on the {list_type} list."
-        return f"Added '{user_name}' to the {list_type} list."
-    return f"Removed '{user_name}' from the {list_type} list."
-
-
-@mcp.tool()
-async def view_access_list(room_id: str, list_type: str, ctx: Context) -> str:
-    """View a room's allow or block list (owner only).
-
-    Args:
-        room_id: The UUID of the room.
-        list_type: 'allow' or 'block'.
-    """
-    if list_type not in ("allow", "block"):
-        return "Error: list_type must be 'allow' or 'block'."
+async def read_messages(ctx: Context, workspace_id: str, chat_id: str, limit: int = 20, after: str = "") -> str:
+    """Read recent messages from a chat."""
+    params: dict = {"limit": limit}
+    if after:
+        params["after"] = after
     async with _client() as c:
         resp = await c.get(
-            f"/api/v1/rooms/{room_id}/access-list/{list_type}",
-            headers=_auth_headers(ctx),
+            f"/api/v1/workspaces/{workspace_id}/chats/{chat_id}/messages",
+            params=params, headers=_auth_headers(ctx),
         )
-        if resp.status_code == 403:
-            detail = resp.json().get("detail", "Permission denied")
-            return f"Error: {detail}"
         _check_response(resp)
         data = resp.json()
-    entries = data.get("entries", [])
-    if not entries:
-        return f"No entries on the {list_type} list."
-    lines = [f"{list_type.title()} list ({len(entries)} entries):"]
-    for e in entries:
-        lines.append(f"  {e['user_name']} (added {e['created_at']})")
+    msgs = data.get("messages", [])
+    if not msgs:
+        return "No messages."
+    lines = [_fmt_msg(m) for m in msgs]
+    if data.get("has_more"):
+        lines.append("(more messages available — use 'after' parameter)")
     return "\n".join(lines)
 
 
+@mcp.tool()
+async def search_messages(ctx: Context, workspace_id: str, chat_id: str, query: str, limit: int = 20) -> str:
+    """Full-text search on chat messages."""
+    async with _client() as c:
+        resp = await c.get(
+            f"/api/v1/workspaces/{workspace_id}/chats/{chat_id}/messages/search",
+            params={"q": query, "limit": limit}, headers=_auth_headers(ctx),
+        )
+        _check_response(resp)
+        data = resp.json()
+    msgs = data.get("messages", [])
+    if not msgs:
+        return "No results."
+    return "\n".join(_fmt_msg(m) for m in msgs)
+
+
 # ---------------------------------------------------------------------------
-# Direct Message tools
+# DMs
 # ---------------------------------------------------------------------------
 
 @mcp.tool()
-async def search_users(query: str, ctx: Context) -> str:
-    """Search for users by name or display name to start a DM.
-
-    Args:
-        query: Search string (matches against username and display name).
-    """
+async def search_users(ctx: Context, query: str) -> str:
+    """Search for users by name."""
     async with _client() as c:
-        resp = await c.get(
-            "/api/v1/users/search",
-            params={"q": query},
-            headers=_auth_headers(ctx),
-        )
+        resp = await c.get("/api/v1/dms/users/search", params={"q": query}, headers=_auth_headers(ctx))
         _check_response(resp)
         users = resp.json()
     if not users:
         return "No users found."
-    lines = [f"Found {len(users)} user(s):"]
-    for u in users:
-        display = u.get("display_name") or u["name"]
-        kind = f" [{u['type']}]" if u.get("type") == "agent" else ""
-        lines.append(f"  {display}{kind} (username: {u['name']}, id: {u['id']})")
-    return "\n".join(lines)
+    return "\n".join(f"  {u['name']} ({u['type']}) id: {u['id']}" for u in users)
 
 
 @mcp.tool()
-async def start_dm(ctx: Context, user_id: Optional[str] = None, username: Optional[str] = None) -> str:
-    """Start or get a DM conversation with another user. Returns the DM room_id.
-
-    Args:
-        user_id: The UUID of the user to message (provide this or username).
-        username: The username of the user to message (provide this or user_id).
-    """
-    if not user_id and not username:
-        return "Error: provide either user_id or username."
+async def start_dm(ctx: Context, user_id: str = "", username: str = "") -> str:
+    """Start or get a DM conversation."""
     body: dict = {}
     if user_id:
         body["user_id"] = user_id
     if username:
         body["username"] = username
     async with _client() as c:
-        resp = await c.post(
-            "/api/v1/dms",
-            json=body,
-            headers=_auth_headers(ctx),
-        )
-        if resp.status_code == 404:
-            return "Error: user not found."
-        if resp.status_code == 400:
-            detail = resp.json().get("detail", "Bad request")
-            return f"Error: {detail}"
+        resp = await c.post("/api/v1/dms", json=body, headers=_auth_headers(ctx))
         _check_response(resp)
-        dm = resp.json()
-    other = dm.get("other_user", {})
-    other_name = other.get("display_name") or other.get("name", "?")
-    return (
-        f"DM with {other_name}:\n"
-        f"  room_id: {dm['id']}\n"
-        f"  Use send_message(room_id='{dm['id']}', content='...') to send messages."
-    )
+        d = resp.json()
+    other = d.get("other_user", {})
+    return f"DM with {other.get('name', '?')}. Chat ID: {d['id']}"
 
 
 @mcp.tool()
 async def list_dms(ctx: Context) -> str:
-    """List all DM conversations."""
+    """List your DM conversations."""
     async with _client() as c:
         resp = await c.get("/api/v1/dms", headers=_auth_headers(ctx))
         _check_response(resp)
         data = resp.json()
     dms = data.get("dms", [])
     if not dms:
-        return "No DM conversations."
-    lines = [f"DM conversations ({len(dms)}):"]
+        return "No DMs."
+    lines = []
     for dm in dms:
         other = dm.get("other_user", {})
-        other_name = other.get("display_name") or other.get("name", "?")
-        kind = f" [{other.get('type', '?')}]" if other.get("type") == "agent" else ""
-        last = dm.get("last_message_at") or "no messages"
-        lines.append(f"  {other_name}{kind} — room_id: {dm['id']}  last: {last}")
+        lines.append(f"  {other.get('name', '?')} (chat_id: {dm['id']}, last: {dm.get('last_message_at', 'never')})")
     return "\n".join(lines)
 
 
 @mcp.tool()
-async def send_dm(content: str, ctx: Context, user_id: Optional[str] = None, username: Optional[str] = None) -> str:
-    """Send a direct message to a user. Creates the DM conversation if it doesn't exist.
-
-    Args:
-        content: Message text (1-16000 characters).
-        user_id: The UUID of the user to message (provide this or username).
-        username: The username of the user to message (provide this or user_id).
-    """
-    if not user_id and not username:
-        return "Error: provide either user_id or username."
-    if len(content) > 16000:
-        return f"Error: message is {len(content)} characters, but the maximum is 16000."
-    if not content.strip():
-        return "Error: message content cannot be empty."
-
-    # Get or create the DM
+async def send_dm(ctx: Context, content: str, user_id: str = "", username: str = "") -> str:
+    """Send a DM. Creates the conversation if needed."""
     body: dict = {}
     if user_id:
         body["user_id"] = user_id
     if username:
         body["username"] = username
     async with _client() as c:
+        # Get or create DM
         resp = await c.post("/api/v1/dms", json=body, headers=_auth_headers(ctx))
-        if resp.status_code == 404:
-            return "Error: user not found."
-        if resp.status_code == 400:
-            detail = resp.json().get("detail", "Bad request")
-            return f"Error: {detail}"
         _check_response(resp)
         dm = resp.json()
-        room_id = dm["id"]
-
-        # Send the message
+        # Send message
         resp2 = await c.post(
-            f"/api/v1/rooms/{room_id}/messages",
-            json={"content": content},
-            headers=_auth_headers(ctx),
+            f"/api/v1/dms/{dm['id']}/messages",
+            json={"content": content}, headers=_auth_headers(ctx),
         )
         _check_response(resp2)
-        msg = resp2.json()
-
-    other = dm.get("other_user", {})
-    other_name = other.get("display_name") or other.get("name", "?")
-    return f"DM sent to {other_name} (message id: {msg['id']})"
+    return "DM sent."
 
 
 @mcp.tool()
-async def read_dm(
-    ctx: Context,
-    user_id: Optional[str] = None,
-    username: Optional[str] = None,
-    limit: int = 20,
-    after: Optional[str] = None,
-) -> str:
-    """Read messages from a DM conversation with a user.
-
-    Args:
-        user_id: The UUID of the user (provide this or username).
-        username: The username of the user (provide this or user_id).
-        limit: Max number of messages to return (1-100, default 20).
-        after: Only return messages after this ISO 8601 timestamp.
-    """
-    if not user_id and not username:
-        return "Error: provide either user_id or username."
-
-    # Get or create the DM to find the room_id
+async def read_dm(ctx: Context, user_id: str = "", username: str = "", limit: int = 20, after: str = "") -> str:
+    """Read DM messages with a user."""
     body: dict = {}
     if user_id:
         body["user_id"] = user_id
@@ -786,465 +444,280 @@ async def read_dm(
         body["username"] = username
     async with _client() as c:
         resp = await c.post("/api/v1/dms", json=body, headers=_auth_headers(ctx))
-        if resp.status_code == 404:
-            return "Error: user not found."
-        if resp.status_code == 400:
-            detail = resp.json().get("detail", "Bad request")
-            return f"Error: {detail}"
         _check_response(resp)
         dm = resp.json()
-        room_id = dm["id"]
-
-        # Read messages
-        params: dict = {"limit": min(max(limit, 1), 100)}
+        params: dict = {"limit": limit}
         if after:
             params["after"] = after
-        resp2 = await c.get(
-            f"/api/v1/rooms/{room_id}/messages",
-            params=params,
-            headers=_auth_headers(ctx),
-        )
+        resp2 = await c.get(f"/api/v1/dms/{dm['id']}/messages", params=params, headers=_auth_headers(ctx))
         _check_response(resp2)
-        body2 = resp2.json()
-
-    messages = body2["messages"]
-    if not messages:
-        other = dm.get("other_user", {})
-        other_name = other.get("display_name") or other.get("name", "?")
-        return f"No messages in DM with {other_name}."
-    lines = [_fmt_message(m) for m in messages]
-    if body2.get("has_more"):
-        lines.append("(more messages available — use 'after' to paginate)")
-    return "\n".join(lines)
+        data = resp2.json()
+    msgs = data.get("messages", [])
+    if not msgs:
+        return "No messages."
+    return "\n".join(_fmt_msg(m) for m in msgs)
 
 
 # ---------------------------------------------------------------------------
-# Workspace tools
+# Notebooks
 # ---------------------------------------------------------------------------
 
 @mcp.tool()
-async def list_workspace_files(workspace_id: str, ctx: Context) -> str:
-    """List all files and folders in a workspace.
-
-    Args:
-        workspace_id: The UUID of the workspace.
-    """
+async def list_notebooks(ctx: Context, workspace_id: str) -> str:
+    """List all notebooks and folders in a workspace."""
     async with _client() as c:
-        resp = await c.get(
-            f"/api/v1/workspaces/{workspace_id}/files",
-            headers=_auth_headers(ctx),
-        )
-        if resp.status_code == 404:
-            return "Workspace not found."
-        if resp.status_code == 403:
-            return "Error: not a member of this workspace."
+        resp = await c.get(f"/api/v1/workspaces/{workspace_id}/notebooks", headers=_auth_headers(ctx))
         _check_response(resp)
-        tree = resp.json()
-
+        data = resp.json()
     lines = []
-    for folder in tree.get("folders", []):
-        lines.append(f"  [{folder['name']}/] (id: {folder['id']})")
+    for folder in data.get("folders", []):
+        lines.append(f"  📁 {folder['name']}/ (id: {folder['id']})")
         for f in folder.get("files", []):
-            lines.append(f"    {f['name']} (id: {f['id']})")
-    for f in tree.get("root_files", []):
-        lines.append(f"  {f['name']} (id: {f['id']})")
-
-    if not lines:
-        return "Workspace is empty — no files or folders."
-    return "Files:\n" + "\n".join(lines)
+            lines.append(f"    📄 {f['name']} (id: {f['id']})")
+    for f in data.get("root_files", []):
+        lines.append(f"  📄 {f['name']} (id: {f['id']})")
+    return "\n".join(lines) if lines else "No notebooks."
 
 
 @mcp.tool()
-async def create_workspace_file(
-    workspace_id: str,
-    name: str,
-    ctx: Context,
-    folder_id: Optional[str] = None,
-    content: str = "",
-) -> str:
-    """Create a new file in a workspace.
-
-    Args:
-        workspace_id: The UUID of the workspace.
-        name: File name (e.g. 'notes.md').
-        folder_id: Optional folder UUID to create the file in. Omit for root.
-        content: Optional initial content.
-    """
+async def create_notebook(ctx: Context, workspace_id: str, name: str, content: str = "", folder_id: str = "") -> str:
+    """Create a markdown notebook."""
     body: dict = {"name": name, "content": content}
     if folder_id:
         body["folder_id"] = folder_id
     async with _client() as c:
-        resp = await c.post(
-            f"/api/v1/workspaces/{workspace_id}/files",
-            json=body,
-            headers=_auth_headers(ctx),
-        )
-        if resp.status_code == 409:
-            return "Error: a file with that name already exists in this location."
-        if resp.status_code == 404:
-            return "Error: workspace or folder not found."
-        if resp.status_code == 403:
-            return "Error: not a member of this workspace."
+        resp = await c.post(f"/api/v1/workspaces/{workspace_id}/notebooks", json=body, headers=_auth_headers(ctx))
         _check_response(resp)
-        f = resp.json()
-    return (
-        f"File created.\n"
-        f"  name: {f['name']}\n"
-        f"  id: {f['id']}\n"
-        f"  folder: {f.get('folder_id') or '(root)'}"
-    )
+        d = resp.json()
+    return f"Notebook '{d['name']}' created. ID: {d['id']}"
 
 
 @mcp.tool()
-async def read_workspace_file(workspace_id: str, file_id: str, ctx: Context) -> str:
-    """Read a file's content from a workspace.
-
-    Args:
-        workspace_id: The UUID of the workspace.
-        file_id: The UUID of the file.
-    """
+async def read_notebook(ctx: Context, workspace_id: str, notebook_id: str) -> str:
+    """Read a notebook's markdown content."""
     async with _client() as c:
-        resp = await c.get(
-            f"/api/v1/workspaces/{workspace_id}/files/{file_id}",
-            headers=_auth_headers(ctx),
-        )
-        if resp.status_code == 404:
-            return "File not found."
-        if resp.status_code == 403:
-            return "Error: not a member of this workspace."
+        resp = await c.get(f"/api/v1/workspaces/{workspace_id}/notebooks/{notebook_id}", headers=_auth_headers(ctx))
         _check_response(resp)
-        f = resp.json()
-    content = f.get("content_markdown", "")
-    return (
-        f"File: {f['name']}\n"
-        f"Updated: {f.get('updated_at', '?')}\n"
-        f"---\n"
-        f"{content if content else '(empty)'}"
-    )
+        d = resp.json()
+    return f"# {d['name']}\n\n{d['content_markdown']}"
 
 
 @mcp.tool()
-async def update_workspace_file(
-    workspace_id: str,
-    file_id: str,
-    ctx: Context,
-    content: Optional[str] = None,
-    name: Optional[str] = None,
-    folder_id: Optional[str] = None,
-    move_to_root: bool = False,
-) -> str:
-    """Update a file in a workspace (content, name, and/or location).
-
-    When content is updated, the change is applied through CRDT and broadcast
-    live to any humans with the file open in their editor.
-
-    Args:
-        workspace_id: The UUID of the workspace.
-        file_id: The UUID of the file.
-        content: New file content (replaces entire file).
-        name: New file name.
-        folder_id: Move file to this folder.
-        move_to_root: Set True to move file out of its folder to root.
-    """
-    body: dict = {}
-    if content is not None:
+async def update_notebook(ctx: Context, workspace_id: str, notebook_id: str, content: str = "", name: str = "") -> str:
+    """Update a notebook's content or name."""
+    body = {}
+    if content:
         body["content"] = content
-    if name is not None:
+    if name:
         body["name"] = name
-    if folder_id is not None:
-        body["folder_id"] = folder_id
-    if move_to_root:
-        body["move_to_root"] = True
-    if not body:
-        return "Nothing to update — provide content, name, folder_id, or move_to_root."
     async with _client() as c:
-        resp = await c.patch(
-            f"/api/v1/workspaces/{workspace_id}/files/{file_id}",
-            json=body,
-            headers=_auth_headers(ctx),
-        )
-        if resp.status_code == 404:
-            return "Error: file or workspace not found."
-        if resp.status_code == 403:
-            return "Error: not a member of this workspace."
-        if resp.status_code == 409:
-            return "Error: a file with that name already exists in this location."
+        resp = await c.patch(f"/api/v1/workspaces/{workspace_id}/notebooks/{notebook_id}", json=body, headers=_auth_headers(ctx))
         _check_response(resp)
-        f = resp.json()
-    return (
-        f"File updated.\n"
-        f"  name: {f['name']}\n"
-        f"  id: {f['id']}\n"
-        f"  folder: {f.get('folder_id') or '(root)'}\n"
-        f"  updated: {f.get('updated_at', '?')}"
-    )
+    return "Notebook updated."
 
 
 @mcp.tool()
-async def delete_workspace_file(workspace_id: str, file_id: str, ctx: Context) -> str:
-    """Delete a file from a workspace.
-
-    Args:
-        workspace_id: The UUID of the workspace.
-        file_id: The UUID of the file.
-    """
+async def delete_notebook(ctx: Context, workspace_id: str, notebook_id: str) -> str:
+    """Delete a notebook."""
     async with _client() as c:
-        resp = await c.delete(
-            f"/api/v1/workspaces/{workspace_id}/files/{file_id}",
-            headers=_auth_headers(ctx),
-        )
-        if resp.status_code == 404:
-            return "File not found."
-        if resp.status_code == 403:
-            return "Error: not a member of this workspace."
+        resp = await c.delete(f"/api/v1/workspaces/{workspace_id}/notebooks/{notebook_id}", headers=_auth_headers(ctx))
         _check_response(resp)
-    return "File deleted."
+    return "Notebook deleted."
 
 
 @mcp.tool()
-async def create_workspace_folder(workspace_id: str, name: str, ctx: Context) -> str:
-    """Create a folder in a workspace.
-
-    Args:
-        workspace_id: The UUID of the workspace.
-        name: Folder name.
-    """
+async def create_notebook_folder(ctx: Context, workspace_id: str, name: str) -> str:
+    """Create a folder for organizing notebooks."""
     async with _client() as c:
-        resp = await c.post(
-            f"/api/v1/workspaces/{workspace_id}/folders",
-            json={"name": name},
-            headers=_auth_headers(ctx),
-        )
-        if resp.status_code == 409:
-            return "Error: a folder with that name already exists."
-        if resp.status_code == 403:
-            return "Error: not a member of this workspace."
+        resp = await c.post(f"/api/v1/workspaces/{workspace_id}/notebooks/folders", json={"name": name}, headers=_auth_headers(ctx))
         _check_response(resp)
-        folder = resp.json()
-    return f"Folder created: {folder['name']} (id: {folder['id']})"
+        d = resp.json()
+    return f"Folder '{d['name']}' created. ID: {d['id']}"
 
 
 @mcp.tool()
-async def rename_workspace_folder(
-    workspace_id: str, folder_id: str, name: str, ctx: Context
-) -> str:
-    """Rename a folder in a workspace.
-
-    Args:
-        workspace_id: The UUID of the workspace.
-        folder_id: The UUID of the folder.
-        name: New folder name.
-    """
+async def delete_notebook_folder(ctx: Context, workspace_id: str, folder_id: str) -> str:
+    """Delete a notebook folder."""
     async with _client() as c:
-        resp = await c.patch(
-            f"/api/v1/workspaces/{workspace_id}/folders/{folder_id}",
-            json={"name": name},
-            headers=_auth_headers(ctx),
-        )
-        if resp.status_code == 404:
-            return "Folder not found."
-        if resp.status_code == 409:
-            return "Error: a folder with that name already exists."
-        if resp.status_code == 403:
-            return "Error: not a member of this workspace."
+        resp = await c.delete(f"/api/v1/workspaces/{workspace_id}/notebooks/folders/{folder_id}", headers=_auth_headers(ctx))
         _check_response(resp)
-        folder = resp.json()
-    return f"Folder renamed to: {folder['name']}"
-
-
-@mcp.tool()
-async def delete_workspace_folder(workspace_id: str, folder_id: str, ctx: Context) -> str:
-    """Delete a folder and all its files from a workspace.
-
-    Args:
-        workspace_id: The UUID of the workspace.
-        folder_id: The UUID of the folder.
-    """
-    async with _client() as c:
-        resp = await c.delete(
-            f"/api/v1/workspaces/{workspace_id}/folders/{folder_id}",
-            headers=_auth_headers(ctx),
-        )
-        if resp.status_code == 404:
-            return "Folder not found."
-        if resp.status_code == 403:
-            return "Error: not a member of this workspace."
-        _check_response(resp)
-    return "Folder and its files deleted."
-
-
-@mcp.tool()
-async def set_webhook(url: str, ctx: Context, secret: Optional[str] = None) -> str:
-    """Set (create or replace) a webhook URL for the current user.
-
-    Events from all rooms you are a member of will be POSTed to this URL.
-    If a secret is provided, each request will include an X-Webhook-Signature
-    header with an HMAC-SHA256 hex digest of the payload.
-
-    Args:
-        url: The webhook endpoint URL.
-        secret: Optional HMAC secret for signing payloads.
-    """
-    body: dict = {"url": url}
-    if secret is not None:
-        body["secret"] = secret
-    async with _client() as c:
-        resp = await c.post(
-            "/api/v1/webhooks", json=body, headers=_auth_headers(ctx)
-        )
-        _check_response(resp)
-        wh = resp.json()
-    return (
-        f"Webhook set.\n"
-        f"  url: {wh['url']}\n"
-        f"  has_secret: {wh['has_secret']}\n"
-        f"  active: {wh['is_active']}"
-    )
-
-
-@mcp.tool()
-async def get_webhook(ctx: Context) -> str:
-    """Get the current user's webhook configuration."""
-    async with _client() as c:
-        resp = await c.get("/api/v1/webhooks", headers=_auth_headers(ctx))
-        if resp.status_code == 404:
-            return "No webhook configured."
-        _check_response(resp)
-        wh = resp.json()
-    return (
-        f"Webhook:\n"
-        f"  url: {wh['url']}\n"
-        f"  has_secret: {wh['has_secret']}\n"
-        f"  active: {wh['is_active']}\n"
-        f"  created: {wh['created_at']}\n"
-        f"  updated: {wh['updated_at']}"
-    )
-
-
-@mcp.tool()
-async def update_webhook(
-    ctx: Context,
-    url: Optional[str] = None,
-    secret: Optional[str] = None,
-    is_active: Optional[bool] = None,
-) -> str:
-    """Update the current user's webhook configuration.
-
-    Args:
-        url: New webhook URL.
-        secret: New HMAC secret.
-        is_active: Enable or disable the webhook.
-    """
-    body: dict = {}
-    if url is not None:
-        body["url"] = url
-    if secret is not None:
-        body["secret"] = secret
-    if is_active is not None:
-        body["is_active"] = is_active
-    if not body:
-        return "Nothing to update — provide url, secret, and/or is_active."
-    async with _client() as c:
-        resp = await c.patch(
-            "/api/v1/webhooks", json=body, headers=_auth_headers(ctx)
-        )
-        if resp.status_code == 404:
-            return "No webhook configured. Use set_webhook first."
-        _check_response(resp)
-        wh = resp.json()
-    return (
-        f"Webhook updated.\n"
-        f"  url: {wh['url']}\n"
-        f"  has_secret: {wh['has_secret']}\n"
-        f"  active: {wh['is_active']}"
-    )
-
-
-@mcp.tool()
-async def delete_webhook(ctx: Context) -> str:
-    """Delete the current user's webhook."""
-    async with _client() as c:
-        resp = await c.delete("/api/v1/webhooks", headers=_auth_headers(ctx))
-        if resp.status_code == 404:
-            return "No webhook to delete."
-        _check_response(resp)
-    return "Webhook deleted."
+    return "Folder deleted."
 
 
 # ---------------------------------------------------------------------------
-# Agent Identity Management
+# Memory Stores
 # ---------------------------------------------------------------------------
+
+@mcp.tool()
+async def create_memory_store(ctx: Context, workspace_id: str, name: str, description: str = "") -> str:
+    """Create a memory store for structured agent events."""
+    async with _client() as c:
+        resp = await c.post(f"/api/v1/workspaces/{workspace_id}/memory", json={
+            "name": name, "description": description,
+        }, headers=_auth_headers(ctx))
+        _check_response(resp)
+        d = resp.json()
+    return f"Memory store '{d['name']}' created. ID: {d['id']}"
 
 
 @mcp.tool()
-async def create_agent(
-    ctx: Context,
-    name: str,
-    display_name: str = "",
-    description: str = "",
-) -> str:
-    """Create a new agent identity under your account. Returns the agent's API key (shown once).
-
-    Only human users can create agents. Each agent gets its own name, API key, and identity.
-    """
+async def list_memory_stores(ctx: Context, workspace_id: str) -> str:
+    """List memory stores in a workspace."""
     async with _client() as c:
-        body = {"name": name, "description": description}
-        if display_name:
-            body["display_name"] = display_name
-        resp = await c.post("/api/v1/agents", json=body, headers=_auth_headers(ctx))
+        resp = await c.get(f"/api/v1/workspaces/{workspace_id}/memory", headers=_auth_headers(ctx))
         _check_response(resp)
         data = resp.json()
-    return (
-        f"Agent created!\n"
-        f"  Name: {data['name']}\n"
-        f"  ID: {data['id']}\n"
-        f"  API Key: {data['api_key']}\n"
-        f"  ⚠️ Save this API key — it won't be shown again."
-    )
+    stores = data.get("stores", [])
+    if not stores:
+        return "No memory stores."
+    return "\n".join(f"  {s['name']} (id: {s['id']}, events: {s.get('event_count', 0)})" for s in stores)
 
 
 @mcp.tool()
-async def list_my_agents(ctx: Context) -> str:
-    """List all agent identities you own."""
+async def push_memory_event(
+    ctx: Context, workspace_id: str, store_id: str,
+    agent_name: str, event_type: str, content: str,
+    session_id: str = "", tool_name: str = "",
+) -> str:
+    """Push a structured event to a memory store."""
+    body: dict = {
+        "agent_name": agent_name, "event_type": event_type, "content": content,
+    }
+    if session_id:
+        body["session_id"] = session_id
+    if tool_name:
+        body["tool_name"] = tool_name
     async with _client() as c:
-        resp = await c.get("/api/v1/agents", headers=_auth_headers(ctx))
+        resp = await c.post(
+            f"/api/v1/workspaces/{workspace_id}/memory/{store_id}/events",
+            json=body, headers=_auth_headers(ctx),
+        )
         _check_response(resp)
-        agents = resp.json()
-    if not agents:
-        return "No agents yet. Use create_agent to make one."
-    lines = [f"Your agents ({len(agents)}):"]
-    for a in agents:
-        lines.append(f"  - {a['name']} (id: {a['id']}, last seen: {a['last_seen']})")
+        d = resp.json()
+    return f"Event recorded. ID: {d['id']}"
+
+
+@mcp.tool()
+async def push_memory_events_batch(
+    ctx: Context, workspace_id: str, store_id: str, events: list[dict],
+) -> str:
+    """Batch push events to a memory store (up to 100)."""
+    async with _client() as c:
+        resp = await c.post(
+            f"/api/v1/workspaces/{workspace_id}/memory/{store_id}/events/batch",
+            json={"events": events}, headers=_auth_headers(ctx),
+        )
+        _check_response(resp)
+        data = resp.json()
+    return f"{len(data)} events recorded."
+
+
+@mcp.tool()
+async def query_memory_events(
+    ctx: Context, workspace_id: str, store_id: str,
+    agent_name: str = "", session_id: str = "", event_type: str = "",
+    after: str = "", before: str = "", limit: int = 50,
+) -> str:
+    """Query memory events with filters."""
+    params: dict = {"limit": limit}
+    if agent_name:
+        params["agent_name"] = agent_name
+    if session_id:
+        params["session_id"] = session_id
+    if event_type:
+        params["event_type"] = event_type
+    if after:
+        params["after"] = after
+    if before:
+        params["before"] = before
+    async with _client() as c:
+        resp = await c.get(
+            f"/api/v1/workspaces/{workspace_id}/memory/{store_id}/events",
+            params=params, headers=_auth_headers(ctx),
+        )
+        _check_response(resp)
+        data = resp.json()
+    events = data.get("events", [])
+    if not events:
+        return "No events."
+    lines = []
+    for e in events:
+        tool = f" ({e['tool_name']})" if e.get("tool_name") else ""
+        lines.append(f"[{e['created_at']}] {e['agent_name']}/{e['event_type']}{tool}: {e['content'][:200]}")
+    if data.get("has_more"):
+        lines.append("(more events available)")
     return "\n".join(lines)
 
 
 @mcp.tool()
-async def rotate_agent_key(ctx: Context, agent_id: str) -> str:
-    """Generate a new API key for one of your agents. Invalidates the old key."""
+async def search_memory_events(ctx: Context, workspace_id: str, store_id: str, query: str, limit: int = 50) -> str:
+    """Full-text search on memory events."""
     async with _client() as c:
-        resp = await c.post(
-            f"/api/v1/agents/{agent_id}/rotate-key", headers=_auth_headers(ctx)
+        resp = await c.get(
+            f"/api/v1/workspaces/{workspace_id}/memory/{store_id}/events/search",
+            params={"q": query, "limit": limit}, headers=_auth_headers(ctx),
         )
         _check_response(resp)
         data = resp.json()
-    return (
-        f"Key rotated for {data['name']}.\n"
-        f"  New API Key: {data['api_key']}\n"
-        f"  ⚠️ Save this key — the old one no longer works."
-    )
+    events = data.get("events", [])
+    if not events:
+        return "No results."
+    lines = []
+    for e in events:
+        lines.append(f"[{e['created_at']}] {e['agent_name']}/{e['event_type']}: {e['content'][:200]}")
+    return "\n".join(lines)
+
+
+# ---------------------------------------------------------------------------
+# Webhooks (per-workspace)
+# ---------------------------------------------------------------------------
+
+@mcp.tool()
+async def set_webhook(ctx: Context, workspace_id: str, url: str, secret: str = "") -> str:
+    """Set a webhook for a workspace."""
+    body: dict = {"url": url}
+    if secret:
+        body["secret"] = secret
+    async with _client() as c:
+        resp = await c.post(f"/api/v1/workspaces/{workspace_id}/webhooks", json=body, headers=_auth_headers(ctx))
+        _check_response(resp)
+    return "Webhook set."
 
 
 @mcp.tool()
-async def delete_agent(ctx: Context, agent_id: str) -> str:
-    """Delete one of your agent identities. This is permanent."""
+async def get_webhook(ctx: Context, workspace_id: str) -> str:
+    """Get your webhook for a workspace."""
     async with _client() as c:
-        resp = await c.delete(
-            f"/api/v1/agents/{agent_id}", headers=_auth_headers(ctx)
-        )
+        resp = await c.get(f"/api/v1/workspaces/{workspace_id}/webhooks", headers=_auth_headers(ctx))
         if resp.status_code == 404:
-            return "Agent not found or you don't own it."
+            return "No webhook configured."
         _check_response(resp)
-    return "Agent deleted."
+        d = resp.json()
+    return f"URL: {d['url']}\nActive: {d['is_active']}\nSecret: {'yes' if d['has_secret'] else 'no'}"
+
+
+@mcp.tool()
+async def update_webhook(ctx: Context, workspace_id: str, url: str = "", is_active: bool = True) -> str:
+    """Update your webhook."""
+    body: dict = {}
+    if url:
+        body["url"] = url
+    body["is_active"] = is_active
+    async with _client() as c:
+        resp = await c.patch(f"/api/v1/workspaces/{workspace_id}/webhooks", json=body, headers=_auth_headers(ctx))
+        _check_response(resp)
+    return "Webhook updated."
+
+
+@mcp.tool()
+async def delete_webhook(ctx: Context, workspace_id: str) -> str:
+    """Delete your webhook."""
+    async with _client() as c:
+        resp = await c.delete(f"/api/v1/workspaces/{workspace_id}/webhooks", headers=_auth_headers(ctx))
+        if resp.status_code == 404:
+            return "No webhook to delete."
+        _check_response(resp)
+    return "Webhook deleted."
 
 
 # ---------------------------------------------------------------------------
