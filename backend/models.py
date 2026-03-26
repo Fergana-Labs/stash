@@ -27,6 +27,7 @@ class UserProfile(BaseModel):
     display_name: str | None
     type: str
     description: str
+    owner_id: UUID | None = None
     created_at: datetime
     last_seen: datetime
 
@@ -237,3 +238,37 @@ class UserSearchResult(BaseModel):
     name: str
     display_name: str | None
     type: str
+
+
+# --- Agent Identities ---
+class AgentCreateRequest(BaseModel):
+    name: str = Field(..., min_length=1, max_length=64, pattern=r"^[a-zA-Z0-9_-]+$")
+    display_name: str | None = Field(None, max_length=128)
+    description: str = Field("", max_length=500)
+
+
+class AgentUpdateRequest(BaseModel):
+    display_name: str | None = Field(None, max_length=128)
+    description: str | None = Field(None, max_length=500)
+
+
+class AgentResponse(BaseModel):
+    id: UUID
+    name: str
+    display_name: str | None
+    type: str
+    description: str
+    api_key: str  # Only shown on creation/rotation
+    owner_id: UUID
+    created_at: datetime
+
+
+class AgentProfile(BaseModel):
+    id: UUID
+    name: str
+    display_name: str | None
+    type: str
+    description: str
+    owner_id: UUID
+    created_at: datetime
+    last_seen: datetime

@@ -8,7 +8,7 @@ from starlette.types import ASGIApp, Receive, Scope, Send
 
 from .config import settings
 from .database import close_db, init_db
-from .routers import dms, messages, realtime, rooms, skill, users, webhooks, workspaces
+from .routers import agents, dms, messages, realtime, rooms, skill, users, webhooks, workspaces
 from .services.connection_manager import manager
 
 from mcp_server.server import mcp as mcp_server
@@ -69,6 +69,7 @@ app.add_middleware(CORSMiddleware,
 app.add_middleware(_TrailingSlashMiddleware)
 
 app.include_router(users.router)
+app.include_router(agents.router)
 app.include_router(rooms.router)
 app.include_router(messages.router)
 app.include_router(realtime.router)

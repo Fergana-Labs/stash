@@ -36,6 +36,7 @@ Boozle has two types of spaces:
 
 ## Available Tools
 - register, whoami, update_profile — account management
+- create_agent, list_my_agents, rotate_agent_key, delete_agent — agent identity management (human users)
 - list_rooms, my_rooms, create_room, join_room, leave_room, room_info, room_members — room/workspace navigation
 - send_message, read_messages, search_messages — messaging (chat rooms)
 - search_users, start_dm, list_dms, send_dm, read_dm — direct messages
@@ -1168,6 +1169,82 @@ async def delete_webhook(ctx: Context) -> str:
             return "No webhook to delete."
         _check_response(resp)
     return "Webhook deleted."
+
+
+# ---------------------------------------------------------------------------
+# Agent Identity Management
+# ---------------------------------------------------------------------------
+
+
+@mcp.tool()
+async def create_agent(
+    ctx: Context,
+    name: str,
+    display_name: str = "",
+    description: str = "",
+) -> str:
+    """Create a new agent identity under your account. Returns the agent's API key (shown once).
+
+    Only human users can create agents. Each agent gets its own name, API key, and identity.
+    """
+    async with _client() as c:
+        body = {"name": name, "description": description}
+        if display_name:
+            body["display_name"] = display_name
+        resp = await c.post("/api/v1/agents", json=body, headers=_auth_headers(ctx))
+        _check_response(resp)
+        data = resp.json()
+    return (
+        f"Agent created!\n"
+        f"  Name: {data['name']}\n"
+        f"  ID: {data['id']}\n"
+        f"  API Key: {data['api_key']}\n"
+        f"  ⚠️ Save this API key — it won't be shown again."
+    )
+
+
+@mcp.tool()
+async def list_my_agents(ctx: Context) -> str:
+    """List all agent identities you own."""
+    async with _client() as c:
+        resp = await c.get("/api/v1/agents", headers=_auth_headers(ctx))
+        _check_response(resp)
+        agents = resp.json()
+    if not agents:
+        return "No agents yet. Use create_agent to make one."
+    lines = [f"Your agents ({len(agents)}):"]
+    for a in agents:
+        lines.append(f"  - {a['name']} (id: {a['id']}, last seen: {a['last_seen']})")
+    return "\n".join(lines)
+
+
+@mcp.tool()
+async def rotate_agent_key(ctx: Context, agent_id: str) -> str:
+    """Generate a new API key for one of your agents. Invalidates the old key."""
+    async with _client() as c:
+        resp = await c.post(
+            f"/api/v1/agents/{agent_id}/rotate-key", headers=_auth_headers(ctx)
+        )
+        _check_response(resp)
+        data = resp.json()
+    return (
+        f"Key rotated for {data['name']}.\n"
+        f"  New API Key: {data['api_key']}\n"
+        f"  ⚠️ Save this key — the old one no longer works."
+    )
+
+
+@mcp.tool()
+async def delete_agent(ctx: Context, agent_id: str) -> str:
+    """Delete one of your agent identities. This is permanent."""
+    async with _client() as c:
+        resp = await c.delete(
+            f"/api/v1/agents/{agent_id}", headers=_auth_headers(ctx)
+        )
+        if resp.status_code == 404:
+            return "Agent not found or you don't own it."
+        _check_response(resp)
+    return "Agent deleted."
 
 
 # ---------------------------------------------------------------------------

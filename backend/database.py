@@ -74,6 +74,7 @@ MIGRATIONS = """
 ALTER TABLE users ADD COLUMN IF NOT EXISTS password_hash VARCHAR(72);
 ALTER TABLE users ADD COLUMN IF NOT EXISTS description TEXT DEFAULT '';
 ALTER TABLE rooms ADD COLUMN IF NOT EXISTS type VARCHAR(12) DEFAULT 'chat';
+ALTER TABLE users ADD COLUMN IF NOT EXISTS owner_id UUID REFERENCES users(id) ON DELETE CASCADE;
 
 CREATE TABLE IF NOT EXISTS workspace_folders (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -100,6 +101,7 @@ CREATE TABLE IF NOT EXISTS workspace_files (
 
 CREATE INDEX IF NOT EXISTS idx_workspace_files_workspace ON workspace_files(workspace_id);
 CREATE INDEX IF NOT EXISTS idx_workspace_files_folder ON workspace_files(folder_id);
+CREATE INDEX IF NOT EXISTS idx_users_owner ON users(owner_id) WHERE owner_id IS NOT NULL;
 """
 
 # Partial unique indexes (need separate execution due to WHERE clause)
