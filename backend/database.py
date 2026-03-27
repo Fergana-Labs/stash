@@ -204,38 +204,54 @@ async def init_db():
     global pool
     pool = await asyncpg.create_pool(settings.DATABASE_URL, min_size=2, max_size=10)
     async with pool.acquire() as conn:
-        # Migration: rename memory_stores → histories BEFORE schema creation
-        # (otherwise CREATE TABLE IF NOT EXISTS histories would create a new empty table)
-        for old, new in [("memory_stores", "histories"), ("memory_events", "history_events")]:
-            old_exists = await conn.fetchval(
-                "SELECT 1 FROM information_schema.tables WHERE table_name = $1", old,
-            )
-            new_exists = await conn.fetchval(
-                "SELECT 1 FROM information_schema.tables WHERE table_name = $1", new,
-            )
-            if old_exists and not new_exists:
-                await conn.execute(f"ALTER TABLE {old} RENAME TO {new}")
-        # Migration: update object_type values and CHECK constraints
-        for tbl_name in ("object_permissions", "object_shares"):
-            tbl_exists = await conn.fetchval(
-                "SELECT 1 FROM information_schema.tables WHERE table_name = $1", tbl_name,
-            )
-            if tbl_exists:
-                await conn.execute(
-                    f"UPDATE {tbl_name} SET object_type = 'history' WHERE object_type = 'memory_store'"
+        # Check if schema needs a full reset (old incompatible schema detection)
+        has_workspaces = await conn.fetchval(
+            "SELECT 1 FROM information_schema.tables WHERE table_name = 'workspaces'"
+        )
+        if not has_workspaces:
+            # Old schema without workspaces — drop everything and recreate
+            await conn.execute("""
+                DROP TABLE IF EXISTS
+                    webhooks, object_shares, object_permissions,
+                    history_events, histories, memory_events, memory_stores,
+                    notebook_folders, notebooks,
+                    chat_messages, chats,
+                    workspace_members, workspaces,
+                    users
+                CASCADE
+            """)
+        else:
+            # Migration: rename memory_stores → histories if needed
+            for old, new in [("memory_stores", "histories"), ("memory_events", "history_events")]:
+                old_exists = await conn.fetchval(
+                    "SELECT 1 FROM information_schema.tables WHERE table_name = $1", old,
                 )
-                # Drop old CHECK constraint and add new one
-                old_constraint = await conn.fetchval(
-                    "SELECT conname FROM pg_constraint WHERE conrelid = $1::regclass "
-                    "AND contype = 'c' AND pg_get_constraintdef(oid) LIKE '%memory_store%'",
-                    tbl_name,
+                new_exists = await conn.fetchval(
+                    "SELECT 1 FROM information_schema.tables WHERE table_name = $1", new,
                 )
-                if old_constraint:
-                    await conn.execute(f"ALTER TABLE {tbl_name} DROP CONSTRAINT {old_constraint}")
+                if old_exists and not new_exists:
+                    await conn.execute(f"ALTER TABLE {old} RENAME TO {new}")
+            # Migration: update object_type values and CHECK constraints
+            for tbl_name in ("object_permissions", "object_shares"):
+                tbl_exists = await conn.fetchval(
+                    "SELECT 1 FROM information_schema.tables WHERE table_name = $1", tbl_name,
+                )
+                if tbl_exists:
                     await conn.execute(
-                        f"ALTER TABLE {tbl_name} ADD CHECK(object_type IN ('chat', 'notebook', 'history'))"
+                        f"UPDATE {tbl_name} SET object_type = 'history' WHERE object_type = 'memory_store'"
                     )
-        # Now create schema (new tables use new names, existing renamed tables are skipped)
+                    old_constraint = await conn.fetchval(
+                        "SELECT conname FROM pg_constraint WHERE conrelid = $1::regclass "
+                        "AND contype = 'c' AND pg_get_constraintdef(oid) LIKE '%%memory_store%%'",
+                        tbl_name,
+                    )
+                    if old_constraint:
+                        await conn.execute(f"ALTER TABLE {tbl_name} DROP CONSTRAINT {old_constraint}")
+                        await conn.execute(
+                            f"ALTER TABLE {tbl_name} ADD CHECK(object_type IN ('chat', 'notebook', 'history'))"
+                        )
+
+        # Create schema (idempotent — CREATE TABLE IF NOT EXISTS)
         await conn.execute(SCHEMA)
         for idx_sql in _PARTIAL_INDEXES:
             await conn.execute(idx_sql)
