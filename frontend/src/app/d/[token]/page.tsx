@@ -50,15 +50,22 @@ export default function DeckViewerPage() {
     return <div className="min-h-screen flex items-center justify-center bg-white text-gray-500">{error}</div>;
   }
 
-  // If HTML loaded, render in full-page iframe
+  // If HTML loaded, render with branded header + iframe
   if (html) {
     return (
-      <iframe
-        srcDoc={html}
-        className="w-full h-screen border-0"
-        sandbox="allow-scripts allow-same-origin"
-        title={meta?.deck_name || "Deck"}
-      />
+      <div className="h-screen flex flex-col">
+        <div className="h-10 flex-shrink-0 bg-white border-b border-gray-200 flex items-center px-4">
+          <a href="https://getboozle.com" target="_blank" rel="noopener noreferrer" className="text-sm font-bold tracking-tight text-gray-900" style={{ fontFamily: "'Satoshi', sans-serif" }}>
+            boozle
+          </a>
+        </div>
+        <iframe
+          srcDoc={html}
+          className="flex-1 w-full border-0"
+          sandbox="allow-scripts allow-same-origin"
+          title={meta?.deck_name || "Deck"}
+        />
+      </div>
     );
   }
 
