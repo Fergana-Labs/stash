@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
-import Header from "../../components/Header";
+import AppShell from "../../components/AppShell";
 import { useAuth } from "../../hooks/useAuth";
 import {
   createPersonalMemoryStore,
@@ -64,9 +64,8 @@ export default function PersonalMemoryPage() {
   if (!user) { router.push("/login"); return null; }
 
   return (
-    <div className="min-h-screen flex flex-col">
-      <Header user={user} onLogout={logout} />
-      <main className="flex-1 max-w-4xl mx-auto w-full px-4 py-8">
+    <AppShell user={user} onLogout={logout}>
+      <div className="max-w-4xl mx-auto w-full px-4 py-8">
         <div className="flex items-center justify-between mb-6">
           <h1 className="text-2xl font-bold text-foreground font-display">My Memory Stores</h1>
           <button
@@ -124,7 +123,7 @@ export default function PersonalMemoryPage() {
             ))}
           </div>
         )}
-      </main>
-    </div>
+      </div>
+    </AppShell>
   );
 }

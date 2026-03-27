@@ -181,6 +181,30 @@ export interface Share {
   created_at: string;
 }
 
+// --- Agents ---
+
+export interface AgentProfile {
+  id: string;
+  name: string;
+  display_name: string | null;
+  type: string;
+  description: string;
+  owner_id: string;
+  created_at: string;
+  last_seen: string;
+}
+
+export interface AgentResponse {
+  id: string;
+  name: string;
+  display_name: string | null;
+  type: string;
+  description: string;
+  api_key: string;
+  owner_id: string;
+  created_at: string;
+}
+
 // --- Search ---
 
 export interface UserSearchResult {

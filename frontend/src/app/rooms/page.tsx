@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import Header from "../../components/Header";
+import AppShell from "../../components/AppShell";
 import NewDMDialog from "../../components/NewDMDialog";
 import WorkspaceCard from "../../components/RoomCard";
 import { useAuth } from "../../hooks/useAuth";
@@ -105,9 +105,8 @@ export default function WorkspacesPage() {
   if (!user) { router.push("/login"); return null; }
 
   return (
-    <div className="min-h-screen flex flex-col">
-      <Header user={user} onLogout={logout} />
-      <main className="flex-1 max-w-4xl mx-auto w-full px-4 py-8">
+    <AppShell user={user} onLogout={logout}>
+      <div className="max-w-4xl mx-auto w-full px-4 py-8">
         <div className="flex items-center justify-between mb-6">
           <h1 className="text-2xl font-bold text-foreground">Workspaces</h1>
           <div className="flex gap-2">
@@ -183,7 +182,7 @@ export default function WorkspacesPage() {
             </section>
           );
         })()}
-      </main>
-    </div>
+      </div>
+    </AppShell>
   );
 }

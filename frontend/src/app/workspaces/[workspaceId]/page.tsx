@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
-import Header from "../../../components/Header";
+import AppShell from "../../../components/AppShell";
 import NotebookTreeComponent from "../../../components/workspace/FileTree";
 import MarkdownEditor from "../../../components/workspace/MarkdownEditor";
 import WorkspaceSidebar from "../../../components/workspace/WorkspaceSidebar";
@@ -298,8 +298,8 @@ export default function WorkspacePage() {
   }
 
   return (
-    <div className="h-screen flex flex-col">
-      <Header user={user} onLogout={logout} />
+    <AppShell user={user} onLogout={logout}>
+      <div className="flex flex-col h-full">
 
       {/* Workspace header bar */}
       <div className="bg-surface border-b border-border px-4 py-2 flex items-center justify-between">
@@ -410,6 +410,7 @@ export default function WorkspacePage() {
           )}
         </div>
       )}
-    </div>
+      </div>
+    </AppShell>
   );
 }
