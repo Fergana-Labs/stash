@@ -6,8 +6,15 @@ import Header from "../components/Header";
 import NewDMDialog from "../components/NewDMDialog";
 import WorkspaceCard from "../components/RoomCard";
 import { useAuth } from "../hooks/useAuth";
-import { listDMs, listMyWorkspaces, listPublicWorkspaces } from "../lib/api";
-import { DMConversation, Workspace } from "../lib/types";
+import {
+  listDMs,
+  listMyWorkspaces,
+  listPublicWorkspaces,
+  listPersonalRooms,
+  listPersonalNotebooks,
+  listPersonalMemoryStores,
+} from "../lib/api";
+import { Chat, DMConversation, MemoryStore, NotebookTree, Workspace } from "../lib/types";
 
 function LandingPage() {
   const [publicWorkspaces, setPublicWorkspaces] = useState<Workspace[]>([]);
@@ -80,6 +87,9 @@ function LoggedInHome({ user }: { user: NonNullable<ReturnType<typeof useAuth>["
   const [publicWorkspaces, setPublicWorkspaces] = useState<Workspace[]>([]);
   const [myWorkspaces, setMyWorkspaces] = useState<Workspace[]>([]);
   const [dms, setDMs] = useState<DMConversation[]>([]);
+  const [personalRooms, setPersonalRooms] = useState<Chat[]>([]);
+  const [personalNotebooks, setPersonalNotebooks] = useState<NotebookTree>({ folders: [], root_files: [] });
+  const [personalStores, setPersonalStores] = useState<MemoryStore[]>([]);
   const [showNewDM, setShowNewDM] = useState(false);
   const myWsIds = useMemo(() => new Set(myWorkspaces.map((w) => w.id)), [myWorkspaces]);
 
@@ -88,10 +98,16 @@ function LoggedInHome({ user }: { user: NonNullable<ReturnType<typeof useAuth>["
       listPublicWorkspaces().then((r) => r.workspaces).catch(() => [] as Workspace[]),
       listMyWorkspaces().then((r) => r.workspaces).catch(() => [] as Workspace[]),
       listDMs().then((r) => r.dms).catch(() => [] as DMConversation[]),
-    ]).then(([pub, mine, dmList]) => {
+      listPersonalRooms().then((r) => r.chats).catch(() => [] as Chat[]),
+      listPersonalNotebooks().catch(() => ({ folders: [], root_files: [] }) as NotebookTree),
+      listPersonalMemoryStores().then((r) => r.stores).catch(() => [] as MemoryStore[]),
+    ]).then(([pub, mine, dmList, rooms, notebooks, stores]) => {
       setPublicWorkspaces(pub);
       setMyWorkspaces(mine);
       setDMs(dmList);
+      setPersonalRooms(rooms);
+      setPersonalNotebooks(notebooks);
+      setPersonalStores(stores);
     });
   };
 
@@ -157,6 +173,80 @@ function LoggedInHome({ user }: { user: NonNullable<ReturnType<typeof useAuth>["
       </section>
 
       <NewDMDialog open={showNewDM} onClose={() => { setShowNewDM(false); loadData(); }} />
+
+      {personalRooms.length > 0 && (
+        <section className="mb-8">
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-lg font-medium text-foreground font-display">Personal Rooms</h2>
+            <Link href="/rooms" className="text-sm text-brand hover:underline">View all</Link>
+          </div>
+          <div className="space-y-1">
+            {personalRooms.map((room) => (
+              <a
+                key={room.id}
+                href={`/rooms/${room.id}`}
+                className="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-raised transition-colors"
+              >
+                <div className="w-8 h-8 rounded-full bg-brand/20 text-brand flex items-center justify-center text-xs font-bold flex-shrink-0">
+                  #
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="text-sm text-foreground truncate">{room.name}</div>
+                  {room.description && <div className="text-xs text-muted truncate">{room.description}</div>}
+                </div>
+              </a>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {(personalNotebooks.root_files.length > 0 || personalNotebooks.folders.length > 0) && (
+        <section className="mb-8">
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-lg font-medium text-foreground font-display">Personal Notebooks</h2>
+            <Link href="/notebooks" className="text-sm text-brand hover:underline">Open editor</Link>
+          </div>
+          <div className="space-y-1">
+            {personalNotebooks.folders.map((folder) => (
+              <div key={folder.id} className="px-3 py-2 rounded-lg hover:bg-raised transition-colors">
+                <div className="text-sm text-foreground">{folder.name}/</div>
+                <div className="text-xs text-muted">{folder.files.length} file{folder.files.length !== 1 ? "s" : ""}</div>
+              </div>
+            ))}
+            {personalNotebooks.root_files.map((file) => (
+              <a key={file.id} href="/notebooks" className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-raised transition-colors">
+                <div className="text-sm text-foreground">{file.name}</div>
+              </a>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {personalStores.length > 0 && (
+        <section className="mb-8">
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-lg font-medium text-foreground font-display">Personal Memory Stores</h2>
+            <Link href="/memory" className="text-sm text-brand hover:underline">View all</Link>
+          </div>
+          <div className="space-y-1">
+            {personalStores.map((store) => (
+              <a
+                key={store.id}
+                href={`/memory/${store.id}`}
+                className="flex items-center justify-between px-3 py-2.5 rounded-lg hover:bg-raised transition-colors"
+              >
+                <div className="min-w-0">
+                  <div className="text-sm text-foreground truncate">{store.name}</div>
+                  {store.description && <div className="text-xs text-muted truncate">{store.description}</div>}
+                </div>
+                <div className="text-xs text-muted flex-shrink-0 ml-3">
+                  {store.event_count ?? 0} events
+                </div>
+              </a>
+            ))}
+          </div>
+        </section>
+      )}
 
       {myWorkspaces.length > 0 && (
         <section className="mb-8">

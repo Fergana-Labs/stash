@@ -78,6 +78,18 @@ export default function Header({ user, onLogout, onProfileUpdate }: HeaderProps)
             Workspaces
           </Link>
           <Link
+            href="/notebooks"
+            className="text-dim hover:text-foreground text-sm"
+          >
+            Notebooks
+          </Link>
+          <Link
+            href="/memory"
+            className="text-dim hover:text-foreground text-sm"
+          >
+            Memory
+          </Link>
+          <Link
             href="/docs"
             className="text-dim hover:text-foreground text-sm"
           >

@@ -384,6 +384,188 @@ export async function searchMemoryEvents(
   );
 }
 
+// --- Personal Rooms ---
+
+export async function createPersonalRoom(
+  name: string,
+  description?: string
+): Promise<Chat> {
+  return apiFetch("/api/v1/rooms", {
+    method: "POST",
+    body: JSON.stringify({ name, description: description || "" }),
+  });
+}
+
+export async function listPersonalRooms(): Promise<{ chats: Chat[] }> {
+  return apiFetch("/api/v1/rooms");
+}
+
+export async function getPersonalRoom(chatId: string): Promise<Chat> {
+  return apiFetch(`/api/v1/rooms/${chatId}`);
+}
+
+export async function deletePersonalRoom(chatId: string): Promise<void> {
+  await apiFetch(`/api/v1/rooms/${chatId}`, { method: "DELETE" });
+}
+
+export async function sendPersonalRoomMessage(
+  chatId: string,
+  content: string,
+  replyToId?: string
+): Promise<Message> {
+  return apiFetch(`/api/v1/rooms/${chatId}/messages`, {
+    method: "POST",
+    body: JSON.stringify({ content, reply_to_id: replyToId || null }),
+  });
+}
+
+export async function getPersonalRoomMessages(
+  chatId: string,
+  params?: { after?: string; before?: string; limit?: number }
+): Promise<{ messages: Message[]; has_more: boolean }> {
+  const searchParams = new URLSearchParams();
+  if (params?.after) searchParams.set("after", params.after);
+  if (params?.before) searchParams.set("before", params.before);
+  if (params?.limit) searchParams.set("limit", String(params.limit));
+  const qs = searchParams.toString();
+  return apiFetch(`/api/v1/rooms/${chatId}/messages${qs ? `?${qs}` : ""}`);
+}
+
+// --- Personal Notebooks ---
+
+export async function listPersonalNotebooks(): Promise<NotebookTree> {
+  return apiFetch("/api/v1/notebooks");
+}
+
+export async function createPersonalNotebook(
+  name: string,
+  folderId?: string,
+  content?: string
+): Promise<Notebook> {
+  return apiFetch("/api/v1/notebooks", {
+    method: "POST",
+    body: JSON.stringify({
+      name,
+      folder_id: folderId || null,
+      content: content || "",
+    }),
+  });
+}
+
+export async function getPersonalNotebook(notebookId: string): Promise<Notebook> {
+  return apiFetch(`/api/v1/notebooks/${notebookId}`);
+}
+
+export async function updatePersonalNotebook(
+  notebookId: string,
+  data: { name?: string; folder_id?: string; content?: string; move_to_root?: boolean }
+): Promise<Notebook> {
+  return apiFetch(`/api/v1/notebooks/${notebookId}`, {
+    method: "PATCH",
+    body: JSON.stringify(data),
+  });
+}
+
+export async function deletePersonalNotebook(notebookId: string): Promise<void> {
+  await apiFetch(`/api/v1/notebooks/${notebookId}`, { method: "DELETE" });
+}
+
+export async function createPersonalNotebookFolder(name: string): Promise<NotebookFolder> {
+  return apiFetch("/api/v1/notebooks/folders", {
+    method: "POST",
+    body: JSON.stringify({ name }),
+  });
+}
+
+export async function renamePersonalNotebookFolder(
+  folderId: string,
+  name: string
+): Promise<NotebookFolder> {
+  return apiFetch(`/api/v1/notebooks/folders/${folderId}`, {
+    method: "PATCH",
+    body: JSON.stringify({ name }),
+  });
+}
+
+export async function deletePersonalNotebookFolder(folderId: string): Promise<void> {
+  await apiFetch(`/api/v1/notebooks/folders/${folderId}`, { method: "DELETE" });
+}
+
+// --- Personal Memory ---
+
+export async function createPersonalMemoryStore(
+  name: string,
+  description?: string
+): Promise<MemoryStore> {
+  return apiFetch("/api/v1/memory", {
+    method: "POST",
+    body: JSON.stringify({ name, description: description || "" }),
+  });
+}
+
+export async function listPersonalMemoryStores(): Promise<{ stores: MemoryStore[] }> {
+  return apiFetch("/api/v1/memory");
+}
+
+export async function getPersonalMemoryStore(storeId: string): Promise<MemoryStore> {
+  return apiFetch(`/api/v1/memory/${storeId}`);
+}
+
+export async function deletePersonalMemoryStore(storeId: string): Promise<void> {
+  await apiFetch(`/api/v1/memory/${storeId}`, { method: "DELETE" });
+}
+
+export async function pushPersonalMemoryEvent(
+  storeId: string,
+  event: {
+    agent_name: string;
+    event_type: string;
+    content: string;
+    session_id?: string;
+    tool_name?: string;
+    metadata?: Record<string, unknown>;
+  }
+): Promise<MemoryEvent> {
+  return apiFetch(`/api/v1/memory/${storeId}/events`, {
+    method: "POST",
+    body: JSON.stringify(event),
+  });
+}
+
+export async function queryPersonalMemoryEvents(
+  storeId: string,
+  params?: {
+    agent_name?: string;
+    session_id?: string;
+    event_type?: string;
+    after?: string;
+    before?: string;
+    limit?: number;
+  }
+): Promise<{ events: MemoryEvent[]; has_more: boolean }> {
+  const searchParams = new URLSearchParams();
+  if (params?.agent_name) searchParams.set("agent_name", params.agent_name);
+  if (params?.session_id) searchParams.set("session_id", params.session_id);
+  if (params?.event_type) searchParams.set("event_type", params.event_type);
+  if (params?.after) searchParams.set("after", params.after);
+  if (params?.before) searchParams.set("before", params.before);
+  if (params?.limit) searchParams.set("limit", String(params.limit));
+  const qs = searchParams.toString();
+  return apiFetch(`/api/v1/memory/${storeId}/events${qs ? `?${qs}` : ""}`);
+}
+
+export async function searchPersonalMemoryEvents(
+  storeId: string,
+  query: string,
+  limit?: number
+): Promise<{ events: MemoryEvent[]; has_more: boolean }> {
+  const searchParams = new URLSearchParams({ q: query });
+  if (limit) searchParams.set("limit", String(limit));
+  return apiFetch(
+    `/api/v1/memory/${storeId}/events/search?${searchParams.toString()}`
+  );
+}
+
 // --- Permissions ---
 
 export async function getPermissions(

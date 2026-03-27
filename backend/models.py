@@ -217,7 +217,7 @@ class NotebookUpdateRequest(BaseModel):
 
 class NotebookResponse(BaseModel):
     id: UUID
-    workspace_id: UUID
+    workspace_id: UUID | None
     folder_id: UUID | None
     name: str
     content_markdown: str
@@ -237,7 +237,7 @@ class NotebookFolderUpdateRequest(BaseModel):
 
 class NotebookFolderResponse(BaseModel):
     id: UUID
-    workspace_id: UUID
+    workspace_id: UUID | None
     name: str
     created_by: UUID
     created_at: datetime
@@ -274,7 +274,7 @@ class MemoryStoreCreateRequest(BaseModel):
 
 class MemoryStoreResponse(BaseModel):
     id: UUID
-    workspace_id: UUID
+    workspace_id: UUID | None
     name: str
     description: str
     created_by: UUID

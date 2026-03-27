@@ -69,7 +69,7 @@ CREATE TABLE IF NOT EXISTS chat_messages (
 -- Notebook folders (must be created before notebooks for FK)
 CREATE TABLE IF NOT EXISTS notebook_folders (
     id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    workspace_id UUID NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+    workspace_id UUID REFERENCES workspaces(id) ON DELETE CASCADE,
     name         VARCHAR(255) NOT NULL,
     created_by   UUID NOT NULL REFERENCES users(id),
     created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -80,7 +80,7 @@ CREATE TABLE IF NOT EXISTS notebook_folders (
 -- Notebooks (markdown files with collaborative editing)
 CREATE TABLE IF NOT EXISTS notebooks (
     id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    workspace_id     UUID NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+    workspace_id     UUID REFERENCES workspaces(id) ON DELETE CASCADE,
     folder_id        UUID REFERENCES notebook_folders(id) ON DELETE SET NULL,
     name             VARCHAR(255) NOT NULL,
     content_markdown TEXT NOT NULL DEFAULT '',
@@ -94,7 +94,7 @@ CREATE TABLE IF NOT EXISTS notebooks (
 -- Memory stores (containers for structured agent events)
 CREATE TABLE IF NOT EXISTS memory_stores (
     id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    workspace_id UUID NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+    workspace_id UUID REFERENCES workspaces(id) ON DELETE CASCADE,
     name         VARCHAR(128) NOT NULL,
     description  TEXT DEFAULT '',
     created_by   UUID NOT NULL REFERENCES users(id),
@@ -183,6 +183,20 @@ _PARTIAL_INDEXES = [
        ON notebooks(workspace_id, name) WHERE folder_id IS NULL""",
     """CREATE UNIQUE INDEX IF NOT EXISTS idx_notebooks_folder_unique
        ON notebooks(workspace_id, folder_id, name) WHERE folder_id IS NOT NULL""",
+    # Personal (workspace-less) item uniqueness — scoped to created_by
+    """CREATE UNIQUE INDEX IF NOT EXISTS idx_personal_memory_store_unique
+       ON memory_stores(created_by, name) WHERE workspace_id IS NULL""",
+    """CREATE UNIQUE INDEX IF NOT EXISTS idx_personal_notebook_folder_unique
+       ON notebook_folders(created_by, name) WHERE workspace_id IS NULL""",
+    # Personal item query indexes
+    """CREATE INDEX IF NOT EXISTS idx_notebooks_personal
+       ON notebooks(created_by) WHERE workspace_id IS NULL""",
+    """CREATE INDEX IF NOT EXISTS idx_notebook_folders_personal
+       ON notebook_folders(created_by) WHERE workspace_id IS NULL""",
+    """CREATE INDEX IF NOT EXISTS idx_memory_stores_personal
+       ON memory_stores(created_by) WHERE workspace_id IS NULL""",
+    """CREATE INDEX IF NOT EXISTS idx_chats_personal
+       ON chats(creator_id) WHERE workspace_id IS NULL AND is_dm = false""",
 ]
 
 
@@ -193,6 +207,11 @@ async def init_db():
         await conn.execute(SCHEMA)
         for idx_sql in _PARTIAL_INDEXES:
             await conn.execute(idx_sql)
+        # Migration: make workspace_id nullable for personal items
+        for table in ("notebooks", "notebook_folders", "memory_stores"):
+            await conn.execute(
+                f"ALTER TABLE {table} ALTER COLUMN workspace_id DROP NOT NULL"
+            )
 
 
 async def close_db():

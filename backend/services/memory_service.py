@@ -56,6 +56,56 @@ async def delete_store(store_id: UUID, workspace_id: UUID) -> bool:
     return result == "DELETE 1"
 
 
+# --- Personal Store CRUD ---
+
+
+async def create_personal_store(
+    name: str, description: str, created_by: UUID,
+) -> dict:
+    pool = get_pool()
+    row = await pool.fetchrow(
+        "INSERT INTO memory_stores (workspace_id, name, description, created_by) "
+        "VALUES (NULL, $1, $2, $3) "
+        "RETURNING id, workspace_id, name, description, created_by, created_at",
+        name, description, created_by,
+    )
+    store = dict(row)
+    store["event_count"] = 0
+    return store
+
+
+async def get_personal_store(store_id: UUID, user_id: UUID) -> dict | None:
+    pool = get_pool()
+    row = await pool.fetchrow(
+        "SELECT ms.*, "
+        "(SELECT COUNT(*) FROM memory_events me WHERE me.store_id = ms.id) AS event_count "
+        "FROM memory_stores ms WHERE ms.id = $1 AND ms.workspace_id IS NULL AND ms.created_by = $2",
+        store_id, user_id,
+    )
+    return dict(row) if row else None
+
+
+async def list_personal_stores(user_id: UUID) -> list[dict]:
+    pool = get_pool()
+    rows = await pool.fetch(
+        "SELECT ms.*, "
+        "(SELECT COUNT(*) FROM memory_events me WHERE me.store_id = ms.id) AS event_count "
+        "FROM memory_stores ms WHERE ms.workspace_id IS NULL AND ms.created_by = $1 "
+        "ORDER BY ms.created_at",
+        user_id,
+    )
+    return [dict(r) for r in rows]
+
+
+async def delete_personal_store(store_id: UUID, user_id: UUID) -> bool:
+    pool = get_pool()
+    result = await pool.execute(
+        "DELETE FROM memory_stores WHERE id = $1 AND workspace_id IS NULL AND created_by = $2",
+        store_id, user_id,
+    )
+    return result == "DELETE 1"
+
+
 # --- Event CRUD ---
 
 

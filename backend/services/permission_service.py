@@ -22,6 +22,22 @@ async def check_access(
     """Check if a user can access an object. Returns True if allowed."""
     pool = get_pool()
 
+    # Owner of personal (workspace-less) items always has full access
+    if workspace_id is None:
+        table_map = {
+            "chat": ("chats", "creator_id"),
+            "notebook": ("notebooks", "created_by"),
+            "memory_store": ("memory_stores", "created_by"),
+        }
+        if object_type in table_map:
+            table, col = table_map[object_type]
+            row = await pool.fetchrow(
+                f"SELECT 1 FROM {table} WHERE id = $1 AND {col} = $2 AND workspace_id IS NULL",
+                object_id, user_id,
+            )
+            if row:
+                return True
+
     # Workspace owner/admin always has access
     if workspace_id:
         role = await get_workspace_role(workspace_id, user_id)

@@ -16,7 +16,7 @@ from fastapi import WebSocket
 
 from pycrdt import Doc
 
-from ..services import workspace_service
+from ..services import notebook_service
 
 COLLAB_SERVER_URL = os.environ.get("COLLAB_SERVER_URL", "http://localhost:1235")
 
@@ -60,7 +60,7 @@ def _decode_varint(data: bytes, offset: int = 0) -> tuple[int, int]:
 class YjsDocHandle:
     """Manages a single Yjs document in memory."""
 
-    def __init__(self, file_id: UUID, workspace_id: UUID):
+    def __init__(self, file_id: UUID, workspace_id: UUID | str | None):
         self.file_id = file_id
         self.workspace_id = workspace_id
         self.doc = Doc()
@@ -75,7 +75,7 @@ class YjsDocHandle:
         """Load Yjs state from database."""
         if self._loaded:
             return
-        state = await workspace_service.get_yjs_state(self.file_id, self.workspace_id)
+        state = await notebook_service.get_yjs_state(self.file_id, self.workspace_id)
         if state:
             try:
                 self.doc.apply_update(state)
@@ -109,7 +109,7 @@ class YjsDocHandle:
             return
         state = self.doc.get_update()
         markdown = await yjs_manager._yjs_to_markdown(state)
-        await workspace_service.save_yjs_state(
+        await notebook_service.save_yjs_state(
             self.file_id, self.workspace_id, state, content_markdown=markdown
         )
         self._dirty = False
@@ -150,7 +150,7 @@ class YjsManager:
     def __init__(self):
         self._docs: dict[UUID, YjsDocHandle] = {}
 
-    async def get_or_create_handle(self, file_id: UUID, workspace_id: UUID) -> YjsDocHandle:
+    async def get_or_create_handle(self, file_id: UUID, workspace_id: UUID | str | None) -> YjsDocHandle:
         if file_id not in self._docs:
             handle = YjsDocHandle(file_id, workspace_id)
             await handle.load_from_db()
@@ -160,7 +160,7 @@ class YjsManager:
     def get_handle(self, file_id: UUID) -> YjsDocHandle | None:
         return self._docs.get(file_id)
 
-    async def handle_ws_connect(self, ws: WebSocket, file_id: UUID, workspace_id: UUID):
+    async def handle_ws_connect(self, ws: WebSocket, file_id: UUID, workspace_id: UUID | str | None):
         """Handle a new WebSocket client connecting for Yjs sync."""
         handle = await self.get_or_create_handle(file_id, workspace_id)
         handle.add_client(ws)
@@ -255,7 +255,7 @@ class YjsManager:
         except asyncio.CancelledError:
             pass
 
-    async def apply_rest_update(self, file_id: UUID, workspace_id: UUID, content: str) -> None:
+    async def apply_rest_update(self, file_id: UUID, workspace_id: UUID | str | None, content: str) -> None:
         """Convert markdown to Yjs state and update the in-memory doc + broadcast to connected editors."""
         yjs_state = await self._markdown_to_yjs(content)
         if yjs_state is None:
@@ -298,7 +298,7 @@ class YjsManager:
             await handle.save_to_db()
         else:
             # No editors connected — just save yjs_state directly to DB
-            await workspace_service.save_yjs_state(file_id, workspace_id, yjs_state)
+            await notebook_service.save_yjs_state(file_id, workspace_id, yjs_state)
 
     async def _markdown_to_yjs(self, markdown: str) -> bytes | None:
         """Convert markdown to Yjs binary state via the collab server."""

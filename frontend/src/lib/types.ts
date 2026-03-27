@@ -85,7 +85,7 @@ export interface WSEvent {
 
 export interface Notebook {
   id: string;
-  workspace_id: string;
+  workspace_id: string | null;
   folder_id: string | null;
   name: string;
   content_markdown: string;
@@ -97,7 +97,7 @@ export interface Notebook {
 
 export interface NotebookFolder {
   id: string;
-  workspace_id: string;
+  workspace_id: string | null;
   name: string;
   created_by: string;
   created_at: string;
@@ -128,7 +128,7 @@ export interface NotebookTree {
 
 export interface MemoryStore {
   id: string;
-  workspace_id: string;
+  workspace_id: string | null;
   name: string;
   description: string;
   created_by: string;
