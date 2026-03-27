@@ -66,21 +66,32 @@ CREATE TABLE IF NOT EXISTS chat_messages (
     created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
--- Notebook folders (must be created before notebooks for FK)
-CREATE TABLE IF NOT EXISTS notebook_folders (
+-- Notebooks (collections of folders + pages)
+CREATE TABLE IF NOT EXISTS notebooks (
     id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     workspace_id UUID REFERENCES workspaces(id) ON DELETE CASCADE,
+    name         VARCHAR(255) NOT NULL,
+    description  TEXT DEFAULT '',
+    created_by   UUID NOT NULL REFERENCES users(id),
+    created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- Notebook folders (within a notebook)
+CREATE TABLE IF NOT EXISTS notebook_folders (
+    id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    notebook_id  UUID NOT NULL REFERENCES notebooks(id) ON DELETE CASCADE,
     name         VARCHAR(255) NOT NULL,
     created_by   UUID NOT NULL REFERENCES users(id),
     created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
-    UNIQUE(workspace_id, name)
+    UNIQUE(notebook_id, name)
 );
 
--- Notebooks (markdown files with collaborative editing)
-CREATE TABLE IF NOT EXISTS notebooks (
+-- Notebook pages (markdown files within a notebook)
+CREATE TABLE IF NOT EXISTS notebook_pages (
     id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    workspace_id     UUID REFERENCES workspaces(id) ON DELETE CASCADE,
+    notebook_id      UUID NOT NULL REFERENCES notebooks(id) ON DELETE CASCADE,
     folder_id        UUID REFERENCES notebook_folders(id) ON DELETE SET NULL,
     name             VARCHAR(255) NOT NULL,
     content_markdown TEXT NOT NULL DEFAULT '',
@@ -161,7 +172,9 @@ CREATE INDEX IF NOT EXISTS idx_chat_messages_chat_created ON chat_messages(chat_
 CREATE INDEX IF NOT EXISTS idx_chat_messages_fts ON chat_messages USING GIN(to_tsvector('english', content));
 
 CREATE INDEX IF NOT EXISTS idx_notebooks_workspace ON notebooks(workspace_id);
-CREATE INDEX IF NOT EXISTS idx_notebooks_folder ON notebooks(folder_id);
+CREATE INDEX IF NOT EXISTS idx_notebook_pages_notebook ON notebook_pages(notebook_id);
+CREATE INDEX IF NOT EXISTS idx_notebook_pages_folder ON notebook_pages(folder_id);
+CREATE INDEX IF NOT EXISTS idx_notebook_folders_notebook ON notebook_folders(notebook_id);
 
 CREATE INDEX IF NOT EXISTS idx_histories_workspace ON histories(workspace_id);
 CREATE INDEX IF NOT EXISTS idx_history_events_store_created ON history_events(store_id, created_at);
@@ -179,20 +192,18 @@ CREATE INDEX IF NOT EXISTS idx_webhooks_workspace ON webhooks(workspace_id) WHER
 _PARTIAL_INDEXES = [
     """CREATE UNIQUE INDEX IF NOT EXISTS idx_dm_unique_pair
        ON chats(dm_user_a, dm_user_b) WHERE is_dm = true""",
-    """CREATE UNIQUE INDEX IF NOT EXISTS idx_notebooks_root_unique
-       ON notebooks(workspace_id, name) WHERE folder_id IS NULL""",
-    """CREATE UNIQUE INDEX IF NOT EXISTS idx_notebooks_folder_unique
-       ON notebooks(workspace_id, folder_id, name) WHERE folder_id IS NOT NULL""",
+    """CREATE UNIQUE INDEX IF NOT EXISTS idx_notebook_pages_root_unique
+       ON notebook_pages(notebook_id, name) WHERE folder_id IS NULL""",
+    """CREATE UNIQUE INDEX IF NOT EXISTS idx_notebook_pages_folder_unique
+       ON notebook_pages(notebook_id, folder_id, name) WHERE folder_id IS NOT NULL""",
     # Personal (workspace-less) item uniqueness — scoped to created_by
     """CREATE UNIQUE INDEX IF NOT EXISTS idx_personal_history_unique
        ON histories(created_by, name) WHERE workspace_id IS NULL""",
-    """CREATE UNIQUE INDEX IF NOT EXISTS idx_personal_notebook_folder_unique
-       ON notebook_folders(created_by, name) WHERE workspace_id IS NULL""",
+    """CREATE UNIQUE INDEX IF NOT EXISTS idx_personal_notebook_unique
+       ON notebooks(created_by, name) WHERE workspace_id IS NULL""",
     # Personal item query indexes
     """CREATE INDEX IF NOT EXISTS idx_notebooks_personal
        ON notebooks(created_by) WHERE workspace_id IS NULL""",
-    """CREATE INDEX IF NOT EXISTS idx_notebook_folders_personal
-       ON notebook_folders(created_by) WHERE workspace_id IS NULL""",
     """CREATE INDEX IF NOT EXISTS idx_histories_personal
        ON histories(created_by) WHERE workspace_id IS NULL""",
     """CREATE INDEX IF NOT EXISTS idx_chats_personal
@@ -214,13 +225,23 @@ async def init_db():
                 DROP TABLE IF EXISTS
                     webhooks, object_shares, object_permissions,
                     history_events, histories, memory_events, memory_stores,
-                    notebook_folders, notebooks,
+                    notebook_pages, notebook_folders, notebooks,
                     chat_messages, chats,
                     workspace_members, workspaces,
                     users
                 CASCADE
             """)
         else:
+            # Migration: restructure notebooks (old schema had notebooks as files)
+            has_notebook_pages = await conn.fetchval(
+                "SELECT 1 FROM information_schema.tables WHERE table_name = 'notebook_pages'"
+            )
+            if not has_notebook_pages:
+                # Old schema — drop old notebook tables, new schema will recreate
+                await conn.execute("""
+                    DROP TABLE IF EXISTS notebook_folders, notebooks CASCADE
+                """)
+
             # Migration: rename memory_stores → histories if needed
             for old, new in [("memory_stores", "histories"), ("memory_events", "history_events")]:
                 old_exists = await conn.fetchval(
@@ -256,7 +277,7 @@ async def init_db():
         for idx_sql in _PARTIAL_INDEXES:
             await conn.execute(idx_sql)
         # Migration: make workspace_id nullable for personal items
-        for table in ("notebooks", "notebook_folders", "histories"):
+        for table in ("notebooks", "histories"):
             await conn.execute(
                 f"ALTER TABLE {table} ALTER COLUMN workspace_id DROP NOT NULL"
             )

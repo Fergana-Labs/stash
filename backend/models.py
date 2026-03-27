@@ -199,25 +199,47 @@ class DMListResponse(BaseModel):
     dms: list[DMResponse]
 
 
-# --- Notebooks ---
+# --- Notebooks (collections) ---
 
 
 class NotebookCreateRequest(BaseModel):
+    name: str = Field(..., min_length=1, max_length=255)
+    description: str = Field("", max_length=1000)
+
+
+class NotebookResponse(BaseModel):
+    id: UUID
+    workspace_id: UUID | None
+    name: str
+    description: str
+    created_by: UUID
+    created_at: datetime
+    updated_at: datetime
+
+
+class NotebookListResponse(BaseModel):
+    notebooks: list[NotebookResponse]
+
+
+# --- Notebook Pages (files within a notebook) ---
+
+
+class PageCreateRequest(BaseModel):
     name: str = Field(..., min_length=1, max_length=255)
     folder_id: UUID | None = None
     content: str = ""
 
 
-class NotebookUpdateRequest(BaseModel):
+class PageUpdateRequest(BaseModel):
     name: str | None = Field(None, min_length=1, max_length=255)
     folder_id: UUID | None = None
     content: str | None = None
     move_to_root: bool = False
 
 
-class NotebookResponse(BaseModel):
+class PageResponse(BaseModel):
     id: UUID
-    workspace_id: UUID | None
+    notebook_id: UUID
     folder_id: UUID | None
     name: str
     content_markdown: str
@@ -227,24 +249,24 @@ class NotebookResponse(BaseModel):
     updated_at: datetime
 
 
-class NotebookFolderCreateRequest(BaseModel):
+class FolderCreateRequest(BaseModel):
     name: str = Field(..., min_length=1, max_length=255)
 
 
-class NotebookFolderUpdateRequest(BaseModel):
+class FolderUpdateRequest(BaseModel):
     name: str = Field(..., min_length=1, max_length=255)
 
 
-class NotebookFolderResponse(BaseModel):
+class FolderResponse(BaseModel):
     id: UUID
-    workspace_id: UUID | None
+    notebook_id: UUID
     name: str
     created_by: UUID
     created_at: datetime
     updated_at: datetime
 
 
-class NotebookTreeFile(BaseModel):
+class PageTreeFile(BaseModel):
     id: UUID
     name: str
     folder_id: UUID | None
@@ -252,16 +274,16 @@ class NotebookTreeFile(BaseModel):
     updated_at: datetime
 
 
-class NotebookTreeFolder(BaseModel):
+class PageTreeFolder(BaseModel):
     id: UUID
     name: str
-    files: list[NotebookTreeFile]
+    files: list[PageTreeFile]
     created_at: datetime
 
 
-class NotebookTreeResponse(BaseModel):
-    folders: list[NotebookTreeFolder]
-    root_files: list[NotebookTreeFile]
+class PageTreeResponse(BaseModel):
+    folders: list[PageTreeFolder]
+    root_files: list[PageTreeFile]
 
 
 # --- History ---

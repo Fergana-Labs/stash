@@ -16,7 +16,7 @@ import Placeholder from "@tiptap/extension-placeholder";
 import * as Y from "yjs";
 import { WebsocketProvider } from "y-websocket";
 import EditorToolbar from "./EditorToolbar";
-import { Notebook } from "../../lib/types";
+import { NotebookPage } from "../../lib/types";
 
 // User colors for collaboration cursors
 const COLORS = [
@@ -30,11 +30,12 @@ function getRandomColor() {
 
 interface MarkdownEditorProps {
   workspaceId: string | null;
-  file: Notebook;
+  notebookId: string | null;
+  file: NotebookPage;
   onSave: (content: string) => void;
 }
 
-export default function MarkdownEditor({ workspaceId, file, onSave }: MarkdownEditorProps) {
+export default function MarkdownEditor({ workspaceId, notebookId, file, onSave }: MarkdownEditorProps) {
   const [connected, setConnected] = useState(false);
   const [synced, setSynced] = useState(false);
 
@@ -55,9 +56,11 @@ export default function MarkdownEditor({ workspaceId, file, onSave }: MarkdownEd
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
     const wsBase = `${protocol}//${window.location.host}`;
 
-    const wsPath = workspaceId
-      ? `/api/v1/workspaces/${workspaceId}/notebooks/${file.id}`
-      : `/api/v1/notebooks/${file.id}`;
+    const wsPath = workspaceId && notebookId
+      ? `/api/v1/workspaces/${workspaceId}/notebooks/${notebookId}/pages/${file.id}`
+      : notebookId
+        ? `/api/v1/notebooks/${notebookId}/pages/${file.id}`
+        : `/api/v1/notebooks/unknown/pages/${file.id}`;
     const prov = new WebsocketProvider(
       `${wsBase}${wsPath}`,
       "yjs",
@@ -90,7 +93,7 @@ export default function MarkdownEditor({ workspaceId, file, onSave }: MarkdownEd
       setConnected(false);
       setSynced(false);
     };
-  }, [token, workspaceId, file.id, ydoc, userName, userColor]);
+  }, [token, workspaceId, notebookId, file.id, ydoc, userName, userColor]);
 
   return (
     <div className="flex flex-col h-full">

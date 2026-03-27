@@ -81,11 +81,23 @@ export interface WSEvent {
   created_at?: string;
 }
 
-// --- Notebooks ---
+// --- Notebooks (collections) ---
 
 export interface Notebook {
   id: string;
   workspace_id: string | null;
+  name: string;
+  description: string;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+}
+
+// --- Notebook Pages (files within a notebook) ---
+
+export interface NotebookPage {
+  id: string;
+  notebook_id: string;
   folder_id: string | null;
   name: string;
   content_markdown: string;
@@ -97,14 +109,14 @@ export interface Notebook {
 
 export interface NotebookFolder {
   id: string;
-  workspace_id: string | null;
+  notebook_id: string;
   name: string;
   created_by: string;
   created_at: string;
   updated_at: string;
 }
 
-export interface NotebookTreeFile {
+export interface PageTreeFile {
   id: string;
   name: string;
   folder_id: string | null;
@@ -112,16 +124,16 @@ export interface NotebookTreeFile {
   updated_at: string;
 }
 
-export interface NotebookTreeFolder {
+export interface PageTreeFolder {
   id: string;
   name: string;
-  files: NotebookTreeFile[];
+  files: PageTreeFile[];
   created_at: string;
 }
 
-export interface NotebookTree {
-  folders: NotebookTreeFolder[];
-  root_files: NotebookTreeFile[];
+export interface PageTree {
+  folders: PageTreeFolder[];
+  root_files: PageTreeFile[];
 }
 
 // --- History ---
@@ -223,15 +235,7 @@ export interface DMWithUser {
   other_user: DMOtherUser | null;
 }
 
-export interface NotebookWithWorkspace {
-  id: string;
-  workspace_id: string | null;
-  folder_id: string | null;
-  name: string;
-  created_by: string;
-  updated_by: string | null;
-  created_at: string;
-  updated_at: string;
+export interface NotebookWithWorkspace extends Notebook {
   workspace_name: string | null;
 }
 

@@ -8,3 +8,5 @@ venv/
 .venv/
 dist/
 build/
+.gstack/
+*.egg-info/
