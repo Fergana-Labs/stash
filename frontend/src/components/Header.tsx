@@ -66,8 +66,8 @@ export default function Header({ user, onLogout, onProfileUpdate }: HeaderProps)
 
   return (
     <header className="bg-gray-900 border-b border-gray-800">
-      <div className="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between">
-        <Link href="/" className="text-xl font-bold text-white tracking-tight">
+      <div className="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between gap-4">
+        <Link href="/" className="text-xl font-bold text-white tracking-tight flex-shrink-0">
           boozle
         </Link>
         <nav className="flex items-center gap-4">
