@@ -180,7 +180,8 @@ async def list_all_user_chats(user_id: UUID) -> dict:
     )
     # Personal rooms
     personal = await pool.fetch(
-        "SELECT id, workspace_id, name, description, creator_id, is_dm, created_at, updated_at "
+        "SELECT id, workspace_id, name, description, creator_id, is_dm, created_at, updated_at, "
+        "NULL::text AS workspace_name "
         "FROM chats WHERE workspace_id IS NULL AND is_dm = false AND creator_id = $1 "
         "ORDER BY updated_at DESC",
         user_id,
