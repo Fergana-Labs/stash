@@ -91,8 +91,8 @@ CREATE TABLE IF NOT EXISTS notebooks (
     updated_at       TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
--- Memory stores (containers for structured agent events)
-CREATE TABLE IF NOT EXISTS memory_stores (
+-- Histories (containers for structured agent events)
+CREATE TABLE IF NOT EXISTS histories (
     id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     workspace_id UUID REFERENCES workspaces(id) ON DELETE CASCADE,
     name         VARCHAR(128) NOT NULL,
@@ -102,10 +102,10 @@ CREATE TABLE IF NOT EXISTS memory_stores (
     UNIQUE(workspace_id, name)
 );
 
--- Memory events (append-only structured records)
-CREATE TABLE IF NOT EXISTS memory_events (
+-- History events (append-only structured records)
+CREATE TABLE IF NOT EXISTS history_events (
     id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    store_id     UUID NOT NULL REFERENCES memory_stores(id) ON DELETE CASCADE,
+    store_id     UUID NOT NULL REFERENCES histories(id) ON DELETE CASCADE,
     agent_name   VARCHAR(64) NOT NULL,
     event_type   VARCHAR(64) NOT NULL,
     session_id   VARCHAR(64),
@@ -117,7 +117,7 @@ CREATE TABLE IF NOT EXISTS memory_events (
 
 -- Object permissions (Google Drive-like, shared across all object types)
 CREATE TABLE IF NOT EXISTS object_permissions (
-    object_type  VARCHAR(16) NOT NULL CHECK(object_type IN ('chat', 'notebook', 'memory_store')),
+    object_type  VARCHAR(16) NOT NULL CHECK(object_type IN ('chat', 'notebook', 'history')),
     object_id    UUID NOT NULL,
     visibility   VARCHAR(16) NOT NULL DEFAULT 'inherit'
                  CHECK(visibility IN ('inherit', 'private', 'public')),
@@ -125,7 +125,7 @@ CREATE TABLE IF NOT EXISTS object_permissions (
 );
 
 CREATE TABLE IF NOT EXISTS object_shares (
-    object_type  VARCHAR(16) NOT NULL CHECK(object_type IN ('chat', 'notebook', 'memory_store')),
+    object_type  VARCHAR(16) NOT NULL CHECK(object_type IN ('chat', 'notebook', 'history')),
     object_id    UUID NOT NULL,
     user_id      UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     permission   VARCHAR(8) NOT NULL DEFAULT 'read'
@@ -163,13 +163,13 @@ CREATE INDEX IF NOT EXISTS idx_chat_messages_fts ON chat_messages USING GIN(to_t
 CREATE INDEX IF NOT EXISTS idx_notebooks_workspace ON notebooks(workspace_id);
 CREATE INDEX IF NOT EXISTS idx_notebooks_folder ON notebooks(folder_id);
 
-CREATE INDEX IF NOT EXISTS idx_memory_stores_workspace ON memory_stores(workspace_id);
-CREATE INDEX IF NOT EXISTS idx_memory_events_store_created ON memory_events(store_id, created_at);
-CREATE INDEX IF NOT EXISTS idx_memory_events_agent ON memory_events(store_id, agent_name);
-CREATE INDEX IF NOT EXISTS idx_memory_events_session ON memory_events(store_id, session_id) WHERE session_id IS NOT NULL;
-CREATE INDEX IF NOT EXISTS idx_memory_events_type ON memory_events(store_id, event_type);
-CREATE INDEX IF NOT EXISTS idx_memory_events_fts ON memory_events USING GIN(to_tsvector('english', content));
-CREATE INDEX IF NOT EXISTS idx_memory_events_metadata ON memory_events USING GIN(metadata);
+CREATE INDEX IF NOT EXISTS idx_histories_workspace ON histories(workspace_id);
+CREATE INDEX IF NOT EXISTS idx_history_events_store_created ON history_events(store_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_history_events_agent ON history_events(store_id, agent_name);
+CREATE INDEX IF NOT EXISTS idx_history_events_session ON history_events(store_id, session_id) WHERE session_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_history_events_type ON history_events(store_id, event_type);
+CREATE INDEX IF NOT EXISTS idx_history_events_fts ON history_events USING GIN(to_tsvector('english', content));
+CREATE INDEX IF NOT EXISTS idx_history_events_metadata ON history_events USING GIN(metadata);
 
 CREATE INDEX IF NOT EXISTS idx_object_shares_user ON object_shares(user_id);
 CREATE INDEX IF NOT EXISTS idx_webhooks_workspace ON webhooks(workspace_id) WHERE is_active = true;
@@ -184,8 +184,8 @@ _PARTIAL_INDEXES = [
     """CREATE UNIQUE INDEX IF NOT EXISTS idx_notebooks_folder_unique
        ON notebooks(workspace_id, folder_id, name) WHERE folder_id IS NOT NULL""",
     # Personal (workspace-less) item uniqueness — scoped to created_by
-    """CREATE UNIQUE INDEX IF NOT EXISTS idx_personal_memory_store_unique
-       ON memory_stores(created_by, name) WHERE workspace_id IS NULL""",
+    """CREATE UNIQUE INDEX IF NOT EXISTS idx_personal_history_unique
+       ON histories(created_by, name) WHERE workspace_id IS NULL""",
     """CREATE UNIQUE INDEX IF NOT EXISTS idx_personal_notebook_folder_unique
        ON notebook_folders(created_by, name) WHERE workspace_id IS NULL""",
     # Personal item query indexes
@@ -193,8 +193,8 @@ _PARTIAL_INDEXES = [
        ON notebooks(created_by) WHERE workspace_id IS NULL""",
     """CREATE INDEX IF NOT EXISTS idx_notebook_folders_personal
        ON notebook_folders(created_by) WHERE workspace_id IS NULL""",
-    """CREATE INDEX IF NOT EXISTS idx_memory_stores_personal
-       ON memory_stores(created_by) WHERE workspace_id IS NULL""",
+    """CREATE INDEX IF NOT EXISTS idx_histories_personal
+       ON histories(created_by) WHERE workspace_id IS NULL""",
     """CREATE INDEX IF NOT EXISTS idx_chats_personal
        ON chats(creator_id) WHERE workspace_id IS NULL AND is_dm = false""",
 ]
@@ -208,9 +208,21 @@ async def init_db():
         for idx_sql in _PARTIAL_INDEXES:
             await conn.execute(idx_sql)
         # Migration: make workspace_id nullable for personal items
-        for table in ("notebooks", "notebook_folders", "memory_stores"):
+        for table in ("notebooks", "notebook_folders", "histories"):
             await conn.execute(
                 f"ALTER TABLE {table} ALTER COLUMN workspace_id DROP NOT NULL"
+            )
+        # Migration: rename memory_stores → histories, memory_events → history_events
+        for old, new in [("memory_stores", "histories"), ("memory_events", "history_events")]:
+            exists = await conn.fetchval(
+                "SELECT 1 FROM information_schema.tables WHERE table_name = $1", old,
+            )
+            if exists:
+                await conn.execute(f"ALTER TABLE {old} RENAME TO {new}")
+        # Migration: update object_type values
+        for tbl in ("object_permissions", "object_shares"):
+            await conn.execute(
+                f"UPDATE {tbl} SET object_type = 'history' WHERE object_type = 'memory_store'"
             )
 
 

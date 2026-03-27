@@ -124,9 +124,9 @@ export interface NotebookTree {
   root_files: NotebookTreeFile[];
 }
 
-// --- Memory Stores ---
+// --- History ---
 
-export interface MemoryStore {
+export interface History {
   id: string;
   workspace_id: string | null;
   name: string;
@@ -136,7 +136,7 @@ export interface MemoryStore {
   event_count: number | null;
 }
 
-export interface MemoryEvent {
+export interface HistoryEvent {
   id: string;
   store_id: string;
   agent_name: string;
@@ -235,11 +235,11 @@ export interface NotebookWithWorkspace {
   workspace_name: string | null;
 }
 
-export interface MemoryStoreWithWorkspace extends MemoryStore {
+export interface HistoryWithWorkspace extends History {
   workspace_name: string | null;
 }
 
-export interface MemoryEventWithContext extends MemoryEvent {
+export interface HistoryEventWithContext extends HistoryEvent {
   store_name: string;
   workspace_id: string | null;
   workspace_name: string | null;

@@ -264,15 +264,15 @@ class NotebookTreeResponse(BaseModel):
     root_files: list[NotebookTreeFile]
 
 
-# --- Memory Stores ---
+# --- History ---
 
 
-class MemoryStoreCreateRequest(BaseModel):
+class HistoryCreateRequest(BaseModel):
     name: str = Field(..., min_length=1, max_length=128)
     description: str = Field("", max_length=1000)
 
 
-class MemoryStoreResponse(BaseModel):
+class HistoryResponse(BaseModel):
     id: UUID
     workspace_id: UUID | None
     name: str
@@ -282,11 +282,11 @@ class MemoryStoreResponse(BaseModel):
     event_count: int | None = None
 
 
-class MemoryStoreListResponse(BaseModel):
-    stores: list[MemoryStoreResponse]
+class HistoryListResponse(BaseModel):
+    stores: list[HistoryResponse]
 
 
-class MemoryEventCreateRequest(BaseModel):
+class HistoryEventCreateRequest(BaseModel):
     agent_name: str = Field(..., min_length=1, max_length=64)
     event_type: str = Field(..., min_length=1, max_length=64)
     content: str = Field(..., min_length=1)
@@ -295,11 +295,11 @@ class MemoryEventCreateRequest(BaseModel):
     metadata: dict = Field(default_factory=dict)
 
 
-class MemoryEventBatchRequest(BaseModel):
-    events: list[MemoryEventCreateRequest] = Field(..., min_length=1, max_length=100)
+class HistoryEventBatchRequest(BaseModel):
+    events: list[HistoryEventCreateRequest] = Field(..., min_length=1, max_length=100)
 
 
-class MemoryEventResponse(BaseModel):
+class HistoryEventResponse(BaseModel):
     id: UUID
     store_id: UUID
     agent_name: str
@@ -311,8 +311,8 @@ class MemoryEventResponse(BaseModel):
     created_at: datetime
 
 
-class MemoryEventListResponse(BaseModel):
-    events: list[MemoryEventResponse]
+class HistoryEventListResponse(BaseModel):
+    events: list[HistoryEventResponse]
     has_more: bool
 
 

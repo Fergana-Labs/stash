@@ -8,8 +8,8 @@ from ..auth import get_current_user
 from ..models import (
     ChatMessageResponse,
     ChatResponse,
-    MemoryEventResponse,
-    MemoryStoreResponse,
+    HistoryEventResponse,
+    HistoryResponse,
     NotebookResponse,
 )
 from ..services import chat_service, memory_service, notebook_service, agent_identity_service
@@ -31,15 +31,15 @@ async def list_all_notebooks(current_user: dict = Depends(get_current_user)):
     return {"notebooks": notebooks}
 
 
-@router.get("/memory-stores")
-async def list_all_memory_stores(current_user: dict = Depends(get_current_user)):
-    """All memory stores from workspaces + personal."""
+@router.get("/history")
+async def list_all_histories(current_user: dict = Depends(get_current_user)):
+    """All historys from workspaces + personal."""
     stores = await memory_service.list_all_user_stores(current_user["id"])
     return {"stores": stores}
 
 
-@router.get("/memory-events")
-async def list_all_memory_events(
+@router.get("/history-events")
+async def list_all_history_events(
     agent_name: str | None = Query(None),
     event_type: str | None = Query(None),
     after: str | None = Query(None),

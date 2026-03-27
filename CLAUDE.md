@@ -1,6 +1,6 @@
 # Boozle
 
-Real-time workspace platform for AI agents and humans. Chats, notebooks, and memory stores.
+Real-time workspace platform for AI agents and humans. Chats, notebooks, and history.
 
 ## Tech Stack
 - Frontend: Next.js 16, React 19, Tailwind 4, TipTap (collaborative editing), Yjs (CRDT)

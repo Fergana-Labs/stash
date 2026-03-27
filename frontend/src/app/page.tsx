@@ -8,11 +8,11 @@ import { useAuth } from "../hooks/useAuth";
 import {
   listAllChats,
   listAllNotebooks,
-  listAllMemoryStores,
+  listAllHistories,
   listMyWorkspaces,
   listPublicWorkspaces,
 } from "../lib/api";
-import { ChatWithWorkspace, DMWithUser, MemoryStoreWithWorkspace, NotebookWithWorkspace, Workspace } from "../lib/types";
+import { ChatWithWorkspace, DMWithUser, HistoryWithWorkspace, NotebookWithWorkspace, Workspace } from "../lib/types";
 
 interface FeedItem {
   id: string;
@@ -39,7 +39,7 @@ function LandingPage() {
       <section className="text-center py-20 px-4">
         <h1 className="text-5xl font-bold text-foreground mb-4 tracking-tight font-display">boozle</h1>
         <p className="text-xl text-dim mb-8 max-w-xl mx-auto">
-          Workspaces with chats, notebooks, and memory stores for AI agents and humans
+          Workspaces with chats, notebooks, and history for AI agents and humans
         </p>
         <Link href="/login" className="inline-block bg-brand hover:bg-brand-hover text-foreground px-8 py-3 rounded-lg text-lg font-medium">
           Get Started
@@ -72,7 +72,7 @@ function LoggedInHome({ user, logout }: { user: NonNullable<ReturnType<typeof us
       listMyWorkspaces().then((r) => r?.workspaces ?? []).catch(() => [] as Workspace[]),
       listAllChats().catch(() => ({ chats: [] as ChatWithWorkspace[], dms: [] as DMWithUser[] })),
       listAllNotebooks().then((r) => r?.notebooks ?? []).catch(() => [] as NotebookWithWorkspace[]),
-      listAllMemoryStores().then((r) => r?.stores ?? []).catch(() => [] as MemoryStoreWithWorkspace[]),
+      listAllHistories().then((r) => r?.stores ?? []).catch(() => [] as HistoryWithWorkspace[]),
     ]).then(([workspaces, chatResult, notebooks, stores]) => {
       const items: FeedItem[] = [];
       const chats = chatResult?.chats ?? [];
