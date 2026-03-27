@@ -1,169 +1,95 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import AppShell from "../../components/AppShell";
-import NotebookTreeComponent from "../../components/workspace/FileTree";
 import MarkdownEditor from "../../components/workspace/MarkdownEditor";
 import { useAuth } from "../../hooks/useAuth";
 import {
-  createPersonalNotebook,
-  createPersonalNotebookFolder,
-  deletePersonalNotebook,
-  deletePersonalNotebookFolder,
+  listAllNotebooks,
+  getNotebook,
   getPersonalNotebook,
-  listPersonalNotebooks,
-  renamePersonalNotebookFolder,
+  updateNotebook,
   updatePersonalNotebook,
+  createPersonalNotebook,
+  createNotebook,
 } from "../../lib/api";
-import { Notebook, NotebookTree } from "../../lib/types";
-import { useRouter } from "next/navigation";
+import { Notebook, NotebookWithWorkspace } from "../../lib/types";
 
-export default function PersonalNotebooksPage() {
+export default function NotebooksPage() {
   const router = useRouter();
   const { user, loading, logout } = useAuth();
-  const [tree, setTree] = useState<NotebookTree>({ folders: [], root_files: [] });
-  const [selectedFileId, setSelectedFileId] = useState<string | null>(null);
+  const [notebooks, setNotebooks] = useState<NotebookWithWorkspace[]>([]);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
   const [selectedFile, setSelectedFile] = useState<Notebook | null>(null);
   const [error, setError] = useState("");
-  const [sidebarWidth] = useState(260);
 
-  const loadTree = useCallback(async () => {
+  const loadNotebooks = useCallback(async () => {
     try {
-      const t = await listPersonalNotebooks();
-      setTree(t);
+      const res = await listAllNotebooks();
+      setNotebooks(res?.notebooks ?? []);
     } catch {
       // ignore
     }
   }, []);
 
   useEffect(() => {
-    if (user) loadTree();
-  }, [user, loadTree]);
+    if (user) loadNotebooks();
+  }, [user, loadNotebooks]);
 
-  const handleSelectFile = useCallback(async (fileId: string) => {
-    setSelectedFileId(fileId);
+  // Group notebooks by workspace
+  const grouped = useMemo(() => {
+    const groups: Record<string, { name: string; notebooks: NotebookWithWorkspace[] }> = {};
+    for (const nb of notebooks) {
+      const key = nb.workspace_id || "personal";
+      if (!groups[key]) {
+        groups[key] = { name: nb.workspace_name || "Personal", notebooks: [] };
+      }
+      groups[key].notebooks.push(nb);
+    }
+    return groups;
+  }, [notebooks]);
+
+  const handleSelect = useCallback(async (nb: NotebookWithWorkspace) => {
+    setSelectedId(nb.id);
     try {
-      const f = await getPersonalNotebook(fileId);
-      setSelectedFile(f);
+      let file: Notebook;
+      if (nb.workspace_id) {
+        file = await getNotebook(nb.workspace_id, nb.id);
+      } else {
+        file = await getPersonalNotebook(nb.id);
+      }
+      setSelectedFile(file);
     } catch {
-      setError("Failed to load file");
+      setError("Failed to load notebook");
     }
   }, []);
 
-  const handleCreateFile = useCallback(
-    async (folderId: string | null) => {
-      const name = prompt("File name:");
-      if (!name) return;
-      try {
-        const f = await createPersonalNotebook(name, folderId || undefined);
-        await loadTree();
-        setSelectedFileId(f.id);
-        setSelectedFile(f);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : "Failed to create file");
-      }
-    },
-    [loadTree]
-  );
-
-  const handleCreateFolder = useCallback(async () => {
-    const name = prompt("Folder name:");
+  const handleCreate = async () => {
+    const name = prompt("Notebook name:");
     if (!name) return;
     try {
-      await createPersonalNotebookFolder(name);
-      await loadTree();
+      const nb = await createPersonalNotebook(name);
+      await loadNotebooks();
+      setSelectedId(nb.id);
+      setSelectedFile(nb);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to create folder");
+      setError(err instanceof Error ? err.message : "Failed to create notebook");
     }
-  }, [loadTree]);
+  };
 
-  const handleDeleteFile = useCallback(
-    async (fileId: string) => {
-      if (!confirm("Delete this file?")) return;
-      try {
-        await deletePersonalNotebook(fileId);
-        if (selectedFileId === fileId) {
-          setSelectedFileId(null);
-          setSelectedFile(null);
-        }
-        await loadTree();
-      } catch (err) {
-        setError(err instanceof Error ? err.message : "Failed to delete file");
+  const handleSave = useCallback(async (content: string) => {
+    if (!selectedFile) return;
+    try {
+      if (selectedFile.workspace_id) {
+        await updateNotebook(selectedFile.workspace_id, selectedFile.id, { content });
+      } else {
+        await updatePersonalNotebook(selectedFile.id, { content });
       }
-    },
-    [selectedFileId, loadTree]
-  );
-
-  const handleDeleteFolder = useCallback(
-    async (folderId: string) => {
-      if (!confirm("Delete this folder and all its files?")) return;
-      try {
-        await deletePersonalNotebookFolder(folderId);
-        setSelectedFileId(null);
-        setSelectedFile(null);
-        await loadTree();
-      } catch (err) {
-        setError(err instanceof Error ? err.message : "Failed to delete folder");
-      }
-    },
-    [loadTree]
-  );
-
-  const handleRenameFile = useCallback(
-    async (fileId: string, currentName: string) => {
-      const name = prompt("New name:", currentName);
-      if (!name || name === currentName) return;
-      try {
-        const updated = await updatePersonalNotebook(fileId, { name });
-        if (selectedFileId === fileId) setSelectedFile(updated);
-        await loadTree();
-      } catch (err) {
-        setError(err instanceof Error ? err.message : "Failed to rename file");
-      }
-    },
-    [selectedFileId, loadTree]
-  );
-
-  const handleMoveFile = useCallback(
-    async (fileId: string, folderId: string | null) => {
-      try {
-        const data = folderId ? { folder_id: folderId } : { move_to_root: true };
-        const updated = await updatePersonalNotebook(fileId, data);
-        if (selectedFileId === fileId) setSelectedFile(updated);
-        await loadTree();
-      } catch (err) {
-        setError(err instanceof Error ? err.message : "Failed to move file");
-      }
-    },
-    [selectedFileId, loadTree]
-  );
-
-  const handleRenameFolder = useCallback(
-    async (folderId: string, currentName: string) => {
-      const name = prompt("New name:", currentName);
-      if (!name || name === currentName) return;
-      try {
-        await renamePersonalNotebookFolder(folderId, name);
-        await loadTree();
-      } catch (err) {
-        setError(err instanceof Error ? err.message : "Failed to rename folder");
-      }
-    },
-    [loadTree]
-  );
-
-  const handleSaveFile = useCallback(
-    async (content: string) => {
-      if (!selectedFileId) return;
-      try {
-        const updated = await updatePersonalNotebook(selectedFileId, { content });
-        setSelectedFile(updated);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : "Failed to save file");
-      }
-    },
-    [selectedFileId]
-  );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to save");
+    }
+  }, [selectedFile]);
 
   if (loading) {
     return <div className="min-h-screen flex items-center justify-center text-muted">Loading...</div>;
@@ -172,49 +98,64 @@ export default function PersonalNotebooksPage() {
 
   return (
     <AppShell user={user} onLogout={logout}>
-      <div className="flex flex-col h-full">
-      {error && (
-        <div className="bg-red-900/30 border-b border-red-800 text-red-400 text-sm px-4 py-2">
-          {error}
-          <button onClick={() => setError("")} className="ml-2 text-red-500 hover:text-red-300">&times;</button>
+      <div className="flex h-full overflow-hidden">
+        {/* Notebook list sidebar */}
+        <div className="w-[240px] flex-shrink-0 bg-surface border-r border-border overflow-y-auto">
+          <div className="px-3 py-3 flex items-center justify-between border-b border-border">
+            <span className="text-xs font-medium text-muted uppercase tracking-wider">Notebooks</span>
+            <button onClick={handleCreate} className="text-xs text-brand hover:text-brand-hover">+ New</button>
+          </div>
+          {Object.entries(grouped).map(([key, group]) => (
+            <div key={key} className="px-2 py-2">
+              <div className="text-[10px] font-medium text-muted uppercase tracking-wider px-2 mb-1">
+                {group.name}
+              </div>
+              {group.notebooks.map((nb) => (
+                <button
+                  key={nb.id}
+                  onClick={() => handleSelect(nb)}
+                  className={`w-full text-left px-2 py-1.5 rounded text-sm truncate transition-colors ${
+                    selectedId === nb.id
+                      ? "bg-brand/10 text-brand font-medium"
+                      : "text-dim hover:text-foreground hover:bg-raised"
+                  }`}
+                >
+                  {nb.name}
+                </button>
+              ))}
+            </div>
+          ))}
+          {notebooks.length === 0 && (
+            <div className="px-4 py-8 text-center text-muted text-sm">
+              No notebooks yet
+            </div>
+          )}
         </div>
-      )}
-      <div className="flex-1 flex overflow-hidden">
-        <div
-          className="bg-surface border-r border-border flex-shrink-0 overflow-hidden"
-          style={{ width: sidebarWidth }}
-        >
-          <NotebookTreeComponent
-            tree={tree}
-            selectedFileId={selectedFileId}
-            onSelectFile={handleSelectFile}
-            onCreateFile={handleCreateFile}
-            onCreateFolder={handleCreateFolder}
-            onDeleteFile={handleDeleteFile}
-            onDeleteFolder={handleDeleteFolder}
-            onRenameFile={handleRenameFile}
-            onRenameFolder={handleRenameFolder}
-            onMoveFile={handleMoveFile}
-          />
-        </div>
+
+        {/* Editor area */}
         <div className="flex-1 flex flex-col overflow-hidden">
+          {error && (
+            <div className="bg-red-900/30 border-b border-red-800 text-red-400 text-sm px-4 py-2">
+              {error}
+              <button onClick={() => setError("")} className="ml-2 text-red-500 hover:text-red-300">&times;</button>
+            </div>
+          )}
           {selectedFile ? (
             <MarkdownEditor
               key={selectedFile.id}
-              workspaceId={null}
+              workspaceId={selectedFile.workspace_id}
               file={selectedFile}
-              onSave={handleSaveFile}
+              onSave={handleSave}
             />
           ) : (
             <div className="flex-1 flex items-center justify-center text-muted">
               <div className="text-center">
-                <p className="text-lg mb-2">Select a file to edit</p>
+                <p className="text-lg mb-2">Select a notebook to edit</p>
                 <p className="text-sm">or create a new one from the sidebar</p>
               </div>
             </div>
           )}
         </div>
-      </div>
       </div>
     </AppShell>
   );

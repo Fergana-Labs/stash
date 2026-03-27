@@ -205,6 +205,50 @@ export interface AgentResponse {
   created_at: string;
 }
 
+// --- Aggregate ---
+
+export interface ChatWithWorkspace extends Chat {
+  workspace_name?: string;
+}
+
+export interface DMWithUser {
+  id: string;
+  workspace_id: string | null;
+  name: string;
+  description: string;
+  creator_id: string;
+  is_dm: boolean;
+  created_at: string;
+  updated_at: string;
+  other_user: DMOtherUser | null;
+}
+
+export interface NotebookWithWorkspace {
+  id: string;
+  workspace_id: string | null;
+  folder_id: string | null;
+  name: string;
+  created_by: string;
+  updated_by: string | null;
+  created_at: string;
+  updated_at: string;
+  workspace_name: string | null;
+}
+
+export interface MemoryStoreWithWorkspace extends MemoryStore {
+  workspace_name: string | null;
+}
+
+export interface MemoryEventWithContext extends MemoryEvent {
+  store_name: string;
+  workspace_id: string | null;
+  workspace_name: string | null;
+}
+
+export interface AgentWithContext extends AgentProfile {
+  workspaces: { workspace_id: string; workspace_name: string; role: string }[];
+}
+
 // --- Search ---
 
 export interface UserSearchResult {

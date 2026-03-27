@@ -150,6 +150,27 @@ async def list_notebook_tree(workspace_id: UUID) -> dict:
     return {"folders": list(folder_map.values()), "root_files": root_files}
 
 
+# --- Aggregate Notebooks ---
+
+
+async def list_all_user_notebooks(user_id: UUID) -> list[dict]:
+    """All notebooks: from workspaces user is member of + personal."""
+    pool = get_pool()
+    rows = await pool.fetch(
+        "SELECT n.id, n.workspace_id, n.folder_id, n.name, "
+        "n.created_by, n.updated_by, n.created_at, n.updated_at, "
+        "w.name AS workspace_name "
+        "FROM notebooks n "
+        "LEFT JOIN workspaces w ON w.id = n.workspace_id "
+        "WHERE n.workspace_id IN ("
+        "  SELECT workspace_id FROM workspace_members WHERE user_id = $1"
+        ") OR (n.workspace_id IS NULL AND n.created_by = $1) "
+        "ORDER BY n.updated_at DESC",
+        user_id,
+    )
+    return [dict(r) for r in rows]
+
+
 # --- Personal Notebooks ---
 
 

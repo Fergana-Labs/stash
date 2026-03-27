@@ -56,6 +56,85 @@ async def delete_store(store_id: UUID, workspace_id: UUID) -> bool:
     return result == "DELETE 1"
 
 
+# --- Aggregate Queries ---
+
+
+async def list_all_user_stores(user_id: UUID) -> list[dict]:
+    """All memory stores from workspaces user is member of + personal."""
+    pool = get_pool()
+    rows = await pool.fetch(
+        "SELECT ms.id, ms.workspace_id, ms.name, ms.description, ms.created_by, ms.created_at, "
+        "(SELECT COUNT(*) FROM memory_events me WHERE me.store_id = ms.id) AS event_count, "
+        "w.name AS workspace_name "
+        "FROM memory_stores ms "
+        "LEFT JOIN workspaces w ON w.id = ms.workspace_id "
+        "WHERE ms.workspace_id IN ("
+        "  SELECT workspace_id FROM workspace_members WHERE user_id = $1"
+        ") OR (ms.workspace_id IS NULL AND ms.created_by = $1) "
+        "ORDER BY ms.created_at DESC",
+        user_id,
+    )
+    return [dict(r) for r in rows]
+
+
+async def query_all_user_events(
+    user_id: UUID,
+    agent_name: str | None = None,
+    event_type: str | None = None,
+    after: str | None = None,
+    before: str | None = None,
+    limit: int = 50,
+) -> tuple[list[dict], bool]:
+    """Events across ALL accessible stores, with filters."""
+    pool = get_pool()
+    limit = min(limit, 200)
+
+    conditions = [
+        "(ms.workspace_id IN (SELECT workspace_id FROM workspace_members WHERE user_id = $1) "
+        "OR (ms.workspace_id IS NULL AND ms.created_by = $1))"
+    ]
+    args: list = [user_id]
+    idx = 2
+
+    if agent_name:
+        conditions.append(f"me.agent_name = ${idx}")
+        args.append(agent_name)
+        idx += 1
+    if event_type:
+        conditions.append(f"me.event_type = ${idx}")
+        args.append(event_type)
+        idx += 1
+    if after:
+        conditions.append(f"me.created_at > ${idx}")
+        args.append(after)
+        idx += 1
+    if before:
+        conditions.append(f"me.created_at < ${idx}")
+        args.append(before)
+        idx += 1
+
+    where = " AND ".join(conditions)
+    args.append(limit + 1)
+
+    rows = await pool.fetch(
+        f"SELECT me.id, me.store_id, me.agent_name, me.event_type, me.session_id, "
+        f"me.tool_name, me.content, me.metadata, me.created_at, "
+        f"ms.name AS store_name, ms.workspace_id, w.name AS workspace_name "
+        f"FROM memory_events me "
+        f"JOIN memory_stores ms ON ms.id = me.store_id "
+        f"LEFT JOIN workspaces w ON w.id = ms.workspace_id "
+        f"WHERE {where} "
+        f"ORDER BY me.created_at DESC LIMIT ${idx}",
+        *args,
+    )
+
+    events = [dict(r) for r in rows]
+    has_more = len(events) > limit
+    if has_more:
+        events = events[:limit]
+    return events, has_more
+
+
 # --- Personal Store CRUD ---
 
 

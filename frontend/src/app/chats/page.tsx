@@ -5,35 +5,29 @@ import { useCallback, useEffect, useState } from "react";
 import AppShell from "../../components/AppShell";
 import NewDMDialog from "../../components/NewDMDialog";
 import { useAuth } from "../../hooks/useAuth";
-import {
-  createPersonalRoom,
-  deletePersonalRoom,
-  listDMs,
-  listPersonalRooms,
-} from "../../lib/api";
-import { Chat, DMConversation } from "../../lib/types";
+import { listAllChats, createPersonalRoom } from "../../lib/api";
+import { ChatWithWorkspace, DMWithUser } from "../../lib/types";
 
 export default function ChatsPage() {
   const router = useRouter();
   const { user, loading, logout } = useAuth();
-  const [dms, setDMs] = useState<DMConversation[]>([]);
-  const [rooms, setRooms] = useState<Chat[]>([]);
+  const [chats, setChats] = useState<ChatWithWorkspace[]>([]);
+  const [dms, setDMs] = useState<DMWithUser[]>([]);
   const [showNewDM, setShowNewDM] = useState(false);
   const [showCreateRoom, setShowCreateRoom] = useState(false);
   const [newRoomName, setNewRoomName] = useState("");
   const [newRoomDesc, setNewRoomDesc] = useState("");
   const [error, setError] = useState("");
 
-  const loadData = useCallback(() => {
-    if (!user) return;
-    Promise.all([
-      listDMs().then((r) => r?.dms ?? []).catch(() => [] as DMConversation[]),
-      listPersonalRooms().then((r) => r?.chats ?? []).catch(() => [] as Chat[]),
-    ]).then(([dmList, roomList]) => {
-      setDMs(dmList ?? []);
-      setRooms(roomList ?? []);
-    });
-  }, [user]);
+  const loadData = useCallback(async () => {
+    try {
+      const res = await listAllChats();
+      setChats(res?.chats ?? []);
+      setDMs(res?.dms ?? []);
+    } catch {
+      // ignore
+    }
+  }, []);
 
   useEffect(() => {
     if (!loading && user) loadData();
@@ -53,16 +47,6 @@ export default function ChatsPage() {
     }
   };
 
-  const handleDeleteRoom = async (roomId: string) => {
-    if (!confirm("Delete this room?")) return;
-    try {
-      await deletePersonalRoom(roomId);
-      loadData();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to delete room");
-    }
-  };
-
   if (loading) {
     return <div className="min-h-screen flex items-center justify-center text-muted">Loading...</div>;
   }
@@ -74,18 +58,8 @@ export default function ChatsPage() {
         <div className="flex items-center justify-between mb-6">
           <h1 className="text-2xl font-bold text-foreground font-display">Chats</h1>
           <div className="flex gap-2">
-            <button
-              onClick={() => setShowNewDM(true)}
-              className="text-sm bg-raised text-dim px-3 py-1.5 rounded border border-border hover:text-foreground"
-            >
-              New DM
-            </button>
-            <button
-              onClick={() => setShowCreateRoom(true)}
-              className="text-sm bg-brand hover:bg-brand-hover text-foreground px-3 py-1.5 rounded"
-            >
-              New Room
-            </button>
+            <button onClick={() => setShowNewDM(true)} className="text-sm bg-raised text-dim px-3 py-1.5 rounded border border-border hover:text-foreground">New DM</button>
+            <button onClick={() => setShowCreateRoom(true)} className="text-sm bg-brand hover:bg-brand-hover text-foreground px-3 py-1.5 rounded">New Room</button>
           </div>
         </div>
 
@@ -105,21 +79,27 @@ export default function ChatsPage() {
 
         <NewDMDialog open={showNewDM} onClose={() => { setShowNewDM(false); loadData(); }} />
 
-        {rooms.length > 0 && (
+        {chats.length > 0 && (
           <section className="mb-8">
             <h2 className="text-sm font-medium text-muted uppercase tracking-wider mb-2">Rooms</h2>
             <div className="space-y-0.5">
-              {rooms.map((room) => (
-                <div key={room.id} className="flex items-center justify-between px-3 py-2.5 rounded-lg hover:bg-raised transition-colors">
-                  <a href={`/rooms/${room.id}`} className="flex items-center gap-3 flex-1 min-w-0">
-                    <div className="w-7 h-7 rounded-md bg-brand/15 text-brand flex items-center justify-center text-xs font-bold flex-shrink-0">#</div>
-                    <div className="min-w-0">
-                      <div className="text-sm text-foreground truncate">{room.name}</div>
-                      {room.description && <div className="text-xs text-muted truncate">{room.description}</div>}
-                    </div>
-                  </a>
-                  <button onClick={() => handleDeleteRoom(room.id)} className="text-xs text-red-400 hover:text-red-300 px-2 py-1 flex-shrink-0">Delete</button>
-                </div>
+              {chats.map((chat) => (
+                <a
+                  key={chat.id}
+                  href={chat.workspace_id ? `/workspaces/${chat.workspace_id}` : `/rooms/${chat.id}`}
+                  className="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-raised transition-colors"
+                >
+                  <div className="w-7 h-7 rounded-md bg-brand/15 text-brand flex items-center justify-center text-xs font-bold flex-shrink-0">#</div>
+                  <div className="min-w-0 flex-1">
+                    <div className="text-sm text-foreground truncate">{chat.name}</div>
+                    {chat.description && <div className="text-xs text-muted truncate">{chat.description}</div>}
+                  </div>
+                  {chat.workspace_name && (
+                    <span className="text-[10px] text-muted bg-raised px-1.5 py-0.5 rounded flex-shrink-0">
+                      {chat.workspace_name}
+                    </span>
+                  )}
+                </a>
               ))}
             </div>
           </section>
@@ -135,27 +115,17 @@ export default function ChatsPage() {
                 const other = dm.other_user;
                 const displayName = other?.display_name || other?.name || "Unknown";
                 return (
-                  <a
-                    key={dm.id}
-                    href={`/dms/${dm.id}`}
-                    className="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-raised transition-colors"
-                  >
-                    <div
-                      className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 ${
-                        other?.type === "agent"
-                          ? "bg-agent-muted text-agent"
-                          : "bg-human-muted text-human"
-                      }`}
-                    >
+                  <a key={dm.id} href={`/dms/${dm.id}`} className="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-raised transition-colors">
+                    <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 ${other?.type === "agent" ? "bg-agent-muted text-agent" : "bg-human-muted text-human"}`}>
                       {displayName.charAt(0).toUpperCase()}
                     </div>
                     <div className="min-w-0 flex-1">
                       <div className="text-sm text-foreground truncate">{displayName}</div>
                       <div className="text-xs text-muted">@{other?.name || "unknown"}</div>
                     </div>
-                    {dm.last_message_at && (
+                    {dm.updated_at && (
                       <div className="text-xs text-muted flex-shrink-0">
-                        {new Date(dm.last_message_at).toLocaleDateString()}
+                        {new Date(dm.updated_at).toLocaleDateString()}
                       </div>
                     )}
                   </a>
