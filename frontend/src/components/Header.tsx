@@ -67,6 +67,9 @@ export default function Header({ user, onLogout, onProfileUpdate }: HeaderProps)
   return (
     <header className="bg-surface border-b border-border">
       <div className="px-4 py-2 flex items-center justify-end gap-4">
+          <Link href="/docs" className="text-sm text-dim hover:text-foreground">
+            Docs
+          </Link>
           {user ? (
             <div className="flex items-center gap-3 relative" ref={dropdownRef}>
               <button
