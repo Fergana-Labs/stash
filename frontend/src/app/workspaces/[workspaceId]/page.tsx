@@ -4,32 +4,31 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import Header from "../../../components/Header";
-import FileTreeComponent from "../../../components/workspace/FileTree";
+import NotebookTreeComponent from "../../../components/workspace/FileTree";
 import MarkdownEditor from "../../../components/workspace/MarkdownEditor";
 import WorkspaceSidebar from "../../../components/workspace/WorkspaceSidebar";
 import { useAuth } from "../../../hooks/useAuth";
 import {
-  createWorkspaceFile,
-  createWorkspaceFolder,
-  deleteWorkspaceFile,
-  deleteWorkspaceFolder,
-  getRoom,
-  getWorkspaceFile,
-  listWorkspaceFiles,
-  renameWorkspaceFolder,
-  updateWorkspaceFile,
-  joinRoom as apiJoinRoom,
-  getRoomMembers,
-  leaveRoom,
-  deleteRoom,
-  kickMember,
-  updateRoom,
-  addToAccessList,
-  removeFromAccessList,
-  getAccessList,
-  type AccessListEntry,
+  createNotebook,
+  createNotebookFolder,
+  deleteNotebook,
+  deleteNotebookFolder,
+  getWorkspace,
+  getNotebook,
+  listNotebooks,
+  renameNotebookFolder,
+  updateNotebook,
+  joinWorkspace as apiJoinRoom,
+  getWorkspaceMembers,
+  leaveWorkspace,
+  deleteWorkspace,
+  kickWorkspaceMember,
+  updateWorkspace,
+  
+  
+  
 } from "../../../lib/api";
-import { FileTree, Room, RoomMember, WorkspaceFile } from "../../../lib/types";
+import { NotebookTree, Workspace, WorkspaceMember, Notebook } from "../../../lib/types";
 
 export default function WorkspacePage() {
   const params = useParams();
@@ -37,11 +36,11 @@ export default function WorkspacePage() {
   const workspaceId = params.workspaceId as string;
   const { user, loading, logout } = useAuth();
 
-  const [workspace, setWorkspace] = useState<Room | null>(null);
-  const [tree, setTree] = useState<FileTree>({ folders: [], root_files: [] });
+  const [workspace, setWorkspace] = useState<Workspace | null>(null);
+  const [tree, setTree] = useState<NotebookTree>({ folders: [], root_files: [] });
   const [selectedFileId, setSelectedFileId] = useState<string | null>(null);
-  const [selectedFile, setSelectedFile] = useState<WorkspaceFile | null>(null);
-  const [members, setMembers] = useState<RoomMember[]>([]);
+  const [selectedFile, setSelectedFile] = useState<Notebook | null>(null);
+  const [members, setMembers] = useState<WorkspaceMember[]>([]);
   const [isMember, setIsMember] = useState(false);
   const [error, setError] = useState("");
   const [sidebarWidth] = useState(260);
@@ -49,7 +48,7 @@ export default function WorkspacePage() {
 
   const loadWorkspace = useCallback(async () => {
     try {
-      const room = await getRoom(workspaceId);
+      const room = await getWorkspace(workspaceId);
       setWorkspace(room);
     } catch {
       setError("Workspace not found");
@@ -58,7 +57,7 @@ export default function WorkspacePage() {
 
   const loadTree = useCallback(async () => {
     try {
-      const t = await listWorkspaceFiles(workspaceId);
+      const t = await listNotebooks(workspaceId);
       setTree(t);
     } catch {
       // Not a member yet
@@ -67,7 +66,7 @@ export default function WorkspacePage() {
 
   const loadMembers = useCallback(async () => {
     try {
-      const m = await getRoomMembers(workspaceId);
+      const m = await getWorkspaceMembers(workspaceId);
       setMembers(m);
       if (user) {
         setIsMember(m.some((member) => member.user_id === user.id));
@@ -92,7 +91,7 @@ export default function WorkspacePage() {
     async (fileId: string) => {
       setSelectedFileId(fileId);
       try {
-        const f = await getWorkspaceFile(workspaceId, fileId);
+        const f = await getNotebook(workspaceId, fileId);
         setSelectedFile(f);
       } catch {
         setError("Failed to load file");
@@ -106,7 +105,7 @@ export default function WorkspacePage() {
       const name = prompt("File name:");
       if (!name) return;
       try {
-        const f = await createWorkspaceFile(workspaceId, name, folderId || undefined);
+        const f = await createNotebook(workspaceId, name, folderId || undefined);
         await loadTree();
         setSelectedFileId(f.id);
         setSelectedFile(f);
@@ -121,7 +120,7 @@ export default function WorkspacePage() {
     const name = prompt("Folder name:");
     if (!name) return;
     try {
-      await createWorkspaceFolder(workspaceId, name);
+      await createNotebookFolder(workspaceId, name);
       await loadTree();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to create folder");
@@ -132,7 +131,7 @@ export default function WorkspacePage() {
     async (fileId: string) => {
       if (!confirm("Delete this file?")) return;
       try {
-        await deleteWorkspaceFile(workspaceId, fileId);
+        await deleteNotebook(workspaceId, fileId);
         if (selectedFileId === fileId) {
           setSelectedFileId(null);
           setSelectedFile(null);
@@ -149,7 +148,7 @@ export default function WorkspacePage() {
     async (folderId: string) => {
       if (!confirm("Delete this folder and all its files?")) return;
       try {
-        await deleteWorkspaceFolder(workspaceId, folderId);
+        await deleteNotebookFolder(workspaceId, folderId);
         setSelectedFileId(null);
         setSelectedFile(null);
         await loadTree();
@@ -165,7 +164,7 @@ export default function WorkspacePage() {
       const name = prompt("New name:", currentName);
       if (!name || name === currentName) return;
       try {
-        const updated = await updateWorkspaceFile(workspaceId, fileId, { name });
+        const updated = await updateNotebook(workspaceId, fileId, { name });
         if (selectedFileId === fileId) {
           setSelectedFile(updated);
         }
@@ -181,7 +180,7 @@ export default function WorkspacePage() {
     async (fileId: string, folderId: string | null) => {
       try {
         const data = folderId ? { folder_id: folderId } : { move_to_root: true };
-        const updated = await updateWorkspaceFile(workspaceId, fileId, data);
+        const updated = await updateNotebook(workspaceId, fileId, data);
         if (selectedFileId === fileId) {
           setSelectedFile(updated);
         }
@@ -198,7 +197,7 @@ export default function WorkspacePage() {
       const name = prompt("New name:", currentName);
       if (!name || name === currentName) return;
       try {
-        await renameWorkspaceFolder(workspaceId, folderId, name);
+        await renameNotebookFolder(workspaceId, folderId, name);
         await loadTree();
       } catch (err) {
         setError(err instanceof Error ? err.message : "Failed to rename folder");
@@ -211,7 +210,7 @@ export default function WorkspacePage() {
     async (content: string) => {
       if (!selectedFileId) return;
       try {
-        const updated = await updateWorkspaceFile(workspaceId, selectedFileId, { content });
+        const updated = await updateNotebook(workspaceId, selectedFileId, { content });
         setSelectedFile(updated);
       } catch (err) {
         setError(err instanceof Error ? err.message : "Failed to save file");
@@ -234,7 +233,7 @@ export default function WorkspacePage() {
   const handleLeave = async () => {
     if (!confirm("Leave this workspace?")) return;
     try {
-      await leaveRoom(workspaceId);
+      await leaveWorkspace(workspaceId);
       router.push("/rooms");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to leave workspace");
@@ -243,7 +242,7 @@ export default function WorkspacePage() {
 
   const handleDeleteWorkspace = async () => {
     try {
-      await deleteRoom(workspaceId);
+      await deleteWorkspace(workspaceId);
       router.push("/rooms");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to delete workspace");
@@ -252,7 +251,7 @@ export default function WorkspacePage() {
 
   const handleKickMember = async (userId: string) => {
     try {
-      await kickMember(workspaceId, userId);
+      await kickWorkspaceMember(workspaceId, userId);
       await loadMembers();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to kick member");
@@ -261,7 +260,7 @@ export default function WorkspacePage() {
 
   const handleUpdateWorkspace = async (data: { name?: string; description?: string }) => {
     try {
-      const updated = await updateRoom(workspaceId, data);
+      const updated = await updateWorkspace(workspaceId, data);
       setWorkspace(updated);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to update workspace");
@@ -269,16 +268,16 @@ export default function WorkspacePage() {
   };
 
   const handleAddToAccessList = async (userName: string, listType: "allow" | "block") => {
-    await addToAccessList(workspaceId, userName, listType);
+    // TODO: migrate to permissions API // await addToAccessList(workspaceId, userName, listType);
   };
 
   const handleRemoveFromAccessList = async (userName: string, listType: "allow" | "block") => {
-    await removeFromAccessList(workspaceId, userName, listType);
+    // TODO: migrate to permissions API
   };
 
-  const handleGetAccessList = async (listType: "allow" | "block"): Promise<AccessListEntry[]> => {
-    const res = await getAccessList(workspaceId, listType);
-    return res.entries;
+  const handleGetAccessList = async (listType: "allow" | "block"): Promise<any[]> => {
+    // TODO: migrate to permissions API
+    return [];
   };
 
   const isOwner = members.some(
@@ -360,7 +359,7 @@ export default function WorkspacePage() {
             className="bg-gray-900 border-r border-gray-800 flex-shrink-0 overflow-hidden"
             style={{ width: sidebarWidth }}
           >
-            <FileTreeComponent
+            <NotebookTreeComponent
               tree={tree}
               selectedFileId={selectedFileId}
               onSelectFile={handleSelectFile}

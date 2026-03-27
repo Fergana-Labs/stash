@@ -4,16 +4,16 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import Header from "../components/Header";
 import NewDMDialog from "../components/NewDMDialog";
-import RoomCard from "../components/RoomCard";
+import WorkspaceCard from "../components/RoomCard";
 import { useAuth } from "../hooks/useAuth";
-import { listDMs, listMyRooms, listPublicRooms } from "../lib/api";
-import { DMConversation, Room } from "../lib/types";
+import { listDMs, listMyWorkspaces, listPublicWorkspaces } from "../lib/api";
+import { DMConversation, Workspace } from "../lib/types";
 
 function LandingPage() {
-  const [publicRooms, setPublicRooms] = useState<Room[]>([]);
+  const [publicWorkspaces, setPublicWorkspaces] = useState<Workspace[]>([]);
 
   useEffect(() => {
-    listPublicRooms().then((r) => setPublicRooms(r.rooms)).catch(() => {});
+    listPublicWorkspaces().then((r) => setPublicWorkspaces(r.workspaces)).catch(() => {});
   }, []);
 
   return (
@@ -23,13 +23,12 @@ function LandingPage() {
           boozle
         </h1>
         <p className="text-xl text-gray-400 mb-8 max-w-xl mx-auto">
-          Real-time chat rooms and collaborative workspaces for AI agents and humans
+          Workspaces with chats, notebooks, and memory stores for AI agents and humans
         </p>
         <p className="text-gray-500 mb-10 max-w-2xl mx-auto">
-          Create rooms, invite teammates and AI agents, and collaborate in real
-          time. Use chat rooms for conversation or workspaces for collaborative
-          markdown editing. Boozle provides REST, WebSocket, SSE, and MCP
-          interfaces so any agent can join.
+          Create workspaces, invite teammates and AI agents, and collaborate in real
+          time. Use chats for conversation, notebooks for collaborative markdown
+          editing, and memory stores for structured agent event logs.
         </p>
         <Link
           href="/login"
@@ -42,35 +41,33 @@ function LandingPage() {
       <section className="max-w-4xl mx-auto px-4 pb-16">
         <div className="grid gap-6 sm:grid-cols-3">
           <div className="bg-gray-900 border border-gray-800 rounded-lg p-6">
-            <h3 className="text-white font-medium mb-2">Chat Rooms</h3>
+            <h3 className="text-white font-medium mb-2">Chats</h3>
             <p className="text-gray-400 text-sm">
-              Create public or private rooms and invite others by sharing a
-              simple invite code.
+              Messaging channels within workspaces. Real-time via WebSocket and SSE.
             </p>
           </div>
           <div className="bg-gray-900 border border-gray-800 rounded-lg p-6">
-            <h3 className="text-white font-medium mb-2">Workspaces</h3>
+            <h3 className="text-white font-medium mb-2">Notebooks</h3>
             <p className="text-gray-400 text-sm">
               Collaboratively create and edit markdown files in real time
               with agents and humans.
             </p>
           </div>
           <div className="bg-gray-900 border border-gray-800 rounded-lg p-6">
-            <h3 className="text-white font-medium mb-2">Built for Developers</h3>
+            <h3 className="text-white font-medium mb-2">Memory Stores</h3>
             <p className="text-gray-400 text-sm">
-              REST API, WebSocket, SSE, and MCP server — integrate any way you
-              like.
+              Structured, searchable event logs for agent activity. Append-only with FTS.
             </p>
           </div>
         </div>
       </section>
 
-      {publicRooms.length > 0 && (
+      {publicWorkspaces.length > 0 && (
         <section className="max-w-4xl mx-auto px-4 pb-16">
-          <h2 className="text-lg font-medium text-white mb-3">Public Rooms & Workspaces</h2>
+          <h2 className="text-lg font-medium text-white mb-3">Public Workspaces</h2>
           <div className="grid gap-3 sm:grid-cols-2">
-            {publicRooms.map((room) => (
-              <RoomCard key={room.id} room={room} isMember={false} />
+            {publicWorkspaces.map((ws) => (
+              <WorkspaceCard key={ws.id} workspace={ws} isMember={false} />
             ))}
           </div>
         </section>
@@ -80,23 +77,20 @@ function LandingPage() {
 }
 
 function LoggedInHome({ user }: { user: NonNullable<ReturnType<typeof useAuth>["user"]> }) {
-  const [publicRooms, setPublicRooms] = useState<Room[]>([]);
-  const [myRooms, setMyRooms] = useState<Room[]>([]);
+  const [publicWorkspaces, setPublicWorkspaces] = useState<Workspace[]>([]);
+  const [myWorkspaces, setMyWorkspaces] = useState<Workspace[]>([]);
   const [dms, setDMs] = useState<DMConversation[]>([]);
   const [showNewDM, setShowNewDM] = useState(false);
-  const myRoomIds = useMemo(() => new Set(myRooms.map((r) => r.id)), [myRooms]);
-
-  const myChatRooms = myRooms.filter((r) => (r.type || "chat") === "chat");
-  const myWorkspaces = myRooms.filter((r) => r.type === "workspace");
+  const myWsIds = useMemo(() => new Set(myWorkspaces.map((w) => w.id)), [myWorkspaces]);
 
   const loadData = () => {
     Promise.all([
-      listPublicRooms().then((r) => r.rooms).catch(() => [] as Room[]),
-      listMyRooms().then((r) => r.rooms).catch(() => [] as Room[]),
+      listPublicWorkspaces().then((r) => r.workspaces).catch(() => [] as Workspace[]),
+      listMyWorkspaces().then((r) => r.workspaces).catch(() => [] as Workspace[]),
       listDMs().then((r) => r.dms).catch(() => [] as DMConversation[]),
     ]).then(([pub, mine, dmList]) => {
-      setPublicRooms(pub);
-      setMyRooms(mine);
+      setPublicWorkspaces(pub);
+      setMyWorkspaces(mine);
       setDMs(dmList);
     });
   };
@@ -110,7 +104,7 @@ function LoggedInHome({ user }: { user: NonNullable<ReturnType<typeof useAuth>["
       <div className="text-center mb-8">
         <h1 className="text-3xl font-bold text-white mb-2">boozle</h1>
         <p className="text-gray-400">
-          Real-time chat rooms and collaborative workspaces for AI agents and humans
+          Workspaces with chats, notebooks, and memory stores
         </p>
       </div>
 
@@ -134,7 +128,7 @@ function LoggedInHome({ user }: { user: NonNullable<ReturnType<typeof useAuth>["
               return (
                 <a
                   key={dm.id}
-                  href={`/rooms/${dm.id}`}
+                  href={`/dms/${dm.id}`}
                   className="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-gray-800 transition-colors"
                 >
                   <div
@@ -164,44 +158,33 @@ function LoggedInHome({ user }: { user: NonNullable<ReturnType<typeof useAuth>["
 
       <NewDMDialog open={showNewDM} onClose={() => { setShowNewDM(false); loadData(); }} />
 
-      {myChatRooms.length > 0 && (
-        <section className="mb-8">
-          <h2 className="text-lg font-medium text-white mb-3">My Rooms</h2>
-          <div className="grid gap-3 sm:grid-cols-2">
-            {myChatRooms.map((room) => (
-              <RoomCard key={room.id} room={room} isMember />
-            ))}
-          </div>
-        </section>
-      )}
-
       {myWorkspaces.length > 0 && (
         <section className="mb-8">
           <h2 className="text-lg font-medium text-white mb-3">My Workspaces</h2>
           <div className="grid gap-3 sm:grid-cols-2">
-            {myWorkspaces.map((room) => (
-              <RoomCard key={room.id} room={room} isMember />
+            {myWorkspaces.map((ws) => (
+              <WorkspaceCard key={ws.id} workspace={ws} isMember />
             ))}
           </div>
         </section>
       )}
 
       {(() => {
-        const filtered = publicRooms.filter((r) => !myRoomIds.has(r.id));
+        const filtered = publicWorkspaces.filter((w) => !myWsIds.has(w.id));
         return (
           <section>
-            <h2 className="text-lg font-medium text-white mb-3">Public Rooms & Workspaces</h2>
+            <h2 className="text-lg font-medium text-white mb-3">Public Workspaces</h2>
             {filtered.length === 0 ? (
               <p className="text-gray-500 text-sm">
-                No public rooms yet.{" "}
+                No public workspaces yet.{" "}
                 <a href="/rooms" className="text-blue-400 hover:underline">
                   Create one!
                 </a>
               </p>
             ) : (
               <div className="grid gap-3 sm:grid-cols-2">
-                {filtered.map((room) => (
-                  <RoomCard key={room.id} room={room} isMember={false} />
+                {filtered.map((ws) => (
+                  <WorkspaceCard key={ws.id} workspace={ws} isMember={false} />
                 ))}
               </div>
             )}

@@ -1,10 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { FileTree, FileTreeFile, FileTreeFolder } from "../../lib/types";
+import { NotebookTree, NotebookTreeFile, NotebookTreeFolder } from "../../lib/types";
 
-interface FileTreeProps {
-  tree: FileTree;
+interface NotebookTreeProps {
+  tree: NotebookTree;
   selectedFileId: string | null;
   onSelectFile: (fileId: string) => void;
   onCreateFile: (folderId: string | null) => void;
@@ -27,9 +27,9 @@ export default function FileTreeComponent({
   onRenameFile,
   onRenameFolder,
   onMoveFile,
-}: FileTreeProps) {
+}: NotebookTreeProps) {
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(
-    new Set(tree.folders.map((f) => f.id))
+    new Set(tree.folders.map((f: any) => f.id))
   );
   const [contextMenu, setContextMenu] = useState<{
     x: number;
@@ -65,7 +65,7 @@ export default function FileTreeComponent({
 
   const closeContextMenu = () => setContextMenu(null);
 
-  const renderFile = (file: FileTreeFile) => (
+  const renderFile = (file: NotebookTreeFile) => (
     <button
       key={file.id}
       onClick={() => onSelectFile(file.id)}
@@ -81,7 +81,7 @@ export default function FileTreeComponent({
     </button>
   );
 
-  const renderFolder = (folder: FileTreeFolder) => {
+  const renderFolder = (folder: NotebookTreeFolder) => {
     const isExpanded = expandedFolders.has(folder.id);
     return (
       <div key={folder.id}>
@@ -197,8 +197,8 @@ export default function FileTreeComponent({
                 </button>
               )}
               {tree.folders
-                .filter((f) => f.id !== contextMenu.folderId)
-                .map((folder) => (
+                .filter((f: any) => f.id !== contextMenu.folderId)
+                .map((folder: any) => (
                   <button
                     key={folder.id}
                     onClick={() => {

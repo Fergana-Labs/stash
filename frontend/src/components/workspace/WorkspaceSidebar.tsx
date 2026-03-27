@@ -1,12 +1,12 @@
 "use client";
 
 import { useCallback, useState } from "react";
-import type { AccessListEntry } from "../../lib/api";
-import { Room, RoomMember } from "../../lib/types";
+
+import { Workspace, WorkspaceMember } from "../../lib/types";
 
 interface WorkspaceSidebarProps {
-  workspace: Room;
-  members: RoomMember[];
+  workspace: Workspace;
+  members: WorkspaceMember[];
   currentUserId: string;
   isOwner: boolean;
   onLeave: () => void;
@@ -15,7 +15,7 @@ interface WorkspaceSidebarProps {
   onUpdateWorkspace: (data: { name?: string; description?: string }) => void;
   onAddToAccessList?: (userName: string, listType: "allow" | "block") => Promise<void>;
   onRemoveFromAccessList?: (userName: string, listType: "allow" | "block") => Promise<void>;
-  onGetAccessList?: (listType: "allow" | "block") => Promise<AccessListEntry[]>;
+  onGetAccessList?: (listType: "allow" | "block") => Promise<any[]>;
 }
 
 export default function WorkspaceSidebar({
@@ -38,7 +38,7 @@ export default function WorkspaceSidebar({
 
   const [showAccessList, setShowAccessList] = useState(false);
   const [activeListTab, setActiveListTab] = useState<"allow" | "block">("allow");
-  const [accessEntries, setAccessEntries] = useState<AccessListEntry[]>([]);
+  const [accessEntries, setAccessEntries] = useState<any[]>([]);
   const [accessLoading, setAccessLoading] = useState(false);
   const [newAccessName, setNewAccessName] = useState("");
 

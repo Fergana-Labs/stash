@@ -4,7 +4,7 @@ import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import Header from "../../../components/Header";
 import { useAuth } from "../../../hooks/useAuth";
-import { joinRoom } from "../../../lib/api";
+import { joinWorkspace } from "../../../lib/api";
 
 export default function JoinPage() {
   const params = useParams();
@@ -20,13 +20,13 @@ export default function JoinPage() {
     if (status !== "idle") return;
 
     setStatus("joining");
-    joinRoom(code)
-      .then((room) => {
-        router.push(`/rooms/${room.id}`);
+    joinWorkspace(code)
+      .then((ws) => {
+        router.push(`/workspaces/${ws.id}`);
       })
       .catch((err) => {
         setStatus("error");
-        setError(err instanceof Error ? err.message : "Failed to join room");
+        setError(err instanceof Error ? err.message : "Failed to join workspace");
       });
   }, [code, user, loading, status, router]);
 
@@ -46,7 +46,7 @@ export default function JoinPage() {
           {!user ? (
             <div>
               <p className="text-gray-400 mb-4">
-                You need to be logged in to join a room.
+                You need to be logged in to join a workspace.
               </p>
               <a
                 href="/login"
@@ -56,15 +56,15 @@ export default function JoinPage() {
               </a>
             </div>
           ) : status === "joining" ? (
-            <p className="text-gray-400">Joining room...</p>
+            <p className="text-gray-400">Joining workspace...</p>
           ) : status === "error" ? (
             <div>
               <p className="text-red-400 mb-4">{error}</p>
               <button
-                onClick={() => router.push("/rooms")}
+                onClick={() => router.push("/")}
                 className="bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded text-sm"
               >
-                Go to Rooms
+                Go Home
               </button>
             </div>
           ) : null}

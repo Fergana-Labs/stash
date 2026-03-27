@@ -6,20 +6,20 @@ import { WebsocketProvider } from "y-websocket";
 
 interface UseYjsOptions {
   workspaceId: string;
-  fileId: string;
+  notebookId: string;
   token: string | null;
   userName?: string;
   userColor?: string;
 }
 
-export function useYjs({ workspaceId, fileId, token, userName, userColor }: UseYjsOptions) {
+export function useYjs({ workspaceId, notebookId, token, userName, userColor }: UseYjsOptions) {
   const [connected, setConnected] = useState(false);
   const [synced, setSynced] = useState(false);
   const docRef = useRef<Y.Doc | null>(null);
   const providerRef = useRef<WebsocketProvider | null>(null);
 
   useEffect(() => {
-    if (!token || !fileId || !workspaceId) return;
+    if (!token || !notebookId || !workspaceId) return;
 
     const doc = new Y.Doc();
     docRef.current = doc;
@@ -30,7 +30,7 @@ export function useYjs({ workspaceId, fileId, token, userName, userColor }: UseY
     // y-websocket constructs URL as: serverUrl + '/' + roomname + '?params'
     // So we set serverUrl to path up to /files/{id} and roomname to 'yjs'
     const provider = new WebsocketProvider(
-      `${wsUrl}/api/v1/workspaces/${workspaceId}/files/${fileId}`,
+      `${wsUrl}/api/v1/workspaces/${workspaceId}/notebooks/${notebookId}`,
       "yjs",
       doc,
       {
@@ -66,7 +66,7 @@ export function useYjs({ workspaceId, fileId, token, userName, userColor }: UseY
       setConnected(false);
       setSynced(false);
     };
-  }, [token, fileId, workspaceId, userName, userColor]);
+  }, [token, notebookId, workspaceId, userName, userColor]);
 
   return {
     doc: docRef.current,
