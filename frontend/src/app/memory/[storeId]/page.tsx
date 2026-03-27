@@ -5,20 +5,20 @@ import { useCallback, useEffect, useState } from "react";
 import AppShell from "../../../components/AppShell";
 import { useAuth } from "../../../hooks/useAuth";
 import {
-  getPersonalMemoryStore,
-  queryPersonalMemoryEvents,
-  searchPersonalMemoryEvents,
+  getPersonalHistory,
+  queryPersonalHistoryEvents,
+  searchPersonalHistoryEvents,
 } from "../../../lib/api";
-import { MemoryEvent, MemoryStore } from "../../../lib/types";
+import { HistoryEvent, History } from "../../../lib/types";
 
-export default function MemoryStoreDetailPage() {
+export default function HistoryDetailPage() {
   const params = useParams();
   const router = useRouter();
   const storeId = params.storeId as string;
   const { user, loading, logout } = useAuth();
 
-  const [store, setStore] = useState<MemoryStore | null>(null);
-  const [events, setEvents] = useState<MemoryEvent[]>([]);
+  const [store, setStore] = useState<History | null>(null);
+  const [events, setEvents] = useState<HistoryEvent[]>([]);
   const [hasMore, setHasMore] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [filterAgent, setFilterAgent] = useState("");
@@ -27,7 +27,7 @@ export default function MemoryStoreDetailPage() {
 
   const loadStore = useCallback(async () => {
     try {
-      const s = await getPersonalMemoryStore(storeId);
+      const s = await getPersonalHistory(storeId);
       setStore(s);
     } catch {
       setError("Store not found");
@@ -37,11 +37,11 @@ export default function MemoryStoreDetailPage() {
   const loadEvents = useCallback(async () => {
     try {
       if (searchQuery.trim()) {
-        const res = await searchPersonalMemoryEvents(storeId, searchQuery.trim());
+        const res = await searchPersonalHistoryEvents(storeId, searchQuery.trim());
         setEvents(res.events);
         setHasMore(res.has_more);
       } else {
-        const res = await queryPersonalMemoryEvents(storeId, {
+        const res = await queryPersonalHistoryEvents(storeId, {
           agent_name: filterAgent || undefined,
           event_type: filterType || undefined,
         });
@@ -68,7 +68,7 @@ export default function MemoryStoreDetailPage() {
   return (
     <AppShell user={user} onLogout={logout}>
       <div className="bg-surface border-b border-border px-4 py-2 flex items-center gap-3">
-        <a href="/memory" className="text-dim hover:text-foreground text-sm">&larr; Memory Stores</a>
+        <a href="/memory" className="text-dim hover:text-foreground text-sm">&larr; History</a>
         <h1 className="text-foreground font-medium">{store?.name || "Loading..."}</h1>
         {store?.description && (
           <span className="text-muted text-sm hidden sm:inline">{store.description}</span>

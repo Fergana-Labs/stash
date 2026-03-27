@@ -5,16 +5,16 @@ import { useCallback, useEffect, useState } from "react";
 import AppShell from "../../components/AppShell";
 import { useAuth } from "../../hooks/useAuth";
 import {
-  listAllMemoryStores,
-  queryAllMemoryEvents,
+  listAllHistories,
+  queryAllHistoryEvents,
 } from "../../lib/api";
-import { MemoryEventWithContext, MemoryStoreWithWorkspace } from "../../lib/types";
+import { HistoryEventWithContext, HistoryWithWorkspace } from "../../lib/types";
 
 export default function MemoryPage() {
   const router = useRouter();
   const { user, loading, logout } = useAuth();
-  const [stores, setStores] = useState<MemoryStoreWithWorkspace[]>([]);
-  const [events, setEvents] = useState<MemoryEventWithContext[]>([]);
+  const [stores, setStores] = useState<HistoryWithWorkspace[]>([]);
+  const [events, setEvents] = useState<HistoryEventWithContext[]>([]);
   const [hasMore, setHasMore] = useState(false);
   const [filterAgent, setFilterAgent] = useState("");
   const [filterType, setFilterType] = useState("");
@@ -22,7 +22,7 @@ export default function MemoryPage() {
 
   const loadStores = useCallback(async () => {
     try {
-      const res = await listAllMemoryStores();
+      const res = await listAllHistories();
       setStores(res?.stores ?? []);
     } catch { /* ignore */ }
   }, []);
@@ -30,7 +30,7 @@ export default function MemoryPage() {
   const loadEvents = useCallback(async () => {
     setEventsLoading(true);
     try {
-      const res = await queryAllMemoryEvents({
+      const res = await queryAllHistoryEvents({
         agent_name: filterAgent || undefined,
         event_type: filterType || undefined,
         limit: 100,
@@ -57,7 +57,7 @@ export default function MemoryPage() {
     <AppShell user={user} onLogout={logout}>
       <div className="max-w-4xl mx-auto w-full px-4 py-8">
         <div className="flex items-center justify-between mb-6">
-          <h1 className="text-2xl font-bold text-foreground font-display">Memory</h1>
+          <h1 className="text-2xl font-bold text-foreground font-display">History</h1>
           <div className="text-xs text-muted">
             {stores.length} store{stores.length !== 1 ? "s" : ""} across all workspaces
           </div>

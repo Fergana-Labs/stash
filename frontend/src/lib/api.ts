@@ -6,10 +6,10 @@ import {
   ChatWithWorkspace,
   DMWithUser,
   DMConversation,
-  MemoryEvent,
-  MemoryEventWithContext,
-  MemoryStore,
-  MemoryStoreWithWorkspace,
+  HistoryEvent,
+  HistoryEventWithContext,
+  History,
+  HistoryWithWorkspace,
   Message,
   Notebook,
   NotebookFolder,
@@ -335,28 +335,28 @@ export async function deleteNotebookFolder(workspaceId: string, folderId: string
   await apiFetch(`/api/v1/workspaces/${workspaceId}/notebooks/folders/${folderId}`, { method: "DELETE" });
 }
 
-// --- Memory Stores ---
+// --- History ---
 
-export async function createMemoryStore(
+export async function createHistory(
   workspaceId: string,
   name: string,
   description?: string
-): Promise<MemoryStore> {
+): Promise<History> {
   return apiFetch(`/api/v1/workspaces/${workspaceId}/memory`, {
     method: "POST",
     body: JSON.stringify({ name, description: description || "" }),
   });
 }
 
-export async function listMemoryStores(workspaceId: string): Promise<{ stores: MemoryStore[] }> {
+export async function listHistories(workspaceId: string): Promise<{ stores: History[] }> {
   return apiFetch(`/api/v1/workspaces/${workspaceId}/memory`);
 }
 
-export async function getMemoryStore(workspaceId: string, storeId: string): Promise<MemoryStore> {
+export async function getHistory(workspaceId: string, storeId: string): Promise<History> {
   return apiFetch(`/api/v1/workspaces/${workspaceId}/memory/${storeId}`);
 }
 
-export async function queryMemoryEvents(
+export async function queryHistoryEvents(
   workspaceId: string,
   storeId: string,
   params?: {
@@ -367,7 +367,7 @@ export async function queryMemoryEvents(
     before?: string;
     limit?: number;
   }
-): Promise<{ events: MemoryEvent[]; has_more: boolean }> {
+): Promise<{ events: HistoryEvent[]; has_more: boolean }> {
   const searchParams = new URLSearchParams();
   if (params?.agent_name) searchParams.set("agent_name", params.agent_name);
   if (params?.session_id) searchParams.set("session_id", params.session_id);
@@ -379,12 +379,12 @@ export async function queryMemoryEvents(
   return apiFetch(`/api/v1/workspaces/${workspaceId}/memory/${storeId}/events${qs ? `?${qs}` : ""}`);
 }
 
-export async function searchMemoryEvents(
+export async function searchHistoryEvents(
   workspaceId: string,
   storeId: string,
   query: string,
   limit?: number
-): Promise<{ events: MemoryEvent[]; has_more: boolean }> {
+): Promise<{ events: HistoryEvent[]; has_more: boolean }> {
   const searchParams = new URLSearchParams({ q: query });
   if (limit) searchParams.set("limit", String(limit));
   return apiFetch(
@@ -501,29 +501,29 @@ export async function deletePersonalNotebookFolder(folderId: string): Promise<vo
 
 // --- Personal Memory ---
 
-export async function createPersonalMemoryStore(
+export async function createPersonalHistory(
   name: string,
   description?: string
-): Promise<MemoryStore> {
+): Promise<History> {
   return apiFetch("/api/v1/memory", {
     method: "POST",
     body: JSON.stringify({ name, description: description || "" }),
   });
 }
 
-export async function listPersonalMemoryStores(): Promise<{ stores: MemoryStore[] }> {
+export async function listPersonalHistories(): Promise<{ stores: History[] }> {
   return apiFetch("/api/v1/memory");
 }
 
-export async function getPersonalMemoryStore(storeId: string): Promise<MemoryStore> {
+export async function getPersonalHistory(storeId: string): Promise<History> {
   return apiFetch(`/api/v1/memory/${storeId}`);
 }
 
-export async function deletePersonalMemoryStore(storeId: string): Promise<void> {
+export async function deletePersonalHistory(storeId: string): Promise<void> {
   await apiFetch(`/api/v1/memory/${storeId}`, { method: "DELETE" });
 }
 
-export async function pushPersonalMemoryEvent(
+export async function pushPersonalHistoryEvent(
   storeId: string,
   event: {
     agent_name: string;
@@ -533,14 +533,14 @@ export async function pushPersonalMemoryEvent(
     tool_name?: string;
     metadata?: Record<string, unknown>;
   }
-): Promise<MemoryEvent> {
+): Promise<HistoryEvent> {
   return apiFetch(`/api/v1/memory/${storeId}/events`, {
     method: "POST",
     body: JSON.stringify(event),
   });
 }
 
-export async function queryPersonalMemoryEvents(
+export async function queryPersonalHistoryEvents(
   storeId: string,
   params?: {
     agent_name?: string;
@@ -550,7 +550,7 @@ export async function queryPersonalMemoryEvents(
     before?: string;
     limit?: number;
   }
-): Promise<{ events: MemoryEvent[]; has_more: boolean }> {
+): Promise<{ events: HistoryEvent[]; has_more: boolean }> {
   const searchParams = new URLSearchParams();
   if (params?.agent_name) searchParams.set("agent_name", params.agent_name);
   if (params?.session_id) searchParams.set("session_id", params.session_id);
@@ -562,11 +562,11 @@ export async function queryPersonalMemoryEvents(
   return apiFetch(`/api/v1/memory/${storeId}/events${qs ? `?${qs}` : ""}`);
 }
 
-export async function searchPersonalMemoryEvents(
+export async function searchPersonalHistoryEvents(
   storeId: string,
   query: string,
   limit?: number
-): Promise<{ events: MemoryEvent[]; has_more: boolean }> {
+): Promise<{ events: HistoryEvent[]; has_more: boolean }> {
   const searchParams = new URLSearchParams({ q: query });
   if (limit) searchParams.set("limit", String(limit));
   return apiFetch(
@@ -584,11 +584,11 @@ export async function listAllNotebooks(): Promise<{ notebooks: NotebookWithWorks
   return apiFetch("/api/v1/me/notebooks");
 }
 
-export async function listAllMemoryStores(): Promise<{ stores: MemoryStoreWithWorkspace[] }> {
-  return apiFetch("/api/v1/me/memory-stores");
+export async function listAllHistories(): Promise<{ stores: HistoryWithWorkspace[] }> {
+  return apiFetch("/api/v1/me/history");
 }
 
-export async function queryAllMemoryEvents(
+export async function queryAllHistoryEvents(
   params?: {
     agent_name?: string;
     event_type?: string;
@@ -596,7 +596,7 @@ export async function queryAllMemoryEvents(
     before?: string;
     limit?: number;
   }
-): Promise<{ events: MemoryEventWithContext[]; has_more: boolean }> {
+): Promise<{ events: HistoryEventWithContext[]; has_more: boolean }> {
   const searchParams = new URLSearchParams();
   if (params?.agent_name) searchParams.set("agent_name", params.agent_name);
   if (params?.event_type) searchParams.set("event_type", params.event_type);
@@ -604,7 +604,7 @@ export async function queryAllMemoryEvents(
   if (params?.before) searchParams.set("before", params.before);
   if (params?.limit) searchParams.set("limit", String(params.limit));
   const qs = searchParams.toString();
-  return apiFetch(`/api/v1/me/memory-events${qs ? `?${qs}` : ""}`);
+  return apiFetch(`/api/v1/me/history-events${qs ? `?${qs}` : ""}`);
 }
 
 export async function listAgentsWithContext(): Promise<{ agents: AgentWithContext[] }> {

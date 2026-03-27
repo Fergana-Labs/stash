@@ -1,4 +1,4 @@
-"""Personal memory store router: workspace-less structured agent event storage."""
+"""Personal history router: workspace-less structured agent event storage."""
 
 from uuid import UUID
 
@@ -6,13 +6,13 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 
 from ..auth import get_current_user
 from ..models import (
-    MemoryEventBatchRequest,
-    MemoryEventCreateRequest,
-    MemoryEventListResponse,
-    MemoryEventResponse,
-    MemoryStoreCreateRequest,
-    MemoryStoreListResponse,
-    MemoryStoreResponse,
+    HistoryEventBatchRequest,
+    HistoryEventCreateRequest,
+    HistoryEventListResponse,
+    HistoryEventResponse,
+    HistoryCreateRequest,
+    HistoryListResponse,
+    HistoryResponse,
 )
 from ..services import memory_service
 
@@ -20,7 +20,7 @@ router = APIRouter(prefix="/api/v1/memory", tags=["personal_memory"])
 
 
 async def _check_store_owner(store_id: UUID, user_id: UUID) -> None:
-    """Verify user owns this personal memory store."""
+    """Verify user owns this personal history."""
     store = await memory_service.get_personal_store(store_id, user_id)
     if not store:
         raise HTTPException(status_code=403, detail="Not the owner of this store")
@@ -29,9 +29,9 @@ async def _check_store_owner(store_id: UUID, user_id: UUID) -> None:
 # --- Store CRUD ---
 
 
-@router.post("", response_model=MemoryStoreResponse, status_code=201)
+@router.post("", response_model=HistoryResponse, status_code=201)
 async def create_store(
-    req: MemoryStoreCreateRequest, current_user: dict = Depends(get_current_user),
+    req: HistoryCreateRequest, current_user: dict = Depends(get_current_user),
 ):
     try:
         store = await memory_service.create_personal_store(
@@ -41,23 +41,23 @@ async def create_store(
         if "unique" in str(e).lower():
             raise HTTPException(status_code=409, detail="Store name already exists")
         raise
-    return MemoryStoreResponse(**store)
+    return HistoryResponse(**store)
 
 
-@router.get("", response_model=MemoryStoreListResponse)
+@router.get("", response_model=HistoryListResponse)
 async def list_stores(current_user: dict = Depends(get_current_user)):
     stores = await memory_service.list_personal_stores(current_user["id"])
-    return MemoryStoreListResponse(stores=[MemoryStoreResponse(**s) for s in stores])
+    return HistoryListResponse(stores=[HistoryResponse(**s) for s in stores])
 
 
-@router.get("/{store_id}", response_model=MemoryStoreResponse)
+@router.get("/{store_id}", response_model=HistoryResponse)
 async def get_store(
     store_id: UUID, current_user: dict = Depends(get_current_user),
 ):
     store = await memory_service.get_personal_store(store_id, current_user["id"])
     if not store:
         raise HTTPException(status_code=404, detail="Store not found")
-    return MemoryStoreResponse(**store)
+    return HistoryResponse(**store)
 
 
 @router.delete("/{store_id}", status_code=204)
@@ -72,9 +72,9 @@ async def delete_store(
 # --- Events ---
 
 
-@router.post("/{store_id}/events", response_model=MemoryEventResponse, status_code=201)
+@router.post("/{store_id}/events", response_model=HistoryEventResponse, status_code=201)
 async def push_event(
-    store_id: UUID, req: MemoryEventCreateRequest,
+    store_id: UUID, req: HistoryEventCreateRequest,
     current_user: dict = Depends(get_current_user),
 ):
     await _check_store_owner(store_id, current_user["id"])
@@ -83,21 +83,21 @@ async def push_event(
         content=req.content, session_id=req.session_id,
         tool_name=req.tool_name, metadata=req.metadata,
     )
-    return MemoryEventResponse(**event)
+    return HistoryEventResponse(**event)
 
 
-@router.post("/{store_id}/events/batch", response_model=list[MemoryEventResponse], status_code=201)
+@router.post("/{store_id}/events/batch", response_model=list[HistoryEventResponse], status_code=201)
 async def push_events_batch(
-    store_id: UUID, req: MemoryEventBatchRequest,
+    store_id: UUID, req: HistoryEventBatchRequest,
     current_user: dict = Depends(get_current_user),
 ):
     await _check_store_owner(store_id, current_user["id"])
     events_data = [e.model_dump() for e in req.events]
     events = await memory_service.push_events_batch(store_id, events_data)
-    return [MemoryEventResponse(**e) for e in events]
+    return [HistoryEventResponse(**e) for e in events]
 
 
-@router.get("/{store_id}/events", response_model=MemoryEventListResponse)
+@router.get("/{store_id}/events", response_model=HistoryEventListResponse)
 async def query_events(
     store_id: UUID,
     agent_name: str | None = Query(None),
@@ -113,13 +113,13 @@ async def query_events(
         store_id, agent_name=agent_name, session_id=session_id,
         event_type=event_type, after=after, before=before, limit=limit,
     )
-    return MemoryEventListResponse(
-        events=[MemoryEventResponse(**e) for e in events],
+    return HistoryEventListResponse(
+        events=[HistoryEventResponse(**e) for e in events],
         has_more=has_more,
     )
 
 
-@router.get("/{store_id}/events/search", response_model=MemoryEventListResponse)
+@router.get("/{store_id}/events/search", response_model=HistoryEventListResponse)
 async def search_events(
     store_id: UUID,
     q: str = Query(..., min_length=1),
@@ -128,13 +128,13 @@ async def search_events(
 ):
     await _check_store_owner(store_id, current_user["id"])
     events = await memory_service.search_events(store_id, q, limit=limit)
-    return MemoryEventListResponse(
-        events=[MemoryEventResponse(**e) for e in events],
+    return HistoryEventListResponse(
+        events=[HistoryEventResponse(**e) for e in events],
         has_more=False,
     )
 
 
-@router.get("/{store_id}/events/{event_id}", response_model=MemoryEventResponse)
+@router.get("/{store_id}/events/{event_id}", response_model=HistoryEventResponse)
 async def get_event(
     store_id: UUID, event_id: UUID,
     current_user: dict = Depends(get_current_user),
@@ -143,4 +143,4 @@ async def get_event(
     event = await memory_service.get_event(event_id, store_id)
     if not event:
         raise HTTPException(status_code=404, detail="Event not found")
-    return MemoryEventResponse(**event)
+    return HistoryEventResponse(**event)
