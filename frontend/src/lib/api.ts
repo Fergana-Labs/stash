@@ -4,6 +4,9 @@ import {
   AgentWithContext,
   Chat,
   ChatWithWorkspace,
+  Deck,
+  DeckShare,
+  DeckWithWorkspace,
   DMWithUser,
   DMConversation,
   HistoryEvent,
@@ -646,6 +649,111 @@ export async function queryAllHistoryEvents(
 
 export async function listAgentsWithContext(): Promise<{ agents: AgentWithContext[] }> {
   return apiFetch("/api/v1/me/agents");
+}
+
+// --- Decks (workspace-scoped) ---
+
+export async function createDeck(
+  workspaceId: string, name: string, description?: string,
+  htmlContent?: string, deckType?: string
+): Promise<Deck> {
+  return apiFetch(`/api/v1/workspaces/${workspaceId}/decks`, {
+    method: "POST",
+    body: JSON.stringify({
+      name, description: description || "", html_content: htmlContent || "",
+      deck_type: deckType || "freeform",
+    }),
+  });
+}
+
+export async function listDecks(workspaceId: string): Promise<{ decks: Deck[] }> {
+  return apiFetch(`/api/v1/workspaces/${workspaceId}/decks`);
+}
+
+export async function getDeck(workspaceId: string, deckId: string): Promise<Deck> {
+  return apiFetch(`/api/v1/workspaces/${workspaceId}/decks/${deckId}`);
+}
+
+export async function updateDeck(
+  workspaceId: string, deckId: string,
+  data: { name?: string; description?: string; html_content?: string }
+): Promise<Deck> {
+  return apiFetch(`/api/v1/workspaces/${workspaceId}/decks/${deckId}`, {
+    method: "PATCH", body: JSON.stringify(data),
+  });
+}
+
+export async function deleteDeck(workspaceId: string, deckId: string): Promise<void> {
+  await apiFetch(`/api/v1/workspaces/${workspaceId}/decks/${deckId}`, { method: "DELETE" });
+}
+
+// --- Personal Decks ---
+
+export async function createPersonalDeck(
+  name: string, description?: string, htmlContent?: string, deckType?: string
+): Promise<Deck> {
+  return apiFetch("/api/v1/decks", {
+    method: "POST",
+    body: JSON.stringify({
+      name, description: description || "", html_content: htmlContent || "",
+      deck_type: deckType || "freeform",
+    }),
+  });
+}
+
+export async function listPersonalDecks(): Promise<{ decks: Deck[] }> {
+  return apiFetch("/api/v1/decks");
+}
+
+export async function getPersonalDeck(deckId: string): Promise<Deck> {
+  return apiFetch(`/api/v1/decks/${deckId}`);
+}
+
+export async function updatePersonalDeck(
+  deckId: string, data: { name?: string; description?: string; html_content?: string }
+): Promise<Deck> {
+  return apiFetch(`/api/v1/decks/${deckId}`, { method: "PATCH", body: JSON.stringify(data) });
+}
+
+export async function deletePersonalDeck(deckId: string): Promise<void> {
+  await apiFetch(`/api/v1/decks/${deckId}`, { method: "DELETE" });
+}
+
+// --- Deck Share Links ---
+
+export async function createDeckShare(
+  deckId: string, workspaceId?: string,
+  data?: { name?: string; require_email?: boolean; passcode?: string; allow_download?: boolean; expires_at?: string }
+): Promise<DeckShare> {
+  const base = workspaceId ? `/api/v1/workspaces/${workspaceId}/decks` : "/api/v1/decks";
+  return apiFetch(`${base}/${deckId}/shares`, { method: "POST", body: JSON.stringify(data || {}) });
+}
+
+export async function listDeckShares(deckId: string, workspaceId?: string): Promise<{ shares: DeckShare[] }> {
+  const base = workspaceId ? `/api/v1/workspaces/${workspaceId}/decks` : "/api/v1/decks";
+  return apiFetch(`${base}/${deckId}/shares`);
+}
+
+// --- Public Deck Viewer ---
+
+export async function getDeckByToken(token: string): Promise<{ deck_name: string; deck_type: string; require_email: boolean; has_passcode: boolean; allow_download: boolean }> {
+  return apiFetch(`/api/v1/d/${token}`);
+}
+
+export async function getDeckContent(token: string): Promise<{ html_content: string; deck_name: string; deck_type: string }> {
+  return apiFetch(`/api/v1/d/${token}/content`);
+}
+
+export async function verifyDeckAccess(token: string, email?: string, passcode?: string): Promise<{ html_content: string; deck_name: string; deck_type: string }> {
+  return apiFetch(`/api/v1/d/${token}/verify`, {
+    method: "POST", body: JSON.stringify({ email, passcode }),
+  });
+}
+
+// --- Aggregate Decks ---
+
+export async function listAllDecks(): Promise<{ decks: DeckWithWorkspace[] }> {
+  return apiFetch("/api/v1/me/decks");
 }
 
 // --- Agents ---

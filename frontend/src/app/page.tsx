@@ -7,16 +7,17 @@ import Header from "../components/Header";
 import { useAuth } from "../hooks/useAuth";
 import {
   listAllChats,
+  listAllDecks,
   listAllNotebooks,
   listAllHistories,
   listMyWorkspaces,
   listPublicWorkspaces,
 } from "../lib/api";
-import { ChatWithWorkspace, DMWithUser, HistoryWithWorkspace, NotebookWithWorkspace, Workspace } from "../lib/types";
+import { ChatWithWorkspace, DeckWithWorkspace, DMWithUser, HistoryWithWorkspace, NotebookWithWorkspace, Workspace } from "../lib/types";
 
 interface FeedItem {
   id: string;
-  type: "workspace" | "dm" | "chat" | "notebook" | "memory";
+  type: "workspace" | "dm" | "chat" | "notebook" | "deck" | "memory";
   name: string;
   description?: string;
   href: string;
@@ -73,7 +74,8 @@ function LoggedInHome({ user, logout }: { user: NonNullable<ReturnType<typeof us
       listAllChats().catch(() => ({ chats: [] as ChatWithWorkspace[], dms: [] as DMWithUser[] })),
       listAllNotebooks().then((r) => r?.notebooks ?? []).catch(() => [] as NotebookWithWorkspace[]),
       listAllHistories().then((r) => r?.stores ?? []).catch(() => [] as HistoryWithWorkspace[]),
-    ]).then(([workspaces, chatResult, notebooks, stores]) => {
+      listAllDecks().then((r) => r?.decks ?? []).catch(() => [] as DeckWithWorkspace[]),
+    ]).then(([workspaces, chatResult, notebooks, stores, deckList]) => {
       const items: FeedItem[] = [];
       const chats = chatResult?.chats ?? [];
       const dms = chatResult?.dms ?? [];
@@ -124,6 +126,15 @@ function LoggedInHome({ user, logout }: { user: NonNullable<ReturnType<typeof us
         });
       }
 
+      for (const deck of (deckList ?? [])) {
+        items.push({
+          id: deck.id, type: "deck", name: deck.name,
+          description: deck.workspace_name || "Personal",
+          href: `/decks/${deck.id}/edit`, updatedAt: deck.updated_at, icon: "D",
+          badge: deck.deck_type,
+        });
+      }
+
       items.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
       setFeed(items);
       setLoading(false);
@@ -135,6 +146,7 @@ function LoggedInHome({ user, logout }: { user: NonNullable<ReturnType<typeof us
     dm: "bg-human-muted text-human",
     chat: "bg-brand/15 text-brand",
     notebook: "bg-green-500/15 text-green-500",
+    deck: "bg-pink-500/15 text-pink-500",
     memory: "bg-violet-500/15 text-violet-500",
   };
 

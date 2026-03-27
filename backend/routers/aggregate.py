@@ -12,7 +12,7 @@ from ..models import (
     HistoryResponse,
     NotebookResponse,
 )
-from ..services import chat_service, memory_service, notebook_service, agent_identity_service
+from ..services import chat_service, deck_service, memory_service, notebook_service, agent_identity_service
 
 router = APIRouter(prefix="/api/v1/me", tags=["aggregate"])
 
@@ -80,3 +80,10 @@ async def list_agents_with_context(current_user: dict = Depends(get_current_user
         a["workspaces"] = [dict(r) for r in ws_rows]
         result.append(a)
     return {"agents": result}
+
+
+@router.get("/decks")
+async def list_all_decks(current_user: dict = Depends(get_current_user)):
+    """All decks from workspaces + personal."""
+    decks = await deck_service.list_all_user_decks(current_user["id"])
+    return {"decks": decks}

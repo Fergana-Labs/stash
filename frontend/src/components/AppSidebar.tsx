@@ -7,6 +7,7 @@ const NAV_ITEMS = [
   { href: "/rooms", label: "Workspaces", icon: "W" },
   { href: "/chats", label: "Chats", icon: "C" },
   { href: "/notebooks", label: "Notebooks", icon: "N" },
+  { href: "/decks", label: "Decks", icon: "D" },
   { href: "/memory", label: "History", icon: "H" },
   { href: "/agents", label: "Agents", icon: "A" },
 ];
