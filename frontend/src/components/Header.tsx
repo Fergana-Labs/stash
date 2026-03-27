@@ -66,35 +66,7 @@ export default function Header({ user, onLogout, onProfileUpdate }: HeaderProps)
 
   return (
     <header className="bg-surface border-b border-border">
-      <div className="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between gap-4">
-        <Link href="/" className="text-xl font-bold font-display text-foreground tracking-tight flex-shrink-0">
-          boozle
-        </Link>
-        <nav className="flex items-center gap-4">
-          <Link
-            href="/rooms"
-            className="text-dim hover:text-foreground text-sm"
-          >
-            Workspaces
-          </Link>
-          <Link
-            href="/notebooks"
-            className="text-dim hover:text-foreground text-sm"
-          >
-            Notebooks
-          </Link>
-          <Link
-            href="/memory"
-            className="text-dim hover:text-foreground text-sm"
-          >
-            Memory
-          </Link>
-          <Link
-            href="/docs"
-            className="text-dim hover:text-foreground text-sm"
-          >
-            Docs
-          </Link>
+      <div className="px-4 py-2 flex items-center justify-end gap-4">
           {user ? (
             <div className="flex items-center gap-3 relative" ref={dropdownRef}>
               <button
@@ -171,7 +143,6 @@ export default function Header({ user, onLogout, onProfileUpdate }: HeaderProps)
               Register / Login
             </Link>
           )}
-        </nav>
       </div>
     </header>
   );

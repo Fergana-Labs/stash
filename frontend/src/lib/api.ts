@@ -1,4 +1,6 @@
 import {
+  AgentProfile,
+  AgentResponse,
   Chat,
   DMConversation,
   MemoryEvent,
@@ -564,6 +566,45 @@ export async function searchPersonalMemoryEvents(
   return apiFetch(
     `/api/v1/memory/${storeId}/events/search?${searchParams.toString()}`
   );
+}
+
+// --- Agents ---
+
+export async function listAgents(): Promise<AgentProfile[]> {
+  return apiFetch("/api/v1/agents");
+}
+
+export async function createAgent(
+  name: string,
+  displayName?: string,
+  description?: string
+): Promise<AgentResponse> {
+  return apiFetch("/api/v1/agents", {
+    method: "POST",
+    body: JSON.stringify({
+      name,
+      display_name: displayName || null,
+      description: description || "",
+    }),
+  });
+}
+
+export async function updateAgent(
+  agentId: string,
+  data: { display_name?: string; description?: string }
+): Promise<AgentProfile> {
+  return apiFetch(`/api/v1/agents/${agentId}`, {
+    method: "PATCH",
+    body: JSON.stringify(data),
+  });
+}
+
+export async function rotateAgentKey(agentId: string): Promise<AgentResponse> {
+  return apiFetch(`/api/v1/agents/${agentId}/rotate-key`, { method: "POST" });
+}
+
+export async function deleteAgent(agentId: string): Promise<void> {
+  await apiFetch(`/api/v1/agents/${agentId}`, { method: "DELETE" });
 }
 
 // --- Permissions ---

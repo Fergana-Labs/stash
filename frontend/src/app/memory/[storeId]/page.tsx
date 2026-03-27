@@ -2,7 +2,7 @@
 
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
-import Header from "../../../components/Header";
+import AppShell from "../../../components/AppShell";
 import { useAuth } from "../../../hooks/useAuth";
 import {
   getPersonalMemoryStore,
@@ -66,8 +66,7 @@ export default function MemoryStoreDetailPage() {
   if (!user) { router.push("/login"); return null; }
 
   return (
-    <div className="min-h-screen flex flex-col">
-      <Header user={user} onLogout={logout} />
+    <AppShell user={user} onLogout={logout}>
       <div className="bg-surface border-b border-border px-4 py-2 flex items-center gap-3">
         <a href="/memory" className="text-dim hover:text-foreground text-sm">&larr; Memory Stores</a>
         <h1 className="text-foreground font-medium">{store?.name || "Loading..."}</h1>
@@ -146,6 +145,6 @@ export default function MemoryStoreDetailPage() {
           </div>
         )}
       </main>
-    </div>
+    </AppShell>
   );
 }

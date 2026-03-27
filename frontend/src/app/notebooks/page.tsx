@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import Header from "../../components/Header";
+import AppShell from "../../components/AppShell";
 import NotebookTreeComponent from "../../components/workspace/FileTree";
 import MarkdownEditor from "../../components/workspace/MarkdownEditor";
 import { useAuth } from "../../hooks/useAuth";
@@ -171,11 +171,8 @@ export default function PersonalNotebooksPage() {
   if (!user) { router.push("/login"); return null; }
 
   return (
-    <div className="h-screen flex flex-col">
-      <Header user={user} onLogout={logout} />
-      <div className="bg-surface border-b border-border px-4 py-2 flex items-center gap-3">
-        <h1 className="text-foreground font-medium">My Notebooks</h1>
-      </div>
+    <AppShell user={user} onLogout={logout}>
+      <div className="flex flex-col h-full">
       {error && (
         <div className="bg-red-900/30 border-b border-red-800 text-red-400 text-sm px-4 py-2">
           {error}
@@ -218,6 +215,7 @@ export default function PersonalNotebooksPage() {
           )}
         </div>
       </div>
-    </div>
+      </div>
+    </AppShell>
   );
 }

@@ -1,10 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
+import AppShell from "../components/AppShell";
 import Header from "../components/Header";
-import NewDMDialog from "../components/NewDMDialog";
-import WorkspaceCard from "../components/RoomCard";
 import { useAuth } from "../hooks/useAuth";
 import {
   listDMs,
@@ -14,17 +13,30 @@ import {
   listPersonalNotebooks,
   listPersonalMemoryStores,
 } from "../lib/api";
-import { Chat, DMConversation, MemoryStore, NotebookTree, Workspace } from "../lib/types";
+import { Chat, DMConversation, MemoryStore, NotebookTreeFile, Workspace } from "../lib/types";
+
+interface FeedItem {
+  id: string;
+  type: "workspace" | "dm" | "room" | "notebook" | "memory";
+  name: string;
+  description?: string;
+  href: string;
+  updatedAt: string;
+  icon: string;
+  badge?: string;
+  badgeColor?: string;
+}
 
 function LandingPage() {
   const [publicWorkspaces, setPublicWorkspaces] = useState<Workspace[]>([]);
 
   useEffect(() => {
-    listPublicWorkspaces().then((r) => setPublicWorkspaces(r.workspaces)).catch(() => {});
+    listPublicWorkspaces().then((r) => setPublicWorkspaces(r?.workspaces ?? [])).catch(() => {});
   }, []);
 
   return (
-    <>
+    <div className="min-h-screen flex flex-col">
+      <Header user={null} />
       <section className="text-center py-20 px-4">
         <h1 className="text-5xl font-bold text-foreground mb-4 tracking-tight font-display">
           boozle
@@ -45,244 +57,205 @@ function LandingPage() {
         </Link>
       </section>
 
-      <section className="max-w-4xl mx-auto px-4 pb-16">
-        <div className="grid gap-6 sm:grid-cols-3">
-          <div className="bg-surface border border-border rounded-lg p-6">
-            <h3 className="text-foreground font-medium mb-2 font-display">Chats</h3>
-            <p className="text-dim text-sm">
-              Messaging channels within workspaces. Real-time via WebSocket and SSE.
-            </p>
-          </div>
-          <div className="bg-surface border border-border rounded-lg p-6">
-            <h3 className="text-foreground font-medium mb-2 font-display">Notebooks</h3>
-            <p className="text-dim text-sm">
-              Collaboratively create and edit markdown files in real time
-              with agents and humans.
-            </p>
-          </div>
-          <div className="bg-surface border border-border rounded-lg p-6">
-            <h3 className="text-foreground font-medium mb-2 font-display">Memory Stores</h3>
-            <p className="text-dim text-sm">
-              Structured, searchable event logs for agent activity. Append-only with FTS.
-            </p>
-          </div>
-        </div>
-      </section>
-
       {publicWorkspaces.length > 0 && (
         <section className="max-w-4xl mx-auto px-4 pb-16">
           <h2 className="text-lg font-medium text-foreground mb-3 font-display">Public Workspaces</h2>
           <div className="grid gap-3 sm:grid-cols-2">
             {publicWorkspaces.map((ws) => (
-              <WorkspaceCard key={ws.id} workspace={ws} isMember={false} />
+              <Link
+                key={ws.id}
+                href={`/workspaces/${ws.id}`}
+                className="bg-surface border border-border rounded-lg p-4 hover:border-brand transition-colors"
+              >
+                <div className="text-foreground font-medium">{ws.name}</div>
+                {ws.description && <div className="text-dim text-sm mt-1">{ws.description}</div>}
+                <div className="text-muted text-xs mt-2">
+                  {ws.member_count ?? 0} member{(ws.member_count ?? 0) !== 1 ? "s" : ""}
+                </div>
+              </Link>
             ))}
           </div>
         </section>
       )}
-    </>
+    </div>
   );
 }
 
-function LoggedInHome({ user }: { user: NonNullable<ReturnType<typeof useAuth>["user"]> }) {
-  const [publicWorkspaces, setPublicWorkspaces] = useState<Workspace[]>([]);
-  const [myWorkspaces, setMyWorkspaces] = useState<Workspace[]>([]);
-  const [dms, setDMs] = useState<DMConversation[]>([]);
-  const [personalRooms, setPersonalRooms] = useState<Chat[]>([]);
-  const [personalNotebooks, setPersonalNotebooks] = useState<NotebookTree>({ folders: [], root_files: [] });
-  const [personalStores, setPersonalStores] = useState<MemoryStore[]>([]);
-  const [showNewDM, setShowNewDM] = useState(false);
-  const myWsIds = useMemo(() => new Set(myWorkspaces.map((w) => w.id)), [myWorkspaces]);
+function LoggedInHome({ user, logout }: { user: NonNullable<ReturnType<typeof useAuth>["user"]>; logout: () => void }) {
+  const [feed, setFeed] = useState<FeedItem[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  const loadData = () => {
+  useEffect(() => {
+    setLoading(true);
     Promise.all([
-      listPublicWorkspaces().then((r) => r?.workspaces ?? []).catch(() => [] as Workspace[]),
       listMyWorkspaces().then((r) => r?.workspaces ?? []).catch(() => [] as Workspace[]),
       listDMs().then((r) => r?.dms ?? []).catch(() => [] as DMConversation[]),
       listPersonalRooms().then((r) => r?.chats ?? []).catch(() => [] as Chat[]),
-      listPersonalNotebooks().then((r) => r ?? { folders: [], root_files: [] }).catch(() => ({ folders: [], root_files: [] }) as NotebookTree),
+      listPersonalNotebooks().then((r) => {
+        const files: NotebookTreeFile[] = [];
+        if (r?.root_files) files.push(...r.root_files);
+        if (r?.folders) {
+          for (const folder of r.folders) {
+            files.push(...folder.files);
+          }
+        }
+        return files;
+      }).catch(() => [] as NotebookTreeFile[]),
       listPersonalMemoryStores().then((r) => r?.stores ?? []).catch(() => [] as MemoryStore[]),
-    ]).then(([pub, mine, dmList, rooms, notebooks, stores]) => {
-      setPublicWorkspaces(pub ?? []);
-      setMyWorkspaces(mine ?? []);
-      setDMs(dmList ?? []);
-      setPersonalRooms(rooms ?? []);
-      setPersonalNotebooks(notebooks ?? { folders: [], root_files: [] });
-      setPersonalStores(stores ?? []);
-    });
-  };
+    ]).then(([workspaces, dms, rooms, notebooks, stores]) => {
+      const items: FeedItem[] = [];
 
-  useEffect(() => {
-    loadData();
+      for (const ws of workspaces) {
+        items.push({
+          id: ws.id,
+          type: "workspace",
+          name: ws.name,
+          description: ws.description,
+          href: `/workspaces/${ws.id}`,
+          updatedAt: ws.updated_at,
+          icon: "W",
+          badge: `${ws.member_count ?? 0} members`,
+        });
+      }
+
+      for (const dm of dms) {
+        const other = dm.other_user;
+        items.push({
+          id: dm.id,
+          type: "dm",
+          name: other?.display_name || other?.name || "Unknown",
+          description: `@${other?.name || "unknown"}`,
+          href: `/dms/${dm.id}`,
+          updatedAt: dm.last_message_at || dm.created_at,
+          icon: other?.type === "agent" ? "A" : "H",
+          badge: "DM",
+          badgeColor: other?.type === "agent" ? "text-agent bg-agent-muted" : "text-human bg-human-muted",
+        });
+      }
+
+      for (const room of rooms) {
+        items.push({
+          id: room.id,
+          type: "room",
+          name: room.name,
+          description: room.description,
+          href: `/rooms/${room.id}`,
+          updatedAt: room.updated_at,
+          icon: "#",
+          badge: "Room",
+        });
+      }
+
+      for (const nb of notebooks) {
+        items.push({
+          id: nb.id,
+          type: "notebook",
+          name: nb.name,
+          href: "/notebooks",
+          updatedAt: nb.updated_at,
+          icon: "N",
+          badge: "Notebook",
+        });
+      }
+
+      for (const store of stores) {
+        items.push({
+          id: store.id,
+          type: "memory",
+          name: store.name,
+          description: store.description,
+          href: `/memory/${store.id}`,
+          updatedAt: store.created_at,
+          icon: "M",
+          badge: `${store.event_count ?? 0} events`,
+        });
+      }
+
+      items.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+      setFeed(items);
+      setLoading(false);
+    });
   }, []);
 
+  const iconColors: Record<string, string> = {
+    workspace: "bg-brand/15 text-brand",
+    dm: "bg-human-muted text-human",
+    room: "bg-brand/15 text-brand",
+    notebook: "bg-green-500/15 text-green-500",
+    memory: "bg-violet-500/15 text-violet-500",
+  };
+
   return (
-    <main className="flex-1 max-w-4xl mx-auto w-full px-4 py-8">
-      <div className="text-center mb-8">
-        <h1 className="text-3xl font-bold text-foreground mb-2 font-display">boozle</h1>
-        <p className="text-dim">
-          Workspaces with chats, notebooks, and memory stores
-        </p>
-      </div>
+    <AppShell user={user} onLogout={logout}>
+      <div className="max-w-3xl mx-auto w-full px-4 py-8">
+        <h1 className="text-2xl font-bold text-foreground mb-6 font-display">Recent Activity</h1>
 
-      <section className="mb-8">
-        <div className="flex items-center justify-between mb-3">
-          <h2 className="text-lg font-medium text-foreground font-display">Direct Messages</h2>
-          <button
-            onClick={() => setShowNewDM(true)}
-            className="text-sm bg-raised hover:bg-raised text-dim px-3 py-1.5 rounded border border-border"
-          >
-            New Message
-          </button>
-        </div>
-        {dms.length === 0 ? (
-          <p className="text-muted text-sm">No conversations yet.</p>
+        {loading ? (
+          <p className="text-muted text-sm">Loading...</p>
+        ) : feed.length === 0 ? (
+          <div className="text-center py-12">
+            <p className="text-dim mb-4">Nothing here yet. Get started by creating something.</p>
+            <div className="flex gap-3 justify-center">
+              <Link href="/rooms" className="text-sm bg-brand hover:bg-brand-hover text-foreground px-4 py-2 rounded">
+                Create Workspace
+              </Link>
+              <Link href="/notebooks" className="text-sm bg-raised hover:bg-raised text-dim px-4 py-2 rounded border border-border">
+                New Notebook
+              </Link>
+            </div>
+          </div>
         ) : (
-          <div className="space-y-1">
-            {dms.map((dm) => {
-              const other = dm.other_user;
-              const displayName = other?.display_name || other?.name || "Unknown";
-              return (
-                <a
-                  key={dm.id}
-                  href={`/dms/${dm.id}`}
-                  className="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-raised transition-colors"
-                >
-                  <div
-                    className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 ${
-                      other?.type === "agent"
-                        ? "bg-agent-muted text-agent"
-                        : "bg-human-muted text-human"
-                    }`}
-                  >
-                    {displayName.charAt(0).toUpperCase()}
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="text-sm text-foreground truncate">{displayName}</div>
-                    <div className="text-xs text-muted">@{other?.name || "unknown"}</div>
-                  </div>
-                  {dm.last_message_at && (
-                    <div className="text-xs text-muted flex-shrink-0">
-                      {new Date(dm.last_message_at).toLocaleDateString()}
-                    </div>
-                  )}
-                </a>
-              );
-            })}
-          </div>
-        )}
-      </section>
-
-      <NewDMDialog open={showNewDM} onClose={() => { setShowNewDM(false); loadData(); }} />
-
-      {personalRooms.length > 0 && (
-        <section className="mb-8">
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="text-lg font-medium text-foreground font-display">Personal Rooms</h2>
-            <Link href="/rooms" className="text-sm text-brand hover:underline">View all</Link>
-          </div>
-          <div className="space-y-1">
-            {personalRooms.map((room) => (
-              <a
-                key={room.id}
-                href={`/rooms/${room.id}`}
+          <div className="space-y-0.5">
+            {feed.map((item) => (
+              <Link
+                key={`${item.type}-${item.id}`}
+                href={item.href}
                 className="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-raised transition-colors"
               >
-                <div className="w-8 h-8 rounded-full bg-brand/20 text-brand flex items-center justify-center text-xs font-bold flex-shrink-0">
-                  #
+                <div
+                  className={`w-8 h-8 rounded-md flex items-center justify-center text-xs font-bold flex-shrink-0 ${
+                    item.badgeColor || iconColors[item.type] || "bg-raised text-muted"
+                  }`}
+                >
+                  {item.icon}
                 </div>
                 <div className="min-w-0 flex-1">
-                  <div className="text-sm text-foreground truncate">{room.name}</div>
-                  {room.description && <div className="text-xs text-muted truncate">{room.description}</div>}
+                  <div className="text-sm text-foreground truncate">{item.name}</div>
+                  {item.description && (
+                    <div className="text-xs text-muted truncate">{item.description}</div>
+                  )}
                 </div>
-              </a>
-            ))}
-          </div>
-        </section>
-      )}
-
-      {(personalNotebooks.root_files.length > 0 || personalNotebooks.folders.length > 0) && (
-        <section className="mb-8">
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="text-lg font-medium text-foreground font-display">Personal Notebooks</h2>
-            <Link href="/notebooks" className="text-sm text-brand hover:underline">Open editor</Link>
-          </div>
-          <div className="space-y-1">
-            {personalNotebooks.folders.map((folder) => (
-              <div key={folder.id} className="px-3 py-2 rounded-lg hover:bg-raised transition-colors">
-                <div className="text-sm text-foreground">{folder.name}/</div>
-                <div className="text-xs text-muted">{folder.files.length} file{folder.files.length !== 1 ? "s" : ""}</div>
-              </div>
-            ))}
-            {personalNotebooks.root_files.map((file) => (
-              <a key={file.id} href="/notebooks" className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-raised transition-colors">
-                <div className="text-sm text-foreground">{file.name}</div>
-              </a>
-            ))}
-          </div>
-        </section>
-      )}
-
-      {personalStores.length > 0 && (
-        <section className="mb-8">
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="text-lg font-medium text-foreground font-display">Personal Memory Stores</h2>
-            <Link href="/memory" className="text-sm text-brand hover:underline">View all</Link>
-          </div>
-          <div className="space-y-1">
-            {personalStores.map((store) => (
-              <a
-                key={store.id}
-                href={`/memory/${store.id}`}
-                className="flex items-center justify-between px-3 py-2.5 rounded-lg hover:bg-raised transition-colors"
-              >
-                <div className="min-w-0">
-                  <div className="text-sm text-foreground truncate">{store.name}</div>
-                  {store.description && <div className="text-xs text-muted truncate">{store.description}</div>}
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  {item.badge && (
+                    <span className="text-[10px] text-muted bg-raised px-1.5 py-0.5 rounded">
+                      {item.badge}
+                    </span>
+                  )}
+                  <span className="text-xs text-muted">
+                    {formatRelativeTime(item.updatedAt)}
+                  </span>
                 </div>
-                <div className="text-xs text-muted flex-shrink-0 ml-3">
-                  {store.event_count ?? 0} events
-                </div>
-              </a>
+              </Link>
             ))}
           </div>
-        </section>
-      )}
-
-      {myWorkspaces.length > 0 && (
-        <section className="mb-8">
-          <h2 className="text-lg font-medium text-foreground mb-3 font-display">My Workspaces</h2>
-          <div className="grid gap-3 sm:grid-cols-2">
-            {myWorkspaces.map((ws) => (
-              <WorkspaceCard key={ws.id} workspace={ws} isMember />
-            ))}
-          </div>
-        </section>
-      )}
-
-      {(() => {
-        const filtered = publicWorkspaces.filter((w) => !myWsIds.has(w.id));
-        return (
-          <section>
-            <h2 className="text-lg font-medium text-foreground mb-3 font-display">Public Workspaces</h2>
-            {filtered.length === 0 ? (
-              <p className="text-muted text-sm">
-                No public workspaces yet.{" "}
-                <a href="/rooms" className="text-brand hover:underline">
-                  Create one!
-                </a>
-              </p>
-            ) : (
-              <div className="grid gap-3 sm:grid-cols-2">
-                {filtered.map((ws) => (
-                  <WorkspaceCard key={ws.id} workspace={ws} isMember={false} />
-                ))}
-              </div>
-            )}
-          </section>
-        );
-      })()}
-    </main>
+        )}
+      </div>
+    </AppShell>
   );
+}
+
+function formatRelativeTime(dateStr: string): string {
+  const now = Date.now();
+  const then = new Date(dateStr).getTime();
+  const diffMs = now - then;
+  const diffMin = Math.floor(diffMs / 60000);
+  if (diffMin < 1) return "just now";
+  if (diffMin < 60) return `${diffMin}m ago`;
+  const diffHr = Math.floor(diffMin / 60);
+  if (diffHr < 24) return `${diffHr}h ago`;
+  const diffDay = Math.floor(diffHr / 24);
+  if (diffDay < 30) return `${diffDay}d ago`;
+  return new Date(dateStr).toLocaleDateString();
 }
 
 export default function Home() {
@@ -296,10 +269,5 @@ export default function Home() {
     );
   }
 
-  return (
-    <div className="min-h-screen flex flex-col">
-      <Header user={user} onLogout={logout} />
-      {user ? <LoggedInHome user={user} /> : <LandingPage />}
-    </div>
-  );
+  return user ? <LoggedInHome user={user} logout={logout} /> : <LandingPage />;
 }

@@ -2,7 +2,7 @@
 
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
-import Header from "../../../components/Header";
+import AppShell from "../../../components/AppShell";
 import ChatInput from "../../../components/ChatInput";
 import MessageList from "../../../components/MessageList";
 import { useAuth } from "../../../hooks/useAuth";
@@ -125,8 +125,8 @@ export default function PersonalRoomPage() {
   if (!user) { router.push("/login"); return null; }
 
   return (
-    <div className="h-screen flex flex-col">
-      <Header user={user} onLogout={logout} />
+    <AppShell user={user} onLogout={logout}>
+      <div className="flex flex-col h-full">
       <div className="bg-surface border-b border-border px-4 py-2 flex items-center justify-between">
         <div className="flex items-center gap-3">
           <a href="/rooms" className="text-dim hover:text-foreground text-sm">&larr; Rooms</a>
@@ -159,6 +159,7 @@ export default function PersonalRoomPage() {
       <div className="p-4 border-t border-border bg-surface">
         <ChatInput onSend={handleSend} />
       </div>
-    </div>
+      </div>
+    </AppShell>
   );
 }
