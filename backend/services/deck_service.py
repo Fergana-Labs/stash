@@ -1,7 +1,7 @@
-"""Deck service: HTML/JS/CSS document CRUD with public share links."""
+"""Deck service: HTML/JS/CSS document CRUD, public share links, viewer analytics."""
 
 import secrets
-from datetime import datetime
+from datetime import datetime, timezone
 from uuid import UUID
 
 import bcrypt
@@ -126,7 +126,7 @@ async def create_share_link(
     expires_at: str | None = None,
 ) -> dict:
     pool = get_pool()
-    token = secrets.token_urlsafe(12)[:12]
+    token = secrets.token_urlsafe(9)[:12]
     passcode_hash = bcrypt.hashpw(passcode.encode(), bcrypt.gensalt()).decode() if passcode else None
     exp = datetime.fromisoformat(expires_at) if expires_at else None
 
@@ -141,6 +141,72 @@ async def create_share_link(
     share = dict(row)
     share["has_passcode"] = share.pop("passcode_hash") is not None
     return share
+
+
+async def update_share_link(
+    share_id: UUID,
+    name: str | None = None, is_active: bool | None = None,
+    require_email: bool | None = None, passcode: str | None = None,
+    clear_passcode: bool = False, allow_download: bool | None = None,
+    expires_at: str | None = None, clear_expires: bool = False,
+) -> dict | None:
+    pool = get_pool()
+    sets: list[str] = []
+    args: list = []
+    idx = 1
+
+    if name is not None:
+        sets.append(f"name = ${idx}")
+        args.append(name)
+        idx += 1
+    if is_active is not None:
+        sets.append(f"is_active = ${idx}")
+        args.append(is_active)
+        idx += 1
+    if require_email is not None:
+        sets.append(f"require_email = ${idx}")
+        args.append(require_email)
+        idx += 1
+    if passcode:
+        h = bcrypt.hashpw(passcode.encode(), bcrypt.gensalt()).decode()
+        sets.append(f"passcode_hash = ${idx}")
+        args.append(h)
+        idx += 1
+    elif clear_passcode:
+        sets.append("passcode_hash = NULL")
+    if allow_download is not None:
+        sets.append(f"allow_download = ${idx}")
+        args.append(allow_download)
+        idx += 1
+    if expires_at:
+        sets.append(f"expires_at = ${idx}")
+        args.append(datetime.fromisoformat(expires_at))
+        idx += 1
+    elif clear_expires:
+        sets.append("expires_at = NULL")
+
+    if not sets:
+        return await _get_share(share_id)
+
+    args.append(share_id)
+    row = await pool.fetchrow(
+        f"UPDATE deck_shares SET {', '.join(sets)} WHERE id = ${idx} "
+        "RETURNING id, deck_id, token, name, is_active, require_email, "
+        "passcode_hash IS NOT NULL AS has_passcode, allow_download, expires_at, created_at",
+        *args,
+    )
+    return dict(row) if row else None
+
+
+async def _get_share(share_id: UUID) -> dict | None:
+    pool = get_pool()
+    row = await pool.fetchrow(
+        "SELECT id, deck_id, token, name, is_active, require_email, "
+        "passcode_hash IS NOT NULL AS has_passcode, allow_download, expires_at, created_at "
+        "FROM deck_shares WHERE id = $1",
+        share_id,
+    )
+    return dict(row) if row else None
 
 
 async def get_share_by_token(token: str) -> dict | None:
@@ -159,9 +225,10 @@ async def get_share_by_token(token: str) -> dict | None:
 async def list_share_links(deck_id: UUID) -> list[dict]:
     pool = get_pool()
     rows = await pool.fetch(
-        "SELECT id, deck_id, token, name, is_active, require_email, "
-        "passcode_hash IS NOT NULL AS has_passcode, allow_download, expires_at, created_at "
-        "FROM deck_shares WHERE deck_id = $1 ORDER BY created_at DESC",
+        "SELECT ds.id, ds.deck_id, ds.token, ds.name, ds.is_active, ds.require_email, "
+        "ds.passcode_hash IS NOT NULL AS has_passcode, ds.allow_download, ds.expires_at, ds.created_at, "
+        "(SELECT COUNT(*) FROM deck_share_views dsv WHERE dsv.share_id = ds.id) AS view_count "
+        "FROM deck_shares ds WHERE ds.deck_id = $1 ORDER BY ds.created_at DESC",
         deck_id,
     )
     return [dict(r) for r in rows]
@@ -179,3 +246,119 @@ async def verify_passcode(share: dict, passcode: str) -> bool:
     if not share.get("passcode_hash"):
         return True
     return bcrypt.checkpw(passcode.encode(), share["passcode_hash"].encode())
+
+
+# --- Viewer Tracking ---
+
+
+async def create_view_session(
+    share_id: UUID, viewer_email: str | None = None,
+    viewer_ip: str | None = None, user_agent: str | None = None,
+) -> dict:
+    pool = get_pool()
+    session_token = secrets.token_urlsafe(48)
+    row = await pool.fetchrow(
+        "INSERT INTO deck_share_views (share_id, session_token, viewer_email, viewer_ip, user_agent) "
+        "VALUES ($1, $2, $3, $4, $5) "
+        "RETURNING id, share_id, session_token, viewer_email, started_at, last_active_at, total_duration_seconds",
+        share_id, session_token, viewer_email, viewer_ip, user_agent,
+    )
+    return dict(row)
+
+
+async def get_view_by_session(session_token: str) -> dict | None:
+    pool = get_pool()
+    row = await pool.fetchrow(
+        "SELECT id, share_id, session_token, viewer_email, started_at, last_active_at, total_duration_seconds "
+        "FROM deck_share_views WHERE session_token = $1",
+        session_token,
+    )
+    return dict(row) if row else None
+
+
+async def heartbeat(session_token: str, page_identifier: str | None = None) -> None:
+    """Update viewer session and optionally track page engagement."""
+    pool = get_pool()
+    view = await get_view_by_session(session_token)
+    if not view:
+        return
+
+    # Calculate elapsed since last heartbeat (cap at 60s to ignore idle)
+    now = datetime.now(timezone.utc)
+    last = view["last_active_at"]
+    if last.tzinfo is None:
+        last = last.replace(tzinfo=timezone.utc)
+    elapsed = min(int((now - last).total_seconds()), 60)
+
+    await pool.execute(
+        "UPDATE deck_share_views SET last_active_at = now(), "
+        "total_duration_seconds = total_duration_seconds + $1 WHERE id = $2",
+        elapsed, view["id"],
+    )
+
+    if page_identifier:
+        await pool.execute(
+            "INSERT INTO deck_share_page_views (view_id, page_identifier, duration_seconds) "
+            "VALUES ($1, $2, $3) "
+            "ON CONFLICT (view_id, page_identifier) DO UPDATE SET "
+            "duration_seconds = deck_share_page_views.duration_seconds + $3",
+            view["id"], page_identifier, elapsed,
+        )
+
+
+# --- Analytics ---
+
+
+async def get_share_analytics(share_id: UUID) -> dict:
+    pool = get_pool()
+
+    # Viewer sessions
+    viewers = await pool.fetch(
+        "SELECT id, viewer_email, viewer_ip, started_at, last_active_at, total_duration_seconds "
+        "FROM deck_share_views WHERE share_id = $1 ORDER BY started_at DESC",
+        share_id,
+    )
+
+    # Aggregate stats
+    total_views = len(viewers)
+    unique_emails = set()
+    unique_ips = set()
+    total_duration = 0
+    for v in viewers:
+        if v["viewer_email"]:
+            unique_emails.add(v["viewer_email"])
+        elif v["viewer_ip"]:
+            unique_ips.add(v["viewer_ip"])
+        total_duration += v["total_duration_seconds"]
+    unique_viewers = len(unique_emails) + len(unique_ips)
+    if unique_viewers == 0:
+        unique_viewers = total_views  # fallback
+
+    avg_duration = total_duration // total_views if total_views > 0 else 0
+
+    # Page-level stats
+    page_stats = await pool.fetch(
+        "SELECT page_identifier, SUM(duration_seconds) AS total_seconds, COUNT(*) AS view_count "
+        "FROM deck_share_page_views WHERE view_id IN ("
+        "  SELECT id FROM deck_share_views WHERE share_id = $1"
+        ") GROUP BY page_identifier ORDER BY page_identifier",
+        share_id,
+    )
+
+    return {
+        "total_views": total_views,
+        "unique_viewers": unique_viewers,
+        "avg_duration_seconds": avg_duration,
+        "viewers": [
+            {
+                "id": v["id"],
+                "viewer_email": v["viewer_email"],
+                "viewer_ip": v["viewer_ip"],
+                "started_at": v["started_at"],
+                "last_active_at": v["last_active_at"],
+                "total_duration_seconds": v["total_duration_seconds"],
+            }
+            for v in viewers
+        ],
+        "page_stats": [dict(p) for p in page_stats],
+    }

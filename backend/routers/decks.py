@@ -9,9 +9,11 @@ from ..models import (
     DeckCreateRequest,
     DeckListResponse,
     DeckResponse,
+    DeckShareAnalyticsResponse,
     DeckShareCreateRequest,
     DeckShareListResponse,
     DeckShareResponse,
+    DeckShareUpdateRequest,
     DeckUpdateRequest,
     PermissionResponse,
     SetVisibilityRequest,
@@ -128,6 +130,34 @@ async def deactivate_share_link(
 ):
     await _check_member(workspace_id, current_user["id"])
     await deck_service.deactivate_share_link(share_id)
+
+
+@router.put("/{deck_id}/shares/{share_id}", response_model=DeckShareResponse)
+async def update_share_link(
+    workspace_id: UUID, deck_id: UUID, share_id: UUID,
+    req: DeckShareUpdateRequest,
+    current_user: dict = Depends(get_current_user),
+):
+    await _check_member(workspace_id, current_user["id"])
+    share = await deck_service.update_share_link(
+        share_id, name=req.name, is_active=req.is_active,
+        require_email=req.require_email, passcode=req.passcode,
+        clear_passcode=req.clear_passcode, allow_download=req.allow_download,
+        expires_at=req.expires_at, clear_expires=req.clear_expires,
+    )
+    if not share:
+        raise HTTPException(status_code=404, detail="Share link not found")
+    return DeckShareResponse(**share)
+
+
+@router.get("/{deck_id}/shares/{share_id}/analytics", response_model=DeckShareAnalyticsResponse)
+async def get_share_analytics(
+    workspace_id: UUID, deck_id: UUID, share_id: UUID,
+    current_user: dict = Depends(get_current_user),
+):
+    await _check_member(workspace_id, current_user["id"])
+    analytics = await deck_service.get_share_analytics(share_id)
+    return DeckShareAnalyticsResponse(**analytics)
 
 
 # --- Permissions ---

@@ -740,11 +740,11 @@ export async function getDeckByToken(token: string): Promise<{ deck_name: string
   return apiFetch(`/api/v1/d/${token}`);
 }
 
-export async function getDeckContent(token: string): Promise<{ html_content: string; deck_name: string; deck_type: string }> {
+export async function getDeckContent(token: string): Promise<{ html_content: string; deck_name: string; deck_type: string; session_token: string }> {
   return apiFetch(`/api/v1/d/${token}/content`);
 }
 
-export async function verifyDeckAccess(token: string, email?: string, passcode?: string): Promise<{ html_content: string; deck_name: string; deck_type: string }> {
+export async function verifyDeckAccess(token: string, email?: string, passcode?: string): Promise<{ html_content: string; deck_name: string; deck_type: string; session_token: string }> {
   return apiFetch(`/api/v1/d/${token}/verify`, {
     method: "POST", body: JSON.stringify({ email, passcode }),
   });

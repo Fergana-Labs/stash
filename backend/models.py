@@ -340,8 +340,37 @@ class DeckShareResponse(BaseModel):
     created_at: datetime
 
 
+class DeckShareUpdateRequest(BaseModel):
+    name: str | None = Field(None, max_length=255)
+    is_active: bool | None = None
+    require_email: bool | None = None
+    passcode: str | None = Field(None, max_length=128)
+    clear_passcode: bool = False
+    allow_download: bool | None = None
+    expires_at: str | None = None
+    clear_expires: bool = False
+
+
 class DeckShareListResponse(BaseModel):
     shares: list[DeckShareResponse]
+
+
+class DeckShareViewResponse(BaseModel):
+    id: UUID
+    viewer_email: str | None
+    viewer_ip: str | None
+    started_at: datetime
+    last_active_at: datetime
+    total_duration_seconds: int
+    view_count: int = 1
+
+
+class DeckShareAnalyticsResponse(BaseModel):
+    total_views: int
+    unique_viewers: int
+    avg_duration_seconds: int
+    viewers: list[DeckShareViewResponse]
+    page_stats: list[dict]
 
 
 # --- History ---
