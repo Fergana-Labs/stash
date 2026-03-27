@@ -1,62 +1,52 @@
 "use client";
 
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import AppShell from "../../components/AppShell";
 import { useAuth } from "../../hooks/useAuth";
 import {
-  createPersonalMemoryStore,
-  deletePersonalMemoryStore,
-  listPersonalMemoryStores,
+  listAllMemoryStores,
+  queryAllMemoryEvents,
 } from "../../lib/api";
-import { MemoryStore } from "../../lib/types";
+import { MemoryEventWithContext, MemoryStoreWithWorkspace } from "../../lib/types";
 
-export default function PersonalMemoryPage() {
+export default function MemoryPage() {
   const router = useRouter();
   const { user, loading, logout } = useAuth();
-  const [stores, setStores] = useState<MemoryStore[]>([]);
-  const [showCreate, setShowCreate] = useState(false);
-  const [newName, setNewName] = useState("");
-  const [newDesc, setNewDesc] = useState("");
-  const [error, setError] = useState("");
+  const [stores, setStores] = useState<MemoryStoreWithWorkspace[]>([]);
+  const [events, setEvents] = useState<MemoryEventWithContext[]>([]);
+  const [hasMore, setHasMore] = useState(false);
+  const [filterAgent, setFilterAgent] = useState("");
+  const [filterType, setFilterType] = useState("");
+  const [eventsLoading, setEventsLoading] = useState(false);
 
   const loadStores = useCallback(async () => {
     try {
-      const res = await listPersonalMemoryStores();
-      setStores(res.stores);
-    } catch {
-      // ignore
-    }
+      const res = await listAllMemoryStores();
+      setStores(res?.stores ?? []);
+    } catch { /* ignore */ }
   }, []);
 
+  const loadEvents = useCallback(async () => {
+    setEventsLoading(true);
+    try {
+      const res = await queryAllMemoryEvents({
+        agent_name: filterAgent || undefined,
+        event_type: filterType || undefined,
+        limit: 100,
+      });
+      setEvents(res?.events ?? []);
+      setHasMore(res?.has_more ?? false);
+    } catch { /* ignore */ }
+    setEventsLoading(false);
+  }, [filterAgent, filterType]);
+
   useEffect(() => {
-    if (user) loadStores();
-  }, [user, loadStores]);
-
-  const handleCreate = async () => {
-    if (!newName.trim()) return;
-    setError("");
-    try {
-      await createPersonalMemoryStore(newName.trim(), newDesc.trim());
-      setShowCreate(false);
-      setNewName("");
-      setNewDesc("");
-      await loadStores();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to create store");
+    if (user) {
+      loadStores();
+      loadEvents();
     }
-  };
-
-  const handleDelete = async (storeId: string) => {
-    if (!confirm("Delete this memory store and all its events?")) return;
-    try {
-      await deletePersonalMemoryStore(storeId);
-      await loadStores();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to delete store");
-    }
-  };
+  }, [user, loadStores, loadEvents]);
 
   if (loading) {
     return <div className="min-h-screen flex items-center justify-center text-muted">Loading...</div>;
@@ -67,58 +57,75 @@ export default function PersonalMemoryPage() {
     <AppShell user={user} onLogout={logout}>
       <div className="max-w-4xl mx-auto w-full px-4 py-8">
         <div className="flex items-center justify-between mb-6">
-          <h1 className="text-2xl font-bold text-foreground font-display">My Memory Stores</h1>
+          <h1 className="text-2xl font-bold text-foreground font-display">Memory</h1>
+          <div className="text-xs text-muted">
+            {stores.length} store{stores.length !== 1 ? "s" : ""} across all workspaces
+          </div>
+        </div>
+
+        {/* Filters */}
+        <div className="flex gap-2 mb-6">
+          <input
+            type="text"
+            value={filterAgent}
+            onChange={(e) => setFilterAgent(e.target.value)}
+            placeholder="Filter by agent name..."
+            className="flex-1 bg-raised border border-border rounded px-3 py-2 text-sm text-foreground focus:outline-none focus:border-brand"
+          />
+          <input
+            type="text"
+            value={filterType}
+            onChange={(e) => setFilterType(e.target.value)}
+            placeholder="Event type..."
+            className="w-40 bg-raised border border-border rounded px-3 py-2 text-sm text-foreground focus:outline-none focus:border-brand"
+          />
           <button
-            onClick={() => setShowCreate(true)}
-            className="text-sm bg-brand hover:bg-brand-hover text-foreground px-3 py-1.5 rounded"
+            onClick={loadEvents}
+            className="bg-brand hover:bg-brand-hover text-foreground px-4 py-2 rounded text-sm"
           >
-            New Store
+            Filter
           </button>
         </div>
 
-        {error && <p className="text-red-400 text-sm mb-4">{error}</p>}
+        {/* Event stream */}
+        <div className="text-xs text-muted mb-3">
+          {eventsLoading ? "Loading..." : `${events.length} event${events.length !== 1 ? "s" : ""}${hasMore ? " (more available)" : ""}`}
+        </div>
 
-        {showCreate && (
-          <div className="bg-surface border border-border rounded-lg p-4 mb-6">
-            <h3 className="text-foreground font-medium mb-3">New Memory Store</h3>
-            <input
-              value={newName}
-              onChange={(e) => setNewName(e.target.value)}
-              placeholder="Name"
-              className="w-full bg-raised border border-border rounded px-3 py-2 text-foreground text-sm mb-2"
-            />
-            <input
-              value={newDesc}
-              onChange={(e) => setNewDesc(e.target.value)}
-              placeholder="Description (optional)"
-              className="w-full bg-raised border border-border rounded px-3 py-2 text-foreground text-sm mb-2"
-            />
-            <div className="flex gap-2">
-              <button onClick={handleCreate} className="bg-brand hover:bg-brand-hover text-foreground px-4 py-1.5 rounded text-sm">Create</button>
-              <button onClick={() => setShowCreate(false)} className="bg-raised text-dim px-4 py-1.5 rounded text-sm">Cancel</button>
-            </div>
-          </div>
-        )}
-
-        {stores.length === 0 ? (
-          <p className="text-muted text-sm">No memory stores yet. Create one to get started.</p>
+        {events.length === 0 && !eventsLoading ? (
+          <p className="text-muted text-sm">No events found. Agent activity will appear here as events are logged.</p>
         ) : (
           <div className="space-y-2">
-            {stores.map((store) => (
-              <div key={store.id} className="bg-surface border border-border rounded-lg p-4 flex items-center justify-between">
-                <Link href={`/memory/${store.id}`} className="flex-1 min-w-0">
-                  <div className="text-foreground font-medium">{store.name}</div>
-                  {store.description && <div className="text-dim text-sm truncate">{store.description}</div>}
-                  <div className="text-muted text-xs mt-1">
-                    {store.event_count ?? 0} event{(store.event_count ?? 0) !== 1 ? "s" : ""}
-                  </div>
-                </Link>
-                <button
-                  onClick={() => handleDelete(store.id)}
-                  className="text-xs text-red-400 hover:text-red-300 px-2 py-1 ml-3 flex-shrink-0"
-                >
-                  Delete
-                </button>
+            {events.map((evt) => (
+              <div key={evt.id} className="bg-surface border border-border rounded-lg p-3">
+                <div className="flex items-center gap-2 mb-1 flex-wrap">
+                  <span className="text-xs font-medium text-agent bg-agent-muted px-1.5 py-0.5 rounded">{evt.agent_name}</span>
+                  <span className="text-xs bg-raised text-muted px-1.5 py-0.5 rounded">{evt.event_type}</span>
+                  {evt.store_name && (
+                    <span className="text-xs text-muted">in {evt.store_name}</span>
+                  )}
+                  {evt.workspace_name && (
+                    <span className="text-[10px] text-muted bg-raised px-1.5 py-0.5 rounded">{evt.workspace_name}</span>
+                  )}
+                  {evt.session_id && (
+                    <span className="text-xs text-muted font-mono">session:{evt.session_id}</span>
+                  )}
+                  {evt.tool_name && (
+                    <span className="text-xs text-muted font-mono">tool:{evt.tool_name}</span>
+                  )}
+                  <span className="text-xs text-muted ml-auto flex-shrink-0">
+                    {new Date(evt.created_at).toLocaleString()}
+                  </span>
+                </div>
+                <div className="text-sm text-foreground whitespace-pre-wrap">{evt.content}</div>
+                {Object.keys(evt.metadata).length > 0 && (
+                  <details className="mt-2">
+                    <summary className="text-xs text-muted cursor-pointer">Metadata</summary>
+                    <pre className="text-xs text-dim mt-1 bg-raised p-2 rounded overflow-x-auto">
+                      {JSON.stringify(evt.metadata, null, 2)}
+                    </pre>
+                  </details>
+                )}
               </div>
             ))}
           </div>

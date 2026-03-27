@@ -1,14 +1,20 @@
 import {
   AgentProfile,
   AgentResponse,
+  AgentWithContext,
   Chat,
+  ChatWithWorkspace,
+  DMWithUser,
   DMConversation,
   MemoryEvent,
+  MemoryEventWithContext,
   MemoryStore,
+  MemoryStoreWithWorkspace,
   Message,
   Notebook,
   NotebookFolder,
   NotebookTree,
+  NotebookWithWorkspace,
   ObjectPermission,
   RegisterResponse,
   User,
@@ -566,6 +572,43 @@ export async function searchPersonalMemoryEvents(
   return apiFetch(
     `/api/v1/memory/${storeId}/events/search?${searchParams.toString()}`
   );
+}
+
+// --- Aggregate (cross-workspace) ---
+
+export async function listAllChats(): Promise<{ chats: ChatWithWorkspace[]; dms: DMWithUser[] }> {
+  return apiFetch("/api/v1/me/chats");
+}
+
+export async function listAllNotebooks(): Promise<{ notebooks: NotebookWithWorkspace[] }> {
+  return apiFetch("/api/v1/me/notebooks");
+}
+
+export async function listAllMemoryStores(): Promise<{ stores: MemoryStoreWithWorkspace[] }> {
+  return apiFetch("/api/v1/me/memory-stores");
+}
+
+export async function queryAllMemoryEvents(
+  params?: {
+    agent_name?: string;
+    event_type?: string;
+    after?: string;
+    before?: string;
+    limit?: number;
+  }
+): Promise<{ events: MemoryEventWithContext[]; has_more: boolean }> {
+  const searchParams = new URLSearchParams();
+  if (params?.agent_name) searchParams.set("agent_name", params.agent_name);
+  if (params?.event_type) searchParams.set("event_type", params.event_type);
+  if (params?.after) searchParams.set("after", params.after);
+  if (params?.before) searchParams.set("before", params.before);
+  if (params?.limit) searchParams.set("limit", String(params.limit));
+  const qs = searchParams.toString();
+  return apiFetch(`/api/v1/me/memory-events${qs ? `?${qs}` : ""}`);
+}
+
+export async function listAgentsWithContext(): Promise<{ agents: AgentWithContext[] }> {
+  return apiFetch("/api/v1/me/agents");
 }
 
 // --- Agents ---

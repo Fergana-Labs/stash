@@ -9,8 +9,9 @@ from starlette.types import ASGIApp, Receive, Scope, Send
 from .config import settings
 from .database import close_db, init_db
 from .routers import (
-    agents, chats, dms, memory, notebooks, personal_memory, personal_notebooks,
-    personal_rooms, realtime, skill, users, webhooks, workspaces,
+    agents, aggregate, chats, dms, memory, notebooks, personal_memory,
+    personal_notebooks, personal_rooms, realtime, skill, users, webhooks,
+    workspaces,
 )
 from .services.connection_manager import manager
 
@@ -82,6 +83,7 @@ app.include_router(dms.router)
 app.include_router(personal_rooms.router)
 app.include_router(personal_notebooks.router)
 app.include_router(personal_memory.router)
+app.include_router(aggregate.router)
 app.include_router(webhooks.router)
 app.include_router(skill.router)
 

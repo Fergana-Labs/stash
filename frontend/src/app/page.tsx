@@ -6,18 +6,17 @@ import AppShell from "../components/AppShell";
 import Header from "../components/Header";
 import { useAuth } from "../hooks/useAuth";
 import {
-  listDMs,
+  listAllChats,
+  listAllNotebooks,
+  listAllMemoryStores,
   listMyWorkspaces,
   listPublicWorkspaces,
-  listPersonalRooms,
-  listPersonalNotebooks,
-  listPersonalMemoryStores,
 } from "../lib/api";
-import { Chat, DMConversation, MemoryStore, NotebookTreeFile, Workspace } from "../lib/types";
+import { ChatWithWorkspace, DMWithUser, MemoryStoreWithWorkspace, NotebookWithWorkspace, Workspace } from "../lib/types";
 
 interface FeedItem {
   id: string;
-  type: "workspace" | "dm" | "room" | "notebook" | "memory";
+  type: "workspace" | "dm" | "chat" | "notebook" | "memory";
   name: string;
   description?: string;
   href: string;
@@ -38,40 +37,22 @@ function LandingPage() {
     <div className="min-h-screen flex flex-col">
       <Header user={null} />
       <section className="text-center py-20 px-4">
-        <h1 className="text-5xl font-bold text-foreground mb-4 tracking-tight font-display">
-          boozle
-        </h1>
+        <h1 className="text-5xl font-bold text-foreground mb-4 tracking-tight font-display">boozle</h1>
         <p className="text-xl text-dim mb-8 max-w-xl mx-auto">
           Workspaces with chats, notebooks, and memory stores for AI agents and humans
         </p>
-        <p className="text-muted mb-10 max-w-2xl mx-auto">
-          Create workspaces, invite teammates and AI agents, and collaborate in real
-          time. Use chats for conversation, notebooks for collaborative markdown
-          editing, and memory stores for structured agent event logs.
-        </p>
-        <Link
-          href="/login"
-          className="inline-block bg-brand hover:bg-brand-hover text-foreground px-8 py-3 rounded-lg text-lg font-medium"
-        >
+        <Link href="/login" className="inline-block bg-brand hover:bg-brand-hover text-foreground px-8 py-3 rounded-lg text-lg font-medium">
           Get Started
         </Link>
       </section>
-
       {publicWorkspaces.length > 0 && (
         <section className="max-w-4xl mx-auto px-4 pb-16">
           <h2 className="text-lg font-medium text-foreground mb-3 font-display">Public Workspaces</h2>
           <div className="grid gap-3 sm:grid-cols-2">
             {publicWorkspaces.map((ws) => (
-              <Link
-                key={ws.id}
-                href={`/workspaces/${ws.id}`}
-                className="bg-surface border border-border rounded-lg p-4 hover:border-brand transition-colors"
-              >
+              <Link key={ws.id} href={`/workspaces/${ws.id}`} className="bg-surface border border-border rounded-lg p-4 hover:border-brand transition-colors">
                 <div className="text-foreground font-medium">{ws.name}</div>
                 {ws.description && <div className="text-dim text-sm mt-1">{ws.description}</div>}
-                <div className="text-muted text-xs mt-2">
-                  {ws.member_count ?? 0} member{(ws.member_count ?? 0) !== 1 ? "s" : ""}
-                </div>
               </Link>
             ))}
           </div>
@@ -89,84 +70,56 @@ function LoggedInHome({ user, logout }: { user: NonNullable<ReturnType<typeof us
     setLoading(true);
     Promise.all([
       listMyWorkspaces().then((r) => r?.workspaces ?? []).catch(() => [] as Workspace[]),
-      listDMs().then((r) => r?.dms ?? []).catch(() => [] as DMConversation[]),
-      listPersonalRooms().then((r) => r?.chats ?? []).catch(() => [] as Chat[]),
-      listPersonalNotebooks().then((r) => {
-        const files: NotebookTreeFile[] = [];
-        if (r?.root_files) files.push(...r.root_files);
-        if (r?.folders) {
-          for (const folder of r.folders) {
-            files.push(...folder.files);
-          }
-        }
-        return files;
-      }).catch(() => [] as NotebookTreeFile[]),
-      listPersonalMemoryStores().then((r) => r?.stores ?? []).catch(() => [] as MemoryStore[]),
-    ]).then(([workspaces, dms, rooms, notebooks, stores]) => {
+      listAllChats().catch(() => ({ chats: [] as ChatWithWorkspace[], dms: [] as DMWithUser[] })),
+      listAllNotebooks().then((r) => r?.notebooks ?? []).catch(() => [] as NotebookWithWorkspace[]),
+      listAllMemoryStores().then((r) => r?.stores ?? []).catch(() => [] as MemoryStoreWithWorkspace[]),
+    ]).then(([workspaces, chatResult, notebooks, stores]) => {
       const items: FeedItem[] = [];
+      const chats = chatResult?.chats ?? [];
+      const dms = chatResult?.dms ?? [];
 
       for (const ws of workspaces) {
         items.push({
-          id: ws.id,
-          type: "workspace",
-          name: ws.name,
-          description: ws.description,
-          href: `/workspaces/${ws.id}`,
-          updatedAt: ws.updated_at,
-          icon: "W",
+          id: ws.id, type: "workspace", name: ws.name, description: ws.description,
+          href: `/workspaces/${ws.id}`, updatedAt: ws.updated_at, icon: "W",
           badge: `${ws.member_count ?? 0} members`,
+        });
+      }
+
+      for (const chat of chats) {
+        items.push({
+          id: chat.id, type: "chat", name: chat.name, description: chat.workspace_name || undefined,
+          href: chat.workspace_id ? `/workspaces/${chat.workspace_id}` : `/rooms/${chat.id}`,
+          updatedAt: chat.updated_at, icon: "#",
+          badge: chat.workspace_name || "Personal",
         });
       }
 
       for (const dm of dms) {
         const other = dm.other_user;
         items.push({
-          id: dm.id,
-          type: "dm",
+          id: dm.id, type: "dm",
           name: other?.display_name || other?.name || "Unknown",
           description: `@${other?.name || "unknown"}`,
-          href: `/dms/${dm.id}`,
-          updatedAt: dm.last_message_at || dm.created_at,
-          icon: other?.type === "agent" ? "A" : "H",
+          href: `/dms/${dm.id}`, updatedAt: dm.updated_at, icon: other?.type === "agent" ? "A" : "H",
           badge: "DM",
           badgeColor: other?.type === "agent" ? "text-agent bg-agent-muted" : "text-human bg-human-muted",
         });
       }
 
-      for (const room of rooms) {
-        items.push({
-          id: room.id,
-          type: "room",
-          name: room.name,
-          description: room.description,
-          href: `/rooms/${room.id}`,
-          updatedAt: room.updated_at,
-          icon: "#",
-          badge: "Room",
-        });
-      }
-
       for (const nb of notebooks) {
         items.push({
-          id: nb.id,
-          type: "notebook",
-          name: nb.name,
-          href: "/notebooks",
-          updatedAt: nb.updated_at,
-          icon: "N",
-          badge: "Notebook",
+          id: nb.id, type: "notebook", name: nb.name,
+          description: nb.workspace_name || "Personal",
+          href: "/notebooks", updatedAt: nb.updated_at, icon: "N",
+          badge: nb.workspace_name || "Personal",
         });
       }
 
       for (const store of stores) {
         items.push({
-          id: store.id,
-          type: "memory",
-          name: store.name,
-          description: store.description,
-          href: `/memory/${store.id}`,
-          updatedAt: store.created_at,
-          icon: "M",
+          id: store.id, type: "memory", name: store.name, description: store.description,
+          href: "/memory", updatedAt: store.created_at, icon: "M",
           badge: `${store.event_count ?? 0} events`,
         });
       }
@@ -180,7 +133,7 @@ function LoggedInHome({ user, logout }: { user: NonNullable<ReturnType<typeof us
   const iconColors: Record<string, string> = {
     workspace: "bg-brand/15 text-brand",
     dm: "bg-human-muted text-human",
-    room: "bg-brand/15 text-brand",
+    chat: "bg-brand/15 text-brand",
     notebook: "bg-green-500/15 text-green-500",
     memory: "bg-violet-500/15 text-violet-500",
   };
@@ -189,51 +142,30 @@ function LoggedInHome({ user, logout }: { user: NonNullable<ReturnType<typeof us
     <AppShell user={user} onLogout={logout}>
       <div className="max-w-3xl mx-auto w-full px-4 py-8">
         <h1 className="text-2xl font-bold text-foreground mb-6 font-display">Recent Activity</h1>
-
         {loading ? (
           <p className="text-muted text-sm">Loading...</p>
         ) : feed.length === 0 ? (
           <div className="text-center py-12">
             <p className="text-dim mb-4">Nothing here yet. Get started by creating something.</p>
             <div className="flex gap-3 justify-center">
-              <Link href="/rooms" className="text-sm bg-brand hover:bg-brand-hover text-foreground px-4 py-2 rounded">
-                Create Workspace
-              </Link>
-              <Link href="/notebooks" className="text-sm bg-raised hover:bg-raised text-dim px-4 py-2 rounded border border-border">
-                New Notebook
-              </Link>
+              <Link href="/rooms" className="text-sm bg-brand hover:bg-brand-hover text-foreground px-4 py-2 rounded">Create Workspace</Link>
+              <Link href="/notebooks" className="text-sm bg-raised text-dim px-4 py-2 rounded border border-border">New Notebook</Link>
             </div>
           </div>
         ) : (
           <div className="space-y-0.5">
             {feed.map((item) => (
-              <Link
-                key={`${item.type}-${item.id}`}
-                href={item.href}
-                className="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-raised transition-colors"
-              >
-                <div
-                  className={`w-8 h-8 rounded-md flex items-center justify-center text-xs font-bold flex-shrink-0 ${
-                    item.badgeColor || iconColors[item.type] || "bg-raised text-muted"
-                  }`}
-                >
+              <Link key={`${item.type}-${item.id}`} href={item.href} className="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-raised transition-colors">
+                <div className={`w-8 h-8 rounded-md flex items-center justify-center text-xs font-bold flex-shrink-0 ${item.badgeColor || iconColors[item.type] || "bg-raised text-muted"}`}>
                   {item.icon}
                 </div>
                 <div className="min-w-0 flex-1">
                   <div className="text-sm text-foreground truncate">{item.name}</div>
-                  {item.description && (
-                    <div className="text-xs text-muted truncate">{item.description}</div>
-                  )}
+                  {item.description && <div className="text-xs text-muted truncate">{item.description}</div>}
                 </div>
                 <div className="flex items-center gap-2 flex-shrink-0">
-                  {item.badge && (
-                    <span className="text-[10px] text-muted bg-raised px-1.5 py-0.5 rounded">
-                      {item.badge}
-                    </span>
-                  )}
-                  <span className="text-xs text-muted">
-                    {formatRelativeTime(item.updatedAt)}
-                  </span>
+                  {item.badge && <span className="text-[10px] text-muted bg-raised px-1.5 py-0.5 rounded">{item.badge}</span>}
+                  <span className="text-xs text-muted">{formatRelativeTime(item.updatedAt)}</span>
                 </div>
               </Link>
             ))}
@@ -262,11 +194,7 @@ export default function Home() {
   const { user, loading, logout } = useAuth();
 
   if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center text-muted">
-        Loading...
-      </div>
-    );
+    return <div className="min-h-screen flex items-center justify-center text-muted">Loading...</div>;
   }
 
   return user ? <LoggedInHome user={user} logout={logout} /> : <LandingPage />;

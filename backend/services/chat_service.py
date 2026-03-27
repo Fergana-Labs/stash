@@ -164,6 +164,53 @@ async def is_personal_chat_owner(chat_id: UUID, user_id: UUID) -> bool:
     return row is not None
 
 
+async def list_all_user_chats(user_id: UUID) -> dict:
+    """All chats: workspace chats (user is member) + personal rooms + DMs."""
+    pool = get_pool()
+    # Workspace chats
+    ws_chats = await pool.fetch(
+        "SELECT c.id, c.workspace_id, c.name, c.description, c.creator_id, c.is_dm, "
+        "c.created_at, c.updated_at, w.name AS workspace_name "
+        "FROM chats c "
+        "JOIN workspaces w ON w.id = c.workspace_id "
+        "WHERE c.is_dm = false AND c.workspace_id IN ("
+        "  SELECT workspace_id FROM workspace_members WHERE user_id = $1"
+        ") ORDER BY c.updated_at DESC",
+        user_id,
+    )
+    # Personal rooms
+    personal = await pool.fetch(
+        "SELECT id, workspace_id, name, description, creator_id, is_dm, created_at, updated_at "
+        "FROM chats WHERE workspace_id IS NULL AND is_dm = false AND creator_id = $1 "
+        "ORDER BY updated_at DESC",
+        user_id,
+    )
+    # DMs
+    dms = await pool.fetch(
+        "SELECT c.id, c.workspace_id, c.name, c.description, c.creator_id, c.is_dm, "
+        "c.created_at, c.updated_at, c.dm_user_a, c.dm_user_b "
+        "FROM chats c "
+        "WHERE c.is_dm = true AND (c.dm_user_a = $1 OR c.dm_user_b = $1) "
+        "ORDER BY c.updated_at DESC",
+        user_id,
+    )
+    # Enrich DMs with other user info
+    dm_list = []
+    for dm in dms:
+        d = dict(dm)
+        other_id = d["dm_user_b"] if d["dm_user_a"] == user_id else d["dm_user_a"]
+        other = await pool.fetchrow(
+            "SELECT id, name, display_name, type FROM users WHERE id = $1", other_id,
+        )
+        d["other_user"] = dict(other) if other else None
+        dm_list.append(d)
+
+    return {
+        "chats": [dict(r) for r in ws_chats] + [dict(r) for r in personal],
+        "dms": dm_list,
+    }
+
+
 async def search_messages(
     chat_id: UUID, query: str, limit: int = 20,
 ) -> list[dict]:
