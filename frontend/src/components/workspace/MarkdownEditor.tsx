@@ -126,6 +126,7 @@ function CollaborativeEditor({
   onSave: (content: string) => void;
 }) {
   const editor = useEditor({
+    immediatelyRender: false,
     extensions: [
       // Match collab server's createTiptapExtensions() exactly
       StarterKit.configure({
