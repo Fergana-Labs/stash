@@ -75,7 +75,7 @@ export default function Header({ user, onLogout, onProfileUpdate }: HeaderProps)
             href="/rooms"
             className="text-gray-300 hover:text-white text-sm"
           >
-            Rooms
+            Workspaces
           </Link>
           <Link
             href="/docs"

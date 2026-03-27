@@ -305,7 +305,7 @@ export default function WorkspacePage() {
       <div className="bg-gray-900 border-b border-gray-800 px-4 py-2 flex items-center justify-between">
         <div className="flex items-center gap-3">
           <Link href="/rooms" className="text-gray-400 hover:text-white text-sm">
-            &larr; Spaces
+            &larr; Workspaces
           </Link>
           <h1 className="text-white font-medium">{workspace?.name || "Loading..."}</h1>
           {workspace?.description && (
