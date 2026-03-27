@@ -98,21 +98,21 @@ export default function WorkspaceSidebar({
   };
 
   return (
-    <div className="w-64 bg-gray-900 border-l border-gray-800 flex flex-col flex-shrink-0">
-      <div className="p-4 border-b border-gray-800">
+    <div className="w-64 bg-surface border-l border-border flex flex-col flex-shrink-0">
+      <div className="p-4 border-b border-border">
         {editing ? (
           <div className="space-y-2">
             <input
               type="text"
               value={editName}
               onChange={(e) => setEditName(e.target.value)}
-              className="w-full bg-gray-800 border border-gray-700 rounded px-2 py-1 text-sm text-white"
+              className="w-full bg-raised border border-border rounded px-2 py-1 text-sm text-foreground"
               placeholder="Workspace name"
             />
             <textarea
               value={editDescription}
               onChange={(e) => setEditDescription(e.target.value)}
-              className="w-full bg-gray-800 border border-gray-700 rounded px-2 py-1 text-sm text-white resize-none"
+              className="w-full bg-raised border border-border rounded px-2 py-1 text-sm text-foreground resize-none"
               rows={2}
               placeholder="Description"
             />
@@ -128,7 +128,7 @@ export default function WorkspaceSidebar({
                   });
                   setEditing(false);
                 }}
-                className="text-xs bg-purple-600 hover:bg-purple-500 text-white px-3 py-1 rounded"
+                className="text-xs bg-brand hover:bg-brand-hover text-foreground px-3 py-1 rounded"
               >
                 Save
               </button>
@@ -138,7 +138,7 @@ export default function WorkspaceSidebar({
                   setEditDescription(workspace.description || "");
                   setEditing(false);
                 }}
-                className="text-xs text-gray-400 hover:text-white px-3 py-1"
+                className="text-xs text-dim hover:text-foreground px-3 py-1"
               >
                 Cancel
               </button>
@@ -147,7 +147,7 @@ export default function WorkspaceSidebar({
         ) : (
           <>
             <div className="flex items-start justify-between">
-              <h2 className="font-medium text-white truncate">{workspace.name}</h2>
+              <h2 className="font-medium text-foreground truncate">{workspace.name}</h2>
               {isOwner && (
                 <button
                   onClick={() => {
@@ -155,14 +155,14 @@ export default function WorkspaceSidebar({
                     setEditDescription(workspace.description || "");
                     setEditing(true);
                   }}
-                  className="text-xs text-gray-500 hover:text-gray-300 ml-2 flex-shrink-0"
+                  className="text-xs text-muted hover:text-dim ml-2 flex-shrink-0"
                 >
                   Edit
                 </button>
               )}
             </div>
             {workspace.description && (
-              <p className="text-gray-400 text-xs mt-1 line-clamp-3">
+              <p className="text-dim text-xs mt-1 line-clamp-3">
                 {workspace.description}
               </p>
             )}
@@ -171,19 +171,19 @@ export default function WorkspaceSidebar({
         <div className="mt-3 flex flex-col gap-2">
           <button
             onClick={copyInvite}
-            className="w-full text-xs bg-gray-800 hover:bg-gray-700 text-gray-300 px-3 py-1.5 rounded border border-gray-700"
+            className="w-full text-xs bg-raised hover:bg-raised text-dim px-3 py-1.5 rounded border border-border"
           >
             Copy Invite Link
           </button>
-          <div className="text-xs text-gray-500 text-center">
+          <div className="text-xs text-muted text-center">
             Code:{" "}
-            <span className="font-mono text-gray-400">{workspace.invite_code}</span>
+            <span className="font-mono text-dim">{workspace.invite_code}</span>
           </div>
         </div>
       </div>
 
       <div className="flex-1 overflow-y-auto p-4">
-        <h3 className="text-xs uppercase tracking-wider text-gray-500 mb-2">
+        <h3 className="text-xs uppercase tracking-wider text-muted mb-2">
           Members ({members.length})
         </h3>
         <div className="space-y-2">
@@ -192,17 +192,17 @@ export default function WorkspaceSidebar({
               <div
                 className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold ${
                   m.type === "agent"
-                    ? "bg-purple-900 text-purple-300"
-                    : "bg-blue-900 text-blue-300"
+                    ? "bg-agent-muted text-agent"
+                    : "bg-human-muted text-human"
                 }`}
               >
                 {(m.display_name || m.name).charAt(0).toUpperCase()}
               </div>
               <div className="min-w-0 flex-1">
-                <div className="text-sm text-gray-300 truncate">
+                <div className="text-sm text-dim truncate">
                   {m.display_name || m.name}
                 </div>
-                <div className="text-[10px] text-gray-600">
+                <div className="text-[10px] text-muted">
                   {m.role} · {m.type}
                 </div>
               </div>
@@ -223,7 +223,7 @@ export default function WorkspaceSidebar({
           <div className="mt-4">
             <button
               onClick={handleToggleAccessList}
-              className="text-xs uppercase tracking-wider text-gray-500 hover:text-gray-300 flex items-center gap-1 mb-2"
+              className="text-xs uppercase tracking-wider text-muted hover:text-dim flex items-center gap-1 mb-2"
             >
               <span className={`transition-transform ${showAccessList ? "rotate-90" : ""}`}>
                 &#9654;
@@ -233,13 +233,13 @@ export default function WorkspaceSidebar({
 
             {showAccessList && (
               <div className="space-y-2">
-                <div className="flex border border-gray-700 rounded overflow-hidden">
+                <div className="flex border border-border rounded overflow-hidden">
                   <button
                     onClick={() => handleTabSwitch("allow")}
                     className={`flex-1 text-xs py-1 ${
                       activeListTab === "allow"
-                        ? "bg-purple-600 text-white"
-                        : "bg-gray-800 text-gray-400 hover:text-white"
+                        ? "bg-brand text-foreground"
+                        : "bg-raised text-dim hover:text-foreground"
                     }`}
                   >
                     Allow
@@ -248,8 +248,8 @@ export default function WorkspaceSidebar({
                     onClick={() => handleTabSwitch("block")}
                     className={`flex-1 text-xs py-1 ${
                       activeListTab === "block"
-                        ? "bg-red-600 text-white"
-                        : "bg-gray-800 text-gray-400 hover:text-white"
+                        ? "bg-red-600 text-foreground"
+                        : "bg-raised text-dim hover:text-foreground"
                     }`}
                   >
                     Block
@@ -263,28 +263,28 @@ export default function WorkspaceSidebar({
                     onChange={(e) => setNewAccessName(e.target.value)}
                     onKeyDown={(e) => e.key === "Enter" && handleAddEntry()}
                     placeholder="Username..."
-                    className="flex-1 bg-gray-800 border border-gray-700 rounded px-2 py-1 text-xs text-white focus:outline-none focus:border-purple-500"
+                    className="flex-1 bg-raised border border-border rounded px-2 py-1 text-xs text-foreground focus:outline-none focus:border-brand"
                   />
                   <button
                     onClick={handleAddEntry}
-                    className="text-xs bg-gray-700 hover:bg-gray-600 text-white px-2 py-1 rounded"
+                    className="text-xs bg-raised hover:bg-raised text-foreground px-2 py-1 rounded"
                   >
                     Add
                   </button>
                 </div>
 
                 {accessLoading ? (
-                  <div className="text-xs text-gray-500">Loading...</div>
+                  <div className="text-xs text-muted">Loading...</div>
                 ) : accessEntries.length === 0 ? (
-                  <div className="text-xs text-gray-600">No entries.</div>
+                  <div className="text-xs text-muted">No entries.</div>
                 ) : (
                   <div className="space-y-1">
                     {accessEntries.map((entry) => (
                       <div
                         key={entry.user_name}
-                        className="flex items-center justify-between text-xs bg-gray-800 rounded px-2 py-1"
+                        className="flex items-center justify-between text-xs bg-raised rounded px-2 py-1"
                       >
-                        <span className="text-gray-300 truncate">
+                        <span className="text-dim truncate">
                           {entry.user_name}
                         </span>
                         <button
@@ -303,7 +303,7 @@ export default function WorkspaceSidebar({
         )}
       </div>
 
-      <div className="p-4 border-t border-gray-800 space-y-2">
+      <div className="p-4 border-t border-border space-y-2">
         {isOwner && (
           <>
             {showDeleteConfirm ? (
@@ -314,13 +314,13 @@ export default function WorkspaceSidebar({
                 <div className="flex gap-2">
                   <button
                     onClick={onDelete}
-                    className="flex-1 text-xs bg-red-600 hover:bg-red-500 text-white px-3 py-1.5 rounded"
+                    className="flex-1 text-xs bg-red-600 hover:bg-red-500 text-foreground px-3 py-1.5 rounded"
                   >
                     Confirm
                   </button>
                   <button
                     onClick={() => setShowDeleteConfirm(false)}
-                    className="flex-1 text-xs text-gray-400 hover:text-white px-3 py-1.5 rounded border border-gray-700"
+                    className="flex-1 text-xs text-dim hover:text-foreground px-3 py-1.5 rounded border border-border"
                   >
                     Cancel
                   </button>
@@ -329,7 +329,7 @@ export default function WorkspaceSidebar({
             ) : (
               <button
                 onClick={() => setShowDeleteConfirm(true)}
-                className="w-full text-xs text-red-400 hover:text-red-300 hover:bg-gray-800 px-3 py-1.5 rounded border border-gray-800"
+                className="w-full text-xs text-red-400 hover:text-red-300 hover:bg-raised px-3 py-1.5 rounded border border-border"
               >
                 Delete Workspace
               </button>
@@ -338,7 +338,7 @@ export default function WorkspaceSidebar({
         )}
         <button
           onClick={onLeave}
-          className="w-full text-xs text-red-400 hover:text-red-300 hover:bg-gray-800 px-3 py-1.5 rounded"
+          className="w-full text-xs text-red-400 hover:text-red-300 hover:bg-raised px-3 py-1.5 rounded"
         >
           Leave Workspace
         </button>

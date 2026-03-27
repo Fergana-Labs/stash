@@ -25,8 +25,8 @@ function ToolbarButton({
       }}
       className={`px-2 py-1 rounded text-sm font-medium ${
         isActive
-          ? "bg-gray-600 text-white"
-          : "text-gray-400 hover:bg-gray-700 hover:text-white"
+          ? "bg-raised text-foreground"
+          : "text-dim hover:bg-raised hover:text-foreground"
       }`}
       title={title}
     >
@@ -36,14 +36,14 @@ function ToolbarButton({
 }
 
 function Separator() {
-  return <div className="w-px h-5 bg-gray-700 mx-1" />;
+  return <div className="w-px h-5 bg-border mx-1" />;
 }
 
 export default function EditorToolbar({ editor }: EditorToolbarProps) {
   if (!editor) return null;
 
   return (
-    <div className="flex items-center gap-0.5 px-3 py-1.5 border-b border-gray-700 bg-gray-900 flex-wrap">
+    <div className="flex items-center gap-0.5 px-3 py-1.5 border-b border-border bg-surface flex-wrap">
       <ToolbarButton
         onClick={() => editor.chain().focus().toggleBold().run()}
         isActive={editor.isActive("bold")}

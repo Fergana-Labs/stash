@@ -65,21 +65,21 @@ export default function Header({ user, onLogout, onProfileUpdate }: HeaderProps)
   };
 
   return (
-    <header className="bg-gray-900 border-b border-gray-800">
+    <header className="bg-surface border-b border-border">
       <div className="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between gap-4">
-        <Link href="/" className="text-xl font-bold text-white tracking-tight flex-shrink-0">
+        <Link href="/" className="text-xl font-bold font-display text-foreground tracking-tight flex-shrink-0">
           boozle
         </Link>
         <nav className="flex items-center gap-4">
           <Link
             href="/rooms"
-            className="text-gray-300 hover:text-white text-sm"
+            className="text-dim hover:text-foreground text-sm"
           >
             Workspaces
           </Link>
           <Link
             href="/docs"
-            className="text-gray-300 hover:text-white text-sm"
+            className="text-dim hover:text-foreground text-sm"
           >
             Docs
           </Link>
@@ -87,16 +87,16 @@ export default function Header({ user, onLogout, onProfileUpdate }: HeaderProps)
             <div className="flex items-center gap-3 relative" ref={dropdownRef}>
               <button
                 onClick={() => setShowProfile(!showProfile)}
-                className="text-sm text-gray-400 hover:text-white flex items-center gap-1"
+                className="text-sm text-dim hover:text-foreground flex items-center gap-1"
               >
                 {user.display_name || user.name}
-                <span className="ml-1 text-xs px-1.5 py-0.5 rounded bg-gray-800 text-gray-500">
+                <span className="ml-1 text-xs px-1.5 py-0.5 rounded bg-raised text-muted">
                   {user.type}
                 </span>
               </button>
               {showProfile && (
-                <div className="absolute top-full right-0 mt-2 w-64 bg-gray-800 border border-gray-700 rounded-lg shadow-xl z-50 p-3 space-y-2">
-                  <div className="text-xs text-gray-500 uppercase tracking-wider mb-1">
+                <div className="absolute top-full right-0 mt-2 w-64 bg-raised border border-border rounded-lg shadow-xl z-50 p-3 space-y-2">
+                  <div className="text-xs text-muted uppercase tracking-wider mb-1">
                     Edit Profile
                   </div>
                   <input
@@ -104,14 +104,14 @@ export default function Header({ user, onLogout, onProfileUpdate }: HeaderProps)
                     value={editDisplayName}
                     onChange={(e) => setEditDisplayName(e.target.value)}
                     placeholder="Display name"
-                    className="w-full bg-gray-900 border border-gray-700 rounded px-2 py-1.5 text-sm text-white focus:outline-none focus:border-blue-500"
+                    className="w-full bg-surface border border-border rounded px-2 py-1.5 text-sm text-foreground focus:outline-none focus:border-brand"
                   />
                   <input
                     type="text"
                     value={editDescription}
                     onChange={(e) => setEditDescription(e.target.value)}
                     placeholder="Description"
-                    className="w-full bg-gray-900 border border-gray-700 rounded px-2 py-1.5 text-sm text-white focus:outline-none focus:border-blue-500"
+                    className="w-full bg-surface border border-border rounded px-2 py-1.5 text-sm text-foreground focus:outline-none focus:border-brand"
                   />
                   {user.type === "human" && (
                     <input
@@ -119,7 +119,7 @@ export default function Header({ user, onLogout, onProfileUpdate }: HeaderProps)
                       value={editPassword}
                       onChange={(e) => setEditPassword(e.target.value)}
                       placeholder="New password (min 8 chars)"
-                      className="w-full bg-gray-900 border border-gray-700 rounded px-2 py-1.5 text-sm text-white focus:outline-none focus:border-blue-500"
+                      className="w-full bg-surface border border-border rounded px-2 py-1.5 text-sm text-foreground focus:outline-none focus:border-brand"
                     />
                   )}
                   {saveMsg && (
@@ -131,13 +131,13 @@ export default function Header({ user, onLogout, onProfileUpdate }: HeaderProps)
                     <button
                       onClick={handleSaveProfile}
                       disabled={saving}
-                      className="text-xs bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white px-3 py-1.5 rounded"
+                      className="text-xs bg-brand hover:bg-brand-hover disabled:opacity-50 text-foreground px-3 py-1.5 rounded"
                     >
                       {saving ? "Saving..." : "Save"}
                     </button>
                     <button
                       onClick={() => setShowProfile(false)}
-                      className="text-xs text-gray-400 hover:text-white px-3 py-1.5"
+                      className="text-xs text-dim hover:text-foreground px-3 py-1.5"
                     >
                       Cancel
                     </button>
@@ -146,7 +146,7 @@ export default function Header({ user, onLogout, onProfileUpdate }: HeaderProps)
               )}
               <button
                 onClick={onLogout}
-                className="text-sm text-gray-400 hover:text-white"
+                className="text-sm text-dim hover:text-foreground"
               >
                 Logout
               </button>
@@ -154,7 +154,7 @@ export default function Header({ user, onLogout, onProfileUpdate }: HeaderProps)
           ) : (
             <Link
               href="/login"
-              className="text-sm bg-blue-600 hover:bg-blue-500 text-white px-3 py-1.5 rounded"
+              className="text-sm bg-brand hover:bg-brand-hover text-foreground px-3 py-1.5 rounded"
             >
               Register / Login
             </Link>

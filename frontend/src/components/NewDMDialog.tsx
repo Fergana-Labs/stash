@@ -69,52 +69,52 @@ export default function NewDMDialog({ open, onClose }: NewDMDialogProps) {
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center pt-24">
       <div
-        className="fixed inset-0 bg-black/60"
+        className="fixed inset-0 bg-background/60"
         onClick={onClose}
       />
-      <div className="relative bg-gray-900 border border-gray-700 rounded-lg w-full max-w-md mx-4 shadow-xl">
-        <div className="p-4 border-b border-gray-800">
-          <h2 className="text-white font-medium mb-3">New Message</h2>
+      <div className="relative bg-surface border border-border rounded-lg w-full max-w-md mx-4 shadow-xl">
+        <div className="p-4 border-b border-border">
+          <h2 className="text-foreground font-medium mb-3">New Message</h2>
           <input
             ref={inputRef}
             type="text"
             value={query}
             onChange={(e) => handleSearch(e.target.value)}
             placeholder="Search users by name..."
-            className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500"
+            className="w-full bg-raised border border-border rounded px-3 py-2 text-sm text-foreground focus:outline-none focus:border-brand"
             disabled={starting}
           />
         </div>
         <div className="max-h-64 overflow-y-auto">
           {loading ? (
-            <div className="px-4 py-3 text-sm text-gray-500">Searching...</div>
+            <div className="px-4 py-3 text-sm text-muted">Searching...</div>
           ) : results.length === 0 && query.trim() ? (
-            <div className="px-4 py-3 text-sm text-gray-500">No users found</div>
+            <div className="px-4 py-3 text-sm text-muted">No users found</div>
           ) : (
             results.map((user) => (
               <button
                 key={user.id}
                 onClick={() => handleSelect(user.id)}
                 disabled={starting}
-                className="w-full px-4 py-3 flex items-center gap-3 hover:bg-gray-800 transition-colors text-left disabled:opacity-50"
+                className="w-full px-4 py-3 flex items-center gap-3 hover:bg-raised transition-colors text-left disabled:opacity-50"
               >
                 <div
                   className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 ${
                     user.type === "agent"
-                      ? "bg-purple-900 text-purple-300"
-                      : "bg-blue-900 text-blue-300"
+                      ? "bg-agent-muted text-agent"
+                      : "bg-human-muted text-human"
                   }`}
                 >
                   {(user.display_name || user.name).charAt(0).toUpperCase()}
                 </div>
                 <div className="min-w-0 flex-1">
-                  <div className="text-sm text-white truncate">
+                  <div className="text-sm text-foreground truncate">
                     {user.display_name || user.name}
                   </div>
-                  <div className="text-xs text-gray-500">
+                  <div className="text-xs text-muted">
                     @{user.name}
                     {user.type === "agent" && (
-                      <span className="ml-1.5 text-purple-400">agent</span>
+                      <span className="ml-1.5 text-agent">agent</span>
                     )}
                   </div>
                 </div>
@@ -122,15 +122,15 @@ export default function NewDMDialog({ open, onClose }: NewDMDialogProps) {
             ))
           )}
           {!query.trim() && !loading && (
-            <div className="px-4 py-3 text-sm text-gray-500">
+            <div className="px-4 py-3 text-sm text-muted">
               Type a name to search for users
             </div>
           )}
         </div>
-        <div className="p-3 border-t border-gray-800 flex justify-end">
+        <div className="p-3 border-t border-border flex justify-end">
           <button
             onClick={onClose}
-            className="text-sm text-gray-400 hover:text-white px-3 py-1.5"
+            className="text-sm text-dim hover:text-foreground px-3 py-1.5"
           >
             Cancel
           </button>

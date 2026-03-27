@@ -62,12 +62,12 @@ export default function ChatInput({
         onKeyDown={handleKeyDown}
         disabled={disabled}
         placeholder="Type a message..."
-        className="flex-1 bg-gray-800 border border-gray-700 rounded-lg px-4 py-2.5 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-blue-500"
+        className="flex-1 bg-raised border border-border rounded-lg px-4 py-2.5 text-sm text-foreground placeholder-muted focus:outline-none focus:border-brand"
       />
       <button
         type="submit"
         disabled={disabled || !value.trim()}
-        className="bg-blue-600 hover:bg-blue-500 disabled:opacity-50 disabled:hover:bg-blue-600 text-white px-4 py-2.5 rounded-lg text-sm font-medium"
+        className="bg-brand hover:bg-brand-hover disabled:opacity-50 disabled:hover:bg-brand text-white px-4 py-2.5 rounded-lg text-sm font-medium"
       >
         Send
       </button>

@@ -32,7 +32,7 @@ export default function JoinPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center text-gray-500">
+      <div className="min-h-screen flex items-center justify-center text-muted">
         Loading...
       </div>
     );
@@ -45,24 +45,24 @@ export default function JoinPage() {
         <div className="text-center">
           {!user ? (
             <div>
-              <p className="text-gray-400 mb-4">
+              <p className="text-dim mb-4">
                 You need to be logged in to join a workspace.
               </p>
               <a
                 href="/login"
-                className="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded text-sm"
+                className="bg-brand hover:bg-brand-hover text-foreground px-4 py-2 rounded text-sm"
               >
                 Register / Login
               </a>
             </div>
           ) : status === "joining" ? (
-            <p className="text-gray-400">Joining workspace...</p>
+            <p className="text-dim">Joining workspace...</p>
           ) : status === "error" ? (
             <div>
               <p className="text-red-400 mb-4">{error}</p>
               <button
                 onClick={() => router.push("/")}
-                className="bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded text-sm"
+                className="bg-raised hover:bg-raised text-foreground px-4 py-2 rounded text-sm"
               >
                 Go Home
               </button>

@@ -92,9 +92,9 @@ export default function MarkdownEditor({ workspaceId, file, onSave }: MarkdownEd
   return (
     <div className="flex flex-col h-full">
       {/* File header */}
-      <div className="flex items-center justify-between px-4 py-2 bg-gray-900 border-b border-gray-800">
+      <div className="flex items-center justify-between px-4 py-2 bg-surface border-b border-border">
         <div className="flex items-center gap-3">
-          <span className="text-white text-sm font-medium">{file.name}</span>
+          <span className="text-foreground text-sm font-medium">{file.name}</span>
           <span
             className={`w-2 h-2 rounded-full ${
               connected ? "bg-green-400" : "bg-yellow-400"
@@ -110,7 +110,7 @@ export default function MarkdownEditor({ workspaceId, file, onSave }: MarkdownEd
           onSave={onSave}
         />
       ) : (
-        <div className="flex-1 flex items-center justify-center bg-gray-950 text-gray-500">
+        <div className="flex-1 flex items-center justify-center bg-background text-muted">
           Connecting...
         </div>
       )}
@@ -149,7 +149,7 @@ function CollaborativeEditor({
       Link.configure({
         openOnClick: false,
         HTMLAttributes: {
-          class: "text-blue-400 underline cursor-pointer",
+          class: "text-brand underline cursor-pointer",
         },
       }),
       Placeholder.configure({
@@ -183,7 +183,7 @@ function CollaborativeEditor({
   return (
     <>
       <EditorToolbar editor={editor} />
-      <div className="flex-1 overflow-y-auto bg-gray-950">
+      <div className="flex-1 overflow-y-auto bg-background">
         <EditorContent editor={editor} className="h-full" />
       </div>
     </>
