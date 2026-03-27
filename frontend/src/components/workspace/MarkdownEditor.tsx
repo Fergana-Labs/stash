@@ -16,7 +16,7 @@ import Placeholder from "@tiptap/extension-placeholder";
 import * as Y from "yjs";
 import { WebsocketProvider } from "y-websocket";
 import EditorToolbar from "./EditorToolbar";
-import { WorkspaceFile } from "../../lib/types";
+import { Notebook } from "../../lib/types";
 
 // User colors for collaboration cursors
 const COLORS = [
@@ -30,7 +30,7 @@ function getRandomColor() {
 
 interface MarkdownEditorProps {
   workspaceId: string;
-  file: WorkspaceFile;
+  file: Notebook;
   onSave: (content: string) => void;
 }
 
@@ -56,7 +56,7 @@ export default function MarkdownEditor({ workspaceId, file, onSave }: MarkdownEd
     const wsBase = `${protocol}//${window.location.host}`;
 
     const prov = new WebsocketProvider(
-      `${wsBase}/api/v1/workspaces/${workspaceId}/files/${file.id}`,
+      `${wsBase}/api/v1/workspaces/${workspaceId}/notebooks/${file.id}`,
       "yjs",
       ydoc,
       {

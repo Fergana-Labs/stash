@@ -1,23 +1,22 @@
 "use client";
 
 import { useCallback, useState } from "react";
-import type { AccessListEntry } from "../lib/api";
-import { Room, RoomMember } from "../lib/types";
+import { Chat, WorkspaceMember } from "../lib/types";
 
 interface RoomSidebarProps {
-  room: Room;
-  members: RoomMember[];
+  room: Chat;
+  members: WorkspaceMember[];
   currentUserId: string;
   isOwner: boolean;
   isDM?: boolean;
-  dmOtherUser?: RoomMember;
+  dmOtherUser?: WorkspaceMember;
   onLeave: () => void;
   onDeleteRoom: () => void;
   onKickMember: (userId: string) => void;
   onUpdateRoom: (data: { name?: string; description?: string }) => void;
   onAddToAccessList?: (userName: string, listType: "allow" | "block") => Promise<void>;
   onRemoveFromAccessList?: (userName: string, listType: "allow" | "block") => Promise<void>;
-  onGetAccessList?: (listType: "allow" | "block") => Promise<AccessListEntry[]>;
+  onGetAccessList?: (listType: "allow" | "block") => Promise<any[]>;
 }
 
 export default function RoomSidebar({
@@ -45,12 +44,12 @@ export default function RoomSidebar({
   // Access list state
   const [showAccessList, setShowAccessList] = useState(false);
   const [activeListTab, setActiveListTab] = useState<"allow" | "block">("allow");
-  const [accessEntries, setAccessEntries] = useState<AccessListEntry[]>([]);
+  const [accessEntries, setAccessEntries] = useState<any[]>([]);
   const [accessLoading, setAccessLoading] = useState(false);
   const [newAccessName, setNewAccessName] = useState("");
 
   const copyInvite = () => {
-    const url = `${window.location.origin}/join/${room.invite_code}`;
+    const url = `${window.location.origin}/join/${""}`;
     navigator.clipboard.writeText(url);
   };
 
@@ -213,7 +212,7 @@ export default function RoomSidebar({
           </button>
           <div className="text-xs text-gray-500 text-center">
             Code:{" "}
-            <span className="font-mono text-gray-400">{room.invite_code}</span>
+            <span className="font-mono text-gray-400">{""}</span>
           </div>
         </div>
       </div>

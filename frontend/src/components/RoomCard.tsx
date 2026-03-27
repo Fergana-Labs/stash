@@ -1,33 +1,28 @@
 "use client";
 
 import Link from "next/link";
-import { Room } from "../lib/types";
+import { Workspace } from "../lib/types";
 
-interface RoomCardProps {
-  room: Room;
+interface WorkspaceCardProps {
+  workspace: Workspace;
   isMember?: boolean;
 }
 
-export default function RoomCard({ room, isMember }: RoomCardProps) {
-  const isWorkspace = room.type === "workspace";
-  const href = isWorkspace ? `/workspaces/${room.id}` : `/rooms/${room.id}`;
-
+export default function WorkspaceCard({ workspace, isMember }: WorkspaceCardProps) {
   return (
     <Link
-      href={href}
+      href={`/workspaces/${workspace.id}`}
       className="block bg-gray-800 border border-gray-700 rounded-lg p-4 hover:border-gray-600 transition-colors"
     >
       <div className="flex items-start justify-between">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
-            <span className="text-base" title={isWorkspace ? "Workspace" : "Chat Room"}>
-              {isWorkspace ? "\u{1F4DD}" : "\u{1F4AC}"}
-            </span>
-            <h3 className="text-white font-medium truncate">{room.name}</h3>
+            <span className="text-base" title="Workspace">{"\u{1F4C1}"}</span>
+            <h3 className="text-white font-medium truncate">{workspace.name}</h3>
           </div>
-          {room.description && (
+          {workspace.description && (
             <p className="text-gray-400 text-sm mt-1 line-clamp-2">
-              {room.description}
+              {workspace.description}
             </p>
           )}
         </div>
@@ -38,10 +33,9 @@ export default function RoomCard({ room, isMember }: RoomCardProps) {
         )}
       </div>
       <div className="flex items-center gap-3 mt-3 text-xs text-gray-500">
-        <span>{room.member_count ?? 0} members</span>
-        <span>Code: {room.invite_code}</span>
-        {!room.is_public && <span className="text-yellow-500">Private</span>}
-        {isWorkspace && <span className="text-purple-400">Workspace</span>}
+        <span>{workspace.member_count ?? 0} members</span>
+        <span>Code: {workspace.invite_code}</span>
+        {!workspace.is_public && <span className="text-yellow-500">Private</span>}
       </div>
     </Link>
   );

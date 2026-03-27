@@ -4,14 +4,18 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { WSEvent } from "../lib/types";
 
 interface UseWebSocketOptions {
-  roomId: string;
+  workspaceId?: string;
+  chatId: string;
+  isDM?: boolean;
   token: string | null;
   onMessage?: (event: WSEvent) => void;
   onTyping?: (userName: string) => void;
 }
 
 export function useWebSocket({
-  roomId,
+  workspaceId,
+  chatId,
+  isDM,
   token,
   onMessage,
   onTyping,
@@ -27,11 +31,14 @@ export function useWebSocket({
   onTypingRef.current = onTyping;
 
   const connect = useCallback(() => {
-    if (!token || !roomId) return;
+    if (!token || !chatId) return;
 
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
     const host = window.location.host;
-    const wsUrl = `${protocol}//${host}/api/v1/rooms/${roomId}/ws?token=${token}`;
+    const wsPath = isDM
+      ? `/api/v1/dms/${chatId}/ws`
+      : `/api/v1/workspaces/${workspaceId}/chats/${chatId}/ws`;
+    const wsUrl = `${protocol}//${host}${wsPath}?token=${token}`;
     const ws = new WebSocket(wsUrl);
 
     ws.onopen = () => {
@@ -66,7 +73,7 @@ export function useWebSocket({
     };
 
     wsRef.current = ws;
-  }, [token, roomId]);
+  }, [token, chatId, workspaceId, isDM]);
 
   useEffect(() => {
     connect();
