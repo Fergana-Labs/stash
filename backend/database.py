@@ -156,6 +156,29 @@ CREATE TABLE IF NOT EXISTS deck_shares (
     created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+-- Deck share views (viewer session tracking)
+CREATE TABLE IF NOT EXISTS deck_share_views (
+    id                    UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    share_id              UUID NOT NULL REFERENCES deck_shares(id) ON DELETE CASCADE,
+    session_token         VARCHAR(96) NOT NULL UNIQUE,
+    viewer_email          VARCHAR(255),
+    viewer_ip             VARCHAR(45),
+    user_agent            TEXT,
+    started_at            TIMESTAMPTZ NOT NULL DEFAULT now(),
+    last_active_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
+    total_duration_seconds INTEGER NOT NULL DEFAULT 0
+);
+
+-- Deck share page views (per-page engagement)
+CREATE TABLE IF NOT EXISTS deck_share_page_views (
+    id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    view_id           UUID NOT NULL REFERENCES deck_share_views(id) ON DELETE CASCADE,
+    page_identifier   VARCHAR(255) NOT NULL,
+    entered_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
+    duration_seconds  INTEGER NOT NULL DEFAULT 0,
+    UNIQUE(view_id, page_identifier)
+);
+
 -- Object permissions (Google Drive-like, shared across all object types)
 CREATE TABLE IF NOT EXISTS object_permissions (
     object_type  VARCHAR(16) NOT NULL CHECK(object_type IN ('chat', 'notebook', 'history', 'deck')),
@@ -217,6 +240,9 @@ CREATE INDEX IF NOT EXISTS idx_history_events_metadata ON history_events USING G
 CREATE INDEX IF NOT EXISTS idx_decks_workspace ON decks(workspace_id);
 CREATE INDEX IF NOT EXISTS idx_deck_shares_deck ON deck_shares(deck_id);
 CREATE INDEX IF NOT EXISTS idx_deck_shares_token ON deck_shares(token);
+CREATE INDEX IF NOT EXISTS idx_deck_share_views_share ON deck_share_views(share_id);
+CREATE INDEX IF NOT EXISTS idx_deck_share_views_session ON deck_share_views(session_token);
+CREATE INDEX IF NOT EXISTS idx_deck_share_page_views_view ON deck_share_page_views(view_id);
 
 CREATE INDEX IF NOT EXISTS idx_object_shares_user ON object_shares(user_id);
 CREATE INDEX IF NOT EXISTS idx_webhooks_workspace ON webhooks(workspace_id) WHERE is_active = true;
