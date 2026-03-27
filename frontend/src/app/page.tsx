@@ -95,19 +95,19 @@ function LoggedInHome({ user }: { user: NonNullable<ReturnType<typeof useAuth>["
 
   const loadData = () => {
     Promise.all([
-      listPublicWorkspaces().then((r) => r.workspaces).catch(() => [] as Workspace[]),
-      listMyWorkspaces().then((r) => r.workspaces).catch(() => [] as Workspace[]),
-      listDMs().then((r) => r.dms).catch(() => [] as DMConversation[]),
-      listPersonalRooms().then((r) => r.chats).catch(() => [] as Chat[]),
-      listPersonalNotebooks().catch(() => ({ folders: [], root_files: [] }) as NotebookTree),
-      listPersonalMemoryStores().then((r) => r.stores).catch(() => [] as MemoryStore[]),
+      listPublicWorkspaces().then((r) => r?.workspaces ?? []).catch(() => [] as Workspace[]),
+      listMyWorkspaces().then((r) => r?.workspaces ?? []).catch(() => [] as Workspace[]),
+      listDMs().then((r) => r?.dms ?? []).catch(() => [] as DMConversation[]),
+      listPersonalRooms().then((r) => r?.chats ?? []).catch(() => [] as Chat[]),
+      listPersonalNotebooks().then((r) => r ?? { folders: [], root_files: [] }).catch(() => ({ folders: [], root_files: [] }) as NotebookTree),
+      listPersonalMemoryStores().then((r) => r?.stores ?? []).catch(() => [] as MemoryStore[]),
     ]).then(([pub, mine, dmList, rooms, notebooks, stores]) => {
-      setPublicWorkspaces(pub);
-      setMyWorkspaces(mine);
-      setDMs(dmList);
-      setPersonalRooms(rooms);
-      setPersonalNotebooks(notebooks);
-      setPersonalStores(stores);
+      setPublicWorkspaces(pub ?? []);
+      setMyWorkspaces(mine ?? []);
+      setDMs(dmList ?? []);
+      setPersonalRooms(rooms ?? []);
+      setPersonalNotebooks(notebooks ?? { folders: [], root_files: [] });
+      setPersonalStores(stores ?? []);
     });
   };
 
