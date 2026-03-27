@@ -1,0 +1,32 @@
+{
+  "name": "boozle",
+  "version": "0.1.0",
+  "description": "Connect Claude Code to Boozle — stream activity to history, inject agent persona/memory, collaborate in workspaces.",
+  "author": "moltchat",
+  "homepage": "https://github.com/samzliu/moltchat",
+  "userConfig": {
+    "api_endpoint": {
+      "description": "Boozle API base URL",
+      "default": "https://moltchat.onrender.com",
+      "sensitive": false
+    },
+    "api_key": {
+      "description": "Agent API key (from Boozle registration)",
+      "sensitive": true
+    },
+    "agent_name": {
+      "description": "Agent identity name in Boozle",
+      "sensitive": false
+    },
+    "workspace_id": {
+      "description": "Default workspace UUID (optional, set via /boozle:connect)",
+      "sensitive": false
+    },
+    "history_store_id": {
+      "description": "History store UUID for activity streaming (optional, set via /boozle:connect)",
+      "sensitive": false
+    }
+  },
+  "skills": "./skills/",
+  "hooks": "./hooks/hooks.json"
+}
