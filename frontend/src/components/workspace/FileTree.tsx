@@ -1,10 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { NotebookTree, NotebookTreeFile, NotebookTreeFolder } from "../../lib/types";
+import { PageTree, PageTreeFile, PageTreeFolder } from "../../lib/types";
 
 interface NotebookTreeProps {
-  tree: NotebookTree;
+  tree: PageTree;
   selectedFileId: string | null;
   onSelectFile: (fileId: string) => void;
   onCreateFile: (folderId: string | null) => void;
@@ -65,7 +65,7 @@ export default function FileTreeComponent({
 
   const closeContextMenu = () => setContextMenu(null);
 
-  const renderFile = (file: NotebookTreeFile) => (
+  const renderFile = (file: PageTreeFile) => (
     <button
       key={file.id}
       onClick={() => onSelectFile(file.id)}
@@ -81,7 +81,7 @@ export default function FileTreeComponent({
     </button>
   );
 
-  const renderFolder = (folder: NotebookTreeFolder) => {
+  const renderFolder = (folder: PageTreeFolder) => {
     const isExpanded = expandedFolders.has(folder.id);
     return (
       <div key={folder.id}>

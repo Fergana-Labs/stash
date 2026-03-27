@@ -75,7 +75,7 @@ class YjsDocHandle:
         """Load Yjs state from database."""
         if self._loaded:
             return
-        state = await notebook_service.get_yjs_state(self.file_id, self.workspace_id)
+        state = await notebook_service.get_yjs_state(self.file_id)
         if state:
             try:
                 self.doc.apply_update(state)
@@ -110,7 +110,7 @@ class YjsDocHandle:
         state = self.doc.get_update()
         markdown = await yjs_manager._yjs_to_markdown(state)
         await notebook_service.save_yjs_state(
-            self.file_id, self.workspace_id, state, content_markdown=markdown
+            self.file_id, state, content_markdown=markdown
         )
         self._dirty = False
         logger.debug(f"Saved Yjs state for file {self.file_id}")
@@ -298,7 +298,7 @@ class YjsManager:
             await handle.save_to_db()
         else:
             # No editors connected — just save yjs_state directly to DB
-            await notebook_service.save_yjs_state(file_id, workspace_id, yjs_state)
+            await notebook_service.save_yjs_state(file_id, yjs_state)
 
     async def _markdown_to_yjs(self, markdown: str) -> bytes | None:
         """Convert markdown to Yjs binary state via the collab server."""

@@ -13,8 +13,9 @@ import {
   Message,
   Notebook,
   NotebookFolder,
-  NotebookTree,
+  NotebookPage,
   NotebookWithWorkspace,
+  PageTree,
   ObjectPermission,
   RegisterResponse,
   User,
@@ -272,40 +273,20 @@ export async function searchUsers(query: string): Promise<UserSearchResult[]> {
   return apiFetch(`/api/v1/dms/users/search?q=${encodeURIComponent(query)}`);
 }
 
-// --- Notebooks ---
+// --- Notebooks (collections) ---
 
-export async function listNotebooks(workspaceId: string): Promise<NotebookTree> {
+export async function listNotebooks(workspaceId: string): Promise<{ notebooks: Notebook[] }> {
   return apiFetch(`/api/v1/workspaces/${workspaceId}/notebooks`);
 }
 
 export async function createNotebook(
   workspaceId: string,
   name: string,
-  folderId?: string,
-  content?: string
+  description?: string
 ): Promise<Notebook> {
   return apiFetch(`/api/v1/workspaces/${workspaceId}/notebooks`, {
     method: "POST",
-    body: JSON.stringify({
-      name,
-      folder_id: folderId || null,
-      content: content || "",
-    }),
-  });
-}
-
-export async function getNotebook(workspaceId: string, notebookId: string): Promise<Notebook> {
-  return apiFetch(`/api/v1/workspaces/${workspaceId}/notebooks/${notebookId}`);
-}
-
-export async function updateNotebook(
-  workspaceId: string,
-  notebookId: string,
-  data: { name?: string; folder_id?: string; content?: string; move_to_root?: boolean }
-): Promise<Notebook> {
-  return apiFetch(`/api/v1/workspaces/${workspaceId}/notebooks/${notebookId}`, {
-    method: "PATCH",
-    body: JSON.stringify(data),
+    body: JSON.stringify({ name, description: description || "" }),
   });
 }
 
@@ -313,26 +294,69 @@ export async function deleteNotebook(workspaceId: string, notebookId: string): P
   await apiFetch(`/api/v1/workspaces/${workspaceId}/notebooks/${notebookId}`, { method: "DELETE" });
 }
 
-export async function createNotebookFolder(workspaceId: string, name: string): Promise<NotebookFolder> {
-  return apiFetch(`/api/v1/workspaces/${workspaceId}/notebooks/folders`, {
+// --- Notebook Pages (files within a notebook, workspace-scoped) ---
+
+export async function listPageTree(workspaceId: string, notebookId: string): Promise<PageTree> {
+  return apiFetch(`/api/v1/workspaces/${workspaceId}/notebooks/${notebookId}/pages`);
+}
+
+export async function createPage(
+  workspaceId: string,
+  notebookId: string,
+  name: string,
+  folderId?: string,
+  content?: string
+): Promise<NotebookPage> {
+  return apiFetch(`/api/v1/workspaces/${workspaceId}/notebooks/${notebookId}/pages`, {
+    method: "POST",
+    body: JSON.stringify({ name, folder_id: folderId || null, content: content || "" }),
+  });
+}
+
+export async function getPage(
+  workspaceId: string, notebookId: string, pageId: string
+): Promise<NotebookPage> {
+  return apiFetch(`/api/v1/workspaces/${workspaceId}/notebooks/${notebookId}/pages/${pageId}`);
+}
+
+export async function updatePage(
+  workspaceId: string, notebookId: string, pageId: string,
+  data: { name?: string; folder_id?: string; content?: string; move_to_root?: boolean }
+): Promise<NotebookPage> {
+  return apiFetch(`/api/v1/workspaces/${workspaceId}/notebooks/${notebookId}/pages/${pageId}`, {
+    method: "PATCH",
+    body: JSON.stringify(data),
+  });
+}
+
+export async function deletePage(
+  workspaceId: string, notebookId: string, pageId: string
+): Promise<void> {
+  await apiFetch(`/api/v1/workspaces/${workspaceId}/notebooks/${notebookId}/pages/${pageId}`, { method: "DELETE" });
+}
+
+export async function createPageFolder(
+  workspaceId: string, notebookId: string, name: string
+): Promise<NotebookFolder> {
+  return apiFetch(`/api/v1/workspaces/${workspaceId}/notebooks/${notebookId}/folders`, {
     method: "POST",
     body: JSON.stringify({ name }),
   });
 }
 
-export async function renameNotebookFolder(
-  workspaceId: string,
-  folderId: string,
-  name: string
+export async function renamePageFolder(
+  workspaceId: string, notebookId: string, folderId: string, name: string
 ): Promise<NotebookFolder> {
-  return apiFetch(`/api/v1/workspaces/${workspaceId}/notebooks/folders/${folderId}`, {
+  return apiFetch(`/api/v1/workspaces/${workspaceId}/notebooks/${notebookId}/folders/${folderId}`, {
     method: "PATCH",
     body: JSON.stringify({ name }),
   });
 }
 
-export async function deleteNotebookFolder(workspaceId: string, folderId: string): Promise<void> {
-  await apiFetch(`/api/v1/workspaces/${workspaceId}/notebooks/folders/${folderId}`, { method: "DELETE" });
+export async function deletePageFolder(
+  workspaceId: string, notebookId: string, folderId: string
+): Promise<void> {
+  await apiFetch(`/api/v1/workspaces/${workspaceId}/notebooks/${notebookId}/folders/${folderId}`, { method: "DELETE" });
 }
 
 // --- History ---
@@ -441,36 +465,17 @@ export async function getPersonalRoomMessages(
 
 // --- Personal Notebooks ---
 
-export async function listPersonalNotebooks(): Promise<NotebookTree> {
+export async function listPersonalNotebooks(): Promise<{ notebooks: Notebook[] }> {
   return apiFetch("/api/v1/notebooks");
 }
 
 export async function createPersonalNotebook(
   name: string,
-  folderId?: string,
-  content?: string
+  description?: string
 ): Promise<Notebook> {
   return apiFetch("/api/v1/notebooks", {
     method: "POST",
-    body: JSON.stringify({
-      name,
-      folder_id: folderId || null,
-      content: content || "",
-    }),
-  });
-}
-
-export async function getPersonalNotebook(notebookId: string): Promise<Notebook> {
-  return apiFetch(`/api/v1/notebooks/${notebookId}`);
-}
-
-export async function updatePersonalNotebook(
-  notebookId: string,
-  data: { name?: string; folder_id?: string; content?: string; move_to_root?: boolean }
-): Promise<Notebook> {
-  return apiFetch(`/api/v1/notebooks/${notebookId}`, {
-    method: "PATCH",
-    body: JSON.stringify(data),
+    body: JSON.stringify({ name, description: description || "" }),
   });
 }
 
@@ -478,25 +483,57 @@ export async function deletePersonalNotebook(notebookId: string): Promise<void> 
   await apiFetch(`/api/v1/notebooks/${notebookId}`, { method: "DELETE" });
 }
 
-export async function createPersonalNotebookFolder(name: string): Promise<NotebookFolder> {
-  return apiFetch("/api/v1/notebooks/folders", {
+// --- Personal Notebook Pages ---
+
+export async function listPersonalPageTree(notebookId: string): Promise<PageTree> {
+  return apiFetch(`/api/v1/notebooks/${notebookId}/pages`);
+}
+
+export async function createPersonalPage(
+  notebookId: string, name: string, folderId?: string, content?: string
+): Promise<NotebookPage> {
+  return apiFetch(`/api/v1/notebooks/${notebookId}/pages`, {
+    method: "POST",
+    body: JSON.stringify({ name, folder_id: folderId || null, content: content || "" }),
+  });
+}
+
+export async function getPersonalPage(notebookId: string, pageId: string): Promise<NotebookPage> {
+  return apiFetch(`/api/v1/notebooks/${notebookId}/pages/${pageId}`);
+}
+
+export async function updatePersonalPage(
+  notebookId: string, pageId: string,
+  data: { name?: string; folder_id?: string; content?: string; move_to_root?: boolean }
+): Promise<NotebookPage> {
+  return apiFetch(`/api/v1/notebooks/${notebookId}/pages/${pageId}`, {
+    method: "PATCH",
+    body: JSON.stringify(data),
+  });
+}
+
+export async function deletePersonalPage(notebookId: string, pageId: string): Promise<void> {
+  await apiFetch(`/api/v1/notebooks/${notebookId}/pages/${pageId}`, { method: "DELETE" });
+}
+
+export async function createPersonalPageFolder(notebookId: string, name: string): Promise<NotebookFolder> {
+  return apiFetch(`/api/v1/notebooks/${notebookId}/folders`, {
     method: "POST",
     body: JSON.stringify({ name }),
   });
 }
 
-export async function renamePersonalNotebookFolder(
-  folderId: string,
-  name: string
+export async function renamePersonalPageFolder(
+  notebookId: string, folderId: string, name: string
 ): Promise<NotebookFolder> {
-  return apiFetch(`/api/v1/notebooks/folders/${folderId}`, {
+  return apiFetch(`/api/v1/notebooks/${notebookId}/folders/${folderId}`, {
     method: "PATCH",
     body: JSON.stringify({ name }),
   });
 }
 
-export async function deletePersonalNotebookFolder(folderId: string): Promise<void> {
-  await apiFetch(`/api/v1/notebooks/folders/${folderId}`, { method: "DELETE" });
+export async function deletePersonalPageFolder(notebookId: string, folderId: string): Promise<void> {
+  await apiFetch(`/api/v1/notebooks/${notebookId}/folders/${folderId}`, { method: "DELETE" });
 }
 
 // --- Personal Memory ---
