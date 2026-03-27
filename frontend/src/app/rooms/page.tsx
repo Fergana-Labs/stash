@@ -6,8 +6,11 @@ import Header from "../../components/Header";
 import NewDMDialog from "../../components/NewDMDialog";
 import WorkspaceCard from "../../components/RoomCard";
 import { useAuth } from "../../hooks/useAuth";
-import { createWorkspace, listDMs, listMyWorkspaces, listPublicWorkspaces, joinWorkspace } from "../../lib/api";
-import { DMConversation, Workspace } from "../../lib/types";
+import {
+  createWorkspace, createPersonalRoom, listDMs, listMyWorkspaces,
+  listPublicWorkspaces, listPersonalRooms, joinWorkspace, deletePersonalRoom,
+} from "../../lib/api";
+import { Chat, DMConversation, Workspace } from "../../lib/types";
 
 export default function WorkspacesPage() {
   const router = useRouter();
@@ -21,7 +24,11 @@ export default function WorkspacesPage() {
   const [joinCode, setJoinCode] = useState("");
   const [error, setError] = useState("");
   const [dms, setDMs] = useState<DMConversation[]>([]);
+  const [personalRooms, setPersonalRooms] = useState<Chat[]>([]);
   const [showNewDM, setShowNewDM] = useState(false);
+  const [showCreateRoom, setShowCreateRoom] = useState(false);
+  const [newRoomName, setNewRoomName] = useState("");
+  const [newRoomDesc, setNewRoomDesc] = useState("");
   const myWsIds = useMemo(() => new Set(myWorkspaces.map((w) => w.id)), [myWorkspaces]);
 
   const loadData = useCallback(() => {
@@ -30,10 +37,12 @@ export default function WorkspacesPage() {
       listPublicWorkspaces().then((r) => r.workspaces).catch(() => [] as Workspace[]),
       listMyWorkspaces().then((r) => r.workspaces).catch(() => [] as Workspace[]),
       listDMs().then((r) => r.dms).catch(() => [] as DMConversation[]),
-    ]).then(([pub, mine, dmList]) => {
+      listPersonalRooms().then((r) => r.chats).catch(() => [] as Chat[]),
+    ]).then(([pub, mine, dmList, rooms]) => {
       setPublicWorkspaces(pub);
       setMyWorkspaces(mine);
       setDMs(dmList);
+      setPersonalRooms(rooms);
     });
   }, [user]);
 
@@ -52,6 +61,30 @@ export default function WorkspacesPage() {
       router.push(`/workspaces/${ws.id}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to create workspace");
+    }
+  };
+
+  const handleCreateRoom = async () => {
+    if (!newRoomName.trim()) return;
+    setError("");
+    try {
+      const room = await createPersonalRoom(newRoomName.trim(), newRoomDesc.trim());
+      setShowCreateRoom(false);
+      setNewRoomName("");
+      setNewRoomDesc("");
+      router.push(`/rooms/${room.id}`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to create room");
+    }
+  };
+
+  const handleDeleteRoom = async (roomId: string) => {
+    if (!confirm("Delete this room?")) return;
+    try {
+      await deletePersonalRoom(roomId);
+      loadData();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to delete room");
     }
   };
 
@@ -79,6 +112,7 @@ export default function WorkspacesPage() {
           <h1 className="text-2xl font-bold text-foreground">Workspaces</h1>
           <div className="flex gap-2">
             <button onClick={() => setShowNewDM(true)} className="text-sm bg-raised hover:bg-raised text-dim px-3 py-1.5 rounded border border-border">New DM</button>
+            <button onClick={() => setShowCreateRoom(true)} className="text-sm bg-raised hover:bg-raised text-dim px-3 py-1.5 rounded border border-border">New Room</button>
             <button onClick={() => setShowCreate(true)} className="text-sm bg-brand hover:bg-brand-hover text-foreground px-3 py-1.5 rounded">Create Workspace</button>
           </div>
         </div>
@@ -102,7 +136,37 @@ export default function WorkspacesPage() {
             <button onClick={handleJoin} className="bg-success hover:bg-success/80 text-foreground px-4 py-1.5 rounded text-sm">Join</button>
           </div>
         </div>
+        {showCreateRoom && (
+          <div className="bg-surface border border-border rounded-lg p-4 mb-6">
+            <h3 className="text-foreground font-medium mb-3">New Personal Room</h3>
+            <input value={newRoomName} onChange={(e) => setNewRoomName(e.target.value)} placeholder="Room name" className="w-full bg-raised border border-border rounded px-3 py-2 text-foreground text-sm mb-2" />
+            <input value={newRoomDesc} onChange={(e) => setNewRoomDesc(e.target.value)} placeholder="Description (optional)" className="w-full bg-raised border border-border rounded px-3 py-2 text-foreground text-sm mb-2" />
+            <div className="flex gap-2">
+              <button onClick={handleCreateRoom} className="bg-brand hover:bg-brand-hover text-foreground px-4 py-1.5 rounded text-sm">Create</button>
+              <button onClick={() => setShowCreateRoom(false)} className="bg-raised text-dim px-4 py-1.5 rounded text-sm">Cancel</button>
+            </div>
+          </div>
+        )}
         <NewDMDialog open={showNewDM} onClose={() => { setShowNewDM(false); loadData(); }} />
+        {personalRooms.length > 0 && (
+          <section className="mb-8">
+            <h2 className="text-lg font-medium text-foreground mb-3">Personal Rooms</h2>
+            <div className="space-y-1">
+              {personalRooms.map((room) => (
+                <div key={room.id} className="flex items-center justify-between px-3 py-2.5 rounded-lg hover:bg-raised transition-colors">
+                  <a href={`/rooms/${room.id}`} className="flex items-center gap-3 flex-1 min-w-0">
+                    <div className="w-8 h-8 rounded-full bg-brand/20 text-brand flex items-center justify-center text-xs font-bold flex-shrink-0">#</div>
+                    <div className="min-w-0">
+                      <div className="text-sm text-foreground truncate">{room.name}</div>
+                      {room.description && <div className="text-xs text-muted truncate">{room.description}</div>}
+                    </div>
+                  </a>
+                  <button onClick={() => handleDeleteRoom(room.id)} className="text-xs text-red-400 hover:text-red-300 px-2 py-1 flex-shrink-0">Delete</button>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
         {myWorkspaces.length > 0 && (
           <section className="mb-8">
             <h2 className="text-lg font-medium text-foreground mb-3">My Workspaces</h2>

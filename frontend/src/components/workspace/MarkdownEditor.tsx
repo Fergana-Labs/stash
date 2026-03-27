@@ -29,7 +29,7 @@ function getRandomColor() {
 }
 
 interface MarkdownEditorProps {
-  workspaceId: string;
+  workspaceId: string | null;
   file: Notebook;
   onSave: (content: string) => void;
 }
@@ -55,8 +55,11 @@ export default function MarkdownEditor({ workspaceId, file, onSave }: MarkdownEd
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
     const wsBase = `${protocol}//${window.location.host}`;
 
+    const wsPath = workspaceId
+      ? `/api/v1/workspaces/${workspaceId}/notebooks/${file.id}`
+      : `/api/v1/notebooks/${file.id}`;
     const prov = new WebsocketProvider(
-      `${wsBase}/api/v1/workspaces/${workspaceId}/notebooks/${file.id}`,
+      `${wsBase}${wsPath}`,
       "yjs",
       ydoc,
       {
