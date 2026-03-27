@@ -19,7 +19,7 @@ from ..models import (
     ShareResponse,
 )
 from ..services import notebook_service, permission_service, workspace_service
-from ..services.yjs_manager import yjs_mgr
+from ..services.yjs_manager import yjs_manager as yjs_mgr
 
 router = APIRouter(prefix="/api/v1/workspaces/{workspace_id}/notebooks", tags=["notebooks"])
 
