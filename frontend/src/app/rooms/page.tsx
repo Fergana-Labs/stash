@@ -34,15 +34,15 @@ export default function WorkspacesPage() {
   const loadData = useCallback(() => {
     if (!user) return;
     Promise.all([
-      listPublicWorkspaces().then((r) => r.workspaces).catch(() => [] as Workspace[]),
-      listMyWorkspaces().then((r) => r.workspaces).catch(() => [] as Workspace[]),
-      listDMs().then((r) => r.dms).catch(() => [] as DMConversation[]),
-      listPersonalRooms().then((r) => r.chats).catch(() => [] as Chat[]),
+      listPublicWorkspaces().then((r) => r?.workspaces ?? []).catch(() => [] as Workspace[]),
+      listMyWorkspaces().then((r) => r?.workspaces ?? []).catch(() => [] as Workspace[]),
+      listDMs().then((r) => r?.dms ?? []).catch(() => [] as DMConversation[]),
+      listPersonalRooms().then((r) => r?.chats ?? []).catch(() => [] as Chat[]),
     ]).then(([pub, mine, dmList, rooms]) => {
-      setPublicWorkspaces(pub);
-      setMyWorkspaces(mine);
-      setDMs(dmList);
-      setPersonalRooms(rooms);
+      setPublicWorkspaces(pub ?? []);
+      setMyWorkspaces(mine ?? []);
+      setDMs(dmList ?? []);
+      setPersonalRooms(rooms ?? []);
     });
   }, [user]);
 
