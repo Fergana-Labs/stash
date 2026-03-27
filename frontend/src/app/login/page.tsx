@@ -104,27 +104,27 @@ export default function LoginPage() {
       <main className="flex-1 flex items-center justify-center px-4">
         <div className="w-full max-w-md">
           {showApiKey ? (
-            <div className="bg-gray-800 border border-gray-700 rounded-lg p-6">
-              <h2 className="text-lg font-medium text-white mb-2">
+            <div className="bg-raised border border-border rounded-lg p-6">
+              <h2 className="text-lg font-medium text-foreground mb-2">
                 Registration Successful!
               </h2>
-              <p className="text-sm text-gray-400 mb-4">
+              <p className="text-sm text-dim mb-4">
                 Save your API key now. It will only be shown once.
               </p>
-              <div className="bg-gray-900 border border-gray-700 rounded p-3 font-mono text-sm text-green-400 break-all">
+              <div className="bg-surface border border-border rounded p-3 font-mono text-sm text-green-400 break-all">
                 {showApiKey}
               </div>
               <button
                 onClick={() => {
                   navigator.clipboard.writeText(showApiKey);
                 }}
-                className="mt-3 text-sm text-blue-400 hover:underline"
+                className="mt-3 text-sm text-brand hover:underline"
               >
                 Copy to clipboard
               </button>
               <button
                 onClick={() => router.push("/rooms")}
-                className="mt-4 w-full bg-blue-600 hover:bg-blue-500 text-white py-2 rounded text-sm"
+                className="mt-4 w-full bg-brand hover:bg-brand-hover text-foreground py-2 rounded text-sm"
               >
                 Continue to Rooms
               </button>
@@ -136,8 +136,8 @@ export default function LoginPage() {
                   onClick={() => setMode("register")}
                   className={`flex-1 py-2 rounded text-sm font-medium ${
                     mode === "register"
-                      ? "bg-blue-600 text-white"
-                      : "bg-gray-800 text-gray-400"
+                      ? "bg-brand text-foreground"
+                      : "bg-raised text-dim"
                   }`}
                 >
                   Register
@@ -146,8 +146,8 @@ export default function LoginPage() {
                   onClick={() => setMode("login")}
                   className={`flex-1 py-2 rounded text-sm font-medium ${
                     mode === "login"
-                      ? "bg-blue-600 text-white"
-                      : "bg-gray-800 text-gray-400"
+                      ? "bg-brand text-foreground"
+                      : "bg-raised text-dim"
                   }`}
                 >
                   Login
@@ -163,7 +163,7 @@ export default function LoginPage() {
               {mode === "register" ? (
                 <form onSubmit={handleRegister} className="space-y-4">
                   <div>
-                    <label className="block text-sm text-gray-400 mb-1">
+                    <label className="block text-sm text-dim mb-1">
                       Username
                     </label>
                     <input
@@ -172,24 +172,24 @@ export default function LoginPage() {
                       onChange={(e) => setName(e.target.value)}
                       required
                       pattern="^[a-zA-Z0-9_\-]+$"
-                      className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500"
+                      className="w-full bg-raised border border-border rounded px-3 py-2 text-sm text-foreground focus:outline-none focus:border-brand"
                       placeholder="my-agent"
                     />
                   </div>
                   <div>
-                    <label className="block text-sm text-gray-400 mb-1">
+                    <label className="block text-sm text-dim mb-1">
                       Display Name
                     </label>
                     <input
                       type="text"
                       value={displayName}
                       onChange={(e) => setDisplayName(e.target.value)}
-                      className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500"
+                      className="w-full bg-raised border border-border rounded px-3 py-2 text-sm text-foreground focus:outline-none focus:border-brand"
                       placeholder="My Agent"
                     />
                   </div>
                   <div>
-                    <label className="block text-sm text-gray-400 mb-1">
+                    <label className="block text-sm text-dim mb-1">
                       Type
                     </label>
                     <select
@@ -197,28 +197,28 @@ export default function LoginPage() {
                       onChange={(e) =>
                         setType(e.target.value as "human" | "agent")
                       }
-                      className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500"
+                      className="w-full bg-raised border border-border rounded px-3 py-2 text-sm text-foreground focus:outline-none focus:border-brand"
                     >
                       <option value="human">Human</option>
                       <option value="agent">Agent</option>
                     </select>
                   </div>
                   <div>
-                    <label className="block text-sm text-gray-400 mb-1">
+                    <label className="block text-sm text-dim mb-1">
                       Description
                     </label>
                     <input
                       type="text"
                       value={description}
                       onChange={(e) => setDescription(e.target.value)}
-                      className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500"
+                      className="w-full bg-raised border border-border rounded px-3 py-2 text-sm text-foreground focus:outline-none focus:border-brand"
                       placeholder="A helpful assistant"
                     />
                   </div>
                   {type === "human" && (
                     <>
                       <div>
-                        <label className="block text-sm text-gray-400 mb-1">
+                        <label className="block text-sm text-dim mb-1">
                           Password
                         </label>
                         <input
@@ -227,12 +227,12 @@ export default function LoginPage() {
                           onChange={(e) => setPassword(e.target.value)}
                           required
                           minLength={8}
-                          className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500"
+                          className="w-full bg-raised border border-border rounded px-3 py-2 text-sm text-foreground focus:outline-none focus:border-brand"
                           placeholder="Min 8 characters"
                         />
                       </div>
                       <div>
-                        <label className="block text-sm text-gray-400 mb-1">
+                        <label className="block text-sm text-dim mb-1">
                           Confirm Password
                         </label>
                         <input
@@ -241,7 +241,7 @@ export default function LoginPage() {
                           onChange={(e) => setConfirmPassword(e.target.value)}
                           required
                           minLength={8}
-                          className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500"
+                          className="w-full bg-raised border border-border rounded px-3 py-2 text-sm text-foreground focus:outline-none focus:border-brand"
                           placeholder="Confirm password"
                         />
                       </div>
@@ -249,7 +249,7 @@ export default function LoginPage() {
                   )}
                   <button
                     type="submit"
-                    className="w-full bg-blue-600 hover:bg-blue-500 text-white py-2.5 rounded text-sm font-medium"
+                    className="w-full bg-brand hover:bg-brand-hover text-foreground py-2.5 rounded text-sm font-medium"
                   >
                     Register
                   </button>
@@ -259,7 +259,7 @@ export default function LoginPage() {
                   {loginMode === "password" ? (
                     <form onSubmit={handlePasswordLogin} className="space-y-4">
                       <div>
-                        <label className="block text-sm text-gray-400 mb-1">
+                        <label className="block text-sm text-dim mb-1">
                           Username
                         </label>
                         <input
@@ -267,12 +267,12 @@ export default function LoginPage() {
                           value={loginName}
                           onChange={(e) => setLoginName(e.target.value)}
                           required
-                          className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500"
+                          className="w-full bg-raised border border-border rounded px-3 py-2 text-sm text-foreground focus:outline-none focus:border-brand"
                           placeholder="Username"
                         />
                       </div>
                       <div>
-                        <label className="block text-sm text-gray-400 mb-1">
+                        <label className="block text-sm text-dim mb-1">
                           Password
                         </label>
                         <input
@@ -280,20 +280,20 @@ export default function LoginPage() {
                           value={loginPassword}
                           onChange={(e) => setLoginPassword(e.target.value)}
                           required
-                          className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500"
+                          className="w-full bg-raised border border-border rounded px-3 py-2 text-sm text-foreground focus:outline-none focus:border-brand"
                           placeholder="Password"
                         />
                       </div>
                       <button
                         type="submit"
-                        className="w-full bg-blue-600 hover:bg-blue-500 text-white py-2.5 rounded text-sm font-medium"
+                        className="w-full bg-brand hover:bg-brand-hover text-foreground py-2.5 rounded text-sm font-medium"
                       >
                         Login
                       </button>
                       <button
                         type="button"
                         onClick={() => setLoginMode("apikey")}
-                        className="w-full text-sm text-gray-500 hover:text-gray-300"
+                        className="w-full text-sm text-muted hover:text-foreground"
                       >
                         Login with API key instead
                       </button>
@@ -301,27 +301,27 @@ export default function LoginPage() {
                   ) : (
                     <form onSubmit={handleApiKeyLogin} className="space-y-4">
                       <div>
-                        <label className="block text-sm text-gray-400 mb-1">
+                        <label className="block text-sm text-dim mb-1">
                           API Key
                         </label>
                         <input
                           type="text"
                           value={apiKeyInput}
                           onChange={(e) => setApiKeyInput(e.target.value)}
-                          className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm text-white font-mono focus:outline-none focus:border-blue-500"
+                          className="w-full bg-raised border border-border rounded px-3 py-2 text-sm text-foreground font-mono focus:outline-none focus:border-brand"
                           placeholder="mc_..."
                         />
                       </div>
                       <button
                         type="submit"
-                        className="w-full bg-blue-600 hover:bg-blue-500 text-white py-2.5 rounded text-sm font-medium"
+                        className="w-full bg-brand hover:bg-brand-hover text-foreground py-2.5 rounded text-sm font-medium"
                       >
                         Login
                       </button>
                       <button
                         type="button"
                         onClick={() => setLoginMode("password")}
-                        className="w-full text-sm text-gray-500 hover:text-gray-300"
+                        className="w-full text-sm text-muted hover:text-foreground"
                       >
                         Login with password instead
                       </button>

@@ -67,7 +67,7 @@ export default function WorkspacesPage() {
   };
 
   if (loading) {
-    return <div className="min-h-screen flex items-center justify-center text-gray-500">Loading...</div>;
+    return <div className="min-h-screen flex items-center justify-center text-muted">Loading...</div>;
   }
   if (!user) { router.push("/login"); return null; }
 
@@ -76,36 +76,36 @@ export default function WorkspacesPage() {
       <Header user={user} onLogout={logout} />
       <main className="flex-1 max-w-4xl mx-auto w-full px-4 py-8">
         <div className="flex items-center justify-between mb-6">
-          <h1 className="text-2xl font-bold text-white">Workspaces</h1>
+          <h1 className="text-2xl font-bold text-foreground">Workspaces</h1>
           <div className="flex gap-2">
-            <button onClick={() => setShowNewDM(true)} className="text-sm bg-gray-800 hover:bg-gray-700 text-gray-300 px-3 py-1.5 rounded border border-gray-700">New DM</button>
-            <button onClick={() => setShowCreate(true)} className="text-sm bg-blue-600 hover:bg-blue-500 text-white px-3 py-1.5 rounded">Create Workspace</button>
+            <button onClick={() => setShowNewDM(true)} className="text-sm bg-raised hover:bg-raised text-dim px-3 py-1.5 rounded border border-border">New DM</button>
+            <button onClick={() => setShowCreate(true)} className="text-sm bg-brand hover:bg-brand-hover text-foreground px-3 py-1.5 rounded">Create Workspace</button>
           </div>
         </div>
         {error && <p className="text-red-400 text-sm mb-4">{error}</p>}
         {showCreate && (
-          <div className="bg-gray-900 border border-gray-700 rounded-lg p-4 mb-6">
-            <h3 className="text-white font-medium mb-3">New Workspace</h3>
-            <input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="Name" className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-white text-sm mb-2" />
-            <input value={newDesc} onChange={(e) => setNewDesc(e.target.value)} placeholder="Description (optional)" className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-white text-sm mb-2" />
-            <label className="flex items-center gap-2 text-sm text-gray-400 mb-3"><input type="checkbox" checked={isPublic} onChange={(e) => setIsPublic(e.target.checked)} /> Public</label>
+          <div className="bg-surface border border-border rounded-lg p-4 mb-6">
+            <h3 className="text-foreground font-medium mb-3">New Workspace</h3>
+            <input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="Name" className="w-full bg-raised border border-border rounded px-3 py-2 text-foreground text-sm mb-2" />
+            <input value={newDesc} onChange={(e) => setNewDesc(e.target.value)} placeholder="Description (optional)" className="w-full bg-raised border border-border rounded px-3 py-2 text-foreground text-sm mb-2" />
+            <label className="flex items-center gap-2 text-sm text-dim mb-3"><input type="checkbox" checked={isPublic} onChange={(e) => setIsPublic(e.target.checked)} /> Public</label>
             <div className="flex gap-2">
-              <button onClick={handleCreate} className="bg-blue-600 hover:bg-blue-500 text-white px-4 py-1.5 rounded text-sm">Create</button>
-              <button onClick={() => setShowCreate(false)} className="bg-gray-700 hover:bg-gray-600 text-gray-300 px-4 py-1.5 rounded text-sm">Cancel</button>
+              <button onClick={handleCreate} className="bg-brand hover:bg-brand-hover text-foreground px-4 py-1.5 rounded text-sm">Create</button>
+              <button onClick={() => setShowCreate(false)} className="bg-raised hover:bg-raised text-dim px-4 py-1.5 rounded text-sm">Cancel</button>
             </div>
           </div>
         )}
-        <div className="bg-gray-900 border border-gray-700 rounded-lg p-4 mb-6">
-          <h3 className="text-white font-medium mb-2">Join by Invite Code</h3>
+        <div className="bg-surface border border-border rounded-lg p-4 mb-6">
+          <h3 className="text-foreground font-medium mb-2">Join by Invite Code</h3>
           <div className="flex gap-2">
-            <input value={joinCode} onChange={(e) => setJoinCode(e.target.value)} placeholder="Enter invite code" className="flex-1 bg-gray-800 border border-gray-700 rounded px-3 py-2 text-white text-sm" />
-            <button onClick={handleJoin} className="bg-green-700 hover:bg-green-600 text-white px-4 py-1.5 rounded text-sm">Join</button>
+            <input value={joinCode} onChange={(e) => setJoinCode(e.target.value)} placeholder="Enter invite code" className="flex-1 bg-raised border border-border rounded px-3 py-2 text-foreground text-sm" />
+            <button onClick={handleJoin} className="bg-success hover:bg-success/80 text-foreground px-4 py-1.5 rounded text-sm">Join</button>
           </div>
         </div>
         <NewDMDialog open={showNewDM} onClose={() => { setShowNewDM(false); loadData(); }} />
         {myWorkspaces.length > 0 && (
           <section className="mb-8">
-            <h2 className="text-lg font-medium text-white mb-3">My Workspaces</h2>
+            <h2 className="text-lg font-medium text-foreground mb-3">My Workspaces</h2>
             <div className="grid gap-3 sm:grid-cols-2">{myWorkspaces.map((ws) => <WorkspaceCard key={ws.id} workspace={ws} isMember />)}</div>
           </section>
         )}
@@ -114,7 +114,7 @@ export default function WorkspacesPage() {
           if (filtered.length === 0) return null;
           return (
             <section>
-              <h2 className="text-lg font-medium text-white mb-3">Public Workspaces</h2>
+              <h2 className="text-lg font-medium text-foreground mb-3">Public Workspaces</h2>
               <div className="grid gap-3 sm:grid-cols-2">{filtered.map((ws) => <WorkspaceCard key={ws.id} workspace={ws} isMember={false} />)}</div>
             </section>
           );

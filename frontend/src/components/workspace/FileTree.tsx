@@ -70,11 +70,11 @@ export default function FileTreeComponent({
       key={file.id}
       onClick={() => onSelectFile(file.id)}
       onContextMenu={(e) => handleContextMenu(e, "file", file.id, file.name, file.folder_id || undefined)}
-      className={`w-full text-left px-3 py-1.5 text-sm flex items-center gap-2 hover:bg-gray-700 rounded ${
-        selectedFileId === file.id ? "bg-gray-700 text-white" : "text-gray-300"
+      className={`w-full text-left px-3 py-1.5 text-sm flex items-center gap-2 hover:bg-raised rounded ${
+        selectedFileId === file.id ? "bg-raised text-foreground" : "text-dim"
       }`}
     >
-      <svg className="w-4 h-4 text-gray-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <svg className="w-4 h-4 text-muted flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
       </svg>
       <span className="truncate">{file.name}</span>
@@ -88,10 +88,10 @@ export default function FileTreeComponent({
         <button
           onClick={() => toggleFolder(folder.id)}
           onContextMenu={(e) => handleContextMenu(e, "folder", folder.id, folder.name)}
-          className="w-full text-left px-3 py-1.5 text-sm flex items-center gap-2 hover:bg-gray-700 rounded text-gray-300"
+          className="w-full text-left px-3 py-1.5 text-sm flex items-center gap-2 hover:bg-raised rounded text-dim"
         >
           <svg
-            className={`w-4 h-4 text-gray-500 flex-shrink-0 transition-transform ${isExpanded ? "rotate-90" : ""}`}
+            className={`w-4 h-4 text-muted flex-shrink-0 transition-transform ${isExpanded ? "rotate-90" : ""}`}
             fill="none"
             stroke="currentColor"
             viewBox="0 0 24 24"
@@ -107,7 +107,7 @@ export default function FileTreeComponent({
           <div className="ml-4">
             {folder.files.map(renderFile)}
             {folder.files.length === 0 && (
-              <p className="text-xs text-gray-600 px-3 py-1">Empty folder</p>
+              <p className="text-xs text-muted px-3 py-1">Empty folder</p>
             )}
           </div>
         )}
@@ -118,10 +118,10 @@ export default function FileTreeComponent({
   return (
     <div className="h-full flex flex-col" onClick={closeContextMenu}>
       {/* Toolbar */}
-      <div className="flex items-center gap-1 px-3 py-2 border-b border-gray-700">
+      <div className="flex items-center gap-1 px-3 py-2 border-b border-border">
         <button
           onClick={() => onCreateFile(null)}
-          className="text-xs bg-gray-700 hover:bg-gray-600 text-gray-300 px-2 py-1 rounded flex items-center gap-1"
+          className="text-xs bg-raised hover:bg-raised text-dim px-2 py-1 rounded flex items-center gap-1"
           title="New file"
         >
           <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -131,7 +131,7 @@ export default function FileTreeComponent({
         </button>
         <button
           onClick={onCreateFolder}
-          className="text-xs bg-gray-700 hover:bg-gray-600 text-gray-300 px-2 py-1 rounded flex items-center gap-1"
+          className="text-xs bg-raised hover:bg-raised text-dim px-2 py-1 rounded flex items-center gap-1"
           title="New folder"
         >
           <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -146,7 +146,7 @@ export default function FileTreeComponent({
         {tree.folders.map(renderFolder)}
         {tree.root_files.map(renderFile)}
         {tree.folders.length === 0 && tree.root_files.length === 0 && (
-          <p className="text-sm text-gray-500 text-center py-8">
+          <p className="text-sm text-muted text-center py-8">
             No files yet. Create one to get started.
           </p>
         )}
@@ -155,7 +155,7 @@ export default function FileTreeComponent({
       {/* Context menu */}
       {contextMenu && (
         <div
-          className="fixed bg-gray-800 border border-gray-600 rounded shadow-xl z-50 py-1 min-w-[140px]"
+          className="fixed bg-raised border border-border rounded shadow-xl z-50 py-1 min-w-[140px]"
           style={{ left: contextMenu.x, top: contextMenu.y }}
           onClick={(e) => e.stopPropagation()}
         >
@@ -168,7 +168,7 @@ export default function FileTreeComponent({
               }
               closeContextMenu();
             }}
-            className="w-full text-left px-3 py-1.5 text-sm text-gray-300 hover:bg-gray-700"
+            className="w-full text-left px-3 py-1.5 text-sm text-dim hover:bg-raised"
           >
             Rename
           </button>
@@ -178,7 +178,7 @@ export default function FileTreeComponent({
                 onCreateFile(contextMenu.id);
                 closeContextMenu();
               }}
-              className="w-full text-left px-3 py-1.5 text-sm text-gray-300 hover:bg-gray-700"
+              className="w-full text-left px-3 py-1.5 text-sm text-dim hover:bg-raised"
             >
               New file here
             </button>
@@ -191,7 +191,7 @@ export default function FileTreeComponent({
                     onMoveFile(contextMenu.id, null);
                     closeContextMenu();
                   }}
-                  className="w-full text-left px-3 py-1.5 text-sm text-gray-300 hover:bg-gray-700"
+                  className="w-full text-left px-3 py-1.5 text-sm text-dim hover:bg-raised"
                 >
                   Move to root
                 </button>
@@ -205,7 +205,7 @@ export default function FileTreeComponent({
                       onMoveFile(contextMenu.id, folder.id);
                       closeContextMenu();
                     }}
-                    className="w-full text-left px-3 py-1.5 text-sm text-gray-300 hover:bg-gray-700"
+                    className="w-full text-left px-3 py-1.5 text-sm text-dim hover:bg-raised"
                   >
                     Move to {folder.name}
                   </button>
@@ -221,7 +221,7 @@ export default function FileTreeComponent({
               }
               closeContextMenu();
             }}
-            className="w-full text-left px-3 py-1.5 text-sm text-red-400 hover:bg-gray-700"
+            className="w-full text-left px-3 py-1.5 text-sm text-red-400 hover:bg-raised"
           >
             Delete
           </button>

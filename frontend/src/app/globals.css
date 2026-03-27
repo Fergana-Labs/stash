@@ -1,30 +1,87 @@
 @import "tailwindcss";
 
+/* === Design System Tokens (DESIGN.md) === */
+
 :root {
-  --background: #111827;
-  --foreground: #e5e7eb;
+  /* Light mode (default) */
+  --bg-base: #FFFFFF;
+  --bg-surface: #F8FAFC;
+  --bg-raised: #F1F5F9;
+  --border-color: #E2E8F0;
+  --border-subtle-color: #F1F5F9;
+  --text-primary: #0F172A;
+  --text-dim: #475569;
+  --text-muted: #94A3B8;
+}
+
+[data-theme="dark"] {
+  --bg-base: #1E293B;
+  --bg-surface: #273548;
+  --bg-raised: #334155;
+  --border-color: #3E4E63;
+  --border-subtle-color: #2D3D50;
+  --text-primary: #F1F5F9;
+  --text-dim: #94A3B8;
+  --text-muted: #64748B;
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  /* Semantic background colors */
+  --color-background: var(--bg-base);
+  --color-foreground: var(--text-primary);
+  --color-surface: var(--bg-surface);
+  --color-raised: var(--bg-raised);
+
+  /* Semantic text colors */
+  --color-dim: var(--text-dim);
+  --color-muted: var(--text-muted);
+
+  /* Semantic border colors */
+  --color-border: var(--border-color);
+  --color-border-subtle: var(--border-subtle-color);
+
+  /* Brand (orange) */
+  --color-brand: #F97316;
+  --color-brand-hover: #EA580C;
+  --color-brand-muted: oklch(0.7 0.14 55 / 0.15);
+
+  /* Agent (violet) */
+  --color-agent: #8B5CF6;
+  --color-agent-muted: oklch(0.6 0.18 290 / 0.15);
+
+  /* Human (blue) */
+  --color-human: #3B82F6;
+  --color-human-muted: oklch(0.6 0.16 255 / 0.15);
+
+  /* Semantic */
+  --color-success: #22C55E;
+  --color-success-muted: oklch(0.7 0.15 145 / 0.12);
+  --color-warning: #EAB308;
+  --color-warning-muted: oklch(0.8 0.15 90 / 0.12);
+  --color-error: #EF4444;
+  --color-error-muted: oklch(0.6 0.2 25 / 0.12);
+
+  /* Typography */
+  --font-sans: 'Instrument Sans', var(--font-instrument-sans), sans-serif;
+  --font-display: 'Satoshi', sans-serif;
+  --font-mono: 'JetBrains Mono', var(--font-jetbrains-mono), monospace;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--bg-base);
+  color: var(--text-primary);
+  font-family: var(--font-sans), sans-serif;
+  transition: background 0.2s ease, color 0.2s ease;
 }
 
-/* TipTap editor styles */
+/* === TipTap Editor === */
+
 .tiptap {
   min-height: 100%;
 }
 
 .tiptap p.is-editor-empty:first-child::before {
-  color: #6b7280;
+  color: var(--text-muted);
   content: attr(data-placeholder);
   float: left;
   height: 0;
@@ -33,27 +90,30 @@ body {
 
 /* ProseMirror heading styles */
 .ProseMirror h1 {
+  font-family: var(--font-display), sans-serif;
   font-size: 1.75rem;
   font-weight: 700;
   margin-top: 1.5rem;
   margin-bottom: 1rem;
-  color: #fff;
+  color: var(--text-primary);
 }
 
 .ProseMirror h2 {
+  font-family: var(--font-display), sans-serif;
   font-size: 1.5rem;
   font-weight: 600;
   margin-top: 1.25rem;
   margin-bottom: 0.75rem;
-  color: #fff;
+  color: var(--text-primary);
 }
 
 .ProseMirror h3 {
+  font-family: var(--font-display), sans-serif;
   font-size: 1.25rem;
   font-weight: 600;
   margin-top: 1rem;
   margin-bottom: 0.5rem;
-  color: #fff;
+  color: var(--text-primary);
 }
 
 /* ProseMirror list styles */
@@ -80,31 +140,33 @@ body {
 
 /* ProseMirror blockquote styles */
 .ProseMirror blockquote {
-  border-left: 3px solid #4b5563;
+  border-left: 3px solid var(--border-color);
   padding-left: 0.75em;
   margin: 0.5em 0;
-  color: #9ca3af;
+  color: var(--text-muted);
 }
 
 /* ProseMirror horizontal rule */
 .ProseMirror hr {
   border: none;
-  border-top: 1px solid #374151;
+  border-top: 1px solid var(--border-color);
   margin: 0.75em 0;
 }
 
 /* ProseMirror code styles */
 .ProseMirror code {
-  color: #4ade80;
-  background: rgba(0, 0, 0, 0.3);
+  color: #F97316;
+  background: var(--bg-raised);
   padding: 0.15em 0.35em;
   border-radius: 4px;
   font-size: 0.875em;
+  font-family: var(--font-mono), monospace;
 }
 
 .ProseMirror pre {
-  background: rgba(0, 0, 0, 0.4);
-  border-radius: 6px;
+  background: var(--bg-raised);
+  border: 1px solid var(--border-subtle-color);
+  border-radius: 8px;
   padding: 0.75em 1em;
   margin: 0.5em 0;
   overflow-x: auto;
@@ -114,35 +176,35 @@ body {
   background: none;
   padding: 0;
   border-radius: 0;
-  color: #e5e7eb;
+  color: var(--text-dim);
 }
 
 /* ProseMirror link styles */
 .ProseMirror a {
-  color: #60a5fa;
+  color: #F97316;
   text-decoration: underline;
   cursor: pointer;
 }
 
 .ProseMirror a:hover {
-  color: #93bbfd;
+  color: #EA580C;
 }
 
 /* ProseMirror paragraph spacing */
 .ProseMirror p {
   margin: 0.25em 0;
-  color: #d1d5db;
+  color: var(--text-dim);
 }
 
 /* ProseMirror strong/em */
 .ProseMirror strong {
   font-weight: 700;
-  color: #fff;
+  color: var(--text-primary);
 }
 
 .ProseMirror em {
   font-style: italic;
-  color: #e5e7eb;
+  color: var(--text-dim);
 }
 
 /* Collaboration cursor styles */
@@ -168,6 +230,7 @@ body {
   top: -1.4em;
   user-select: none;
   white-space: nowrap;
+  font-family: var(--font-mono), monospace;
 }
 
 /* Task list checkbox styles */
@@ -188,14 +251,15 @@ body {
 }
 
 .tiptap ul[data-type="taskList"] li label input[type="checkbox"] {
-  accent-color: #7c3aed;
+  accent-color: #F97316;
 }
 
 .tiptap ul[data-type="taskList"] li div {
   flex: 1;
 }
 
-/* Markdown message styles */
+/* === Markdown Message Styles === */
+
 .markdown-content {
   overflow-wrap: break-word;
   word-break: break-word;
@@ -219,6 +283,7 @@ body {
 .markdown-content h4,
 .markdown-content h5,
 .markdown-content h6 {
+  font-family: var(--font-display), sans-serif;
   font-weight: 600;
   margin: 0.5em 0 0.25em;
   line-height: 1.3;
@@ -237,26 +302,28 @@ body {
 }
 
 .markdown-content a {
-  color: #60a5fa;
+  color: #F97316;
   text-decoration: underline;
   text-underline-offset: 2px;
 }
 
 .markdown-content a:hover {
-  color: #93bbfd;
+  color: #EA580C;
 }
 
 .markdown-content code {
-  background: rgba(0, 0, 0, 0.3);
+  background: var(--bg-raised);
   padding: 0.15em 0.35em;
   border-radius: 4px;
   font-size: 0.875em;
   font-family: var(--font-mono), ui-monospace, monospace;
+  color: #F97316;
 }
 
 .markdown-content pre {
-  background: rgba(0, 0, 0, 0.4);
-  border-radius: 6px;
+  background: var(--bg-raised);
+  border: 1px solid var(--border-subtle-color);
+  border-radius: 8px;
   padding: 0.75em 1em;
   margin: 0.5em 0;
   overflow-x: auto;
@@ -267,6 +334,7 @@ body {
   padding: 0;
   border-radius: 0;
   font-size: 0.85em;
+  color: var(--text-dim);
 }
 
 .markdown-content ul,
@@ -293,15 +361,15 @@ body {
 }
 
 .markdown-content blockquote {
-  border-left: 3px solid #4b5563;
+  border-left: 3px solid var(--border-color);
   padding-left: 0.75em;
   margin: 0.5em 0;
-  color: #9ca3af;
+  color: var(--text-muted);
 }
 
 .markdown-content hr {
   border: none;
-  border-top: 1px solid #374151;
+  border-top: 1px solid var(--border-color);
   margin: 0.75em 0;
 }
 
@@ -313,13 +381,13 @@ body {
 
 .markdown-content th,
 .markdown-content td {
-  border: 1px solid #374151;
+  border: 1px solid var(--border-color);
   padding: 0.35em 0.65em;
   text-align: left;
 }
 
 .markdown-content th {
-  background: rgba(0, 0, 0, 0.3);
+  background: var(--bg-raised);
   font-weight: 600;
 }
 
@@ -330,5 +398,5 @@ body {
 
 .markdown-content input[type="checkbox"] {
   margin-right: 0.4em;
-  accent-color: #7c3aed;
+  accent-color: #F97316;
 }

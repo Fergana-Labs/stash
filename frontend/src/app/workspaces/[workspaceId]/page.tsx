@@ -286,7 +286,7 @@ export default function WorkspacePage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center text-gray-500">
+      <div className="min-h-screen flex items-center justify-center text-muted">
         Loading...
       </div>
     );
@@ -302,20 +302,20 @@ export default function WorkspacePage() {
       <Header user={user} onLogout={logout} />
 
       {/* Workspace header bar */}
-      <div className="bg-gray-900 border-b border-gray-800 px-4 py-2 flex items-center justify-between">
+      <div className="bg-surface border-b border-border px-4 py-2 flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <Link href="/rooms" className="text-gray-400 hover:text-white text-sm">
+          <Link href="/rooms" className="text-dim hover:text-foreground text-sm">
             &larr; Workspaces
           </Link>
-          <h1 className="text-white font-medium">{workspace?.name || "Loading..."}</h1>
+          <h1 className="text-foreground font-medium">{workspace?.name || "Loading..."}</h1>
           {workspace?.description && (
-            <span className="text-gray-500 text-sm hidden sm:inline">
+            <span className="text-muted text-sm hidden sm:inline">
               {workspace.description}
             </span>
           )}
         </div>
         <div className="flex items-center gap-3">
-          <span className="text-xs text-gray-500">
+          <span className="text-xs text-muted">
             {members.length} member{members.length !== 1 ? "s" : ""}
           </span>
           {isMember && (
@@ -323,8 +323,8 @@ export default function WorkspacePage() {
               onClick={() => setShowManageSidebar(!showManageSidebar)}
               className={`text-xs px-3 py-1 rounded border ${
                 showManageSidebar
-                  ? "bg-purple-600 border-purple-500 text-white"
-                  : "bg-gray-800 border-gray-700 text-gray-400 hover:text-white hover:border-gray-600"
+                  ? "bg-brand border-brand text-foreground"
+                  : "bg-raised border-border text-dim hover:text-foreground hover:border-brand"
               }`}
             >
               Settings
@@ -343,10 +343,10 @@ export default function WorkspacePage() {
       {!isMember ? (
         <div className="flex-1 flex items-center justify-center">
           <div className="text-center">
-            <p className="text-gray-400 mb-4">You&apos;re not a member of this workspace.</p>
+            <p className="text-dim mb-4">You&apos;re not a member of this workspace.</p>
             <button
               onClick={handleJoin}
-              className="bg-purple-600 hover:bg-purple-500 text-white px-6 py-2 rounded"
+              className="bg-brand hover:bg-brand-hover text-foreground px-6 py-2 rounded"
             >
               Join Workspace
             </button>
@@ -356,7 +356,7 @@ export default function WorkspacePage() {
         <div className="flex-1 flex overflow-hidden">
           {/* File tree sidebar */}
           <div
-            className="bg-gray-900 border-r border-gray-800 flex-shrink-0 overflow-hidden"
+            className="bg-surface border-r border-border flex-shrink-0 overflow-hidden"
             style={{ width: sidebarWidth }}
           >
             <NotebookTreeComponent
@@ -383,7 +383,7 @@ export default function WorkspacePage() {
                 onSave={handleSaveFile}
               />
             ) : (
-              <div className="flex-1 flex items-center justify-center text-gray-500">
+              <div className="flex-1 flex items-center justify-center text-muted">
                 <div className="text-center">
                   <p className="text-lg mb-2">Select a file to edit</p>
                   <p className="text-sm">or create a new one from the sidebar</p>

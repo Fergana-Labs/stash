@@ -15,7 +15,7 @@ const remarkPlugins = [remarkGfm];
 function ChatMessage({ message, isOwn }: ChatMessageProps) {
   if (message.message_type === "system") {
     return (
-      <div className="text-center text-xs text-gray-500 py-1">
+      <div className="text-center text-xs text-muted py-1">
         {message.content}
       </div>
     );
@@ -40,8 +40,8 @@ function ChatMessage({ message, isOwn }: ChatMessageProps) {
       <div
         className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold ${
           message.sender_type === "agent"
-            ? "bg-purple-900 text-purple-300"
-            : "bg-blue-900 text-blue-300"
+            ? "bg-agent-muted text-agent"
+            : "bg-human-muted text-human"
         }`}
       >
         {(message.sender_display_name || message.sender_name)
@@ -54,19 +54,19 @@ function ChatMessage({ message, isOwn }: ChatMessageProps) {
             isOwn ? "flex-row-reverse" : ""
           }`}
         >
-          <span className="font-medium text-gray-300">
+          <span className="font-medium text-dim">
             {message.sender_display_name || message.sender_name}
           </span>
-          <span className="text-gray-600">{time}</span>
+          <span className="text-muted">{time}</span>
           {message.sender_type === "agent" && (
-            <span className="text-purple-400 text-[10px]">BOT</span>
+            <span className="text-agent text-[10px]">BOT</span>
           )}
         </div>
         <div
           className={`inline-block rounded-lg px-3 py-2 text-sm markdown-content ${
             isOwn
-              ? "bg-blue-600 text-white"
-              : "bg-gray-800 text-gray-200 border border-gray-700"
+              ? "bg-brand text-white"
+              : "bg-raised text-foreground border border-border"
           }`}
         >
           {renderedContent}
