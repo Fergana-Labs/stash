@@ -16,8 +16,12 @@ from ..models import (
     PageResponse,
     PageTreeResponse,
     PageUpdateRequest,
+    PermissionResponse,
+    SetVisibilityRequest,
+    ShareRequest,
+    ShareResponse,
 )
-from ..services import notebook_service, workspace_service
+from ..services import notebook_service, permission_service, workspace_service
 from ..services.yjs_manager import yjs_manager as yjs_mgr
 
 router = APIRouter(prefix="/api/v1/workspaces/{workspace_id}/notebooks", tags=["notebooks"])
@@ -220,3 +224,60 @@ async def yjs_websocket(
         pass
     finally:
         await yjs_mgr.handle_ws_disconnect(websocket, str(page_id))
+
+
+# --- Permissions ---
+
+
+@router.get("/{notebook_id}/permissions", response_model=PermissionResponse)
+async def get_permissions(
+    workspace_id: UUID, notebook_id: UUID,
+    current_user: dict = Depends(get_current_user),
+):
+    await _check_access(workspace_id, current_user["id"])
+    perms = await permission_service.get_permissions("notebook", notebook_id)
+    return PermissionResponse(**perms)
+
+
+@router.patch("/{notebook_id}/permissions")
+async def set_visibility(
+    workspace_id: UUID, notebook_id: UUID, req: SetVisibilityRequest,
+    current_user: dict = Depends(get_current_user),
+):
+    role = await workspace_service.get_member_role(workspace_id, current_user["id"])
+    if role not in ("owner", "admin"):
+        raise HTTPException(status_code=403, detail="Only owner/admin can change visibility")
+    await permission_service.set_visibility("notebook", notebook_id, req.visibility)
+    return {"status": "ok", "visibility": req.visibility}
+
+
+@router.post("/{notebook_id}/permissions/share", response_model=ShareResponse)
+async def add_share(
+    workspace_id: UUID, notebook_id: UUID, req: ShareRequest,
+    current_user: dict = Depends(get_current_user),
+):
+    role = await workspace_service.get_member_role(workspace_id, current_user["id"])
+    if role not in ("owner", "admin"):
+        raise HTTPException(status_code=403, detail="Only owner/admin can share")
+    share = await permission_service.add_share(
+        "notebook", notebook_id, req.user_id, req.permission, current_user["id"],
+    )
+    from ..database import get_pool
+    pool = get_pool()
+    user = await pool.fetchrow("SELECT name FROM users WHERE id = $1", req.user_id)
+    return ShareResponse(
+        user_id=share["user_id"], user_name=user["name"] if user else "",
+        permission=share["permission"], granted_by=share["granted_by"],
+        created_at=share["created_at"],
+    )
+
+
+@router.delete("/{notebook_id}/permissions/share/{user_id}", status_code=204)
+async def remove_share(
+    workspace_id: UUID, notebook_id: UUID, user_id: UUID,
+    current_user: dict = Depends(get_current_user),
+):
+    role = await workspace_service.get_member_role(workspace_id, current_user["id"])
+    if role not in ("owner", "admin"):
+        raise HTTPException(status_code=403, detail="Only owner/admin can remove shares")
+    await permission_service.remove_share("notebook", notebook_id, user_id)

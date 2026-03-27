@@ -126,9 +126,39 @@ CREATE TABLE IF NOT EXISTS history_events (
     created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+-- Decks (HTML/JS/CSS documents)
+CREATE TABLE IF NOT EXISTS decks (
+    id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    workspace_id UUID REFERENCES workspaces(id) ON DELETE CASCADE,
+    name         VARCHAR(255) NOT NULL,
+    description  TEXT DEFAULT '',
+    html_content TEXT NOT NULL DEFAULT '',
+    deck_type    VARCHAR(32) DEFAULT 'freeform'
+                 CHECK(deck_type IN ('freeform', 'slides', 'dashboard')),
+    created_by   UUID NOT NULL REFERENCES users(id),
+    updated_by   UUID REFERENCES users(id),
+    created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- Deck share links (public token-based access)
+CREATE TABLE IF NOT EXISTS deck_shares (
+    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    deck_id         UUID NOT NULL REFERENCES decks(id) ON DELETE CASCADE,
+    token           VARCHAR(16) NOT NULL UNIQUE,
+    name            VARCHAR(255),
+    is_active       BOOLEAN NOT NULL DEFAULT true,
+    require_email   BOOLEAN NOT NULL DEFAULT false,
+    passcode_hash   VARCHAR(72),
+    allow_download  BOOLEAN NOT NULL DEFAULT true,
+    expires_at      TIMESTAMPTZ,
+    created_by      UUID NOT NULL REFERENCES users(id),
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 -- Object permissions (Google Drive-like, shared across all object types)
 CREATE TABLE IF NOT EXISTS object_permissions (
-    object_type  VARCHAR(16) NOT NULL CHECK(object_type IN ('chat', 'notebook', 'history')),
+    object_type  VARCHAR(16) NOT NULL CHECK(object_type IN ('chat', 'notebook', 'history', 'deck')),
     object_id    UUID NOT NULL,
     visibility   VARCHAR(16) NOT NULL DEFAULT 'inherit'
                  CHECK(visibility IN ('inherit', 'private', 'public')),
@@ -136,7 +166,7 @@ CREATE TABLE IF NOT EXISTS object_permissions (
 );
 
 CREATE TABLE IF NOT EXISTS object_shares (
-    object_type  VARCHAR(16) NOT NULL CHECK(object_type IN ('chat', 'notebook', 'history')),
+    object_type  VARCHAR(16) NOT NULL CHECK(object_type IN ('chat', 'notebook', 'history', 'deck')),
     object_id    UUID NOT NULL,
     user_id      UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     permission   VARCHAR(8) NOT NULL DEFAULT 'read'
@@ -184,6 +214,10 @@ CREATE INDEX IF NOT EXISTS idx_history_events_type ON history_events(store_id, e
 CREATE INDEX IF NOT EXISTS idx_history_events_fts ON history_events USING GIN(to_tsvector('english', content));
 CREATE INDEX IF NOT EXISTS idx_history_events_metadata ON history_events USING GIN(metadata);
 
+CREATE INDEX IF NOT EXISTS idx_decks_workspace ON decks(workspace_id);
+CREATE INDEX IF NOT EXISTS idx_deck_shares_deck ON deck_shares(deck_id);
+CREATE INDEX IF NOT EXISTS idx_deck_shares_token ON deck_shares(token);
+
 CREATE INDEX IF NOT EXISTS idx_object_shares_user ON object_shares(user_id);
 CREATE INDEX IF NOT EXISTS idx_webhooks_workspace ON webhooks(workspace_id) WHERE is_active = true;
 """
@@ -208,6 +242,10 @@ _PARTIAL_INDEXES = [
        ON histories(created_by) WHERE workspace_id IS NULL""",
     """CREATE INDEX IF NOT EXISTS idx_chats_personal
        ON chats(creator_id) WHERE workspace_id IS NULL AND is_dm = false""",
+    """CREATE UNIQUE INDEX IF NOT EXISTS idx_personal_deck_unique
+       ON decks(created_by, name) WHERE workspace_id IS NULL""",
+    """CREATE INDEX IF NOT EXISTS idx_decks_personal
+       ON decks(created_by) WHERE workspace_id IS NULL""",
 ]
 
 
@@ -277,7 +315,7 @@ async def init_db():
         for idx_sql in _PARTIAL_INDEXES:
             await conn.execute(idx_sql)
         # Migration: make workspace_id nullable for personal items
-        for table in ("notebooks", "histories"):
+        for table in ("notebooks", "histories", "decks"):
             await conn.execute(
                 f"ALTER TABLE {table} ALTER COLUMN workspace_id DROP NOT NULL"
             )

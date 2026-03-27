@@ -217,6 +217,47 @@ export interface AgentResponse {
   created_at: string;
 }
 
+// --- Decks ---
+
+export interface Deck {
+  id: string;
+  workspace_id: string | null;
+  name: string;
+  description: string;
+  html_content: string;
+  deck_type: string;
+  created_by: string;
+  updated_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface DeckShare {
+  id: string;
+  deck_id: string;
+  token: string;
+  name: string | null;
+  is_active: boolean;
+  require_email: boolean;
+  has_passcode: boolean;
+  allow_download: boolean;
+  expires_at: string | null;
+  created_at: string;
+}
+
+export interface DeckWithWorkspace {
+  id: string;
+  workspace_id: string | null;
+  name: string;
+  description: string;
+  deck_type: string;
+  created_by: string;
+  updated_by: string | null;
+  created_at: string;
+  updated_at: string;
+  workspace_name: string | null;
+}
+
 // --- Aggregate ---
 
 export interface ChatWithWorkspace extends Chat {

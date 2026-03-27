@@ -286,6 +286,64 @@ class PageTreeResponse(BaseModel):
     root_files: list[PageTreeFile]
 
 
+# --- Decks ---
+
+
+class DeckCreateRequest(BaseModel):
+    name: str = Field(..., min_length=1, max_length=255)
+    description: str = Field("", max_length=1000)
+    html_content: str = ""
+    deck_type: str = Field("freeform", pattern=r"^(freeform|slides|dashboard)$")
+
+
+class DeckUpdateRequest(BaseModel):
+    name: str | None = Field(None, min_length=1, max_length=255)
+    description: str | None = Field(None, max_length=1000)
+    html_content: str | None = None
+
+
+class DeckResponse(BaseModel):
+    id: UUID
+    workspace_id: UUID | None
+    name: str
+    description: str
+    html_content: str
+    deck_type: str
+    created_by: UUID
+    updated_by: UUID | None
+    created_at: datetime
+    updated_at: datetime
+
+
+class DeckListResponse(BaseModel):
+    decks: list[DeckResponse]
+
+
+class DeckShareCreateRequest(BaseModel):
+    name: str | None = Field(None, max_length=255)
+    require_email: bool = False
+    passcode: str | None = Field(None, max_length=128)
+    allow_download: bool = True
+    expires_at: str | None = None
+
+
+class DeckShareResponse(BaseModel):
+    id: UUID
+    deck_id: UUID
+    token: str
+    name: str | None
+    is_active: bool
+    require_email: bool
+    has_passcode: bool
+    allow_download: bool
+    expires_at: datetime | None
+    created_at: datetime
+
+
+class DeckShareListResponse(BaseModel):
+    shares: list[DeckShareResponse]
+
+
 # --- History ---
 
 
