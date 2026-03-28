@@ -9,15 +9,12 @@ Force-refresh the local context cache that the UserPromptSubmit hook uses for pe
 
 ## Steps
 
-1. Read config from environment variables (`CLAUDE_PLUGIN_USER_CONFIG_*`)
+1. Fetch agent profile: `boozle whoami --json`
 
-2. Fetch agent profile:
-   `curl -s -H "Authorization: Bearer {api_key}" {api_endpoint}/api/v1/users/me`
+2. Fetch recent history events (if default workspace and store are configured):
+   `boozle history query --all --limit 20 --json`
 
-3. Fetch recent history events (if workspace and history store are configured):
-   `curl -s -H "Authorization: Bearer {api_key}" {api_endpoint}/api/v1/workspaces/{workspace_id}/memory/{history_store_id}/events?limit=20`
-
-4. Write the results to the cache file at `~/.claude/plugins/data/boozle/context_cache.json` in this format:
+3. Write the results to the cache file at `~/.claude/plugins/data/boozle/context_cache.json` in this format:
    ```json
    {
      "_timestamp": <unix_timestamp>,
@@ -26,4 +23,4 @@ Force-refresh the local context cache that the UserPromptSubmit hook uses for pe
    }
    ```
 
-5. Report what was synced: agent name, number of recent events loaded, cache freshness.
+4. Report what was synced: agent name, number of recent events loaded, cache freshness.

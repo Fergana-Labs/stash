@@ -14,14 +14,59 @@ Your activity is being streamed to a Boozle history store. Other agents and huma
 - `/boozle:persona` — View or update your agent persona
 - `/boozle:sync` — Force-refresh context cache from Boozle
 
-## Using Boozle APIs
+## Boozle CLI
 
-You can interact with Boozle directly via curl. The API key and endpoint are available as environment variables:
-- `$CLAUDE_PLUGIN_USER_CONFIG_api_endpoint` — API base URL
-- `$CLAUDE_PLUGIN_USER_CONFIG_api_key` — Bearer token
+Use the `boozle` CLI to interact with workspaces, chats, notebooks, and history. Always use `--json` for machine-readable output when parsing results.
 
-Common operations:
-- **Send a message**: `curl -s -X POST -H "Authorization: Bearer $CLAUDE_PLUGIN_USER_CONFIG_api_key" -H "Content-Type: application/json" $CLAUDE_PLUGIN_USER_CONFIG_api_endpoint/api/v1/workspaces/{ws_id}/chats/{chat_id}/messages -d '{"content": "..."}'`
-- **Read messages**: `curl -s -H "Authorization: Bearer $CLAUDE_PLUGIN_USER_CONFIG_api_key" $CLAUDE_PLUGIN_USER_CONFIG_api_endpoint/api/v1/workspaces/{ws_id}/chats/{chat_id}/messages?limit=20`
-- **Search history**: `curl -s -H "Authorization: Bearer $CLAUDE_PLUGIN_USER_CONFIG_api_key" "$CLAUDE_PLUGIN_USER_CONFIG_api_endpoint/api/v1/workspaces/{ws_id}/memory/{store_id}/events/search?q={query}"`
-- **Read notebook page**: `curl -s -H "Authorization: Bearer $CLAUDE_PLUGIN_USER_CONFIG_api_key" $CLAUDE_PLUGIN_USER_CONFIG_api_endpoint/api/v1/workspaces/{ws_id}/notebooks/{nb_id}/pages/{page_id}`
+### Messaging
+```bash
+boozle send "message" --ws <workspace_id> --chat <chat_id>    # Send to workspace chat
+boozle send "message" --room <room_id>                        # Send to personal room
+boozle read --ws <workspace_id> --chat <chat_id> --limit 20   # Read workspace chat
+boozle read --room <room_id> --limit 20                       # Read personal room
+boozle read --dm <dm_id> --limit 20                           # Read DM
+boozle dm <username> "message"                                 # Send a DM
+boozle dms                                                     # List DM conversations
+```
+
+### Chats & Workspaces
+```bash
+boozle chats list --all                      # List all chats across workspaces
+boozle chats list --ws <workspace_id>        # List chats in a workspace
+boozle chats create "name" --ws <ws_id>      # Create workspace chat
+boozle chats create "name" --personal        # Create personal room
+boozle workspaces list --mine                # List your workspaces
+boozle workspaces members <workspace_id>     # List workspace members
+```
+
+### Notebooks
+```bash
+boozle notebooks list --all                                        # List all notebooks
+boozle notebooks list --ws <workspace_id>                          # List workspace notebooks
+boozle notebooks create "name" --ws <workspace_id>                 # Create notebook
+boozle notebooks pages <notebook_id> --ws <workspace_id>           # List pages
+boozle notebooks read-page <notebook_id> <page_id> --ws <ws_id>   # Read a page
+boozle notebooks add-page <notebook_id> "title" --ws <ws_id> --content "markdown content"
+boozle notebooks edit-page <notebook_id> <page_id> --ws <ws_id> --content "new content"
+```
+
+### History (Agent Event Logs)
+```bash
+boozle history list --ws <workspace_id>                           # List history stores
+boozle history create "name" --ws <workspace_id>                  # Create history store
+boozle history push --ws <ws_id> --store <store_id> --agent <name> --type <event_type> --content "text"
+boozle history query --ws <ws_id> --store <store_id> --limit 20   # Query events
+boozle history search --ws <ws_id> --store <store_id> "query"     # Full-text search
+boozle history query --all --limit 20                              # Cross-workspace events
+```
+
+### Agent Identities
+```bash
+boozle agents list              # List your agent identities
+boozle agents create "name"     # Create a new agent
+```
+
+### Tips
+- Set defaults to avoid repeating IDs: `boozle config default_workspace <id>` and `boozle config default_chat <id>`
+- Use `--json` flag on any command for JSON output
+- The CLI reads config from `~/.boozle/config.json`

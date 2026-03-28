@@ -20,7 +20,7 @@ Manage the agent persona injected into every prompt via the UserPromptSubmit hoo
 ### View (no arguments or $ARGUMENTS is empty)
 1. Read state from `~/.claude/plugins/data/boozle/state.json`
 2. Read the `persona` field
-3. If empty, fetch the agent profile: `curl -s -H "Authorization: Bearer {api_key}" {api_endpoint}/api/v1/users/me`
+3. If empty, fetch the agent profile: `boozle whoami --json`
 4. Show the current persona source (local override vs profile description)
 
 ### Set ($ARGUMENTS starts with "set")
@@ -29,8 +29,6 @@ Manage the agent persona injected into every prompt via the UserPromptSubmit hoo
 3. Update the `persona` field with the new text
 4. Write state back
 5. Confirm the persona has been updated
-6. Note: this is a local override. To also update the Boozle profile, optionally run:
-   `curl -s -X PATCH -H "Authorization: Bearer {api_key}" -H "Content-Type: application/json" {api_endpoint}/api/v1/users/me -d '{"description": "{persona_text}"}'`
 
 ### Clear ($ARGUMENTS is "clear")
 1. Read current state
