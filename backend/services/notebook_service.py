@@ -271,3 +271,49 @@ async def get_yjs_state(page_id: UUID) -> bytes | None:
         "SELECT yjs_state FROM notebook_pages WHERE id = $1", page_id,
     )
     return row["yjs_state"] if row else None
+
+
+# --- Injection query helpers ---
+
+
+async def get_always_inject_pages(notebook_id: UUID) -> list[dict]:
+    """Pages with metadata.auto_inject == 'always'."""
+    pool = get_pool()
+    rows = await pool.fetch(
+        "SELECT id, notebook_id, name, content_markdown, metadata "
+        "FROM notebook_pages "
+        "WHERE notebook_id = $1 AND metadata->>'auto_inject' = 'always'",
+        notebook_id,
+    )
+    return [dict(r) for r in rows]
+
+
+async def search_pages_fts(notebook_id: UUID, query: str, limit: int = 10) -> list[dict]:
+    """FTS search on notebook page content."""
+    pool = get_pool()
+    rows = await pool.fetch(
+        "SELECT id, notebook_id, name, content_markdown, metadata, "
+        "ts_rank(to_tsvector('english', content_markdown), websearch_to_tsquery('english', $2)) AS rank "
+        "FROM notebook_pages "
+        "WHERE notebook_id = $1 "
+        "AND to_tsvector('english', content_markdown) @@ websearch_to_tsquery('english', $2) "
+        "ORDER BY rank DESC LIMIT $3",
+        notebook_id, query, limit,
+    )
+    return [dict(r) for r in rows]
+
+
+async def update_page_injection_metadata(
+    page_id: UUID, notebook_id: UUID, injected_at_iso: str,
+) -> None:
+    """Atomically increment inject_count and update last_injected_at in page metadata."""
+    pool = get_pool()
+    await pool.execute(
+        "UPDATE notebook_pages SET metadata = metadata "
+        "|| jsonb_build_object("
+        "  'inject_count', COALESCE((metadata->>'inject_count')::int, 0) + 1, "
+        "  'last_injected_at', $3::text"
+        ") "
+        "WHERE id = $1 AND notebook_id = $2",
+        page_id, notebook_id, injected_at_iso,
+    )

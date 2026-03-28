@@ -516,6 +516,41 @@ class WebhookResponse(BaseModel):
     updated_at: datetime
 
 
+# --- Injection ---
+
+
+class SessionItemState(BaseModel):
+    last_injected_prompt: int = 0
+    last_injected_ts: str = ""
+    token_cost: int = 0
+
+
+class SessionInjectionState(BaseModel):
+    prompt_num: int = 0
+    session_start: str = ""
+    items: dict[str, SessionItemState] = Field(default_factory=dict)
+
+
+class InjectionRequest(BaseModel):
+    prompt_text: str = Field(..., min_length=1, max_length=32000)
+    session_state: SessionInjectionState = Field(default_factory=SessionInjectionState)
+
+
+class InjectedItem(BaseModel):
+    key: str
+    source_type: str
+    score: float
+    token_cost: int
+
+
+class InjectionResponse(BaseModel):
+    context: str
+    updated_session_state: SessionInjectionState
+    injected_items: list[InjectedItem]
+    total_tokens_used: int
+    budget_tokens: int
+
+
 # --- WebSocket ---
 
 

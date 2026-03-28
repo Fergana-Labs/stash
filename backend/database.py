@@ -1,4 +1,6 @@
 import asyncpg
+from pgvector.asyncpg import register_vector
+
 from .config import settings
 
 pool: asyncpg.Pool | None = None
@@ -127,7 +129,21 @@ CREATE TABLE IF NOT EXISTS history_events (
     tool_name    VARCHAR(128),
     content      TEXT NOT NULL,
     metadata     JSONB DEFAULT '{}',
+    embedding    vector(384),
     created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- Injection configs (per-agent scoring parameters)
+CREATE TABLE IF NOT EXISTS injection_configs (
+    agent_id     UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+    budget_tokens INTEGER NOT NULL DEFAULT 4000,
+    min_score    REAL NOT NULL DEFAULT 0.01,
+    recency_intervals REAL[] NOT NULL DEFAULT '{1.0,4.0,24.0,72.0,168.0,720.0}',
+    staleness_decay_fast  REAL NOT NULL DEFAULT 0.15,
+    staleness_decay_slow  REAL NOT NULL DEFAULT 0.40,
+    staleness_fast_threshold_seconds REAL NOT NULL DEFAULT 60.0,
+    embedding_dims INTEGER NOT NULL DEFAULT 384,
+    updated_at   TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 -- Decks (HTML/JS/CSS documents)
@@ -241,6 +257,8 @@ CREATE INDEX IF NOT EXISTS idx_history_events_type ON history_events(store_id, e
 CREATE INDEX IF NOT EXISTS idx_history_events_fts ON history_events USING GIN(to_tsvector('english', content));
 CREATE INDEX IF NOT EXISTS idx_history_events_metadata ON history_events USING GIN(metadata);
 
+CREATE INDEX IF NOT EXISTS idx_notebook_pages_fts ON notebook_pages USING GIN(to_tsvector('english', content_markdown));
+
 CREATE INDEX IF NOT EXISTS idx_decks_workspace ON decks(workspace_id);
 CREATE INDEX IF NOT EXISTS idx_deck_shares_deck ON deck_shares(deck_id);
 CREATE INDEX IF NOT EXISTS idx_deck_shares_token ON deck_shares(token);
@@ -276,12 +294,21 @@ _PARTIAL_INDEXES = [
        ON decks(created_by, name) WHERE workspace_id IS NULL""",
     """CREATE INDEX IF NOT EXISTS idx_decks_personal
        ON decks(created_by) WHERE workspace_id IS NULL""",
+    # pgvector HNSW index for semantic search on history events
+    """CREATE INDEX IF NOT EXISTS idx_history_events_embedding
+       ON history_events USING hnsw (embedding vector_cosine_ops)
+       WHERE embedding IS NOT NULL""",
 ]
 
 
 async def init_db():
     global pool
-    pool = await asyncpg.create_pool(settings.DATABASE_URL, min_size=2, max_size=10)
+    async def _init_connection(conn):
+        await register_vector(conn)
+
+    pool = await asyncpg.create_pool(
+        settings.DATABASE_URL, min_size=2, max_size=10, init=_init_connection,
+    )
     async with pool.acquire() as conn:
         # Check if schema needs a full reset (old incompatible schema detection)
         has_workspaces = await conn.fetchval(
@@ -340,6 +367,9 @@ async def init_db():
                             f"ALTER TABLE {tbl_name} ADD CHECK(object_type IN ('chat', 'notebook', 'history'))"
                         )
 
+        # Enable pgvector extension (required before schema with vector columns)
+        await conn.execute("CREATE EXTENSION IF NOT EXISTS vector")
+
         # Create schema (idempotent — CREATE TABLE IF NOT EXISTS)
         await conn.execute(SCHEMA)
         for idx_sql in _PARTIAL_INDEXES:
@@ -360,6 +390,16 @@ async def init_db():
                 await conn.execute(
                     f"ALTER TABLE users ADD COLUMN {col} UUID REFERENCES {ref_table}(id) ON DELETE SET NULL"
                 )
+
+        # Migration: add embedding column to history_events (pgvector)
+        has_embedding = await conn.fetchval(
+            "SELECT 1 FROM information_schema.columns "
+            "WHERE table_name = 'history_events' AND column_name = 'embedding'"
+        )
+        if not has_embedding:
+            await conn.execute(
+                "ALTER TABLE history_events ADD COLUMN embedding vector(384)"
+            )
 
         # Migration: add content_hash and metadata to notebook_pages
         for col, col_type, col_default in [
