@@ -250,6 +250,16 @@ async def push_event(
     # Fire-and-forget embedding
     if embedding_service.is_configured():
         asyncio.create_task(_embed_event(event["id"], content))
+    # Mark injection session as complete on session_end
+    if event_type == "session_end" and session_id:
+        try:
+            await pool.execute(
+                "UPDATE injection_sessions SET completed_at = now() "
+                "WHERE session_id = $1 AND completed_at IS NULL",
+                session_id,
+            )
+        except Exception:
+            logger.debug("Failed to mark injection session complete", exc_info=True)
     return event
 
 

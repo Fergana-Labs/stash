@@ -203,6 +203,7 @@ async def compute_injection(
     history_id: UUID,
     prompt_text: str,
     session_state_data: dict,
+    session_id: str | None = None,
 ) -> dict:
     """Compute injection context using four-factor scoring.
 
@@ -422,6 +423,22 @@ async def compute_injection(
             page_id = UUID(c.key.split(":", 1)[1])
             await notebook_service.update_page_injection_metadata(
                 page_id, notebook_id, now_iso,
+            )
+
+    # --- Record injection session for outcome scoring ---
+    if session_id:
+        pattern_items = [
+            {"key": c.key, "source_type": c.source_type, "score": round(c.injection_score, 4)}
+            for c in selected if c.source_type == "pattern"
+        ]
+        if pattern_items:
+            pool = get_pool()
+            await pool.execute(
+                "INSERT INTO injection_sessions (agent_id, session_id, injected_items) "
+                "VALUES ($1, $2, $3::jsonb) "
+                "ON CONFLICT (agent_id, session_id) DO UPDATE "
+                "SET injected_items = $3::jsonb",
+                agent_id, session_id, json.dumps(pattern_items),
             )
 
     return {

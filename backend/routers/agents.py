@@ -11,7 +11,7 @@ from ..models import (
     InjectionRequest, InjectionResponse,
     NotebookResponse, PageResponse, SyncManifestResponse,
 )
-from ..services import agent_identity_service, injection_service, memory_service, notebook_service
+from ..services import agent_identity_service, injection_service, memory_service, notebook_service, sleep_service
 
 router = APIRouter(prefix="/api/v1/agents", tags=["agents"])
 
@@ -303,5 +303,41 @@ async def inject_context(
         history_id=hist_id,
         prompt_text=req.prompt_text,
         session_state_data=req.session_state.model_dump(),
+        session_id=req.session_id,
     )
     return InjectionResponse(**result)
+
+
+# --- Sleep Agent ---
+
+
+@router.post("/me/sleep")
+async def trigger_sleep(current_user: dict = Depends(get_current_user)):
+    """Manually trigger sleep agent curation for the calling agent."""
+    agent = _require_agent(current_user)
+    result = await sleep_service.curate(agent["id"])
+    return result
+
+
+@router.get("/me/sleep/status")
+async def sleep_status(current_user: dict = Depends(get_current_user)):
+    """Get sleep agent status: watermark, last run, config."""
+    agent = _require_agent(current_user)
+    from ..database import get_pool
+    pool = get_pool()
+
+    watermark = await pool.fetchrow(
+        "SELECT last_event_at, last_monologue_event_at, last_run_at "
+        "FROM sleep_watermarks WHERE agent_id = $1",
+        agent["id"],
+    )
+    config = await pool.fetchrow(
+        "SELECT enabled, interval_minutes, max_pattern_cards "
+        "FROM sleep_configs WHERE agent_id = $1",
+        agent["id"],
+    )
+
+    return {
+        "watermark": dict(watermark) if watermark else None,
+        "config": dict(config) if config else {"enabled": True, "interval_minutes": 60, "max_pattern_cards": 500},
+    }
