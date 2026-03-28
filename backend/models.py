@@ -533,6 +533,7 @@ class SessionInjectionState(BaseModel):
 
 class InjectionRequest(BaseModel):
     prompt_text: str = Field(..., min_length=1, max_length=32000)
+    session_id: str | None = Field(None, max_length=64)
     session_state: SessionInjectionState = Field(default_factory=SessionInjectionState)
 
 

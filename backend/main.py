@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import os
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -43,17 +44,38 @@ async def _ws_health_loop():
             logger.exception("Error in WebSocket health ping")
 
 
+async def _sleep_agent_loop():
+    """Periodically run sleep agent curation for all enabled agents."""
+    from .services import sleep_service
+    while True:
+        await asyncio.sleep(300)  # Check every 5 minutes
+        if not os.getenv("SLEEP_AGENT_ENABLED"):
+            continue
+        try:
+            agents = await sleep_service.get_due_agents()
+            for agent_id in agents:
+                try:
+                    await sleep_service.curate(agent_id)
+                except Exception:
+                    logger.exception("Sleep agent failed for %s", agent_id)
+        except Exception:
+            logger.exception("Sleep agent loop error")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await init_db()
     health_task = asyncio.create_task(_ws_health_loop())
+    sleep_task = asyncio.create_task(_sleep_agent_loop())
     async with _mcp_app.router.lifespan_context(_mcp_app):
         yield
     health_task.cancel()
-    try:
-        await health_task
-    except asyncio.CancelledError:
-        pass
+    sleep_task.cancel()
+    for task in (health_task, sleep_task):
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
     await close_db()
 
 

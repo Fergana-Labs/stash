@@ -146,6 +146,39 @@ CREATE TABLE IF NOT EXISTS injection_configs (
     updated_at   TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+-- Sleep watermarks (per-agent curation progress)
+CREATE TABLE IF NOT EXISTS sleep_watermarks (
+    agent_id              UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+    last_event_at         TIMESTAMPTZ,
+    last_monologue_event_at TIMESTAMPTZ,
+    last_run_at           TIMESTAMPTZ,
+    updated_at            TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- Injection sessions (server-side injection state for outcome scoring)
+CREATE TABLE IF NOT EXISTS injection_sessions (
+    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    agent_id        UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    session_id      VARCHAR(64) NOT NULL,
+    injected_items  JSONB NOT NULL DEFAULT '[]',
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+    completed_at    TIMESTAMPTZ,
+    scored_at       TIMESTAMPTZ,
+    UNIQUE(agent_id, session_id)
+);
+
+-- Sleep configs (per-agent curation settings)
+CREATE TABLE IF NOT EXISTS sleep_configs (
+    agent_id              UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+    enabled               BOOLEAN NOT NULL DEFAULT true,
+    interval_minutes      INTEGER NOT NULL DEFAULT 60,
+    max_pattern_cards     INTEGER NOT NULL DEFAULT 500,
+    monologue_batch_size  INTEGER NOT NULL DEFAULT 20,
+    monologue_model       VARCHAR(64) NOT NULL DEFAULT 'claude-haiku-4-5-20251001',
+    curation_model        VARCHAR(64) NOT NULL DEFAULT 'claude-sonnet-4-6-20250514',
+    updated_at            TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 -- Decks (HTML/JS/CSS documents)
 CREATE TABLE IF NOT EXISTS decks (
     id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -259,6 +292,8 @@ CREATE INDEX IF NOT EXISTS idx_history_events_metadata ON history_events USING G
 
 CREATE INDEX IF NOT EXISTS idx_notebook_pages_fts ON notebook_pages USING GIN(to_tsvector('english', content_markdown));
 
+CREATE INDEX IF NOT EXISTS idx_injection_sessions_agent ON injection_sessions(agent_id);
+
 CREATE INDEX IF NOT EXISTS idx_decks_workspace ON decks(workspace_id);
 CREATE INDEX IF NOT EXISTS idx_deck_shares_deck ON deck_shares(deck_id);
 CREATE INDEX IF NOT EXISTS idx_deck_shares_token ON deck_shares(token);
@@ -294,6 +329,9 @@ _PARTIAL_INDEXES = [
        ON decks(created_by, name) WHERE workspace_id IS NULL""",
     """CREATE INDEX IF NOT EXISTS idx_decks_personal
        ON decks(created_by) WHERE workspace_id IS NULL""",
+    # Injection sessions pending outcome scoring
+    """CREATE INDEX IF NOT EXISTS idx_injection_sessions_pending
+       ON injection_sessions(agent_id) WHERE completed_at IS NOT NULL AND scored_at IS NULL""",
     # pgvector HNSW index for semantic search on history events
     """CREATE INDEX IF NOT EXISTS idx_history_events_embedding
        ON history_events USING hnsw (embedding vector_cosine_ops)

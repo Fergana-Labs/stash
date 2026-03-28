@@ -28,9 +28,12 @@ def main():
     # Read hook payload from stdin
     hook_data = get_stdin_data()
     prompt_text = hook_data.get("prompt", hook_data.get("userPrompt", ""))
+    hook_session_id = hook_data.get("session_id", "")
 
-    # Load session injection state
+    # Load session injection state and plugin state for session_id
     session_state = load_injection_state()
+    state = load_state()
+    session_id = hook_session_id or state.get("session_id", "")
 
     context = None
 
@@ -40,6 +43,7 @@ def main():
             result = client.inject(
                 prompt_text=prompt_text or ".",
                 session_state=session_state,
+                session_id=session_id,
             )
             context = result.get("context", "")
             # Persist updated session state

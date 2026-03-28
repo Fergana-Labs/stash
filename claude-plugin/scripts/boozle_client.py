@@ -116,9 +116,9 @@ class BoozleClient:
 
     # --- Injection (agent-scoped) ---
 
-    def inject(self, prompt_text: str, session_state: dict) -> dict:
+    def inject(self, prompt_text: str, session_state: dict, session_id: str = "") -> dict:
         """Call the server-side injection scoring endpoint."""
-        return self._post("/api/v1/agents/me/inject", json={
-            "prompt_text": prompt_text,
-            "session_state": session_state,
-        })
+        body: dict = {"prompt_text": prompt_text, "session_state": session_state}
+        if session_id:
+            body["session_id"] = session_id
+        return self._post("/api/v1/agents/me/inject", json=body)
