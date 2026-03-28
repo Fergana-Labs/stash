@@ -74,6 +74,8 @@ class AgentResponse(BaseModel):
     description: str
     api_key: str
     owner_id: UUID
+    notebook_id: UUID | None = None
+    history_id: UUID | None = None
     created_at: datetime
 
 
@@ -84,8 +86,38 @@ class AgentProfile(BaseModel):
     type: str
     description: str
     owner_id: UUID
+    notebook_id: UUID | None = None
+    history_id: UUID | None = None
     created_at: datetime
     last_seen: datetime
+
+
+# --- Agent Resources (notebook/history owned by agent) ---
+
+
+class AgentPageCreateRequest(BaseModel):
+    name: str = Field(..., min_length=1, max_length=255)
+    content: str = ""
+    metadata: dict = Field(default_factory=dict)
+
+
+class AgentPageUpdateRequest(BaseModel):
+    name: str | None = Field(None, min_length=1, max_length=255)
+    content: str | None = None
+    metadata: dict | None = None
+
+
+class SyncManifestEntry(BaseModel):
+    id: UUID
+    name: str
+    content_hash: str | None
+    metadata: dict
+    updated_at: datetime
+
+
+class SyncManifestResponse(BaseModel):
+    notebook_id: UUID
+    pages: list[SyncManifestEntry]
 
 
 # --- Workspaces ---
@@ -124,6 +156,8 @@ class WorkspaceMember(BaseModel):
     display_name: str | None
     type: str
     role: str
+    notebook_id: UUID | None = None
+    history_id: UUID | None = None
     joined_at: datetime
 
 
@@ -243,6 +277,8 @@ class PageResponse(BaseModel):
     folder_id: UUID | None
     name: str
     content_markdown: str
+    content_hash: str | None = None
+    metadata: dict = {}
     created_by: UUID
     updated_by: UUID | None
     created_at: datetime
