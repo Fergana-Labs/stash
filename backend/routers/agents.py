@@ -8,9 +8,10 @@ from ..models import (
     AgentProfile, AgentResponse, AgentUpdateRequest,
     HistoryEventBatchRequest, HistoryEventCreateRequest,
     HistoryEventListResponse, HistoryEventResponse, HistoryResponse,
+    InjectionRequest, InjectionResponse,
     NotebookResponse, PageResponse, SyncManifestResponse,
 )
-from ..services import agent_identity_service, memory_service, notebook_service
+from ..services import agent_identity_service, injection_service, memory_service, notebook_service
 
 router = APIRouter(prefix="/api/v1/agents", tags=["agents"])
 
@@ -281,3 +282,26 @@ async def query_agent_events(
         events=[HistoryEventResponse(**e) for e in events],
         has_more=has_more,
     )
+
+
+# --- Injection ---
+
+
+@router.post("/me/inject", response_model=InjectionResponse)
+async def inject_context(
+    req: InjectionRequest,
+    current_user: dict = Depends(get_current_user),
+):
+    """Compute scored injection context for the agent's prompt."""
+    agent = _require_agent(current_user)
+    nb_id = _get_notebook_id(agent)
+    hist_id = _get_history_id(agent)
+
+    result = await injection_service.compute_injection(
+        agent_id=agent["id"],
+        notebook_id=nb_id,
+        history_id=hist_id,
+        prompt_text=req.prompt_text,
+        session_state_data=req.session_state.model_dump(),
+    )
+    return InjectionResponse(**result)

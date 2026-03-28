@@ -11,7 +11,14 @@ from pathlib import Path
 PLUGIN_DATA = Path(os.environ.get("CLAUDE_PLUGIN_DATA", Path.home() / ".claude/plugins/data/boozle"))
 STATE_FILE = PLUGIN_DATA / "state.json"
 CACHE_FILE = PLUGIN_DATA / "context_cache.json"
+INJECTION_STATE_FILE = PLUGIN_DATA / "injection_state.json"
 CACHE_TTL = 300  # 5 minutes
+
+# Shared path for replicate_me bridge escalations
+ESCALATION_DIR = Path(os.environ.get(
+    "REPLICATE_ME_NOTIFICATIONS_DIR",
+    Path.home() / ".replicate_me/bridge/notifications/co",
+))
 
 
 def get_stdin_data() -> dict:
@@ -86,3 +93,44 @@ def save_cache(profile: dict, recent_events: list):
         "profile": profile,
         "recent_events": recent_events,
     }, indent=2))
+
+
+# --- Injection state (per-session scoring state) ---
+
+def load_injection_state() -> dict:
+    """Load injection session state from disk."""
+    if INJECTION_STATE_FILE.exists():
+        try:
+            return json.loads(INJECTION_STATE_FILE.read_text())
+        except Exception:
+            pass
+    return {"prompt_num": 0, "session_start": "", "items": {}}
+
+
+def save_injection_state(state: dict):
+    """Save injection session state to disk."""
+    PLUGIN_DATA.mkdir(parents=True, exist_ok=True)
+    INJECTION_STATE_FILE.write_text(json.dumps(state, indent=2))
+
+
+# --- Bridge escalations ---
+
+def load_escalations() -> str:
+    """Read pending manager escalation notifications from replicate_me bridge."""
+    if not ESCALATION_DIR.exists():
+        return ""
+
+    lines = []
+    notifications = sorted(ESCALATION_DIR.glob("*.json"))[:5]
+    for nf in notifications:
+        try:
+            nd = json.loads(nf.read_text())
+            detail = nd.get("detail", nd.get("content", ""))[:300]
+            ntype = nd.get("type", "info")
+            lines.append(f"- [{ntype}] {detail}")
+        except Exception:
+            continue
+
+    if not lines:
+        return ""
+    return "\n\n## Pending Manager Escalations\n" + "\n".join(lines) + "\n"

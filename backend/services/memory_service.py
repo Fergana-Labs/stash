@@ -1,10 +1,17 @@
-"""History service: structured agent event storage with FTS and batch insert."""
+"""History service: structured agent event storage with FTS, vector search, and batch insert."""
 
+import asyncio
 import json
+import logging
 from datetime import datetime
 from uuid import UUID
 
+import numpy as np
+
 from ..database import get_pool
+from . import embedding_service
+
+logger = logging.getLogger(__name__)
 
 
 # --- Store CRUD ---
@@ -185,6 +192,39 @@ async def delete_personal_store(store_id: UUID, user_id: UUID) -> bool:
     return result == "DELETE 1"
 
 
+# --- Embedding helpers ---
+
+
+async def _embed_event(event_id: UUID, content: str) -> None:
+    """Fire-and-forget: embed content and update the event row."""
+    try:
+        vec = await embedding_service.embed_text(content)
+        if vec is not None:
+            pool = get_pool()
+            await pool.execute(
+                "UPDATE history_events SET embedding = $1 WHERE id = $2",
+                vec, event_id,
+            )
+    except Exception:
+        logger.debug("Failed to embed event %s", event_id, exc_info=True)
+
+
+async def _embed_events_batch(event_ids: list[UUID], contents: list[str]) -> None:
+    """Fire-and-forget: embed a batch of contents and update rows."""
+    try:
+        vecs = await embedding_service.embed_batch(contents)
+        if vecs:
+            pool = get_pool()
+            async with pool.acquire() as conn:
+                for eid, vec in zip(event_ids, vecs):
+                    await conn.execute(
+                        "UPDATE history_events SET embedding = $1 WHERE id = $2",
+                        vec, eid,
+                    )
+    except Exception:
+        logger.debug("Failed to batch-embed events", exc_info=True)
+
+
 # --- Event CRUD ---
 
 
@@ -206,7 +246,11 @@ async def push_event(
         "RETURNING id, store_id, agent_name, event_type, session_id, tool_name, content, metadata, created_at",
         store_id, agent_name, event_type, content, session_id, tool_name, meta_json,
     )
-    return dict(row)
+    event = dict(row)
+    # Fire-and-forget embedding
+    if embedding_service.is_configured():
+        asyncio.create_task(_embed_event(event["id"], content))
+    return event
 
 
 async def push_events_batch(store_id: UUID, events: list[dict]) -> list[dict]:
@@ -232,6 +276,11 @@ async def push_events_batch(store_id: UUID, events: list[dict]) -> list[dict]:
                     meta_json,
                 )
                 results.append(dict(row))
+    # Fire-and-forget batch embedding
+    if embedding_service.is_configured() and results:
+        ids = [r["id"] for r in results]
+        contents = [r["content"] for r in results]
+        asyncio.create_task(_embed_events_batch(ids, contents))
     return results
 
 
@@ -316,5 +365,23 @@ async def search_events(
         "WHERE store_id = $1 AND to_tsvector('english', content) @@ websearch_to_tsquery('english', $2) "
         "ORDER BY rank DESC LIMIT $3",
         store_id, query, limit,
+    )
+    return [dict(r) for r in rows]
+
+
+async def search_events_vector(
+    store_id: UUID, query_embedding: np.ndarray, limit: int = 20,
+) -> list[dict]:
+    """Semantic vector search using pgvector cosine distance."""
+    pool = get_pool()
+    limit = min(limit, 200)
+    rows = await pool.fetch(
+        "SELECT id, store_id, agent_name, event_type, session_id, tool_name, "
+        "content, metadata, created_at, "
+        "1 - (embedding <=> $2) AS similarity "
+        "FROM history_events "
+        "WHERE store_id = $1 AND embedding IS NOT NULL "
+        "ORDER BY embedding <=> $2 LIMIT $3",
+        store_id, query_embedding, limit,
     )
     return [dict(r) for r in rows]

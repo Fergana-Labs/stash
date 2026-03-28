@@ -113,3 +113,12 @@ class BoozleClient:
 
     def search_events(self, workspace_id: str, store_id: str, query: str, limit: int = 50) -> list:
         return self._list(f"/api/v1/workspaces/{workspace_id}/memory/{store_id}/events/search", "events", q=query, limit=limit)
+
+    # --- Injection (agent-scoped) ---
+
+    def inject(self, prompt_text: str, session_state: dict) -> dict:
+        """Call the server-side injection scoring endpoint."""
+        return self._post("/api/v1/agents/me/inject", json={
+            "prompt_text": prompt_text,
+            "session_state": session_state,
+        })
