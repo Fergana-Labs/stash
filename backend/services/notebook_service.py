@@ -1,8 +1,15 @@
 """Notebook service: collection CRUD, page/folder CRUD, Yjs collaborative editing."""
 
+import hashlib
+import json
 from uuid import UUID
 
 from ..database import get_pool
+
+
+def _content_hash(content: str) -> str:
+    """SHA256 hash of page content for sync change detection."""
+    return hashlib.sha256(content.encode()).hexdigest()
 
 
 # --- Notebook (collection) CRUD ---
@@ -115,14 +122,18 @@ async def delete_folder(folder_id: UUID, notebook_id: UUID) -> bool:
 async def create_page(
     notebook_id: UUID, name: str, created_by: UUID,
     folder_id: UUID | None = None, content: str = "",
+    metadata: dict | None = None,
 ) -> dict:
     pool = get_pool()
+    ch = _content_hash(content)
+    meta_json = json.dumps(metadata or {})
     row = await pool.fetchrow(
-        "INSERT INTO notebook_pages (notebook_id, folder_id, name, content_markdown, created_by, updated_by) "
-        "VALUES ($1, $2, $3, $4, $5, $5) "
-        "RETURNING id, notebook_id, folder_id, name, content_markdown, "
+        "INSERT INTO notebook_pages "
+        "(notebook_id, folder_id, name, content_markdown, content_hash, metadata, created_by, updated_by) "
+        "VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $7) "
+        "RETURNING id, notebook_id, folder_id, name, content_markdown, content_hash, metadata, "
         "created_by, updated_by, created_at, updated_at",
-        notebook_id, folder_id, name, content, created_by,
+        notebook_id, folder_id, name, content, ch, meta_json, created_by,
     )
     return dict(row)
 
@@ -130,7 +141,7 @@ async def create_page(
 async def get_page(page_id: UUID, notebook_id: UUID) -> dict | None:
     pool = get_pool()
     row = await pool.fetchrow(
-        "SELECT id, notebook_id, folder_id, name, content_markdown, "
+        "SELECT id, notebook_id, folder_id, name, content_markdown, content_hash, metadata, "
         "created_by, updated_by, created_at, updated_at "
         "FROM notebook_pages WHERE id = $1 AND notebook_id = $2",
         page_id, notebook_id,
@@ -138,10 +149,22 @@ async def get_page(page_id: UUID, notebook_id: UUID) -> dict | None:
     return dict(row) if row else None
 
 
+async def get_sync_manifest(notebook_id: UUID) -> list[dict]:
+    """Return lightweight page info for sync diffing (no content bodies)."""
+    pool = get_pool()
+    rows = await pool.fetch(
+        "SELECT id, name, content_hash, metadata, updated_at "
+        "FROM notebook_pages WHERE notebook_id = $1 ORDER BY name",
+        notebook_id,
+    )
+    return [dict(r) for r in rows]
+
+
 async def update_page(
     page_id: UUID, notebook_id: UUID, updated_by: UUID,
     name: str | None = None, folder_id: UUID | None = None,
     content: str | None = None, move_to_root: bool = False,
+    metadata: dict | None = None,
 ) -> dict | None:
     pool = get_pool()
     sets = ["updated_at = now()", "updated_by = $1"]
@@ -162,13 +185,20 @@ async def update_page(
         sets.append(f"content_markdown = ${idx}")
         args.append(content)
         idx += 1
+        sets.append(f"content_hash = ${idx}")
+        args.append(_content_hash(content))
+        idx += 1
+    if metadata is not None:
+        sets.append(f"metadata = ${idx}::jsonb")
+        args.append(json.dumps(metadata))
+        idx += 1
 
     args.append(page_id)
     args.append(notebook_id)
     row = await pool.fetchrow(
         f"UPDATE notebook_pages SET {', '.join(sets)} "
         f"WHERE id = ${idx} AND notebook_id = ${idx + 1} "
-        "RETURNING id, notebook_id, folder_id, name, content_markdown, "
+        "RETURNING id, notebook_id, folder_id, name, content_markdown, content_hash, metadata, "
         "created_by, updated_by, created_at, updated_at",
         *args,
     )

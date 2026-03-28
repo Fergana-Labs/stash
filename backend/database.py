@@ -14,6 +14,8 @@ CREATE TABLE IF NOT EXISTS users (
     password_hash VARCHAR(72),
     description TEXT DEFAULT '',
     owner_id UUID REFERENCES users(id) ON DELETE CASCADE,
+    notebook_id UUID,   -- agent-owned notebook (set after notebook creation)
+    history_id UUID,    -- agent-owned history (set after history creation)
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     last_seen TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -95,6 +97,8 @@ CREATE TABLE IF NOT EXISTS notebook_pages (
     folder_id        UUID REFERENCES notebook_folders(id) ON DELETE SET NULL,
     name             VARCHAR(255) NOT NULL,
     content_markdown TEXT NOT NULL DEFAULT '',
+    content_hash     VARCHAR(64),
+    metadata         JSONB DEFAULT '{}',
     yjs_state        BYTEA,
     created_by       UUID NOT NULL REFERENCES users(id),
     updated_by       UUID REFERENCES users(id),
@@ -345,6 +349,32 @@ async def init_db():
             await conn.execute(
                 f"ALTER TABLE {table} ALTER COLUMN workspace_id DROP NOT NULL"
             )
+
+        # Migration: add agent-owned resource columns to users
+        for col, ref_table in [("notebook_id", "notebooks"), ("history_id", "histories")]:
+            has_col = await conn.fetchval(
+                "SELECT 1 FROM information_schema.columns "
+                "WHERE table_name = 'users' AND column_name = $1", col,
+            )
+            if not has_col:
+                await conn.execute(
+                    f"ALTER TABLE users ADD COLUMN {col} UUID REFERENCES {ref_table}(id) ON DELETE SET NULL"
+                )
+
+        # Migration: add content_hash and metadata to notebook_pages
+        for col, col_type, col_default in [
+            ("content_hash", "VARCHAR(64)", None),
+            ("metadata", "JSONB", "'{}'"),
+        ]:
+            has_col = await conn.fetchval(
+                "SELECT 1 FROM information_schema.columns "
+                "WHERE table_name = 'notebook_pages' AND column_name = $1", col,
+            )
+            if not has_col:
+                default_clause = f" DEFAULT {col_default}" if col_default else ""
+                await conn.execute(
+                    f"ALTER TABLE notebook_pages ADD COLUMN {col} {col_type}{default_clause}"
+                )
 
 
 async def close_db():
