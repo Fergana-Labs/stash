@@ -117,13 +117,48 @@ def build_scored_local_context(
         if persona:
             identity += f"\n{persona}"
 
+        # Vector-matched events (if local embeddings available)
+        if prompt_text:
+            try:
+                import os
+                import httpx
+                import numpy as np
+                api_key = os.environ.get("EMBEDDING_API_KEY", "")
+                api_url = os.environ.get("EMBEDDING_API_URL", "https://api.openai.com/v1/embeddings")
+                if api_key:
+                    resp = httpx.post(
+                        api_url,
+                        headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+                        json={"model": "text-embedding-3-small", "input": [prompt_text], "dimensions": 384},
+                        timeout=5.0,
+                    )
+                    resp.raise_for_status()
+                    query_vec = np.array(resp.json()["data"][0]["embedding"], dtype=np.float32)
+                    vec_results = offline_db.search_events_vector(db, query_vec.tobytes(), limit=15)
+                    for evt in vec_results[:10]:
+                        content = f"[{evt.get('event_type', '')}] {evt.get('content', '')[:300]}"
+                        candidates.append(InjectionCandidate(
+                            key=f"event:{evt['id']}",
+                            content=content,
+                            section_header="Relevant Past Experience",
+                            relevance=max(evt.get("similarity", 0.5), 0.0),
+                            recency=1.0,
+                            confidence=0.5,
+                            source_type="episode",
+                        ))
+            except Exception:
+                pass  # Vector search unavailable, fall through to FTS
+
         # FTS-matched events from prompt
         if prompt_text:
             fts_results = offline_db.search_events_fts(db, prompt_text, limit=20)
             for evt in fts_results:
+                evt_key = f"event:{evt['id']}"
+                if any(c.key == evt_key for c in candidates):
+                    continue  # Skip if already added via vector search
                 content = f"[{evt.get('event_type', '')}] {evt.get('content', '')[:300]}"
                 candidates.append(InjectionCandidate(
-                    key=f"event:{evt['id']}",
+                    key=evt_key,
                     content=content,
                     section_header="Relevant Past Experience",
                     relevance=min(abs(evt.get("rank", 0.5)), 1.0),

@@ -82,6 +82,13 @@ def main():
                 tool_name=tool_name,
                 metadata=metadata,
             )
+            # Cloud reachable — opportunistically flush any pending local events
+            try:
+                from config import OFFLINE_DB_PATH
+                import offline_db
+                offline_db.try_flush_pending(OFFLINE_DB_PATH, client, cfg)
+            except Exception:
+                pass
     except Exception:
         # Cloud unavailable — queue locally for later sync
         try:
