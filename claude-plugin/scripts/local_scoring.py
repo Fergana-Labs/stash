@@ -88,6 +88,112 @@ def select_injections(
     return selected
 
 
+def build_scored_local_context(
+    db_path,
+    agent_name: str,
+    persona: str,
+    prompt_text: str,
+    session_state: dict,
+    budget_tokens: int = 4000,
+) -> str:
+    """Build scored injection context from local SQLite DB.
+
+    Uses FTS5 search + recent events as candidates, scores with four factors,
+    and selects via greedy knapsack. Returns empty string if DB is unavailable.
+    """
+    try:
+        import offline_db
+        from pathlib import Path
+
+        db = Path(db_path)
+        if not db.exists():
+            return ""
+
+        offline_db.init_db(db)
+        candidates: list[InjectionCandidate] = []
+
+        # Identity header
+        identity = f"## Agent Identity\nYou are **{agent_name}**, a Boozle agent."
+        if persona:
+            identity += f"\n{persona}"
+
+        # FTS-matched events from prompt
+        if prompt_text:
+            fts_results = offline_db.search_events_fts(db, prompt_text, limit=20)
+            for evt in fts_results:
+                content = f"[{evt.get('event_type', '')}] {evt.get('content', '')[:300]}"
+                candidates.append(InjectionCandidate(
+                    key=f"event:{evt['id']}",
+                    content=content,
+                    section_header="Relevant Past Experience",
+                    relevance=min(abs(evt.get("rank", 0.5)), 1.0),
+                    recency=1.0,
+                    confidence=0.5,
+                    source_type="episode",
+                ))
+
+        # FTS-matched notebook pages
+        if prompt_text:
+            page_results = offline_db.search_pages_fts(db, prompt_text, limit=10)
+            for page in page_results:
+                meta = {}
+                try:
+                    meta = __import__("json").loads(page.get("metadata", "{}"))
+                except Exception:
+                    pass
+                content = f"## {page.get('name', '')}\n{page.get('content_markdown', '')}"
+                note_type = meta.get("note_type", "note")
+                candidates.append(InjectionCandidate(
+                    key=f"page:{page['id']}",
+                    content=content,
+                    section_header=page.get("name", ""),
+                    relevance=min(abs(page.get("rank", 0.5)), 1.0),
+                    recency=1.0,
+                    confidence=1.0 if note_type != "pattern" else 0.5,
+                    source_type="pattern" if note_type == "pattern" else "note",
+                ))
+
+        # Recent events for recency
+        recent = offline_db.get_recent_events(db, limit=10)
+        for evt in recent:
+            evt_key = f"event:{evt['id']}"
+            if any(c.key == evt_key for c in candidates):
+                continue
+            content = f"[{evt.get('event_type', '')}] {evt.get('content', '')[:200]}"
+            candidates.append(InjectionCandidate(
+                key=evt_key,
+                content=content,
+                section_header="Recent Activity",
+                relevance=0.4,
+                recency=1.0,
+                confidence=0.5,
+                source_type="episode",
+            ))
+
+        if not candidates:
+            return ""
+
+        # Select via scoring + knapsack
+        selected = select_injections(candidates, budget_tokens)
+
+        # Build context
+        sections = [identity]
+        section_groups: dict[str, list[str]] = {}
+        for c in selected:
+            if c.source_type == "episode":
+                section_groups.setdefault(c.section_header, []).append(c.content)
+            else:
+                sections.append(c.content)
+
+        for header, items in section_groups.items():
+            sections.append(f"## {header}\n" + "\n".join(items))
+
+        return "\n\n".join(sections)
+
+    except Exception:
+        return ""
+
+
 def build_fallback_context(
     agent_name: str,
     persona: str,

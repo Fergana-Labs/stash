@@ -84,7 +84,21 @@ def main():
                 metadata=metadata,
             )
     except Exception:
-        pass
+        # Queue locally for later sync
+        try:
+            from config import OFFLINE_DB_PATH
+            import offline_db
+            offline_db.queue_event(
+                db_path=OFFLINE_DB_PATH,
+                store_id=cfg["history_store_id"],
+                agent_name=cfg["agent_name"],
+                event_type="session_end",
+                content=content,
+                session_id=state.get("session_id", ""),
+                metadata=metadata,
+            )
+        except Exception:
+            pass
 
     # Clear session ID
     state["session_id"] = ""

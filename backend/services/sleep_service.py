@@ -368,7 +368,7 @@ async def _score_outcomes(agent_id: UUID, notebook_id: UUID, config: dict, episo
 # --- Monologue generation ---
 
 
-async def _generate_monologues(agent_id: UUID, notebook_id: UUID, config: dict, episodes: list[dict], watermark: dict) -> datetime | None:
+async def _generate_monologues(agent_id: UUID, history_id: UUID, config: dict, episodes: list[dict], watermark: dict) -> datetime | None:
     batch_size = config["monologue_batch_size"]
     last_mono_ts = watermark.get("last_monologue_event_at")
 
@@ -391,16 +391,13 @@ async def _generate_monologues(agent_id: UUID, notebook_id: UUID, config: dict, 
             if text:
                 start_ts = batch[0]["created_at"].isoformat() if batch[0].get("created_at") else ""
                 end_ts = batch[-1]["created_at"].isoformat() if batch[-1].get("created_at") else ""
-                await notebook_service.create_page(
-                    notebook_id=notebook_id,
-                    name=f"Monologue {start_ts[:16]}",
-                    created_by=agent_id,
+                await memory_service.push_event(
+                    store_id=history_id,
+                    agent_name="sleep_agent",
+                    event_type="monologue",
                     content=text,
-                    metadata={
-                        "note_type": "monologue",
-                        "episode_range": {"start": start_ts, "end": end_ts},
-                        "auto_inject": False,
-                    },
+                    session_id=batch[0].get("session_id"),
+                    metadata={"episode_range": {"start": start_ts, "end": end_ts}},
                 )
                 max_mono_ts = batch[-1]["created_at"]
         except Exception:
@@ -564,21 +561,26 @@ async def curate(agent_id: UUID) -> dict:
     # Health detection
     health = _detect_health_issues(episodes)
 
-    # Generate monologues
-    max_mono_ts = await _generate_monologues(agent_id, notebook_id, config, episodes, watermark)
+    # Generate monologues (stored as history_events with event_type='monologue')
+    max_mono_ts = await _generate_monologues(agent_id, history_id, config, episodes, watermark)
 
-    # Gather existing notes for LLM context
+    # Gather existing notes for LLM context (exclude monologues — they're in history_events now)
     pool = get_pool()
     all_pages = await pool.fetch(
         "SELECT id, name, content_markdown, metadata FROM notebook_pages "
-        "WHERE notebook_id = $1 AND metadata->>'note_type' IS NOT NULL",
+        "WHERE notebook_id = $1 AND metadata->>'note_type' IS NOT NULL "
+        "AND metadata->>'note_type' != 'monologue'",
         notebook_id,
     )
     notes_summary = _format_notes_for_llm([dict(p) for p in all_pages])
 
-    # Format episodes
-    monologue_pages = [dict(p) for p in all_pages if (p.get("metadata") or {}).get("note_type") == "monologue"]
-    monologue_text = "\n".join(p["content_markdown"] for p in monologue_pages[-10:]) if monologue_pages else "(no monologues)"
+    # Gather recent monologues from history_events
+    monologue_rows = await pool.fetch(
+        "SELECT content FROM history_events WHERE store_id = $1 AND event_type = 'monologue' "
+        "ORDER BY created_at DESC LIMIT 10",
+        history_id,
+    )
+    monologue_text = "\n".join(r["content"] for r in monologue_rows) if monologue_rows else "(no monologues)"
     episodes_summary = _format_episodes_for_llm(episodes)
     full_summary = f"## Episodes\n{episodes_summary}\n\n## Monologues\n{monologue_text}"
 
