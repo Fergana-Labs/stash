@@ -83,7 +83,22 @@ def main():
                 metadata=metadata,
             )
     except Exception:
-        pass  # fire-and-forget
+        # Cloud unavailable — queue locally for later sync
+        try:
+            from config import OFFLINE_DB_PATH
+            import offline_db
+            offline_db.queue_event(
+                db_path=OFFLINE_DB_PATH,
+                store_id=cfg["history_store_id"],
+                agent_name=cfg["agent_name"],
+                event_type="tool_use",
+                content=content,
+                session_id=state.get("session_id", ""),
+                tool_name=tool_name,
+                metadata=metadata,
+            )
+        except Exception:
+            pass  # truly fire-and-forget
 
 
 if __name__ == "__main__":

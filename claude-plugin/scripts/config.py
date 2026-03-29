@@ -12,6 +12,7 @@ PLUGIN_DATA = Path(os.environ.get("CLAUDE_PLUGIN_DATA", Path.home() / ".claude/p
 STATE_FILE = PLUGIN_DATA / "state.json"
 CACHE_FILE = PLUGIN_DATA / "context_cache.json"
 INJECTION_STATE_FILE = PLUGIN_DATA / "injection_state.json"
+OFFLINE_DB_PATH = PLUGIN_DATA / "local.db"
 CACHE_TTL = 300  # 5 minutes
 
 # Shared path for replicate_me bridge escalations

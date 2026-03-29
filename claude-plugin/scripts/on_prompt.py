@@ -16,9 +16,9 @@ from config import (
     get_config, get_client, get_stdin_data, is_configured,
     load_state, load_cache,
     load_injection_state, save_injection_state,
-    load_escalations,
+    load_escalations, OFFLINE_DB_PATH,
 )
-from local_scoring import build_fallback_context
+from local_scoring import build_fallback_context, build_scored_local_context
 
 
 def main():
@@ -53,7 +53,7 @@ def main():
         # API unreachable — fall through to local fallback
         pass
 
-    # --- Local fallback ---
+    # --- Local fallback (uses offline SQLite DB if available) ---
     if context is None:
         cfg = get_config()
         state = load_state()
@@ -63,11 +63,18 @@ def main():
         if not persona and cache and cache.get("profile"):
             persona = cache["profile"].get("description", "")
 
-        recent_events = []
-        if cache and cache.get("recent_events"):
-            recent_events = cache["recent_events"]
+        # Try scored local context from offline DB
+        context = build_scored_local_context(
+            OFFLINE_DB_PATH, cfg["agent_name"], persona,
+            prompt_text or "", session_state,
+        )
 
-        context = build_fallback_context(cfg["agent_name"], persona, recent_events)
+        # Fall back to basic context if local DB is empty/unavailable
+        if not context:
+            recent_events = []
+            if cache and cache.get("recent_events"):
+                recent_events = cache["recent_events"]
+            context = build_fallback_context(cfg["agent_name"], persona, recent_events)
 
         # Increment prompt_num locally
         session_state["prompt_num"] = session_state.get("prompt_num", 0) + 1
