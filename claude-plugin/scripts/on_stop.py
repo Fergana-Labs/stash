@@ -83,6 +83,13 @@ def main():
                 session_id=state.get("session_id", ""),
                 metadata=metadata,
             )
+            # Cloud reachable — flush any pending local events
+            try:
+                from config import OFFLINE_DB_PATH
+                import offline_db
+                offline_db.try_flush_pending(OFFLINE_DB_PATH, client, cfg)
+            except Exception:
+                pass
     except Exception:
         # Queue locally for later sync
         try:

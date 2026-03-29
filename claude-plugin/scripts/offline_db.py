@@ -25,6 +25,7 @@ CREATE TABLE IF NOT EXISTS history_events (
     tool_name TEXT,
     content TEXT NOT NULL,
     metadata TEXT DEFAULT '{}',
+    embedding BLOB,
     created_at TEXT NOT NULL,
     synced INTEGER DEFAULT 0
 );
@@ -268,6 +269,159 @@ def mark_pages_synced(db_path: Path, page_ids: list[str]) -> None:
 
 
 # --- Sync engine ---
+
+
+# --- Vector search (local embeddings) ---
+
+
+def embed_and_store(db_path: Path, event_id: str, embedding_bytes: bytes) -> None:
+    """Store a pre-computed embedding for an event."""
+    conn = _get_conn(db_path)
+    conn.execute(
+        "UPDATE history_events SET embedding = ? WHERE id = ?",
+        (embedding_bytes, event_id),
+    )
+    conn.commit()
+
+
+def search_events_vector(db_path: Path, query_embedding_bytes: bytes, limit: int = 20) -> list[dict]:
+    """Cosine similarity search using stored embeddings.
+
+    Embeddings are stored as raw float32 bytes. Uses numpy for cosine distance.
+    Returns events sorted by similarity (highest first).
+    """
+    try:
+        import numpy as np
+    except ImportError:
+        return []
+
+    conn = _get_conn(db_path)
+    rows = conn.execute(
+        "SELECT id, store_id, agent_name, event_type, session_id, tool_name, "
+        "content, metadata, embedding, created_at FROM history_events "
+        "WHERE embedding IS NOT NULL"
+    ).fetchall()
+
+    if not rows:
+        return []
+
+    query_vec = np.frombuffer(query_embedding_bytes, dtype=np.float32)
+    query_norm = np.linalg.norm(query_vec)
+    if query_norm == 0:
+        return []
+
+    scored = []
+    for row in rows:
+        row_vec = np.frombuffer(row["embedding"], dtype=np.float32)
+        row_norm = np.linalg.norm(row_vec)
+        if row_norm == 0:
+            continue
+        similarity = float(np.dot(query_vec, row_vec) / (query_norm * row_norm))
+        scored.append((similarity, dict(row)))
+
+    scored.sort(key=lambda x: x[0], reverse=True)
+    results = []
+    for sim, evt in scored[:limit]:
+        evt["similarity"] = sim
+        del evt["embedding"]  # Don't return raw bytes
+        results.append(evt)
+    return results
+
+
+def embed_pending_events(db_path: Path, embedding_api_url: str, embedding_api_key: str,
+                          embedding_model: str = "text-embedding-3-small",
+                          embedding_dims: int = 384) -> int:
+    """Embed events that don't have embeddings yet. Call when online.
+
+    Returns count of newly embedded events.
+    """
+    try:
+        import httpx
+        import numpy as np
+    except ImportError:
+        return 0
+
+    conn = _get_conn(db_path)
+    rows = conn.execute(
+        "SELECT id, content FROM history_events WHERE embedding IS NULL "
+        "ORDER BY created_at DESC LIMIT 100"
+    ).fetchall()
+
+    if not rows:
+        return 0
+
+    texts = [r["content"] for r in rows]
+    ids = [r["id"] for r in rows]
+
+    try:
+        resp = httpx.post(
+            embedding_api_url,
+            headers={
+                "Authorization": f"Bearer {embedding_api_key}",
+                "Content-Type": "application/json",
+            },
+            json={"model": embedding_model, "input": texts, "dimensions": embedding_dims},
+            timeout=30.0,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        embeddings = sorted(data["data"], key=lambda x: x["index"])
+
+        count = 0
+        for eid, emb_data in zip(ids, embeddings):
+            vec = np.array(emb_data["embedding"], dtype=np.float32)
+            conn.execute(
+                "UPDATE history_events SET embedding = ? WHERE id = ?",
+                (vec.tobytes(), eid),
+            )
+            count += 1
+        conn.commit()
+        return count
+    except Exception:
+        return 0
+
+
+def try_flush_pending(db_path: Path, client, cfg: dict) -> None:
+    """Lightweight auto-sync: flush pending local events to cloud + embed unembedded events.
+
+    Called after every successful cloud API call to opportunistically
+    drain the local queue and fill in embeddings. Non-blocking, never raises.
+    """
+    try:
+        if not db_path.exists():
+            return
+        pending = get_pending_events(db_path, limit=20)
+
+        ws_id = cfg.get("workspace_id", "")
+        store_id = cfg.get("history_store_id", "")
+
+        if pending and ws_id and store_id:
+            synced_ids = []
+            for evt in pending:
+                try:
+                    client.push_event(
+                        workspace_id=ws_id,
+                        store_id=store_id,
+                        agent_name=evt["agent_name"],
+                        event_type=evt["event_type"],
+                        content=evt["content"],
+                        session_id=evt.get("session_id"),
+                        tool_name=evt.get("tool_name"),
+                        metadata=json.loads(evt.get("metadata", "{}")),
+                    )
+                    synced_ids.append(evt["id"])
+                except Exception:
+                    break
+            mark_events_synced(db_path, synced_ids)
+
+        # Opportunistically embed unembedded events while online
+        import os
+        api_key = os.environ.get("EMBEDDING_API_KEY", "")
+        api_url = os.environ.get("EMBEDDING_API_URL", "https://api.openai.com/v1/embeddings")
+        if api_key:
+            embed_pending_events(db_path, api_url, api_key)
+    except Exception:
+        pass  # Never crash the calling hook
 
 
 def sync_to_cloud(db_path: Path, client, cfg: dict) -> dict:

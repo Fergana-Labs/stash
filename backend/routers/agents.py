@@ -341,3 +341,61 @@ async def sleep_status(current_user: dict = Depends(get_current_user)):
         "watermark": dict(watermark) if watermark else None,
         "config": dict(config) if config else {"enabled": True, "interval_minutes": 60, "max_pattern_cards": 500},
     }
+
+
+@router.post("/me/backfill-embeddings")
+async def backfill_embeddings(
+    limit: int = 100,
+    current_user: dict = Depends(get_current_user),
+):
+    """Backfill embeddings for existing events that don't have them.
+
+    Call this after deploying pgvector to embed historical events.
+    Processes up to `limit` events per call.
+    """
+    from ..services import embedding_service
+
+    if not embedding_service.is_configured():
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Embedding service not configured (EMBEDDING_API_KEY not set)",
+        )
+
+    agent = _require_agent(current_user)
+    hist_id = _get_history_id(agent)
+
+    from ..database import get_pool
+    pool = get_pool()
+
+    # Get events without embeddings
+    rows = await pool.fetch(
+        "SELECT id, content FROM history_events "
+        "WHERE store_id = $1 AND embedding IS NULL "
+        "ORDER BY created_at DESC LIMIT $2",
+        hist_id, min(limit, 500),
+    )
+
+    if not rows:
+        return {"status": "complete", "embedded": 0, "remaining": 0}
+
+    # Batch embed
+    texts = [r["content"] for r in rows]
+    vecs = await embedding_service.embed_batch(texts)
+
+    embedded = 0
+    if vecs:
+        async with pool.acquire() as conn:
+            for row, vec in zip(rows, vecs):
+                await conn.execute(
+                    "UPDATE history_events SET embedding = $1 WHERE id = $2",
+                    vec, row["id"],
+                )
+                embedded += 1
+
+    # Check how many remain
+    remaining = await pool.fetchval(
+        "SELECT COUNT(*) FROM history_events WHERE store_id = $1 AND embedding IS NULL",
+        hist_id,
+    )
+
+    return {"status": "in_progress" if remaining > 0 else "complete", "embedded": embedded, "remaining": remaining}

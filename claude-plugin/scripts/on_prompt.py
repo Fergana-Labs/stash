@@ -49,6 +49,12 @@ def main():
             # Persist updated session state
             updated_state = result.get("updated_session_state", session_state)
             save_injection_state(updated_state)
+            # Cloud reachable — flush pending local events
+            try:
+                import offline_db
+                offline_db.try_flush_pending(OFFLINE_DB_PATH, client, get_config())
+            except Exception:
+                pass
     except Exception:
         # API unreachable — fall through to local fallback
         pass
