@@ -354,6 +354,16 @@ _PARTIAL_INDEXES = [
 
 async def init_db():
     global pool
+
+    # First, ensure pgvector extension exists before creating the pool,
+    # because the pool's init callback registers the vector type codec
+    # on every new connection (which fails if the extension isn't installed).
+    bootstrap = await asyncpg.connect(settings.DATABASE_URL)
+    try:
+        await bootstrap.execute("CREATE EXTENSION IF NOT EXISTS vector")
+    finally:
+        await bootstrap.close()
+
     async def _init_connection(conn):
         await register_vector(conn)
 
@@ -418,13 +428,8 @@ async def init_db():
                             f"ALTER TABLE {tbl_name} ADD CHECK(object_type IN ('chat', 'notebook', 'history'))"
                         )
 
-        # Enable pgvector extension (required before schema with vector columns)
-        await conn.execute("CREATE EXTENSION IF NOT EXISTS vector")
-
         # Create schema (idempotent — CREATE TABLE IF NOT EXISTS)
         await conn.execute(SCHEMA)
-        for idx_sql in _PARTIAL_INDEXES:
-            await conn.execute(idx_sql)
         # Migration: make workspace_id nullable for personal items
         for table in ("notebooks", "histories", "decks"):
             await conn.execute(
@@ -466,6 +471,10 @@ async def init_db():
                 await conn.execute(
                     f"ALTER TABLE notebook_pages ADD COLUMN {col} {col_type}{default_clause}"
                 )
+
+        # Create partial indexes (after all migrations so columns exist)
+        for idx_sql in _PARTIAL_INDEXES:
+            await conn.execute(idx_sql)
 
 
 async def close_db():
