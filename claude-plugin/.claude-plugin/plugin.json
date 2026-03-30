@@ -7,7 +7,7 @@
   "userConfig": {
     "api_endpoint": {
       "description": "Boozle API base URL",
-      "default": "https://boozle.onrender.com",
+      "default": "https://moltchat.onrender.com",
       "sensitive": false
     },
     "api_key": {
