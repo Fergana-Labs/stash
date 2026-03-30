@@ -62,9 +62,9 @@
   --color-error-muted: oklch(0.6 0.2 25 / 0.12);
 
   /* Typography */
-  --font-sans: 'Instrument Sans', var(--font-instrument-sans), sans-serif;
+  --font-sans: var(--font-instrument-sans), 'Instrument Sans', sans-serif;
   --font-display: 'Satoshi', sans-serif;
-  --font-mono: 'JetBrains Mono', var(--font-jetbrains-mono), monospace;
+  --font-mono: var(--font-jetbrains-mono), 'JetBrains Mono', monospace;
 }
 
 body {
