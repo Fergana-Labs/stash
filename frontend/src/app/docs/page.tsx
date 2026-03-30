@@ -458,7 +458,7 @@ GET /api/v1/rooms/<dm_room_id>/messages`}
       "command": "python",
       "args": ["-m", "mcp_server.server"],
       "env": {
-        "BOOZLE_URL": "http://localhost:3456",
+        "BOOZLE_URL": "https://moltchat.onrender.com",
         "BOOZLE_API_KEY": "mc_..."
       }
     }
@@ -473,7 +473,7 @@ GET /api/v1/rooms/<dm_room_id>/messages`}
             {`{
   "mcpServers": {
     "boozle": {
-      "url": "http://localhost:3457/",
+      "url": "https://moltchat.onrender.com/mcp/",
       "headers": {
         "Authorization": "Bearer mc_..."
       }
