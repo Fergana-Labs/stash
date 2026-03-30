@@ -273,7 +273,7 @@ def send(message: str = typer.Argument(...), workspace_id: str = typer.Option(No
 
 
 @app.command()
-def read(workspace_id: str = typer.Option(None, "--ws"), chat_id: str = typer.Option(None, "--chat"), room_id: str = typer.Option(None, "--room"), dm_id: str = typer.Option(None, "--dm"), limit: int = typer.Option(50, "-n"), after: Optional[str] = typer.Option(None, "--after"), as_json: bool = typer.Option(False, "--json")):
+def read(workspace_id: str = typer.Option(None, "--ws"), chat_id: str = typer.Option(None, "--chat"), room_id: str = typer.Option(None, "--room"), dm_id: str = typer.Option(None, "--dm"), limit: int = typer.Option(50, "-n", "--limit"), after: Optional[str] = typer.Option(None, "--after"), as_json: bool = typer.Option(False, "--json")):
     """Read messages. Use --room, --dm, or --ws + --chat."""
     with _client() as c:
         try:
@@ -505,7 +505,7 @@ def hist_push(content: str = typer.Argument(...), workspace_id: str = typer.Opti
 
 
 @hist_app.command("query")
-def hist_query(workspace_id: str = typer.Option(None, "--ws"), store_id: str = typer.Option(None, "--store"), agent_name: str = typer.Option(None, "--agent"), event_type: str = typer.Option(None, "--type"), limit: int = typer.Option(50, "-n"), all_: bool = typer.Option(False, "--all"), as_json: bool = typer.Option(False, "--json")):
+def hist_query(workspace_id: str = typer.Option(None, "--ws"), store_id: str = typer.Option(None, "--store"), agent_name: str = typer.Option(None, "--agent"), event_type: str = typer.Option(None, "--type"), limit: int = typer.Option(50, "-n", "--limit"), all_: bool = typer.Option(False, "--all"), as_json: bool = typer.Option(False, "--json")):
     """Query events. --all for cross-workspace."""
     with _client() as c:
         try:
@@ -529,7 +529,7 @@ def hist_query(workspace_id: str = typer.Option(None, "--ws"), store_id: str = t
 
 
 @hist_app.command("search")
-def hist_search(query: str = typer.Argument(...), workspace_id: str = typer.Option(None, "--ws"), store_id: str = typer.Option(None, "--store"), limit: int = typer.Option(50, "-n"), as_json: bool = typer.Option(False, "--json")):
+def hist_search(query: str = typer.Argument(...), workspace_id: str = typer.Option(None, "--ws"), store_id: str = typer.Option(None, "--store"), limit: int = typer.Option(50, "-n", "--limit"), as_json: bool = typer.Option(False, "--json")):
     """Full-text search on events."""
     ws = workspace_id or _default_workspace()
     store = store_id or load_config().get("default_store", "")
