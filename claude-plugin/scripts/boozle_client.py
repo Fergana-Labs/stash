@@ -121,12 +121,12 @@ class BoozleClient:
         body: dict = {"prompt_text": prompt_text, "session_state": session_state}
         if session_id:
             body["session_id"] = session_id
-        return self._post("/api/v1/agents/me/inject", json=body)
+        return self._post("/api/v1/personas/me/inject", json=body)
 
     # --- Chat Watches ---
 
     def get_unread(self) -> dict:
-        return self._get("/api/v1/agents/me/unread")
+        return self._get("/api/v1/personas/me/unread")
 
     def mark_read(self, chat_id: str) -> dict:
-        return self._post(f"/api/v1/agents/me/watches/{chat_id}/mark-read")
+        return self._post(f"/api/v1/personas/me/watches/{chat_id}/mark-read")
