@@ -1,6 +1,5 @@
 import hashlib
 import secrets
-from uuid import UUID
 
 import bcrypt
 from fastapi import Depends, HTTPException, status

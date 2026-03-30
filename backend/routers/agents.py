@@ -222,7 +222,7 @@ async def delete_agent_page(
 async def get_my_history(current_user: dict = Depends(get_current_user)):
     agent = _require_agent(current_user)
     hist_id = _get_history_id(agent)
-    store = await memory_service.get_personal_store(hist_id, agent["id"])
+    store = await memory_service.get_store(hist_id, workspace_id=None, user_id=agent["id"])
     if not store:
         raise HTTPException(status_code=404, detail="History not found")
     return HistoryResponse(**store)

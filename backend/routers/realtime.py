@@ -9,7 +9,7 @@ from starlette.responses import StreamingResponse
 
 from ..auth import get_current_user, get_user_from_api_key
 from ..models import WSMessage
-from ..services import chat_service, permission_service, workspace_service, webhook_service
+from ..services import chat_service, permission_service, webhook_service
 from ..services.connection_manager import manager
 
 router = APIRouter(tags=["realtime"])

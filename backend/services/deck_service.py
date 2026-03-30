@@ -76,25 +76,23 @@ async def delete_deck(deck_id: UUID) -> bool:
     return result == "DELETE 1"
 
 
-async def list_decks(workspace_id: UUID) -> list[dict]:
+async def list_decks(workspace_id: UUID | None, user_id: UUID | None = None) -> list[dict]:
+    """List decks. For personal decks, pass workspace_id=None and user_id."""
     pool = get_pool()
-    rows = await pool.fetch(
-        "SELECT id, workspace_id, name, description, html_content, deck_type, "
-        "created_by, updated_by, created_at, updated_at "
-        "FROM decks WHERE workspace_id = $1 ORDER BY updated_at DESC",
-        workspace_id,
-    )
-    return [dict(r) for r in rows]
-
-
-async def list_personal_decks(user_id: UUID) -> list[dict]:
-    pool = get_pool()
-    rows = await pool.fetch(
-        "SELECT id, workspace_id, name, description, html_content, deck_type, "
-        "created_by, updated_by, created_at, updated_at "
-        "FROM decks WHERE workspace_id IS NULL AND created_by = $1 ORDER BY updated_at DESC",
-        user_id,
-    )
+    if workspace_id is not None:
+        rows = await pool.fetch(
+            "SELECT id, workspace_id, name, description, html_content, deck_type, "
+            "created_by, updated_by, created_at, updated_at "
+            "FROM decks WHERE workspace_id = $1 ORDER BY updated_at DESC",
+            workspace_id,
+        )
+    else:
+        rows = await pool.fetch(
+            "SELECT id, workspace_id, name, description, html_content, deck_type, "
+            "created_by, updated_by, created_at, updated_at "
+            "FROM decks WHERE workspace_id IS NULL AND created_by = $1 ORDER BY updated_at DESC",
+            user_id,
+        )
     return [dict(r) for r in rows]
 
 

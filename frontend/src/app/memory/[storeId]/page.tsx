@@ -11,6 +11,7 @@ import {
   queryHistoryEvents,
   searchHistoryEvents,
   searchPersonalHistoryEvents,
+  deletePersonalHistory,
 } from "../../../lib/api";
 import { HistoryEvent, History, HistoryWithWorkspace } from "../../../lib/types";
 
@@ -99,6 +100,20 @@ export default function HistoryDetailPage() {
         )}
         {(workspaceName || workspaceId) && (
           <span className="text-muted text-sm hidden sm:inline">{workspaceName || "Workspace history"}</span>
+        )}
+        {!workspaceId && (
+          <button
+            onClick={async () => {
+              if (!confirm("Delete this history store? All events will be lost.")) return;
+              try {
+                await deletePersonalHistory(storeId);
+                router.push("/memory");
+              } catch (err) { setError(err instanceof Error ? err.message : "Failed to delete"); }
+            }}
+            className="ml-auto text-xs text-red-400 hover:text-red-300 px-2 py-1"
+          >
+            Delete
+          </button>
         )}
       </div>
 

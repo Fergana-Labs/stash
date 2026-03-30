@@ -7,8 +7,6 @@ Candidate sources: always-inject notes, keyword-matched notes/patterns,
 vector-similar events, FTS-matched events.
 """
 
-from __future__ import annotations
-
 import json
 import math
 from dataclasses import dataclass, field

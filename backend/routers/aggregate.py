@@ -1,17 +1,8 @@
 """Aggregate router: cross-workspace views for the authenticated user."""
 
-from uuid import UUID
-
 from fastapi import APIRouter, Depends, Query
 
 from ..auth import get_current_user
-from ..models import (
-    ChatMessageResponse,
-    ChatResponse,
-    HistoryEventResponse,
-    HistoryResponse,
-    NotebookResponse,
-)
 from ..services import chat_service, deck_service, memory_service, notebook_service, agent_identity_service
 
 router = APIRouter(prefix="/api/v1/me", tags=["aggregate"])

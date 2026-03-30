@@ -1,5 +1,6 @@
-"""History router: structured agent event storage."""
+"""History router: workspace and personal structured agent event storage."""
 
+import asyncio
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -20,7 +21,11 @@ from ..models import (
 )
 from ..services import memory_service, permission_service, workspace_service, webhook_service
 
-router = APIRouter(prefix="/api/v1/workspaces/{workspace_id}/memory", tags=["memory"])
+ws_router = APIRouter(prefix="/api/v1/workspaces/{workspace_id}/memory", tags=["memory"])
+personal_router = APIRouter(prefix="/api/v1/memory", tags=["personal_memory"])
+
+
+# --- Shared auth helpers ---
 
 
 async def _check_member(workspace_id: UUID, user_id: UUID) -> None:
@@ -28,7 +33,7 @@ async def _check_member(workspace_id: UUID, user_id: UUID) -> None:
         raise HTTPException(status_code=403, detail="Not a workspace member")
 
 
-async def _check_store_access(workspace_id: UUID, store_id: UUID, user_id: UUID) -> None:
+async def _check_ws_store_access(workspace_id: UUID, store_id: UUID, user_id: UUID) -> None:
     has_access = await permission_service.check_access(
         "history", store_id, user_id, workspace_id=workspace_id,
     )
@@ -36,11 +41,18 @@ async def _check_store_access(workspace_id: UUID, store_id: UUID, user_id: UUID)
         raise HTTPException(status_code=403, detail="No access to this history")
 
 
-# --- Store CRUD ---
+async def _check_personal_store_owner(store_id: UUID, user_id: UUID) -> None:
+    """Verify user owns this personal history."""
+    store = await memory_service.get_store(store_id, workspace_id=None, user_id=user_id)
+    if not store:
+        raise HTTPException(status_code=403, detail="Not the owner of this store")
 
 
-@router.post("", response_model=HistoryResponse, status_code=201)
-async def create_store(
+# ===== Workspace store endpoints =====
+
+
+@ws_router.post("", response_model=HistoryResponse, status_code=201)
+async def create_ws_store(
     workspace_id: UUID, req: HistoryCreateRequest,
     current_user: dict = Depends(get_current_user),
 ):
@@ -56,8 +68,8 @@ async def create_store(
     return HistoryResponse(**store)
 
 
-@router.get("", response_model=HistoryListResponse)
-async def list_stores(
+@ws_router.get("", response_model=HistoryListResponse)
+async def list_ws_stores(
     workspace_id: UUID, current_user: dict = Depends(get_current_user),
 ):
     await _check_member(workspace_id, current_user["id"])
@@ -65,20 +77,20 @@ async def list_stores(
     return HistoryListResponse(stores=[HistoryResponse(**s) for s in stores])
 
 
-@router.get("/{store_id}", response_model=HistoryResponse)
-async def get_store(
+@ws_router.get("/{store_id}", response_model=HistoryResponse)
+async def get_ws_store(
     workspace_id: UUID, store_id: UUID,
     current_user: dict = Depends(get_current_user),
 ):
-    await _check_store_access(workspace_id, store_id, current_user["id"])
+    await _check_ws_store_access(workspace_id, store_id, current_user["id"])
     store = await memory_service.get_store(store_id, workspace_id)
     if not store:
         raise HTTPException(status_code=404, detail="Store not found")
     return HistoryResponse(**store)
 
 
-@router.delete("/{store_id}", status_code=204)
-async def delete_store(
+@ws_router.delete("/{store_id}", status_code=204)
+async def delete_ws_store(
     workspace_id: UUID, store_id: UUID,
     current_user: dict = Depends(get_current_user),
 ):
@@ -90,22 +102,17 @@ async def delete_store(
         raise HTTPException(status_code=404, detail="Store not found")
 
 
-# --- Events ---
-
-
-@router.post("/{store_id}/events", response_model=HistoryEventResponse, status_code=201)
-async def push_event(
+@ws_router.post("/{store_id}/events", response_model=HistoryEventResponse, status_code=201)
+async def push_ws_event(
     workspace_id: UUID, store_id: UUID, req: HistoryEventCreateRequest,
     current_user: dict = Depends(get_current_user),
 ):
-    await _check_store_access(workspace_id, store_id, current_user["id"])
+    await _check_ws_store_access(workspace_id, store_id, current_user["id"])
     event = await memory_service.push_event(
         store_id, agent_name=req.agent_name, event_type=req.event_type,
         content=req.content, session_id=req.session_id,
         tool_name=req.tool_name, metadata=req.metadata,
     )
-    # Dispatch webhooks
-    import asyncio
     asyncio.create_task(
         webhook_service.dispatch_webhooks(
             workspace_id, "memory.event", event, sender_id=current_user["id"],
@@ -114,19 +121,19 @@ async def push_event(
     return HistoryEventResponse(**event)
 
 
-@router.post("/{store_id}/events/batch", response_model=list[HistoryEventResponse], status_code=201)
-async def push_events_batch(
+@ws_router.post("/{store_id}/events/batch", response_model=list[HistoryEventResponse], status_code=201)
+async def push_ws_events_batch(
     workspace_id: UUID, store_id: UUID, req: HistoryEventBatchRequest,
     current_user: dict = Depends(get_current_user),
 ):
-    await _check_store_access(workspace_id, store_id, current_user["id"])
+    await _check_ws_store_access(workspace_id, store_id, current_user["id"])
     events_data = [e.model_dump() for e in req.events]
     events = await memory_service.push_events_batch(store_id, events_data)
     return [HistoryEventResponse(**e) for e in events]
 
 
-@router.get("/{store_id}/events", response_model=HistoryEventListResponse)
-async def query_events(
+@ws_router.get("/{store_id}/events", response_model=HistoryEventListResponse)
+async def query_ws_events(
     workspace_id: UUID, store_id: UUID,
     agent_name: str | None = Query(None),
     session_id: str | None = Query(None),
@@ -136,7 +143,7 @@ async def query_events(
     limit: int = Query(50, ge=1, le=200),
     current_user: dict = Depends(get_current_user),
 ):
-    await _check_store_access(workspace_id, store_id, current_user["id"])
+    await _check_ws_store_access(workspace_id, store_id, current_user["id"])
     events, has_more = await memory_service.query_events(
         store_id, agent_name=agent_name, session_id=session_id,
         event_type=event_type, after=after, before=before, limit=limit,
@@ -147,14 +154,14 @@ async def query_events(
     )
 
 
-@router.get("/{store_id}/events/search", response_model=HistoryEventListResponse)
-async def search_events(
+@ws_router.get("/{store_id}/events/search", response_model=HistoryEventListResponse)
+async def search_ws_events(
     workspace_id: UUID, store_id: UUID,
     q: str = Query(..., min_length=1),
     limit: int = Query(50, ge=1, le=200),
     current_user: dict = Depends(get_current_user),
 ):
-    await _check_store_access(workspace_id, store_id, current_user["id"])
+    await _check_ws_store_access(workspace_id, store_id, current_user["id"])
     events = await memory_service.search_events(store_id, q, limit=limit)
     return HistoryEventListResponse(
         events=[HistoryEventResponse(**e) for e in events],
@@ -162,22 +169,22 @@ async def search_events(
     )
 
 
-@router.get("/{store_id}/events/{event_id}", response_model=HistoryEventResponse)
-async def get_event(
+@ws_router.get("/{store_id}/events/{event_id}", response_model=HistoryEventResponse)
+async def get_ws_event(
     workspace_id: UUID, store_id: UUID, event_id: UUID,
     current_user: dict = Depends(get_current_user),
 ):
-    await _check_store_access(workspace_id, store_id, current_user["id"])
+    await _check_ws_store_access(workspace_id, store_id, current_user["id"])
     event = await memory_service.get_event(event_id, store_id)
     if not event:
         raise HTTPException(status_code=404, detail="Event not found")
     return HistoryEventResponse(**event)
 
 
-# --- Permissions ---
+# --- Workspace permissions ---
 
 
-@router.get("/{store_id}/permissions", response_model=PermissionResponse)
+@ws_router.get("/{store_id}/permissions", response_model=PermissionResponse)
 async def get_permissions(
     workspace_id: UUID, store_id: UUID,
     current_user: dict = Depends(get_current_user),
@@ -187,7 +194,7 @@ async def get_permissions(
     return PermissionResponse(**perms)
 
 
-@router.patch("/{store_id}/permissions")
+@ws_router.patch("/{store_id}/permissions")
 async def set_visibility(
     workspace_id: UUID, store_id: UUID, req: SetVisibilityRequest,
     current_user: dict = Depends(get_current_user),
@@ -199,7 +206,7 @@ async def set_visibility(
     return {"status": "ok", "visibility": req.visibility}
 
 
-@router.post("/{store_id}/permissions/share", response_model=ShareResponse)
+@ws_router.post("/{store_id}/permissions/share", response_model=ShareResponse)
 async def add_share(
     workspace_id: UUID, store_id: UUID, req: ShareRequest,
     current_user: dict = Depends(get_current_user),
@@ -220,7 +227,7 @@ async def add_share(
     )
 
 
-@router.delete("/{store_id}/permissions/share/{user_id}", status_code=204)
+@ws_router.delete("/{store_id}/permissions/share/{user_id}", status_code=204)
 async def remove_share(
     workspace_id: UUID, store_id: UUID, user_id: UUID,
     current_user: dict = Depends(get_current_user),
@@ -229,3 +236,120 @@ async def remove_share(
     if role not in ("owner", "admin"):
         raise HTTPException(status_code=403, detail="Only owner/admin can remove shares")
     await permission_service.remove_share("history", store_id, user_id)
+
+
+# ===== Personal store endpoints =====
+
+
+@personal_router.post("", response_model=HistoryResponse, status_code=201)
+async def create_personal_store(
+    req: HistoryCreateRequest, current_user: dict = Depends(get_current_user),
+):
+    try:
+        store = await memory_service.create_store(
+            None, req.name, req.description, current_user["id"],
+        )
+    except Exception as e:
+        if "unique" in str(e).lower():
+            raise HTTPException(status_code=409, detail="Store name already exists")
+        raise
+    return HistoryResponse(**store)
+
+
+@personal_router.get("", response_model=HistoryListResponse)
+async def list_personal_stores(current_user: dict = Depends(get_current_user)):
+    stores = await memory_service.list_stores(None, user_id=current_user["id"])
+    return HistoryListResponse(stores=[HistoryResponse(**s) for s in stores])
+
+
+@personal_router.get("/{store_id}", response_model=HistoryResponse)
+async def get_personal_store(
+    store_id: UUID, current_user: dict = Depends(get_current_user),
+):
+    store = await memory_service.get_store(store_id, workspace_id=None, user_id=current_user["id"])
+    if not store:
+        raise HTTPException(status_code=404, detail="Store not found")
+    return HistoryResponse(**store)
+
+
+@personal_router.delete("/{store_id}", status_code=204)
+async def delete_personal_store(
+    store_id: UUID, current_user: dict = Depends(get_current_user),
+):
+    deleted = await memory_service.delete_store(store_id, workspace_id=None, user_id=current_user["id"])
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Store not found")
+
+
+@personal_router.post("/{store_id}/events", response_model=HistoryEventResponse, status_code=201)
+async def push_personal_event(
+    store_id: UUID, req: HistoryEventCreateRequest,
+    current_user: dict = Depends(get_current_user),
+):
+    await _check_personal_store_owner(store_id, current_user["id"])
+    event = await memory_service.push_event(
+        store_id, agent_name=req.agent_name, event_type=req.event_type,
+        content=req.content, session_id=req.session_id,
+        tool_name=req.tool_name, metadata=req.metadata,
+    )
+    return HistoryEventResponse(**event)
+
+
+@personal_router.post("/{store_id}/events/batch", response_model=list[HistoryEventResponse], status_code=201)
+async def push_personal_events_batch(
+    store_id: UUID, req: HistoryEventBatchRequest,
+    current_user: dict = Depends(get_current_user),
+):
+    await _check_personal_store_owner(store_id, current_user["id"])
+    events_data = [e.model_dump() for e in req.events]
+    events = await memory_service.push_events_batch(store_id, events_data)
+    return [HistoryEventResponse(**e) for e in events]
+
+
+@personal_router.get("/{store_id}/events", response_model=HistoryEventListResponse)
+async def query_personal_events(
+    store_id: UUID,
+    agent_name: str | None = Query(None),
+    session_id: str | None = Query(None),
+    event_type: str | None = Query(None),
+    after: str | None = Query(None),
+    before: str | None = Query(None),
+    limit: int = Query(50, ge=1, le=200),
+    current_user: dict = Depends(get_current_user),
+):
+    await _check_personal_store_owner(store_id, current_user["id"])
+    events, has_more = await memory_service.query_events(
+        store_id, agent_name=agent_name, session_id=session_id,
+        event_type=event_type, after=after, before=before, limit=limit,
+    )
+    return HistoryEventListResponse(
+        events=[HistoryEventResponse(**e) for e in events],
+        has_more=has_more,
+    )
+
+
+@personal_router.get("/{store_id}/events/search", response_model=HistoryEventListResponse)
+async def search_personal_events(
+    store_id: UUID,
+    q: str = Query(..., min_length=1),
+    limit: int = Query(50, ge=1, le=200),
+    current_user: dict = Depends(get_current_user),
+):
+    await _check_personal_store_owner(store_id, current_user["id"])
+    events = await memory_service.search_events(store_id, q, limit=limit)
+    return HistoryEventListResponse(
+        events=[HistoryEventResponse(**e) for e in events],
+        has_more=False,
+    )
+
+
+@personal_router.get("/{store_id}/events/{event_id}", response_model=HistoryEventResponse)
+async def get_personal_event(
+    store_id: UUID, event_id: UUID,
+    current_user: dict = Depends(get_current_user),
+):
+    await _check_personal_store_owner(store_id, current_user["id"])
+    event = await memory_service.get_event(event_id, store_id)
+    if not event:
+        raise HTTPException(status_code=404, detail="Event not found")
+    return HistoryEventResponse(**event)

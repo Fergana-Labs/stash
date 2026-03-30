@@ -9,6 +9,7 @@ import { useAuth } from "../../hooks/useAuth";
 import {
   listAllNotebooks,
   createPersonalNotebook,
+  deletePersonalNotebook,
   listPersonalPageTree,
   listPageTree,
   createPersonalPage,
@@ -206,15 +207,33 @@ export default function NotebooksPage() {
             <div key={key} className="px-2 py-2">
               <div className="text-[10px] font-medium text-muted uppercase tracking-wider px-2 mb-1">{group.name}</div>
               {group.notebooks.map((nb) => (
-                <button
-                  key={nb.id}
-                  onClick={() => handleSelectNotebook(nb)}
-                  className={`w-full text-left px-2 py-1.5 rounded text-sm truncate transition-colors ${
-                    selectedNotebook?.id === nb.id ? "bg-brand/10 text-brand font-medium" : "text-dim hover:text-foreground hover:bg-raised"
-                  }`}
-                >
-                  {nb.name}
-                </button>
+                <div key={nb.id} className="group flex items-center">
+                  <button
+                    onClick={() => handleSelectNotebook(nb)}
+                    className={`flex-1 text-left px-2 py-1.5 rounded text-sm truncate transition-colors ${
+                      selectedNotebook?.id === nb.id ? "bg-brand/10 text-brand font-medium" : "text-dim hover:text-foreground hover:bg-raised"
+                    }`}
+                  >
+                    {nb.name}
+                  </button>
+                  {!nb.workspace_id && (
+                    <button
+                      onClick={async (e) => {
+                        e.stopPropagation();
+                        if (!confirm(`Delete notebook "${nb.name}"?`)) return;
+                        try {
+                          await deletePersonalNotebook(nb.id);
+                          if (selectedNotebook?.id === nb.id) { setSelectedNotebook(null); setTree({ folders: [], root_files: [] }); setSelectedPage(null); }
+                          loadNotebooks();
+                        } catch { /* ignore */ }
+                      }}
+                      className="text-red-400 hover:text-red-300 text-xs px-1 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0"
+                      title="Delete notebook"
+                    >
+                      &times;
+                    </button>
+                  )}
+                </div>
               ))}
             </div>
           ))}
