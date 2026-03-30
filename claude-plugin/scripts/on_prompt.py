@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """UserPromptSubmit hook: inject scored agent context via Boozle injection API.
 
-Cloud-first: calls POST /api/v1/agents/me/inject for four-factor scored context.
-Falls back to local scoring engine when the API is unreachable.
+Calls POST /api/v1/agents/me/inject for four-factor scored context.
+Falls back to basic cached context when the API is unreachable.
 Reads replicate_me bridge escalations from shared notification directory.
 """
 
@@ -16,9 +16,37 @@ from config import (
     get_config, get_client, get_stdin_data, is_configured,
     load_state, load_cache,
     load_injection_state, save_injection_state,
-    load_escalations, OFFLINE_DB_PATH,
+    load_escalations,
 )
-from local_scoring import build_fallback_context, build_scored_local_context
+
+
+def build_fallback_context(
+    agent_name: str,
+    persona: str,
+    recent_events: list[dict],
+) -> str:
+    """Build a basic context string from cached data when API is unreachable."""
+    lines = []
+    lines.append("## Agent Identity")
+    lines.append(f"You are **{agent_name}**, a Boozle agent.")
+    if persona:
+        lines.append(persona)
+    lines.append("")
+
+    if recent_events:
+        lines.append("## Recent Activity (your previous sessions)")
+        for event in recent_events[:15]:
+            ts = event.get("created_at", "")[:16]
+            tool = event.get("tool_name", "")
+            content = event.get("content", "")[:200]
+            event_type = event.get("event_type", "")
+            if tool:
+                lines.append(f"- [{ts}] {tool}: {content}")
+            else:
+                lines.append(f"- [{ts}] ({event_type}) {content}")
+        lines.append("")
+
+    return "\n".join(lines)
 
 
 def main():
@@ -49,17 +77,11 @@ def main():
             # Persist updated session state
             updated_state = result.get("updated_session_state", session_state)
             save_injection_state(updated_state)
-            # Cloud reachable — flush pending local events
-            try:
-                import offline_db
-                offline_db.try_flush_pending(OFFLINE_DB_PATH, client, get_config())
-            except Exception:
-                pass
     except Exception:
-        # API unreachable — fall through to local fallback
+        # API unreachable — fall through to cached fallback
         pass
 
-    # --- Local fallback (uses offline SQLite DB if available) ---
+    # --- Cached fallback when server is unreachable ---
     if context is None:
         cfg = get_config()
         state = load_state()
@@ -69,18 +91,10 @@ def main():
         if not persona and cache and cache.get("profile"):
             persona = cache["profile"].get("description", "")
 
-        # Try scored local context from offline DB
-        context = build_scored_local_context(
-            OFFLINE_DB_PATH, cfg["agent_name"], persona,
-            prompt_text or "", session_state,
-        )
-
-        # Fall back to basic context if local DB is empty/unavailable
-        if not context:
-            recent_events = []
-            if cache and cache.get("recent_events"):
-                recent_events = cache["recent_events"]
-            context = build_fallback_context(cfg["agent_name"], persona, recent_events)
+        recent_events = []
+        if cache and cache.get("recent_events"):
+            recent_events = cache["recent_events"]
+        context = build_fallback_context(cfg["agent_name"], persona, recent_events)
 
         # Increment prompt_num locally
         session_state["prompt_num"] = session_state.get("prompt_num", 0) + 1

@@ -82,30 +82,8 @@ def main():
                 tool_name=tool_name,
                 metadata=metadata,
             )
-            # Cloud reachable — opportunistically flush any pending local events
-            try:
-                from config import OFFLINE_DB_PATH
-                import offline_db
-                offline_db.try_flush_pending(OFFLINE_DB_PATH, client, cfg)
-            except Exception:
-                pass
     except Exception:
-        # Cloud unavailable — queue locally for later sync
-        try:
-            from config import OFFLINE_DB_PATH
-            import offline_db
-            offline_db.queue_event(
-                db_path=OFFLINE_DB_PATH,
-                store_id=cfg["history_store_id"],
-                agent_name=cfg["agent_name"],
-                event_type="tool_use",
-                content=content,
-                session_id=state.get("session_id", ""),
-                tool_name=tool_name,
-                metadata=metadata,
-            )
-        except Exception:
-            pass  # truly fire-and-forget
+        pass  # Server unreachable — event is lost (server is source of truth)
 
 
 if __name__ == "__main__":

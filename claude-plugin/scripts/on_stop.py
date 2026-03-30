@@ -83,29 +83,8 @@ def main():
                 session_id=state.get("session_id", ""),
                 metadata=metadata,
             )
-            # Cloud reachable — flush any pending local events
-            try:
-                from config import OFFLINE_DB_PATH
-                import offline_db
-                offline_db.try_flush_pending(OFFLINE_DB_PATH, client, cfg)
-            except Exception:
-                pass
     except Exception:
-        # Queue locally for later sync
-        try:
-            from config import OFFLINE_DB_PATH
-            import offline_db
-            offline_db.queue_event(
-                db_path=OFFLINE_DB_PATH,
-                store_id=cfg["history_store_id"],
-                agent_name=cfg["agent_name"],
-                event_type="session_end",
-                content=content,
-                session_id=state.get("session_id", ""),
-                metadata=metadata,
-            )
-        except Exception:
-            pass
+        pass  # Server unreachable — event is lost (server is source of truth)
 
     # Clear session ID
     state["session_id"] = ""
