@@ -8,18 +8,18 @@ from .config import settings
 pool: asyncpg.Pool | None = None
 
 SCHEMA = """
--- Users (unchanged from before, plus owner_id for agent identities)
+-- Users (unchanged from before, plus owner_id for persona identities)
 CREATE TABLE IF NOT EXISTS users (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     name VARCHAR(64) NOT NULL UNIQUE,
     display_name VARCHAR(128),
-    type VARCHAR(8) NOT NULL CHECK(type IN ('human', 'agent')),
+    type VARCHAR(8) NOT NULL CHECK(type IN ('human', 'persona')),
     api_key_hash VARCHAR(64) NOT NULL UNIQUE,
     password_hash VARCHAR(72),
     description TEXT DEFAULT '',
     owner_id UUID REFERENCES users(id) ON DELETE CASCADE,
-    notebook_id UUID,   -- agent-owned notebook (set after notebook creation)
-    history_id UUID,    -- agent-owned history (set after history creation)
+    notebook_id UUID,   -- persona-owned notebook (set after notebook creation)
+    history_id UUID,    -- persona-owned history (set after history creation)
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     last_seen TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -72,15 +72,15 @@ CREATE TABLE IF NOT EXISTS chat_messages (
     created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
--- Chat watches (agent notification subscriptions)
+-- Chat watches (persona notification subscriptions)
 CREATE TABLE IF NOT EXISTS chat_watches (
-    agent_id     UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    persona_id   UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     chat_id      UUID NOT NULL REFERENCES chats(id) ON DELETE CASCADE,
     workspace_id UUID REFERENCES workspaces(id) ON DELETE CASCADE,
     last_read_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     enabled      BOOLEAN NOT NULL DEFAULT true,
     created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
-    PRIMARY KEY (agent_id, chat_id)
+    PRIMARY KEY (persona_id, chat_id)
 );
 
 -- Notebooks (collections of folders + pages)
@@ -146,9 +146,9 @@ CREATE TABLE IF NOT EXISTS history_events (
     created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
--- Injection configs (per-agent scoring parameters)
+-- Injection configs (per-persona scoring parameters)
 CREATE TABLE IF NOT EXISTS injection_configs (
-    agent_id     UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+    persona_id   UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
     budget_tokens INTEGER NOT NULL DEFAULT 4000,
     min_score    REAL NOT NULL DEFAULT 0.01,
     recency_intervals REAL[] NOT NULL DEFAULT '{1.0,4.0,24.0,72.0,168.0,720.0}',
@@ -159,9 +159,9 @@ CREATE TABLE IF NOT EXISTS injection_configs (
     updated_at   TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
--- Sleep watermarks (per-agent curation progress)
+-- Sleep watermarks (per-persona curation progress)
 CREATE TABLE IF NOT EXISTS sleep_watermarks (
-    agent_id              UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+    persona_id            UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
     last_event_at         TIMESTAMPTZ,
     last_monologue_event_at TIMESTAMPTZ,
     last_run_at           TIMESTAMPTZ,
@@ -171,18 +171,18 @@ CREATE TABLE IF NOT EXISTS sleep_watermarks (
 -- Injection sessions (server-side injection state for outcome scoring)
 CREATE TABLE IF NOT EXISTS injection_sessions (
     id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    agent_id        UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    persona_id      UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     session_id      VARCHAR(64) NOT NULL,
     injected_items  JSONB NOT NULL DEFAULT '[]',
     created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
     completed_at    TIMESTAMPTZ,
     scored_at       TIMESTAMPTZ,
-    UNIQUE(agent_id, session_id)
+    UNIQUE(persona_id, session_id)
 );
 
--- Sleep configs (per-agent curation settings)
+-- Sleep configs (per-persona curation settings)
 CREATE TABLE IF NOT EXISTS sleep_configs (
-    agent_id              UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+    persona_id            UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
     enabled               BOOLEAN NOT NULL DEFAULT true,
     interval_minutes      INTEGER NOT NULL DEFAULT 60,
     max_pattern_cards     INTEGER NOT NULL DEFAULT 500,
@@ -290,7 +290,7 @@ CREATE INDEX IF NOT EXISTS idx_chats_workspace ON chats(workspace_id) WHERE work
 CREATE INDEX IF NOT EXISTS idx_chat_messages_chat_created ON chat_messages(chat_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_chat_messages_fts ON chat_messages USING GIN(to_tsvector('english', content));
 
-CREATE INDEX IF NOT EXISTS idx_chat_watches_agent ON chat_watches(agent_id) WHERE enabled = true;
+CREATE INDEX IF NOT EXISTS idx_chat_watches_persona ON chat_watches(persona_id) WHERE enabled = true;
 
 CREATE INDEX IF NOT EXISTS idx_notebooks_workspace ON notebooks(workspace_id);
 CREATE INDEX IF NOT EXISTS idx_notebook_pages_notebook ON notebook_pages(notebook_id);
@@ -307,7 +307,7 @@ CREATE INDEX IF NOT EXISTS idx_history_events_metadata ON history_events USING G
 
 CREATE INDEX IF NOT EXISTS idx_notebook_pages_fts ON notebook_pages USING GIN(to_tsvector('english', content_markdown));
 
-CREATE INDEX IF NOT EXISTS idx_injection_sessions_agent ON injection_sessions(agent_id);
+CREATE INDEX IF NOT EXISTS idx_injection_sessions_persona ON injection_sessions(persona_id);
 
 CREATE INDEX IF NOT EXISTS idx_decks_workspace ON decks(workspace_id);
 CREATE INDEX IF NOT EXISTS idx_deck_shares_deck ON deck_shares(deck_id);
@@ -346,7 +346,7 @@ _PARTIAL_INDEXES = [
        ON decks(created_by) WHERE workspace_id IS NULL""",
     # Injection sessions pending outcome scoring
     """CREATE INDEX IF NOT EXISTS idx_injection_sessions_pending
-       ON injection_sessions(agent_id) WHERE completed_at IS NOT NULL AND scored_at IS NULL""",
+       ON injection_sessions(persona_id) WHERE completed_at IS NOT NULL AND scored_at IS NULL""",
     # pgvector HNSW index for semantic search on history events
     """CREATE INDEX IF NOT EXISTS idx_history_events_embedding
        ON history_events USING hnsw (embedding vector_cosine_ops)

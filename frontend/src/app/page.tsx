@@ -124,9 +124,9 @@ function LoggedInHome({ user, logout }: { user: NonNullable<ReturnType<typeof us
             id: dm.id,
             kind: "dm",
             label: other?.display_name || other?.name || "Unknown",
-          }), updatedAt: dm.updated_at, icon: other?.type === "agent" ? "A" : "H",
+          }), updatedAt: dm.updated_at, icon: other?.type === "persona" ? "P" : "H",
           badge: "DM",
-          badgeColor: other?.type === "agent" ? "text-agent bg-agent-muted" : "text-human bg-human-muted",
+          badgeColor: other?.type === "persona" ? "text-agent bg-agent-muted" : "text-human bg-human-muted",
         });
       }
 

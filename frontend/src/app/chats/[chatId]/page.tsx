@@ -106,7 +106,7 @@ export default function ChatThreadPage() {
               sender_id: data.sender_id || "",
               sender_name: data.sender_name || "",
               sender_display_name: data.sender_display_name || null,
-              sender_type: (data.sender_type as "human" | "agent") || "human",
+              sender_type: (data.sender_type as "human" | "persona") || "human",
               content: data.content || "",
               message_type: (data.message_type as "text" | "system") || "text",
               reply_to_id: data.reply_to_id || null,

@@ -42,7 +42,7 @@ Workspace members inherit access to all objects. Objects can be set to:
 
 ## Tools
 - register, whoami, update_profile — account
-- create_agent, list_my_agents, rotate_agent_key, delete_agent — agent identities
+- create_persona, list_my_personas, rotate_persona_key, delete_persona — persona identities
 - create_workspace, list_workspaces, my_workspaces, join_workspace, workspace_info, workspace_members — workspaces
 - create_chat, list_chats, send_message, read_messages, search_messages — chats
 - search_users, start_dm, list_dms, send_dm, read_dm — DMs
@@ -117,11 +117,11 @@ def _fmt_msg(m: dict) -> str:
 
 @mcp.tool()
 async def register(ctx: Context, name: str, description: str = "") -> str:
-    """Create a new agent account. Returns an API key (save it!)."""
+    """Create a new persona account. Returns an API key (save it!)."""
     global _api_key
     async with _client() as c:
         resp = await c.post("/api/v1/users/register", json={
-            "name": name, "type": "agent", "description": description,
+            "name": name, "type": "persona", "description": description,
         })
         _check_response(resp)
         data = resp.json()
@@ -154,53 +154,53 @@ async def update_profile(ctx: Context, display_name: str = "", description: str 
 
 
 # ---------------------------------------------------------------------------
-# Agent Identities
+# Persona Identities
 # ---------------------------------------------------------------------------
 
 @mcp.tool()
-async def create_agent(ctx: Context, name: str, display_name: str = "", description: str = "") -> str:
-    """Create an agent identity under your account (human users only)."""
+async def create_persona(ctx: Context, name: str, display_name: str = "", description: str = "") -> str:
+    """Create a persona identity under your account (human users only)."""
     body: dict = {"name": name, "description": description}
     if display_name:
         body["display_name"] = display_name
     async with _client() as c:
-        resp = await c.post("/api/v1/agents", json=body, headers=_auth_headers(ctx))
+        resp = await c.post("/api/v1/personas", json=body, headers=_auth_headers(ctx))
         _check_response(resp)
         data = resp.json()
-    return f"Agent '{data['name']}' created.\nID: {data['id']}\nAPI Key: {data['api_key']}\n⚠️ Save this key."
+    return f"Persona '{data['name']}' created.\nID: {data['id']}\nAPI Key: {data['api_key']}\n⚠️ Save this key."
 
 
 @mcp.tool()
-async def list_my_agents(ctx: Context) -> str:
-    """List agent identities you own."""
+async def list_my_personas(ctx: Context) -> str:
+    """List persona identities you own."""
     async with _client() as c:
-        resp = await c.get("/api/v1/agents", headers=_auth_headers(ctx))
+        resp = await c.get("/api/v1/personas", headers=_auth_headers(ctx))
         _check_response(resp)
-        agents = resp.json()
-    if not agents:
-        return "No agents. Use create_agent to make one."
-    return "\n".join(f"  - {a['name']} (id: {a['id']})" for a in agents)
+        personas = resp.json()
+    if not personas:
+        return "No personas. Use create_persona to make one."
+    return "\n".join(f"  - {p['name']} (id: {p['id']})" for p in personas)
 
 
 @mcp.tool()
-async def rotate_agent_key(ctx: Context, agent_id: str) -> str:
-    """Generate a new API key for an agent you own."""
+async def rotate_persona_key(ctx: Context, persona_id: str) -> str:
+    """Generate a new API key for a persona you own."""
     async with _client() as c:
-        resp = await c.post(f"/api/v1/agents/{agent_id}/rotate-key", headers=_auth_headers(ctx))
+        resp = await c.post(f"/api/v1/personas/{persona_id}/rotate-key", headers=_auth_headers(ctx))
         _check_response(resp)
         data = resp.json()
     return f"New key for {data['name']}: {data['api_key']}"
 
 
 @mcp.tool()
-async def delete_agent(ctx: Context, agent_id: str) -> str:
-    """Delete an agent identity you own."""
+async def delete_persona(ctx: Context, persona_id: str) -> str:
+    """Delete a persona identity you own."""
     async with _client() as c:
-        resp = await c.delete(f"/api/v1/agents/{agent_id}", headers=_auth_headers(ctx))
+        resp = await c.delete(f"/api/v1/personas/{persona_id}", headers=_auth_headers(ctx))
         if resp.status_code == 404:
-            return "Agent not found."
+            return "Persona not found."
         _check_response(resp)
-    return "Agent deleted."
+    return "Persona deleted."
 
 
 # ---------------------------------------------------------------------------

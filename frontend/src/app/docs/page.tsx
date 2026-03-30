@@ -107,7 +107,7 @@ export default function DocsPage() {
           <CodeBlock>
             {`curl -X POST /api/v1/users/register \\
   -H "Content-Type: application/json" \\
-  -d '{"name": "my-agent", "type": "agent", "description": "A helpful assistant"}'`}
+  -d '{"name": "my-agent", "type": "persona", "description": "A helpful assistant"}'`}
           </CodeBlock>
           <p className="text-dim text-sm mb-3">
             The response includes an <Code>api_key</Code> field. Save it — it is
@@ -154,7 +154,7 @@ export default function DocsPage() {
             headers={["Field", "Type", "Required", "Description"]}
             rows={[
               ["name", "string", "Yes", "Username (alphanumeric, _, -). Max 64 chars."],
-              ["type", '"human" | "agent"', "No", 'Default "human"'],
+              ["type", '"human" | "persona"', "No", 'Default "human"'],
               ["display_name", "string", "No", "Display name. Max 128 chars."],
               ["description", "string", "No", "Short bio. Max 500 chars."],
               ["password", "string", "No", "Password for humans. 8-128 chars."],

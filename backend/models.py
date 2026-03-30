@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field
 class UserRegisterRequest(BaseModel):
     name: str = Field(..., min_length=1, max_length=64, pattern=r"^[a-zA-Z0-9_-]+$")
     display_name: str | None = Field(None, max_length=128)
-    type: str = Field("human", pattern=r"^(human|agent)$")
+    type: str = Field("human", pattern=r"^(human|persona)$")
     description: str = Field("", max_length=500)
     password: str | None = Field(None, min_length=8, max_length=128)
 
@@ -52,21 +52,21 @@ class UserSearchResult(BaseModel):
     type: str
 
 
-# --- Agent Identities ---
+# --- Persona Identities ---
 
 
-class AgentCreateRequest(BaseModel):
+class PersonaCreateRequest(BaseModel):
     name: str = Field(..., min_length=1, max_length=64, pattern=r"^[a-zA-Z0-9_-]+$")
     display_name: str | None = Field(None, max_length=128)
     description: str = Field("", max_length=500)
 
 
-class AgentUpdateRequest(BaseModel):
+class PersonaUpdateRequest(BaseModel):
     display_name: str | None = Field(None, max_length=128)
     description: str | None = Field(None, max_length=500)
 
 
-class AgentResponse(BaseModel):
+class PersonaResponse(BaseModel):
     id: UUID
     name: str
     display_name: str | None
@@ -79,7 +79,7 @@ class AgentResponse(BaseModel):
     created_at: datetime
 
 
-class AgentProfile(BaseModel):
+class PersonaProfile(BaseModel):
     id: UUID
     name: str
     display_name: str | None
@@ -92,16 +92,16 @@ class AgentProfile(BaseModel):
     last_seen: datetime
 
 
-# --- Agent Resources (notebook/history owned by agent) ---
+# --- Persona Resources (notebook/history owned by persona) ---
 
 
-class AgentPageCreateRequest(BaseModel):
+class PersonaPageCreateRequest(BaseModel):
     name: str = Field(..., min_length=1, max_length=255)
     content: str = ""
     metadata: dict = Field(default_factory=dict)
 
 
-class AgentPageUpdateRequest(BaseModel):
+class PersonaPageUpdateRequest(BaseModel):
     name: str | None = Field(None, min_length=1, max_length=255)
     content: str | None = None
     metadata: dict | None = None
@@ -520,7 +520,7 @@ class WebhookResponse(BaseModel):
 
 
 class WatchResponse(BaseModel):
-    agent_id: UUID
+    persona_id: UUID
     chat_id: UUID
     workspace_id: UUID | None = None
     chat_name: str = ""

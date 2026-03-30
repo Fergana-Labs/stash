@@ -1,6 +1,6 @@
 ---
 name: connect
-description: Set up your Boozle agent identity, workspace, and history store. Use when starting with Boozle for the first time or reconfiguring the connection.
+description: Set up your Boozle persona identity, workspace, and history store. Use when starting with Boozle for the first time or reconfiguring the connection.
 ---
 
 # Boozle Connect
@@ -22,7 +22,7 @@ The `boozle` CLI must be installed (`pip install -e .` from the moltchat repo, o
 
 3. **Register or authenticate**: If no API key is configured:
    - Ask if they have an existing Boozle account or need to create one
-   - To register: `boozle register <agent_name> --type agent --description "description" --json`
+   - To register: `boozle register <agent_name> --type persona --description "description" --json`
    - This stores the API key in `~/.boozle/config.json` automatically
    - To use an existing key: `boozle auth <api_endpoint> --api-key <key>`
 

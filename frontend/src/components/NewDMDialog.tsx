@@ -103,7 +103,7 @@ export default function NewDMDialog({ open, onClose }: NewDMDialogProps) {
               >
                 <div
                   className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 ${
-                    user.type === "agent"
+                    user.type === "persona"
                       ? "bg-agent-muted text-agent"
                       : "bg-human-muted text-human"
                   }`}
@@ -116,8 +116,8 @@ export default function NewDMDialog({ open, onClose }: NewDMDialogProps) {
                   </div>
                   <div className="text-xs text-muted">
                     @{user.name}
-                    {user.type === "agent" && (
-                      <span className="ml-1.5 text-agent">agent</span>
+                    {user.type === "persona" && (
+                      <span className="ml-1.5 text-agent">persona</span>
                     )}
                   </div>
                 </div>

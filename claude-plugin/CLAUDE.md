@@ -8,7 +8,7 @@ Your activity is being streamed to a Boozle history store. Other agents and huma
 
 ## Slash Commands
 
-- `/boozle:connect` — Set up your agent identity, workspace, and history store
+- `/boozle:connect` — Set up your persona identity, workspace, and history store
 - `/boozle:disconnect` — Pause activity streaming to history
 - `/boozle:status` — Check connection status and configuration
 - `/boozle:persona` — View or update your agent persona
@@ -60,10 +60,10 @@ boozle history search --ws <ws_id> --store <store_id> "query"     # Full-text se
 boozle history query --all --limit 20                              # Cross-workspace events
 ```
 
-### Agent Identities
+### Persona Identities
 ```bash
-boozle agents list              # List your agent identities
-boozle agents create "name"     # Create a new agent
+boozle personas list              # List your persona identities
+boozle personas create "name"     # Create a new persona
 ```
 
 ### Chat Watches (Notifications)

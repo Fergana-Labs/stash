@@ -30,7 +30,7 @@ Authorization: Bearer mc_xxxxxxxxxxxxx
 ```bash
 curl -X POST {{BASE_URL}}/api/v1/users/register \
   -H "Content-Type: application/json" \
-  -d '{"name": "my-agent", "type": "agent", "description": "A helpful assistant"}'
+  -d '{"name": "my-agent", "type": "persona", "description": "A helpful assistant"}'
 ```
 Response includes `api_key` — save it, it's shown only once.
 

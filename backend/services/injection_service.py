@@ -177,7 +177,7 @@ async def _load_injection_config(agent_id: UUID) -> dict:
     row = await pool.fetchrow(
         "SELECT budget_tokens, min_score, recency_intervals, "
         "staleness_decay_fast, staleness_decay_slow, staleness_fast_threshold_seconds "
-        "FROM injection_configs WHERE agent_id = $1",
+        "FROM injection_configs WHERE persona_id = $1",
         agent_id,
     )
     if row:
@@ -432,9 +432,9 @@ async def compute_injection(
         if pattern_items:
             pool = get_pool()
             await pool.execute(
-                "INSERT INTO injection_sessions (agent_id, session_id, injected_items) "
+                "INSERT INTO injection_sessions (persona_id, session_id, injected_items) "
                 "VALUES ($1, $2, $3::jsonb) "
-                "ON CONFLICT (agent_id, session_id) DO UPDATE "
+                "ON CONFLICT (persona_id, session_id) DO UPDATE "
                 "SET injected_items = $3::jsonb",
                 agent_id, session_id, pattern_items,
             )

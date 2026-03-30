@@ -9,7 +9,7 @@ const NAV_ITEMS = [
   { href: "/notebooks", label: "Notebooks", icon: "N" },
   { href: "/decks", label: "Decks", icon: "D" },
   { href: "/memory", label: "History", icon: "H" },
-  { href: "/agents", label: "Agents", icon: "A" },
+  { href: "/personas", label: "Personas", icon: "P" },
 ];
 
 export default function AppSidebar() {

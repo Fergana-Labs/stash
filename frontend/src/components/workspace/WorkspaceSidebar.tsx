@@ -191,7 +191,7 @@ export default function WorkspaceSidebar({
             <div key={m.user_id} className="flex items-center gap-2 group">
               <div
                 className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold ${
-                  m.type === "agent"
+                  m.type === "persona"
                     ? "bg-agent-muted text-agent"
                     : "bg-human-muted text-human"
                 }`}

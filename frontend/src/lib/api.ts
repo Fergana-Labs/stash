@@ -1,7 +1,7 @@
 import {
-  AgentProfile,
-  AgentResponse,
-  AgentWithContext,
+  PersonaProfile,
+  PersonaResponse,
+  PersonaWithContext,
   Chat,
   ChatWithWorkspace,
   Deck,
@@ -90,7 +90,7 @@ async function apiFetch<T>(
 
 export async function register(
   name: string,
-  type: "human" | "agent",
+  type: "human" | "persona",
   displayName?: string,
   description?: string,
   password?: string
@@ -669,8 +669,8 @@ export async function queryAllHistoryEvents(
   return apiFetch(`/api/v1/me/history-events${qs ? `?${qs}` : ""}`);
 }
 
-export async function listAgentsWithContext(): Promise<{ agents: AgentWithContext[] }> {
-  return apiFetch("/api/v1/me/agents");
+export async function listPersonasWithContext(): Promise<{ personas: PersonaWithContext[] }> {
+  return apiFetch("/api/v1/me/personas");
 }
 
 // --- Decks (workspace-scoped) ---
@@ -810,18 +810,18 @@ export async function deleteWebhook(workspaceId: string): Promise<void> {
   await apiFetch(`/api/v1/workspaces/${workspaceId}/webhooks`, { method: "DELETE" });
 }
 
-// --- Agents ---
+// --- Personas ---
 
-export async function listAgents(): Promise<AgentProfile[]> {
-  return apiFetch("/api/v1/agents");
+export async function listPersonas(): Promise<PersonaProfile[]> {
+  return apiFetch("/api/v1/personas");
 }
 
-export async function createAgent(
+export async function createPersona(
   name: string,
   displayName?: string,
   description?: string
-): Promise<AgentResponse> {
-  return apiFetch("/api/v1/agents", {
+): Promise<PersonaResponse> {
+  return apiFetch("/api/v1/personas", {
     method: "POST",
     body: JSON.stringify({
       name,
@@ -831,22 +831,22 @@ export async function createAgent(
   });
 }
 
-export async function updateAgent(
-  agentId: string,
+export async function updatePersona(
+  personaId: string,
   data: { display_name?: string; description?: string }
-): Promise<AgentProfile> {
-  return apiFetch(`/api/v1/agents/${agentId}`, {
+): Promise<PersonaProfile> {
+  return apiFetch(`/api/v1/personas/${personaId}`, {
     method: "PATCH",
     body: JSON.stringify(data),
   });
 }
 
-export async function rotateAgentKey(agentId: string): Promise<AgentResponse> {
-  return apiFetch(`/api/v1/agents/${agentId}/rotate-key`, { method: "POST" });
+export async function rotatePersonaKey(personaId: string): Promise<PersonaResponse> {
+  return apiFetch(`/api/v1/personas/${personaId}/rotate-key`, { method: "POST" });
 }
 
-export async function deleteAgent(agentId: string): Promise<void> {
-  await apiFetch(`/api/v1/agents/${agentId}`, { method: "DELETE" });
+export async function deletePersona(personaId: string): Promise<void> {
+  await apiFetch(`/api/v1/personas/${personaId}`, { method: "DELETE" });
 }
 
 // --- Permissions ---
