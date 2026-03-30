@@ -494,26 +494,49 @@ async def create_notebook(ctx: Context, workspace_id: str, name: str, content: s
 
 @mcp.tool()
 async def read_notebook(ctx: Context, workspace_id: str, notebook_id: str) -> str:
-    """Read a notebook's markdown content."""
+    """Read a notebook's metadata and list its pages."""
     async with _client() as c:
         resp = await c.get(f"/api/v1/workspaces/{workspace_id}/notebooks/{notebook_id}", headers=_auth_headers(ctx))
         _check_response(resp)
-        d = resp.json()
-    return f"# {d['name']}\n\n{d['content_markdown']}"
+        nb = resp.json()
+        # Also fetch the page tree
+        pages_resp = await c.get(f"/api/v1/workspaces/{workspace_id}/notebooks/{notebook_id}/pages", headers=_auth_headers(ctx))
+        _check_response(pages_resp)
+        tree = pages_resp.json()
+    parts = [f"# {nb['name']}"]
+    if nb.get("description"):
+        parts.append(nb["description"])
+    folders = tree.get("folders", [])
+    root_files = tree.get("root_files", [])
+    if root_files:
+        parts.append("\n## Pages")
+        for f in root_files:
+            parts.append(f"  - {f['name']} (id: {f['id']})")
+    for folder in folders:
+        parts.append(f"\n## Folder: {folder['name']}")
+        for f in folder.get("files", []):
+            parts.append(f"  - {f['name']} (id: {f['id']})")
+    if not root_files and not folders:
+        parts.append("\nNo pages yet.")
+    return "\n".join(parts)
 
 
 @mcp.tool()
-async def update_notebook(ctx: Context, workspace_id: str, notebook_id: str, content: str = "", name: str = "") -> str:
-    """Update a notebook's content or name."""
-    body = {}
+async def update_notebook(ctx: Context, workspace_id: str, notebook_id: str, page_id: str = "", content: str = "", name: str = "") -> str:
+    """Update a notebook page's content or name. Requires page_id (use read_notebook to list pages)."""
+    if not page_id:
+        return "Error: page_id is required. Use read_notebook to list pages and get their IDs."
+    body: dict = {}
     if content:
-        body["content"] = content
+        body["content_markdown"] = content
     if name:
         body["name"] = name
+    if not body:
+        return "Error: provide content or name to update."
     async with _client() as c:
-        resp = await c.patch(f"/api/v1/workspaces/{workspace_id}/notebooks/{notebook_id}", json=body, headers=_auth_headers(ctx))
+        resp = await c.patch(f"/api/v1/workspaces/{workspace_id}/notebooks/{notebook_id}/pages/{page_id}", json=body, headers=_auth_headers(ctx))
         _check_response(resp)
-    return "Notebook updated."
+    return "Page updated."
 
 
 @mcp.tool()
