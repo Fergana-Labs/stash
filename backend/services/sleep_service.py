@@ -47,7 +47,7 @@ async def _load_sleep_config(agent_id: UUID) -> dict:
         "max_pattern_cards": 500,
         "monologue_batch_size": 20,
         "monologue_model": "claude-haiku-4-5-20251001",
-        "curation_model": "claude-sonnet-4-5-20241022",
+        "curation_model": "claude-3-5-sonnet-20241022",
     }
 
 
