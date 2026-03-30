@@ -32,7 +32,7 @@ def get_stdin_data() -> dict:
 def get_config() -> dict:
     """Read plugin userConfig from environment variables."""
     return {
-        "api_endpoint": os.environ.get("CLAUDE_PLUGIN_USER_CONFIG_api_endpoint", "https://boozle.onrender.com"),
+        "api_endpoint": os.environ.get("CLAUDE_PLUGIN_USER_CONFIG_api_endpoint", "https://moltchat.onrender.com"),
         "api_key": os.environ.get("CLAUDE_PLUGIN_USER_CONFIG_api_key", ""),
         "agent_name": os.environ.get("CLAUDE_PLUGIN_USER_CONFIG_agent_name", ""),
         "workspace_id": os.environ.get("CLAUDE_PLUGIN_USER_CONFIG_workspace_id", ""),
