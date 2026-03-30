@@ -53,6 +53,11 @@ def main():
     if not is_configured():
         return
 
+    # Check if injection is disabled (streaming still works via on_tool_use)
+    cfg = get_config()
+    if cfg.get("inject_context", "true").lower() in ("false", "0", "no", "off"):
+        return
+
     # Read hook payload from stdin
     hook_data = get_stdin_data()
     prompt_text = hook_data.get("prompt", hook_data.get("userPrompt", ""))
