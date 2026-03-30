@@ -13,13 +13,15 @@ from ..models import (
     HistoryEventResponse,
     HistoryCreateRequest,
     HistoryListResponse,
+    HistoryQueryRequest,
+    HistoryQueryResponse,
     HistoryResponse,
     PermissionResponse,
     SetVisibilityRequest,
     ShareRequest,
     ShareResponse,
 )
-from ..services import memory_service, permission_service, workspace_service, webhook_service
+from ..services import memory_service, permission_service, workspace_service, webhook_service, history_query_service
 
 ws_router = APIRouter(prefix="/api/v1/workspaces/{workspace_id}/memory", tags=["memory"])
 personal_router = APIRouter(prefix="/api/v1/memory", tags=["personal_memory"])
@@ -166,6 +168,20 @@ async def search_ws_events(
     return HistoryEventListResponse(
         events=[HistoryEventResponse(**e) for e in events],
         has_more=False,
+    )
+
+
+@ws_router.post("/{store_id}/query", response_model=HistoryQueryResponse)
+async def query_ws_history(
+    workspace_id: UUID, store_id: UUID, req: HistoryQueryRequest,
+    current_user: dict = Depends(get_current_user),
+):
+    """Ask a question about the history store. Returns an LLM-synthesized answer with source events."""
+    await _check_ws_store_access(workspace_id, store_id, current_user["id"])
+    result = await history_query_service.query_history(store_id, req.question, req.limit)
+    return HistoryQueryResponse(
+        answer=result["answer"],
+        sources=[HistoryEventResponse(**e) for e in result["sources"]],
     )
 
 
@@ -340,6 +356,20 @@ async def search_personal_events(
     return HistoryEventListResponse(
         events=[HistoryEventResponse(**e) for e in events],
         has_more=False,
+    )
+
+
+@personal_router.post("/{store_id}/query", response_model=HistoryQueryResponse)
+async def query_personal_history(
+    store_id: UUID, req: HistoryQueryRequest,
+    current_user: dict = Depends(get_current_user),
+):
+    """Ask a question about a personal history store."""
+    await _check_personal_store_owner(store_id, current_user["id"])
+    result = await history_query_service.query_history(store_id, req.question, req.limit)
+    return HistoryQueryResponse(
+        answer=result["answer"],
+        sources=[HistoryEventResponse(**e) for e in result["sources"]],
     )
 
 
