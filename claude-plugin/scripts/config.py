@@ -29,14 +29,41 @@ def get_stdin_data() -> dict:
         return {}
 
 
+def _load_cli_config() -> dict:
+    """Load CLI config from ~/.boozle/config.json as fallback."""
+    cli_config = Path.home() / ".boozle" / "config.json"
+    if cli_config.exists():
+        try:
+            return json.loads(cli_config.read_text())
+        except Exception:
+            pass
+    return {}
+
+
 def get_config() -> dict:
-    """Read plugin userConfig from environment variables."""
+    """Read plugin userConfig from environment variables, falling back to CLI config."""
+    api_key = os.environ.get("CLAUDE_PLUGIN_USER_CONFIG_api_key", "")
+    agent_name = os.environ.get("CLAUDE_PLUGIN_USER_CONFIG_agent_name", "")
+
+    # If env vars aren't set, fall back to CLI config (~/.boozle/config.json)
+    if not api_key:
+        cli = _load_cli_config()
+        return {
+            "api_endpoint": cli.get("base_url", "https://moltchat.onrender.com"),
+            "api_key": cli.get("api_key", ""),
+            "agent_name": cli.get("username", ""),
+            "workspace_id": cli.get("default_workspace", ""),
+            "history_store_id": cli.get("default_store", ""),
+            "inject_context": os.environ.get("CLAUDE_PLUGIN_USER_CONFIG_inject_context", "true"),
+        }
+
     return {
         "api_endpoint": os.environ.get("CLAUDE_PLUGIN_USER_CONFIG_api_endpoint", "https://moltchat.onrender.com"),
-        "api_key": os.environ.get("CLAUDE_PLUGIN_USER_CONFIG_api_key", ""),
-        "agent_name": os.environ.get("CLAUDE_PLUGIN_USER_CONFIG_agent_name", ""),
+        "api_key": api_key,
+        "agent_name": agent_name,
         "workspace_id": os.environ.get("CLAUDE_PLUGIN_USER_CONFIG_workspace_id", ""),
         "history_store_id": os.environ.get("CLAUDE_PLUGIN_USER_CONFIG_history_store_id", ""),
+        "inject_context": os.environ.get("CLAUDE_PLUGIN_USER_CONFIG_inject_context", "true"),
     }
 
 
