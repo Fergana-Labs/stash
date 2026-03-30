@@ -97,10 +97,11 @@ export default function ChatThreadPage() {
       try {
         const data: WSEvent = JSON.parse(event.data);
         if (data.type === "message" && data.id) {
+          const messageId = data.id;
           setMessages((prev) => [
             ...prev,
             {
-              id: data.id,
+              id: messageId,
               chat_id: data.chat_id || chatId,
               sender_id: data.sender_id || "",
               sender_name: data.sender_name || "",
