@@ -1,0 +1,28 @@
+{
+  "name": "@boozle/openclaw-boozle",
+  "version": "0.1.0",
+  "description": "Boozle memory backend for OpenClaw — server-side scored injection, activity streaming, cross-session context",
+  "type": "module",
+  "openclaw": {
+    "extensions": ["./dist/index.js"],
+    "compat": {
+      "pluginApi": ">=2026.3.24-beta.2",
+      "minGatewayVersion": "2026.3.24-beta.2"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "check": "tsc --noEmit"
+  },
+  "peerDependencies": {
+    "openclaw": "*"
+  },
+  "devDependencies": {
+    "@sinclair/typebox": "^0.34.0",
+    "typescript": "^5.5.0"
+  },
+  "license": "MIT",
+  "author": "boozle",
+  "homepage": "https://github.com/samzliu/boozle"
+}

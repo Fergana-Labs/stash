@@ -1,0 +1,37 @@
+{
+  "id": "boozle",
+  "name": "Boozle",
+  "version": "0.1.0",
+  "description": "Boozle memory backend — server-side scored injection, activity streaming, cross-session context",
+  "configSchema": {
+    "type": "object",
+    "properties": {
+      "apiEndpoint": {
+        "type": "string",
+        "default": "https://moltchat.onrender.com",
+        "description": "Boozle API base URL"
+      },
+      "apiKey": {
+        "type": "string",
+        "description": "Agent API key (from Boozle registration)"
+      },
+      "agentName": {
+        "type": "string",
+        "description": "Agent identity name in Boozle"
+      },
+      "workspaceId": {
+        "type": "string",
+        "description": "Default workspace UUID"
+      },
+      "historyStoreId": {
+        "type": "string",
+        "description": "History store UUID for activity streaming"
+      }
+    },
+    "required": ["apiKey", "agentName"],
+    "additionalProperties": false
+  },
+  "uiHints": {
+    "apiKey": { "secret": true }
+  }
+}
