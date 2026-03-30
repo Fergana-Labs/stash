@@ -1,3 +1,5 @@
+import type { OpenClawPluginApi } from "openclaw/plugin-sdk/plugin-entry";
+import { textResult } from "../utils/tool-result.js";
 /**
  * Memory store tools — create, list, push events, query, search.
  */
@@ -6,12 +8,13 @@ import { Type } from "@sinclair/typebox";
 import type { BoozleClient } from "../boozle-client.js";
 
 export function registerMemoryStoreTools(
-  api: { registerTool: (def: unknown, opts?: unknown) => void },
+  api: OpenClawPluginApi,
   client: BoozleClient,
 ) {
   api.registerTool({
     name: "boozle_create_memory_store",
     description: "Create a new memory store in a Boozle workspace",
+    label: "Create a new memory store in a Boozle workspace",
     parameters: Type.Object({
       workspace_id: Type.String({ description: "Workspace UUID" }),
       name: Type.String({ description: "Store name" }),
@@ -23,25 +26,27 @@ export function registerMemoryStoreTools(
         params.name,
         params.description ?? "",
       );
-      return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
+      return textResult(JSON.stringify(result, null, 2));
     },
   });
 
   api.registerTool({
     name: "boozle_list_memory_stores",
     description: "List memory stores in a Boozle workspace",
+    label: "List memory stores in a Boozle workspace",
     parameters: Type.Object({
       workspace_id: Type.String({ description: "Workspace UUID" }),
     }),
     async execute(_id: string, params: { workspace_id: string }) {
       const result = await client.listHistories(params.workspace_id);
-      return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
+      return textResult(JSON.stringify(result, null, 2));
     },
   });
 
   api.registerTool({
     name: "boozle_push_event",
     description: "Push an event to a Boozle memory store",
+    label: "Push an event to a Boozle memory store",
     parameters: Type.Object({
       workspace_id: Type.String({ description: "Workspace UUID" }),
       store_id: Type.String({ description: "Memory store UUID" }),
@@ -62,13 +67,14 @@ export function registerMemoryStoreTools(
         content: params.content,
         toolName: params.tool_name,
       });
-      return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
+      return textResult(JSON.stringify(result, null, 2));
     },
   });
 
   api.registerTool({
     name: "boozle_query_events",
     description: "Query events from a Boozle memory store",
+    label: "Query events from a Boozle memory store",
     parameters: Type.Object({
       workspace_id: Type.String({ description: "Workspace UUID" }),
       store_id: Type.String({ description: "Memory store UUID" }),
@@ -87,13 +93,14 @@ export function registerMemoryStoreTools(
         eventType: params.event_type,
         limit: params.limit ?? 50,
       });
-      return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
+      return textResult(JSON.stringify(result, null, 2));
     },
   });
 
   api.registerTool({
     name: "boozle_search_events",
     description: "Full-text search over events in a Boozle memory store",
+    label: "Full-text search over events in a Boozle memory store",
     parameters: Type.Object({
       workspace_id: Type.String({ description: "Workspace UUID" }),
       store_id: Type.String({ description: "Memory store UUID" }),
@@ -107,7 +114,7 @@ export function registerMemoryStoreTools(
         params.query,
         params.limit ?? 50,
       );
-      return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
+      return textResult(JSON.stringify(result, null, 2));
     },
   });
 }

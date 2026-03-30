@@ -1,6 +1,11 @@
 /**
  * After-tool-call hook — stream tool activity to Boozle history.
  * Port of claude-plugin/scripts/on_tool_use.py.
+ *
+ * OpenClaw SDK signature:
+ *   (event: InternalHookEvent) => Promise<void> | void
+ *
+ * InternalHookEvent = { type, action, sessionKey, context: Record<string, unknown>, timestamp, messages }
  */
 
 import type { BoozleClient } from "../boozle-client.js";
@@ -63,30 +68,36 @@ function summarizeToolUse(
 
 /**
  * Creates the after-tool-call hook handler.
+ * Adapts from InternalHookEvent to the Boozle activity stream.
  */
 export function createAfterToolCallHook(
   client: BoozleClient,
   config: BoozleConfig,
 ) {
-  return async (data: {
-    tool_name?: string;
-    tool_input?: Record<string, unknown>;
-    cwd?: string;
-  }) => {
-    const toolName = data.tool_name ?? "";
-    if (!toolName || EXCLUDED_TOOLS.has(toolName)) return { block: false };
+  return async (event: {
+    type: string;
+    action: string;
+    sessionKey: string;
+    context: Record<string, unknown>;
+    timestamp: Date;
+    messages: string[];
+  }): Promise<void> => {
+    // Only handle message:sent events that contain tool use data
+    const ctx = event.context ?? {};
+    const toolName = String(ctx.tool_name ?? ctx.toolName ?? "");
+    if (!toolName || EXCLUDED_TOOLS.has(toolName)) return;
 
     const state = loadState();
-    if (!state.streaming_enabled) return { block: false };
-    if (!config.workspaceId || !config.historyStoreId) return { block: false };
+    if (!state.streaming_enabled) return;
+    if (!config.workspaceId || !config.historyStoreId) return;
 
     const toolInput =
-      typeof data.tool_input === "string"
-        ? { raw: data.tool_input }
-        : (data.tool_input ?? {});
+      typeof ctx.tool_input === "string"
+        ? { raw: ctx.tool_input }
+        : ((ctx.tool_input ?? ctx.toolInput ?? {}) as Record<string, unknown>);
 
     const { content, metadata } = summarizeToolUse(toolName, toolInput);
-    metadata.cwd = data.cwd ?? "";
+    metadata.cwd = String(ctx.cwd ?? "");
 
     // Fire-and-forget — don't block the agent
     client
@@ -100,10 +111,6 @@ export function createAfterToolCallHook(
         toolName,
         metadata,
       })
-      .catch(() => {
-        // Server unreachable — event is lost
-      });
-
-    return { block: false };
+      .catch(() => {});
   };
 }

@@ -3,7 +3,7 @@
  * Port of claude-plugin/scripts/on_prompt.py.
  *
  * Registered via api.registerMemoryPromptSection().
- * Called before each prompt to build the memory context to inject.
+ * OpenClaw SDK signature: (params: { availableTools: Set<string>; citationsMode?: ... }) => string[]
  */
 
 import type { BoozleClient } from "../boozle-client.js";
@@ -26,7 +26,7 @@ function buildFallbackContext(
   agentName: string,
   persona: string,
   recentEvents: Record<string, unknown>[],
-): string {
+): string[] {
   const lines: string[] = [];
   lines.push("## Agent Identity");
   lines.push(`You are **${agentName}**, a Boozle agent.`);
@@ -49,56 +49,55 @@ function buildFallbackContext(
     lines.push("");
   }
 
-  return lines.join("\n");
+  return lines;
 }
 
 /**
  * Creates the prompt section builder function for Boozle memory injection.
+ * Returns string[] (one line per element) per OpenClaw SDK contract.
  */
 export function createPromptSectionBuilder(
   client: BoozleClient,
   config: BoozleConfig,
 ) {
-  return async (promptText?: string): Promise<string> => {
+  let cachedLines: string[] = [];
+  let lastFetchMs = 0;
+  const CACHE_TTL_MS = 30_000;
+
+  void prefetch();
+
+  async function prefetch() {
     const state = loadState();
     let injectionState = loadInjectionState();
     const sessionId = state.session_id;
 
-    let context: string | null = null;
-
-    // --- Cloud path: call injection endpoint ---
     try {
       const result = await client.inject({
-        promptText: promptText || ".",
+        promptText: ".",
         sessionState: injectionState as unknown as Record<string, unknown>,
         sessionId,
       });
-      context = result.context ?? "";
+      const context = result.context ?? "";
+      cachedLines = context.split("\n");
       const updatedState = result.updated_session_state ?? injectionState;
       saveInjectionState(updatedState as unknown as typeof injectionState);
+      lastFetchMs = Date.now();
     } catch {
-      // API unreachable — fall through to cached fallback
-    }
-
-    // --- Cached fallback ---
-    if (context === null) {
       const cache = loadCache();
       let persona = state.persona;
       if (!persona && cache?.profile) {
         persona = String(cache.profile.description ?? "");
       }
       const recentEvents = cache?.recent_events ?? [];
-      context = buildFallbackContext(
-        config.agentName,
-        persona,
-        recentEvents,
-      );
-
-      // Increment prompt_num locally
-      injectionState.prompt_num = (injectionState.prompt_num ?? 0) + 1;
-      saveInjectionState(injectionState);
+      cachedLines = buildFallbackContext(config.agentName, persona, recentEvents);
+      lastFetchMs = Date.now();
     }
+  }
 
-    return context;
+  return (_params: { availableTools: Set<string> }): string[] => {
+    if (Date.now() - lastFetchMs > CACHE_TTL_MS) {
+      void prefetch();
+    }
+    return cachedLines;
   };
 }
