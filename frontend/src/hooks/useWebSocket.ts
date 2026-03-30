@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { getWsBase } from "../lib/api";
 import { WSEvent } from "../lib/types";
 
 interface UseWebSocketOptions {
@@ -33,12 +34,10 @@ export function useWebSocket({
   const connect = useCallback(() => {
     if (!token || !chatId) return;
 
-    const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-    const host = window.location.host;
     const wsPath = isDM
       ? `/api/v1/dms/${chatId}/ws`
       : `/api/v1/workspaces/${workspaceId}/chats/${chatId}/ws`;
-    const wsUrl = `${protocol}//${host}${wsPath}?token=${token}`;
+    const wsUrl = `${getWsBase()}${wsPath}?token=${token}`;
     const ws = new WebSocket(wsUrl);
 
     ws.onopen = () => {

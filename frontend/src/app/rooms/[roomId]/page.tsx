@@ -12,6 +12,7 @@ import {
   getPersonalRoomMessages,
   sendPersonalRoomMessage,
   deletePersonalRoom,
+  getWsBase,
 } from "../../../lib/api";
 import { Chat, Message, WSEvent } from "../../../lib/types";
 
@@ -60,8 +61,7 @@ export default function PersonalRoomPage() {
     const token = getToken();
     if (!token) return;
 
-    const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-    const wsUrl = `${protocol}//${window.location.host}/api/v1/rooms/${chatId}/ws?token=${token}`;
+    const wsUrl = `${getWsBase()}/api/v1/rooms/${chatId}/ws?token=${token}`;
     const ws = new WebSocket(wsUrl);
     wsRef.current = ws;
 

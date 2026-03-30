@@ -17,6 +17,7 @@ import {
   sendDMMessage,
   sendMessage,
   sendPersonalRoomMessage,
+  getWsBase,
 } from "../../../lib/api";
 import { Message, WSEvent } from "../../../lib/types";
 
@@ -84,13 +85,12 @@ export default function ChatThreadPage() {
     const token = getToken();
     if (!token) return;
 
-    const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
     const wsPath = kind === "workspace" && workspaceId
       ? `/api/v1/workspaces/${workspaceId}/chats/${chatId}/ws`
       : kind === "dm"
         ? `/api/v1/dms/${chatId}/ws`
         : `/api/v1/rooms/${chatId}/ws`;
-    const ws = new WebSocket(`${protocol}//${window.location.host}${wsPath}?token=${token}`);
+    const ws = new WebSocket(`${getWsBase()}${wsPath}?token=${token}`);
     wsRef.current = ws;
 
     ws.onmessage = (event) => {

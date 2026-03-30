@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import * as Y from "yjs";
 import { WebsocketProvider } from "y-websocket";
+import { getWsBase } from "../lib/api";
 
 interface UseYjsOptions {
   workspaceId: string;
@@ -24,13 +25,10 @@ export function useYjs({ workspaceId, notebookId, token, userName, userColor }: 
     const doc = new Y.Doc();
     docRef.current = doc;
 
-    const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-    const wsUrl = `${protocol}//${window.location.host}`;
-
     // y-websocket constructs URL as: serverUrl + '/' + roomname + '?params'
     // So we set serverUrl to path up to /files/{id} and roomname to 'yjs'
     const provider = new WebsocketProvider(
-      `${wsUrl}/api/v1/workspaces/${workspaceId}/notebooks/${notebookId}`,
+      `${getWsBase()}/api/v1/workspaces/${workspaceId}/notebooks/${notebookId}`,
       "yjs",
       doc,
       {
