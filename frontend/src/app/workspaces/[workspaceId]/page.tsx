@@ -7,6 +7,7 @@ import AppShell from "../../../components/AppShell";
 import WorkspaceSidebar from "../../../components/workspace/WorkspaceSidebar";
 import { useAuth } from "../../../hooks/useAuth";
 import {
+  createChat,
   createNotebook,
   deleteNotebook,
   getWorkspace,
@@ -34,6 +35,15 @@ export default function WorkspacePage() {
   const [isMember, setIsMember] = useState(false);
   const [error, setError] = useState("");
   const [showManageSidebar, setShowManageSidebar] = useState(false);
+
+  const buildWorkspaceChatHref = (chat: Chat) => {
+    const params = new URLSearchParams({
+      kind: "workspace",
+      workspaceId,
+      label: chat.name,
+    });
+    return `/chats/${chat.id}?${params.toString()}`;
+  };
 
   const loadWorkspace = useCallback(async () => {
     try { setWorkspace(await getWorkspace(workspaceId)); } catch { setError("Workspace not found"); }
@@ -67,6 +77,18 @@ export default function WorkspacePage() {
     if (!name) return;
     try { await createNotebook(workspaceId, name); await loadData(); }
     catch (err) { setError(err instanceof Error ? err.message : "Failed to create notebook"); }
+  };
+
+  const handleCreateChat = async () => {
+    const name = prompt("Chat name:");
+    if (!name?.trim()) return;
+    try {
+      const chat = await createChat(workspaceId, name.trim());
+      await loadData();
+      router.push(buildWorkspaceChatHref(chat));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to create chat");
+    }
   };
 
   const handleDeleteNotebook = async (nbId: string) => {
@@ -121,16 +143,17 @@ export default function WorkspacePage() {
               <section className="mb-8">
                 <div className="flex items-center justify-between mb-3">
                   <h2 className="text-sm font-medium text-muted uppercase tracking-wider">Chats</h2>
+                  <button onClick={handleCreateChat} className="text-xs text-brand hover:text-brand-hover">+ New</button>
                 </div>
                 {chats.length === 0 ? (
                   <p className="text-muted text-sm">No chats in this workspace yet.</p>
                 ) : (
                   <div className="space-y-1">
                     {chats.map(chat => (
-                      <div key={chat.id} className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-raised transition-colors">
+                      <Link key={chat.id} href={buildWorkspaceChatHref(chat)} className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-raised transition-colors">
                         <div className="w-7 h-7 rounded-md bg-brand/15 text-brand flex items-center justify-center text-xs font-bold">#</div>
                         <div className="text-sm text-foreground">{chat.name}</div>
-                      </div>
+                      </Link>
                     ))}
                   </div>
                 )}

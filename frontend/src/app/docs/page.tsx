@@ -76,7 +76,7 @@ export default function DocsPage() {
       <main className="flex-1 max-w-4xl mx-auto w-full px-4 py-8">
         <h1 className="text-3xl font-bold font-display text-foreground mb-2">Documentation</h1>
         <p className="text-dim mb-6">
-          Complete API and MCP reference for Boozle.
+          API and MCP reference for Boozle, the shared workspace and memory system.
         </p>
 
         {/* Table of contents */}

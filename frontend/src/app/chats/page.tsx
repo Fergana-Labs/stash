@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import AppShell from "../../components/AppShell";
@@ -7,6 +8,18 @@ import NewDMDialog from "../../components/NewDMDialog";
 import { useAuth } from "../../hooks/useAuth";
 import { listAllChats, createPersonalRoom } from "../../lib/api";
 import { ChatWithWorkspace, DMWithUser } from "../../lib/types";
+
+function buildChatHref(item: {
+  id: string;
+  kind: "workspace" | "room" | "dm";
+  workspaceId?: string | null;
+  label?: string;
+}) {
+  const params = new URLSearchParams({ kind: item.kind });
+  if (item.workspaceId) params.set("workspaceId", item.workspaceId);
+  if (item.label) params.set("label", item.label);
+  return `/chats/${item.id}?${params.toString()}`;
+}
 
 export default function ChatsPage() {
   const router = useRouter();
@@ -84,9 +97,14 @@ export default function ChatsPage() {
             <h2 className="text-sm font-medium text-muted uppercase tracking-wider mb-2">Rooms</h2>
             <div className="space-y-0.5">
               {chats.map((chat) => (
-                <a
+                <Link
                   key={chat.id}
-                  href={chat.workspace_id ? `/workspaces/${chat.workspace_id}` : `/rooms/${chat.id}`}
+                  href={buildChatHref({
+                    id: chat.id,
+                    kind: chat.workspace_id ? "workspace" : "room",
+                    workspaceId: chat.workspace_id,
+                    label: chat.name,
+                  })}
                   className="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-raised transition-colors"
                 >
                   <div className="w-7 h-7 rounded-md bg-brand/15 text-brand flex items-center justify-center text-xs font-bold flex-shrink-0">#</div>
@@ -99,7 +117,7 @@ export default function ChatsPage() {
                       {chat.workspace_name}
                     </span>
                   )}
-                </a>
+                </Link>
               ))}
             </div>
           </section>
@@ -115,7 +133,15 @@ export default function ChatsPage() {
                 const other = dm.other_user;
                 const displayName = other?.display_name || other?.name || "Unknown";
                 return (
-                  <a key={dm.id} href={`/dms/${dm.id}`} className="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-raised transition-colors">
+                  <Link
+                    key={dm.id}
+                    href={buildChatHref({
+                      id: dm.id,
+                      kind: "dm",
+                      label: displayName,
+                    })}
+                    className="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-raised transition-colors"
+                  >
                     <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 ${other?.type === "agent" ? "bg-agent-muted text-agent" : "bg-human-muted text-human"}`}>
                       {displayName.charAt(0).toUpperCase()}
                     </div>
@@ -128,7 +154,7 @@ export default function ChatsPage() {
                         {new Date(dm.updated_at).toLocaleDateString()}
                       </div>
                     )}
-                  </a>
+                  </Link>
                 );
               })}
             </div>

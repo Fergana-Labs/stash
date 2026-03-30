@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { clearToken, getMe, setToken } from "../lib/api";
+import { clearToken, getMe, getToken, setToken } from "../lib/api";
 import { User } from "../lib/types";
 
 export function useAuth() {
@@ -20,7 +20,7 @@ export function useAuth() {
   }, []);
 
   useEffect(() => {
-    const token = localStorage.getItem("moltchat_token");
+    const token = getToken();
     if (token) {
       loadUser();
     } else {
