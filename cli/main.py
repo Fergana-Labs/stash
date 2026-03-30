@@ -548,7 +548,7 @@ def hist_search(query: str = typer.Argument(...), workspace_id: str = typer.Opti
             console.print(f"  [{ev['created_at'][:19]}] {ev['agent_name']}/{ev['event_type']}: {ev['content'][:200]}")
 
 
-@history_app.command("ask")
+@hist_app.command("ask")
 def hist_ask(question: str = typer.Argument(...), workspace_id: str = typer.Option(None, "--ws"), store_id: str = typer.Option(None, "--store"), as_json: bool = typer.Option(False, "--json")):
     """Ask a question about a history store (LLM-powered)."""
     ws = workspace_id or _default_workspace()
