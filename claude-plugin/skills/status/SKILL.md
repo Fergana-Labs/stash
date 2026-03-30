@@ -9,7 +9,7 @@ Display the current Boozle plugin configuration and connection health.
 
 ## Steps
 
-1. **Read config**: Run `boozle config --json` to get CLI config (base_url, default_workspace, default_chat, default_store).
+1. **Read config**: Run `boozle config` to get CLI config (base_url, default_workspace, default_chat, default_store). Output is already JSON-formatted.
 
 2. **Read plugin state** from `~/.claude/plugins/data/boozle/state.json`:
    - `streaming_enabled`
