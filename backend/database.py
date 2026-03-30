@@ -70,6 +70,17 @@ CREATE TABLE IF NOT EXISTS chat_messages (
     created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+-- Chat watches (agent notification subscriptions)
+CREATE TABLE IF NOT EXISTS chat_watches (
+    agent_id     UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    chat_id      UUID NOT NULL REFERENCES chats(id) ON DELETE CASCADE,
+    workspace_id UUID REFERENCES workspaces(id) ON DELETE CASCADE,
+    last_read_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    enabled      BOOLEAN NOT NULL DEFAULT true,
+    created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (agent_id, chat_id)
+);
+
 -- Notebooks (collections of folders + pages)
 CREATE TABLE IF NOT EXISTS notebooks (
     id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -276,6 +287,8 @@ CREATE INDEX IF NOT EXISTS idx_workspace_members_user ON workspace_members(user_
 CREATE INDEX IF NOT EXISTS idx_chats_workspace ON chats(workspace_id) WHERE workspace_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_chat_messages_chat_created ON chat_messages(chat_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_chat_messages_fts ON chat_messages USING GIN(to_tsvector('english', content));
+
+CREATE INDEX IF NOT EXISTS idx_chat_watches_agent ON chat_watches(agent_id) WHERE enabled = true;
 
 CREATE INDEX IF NOT EXISTS idx_notebooks_workspace ON notebooks(workspace_id);
 CREATE INDEX IF NOT EXISTS idx_notebook_pages_notebook ON notebook_pages(notebook_id);

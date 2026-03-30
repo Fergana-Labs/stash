@@ -17,7 +17,7 @@ from ..models import (
     ShareRequest,
     ShareResponse,
 )
-from ..services import chat_service, permission_service, workspace_service, webhook_service
+from ..services import chat_service, permission_service, watch_service, workspace_service, webhook_service
 from ..services.connection_manager import manager
 
 router = APIRouter(prefix="/api/v1/workspaces/{workspace_id}/chats", tags=["chats"])
@@ -96,13 +96,14 @@ async def send_message(
     )
     # Broadcast to real-time subscribers
     await manager.broadcast(chat_id, {"type": "message", **msg})
-    # Dispatch webhooks
+    # Dispatch webhooks + auto-advance watch watermark
     import asyncio
     asyncio.create_task(
         webhook_service.dispatch_webhooks(
             workspace_id, "chat.message", msg, sender_id=current_user["id"],
         )
     )
+    asyncio.create_task(watch_service.auto_mark_read(current_user["id"], chat_id))
     return ChatMessageResponse(**msg)
 
 

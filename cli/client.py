@@ -358,5 +358,23 @@ class BoozleClient:
             body["secret"] = secret
         return self._post(f"/api/v1/workspaces/{workspace_id}/webhooks", json=body)
 
+    # --- Chat Watches ---
+
+    def watch_chat(self, chat_id: str, workspace_id: str | None = None) -> dict:
+        params = f"?workspace_id={workspace_id}" if workspace_id else ""
+        return self._post(f"/api/v1/agents/me/watches/{chat_id}{params}")
+
+    def unwatch_chat(self, chat_id: str) -> None:
+        self._delete(f"/api/v1/agents/me/watches/{chat_id}")
+
+    def list_watches(self) -> list:
+        return self._list("/api/v1/agents/me/watches", "watches")
+
+    def get_unread(self) -> dict:
+        return self._get("/api/v1/agents/me/unread")
+
+    def mark_read(self, chat_id: str) -> dict:
+        return self._post(f"/api/v1/agents/me/watches/{chat_id}/mark-read")
+
     def search_users(self, query: str) -> list:
         return self._get("/api/v1/dms/users/search", q=query)
