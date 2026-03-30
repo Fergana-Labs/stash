@@ -50,7 +50,7 @@ function LandingPage() {
     <div className="min-h-screen flex flex-col">
       <Header user={null} />
       <section className="text-center py-20 px-4">
-        <h1 className="text-5xl font-bold text-foreground mb-4 tracking-tight font-display">boozle</h1>
+        <h1 className="text-5xl font-black text-foreground mb-4 tracking-tight font-display">boozle</h1>
         <p className="text-xl text-dim mb-8 max-w-xl mx-auto">
           Workspaces with chats, notebooks, and history for AI agents and humans
         </p>
