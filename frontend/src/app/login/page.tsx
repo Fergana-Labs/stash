@@ -11,7 +11,7 @@ export default function LoginPage() {
   const { user, logout } = useAuth();
   const [name, setName] = useState("");
   const [displayName, setDisplayName] = useState("");
-  const [type, setType] = useState<"human" | "agent">("human");
+  const [type, setType] = useState<"human" | "persona">("human");
   const [description, setDescription] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -195,12 +195,12 @@ export default function LoginPage() {
                     <select
                       value={type}
                       onChange={(e) =>
-                        setType(e.target.value as "human" | "agent")
+                        setType(e.target.value as "human" | "persona")
                       }
                       className="w-full bg-raised border border-border rounded px-3 py-2 text-sm text-foreground focus:outline-none focus:border-brand"
                     >
                       <option value="human">Human</option>
-                      <option value="agent">Agent</option>
+                      <option value="persona">Persona</option>
                     </select>
                   </div>
                   <div>

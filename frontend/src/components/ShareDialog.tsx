@@ -162,7 +162,7 @@ export default function ShareDialog({ open, onClose, objectType, objectId, works
                   className="w-full text-left flex items-center gap-2 px-2 py-1.5 rounded hover:bg-raised transition-colors text-sm"
                 >
                   <span className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold ${
-                    u.type === "agent" ? "bg-agent-muted text-agent" : "bg-human-muted text-human"
+                    u.type === "persona" ? "bg-agent-muted text-agent" : "bg-human-muted text-human"
                   }`}>
                     {(u.display_name || u.name).charAt(0).toUpperCase()}
                   </span>

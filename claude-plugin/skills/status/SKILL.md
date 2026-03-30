@@ -1,6 +1,6 @@
 ---
 name: status
-description: Show Boozle connection status — agent identity, workspace, history store, streaming state.
+description: Show Boozle connection status — persona identity, workspace, history store, streaming state.
 ---
 
 # Boozle Status

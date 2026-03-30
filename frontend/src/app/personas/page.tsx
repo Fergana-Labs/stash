@@ -5,18 +5,18 @@ import { useCallback, useEffect, useState } from "react";
 import AppShell from "../../components/AppShell";
 import { useAuth } from "../../hooks/useAuth";
 import {
-  createAgent,
-  deleteAgent,
-  listAgentsWithContext,
-  rotateAgentKey,
-  updateAgent,
+  createPersona,
+  deletePersona,
+  listPersonasWithContext,
+  rotatePersonaKey,
+  updatePersona,
 } from "../../lib/api";
-import { AgentWithContext } from "../../lib/types";
+import { PersonaWithContext } from "../../lib/types";
 
-export default function AgentsPage() {
+export default function PersonasPage() {
   const router = useRouter();
   const { user, loading, logout } = useAuth();
-  const [agents, setAgents] = useState<AgentWithContext[]>([]);
+  const [personas, setPersonas] = useState<PersonaWithContext[]>([]);
   const [showCreate, setShowCreate] = useState(false);
   const [newName, setNewName] = useState("");
   const [newDisplayName, setNewDisplayName] = useState("");
@@ -27,67 +27,67 @@ export default function AgentsPage() {
   const [editDisplayName, setEditDisplayName] = useState("");
   const [editDescription, setEditDescription] = useState("");
 
-  const loadAgents = useCallback(async () => {
+  const loadPersonas = useCallback(async () => {
     try {
-      const res = await listAgentsWithContext();
-      setAgents(res?.agents ?? []);
+      const res = await listPersonasWithContext();
+      setPersonas(res?.personas ?? []);
     } catch { /* ignore */ }
   }, []);
 
   useEffect(() => {
-    if (user && user.type === "human") loadAgents();
-  }, [user, loadAgents]);
+    if (user && user.type === "human") loadPersonas();
+  }, [user, loadPersonas]);
 
   const handleCreate = async () => {
     if (!newName.trim()) return;
     setError("");
     try {
-      const agent = await createAgent(newName.trim(), newDisplayName.trim() || undefined, newDescription.trim() || undefined);
-      setNewApiKey(agent.api_key);
+      const persona = await createPersona(newName.trim(), newDisplayName.trim() || undefined, newDescription.trim() || undefined);
+      setNewApiKey(persona.api_key);
       setShowCreate(false);
       setNewName("");
       setNewDisplayName("");
       setNewDescription("");
-      await loadAgents();
+      await loadPersonas();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to create agent");
+      setError(err instanceof Error ? err.message : "Failed to create persona");
     }
   };
 
-  const handleRotateKey = async (agentId: string) => {
-    if (!confirm("Rotate this agent's API key? The old key will stop working immediately.")) return;
+  const handleRotateKey = async (personaId: string) => {
+    if (!confirm("Rotate this persona's API key? The old key will stop working immediately.")) return;
     try {
-      const result = await rotateAgentKey(agentId);
+      const result = await rotatePersonaKey(personaId);
       setNewApiKey(result.api_key);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to rotate key");
     }
   };
 
-  const handleDelete = async (agentId: string) => {
-    if (!confirm("Delete this agent? This cannot be undone.")) return;
+  const handleDelete = async (personaId: string) => {
+    if (!confirm("Delete this persona? This cannot be undone.")) return;
     try {
-      await deleteAgent(agentId);
-      await loadAgents();
+      await deletePersona(personaId);
+      await loadPersonas();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to delete agent");
+      setError(err instanceof Error ? err.message : "Failed to delete persona");
     }
   };
 
-  const startEdit = (agent: AgentWithContext) => {
-    setEditingId(agent.id);
-    setEditDisplayName(agent.display_name || "");
-    setEditDescription(agent.description || "");
+  const startEdit = (persona: PersonaWithContext) => {
+    setEditingId(persona.id);
+    setEditDisplayName(persona.display_name || "");
+    setEditDescription(persona.description || "");
   };
 
   const handleSaveEdit = async () => {
     if (!editingId) return;
     try {
-      await updateAgent(editingId, { display_name: editDisplayName || undefined, description: editDescription || undefined });
+      await updatePersona(editingId, { display_name: editDisplayName || undefined, description: editDescription || undefined });
       setEditingId(null);
-      await loadAgents();
+      await loadPersonas();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to update agent");
+      setError(err instanceof Error ? err.message : "Failed to update persona");
     }
   };
 
@@ -100,7 +100,7 @@ export default function AgentsPage() {
     return (
       <AppShell user={user} onLogout={logout}>
         <div className="flex items-center justify-center h-full text-muted">
-          Only human users can manage agents.
+          Only human users can manage personas.
         </div>
       </AppShell>
     );
@@ -110,9 +110,9 @@ export default function AgentsPage() {
     <AppShell user={user} onLogout={logout}>
       <div className="max-w-3xl mx-auto w-full px-4 py-8">
         <div className="flex items-center justify-between mb-6">
-          <h1 className="text-2xl font-bold text-foreground font-display">Agents</h1>
+          <h1 className="text-2xl font-bold text-foreground font-display">Personas</h1>
           <button onClick={() => { setShowCreate(true); setNewApiKey(null); }} className="text-sm bg-brand hover:bg-brand-hover text-foreground px-3 py-1.5 rounded">
-            Create Agent
+            Create Persona
           </button>
         </div>
 
@@ -128,7 +128,7 @@ export default function AgentsPage() {
 
         {showCreate && (
           <div className="bg-surface border border-border rounded-lg p-4 mb-6">
-            <h3 className="text-foreground font-medium mb-3">New Agent</h3>
+            <h3 className="text-foreground font-medium mb-3">New Persona</h3>
             <input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="Username (a-z, 0-9, -, _)" className="w-full bg-raised border border-border rounded px-3 py-2 text-foreground text-sm mb-2 font-mono" />
             <input value={newDisplayName} onChange={(e) => setNewDisplayName(e.target.value)} placeholder="Display name (optional)" className="w-full bg-raised border border-border rounded px-3 py-2 text-foreground text-sm mb-2" />
             <input value={newDescription} onChange={(e) => setNewDescription(e.target.value)} placeholder="Description (optional)" className="w-full bg-raised border border-border rounded px-3 py-2 text-foreground text-sm mb-2" />
@@ -139,13 +139,13 @@ export default function AgentsPage() {
           </div>
         )}
 
-        {agents.length === 0 && !showCreate ? (
-          <p className="text-muted text-sm">No agents yet. Create one to get started.</p>
+        {personas.length === 0 && !showCreate ? (
+          <p className="text-muted text-sm">No personas yet. Create one to get started.</p>
         ) : (
           <div className="space-y-3">
-            {agents.map((agent) => (
-              <div key={agent.id} className="bg-surface border border-border rounded-lg p-4">
-                {editingId === agent.id ? (
+            {personas.map((persona) => (
+              <div key={persona.id} className="bg-surface border border-border rounded-lg p-4">
+                {editingId === persona.id ? (
                   <div className="space-y-2">
                     <input value={editDisplayName} onChange={(e) => setEditDisplayName(e.target.value)} placeholder="Display name" className="w-full bg-raised border border-border rounded px-3 py-1.5 text-foreground text-sm" />
                     <input value={editDescription} onChange={(e) => setEditDescription(e.target.value)} placeholder="Description" className="w-full bg-raised border border-border rounded px-3 py-1.5 text-foreground text-sm" />
@@ -159,25 +159,25 @@ export default function AgentsPage() {
                     <div className="flex items-start justify-between mb-3">
                       <div>
                         <div className="flex items-center gap-2">
-                          <span className="text-foreground font-medium">{agent.display_name || agent.name}</span>
-                          <span className="text-[10px] uppercase font-mono px-1.5 py-0.5 rounded bg-agent-muted text-agent">agent</span>
+                          <span className="text-foreground font-medium">{persona.display_name || persona.name}</span>
+                          <span className="text-[10px] uppercase font-mono px-1.5 py-0.5 rounded bg-agent-muted text-agent">persona</span>
                         </div>
-                        <div className="text-xs text-muted font-mono mt-0.5">@{agent.name}</div>
-                        {agent.description && <div className="text-sm text-dim mt-1">{agent.description}</div>}
+                        <div className="text-xs text-muted font-mono mt-0.5">@{persona.name}</div>
+                        {persona.description && <div className="text-sm text-dim mt-1">{persona.description}</div>}
                       </div>
                       <div className="flex gap-1 flex-shrink-0">
-                        <button onClick={() => startEdit(agent)} className="text-xs text-dim hover:text-foreground px-2 py-1">Edit</button>
-                        <button onClick={() => handleRotateKey(agent.id)} className="text-xs text-brand hover:text-brand-hover px-2 py-1">Rotate Key</button>
-                        <button onClick={() => handleDelete(agent.id)} className="text-xs text-red-400 hover:text-red-300 px-2 py-1">Delete</button>
+                        <button onClick={() => startEdit(persona)} className="text-xs text-dim hover:text-foreground px-2 py-1">Edit</button>
+                        <button onClick={() => handleRotateKey(persona.id)} className="text-xs text-brand hover:text-brand-hover px-2 py-1">Rotate Key</button>
+                        <button onClick={() => handleDelete(persona.id)} className="text-xs text-red-400 hover:text-red-300 px-2 py-1">Delete</button>
                       </div>
                     </div>
 
                     {/* Workspace memberships */}
-                    {agent.workspaces && agent.workspaces.length > 0 ? (
+                    {persona.workspaces && persona.workspaces.length > 0 ? (
                       <div className="border-t border-border pt-2 mt-2">
                         <div className="text-[10px] text-muted uppercase tracking-wider mb-1">Workspaces</div>
                         <div className="flex flex-wrap gap-1.5">
-                          {agent.workspaces.map((ws) => (
+                          {persona.workspaces.map((ws) => (
                             <a
                               key={ws.workspace_id}
                               href={`/workspaces/${ws.workspace_id}`}
@@ -195,7 +195,7 @@ export default function AgentsPage() {
                     )}
 
                     <div className="text-xs text-muted mt-2">
-                      Last seen: {new Date(agent.last_seen).toLocaleString()}
+                      Last seen: {new Date(persona.last_seen).toLocaleString()}
                     </div>
                   </>
                 )}

@@ -3,43 +3,43 @@ from uuid import UUID
 from ..auth import generate_api_key, hash_api_key
 from ..database import get_pool
 
-MAX_AGENTS_PER_OWNER = 50
+MAX_PERSONAS_PER_OWNER = 50
 
 
-async def create_agent(
+async def create_persona(
     owner_id: UUID,
     name: str,
     display_name: str | None,
     description: str,
 ) -> tuple[dict, str]:
-    """Create an agent identity owned by a human user. Returns (agent_row, raw_api_key).
+    """Create a persona identity owned by a human user. Returns (persona_row, raw_api_key).
 
-    Auto-provisions a personal notebook and history store for the agent.
+    Auto-provisions a personal notebook and history store for the persona.
     """
     pool = get_pool()
 
     # Validate owner is human
     owner = await pool.fetchrow("SELECT type FROM users WHERE id = $1", owner_id)
     if not owner or owner["type"] != "human":
-        raise ValueError("Only human users can create agent identities")
+        raise ValueError("Only human users can create persona identities")
 
     # Rate limit
     count = await pool.fetchval(
         "SELECT COUNT(*) FROM users WHERE owner_id = $1", owner_id
     )
-    if count >= MAX_AGENTS_PER_OWNER:
-        raise ValueError(f"Maximum of {MAX_AGENTS_PER_OWNER} agents per user")
+    if count >= MAX_PERSONAS_PER_OWNER:
+        raise ValueError(f"Maximum of {MAX_PERSONAS_PER_OWNER} personas per user")
 
     api_key = generate_api_key()
     key_hash = hash_api_key(api_key)
 
     async with pool.acquire() as conn:
         async with conn.transaction():
-            # Create the agent user
+            # Create the persona user
             try:
                 row = await conn.fetchrow(
                     "INSERT INTO users (name, display_name, type, api_key_hash, description, owner_id) "
-                    "VALUES ($1, $2, 'agent', $3, $4, $5) "
+                    "VALUES ($1, $2, 'persona', $3, $4, $5) "
                     "RETURNING id, name, display_name, type, description, owner_id, notebook_id, history_id, created_at, last_seen",
                     name,
                     display_name or name,
@@ -49,39 +49,39 @@ async def create_agent(
                 )
             except Exception as e:
                 if "unique" in str(e).lower() and "name" in str(e).lower():
-                    raise ValueError(f"Agent name '{name}' is already taken")
+                    raise ValueError(f"Persona name '{name}' is already taken")
                 raise
 
-            agent_id = row["id"]
+            persona_id = row["id"]
 
             # Auto-provision personal notebook
             nb_row = await conn.fetchrow(
                 "INSERT INTO notebooks (workspace_id, name, description, created_by) "
                 "VALUES (NULL, $1, $2, $3) RETURNING id",
-                name, f"Notebook for agent {name}", agent_id,
+                name, f"Notebook for persona {name}", persona_id,
             )
 
             # Auto-provision personal history store
             hist_row = await conn.fetchrow(
                 "INSERT INTO histories (workspace_id, name, description, created_by) "
                 "VALUES (NULL, $1, $2, $3) RETURNING id",
-                name, f"History for agent {name}", agent_id,
+                name, f"History for persona {name}", persona_id,
             )
 
-            # Link resources to agent
+            # Link resources to persona
             await conn.execute(
                 "UPDATE users SET notebook_id = $1, history_id = $2 WHERE id = $3",
-                nb_row["id"], hist_row["id"], agent_id,
+                nb_row["id"], hist_row["id"], persona_id,
             )
 
-    agent = dict(row)
-    agent["notebook_id"] = nb_row["id"]
-    agent["history_id"] = hist_row["id"]
-    return agent, api_key
+    persona = dict(row)
+    persona["notebook_id"] = nb_row["id"]
+    persona["history_id"] = hist_row["id"]
+    return persona, api_key
 
 
-async def list_owner_agents(owner_id: UUID) -> list[dict]:
-    """List all agents owned by a user."""
+async def list_owner_personas(owner_id: UUID) -> list[dict]:
+    """List all personas owned by a user."""
     pool = get_pool()
     rows = await pool.fetch(
         "SELECT id, name, display_name, type, description, owner_id, "
@@ -92,26 +92,26 @@ async def list_owner_agents(owner_id: UUID) -> list[dict]:
     return [dict(r) for r in rows]
 
 
-async def get_agent(agent_id: UUID, owner_id: UUID) -> dict | None:
-    """Get a specific agent. Validates ownership."""
+async def get_persona(persona_id: UUID, owner_id: UUID) -> dict | None:
+    """Get a specific persona. Validates ownership."""
     pool = get_pool()
     row = await pool.fetchrow(
         "SELECT id, name, display_name, type, description, owner_id, "
         "notebook_id, history_id, created_at, last_seen "
         "FROM users WHERE id = $1 AND owner_id = $2",
-        agent_id,
+        persona_id,
         owner_id,
     )
     return dict(row) if row else None
 
 
-async def update_agent(
-    agent_id: UUID,
+async def update_persona(
+    persona_id: UUID,
     owner_id: UUID,
     display_name: str | None = None,
     description: str | None = None,
 ) -> dict | None:
-    """Update agent details. Owner only."""
+    """Update persona details. Owner only."""
     pool = get_pool()
     sets = []
     args = []
@@ -125,8 +125,8 @@ async def update_agent(
         args.append(description)
         idx += 1
     if not sets:
-        return await get_agent(agent_id, owner_id)
-    args.extend([agent_id, owner_id])
+        return await get_persona(persona_id, owner_id)
+    args.extend([persona_id, owner_id])
     row = await pool.fetchrow(
         f"UPDATE users SET {', '.join(sets)} WHERE id = ${idx} AND owner_id = ${idx + 1} "
         "RETURNING id, name, display_name, type, description, owner_id, notebook_id, history_id, created_at, last_seen",
@@ -135,12 +135,12 @@ async def update_agent(
     return dict(row) if row else None
 
 
-async def rotate_agent_key(agent_id: UUID, owner_id: UUID) -> tuple[dict, str] | None:
-    """Generate a new API key for an agent. Returns (agent_row, new_api_key) or None."""
+async def rotate_persona_key(persona_id: UUID, owner_id: UUID) -> tuple[dict, str] | None:
+    """Generate a new API key for a persona. Returns (persona_row, new_api_key) or None."""
     pool = get_pool()
     # Verify ownership
     existing = await pool.fetchrow(
-        "SELECT id FROM users WHERE id = $1 AND owner_id = $2", agent_id, owner_id
+        "SELECT id FROM users WHERE id = $1 AND owner_id = $2", persona_id, owner_id
     )
     if not existing:
         return None
@@ -150,71 +150,71 @@ async def rotate_agent_key(agent_id: UUID, owner_id: UUID) -> tuple[dict, str] |
         "UPDATE users SET api_key_hash = $1 WHERE id = $2 "
         "RETURNING id, name, display_name, type, description, owner_id, notebook_id, history_id, created_at, last_seen",
         key_hash,
-        agent_id,
+        persona_id,
     )
     return dict(row), api_key
 
 
-async def delete_agent(agent_id: UUID, owner_id: UUID) -> bool:
-    """Delete an agent identity and its provisioned resources. Returns True if deleted."""
+async def delete_persona(persona_id: UUID, owner_id: UUID) -> bool:
+    """Delete a persona identity and its provisioned resources. Returns True if deleted."""
     pool = get_pool()
 
     # Fetch resource IDs before deleting
-    agent = await pool.fetchrow(
+    persona = await pool.fetchrow(
         "SELECT notebook_id, history_id FROM users WHERE id = $1 AND owner_id = $2",
-        agent_id, owner_id,
+        persona_id, owner_id,
     )
-    if not agent:
+    if not persona:
         return False
 
     async with pool.acquire() as conn:
         async with conn.transaction():
-            # Delete agent user (cascades to workspace_members etc.)
+            # Delete persona user (cascades to workspace_members etc.)
             result = await conn.execute(
-                "DELETE FROM users WHERE id = $1 AND owner_id = $2", agent_id, owner_id,
+                "DELETE FROM users WHERE id = $1 AND owner_id = $2", persona_id, owner_id,
             )
             if result != "DELETE 1":
                 return False
             # Clean up provisioned resources
-            if agent["notebook_id"]:
-                await conn.execute("DELETE FROM notebooks WHERE id = $1", agent["notebook_id"])
-            if agent["history_id"]:
-                await conn.execute("DELETE FROM histories WHERE id = $1", agent["history_id"])
+            if persona["notebook_id"]:
+                await conn.execute("DELETE FROM notebooks WHERE id = $1", persona["notebook_id"])
+            if persona["history_id"]:
+                await conn.execute("DELETE FROM histories WHERE id = $1", persona["history_id"])
 
     return True
 
 
-async def get_agent_resources(agent_id: UUID) -> dict | None:
-    """Get the notebook_id and history_id for an agent."""
+async def get_persona_resources(persona_id: UUID) -> dict | None:
+    """Get the notebook_id and history_id for a persona."""
     pool = get_pool()
     row = await pool.fetchrow(
-        "SELECT notebook_id, history_id FROM users WHERE id = $1 AND type = 'agent'",
-        agent_id,
+        "SELECT notebook_id, history_id FROM users WHERE id = $1 AND type = 'persona'",
+        persona_id,
     )
     return dict(row) if row else None
 
 
-async def provision_existing_agent(agent_id: UUID) -> dict | None:
-    """Provision notebook + history for an existing agent that doesn't have them yet."""
+async def provision_existing_persona(persona_id: UUID) -> dict | None:
+    """Provision notebook + history for an existing persona that doesn't have them yet."""
     pool = get_pool()
 
-    agent = await pool.fetchrow(
-        "SELECT id, name, notebook_id, history_id FROM users WHERE id = $1 AND type = 'agent'",
-        agent_id,
+    persona = await pool.fetchrow(
+        "SELECT id, name, notebook_id, history_id FROM users WHERE id = $1 AND type = 'persona'",
+        persona_id,
     )
-    if not agent:
+    if not persona:
         return None
 
     async with pool.acquire() as conn:
         async with conn.transaction():
-            notebook_id = agent["notebook_id"]
-            history_id = agent["history_id"]
+            notebook_id = persona["notebook_id"]
+            history_id = persona["history_id"]
 
             if not notebook_id:
                 nb_row = await conn.fetchrow(
                     "INSERT INTO notebooks (workspace_id, name, description, created_by) "
                     "VALUES (NULL, $1, $2, $3) RETURNING id",
-                    agent["name"], f"Notebook for agent {agent['name']}", agent_id,
+                    persona["name"], f"Notebook for persona {persona['name']}", persona_id,
                 )
                 notebook_id = nb_row["id"]
 
@@ -222,13 +222,13 @@ async def provision_existing_agent(agent_id: UUID) -> dict | None:
                 hist_row = await conn.fetchrow(
                     "INSERT INTO histories (workspace_id, name, description, created_by) "
                     "VALUES (NULL, $1, $2, $3) RETURNING id",
-                    agent["name"], f"History for agent {agent['name']}", agent_id,
+                    persona["name"], f"History for persona {persona['name']}", persona_id,
                 )
                 history_id = hist_row["id"]
 
             await conn.execute(
                 "UPDATE users SET notebook_id = $1, history_id = $2 WHERE id = $3",
-                notebook_id, history_id, agent_id,
+                notebook_id, history_id, persona_id,
             )
 
     return {"notebook_id": notebook_id, "history_id": history_id}

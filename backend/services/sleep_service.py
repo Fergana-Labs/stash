@@ -36,7 +36,7 @@ async def _load_sleep_config(agent_id: UUID) -> dict:
     pool = get_pool()
     row = await pool.fetchrow(
         "SELECT enabled, interval_minutes, max_pattern_cards, monologue_batch_size, "
-        "monologue_model, curation_model FROM sleep_configs WHERE agent_id = $1",
+        "monologue_model, curation_model FROM sleep_configs WHERE persona_id = $1",
         agent_id,
     )
     if row:
@@ -58,7 +58,7 @@ async def _get_watermark(agent_id: UUID) -> dict:
     pool = get_pool()
     row = await pool.fetchrow(
         "SELECT last_event_at, last_monologue_event_at, last_run_at "
-        "FROM sleep_watermarks WHERE agent_id = $1",
+        "FROM sleep_watermarks WHERE persona_id = $1",
         agent_id,
     )
     if row:
@@ -69,26 +69,26 @@ async def _get_watermark(agent_id: UUID) -> dict:
 async def _set_watermark(agent_id: UUID, last_event_at: datetime, last_monologue_event_at: datetime | None = None) -> None:
     pool = get_pool()
     await pool.execute(
-        "INSERT INTO sleep_watermarks (agent_id, last_event_at, last_monologue_event_at, last_run_at, updated_at) "
+        "INSERT INTO sleep_watermarks (persona_id, last_event_at, last_monologue_event_at, last_run_at, updated_at) "
         "VALUES ($1, $2, $3, now(), now()) "
-        "ON CONFLICT (agent_id) DO UPDATE SET "
+        "ON CONFLICT (persona_id) DO UPDATE SET "
         "last_event_at = $2, last_run_at = now(), updated_at = now()"
         + (", last_monologue_event_at = $3" if last_monologue_event_at else ""),
         agent_id, last_event_at, last_monologue_event_at,
     )
 
 
-# --- Agent resource lookup ---
+# --- Persona resource lookup ---
 
 
-async def _get_agent_resources(agent_id: UUID) -> dict:
+async def _get_persona_resources(persona_id: UUID) -> dict:
     pool = get_pool()
     row = await pool.fetchrow(
-        "SELECT notebook_id, history_id FROM users WHERE id = $1 AND type = 'agent'",
-        agent_id,
+        "SELECT notebook_id, history_id FROM users WHERE id = $1 AND type = 'persona'",
+        persona_id,
     )
     if not row or not row["notebook_id"] or not row["history_id"]:
-        raise ValueError(f"Agent {agent_id} has no provisioned notebook or history")
+        raise ValueError(f"Persona {persona_id} has no provisioned notebook or history")
     return dict(row)
 
 
@@ -297,7 +297,7 @@ async def _score_outcomes(agent_id: UUID, notebook_id: UUID, config: dict, episo
     pool = get_pool()
     rows = await pool.fetch(
         "SELECT id, session_id, injected_items FROM injection_sessions "
-        "WHERE agent_id = $1 AND completed_at IS NOT NULL AND scored_at IS NULL",
+        "WHERE persona_id = $1 AND completed_at IS NOT NULL AND scored_at IS NULL",
         agent_id,
     )
 
@@ -523,9 +523,9 @@ async def get_due_agents() -> list[UUID]:
     pool = get_pool()
     rows = await pool.fetch(
         "SELECT u.id FROM users u "
-        "LEFT JOIN sleep_configs sc ON sc.agent_id = u.id "
-        "LEFT JOIN sleep_watermarks sw ON sw.agent_id = u.id "
-        "WHERE u.type = 'agent' AND u.history_id IS NOT NULL AND u.notebook_id IS NOT NULL "
+        "LEFT JOIN sleep_configs sc ON sc.persona_id = u.id "
+        "LEFT JOIN sleep_watermarks sw ON sw.persona_id = u.id "
+        "WHERE u.type = 'persona' AND u.history_id IS NOT NULL AND u.notebook_id IS NOT NULL "
         "AND COALESCE(sc.enabled, true) = true "
         "AND (sw.last_run_at IS NULL OR "
         "     sw.last_run_at + (COALESCE(sc.interval_minutes, 60) * INTERVAL '1 minute') < now())"
@@ -542,7 +542,7 @@ async def curate(agent_id: UUID) -> dict:
     if not config["enabled"]:
         return {"status": "disabled"}
 
-    resources = await _get_agent_resources(agent_id)
+    resources = await _get_persona_resources(agent_id)
     notebook_id = resources["notebook_id"]
     history_id = resources["history_id"]
 

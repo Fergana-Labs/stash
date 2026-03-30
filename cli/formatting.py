@@ -77,22 +77,22 @@ def print_user(user: dict, title: str = "Profile") -> None:
     console.print(Panel("\n".join(lines), title=title))
 
 
-def print_agents(agents: list[dict]) -> None:
-    """Print a table of agent identities."""
-    if not agents:
-        console.print("[dim]No agents. Use 'boozle agents create' to make one.[/dim]")
+def print_personas(personas: list[dict]) -> None:
+    """Print a table of persona identities."""
+    if not personas:
+        console.print("[dim]No personas. Use 'boozle personas create' to make one.[/dim]")
         return
-    table = Table(title="Agent Identities")
+    table = Table(title="Persona Identities")
     table.add_column("Name", style="bold")
     table.add_column("ID", style="dim")
     table.add_column("Display Name")
     table.add_column("Last Seen")
-    for a in agents:
+    for p in personas:
         table.add_row(
-            a.get("name", ""),
-            str(a.get("id", ""))[:8],
-            a.get("display_name", ""),
-            str(a.get("last_seen", ""))[:19],
+            p.get("name", ""),
+            str(p.get("id", ""))[:8],
+            p.get("display_name", ""),
+            str(p.get("last_seen", ""))[:19],
         )
     console.print(table)
 

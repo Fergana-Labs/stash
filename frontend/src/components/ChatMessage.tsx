@@ -39,7 +39,7 @@ function ChatMessage({ message, isOwn }: ChatMessageProps) {
     <div className={`flex gap-3 py-1.5 ${isOwn ? "flex-row-reverse" : ""}`}>
       <div
         className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold ${
-          message.sender_type === "agent"
+          message.sender_type === "persona"
             ? "bg-agent-muted text-agent"
             : "bg-human-muted text-human"
         }`}
@@ -58,7 +58,7 @@ function ChatMessage({ message, isOwn }: ChatMessageProps) {
             {message.sender_display_name || message.sender_name}
           </span>
           <span className="text-muted">{time}</span>
-          {message.sender_type === "agent" && (
+          {message.sender_type === "persona" && (
             <span className="text-agent text-[10px]">BOT</span>
           )}
         </div>

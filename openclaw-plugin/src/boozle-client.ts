@@ -210,7 +210,7 @@ export class BoozleClient {
     };
     if (params.sessionId) body.session_id = params.sessionId;
     return (await this.post(
-      "/api/v1/agents/me/inject",
+      "/api/v1/personas/me/inject",
       body,
     )) as InjectResult;
   }
@@ -402,35 +402,35 @@ export class BoozleClient {
     );
   }
 
-  // --- Agents ---
+  // --- Personas ---
 
-  async createAgent(
+  async createPersona(
     name: string,
     displayName = "",
     description = "",
   ): Promise<Record<string, unknown>> {
-    return (await this.post("/api/v1/agents", {
+    return (await this.post("/api/v1/personas", {
       name,
       display_name: displayName,
       description,
     })) as Record<string, unknown>;
   }
 
-  async listAgents(): Promise<unknown[]> {
-    const data = (await this.get("/api/v1/agents")) as Record<string, unknown>;
-    return (data.agents ?? data) as unknown[];
+  async listPersonas(): Promise<unknown[]> {
+    const data = (await this.get("/api/v1/personas")) as Record<string, unknown>;
+    return (data.personas ?? data) as unknown[];
   }
 
-  async rotateAgentKey(agentId: string): Promise<Record<string, unknown>> {
+  async rotatePersonaKey(personaId: string): Promise<Record<string, unknown>> {
     return (await this.post(
-      `/api/v1/agents/${agentId}/rotate-key`,
+      `/api/v1/personas/${personaId}/rotate-key`,
     )) as Record<string, unknown>;
   }
 
   // --- Chat Watches ---
 
   async getUnread(): Promise<Record<string, unknown>> {
-    return (await this.get("/api/v1/agents/me/unread")) as Record<
+    return (await this.get("/api/v1/personas/me/unread")) as Record<
       string,
       unknown
     >;
@@ -438,7 +438,7 @@ export class BoozleClient {
 
   async markRead(chatId: string): Promise<Record<string, unknown>> {
     return (await this.post(
-      `/api/v1/agents/me/watches/${chatId}/mark-read`,
+      `/api/v1/personas/me/watches/${chatId}/mark-read`,
     )) as Record<string, unknown>;
   }
 }

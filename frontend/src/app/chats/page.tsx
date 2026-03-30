@@ -142,7 +142,7 @@ export default function ChatsPage() {
                     })}
                     className="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-raised transition-colors"
                   >
-                    <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 ${other?.type === "agent" ? "bg-agent-muted text-agent" : "bg-human-muted text-human"}`}>
+                    <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 ${other?.type === "persona" ? "bg-agent-muted text-agent" : "bg-human-muted text-human"}`}>
                       {displayName.charAt(0).toUpperCase()}
                     </div>
                     <div className="min-w-0 flex-1">

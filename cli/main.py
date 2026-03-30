@@ -11,7 +11,7 @@ import typer
 
 from .client import BoozleClient, BoozleError
 from .config import load_config, save_config, add_notify_room, get_notify_rooms, remove_notify_room
-from .formatting import console, output_json, print_agents, print_members, print_messages, print_rooms, print_user
+from .formatting import console, output_json, print_personas, print_members, print_messages, print_rooms, print_user
 
 app = typer.Typer(name="boozle", help="Boozle CLI — workspaces, chats, notebooks, history, decks.")
 
@@ -51,7 +51,7 @@ def _err(e: BoozleError) -> None:
 # ===========================================================================
 
 @app.command()
-def register(name: str = typer.Argument(...), type: str = typer.Option("agent"), description: str = typer.Option(""), as_json: bool = typer.Option(False, "--json")):
+def register(name: str = typer.Argument(...), type: str = typer.Option("persona"), description: str = typer.Option(""), as_json: bool = typer.Option(False, "--json")):
     """Create account and store API key."""
     with _client() as c:
         try:
@@ -711,47 +711,47 @@ def decks_analytics(deck_id: str = typer.Argument(...), share_id: str = typer.Ar
 
 
 # ===========================================================================
-# Agents
+# Personas
 # ===========================================================================
 
-agents_app = typer.Typer(help="Manage agent identities.")
-app.add_typer(agents_app, name="agents")
+personas_app = typer.Typer(help="Manage persona identities.")
+app.add_typer(personas_app, name="personas")
 
 
-@agents_app.command("create")
-def agents_create(name: str = typer.Argument(...), display_name: str = typer.Option(""), description: str = typer.Option(""), as_json: bool = typer.Option(False, "--json")):
-    """Create agent identity."""
+@personas_app.command("create")
+def personas_create(name: str = typer.Argument(...), display_name: str = typer.Option(""), description: str = typer.Option(""), as_json: bool = typer.Option(False, "--json")):
+    """Create persona identity."""
     with _client() as c:
         try:
-            data = c.create_agent(name, display_name=display_name, description=description)
+            data = c.create_persona(name, display_name=display_name, description=description)
         except BoozleError as e:
             _err(e)
     if _use_json(as_json):
         output_json(data)
     else:
-        console.print(f"[green]Agent '{data['name']}' created.[/green]  API key: [bold]{data['api_key']}[/bold]")
+        console.print(f"[green]Persona '{data['name']}' created.[/green]  API key: [bold]{data['api_key']}[/bold]")
 
 
-@agents_app.command("list")
-def agents_list(all_: bool = typer.Option(False, "--all"), as_json: bool = typer.Option(False, "--json")):
-    """List agents. --all includes workspace context."""
+@personas_app.command("list")
+def personas_list(all_: bool = typer.Option(False, "--all"), as_json: bool = typer.Option(False, "--json")):
+    """List personas. --all includes workspace context."""
     with _client() as c:
         try:
-            data = c.list_agents_with_context() if all_ else c.list_agents()
+            data = c.list_personas_with_context() if all_ else c.list_personas()
         except BoozleError as e:
             _err(e)
     if _use_json(as_json):
         output_json(data)
     else:
-        print_agents(data)
+        print_personas(data)
 
 
-@agents_app.command("rotate-key")
-def agents_rotate_key(agent_id: str = typer.Argument(...), as_json: bool = typer.Option(False, "--json")):
-    """Rotate agent API key."""
+@personas_app.command("rotate-key")
+def personas_rotate_key(persona_id: str = typer.Argument(...), as_json: bool = typer.Option(False, "--json")):
+    """Rotate persona API key."""
     with _client() as c:
         try:
-            data = c.rotate_agent_key(agent_id)
+            data = c.rotate_persona_key(persona_id)
         except BoozleError as e:
             _err(e)
     if _use_json(as_json):
@@ -760,14 +760,14 @@ def agents_rotate_key(agent_id: str = typer.Argument(...), as_json: bool = typer
         console.print(f"[green]New key: [bold]{data['api_key']}[/bold][/green]")
 
 
-@agents_app.command("delete")
-def agents_delete(agent_id: str = typer.Argument(...), confirm: bool = typer.Option(False, "--yes", "-y")):
-    """Delete agent."""
+@personas_app.command("delete")
+def personas_delete(persona_id: str = typer.Argument(...), confirm: bool = typer.Option(False, "--yes", "-y")):
+    """Delete persona."""
     if not confirm:
-        typer.confirm(f"Delete agent {agent_id}?", abort=True)
+        typer.confirm(f"Delete persona {persona_id}?", abort=True)
     with _client() as c:
         try:
-            c.delete_agent(agent_id)
+            c.delete_persona(persona_id)
         except BoozleError as e:
             _err(e)
     console.print("[green]Deleted.[/green]")

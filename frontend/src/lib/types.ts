@@ -2,7 +2,7 @@ export interface User {
   id: string;
   name: string;
   display_name: string | null;
-  type: "human" | "agent";
+  type: "human" | "persona";
   description: string;
   owner_id: string | null;
   created_at: string;
@@ -35,7 +35,7 @@ export interface WorkspaceMember {
   user_id: string;
   name: string;
   display_name: string | null;
-  type: "human" | "agent";
+  type: "human" | "persona";
   role: string;
   joined_at: string;
 }
@@ -59,7 +59,7 @@ export interface Message {
   sender_id: string;
   sender_name: string;
   sender_display_name: string | null;
-  sender_type: "human" | "agent";
+  sender_type: "human" | "persona";
   content: string;
   message_type: "text" | "system";
   reply_to_id: string | null;
@@ -193,9 +193,9 @@ export interface Share {
   created_at: string;
 }
 
-// --- Agents ---
+// --- Personas ---
 
-export interface AgentProfile {
+export interface PersonaProfile {
   id: string;
   name: string;
   display_name: string | null;
@@ -206,7 +206,7 @@ export interface AgentProfile {
   last_seen: string;
 }
 
-export interface AgentResponse {
+export interface PersonaResponse {
   id: string;
   name: string;
   display_name: string | null;
@@ -302,7 +302,7 @@ export interface Webhook {
   updated_at: string;
 }
 
-export interface AgentWithContext extends AgentProfile {
+export interface PersonaWithContext extends PersonaProfile {
   workspaces: { workspace_id: string; workspace_name: string; role: string }[];
 }
 

@@ -4,34 +4,34 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from ..auth import get_current_user
 from ..models import (
-    AgentCreateRequest, AgentPageCreateRequest, AgentPageUpdateRequest,
-    AgentProfile, AgentResponse, AgentUpdateRequest,
+    PersonaCreateRequest, PersonaPageCreateRequest, PersonaPageUpdateRequest,
+    PersonaProfile, PersonaResponse, PersonaUpdateRequest,
     HistoryEventBatchRequest, HistoryEventCreateRequest,
     HistoryEventListResponse, HistoryEventResponse, HistoryResponse,
     InjectionRequest, InjectionResponse,
     NotebookResponse, PageResponse, SyncManifestResponse,
     UnreadChatResponse, UnreadListResponse, WatchListResponse, WatchResponse,
 )
-from ..services import agent_identity_service, injection_service, memory_service, notebook_service, sleep_service, watch_service
+from ..services import persona_identity_service, injection_service, memory_service, notebook_service, sleep_service, watch_service
 
-router = APIRouter(prefix="/api/v1/agents", tags=["agents"])
+router = APIRouter(prefix="/api/v1/personas", tags=["personas"])
 
 
 def _require_human(user: dict) -> None:
     if user["type"] != "human":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Only human users can manage agent identities",
+            detail="Only human users can manage persona identities",
         )
 
 
-@router.post("", response_model=AgentResponse, status_code=201)
-async def create_agent(
-    req: AgentCreateRequest, current_user: dict = Depends(get_current_user)
+@router.post("", response_model=PersonaResponse, status_code=201)
+async def create_persona(
+    req: PersonaCreateRequest, current_user: dict = Depends(get_current_user)
 ):
     _require_human(current_user)
     try:
-        agent, api_key = await agent_identity_service.create_agent(
+        persona, api_key = await persona_identity_service.create_persona(
             owner_id=current_user["id"],
             name=req.name,
             display_name=req.display_name,
@@ -39,84 +39,84 @@ async def create_agent(
         )
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e))
-    return AgentResponse(**agent, api_key=api_key)
+    return PersonaResponse(**persona, api_key=api_key)
 
 
-@router.get("", response_model=list[AgentProfile])
-async def list_agents(current_user: dict = Depends(get_current_user)):
+@router.get("", response_model=list[PersonaProfile])
+async def list_personas(current_user: dict = Depends(get_current_user)):
     _require_human(current_user)
-    agents = await agent_identity_service.list_owner_agents(current_user["id"])
-    return [AgentProfile(**a) for a in agents]
+    personas = await persona_identity_service.list_owner_personas(current_user["id"])
+    return [PersonaProfile(**p) for p in personas]
 
 
-@router.get("/{agent_id}", response_model=AgentProfile)
-async def get_agent(agent_id: UUID, current_user: dict = Depends(get_current_user)):
+@router.get("/{persona_id}", response_model=PersonaProfile)
+async def get_persona(persona_id: UUID, current_user: dict = Depends(get_current_user)):
     _require_human(current_user)
-    agent = await agent_identity_service.get_agent(agent_id, current_user["id"])
-    if not agent:
+    persona = await persona_identity_service.get_persona(persona_id, current_user["id"])
+    if not persona:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Agent not found"
+            status_code=status.HTTP_404_NOT_FOUND, detail="Persona not found"
         )
-    return AgentProfile(**agent)
+    return PersonaProfile(**persona)
 
 
-@router.patch("/{agent_id}", response_model=AgentProfile)
-async def update_agent(
-    agent_id: UUID,
-    req: AgentUpdateRequest,
+@router.patch("/{persona_id}", response_model=PersonaProfile)
+async def update_persona(
+    persona_id: UUID,
+    req: PersonaUpdateRequest,
     current_user: dict = Depends(get_current_user),
 ):
     _require_human(current_user)
-    agent = await agent_identity_service.update_agent(
-        agent_id=agent_id,
+    persona = await persona_identity_service.update_persona(
+        persona_id=persona_id,
         owner_id=current_user["id"],
         display_name=req.display_name,
         description=req.description,
     )
-    if not agent:
+    if not persona:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Agent not found"
+            status_code=status.HTTP_404_NOT_FOUND, detail="Persona not found"
         )
-    return AgentProfile(**agent)
+    return PersonaProfile(**persona)
 
 
-@router.post("/{agent_id}/rotate-key", response_model=AgentResponse)
-async def rotate_key(agent_id: UUID, current_user: dict = Depends(get_current_user)):
+@router.post("/{persona_id}/rotate-key", response_model=PersonaResponse)
+async def rotate_key(persona_id: UUID, current_user: dict = Depends(get_current_user)):
     _require_human(current_user)
-    result = await agent_identity_service.rotate_agent_key(
-        agent_id, current_user["id"]
+    result = await persona_identity_service.rotate_persona_key(
+        persona_id, current_user["id"]
     )
     if not result:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Agent not found"
+            status_code=status.HTTP_404_NOT_FOUND, detail="Persona not found"
         )
-    agent, api_key = result
-    return AgentResponse(**agent, api_key=api_key)
+    persona, api_key = result
+    return PersonaResponse(**persona, api_key=api_key)
 
 
-@router.delete("/{agent_id}", status_code=204)
-async def delete_agent(
-    agent_id: UUID, current_user: dict = Depends(get_current_user)
+@router.delete("/{persona_id}", status_code=204)
+async def delete_persona(
+    persona_id: UUID, current_user: dict = Depends(get_current_user)
 ):
     _require_human(current_user)
-    deleted = await agent_identity_service.delete_agent(agent_id, current_user["id"])
+    deleted = await persona_identity_service.delete_persona(persona_id, current_user["id"])
     if not deleted:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Agent not found"
+            status_code=status.HTTP_404_NOT_FOUND, detail="Persona not found"
         )
 
 
 # ---------------------------------------------------------------------------
-# Agent resource endpoints — authenticated as the agent itself
+# Persona resource endpoints — authenticated as the persona itself
 # ---------------------------------------------------------------------------
 
 
-def _require_agent(user: dict) -> dict:
-    """Require the caller to be an agent. Returns the user dict."""
-    if user["type"] != "agent":
+def _require_persona(user: dict) -> dict:
+    """Require the caller to be a persona. Returns the user dict."""
+    if user["type"] != "persona":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Only agent users can access agent resources",
+            detail="Only persona users can access persona resources",
         )
     return user
 
@@ -126,7 +126,7 @@ def _get_notebook_id(user: dict) -> UUID:
     if not nb_id:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Agent has no provisioned notebook. Re-create or provision the agent.",
+            detail="Persona has no provisioned notebook. Re-create or provision the persona.",
         )
     return nb_id
 
@@ -136,7 +136,7 @@ def _get_history_id(user: dict) -> UUID:
     if not hist_id:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Agent has no provisioned history. Re-create or provision the agent.",
+            detail="Persona has no provisioned history. Re-create or provision the persona.",
         )
     return hist_id
 
@@ -146,8 +146,8 @@ def _get_history_id(user: dict) -> UUID:
 
 @router.get("/me/notebook", response_model=NotebookResponse)
 async def get_my_notebook(current_user: dict = Depends(get_current_user)):
-    agent = _require_agent(current_user)
-    nb_id = _get_notebook_id(agent)
+    persona = _require_persona(current_user)
+    nb_id = _get_notebook_id(persona)
     nb = await notebook_service.get_notebook(nb_id)
     if not nb:
         raise HTTPException(status_code=404, detail="Notebook not found")
@@ -156,31 +156,31 @@ async def get_my_notebook(current_user: dict = Depends(get_current_user)):
 
 @router.get("/me/notebook/sync-manifest", response_model=SyncManifestResponse)
 async def get_sync_manifest(current_user: dict = Depends(get_current_user)):
-    agent = _require_agent(current_user)
-    nb_id = _get_notebook_id(agent)
+    persona = _require_persona(current_user)
+    nb_id = _get_notebook_id(persona)
     pages = await notebook_service.get_sync_manifest(nb_id)
     return SyncManifestResponse(notebook_id=nb_id, pages=pages)
 
 
 @router.post("/me/notebook/pages", response_model=PageResponse, status_code=201)
-async def create_agent_page(
-    req: AgentPageCreateRequest, current_user: dict = Depends(get_current_user),
+async def create_persona_page(
+    req: PersonaPageCreateRequest, current_user: dict = Depends(get_current_user),
 ):
-    agent = _require_agent(current_user)
-    nb_id = _get_notebook_id(agent)
+    persona = _require_persona(current_user)
+    nb_id = _get_notebook_id(persona)
     page = await notebook_service.create_page(
-        notebook_id=nb_id, name=req.name, created_by=agent["id"],
+        notebook_id=nb_id, name=req.name, created_by=persona["id"],
         content=req.content, metadata=req.metadata,
     )
     return PageResponse(**page)
 
 
 @router.get("/me/notebook/pages/{page_id}", response_model=PageResponse)
-async def get_agent_page(
+async def get_persona_page(
     page_id: UUID, current_user: dict = Depends(get_current_user),
 ):
-    agent = _require_agent(current_user)
-    nb_id = _get_notebook_id(agent)
+    persona = _require_persona(current_user)
+    nb_id = _get_notebook_id(persona)
     page = await notebook_service.get_page(page_id, nb_id)
     if not page:
         raise HTTPException(status_code=404, detail="Page not found")
@@ -188,15 +188,15 @@ async def get_agent_page(
 
 
 @router.patch("/me/notebook/pages/{page_id}", response_model=PageResponse)
-async def update_agent_page(
+async def update_persona_page(
     page_id: UUID,
-    req: AgentPageUpdateRequest,
+    req: PersonaPageUpdateRequest,
     current_user: dict = Depends(get_current_user),
 ):
-    agent = _require_agent(current_user)
-    nb_id = _get_notebook_id(agent)
+    persona = _require_persona(current_user)
+    nb_id = _get_notebook_id(persona)
     page = await notebook_service.update_page(
-        page_id=page_id, notebook_id=nb_id, updated_by=agent["id"],
+        page_id=page_id, notebook_id=nb_id, updated_by=persona["id"],
         name=req.name, content=req.content, metadata=req.metadata,
     )
     if not page:
@@ -205,11 +205,11 @@ async def update_agent_page(
 
 
 @router.delete("/me/notebook/pages/{page_id}", status_code=204)
-async def delete_agent_page(
+async def delete_persona_page(
     page_id: UUID, current_user: dict = Depends(get_current_user),
 ):
-    agent = _require_agent(current_user)
-    nb_id = _get_notebook_id(agent)
+    persona = _require_persona(current_user)
+    nb_id = _get_notebook_id(persona)
     deleted = await notebook_service.delete_page(page_id, nb_id)
     if not deleted:
         raise HTTPException(status_code=404, detail="Page not found")
@@ -220,20 +220,20 @@ async def delete_agent_page(
 
 @router.get("/me/history", response_model=HistoryResponse)
 async def get_my_history(current_user: dict = Depends(get_current_user)):
-    agent = _require_agent(current_user)
-    hist_id = _get_history_id(agent)
-    store = await memory_service.get_store(hist_id, workspace_id=None, user_id=agent["id"])
+    persona = _require_persona(current_user)
+    hist_id = _get_history_id(persona)
+    store = await memory_service.get_store(hist_id, workspace_id=None, user_id=persona["id"])
     if not store:
         raise HTTPException(status_code=404, detail="History not found")
     return HistoryResponse(**store)
 
 
 @router.post("/me/history/events", response_model=HistoryEventResponse, status_code=201)
-async def push_agent_event(
+async def push_persona_event(
     req: HistoryEventCreateRequest, current_user: dict = Depends(get_current_user),
 ):
-    agent = _require_agent(current_user)
-    hist_id = _get_history_id(agent)
+    persona = _require_persona(current_user)
+    hist_id = _get_history_id(persona)
     event = await memory_service.push_event(
         store_id=hist_id,
         agent_name=req.agent_name,
@@ -247,11 +247,11 @@ async def push_agent_event(
 
 
 @router.post("/me/history/events/batch", response_model=list[HistoryEventResponse], status_code=201)
-async def push_agent_events_batch(
+async def push_persona_events_batch(
     req: HistoryEventBatchRequest, current_user: dict = Depends(get_current_user),
 ):
-    agent = _require_agent(current_user)
-    hist_id = _get_history_id(agent)
+    persona = _require_persona(current_user)
+    hist_id = _get_history_id(persona)
     events = await memory_service.push_events_batch(
         hist_id, [e.model_dump() for e in req.events],
     )
@@ -259,7 +259,7 @@ async def push_agent_events_batch(
 
 
 @router.get("/me/history/events", response_model=HistoryEventListResponse)
-async def query_agent_events(
+async def query_persona_events(
     current_user: dict = Depends(get_current_user),
     agent_name: str | None = None,
     session_id: str | None = None,
@@ -268,8 +268,8 @@ async def query_agent_events(
     before: str | None = None,
     limit: int = 50,
 ):
-    agent = _require_agent(current_user)
-    hist_id = _get_history_id(agent)
+    persona = _require_persona(current_user)
+    hist_id = _get_history_id(persona)
     events, has_more = await memory_service.query_events(
         hist_id,
         agent_name=agent_name,
@@ -293,13 +293,13 @@ async def inject_context(
     req: InjectionRequest,
     current_user: dict = Depends(get_current_user),
 ):
-    """Compute scored injection context for the agent's prompt."""
-    agent = _require_agent(current_user)
-    nb_id = _get_notebook_id(agent)
-    hist_id = _get_history_id(agent)
+    """Compute scored injection context for the persona's prompt."""
+    persona = _require_persona(current_user)
+    nb_id = _get_notebook_id(persona)
+    hist_id = _get_history_id(persona)
 
     result = await injection_service.compute_injection(
-        agent_id=agent["id"],
+        agent_id=persona["id"],
         notebook_id=nb_id,
         history_id=hist_id,
         prompt_text=req.prompt_text,
@@ -314,28 +314,28 @@ async def inject_context(
 
 @router.post("/me/sleep")
 async def trigger_sleep(current_user: dict = Depends(get_current_user)):
-    """Manually trigger sleep agent curation for the calling agent."""
-    agent = _require_agent(current_user)
-    result = await sleep_service.curate(agent["id"])
+    """Manually trigger sleep agent curation for the calling persona."""
+    persona = _require_persona(current_user)
+    result = await sleep_service.curate(persona["id"])
     return result
 
 
 @router.get("/me/sleep/status")
 async def sleep_status(current_user: dict = Depends(get_current_user)):
     """Get sleep agent status: watermark, last run, config."""
-    agent = _require_agent(current_user)
+    persona = _require_persona(current_user)
     from ..database import get_pool
     pool = get_pool()
 
     watermark = await pool.fetchrow(
         "SELECT last_event_at, last_monologue_event_at, last_run_at "
-        "FROM sleep_watermarks WHERE agent_id = $1",
-        agent["id"],
+        "FROM sleep_watermarks WHERE persona_id = $1",
+        persona["id"],
     )
     config = await pool.fetchrow(
         "SELECT enabled, interval_minutes, max_pattern_cards "
-        "FROM sleep_configs WHERE agent_id = $1",
-        agent["id"],
+        "FROM sleep_configs WHERE persona_id = $1",
+        persona["id"],
     )
 
     return {
@@ -362,8 +362,8 @@ async def backfill_embeddings(
             detail="Embedding service not configured (EMBEDDING_API_KEY not set)",
         )
 
-    agent = _require_agent(current_user)
-    hist_id = _get_history_id(agent)
+    persona = _require_persona(current_user)
+    hist_id = _get_history_id(persona)
 
     from ..database import get_pool
     pool = get_pool()
@@ -408,8 +408,8 @@ async def backfill_embeddings(
 @router.get("/me/unread", response_model=UnreadListResponse)
 async def get_unread(current_user: dict = Depends(get_current_user)):
     """Get unread message counts across all watched chats."""
-    agent = _require_agent(current_user)
-    items = await watch_service.get_unread(agent["id"])
+    persona = _require_persona(current_user)
+    items = await watch_service.get_unread(persona["id"])
     return UnreadListResponse(
         unread=[UnreadChatResponse(**i) for i in items],
         total_unread=sum(i["unread_count"] for i in items),
@@ -419,8 +419,8 @@ async def get_unread(current_user: dict = Depends(get_current_user)):
 @router.get("/me/watches", response_model=WatchListResponse)
 async def list_watches(current_user: dict = Depends(get_current_user)):
     """List all active chat watches."""
-    agent = _require_agent(current_user)
-    watches = await watch_service.list_watches(agent["id"])
+    persona = _require_persona(current_user)
+    watches = await watch_service.list_watches(persona["id"])
     return WatchListResponse(watches=[WatchResponse(**w) for w in watches])
 
 
@@ -431,9 +431,9 @@ async def add_watch(
     current_user: dict = Depends(get_current_user),
 ):
     """Watch a chat for new messages."""
-    agent = _require_agent(current_user)
+    persona = _require_persona(current_user)
     try:
-        watch = await watch_service.watch_chat(agent["id"], chat_id, workspace_id)
+        watch = await watch_service.watch_chat(persona["id"], chat_id, workspace_id)
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
     return WatchResponse(**watch)
@@ -445,8 +445,8 @@ async def remove_watch(
     current_user: dict = Depends(get_current_user),
 ):
     """Stop watching a chat."""
-    agent = _require_agent(current_user)
-    removed = await watch_service.unwatch_chat(agent["id"], chat_id)
+    persona = _require_persona(current_user)
+    removed = await watch_service.unwatch_chat(persona["id"], chat_id)
     if not removed:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Watch not found")
 
@@ -457,8 +457,8 @@ async def mark_read(
     current_user: dict = Depends(get_current_user),
 ):
     """Mark a watched chat as read."""
-    agent = _require_agent(current_user)
-    updated = await watch_service.mark_read(agent["id"], chat_id)
+    persona = _require_persona(current_user)
+    updated = await watch_service.mark_read(persona["id"], chat_id)
     if not updated:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Watch not found")
     return {"status": "ok"}

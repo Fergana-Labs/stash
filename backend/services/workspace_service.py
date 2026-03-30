@@ -118,7 +118,7 @@ async def join_workspace(workspace_id: UUID, user_id: UUID) -> dict | None:
     user = await pool.fetchrow(
         "SELECT type, notebook_id, history_id FROM users WHERE id = $1", user_id,
     )
-    if user and user["type"] == "agent":
+    if user and user["type"] == "persona":
         from . import permission_service
         for obj_type, obj_id in [
             ("notebook", user["notebook_id"]),

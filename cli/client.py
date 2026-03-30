@@ -78,25 +78,25 @@ class BoozleClient:
     def whoami(self) -> dict:
         return self._get("/api/v1/users/me")
 
-    # --- Agent Identities ---
+    # --- Persona Identities ---
 
-    def create_agent(self, name: str, display_name: str = "", description: str = "") -> dict:
+    def create_persona(self, name: str, display_name: str = "", description: str = "") -> dict:
         body: dict = {"name": name, "description": description}
         if display_name:
             body["display_name"] = display_name
-        return self._post("/api/v1/agents", json=body)
+        return self._post("/api/v1/personas", json=body)
 
-    def list_agents(self) -> list:
-        return self._get("/api/v1/agents")
+    def list_personas(self) -> list:
+        return self._get("/api/v1/personas")
 
-    def rotate_agent_key(self, agent_id: str) -> dict:
-        return self._post(f"/api/v1/agents/{agent_id}/rotate-key")
+    def rotate_persona_key(self, persona_id: str) -> dict:
+        return self._post(f"/api/v1/personas/{persona_id}/rotate-key")
 
-    def delete_agent(self, agent_id: str) -> None:
-        self._delete(f"/api/v1/agents/{agent_id}")
+    def delete_persona(self, persona_id: str) -> None:
+        self._delete(f"/api/v1/personas/{persona_id}")
 
-    def list_agents_with_context(self) -> list:
-        return self._list("/api/v1/me/agents", "agents")
+    def list_personas_with_context(self) -> list:
+        return self._list("/api/v1/me/personas", "personas")
 
     # --- Workspaces ---
 
@@ -362,19 +362,19 @@ class BoozleClient:
 
     def watch_chat(self, chat_id: str, workspace_id: str | None = None) -> dict:
         params = f"?workspace_id={workspace_id}" if workspace_id else ""
-        return self._post(f"/api/v1/agents/me/watches/{chat_id}{params}")
+        return self._post(f"/api/v1/personas/me/watches/{chat_id}{params}")
 
     def unwatch_chat(self, chat_id: str) -> None:
-        self._delete(f"/api/v1/agents/me/watches/{chat_id}")
+        self._delete(f"/api/v1/personas/me/watches/{chat_id}")
 
     def list_watches(self) -> list:
-        return self._list("/api/v1/agents/me/watches", "watches")
+        return self._list("/api/v1/personas/me/watches", "watches")
 
     def get_unread(self) -> dict:
-        return self._get("/api/v1/agents/me/unread")
+        return self._get("/api/v1/personas/me/unread")
 
     def mark_read(self, chat_id: str) -> dict:
-        return self._post(f"/api/v1/agents/me/watches/{chat_id}/mark-read")
+        return self._post(f"/api/v1/personas/me/watches/{chat_id}/mark-read")
 
     def search_users(self, query: str) -> list:
         return self._get("/api/v1/dms/users/search", q=query)
