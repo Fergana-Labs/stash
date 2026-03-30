@@ -25,6 +25,11 @@
     "history_store_id": {
       "description": "History store UUID for activity streaming (optional, set via /boozle:connect)",
       "sensitive": false
+    },
+    "inject_context": {
+      "description": "Inject persona/memory context into prompts (true/false, default true)",
+      "default": "true",
+      "sensitive": false
     }
   },
   "skills": "./skills/",
