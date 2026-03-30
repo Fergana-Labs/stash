@@ -133,7 +133,7 @@ export default function LoginPage() {
             <>
               <div className="flex gap-2 mb-6">
                 <button
-                  onClick={() => setMode("register")}
+                  onClick={() => { setMode("register"); setError(""); }}
                   className={`flex-1 py-2 rounded text-sm font-medium ${
                     mode === "register"
                       ? "bg-brand text-foreground"
@@ -143,7 +143,7 @@ export default function LoginPage() {
                   Register
                 </button>
                 <button
-                  onClick={() => setMode("login")}
+                  onClick={() => { setMode("login"); setError(""); }}
                   className={`flex-1 py-2 rounded text-sm font-medium ${
                     mode === "login"
                       ? "bg-brand text-foreground"
@@ -292,7 +292,7 @@ export default function LoginPage() {
                       </button>
                       <button
                         type="button"
-                        onClick={() => setLoginMode("apikey")}
+                        onClick={() => { setLoginMode("apikey"); setError(""); }}
                         className="w-full text-sm text-muted hover:text-foreground"
                       >
                         Login with API key instead
@@ -320,7 +320,7 @@ export default function LoginPage() {
                       </button>
                       <button
                         type="button"
-                        onClick={() => setLoginMode("password")}
+                        onClick={() => { setLoginMode("password"); setError(""); }}
                         className="w-full text-sm text-muted hover:text-foreground"
                       >
                         Login with password instead
