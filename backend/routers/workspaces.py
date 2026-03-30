@@ -17,6 +17,18 @@ from ..services import workspace_service
 router = APIRouter(prefix="/api/v1/workspaces", tags=["workspaces"])
 
 
+async def _serialize_workspace_for_viewer(workspace: dict, viewer_id: UUID | None) -> WorkspaceResponse:
+    is_member = bool(viewer_id and await workspace_service.is_member(workspace["id"], viewer_id))
+    is_public = bool(workspace.get("is_public"))
+    if not is_public and not is_member:
+        raise HTTPException(status_code=404, detail="Workspace not found")
+
+    data = dict(workspace)
+    if not is_member:
+        data["invite_code"] = ""
+    return WorkspaceResponse(**data)
+
+
 @router.post("", response_model=WorkspaceResponse, status_code=201)
 async def create_workspace(
     req: WorkspaceCreateRequest, current_user: dict = Depends(get_current_user),
@@ -31,7 +43,12 @@ async def create_workspace(
 @router.get("", response_model=WorkspaceListResponse)
 async def list_workspaces(current_user: dict | None = Depends(get_current_user_optional)):
     workspaces = await workspace_service.list_public_workspaces()
-    return WorkspaceListResponse(workspaces=[WorkspaceResponse(**w) for w in workspaces])
+    viewer_id = current_user["id"] if current_user else None
+    serialized = [
+        await _serialize_workspace_for_viewer(w, viewer_id)
+        for w in workspaces
+    ]
+    return WorkspaceListResponse(workspaces=serialized)
 
 
 @router.get("/mine", response_model=WorkspaceListResponse)
@@ -47,7 +64,8 @@ async def get_workspace(
     ws = await workspace_service.get_workspace(workspace_id)
     if not ws:
         raise HTTPException(status_code=404, detail="Workspace not found")
-    return WorkspaceResponse(**ws)
+    viewer_id = current_user["id"] if current_user else None
+    return await _serialize_workspace_for_viewer(ws, viewer_id)
 
 
 @router.patch("/{workspace_id}", response_model=WorkspaceResponse)

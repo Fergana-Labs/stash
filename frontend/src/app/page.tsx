@@ -27,6 +27,18 @@ interface FeedItem {
   badgeColor?: string;
 }
 
+function buildChatHref(item: {
+  id: string;
+  kind: "workspace" | "room" | "dm";
+  workspaceId?: string | null;
+  label?: string;
+}): string {
+  const params = new URLSearchParams({ kind: item.kind });
+  if (item.workspaceId) params.set("workspaceId", item.workspaceId);
+  if (item.label) params.set("label", item.label);
+  return `/chats/${item.id}?${params.toString()}`;
+}
+
 function LandingPage() {
   const [publicWorkspaces, setPublicWorkspaces] = useState<Workspace[]>([]);
 
@@ -91,7 +103,12 @@ function LoggedInHome({ user, logout }: { user: NonNullable<ReturnType<typeof us
       for (const chat of chats) {
         items.push({
           id: chat.id, type: "chat", name: chat.name, description: chat.workspace_name || undefined,
-          href: chat.workspace_id ? `/workspaces/${chat.workspace_id}` : `/rooms/${chat.id}`,
+          href: buildChatHref({
+            id: chat.id,
+            kind: chat.workspace_id ? "workspace" : "room",
+            workspaceId: chat.workspace_id,
+            label: chat.name,
+          }),
           updatedAt: chat.updated_at, icon: "#",
           badge: chat.workspace_name || "Personal",
         });
@@ -103,7 +120,11 @@ function LoggedInHome({ user, logout }: { user: NonNullable<ReturnType<typeof us
           id: dm.id, type: "dm",
           name: other?.display_name || other?.name || "Unknown",
           description: `@${other?.name || "unknown"}`,
-          href: `/dms/${dm.id}`, updatedAt: dm.updated_at, icon: other?.type === "agent" ? "A" : "H",
+          href: buildChatHref({
+            id: dm.id,
+            kind: "dm",
+            label: other?.display_name || other?.name || "Unknown",
+          }), updatedAt: dm.updated_at, icon: other?.type === "agent" ? "A" : "H",
           badge: "DM",
           badgeColor: other?.type === "agent" ? "text-agent bg-agent-muted" : "text-human bg-human-muted",
         });

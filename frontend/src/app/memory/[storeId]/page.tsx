@@ -1,18 +1,22 @@
 "use client";
 
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import AppShell from "../../../components/AppShell";
 import { useAuth } from "../../../hooks/useAuth";
 import {
-  getPersonalHistory,
+  getHistory,
+  listAllHistories,
   queryPersonalHistoryEvents,
+  queryHistoryEvents,
+  searchHistoryEvents,
   searchPersonalHistoryEvents,
 } from "../../../lib/api";
-import { HistoryEvent, History } from "../../../lib/types";
+import { HistoryEvent, History, HistoryWithWorkspace } from "../../../lib/types";
 
 export default function HistoryDetailPage() {
   const params = useParams();
+  const searchParams = useSearchParams();
   const router = useRouter();
   const storeId = params.storeId as string;
   const { user, loading, logout } = useAuth();
@@ -25,23 +29,43 @@ export default function HistoryDetailPage() {
   const [filterType, setFilterType] = useState("");
   const [error, setError] = useState("");
 
+  const workspaceId = searchParams.get("workspaceId");
+  const workspaceName = searchParams.get("workspaceName");
+
   const loadStore = useCallback(async () => {
     try {
-      const s = await getPersonalHistory(storeId);
-      setStore(s);
+      if (workspaceId) {
+        const s = await getHistory(workspaceId, storeId);
+        setStore(s);
+        return;
+      }
+      const all = await listAllHistories();
+      const matched = (all?.stores ?? []).find((item: HistoryWithWorkspace) => item.id === storeId);
+      if (matched) {
+        setStore(matched);
+        return;
+      }
+      throw new Error("Store not found");
     } catch {
       setError("Store not found");
     }
-  }, [storeId]);
+  }, [storeId, workspaceId]);
 
   const loadEvents = useCallback(async () => {
     try {
       if (searchQuery.trim()) {
-        const res = await searchPersonalHistoryEvents(storeId, searchQuery.trim());
+        const res = workspaceId
+          ? await searchHistoryEvents(workspaceId, storeId, searchQuery.trim())
+          : await searchPersonalHistoryEvents(storeId, searchQuery.trim());
         setEvents(res.events);
         setHasMore(res.has_more);
       } else {
-        const res = await queryPersonalHistoryEvents(storeId, {
+        const res = workspaceId
+          ? await queryHistoryEvents(workspaceId, storeId, {
+              agent_name: filterAgent || undefined,
+              event_type: filterType || undefined,
+            })
+          : await queryPersonalHistoryEvents(storeId, {
           agent_name: filterAgent || undefined,
           event_type: filterType || undefined,
         });
@@ -51,7 +75,7 @@ export default function HistoryDetailPage() {
     } catch {
       // ignore
     }
-  }, [storeId, searchQuery, filterAgent, filterType]);
+  }, [storeId, workspaceId, searchQuery, filterAgent, filterType]);
 
   useEffect(() => {
     if (user) {
@@ -72,6 +96,9 @@ export default function HistoryDetailPage() {
         <h1 className="text-foreground font-medium">{store?.name || "Loading..."}</h1>
         {store?.description && (
           <span className="text-muted text-sm hidden sm:inline">{store.description}</span>
+        )}
+        {(workspaceName || workspaceId) && (
+          <span className="text-muted text-sm hidden sm:inline">{workspaceName || "Workspace history"}</span>
         )}
       </div>
 

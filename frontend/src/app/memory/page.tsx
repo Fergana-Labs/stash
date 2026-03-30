@@ -1,6 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import AppShell from "../../components/AppShell";
 import { useAuth } from "../../hooks/useAuth";
@@ -88,6 +89,22 @@ export default function MemoryPage() {
         </div>
 
         {/* Event stream */}
+        {stores.length > 0 && (
+          <div className="grid gap-2 sm:grid-cols-2 mb-6">
+            {stores.map((store) => {
+              const params = new URLSearchParams();
+              if (store.workspace_id) params.set("workspaceId", store.workspace_id);
+              if (store.workspace_name) params.set("workspaceName", store.workspace_name);
+              const href = params.toString() ? `/memory/${store.id}?${params.toString()}` : `/memory/${store.id}`;
+              return (
+                <Link key={store.id} href={href} className="bg-surface border border-border rounded-lg p-3 hover:bg-raised transition-colors">
+                  <div className="text-sm text-foreground">{store.name}</div>
+                  <div className="text-xs text-muted mt-1">{store.workspace_name || "Personal"}</div>
+                </Link>
+              );
+            })}
+          </div>
+        )}
         <div className="text-xs text-muted mb-3">
           {eventsLoading ? "Loading..." : `${events.length} event${events.length !== 1 ? "s" : ""}${hasMore ? " (more available)" : ""}`}
         </div>

@@ -34,7 +34,7 @@ export default function WorkspaceCard({ workspace, isMember }: WorkspaceCardProp
       </div>
       <div className="flex items-center gap-3 mt-3 text-xs text-muted">
         <span>{workspace.member_count ?? 0} member{(workspace.member_count ?? 0) !== 1 ? "s" : ""}</span>
-        <span>Code: {workspace.invite_code}</span>
+        {isMember && workspace.invite_code && <span>Code: {workspace.invite_code}</span>}
         {!workspace.is_public && <span className="text-yellow-500">Private</span>}
       </div>
     </Link>

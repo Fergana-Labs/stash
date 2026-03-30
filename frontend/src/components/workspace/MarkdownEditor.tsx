@@ -17,6 +17,7 @@ import * as Y from "yjs";
 import { WebsocketProvider } from "y-websocket";
 import EditorToolbar from "./EditorToolbar";
 import { NotebookPage } from "../../lib/types";
+import { getToken } from "../../lib/api";
 
 // User colors for collaboration cursors
 const COLORS = [
@@ -40,7 +41,7 @@ export default function MarkdownEditor({ workspaceId, notebookId, file, onSave }
   const [synced, setSynced] = useState(false);
 
   // Get auth token and user info
-  const token = typeof window !== "undefined" ? localStorage.getItem("moltchat_token") : null;
+  const token = typeof window !== "undefined" ? getToken() : null;
   const userName = useMemo(() => {
     return "User";
   }, []);
@@ -114,6 +115,7 @@ export default function MarkdownEditor({ workspaceId, notebookId, file, onSave }
         <CollaborativeEditor
           ydoc={ydoc}
           onSave={onSave}
+          initialMarkdown={file.content_markdown}
         />
       ) : (
         <div className="flex-1 flex items-center justify-center bg-background text-muted">
@@ -127,9 +129,11 @@ export default function MarkdownEditor({ workspaceId, notebookId, file, onSave }
 function CollaborativeEditor({
   ydoc,
   onSave,
+  initialMarkdown,
 }: {
   ydoc: Y.Doc;
   onSave: (content: string) => void;
+  initialMarkdown: string;
 }) {
   const editor = useEditor({
     immediatelyRender: false,
@@ -178,13 +182,13 @@ function CollaborativeEditor({
       if ((e.metaKey || e.ctrlKey) && e.key === "s") {
         e.preventDefault();
         if (editor) {
-          onSave(editor.getText());
+          onSave(serializeMarkdown(editor.getJSON(), initialMarkdown));
         }
       }
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [editor, onSave]);
+  }, [editor, initialMarkdown, onSave]);
 
   return (
     <>
@@ -194,4 +198,71 @@ function CollaborativeEditor({
       </div>
     </>
   );
+}
+
+type JSONNode = {
+  type?: string;
+  text?: string;
+  marks?: Array<{ type: string; attrs?: Record<string, string> }>;
+  attrs?: Record<string, unknown>;
+  content?: JSONNode[];
+};
+
+function serializeMarkdown(doc: JSONNode | null | undefined, fallback: string): string {
+  if (!doc || !doc.content) return fallback;
+  return doc.content.map((node) => renderNode(node, 0)).join("").trim() || fallback;
+}
+
+function renderNode(node: JSONNode, depth: number): string {
+  const children = (node.content || []).map((child) => renderNode(child, depth + 1)).join("");
+  switch (node.type) {
+    case "paragraph":
+      return `${children}\n\n`;
+    case "heading": {
+      const level = Number(node.attrs?.level || 1);
+      return `${"#".repeat(Math.min(Math.max(level, 1), 6))} ${children.trim()}\n\n`;
+    }
+    case "bulletList":
+      return `${(node.content || []).map((child) => renderNode(child, depth)).join("")}\n`;
+    case "orderedList":
+      return `${(node.content || []).map((child, index) => renderListItem(child, depth, index + 1)).join("")}\n`;
+    case "listItem":
+      return renderListItem(node, depth, null);
+    case "blockquote":
+      return `${children.trim().split("\n").map((line) => `> ${line}`).join("\n")}\n\n`;
+    case "hardBreak":
+      return "\n";
+    case "text":
+      return applyMarks(node.text || "", node.marks || []);
+    default:
+      return children;
+  }
+}
+
+function renderListItem(node: JSONNode, depth: number, index: number | null): string {
+  const prefix = index === null ? `${"  ".repeat(depth)}- ` : `${"  ".repeat(depth)}${index}. `;
+  const text = (node.content || []).map((child) => renderNode(child, depth + 1)).join("").trimEnd();
+  const lines = text.split("\n");
+  return `${prefix}${lines[0] || ""}${lines.slice(1).map((line) => `\n${"  ".repeat(depth + 1)}${line}`).join("")}\n`;
+}
+
+function applyMarks(text: string, marks: Array<{ type: string; attrs?: Record<string, string> }>): string {
+  return marks.reduce((value, mark) => {
+    switch (mark.type) {
+      case "bold":
+        return `**${value}**`;
+      case "italic":
+        return `*${value}*`;
+      case "underline":
+        return `<u>${value}</u>`;
+      case "subscript":
+        return `<sub>${value}</sub>`;
+      case "superscript":
+        return `<sup>${value}</sup>`;
+      case "link":
+        return `[${value}](${mark.attrs?.href || ""})`;
+      default:
+        return value;
+    }
+  }, text);
 }

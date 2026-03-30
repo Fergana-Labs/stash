@@ -7,6 +7,7 @@ import ChatInput from "../../../components/ChatInput";
 import MessageList from "../../../components/MessageList";
 import { useAuth } from "../../../hooks/useAuth";
 import {
+  getToken,
   getPersonalRoom,
   getPersonalRoomMessages,
   sendPersonalRoomMessage,
@@ -56,7 +57,7 @@ export default function PersonalRoomPage() {
   // WebSocket connection
   useEffect(() => {
     if (!user) return;
-    const token = localStorage.getItem("moltchat_token");
+    const token = getToken();
     if (!token) return;
 
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";

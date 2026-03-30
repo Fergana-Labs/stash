@@ -27,17 +27,22 @@ import {
   WorkspaceMember,
 } from "./types";
 
-function getToken(): string | null {
+const TOKEN_KEY = "boozle_token";
+const LEGACY_TOKEN_KEY = "moltchat_token";
+
+export function getToken(): string | null {
   if (typeof window === "undefined") return null;
-  return localStorage.getItem("moltchat_token");
+  return localStorage.getItem(TOKEN_KEY) || localStorage.getItem(LEGACY_TOKEN_KEY);
 }
 
 export function setToken(token: string) {
-  localStorage.setItem("moltchat_token", token);
+  localStorage.setItem(TOKEN_KEY, token);
+  localStorage.removeItem(LEGACY_TOKEN_KEY);
 }
 
 export function clearToken() {
-  localStorage.removeItem("moltchat_token");
+  localStorage.removeItem(TOKEN_KEY);
+  localStorage.removeItem(LEGACY_TOKEN_KEY);
 }
 
 const API_BASE = "";
