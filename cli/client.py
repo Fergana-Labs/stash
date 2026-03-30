@@ -291,6 +291,9 @@ class BoozleClient:
     def search_events(self, workspace_id: str, store_id: str, query: str, limit: int = 50) -> list:
         return self._list(f"/api/v1/workspaces/{workspace_id}/memory/{store_id}/events/search", "events", q=query, limit=limit)
 
+    def query_history(self, workspace_id: str, store_id: str, question: str) -> dict:
+        return self._post(f"/api/v1/workspaces/{workspace_id}/memory/{store_id}/query", json={"question": question})
+
     def all_events(self, agent_name: str | None = None, event_type: str | None = None, limit: int = 50) -> list:
         params: dict = {"limit": limit}
         if agent_name:

@@ -461,6 +461,16 @@ class HistoryEventListResponse(BaseModel):
     has_more: bool
 
 
+class HistoryQueryRequest(BaseModel):
+    question: str = Field(..., min_length=1, max_length=2000)
+    limit: int = Field(20, ge=1, le=100)
+
+
+class HistoryQueryResponse(BaseModel):
+    answer: str
+    sources: list[HistoryEventResponse]
+
+
 # --- Object Permissions ---
 
 

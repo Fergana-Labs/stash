@@ -548,6 +548,28 @@ def hist_search(query: str = typer.Argument(...), workspace_id: str = typer.Opti
             console.print(f"  [{ev['created_at'][:19]}] {ev['agent_name']}/{ev['event_type']}: {ev['content'][:200]}")
 
 
+@history_app.command("ask")
+def hist_ask(question: str = typer.Argument(...), workspace_id: str = typer.Option(None, "--ws"), store_id: str = typer.Option(None, "--store"), as_json: bool = typer.Option(False, "--json")):
+    """Ask a question about a history store (LLM-powered)."""
+    ws = workspace_id or _default_workspace()
+    store = store_id or load_config().get("default_store", "")
+    if not store:
+        console.print("[red]No store specified.[/red]")
+        raise typer.Exit(1)
+    with _client() as c:
+        try:
+            data = c.query_history(ws, store, question)
+        except BoozleError as e:
+            _err(e)
+    if _use_json(as_json):
+        output_json(data)
+    else:
+        console.print(f"\n[bold]{data.get('answer', '')}[/bold]\n")
+        sources = data.get("sources", [])
+        if sources:
+            console.print(f"[dim]Based on {len(sources)} events[/dim]")
+
+
 # ===========================================================================
 # Decks
 # ===========================================================================

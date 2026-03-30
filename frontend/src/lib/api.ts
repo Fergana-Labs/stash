@@ -441,6 +441,20 @@ export async function searchHistoryEvents(
   );
 }
 
+export async function queryHistory(
+  workspaceId: string,
+  storeId: string,
+  question: string,
+): Promise<{ answer: string; sources: HistoryEvent[] }> {
+  return apiFetch(
+    `/api/v1/workspaces/${workspaceId}/memory/${storeId}/query`,
+    {
+      method: "POST",
+      body: JSON.stringify({ question }),
+    }
+  );
+}
+
 // --- Personal Rooms ---
 
 export async function createPersonalRoom(

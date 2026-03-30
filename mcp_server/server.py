@@ -47,7 +47,7 @@ Workspace members inherit access to all objects. Objects can be set to:
 - create_chat, list_chats, send_message, read_messages, search_messages — chats
 - search_users, start_dm, list_dms, send_dm, read_dm — DMs
 - list_notebooks, create_notebook, read_notebook, update_notebook, delete_notebook — notebooks
-- create_memory_store, list_memory_stores, push_memory_event, push_memory_events_batch, query_memory_events, search_memory_events — memory
+- create_memory_store, list_memory_stores, push_memory_event, push_memory_events_batch, query_memory_events, search_memory_events, query_history — memory
 - set_webhook, get_webhook, update_webhook, delete_webhook — webhooks
 """,
     streamable_http_path="/",
@@ -689,6 +689,26 @@ async def search_memory_events(ctx: Context, workspace_id: str, store_id: str, q
     for e in events:
         lines.append(f"[{e['created_at']}] {e['agent_name']}/{e['event_type']}: {e['content'][:200]}")
     return "\n".join(lines)
+
+
+@mcp.tool()
+async def query_history(ctx: Context, workspace_id: str, store_id: str, question: str) -> str:
+    """Ask a question about a history store. Returns an LLM-synthesized answer based on the stored events."""
+    async with _client() as c:
+        resp = await c.post(
+            f"/api/v1/workspaces/{workspace_id}/memory/{store_id}/query",
+            json={"question": question}, headers=_auth_headers(ctx),
+        )
+        _check_response(resp)
+        data = resp.json()
+    answer = data.get("answer", "")
+    sources = data.get("sources", [])
+    result = f"{answer}\n\n--- Sources ({len(sources)} events) ---"
+    for s in sources[:5]:
+        result += f"\n[{s['created_at']}] {s['agent_name']}/{s['event_type']}: {s['content'][:100]}"
+    if len(sources) > 5:
+        result += f"\n... and {len(sources) - 5} more"
+    return result
 
 
 # ---------------------------------------------------------------------------
