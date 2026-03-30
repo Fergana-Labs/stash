@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""UserPromptSubmit hook: inject scored agent context via Boozle injection API.
+"""UserPromptSubmit hook: inject scored persona context via Boozle injection API.
 
-Calls POST /api/v1/agents/me/inject for four-factor scored context.
+Calls POST /api/v1/personas/me/inject for four-factor scored context.
 Falls back to basic cached context when the API is unreachable.
 Reads replicate_me bridge escalations from shared notification directory.
 """
