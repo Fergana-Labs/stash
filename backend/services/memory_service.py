@@ -215,12 +215,12 @@ async def push_event(
 ) -> dict:
     """Push a single event to a history."""
     pool = get_pool()
-    meta_json = json.dumps(metadata or {})
+    meta = metadata or {}
     row = await pool.fetchrow(
         "INSERT INTO history_events (store_id, agent_name, event_type, content, session_id, tool_name, metadata) "
         "VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb) "
         "RETURNING id, store_id, agent_name, event_type, session_id, tool_name, content, metadata, created_at",
-        store_id, agent_name, event_type, content, session_id, tool_name, meta_json,
+        store_id, agent_name, event_type, content, session_id, tool_name, meta,
     )
     event = dict(row)
     # Fire-and-forget embedding
@@ -246,7 +246,7 @@ async def push_events_batch(store_id: UUID, events: list[dict]) -> list[dict]:
     async with pool.acquire() as conn:
         async with conn.transaction():
             for evt in events:
-                meta_json = json.dumps(evt.get("metadata", {}))
+                meta = evt.get("metadata", {})
                 row = await conn.fetchrow(
                     "INSERT INTO history_events "
                     "(store_id, agent_name, event_type, content, session_id, tool_name, metadata) "
@@ -259,7 +259,7 @@ async def push_events_batch(store_id: UUID, events: list[dict]) -> list[dict]:
                     evt["content"],
                     evt.get("session_id"),
                     evt.get("tool_name"),
-                    meta_json,
+                    meta,
                 )
                 results.append(dict(row))
     # Fire-and-forget batch embedding

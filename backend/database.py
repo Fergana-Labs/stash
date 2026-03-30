@@ -1,3 +1,5 @@
+import json
+
 import asyncpg
 from pgvector.asyncpg import register_vector
 
@@ -366,6 +368,12 @@ async def init_db():
 
     async def _init_connection(conn):
         await register_vector(conn)
+        await conn.set_type_codec(
+            "jsonb", encoder=json.dumps, decoder=json.loads, schema="pg_catalog"
+        )
+        await conn.set_type_codec(
+            "json", encoder=json.dumps, decoder=json.loads, schema="pg_catalog"
+        )
 
     pool = await asyncpg.create_pool(
         settings.DATABASE_URL, min_size=2, max_size=10, init=_init_connection,

@@ -124,14 +124,14 @@ async def create_page(
 ) -> dict:
     pool = get_pool()
     ch = _content_hash(content)
-    meta_json = json.dumps(metadata or {})
+    meta = metadata or {}
     row = await pool.fetchrow(
         "INSERT INTO notebook_pages "
         "(notebook_id, folder_id, name, content_markdown, content_hash, metadata, created_by, updated_by) "
         "VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $7) "
         "RETURNING id, notebook_id, folder_id, name, content_markdown, content_hash, metadata, "
         "created_by, updated_by, created_at, updated_at",
-        notebook_id, folder_id, name, content, ch, meta_json, created_by,
+        notebook_id, folder_id, name, content, ch, meta, created_by,
     )
     return dict(row)
 
@@ -188,7 +188,7 @@ async def update_page(
         idx += 1
     if metadata is not None:
         sets.append(f"metadata = ${idx}::jsonb")
-        args.append(json.dumps(metadata))
+        args.append(metadata)
         idx += 1
 
     args.append(page_id)

@@ -436,7 +436,7 @@ async def compute_injection(
                 "VALUES ($1, $2, $3::jsonb) "
                 "ON CONFLICT (agent_id, session_id) DO UPDATE "
                 "SET injected_items = $3::jsonb",
-                agent_id, session_id, json.dumps(pattern_items),
+                agent_id, session_id, pattern_items,
             )
 
     return {
