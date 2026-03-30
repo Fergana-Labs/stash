@@ -54,7 +54,10 @@ export default function NewDMDialog({ open, onClose }: NewDMDialogProps) {
       try {
         const dm = await createOrGetDM(userId);
         onClose();
-        router.push(`/rooms/${dm.id}`);
+        const otherName = dm.other_user?.display_name || dm.other_user?.name || "";
+        const params = new URLSearchParams({ kind: "dm" });
+        if (otherName) params.set("label", otherName);
+        router.push(`/chats/${dm.id}?${params.toString()}`);
       } catch {
         // Ignore
       } finally {
