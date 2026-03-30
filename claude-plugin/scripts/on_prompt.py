@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
-"""UserPromptSubmit hook: inject scored persona context via Boozle injection API.
+"""UserPromptSubmit hook: stream user message + inject scored persona context.
 
-Calls POST /api/v1/personas/me/inject for four-factor scored context.
-Falls back to basic cached context when the API is unreachable.
-Reads replicate_me bridge escalations from shared notification directory.
+1. Always streams the user's prompt to the Boozle history store
+2. Optionally injects persona/memory context (unless inject_context=false)
 """
 
 import json
@@ -36,9 +35,9 @@ def build_fallback_context(
     if recent_events:
         lines.append("## Recent Activity (your previous sessions)")
         for event in recent_events[:15]:
-            ts = event.get("created_at", "")[:16]
+            ts = str(event.get("created_at", ""))[:16]
             tool = event.get("tool_name", "")
-            content = event.get("content", "")[:200]
+            content = str(event.get("content", ""))[:200]
             event_type = event.get("event_type", "")
             if tool:
                 lines.append(f"- [{ts}] {tool}: {content}")
@@ -49,13 +48,28 @@ def build_fallback_context(
     return "\n".join(lines)
 
 
+def stream_user_message(cfg: dict, state: dict, prompt_text: str):
+    """Push the user's prompt to the history store."""
+    if not cfg["workspace_id"] or not cfg["history_store_id"]:
+        return
+    if not prompt_text or not prompt_text.strip():
+        return
+    try:
+        with get_client() as client:
+            client.push_event(
+                workspace_id=cfg["workspace_id"],
+                store_id=cfg["history_store_id"],
+                agent_name=cfg["agent_name"],
+                event_type="user_message",
+                content=prompt_text[:2000],
+                session_id=state.get("session_id", ""),
+            )
+    except Exception:
+        pass
+
+
 def main():
     if not is_configured():
-        return
-
-    # Check if injection is disabled (streaming still works via on_tool_use)
-    cfg = get_config()
-    if cfg.get("inject_context", "true").lower() in ("false", "0", "no", "off"):
         return
 
     # Read hook payload from stdin
@@ -63,11 +77,18 @@ def main():
     prompt_text = hook_data.get("prompt", hook_data.get("userPrompt", ""))
     hook_session_id = hook_data.get("session_id", "")
 
-    # Load session injection state and plugin state for session_id
-    session_state = load_injection_state()
+    cfg = get_config()
     state = load_state()
     session_id = hook_session_id or state.get("session_id", "")
 
+    # --- Always stream the user message ---
+    stream_user_message(cfg, state, prompt_text)
+
+    # --- Injection (skip if disabled) ---
+    if cfg.get("inject_context", "true").lower() in ("false", "0", "no", "off"):
+        return
+
+    session_state = load_injection_state()
     context = None
 
     # --- Cloud path: call injection endpoint ---
@@ -88,30 +109,28 @@ def main():
 
     # --- Cached fallback when server is unreachable ---
     if context is None:
-        cfg = get_config()
-        state = load_state()
         cache = load_cache()
-
         persona = state.get("persona", "")
         if not persona and cache and cache.get("profile"):
-            persona = cache["profile"].get("description", "")
-
-        recent_events = []
-        if cache and cache.get("recent_events"):
-            recent_events = cache["recent_events"]
-        context = build_fallback_context(cfg["agent_name"], persona, recent_events)
-
+            persona = str(cache["profile"].get("description", ""))
+        recent_events = cache.get("recent_events", []) if cache else []
+        context = build_fallback_context(
+            cfg["agent_name"],
+            persona,
+            recent_events,
+        )
         # Increment prompt_num locally
         session_state["prompt_num"] = session_state.get("prompt_num", 0) + 1
         save_injection_state(session_state)
 
-    # --- Append bridge escalations ---
+    # --- Append bridge escalations (if replicate_me is running) ---
     escalations = load_escalations()
     if escalations:
-        context += escalations
+        context += "\n\n## Escalations\n" + "\n".join(escalations)
 
-    if context:
-        print(json.dumps({"additionalContext": context}))
+    # Output the context for injection
+    output = {"additionalContext": context}
+    print(json.dumps(output))
 
 
 if __name__ == "__main__":
