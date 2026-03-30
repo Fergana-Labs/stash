@@ -23,6 +23,7 @@ import {
   RegisterResponse,
   User,
   UserSearchResult,
+  Webhook,
   Workspace,
   WorkspaceMember,
 } from "./types";
@@ -775,6 +776,38 @@ export async function verifyDeckAccess(token: string, email?: string, passcode?:
 
 export async function listAllDecks(): Promise<{ decks: DeckWithWorkspace[] }> {
   return apiFetch("/api/v1/me/decks");
+}
+
+// --- Webhooks ---
+
+export async function getWebhook(workspaceId: string): Promise<Webhook | null> {
+  try {
+    return await apiFetch(`/api/v1/workspaces/${workspaceId}/webhooks`);
+  } catch {
+    return null;
+  }
+}
+
+export async function setWebhook(
+  workspaceId: string, url: string, secret?: string, eventFilter?: string[]
+): Promise<Webhook> {
+  return apiFetch(`/api/v1/workspaces/${workspaceId}/webhooks`, {
+    method: "POST",
+    body: JSON.stringify({ url, secret: secret || undefined, event_filter: eventFilter || [] }),
+  });
+}
+
+export async function updateWebhook(
+  workspaceId: string, data: { url?: string; is_active?: boolean; event_filter?: string[] }
+): Promise<Webhook> {
+  return apiFetch(`/api/v1/workspaces/${workspaceId}/webhooks`, {
+    method: "PATCH",
+    body: JSON.stringify(data),
+  });
+}
+
+export async function deleteWebhook(workspaceId: string): Promise<void> {
+  await apiFetch(`/api/v1/workspaces/${workspaceId}/webhooks`, { method: "DELETE" });
 }
 
 // --- Agents ---

@@ -290,6 +290,18 @@ export interface HistoryEventWithContext extends HistoryEvent {
   workspace_name: string | null;
 }
 
+export interface Webhook {
+  id: string;
+  workspace_id: string;
+  user_id: string;
+  url: string;
+  has_secret: boolean;
+  event_filter: string[];
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface AgentWithContext extends AgentProfile {
   workspaces: { workspace_id: string; workspace_name: string; role: string }[];
 }
