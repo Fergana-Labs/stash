@@ -1,3 +1,5 @@
+import type { OpenClawPluginApi } from "openclaw/plugin-sdk/plugin-entry";
+import { textResult } from "../utils/tool-result.js";
 /**
  * Agent identity tools — create, list, rotate keys.
  */
@@ -6,12 +8,13 @@ import { Type } from "@sinclair/typebox";
 import type { BoozleClient } from "../boozle-client.js";
 
 export function registerAgentTools(
-  api: { registerTool: (def: unknown, opts?: unknown) => void },
+  api: OpenClawPluginApi,
   client: BoozleClient,
 ) {
   api.registerTool({
     name: "boozle_create_agent",
     description: "Create a new Boozle agent identity",
+    label: "Create a new Boozle agent identity",
     parameters: Type.Object({
       name: Type.String({ description: "Agent name (unique identifier)" }),
       display_name: Type.Optional(Type.String({ description: "Display name" })),
@@ -23,29 +26,31 @@ export function registerAgentTools(
         params.display_name ?? "",
         params.description ?? "",
       );
-      return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
+      return textResult(JSON.stringify(result, null, 2));
     },
   });
 
   api.registerTool({
     name: "boozle_list_agents",
     description: "List your Boozle agent identities",
+    label: "List your Boozle agent identities",
     parameters: Type.Object({}),
     async execute() {
       const result = await client.listAgents();
-      return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
+      return textResult(JSON.stringify(result, null, 2));
     },
   });
 
   api.registerTool({
     name: "boozle_rotate_agent_key",
     description: "Rotate the API key for a Boozle agent",
+    label: "Rotate the API key for a Boozle agent",
     parameters: Type.Object({
       agent_id: Type.String({ description: "Agent UUID" }),
     }),
     async execute(_id: string, params: { agent_id: string }) {
       const result = await client.rotateAgentKey(params.agent_id);
-      return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
+      return textResult(JSON.stringify(result, null, 2));
     },
   });
 }

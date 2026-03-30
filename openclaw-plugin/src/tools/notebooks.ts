@@ -1,3 +1,5 @@
+import type { OpenClawPluginApi } from "openclaw/plugin-sdk/plugin-entry";
+import { textResult } from "../utils/tool-result.js";
 /**
  * Notebook tools — list, create, read, update, delete.
  */
@@ -6,24 +8,26 @@ import { Type } from "@sinclair/typebox";
 import type { BoozleClient } from "../boozle-client.js";
 
 export function registerNotebookTools(
-  api: { registerTool: (def: unknown, opts?: unknown) => void },
+  api: OpenClawPluginApi,
   client: BoozleClient,
 ) {
   api.registerTool({
     name: "boozle_list_notebooks",
     description: "List notebooks in a Boozle workspace",
+    label: "List notebooks in a Boozle workspace",
     parameters: Type.Object({
       workspace_id: Type.String({ description: "Workspace UUID" }),
     }),
     async execute(_id: string, params: { workspace_id: string }) {
       const result = await client.listNotebooks(params.workspace_id);
-      return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
+      return textResult(JSON.stringify(result, null, 2));
     },
   });
 
   api.registerTool({
     name: "boozle_create_notebook",
     description: "Create a new notebook in a Boozle workspace",
+    label: "Create a new notebook in a Boozle workspace",
     parameters: Type.Object({
       workspace_id: Type.String({ description: "Workspace UUID" }),
       name: Type.String({ description: "Notebook name" }),
@@ -37,26 +41,28 @@ export function registerNotebookTools(
         params.content ?? "",
         params.folder_id ?? "",
       );
-      return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
+      return textResult(JSON.stringify(result, null, 2));
     },
   });
 
   api.registerTool({
     name: "boozle_read_notebook",
     description: "Read a notebook's content from Boozle",
+    label: "Read a notebook's content from Boozle",
     parameters: Type.Object({
       workspace_id: Type.String({ description: "Workspace UUID" }),
       notebook_id: Type.String({ description: "Notebook UUID" }),
     }),
     async execute(_id: string, params: { workspace_id: string; notebook_id: string }) {
       const result = await client.readNotebook(params.workspace_id, params.notebook_id);
-      return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
+      return textResult(JSON.stringify(result, null, 2));
     },
   });
 
   api.registerTool({
     name: "boozle_update_notebook",
     description: "Update a notebook's name or content in Boozle",
+    label: "Update a notebook's name or content in Boozle",
     parameters: Type.Object({
       workspace_id: Type.String({ description: "Workspace UUID" }),
       notebook_id: Type.String({ description: "Notebook UUID" }),
@@ -70,20 +76,21 @@ export function registerNotebookTools(
         params.content ?? "",
         params.name ?? "",
       );
-      return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
+      return textResult(JSON.stringify(result, null, 2));
     },
   });
 
   api.registerTool({
     name: "boozle_delete_notebook",
     description: "Delete a notebook from Boozle",
+    label: "Delete a notebook from Boozle",
     parameters: Type.Object({
       workspace_id: Type.String({ description: "Workspace UUID" }),
       notebook_id: Type.String({ description: "Notebook UUID" }),
     }),
     async execute(_id: string, params: { workspace_id: string; notebook_id: string }) {
       await client.deleteNotebook(params.workspace_id, params.notebook_id);
-      return { content: [{ type: "text" as const, text: "Notebook deleted." }] };
+      return textResult("Notebook deleted.");
     },
   });
 }

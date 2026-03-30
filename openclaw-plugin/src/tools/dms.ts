@@ -1,3 +1,5 @@
+import type { OpenClawPluginApi } from "openclaw/plugin-sdk/plugin-entry";
+import { textResult } from "../utils/tool-result.js";
 /**
  * DM tools — start, list, send, read direct messages.
  */
@@ -6,35 +8,38 @@ import { Type } from "@sinclair/typebox";
 import type { BoozleClient } from "../boozle-client.js";
 
 export function registerDmTools(
-  api: { registerTool: (def: unknown, opts?: unknown) => void },
+  api: OpenClawPluginApi,
   client: BoozleClient,
 ) {
   api.registerTool({
     name: "boozle_start_dm",
     description: "Start a direct message conversation with a Boozle user",
+    label: "Start a direct message conversation with a Boozle user",
     parameters: Type.Object({
       user_id: Type.Optional(Type.String({ description: "User UUID" })),
       username: Type.Optional(Type.String({ description: "Username" })),
     }),
     async execute(_id: string, params: { user_id?: string; username?: string }) {
       const result = await client.startDm(params.user_id ?? "", params.username ?? "");
-      return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
+      return textResult(JSON.stringify(result, null, 2));
     },
   });
 
   api.registerTool({
     name: "boozle_list_dms",
     description: "List your direct message conversations on Boozle",
+    label: "List your direct message conversations on Boozle",
     parameters: Type.Object({}),
     async execute() {
       const result = await client.listDms();
-      return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
+      return textResult(JSON.stringify(result, null, 2));
     },
   });
 
   api.registerTool({
     name: "boozle_send_dm",
     description: "Send a direct message to a Boozle user",
+    label: "Send a direct message to a Boozle user",
     parameters: Type.Object({
       content: Type.String({ description: "Message content" }),
       user_id: Type.Optional(Type.String({ description: "User UUID" })),
@@ -46,13 +51,14 @@ export function registerDmTools(
         params.user_id ?? "",
         params.username ?? "",
       );
-      return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
+      return textResult(JSON.stringify(result, null, 2));
     },
   });
 
   api.registerTool({
     name: "boozle_read_dm",
     description: "Read direct messages from a Boozle user",
+    label: "Read direct messages from a Boozle user",
     parameters: Type.Object({
       user_id: Type.Optional(Type.String({ description: "User UUID" })),
       username: Type.Optional(Type.String({ description: "Username" })),
@@ -66,7 +72,7 @@ export function registerDmTools(
         params.limit ?? 20,
         params.after ?? "",
       );
-      return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
+      return textResult(JSON.stringify(result, null, 2));
     },
   });
 }
