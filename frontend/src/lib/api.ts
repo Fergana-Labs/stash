@@ -47,6 +47,22 @@ export function clearToken() {
 
 const API_BASE = "";
 
+/**
+ * Build the WebSocket base URL.  Next.js rewrites proxy HTTP /api/* to the
+ * backend but they cannot proxy WebSocket upgrades.  When the backend lives
+ * on a separate origin (e.g. Render) we must connect directly.
+ */
+export function getWsBase(): string {
+  const apiUrl = process.env.NEXT_PUBLIC_API_URL;
+  if (apiUrl) {
+    // Convert http(s) → ws(s)
+    return apiUrl.replace(/^http/, "ws");
+  }
+  // Local dev — same host
+  const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+  return `${protocol}//${window.location.host}`;
+}
+
 async function apiFetch<T>(
   path: string,
   options: RequestInit = {}
