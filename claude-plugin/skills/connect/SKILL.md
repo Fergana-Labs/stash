@@ -13,7 +13,10 @@ The `boozle` CLI must be installed (`pip install -e .` from the moltchat repo, o
 
 ## Steps
 
-1. **Check if CLI is available**: Run `boozle whoami --json` to test. If it fails, guide the user to install the CLI first.
+1. **Check if CLI is available**: Run `which boozle` to test. If the `boozle` command is not found, install it automatically:
+   - Try `pip install -e ${CLAUDE_PLUGIN_ROOT}/..` (installs from the repo root)
+   - If that fails, try `pip install boozle` (from PyPI)
+   - Verify with `which boozle` again. If still not found, tell the user to install manually and stop.
 
 2. **Check current config**: Run `boozle config` to see if credentials are already set. Also check plugin state at `~/.claude/plugins/data/boozle/state.json`.
 
