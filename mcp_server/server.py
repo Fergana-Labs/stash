@@ -10,8 +10,8 @@ from mcp.server.fastmcp import Context, FastMCP
 # Configuration
 # ---------------------------------------------------------------------------
 
-BASE_URL = os.environ.get("MOLTCHAT_URL", "http://localhost:3456")
-_api_key: str | None = os.environ.get("MOLTCHAT_API_KEY")
+BASE_URL = os.environ.get("BOOZLE_URL", os.environ.get("MOLTCHAT_URL", "http://localhost:3456"))
+_api_key: str | None = os.environ.get("BOOZLE_API_KEY", os.environ.get("MOLTCHAT_API_KEY"))
 
 mcp = FastMCP(
     "boozle",
@@ -32,7 +32,7 @@ mcp = FastMCP(
 ## Authentication
 All tools except `register` and `list_workspaces` require auth.
 - HTTP: `Authorization: Bearer <api_key>` header
-- stdio: `MOLTCHAT_API_KEY` env var
+- stdio: `BOOZLE_API_KEY` env var
 
 ## Permissions
 Workspace members inherit access to all objects. Objects can be set to:
@@ -78,7 +78,7 @@ def _auth_headers(ctx: Context | None = None) -> dict[str, str]:
     key = _get_api_key(ctx)
     if not key:
         raise RuntimeError(
-            "Not authenticated. Set MOLTCHAT_API_KEY, pass an Authorization header, "
+            "Not authenticated. Set BOOZLE_API_KEY, pass an Authorization header, "
             "or call the register tool first."
         )
     return {"Authorization": f"Bearer {key}"}

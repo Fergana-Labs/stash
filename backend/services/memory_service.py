@@ -3,7 +3,6 @@
 import asyncio
 import json
 import logging
-from datetime import datetime
 from uuid import UUID
 
 import numpy as np
@@ -18,8 +17,9 @@ logger = logging.getLogger(__name__)
 
 
 async def create_store(
-    workspace_id: UUID, name: str, description: str, created_by: UUID,
+    workspace_id: UUID | None, name: str, description: str, created_by: UUID,
 ) -> dict:
+    """Create a history store. Pass workspace_id=None for a personal store."""
     pool = get_pool()
     row = await pool.fetchrow(
         "INSERT INTO histories (workspace_id, name, description, created_by) "
@@ -32,34 +32,60 @@ async def create_store(
     return store
 
 
-async def get_store(store_id: UUID, workspace_id: UUID) -> dict | None:
+async def get_store(store_id: UUID, workspace_id: UUID | None, user_id: UUID | None = None) -> dict | None:
+    """Get a store. For personal stores, pass workspace_id=None and user_id."""
     pool = get_pool()
-    row = await pool.fetchrow(
-        "SELECT ms.*, "
-        "(SELECT COUNT(*) FROM history_events me WHERE me.store_id = ms.id) AS event_count "
-        "FROM histories ms WHERE ms.id = $1 AND ms.workspace_id = $2",
-        store_id, workspace_id,
-    )
+    if workspace_id is not None:
+        row = await pool.fetchrow(
+            "SELECT ms.*, "
+            "(SELECT COUNT(*) FROM history_events me WHERE me.store_id = ms.id) AS event_count "
+            "FROM histories ms WHERE ms.id = $1 AND ms.workspace_id = $2",
+            store_id, workspace_id,
+        )
+    else:
+        row = await pool.fetchrow(
+            "SELECT ms.*, "
+            "(SELECT COUNT(*) FROM history_events me WHERE me.store_id = ms.id) AS event_count "
+            "FROM histories ms WHERE ms.id = $1 AND ms.workspace_id IS NULL AND ms.created_by = $2",
+            store_id, user_id,
+        )
     return dict(row) if row else None
 
 
-async def list_stores(workspace_id: UUID) -> list[dict]:
+async def list_stores(workspace_id: UUID | None, user_id: UUID | None = None) -> list[dict]:
+    """List stores. For personal stores, pass workspace_id=None and user_id."""
     pool = get_pool()
-    rows = await pool.fetch(
-        "SELECT ms.*, "
-        "(SELECT COUNT(*) FROM history_events me WHERE me.store_id = ms.id) AS event_count "
-        "FROM histories ms WHERE ms.workspace_id = $1 ORDER BY ms.created_at",
-        workspace_id,
-    )
+    if workspace_id is not None:
+        rows = await pool.fetch(
+            "SELECT ms.*, "
+            "(SELECT COUNT(*) FROM history_events me WHERE me.store_id = ms.id) AS event_count "
+            "FROM histories ms WHERE ms.workspace_id = $1 ORDER BY ms.created_at",
+            workspace_id,
+        )
+    else:
+        rows = await pool.fetch(
+            "SELECT ms.*, "
+            "(SELECT COUNT(*) FROM history_events me WHERE me.store_id = ms.id) AS event_count "
+            "FROM histories ms WHERE ms.workspace_id IS NULL AND ms.created_by = $1 "
+            "ORDER BY ms.created_at",
+            user_id,
+        )
     return [dict(r) for r in rows]
 
 
-async def delete_store(store_id: UUID, workspace_id: UUID) -> bool:
+async def delete_store(store_id: UUID, workspace_id: UUID | None, user_id: UUID | None = None) -> bool:
+    """Delete a store. For personal stores, pass workspace_id=None and user_id."""
     pool = get_pool()
-    result = await pool.execute(
-        "DELETE FROM histories WHERE id = $1 AND workspace_id = $2",
-        store_id, workspace_id,
-    )
+    if workspace_id is not None:
+        result = await pool.execute(
+            "DELETE FROM histories WHERE id = $1 AND workspace_id = $2",
+            store_id, workspace_id,
+        )
+    else:
+        result = await pool.execute(
+            "DELETE FROM histories WHERE id = $1 AND workspace_id IS NULL AND created_by = $2",
+            store_id, user_id,
+        )
     return result == "DELETE 1"
 
 
@@ -140,56 +166,6 @@ async def query_all_user_events(
     if has_more:
         events = events[:limit]
     return events, has_more
-
-
-# --- Personal Store CRUD ---
-
-
-async def create_personal_store(
-    name: str, description: str, created_by: UUID,
-) -> dict:
-    pool = get_pool()
-    row = await pool.fetchrow(
-        "INSERT INTO histories (workspace_id, name, description, created_by) "
-        "VALUES (NULL, $1, $2, $3) "
-        "RETURNING id, workspace_id, name, description, created_by, created_at",
-        name, description, created_by,
-    )
-    store = dict(row)
-    store["event_count"] = 0
-    return store
-
-
-async def get_personal_store(store_id: UUID, user_id: UUID) -> dict | None:
-    pool = get_pool()
-    row = await pool.fetchrow(
-        "SELECT ms.*, "
-        "(SELECT COUNT(*) FROM history_events me WHERE me.store_id = ms.id) AS event_count "
-        "FROM histories ms WHERE ms.id = $1 AND ms.workspace_id IS NULL AND ms.created_by = $2",
-        store_id, user_id,
-    )
-    return dict(row) if row else None
-
-
-async def list_personal_stores(user_id: UUID) -> list[dict]:
-    pool = get_pool()
-    rows = await pool.fetch(
-        "SELECT ms.*, "
-        "(SELECT COUNT(*) FROM history_events me WHERE me.store_id = ms.id) AS event_count "
-        "FROM histories ms WHERE ms.workspace_id IS NULL AND ms.created_by = $1 "
-        "ORDER BY ms.created_at",
-        user_id,
-    )
-    return [dict(r) for r in rows]
-
-
-async def delete_personal_store(store_id: UUID, user_id: UUID) -> bool:
-    pool = get_pool()
-    result = await pool.execute(
-        "DELETE FROM histories WHERE id = $1 AND workspace_id IS NULL AND created_by = $2",
-        store_id, user_id,
-    )
-    return result == "DELETE 1"
 
 
 # --- Embedding helpers ---

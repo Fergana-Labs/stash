@@ -6,11 +6,8 @@ monologues), scores outcomes for injected patterns, and manages sleep watermarks
 Ported from replicate_me's local sleep agent (memory/sleep.py + llm.py).
 """
 
-from __future__ import annotations
-
 import json
 import logging
-import os
 from collections import Counter
 from datetime import datetime, timedelta, timezone
 from uuid import UUID

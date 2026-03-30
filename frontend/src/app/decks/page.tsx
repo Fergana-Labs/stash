@@ -66,7 +66,7 @@ export default function DecksPage() {
                   <Link
                     key={deck.id}
                     href={`/decks/${deck.id}/edit`}
-                    className="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-raised transition-colors"
+                    className="group flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-raised transition-colors"
                   >
                     <div className="w-7 h-7 rounded-md bg-brand/15 text-brand flex items-center justify-center text-xs font-bold flex-shrink-0">
                       {deck.deck_type === "slides" ? "S" : deck.deck_type === "dashboard" ? "D" : "H"}
@@ -81,6 +81,22 @@ export default function DecksPage() {
                     <span className="text-xs text-muted flex-shrink-0">
                       {new Date(deck.updated_at).toLocaleDateString()}
                     </span>
+                    {!deck.workspace_id && (
+                      <button
+                        onClick={async (e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          if (!confirm("Delete this deck?")) return;
+                          try {
+                            await deletePersonalDeck(deck.id);
+                            loadDecks();
+                          } catch (err) { setError(err instanceof Error ? err.message : "Failed to delete"); }
+                        }}
+                        className="text-xs text-red-400 hover:text-red-300 px-2 py-1 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0"
+                      >
+                        Delete
+                      </button>
+                    )}
                   </Link>
                 ))}
               </div>

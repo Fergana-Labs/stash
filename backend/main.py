@@ -11,7 +11,6 @@ from .config import settings
 from .database import close_db, init_db
 from .routers import (
     agents, aggregate, chats, deck_viewer, decks, dms, memory, notebooks,
-    personal_decks, personal_memory, personal_notebooks, personal_rooms,
     realtime, skill, users, webhooks, workspaces,
 )
 from .services.connection_manager import manager
@@ -97,16 +96,16 @@ app.add_middleware(_TrailingSlashMiddleware)
 app.include_router(users.router)
 app.include_router(agents.router)
 app.include_router(workspaces.router)
-app.include_router(chats.router)
-app.include_router(notebooks.router)
-app.include_router(memory.router)
+app.include_router(chats.ws_router)
+app.include_router(chats.personal_router)
+app.include_router(notebooks.ws_router)
+app.include_router(notebooks.personal_router)
+app.include_router(memory.ws_router)
+app.include_router(memory.personal_router)
 app.include_router(realtime.router)
 app.include_router(dms.router)
-app.include_router(personal_rooms.router)
-app.include_router(personal_notebooks.router)
-app.include_router(personal_memory.router)
-app.include_router(decks.router)
-app.include_router(personal_decks.router)
+app.include_router(decks.ws_router)
+app.include_router(decks.personal_router)
 app.include_router(deck_viewer.router)
 app.include_router(aggregate.router)
 app.include_router(webhooks.router)

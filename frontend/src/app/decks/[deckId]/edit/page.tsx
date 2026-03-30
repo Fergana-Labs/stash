@@ -7,6 +7,7 @@ import { useAuth } from "../../../../hooks/useAuth";
 import {
   getPersonalDeck,
   updatePersonalDeck,
+  deletePersonalDeck,
   createDeckShare,
   listDeckShares,
 } from "../../../../lib/api";
@@ -25,6 +26,8 @@ export default function DeckEditorPage() {
   const [showPreview, setShowPreview] = useState(false);
   const [shares, setShares] = useState<DeckShare[]>([]);
   const [showShares, setShowShares] = useState(false);
+  const [editingName, setEditingName] = useState(false);
+  const [nameInput, setNameInput] = useState("");
 
   const loadDeck = useCallback(async () => {
     try {
@@ -50,6 +53,24 @@ export default function DeckEditorPage() {
       setDeck(updated);
     } catch (err) { setError(err instanceof Error ? err.message : "Failed to save"); }
     setSaving(false);
+  };
+
+  const handleDelete = async () => {
+    if (!confirm("Delete this deck? This cannot be undone.")) return;
+    try {
+      await deletePersonalDeck(deckId);
+      router.push("/decks");
+    } catch (err) { setError(err instanceof Error ? err.message : "Failed to delete"); }
+  };
+
+  const handleNameSave = async () => {
+    const trimmed = nameInput.trim();
+    if (!trimmed || trimmed === deck?.name) { setEditingName(false); return; }
+    try {
+      const updated = await updatePersonalDeck(deckId, { name: trimmed });
+      setDeck(updated);
+    } catch (err) { setError(err instanceof Error ? err.message : "Failed to rename"); }
+    setEditingName(false);
   };
 
   const handleCreateShare = async () => {
@@ -80,9 +101,27 @@ export default function DeckEditorPage() {
         <div className="bg-surface border-b border-border px-4 py-2 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <a href="/decks" className="text-dim hover:text-foreground text-sm">&larr;</a>
-            <span className="text-foreground font-medium text-sm">{deck?.name || "Loading..."}</span>
+            {editingName ? (
+              <input
+                autoFocus
+                value={nameInput}
+                onChange={(e) => setNameInput(e.target.value)}
+                onBlur={handleNameSave}
+                onKeyDown={(e) => { if (e.key === "Enter") handleNameSave(); if (e.key === "Escape") setEditingName(false); }}
+                className="bg-raised border border-border rounded px-2 py-0.5 text-sm text-foreground font-medium focus:outline-none focus:border-brand"
+              />
+            ) : (
+              <button
+                onClick={() => { setNameInput(deck?.name || ""); setEditingName(true); }}
+                className="text-foreground font-medium text-sm hover:text-brand transition-colors"
+                title="Click to rename"
+              >
+                {deck?.name || "Loading..."}
+              </button>
+            )}
           </div>
           <div className="flex items-center gap-2">
+            <button onClick={handleDelete} className="text-xs text-red-400 hover:text-red-300 px-2 py-1">Delete</button>
             <button
               onClick={() => setShowPreview(!showPreview)}
               className={`text-xs px-3 py-1 rounded border ${showPreview ? "bg-brand border-brand text-foreground" : "bg-raised border-border text-dim"}`}

@@ -8,6 +8,7 @@ import { useAuth } from "../../hooks/useAuth";
 import {
   listAllHistories,
   queryAllHistoryEvents,
+  createPersonalHistory,
 } from "../../lib/api";
 import { HistoryEventWithContext, HistoryWithWorkspace } from "../../lib/types";
 
@@ -59,8 +60,23 @@ export default function MemoryPage() {
       <div className="max-w-4xl mx-auto w-full px-4 py-8">
         <div className="flex items-center justify-between mb-6">
           <h1 className="text-2xl font-bold text-foreground font-display">History</h1>
-          <div className="text-xs text-muted">
-            {stores.length} store{stores.length !== 1 ? "s" : ""} across all workspaces
+          <div className="flex items-center gap-3">
+            <span className="text-xs text-muted">
+              {stores.length} store{stores.length !== 1 ? "s" : ""} across all workspaces
+            </span>
+            <button
+              onClick={async () => {
+                const name = prompt("Store name:");
+                if (!name) return;
+                try {
+                  await createPersonalHistory(name);
+                  loadStores();
+                } catch { /* ignore */ }
+              }}
+              className="text-sm bg-brand hover:bg-brand-hover text-foreground px-3 py-1.5 rounded"
+            >
+              New Store
+            </button>
           </div>
         </div>
 

@@ -1,15 +1,14 @@
 """Chat service: messaging, search, CRUD for chats within workspaces."""
 
-from datetime import datetime
 from uuid import UUID
 
 from ..database import get_pool
 
 
 async def create_chat(
-    workspace_id: UUID, name: str, description: str, creator_id: UUID,
+    workspace_id: UUID | None, name: str, description: str, creator_id: UUID,
 ) -> dict:
-    """Create a chat within a workspace."""
+    """Create a chat. Pass workspace_id=None for a personal room."""
     pool = get_pool()
     row = await pool.fetchrow(
         "INSERT INTO chats (workspace_id, name, description, creator_id) "
@@ -30,22 +29,38 @@ async def get_chat(chat_id: UUID) -> dict | None:
     return dict(row) if row else None
 
 
-async def list_chats(workspace_id: UUID) -> list[dict]:
+async def list_chats(workspace_id: UUID | None, user_id: UUID | None = None) -> list[dict]:
+    """List chats. For personal rooms, pass workspace_id=None and user_id."""
     pool = get_pool()
-    rows = await pool.fetch(
-        "SELECT id, workspace_id, name, description, creator_id, is_dm, created_at, updated_at "
-        "FROM chats WHERE workspace_id = $1 AND is_dm = false ORDER BY created_at",
-        workspace_id,
-    )
+    if workspace_id is not None:
+        rows = await pool.fetch(
+            "SELECT id, workspace_id, name, description, creator_id, is_dm, created_at, updated_at "
+            "FROM chats WHERE workspace_id = $1 AND is_dm = false ORDER BY created_at",
+            workspace_id,
+        )
+    else:
+        rows = await pool.fetch(
+            "SELECT id, workspace_id, name, description, creator_id, is_dm, created_at, updated_at "
+            "FROM chats WHERE workspace_id IS NULL AND is_dm = false AND creator_id = $1 "
+            "ORDER BY created_at",
+            user_id,
+        )
     return [dict(r) for r in rows]
 
 
-async def delete_chat(chat_id: UUID, workspace_id: UUID) -> bool:
+async def delete_chat(chat_id: UUID, workspace_id: UUID | None, user_id: UUID | None = None) -> bool:
+    """Delete a chat. For personal rooms, pass workspace_id=None and user_id."""
     pool = get_pool()
-    result = await pool.execute(
-        "DELETE FROM chats WHERE id = $1 AND workspace_id = $2",
-        chat_id, workspace_id,
-    )
+    if workspace_id is not None:
+        result = await pool.execute(
+            "DELETE FROM chats WHERE id = $1 AND workspace_id = $2",
+            chat_id, workspace_id,
+        )
+    else:
+        result = await pool.execute(
+            "DELETE FROM chats WHERE id = $1 AND workspace_id IS NULL AND is_dm = false AND creator_id = $2",
+            chat_id, user_id,
+        )
     return result == "DELETE 1"
 
 
@@ -116,42 +131,6 @@ async def get_messages(
     if has_more:
         messages = messages[:limit]
     return messages, has_more
-
-
-async def create_personal_chat(
-    name: str, description: str, creator_id: UUID,
-) -> dict:
-    """Create a personal (workspace-less) chat room."""
-    pool = get_pool()
-    row = await pool.fetchrow(
-        "INSERT INTO chats (workspace_id, name, description, creator_id, is_dm) "
-        "VALUES (NULL, $1, $2, $3, false) "
-        "RETURNING id, workspace_id, name, description, creator_id, is_dm, created_at, updated_at",
-        name, description, creator_id,
-    )
-    return dict(row)
-
-
-async def list_personal_chats(user_id: UUID) -> list[dict]:
-    """List personal chat rooms owned by a user."""
-    pool = get_pool()
-    rows = await pool.fetch(
-        "SELECT id, workspace_id, name, description, creator_id, is_dm, created_at, updated_at "
-        "FROM chats WHERE workspace_id IS NULL AND is_dm = false AND creator_id = $1 "
-        "ORDER BY created_at",
-        user_id,
-    )
-    return [dict(r) for r in rows]
-
-
-async def delete_personal_chat(chat_id: UUID, user_id: UUID) -> bool:
-    """Delete a personal chat room. Only the creator can delete."""
-    pool = get_pool()
-    result = await pool.execute(
-        "DELETE FROM chats WHERE id = $1 AND workspace_id IS NULL AND is_dm = false AND creator_id = $2",
-        chat_id, user_id,
-    )
-    return result == "DELETE 1"
 
 
 async def is_personal_chat_owner(chat_id: UUID, user_id: UUID) -> bool:

@@ -1,7 +1,5 @@
 """Watch service: per-agent chat notification subscriptions with unread tracking."""
 
-from __future__ import annotations
-
 from uuid import UUID
 
 from ..database import get_pool

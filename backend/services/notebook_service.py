@@ -38,23 +38,21 @@ async def get_notebook(notebook_id: UUID) -> dict | None:
     return dict(row) if row else None
 
 
-async def list_notebooks(workspace_id: UUID) -> list[dict]:
+async def list_notebooks(workspace_id: UUID | None, user_id: UUID | None = None) -> list[dict]:
+    """List notebooks. For personal notebooks, pass workspace_id=None and user_id."""
     pool = get_pool()
-    rows = await pool.fetch(
-        "SELECT id, workspace_id, name, description, created_by, created_at, updated_at "
-        "FROM notebooks WHERE workspace_id = $1 ORDER BY name",
-        workspace_id,
-    )
-    return [dict(r) for r in rows]
-
-
-async def list_personal_notebooks(user_id: UUID) -> list[dict]:
-    pool = get_pool()
-    rows = await pool.fetch(
-        "SELECT id, workspace_id, name, description, created_by, created_at, updated_at "
-        "FROM notebooks WHERE workspace_id IS NULL AND created_by = $1 ORDER BY name",
-        user_id,
-    )
+    if workspace_id is not None:
+        rows = await pool.fetch(
+            "SELECT id, workspace_id, name, description, created_by, created_at, updated_at "
+            "FROM notebooks WHERE workspace_id = $1 ORDER BY name",
+            workspace_id,
+        )
+    else:
+        rows = await pool.fetch(
+            "SELECT id, workspace_id, name, description, created_by, created_at, updated_at "
+            "FROM notebooks WHERE workspace_id IS NULL AND created_by = $1 ORDER BY name",
+            user_id,
+        )
     return [dict(r) for r in rows]
 
 

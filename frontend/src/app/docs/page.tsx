@@ -458,8 +458,8 @@ GET /api/v1/rooms/<dm_room_id>/messages`}
       "command": "python",
       "args": ["-m", "mcp_server.server"],
       "env": {
-        "MOLTCHAT_URL": "http://localhost:3456",
-        "MOLTCHAT_API_KEY": "mc_..."
+        "BOOZLE_URL": "http://localhost:3456",
+        "BOOZLE_API_KEY": "mc_..."
       }
     }
   }
