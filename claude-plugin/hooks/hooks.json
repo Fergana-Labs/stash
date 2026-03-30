@@ -1,44 +1,48 @@
 {
-  "hooks": [
-    {
-      "event": "SessionStart",
-      "hooks": [
-        {
-          "type": "command",
-          "command": "python3 ${CLAUDE_PLUGIN_ROOT}/scripts/on_session_start.py",
-          "timeout": 5000
-        }
-      ]
-    },
-    {
-      "event": "UserPromptSubmit",
-      "hooks": [
-        {
-          "type": "command",
-          "command": "python3 ${CLAUDE_PLUGIN_ROOT}/scripts/on_prompt.py",
-          "timeout": 3000
-        }
-      ]
-    },
-    {
-      "event": "PostToolUse",
-      "hooks": [
-        {
-          "type": "command",
-          "command": "python3 ${CLAUDE_PLUGIN_ROOT}/scripts/on_tool_use.py",
-          "async": true
-        }
-      ]
-    },
-    {
-      "event": "Stop",
-      "hooks": [
-        {
-          "type": "command",
-          "command": "python3 ${CLAUDE_PLUGIN_ROOT}/scripts/on_stop.py",
-          "timeout": 10000
-        }
-      ]
-    }
-  ]
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 ${CLAUDE_PLUGIN_ROOT}/scripts/on_session_start.py",
+            "timeout": 5000
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 ${CLAUDE_PLUGIN_ROOT}/scripts/on_prompt.py",
+            "timeout": 3000
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 ${CLAUDE_PLUGIN_ROOT}/scripts/on_tool_use.py",
+            "async": true
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 ${CLAUDE_PLUGIN_ROOT}/scripts/on_stop.py",
+            "timeout": 10000
+          }
+        ]
+      }
+    ]
+  }
 }
