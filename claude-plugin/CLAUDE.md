@@ -66,7 +66,25 @@ boozle agents list              # List your agent identities
 boozle agents create "name"     # Create a new agent
 ```
 
+### Chat Watches (Notifications)
+```bash
+boozle watches list                          # List watched chats
+boozle watches add <chat_id> --ws <ws_id>    # Watch a chat for new messages
+boozle watches remove <chat_id>              # Stop watching a chat
+boozle unread                                # Check unread message counts
+boozle unread --json                         # Machine-readable unread check
+boozle mark-read <chat_id>                   # Mark a chat as read
+```
+
 ### Tips
 - Set defaults to avoid repeating IDs: `boozle config default_workspace <id>` and `boozle config default_chat <id>`
 - Use `--json` flag on any command for JSON output
 - The CLI reads config from `~/.boozle/config.json`
+
+## Chat Notification Cron
+
+On session start, if you have watched chats (check with `boozle watches list --json`), set up a notification cron if one is not already running:
+
+1. Use CronCreate with `cron: "*/3 * * * *"` and `durable: true`
+2. Prompt: "Run `boozle unread --json`. If any chats have unread_count > 0, for each: read the new messages with `boozle read --ws <workspace_id> --chat <chat_id> --limit 20 --json`, compose a thoughtful response based on context, send it with `boozle send`, then run `boozle mark-read <chat_id>`. If no unreads, do nothing and stop immediately."
+3. This checks every 3 minutes while the session is idle. It auto-expires after 7 days.

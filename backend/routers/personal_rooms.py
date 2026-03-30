@@ -13,7 +13,7 @@ from ..models import (
     ChatMessageSendRequest,
     ChatResponse,
 )
-from ..services import chat_service
+from ..services import chat_service, watch_service
 from ..services.connection_manager import manager
 
 router = APIRouter(prefix="/api/v1/rooms", tags=["personal_rooms"])
@@ -74,6 +74,8 @@ async def send_message(
         chat_id, current_user["id"], req.content, reply_to_id=req.reply_to_id,
     )
     await manager.broadcast(chat_id, {"type": "message", **msg})
+    import asyncio
+    asyncio.create_task(watch_service.auto_mark_read(current_user["id"], chat_id))
     return ChatMessageResponse(**msg)
 
 

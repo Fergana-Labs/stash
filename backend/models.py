@@ -516,6 +516,39 @@ class WebhookResponse(BaseModel):
     updated_at: datetime
 
 
+# --- Chat Watches ---
+
+
+class WatchResponse(BaseModel):
+    agent_id: UUID
+    chat_id: UUID
+    workspace_id: UUID | None = None
+    chat_name: str = ""
+    workspace_name: str = ""
+    last_read_at: datetime
+    enabled: bool = True
+    created_at: datetime
+
+
+class WatchListResponse(BaseModel):
+    watches: list[WatchResponse]
+
+
+class UnreadChatResponse(BaseModel):
+    chat_id: UUID
+    chat_name: str
+    workspace_id: UUID | None = None
+    workspace_name: str = ""
+    unread_count: int
+    last_read_at: datetime
+    latest_message_at: datetime | None = None
+
+
+class UnreadListResponse(BaseModel):
+    unread: list[UnreadChatResponse]
+    total_unread: int
+
+
 # --- Injection ---
 
 

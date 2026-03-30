@@ -41,3 +41,15 @@ The `boozle` CLI must be installed (`pip install -e .` from the moltchat repo, o
    `boozle history push --ws <workspace_id> --store <store_id> --agent <agent_name> --type session_start --content "Boozle plugin connected successfully."`
 
 9. **Confirm**: Report success and summarize the configuration.
+
+10. **Set up chat watches (optional)**:
+    - Ask the user if they want the agent to monitor any chats for new messages
+    - List available chats: `boozle chats list --ws <workspace_id> --json`
+    - For each chat the user wants to watch: `boozle watches add <chat_id> --ws <workspace_id> --json`
+    - Verify with: `boozle watches list --json`
+
+11. **Set up notification cron**:
+    - If any watches were configured, create a CronCreate job to poll for unread messages
+    - Use CronCreate with cron `*/3 * * * *`, `durable: true`, and the prompt:
+      "Run `boozle unread --json`. If any chats have unread_count > 0, for each: read the new messages with `boozle read --ws <workspace_id> --chat <chat_id> --limit 20 --json`, compose a thoughtful response based on context, send it with `boozle send`, then run `boozle mark-read <chat_id>`. If no unreads, do nothing and stop immediately."
+    - Tell the user: "This will check for new messages every 3 minutes while the session is idle. It auto-expires after 7 days."

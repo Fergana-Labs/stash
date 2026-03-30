@@ -774,6 +774,98 @@ def agents_delete(agent_id: str = typer.Argument(...), confirm: bool = typer.Opt
 
 
 # ===========================================================================
+# Chat Watches
+# ===========================================================================
+
+watches_app = typer.Typer(help="Chat watch subscriptions for agent notifications.")
+app.add_typer(watches_app, name="watches")
+
+
+@watches_app.command("list")
+def watches_list(as_json: bool = typer.Option(False, "--json")):
+    """List watched chats."""
+    with _client() as c:
+        try:
+            data = c.list_watches()
+        except BoozleError as e:
+            _err(e)
+    if _use_json(as_json):
+        output_json(data)
+    else:
+        if not data:
+            console.print("[dim]No watched chats.[/dim]")
+        else:
+            for w in data:
+                ws = f" [{w.get('workspace_name', '')}]" if w.get('workspace_name') else ""
+                console.print(f"  {w['chat_name']}{ws}  chat_id={w['chat_id']}  last_read={str(w.get('last_read_at', ''))[:19]}")
+
+
+@watches_app.command("add")
+def watches_add(
+    chat_id: str = typer.Argument(...),
+    workspace_id: str = typer.Option(None, "--ws"),
+    as_json: bool = typer.Option(False, "--json"),
+):
+    """Watch a chat for new messages."""
+    with _client() as c:
+        try:
+            data = c.watch_chat(chat_id, workspace_id=workspace_id)
+        except BoozleError as e:
+            _err(e)
+    if _use_json(as_json):
+        output_json(data)
+    else:
+        console.print(f"[green]Now watching chat {chat_id}.[/green]")
+
+
+@watches_app.command("remove")
+def watches_remove(chat_id: str = typer.Argument(...)):
+    """Stop watching a chat."""
+    with _client() as c:
+        try:
+            c.unwatch_chat(chat_id)
+        except BoozleError as e:
+            _err(e)
+    console.print("[yellow]Unwatched.[/yellow]")
+
+
+@app.command()
+def unread(as_json: bool = typer.Option(False, "--json")):
+    """Show unread messages across watched chats."""
+    with _client() as c:
+        try:
+            data = c.get_unread()
+        except BoozleError as e:
+            _err(e)
+    if _use_json(as_json):
+        output_json(data)
+    else:
+        items = data.get("unread", [])
+        if not items or data.get("total_unread", 0) == 0:
+            console.print("[dim]No unread messages.[/dim]")
+        else:
+            for item in items:
+                if item["unread_count"] == 0:
+                    continue
+                ws = f" [{item.get('workspace_name', '')}]" if item.get('workspace_name') else ""
+                console.print(f"  #{item['chat_name']}{ws}: [bold]{item['unread_count']}[/bold] unread")
+
+
+@app.command("mark-read")
+def mark_read_cmd(chat_id: str = typer.Argument(...), as_json: bool = typer.Option(False, "--json")):
+    """Mark a watched chat as read."""
+    with _client() as c:
+        try:
+            data = c.mark_read(chat_id)
+        except BoozleError as e:
+            _err(e)
+    if _use_json(as_json):
+        output_json(data)
+    else:
+        console.print("[green]Marked as read.[/green]")
+
+
+# ===========================================================================
 # Poll + Notify
 # ===========================================================================
 

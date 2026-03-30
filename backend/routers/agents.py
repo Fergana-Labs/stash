@@ -1,6 +1,6 @@
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from ..auth import get_current_user
 from ..models import (
@@ -10,8 +10,9 @@ from ..models import (
     HistoryEventListResponse, HistoryEventResponse, HistoryResponse,
     InjectionRequest, InjectionResponse,
     NotebookResponse, PageResponse, SyncManifestResponse,
+    UnreadChatResponse, UnreadListResponse, WatchListResponse, WatchResponse,
 )
-from ..services import agent_identity_service, injection_service, memory_service, notebook_service, sleep_service
+from ..services import agent_identity_service, injection_service, memory_service, notebook_service, sleep_service, watch_service
 
 router = APIRouter(prefix="/api/v1/agents", tags=["agents"])
 
@@ -399,3 +400,65 @@ async def backfill_embeddings(
     )
 
     return {"status": "in_progress" if remaining > 0 else "complete", "embedded": embedded, "remaining": remaining}
+
+
+# --- Chat Watches ---
+
+
+@router.get("/me/unread", response_model=UnreadListResponse)
+async def get_unread(current_user: dict = Depends(get_current_user)):
+    """Get unread message counts across all watched chats."""
+    agent = _require_agent(current_user)
+    items = await watch_service.get_unread(agent["id"])
+    return UnreadListResponse(
+        unread=[UnreadChatResponse(**i) for i in items],
+        total_unread=sum(i["unread_count"] for i in items),
+    )
+
+
+@router.get("/me/watches", response_model=WatchListResponse)
+async def list_watches(current_user: dict = Depends(get_current_user)):
+    """List all active chat watches."""
+    agent = _require_agent(current_user)
+    watches = await watch_service.list_watches(agent["id"])
+    return WatchListResponse(watches=[WatchResponse(**w) for w in watches])
+
+
+@router.post("/me/watches/{chat_id}", response_model=WatchResponse, status_code=201)
+async def add_watch(
+    chat_id: UUID,
+    workspace_id: UUID | None = Query(None),
+    current_user: dict = Depends(get_current_user),
+):
+    """Watch a chat for new messages."""
+    agent = _require_agent(current_user)
+    try:
+        watch = await watch_service.watch_chat(agent["id"], chat_id, workspace_id)
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+    return WatchResponse(**watch)
+
+
+@router.delete("/me/watches/{chat_id}", status_code=204)
+async def remove_watch(
+    chat_id: UUID,
+    current_user: dict = Depends(get_current_user),
+):
+    """Stop watching a chat."""
+    agent = _require_agent(current_user)
+    removed = await watch_service.unwatch_chat(agent["id"], chat_id)
+    if not removed:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Watch not found")
+
+
+@router.post("/me/watches/{chat_id}/mark-read")
+async def mark_read(
+    chat_id: UUID,
+    current_user: dict = Depends(get_current_user),
+):
+    """Mark a watched chat as read."""
+    agent = _require_agent(current_user)
+    updated = await watch_service.mark_read(agent["id"], chat_id)
+    if not updated:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Watch not found")
+    return {"status": "ok"}

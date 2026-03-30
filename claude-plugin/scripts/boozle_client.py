@@ -122,3 +122,11 @@ class BoozleClient:
         if session_id:
             body["session_id"] = session_id
         return self._post("/api/v1/agents/me/inject", json=body)
+
+    # --- Chat Watches ---
+
+    def get_unread(self) -> dict:
+        return self._get("/api/v1/agents/me/unread")
+
+    def mark_read(self, chat_id: str) -> dict:
+        return self._post(f"/api/v1/agents/me/watches/{chat_id}/mark-read")
