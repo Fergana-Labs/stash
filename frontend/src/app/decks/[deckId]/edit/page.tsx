@@ -1,12 +1,15 @@
 "use client";
 
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import AppShell from "../../../../components/AppShell";
 import { useAuth } from "../../../../hooks/useAuth";
 import {
+  getDeck,
   getPersonalDeck,
+  updateDeck,
   updatePersonalDeck,
+  deleteDeck,
   deletePersonalDeck,
   createDeckShare,
   listDeckShares,
@@ -15,8 +18,10 @@ import { Deck, DeckShare } from "../../../../lib/types";
 
 export default function DeckEditorPage() {
   const params = useParams();
+  const searchParams = useSearchParams();
   const router = useRouter();
   const deckId = params.deckId as string;
+  const workspaceId = searchParams.get("workspaceId");
   const { user, loading, logout } = useAuth();
 
   const [deck, setDeck] = useState<Deck | null>(null);
@@ -31,25 +36,49 @@ export default function DeckEditorPage() {
 
   const loadDeck = useCallback(async () => {
     try {
-      const d = await getPersonalDeck(deckId);
-      setDeck(d);
-      setHtml(d.html_content);
+      if (workspaceId) {
+        const d = await getDeck(workspaceId, deckId);
+        setDeck(d);
+        setHtml(d.html_content);
+      } else {
+        // Try personal first, then fall back to searching workspace decks
+        try {
+          const d = await getPersonalDeck(deckId);
+          setDeck(d);
+          setHtml(d.html_content);
+        } catch {
+          // Not a personal deck — it might be a workspace deck accessed without workspaceId
+          // Try to load via the all-decks aggregate to find the workspace
+          const { listAllDecks } = await import("../../../../lib/api");
+          const all = await listAllDecks();
+          const match = all?.decks?.find((d) => d.id === deckId);
+          if (match && match.workspace_id) {
+            const d = await getDeck(match.workspace_id, deckId);
+            setDeck(d);
+            setHtml(d.html_content);
+          } else {
+            setError("Deck not found");
+          }
+        }
+      }
     } catch { setError("Deck not found"); }
-  }, [deckId]);
+  }, [deckId, workspaceId]);
 
   const loadShares = useCallback(async () => {
     try {
-      const res = await listDeckShares(deckId);
+      const res = await listDeckShares(deckId, workspaceId || undefined);
       setShares(res?.shares ?? []);
     } catch { /* ignore */ }
-  }, [deckId]);
+  }, [deckId, workspaceId]);
 
   useEffect(() => { if (user) { loadDeck(); loadShares(); } }, [user, loadDeck, loadShares]);
 
   const handleSave = async () => {
     setSaving(true);
     try {
-      const updated = await updatePersonalDeck(deckId, { html_content: html });
+      const updated = workspaceId
+        ? await updateDeck(workspaceId, deckId, { html_content: html })
+        : await updatePersonalDeck(deckId, { html_content: html });
       setDeck(updated);
     } catch (err) { setError(err instanceof Error ? err.message : "Failed to save"); }
     setSaving(false);
@@ -58,7 +87,11 @@ export default function DeckEditorPage() {
   const handleDelete = async () => {
     if (!confirm("Delete this deck? This cannot be undone.")) return;
     try {
-      await deletePersonalDeck(deckId);
+      if (workspaceId) {
+        await deleteDeck(workspaceId, deckId);
+      } else {
+        await deletePersonalDeck(deckId);
+      }
       router.push("/decks");
     } catch (err) { setError(err instanceof Error ? err.message : "Failed to delete"); }
   };
@@ -67,7 +100,9 @@ export default function DeckEditorPage() {
     const trimmed = nameInput.trim();
     if (!trimmed || trimmed === deck?.name) { setEditingName(false); return; }
     try {
-      const updated = await updatePersonalDeck(deckId, { name: trimmed });
+      const updated = workspaceId
+        ? await updateDeck(workspaceId, deckId, { name: trimmed })
+        : await updatePersonalDeck(deckId, { name: trimmed });
       setDeck(updated);
     } catch (err) { setError(err instanceof Error ? err.message : "Failed to rename"); }
     setEditingName(false);
@@ -75,7 +110,7 @@ export default function DeckEditorPage() {
 
   const handleCreateShare = async () => {
     try {
-      await createDeckShare(deckId);
+      await createDeckShare(deckId, workspaceId || undefined);
       await loadShares();
     } catch (err) { setError(err instanceof Error ? err.message : "Failed to create share link"); }
   };
