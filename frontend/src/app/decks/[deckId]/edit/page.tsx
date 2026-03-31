@@ -21,9 +21,10 @@ export default function DeckEditorPage() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const deckId = params.deckId as string;
-  const workspaceId = searchParams.get("workspaceId");
+  const urlWorkspaceId = searchParams.get("workspaceId");
   const { user, loading, logout } = useAuth();
 
+  const [resolvedWorkspaceId, setResolvedWorkspaceId] = useState<string | null>(urlWorkspaceId);
   const [deck, setDeck] = useState<Deck | null>(null);
   const [html, setHtml] = useState("");
   const [saving, setSaving] = useState(false);
@@ -36,23 +37,21 @@ export default function DeckEditorPage() {
 
   const loadDeck = useCallback(async () => {
     try {
-      if (workspaceId) {
-        const d = await getDeck(workspaceId, deckId);
+      if (resolvedWorkspaceId) {
+        const d = await getDeck(resolvedWorkspaceId, deckId);
         setDeck(d);
         setHtml(d.html_content);
       } else {
-        // Try personal first, then fall back to searching workspace decks
         try {
           const d = await getPersonalDeck(deckId);
           setDeck(d);
           setHtml(d.html_content);
         } catch {
-          // Not a personal deck — it might be a workspace deck accessed without workspaceId
-          // Try to load via the all-decks aggregate to find the workspace
           const { listAllDecks } = await import("../../../../lib/api");
           const all = await listAllDecks();
           const match = all?.decks?.find((d) => d.id === deckId);
           if (match && match.workspace_id) {
+            setResolvedWorkspaceId(match.workspace_id);
             const d = await getDeck(match.workspace_id, deckId);
             setDeck(d);
             setHtml(d.html_content);
@@ -62,22 +61,22 @@ export default function DeckEditorPage() {
         }
       }
     } catch { setError("Deck not found"); }
-  }, [deckId, workspaceId]);
+  }, [deckId, resolvedWorkspaceId]);
 
   const loadShares = useCallback(async () => {
     try {
-      const res = await listDeckShares(deckId, workspaceId || undefined);
+      const res = await listDeckShares(deckId, resolvedWorkspaceId || undefined);
       setShares(res?.shares ?? []);
     } catch { /* ignore */ }
-  }, [deckId, workspaceId]);
+  }, [deckId, resolvedWorkspaceId]);
 
   useEffect(() => { if (user) { loadDeck(); loadShares(); } }, [user, loadDeck, loadShares]);
 
   const handleSave = async () => {
     setSaving(true);
     try {
-      const updated = workspaceId
-        ? await updateDeck(workspaceId, deckId, { html_content: html })
+      const updated = resolvedWorkspaceId
+        ? await updateDeck(resolvedWorkspaceId, deckId, { html_content: html })
         : await updatePersonalDeck(deckId, { html_content: html });
       setDeck(updated);
     } catch (err) { setError(err instanceof Error ? err.message : "Failed to save"); }
@@ -87,8 +86,8 @@ export default function DeckEditorPage() {
   const handleDelete = async () => {
     if (!confirm("Delete this deck? This cannot be undone.")) return;
     try {
-      if (workspaceId) {
-        await deleteDeck(workspaceId, deckId);
+      if (resolvedWorkspaceId) {
+        await deleteDeck(resolvedWorkspaceId, deckId);
       } else {
         await deletePersonalDeck(deckId);
       }
@@ -100,8 +99,8 @@ export default function DeckEditorPage() {
     const trimmed = nameInput.trim();
     if (!trimmed || trimmed === deck?.name) { setEditingName(false); return; }
     try {
-      const updated = workspaceId
-        ? await updateDeck(workspaceId, deckId, { name: trimmed })
+      const updated = resolvedWorkspaceId
+        ? await updateDeck(resolvedWorkspaceId, deckId, { name: trimmed })
         : await updatePersonalDeck(deckId, { name: trimmed });
       setDeck(updated);
     } catch (err) { setError(err instanceof Error ? err.message : "Failed to rename"); }
@@ -110,7 +109,7 @@ export default function DeckEditorPage() {
 
   const handleCreateShare = async () => {
     try {
-      await createDeckShare(deckId, workspaceId || undefined);
+      await createDeckShare(deckId, resolvedWorkspaceId || undefined);
       await loadShares();
     } catch (err) { setError(err instanceof Error ? err.message : "Failed to create share link"); }
   };
