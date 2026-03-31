@@ -46,6 +46,5 @@
       "sensitive": false
     }
   },
-  "skills": "./skills/",
-  "hooks": "./hooks/hooks.json"
+  "skills": "./skills/"
 }
