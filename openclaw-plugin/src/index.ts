@@ -18,6 +18,7 @@ import { registerDmTools } from "./tools/dms.js";
 import { registerNotebookTools } from "./tools/notebooks.js";
 import { registerMemoryStoreTools } from "./tools/memory-stores.js";
 import { registerPersonaTools } from "./tools/personas.js";
+import { registerTableTools } from "./tools/tables.js";
 
 export default definePluginEntry({
   id: "boozle",
@@ -25,7 +26,7 @@ export default definePluginEntry({
   kind: "memory",
   description:
     "Boozle memory backend with server-side scored injection, activity streaming, " +
-    "and full platform access (workspaces, chats, notebooks, memory stores, personas).",
+    "and full platform access (workspaces, chats, notebooks, tables, memory stores, personas).",
 
   register(api: OpenClawPluginApi) {
     // Read plugin config from the OpenClaw config system.
@@ -60,6 +61,7 @@ export default definePluginEntry({
     registerNotebookTools(api, client);
     registerMemoryStoreTools(api, client);
     registerPersonaTools(api, client);
+    registerTableTools(api, client);
 
     // --- CLI subcommands ---
 
