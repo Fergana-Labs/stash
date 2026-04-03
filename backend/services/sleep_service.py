@@ -265,7 +265,8 @@ Analyze the recent activity and produce a JSON response with these actions:
 
 1. "create_notes": [{{"title": str, "keywords": [str], "content": str, "importance": float, "type": "note"|"pattern"}}]
    - For patterns include: "situation", "lessons" (list of strings), "confidence" (0-1)
-2. "update_notes": [{{"page_id": str, "content_additions": str, "new_keywords": [str], "importance": float}}]
+2. "update_notes": [{{"page_id": str, "content_additions": str, "keywords": [str], "importance": float}}]
+   - "keywords" replaces the full keyword list (omit to leave unchanged)
 3. "merge_notes": [{{"source_page_ids": [str], "new_title": str}}]
 4. "delete_notes": [page_id strings]
 5. "health": {{"loops_detected": bool, "stuck": bool, "recommend_restart": bool, "message": "optional"}}
@@ -462,10 +463,8 @@ async def _execute_actions(agent_id: UUID, notebook_id: UUID, config: dict, resu
             new_content += f"\n\n{additions}"
 
         new_meta = dict(page.get("metadata", {}))
-        if update.get("new_keywords"):
-            existing_kw = set(new_meta.get("keywords", []))
-            existing_kw.update(update["new_keywords"])
-            new_meta["keywords"] = list(existing_kw)
+        if "keywords" in update:
+            new_meta["keywords"] = update["keywords"]
         if update.get("importance") is not None:
             new_meta["importance"] = update["importance"]
 
