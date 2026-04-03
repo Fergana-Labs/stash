@@ -23,7 +23,7 @@ async def create_table(
     row = await pool.fetchrow(
         "INSERT INTO tables (workspace_id, name, description, columns, created_by, updated_by) "
         "VALUES ($1, $2, $3, $4, $5, $5) "
-        "RETURNING id, workspace_id, name, description, columns, "
+        "RETURNING id, workspace_id, name, description, columns, views, "
         "created_by, updated_by, created_at, updated_at",
         workspace_id, name, description, columns, created_by,
     )
@@ -35,7 +35,7 @@ async def create_table(
 async def get_table(table_id: UUID) -> dict | None:
     pool = get_pool()
     row = await pool.fetchrow(
-        "SELECT t.id, t.workspace_id, t.name, t.description, t.columns, "
+        "SELECT t.id, t.workspace_id, t.name, t.description, t.columns, t.views, "
         "t.created_by, t.updated_by, t.created_at, t.updated_at, "
         "(SELECT COUNT(*) FROM table_rows tr WHERE tr.table_id = t.id) AS row_count "
         "FROM tables t WHERE t.id = $1",
@@ -65,7 +65,7 @@ async def update_table(
     args.append(table_id)
     row = await pool.fetchrow(
         f"UPDATE tables SET {', '.join(sets)} WHERE id = ${idx} "
-        "RETURNING id, workspace_id, name, description, columns, "
+        "RETURNING id, workspace_id, name, description, columns, views, "
         "created_by, updated_by, created_at, updated_at",
         *args,
     )
@@ -111,7 +111,7 @@ async def list_all_user_tables(user_id: UUID) -> list[dict]:
     """All tables from workspaces user is member of + personal."""
     pool = get_pool()
     rows = await pool.fetch(
-        "SELECT t.id, t.workspace_id, t.name, t.description, t.columns, "
+        "SELECT t.id, t.workspace_id, t.name, t.description, t.columns, t.views, "
         "t.created_by, t.updated_by, t.created_at, t.updated_at, "
         "w.name AS workspace_name, "
         "(SELECT COUNT(*) FROM table_rows tr WHERE tr.table_id = t.id) AS row_count "
@@ -149,7 +149,7 @@ async def add_column(table_id: UUID, column: dict, updated_by: UUID) -> dict:
     row = await pool.fetchrow(
         "UPDATE tables SET columns = $1, updated_by = $2, updated_at = now() "
         "WHERE id = $3 "
-        "RETURNING id, workspace_id, name, description, columns, "
+        "RETURNING id, workspace_id, name, description, columns, views, "
         "created_by, updated_by, created_at, updated_at",
         cols, updated_by, table_id,
     )
@@ -177,7 +177,7 @@ async def update_column(table_id: UUID, column_id: str, updates: dict, updated_b
     row = await pool.fetchrow(
         "UPDATE tables SET columns = $1, updated_by = $2, updated_at = now() "
         "WHERE id = $3 "
-        "RETURNING id, workspace_id, name, description, columns, "
+        "RETURNING id, workspace_id, name, description, columns, views, "
         "created_by, updated_by, created_at, updated_at",
         cols, updated_by, table_id,
     )
@@ -198,7 +198,7 @@ async def delete_column(table_id: UUID, column_id: str, updated_by: UUID) -> dic
     row = await pool.fetchrow(
         "UPDATE tables SET columns = $1, updated_by = $2, updated_at = now() "
         "WHERE id = $3 "
-        "RETURNING id, workspace_id, name, description, columns, "
+        "RETURNING id, workspace_id, name, description, columns, views, "
         "created_by, updated_by, created_at, updated_at",
         cols, updated_by, table_id,
     )
@@ -223,7 +223,7 @@ async def reorder_columns(table_id: UUID, column_ids: list[str], updated_by: UUI
     row = await pool.fetchrow(
         "UPDATE tables SET columns = $1, updated_by = $2, updated_at = now() "
         "WHERE id = $3 "
-        "RETURNING id, workspace_id, name, description, columns, "
+        "RETURNING id, workspace_id, name, description, columns, views, "
         "created_by, updated_by, created_at, updated_at",
         reordered, updated_by, table_id,
     )
@@ -420,6 +420,51 @@ async def list_rows(
         *args, limit, offset,
     )
     return [dict(r) for r in rows], total
+
+
+# --- View Management ---
+
+
+async def save_view(table_id: UUID, view: dict, updated_by: UUID) -> dict | None:
+    """Add or update a saved view. view: {id?, name, filters, sort_by, sort_order, visible_columns}."""
+    pool = get_pool()
+    table = await get_table(table_id)
+    if not table:
+        return None
+    views = table.get("views", [])
+    view_id = view.get("id") or f"view_{secrets.token_hex(4)}"
+    view["id"] = view_id
+    # Replace existing or append
+    views = [v for v in views if v.get("id") != view_id]
+    views.append(view)
+    row = await pool.fetchrow(
+        "UPDATE tables SET views = $1, updated_by = $2, updated_at = now() "
+        "WHERE id = $3 "
+        "RETURNING id, workspace_id, name, description, columns, views, "
+        "created_by, updated_by, created_at, updated_at",
+        views, updated_by, table_id,
+    )
+    result = dict(row)
+    result["row_count"] = table["row_count"]
+    return result
+
+
+async def delete_view(table_id: UUID, view_id: str, updated_by: UUID) -> dict | None:
+    pool = get_pool()
+    table = await get_table(table_id)
+    if not table:
+        return None
+    views = [v for v in table.get("views", []) if v.get("id") != view_id]
+    row = await pool.fetchrow(
+        "UPDATE tables SET views = $1, updated_by = $2, updated_at = now() "
+        "WHERE id = $3 "
+        "RETURNING id, workspace_id, name, description, columns, views, "
+        "created_by, updated_by, created_at, updated_at",
+        views, updated_by, table_id,
+    )
+    result = dict(row)
+    result["row_count"] = table["row_count"]
+    return result
 
 
 async def count_rows(table_id: UUID, filters: list[dict] | None = None) -> int:
