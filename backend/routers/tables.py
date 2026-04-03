@@ -1,0 +1,510 @@
+"""Table router: workspace and personal structured data tables."""
+
+import json
+from uuid import UUID
+
+from fastapi import APIRouter, Depends, HTTPException, Query
+
+from ..auth import get_current_user
+from ..models import (
+    ColumnAddRequest,
+    ColumnReorderRequest,
+    ColumnUpdateRequest,
+    PermissionResponse,
+    RowBatchCreateRequest,
+    RowCreateRequest,
+    RowListResponse,
+    RowResponse,
+    RowUpdateRequest,
+    SetVisibilityRequest,
+    ShareRequest,
+    ShareResponse,
+    TableCreateRequest,
+    TableListResponse,
+    TableResponse,
+    TableUpdateRequest,
+)
+from ..services import table_service, permission_service, workspace_service
+
+ws_router = APIRouter(prefix="/api/v1/workspaces/{workspace_id}/tables", tags=["tables"])
+personal_router = APIRouter(prefix="/api/v1/tables", tags=["personal_tables"])
+
+
+# --- Shared auth helpers ---
+
+
+async def _check_member(workspace_id: UUID, user_id: UUID) -> None:
+    if not await workspace_service.is_member(workspace_id, user_id):
+        raise HTTPException(status_code=403, detail="Not a workspace member")
+
+
+async def _check_ws_table(workspace_id: UUID, table_id: UUID) -> dict:
+    """Verify table exists and belongs to the given workspace."""
+    table = await table_service.get_table(table_id)
+    if not table or table.get("workspace_id") != workspace_id:
+        raise HTTPException(status_code=404, detail="Table not found")
+    return table
+
+
+async def _check_table_owner(table_id: UUID, user_id: UUID) -> dict:
+    table = await table_service.get_table(table_id)
+    if not table or table.get("workspace_id") is not None or table.get("created_by") != user_id:
+        raise HTTPException(status_code=404, detail="Table not found")
+    return table
+
+
+def _parse_row_ids(body: dict) -> list[UUID]:
+    raw = body.get("row_ids", [])
+    if not raw:
+        raise HTTPException(status_code=400, detail="At least one row_id required")
+    result = []
+    for rid in raw:
+        try:
+            result.append(UUID(rid) if isinstance(rid, str) else rid)
+        except (ValueError, TypeError):
+            raise HTTPException(status_code=400, detail=f"Invalid UUID: {rid}")
+    return result
+
+
+# ===== Workspace table endpoints =====
+
+
+@ws_router.post("", response_model=TableResponse, status_code=201)
+async def create_ws_table(
+    workspace_id: UUID, req: TableCreateRequest,
+    current_user: dict = Depends(get_current_user),
+):
+    await _check_member(workspace_id, current_user["id"])
+    columns = [c.model_dump() for c in req.columns]
+    table = await table_service.create_table(
+        workspace_id, req.name, req.description, columns, current_user["id"],
+    )
+    return TableResponse(**table)
+
+
+@ws_router.get("", response_model=TableListResponse)
+async def list_ws_tables(
+    workspace_id: UUID, current_user: dict = Depends(get_current_user),
+):
+    await _check_member(workspace_id, current_user["id"])
+    tables = await table_service.list_tables(workspace_id)
+    return TableListResponse(tables=[TableResponse(**t) for t in tables])
+
+
+@ws_router.get("/{table_id}", response_model=TableResponse)
+async def get_ws_table(
+    workspace_id: UUID, table_id: UUID,
+    current_user: dict = Depends(get_current_user),
+):
+    await _check_member(workspace_id, current_user["id"])
+    table = await _check_ws_table(workspace_id, table_id)
+    return TableResponse(**table)
+
+
+@ws_router.patch("/{table_id}", response_model=TableResponse)
+async def update_ws_table(
+    workspace_id: UUID, table_id: UUID, req: TableUpdateRequest,
+    current_user: dict = Depends(get_current_user),
+):
+    await _check_member(workspace_id, current_user["id"])
+    await _check_ws_table(workspace_id, table_id)
+    table = await table_service.update_table(
+        table_id, current_user["id"], name=req.name, description=req.description,
+    )
+    if not table:
+        raise HTTPException(status_code=404, detail="Table not found")
+    return TableResponse(**table)
+
+
+@ws_router.delete("/{table_id}", status_code=204)
+async def delete_ws_table(
+    workspace_id: UUID, table_id: UUID,
+    current_user: dict = Depends(get_current_user),
+):
+    role = await workspace_service.get_member_role(workspace_id, current_user["id"])
+    if role not in ("owner", "admin"):
+        raise HTTPException(status_code=403, detail="Only owner/admin can delete tables")
+    await _check_ws_table(workspace_id, table_id)
+    deleted = await table_service.delete_table(table_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Table not found")
+
+
+# --- Workspace column endpoints ---
+
+
+@ws_router.post("/{table_id}/columns", response_model=TableResponse, status_code=201)
+async def add_ws_column(
+    workspace_id: UUID, table_id: UUID, req: ColumnAddRequest,
+    current_user: dict = Depends(get_current_user),
+):
+    await _check_member(workspace_id, current_user["id"])
+    await _check_ws_table(workspace_id, table_id)
+    table = await table_service.add_column(table_id, req.model_dump(), current_user["id"])
+    if not table:
+        raise HTTPException(status_code=404, detail="Table not found")
+    return TableResponse(**table)
+
+
+@ws_router.patch("/{table_id}/columns/{column_id}", response_model=TableResponse)
+async def update_ws_column(
+    workspace_id: UUID, table_id: UUID, column_id: str, req: ColumnUpdateRequest,
+    current_user: dict = Depends(get_current_user),
+):
+    await _check_member(workspace_id, current_user["id"])
+    await _check_ws_table(workspace_id, table_id)
+    table = await table_service.update_column(
+        table_id, column_id, req.model_dump(exclude_none=True), current_user["id"],
+    )
+    if not table:
+        raise HTTPException(status_code=404, detail="Table or column not found")
+    return TableResponse(**table)
+
+
+@ws_router.delete("/{table_id}/columns/{column_id}", response_model=TableResponse)
+async def delete_ws_column(
+    workspace_id: UUID, table_id: UUID, column_id: str,
+    current_user: dict = Depends(get_current_user),
+):
+    await _check_member(workspace_id, current_user["id"])
+    await _check_ws_table(workspace_id, table_id)
+    table = await table_service.delete_column(table_id, column_id, current_user["id"])
+    if not table:
+        raise HTTPException(status_code=404, detail="Table or column not found")
+    return TableResponse(**table)
+
+
+@ws_router.put("/{table_id}/columns/reorder", response_model=TableResponse)
+async def reorder_ws_columns(
+    workspace_id: UUID, table_id: UUID, req: ColumnReorderRequest,
+    current_user: dict = Depends(get_current_user),
+):
+    await _check_member(workspace_id, current_user["id"])
+    await _check_ws_table(workspace_id, table_id)
+    table = await table_service.reorder_columns(table_id, req.column_ids, current_user["id"])
+    if not table:
+        raise HTTPException(status_code=404, detail="Table not found or invalid column IDs")
+    return TableResponse(**table)
+
+
+# --- Workspace row endpoints ---
+
+
+@ws_router.get("/{table_id}/rows", response_model=RowListResponse)
+async def list_ws_rows(
+    workspace_id: UUID, table_id: UUID,
+    sort_by: str | None = Query(None),
+    sort_order: str = Query("asc", pattern=r"^(asc|desc)$"),
+    limit: int = Query(100, ge=1, le=1000),
+    offset: int = Query(0, ge=0),
+    filters: str | None = Query(None),
+    current_user: dict = Depends(get_current_user),
+):
+    await _check_member(workspace_id, current_user["id"])
+    await _check_ws_table(workspace_id, table_id)
+    parsed_filters = json.loads(filters) if filters else None
+    rows, total = await table_service.list_rows(
+        table_id, filters=parsed_filters, sort_by=sort_by,
+        sort_order=sort_order, limit=limit, offset=offset,
+    )
+    return RowListResponse(
+        rows=[RowResponse(**r) for r in rows],
+        total_count=total,
+        has_more=offset + limit < total,
+    )
+
+
+@ws_router.post("/{table_id}/rows", response_model=RowResponse, status_code=201)
+async def create_ws_row(
+    workspace_id: UUID, table_id: UUID, req: RowCreateRequest,
+    current_user: dict = Depends(get_current_user),
+):
+    await _check_member(workspace_id, current_user["id"])
+    await _check_ws_table(workspace_id, table_id)
+    row = await table_service.create_row(table_id, req.data, current_user["id"])
+    return RowResponse(**row)
+
+
+@ws_router.post("/{table_id}/rows/batch", status_code=201)
+async def create_ws_rows_batch(
+    workspace_id: UUID, table_id: UUID, req: RowBatchCreateRequest,
+    current_user: dict = Depends(get_current_user),
+):
+    await _check_member(workspace_id, current_user["id"])
+    await _check_ws_table(workspace_id, table_id)
+    rows_data = [r.data for r in req.rows]
+    rows = await table_service.create_rows_batch(table_id, rows_data, current_user["id"])
+    return {"rows": [RowResponse(**r) for r in rows]}
+
+
+@ws_router.patch("/{table_id}/rows/{row_id}", response_model=RowResponse)
+async def update_ws_row(
+    workspace_id: UUID, table_id: UUID, row_id: UUID, req: RowUpdateRequest,
+    current_user: dict = Depends(get_current_user),
+):
+    await _check_member(workspace_id, current_user["id"])
+    await _check_ws_table(workspace_id, table_id)
+    row = await table_service.update_row(row_id, req.data, current_user["id"])
+    if not row or row.get("table_id") != table_id:
+        raise HTTPException(status_code=404, detail="Row not found")
+    return RowResponse(**row)
+
+
+@ws_router.delete("/{table_id}/rows/{row_id}", status_code=204)
+async def delete_ws_row(
+    workspace_id: UUID, table_id: UUID, row_id: UUID,
+    current_user: dict = Depends(get_current_user),
+):
+    await _check_member(workspace_id, current_user["id"])
+    await _check_ws_table(workspace_id, table_id)
+    # Verify row belongs to this table
+    row = await table_service.get_row(row_id)
+    if not row or row.get("table_id") != table_id:
+        raise HTTPException(status_code=404, detail="Row not found")
+    await table_service.delete_row(row_id)
+
+
+@ws_router.post("/{table_id}/rows/delete", status_code=200)
+async def delete_ws_rows_batch(
+    workspace_id: UUID, table_id: UUID, body: dict,
+    current_user: dict = Depends(get_current_user),
+):
+    await _check_member(workspace_id, current_user["id"])
+    await _check_ws_table(workspace_id, table_id)
+    row_ids = _parse_row_ids(body)
+    count = await table_service.delete_rows_batch(table_id, row_ids)
+    return {"deleted": count}
+
+
+# --- Workspace permissions ---
+
+
+@ws_router.get("/{table_id}/permissions", response_model=PermissionResponse)
+async def get_permissions(
+    workspace_id: UUID, table_id: UUID,
+    current_user: dict = Depends(get_current_user),
+):
+    await _check_member(workspace_id, current_user["id"])
+    await _check_ws_table(workspace_id, table_id)
+    perms = await permission_service.get_permissions("table", table_id)
+    return PermissionResponse(**perms)
+
+
+@ws_router.patch("/{table_id}/permissions")
+async def set_visibility(
+    workspace_id: UUID, table_id: UUID, req: SetVisibilityRequest,
+    current_user: dict = Depends(get_current_user),
+):
+    role = await workspace_service.get_member_role(workspace_id, current_user["id"])
+    if role not in ("owner", "admin"):
+        raise HTTPException(status_code=403, detail="Only owner/admin can change visibility")
+    await _check_ws_table(workspace_id, table_id)
+    await permission_service.set_visibility("table", table_id, req.visibility)
+    return {"status": "ok", "visibility": req.visibility}
+
+
+@ws_router.post("/{table_id}/permissions/share", response_model=ShareResponse)
+async def add_share(
+    workspace_id: UUID, table_id: UUID, req: ShareRequest,
+    current_user: dict = Depends(get_current_user),
+):
+    role = await workspace_service.get_member_role(workspace_id, current_user["id"])
+    if role not in ("owner", "admin"):
+        raise HTTPException(status_code=403, detail="Only owner/admin can share")
+    await _check_ws_table(workspace_id, table_id)
+    share = await permission_service.add_share(
+        "table", table_id, req.user_id, req.permission, current_user["id"],
+    )
+    from ..database import get_pool
+    pool = get_pool()
+    user = await pool.fetchrow("SELECT name FROM users WHERE id = $1", req.user_id)
+    return ShareResponse(
+        user_id=share["user_id"], user_name=user["name"] if user else "",
+        permission=share["permission"], granted_by=share["granted_by"],
+        created_at=share["created_at"],
+    )
+
+
+@ws_router.delete("/{table_id}/permissions/share/{user_id}", status_code=204)
+async def remove_share(
+    workspace_id: UUID, table_id: UUID, user_id: UUID,
+    current_user: dict = Depends(get_current_user),
+):
+    role = await workspace_service.get_member_role(workspace_id, current_user["id"])
+    if role not in ("owner", "admin"):
+        raise HTTPException(status_code=403, detail="Only owner/admin can remove shares")
+    await _check_ws_table(workspace_id, table_id)
+    await permission_service.remove_share("table", table_id, user_id)
+
+
+# ===== Personal table endpoints =====
+
+
+@personal_router.post("", response_model=TableResponse, status_code=201)
+async def create_personal_table(
+    req: TableCreateRequest, current_user: dict = Depends(get_current_user),
+):
+    columns = [c.model_dump() for c in req.columns]
+    table = await table_service.create_table(
+        None, req.name, req.description, columns, current_user["id"],
+    )
+    return TableResponse(**table)
+
+
+@personal_router.get("", response_model=TableListResponse)
+async def list_personal_tables(current_user: dict = Depends(get_current_user)):
+    tables = await table_service.list_tables(None, user_id=current_user["id"])
+    return TableListResponse(tables=[TableResponse(**t) for t in tables])
+
+
+@personal_router.get("/{table_id}", response_model=TableResponse)
+async def get_personal_table(table_id: UUID, current_user: dict = Depends(get_current_user)):
+    table = await _check_table_owner(table_id, current_user["id"])
+    return TableResponse(**table)
+
+
+@personal_router.patch("/{table_id}", response_model=TableResponse)
+async def update_personal_table(
+    table_id: UUID, req: TableUpdateRequest, current_user: dict = Depends(get_current_user),
+):
+    await _check_table_owner(table_id, current_user["id"])
+    table = await table_service.update_table(
+        table_id, current_user["id"], name=req.name, description=req.description,
+    )
+    if not table:
+        raise HTTPException(status_code=404, detail="Table not found")
+    return TableResponse(**table)
+
+
+@personal_router.delete("/{table_id}", status_code=204)
+async def delete_personal_table(table_id: UUID, current_user: dict = Depends(get_current_user)):
+    await _check_table_owner(table_id, current_user["id"])
+    await table_service.delete_table(table_id)
+
+
+# --- Personal column endpoints ---
+
+
+@personal_router.post("/{table_id}/columns", response_model=TableResponse, status_code=201)
+async def add_personal_column(
+    table_id: UUID, req: ColumnAddRequest, current_user: dict = Depends(get_current_user),
+):
+    await _check_table_owner(table_id, current_user["id"])
+    table = await table_service.add_column(table_id, req.model_dump(), current_user["id"])
+    if not table:
+        raise HTTPException(status_code=404, detail="Table not found")
+    return TableResponse(**table)
+
+
+@personal_router.patch("/{table_id}/columns/{column_id}", response_model=TableResponse)
+async def update_personal_column(
+    table_id: UUID, column_id: str, req: ColumnUpdateRequest,
+    current_user: dict = Depends(get_current_user),
+):
+    await _check_table_owner(table_id, current_user["id"])
+    table = await table_service.update_column(
+        table_id, column_id, req.model_dump(exclude_none=True), current_user["id"],
+    )
+    if not table:
+        raise HTTPException(status_code=404, detail="Table or column not found")
+    return TableResponse(**table)
+
+
+@personal_router.delete("/{table_id}/columns/{column_id}", response_model=TableResponse)
+async def delete_personal_column(
+    table_id: UUID, column_id: str, current_user: dict = Depends(get_current_user),
+):
+    await _check_table_owner(table_id, current_user["id"])
+    table = await table_service.delete_column(table_id, column_id, current_user["id"])
+    if not table:
+        raise HTTPException(status_code=404, detail="Table or column not found")
+    return TableResponse(**table)
+
+
+@personal_router.put("/{table_id}/columns/reorder", response_model=TableResponse)
+async def reorder_personal_columns(
+    table_id: UUID, req: ColumnReorderRequest, current_user: dict = Depends(get_current_user),
+):
+    await _check_table_owner(table_id, current_user["id"])
+    table = await table_service.reorder_columns(table_id, req.column_ids, current_user["id"])
+    if not table:
+        raise HTTPException(status_code=404, detail="Table not found or invalid column IDs")
+    return TableResponse(**table)
+
+
+# --- Personal row endpoints ---
+
+
+@personal_router.get("/{table_id}/rows", response_model=RowListResponse)
+async def list_personal_rows(
+    table_id: UUID,
+    sort_by: str | None = Query(None),
+    sort_order: str = Query("asc", pattern=r"^(asc|desc)$"),
+    limit: int = Query(100, ge=1, le=1000),
+    offset: int = Query(0, ge=0),
+    filters: str | None = Query(None),
+    current_user: dict = Depends(get_current_user),
+):
+    await _check_table_owner(table_id, current_user["id"])
+    parsed_filters = json.loads(filters) if filters else None
+    rows, total = await table_service.list_rows(
+        table_id, filters=parsed_filters, sort_by=sort_by,
+        sort_order=sort_order, limit=limit, offset=offset,
+    )
+    return RowListResponse(
+        rows=[RowResponse(**r) for r in rows],
+        total_count=total,
+        has_more=offset + limit < total,
+    )
+
+
+@personal_router.post("/{table_id}/rows", response_model=RowResponse, status_code=201)
+async def create_personal_row(
+    table_id: UUID, req: RowCreateRequest, current_user: dict = Depends(get_current_user),
+):
+    await _check_table_owner(table_id, current_user["id"])
+    row = await table_service.create_row(table_id, req.data, current_user["id"])
+    return RowResponse(**row)
+
+
+@personal_router.post("/{table_id}/rows/batch", status_code=201)
+async def create_personal_rows_batch(
+    table_id: UUID, req: RowBatchCreateRequest, current_user: dict = Depends(get_current_user),
+):
+    await _check_table_owner(table_id, current_user["id"])
+    rows_data = [r.data for r in req.rows]
+    rows = await table_service.create_rows_batch(table_id, rows_data, current_user["id"])
+    return {"rows": [RowResponse(**r) for r in rows]}
+
+
+@personal_router.patch("/{table_id}/rows/{row_id}", response_model=RowResponse)
+async def update_personal_row(
+    table_id: UUID, row_id: UUID, req: RowUpdateRequest,
+    current_user: dict = Depends(get_current_user),
+):
+    await _check_table_owner(table_id, current_user["id"])
+    row = await table_service.update_row(row_id, req.data, current_user["id"])
+    if not row or row.get("table_id") != table_id:
+        raise HTTPException(status_code=404, detail="Row not found")
+    return RowResponse(**row)
+
+
+@personal_router.delete("/{table_id}/rows/{row_id}", status_code=204)
+async def delete_personal_row(
+    table_id: UUID, row_id: UUID, current_user: dict = Depends(get_current_user),
+):
+    await _check_table_owner(table_id, current_user["id"])
+    row = await table_service.get_row(row_id)
+    if not row or row.get("table_id") != table_id:
+        raise HTTPException(status_code=404, detail="Row not found")
+    await table_service.delete_row(row_id)
+
+
+@personal_router.post("/{table_id}/rows/delete", status_code=200)
+async def delete_personal_rows_batch(
+    table_id: UUID, body: dict, current_user: dict = Depends(get_current_user),
+):
+    await _check_table_owner(table_id, current_user["id"])
+    row_ids = _parse_row_ids(body)
+    count = await table_service.delete_rows_batch(table_id, row_ids)
+    return {"deleted": count}

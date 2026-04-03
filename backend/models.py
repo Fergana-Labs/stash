@@ -409,6 +409,102 @@ class DeckShareAnalyticsResponse(BaseModel):
     page_stats: list[dict]
 
 
+# --- Tables ---
+
+
+class ColumnDefinition(BaseModel):
+    id: str = Field("", max_length=64)
+    name: str = Field(..., min_length=1, max_length=128)
+    type: str = Field(
+        ..., pattern=r"^(text|number|boolean|date|datetime|url|email|select|multiselect|json)$",
+    )
+    order: int = Field(0, ge=0)
+    required: bool = False
+    default: str | int | float | bool | list | None = None
+    options: list[str] | None = None
+
+
+class TableCreateRequest(BaseModel):
+    name: str = Field(..., min_length=1, max_length=255)
+    description: str = Field("", max_length=1000)
+    columns: list[ColumnDefinition] = Field(default_factory=list)
+
+
+class TableUpdateRequest(BaseModel):
+    name: str | None = Field(None, min_length=1, max_length=255)
+    description: str | None = Field(None, max_length=1000)
+
+
+class TableResponse(BaseModel):
+    id: UUID
+    workspace_id: UUID | None
+    name: str
+    description: str
+    columns: list[ColumnDefinition]
+    created_by: UUID
+    updated_by: UUID | None
+    created_at: datetime
+    updated_at: datetime
+    row_count: int | None = None
+
+
+class TableListResponse(BaseModel):
+    tables: list[TableResponse]
+
+
+class ColumnAddRequest(BaseModel):
+    name: str = Field(..., min_length=1, max_length=128)
+    type: str = Field(
+        ..., pattern=r"^(text|number|boolean|date|datetime|url|email|select|multiselect|json)$",
+    )
+    required: bool = False
+    default: str | int | float | bool | list | None = None
+    options: list[str] | None = None
+
+
+class ColumnUpdateRequest(BaseModel):
+    name: str | None = Field(None, min_length=1, max_length=128)
+    type: str | None = Field(
+        None, pattern=r"^(text|number|boolean|date|datetime|url|email|select|multiselect|json)$",
+    )
+    required: bool | None = None
+    default: str | int | float | bool | list | None = None
+    options: list[str] | None = None
+
+
+class ColumnReorderRequest(BaseModel):
+    column_ids: list[str]
+
+
+class RowCreateRequest(BaseModel):
+    data: dict = Field(default_factory=dict)
+
+
+class RowBatchCreateRequest(BaseModel):
+    rows: list[RowCreateRequest] = Field(..., min_length=1, max_length=500)
+
+
+class RowUpdateRequest(BaseModel):
+    data: dict
+
+
+class RowResponse(BaseModel):
+    id: UUID
+    table_id: UUID
+    data: dict
+    row_order: int
+    created_by: UUID
+    updated_by: UUID | None
+    created_at: datetime
+    updated_at: datetime
+
+
+class RowListResponse(BaseModel):
+    rows: list[RowResponse]
+    total_count: int
+    has_more: bool
+
+
 # --- History ---
 
 

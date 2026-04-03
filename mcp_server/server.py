@@ -26,6 +26,7 @@ mcp = FastMCP(
 - **Workspaces**: top-level containers with members (like Slack teams)
 - **Chats**: messaging channels within a workspace
 - **Notebooks**: collaborative markdown files with folders
+- **Tables**: structured data with typed columns and rows (like a database table)
 - **Memory stores**: structured agent event logs (append-only, searchable)
 - **DMs**: direct messages between two users (no workspace needed)
 
@@ -48,6 +49,7 @@ Workspace members inherit access to all objects. Objects can be set to:
 - search_users, start_dm, list_dms, send_dm, read_dm — DMs
 - list_notebooks, create_notebook, read_notebook, update_notebook, delete_notebook — notebooks
 - create_memory_store, list_memory_stores, push_memory_event, push_memory_events_batch, query_memory_events, search_memory_events, query_history — memory
+- list_tables, create_table, get_table_schema, read_table_rows, insert_table_row, insert_table_rows_batch, update_table_row, delete_table_row, add_table_column, delete_table_column — tables
 - set_webhook, get_webhook, update_webhook, delete_webhook — webhooks
 """,
     streamable_http_path="/",
@@ -761,6 +763,287 @@ async def delete_webhook(ctx: Context, workspace_id: str) -> str:
             return "No webhook to delete."
         _check_response(resp)
     return "Webhook deleted."
+
+
+# ---------------------------------------------------------------------------
+# Tables (structured data)
+# ---------------------------------------------------------------------------
+
+
+@mcp.tool()
+async def list_tables(ctx: Context, workspace_id: str) -> str:
+    """List all tables in a workspace."""
+    async with _client() as c:
+        resp = await c.get(f"/api/v1/workspaces/{workspace_id}/tables", headers=_auth_headers(ctx))
+        _check_response(resp)
+    tables = resp.json().get("tables", [])
+    if not tables:
+        return "No tables in this workspace."
+    lines = []
+    for t in tables:
+        cols = len(t.get("columns", []))
+        rows = t.get("row_count", 0)
+        lines.append(f"- {t['name']} (id={t['id']}, {cols} cols, {rows} rows)")
+    return "\n".join(lines)
+
+
+@mcp.tool()
+async def create_table(
+    ctx: Context, workspace_id: str, name: str,
+    description: str = "",
+    columns: str = "[]",
+) -> str:
+    """Create a table. columns is a JSON array of {name, type} objects.
+    Types: text, number, boolean, date, datetime, url, email, select, multiselect, json.
+    For select/multiselect, include an 'options' array."""
+    import json
+    try:
+        parsed_columns = json.loads(columns)
+    except json.JSONDecodeError as e:
+        return f"Error: invalid JSON in columns parameter — {e}"
+    body = {"name": name, "description": description, "columns": parsed_columns}
+    async with _client() as c:
+        resp = await c.post(
+            f"/api/v1/workspaces/{workspace_id}/tables",
+            json=body, headers=_auth_headers(ctx),
+        )
+        _check_response(resp)
+    t = resp.json()
+    return f"Created table '{t['name']}' (id={t['id']})"
+
+
+@mcp.tool()
+async def get_table_schema(ctx: Context, workspace_id: str, table_id: str) -> str:
+    """Get a table's column schema and metadata."""
+    async with _client() as c:
+        resp = await c.get(
+            f"/api/v1/workspaces/{workspace_id}/tables/{table_id}",
+            headers=_auth_headers(ctx),
+        )
+        _check_response(resp)
+    t = resp.json()
+    lines = [f"Table: {t['name']} ({t.get('row_count', 0)} rows)", "Columns:"]
+    for col in t.get("columns", []):
+        extra = ""
+        if col.get("options"):
+            extra = f" options={col['options']}"
+        if col.get("required"):
+            extra += " REQUIRED"
+        lines.append(f"  - {col['name']} ({col['type']}, id={col['id']}){extra}")
+    return "\n".join(lines)
+
+
+@mcp.tool()
+async def read_table_rows(
+    ctx: Context, workspace_id: str, table_id: str,
+    limit: int = 50, offset: int = 0,
+    sort_by: str = "", sort_order: str = "asc",
+    filters: str = "[]",
+) -> str:
+    """Read rows from a table. filters is JSON: [{"column_id":"col_x","op":"eq","value":"foo"}].
+    Ops: eq, neq, gt, gte, lt, lte, contains, is_empty, is_not_empty.
+    You can use column names instead of IDs — they'll be resolved automatically."""
+    import json as _json
+    # Fetch schema once for name resolution
+    async with _client() as c:
+        schema_resp = await c.get(
+            f"/api/v1/workspaces/{workspace_id}/tables/{table_id}",
+            headers=_auth_headers(ctx),
+        )
+        _check_response(schema_resp)
+    cols = schema_resp.json().get("columns", [])
+    name_to_id = {col["name"]: col["id"] for col in cols}
+    id_to_name = {col["id"]: col["name"] for col in cols}
+
+    params: dict = {"limit": limit, "offset": offset, "sort_order": sort_order}
+    if sort_by:
+        # Resolve sort_by from column name to ID if needed
+        params["sort_by"] = name_to_id.get(sort_by, sort_by)
+    try:
+        parsed_filters = _json.loads(filters) if filters else None
+    except _json.JSONDecodeError as e:
+        return f"Error: invalid JSON in filters — {e}"
+    if parsed_filters:
+        for f in parsed_filters:
+            cid = f.get("column_id", "")
+            if cid in name_to_id:
+                f["column_id"] = name_to_id[cid]
+        params["filters"] = _json.dumps(parsed_filters)
+    async with _client() as c:
+        resp = await c.get(
+            f"/api/v1/workspaces/{workspace_id}/tables/{table_id}/rows",
+            params=params, headers=_auth_headers(ctx),
+        )
+        _check_response(resp)
+    data = resp.json()
+    rows = data.get("rows", [])
+    total = data.get("total_count", 0)
+    if not rows:
+        return f"No rows (total: {total})."
+    lines = [f"Rows {offset+1}-{offset+len(rows)} of {total}:"]
+    for row in rows:
+        named_data = {id_to_name.get(k, k): v for k, v in row.get("data", {}).items()}
+        lines.append(f"  [id={row['id']}] {named_data}")
+    return "\n".join(lines)
+
+
+@mcp.tool()
+async def insert_table_row(
+    ctx: Context, workspace_id: str, table_id: str, data: str,
+) -> str:
+    """Insert a row. data is a JSON object mapping column names to values.
+    Example: {"Name": "Alice", "Status": "active", "Score": 95}"""
+    import json
+    try:
+        row_data = json.loads(data)
+    except json.JSONDecodeError as e:
+        return f"Error: invalid JSON in data parameter — {e}"
+    # Resolve column names to IDs
+    async with _client() as c:
+        schema_resp = await c.get(
+            f"/api/v1/workspaces/{workspace_id}/tables/{table_id}",
+            headers=_auth_headers(ctx),
+        )
+        _check_response(schema_resp)
+    cols = schema_resp.json().get("columns", [])
+    name_to_id = {col["name"]: col["id"] for col in cols}
+    id_set = {col["id"] for col in cols}
+    resolved = {}
+    for k, v in row_data.items():
+        if k in id_set:
+            resolved[k] = v
+        elif k in name_to_id:
+            resolved[name_to_id[k]] = v
+    async with _client() as c:
+        resp = await c.post(
+            f"/api/v1/workspaces/{workspace_id}/tables/{table_id}/rows",
+            json={"data": resolved}, headers=_auth_headers(ctx),
+        )
+        _check_response(resp)
+    return f"Row inserted (id={resp.json()['id']})"
+
+
+@mcp.tool()
+async def insert_table_rows_batch(
+    ctx: Context, workspace_id: str, table_id: str, rows: str,
+) -> str:
+    """Batch insert rows. rows is a JSON array of data objects (column names as keys).
+    Example: [{"Name": "Alice"}, {"Name": "Bob"}]"""
+    import json
+    try:
+        rows_data = json.loads(rows)
+    except json.JSONDecodeError as e:
+        return f"Error: invalid JSON in rows parameter — {e}"
+    # Resolve column names to IDs
+    async with _client() as c:
+        schema_resp = await c.get(
+            f"/api/v1/workspaces/{workspace_id}/tables/{table_id}",
+            headers=_auth_headers(ctx),
+        )
+        _check_response(schema_resp)
+    cols = schema_resp.json().get("columns", [])
+    name_to_id = {col["name"]: col["id"] for col in cols}
+    id_set = {col["id"] for col in cols}
+    resolved_rows = []
+    for rd in rows_data:
+        resolved = {}
+        for k, v in rd.items():
+            if k in id_set:
+                resolved[k] = v
+            elif k in name_to_id:
+                resolved[name_to_id[k]] = v
+        resolved_rows.append({"data": resolved})
+    async with _client() as c:
+        resp = await c.post(
+            f"/api/v1/workspaces/{workspace_id}/tables/{table_id}/rows/batch",
+            json={"rows": resolved_rows}, headers=_auth_headers(ctx),
+        )
+        _check_response(resp)
+    inserted = resp.json().get("rows", [])
+    return f"Inserted {len(inserted)} rows."
+
+
+@mcp.tool()
+async def update_table_row(
+    ctx: Context, workspace_id: str, table_id: str,
+    row_id: str, data: str,
+) -> str:
+    """Update a row (partial merge). data is JSON with column names as keys.
+    Example: {"Status": "done"}"""
+    import json
+    try:
+        row_data = json.loads(data)
+    except json.JSONDecodeError as e:
+        return f"Error: invalid JSON in data parameter — {e}"
+    # Resolve column names to IDs
+    async with _client() as c:
+        schema_resp = await c.get(
+            f"/api/v1/workspaces/{workspace_id}/tables/{table_id}",
+            headers=_auth_headers(ctx),
+        )
+        _check_response(schema_resp)
+    cols = schema_resp.json().get("columns", [])
+    name_to_id = {col["name"]: col["id"] for col in cols}
+    id_set = {col["id"] for col in cols}
+    resolved = {}
+    for k, v in row_data.items():
+        if k in id_set:
+            resolved[k] = v
+        elif k in name_to_id:
+            resolved[name_to_id[k]] = v
+    async with _client() as c:
+        resp = await c.patch(
+            f"/api/v1/workspaces/{workspace_id}/tables/{table_id}/rows/{row_id}",
+            json={"data": resolved}, headers=_auth_headers(ctx),
+        )
+        _check_response(resp)
+    return f"Row {row_id} updated."
+
+
+@mcp.tool()
+async def delete_table_row(
+    ctx: Context, workspace_id: str, table_id: str, row_id: str,
+) -> str:
+    """Delete a row from a table."""
+    async with _client() as c:
+        resp = await c.delete(
+            f"/api/v1/workspaces/{workspace_id}/tables/{table_id}/rows/{row_id}",
+            headers=_auth_headers(ctx),
+        )
+        _check_response(resp)
+    return f"Row {row_id} deleted."
+
+
+@mcp.tool()
+async def add_table_column(
+    ctx: Context, workspace_id: str, table_id: str,
+    name: str, column_type: str = "text", options: str = "",
+) -> str:
+    """Add a column to a table. For select/multiselect type, pass options as comma-separated string."""
+    body: dict = {"name": name, "type": column_type}
+    if options and column_type in ("select", "multiselect"):
+        body["options"] = [o.strip() for o in options.split(",") if o.strip()]
+    async with _client() as c:
+        resp = await c.post(
+            f"/api/v1/workspaces/{workspace_id}/tables/{table_id}/columns",
+            json=body, headers=_auth_headers(ctx),
+        )
+        _check_response(resp)
+    return f"Column '{name}' ({column_type}) added."
+
+
+@mcp.tool()
+async def delete_table_column(
+    ctx: Context, workspace_id: str, table_id: str, column_id: str,
+) -> str:
+    """Remove a column from a table. Existing row data for that column is preserved but hidden."""
+    async with _client() as c:
+        resp = await c.delete(
+            f"/api/v1/workspaces/{workspace_id}/tables/{table_id}/columns/{column_id}",
+            headers=_auth_headers(ctx),
+        )
+        _check_response(resp)
+    return f"Column {column_id} deleted."
 
 
 # ---------------------------------------------------------------------------

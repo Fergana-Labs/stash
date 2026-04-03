@@ -23,6 +23,9 @@ import {
   RegisterResponse,
   User,
   UserSearchResult,
+  Table,
+  TableRow,
+  TableWithWorkspace,
   Webhook,
   Workspace,
   WorkspaceMember,
@@ -790,6 +793,175 @@ export async function verifyDeckAccess(token: string, email?: string, passcode?:
 
 export async function listAllDecks(): Promise<{ decks: DeckWithWorkspace[] }> {
   return apiFetch("/api/v1/me/decks");
+}
+
+// --- Tables (workspace-scoped) ---
+
+export async function createTable(
+  workspaceId: string, name: string, description?: string,
+  columns?: { name: string; type: string; options?: string[] }[]
+): Promise<Table> {
+  return apiFetch(`/api/v1/workspaces/${workspaceId}/tables`, {
+    method: "POST",
+    body: JSON.stringify({ name, description: description || "", columns: columns || [] }),
+  });
+}
+
+export async function listTables(workspaceId: string): Promise<{ tables: Table[] }> {
+  return apiFetch(`/api/v1/workspaces/${workspaceId}/tables`);
+}
+
+export async function getTable(workspaceId: string, tableId: string): Promise<Table> {
+  return apiFetch(`/api/v1/workspaces/${workspaceId}/tables/${tableId}`);
+}
+
+export async function updateTable(
+  workspaceId: string, tableId: string,
+  data: { name?: string; description?: string }
+): Promise<Table> {
+  return apiFetch(`/api/v1/workspaces/${workspaceId}/tables/${tableId}`, {
+    method: "PATCH", body: JSON.stringify(data),
+  });
+}
+
+export async function deleteTable(workspaceId: string, tableId: string): Promise<void> {
+  await apiFetch(`/api/v1/workspaces/${workspaceId}/tables/${tableId}`, { method: "DELETE" });
+}
+
+// --- Table Columns ---
+
+export async function addTableColumn(
+  tableId: string, column: { name: string; type: string; required?: boolean; default?: unknown; options?: string[] },
+  workspaceId?: string
+): Promise<Table> {
+  const base = workspaceId ? `/api/v1/workspaces/${workspaceId}/tables` : "/api/v1/tables";
+  return apiFetch(`${base}/${tableId}/columns`, {
+    method: "POST", body: JSON.stringify(column),
+  });
+}
+
+export async function updateTableColumn(
+  tableId: string, columnId: string,
+  updates: { name?: string; type?: string; required?: boolean; default?: unknown; options?: string[] },
+  workspaceId?: string
+): Promise<Table> {
+  const base = workspaceId ? `/api/v1/workspaces/${workspaceId}/tables` : "/api/v1/tables";
+  return apiFetch(`${base}/${tableId}/columns/${columnId}`, {
+    method: "PATCH", body: JSON.stringify(updates),
+  });
+}
+
+export async function deleteTableColumn(
+  tableId: string, columnId: string, workspaceId?: string
+): Promise<Table> {
+  const base = workspaceId ? `/api/v1/workspaces/${workspaceId}/tables` : "/api/v1/tables";
+  return apiFetch(`${base}/${tableId}/columns/${columnId}`, { method: "DELETE" });
+}
+
+export async function reorderTableColumns(
+  tableId: string, columnIds: string[], workspaceId?: string
+): Promise<Table> {
+  const base = workspaceId ? `/api/v1/workspaces/${workspaceId}/tables` : "/api/v1/tables";
+  return apiFetch(`${base}/${tableId}/columns/reorder`, {
+    method: "PUT", body: JSON.stringify({ column_ids: columnIds }),
+  });
+}
+
+// --- Table Rows ---
+
+export async function listTableRows(
+  tableId: string,
+  params?: { sort_by?: string; sort_order?: string; limit?: number; offset?: number; filters?: object[] },
+  workspaceId?: string
+): Promise<{ rows: TableRow[]; total_count: number; has_more: boolean }> {
+  const base = workspaceId ? `/api/v1/workspaces/${workspaceId}/tables` : "/api/v1/tables";
+  const query = new URLSearchParams();
+  if (params?.sort_by) query.set("sort_by", params.sort_by);
+  if (params?.sort_order) query.set("sort_order", params.sort_order);
+  if (params?.limit) query.set("limit", String(params.limit));
+  if (params?.offset) query.set("offset", String(params.offset));
+  if (params?.filters) query.set("filters", JSON.stringify(params.filters));
+  const qs = query.toString();
+  return apiFetch(`${base}/${tableId}/rows${qs ? "?" + qs : ""}`);
+}
+
+export async function createTableRow(
+  tableId: string, data: Record<string, unknown>, workspaceId?: string
+): Promise<TableRow> {
+  const base = workspaceId ? `/api/v1/workspaces/${workspaceId}/tables` : "/api/v1/tables";
+  return apiFetch(`${base}/${tableId}/rows`, {
+    method: "POST", body: JSON.stringify({ data }),
+  });
+}
+
+export async function createTableRowsBatch(
+  tableId: string, rows: { data: Record<string, unknown> }[], workspaceId?: string
+): Promise<{ rows: TableRow[] }> {
+  const base = workspaceId ? `/api/v1/workspaces/${workspaceId}/tables` : "/api/v1/tables";
+  return apiFetch(`${base}/${tableId}/rows/batch`, {
+    method: "POST", body: JSON.stringify({ rows }),
+  });
+}
+
+export async function updateTableRow(
+  tableId: string, rowId: string, data: Record<string, unknown>, workspaceId?: string
+): Promise<TableRow> {
+  const base = workspaceId ? `/api/v1/workspaces/${workspaceId}/tables` : "/api/v1/tables";
+  return apiFetch(`${base}/${tableId}/rows/${rowId}`, {
+    method: "PATCH", body: JSON.stringify({ data }),
+  });
+}
+
+export async function deleteTableRow(
+  tableId: string, rowId: string, workspaceId?: string
+): Promise<void> {
+  const base = workspaceId ? `/api/v1/workspaces/${workspaceId}/tables` : "/api/v1/tables";
+  await apiFetch(`${base}/${tableId}/rows/${rowId}`, { method: "DELETE" });
+}
+
+export async function deleteTableRowsBatch(
+  tableId: string, rowIds: string[], workspaceId?: string
+): Promise<{ deleted: number }> {
+  const base = workspaceId ? `/api/v1/workspaces/${workspaceId}/tables` : "/api/v1/tables";
+  return apiFetch(`${base}/${tableId}/rows/delete`, {
+    method: "POST", body: JSON.stringify({ row_ids: rowIds }),
+  });
+}
+
+// --- Personal Tables ---
+
+export async function createPersonalTable(
+  name: string, description?: string,
+  columns?: { name: string; type: string; options?: string[] }[]
+): Promise<Table> {
+  return apiFetch("/api/v1/tables", {
+    method: "POST",
+    body: JSON.stringify({ name, description: description || "", columns: columns || [] }),
+  });
+}
+
+export async function listPersonalTables(): Promise<{ tables: Table[] }> {
+  return apiFetch("/api/v1/tables");
+}
+
+export async function getPersonalTable(tableId: string): Promise<Table> {
+  return apiFetch(`/api/v1/tables/${tableId}`);
+}
+
+export async function updatePersonalTable(
+  tableId: string, data: { name?: string; description?: string }
+): Promise<Table> {
+  return apiFetch(`/api/v1/tables/${tableId}`, { method: "PATCH", body: JSON.stringify(data) });
+}
+
+export async function deletePersonalTable(tableId: string): Promise<void> {
+  await apiFetch(`/api/v1/tables/${tableId}`, { method: "DELETE" });
+}
+
+// --- Aggregate Tables ---
+
+export async function listAllTables(): Promise<{ tables: TableWithWorkspace[] }> {
+  return apiFetch("/api/v1/me/tables");
 }
 
 // --- Webhooks ---

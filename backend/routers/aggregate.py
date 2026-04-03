@@ -3,7 +3,7 @@
 from fastapi import APIRouter, Depends, Query
 
 from ..auth import get_current_user
-from ..services import chat_service, deck_service, memory_service, notebook_service, persona_identity_service
+from ..services import chat_service, deck_service, memory_service, notebook_service, persona_identity_service, table_service
 
 router = APIRouter(prefix="/api/v1/me", tags=["aggregate"])
 
@@ -78,3 +78,10 @@ async def list_all_decks(current_user: dict = Depends(get_current_user)):
     """All decks from workspaces + personal."""
     decks = await deck_service.list_all_user_decks(current_user["id"])
     return {"decks": decks}
+
+
+@router.get("/tables")
+async def list_all_tables(current_user: dict = Depends(get_current_user)):
+    """All tables from workspaces + personal."""
+    tables = await table_service.list_all_user_tables(current_user["id"])
+    return {"tables": tables}
