@@ -253,9 +253,13 @@ async def create_rows_batch(table_id: UUID, rows_data: list[dict], created_by: U
     results = []
     async with pool.acquire() as conn:
         async with conn.transaction():
-            # Lock within transaction to prevent concurrent row_order conflicts
+            # Lock the parent table row to prevent concurrent row_order conflicts
+            await conn.fetchval(
+                "SELECT id FROM tables WHERE id = $1 FOR UPDATE",
+                table_id,
+            )
             max_order = await conn.fetchval(
-                "SELECT COALESCE(MAX(row_order), -1) FROM table_rows WHERE table_id = $1 FOR UPDATE",
+                "SELECT COALESCE(MAX(row_order), -1) FROM table_rows WHERE table_id = $1",
                 table_id,
             )
             for i, data in enumerate(rows_data):
