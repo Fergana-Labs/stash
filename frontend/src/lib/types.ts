@@ -258,6 +258,46 @@ export interface DeckWithWorkspace {
   workspace_name: string | null;
 }
 
+// --- Tables ---
+
+export interface TableColumn {
+  id: string;
+  name: string;
+  type: "text" | "number" | "boolean" | "date" | "datetime" | "url" | "email" | "select" | "multiselect" | "json";
+  order: number;
+  required: boolean;
+  default: string | number | boolean | string[] | null;
+  options: string[] | null;
+}
+
+export interface Table {
+  id: string;
+  workspace_id: string | null;
+  name: string;
+  description: string;
+  columns: TableColumn[];
+  created_by: string;
+  updated_by: string | null;
+  created_at: string;
+  updated_at: string;
+  row_count: number | null;
+}
+
+export interface TableRow {
+  id: string;
+  table_id: string;
+  data: Record<string, unknown>;
+  row_order: number;
+  created_by: string;
+  updated_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface TableWithWorkspace extends Table {
+  workspace_name: string | null;
+}
+
 // --- Aggregate ---
 
 export interface ChatWithWorkspace extends Chat {

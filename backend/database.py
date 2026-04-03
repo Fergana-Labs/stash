@@ -245,9 +245,33 @@ CREATE TABLE IF NOT EXISTS deck_share_page_views (
     UNIQUE(view_id, page_identifier)
 );
 
+-- Tables (structured data with rows and columns)
+CREATE TABLE IF NOT EXISTS tables (
+    id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    workspace_id UUID REFERENCES workspaces(id) ON DELETE CASCADE,
+    name         VARCHAR(255) NOT NULL,
+    description  TEXT DEFAULT '',
+    columns      JSONB NOT NULL DEFAULT '[]',
+    created_by   UUID NOT NULL REFERENCES users(id),
+    updated_by   UUID REFERENCES users(id),
+    created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS table_rows (
+    id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    table_id     UUID NOT NULL REFERENCES tables(id) ON DELETE CASCADE,
+    data         JSONB NOT NULL DEFAULT '{}',
+    row_order    INTEGER NOT NULL DEFAULT 0,
+    created_by   UUID NOT NULL REFERENCES users(id),
+    updated_by   UUID REFERENCES users(id),
+    created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 -- Object permissions (Google Drive-like, shared across all object types)
 CREATE TABLE IF NOT EXISTS object_permissions (
-    object_type  VARCHAR(16) NOT NULL CHECK(object_type IN ('chat', 'notebook', 'history', 'deck')),
+    object_type  VARCHAR(16) NOT NULL CHECK(object_type IN ('chat', 'notebook', 'history', 'deck', 'table')),
     object_id    UUID NOT NULL,
     visibility   VARCHAR(16) NOT NULL DEFAULT 'inherit'
                  CHECK(visibility IN ('inherit', 'private', 'public')),
@@ -255,7 +279,7 @@ CREATE TABLE IF NOT EXISTS object_permissions (
 );
 
 CREATE TABLE IF NOT EXISTS object_shares (
-    object_type  VARCHAR(16) NOT NULL CHECK(object_type IN ('chat', 'notebook', 'history', 'deck')),
+    object_type  VARCHAR(16) NOT NULL CHECK(object_type IN ('chat', 'notebook', 'history', 'deck', 'table')),
     object_id    UUID NOT NULL,
     user_id      UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     permission   VARCHAR(8) NOT NULL DEFAULT 'read'
@@ -316,6 +340,10 @@ CREATE INDEX IF NOT EXISTS idx_deck_share_views_share ON deck_share_views(share_
 CREATE INDEX IF NOT EXISTS idx_deck_share_views_session ON deck_share_views(session_token);
 CREATE INDEX IF NOT EXISTS idx_deck_share_page_views_view ON deck_share_page_views(view_id);
 
+CREATE INDEX IF NOT EXISTS idx_tables_workspace ON tables(workspace_id);
+CREATE INDEX IF NOT EXISTS idx_table_rows_table ON table_rows(table_id, row_order);
+CREATE INDEX IF NOT EXISTS idx_table_rows_data ON table_rows USING GIN(data);
+
 CREATE INDEX IF NOT EXISTS idx_object_shares_user ON object_shares(user_id);
 CREATE INDEX IF NOT EXISTS idx_webhooks_workspace ON webhooks(workspace_id) WHERE is_active = true;
 """
@@ -344,6 +372,10 @@ _PARTIAL_INDEXES = [
        ON decks(created_by, name) WHERE workspace_id IS NULL""",
     """CREATE INDEX IF NOT EXISTS idx_decks_personal
        ON decks(created_by) WHERE workspace_id IS NULL""",
+    """CREATE UNIQUE INDEX IF NOT EXISTS idx_personal_table_unique
+       ON tables(created_by, name) WHERE workspace_id IS NULL""",
+    """CREATE INDEX IF NOT EXISTS idx_tables_personal
+       ON tables(created_by) WHERE workspace_id IS NULL""",
     # Injection sessions pending outcome scoring
     """CREATE INDEX IF NOT EXISTS idx_injection_sessions_pending
        ON injection_sessions(persona_id) WHERE completed_at IS NOT NULL AND scored_at IS NULL""",
@@ -436,10 +468,30 @@ async def init_db():
                             f"ALTER TABLE {tbl_name} ADD CHECK(object_type IN ('chat', 'notebook', 'history'))"
                         )
 
+        # Migration: add 'table' to object_type CHECK constraints
+        for tbl_name in ("object_permissions", "object_shares"):
+            tbl_exists = await conn.fetchval(
+                "SELECT 1 FROM information_schema.tables WHERE table_name = $1", tbl_name,
+            )
+            if tbl_exists:
+                # Find CHECK constraint on object_type that doesn't include 'table'
+                old_constraint = await conn.fetchval(
+                    "SELECT conname FROM pg_constraint WHERE conrelid = $1::regclass "
+                    "AND contype = 'c' AND pg_get_constraintdef(oid) LIKE '%%object_type%%' "
+                    "AND pg_get_constraintdef(oid) NOT LIKE '%%table%%'",
+                    tbl_name,
+                )
+                if old_constraint:
+                    await conn.execute(f"ALTER TABLE {tbl_name} DROP CONSTRAINT {old_constraint}")
+                    await conn.execute(
+                        f"ALTER TABLE {tbl_name} ADD CHECK"
+                        f"(object_type IN ('chat', 'notebook', 'history', 'deck', 'table'))"
+                    )
+
         # Create schema (idempotent — CREATE TABLE IF NOT EXISTS)
         await conn.execute(SCHEMA)
         # Migration: make workspace_id nullable for personal items
-        for table in ("notebooks", "histories", "decks"):
+        for table in ("notebooks", "histories", "decks", "tables"):
             await conn.execute(
                 f"ALTER TABLE {table} ALTER COLUMN workspace_id DROP NOT NULL"
             )

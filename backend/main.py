@@ -11,7 +11,7 @@ from .config import settings
 from .database import close_db, init_db
 from .routers import (
     personas, aggregate, chats, deck_viewer, decks, dms, memory, notebooks,
-    realtime, skill, users, webhooks, workspaces,
+    realtime, skill, tables, users, webhooks, workspaces,
 )
 from .services.connection_manager import manager
 
@@ -107,6 +107,8 @@ app.include_router(dms.router)
 app.include_router(decks.ws_router)
 app.include_router(decks.personal_router)
 app.include_router(deck_viewer.router)
+app.include_router(tables.ws_router)
+app.include_router(tables.personal_router)
 app.include_router(aggregate.router)
 app.include_router(webhooks.router)
 app.include_router(skill.router)

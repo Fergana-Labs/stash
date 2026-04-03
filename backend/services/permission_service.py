@@ -29,6 +29,7 @@ async def check_access(
             "notebook": ("notebooks", "created_by"),
             "history": ("histories", "created_by"),
             "deck": ("decks", "created_by"),
+            "table": ("tables", "created_by"),
         }
         if object_type in table_map:
             table, col = table_map[object_type]

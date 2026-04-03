@@ -19,6 +19,9 @@ import {
   listDecks,
   createDeck,
   deleteDeck,
+  listTables,
+  createTable,
+  deleteTable,
   getWebhook,
   setWebhook,
   updateWebhook,
@@ -30,7 +33,7 @@ import {
   kickWorkspaceMember,
   updateWorkspace,
 } from "../../../lib/api";
-import { Chat, Deck, History, Notebook, Webhook, Workspace, WorkspaceMember } from "../../../lib/types";
+import { Chat, Deck, History, Notebook, Table, Webhook, Workspace, WorkspaceMember } from "../../../lib/types";
 
 export default function WorkspacePage() {
   const params = useParams();
@@ -43,6 +46,7 @@ export default function WorkspacePage() {
   const [chats, setChats] = useState<Chat[]>([]);
   const [histories, setHistories] = useState<History[]>([]);
   const [decks, setDecks] = useState<Deck[]>([]);
+  const [tables, setTables] = useState<Table[]>([]);
   const [webhook, setWebhookState] = useState<Webhook | null>(null);
   const [members, setMembers] = useState<WorkspaceMember[]>([]);
   const [isMember, setIsMember] = useState(false);
@@ -67,12 +71,13 @@ export default function WorkspacePage() {
 
   const loadData = useCallback(async () => {
     try {
-      const [nbRes, chatRes, m, histRes, deckRes, wh] = await Promise.all([
+      const [nbRes, chatRes, m, histRes, deckRes, tblRes, wh] = await Promise.all([
         listNotebooks(workspaceId).then(r => r?.notebooks ?? []).catch(() => [] as Notebook[]),
         listChats(workspaceId).then(r => r?.chats ?? []).catch(() => [] as Chat[]),
         getWorkspaceMembers(workspaceId).catch(() => [] as WorkspaceMember[]),
         listHistories(workspaceId).then(r => r?.stores ?? []).catch(() => [] as History[]),
         listDecks(workspaceId).then(r => r?.decks ?? []).catch(() => [] as Deck[]),
+        listTables(workspaceId).then(r => r?.tables ?? []).catch(() => [] as Table[]),
         getWebhook(workspaceId).catch(() => null),
       ]);
       setNotebooks(nbRes);
@@ -80,6 +85,7 @@ export default function WorkspacePage() {
       setMembers(m);
       setHistories(histRes);
       setDecks(deckRes);
+      setTables(tblRes);
       setWebhookState(wh);
       if (wh) { setWebhookUrl(wh.url); }
       if (user) setIsMember(m.some(mem => mem.user_id === user.id));
@@ -144,6 +150,19 @@ export default function WorkspacePage() {
     if (!confirm("Delete this deck?")) return;
     try { await deleteDeck(workspaceId, deckId); await loadData(); }
     catch (err) { setError(err instanceof Error ? err.message : "Failed to delete deck"); }
+  };
+
+  const handleCreateTable = async () => {
+    const name = prompt("Table name:");
+    if (!name?.trim()) return;
+    try { await createTable(workspaceId, name.trim()); await loadData(); }
+    catch (err) { setError(err instanceof Error ? err.message : "Failed to create table"); }
+  };
+
+  const handleDeleteTable = async (tableId: string) => {
+    if (!confirm("Delete this table and all its data?")) return;
+    try { await deleteTable(workspaceId, tableId); await loadData(); }
+    catch (err) { setError(err instanceof Error ? err.message : "Failed to delete table"); }
   };
 
   const handleSaveWebhook = async () => {
@@ -311,6 +330,34 @@ export default function WorkspacePage() {
                           </div>
                         </Link>
                         <button onClick={() => handleDeleteDeck(d.id)} className="text-xs text-red-400 hover:text-red-300 px-2 py-1">Delete</button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </section>
+
+              {/* Tables */}
+              <section className="mb-8">
+                <div className="flex items-center justify-between mb-3">
+                  <h2 className="text-sm font-medium text-muted uppercase tracking-wider">Tables</h2>
+                  <button onClick={handleCreateTable} className="text-xs text-brand hover:text-brand-hover">+ New</button>
+                </div>
+                {tables.length === 0 ? (
+                  <p className="text-muted text-sm">No tables yet. Create one for structured data that agents and humans can access.</p>
+                ) : (
+                  <div className="space-y-1">
+                    {tables.map(t => (
+                      <div key={t.id} className="group flex items-center justify-between px-3 py-2 rounded-lg hover:bg-raised transition-colors">
+                        <Link href={`/tables/${t.id}?workspaceId=${workspaceId}`} className="flex items-center gap-3 flex-1 min-w-0">
+                          <div className="w-7 h-7 rounded-md bg-cyan-500/15 text-cyan-500 flex items-center justify-center text-xs font-bold">T</div>
+                          <div>
+                            <div className="text-sm text-foreground">{t.name}</div>
+                            <div className="text-xs text-muted">{t.columns.length} cols, {t.row_count ?? 0} rows</div>
+                          </div>
+                        </Link>
+                        {isOwner && (
+                          <button onClick={() => handleDeleteTable(t.id)} className="text-xs text-red-400 hover:text-red-300 px-2 py-1 opacity-0 group-hover:opacity-100">Delete</button>
+                        )}
                       </div>
                     ))}
                   </div>
