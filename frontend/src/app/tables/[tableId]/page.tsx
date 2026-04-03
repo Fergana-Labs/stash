@@ -412,8 +412,8 @@ export default function TableEditorPage() {
   // --- Render row ---
   const renderRow = (row: TableRow, idx: number) => (
     <tr key={row.id} className={`border-b border-border/50 hover:bg-raised/50 transition-colors group ${selectedRows.has(row.id) ? "bg-brand/5" : ""}`}>
-      <td className="px-1 py-0 text-center border-r border-border"><input type="checkbox" checked={selectedRows.has(row.id)} onChange={() => toggleSelectRow(row.id)} className="accent-brand" /></td>
-      <td className="px-2 py-1.5 text-[10px] text-muted text-center border-r border-border font-mono cursor-pointer hover:text-brand" onClick={() => openDetail(row)} title="Open row detail">{idx + 1}</td>
+      <td className="px-1 py-0 text-center border-r border-border sticky left-0 z-[5] bg-surface"><input type="checkbox" checked={selectedRows.has(row.id)} onChange={() => toggleSelectRow(row.id)} className="accent-brand" /></td>
+      <td className="px-2 py-1.5 text-[10px] text-muted text-center border-r border-border font-mono cursor-pointer hover:text-brand sticky left-8 z-[5] bg-surface shadow-[2px_0_4px_-2px_rgba(0,0,0,0.1)]" onClick={() => openDetail(row)} title="Open row detail">{idx + 1}</td>
       {visibleColumns.map((col) => {
         const isEditing = editingCell?.rowId === row.id && editingCell?.colId === col.id;
         const value = row.data[col.id];
@@ -540,8 +540,8 @@ export default function TableEditorPage() {
             <table className="w-full border-collapse min-w-max">
               <thead className="sticky top-0 z-10">
                 <tr className="bg-surface border-b border-border">
-                  <th className="w-8 px-1 py-2 text-center border-r border-border"><input type="checkbox" checked={selectedRows.size === rows.length && rows.length > 0} onChange={toggleSelectAll} className="accent-brand" /></th>
-                  <th className="w-10 px-2 py-2 text-[10px] font-medium text-muted text-center border-r border-border">#</th>
+                  <th className="w-8 px-1 py-2 text-center border-r border-border sticky left-0 z-20 bg-surface"><input type="checkbox" checked={selectedRows.size === rows.length && rows.length > 0} onChange={toggleSelectAll} className="accent-brand" /></th>
+                  <th className="w-10 px-2 py-2 text-[10px] font-medium text-muted text-center border-r border-border sticky left-8 z-20 bg-surface shadow-[2px_0_4px_-2px_rgba(0,0,0,0.1)]">#</th>
                   {visibleColumns.map((col) => (
                     <th key={col.id} className={`px-3 py-2 text-left text-xs font-medium text-muted border-r border-border min-w-[140px] select-none cursor-pointer hover:bg-raised transition-colors ${dragCol === col.id ? "opacity-50" : ""}`} draggable onDragStart={() => setDragCol(col.id)} onDragOver={(e) => e.preventDefault()} onDrop={() => handleColumnDrop(col.id)} onDragEnd={() => setDragCol(null)} onContextMenu={(e) => { e.preventDefault(); setColMenu({ colId: col.id, x: e.clientX, y: e.clientY }); }}>
                       <span className="flex items-center gap-1.5" onClick={() => handleSort(col.id)}>
@@ -576,8 +576,8 @@ export default function TableEditorPage() {
               {showSummary && summary && (
                 <tfoot className="sticky bottom-0 z-10">
                   <tr className="bg-surface border-t-2 border-border">
-                    <td className="px-1 py-2 text-center border-r border-border" />
-                    <td className="px-2 py-2 text-[10px] text-muted text-center border-r border-border font-mono">\u03A3</td>
+                    <td className="px-1 py-2 text-center border-r border-border sticky left-0 bg-surface" />
+                    <td className="px-2 py-2 text-[10px] text-muted text-center border-r border-border font-mono sticky left-8 bg-surface">\u03A3</td>
                     {visibleColumns.map((col) => {
                       const s = summary.columns[col.id];
                       return (
