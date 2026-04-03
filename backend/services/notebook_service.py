@@ -287,15 +287,25 @@ async def get_always_inject_pages(notebook_id: UUID) -> list[dict]:
 
 
 async def search_pages_fts(notebook_id: UUID, query: str, limit: int = 10) -> list[dict]:
-    """FTS search on notebook page content."""
+    """FTS search on notebook page content + keywords (keywords weighted A, content weighted B)."""
     pool = get_pool()
+    # metadata->'keywords' is a JSONB array; convert to space-separated text
+    # via jsonb_array_elements_text + string_agg for proper tsvector parsing.
+    kw_text_expr = (
+        "COALESCE((SELECT string_agg(kw, ' ') "
+        "FROM jsonb_array_elements_text(COALESCE(metadata->'keywords', '[]'::jsonb)) AS kw), '')"
+    )
+    vec_expr = (
+        f"setweight(to_tsvector('english', content_markdown), 'B') || "
+        f"setweight(to_tsvector('english', {kw_text_expr}), 'A')"
+    )
     rows = await pool.fetch(
-        "SELECT id, notebook_id, name, content_markdown, metadata, "
-        "ts_rank(to_tsvector('english', content_markdown), websearch_to_tsquery('english', $2)) AS rank "
-        "FROM notebook_pages "
-        "WHERE notebook_id = $1 "
-        "AND to_tsvector('english', content_markdown) @@ websearch_to_tsquery('english', $2) "
-        "ORDER BY rank DESC LIMIT $3",
+        f"SELECT id, notebook_id, name, content_markdown, metadata, "
+        f"ts_rank({vec_expr}, websearch_to_tsquery('english', $2)) AS rank "
+        f"FROM notebook_pages "
+        f"WHERE notebook_id = $1 "
+        f"AND ({vec_expr}) @@ websearch_to_tsquery('english', $2) "
+        f"ORDER BY rank DESC LIMIT $3",
         notebook_id, query, limit,
     )
     return [dict(r) for r in rows]
