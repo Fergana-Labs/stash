@@ -1,4 +1,4 @@
-"""Boozle CLI — command-line interface for workspaces, chats, notebooks, history, and decks."""
+"""Boozle CLI — command-line interface for workspaces, chats, notebooks, tables, history, and decks."""
 
 from __future__ import annotations
 
@@ -13,7 +13,7 @@ from .client import BoozleClient, BoozleError
 from .config import load_config, save_config, add_notify_room, get_notify_rooms, remove_notify_room
 from .formatting import console, output_json, print_personas, print_members, print_messages, print_rooms, print_user
 
-app = typer.Typer(name="boozle", help="Boozle CLI — workspaces, chats, notebooks, history, decks.")
+app = typer.Typer(name="boozle", help="Boozle CLI — workspaces, chats, notebooks, tables, history, decks.")
 
 
 def _client() -> BoozleClient:
@@ -730,6 +730,246 @@ def decks_analytics(deck_id: str = typer.Argument(...), share_id: str = typer.Ar
             for v in viewers:
                 who = v.get("viewer_email") or v.get("viewer_ip") or "anonymous"
                 console.print(f"  {who}  duration: {v.get('total_duration_seconds', 0)}s  last: {str(v.get('last_active_at', ''))[:19]}")
+
+
+# ===========================================================================
+# Tables
+# ===========================================================================
+
+tables_app = typer.Typer(help="Tables — structured data with typed columns and rows.")
+app.add_typer(tables_app, name="tables")
+
+
+@tables_app.command("list")
+def tables_list(workspace_id: str = typer.Option(None, "--ws"), all_: bool = typer.Option(False, "--all"), as_json: bool = typer.Option(False, "--json")):
+    """List tables. --all for cross-workspace."""
+    with _client() as c:
+        try:
+            data = c.all_tables() if all_ else c.list_tables(workspace_id or _default_workspace())
+        except BoozleError as e:
+            _err(e)
+    if _use_json(as_json):
+        output_json(data)
+    else:
+        if not data:
+            console.print("[dim]No tables.[/dim]")
+        else:
+            for t in data:
+                ws = f" [{t.get('workspace_name', '')}]" if t.get("workspace_name") else ""
+                cols = len(t.get("columns", []))
+                rows = t.get("row_count", 0)
+                console.print(f"  {t['name']}{ws}  ({cols} cols, {rows} rows, id: {str(t['id'])[:8]})")
+
+
+@tables_app.command("create")
+def tables_create(
+    name: str = typer.Argument(...),
+    workspace_id: str = typer.Option(None, "--ws"),
+    description: str = typer.Option(""),
+    columns: str = typer.Option(None, "--columns", help='JSON: [{"name":"Col","type":"text"}]'),
+    personal: bool = typer.Option(False, "--personal"),
+    as_json: bool = typer.Option(False, "--json"),
+):
+    """Create a table. --columns accepts JSON array of {name, type, options?}."""
+    cols = json.loads(columns) if columns else []
+    with _client() as c:
+        try:
+            if personal:
+                data = c.create_personal_table(name, description=description, columns=cols)
+            else:
+                ws = workspace_id or _default_workspace()
+                data = c.create_table(ws, name, description=description, columns=cols)
+        except BoozleError as e:
+            _err(e)
+    if _use_json(as_json):
+        output_json(data)
+    else:
+        console.print(f"[green]Table '{data['name']}' created.[/green]  ID: {data['id']}")
+
+
+@tables_app.command("schema")
+def tables_schema(table_id: str = typer.Argument(...), workspace_id: str = typer.Option(None, "--ws"), as_json: bool = typer.Option(False, "--json")):
+    """Show a table's column schema."""
+    with _client() as c:
+        try:
+            ws = workspace_id or _default_workspace()
+            data = c.get_table(ws, table_id)
+        except BoozleError as e:
+            _err(e)
+    if _use_json(as_json):
+        output_json(data)
+    else:
+        console.print(f"[bold]{data['name']}[/bold]  ({data.get('row_count', 0)} rows)")
+        cols = data.get("columns", [])
+        if not cols:
+            console.print("[dim]No columns defined.[/dim]")
+        else:
+            for col in sorted(cols, key=lambda c: c.get("order", 0)):
+                extra = ""
+                if col.get("options"):
+                    extra = f"  options: {', '.join(col['options'])}"
+                if col.get("required"):
+                    extra += "  REQUIRED"
+                console.print(f"  {col['name']}  [dim]({col['type']}, {col['id']})[/dim]{extra}")
+
+
+@tables_app.command("rows")
+def tables_rows(
+    table_id: str = typer.Argument(...),
+    workspace_id: str = typer.Option(None, "--ws"),
+    limit: int = typer.Option(50, "-n", "--limit"),
+    offset: int = typer.Option(0, "--offset"),
+    sort_by: str = typer.Option("", "--sort"),
+    sort_order: str = typer.Option("asc", "--order"),
+    filters: str = typer.Option("", "--filter", help='JSON: [{"column_id":"col_x","op":"eq","value":"foo"}]'),
+    as_json: bool = typer.Option(False, "--json"),
+):
+    """Read rows from a table with optional filtering and sorting."""
+    with _client() as c:
+        try:
+            ws = workspace_id or _default_workspace()
+            result = c.list_table_rows(ws, table_id, limit=limit, offset=offset, sort_by=sort_by, sort_order=sort_order, filters=filters)
+        except BoozleError as e:
+            _err(e)
+    if _use_json(as_json):
+        output_json(result)
+    else:
+        rows = result.get("rows", []) if isinstance(result, dict) else result
+        total = result.get("total_count", len(rows)) if isinstance(result, dict) else len(rows)
+        # Get column names for display
+        try:
+            with _client() as c2:
+                ws = workspace_id or _default_workspace()
+                table = c2.get_table(ws, table_id)
+            id_to_name = {col["id"]: col["name"] for col in table.get("columns", [])}
+        except Exception:
+            id_to_name = {}
+        console.print(f"[dim]Showing {len(rows)} of {total} rows[/dim]")
+        for row in rows:
+            named = {id_to_name.get(k, k): v for k, v in row.get("data", {}).items()}
+            console.print(f"  [{str(row['id'])[:8]}] {named}")
+
+
+@tables_app.command("insert")
+def tables_insert(
+    table_id: str = typer.Argument(...),
+    data: str = typer.Argument(..., help='JSON: {"Name":"Alice","Status":"active"}'),
+    workspace_id: str = typer.Option(None, "--ws"),
+    as_json: bool = typer.Option(False, "--json"),
+):
+    """Insert a row. Data is a JSON object with column names as keys."""
+    row_data = json.loads(data)
+    with _client() as c:
+        try:
+            ws = workspace_id or _default_workspace()
+            # Resolve column names to IDs
+            table = c.get_table(ws, table_id)
+            cols = table.get("columns", [])
+            name_to_id = {col["name"]: col["id"] for col in cols}
+            id_set = {col["id"] for col in cols}
+            resolved = {}
+            for k, v in row_data.items():
+                if k in id_set:
+                    resolved[k] = v
+                elif k in name_to_id:
+                    resolved[name_to_id[k]] = v
+            result = c.insert_table_row(ws, table_id, resolved)
+        except BoozleError as e:
+            _err(e)
+    if _use_json(as_json):
+        output_json(result)
+    else:
+        console.print(f"[green]Row inserted.[/green]  ID: {result['id']}")
+
+
+@tables_app.command("update-row")
+def tables_update_row(
+    table_id: str = typer.Argument(...),
+    row_id: str = typer.Argument(...),
+    data: str = typer.Argument(..., help='JSON: {"Status":"done"}'),
+    workspace_id: str = typer.Option(None, "--ws"),
+    as_json: bool = typer.Option(False, "--json"),
+):
+    """Update a row (partial merge). Data is JSON with column names as keys."""
+    row_data = json.loads(data)
+    with _client() as c:
+        try:
+            ws = workspace_id or _default_workspace()
+            # Resolve column names to IDs
+            table = c.get_table(ws, table_id)
+            cols = table.get("columns", [])
+            name_to_id = {col["name"]: col["id"] for col in cols}
+            id_set = {col["id"] for col in cols}
+            resolved = {}
+            for k, v in row_data.items():
+                if k in id_set:
+                    resolved[k] = v
+                elif k in name_to_id:
+                    resolved[name_to_id[k]] = v
+            result = c.update_table_row(ws, table_id, row_id, resolved)
+        except BoozleError as e:
+            _err(e)
+    if _use_json(as_json):
+        output_json(result)
+    else:
+        console.print("[green]Row updated.[/green]")
+
+
+@tables_app.command("delete-row")
+def tables_delete_row(
+    table_id: str = typer.Argument(...),
+    row_id: str = typer.Argument(...),
+    workspace_id: str = typer.Option(None, "--ws"),
+):
+    """Delete a row from a table."""
+    with _client() as c:
+        try:
+            ws = workspace_id or _default_workspace()
+            c.delete_table_row(ws, table_id, row_id)
+        except BoozleError as e:
+            _err(e)
+    console.print("[green]Row deleted.[/green]")
+
+
+@tables_app.command("add-column")
+def tables_add_column(
+    table_id: str = typer.Argument(...),
+    name: str = typer.Argument(...),
+    col_type: str = typer.Option("text", "--type"),
+    options: str = typer.Option("", "--options", help="Comma-separated options for select/multiselect"),
+    workspace_id: str = typer.Option(None, "--ws"),
+    as_json: bool = typer.Option(False, "--json"),
+):
+    """Add a column to a table."""
+    opts = [o.strip() for o in options.split(",") if o.strip()] if options else None
+    with _client() as c:
+        try:
+            ws = workspace_id or _default_workspace()
+            result = c.add_table_column(ws, table_id, name, col_type=col_type, options=opts)
+        except BoozleError as e:
+            _err(e)
+    if _use_json(as_json):
+        output_json(result)
+    else:
+        console.print(f"[green]Column '{name}' ({col_type}) added.[/green]")
+
+
+@tables_app.command("delete")
+def tables_delete(
+    table_id: str = typer.Argument(...),
+    workspace_id: str = typer.Option(None, "--ws"),
+    yes: bool = typer.Option(False, "--yes", "-y"),
+):
+    """Delete a table and all its data."""
+    if not yes:
+        typer.confirm("Delete this table and all its data?", abort=True)
+    with _client() as c:
+        try:
+            ws = workspace_id or _default_workspace()
+            c.delete_table(ws, table_id)
+        except BoozleError as e:
+            _err(e)
+    console.print("[green]Table deleted.[/green]")
 
 
 # ===========================================================================

@@ -381,3 +381,67 @@ class BoozleClient:
 
     def search_users(self, query: str) -> list:
         return self._get("/api/v1/dms/users/search", q=query)
+
+    # --- Tables ---
+
+    def create_table(self, workspace_id: str, name: str, description: str = "", columns: list | None = None) -> dict:
+        body: dict = {"name": name, "description": description, "columns": columns or []}
+        return self._post(f"/api/v1/workspaces/{workspace_id}/tables", json=body)
+
+    def list_tables(self, workspace_id: str) -> list:
+        return self._list(f"/api/v1/workspaces/{workspace_id}/tables", "tables")
+
+    def get_table(self, workspace_id: str, table_id: str) -> dict:
+        return self._get(f"/api/v1/workspaces/{workspace_id}/tables/{table_id}")
+
+    def update_table(self, workspace_id: str, table_id: str, **kwargs) -> dict:
+        return self._patch(f"/api/v1/workspaces/{workspace_id}/tables/{table_id}", json=kwargs)
+
+    def delete_table(self, workspace_id: str, table_id: str) -> None:
+        self._delete(f"/api/v1/workspaces/{workspace_id}/tables/{table_id}")
+
+    def create_personal_table(self, name: str, description: str = "", columns: list | None = None) -> dict:
+        body: dict = {"name": name, "description": description, "columns": columns or []}
+        return self._post("/api/v1/tables", json=body)
+
+    def list_personal_tables(self) -> list:
+        return self._list("/api/v1/tables", "tables")
+
+    def all_tables(self) -> list:
+        return self._list("/api/v1/me/tables", "tables")
+
+    def list_table_rows(self, workspace_id: str | None, table_id: str, limit: int = 50, offset: int = 0, sort_by: str = "", sort_order: str = "asc", filters: str = "") -> dict:
+        base = f"/api/v1/workspaces/{workspace_id}/tables" if workspace_id else "/api/v1/tables"
+        params: dict = {"limit": limit, "offset": offset, "sort_order": sort_order}
+        if sort_by:
+            params["sort_by"] = sort_by
+        if filters:
+            params["filters"] = filters
+        return self._get(f"{base}/{table_id}/rows", **params)
+
+    def insert_table_row(self, workspace_id: str | None, table_id: str, data: dict) -> dict:
+        base = f"/api/v1/workspaces/{workspace_id}/tables" if workspace_id else "/api/v1/tables"
+        return self._post(f"{base}/{table_id}/rows", json={"data": data})
+
+    def insert_table_rows_batch(self, workspace_id: str | None, table_id: str, rows: list[dict]) -> dict:
+        base = f"/api/v1/workspaces/{workspace_id}/tables" if workspace_id else "/api/v1/tables"
+        return self._post(f"{base}/{table_id}/rows/batch", json={"rows": [{"data": r} for r in rows]})
+
+    def update_table_row(self, workspace_id: str | None, table_id: str, row_id: str, data: dict) -> dict:
+        base = f"/api/v1/workspaces/{workspace_id}/tables" if workspace_id else "/api/v1/tables"
+        return self._patch(f"{base}/{table_id}/rows/{row_id}", json={"data": data})
+
+    def delete_table_row(self, workspace_id: str | None, table_id: str, row_id: str) -> None:
+        base = f"/api/v1/workspaces/{workspace_id}/tables" if workspace_id else "/api/v1/tables"
+        self._delete(f"{base}/{table_id}/rows/{row_id}")
+
+    def add_table_column(self, workspace_id: str | None, table_id: str, name: str, col_type: str = "text", options: list | None = None) -> dict:
+        base = f"/api/v1/workspaces/{workspace_id}/tables" if workspace_id else "/api/v1/tables"
+        body: dict = {"name": name, "type": col_type}
+        if options:
+            body["options"] = options
+        return self._post(f"{base}/{table_id}/columns", json=body)
+
+    def delete_table_column(self, workspace_id: str | None, table_id: str, column_id: str) -> dict:
+        base = f"/api/v1/workspaces/{workspace_id}/tables" if workspace_id else "/api/v1/tables"
+        return self._request("DELETE", f"{base}/{table_id}/columns/{column_id}").json()
