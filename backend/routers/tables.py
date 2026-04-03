@@ -343,6 +343,52 @@ async def export_ws_csv(
     )
 
 
+# --- Workspace search, summary, duplicate ---
+
+
+@ws_router.get("/{table_id}/rows/search")
+async def search_ws_rows(
+    workspace_id: UUID, table_id: UUID,
+    q: str = Query(..., min_length=1),
+    limit: int = Query(100, ge=1, le=1000),
+    offset: int = Query(0, ge=0),
+    current_user: dict = Depends(get_current_user),
+):
+    await _check_member(workspace_id, current_user["id"])
+    await _check_ws_table(workspace_id, table_id)
+    rows, total = await table_service.search_rows(table_id, q, limit=limit, offset=offset)
+    return RowListResponse(
+        rows=[RowResponse(**r) for r in rows],
+        total_count=total,
+        has_more=offset + limit < total,
+    )
+
+
+@ws_router.get("/{table_id}/rows/summary")
+async def summarize_ws_rows(
+    workspace_id: UUID, table_id: UUID,
+    filters: str | None = Query(None),
+    current_user: dict = Depends(get_current_user),
+):
+    await _check_member(workspace_id, current_user["id"])
+    await _check_ws_table(workspace_id, table_id)
+    parsed_filters = json.loads(filters) if filters else None
+    return await table_service.summarize_rows(table_id, filters=parsed_filters)
+
+
+@ws_router.post("/{table_id}/rows/{row_id}/duplicate", response_model=RowResponse, status_code=201)
+async def duplicate_ws_row(
+    workspace_id: UUID, table_id: UUID, row_id: UUID,
+    current_user: dict = Depends(get_current_user),
+):
+    await _check_member(workspace_id, current_user["id"])
+    await _check_ws_table(workspace_id, table_id)
+    row = await table_service.duplicate_row(row_id, table_id, current_user["id"])
+    if not row:
+        raise HTTPException(status_code=404, detail="Row not found")
+    return RowResponse(**row)
+
+
 # --- Workspace views ---
 
 
@@ -663,6 +709,49 @@ async def export_personal_csv(
         media_type="text/csv",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
+
+
+# --- Personal search, summary, duplicate ---
+
+
+@personal_router.get("/{table_id}/rows/search")
+async def search_personal_rows(
+    table_id: UUID,
+    q: str = Query(..., min_length=1),
+    limit: int = Query(100, ge=1, le=1000),
+    offset: int = Query(0, ge=0),
+    current_user: dict = Depends(get_current_user),
+):
+    await _check_table_owner(table_id, current_user["id"])
+    rows, total = await table_service.search_rows(table_id, q, limit=limit, offset=offset)
+    return RowListResponse(
+        rows=[RowResponse(**r) for r in rows],
+        total_count=total,
+        has_more=offset + limit < total,
+    )
+
+
+@personal_router.get("/{table_id}/rows/summary")
+async def summarize_personal_rows(
+    table_id: UUID,
+    filters: str | None = Query(None),
+    current_user: dict = Depends(get_current_user),
+):
+    await _check_table_owner(table_id, current_user["id"])
+    parsed_filters = json.loads(filters) if filters else None
+    return await table_service.summarize_rows(table_id, filters=parsed_filters)
+
+
+@personal_router.post("/{table_id}/rows/{row_id}/duplicate", response_model=RowResponse, status_code=201)
+async def duplicate_personal_row(
+    table_id: UUID, row_id: UUID,
+    current_user: dict = Depends(get_current_user),
+):
+    await _check_table_owner(table_id, current_user["id"])
+    row = await table_service.duplicate_row(row_id, table_id, current_user["id"])
+    if not row:
+        raise HTTPException(status_code=404, detail="Row not found")
+    return RowResponse(**row)
 
 
 # --- Personal views ---

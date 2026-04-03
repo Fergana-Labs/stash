@@ -958,6 +958,35 @@ export async function deletePersonalTable(tableId: string): Promise<void> {
   await apiFetch(`/api/v1/tables/${tableId}`, { method: "DELETE" });
 }
 
+// --- Table Search, Summary, Duplicate ---
+
+export async function searchTableRows(
+  tableId: string, query: string, params?: { limit?: number; offset?: number }, workspaceId?: string
+): Promise<{ rows: TableRow[]; total_count: number; has_more: boolean }> {
+  const base = workspaceId ? `/api/v1/workspaces/${workspaceId}/tables` : "/api/v1/tables";
+  const qs = new URLSearchParams({ q: query });
+  if (params?.limit) qs.set("limit", String(params.limit));
+  if (params?.offset) qs.set("offset", String(params.offset));
+  return apiFetch(`${base}/${tableId}/rows/search?${qs}`);
+}
+
+export async function summarizeTableRows(
+  tableId: string, filters?: object[], workspaceId?: string
+): Promise<{ total_rows: number; columns: Record<string, { name: string; filled: number; sum?: number; avg?: number; min?: number; max?: number }> }> {
+  const base = workspaceId ? `/api/v1/workspaces/${workspaceId}/tables` : "/api/v1/tables";
+  const qs = new URLSearchParams();
+  if (filters && filters.length > 0) qs.set("filters", JSON.stringify(filters));
+  const qsStr = qs.toString();
+  return apiFetch(`${base}/${tableId}/rows/summary${qsStr ? "?" + qsStr : ""}`);
+}
+
+export async function duplicateTableRow(
+  tableId: string, rowId: string, workspaceId?: string
+): Promise<TableRow> {
+  const base = workspaceId ? `/api/v1/workspaces/${workspaceId}/tables` : "/api/v1/tables";
+  return apiFetch(`${base}/${tableId}/rows/${rowId}/duplicate`, { method: "POST" });
+}
+
 // --- Table Views ---
 
 export async function saveTableView(

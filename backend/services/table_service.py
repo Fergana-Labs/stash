@@ -491,3 +491,111 @@ async def export_rows_all(table_id: UUID, filters: list[dict] | None = None,
         limit=2_000_000, offset=0,
     )
     return rows
+
+
+async def search_rows(
+    table_id: UUID, query: str, limit: int = 100, offset: int = 0,
+) -> tuple[list[dict], int]:
+    """Search across all text/email/url columns using ILIKE."""
+    pool = get_pool()
+    table = await get_table(table_id)
+    if not table:
+        return [], 0
+    # Build OR clauses for all text-like columns
+    text_cols = [c for c in table["columns"] if c["type"] in ("text", "email", "url", "select")]
+    if not text_cols:
+        return [], 0
+    or_clauses = " OR ".join(f"data->>'{c['id']}' ILIKE $2" for c in text_cols)
+    where = f"table_id = $1 AND ({or_clauses})"
+    like_val = f"%{query}%"
+    total = await pool.fetchval(f"SELECT COUNT(*) FROM table_rows WHERE {where}", table_id, like_val)
+    rows = await pool.fetch(
+        f"SELECT id, table_id, data, row_order, created_by, updated_by, created_at, updated_at "
+        f"FROM table_rows WHERE {where} ORDER BY row_order ASC LIMIT $3 OFFSET $4",
+        table_id, like_val, limit, offset,
+    )
+    return [dict(r) for r in rows], total
+
+
+async def summarize_rows(
+    table_id: UUID, filters: list[dict] | None = None,
+) -> dict:
+    """Compute aggregates per column: count, sum, avg, min, max for numbers; count for all."""
+    pool = get_pool()
+    table = await get_table(table_id)
+    if not table:
+        return {}
+    # Get total count (reuse existing logic)
+    total = await count_rows(table_id, filters=filters)
+    summaries: dict = {"total_rows": total, "columns": {}}
+    # For each number column, compute aggregates
+    num_cols = [c for c in table["columns"] if c["type"] == "number"]
+    if num_cols and total > 0:
+        # Build a single query that computes all aggregates
+        agg_parts = []
+        for c in num_cols:
+            cid = c["id"]
+            agg_parts.append(
+                f"COUNT(CASE WHEN data->>'{cid}' IS NOT NULL AND data->>'{cid}' != '' THEN 1 END) AS \"{cid}_count\", "
+                f"SUM((data->>'{cid}')::numeric) AS \"{cid}_sum\", "
+                f"AVG((data->>'{cid}')::numeric) AS \"{cid}_avg\", "
+                f"MIN((data->>'{cid}')::numeric) AS \"{cid}_min\", "
+                f"MAX((data->>'{cid}')::numeric) AS \"{cid}_max\""
+            )
+        select_clause = ", ".join(agg_parts)
+        # Build WHERE from filters
+        where_clauses = ["table_id = $1"]
+        args: list = [table_id]
+        idx = 2
+        valid_col_ids = {c["id"] for c in table["columns"]}
+        if filters:
+            for f in filters:
+                col_id = f.get("column_id", "")
+                op = f.get("op", "eq")
+                value = f.get("value")
+                if col_id not in valid_col_ids:
+                    continue
+                if op == "contains":
+                    where_clauses.append(f"data->>'{col_id}' ILIKE ${idx}")
+                    args.append(f"%{value}%")
+                    idx += 1
+                elif op in _FILTER_OPS:
+                    sql_op = _FILTER_OPS[op]
+                    if isinstance(value, (int, float)):
+                        where_clauses.append(f"(data->>'{col_id}')::numeric {sql_op} ${idx}")
+                    else:
+                        where_clauses.append(f"data->>'{col_id}' {sql_op} ${idx}")
+                    args.append(str(value) if not isinstance(value, str) else value)
+                    idx += 1
+        where = " AND ".join(where_clauses)
+        row = await pool.fetchrow(f"SELECT {select_clause} FROM table_rows WHERE {where}", *args)
+        if row:
+            for c in num_cols:
+                cid = c["id"]
+                summaries["columns"][cid] = {
+                    "name": c["name"],
+                    "filled": row[f"{cid}_count"],
+                    "sum": float(row[f"{cid}_sum"]) if row[f"{cid}_sum"] is not None else None,
+                    "avg": round(float(row[f"{cid}_avg"]), 2) if row[f"{cid}_avg"] is not None else None,
+                    "min": float(row[f"{cid}_min"]) if row[f"{cid}_min"] is not None else None,
+                    "max": float(row[f"{cid}_max"]) if row[f"{cid}_max"] is not None else None,
+                }
+    # For non-number columns, just count non-empty values
+    for c in table["columns"]:
+        if c["id"] not in summaries["columns"]:
+            cid = c["id"]
+            filled = await pool.fetchval(
+                f"SELECT COUNT(*) FROM table_rows WHERE table_id = $1 AND data->>'{cid}' IS NOT NULL AND data->>'{cid}' != ''",
+                table_id,
+            )
+            summaries["columns"][cid] = {"name": c["name"], "filled": filled}
+    return summaries
+
+
+async def duplicate_row(row_id: UUID, table_id: UUID, created_by: UUID) -> dict | None:
+    """Duplicate a row — copy data with new ID and row_order."""
+    pool = get_pool()
+    source = await get_row(row_id)
+    if not source or source.get("table_id") != table_id:
+        return None
+    return await create_row(table_id, source["data"], created_by)
