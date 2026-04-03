@@ -343,6 +343,35 @@ async def export_ws_csv(
     )
 
 
+# --- Workspace views ---
+
+
+@ws_router.post("/{table_id}/views", status_code=201)
+async def save_ws_view(
+    workspace_id: UUID, table_id: UUID, body: dict,
+    current_user: dict = Depends(get_current_user),
+):
+    await _check_member(workspace_id, current_user["id"])
+    await _check_ws_table(workspace_id, table_id)
+    table = await table_service.save_view(table_id, body, current_user["id"])
+    if not table:
+        raise HTTPException(status_code=404, detail="Table not found")
+    return table
+
+
+@ws_router.delete("/{table_id}/views/{view_id}")
+async def delete_ws_view(
+    workspace_id: UUID, table_id: UUID, view_id: str,
+    current_user: dict = Depends(get_current_user),
+):
+    await _check_member(workspace_id, current_user["id"])
+    await _check_ws_table(workspace_id, table_id)
+    table = await table_service.delete_view(table_id, view_id, current_user["id"])
+    if not table:
+        raise HTTPException(status_code=404, detail="Table or view not found")
+    return table
+
+
 # --- Workspace permissions ---
 
 
@@ -634,3 +663,28 @@ async def export_personal_csv(
         media_type="text/csv",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
+
+
+# --- Personal views ---
+
+
+@personal_router.post("/{table_id}/views", status_code=201)
+async def save_personal_view(
+    table_id: UUID, body: dict, current_user: dict = Depends(get_current_user),
+):
+    await _check_table_owner(table_id, current_user["id"])
+    table = await table_service.save_view(table_id, body, current_user["id"])
+    if not table:
+        raise HTTPException(status_code=404, detail="Table not found")
+    return table
+
+
+@personal_router.delete("/{table_id}/views/{view_id}")
+async def delete_personal_view(
+    table_id: UUID, view_id: str, current_user: dict = Depends(get_current_user),
+):
+    await _check_table_owner(table_id, current_user["id"])
+    table = await table_service.delete_view(table_id, view_id, current_user["id"])
+    if not table:
+        raise HTTPException(status_code=404, detail="Table or view not found")
+    return table

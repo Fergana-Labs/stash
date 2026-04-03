@@ -252,6 +252,7 @@ CREATE TABLE IF NOT EXISTS tables (
     name         VARCHAR(255) NOT NULL,
     description  TEXT DEFAULT '',
     columns      JSONB NOT NULL DEFAULT '[]',
+    views        JSONB NOT NULL DEFAULT '[]',
     created_by   UUID NOT NULL REFERENCES users(id),
     updated_by   UUID REFERENCES users(id),
     created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -531,6 +532,14 @@ async def init_db():
                 await conn.execute(
                     f"ALTER TABLE notebook_pages ADD COLUMN {col} {col_type}{default_clause}"
                 )
+
+        # Migration: add views column to tables
+        has_views = await conn.fetchval(
+            "SELECT 1 FROM information_schema.columns "
+            "WHERE table_name = 'tables' AND column_name = 'views'"
+        )
+        if not has_views:
+            await conn.execute("ALTER TABLE tables ADD COLUMN views JSONB NOT NULL DEFAULT '[]'")
 
         # Create partial indexes (after all migrations so columns exist)
         for idx_sql in _PARTIAL_INDEXES:

@@ -270,12 +270,22 @@ export interface TableColumn {
   options: string[] | null;
 }
 
+export interface TableView {
+  id: string;
+  name: string;
+  filters?: { column_id: string; op: string; value: string }[];
+  sort_by?: string;
+  sort_order?: string;
+  visible_columns?: string[];
+}
+
 export interface Table {
   id: string;
   workspace_id: string | null;
   name: string;
   description: string;
   columns: TableColumn[];
+  views: TableView[];
   created_by: string;
   updated_by: string | null;
   created_at: string;

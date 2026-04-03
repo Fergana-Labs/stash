@@ -958,6 +958,23 @@ export async function deletePersonalTable(tableId: string): Promise<void> {
   await apiFetch(`/api/v1/tables/${tableId}`, { method: "DELETE" });
 }
 
+// --- Table Views ---
+
+export async function saveTableView(
+  tableId: string, view: { id?: string; name: string; filters?: object[]; sort_by?: string; sort_order?: string; visible_columns?: string[] },
+  workspaceId?: string
+): Promise<Table> {
+  const base = workspaceId ? `/api/v1/workspaces/${workspaceId}/tables` : "/api/v1/tables";
+  return apiFetch(`${base}/${tableId}/views`, { method: "POST", body: JSON.stringify(view) });
+}
+
+export async function deleteTableView(
+  tableId: string, viewId: string, workspaceId?: string
+): Promise<Table> {
+  const base = workspaceId ? `/api/v1/workspaces/${workspaceId}/tables` : "/api/v1/tables";
+  return apiFetch(`${base}/${tableId}/views/${viewId}`, { method: "DELETE" });
+}
+
 // --- Aggregate Tables ---
 
 export async function listAllTables(): Promise<{ tables: TableWithWorkspace[] }> {
