@@ -740,12 +740,54 @@ tables_app = typer.Typer(help="Tables — structured data with typed columns and
 app.add_typer(tables_app, name="tables")
 
 
+def _resolve_col_names(table: dict, data: dict) -> dict:
+    """Translate column names to IDs in a data dict."""
+    cols = table.get("columns", [])
+    name_to_id = {col["name"]: col["id"] for col in cols}
+    id_set = {col["id"] for col in cols}
+    resolved = {}
+    for k, v in data.items():
+        if k in id_set:
+            resolved[k] = v
+        elif k in name_to_id:
+            resolved[name_to_id[k]] = v
+    return resolved
+
+
+def _resolve_filter_names(table: dict, filters_json: str) -> str:
+    """Resolve column names in filter JSON to column IDs."""
+    if not filters_json:
+        return filters_json
+    cols = table.get("columns", [])
+    name_to_id = {col["name"]: col["id"] for col in cols}
+    parsed = json.loads(filters_json)
+    for f in parsed:
+        cid = f.get("column_id", "")
+        if cid in name_to_id:
+            f["column_id"] = name_to_id[cid]
+    return json.dumps(parsed)
+
+
+def _resolve_sort_name(table: dict, sort_by: str) -> str:
+    """Resolve column name to ID for sorting."""
+    if not sort_by:
+        return sort_by
+    cols = table.get("columns", [])
+    name_to_id = {col["name"]: col["id"] for col in cols}
+    return name_to_id.get(sort_by, sort_by)
+
+
 @tables_app.command("list")
-def tables_list(workspace_id: str = typer.Option(None, "--ws"), all_: bool = typer.Option(False, "--all"), as_json: bool = typer.Option(False, "--json")):
-    """List tables. --all for cross-workspace."""
+def tables_list(workspace_id: str = typer.Option(None, "--ws"), all_: bool = typer.Option(False, "--all"), personal: bool = typer.Option(False, "--personal"), as_json: bool = typer.Option(False, "--json")):
+    """List tables. --all for cross-workspace, --personal for personal tables."""
     with _client() as c:
         try:
-            data = c.all_tables() if all_ else c.list_tables(workspace_id or _default_workspace())
+            if all_:
+                data = c.all_tables()
+            elif personal:
+                data = c.list_personal_tables()
+            else:
+                data = c.list_tables(workspace_id or _default_workspace())
         except BoozleError as e:
             _err(e)
     if _use_json(as_json):
@@ -787,6 +829,35 @@ def tables_create(
         console.print(f"[green]Table '{data['name']}' created.[/green]  ID: {data['id']}")
 
 
+@tables_app.command("update")
+def tables_update(
+    table_id: str = typer.Argument(...),
+    workspace_id: str = typer.Option(None, "--ws"),
+    name: str = typer.Option(None, "--name"),
+    description: str = typer.Option(None, "--description"),
+    as_json: bool = typer.Option(False, "--json"),
+):
+    """Update a table's name or description."""
+    kwargs: dict = {}
+    if name is not None:
+        kwargs["name"] = name
+    if description is not None:
+        kwargs["description"] = description
+    if not kwargs:
+        console.print("[red]Provide --name or --description to update.[/red]")
+        raise typer.Exit(1)
+    with _client() as c:
+        try:
+            ws = workspace_id or _default_workspace()
+            data = c.update_table(ws, table_id, **kwargs)
+        except BoozleError as e:
+            _err(e)
+    if _use_json(as_json):
+        output_json(data)
+    else:
+        console.print("[green]Table updated.[/green]")
+
+
 @tables_app.command("schema")
 def tables_schema(table_id: str = typer.Argument(...), workspace_id: str = typer.Option(None, "--ws"), as_json: bool = typer.Option(False, "--json")):
     """Show a table's column schema."""
@@ -819,16 +890,20 @@ def tables_rows(
     workspace_id: str = typer.Option(None, "--ws"),
     limit: int = typer.Option(50, "-n", "--limit"),
     offset: int = typer.Option(0, "--offset"),
-    sort_by: str = typer.Option("", "--sort"),
+    sort_by: str = typer.Option("", "--sort", help="Column name or ID to sort by"),
     sort_order: str = typer.Option("asc", "--order"),
-    filters: str = typer.Option("", "--filter", help='JSON: [{"column_id":"col_x","op":"eq","value":"foo"}]'),
+    filters: str = typer.Option("", "--filter", help='JSON: [{"column_id":"Name","op":"eq","value":"Alice"}]'),
     as_json: bool = typer.Option(False, "--json"),
 ):
-    """Read rows from a table with optional filtering and sorting."""
+    """Read rows. --sort and --filter accept column names (auto-resolved)."""
     with _client() as c:
         try:
             ws = workspace_id or _default_workspace()
-            result = c.list_table_rows(ws, table_id, limit=limit, offset=offset, sort_by=sort_by, sort_order=sort_order, filters=filters)
+            table = c.get_table(ws, table_id)
+            id_to_name = {col["id"]: col["name"] for col in table.get("columns", [])}
+            resolved_sort = _resolve_sort_name(table, sort_by)
+            resolved_filters = _resolve_filter_names(table, filters) if filters else ""
+            result = c.list_table_rows(ws, table_id, limit=limit, offset=offset, sort_by=resolved_sort, sort_order=sort_order, filters=resolved_filters)
         except BoozleError as e:
             _err(e)
     if _use_json(as_json):
@@ -836,14 +911,6 @@ def tables_rows(
     else:
         rows = result.get("rows", []) if isinstance(result, dict) else result
         total = result.get("total_count", len(rows)) if isinstance(result, dict) else len(rows)
-        # Get column names for display
-        try:
-            with _client() as c2:
-                ws = workspace_id or _default_workspace()
-                table = c2.get_table(ws, table_id)
-            id_to_name = {col["id"]: col["name"] for col in table.get("columns", [])}
-        except Exception:
-            id_to_name = {}
         console.print(f"[dim]Showing {len(rows)} of {total} rows[/dim]")
         for row in rows:
             named = {id_to_name.get(k, k): v for k, v in row.get("data", {}).items()}
@@ -862,17 +929,8 @@ def tables_insert(
     with _client() as c:
         try:
             ws = workspace_id or _default_workspace()
-            # Resolve column names to IDs
             table = c.get_table(ws, table_id)
-            cols = table.get("columns", [])
-            name_to_id = {col["name"]: col["id"] for col in cols}
-            id_set = {col["id"] for col in cols}
-            resolved = {}
-            for k, v in row_data.items():
-                if k in id_set:
-                    resolved[k] = v
-                elif k in name_to_id:
-                    resolved[name_to_id[k]] = v
+            resolved = _resolve_col_names(table, row_data)
             result = c.insert_table_row(ws, table_id, resolved)
         except BoozleError as e:
             _err(e)
@@ -880,6 +938,75 @@ def tables_insert(
         output_json(result)
     else:
         console.print(f"[green]Row inserted.[/green]  ID: {result['id']}")
+
+
+@tables_app.command("import")
+def tables_import(
+    table_id: str = typer.Argument(...),
+    file: str = typer.Option(None, "--file", "-f", help="CSV or JSON file path (or pipe via stdin)"),
+    format_: str = typer.Option("auto", "--format", help="csv, json, or auto (detect from extension/content)"),
+    workspace_id: str = typer.Option(None, "--ws"),
+    as_json: bool = typer.Option(False, "--json"),
+):
+    """Bulk import rows from CSV or JSON. Auto-chunks into batches of 5000.
+    CSV: first row is column headers. JSON: array of objects.
+    Pipe: cat data.csv | boozle tables import <table_id> --format csv"""
+    import csv as csv_mod
+    import io as io_mod
+
+    # Read input
+    if file:
+        with open(file) as f:
+            raw = f.read()
+        if format_ == "auto":
+            format_ = "csv" if file.endswith(".csv") else "json"
+    elif not sys.stdin.isatty():
+        raw = sys.stdin.read()
+        if format_ == "auto":
+            raw_stripped = raw.strip()
+            format_ = "json" if raw_stripped.startswith("[") or raw_stripped.startswith("{") else "csv"
+    else:
+        console.print("[red]Provide --file or pipe data via stdin.[/red]")
+        raise typer.Exit(1)
+
+    # Parse rows
+    rows_data: list[dict] = []
+    if format_ == "csv":
+        reader = csv_mod.DictReader(io_mod.StringIO(raw))
+        for row in reader:
+            rows_data.append(dict(row))
+    else:
+        parsed = json.loads(raw)
+        rows_data = parsed if isinstance(parsed, list) else [parsed]
+
+    if not rows_data:
+        console.print("[dim]No rows to import.[/dim]")
+        return
+
+    with _client() as c:
+        try:
+            ws = workspace_id or _default_workspace()
+            table = c.get_table(ws, table_id)
+
+            # Resolve column names to IDs
+            resolved_rows = [_resolve_col_names(table, r) for r in rows_data]
+
+            # Chunk into batches of 5000
+            batch_size = 5000
+            total_inserted = 0
+            for i in range(0, len(resolved_rows), batch_size):
+                batch = resolved_rows[i:i + batch_size]
+                c.insert_table_rows_batch(ws, table_id, batch)
+                total_inserted += len(batch)
+                if len(resolved_rows) > batch_size:
+                    console.print(f"  [dim]Inserted {total_inserted}/{len(resolved_rows)} rows...[/dim]")
+        except BoozleError as e:
+            _err(e)
+
+    if _use_json(as_json):
+        output_json({"imported": total_inserted})
+    else:
+        console.print(f"[green]Imported {total_inserted} rows.[/green]")
 
 
 @tables_app.command("update-row")
@@ -895,17 +1022,8 @@ def tables_update_row(
     with _client() as c:
         try:
             ws = workspace_id or _default_workspace()
-            # Resolve column names to IDs
             table = c.get_table(ws, table_id)
-            cols = table.get("columns", [])
-            name_to_id = {col["name"]: col["id"] for col in cols}
-            id_set = {col["id"] for col in cols}
-            resolved = {}
-            for k, v in row_data.items():
-                if k in id_set:
-                    resolved[k] = v
-                elif k in name_to_id:
-                    resolved[name_to_id[k]] = v
+            resolved = _resolve_col_names(table, row_data)
             result = c.update_table_row(ws, table_id, row_id, resolved)
         except BoozleError as e:
             _err(e)
@@ -952,6 +1070,91 @@ def tables_add_column(
         output_json(result)
     else:
         console.print(f"[green]Column '{name}' ({col_type}) added.[/green]")
+
+
+@tables_app.command("delete-column")
+def tables_delete_column(
+    table_id: str = typer.Argument(...),
+    column_id: str = typer.Argument(..., help="Column ID (col_xxx) or column name"),
+    workspace_id: str = typer.Option(None, "--ws"),
+    as_json: bool = typer.Option(False, "--json"),
+):
+    """Delete a column from a table."""
+    with _client() as c:
+        try:
+            ws = workspace_id or _default_workspace()
+            # Resolve column name to ID if needed
+            if not column_id.startswith("col_"):
+                table = c.get_table(ws, table_id)
+                name_to_id = {col["name"]: col["id"] for col in table.get("columns", [])}
+                if column_id in name_to_id:
+                    column_id = name_to_id[column_id]
+            result = c.delete_table_column(ws, table_id, column_id)
+        except BoozleError as e:
+            _err(e)
+    if _use_json(as_json):
+        output_json(result)
+    else:
+        console.print(f"[green]Column deleted.[/green]")
+
+
+@tables_app.command("count")
+def tables_count(
+    table_id: str = typer.Argument(...),
+    workspace_id: str = typer.Option(None, "--ws"),
+    filters: str = typer.Option("", "--filter", help="JSON filter array"),
+    as_json: bool = typer.Option(False, "--json"),
+):
+    """Count rows, optionally with filters."""
+    with _client() as c:
+        try:
+            ws = workspace_id or _default_workspace()
+            if filters:
+                table = c.get_table(ws, table_id)
+                filters = _resolve_filter_names(table, filters)
+            params: dict = {}
+            if filters:
+                params["filters"] = filters
+            result = c._get(f"/api/v1/workspaces/{ws}/tables/{table_id}/rows/count", **params)
+        except BoozleError as e:
+            _err(e)
+    if _use_json(as_json):
+        output_json(result)
+    else:
+        console.print(f"Count: {result.get('count', 0)}")
+
+
+@tables_app.command("export")
+def tables_export(
+    table_id: str = typer.Argument(...),
+    workspace_id: str = typer.Option(None, "--ws"),
+    file: str = typer.Option(None, "--file", "-f", help="Output file (default: stdout)"),
+    filters: str = typer.Option("", "--filter"),
+    sort_by: str = typer.Option("", "--sort"),
+    sort_order: str = typer.Option("asc", "--order"),
+):
+    """Export table as CSV."""
+    with _client() as c:
+        try:
+            ws = workspace_id or _default_workspace()
+            params: dict = {"sort_order": sort_order}
+            if sort_by:
+                table = c.get_table(ws, table_id)
+                params["sort_by"] = _resolve_sort_name(table, sort_by)
+            if filters:
+                if "table" not in dir():
+                    table = c.get_table(ws, table_id)
+                params["filters"] = _resolve_filter_names(table, filters)
+            resp = c._request("GET", f"/api/v1/workspaces/{ws}/tables/{table_id}/export/csv", params=params)
+            csv_content = resp.text
+        except BoozleError as e:
+            _err(e)
+    if file:
+        with open(file, "w") as f:
+            f.write(csv_content)
+        console.print(f"[green]Exported to {file}[/green]")
+    else:
+        print(csv_content, end="")
 
 
 @tables_app.command("delete")

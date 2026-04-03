@@ -1,9 +1,12 @@
 """Table router: workspace and personal structured data tables."""
 
+import csv
+import io
 import json
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import StreamingResponse
 
 from ..auth import get_current_user
 from ..models import (
@@ -12,6 +15,7 @@ from ..models import (
     ColumnUpdateRequest,
     PermissionResponse,
     RowBatchCreateRequest,
+    RowBatchUpdateRequest,
     RowCreateRequest,
     RowListResponse,
     RowResponse,
@@ -276,6 +280,69 @@ async def delete_ws_rows_batch(
     return {"deleted": count}
 
 
+@ws_router.post("/{table_id}/rows/update", status_code=200)
+async def update_ws_rows_batch(
+    workspace_id: UUID, table_id: UUID, req: RowBatchUpdateRequest,
+    current_user: dict = Depends(get_current_user),
+):
+    await _check_member(workspace_id, current_user["id"])
+    await _check_ws_table(workspace_id, table_id)
+    updates = [{"row_id": r.row_id, "data": r.data} for r in req.rows]
+    rows = await table_service.update_rows_batch(table_id, updates, current_user["id"])
+    return {"rows": [RowResponse(**r) for r in rows]}
+
+
+@ws_router.get("/{table_id}/rows/count")
+async def count_ws_rows(
+    workspace_id: UUID, table_id: UUID,
+    filters: str | None = Query(None),
+    current_user: dict = Depends(get_current_user),
+):
+    await _check_member(workspace_id, current_user["id"])
+    await _check_ws_table(workspace_id, table_id)
+    parsed_filters = json.loads(filters) if filters else None
+    count = await table_service.count_rows(table_id, filters=parsed_filters)
+    return {"count": count}
+
+
+@ws_router.get("/{table_id}/export/csv")
+async def export_ws_csv(
+    workspace_id: UUID, table_id: UUID,
+    filters: str | None = Query(None),
+    sort_by: str | None = Query(None),
+    sort_order: str = Query("asc"),
+    current_user: dict = Depends(get_current_user),
+):
+    """Export table as CSV. Streams all rows matching filters."""
+    await _check_member(workspace_id, current_user["id"])
+    table = await _check_ws_table(workspace_id, table_id)
+    parsed_filters = json.loads(filters) if filters else None
+    rows = await table_service.export_rows_all(
+        table_id, filters=parsed_filters, sort_by=sort_by, sort_order=sort_order,
+    )
+    cols = sorted(table["columns"], key=lambda c: c.get("order", 0))
+
+    def generate():
+        buf = io.StringIO()
+        writer = csv.writer(buf)
+        writer.writerow([c["name"] for c in cols])
+        yield buf.getvalue()
+        buf.seek(0)
+        buf.truncate(0)
+        for row in rows:
+            writer.writerow([row["data"].get(c["id"], "") for c in cols])
+            yield buf.getvalue()
+            buf.seek(0)
+            buf.truncate(0)
+
+    filename = f"{table['name'].replace(' ', '_')}.csv"
+    return StreamingResponse(
+        generate(),
+        media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
 # --- Workspace permissions ---
 
 
@@ -508,3 +575,62 @@ async def delete_personal_rows_batch(
     row_ids = _parse_row_ids(body)
     count = await table_service.delete_rows_batch(table_id, row_ids)
     return {"deleted": count}
+
+
+@personal_router.post("/{table_id}/rows/update", status_code=200)
+async def update_personal_rows_batch(
+    table_id: UUID, req: RowBatchUpdateRequest, current_user: dict = Depends(get_current_user),
+):
+    await _check_table_owner(table_id, current_user["id"])
+    updates = [{"row_id": r.row_id, "data": r.data} for r in req.rows]
+    rows = await table_service.update_rows_batch(table_id, updates, current_user["id"])
+    return {"rows": [RowResponse(**r) for r in rows]}
+
+
+@personal_router.get("/{table_id}/rows/count")
+async def count_personal_rows(
+    table_id: UUID,
+    filters: str | None = Query(None),
+    current_user: dict = Depends(get_current_user),
+):
+    await _check_table_owner(table_id, current_user["id"])
+    parsed_filters = json.loads(filters) if filters else None
+    count = await table_service.count_rows(table_id, filters=parsed_filters)
+    return {"count": count}
+
+
+@personal_router.get("/{table_id}/export/csv")
+async def export_personal_csv(
+    table_id: UUID,
+    filters: str | None = Query(None),
+    sort_by: str | None = Query(None),
+    sort_order: str = Query("asc"),
+    current_user: dict = Depends(get_current_user),
+):
+    """Export table as CSV."""
+    table = await _check_table_owner(table_id, current_user["id"])
+    parsed_filters = json.loads(filters) if filters else None
+    rows = await table_service.export_rows_all(
+        table_id, filters=parsed_filters, sort_by=sort_by, sort_order=sort_order,
+    )
+    cols = sorted(table["columns"], key=lambda c: c.get("order", 0))
+
+    def generate():
+        buf = io.StringIO()
+        writer = csv.writer(buf)
+        writer.writerow([c["name"] for c in cols])
+        yield buf.getvalue()
+        buf.seek(0)
+        buf.truncate(0)
+        for row in rows:
+            writer.writerow([row["data"].get(c["id"], "") for c in cols])
+            yield buf.getvalue()
+            buf.seek(0)
+            buf.truncate(0)
+
+    filename = f"{table['name'].replace(' ', '_')}.csv"
+    return StreamingResponse(
+        generate(),
+        media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )

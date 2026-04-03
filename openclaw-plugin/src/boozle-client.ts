@@ -558,6 +558,55 @@ export class BoozleClient {
     );
   }
 
+  async updateTable(
+    workspaceId: string,
+    tableId: string,
+    data: Record<string, unknown>,
+  ): Promise<Record<string, unknown>> {
+    return (await this.request(
+      "PATCH",
+      `/api/v1/workspaces/${workspaceId}/tables/${tableId}`,
+      { json: data },
+    )) as Record<string, unknown>;
+  }
+
+  async updateTableColumn(
+    workspaceId: string,
+    tableId: string,
+    columnId: string,
+    data: Record<string, unknown>,
+  ): Promise<Record<string, unknown>> {
+    return (await this.request(
+      "PATCH",
+      `/api/v1/workspaces/${workspaceId}/tables/${tableId}/columns/${columnId}`,
+      { json: data },
+    )) as Record<string, unknown>;
+  }
+
+  async updateTableRowsBatch(
+    workspaceId: string,
+    tableId: string,
+    rows: { row_id: string; data: Record<string, unknown> }[],
+  ): Promise<Record<string, unknown>> {
+    return (await this.post(
+      `/api/v1/workspaces/${workspaceId}/tables/${tableId}/rows/update`,
+      { rows },
+    )) as Record<string, unknown>;
+  }
+
+  async countTableRows(
+    workspaceId: string,
+    tableId: string,
+    filters = "",
+  ): Promise<Record<string, unknown>> {
+    const params: Record<string, string | number> = {};
+    if (filters) params.filters = filters;
+    return (await this.get(
+      `/api/v1/workspaces/${workspaceId}/tables/${tableId}/rows/count`,
+      params,
+    )) as Record<string, unknown>;
+  }
+
   // --- Chat Watches ---
 
   async getUnread(): Promise<Record<string, unknown>> {

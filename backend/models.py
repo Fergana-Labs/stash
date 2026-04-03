@@ -481,11 +481,20 @@ class RowCreateRequest(BaseModel):
 
 
 class RowBatchCreateRequest(BaseModel):
-    rows: list[RowCreateRequest] = Field(..., min_length=1, max_length=500)
+    rows: list[RowCreateRequest] = Field(..., min_length=1, max_length=5000)
 
 
 class RowUpdateRequest(BaseModel):
     data: dict
+
+
+class RowBatchUpdateItem(BaseModel):
+    row_id: UUID
+    data: dict
+
+
+class RowBatchUpdateRequest(BaseModel):
+    rows: list[RowBatchUpdateItem] = Field(..., min_length=1, max_length=5000)
 
 
 class RowResponse(BaseModel):
