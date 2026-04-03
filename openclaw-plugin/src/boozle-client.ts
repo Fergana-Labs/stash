@@ -427,6 +427,137 @@ export class BoozleClient {
     )) as Record<string, unknown>;
   }
 
+  // --- Tables ---
+
+  async listTables(workspaceId: string): Promise<unknown[]> {
+    const data = (await this.get(
+      `/api/v1/workspaces/${workspaceId}/tables`,
+    )) as Record<string, unknown>;
+    return (data.tables ?? data) as unknown[];
+  }
+
+  async createTable(
+    workspaceId: string,
+    name: string,
+    description = "",
+    columns: { name: string; type: string; options?: string[] }[] = [],
+  ): Promise<Record<string, unknown>> {
+    return (await this.post(`/api/v1/workspaces/${workspaceId}/tables`, {
+      name,
+      description,
+      columns,
+    })) as Record<string, unknown>;
+  }
+
+  async getTable(
+    workspaceId: string,
+    tableId: string,
+  ): Promise<Record<string, unknown>> {
+    return (await this.get(
+      `/api/v1/workspaces/${workspaceId}/tables/${tableId}`,
+    )) as Record<string, unknown>;
+  }
+
+  async deleteTable(
+    workspaceId: string,
+    tableId: string,
+  ): Promise<void> {
+    await this.request(
+      "DELETE",
+      `/api/v1/workspaces/${workspaceId}/tables/${tableId}`,
+    );
+  }
+
+  async listTableRows(
+    workspaceId: string,
+    tableId: string,
+    limit = 50,
+    offset = 0,
+    sortBy = "",
+    sortOrder = "asc",
+    filters = "",
+  ): Promise<Record<string, unknown>> {
+    const params: Record<string, string | number> = { limit, offset, sort_order: sortOrder };
+    if (sortBy) params.sort_by = sortBy;
+    if (filters) params.filters = filters;
+    return (await this.get(
+      `/api/v1/workspaces/${workspaceId}/tables/${tableId}/rows`,
+      params,
+    )) as Record<string, unknown>;
+  }
+
+  async insertTableRow(
+    workspaceId: string,
+    tableId: string,
+    data: Record<string, unknown>,
+  ): Promise<Record<string, unknown>> {
+    return (await this.post(
+      `/api/v1/workspaces/${workspaceId}/tables/${tableId}/rows`,
+      { data },
+    )) as Record<string, unknown>;
+  }
+
+  async insertTableRowsBatch(
+    workspaceId: string,
+    tableId: string,
+    rows: { data: Record<string, unknown> }[],
+  ): Promise<Record<string, unknown>> {
+    return (await this.post(
+      `/api/v1/workspaces/${workspaceId}/tables/${tableId}/rows/batch`,
+      { rows },
+    )) as Record<string, unknown>;
+  }
+
+  async updateTableRow(
+    workspaceId: string,
+    tableId: string,
+    rowId: string,
+    data: Record<string, unknown>,
+  ): Promise<Record<string, unknown>> {
+    return (await this.request(
+      "PATCH",
+      `/api/v1/workspaces/${workspaceId}/tables/${tableId}/rows/${rowId}`,
+      { json: { data } },
+    )) as Record<string, unknown>;
+  }
+
+  async deleteTableRow(
+    workspaceId: string,
+    tableId: string,
+    rowId: string,
+  ): Promise<void> {
+    await this.request(
+      "DELETE",
+      `/api/v1/workspaces/${workspaceId}/tables/${tableId}/rows/${rowId}`,
+    );
+  }
+
+  async addTableColumn(
+    workspaceId: string,
+    tableId: string,
+    name: string,
+    type: string,
+    options: string[] = [],
+  ): Promise<Record<string, unknown>> {
+    const body: Record<string, unknown> = { name, type };
+    if (options.length > 0) body.options = options;
+    return (await this.post(
+      `/api/v1/workspaces/${workspaceId}/tables/${tableId}/columns`,
+      body,
+    )) as Record<string, unknown>;
+  }
+
+  async deleteTableColumn(
+    workspaceId: string,
+    tableId: string,
+    columnId: string,
+  ): Promise<void> {
+    await this.request(
+      "DELETE",
+      `/api/v1/workspaces/${workspaceId}/tables/${tableId}/columns/${columnId}`,
+    );
+  }
+
   // --- Chat Watches ---
 
   async getUnread(): Promise<Record<string, unknown>> {
