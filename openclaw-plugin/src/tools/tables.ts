@@ -265,4 +265,94 @@ export function registerTableTools(
       return textResult("Column deleted.");
     },
   });
+
+  api.registerTool({
+    name: "boozle_update_table",
+    description: "Rename a table or change its description",
+    label: "Update a Boozle table",
+    parameters: Type.Object({
+      workspace_id: Type.String({ description: "Workspace UUID" }),
+      table_id: Type.String({ description: "Table UUID" }),
+      name: Type.Optional(Type.String({ description: "New name" })),
+      description: Type.Optional(Type.String({ description: "New description" })),
+    }),
+    async execute(_id: string, params: { workspace_id: string; table_id: string; name?: string; description?: string }) {
+      const data: Record<string, unknown> = {};
+      if (params.name) data.name = params.name;
+      if (params.description) data.description = params.description;
+      const result = await client.updateTable(params.workspace_id, params.table_id, data);
+      return textResult(JSON.stringify(result, null, 2));
+    },
+  });
+
+  api.registerTool({
+    name: "boozle_update_table_column",
+    description: "Rename a column, change its type, or update options",
+    label: "Update a column in a Boozle table",
+    parameters: Type.Object({
+      workspace_id: Type.String({ description: "Workspace UUID" }),
+      table_id: Type.String({ description: "Table UUID" }),
+      column_id: Type.String({ description: "Column ID (col_xxx format)" }),
+      name: Type.Optional(Type.String({ description: "New name" })),
+      column_type: Type.Optional(Type.String({ description: "New type" })),
+      options: Type.Optional(Type.String({ description: "Comma-separated options for select/multiselect" })),
+    }),
+    async execute(
+      _id: string,
+      params: { workspace_id: string; table_id: string; column_id: string; name?: string; column_type?: string; options?: string },
+    ) {
+      const data: Record<string, unknown> = {};
+      if (params.name) data.name = params.name;
+      if (params.column_type) data.type = params.column_type;
+      if (params.options) data.options = params.options.split(",").map((o) => o.trim()).filter(Boolean);
+      const result = await client.updateTableColumn(params.workspace_id, params.table_id, params.column_id, data);
+      return textResult(JSON.stringify(result, null, 2));
+    },
+  });
+
+  api.registerTool({
+    name: "boozle_update_table_rows_batch",
+    description:
+      "Batch update rows. rows is JSON: [{\"row_id\":\"...\",\"data\":{\"Status\":\"done\"}}]. " +
+      "Data keys can be column names (auto-resolved to IDs).",
+    label: "Batch update rows in a Boozle table",
+    parameters: Type.Object({
+      workspace_id: Type.String({ description: "Workspace UUID" }),
+      table_id: Type.String({ description: "Table UUID" }),
+      rows: Type.String({ description: "JSON array of {row_id, data} objects" }),
+    }),
+    async execute(_id: string, params: { workspace_id: string; table_id: string; rows: string }) {
+      const rowsData = JSON.parse(params.rows) as { row_id: string; data: Record<string, unknown> }[];
+      const table = (await client.getTable(params.workspace_id, params.table_id)) as any;
+      const cols = table.columns ?? [];
+      const nameToId: Record<string, string> = {};
+      const idSet = new Set<string>();
+      for (const col of cols) { nameToId[col.name] = col.id; idSet.add(col.id); }
+      const resolved = rowsData.map((item) => {
+        const rd: Record<string, unknown> = {};
+        for (const [k, v] of Object.entries(item.data)) {
+          if (idSet.has(k)) rd[k] = v;
+          else if (nameToId[k]) rd[nameToId[k]] = v;
+        }
+        return { row_id: item.row_id, data: rd };
+      });
+      const result = await client.updateTableRowsBatch(params.workspace_id, params.table_id, resolved);
+      return textResult(JSON.stringify(result, null, 2));
+    },
+  });
+
+  api.registerTool({
+    name: "boozle_count_table_rows",
+    description: "Count rows matching optional filters without fetching data",
+    label: "Count rows in a Boozle table",
+    parameters: Type.Object({
+      workspace_id: Type.String({ description: "Workspace UUID" }),
+      table_id: Type.String({ description: "Table UUID" }),
+      filters: Type.Optional(Type.String({ description: "JSON array of filter objects" })),
+    }),
+    async execute(_id: string, params: { workspace_id: string; table_id: string; filters?: string }) {
+      const result = await client.countTableRows(params.workspace_id, params.table_id, params.filters ?? "");
+      return textResult(JSON.stringify(result, null, 2));
+    },
+  });
 }

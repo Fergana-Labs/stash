@@ -49,7 +49,7 @@ Workspace members inherit access to all objects. Objects can be set to:
 - search_users, start_dm, list_dms, send_dm, read_dm — DMs
 - list_notebooks, create_notebook, read_notebook, update_notebook, delete_notebook — notebooks
 - create_memory_store, list_memory_stores, push_memory_event, push_memory_events_batch, query_memory_events, search_memory_events, query_history — memory
-- list_tables, create_table, get_table_schema, read_table_rows, insert_table_row, insert_table_rows_batch, update_table_row, delete_table_row, add_table_column, delete_table_column — tables
+- list_tables, create_table, get_table_schema, update_table, read_table_rows, insert_table_row, insert_table_rows_batch, update_table_row, update_table_rows_batch, delete_table_row, count_table_rows, add_table_column, update_table_column, delete_table_column — tables
 - set_webhook, get_webhook, update_webhook, delete_webhook — webhooks
 """,
     streamable_http_path="/",
@@ -1044,6 +1044,129 @@ async def delete_table_column(
         )
         _check_response(resp)
     return f"Column {column_id} deleted."
+
+
+@mcp.tool()
+async def update_table(
+    ctx: Context, workspace_id: str, table_id: str,
+    name: str = "", description: str = "",
+) -> str:
+    """Rename a table or change its description. Pass only the fields to update."""
+    body: dict = {}
+    if name:
+        body["name"] = name
+    if description:
+        body["description"] = description
+    if not body:
+        return "Error: provide name or description to update."
+    async with _client() as c:
+        resp = await c.patch(
+            f"/api/v1/workspaces/{workspace_id}/tables/{table_id}",
+            json=body, headers=_auth_headers(ctx),
+        )
+        _check_response(resp)
+    return f"Table updated."
+
+
+@mcp.tool()
+async def update_table_column(
+    ctx: Context, workspace_id: str, table_id: str, column_id: str,
+    name: str = "", column_type: str = "", options: str = "",
+) -> str:
+    """Rename a column, change its type, or update options. Pass only fields to change."""
+    body: dict = {}
+    if name:
+        body["name"] = name
+    if column_type:
+        body["type"] = column_type
+    if options:
+        body["options"] = [o.strip() for o in options.split(",") if o.strip()]
+    if not body:
+        return "Error: provide name, column_type, or options to update."
+    async with _client() as c:
+        resp = await c.patch(
+            f"/api/v1/workspaces/{workspace_id}/tables/{table_id}/columns/{column_id}",
+            json=body, headers=_auth_headers(ctx),
+        )
+        _check_response(resp)
+    return f"Column {column_id} updated."
+
+
+@mcp.tool()
+async def update_table_rows_batch(
+    ctx: Context, workspace_id: str, table_id: str, rows: str,
+) -> str:
+    """Batch update rows. rows is JSON: [{"row_id":"...","data":{"Status":"done"}}].
+    Data keys can be column names (auto-resolved to IDs)."""
+    import json
+    try:
+        rows_data = json.loads(rows)
+    except json.JSONDecodeError as e:
+        return f"Error: invalid JSON — {e}"
+    # Resolve column names to IDs
+    async with _client() as c:
+        schema_resp = await c.get(
+            f"/api/v1/workspaces/{workspace_id}/tables/{table_id}",
+            headers=_auth_headers(ctx),
+        )
+        _check_response(schema_resp)
+    cols = schema_resp.json().get("columns", [])
+    name_to_id = {col["name"]: col["id"] for col in cols}
+    id_set = {col["id"] for col in cols}
+    resolved = []
+    for item in rows_data:
+        rd = {}
+        for k, v in item.get("data", {}).items():
+            if k in id_set:
+                rd[k] = v
+            elif k in name_to_id:
+                rd[name_to_id[k]] = v
+        resolved.append({"row_id": item["row_id"], "data": rd})
+    async with _client() as c:
+        resp = await c.post(
+            f"/api/v1/workspaces/{workspace_id}/tables/{table_id}/rows/update",
+            json={"rows": resolved}, headers=_auth_headers(ctx),
+        )
+        _check_response(resp)
+    updated = resp.json().get("rows", [])
+    return f"Updated {len(updated)} rows."
+
+
+@mcp.tool()
+async def count_table_rows(
+    ctx: Context, workspace_id: str, table_id: str,
+    filters: str = "[]",
+) -> str:
+    """Count rows matching optional filters without fetching data.
+    filters is JSON: [{"column_id":"col_x","op":"eq","value":"foo"}]."""
+    import json as _json
+    params: dict = {}
+    try:
+        parsed = _json.loads(filters) if filters != "[]" else None
+    except _json.JSONDecodeError as e:
+        return f"Error: invalid JSON — {e}"
+    if parsed:
+        # Resolve column names
+        async with _client() as c:
+            schema_resp = await c.get(
+                f"/api/v1/workspaces/{workspace_id}/tables/{table_id}",
+                headers=_auth_headers(ctx),
+            )
+            _check_response(schema_resp)
+        cols = schema_resp.json().get("columns", [])
+        name_to_id = {col["name"]: col["id"] for col in cols}
+        for f in parsed:
+            cid = f.get("column_id", "")
+            if cid in name_to_id:
+                f["column_id"] = name_to_id[cid]
+        params["filters"] = _json.dumps(parsed)
+    async with _client() as c:
+        resp = await c.get(
+            f"/api/v1/workspaces/{workspace_id}/tables/{table_id}/rows/count",
+            params=params, headers=_auth_headers(ctx),
+        )
+        _check_response(resp)
+    return f"Count: {resp.json().get('count', 0)}"
 
 
 # ---------------------------------------------------------------------------

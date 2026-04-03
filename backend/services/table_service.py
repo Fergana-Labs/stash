@@ -297,6 +297,26 @@ async def delete_row(row_id: UUID) -> bool:
     return result == "DELETE 1"
 
 
+async def update_rows_batch(table_id: UUID, updates: list[dict], updated_by: UUID) -> list[dict]:
+    """Batch partial merge update. Each item: {row_id: UUID, data: dict}."""
+    if not updates:
+        return []
+    pool = get_pool()
+    results = []
+    async with pool.acquire() as conn:
+        async with conn.transaction():
+            for item in updates:
+                row = await conn.fetchrow(
+                    "UPDATE table_rows SET data = data || $1, updated_by = $2, updated_at = now() "
+                    "WHERE id = $3 AND table_id = $4 "
+                    "RETURNING id, table_id, data, row_order, created_by, updated_by, created_at, updated_at",
+                    item["data"], updated_by, item["row_id"], table_id,
+                )
+                if row:
+                    results.append(dict(row))
+    return results
+
+
 async def delete_rows_batch(table_id: UUID, row_ids: list[UUID]) -> int:
     if not row_ids:
         return 0
@@ -400,3 +420,25 @@ async def list_rows(
         *args, limit, offset,
     )
     return [dict(r) for r in rows], total
+
+
+async def count_rows(table_id: UUID, filters: list[dict] | None = None) -> int:
+    """Count rows matching optional filters without fetching data."""
+    if not filters:
+        pool = get_pool()
+        return await pool.fetchval(
+            "SELECT COUNT(*) FROM table_rows WHERE table_id = $1", table_id,
+        )
+    # Reuse list_rows logic with limit=0 to get count
+    _, total = await list_rows(table_id, filters=filters, limit=0, offset=0)
+    return total
+
+
+async def export_rows_all(table_id: UUID, filters: list[dict] | None = None,
+                          sort_by: str | None = None, sort_order: str = "asc") -> list[dict]:
+    """Fetch ALL rows for export (no limit). Use for CSV export."""
+    rows, _ = await list_rows(
+        table_id, filters=filters, sort_by=sort_by, sort_order=sort_order,
+        limit=2_000_000, offset=0,
+    )
+    return rows
