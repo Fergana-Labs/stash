@@ -316,7 +316,10 @@ async def inject_context(
 async def trigger_sleep(current_user: dict = Depends(get_current_user)):
     """Manually trigger sleep agent curation for the calling persona."""
     persona = _require_persona(current_user)
-    result = await sleep_service.curate(persona["id"])
+    try:
+        result = await sleep_service.curate(persona["id"])
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     return result
 
 
