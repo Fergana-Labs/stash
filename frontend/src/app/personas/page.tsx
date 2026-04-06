@@ -10,8 +10,188 @@ import {
   listPersonasWithContext,
   rotatePersonaKey,
   updatePersona,
+  getSleepConfig,
+  updateSleepConfig,
+  triggerSleep,
+  listMyWorkspaces,
 } from "../../lib/api";
-import { PersonaWithContext } from "../../lib/types";
+import { PersonaWithContext, SleepConfig, Workspace } from "../../lib/types";
+
+const ALL_SOURCES = ["history", "notebooks", "documents", "tables"] as const;
+
+function SleepAgentConfig() {
+  const [config, setConfig] = useState<SleepConfig | null>(null);
+  const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
+  const [saving, setSaving] = useState(false);
+  const [triggerResult, setTriggerResult] = useState("");
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    getSleepConfig().then(setConfig).catch(() => {});
+    listMyWorkspaces().then((r) => setWorkspaces(r?.workspaces ?? [])).catch(() => {});
+  }, []);
+
+  const handleSave = async () => {
+    if (!config) return;
+    setSaving(true);
+    setError("");
+    try {
+      const updated = await updateSleepConfig({
+        enabled: config.enabled,
+        interval_minutes: config.interval_minutes,
+        curation_sources: config.curation_sources,
+        workspace_ids: config.workspace_ids,
+        curation_model: config.curation_model,
+      });
+      setConfig(updated);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to save");
+    }
+    setSaving(false);
+  };
+
+  const handleTrigger = async () => {
+    setTriggerResult("");
+    try {
+      const res = await triggerSleep();
+      setTriggerResult(`Status: ${res.status || "done"}, items: ${res.total_items_curated || res.episodes_processed || 0}`);
+    } catch (err) {
+      setTriggerResult(err instanceof Error ? err.message : "Failed");
+    }
+  };
+
+  const toggleSource = (src: string) => {
+    if (!config) return;
+    const sources = new Set(config.curation_sources);
+    if (sources.has(src)) sources.delete(src);
+    else sources.add(src);
+    setConfig({ ...config, curation_sources: Array.from(sources) });
+  };
+
+  const toggleWorkspace = (wsId: string) => {
+    if (!config) return;
+    const ids = new Set(config.workspace_ids);
+    if (ids.has(wsId)) ids.delete(wsId);
+    else ids.add(wsId);
+    setConfig({ ...config, workspace_ids: Array.from(ids) });
+  };
+
+  if (!config) return <div className="flex items-center justify-center h-full text-muted">Loading config...</div>;
+
+  return (
+    <div className="max-w-2xl mx-auto w-full px-4 py-8">
+      <h1 className="text-2xl font-bold text-foreground font-display mb-6">Sleep Agent</h1>
+
+      {error && <p className="text-red-400 text-sm mb-4">{error}</p>}
+
+      <div className="space-y-6">
+        {/* Enable/disable */}
+        <div className="bg-surface border border-border rounded-lg p-4">
+          <label className="flex items-center gap-3 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={config.enabled}
+              onChange={(e) => setConfig({ ...config, enabled: e.target.checked })}
+              className="accent-brand w-4 h-4"
+            />
+            <div>
+              <div className="text-sm text-foreground font-medium">Enabled</div>
+              <div className="text-xs text-muted">Run curation automatically on schedule</div>
+            </div>
+          </label>
+        </div>
+
+        {/* Interval */}
+        <div className="bg-surface border border-border rounded-lg p-4">
+          <label className="text-sm text-foreground font-medium block mb-2">Curation interval</label>
+          <div className="flex items-center gap-2">
+            <input
+              type="number"
+              value={config.interval_minutes}
+              onChange={(e) => setConfig({ ...config, interval_minutes: parseInt(e.target.value) || 60 })}
+              min={5}
+              max={1440}
+              className="w-24 bg-raised border border-border rounded px-3 py-1.5 text-sm text-foreground"
+            />
+            <span className="text-sm text-muted">minutes</span>
+          </div>
+        </div>
+
+        {/* Curation sources */}
+        <div className="bg-surface border border-border rounded-lg p-4">
+          <div className="text-sm text-foreground font-medium mb-2">Curation sources</div>
+          <div className="text-xs text-muted mb-3">What the sleep agent reads and curates into pattern cards</div>
+          <div className="flex flex-wrap gap-2">
+            {ALL_SOURCES.map((src) => (
+              <button
+                key={src}
+                onClick={() => toggleSource(src)}
+                className={`text-xs px-3 py-1.5 rounded transition-colors ${
+                  config.curation_sources.includes(src)
+                    ? "bg-brand/15 text-brand font-medium"
+                    : "bg-raised text-muted hover:text-foreground"
+                }`}
+              >
+                {src}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Workspace scope */}
+        <div className="bg-surface border border-border rounded-lg p-4">
+          <div className="text-sm text-foreground font-medium mb-2">Workspace scope</div>
+          <div className="text-xs text-muted mb-3">Which workspaces to curate (in addition to personal resources)</div>
+          {workspaces.length === 0 ? (
+            <p className="text-xs text-muted">Not a member of any workspaces</p>
+          ) : (
+            <div className="space-y-1.5">
+              {workspaces.map((ws) => (
+                <label key={ws.id} className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={config.workspace_ids.includes(ws.id)}
+                    onChange={() => toggleWorkspace(ws.id)}
+                    className="accent-brand"
+                  />
+                  <span className="text-sm text-foreground">{ws.name}</span>
+                </label>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Model */}
+        <div className="bg-surface border border-border rounded-lg p-4">
+          <label className="text-sm text-foreground font-medium block mb-2">Curation model</label>
+          <input
+            value={config.curation_model}
+            onChange={(e) => setConfig({ ...config, curation_model: e.target.value })}
+            className="w-full bg-raised border border-border rounded px-3 py-1.5 text-sm text-foreground font-mono"
+          />
+        </div>
+
+        {/* Actions */}
+        <div className="flex items-center gap-3">
+          <button
+            onClick={handleSave}
+            disabled={saving}
+            className="bg-brand hover:bg-brand-hover text-foreground px-4 py-2 rounded text-sm disabled:opacity-50"
+          >
+            {saving ? "Saving..." : "Save Configuration"}
+          </button>
+          <button
+            onClick={handleTrigger}
+            className="bg-raised hover:bg-border text-foreground px-4 py-2 rounded text-sm"
+          >
+            Run Now
+          </button>
+          {triggerResult && <span className="text-xs text-brand">{triggerResult}</span>}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export default function PersonasPage() {
   const router = useRouter();
@@ -99,9 +279,7 @@ export default function PersonasPage() {
   if (user.type !== "human") {
     return (
       <AppShell user={user} onLogout={logout}>
-        <div className="flex items-center justify-center h-full text-muted">
-          Only human users can manage personas.
-        </div>
+        <SleepAgentConfig />
       </AppShell>
     );
   }

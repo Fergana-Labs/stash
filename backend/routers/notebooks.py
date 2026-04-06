@@ -163,6 +163,70 @@ async def delete_ws_page(
         raise HTTPException(status_code=404, detail="Page not found")
 
 
+# --- Wiki features (backlinks, page graph, semantic search, auto-index) ---
+
+
+@ws_router.get("/{notebook_id}/pages/{page_id}/backlinks")
+async def get_ws_backlinks(
+    workspace_id: UUID, notebook_id: UUID, page_id: UUID,
+    current_user: dict = Depends(get_current_user),
+):
+    """Get pages that link to this page via [[wiki links]]."""
+    await _check_ws_access(workspace_id, current_user["id"])
+    links = await notebook_service.get_backlinks(page_id)
+    return {"backlinks": links}
+
+
+@ws_router.get("/{notebook_id}/pages/{page_id}/outlinks")
+async def get_ws_outlinks(
+    workspace_id: UUID, notebook_id: UUID, page_id: UUID,
+    current_user: dict = Depends(get_current_user),
+):
+    """Get pages that this page links to via [[wiki links]]."""
+    await _check_ws_access(workspace_id, current_user["id"])
+    links = await notebook_service.get_outlinks(page_id)
+    return {"outlinks": links}
+
+
+@ws_router.get("/{notebook_id}/graph")
+async def get_ws_page_graph(
+    workspace_id: UUID, notebook_id: UUID,
+    current_user: dict = Depends(get_current_user),
+):
+    """Get the full wiki link graph for a notebook (nodes + edges)."""
+    await _check_ws_access(workspace_id, current_user["id"])
+    return await notebook_service.get_page_graph(notebook_id)
+
+
+@ws_router.get("/{notebook_id}/pages/semantic-search")
+async def semantic_search_ws_pages(
+    workspace_id: UUID, notebook_id: UUID,
+    q: str, limit: int = 20,
+    current_user: dict = Depends(get_current_user),
+):
+    """Semantic search on notebook pages using embeddings."""
+    await _check_ws_access(workspace_id, current_user["id"])
+    from ..services import embedding_service
+    if not embedding_service.is_configured():
+        raise HTTPException(status_code=503, detail="Embedding service not configured")
+    query_embedding = await embedding_service.embed_text(q)
+    if query_embedding is None:
+        raise HTTPException(status_code=500, detail="Failed to embed query")
+    pages = await notebook_service.search_pages_vector(notebook_id, query_embedding, limit)
+    return {"pages": pages}
+
+
+@ws_router.post("/{notebook_id}/auto-index")
+async def auto_index_ws_notebook(
+    workspace_id: UUID, notebook_id: UUID,
+    current_user: dict = Depends(get_current_user),
+):
+    """Generate or update an _index page listing all pages with backlink counts."""
+    await _check_ws_access(workspace_id, current_user["id"])
+    page = await notebook_service.auto_index_notebook(notebook_id, current_user["id"])
+    return PageResponse(**page)
+
+
 @ws_router.post("/{notebook_id}/folders", response_model=FolderResponse, status_code=201)
 async def create_ws_folder(
     workspace_id: UUID, notebook_id: UUID, req: FolderCreateRequest,

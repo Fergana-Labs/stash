@@ -12,10 +12,12 @@ import Underline from "@tiptap/extension-underline";
 import Subscript from "@tiptap/extension-subscript";
 import Superscript from "@tiptap/extension-superscript";
 import Typography from "@tiptap/extension-typography";
+import Image from "@tiptap/extension-image";
 import Placeholder from "@tiptap/extension-placeholder";
 import * as Y from "yjs";
 import { WebsocketProvider } from "y-websocket";
 import EditorToolbar from "./EditorToolbar";
+import WikiLink from "./extensions/WikiLink";
 import { NotebookPage } from "../../lib/types";
 import { getToken } from "../../lib/api";
 
@@ -34,9 +36,10 @@ interface MarkdownEditorProps {
   notebookId: string | null;
   file: NotebookPage;
   onSave: (content: string) => void;
+  pageNames?: string[];
 }
 
-export default function MarkdownEditor({ workspaceId, notebookId, file, onSave }: MarkdownEditorProps) {
+export default function MarkdownEditor({ workspaceId, notebookId, file, onSave, pageNames = [] }: MarkdownEditorProps) {
   const [connected, setConnected] = useState(false);
   const [synced, setSynced] = useState(false);
 
@@ -116,6 +119,8 @@ export default function MarkdownEditor({ workspaceId, notebookId, file, onSave }
           ydoc={ydoc}
           onSave={onSave}
           initialMarkdown={file.content_markdown}
+          workspaceId={workspaceId}
+          pageNames={pageNames}
         />
       ) : (
         <div className="flex-1 flex items-center justify-center bg-background text-muted">
@@ -130,10 +135,14 @@ function CollaborativeEditor({
   ydoc,
   onSave,
   initialMarkdown,
+  workspaceId,
+  pageNames,
 }: {
   ydoc: Y.Doc;
   onSave: (content: string) => void;
   initialMarkdown: string;
+  workspaceId: string | null;
+  pageNames: string[];
 }) {
   const editor = useEditor({
     immediatelyRender: false,
@@ -161,6 +170,14 @@ function CollaborativeEditor({
         HTMLAttributes: {
           class: "text-brand underline cursor-pointer",
         },
+      }),
+      Image.configure({
+        HTMLAttributes: {
+          class: "max-w-full rounded-md my-2",
+        },
+      }),
+      WikiLink.configure({
+        pageNames,
       }),
       Placeholder.configure({
         placeholder: "Start typing...",
@@ -192,7 +209,7 @@ function CollaborativeEditor({
 
   return (
     <>
-      <EditorToolbar editor={editor} />
+      <EditorToolbar editor={editor} workspaceId={workspaceId} />
       <div className="flex-1 overflow-y-auto bg-background">
         <EditorContent editor={editor} className="h-full" />
       </div>

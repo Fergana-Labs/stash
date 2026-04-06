@@ -11,6 +11,7 @@ import {
   createTableRow, createTableRowsBatch, updateTableRow, deleteTableRow,
   deleteTableRowsBatch, duplicateTableRow, summarizeTableRows,
   listAllTables, saveTableView, deleteTableView,
+  setTableEmbeddingConfig, backfillTableEmbeddings,
 } from "../../../lib/api";
 import type { Table, TableColumn, TableRow, TableView } from "../../../lib/types";
 
@@ -94,6 +95,12 @@ export default function TableEditorPage() {
   // Views
   const [activeViewId, setActiveViewId] = useState<string | null>(null);
 
+  // Embeddings
+  const [showEmbeddings, setShowEmbeddings] = useState(false);
+  const [embeddingCols, setEmbeddingCols] = useState<Set<string>>(new Set());
+  const [embeddingEnabled, setEmbeddingEnabled] = useState(false);
+  const [backfillStatus, setBackfillStatus] = useState("");
+
   // CSV import
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -167,6 +174,16 @@ export default function TableEditorPage() {
   useEffect(() => { if (user) loadTable(); }, [user, loadTable]);
   useEffect(() => { if (user && table) loadRows(); }, [user, table, loadRows]);
   useEffect(() => { if (user && table) loadSummary(); }, [user, table, loadSummary]);
+
+  // Initialize embedding state from table config
+  useEffect(() => {
+    if (!table) return;
+    const cfg = (table as unknown as Record<string, unknown>).embedding_config as { enabled?: boolean; columns?: string[] } | null;
+    if (cfg) {
+      setEmbeddingEnabled(!!cfg.enabled);
+      setEmbeddingCols(new Set(cfg.columns || []));
+    }
+  }, [table]);
 
   // Infinite scroll observer
   useEffect(() => {
@@ -475,6 +492,7 @@ export default function TableEditorPage() {
               {sortedColumns.filter((c) => c.type === "select" || c.type === "text").map((c) => <option key={c.id} value={c.id}>Group: {c.name}</option>)}
             </select>
             <button onClick={() => setShowSummary((p) => !p)} className={`text-xs px-2 py-1 rounded ${showSummary ? "bg-brand/15 text-brand" : "text-muted hover:text-foreground hover:bg-raised"}`}>Summary</button>
+            {wsId && <button onClick={() => setShowEmbeddings((p) => !p)} className={`text-xs px-2 py-1 rounded ${showEmbeddings ? "bg-brand/15 text-brand" : "text-muted hover:text-foreground hover:bg-raised"}`}>Embeddings</button>}
             <button onClick={() => setShowColVisibility((p) => !p)} className="text-xs text-muted hover:text-foreground px-2 py-1 rounded hover:bg-raised">Columns</button>
             <button onClick={() => setWrapCells((p) => !p)} className={`text-xs px-2 py-1 rounded ${wrapCells ? "bg-brand/15 text-brand" : "text-muted hover:text-foreground hover:bg-raised"}`}>{wrapCells ? "Wrap" : "Compact"}</button>
             <button onClick={handleCsvExport} className="text-xs text-muted hover:text-foreground px-2 py-1 rounded hover:bg-raised">Export</button>
@@ -495,6 +513,65 @@ export default function TableEditorPage() {
               </label>
             ))}
             <button onClick={() => setShowColVisibility(false)} className="text-xs text-muted hover:text-foreground ml-2">Done</button>
+          </div>
+        )}
+
+        {/* Embedding config popup */}
+        {showEmbeddings && wsId && (
+          <div className="px-4 py-3 border-b border-border bg-raised/50 flex-shrink-0">
+            <div className="flex items-center gap-3 mb-2">
+              <label className="flex items-center gap-1.5 text-xs text-foreground cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={embeddingEnabled}
+                  onChange={(e) => setEmbeddingEnabled(e.target.checked)}
+                  className="accent-brand"
+                />
+                Enable semantic search
+              </label>
+              <button
+                onClick={async () => {
+                  try {
+                    await setTableEmbeddingConfig(wsId, tableId, {
+                      enabled: embeddingEnabled,
+                      columns: Array.from(embeddingCols),
+                    });
+                    setBackfillStatus("Config saved");
+                    setTimeout(() => setBackfillStatus(""), 2000);
+                  } catch (err) { setError(err instanceof Error ? err.message : "Failed"); }
+                }}
+                className="text-xs bg-brand hover:bg-brand-hover text-foreground px-2 py-1 rounded"
+              >
+                Save
+              </button>
+              <button
+                onClick={async () => {
+                  try {
+                    const res = await backfillTableEmbeddings(wsId, tableId);
+                    setBackfillStatus(`Embedding ${res.embedded} of ${res.total} rows...`);
+                    setTimeout(() => setBackfillStatus(""), 5000);
+                  } catch (err) { setError(err instanceof Error ? err.message : "Failed"); }
+                }}
+                className="text-xs text-muted hover:text-foreground px-2 py-1 rounded hover:bg-raised"
+              >
+                Backfill all rows
+              </button>
+              {backfillStatus && <span className="text-xs text-brand">{backfillStatus}</span>}
+            </div>
+            <div className="text-[10px] text-muted mb-2">Select columns to include in embeddings:</div>
+            <div className="flex flex-wrap gap-2">
+              {sortedColumns.filter((c) => c.type === "text" || c.type === "url" || c.type === "email" || c.type === "select").map((c) => (
+                <label key={c.id} className="flex items-center gap-1 text-xs text-foreground cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={embeddingCols.has(c.id)}
+                    onChange={() => setEmbeddingCols((prev) => { const n = new Set(prev); if (n.has(c.id)) n.delete(c.id); else n.add(c.id); return n; })}
+                    className="accent-brand"
+                  />
+                  {c.name}
+                </label>
+              ))}
+            </div>
           </div>
         )}
 

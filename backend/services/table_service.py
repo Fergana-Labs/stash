@@ -1,10 +1,14 @@
-"""Table service: structured data CRUD with typed columns and JSONB rows."""
+"""Table service: structured data CRUD with typed columns, JSONB rows, and optional embeddings."""
 
+import asyncio
+import logging
 import re
 import secrets
 from uuid import UUID
 
 from ..database import get_pool
+
+logger = logging.getLogger(__name__)
 
 
 # --- Table CRUD ---
@@ -245,7 +249,9 @@ async def create_row(table_id: UUID, data: dict, created_by: UUID) -> dict:
         "RETURNING id, table_id, data, row_order, created_by, updated_by, created_at, updated_at",
         table_id, data, created_by,
     )
-    return dict(row)
+    result = dict(row)
+    asyncio.create_task(maybe_embed_row(table_id, result["id"], data))
+    return result
 
 
 async def create_rows_batch(table_id: UUID, rows_data: list[dict], created_by: UUID) -> list[dict]:
@@ -292,7 +298,11 @@ async def update_row(row_id: UUID, data: dict, updated_by: UUID) -> dict | None:
         "RETURNING id, table_id, data, row_order, created_by, updated_by, created_at, updated_at",
         data, updated_by, row_id,
     )
-    return dict(row) if row else None
+    if not row:
+        return None
+    result = dict(row)
+    asyncio.create_task(maybe_embed_row(result["table_id"], result["id"], result["data"]))
+    return result
 
 
 async def delete_row(row_id: UUID) -> bool:
@@ -599,3 +609,138 @@ async def duplicate_row(row_id: UUID, table_id: UUID, created_by: UUID) -> dict 
     if not source or source.get("table_id") != table_id:
         return None
     return await create_row(table_id, source["data"], created_by)
+
+
+# --- Row Embeddings ---
+
+
+async def get_embedding_config(table_id: UUID) -> dict | None:
+    """Get embedding config for a table. Returns None if not configured."""
+    pool = get_pool()
+    row = await pool.fetchrow(
+        "SELECT embedding_config FROM tables WHERE id = $1", table_id,
+    )
+    return row["embedding_config"] if row and row["embedding_config"] else None
+
+
+async def set_embedding_config(table_id: UUID, config: dict, updated_by: UUID) -> dict:
+    """Set embedding configuration for a table.
+
+    Config: {"enabled": true, "columns": ["col_id1", "col_id2"]}
+    """
+    pool = get_pool()
+    row = await pool.fetchrow(
+        "UPDATE tables SET embedding_config = $1, updated_by = $2, updated_at = now() "
+        "WHERE id = $3 "
+        "RETURNING id, workspace_id, name, description, columns, views, embedding_config, "
+        "created_by, updated_by, created_at, updated_at",
+        config, updated_by, table_id,
+    )
+    return dict(row) if row else None
+
+
+def _build_embedding_text(row_data: dict, config: dict, columns: list[dict]) -> str:
+    """Build text to embed from row data based on embedding config."""
+    col_ids = config.get("columns", [])
+    col_map = {c["id"]: c["name"] for c in columns}
+
+    parts = []
+    for cid in col_ids:
+        val = row_data.get(cid, "")
+        if val:
+            col_name = col_map.get(cid, cid)
+            parts.append(f"{col_name}: {val}")
+
+    return "\n".join(parts) if parts else str(row_data)
+
+
+async def _embed_row(row_id: UUID, text: str) -> None:
+    """Fire-and-forget: embed row text and store in database."""
+    try:
+        from . import embedding_service
+        if not embedding_service.is_configured():
+            return
+        embedding = await embedding_service.embed_text(text)
+        if embedding is None:
+            return
+        pool = get_pool()
+        await pool.execute(
+            "UPDATE table_rows SET embedding = $1 WHERE id = $2",
+            embedding, row_id,
+        )
+    except Exception:
+        logger.debug("Failed to embed row %s", row_id, exc_info=True)
+
+
+async def _embed_rows_batch(row_ids: list[UUID], texts: list[str]) -> None:
+    """Fire-and-forget: batch embed rows."""
+    try:
+        from . import embedding_service
+        if not embedding_service.is_configured() or not texts:
+            return
+        embeddings = await embedding_service.embed_batch(texts)
+        if not embeddings:
+            return
+        pool = get_pool()
+        async with pool.acquire() as conn:
+            for row_id, emb in zip(row_ids, embeddings):
+                await conn.execute(
+                    "UPDATE table_rows SET embedding = $1 WHERE id = $2",
+                    emb, row_id,
+                )
+    except Exception:
+        logger.debug("Failed to batch embed rows", exc_info=True)
+
+
+async def maybe_embed_row(table_id: UUID, row_id: UUID, row_data: dict) -> None:
+    """Check if table has embedding config and embed the row if so."""
+    config = await get_embedding_config(table_id)
+    if not config or not config.get("enabled"):
+        return
+    pool = get_pool()
+    tbl = await pool.fetchrow("SELECT columns FROM tables WHERE id = $1", table_id)
+    if not tbl:
+        return
+    text = _build_embedding_text(row_data, config, tbl["columns"])
+    asyncio.create_task(_embed_row(row_id, text))
+
+
+async def search_rows_vector(table_id: UUID, query_embedding, limit: int = 20) -> list[dict]:
+    """Semantic search on table rows using pgvector."""
+    pool = get_pool()
+    rows = await pool.fetch(
+        "SELECT id, table_id, data, row_order, "
+        "1 - (embedding <=> $2) AS similarity "
+        "FROM table_rows WHERE table_id = $1 AND embedding IS NOT NULL "
+        "ORDER BY embedding <=> $2 LIMIT $3",
+        table_id, query_embedding, limit,
+    )
+    return [dict(r) for r in rows]
+
+
+async def backfill_embeddings(table_id: UUID) -> dict:
+    """Re-embed all rows in a table. Returns {embedded, total}."""
+    config = await get_embedding_config(table_id)
+    if not config or not config.get("enabled"):
+        return {"embedded": 0, "total": 0, "error": "embedding not configured"}
+
+    pool = get_pool()
+    tbl = await pool.fetchrow("SELECT columns FROM tables WHERE id = $1", table_id)
+    if not tbl:
+        return {"embedded": 0, "total": 0, "error": "table not found"}
+
+    rows = await pool.fetch(
+        "SELECT id, data FROM table_rows WHERE table_id = $1", table_id,
+    )
+
+    texts = []
+    ids = []
+    for r in rows:
+        text = _build_embedding_text(r["data"], config, tbl["columns"])
+        texts.append(text)
+        ids.append(r["id"])
+
+    if texts:
+        asyncio.create_task(_embed_rows_batch(ids, texts))
+
+    return {"embedded": len(texts), "total": len(rows)}

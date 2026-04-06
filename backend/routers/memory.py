@@ -110,10 +110,12 @@ async def push_ws_event(
     current_user: dict = Depends(get_current_user),
 ):
     await _check_ws_store_access(workspace_id, store_id, current_user["id"])
+    attachments = [a.model_dump(mode="json") for a in req.attachments] if req.attachments else None
     event = await memory_service.push_event(
         store_id, agent_name=req.agent_name, event_type=req.event_type,
         content=req.content, session_id=req.session_id,
         tool_name=req.tool_name, metadata=req.metadata,
+        attachments=attachments,
     )
     asyncio.create_task(
         webhook_service.dispatch_webhooks(
@@ -303,10 +305,12 @@ async def push_personal_event(
     current_user: dict = Depends(get_current_user),
 ):
     await _check_personal_store_owner(store_id, current_user["id"])
+    attachments = [a.model_dump(mode="json") for a in req.attachments] if req.attachments else None
     event = await memory_service.push_event(
         store_id, agent_name=req.agent_name, event_type=req.event_type,
         content=req.content, session_id=req.session_id,
         tool_name=req.tool_name, metadata=req.metadata,
+        attachments=attachments,
     )
     return HistoryEventResponse(**event)
 

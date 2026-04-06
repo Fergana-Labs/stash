@@ -9,6 +9,9 @@ import {
   DeckWithWorkspace,
   DMWithUser,
   DMConversation,
+  Document,
+  DocumentChunk,
+  FileInfo,
   HistoryEvent,
   HistoryEventWithContext,
   History,
@@ -18,9 +21,13 @@ import {
   NotebookFolder,
   NotebookPage,
   NotebookWithWorkspace,
+  PageGraph,
+  PageLink,
   PageTree,
   ObjectPermission,
   RegisterResponse,
+  SearchResponse,
+  SleepConfig,
   User,
   UserSearchResult,
   Table,
@@ -1126,4 +1133,240 @@ export async function removeShare(
     `/api/v1/workspaces/${workspaceId}/${objectType}s/${objectId}/permissions/share/${userId}`,
     { method: "DELETE" }
   );
+}
+
+// --- Files ---
+
+export async function uploadFile(workspaceId: string, file: File): Promise<FileInfo> {
+  const token = getToken();
+  const formData = new FormData();
+  formData.append("file", file);
+  const resp = await fetch(`${API_BASE}/api/v1/workspaces/${workspaceId}/files`, {
+    method: "POST",
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    body: formData,
+  });
+  if (!resp.ok) {
+    const detail = await resp.json().then((d) => d.detail).catch(() => resp.statusText);
+    throw new Error(detail);
+  }
+  return resp.json();
+}
+
+export async function uploadPersonalFile(file: File): Promise<FileInfo> {
+  const token = getToken();
+  const formData = new FormData();
+  formData.append("file", file);
+  const resp = await fetch(`${API_BASE}/api/v1/files`, {
+    method: "POST",
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    body: formData,
+  });
+  if (!resp.ok) {
+    const detail = await resp.json().then((d) => d.detail).catch(() => resp.statusText);
+    throw new Error(detail);
+  }
+  return resp.json();
+}
+
+export async function listFiles(workspaceId: string): Promise<FileInfo[]> {
+  const data = await apiFetch<{ files: FileInfo[] }>(`/api/v1/workspaces/${workspaceId}/files`);
+  return data.files;
+}
+
+export async function deleteFile(workspaceId: string, fileId: string): Promise<void> {
+  await apiFetch(`/api/v1/workspaces/${workspaceId}/files/${fileId}`, { method: "DELETE" });
+}
+
+// --- Documents ---
+
+export async function uploadDocument(workspaceId: string, file: File): Promise<Document> {
+  const token = getToken();
+  const formData = new FormData();
+  formData.append("file", file);
+  const resp = await fetch(`${API_BASE}/api/v1/workspaces/${workspaceId}/documents`, {
+    method: "POST",
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    body: formData,
+  });
+  if (!resp.ok) {
+    const detail = await resp.json().then((d) => d.detail).catch(() => resp.statusText);
+    throw new Error(detail);
+  }
+  return resp.json();
+}
+
+export async function listDocuments(
+  workspaceId: string,
+  status?: string
+): Promise<Document[]> {
+  const params = new URLSearchParams();
+  if (status) params.set("status", status);
+  const qs = params.toString();
+  const data = await apiFetch<{ documents: Document[] }>(
+    `/api/v1/workspaces/${workspaceId}/documents${qs ? `?${qs}` : ""}`
+  );
+  return data.documents;
+}
+
+export async function getDocument(workspaceId: string, docId: string): Promise<Document> {
+  return apiFetch<Document>(`/api/v1/workspaces/${workspaceId}/documents/${docId}`);
+}
+
+export async function searchDocuments(
+  workspaceId: string,
+  query: string,
+  limit = 20
+): Promise<DocumentChunk[]> {
+  const data = await apiFetch<{ chunks: DocumentChunk[] }>(
+    `/api/v1/workspaces/${workspaceId}/documents/search`,
+    { method: "POST", body: JSON.stringify({ query, limit }) }
+  );
+  return data.chunks;
+}
+
+export async function deleteDocument(workspaceId: string, docId: string): Promise<void> {
+  await apiFetch(`/api/v1/workspaces/${workspaceId}/documents/${docId}`, { method: "DELETE" });
+}
+
+// --- Universal Search ---
+
+export async function universalSearch(
+  question: string,
+  workspaceId?: string,
+  resourceTypes?: string[]
+): Promise<SearchResponse> {
+  const body: Record<string, unknown> = { question };
+  if (resourceTypes) body.resource_types = resourceTypes;
+  const url = workspaceId
+    ? `/api/v1/workspaces/${workspaceId}/search`
+    : `/api/v1/me/search`;
+  return apiFetch<SearchResponse>(url, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+// --- Wiki: Backlinks, Page Graph, Semantic Search ---
+
+export async function getBacklinks(
+  workspaceId: string,
+  notebookId: string,
+  pageId: string
+): Promise<PageLink[]> {
+  const data = await apiFetch<{ backlinks: PageLink[] }>(
+    `/api/v1/workspaces/${workspaceId}/notebooks/${notebookId}/pages/${pageId}/backlinks`
+  );
+  return data.backlinks;
+}
+
+export async function getPersonalBacklinks(
+  notebookId: string,
+  pageId: string
+): Promise<PageLink[]> {
+  const data = await apiFetch<{ backlinks: PageLink[] }>(
+    `/api/v1/notebooks/${notebookId}/pages/${pageId}/backlinks`
+  );
+  return data.backlinks;
+}
+
+export async function getOutlinks(
+  workspaceId: string,
+  notebookId: string,
+  pageId: string
+): Promise<PageLink[]> {
+  const data = await apiFetch<{ outlinks: PageLink[] }>(
+    `/api/v1/workspaces/${workspaceId}/notebooks/${notebookId}/pages/${pageId}/outlinks`
+  );
+  return data.outlinks;
+}
+
+export async function getPageGraph(
+  workspaceId: string,
+  notebookId: string
+): Promise<PageGraph> {
+  return apiFetch<PageGraph>(
+    `/api/v1/workspaces/${workspaceId}/notebooks/${notebookId}/graph`
+  );
+}
+
+export async function getPersonalPageGraph(notebookId: string): Promise<PageGraph> {
+  return apiFetch<PageGraph>(`/api/v1/notebooks/${notebookId}/graph`);
+}
+
+export async function semanticSearchPages(
+  workspaceId: string,
+  notebookId: string,
+  query: string,
+  limit = 20
+): Promise<NotebookPage[]> {
+  const params = new URLSearchParams({ q: query, limit: String(limit) });
+  const data = await apiFetch<{ pages: NotebookPage[] }>(
+    `/api/v1/workspaces/${workspaceId}/notebooks/${notebookId}/pages/semantic-search?${params}`
+  );
+  return data.pages;
+}
+
+export async function autoIndexNotebook(
+  workspaceId: string,
+  notebookId: string
+): Promise<NotebookPage> {
+  return apiFetch<NotebookPage>(
+    `/api/v1/workspaces/${workspaceId}/notebooks/${notebookId}/auto-index`,
+    { method: "POST" }
+  );
+}
+
+// --- Table Embeddings ---
+
+export async function setTableEmbeddingConfig(
+  workspaceId: string,
+  tableId: string,
+  config: { enabled: boolean; columns: string[] }
+): Promise<Table> {
+  return apiFetch<Table>(`/api/v1/workspaces/${workspaceId}/tables/${tableId}/embedding`, {
+    method: "PUT",
+    body: JSON.stringify(config),
+  });
+}
+
+export async function backfillTableEmbeddings(
+  workspaceId: string,
+  tableId: string
+): Promise<{ embedded: number; total: number }> {
+  return apiFetch(`/api/v1/workspaces/${workspaceId}/tables/${tableId}/embedding/backfill`, {
+    method: "POST",
+  });
+}
+
+export async function semanticSearchTableRows(
+  workspaceId: string,
+  tableId: string,
+  query: string,
+  limit = 20
+): Promise<TableRow[]> {
+  const params = new URLSearchParams({ q: query, limit: String(limit) });
+  const data = await apiFetch<{ rows: TableRow[] }>(
+    `/api/v1/workspaces/${workspaceId}/tables/${tableId}/rows/semantic-search?${params}`
+  );
+  return data.rows;
+}
+
+// --- Sleep Agent Config ---
+
+export async function getSleepConfig(): Promise<SleepConfig> {
+  return apiFetch<SleepConfig>("/api/v1/personas/me/sleep/config");
+}
+
+export async function updateSleepConfig(
+  updates: Partial<SleepConfig>
+): Promise<SleepConfig> {
+  return apiFetch<SleepConfig>("/api/v1/personas/me/sleep/config", {
+    method: "PATCH",
+    body: JSON.stringify(updates),
+  });
+}
+
+export async function triggerSleep(): Promise<Record<string, unknown>> {
+  return apiFetch("/api/v1/personas/me/sleep", { method: "POST" });
 }

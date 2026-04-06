@@ -7,9 +7,11 @@ const NAV_ITEMS = [
   { href: "/rooms", label: "Workspaces", icon: "W" },
   { href: "/chats", label: "Chats", icon: "C" },
   { href: "/notebooks", label: "Notebooks", icon: "N" },
+  { href: "/documents", label: "Documents", icon: "F" },
   { href: "/decks", label: "Decks", icon: "D" },
   { href: "/tables", label: "Tables", icon: "T" },
   { href: "/memory", label: "History", icon: "H" },
+  { href: "/search", label: "Search", icon: "S" },
   { href: "/personas", label: "Personas", icon: "P" },
 ];
 

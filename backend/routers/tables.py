@@ -1,5 +1,6 @@
 """Table router: workspace and personal structured data tables."""
 
+import asyncio
 import csv
 import io
 import json
@@ -28,7 +29,7 @@ from ..models import (
     TableResponse,
     TableUpdateRequest,
 )
-from ..services import table_service, permission_service, workspace_service
+from ..services import table_service, permission_service, webhook_service, workspace_service
 
 ws_router = APIRouter(prefix="/api/v1/workspaces/{workspace_id}/tables", tags=["tables"])
 personal_router = APIRouter(prefix="/api/v1/tables", tags=["personal_tables"])
@@ -226,6 +227,11 @@ async def create_ws_row(
     await _check_member(workspace_id, current_user["id"])
     await _check_ws_table(workspace_id, table_id)
     row = await table_service.create_row(table_id, req.data, current_user["id"])
+    asyncio.create_task(webhook_service.dispatch_webhooks(
+        workspace_id, "table.row_created",
+        {"table_id": str(table_id), "row": row},
+        sender_id=current_user["id"],
+    ))
     return RowResponse(**row)
 
 
@@ -238,6 +244,11 @@ async def create_ws_rows_batch(
     await _check_ws_table(workspace_id, table_id)
     rows_data = [r.data for r in req.rows]
     rows = await table_service.create_rows_batch(table_id, rows_data, current_user["id"])
+    asyncio.create_task(webhook_service.dispatch_webhooks(
+        workspace_id, "table.rows_batch_created",
+        {"table_id": str(table_id), "row_ids": [str(r["id"]) for r in rows], "count": len(rows)},
+        sender_id=current_user["id"],
+    ))
     return {"rows": [RowResponse(**r) for r in rows]}
 
 
@@ -251,6 +262,11 @@ async def update_ws_row(
     row = await table_service.update_row(row_id, req.data, current_user["id"])
     if not row or row.get("table_id") != table_id:
         raise HTTPException(status_code=404, detail="Row not found")
+    asyncio.create_task(webhook_service.dispatch_webhooks(
+        workspace_id, "table.row_updated",
+        {"table_id": str(table_id), "row": row},
+        sender_id=current_user["id"],
+    ))
     return RowResponse(**row)
 
 
@@ -266,6 +282,11 @@ async def delete_ws_row(
     if not row or row.get("table_id") != table_id:
         raise HTTPException(status_code=404, detail="Row not found")
     await table_service.delete_row(row_id)
+    asyncio.create_task(webhook_service.dispatch_webhooks(
+        workspace_id, "table.row_deleted",
+        {"table_id": str(table_id), "row_id": str(row_id)},
+        sender_id=current_user["id"],
+    ))
 
 
 @ws_router.post("/{table_id}/rows/delete", status_code=200)
@@ -289,6 +310,11 @@ async def update_ws_rows_batch(
     await _check_ws_table(workspace_id, table_id)
     updates = [{"row_id": r.row_id, "data": r.data} for r in req.rows]
     rows = await table_service.update_rows_batch(table_id, updates, current_user["id"])
+    asyncio.create_task(webhook_service.dispatch_webhooks(
+        workspace_id, "table.rows_batch_updated",
+        {"table_id": str(table_id), "row_ids": [str(r["id"]) for r in rows], "count": len(rows)},
+        sender_id=current_user["id"],
+    ))
     return {"rows": [RowResponse(**r) for r in rows]}
 
 
@@ -303,6 +329,53 @@ async def count_ws_rows(
     parsed_filters = json.loads(filters) if filters else None
     count = await table_service.count_rows(table_id, filters=parsed_filters)
     return {"count": count}
+
+
+@ws_router.put("/{table_id}/embedding")
+async def set_ws_embedding_config(
+    workspace_id: UUID, table_id: UUID, config: dict,
+    current_user: dict = Depends(get_current_user),
+):
+    """Configure which columns to embed for semantic search.
+
+    Config: {"enabled": true, "columns": ["col_id1", "col_id2"]}
+    """
+    await _check_member(workspace_id, current_user["id"])
+    await _check_ws_table(workspace_id, table_id)
+    result = await table_service.set_embedding_config(table_id, config, current_user["id"])
+    if not result:
+        raise HTTPException(status_code=404, detail="Table not found")
+    return result
+
+
+@ws_router.post("/{table_id}/embedding/backfill")
+async def backfill_ws_embeddings(
+    workspace_id: UUID, table_id: UUID,
+    current_user: dict = Depends(get_current_user),
+):
+    """Re-embed all rows in the table based on current embedding config."""
+    await _check_member(workspace_id, current_user["id"])
+    await _check_ws_table(workspace_id, table_id)
+    return await table_service.backfill_embeddings(table_id)
+
+
+@ws_router.get("/{table_id}/rows/semantic-search")
+async def semantic_search_ws_rows(
+    workspace_id: UUID, table_id: UUID,
+    q: str, limit: int = 20,
+    current_user: dict = Depends(get_current_user),
+):
+    """Semantic search on table rows using embeddings."""
+    await _check_member(workspace_id, current_user["id"])
+    await _check_ws_table(workspace_id, table_id)
+    from ..services import embedding_service
+    if not embedding_service.is_configured():
+        raise HTTPException(status_code=503, detail="Embedding service not configured")
+    query_embedding = await embedding_service.embed_text(q)
+    if query_embedding is None:
+        raise HTTPException(status_code=500, detail="Failed to embed query")
+    rows = await table_service.search_rows_vector(table_id, query_embedding, limit)
+    return {"rows": rows}
 
 
 @ws_router.get("/{table_id}/export/csv")

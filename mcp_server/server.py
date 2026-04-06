@@ -51,6 +51,10 @@ Workspace members inherit access to all objects. Objects can be set to:
 - create_memory_store, list_memory_stores, push_memory_event, push_memory_events_batch, query_memory_events, search_memory_events, query_history — memory
 - list_tables, create_table, get_table_schema, update_table, read_table_rows, insert_table_row, insert_table_rows_batch, update_table_row, update_table_rows_batch, delete_table_row, count_table_rows, add_table_column, update_table_column, delete_table_column — tables
 - set_webhook, get_webhook, update_webhook, delete_webhook — webhooks
+- upload_file, list_files, get_file_url, delete_file — files (images, PDFs, etc.)
+- upload_document, list_documents, search_documents, get_document_status, delete_document — documents (RAGFlow retrieval)
+- get_sleep_config, configure_sleep_agent, trigger_sleep — sleep agent curation
+- universal_search — cross-resource Q&A search
 """,
     streamable_http_path="/",
 )
@@ -1167,6 +1171,349 @@ async def count_table_rows(
         )
         _check_response(resp)
     return f"Count: {resp.json().get('count', 0)}"
+
+
+# ---------------------------------------------------------------------------
+# Files
+# ---------------------------------------------------------------------------
+
+
+@mcp.tool()
+async def upload_file(
+    ctx: Context,
+    workspace_id: str,
+    name: str,
+    base64_content: str,
+    content_type: str = "application/octet-stream",
+) -> str:
+    """Upload a file (image, PDF, etc.) to a workspace. Content must be base64-encoded.
+    Returns the file ID and a URL to access it."""
+    import base64 as _b64
+    file_bytes = _b64.b64decode(base64_content)
+    # Use multipart upload
+    async with _client() as c:
+        resp = await c.post(
+            f"/api/v1/workspaces/{workspace_id}/files",
+            headers=_auth_headers(ctx),
+            files={"file": (name, file_bytes, content_type)},
+        )
+        _check_response(resp)
+    f = resp.json()
+    return f"Uploaded: {f['name']} ({f['size_bytes']} bytes)\nID: {f['id']}\nURL: {f['url']}"
+
+
+@mcp.tool()
+async def list_files(
+    ctx: Context,
+    workspace_id: str,
+) -> str:
+    """List all files in a workspace."""
+    async with _client() as c:
+        resp = await c.get(
+            f"/api/v1/workspaces/{workspace_id}/files",
+            headers=_auth_headers(ctx),
+        )
+        _check_response(resp)
+    files = resp.json().get("files", [])
+    if not files:
+        return "No files in this workspace."
+    lines = []
+    for f in files:
+        lines.append(f"- {f['name']} ({f['content_type']}, {f['size_bytes']} bytes) — ID: {f['id']}")
+    return "\n".join(lines)
+
+
+@mcp.tool()
+async def get_file_url(
+    ctx: Context,
+    workspace_id: str,
+    file_id: str,
+) -> str:
+    """Get the download URL for a file."""
+    async with _client() as c:
+        resp = await c.get(
+            f"/api/v1/workspaces/{workspace_id}/files/{file_id}",
+            headers=_auth_headers(ctx),
+        )
+        _check_response(resp)
+    f = resp.json()
+    return f"File: {f['name']}\nURL: {f['url']}"
+
+
+@mcp.tool()
+async def delete_file(
+    ctx: Context,
+    workspace_id: str,
+    file_id: str,
+) -> str:
+    """Delete a file from a workspace."""
+    async with _client() as c:
+        resp = await c.delete(
+            f"/api/v1/workspaces/{workspace_id}/files/{file_id}",
+            headers=_auth_headers(ctx),
+        )
+        _check_response(resp)
+    return "File deleted."
+
+
+# ---------------------------------------------------------------------------
+# Documents (RAGFlow)
+# ---------------------------------------------------------------------------
+
+
+@mcp.tool()
+async def upload_document(
+    ctx: Context,
+    workspace_id: str,
+    name: str,
+    base64_content: str,
+) -> str:
+    """Upload a document (PDF, image, etc.) for RAGFlow processing and semantic retrieval.
+    Content must be base64-encoded. The document will be parsed asynchronously."""
+    import base64 as _b64
+    file_bytes = _b64.b64decode(base64_content)
+    # Determine content type from extension
+    ext = name.rsplit(".", 1)[-1].lower() if "." in name else ""
+    ct_map = {"pdf": "application/pdf", "png": "image/png", "jpg": "image/jpeg",
+              "jpeg": "image/jpeg", "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+              "txt": "text/plain", "md": "text/markdown"}
+    content_type = ct_map.get(ext, "application/octet-stream")
+    async with _client() as c:
+        resp = await c.post(
+            f"/api/v1/workspaces/{workspace_id}/documents",
+            headers=_auth_headers(ctx),
+            files={"file": (name, file_bytes, content_type)},
+        )
+        _check_response(resp)
+    d = resp.json()
+    return f"Document uploaded: {d['name']}\nID: {d['id']}\nStatus: {d['status']} (parsing in progress)"
+
+
+@mcp.tool()
+async def list_documents(
+    ctx: Context,
+    workspace_id: str,
+    status: str = "",
+) -> str:
+    """List documents in a workspace. Optionally filter by status: pending, processing, ready, error."""
+    params = {}
+    if status:
+        params["status"] = status
+    async with _client() as c:
+        resp = await c.get(
+            f"/api/v1/workspaces/{workspace_id}/documents",
+            params=params, headers=_auth_headers(ctx),
+        )
+        _check_response(resp)
+    docs = resp.json().get("documents", [])
+    if not docs:
+        return "No documents found."
+    lines = []
+    for d in docs:
+        meta = d.get("metadata", {})
+        chunks = meta.get("chunk_count", "?")
+        lines.append(f"- {d['name']} ({d['file_type']}) [{d['status']}] chunks={chunks} — ID: {d['id']}")
+    return "\n".join(lines)
+
+
+@mcp.tool()
+async def search_documents(
+    ctx: Context,
+    workspace_id: str,
+    query: str,
+    limit: int = 20,
+) -> str:
+    """Search across all parsed documents in a workspace using RAGFlow semantic retrieval."""
+    async with _client() as c:
+        resp = await c.post(
+            f"/api/v1/workspaces/{workspace_id}/documents/search",
+            json={"query": query, "limit": limit},
+            headers=_auth_headers(ctx),
+        )
+        _check_response(resp)
+    chunks = resp.json().get("chunks", [])
+    if not chunks:
+        return "No matching content found."
+    lines = []
+    for i, ch in enumerate(chunks, 1):
+        preview = ch["content"][:300].replace("\n", " ")
+        lines.append(f"{i}. [{ch['doc_name']}] (sim={ch['similarity']:.2f})\n   {preview}")
+    return "\n\n".join(lines)
+
+
+@mcp.tool()
+async def get_document_status(
+    ctx: Context,
+    workspace_id: str,
+    doc_id: str,
+) -> str:
+    """Check the parsing status of a document."""
+    async with _client() as c:
+        resp = await c.get(
+            f"/api/v1/workspaces/{workspace_id}/documents/{doc_id}",
+            headers=_auth_headers(ctx),
+        )
+        _check_response(resp)
+    d = resp.json()
+    meta = d.get("metadata", {})
+    lines = [
+        f"Document: {d['name']}",
+        f"Status: {d['status']}",
+        f"Type: {d['file_type']}",
+    ]
+    if meta.get("chunk_count"):
+        lines.append(f"Chunks: {meta['chunk_count']}")
+    if meta.get("error"):
+        lines.append(f"Error: {meta['error']}")
+    return "\n".join(lines)
+
+
+@mcp.tool()
+async def delete_document(
+    ctx: Context,
+    workspace_id: str,
+    doc_id: str,
+) -> str:
+    """Delete a document and its RAGFlow index from a workspace."""
+    async with _client() as c:
+        resp = await c.delete(
+            f"/api/v1/workspaces/{workspace_id}/documents/{doc_id}",
+            headers=_auth_headers(ctx),
+        )
+        _check_response(resp)
+    return "Document deleted."
+
+
+# ---------------------------------------------------------------------------
+# Universal Search
+# ---------------------------------------------------------------------------
+
+
+@mcp.tool()
+async def universal_search(
+    ctx: Context,
+    question: str,
+    workspace_id: str = "",
+    resource_types: str = "",
+) -> str:
+    """Search across all resources (history, notebooks, tables, documents) using AI-powered synthesis.
+
+    Args:
+        question: Your question or what to search for
+        workspace_id: Optional workspace UUID to scope the search
+        resource_types: Optional comma-separated filter: history, notebook, table, document
+    """
+    body: dict = {"question": question}
+    if resource_types:
+        body["resource_types"] = [s.strip() for s in resource_types.split(",")]
+
+    url = f"/api/v1/workspaces/{workspace_id}/search" if workspace_id else "/api/v1/me/search"
+    async with _client() as c:
+        resp = await c.post(url, json=body, headers=_auth_headers(ctx))
+        _check_response(resp)
+    data = resp.json()
+    lines = [data.get("answer", "No answer")]
+    sources = data.get("sources_used", [])
+    if sources:
+        lines.append(f"\nSources: {', '.join(sources)}")
+    return "\n".join(lines)
+
+
+# ---------------------------------------------------------------------------
+# Sleep Agent
+# ---------------------------------------------------------------------------
+
+
+@mcp.tool()
+async def get_sleep_config(ctx: Context) -> str:
+    """Get the current sleep agent curation configuration."""
+    async with _client() as c:
+        resp = await c.get(
+            "/api/v1/personas/me/sleep/config",
+            headers=_auth_headers(ctx),
+        )
+        _check_response(resp)
+    cfg = resp.json()
+    lines = [
+        f"Enabled: {cfg.get('enabled', True)}",
+        f"Interval: {cfg.get('interval_minutes', 60)} minutes",
+        f"Max pattern cards: {cfg.get('max_pattern_cards', 500)}",
+        f"Curation model: {cfg.get('curation_model', '?')}",
+        f"Monologue model: {cfg.get('monologue_model', '?')}",
+        f"Sources: {cfg.get('curation_sources', ['history'])}",
+        f"Workspace IDs: {cfg.get('workspace_ids', [])}",
+        f"Rules: {cfg.get('curation_rules', {})}",
+    ]
+    return "\n".join(lines)
+
+
+@mcp.tool()
+async def configure_sleep_agent(
+    ctx: Context,
+    curation_sources: Optional[str] = None,
+    workspace_ids: Optional[str] = None,
+    interval_minutes: Optional[int] = None,
+    enabled: Optional[bool] = None,
+    curation_model: Optional[str] = None,
+) -> str:
+    """Configure the sleep agent curation behavior.
+
+    Args:
+        curation_sources: Comma-separated list of sources to curate: history, notebooks, documents, tables
+        workspace_ids: Comma-separated workspace UUIDs to curate (agent must be a member)
+        interval_minutes: Minutes between curation cycles
+        enabled: Enable or disable the sleep agent
+        curation_model: LLM model for curation (e.g. claude-sonnet-4-6-20250514)
+    """
+    import json as _json
+    updates = {}
+    if curation_sources is not None:
+        updates["curation_sources"] = [s.strip() for s in curation_sources.split(",")]
+    if workspace_ids is not None:
+        updates["workspace_ids"] = [s.strip() for s in workspace_ids.split(",") if s.strip()]
+    if interval_minutes is not None:
+        updates["interval_minutes"] = interval_minutes
+    if enabled is not None:
+        updates["enabled"] = enabled
+    if curation_model is not None:
+        updates["curation_model"] = curation_model
+
+    if not updates:
+        return "No configuration changes specified."
+
+    async with _client() as c:
+        resp = await c.patch(
+            "/api/v1/personas/me/sleep/config",
+            json=updates, headers=_auth_headers(ctx),
+        )
+        _check_response(resp)
+    cfg = resp.json()
+    return f"Sleep agent updated. Sources: {cfg.get('curation_sources')}, Workspaces: {cfg.get('workspace_ids')}"
+
+
+@mcp.tool()
+async def trigger_sleep(ctx: Context) -> str:
+    """Manually trigger a sleep agent curation cycle."""
+    async with _client() as c:
+        resp = await c.post(
+            "/api/v1/personas/me/sleep",
+            headers=_auth_headers(ctx),
+        )
+        _check_response(resp)
+    result = resp.json()
+    status = result.get("status", "unknown")
+    episodes = result.get("episodes_processed", 0)
+    total = result.get("total_items_curated", episodes)
+    actions = result.get("actions", {})
+    lines = [
+        f"Status: {status}",
+        f"Items curated: {total}",
+        f"Actions: created={actions.get('created', 0)}, updated={actions.get('updated', 0)}, "
+        f"merged={actions.get('merged', 0)}, deleted={actions.get('deleted', 0)}",
+    ]
+    if result.get("sources_used"):
+        lines.append(f"Sources: {result['sources_used']}")
+    return "\n".join(lines)
 
 
 # ---------------------------------------------------------------------------

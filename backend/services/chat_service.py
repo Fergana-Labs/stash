@@ -70,14 +70,15 @@ async def delete_chat(chat_id: UUID, workspace_id: UUID | None, user_id: UUID | 
 async def send_message(
     chat_id: UUID, sender_id: UUID, content: str,
     message_type: str = "text", reply_to_id: UUID | None = None,
+    attachments: list[dict] | None = None,
 ) -> dict:
     """Send a message to a chat. Returns message with sender info."""
     pool = get_pool()
     row = await pool.fetchrow(
-        "INSERT INTO chat_messages (chat_id, sender_id, content, message_type, reply_to_id) "
-        "VALUES ($1, $2, $3, $4, $5) "
-        "RETURNING id, chat_id, sender_id, content, message_type, reply_to_id, created_at",
-        chat_id, sender_id, content, message_type, reply_to_id,
+        "INSERT INTO chat_messages (chat_id, sender_id, content, message_type, reply_to_id, attachments) "
+        "VALUES ($1, $2, $3, $4, $5, $6) "
+        "RETURNING id, chat_id, sender_id, content, message_type, reply_to_id, attachments, created_at",
+        chat_id, sender_id, content, message_type, reply_to_id, attachments,
     )
     msg = dict(row)
     # Fetch sender info
@@ -119,7 +120,7 @@ async def get_messages(
 
     rows = await pool.fetch(
         f"SELECT m.id, m.chat_id, m.sender_id, m.content, m.message_type, "
-        f"m.reply_to_id, m.created_at, "
+        f"m.reply_to_id, m.attachments, m.created_at, "
         f"u.name AS sender_name, u.display_name AS sender_display_name, u.type AS sender_type "
         f"FROM chat_messages m JOIN users u ON u.id = m.sender_id "
         f"WHERE {where} ORDER BY m.created_at ASC LIMIT ${idx}",
