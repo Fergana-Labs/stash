@@ -359,7 +359,7 @@ async def sleep_status(current_user: dict = Depends(get_current_user)):
     default_config = {
         "enabled": True, "interval_minutes": 60, "max_pattern_cards": 500,
         "monologue_batch_size": 20, "monologue_model": "claude-haiku-4-5-20251001",
-        "curation_model": "claude-sonnet-4-6-20250514",
+        "curation_model": "claude-haiku-4-5-20251001",
         "curation_sources": ["history"], "curation_rules": {}, "workspace_ids": [],
     }
 

@@ -201,7 +201,7 @@ CREATE TABLE IF NOT EXISTS sleep_configs (
     max_pattern_cards     INTEGER NOT NULL DEFAULT 500,
     monologue_batch_size  INTEGER NOT NULL DEFAULT 20,
     monologue_model       VARCHAR(64) NOT NULL DEFAULT 'claude-haiku-4-5-20251001',
-    curation_model        VARCHAR(64) NOT NULL DEFAULT 'claude-sonnet-4-6-20250514',
+    curation_model        VARCHAR(64) NOT NULL DEFAULT 'claude-haiku-4-5-20251001',
     curation_sources      JSONB NOT NULL DEFAULT '["history"]',
     curation_rules        JSONB NOT NULL DEFAULT '{}',
     workspace_ids         UUID[] DEFAULT '{}',
