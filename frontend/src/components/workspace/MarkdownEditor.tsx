@@ -19,7 +19,7 @@ import { WebsocketProvider } from "y-websocket";
 import EditorToolbar from "./EditorToolbar";
 import WikiLink from "./extensions/WikiLink";
 import { NotebookPage } from "../../lib/types";
-import { getToken } from "../../lib/api";
+import { getToken, getWsBase } from "../../lib/api";
 
 // User colors for collaboration cursors
 const COLORS = [
@@ -57,8 +57,7 @@ export default function MarkdownEditor({ workspaceId, notebookId, file, onSave, 
   useEffect(() => {
     if (!token) return;
 
-    const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-    const wsBase = `${protocol}//${window.location.host}`;
+    const wsBase = getWsBase();
 
     const wsPath = workspaceId && notebookId
       ? `/api/v1/workspaces/${workspaceId}/notebooks/${notebookId}/pages/${file.id}`
