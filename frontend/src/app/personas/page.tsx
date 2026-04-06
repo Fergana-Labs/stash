@@ -13,6 +13,9 @@ import {
   getSleepConfig,
   updateSleepConfig,
   triggerSleep,
+  getPersonaSleepConfig,
+  updatePersonaSleepConfig,
+  triggerPersonaSleep,
   listMyWorkspaces,
 } from "../../lib/api";
 import { PersonaWithContext, SleepConfig, Workspace } from "../../lib/types";
@@ -193,6 +196,116 @@ function SleepAgentConfig() {
   );
 }
 
+function InlineSleepConfig({ personaId, personaWorkspaces }: { personaId: string; personaWorkspaces: { workspace_id: string; workspace_name: string }[] }) {
+  const [config, setConfig] = useState<SleepConfig | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [triggerResult, setTriggerResult] = useState("");
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    getPersonaSleepConfig(personaId).then(setConfig).catch(() => {});
+  }, [personaId]);
+
+  const handleSave = async () => {
+    if (!config) return;
+    setSaving(true);
+    setError("");
+    try {
+      const updated = await updatePersonaSleepConfig(personaId, {
+        enabled: config.enabled,
+        interval_minutes: config.interval_minutes,
+        curation_sources: config.curation_sources,
+        workspace_ids: config.workspace_ids,
+        curation_model: config.curation_model,
+      });
+      setConfig(updated);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to save");
+    }
+    setSaving(false);
+  };
+
+  const handleTrigger = async () => {
+    setTriggerResult("Running...");
+    try {
+      const res = await triggerPersonaSleep(personaId);
+      setTriggerResult(`${res.status || "done"}, ${res.total_items_curated || res.episodes_processed || 0} items`);
+    } catch (err) {
+      setTriggerResult(err instanceof Error ? err.message : "Failed");
+    }
+  };
+
+  const toggleSource = (src: string) => {
+    if (!config) return;
+    const sources = new Set(config.curation_sources);
+    if (sources.has(src)) sources.delete(src); else sources.add(src);
+    setConfig({ ...config, curation_sources: Array.from(sources) });
+  };
+
+  const toggleWorkspace = (wsId: string) => {
+    if (!config) return;
+    const ids = new Set(config.workspace_ids);
+    if (ids.has(wsId)) ids.delete(wsId); else ids.add(wsId);
+    setConfig({ ...config, workspace_ids: Array.from(ids) });
+  };
+
+  if (!config) return <div className="text-xs text-muted py-2">Loading config...</div>;
+
+  return (
+    <div className="space-y-3 pt-2">
+      {error && <p className="text-red-400 text-xs">{error}</p>}
+
+      <div className="flex items-center gap-4 flex-wrap">
+        <label className="flex items-center gap-1.5 text-xs cursor-pointer">
+          <input type="checkbox" checked={config.enabled} onChange={(e) => setConfig({ ...config, enabled: e.target.checked })} className="accent-brand" />
+          Enabled
+        </label>
+        <div className="flex items-center gap-1.5 text-xs">
+          <span className="text-muted">Every</span>
+          <input type="number" value={config.interval_minutes} onChange={(e) => setConfig({ ...config, interval_minutes: parseInt(e.target.value) || 60 })} min={5} max={1440} className="w-14 bg-raised border border-border rounded px-1.5 py-0.5 text-xs text-foreground" />
+          <span className="text-muted">min</span>
+        </div>
+      </div>
+
+      <div className="flex items-center gap-1.5 flex-wrap">
+        <span className="text-xs text-muted">Sources:</span>
+        {(["history", "notebooks", "documents", "tables"] as const).map((src) => (
+          <button key={src} onClick={() => toggleSource(src)} className={`text-[11px] px-2 py-0.5 rounded ${config.curation_sources.includes(src) ? "bg-brand/15 text-brand" : "bg-raised text-muted"}`}>
+            {src}
+          </button>
+        ))}
+      </div>
+
+      {personaWorkspaces.length > 0 && (
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <span className="text-xs text-muted">Workspaces:</span>
+          {personaWorkspaces.map((ws) => (
+            <label key={ws.workspace_id} className="flex items-center gap-1 text-xs cursor-pointer">
+              <input type="checkbox" checked={config.workspace_ids.includes(ws.workspace_id)} onChange={() => toggleWorkspace(ws.workspace_id)} className="accent-brand" />
+              {ws.workspace_name}
+            </label>
+          ))}
+        </div>
+      )}
+
+      <div className="flex items-center gap-1.5">
+        <span className="text-xs text-muted">Model:</span>
+        <input value={config.curation_model} onChange={(e) => setConfig({ ...config, curation_model: e.target.value })} className="flex-1 bg-raised border border-border rounded px-2 py-0.5 text-xs text-foreground font-mono max-w-[280px]" />
+      </div>
+
+      <div className="flex items-center gap-2">
+        <button onClick={handleSave} disabled={saving} className="text-xs bg-brand hover:bg-brand-hover text-foreground px-2.5 py-1 rounded disabled:opacity-50">
+          {saving ? "Saving..." : "Save"}
+        </button>
+        <button onClick={handleTrigger} className="text-xs bg-raised hover:bg-border text-foreground px-2.5 py-1 rounded">
+          Run Now
+        </button>
+        {triggerResult && <span className="text-xs text-brand">{triggerResult}</span>}
+      </div>
+    </div>
+  );
+}
+
 export default function PersonasPage() {
   const router = useRouter();
   const { user, loading, logout } = useAuth();
@@ -206,6 +319,7 @@ export default function PersonasPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editDisplayName, setEditDisplayName] = useState("");
   const [editDescription, setEditDescription] = useState("");
+  const [sleepExpandedId, setSleepExpandedId] = useState<string | null>(null);
 
   const loadPersonas = useCallback(async () => {
     try {
@@ -371,6 +485,22 @@ export default function PersonasPage() {
                         <div className="text-xs text-muted">Not a member of any workspaces yet</div>
                       </div>
                     )}
+
+                    {/* Sleep Agent */}
+                    <div className="border-t border-border pt-2 mt-2">
+                      <button
+                        onClick={() => setSleepExpandedId(sleepExpandedId === persona.id ? null : persona.id)}
+                        className="text-[10px] text-muted uppercase tracking-wider hover:text-foreground transition-colors"
+                      >
+                        {sleepExpandedId === persona.id ? "▾" : "▸"} Sleep Agent
+                      </button>
+                      {sleepExpandedId === persona.id && (
+                        <InlineSleepConfig
+                          personaId={persona.id}
+                          personaWorkspaces={persona.workspaces || []}
+                        />
+                      )}
+                    </div>
 
                     <div className="text-xs text-muted mt-2">
                       Last seen: {new Date(persona.last_seen).toLocaleString()}
