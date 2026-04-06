@@ -26,8 +26,15 @@ import {
   renamePageFolder,
   deletePersonalPageFolder,
   deletePageFolder,
+  getBacklinks,
+  getPersonalBacklinks,
+  getPageGraph,
+  getPersonalPageGraph,
+  autoIndexNotebook,
+  semanticSearchPages,
 } from "../../lib/api";
-import { Notebook, NotebookPage, NotebookWithWorkspace, PageTree } from "../../lib/types";
+import PageGraphView from "../../components/workspace/PageGraphView";
+import { Notebook, NotebookPage, NotebookWithWorkspace, PageGraph, PageLink, PageTree } from "../../lib/types";
 
 export default function NotebooksPage() {
   const router = useRouter();
@@ -37,6 +44,12 @@ export default function NotebooksPage() {
   const [tree, setTree] = useState<PageTree>({ folders: [], root_files: [] });
   const [selectedPageId, setSelectedPageId] = useState<string | null>(null);
   const [selectedPage, setSelectedPage] = useState<NotebookPage | null>(null);
+  const [backlinks, setBacklinks] = useState<PageLink[]>([]);
+  const [showGraph, setShowGraph] = useState(false);
+  const [pageGraph, setPageGraph] = useState<PageGraph | null>(null);
+  const [semanticQuery, setSemanticQuery] = useState("");
+  const [semanticResults, setSemanticResults] = useState<NotebookPage[]>([]);
+  const [semanticSearching, setSemanticSearching] = useState(false);
   const [error, setError] = useState("");
 
   const loadNotebooks = useCallback(async () => {
@@ -47,6 +60,16 @@ export default function NotebooksPage() {
   }, []);
 
   useEffect(() => { if (user) loadNotebooks(); }, [user, loadNotebooks]);
+
+  // Extract page names from tree for wiki link autocomplete
+  const pageNames = useMemo(() => {
+    const names: string[] = [];
+    for (const f of tree.root_files) names.push(f.name);
+    for (const folder of tree.folders) {
+      for (const f of folder.files) names.push(f.name);
+    }
+    return names;
+  }, [tree]);
 
   // Group notebooks by workspace
   const grouped = useMemo(() => {
@@ -79,13 +102,52 @@ export default function NotebooksPage() {
   const handleSelectPage = useCallback(async (pageId: string) => {
     if (!selectedNotebook) return;
     setSelectedPageId(pageId);
+    setBacklinks([]);
     try {
       const p = selectedNotebook.workspace_id
         ? await getPage(selectedNotebook.workspace_id, selectedNotebook.id, pageId)
         : await getPersonalPage(selectedNotebook.id, pageId);
       setSelectedPage(p);
+      // Load backlinks
+      try {
+        const bl = selectedNotebook.workspace_id
+          ? await getBacklinks(selectedNotebook.workspace_id, selectedNotebook.id, pageId)
+          : await getPersonalBacklinks(selectedNotebook.id, pageId);
+        setBacklinks(bl);
+      } catch { /* backlinks are optional */ }
     } catch { setError("Failed to load page"); }
   }, [selectedNotebook]);
+
+  const handleShowGraph = useCallback(async () => {
+    if (!selectedNotebook) return;
+    try {
+      const g = selectedNotebook.workspace_id
+        ? await getPageGraph(selectedNotebook.workspace_id, selectedNotebook.id)
+        : await getPersonalPageGraph(selectedNotebook.id);
+      setPageGraph(g);
+      setShowGraph(true);
+    } catch { setError("Failed to load page graph"); }
+  }, [selectedNotebook]);
+
+  const handleAutoIndex = useCallback(async () => {
+    if (!selectedNotebook?.workspace_id) return;
+    try {
+      await autoIndexNotebook(selectedNotebook.workspace_id, selectedNotebook.id);
+      loadTree(selectedNotebook);
+    } catch { setError("Failed to generate index"); }
+  }, [selectedNotebook, loadTree]);
+
+  const handleSemanticSearch = useCallback(async () => {
+    if (!selectedNotebook?.workspace_id || !semanticQuery.trim()) return;
+    setSemanticSearching(true);
+    try {
+      const pages = await semanticSearchPages(
+        selectedNotebook.workspace_id, selectedNotebook.id, semanticQuery.trim(),
+      );
+      setSemanticResults(pages);
+    } catch { setSemanticResults([]); }
+    setSemanticSearching(false);
+  }, [selectedNotebook, semanticQuery]);
 
   const handleCreateNotebook = async () => {
     const name = prompt("Notebook name:");
@@ -242,7 +304,42 @@ export default function NotebooksPage() {
 
         {/* File tree (when notebook selected) */}
         {selectedNotebook && (
-          <div className="w-[200px] flex-shrink-0 bg-surface border-r border-border overflow-hidden">
+          <div className="w-[200px] flex-shrink-0 bg-surface border-r border-border overflow-hidden flex flex-col">
+            {/* Semantic search */}
+            {selectedNotebook.workspace_id && (
+              <div className="px-2 pt-2 pb-1 border-b border-border">
+                <div className="flex gap-1">
+                  <input
+                    type="text"
+                    placeholder="Search pages..."
+                    value={semanticQuery}
+                    onChange={(e) => { setSemanticQuery(e.target.value); if (!e.target.value) setSemanticResults([]); }}
+                    onKeyDown={(e) => e.key === "Enter" && handleSemanticSearch()}
+                    className="flex-1 text-[11px] bg-raised border border-border rounded px-2 py-1 text-foreground placeholder:text-muted min-w-0"
+                  />
+                </div>
+                {semanticSearching && <div className="text-[10px] text-muted px-1 py-1">Searching...</div>}
+                {semanticResults.length > 0 && (
+                  <div className="mt-1 space-y-0.5 max-h-[150px] overflow-y-auto">
+                    {semanticResults.map((p) => (
+                      <button
+                        key={p.id}
+                        onClick={() => { handleSelectPage(p.id); setSemanticResults([]); setSemanticQuery(""); }}
+                        className="w-full text-left text-[11px] text-foreground hover:bg-raised px-2 py-1 rounded truncate"
+                      >
+                        {p.name}
+                        {"similarity" in p && (
+                          <span className="text-muted ml-1">
+                            {Math.round(((p as unknown as Record<string, number>).similarity ?? 0) * 100)}%
+                          </span>
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+            <div className="flex-1 overflow-hidden">
             <NotebookTreeComponent
               tree={tree}
               selectedFileId={selectedPageId}
@@ -255,24 +352,80 @@ export default function NotebooksPage() {
               onRenameFolder={handleRenameFolder}
               onMoveFile={handleMovePage}
             />
+            </div>
           </div>
         )}
 
-        {/* Editor */}
+        {/* Editor + Wiki Panel */}
         <div className="flex-1 flex flex-col overflow-hidden">
           {error && (
             <div className="bg-red-900/30 border-b border-red-800 text-red-400 text-sm px-4 py-2">
               {error}<button onClick={() => setError("")} className="ml-2 text-red-500 hover:text-red-300">&times;</button>
             </div>
           )}
-          {selectedPage ? (
-            <MarkdownEditor
-              key={selectedPage.id}
-              notebookId={selectedNotebook?.id || null}
-              workspaceId={selectedNotebook?.workspace_id || null}
-              file={selectedPage}
-              onSave={handleSavePage}
+
+          {/* Wiki toolbar */}
+          {selectedNotebook && (
+            <div className="flex items-center gap-2 px-4 py-1.5 border-b border-border bg-surface">
+              <button
+                onClick={handleShowGraph}
+                className="text-xs text-dim hover:text-foreground px-2 py-1 rounded hover:bg-raised transition-colors"
+              >
+                Page Graph
+              </button>
+              {selectedNotebook.workspace_id && (
+                <button
+                  onClick={handleAutoIndex}
+                  className="text-xs text-dim hover:text-foreground px-2 py-1 rounded hover:bg-raised transition-colors"
+                >
+                  Auto Index
+                </button>
+              )}
+            </div>
+          )}
+
+          {/* Graph modal */}
+          {showGraph && pageGraph && (
+            <PageGraphView
+              graph={pageGraph}
+              onClose={() => setShowGraph(false)}
+              onSelectPage={handleSelectPage}
             />
+          )}
+
+          {selectedPage ? (
+            <div className="flex-1 flex flex-col overflow-hidden">
+              <div className="flex-1 overflow-hidden">
+                <MarkdownEditor
+                  key={selectedPage.id}
+                  notebookId={selectedNotebook?.id || null}
+                  workspaceId={selectedNotebook?.workspace_id || null}
+                  file={selectedPage}
+                  onSave={handleSavePage}
+                  pageNames={pageNames}
+                />
+              </div>
+
+              {/* Backlinks panel */}
+              {backlinks.length > 0 && (
+                <div className="border-t border-border bg-surface px-4 py-3 flex-shrink-0">
+                  <h4 className="text-[10px] font-medium text-muted uppercase tracking-wider mb-2">
+                    Backlinks ({backlinks.length})
+                  </h4>
+                  <div className="flex flex-wrap gap-1.5">
+                    {backlinks.map((bl) => (
+                      <button
+                        key={bl.id}
+                        onClick={() => handleSelectPage(bl.id)}
+                        className="text-xs text-brand hover:text-brand-hover bg-brand/5 hover:bg-brand/10 px-2 py-1 rounded transition-colors"
+                      >
+                        {bl.name}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
           ) : (
             <div className="flex-1 flex items-center justify-center text-muted">
               <div className="text-center">

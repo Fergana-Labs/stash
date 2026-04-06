@@ -1,10 +1,15 @@
-"""Notebook service: collection CRUD, page/folder CRUD, Yjs collaborative editing."""
+"""Notebook service: collection CRUD, page/folder CRUD, Yjs collaborative editing, wiki links."""
 
+import asyncio
 import hashlib
 import json
+import logging
+import re
 from uuid import UUID
 
 from ..database import get_pool
+
+logger = logging.getLogger(__name__)
 
 
 def _content_hash(content: str) -> str:
@@ -133,7 +138,12 @@ async def create_page(
         "created_by, updated_by, created_at, updated_at",
         notebook_id, folder_id, name, content, ch, meta, created_by,
     )
-    return dict(row)
+    page = dict(row)
+    # Fire-and-forget: embed page + extract wiki links
+    if content:
+        asyncio.create_task(_embed_page(page["id"], content))
+        asyncio.create_task(_update_page_links(page["id"], notebook_id, content))
+    return page
 
 
 async def get_page(page_id: UUID, notebook_id: UUID) -> dict | None:
@@ -200,7 +210,14 @@ async def update_page(
         "created_by, updated_by, created_at, updated_at",
         *args,
     )
-    return dict(row) if row else None
+    if not row:
+        return None
+    page = dict(row)
+    # Fire-and-forget: re-embed + re-extract wiki links when content changes
+    if content is not None:
+        asyncio.create_task(_embed_page(page["id"], content))
+        asyncio.create_task(_update_page_links(page["id"], notebook_id, content))
+    return page
 
 
 async def delete_page(page_id: UUID, notebook_id: UUID) -> bool:
@@ -325,3 +342,179 @@ async def update_page_injection_metadata(
         "WHERE id = $1 AND notebook_id = $2",
         page_id, notebook_id, injected_at_iso,
     )
+
+
+# --- Wiki link parsing and management ---
+
+
+# Matches [[Page Name]] and [[Page Name|display text]]
+_WIKI_LINK_RE = re.compile(r"\[\[([^\]|]+)(?:\|[^\]]+)?\]\]")
+
+
+def _extract_wiki_links(content: str) -> list[str]:
+    """Extract page names from [[wiki links]] in content."""
+    return list(set(_WIKI_LINK_RE.findall(content)))
+
+
+async def _resolve_page_name(notebook_id: UUID, page_name: str) -> UUID | None:
+    """Find a page by name within the same notebook."""
+    pool = get_pool()
+    row = await pool.fetchrow(
+        "SELECT id FROM notebook_pages WHERE notebook_id = $1 AND name = $2",
+        notebook_id, page_name.strip(),
+    )
+    return row["id"] if row else None
+
+
+async def _update_page_links(page_id: UUID, notebook_id: UUID, content: str) -> None:
+    """Extract [[wiki links]] from content and update the page_links table."""
+    try:
+        pool = get_pool()
+        # Delete existing outlinks from this page
+        await pool.execute(
+            "DELETE FROM page_links WHERE source_page_id = $1", page_id,
+        )
+
+        link_names = _extract_wiki_links(content)
+        if not link_names:
+            return
+
+        for name in link_names:
+            target_id = await _resolve_page_name(notebook_id, name)
+            if target_id and target_id != page_id:
+                await pool.execute(
+                    "INSERT INTO page_links (source_page_id, target_page_id, link_text) "
+                    "VALUES ($1, $2, $3) ON CONFLICT DO NOTHING",
+                    page_id, target_id, name,
+                )
+    except Exception:
+        logger.debug("Failed to update page links for %s", page_id, exc_info=True)
+
+
+async def get_backlinks(page_id: UUID) -> list[dict]:
+    """Get pages that link TO this page."""
+    pool = get_pool()
+    rows = await pool.fetch(
+        "SELECT np.id, np.name, np.notebook_id, pl.link_text, pl.created_at "
+        "FROM page_links pl JOIN notebook_pages np ON np.id = pl.source_page_id "
+        "WHERE pl.target_page_id = $1 ORDER BY np.name",
+        page_id,
+    )
+    return [dict(r) for r in rows]
+
+
+async def get_outlinks(page_id: UUID) -> list[dict]:
+    """Get pages that this page links TO."""
+    pool = get_pool()
+    rows = await pool.fetch(
+        "SELECT np.id, np.name, np.notebook_id, pl.link_text, pl.created_at "
+        "FROM page_links pl JOIN notebook_pages np ON np.id = pl.target_page_id "
+        "WHERE pl.source_page_id = $1 ORDER BY np.name",
+        page_id,
+    )
+    return [dict(r) for r in rows]
+
+
+async def get_page_graph(notebook_id: UUID) -> dict:
+    """Get the full link graph for a notebook: {nodes, edges}."""
+    pool = get_pool()
+    # Get all pages as nodes
+    pages = await pool.fetch(
+        "SELECT id, name FROM notebook_pages WHERE notebook_id = $1", notebook_id,
+    )
+    nodes = [{"id": str(p["id"]), "name": p["name"]} for p in pages]
+
+    # Get all links between pages in this notebook
+    page_ids = [p["id"] for p in pages]
+    if not page_ids:
+        return {"nodes": nodes, "edges": []}
+
+    edges_rows = await pool.fetch(
+        "SELECT source_page_id, target_page_id, link_text FROM page_links "
+        "WHERE source_page_id = ANY($1) AND target_page_id = ANY($1)",
+        page_ids,
+    )
+    edges = [
+        {"source": str(e["source_page_id"]), "target": str(e["target_page_id"]),
+         "label": e["link_text"]}
+        for e in edges_rows
+    ]
+
+    return {"nodes": nodes, "edges": edges}
+
+
+# --- Page embeddings ---
+
+
+async def _embed_page(page_id: UUID, content: str) -> None:
+    """Fire-and-forget: embed page content and store in database."""
+    try:
+        from . import embedding_service
+        if not embedding_service.is_configured():
+            return
+        embedding = await embedding_service.embed_text(content)
+        if embedding is None:
+            return
+        pool = get_pool()
+        await pool.execute(
+            "UPDATE notebook_pages SET embedding = $1 WHERE id = $2",
+            embedding, page_id,
+        )
+    except Exception:
+        logger.debug("Failed to embed page %s", page_id, exc_info=True)
+
+
+async def search_pages_vector(
+    notebook_id: UUID, query_embedding, limit: int = 20,
+) -> list[dict]:
+    """Semantic search on notebook pages using pgvector."""
+    pool = get_pool()
+    rows = await pool.fetch(
+        "SELECT id, notebook_id, name, content_markdown, metadata, "
+        "1 - (embedding <=> $2) AS similarity "
+        "FROM notebook_pages WHERE notebook_id = $1 AND embedding IS NOT NULL "
+        "ORDER BY embedding <=> $2 LIMIT $3",
+        notebook_id, query_embedding, limit,
+    )
+    return [dict(r) for r in rows]
+
+
+async def auto_index_notebook(notebook_id: UUID, created_by: UUID) -> dict:
+    """Generate or update an index page listing all pages with link counts."""
+    pool = get_pool()
+
+    pages = await pool.fetch(
+        "SELECT np.id, np.name, np.folder_id, nf.name AS folder_name, "
+        "(SELECT COUNT(*) FROM page_links pl WHERE pl.target_page_id = np.id) AS backlink_count "
+        "FROM notebook_pages np "
+        "LEFT JOIN notebook_folders nf ON nf.id = np.folder_id "
+        "WHERE np.notebook_id = $1 AND np.name != '_index' "
+        "ORDER BY nf.name NULLS FIRST, np.name",
+        notebook_id,
+    )
+
+    lines = ["# Index\n"]
+    current_folder = None
+    for p in pages:
+        folder = p["folder_name"] or "(root)"
+        if folder != current_folder:
+            current_folder = folder
+            lines.append(f"\n## {folder}\n")
+        backlinks = f" ({p['backlink_count']} backlinks)" if p["backlink_count"] else ""
+        lines.append(f"- [[{p['name']}]]{backlinks}")
+
+    content = "\n".join(lines)
+
+    # Upsert the _index page
+    existing = await pool.fetchrow(
+        "SELECT id FROM notebook_pages WHERE notebook_id = $1 AND name = '_index'",
+        notebook_id,
+    )
+    if existing:
+        return await update_page(
+            existing["id"], notebook_id, created_by, content=content,
+        )
+    else:
+        return await create_page(
+            notebook_id, "_index", created_by, content=content,
+        )

@@ -184,9 +184,16 @@ class ChatListResponse(BaseModel):
     chats: list[ChatResponse]
 
 
+class Attachment(BaseModel):
+    file_id: UUID
+    name: str
+    content_type: str
+
+
 class ChatMessageSendRequest(BaseModel):
     content: str = Field(..., min_length=1, max_length=16000)
     reply_to_id: UUID | None = None
+    attachments: list[Attachment] | None = None
 
 
 class ChatMessageResponse(BaseModel):
@@ -199,6 +206,7 @@ class ChatMessageResponse(BaseModel):
     content: str
     message_type: str
     reply_to_id: UUID | None
+    attachments: list[dict] | None = None
     created_at: datetime
 
 
@@ -543,6 +551,7 @@ class HistoryEventCreateRequest(BaseModel):
     session_id: str | None = Field(None, max_length=64)
     tool_name: str | None = Field(None, max_length=128)
     metadata: dict = Field(default_factory=dict)
+    attachments: list[Attachment] | None = None
 
 
 class HistoryEventBatchRequest(BaseModel):
@@ -558,6 +567,7 @@ class HistoryEventResponse(BaseModel):
     tool_name: str | None
     content: str
     metadata: dict
+    attachments: list[dict] | None = None
     created_at: datetime
 
 
@@ -698,6 +708,24 @@ class InjectionResponse(BaseModel):
     injected_items: list[InjectedItem]
     total_tokens_used: int
     budget_tokens: int
+
+
+# --- Files ---
+
+
+class FileResponse(BaseModel):
+    id: UUID
+    workspace_id: UUID | None
+    name: str
+    content_type: str
+    size_bytes: int
+    url: str
+    uploaded_by: UUID
+    created_at: datetime
+
+
+class FileListResponse(BaseModel):
+    files: list[FileResponse]
 
 
 # --- WebSocket ---

@@ -356,6 +356,83 @@ export interface PersonaWithContext extends PersonaProfile {
   workspaces: { workspace_id: string; workspace_name: string; role: string }[];
 }
 
+// --- Files ---
+
+export interface FileInfo {
+  id: string;
+  workspace_id: string | null;
+  name: string;
+  content_type: string;
+  size_bytes: number;
+  url: string;
+  uploaded_by: string;
+  created_at: string;
+}
+
+export interface Attachment {
+  file_id: string;
+  name: string;
+  content_type: string;
+}
+
+// --- Documents ---
+
+export interface Document {
+  id: string;
+  workspace_id: string | null;
+  file_id: string | null;
+  name: string;
+  file_type: string;
+  status: "pending" | "processing" | "ready" | "error";
+  metadata: Record<string, unknown>;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface DocumentChunk {
+  content: string;
+  doc_name: string;
+  doc_id: string;
+  similarity: number;
+}
+
+// --- Universal Search ---
+
+export interface SearchResponse {
+  answer: string;
+  sources_used: string[];
+}
+
+// --- Wiki / Page Links ---
+
+export interface PageLink {
+  id: string;
+  name: string;
+  notebook_id: string;
+  link_text: string;
+  created_at: string;
+}
+
+export interface PageGraph {
+  nodes: { id: string; name: string }[];
+  edges: { source: string; target: string; label: string }[];
+}
+
+// --- Sleep Agent Config ---
+
+export interface SleepConfig {
+  enabled: boolean;
+  interval_minutes: number;
+  max_pattern_cards: number;
+  monologue_batch_size: number;
+  monologue_model: string;
+  curation_model: string;
+  curation_sources: string[];
+  curation_rules: Record<string, unknown>;
+  workspace_ids: string[];
+}
+
 // --- Search ---
 
 export interface UserSearchResult {

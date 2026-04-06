@@ -10,8 +10,9 @@ from starlette.types import ASGIApp, Receive, Scope, Send
 from .config import settings
 from .database import close_db, init_db
 from .routers import (
-    personas, aggregate, chats, deck_viewer, decks, dms, memory, notebooks,
-    realtime, skill, tables, users, webhooks, workspaces,
+    personas, aggregate, chats, deck_viewer, decks, dms, documents, files,
+    memory, notebooks, realtime, search, skill, tables, users, webhooks,
+    workspaces,
 )
 from .services.connection_manager import manager
 
@@ -109,6 +110,11 @@ app.include_router(decks.personal_router)
 app.include_router(deck_viewer.router)
 app.include_router(tables.ws_router)
 app.include_router(tables.personal_router)
+app.include_router(files.ws_router)
+app.include_router(files.personal_router)
+app.include_router(documents.ws_router)
+app.include_router(search.ws_router)
+app.include_router(search.personal_router)
 app.include_router(aggregate.router)
 app.include_router(webhooks.router)
 app.include_router(skill.router)

@@ -212,15 +212,16 @@ async def push_event(
     session_id: str | None = None,
     tool_name: str | None = None,
     metadata: dict | None = None,
+    attachments: list[dict] | None = None,
 ) -> dict:
     """Push a single event to a history."""
     pool = get_pool()
     meta = metadata or {}
     row = await pool.fetchrow(
-        "INSERT INTO history_events (store_id, agent_name, event_type, content, session_id, tool_name, metadata) "
-        "VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb) "
-        "RETURNING id, store_id, agent_name, event_type, session_id, tool_name, content, metadata, created_at",
-        store_id, agent_name, event_type, content, session_id, tool_name, meta,
+        "INSERT INTO history_events (store_id, agent_name, event_type, content, session_id, tool_name, metadata, attachments) "
+        "VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8) "
+        "RETURNING id, store_id, agent_name, event_type, session_id, tool_name, content, metadata, attachments, created_at",
+        store_id, agent_name, event_type, content, session_id, tool_name, meta, attachments,
     )
     event = dict(row)
     # Fire-and-forget embedding
@@ -249,10 +250,10 @@ async def push_events_batch(store_id: UUID, events: list[dict]) -> list[dict]:
                 meta = evt.get("metadata", {})
                 row = await conn.fetchrow(
                     "INSERT INTO history_events "
-                    "(store_id, agent_name, event_type, content, session_id, tool_name, metadata) "
-                    "VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb) "
+                    "(store_id, agent_name, event_type, content, session_id, tool_name, metadata, attachments) "
+                    "VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8) "
                     "RETURNING id, store_id, agent_name, event_type, session_id, tool_name, "
-                    "content, metadata, created_at",
+                    "content, metadata, attachments, created_at",
                     store_id,
                     evt["agent_name"],
                     evt["event_type"],
@@ -260,6 +261,7 @@ async def push_events_batch(store_id: UUID, events: list[dict]) -> list[dict]:
                     evt.get("session_id"),
                     evt.get("tool_name"),
                     meta,
+                    evt.get("attachments"),
                 )
                 results.append(dict(row))
     # Fire-and-forget batch embedding
@@ -274,7 +276,7 @@ async def get_event(event_id: UUID, store_id: UUID) -> dict | None:
     pool = get_pool()
     row = await pool.fetchrow(
         "SELECT id, store_id, agent_name, event_type, session_id, tool_name, "
-        "content, metadata, created_at "
+        "content, metadata, attachments, created_at "
         "FROM history_events WHERE id = $1 AND store_id = $2",
         event_id, store_id,
     )
@@ -324,7 +326,7 @@ async def query_events(
 
     rows = await pool.fetch(
         f"SELECT id, store_id, agent_name, event_type, session_id, tool_name, "
-        f"content, metadata, created_at "
+        f"content, metadata, attachments, created_at "
         f"FROM history_events WHERE {where} "
         f"ORDER BY created_at ASC LIMIT ${idx}",
         *args,
@@ -345,7 +347,7 @@ async def search_events(
     limit = min(limit, 200)
     rows = await pool.fetch(
         "SELECT id, store_id, agent_name, event_type, session_id, tool_name, "
-        "content, metadata, created_at, "
+        "content, metadata, attachments, created_at, "
         "ts_rank(to_tsvector('english', content), websearch_to_tsquery('english', $2)) AS rank "
         "FROM history_events "
         "WHERE store_id = $1 AND to_tsvector('english', content) @@ websearch_to_tsquery('english', $2) "
@@ -363,7 +365,7 @@ async def search_events_vector(
     limit = min(limit, 200)
     rows = await pool.fetch(
         "SELECT id, store_id, agent_name, event_type, session_id, tool_name, "
-        "content, metadata, created_at, "
+        "content, metadata, attachments, created_at, "
         "1 - (embedding <=> $2) AS similarity "
         "FROM history_events "
         "WHERE store_id = $1 AND embedding IS NOT NULL "

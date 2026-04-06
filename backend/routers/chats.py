@@ -102,8 +102,10 @@ async def send_message(
     current_user: dict = Depends(get_current_user),
 ):
     await _check_chat_access(workspace_id, chat_id, current_user["id"])
+    attachments = [a.model_dump(mode="json") for a in req.attachments] if req.attachments else None
     msg = await chat_service.send_message(
         chat_id, current_user["id"], req.content, reply_to_id=req.reply_to_id,
+        attachments=attachments,
     )
     await manager.broadcast(chat_id, {"type": "message", **msg})
     asyncio.create_task(
@@ -250,8 +252,10 @@ async def send_room_message(
     current_user: dict = Depends(get_current_user),
 ):
     await _check_room_access(chat_id, current_user["id"])
+    attachments = [a.model_dump(mode="json") for a in req.attachments] if req.attachments else None
     msg = await chat_service.send_message(
         chat_id, current_user["id"], req.content, reply_to_id=req.reply_to_id,
+        attachments=attachments,
     )
     await manager.broadcast(chat_id, {"type": "message", **msg})
     asyncio.create_task(watch_service.auto_mark_read(current_user["id"], chat_id))

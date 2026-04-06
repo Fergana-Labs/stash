@@ -26,14 +26,15 @@ CREATE TABLE IF NOT EXISTS users (
 
 -- Workspaces (top-level container)
 CREATE TABLE IF NOT EXISTS workspaces (
-    id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    name        VARCHAR(128) NOT NULL,
-    description TEXT DEFAULT '',
-    creator_id  UUID NOT NULL REFERENCES users(id),
-    invite_code VARCHAR(12) NOT NULL UNIQUE,
-    is_public   BOOLEAN NOT NULL DEFAULT false,
-    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+    id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name                VARCHAR(128) NOT NULL,
+    description         TEXT DEFAULT '',
+    creator_id          UUID NOT NULL REFERENCES users(id),
+    invite_code         VARCHAR(12) NOT NULL UNIQUE,
+    is_public           BOOLEAN NOT NULL DEFAULT false,
+    ragflow_dataset_id  VARCHAR(255),
+    created_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at          TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 CREATE TABLE IF NOT EXISTS workspace_members (
@@ -69,6 +70,7 @@ CREATE TABLE IF NOT EXISTS chat_messages (
     content      TEXT NOT NULL,
     message_type VARCHAR(8) DEFAULT 'text' CHECK(message_type IN ('text', 'system')),
     reply_to_id  UUID REFERENCES chat_messages(id),
+    attachments  JSONB,
     created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
@@ -115,10 +117,20 @@ CREATE TABLE IF NOT EXISTS notebook_pages (
     content_hash     VARCHAR(64),
     metadata         JSONB DEFAULT '{}',
     yjs_state        BYTEA,
+    embedding        vector(384),
     created_by       UUID NOT NULL REFERENCES users(id),
     updated_by       UUID REFERENCES users(id),
     created_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at       TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- Page links (wiki-style [[link]] tracking for backlinks and page graph)
+CREATE TABLE IF NOT EXISTS page_links (
+    source_page_id UUID NOT NULL REFERENCES notebook_pages(id) ON DELETE CASCADE,
+    target_page_id UUID NOT NULL REFERENCES notebook_pages(id) ON DELETE CASCADE,
+    link_text      VARCHAR(255),
+    created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (source_page_id, target_page_id)
 );
 
 -- Histories (containers for structured agent events)
@@ -142,6 +154,7 @@ CREATE TABLE IF NOT EXISTS history_events (
     tool_name    VARCHAR(128),
     content      TEXT NOT NULL,
     metadata     JSONB DEFAULT '{}',
+    attachments  JSONB,
     embedding    vector(384),
     created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -189,6 +202,9 @@ CREATE TABLE IF NOT EXISTS sleep_configs (
     monologue_batch_size  INTEGER NOT NULL DEFAULT 20,
     monologue_model       VARCHAR(64) NOT NULL DEFAULT 'claude-haiku-4-5-20251001',
     curation_model        VARCHAR(64) NOT NULL DEFAULT 'claude-sonnet-4-6-20250514',
+    curation_sources      JSONB NOT NULL DEFAULT '["history"]',
+    curation_rules        JSONB NOT NULL DEFAULT '{}',
+    workspace_ids         UUID[] DEFAULT '{}',
     updated_at            TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
@@ -247,16 +263,17 @@ CREATE TABLE IF NOT EXISTS deck_share_page_views (
 
 -- Tables (structured data with rows and columns)
 CREATE TABLE IF NOT EXISTS tables (
-    id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    workspace_id UUID REFERENCES workspaces(id) ON DELETE CASCADE,
-    name         VARCHAR(255) NOT NULL,
-    description  TEXT DEFAULT '',
-    columns      JSONB NOT NULL DEFAULT '[]',
-    views        JSONB NOT NULL DEFAULT '[]',
-    created_by   UUID NOT NULL REFERENCES users(id),
-    updated_by   UUID REFERENCES users(id),
-    created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+    id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    workspace_id     UUID REFERENCES workspaces(id) ON DELETE CASCADE,
+    name             VARCHAR(255) NOT NULL,
+    description      TEXT DEFAULT '',
+    columns          JSONB NOT NULL DEFAULT '[]',
+    views            JSONB NOT NULL DEFAULT '[]',
+    embedding_config JSONB,
+    created_by       UUID NOT NULL REFERENCES users(id),
+    updated_by       UUID REFERENCES users(id),
+    created_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at       TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 CREATE TABLE IF NOT EXISTS table_rows (
@@ -264,6 +281,7 @@ CREATE TABLE IF NOT EXISTS table_rows (
     table_id     UUID NOT NULL REFERENCES tables(id) ON DELETE CASCADE,
     data         JSONB NOT NULL DEFAULT '{}',
     row_order    INTEGER NOT NULL DEFAULT 0,
+    embedding    vector(384),
     created_by   UUID NOT NULL REFERENCES users(id),
     updated_by   UUID REFERENCES users(id),
     created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -288,6 +306,35 @@ CREATE TABLE IF NOT EXISTS object_shares (
     granted_by   UUID NOT NULL REFERENCES users(id),
     created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
     PRIMARY KEY (object_type, object_id, user_id)
+);
+
+-- Files (S3-backed file storage)
+CREATE TABLE IF NOT EXISTS files (
+    id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    workspace_id UUID REFERENCES workspaces(id) ON DELETE CASCADE,
+    name         VARCHAR(255) NOT NULL,
+    content_type VARCHAR(128) NOT NULL,
+    size_bytes   BIGINT NOT NULL,
+    storage_key  VARCHAR(512) NOT NULL,
+    uploaded_by  UUID NOT NULL REFERENCES users(id),
+    created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- Documents (RAGFlow-managed files for retrieval)
+CREATE TABLE IF NOT EXISTS documents (
+    id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    workspace_id        UUID REFERENCES workspaces(id) ON DELETE CASCADE,
+    file_id             UUID REFERENCES files(id),
+    name                VARCHAR(255) NOT NULL,
+    file_type           VARCHAR(32) NOT NULL,
+    ragflow_dataset_id  VARCHAR(255),
+    ragflow_doc_id      VARCHAR(255),
+    status              VARCHAR(32) DEFAULT 'pending'
+                        CHECK(status IN ('pending', 'processing', 'ready', 'error')),
+    metadata            JSONB DEFAULT '{}',
+    created_by          UUID NOT NULL REFERENCES users(id),
+    created_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at          TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 -- Webhooks (per-workspace, one per user per workspace)
@@ -331,6 +378,7 @@ CREATE INDEX IF NOT EXISTS idx_history_events_fts ON history_events USING GIN(to
 CREATE INDEX IF NOT EXISTS idx_history_events_metadata ON history_events USING GIN(metadata);
 
 CREATE INDEX IF NOT EXISTS idx_notebook_pages_fts ON notebook_pages USING GIN(to_tsvector('english', content_markdown));
+CREATE INDEX IF NOT EXISTS idx_page_links_target ON page_links(target_page_id);
 
 CREATE INDEX IF NOT EXISTS idx_injection_sessions_persona ON injection_sessions(persona_id);
 
@@ -344,6 +392,10 @@ CREATE INDEX IF NOT EXISTS idx_deck_share_page_views_view ON deck_share_page_vie
 CREATE INDEX IF NOT EXISTS idx_tables_workspace ON tables(workspace_id);
 CREATE INDEX IF NOT EXISTS idx_table_rows_table ON table_rows(table_id, row_order);
 CREATE INDEX IF NOT EXISTS idx_table_rows_data ON table_rows USING GIN(data);
+
+CREATE INDEX IF NOT EXISTS idx_files_workspace ON files(workspace_id);
+CREATE INDEX IF NOT EXISTS idx_documents_workspace ON documents(workspace_id);
+CREATE INDEX IF NOT EXISTS idx_documents_status ON documents(workspace_id, status);
 
 CREATE INDEX IF NOT EXISTS idx_object_shares_user ON object_shares(user_id);
 CREATE INDEX IF NOT EXISTS idx_webhooks_workspace ON webhooks(workspace_id) WHERE is_active = true;
@@ -377,9 +429,19 @@ _PARTIAL_INDEXES = [
        ON tables(created_by, name) WHERE workspace_id IS NULL""",
     """CREATE INDEX IF NOT EXISTS idx_tables_personal
        ON tables(created_by) WHERE workspace_id IS NULL""",
+    """CREATE INDEX IF NOT EXISTS idx_files_personal
+       ON files(uploaded_by) WHERE workspace_id IS NULL""",
     # Injection sessions pending outcome scoring
     """CREATE INDEX IF NOT EXISTS idx_injection_sessions_pending
        ON injection_sessions(persona_id) WHERE completed_at IS NOT NULL AND scored_at IS NULL""",
+    # pgvector HNSW index for semantic search on table rows
+    """CREATE INDEX IF NOT EXISTS idx_table_rows_embedding
+       ON table_rows USING hnsw (embedding vector_cosine_ops)
+       WHERE embedding IS NOT NULL""",
+    # pgvector HNSW index for semantic search on notebook pages
+    """CREATE INDEX IF NOT EXISTS idx_notebook_pages_embedding
+       ON notebook_pages USING hnsw (embedding vector_cosine_ops)
+       WHERE embedding IS NOT NULL""",
     # pgvector HNSW index for semantic search on history events
     """CREATE INDEX IF NOT EXISTS idx_history_events_embedding
        ON history_events USING hnsw (embedding vector_cosine_ops)
@@ -532,6 +594,64 @@ async def init_db():
                 await conn.execute(
                     f"ALTER TABLE notebook_pages ADD COLUMN {col} {col_type}{default_clause}"
                 )
+
+        # Migration: add attachments column to chat_messages and history_events
+        for tbl in ("chat_messages", "history_events"):
+            has_attachments = await conn.fetchval(
+                "SELECT 1 FROM information_schema.columns "
+                "WHERE table_name = $1 AND column_name = 'attachments'", tbl,
+            )
+            if not has_attachments:
+                await conn.execute(f"ALTER TABLE {tbl} ADD COLUMN attachments JSONB")
+
+        # Migration: add embedding_config to tables and embedding to table_rows
+        has_ec = await conn.fetchval(
+            "SELECT 1 FROM information_schema.columns "
+            "WHERE table_name = 'tables' AND column_name = 'embedding_config'"
+        )
+        if not has_ec:
+            await conn.execute("ALTER TABLE tables ADD COLUMN embedding_config JSONB")
+        has_row_emb = await conn.fetchval(
+            "SELECT 1 FROM information_schema.columns "
+            "WHERE table_name = 'table_rows' AND column_name = 'embedding'"
+        )
+        if not has_row_emb:
+            await conn.execute("ALTER TABLE table_rows ADD COLUMN embedding vector(384)")
+
+        # Migration: add embedding column to notebook_pages (pgvector)
+        has_page_embedding = await conn.fetchval(
+            "SELECT 1 FROM information_schema.columns "
+            "WHERE table_name = 'notebook_pages' AND column_name = 'embedding'"
+        )
+        if not has_page_embedding:
+            await conn.execute(
+                "ALTER TABLE notebook_pages ADD COLUMN embedding vector(384)"
+            )
+
+        # Migration: add curation_sources, curation_rules, workspace_ids to sleep_configs
+        for col, col_type, col_default in [
+            ("curation_sources", "JSONB", "'[\"history\"]'"),
+            ("curation_rules", "JSONB", "'{}'"),
+            ("workspace_ids", "UUID[]", "'{}'"),
+        ]:
+            has_col = await conn.fetchval(
+                "SELECT 1 FROM information_schema.columns "
+                "WHERE table_name = 'sleep_configs' AND column_name = $1", col,
+            )
+            if not has_col:
+                await conn.execute(
+                    f"ALTER TABLE sleep_configs ADD COLUMN {col} {col_type} NOT NULL DEFAULT {col_default}"
+                )
+
+        # Migration: add ragflow_dataset_id to workspaces
+        has_ragflow = await conn.fetchval(
+            "SELECT 1 FROM information_schema.columns "
+            "WHERE table_name = 'workspaces' AND column_name = 'ragflow_dataset_id'"
+        )
+        if not has_ragflow:
+            await conn.execute(
+                "ALTER TABLE workspaces ADD COLUMN ragflow_dataset_id VARCHAR(255)"
+            )
 
         # Migration: add views column to tables
         has_views = await conn.fetchval(

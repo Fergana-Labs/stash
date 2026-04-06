@@ -333,15 +333,106 @@ async def sleep_status(current_user: dict = Depends(get_current_user)):
         persona["id"],
     )
     config = await pool.fetchrow(
-        "SELECT enabled, interval_minutes, max_pattern_cards "
+        "SELECT enabled, interval_minutes, max_pattern_cards, monologue_batch_size, "
+        "monologue_model, curation_model, curation_sources, curation_rules, workspace_ids "
         "FROM sleep_configs WHERE persona_id = $1",
         persona["id"],
     )
 
+    default_config = {
+        "enabled": True, "interval_minutes": 60, "max_pattern_cards": 500,
+        "monologue_batch_size": 20, "monologue_model": "claude-haiku-4-5-20251001",
+        "curation_model": "claude-sonnet-4-6-20250514",
+        "curation_sources": ["history"], "curation_rules": {}, "workspace_ids": [],
+    }
+
     return {
         "watermark": dict(watermark) if watermark else None,
-        "config": dict(config) if config else {"enabled": True, "interval_minutes": 60, "max_pattern_cards": 500},
+        "config": dict(config) if config else default_config,
     }
+
+
+@router.get("/me/sleep/config")
+async def get_sleep_config(current_user: dict = Depends(get_current_user)):
+    """Get full sleep agent configuration."""
+    persona = _require_persona(current_user)
+    config = await sleep_service._load_sleep_config(persona["id"])
+    return config
+
+
+@router.patch("/me/sleep/config")
+async def update_sleep_config(
+    updates: dict,
+    current_user: dict = Depends(get_current_user),
+):
+    """Update sleep agent configuration. Supports partial updates.
+
+    Configurable fields:
+    - enabled (bool)
+    - interval_minutes (int)
+    - max_pattern_cards (int)
+    - monologue_batch_size (int)
+    - monologue_model (str)
+    - curation_model (str)
+    - curation_sources (list[str]) — ["history", "notebooks", "documents", "tables"]
+    - curation_rules (dict) — per-source config
+    - workspace_ids (list[UUID]) — workspaces to curate
+    """
+    persona = _require_persona(current_user)
+    from ..database import get_pool
+    pool = get_pool()
+
+    allowed_keys = {
+        "enabled", "interval_minutes", "max_pattern_cards", "monologue_batch_size",
+        "monologue_model", "curation_model", "curation_sources", "curation_rules",
+        "workspace_ids",
+    }
+    filtered = {k: v for k, v in updates.items() if k in allowed_keys}
+    if not filtered:
+        raise HTTPException(status_code=400, detail="No valid fields to update")
+
+    # Validate workspace_ids — persona must be a member
+    if "workspace_ids" in filtered:
+        from ..services import workspace_service
+        for ws_id in filtered["workspace_ids"]:
+            if not await workspace_service.is_member(ws_id, persona["id"]):
+                raise HTTPException(
+                    status_code=403,
+                    detail=f"Persona is not a member of workspace {ws_id}",
+                )
+
+    # Validate curation_sources
+    if "curation_sources" in filtered:
+        valid_sources = {"history", "notebooks", "documents", "tables"}
+        for s in filtered["curation_sources"]:
+            if s not in valid_sources:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Invalid curation source: {s}. Valid: {valid_sources}",
+                )
+
+    # Build UPSERT
+    sets = []
+    args = [persona["id"]]
+    idx = 2
+    for key, val in filtered.items():
+        sets.append(f"{key} = ${idx}")
+        args.append(val)
+        idx += 1
+    sets.append("updated_at = now()")
+
+    update_clause = ", ".join(sets)
+    # Build column/value lists for INSERT
+    cols = ["persona_id"] + list(filtered.keys()) + ["updated_at"]
+    placeholders = ["$1"] + [f"${i}" for i in range(2, idx)] + ["now()"]
+
+    await pool.execute(
+        f"INSERT INTO sleep_configs ({', '.join(cols)}) VALUES ({', '.join(placeholders)}) "
+        f"ON CONFLICT (persona_id) DO UPDATE SET {update_clause}",
+        *args,
+    )
+
+    return await sleep_service._load_sleep_config(persona["id"])
 
 
 @router.post("/me/backfill-embeddings")

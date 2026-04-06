@@ -1,9 +1,12 @@
 "use client";
 
+import { useRef, useState } from "react";
 import { Editor } from "@tiptap/react";
+import { uploadFile, uploadPersonalFile } from "../../lib/api";
 
 interface EditorToolbarProps {
   editor: Editor | null;
+  workspaceId?: string | null;
 }
 
 function ToolbarButton({
@@ -39,7 +42,30 @@ function Separator() {
   return <div className="w-px h-5 bg-border mx-1" />;
 }
 
-export default function EditorToolbar({ editor }: EditorToolbarProps) {
+export default function EditorToolbar({ editor, workspaceId }: EditorToolbarProps) {
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = useState(false);
+
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !editor) return;
+    setUploading(true);
+    try {
+      const result = workspaceId
+        ? await uploadFile(workspaceId, file)
+        : await uploadPersonalFile(file);
+      if (result.content_type.startsWith("image/")) {
+        editor.chain().focus().setImage({ src: result.url, alt: result.name }).run();
+      } else {
+        editor.chain().focus().setLink({ href: result.url }).insertContent(result.name).run();
+      }
+    } catch {
+      // Storage may not be configured
+    }
+    setUploading(false);
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  };
+
   if (!editor) return null;
 
   return (
@@ -144,6 +170,22 @@ export default function EditorToolbar({ editor }: EditorToolbarProps) {
           Unlink
         </ToolbarButton>
       )}
+
+      <Separator />
+
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*,.pdf,.doc,.docx,.txt,.csv"
+        className="hidden"
+        onChange={handleImageUpload}
+      />
+      <ToolbarButton
+        onClick={() => fileInputRef.current?.click()}
+        title="Upload image or file"
+      >
+        {uploading ? "..." : "Image"}
+      </ToolbarButton>
     </div>
   );
 }

@@ -36,7 +36,8 @@ async def _load_sleep_config(agent_id: UUID) -> dict:
     pool = get_pool()
     row = await pool.fetchrow(
         "SELECT enabled, interval_minutes, max_pattern_cards, monologue_batch_size, "
-        "monologue_model, curation_model FROM sleep_configs WHERE persona_id = $1",
+        "monologue_model, curation_model, curation_sources, curation_rules, workspace_ids "
+        "FROM sleep_configs WHERE persona_id = $1",
         agent_id,
     )
     if row:
@@ -48,6 +49,9 @@ async def _load_sleep_config(agent_id: UUID) -> dict:
         "monologue_batch_size": 20,
         "monologue_model": "claude-haiku-4-5-20251001",
         "curation_model": "claude-haiku-4-5-20251001",
+        "curation_sources": ["history"],
+        "curation_rules": {},
+        "workspace_ids": [],
     }
 
 
@@ -152,6 +156,142 @@ def _detect_health_issues(episodes: list[dict]) -> dict:
                 issues["stalled"] = True
 
     return issues
+
+
+# --- Multi-source data gathering ---
+
+
+async def _get_notebook_changes_since(
+    workspace_ids: list[UUID], after_ts: datetime | None, limit: int = 100,
+) -> list[dict]:
+    """Get notebook pages updated since watermark across specified workspaces."""
+    pool = get_pool()
+    if not workspace_ids:
+        return []
+    if after_ts:
+        rows = await pool.fetch(
+            "SELECT np.id, np.name, np.content_markdown, np.updated_at, n.name AS notebook_name "
+            "FROM notebook_pages np JOIN notebooks n ON n.id = np.notebook_id "
+            "WHERE n.workspace_id = ANY($1) AND np.updated_at > $2 "
+            "ORDER BY np.updated_at ASC LIMIT $3",
+            workspace_ids, after_ts, limit,
+        )
+    else:
+        rows = await pool.fetch(
+            "SELECT np.id, np.name, np.content_markdown, np.updated_at, n.name AS notebook_name "
+            "FROM notebook_pages np JOIN notebooks n ON n.id = np.notebook_id "
+            "WHERE n.workspace_id = ANY($1) "
+            "ORDER BY np.updated_at DESC LIMIT $2",
+            workspace_ids, limit,
+        )
+    return [dict(r) for r in rows]
+
+
+async def _get_new_documents(workspace_ids: list[UUID], after_ts: datetime | None) -> list[dict]:
+    """Get documents that became ready since watermark across workspaces."""
+    pool = get_pool()
+    if not workspace_ids:
+        return []
+    if after_ts:
+        rows = await pool.fetch(
+            "SELECT id, workspace_id, name, file_type, metadata, updated_at "
+            "FROM documents WHERE workspace_id = ANY($1) AND status = 'ready' "
+            "AND updated_at > $2 ORDER BY updated_at ASC",
+            workspace_ids, after_ts,
+        )
+    else:
+        rows = await pool.fetch(
+            "SELECT id, workspace_id, name, file_type, metadata, updated_at "
+            "FROM documents WHERE workspace_id = ANY($1) AND status = 'ready' "
+            "ORDER BY updated_at DESC LIMIT 20",
+            workspace_ids,
+        )
+    return [dict(r) for r in rows]
+
+
+async def _get_table_changes_since(
+    workspace_ids: list[UUID], after_ts: datetime | None, limit: int = 100,
+) -> list[dict]:
+    """Get table rows updated since watermark across workspaces."""
+    pool = get_pool()
+    if not workspace_ids:
+        return []
+    if after_ts:
+        rows = await pool.fetch(
+            "SELECT tr.id, tr.data, tr.updated_at, t.name AS table_name "
+            "FROM table_rows tr JOIN tables t ON t.id = tr.table_id "
+            "WHERE t.workspace_id = ANY($1) AND tr.updated_at > $2 "
+            "ORDER BY tr.updated_at ASC LIMIT $3",
+            workspace_ids, after_ts, limit,
+        )
+    else:
+        rows = await pool.fetch(
+            "SELECT tr.id, tr.data, tr.updated_at, t.name AS table_name "
+            "FROM table_rows tr JOIN tables t ON t.id = tr.table_id "
+            "WHERE t.workspace_id = ANY($1) "
+            "ORDER BY tr.updated_at DESC LIMIT $2",
+            workspace_ids, limit,
+        )
+    return [dict(r) for r in rows]
+
+
+async def _get_workspace_history_since(
+    workspace_ids: list[UUID], after_ts: datetime | None, limit: int = 200,
+) -> list[dict]:
+    """Get history events from workspace stores since watermark."""
+    pool = get_pool()
+    if not workspace_ids:
+        return []
+    if after_ts:
+        rows = await pool.fetch(
+            "SELECT he.id, he.agent_name, he.event_type, he.content, he.created_at, "
+            "h.name AS store_name "
+            "FROM history_events he JOIN histories h ON h.id = he.store_id "
+            "WHERE h.workspace_id = ANY($1) AND he.created_at > $2 "
+            "ORDER BY he.created_at ASC LIMIT $3",
+            workspace_ids, after_ts, limit,
+        )
+    else:
+        rows = await pool.fetch(
+            "SELECT he.id, he.agent_name, he.event_type, he.content, he.created_at, "
+            "h.name AS store_name "
+            "FROM history_events he JOIN histories h ON h.id = he.store_id "
+            "WHERE h.workspace_id = ANY($1) "
+            "ORDER BY he.created_at DESC LIMIT $2",
+            workspace_ids, limit,
+        )
+    return [dict(r) for r in rows]
+
+
+def _format_notebook_changes_for_llm(changes: list[dict]) -> str:
+    if not changes:
+        return "(no notebook changes)"
+    lines = []
+    for c in changes[:50]:
+        content_preview = (c.get("content_markdown") or "")[:200]
+        lines.append(f"[{c.get('notebook_name', '?')}/{c['name']}] {content_preview}")
+    return "\n".join(lines)
+
+
+def _format_documents_for_llm(docs: list[dict]) -> str:
+    if not docs:
+        return "(no new documents)"
+    lines = []
+    for d in docs:
+        meta = d.get("metadata", {})
+        chunks = meta.get("chunk_count", "?")
+        lines.append(f"[{d['name']}] type={d['file_type']} chunks={chunks}")
+    return "\n".join(lines)
+
+
+def _format_table_changes_for_llm(changes: list[dict]) -> str:
+    if not changes:
+        return "(no table changes)"
+    lines = []
+    for c in changes[:50]:
+        data_preview = str(c.get("data", {}))[:200]
+        lines.append(f"[{c.get('table_name', '?')}] {data_preview}")
+    return "\n".join(lines)
 
 
 # --- Formatting helpers ---
@@ -546,21 +686,54 @@ async def curate(agent_id: UUID) -> dict:
     history_id = resources["history_id"]
 
     watermark = await _get_watermark(agent_id)
+    sources = config.get("curation_sources", ["history"])
+    ws_ids = config.get("workspace_ids", [])
+
+    # --- Gather data from configured sources ---
+
+    # Personal history (always gathered for health detection + outcome scoring)
     episodes = await _get_episodes_since(history_id, watermark["last_event_at"])
 
-    if not episodes:
-        return {"status": "no_new_episodes"}
+    # Workspace history events
+    ws_episodes = []
+    if "history" in sources and ws_ids:
+        ws_episodes = await _get_workspace_history_since(ws_ids, watermark["last_event_at"])
 
-    # Score outcomes for completed sessions
-    await _score_outcomes(agent_id, notebook_id, config, episodes)
+    # Notebook changes
+    notebook_changes = []
+    if "notebooks" in sources and ws_ids:
+        notebook_changes = await _get_notebook_changes_since(ws_ids, watermark["last_event_at"])
 
-    # Health detection
-    health = _detect_health_issues(episodes)
+    # New documents
+    new_documents = []
+    if "documents" in sources and ws_ids:
+        new_documents = await _get_new_documents(ws_ids, watermark["last_event_at"])
 
-    # Generate monologues (stored as history_events with event_type='monologue')
-    max_mono_ts = await _generate_monologues(agent_id, history_id, config, episodes, watermark)
+    # Table changes
+    table_changes = []
+    if "tables" in sources and ws_ids:
+        table_changes = await _get_table_changes_since(ws_ids, watermark["last_event_at"])
 
-    # Gather existing notes for LLM context (exclude monologues — they're in history_events now)
+    # Check if there's anything to curate
+    has_data = (
+        episodes or ws_episodes or notebook_changes or new_documents or table_changes
+    )
+    if not has_data:
+        return {"status": "no_new_data"}
+
+    # Score outcomes for completed sessions (uses personal episodes)
+    if episodes:
+        await _score_outcomes(agent_id, notebook_id, config, episodes)
+
+    # Health detection (personal episodes only)
+    health = _detect_health_issues(episodes) if episodes else {}
+
+    # Generate monologues from personal episodes
+    max_mono_ts = None
+    if episodes:
+        max_mono_ts = await _generate_monologues(agent_id, history_id, config, episodes, watermark)
+
+    # Gather existing notes for LLM context
     pool = get_pool()
     all_pages = await pool.fetch(
         "SELECT id, name, content_markdown, metadata FROM notebook_pages "
@@ -570,31 +743,58 @@ async def curate(agent_id: UUID) -> dict:
     )
     notes_summary = _format_notes_for_llm([dict(p) for p in all_pages])
 
-    # Gather recent monologues from history_events
+    # Gather recent monologues
     monologue_rows = await pool.fetch(
         "SELECT content FROM history_events WHERE store_id = $1 AND event_type = 'monologue' "
         "ORDER BY created_at DESC LIMIT 10",
         history_id,
     )
     monologue_text = "\n".join(r["content"] for r in monologue_rows) if monologue_rows else "(no monologues)"
-    episodes_summary = _format_episodes_for_llm(episodes)
-    full_summary = f"## Episodes\n{episodes_summary}\n\n## Monologues\n{monologue_text}"
+
+    # Build combined summary from all sources
+    summary_parts = []
+
+    if episodes:
+        episodes_summary = _format_episodes_for_llm(episodes)
+        summary_parts.append(f"## Personal Episodes\n{episodes_summary}")
+
+    if ws_episodes:
+        ws_summary = _format_episodes_for_llm(ws_episodes)
+        summary_parts.append(f"## Workspace History\n{ws_summary}")
+
+    if notebook_changes:
+        nb_summary = _format_notebook_changes_for_llm(notebook_changes)
+        summary_parts.append(f"## Notebook Changes\n{nb_summary}")
+
+    if new_documents:
+        doc_summary = _format_documents_for_llm(new_documents)
+        summary_parts.append(f"## New Documents\n{doc_summary}")
+
+    if table_changes:
+        tbl_summary = _format_table_changes_for_llm(table_changes)
+        summary_parts.append(f"## Table Changes\n{tbl_summary}")
+
+    summary_parts.append(f"## Monologues\n{monologue_text}")
+    full_summary = "\n\n".join(summary_parts)
 
     since_last = "unknown"
-    if episodes:
-        first_ts = episodes[0].get("created_at")
-        if first_ts and isinstance(first_ts, datetime):
-            since_last = str(datetime.now(timezone.utc) - first_ts)
+    all_timestamps = [
+        ep.get("created_at") for ep in episodes
+        if isinstance(ep.get("created_at"), datetime)
+    ]
+    if all_timestamps:
+        since_last = str(datetime.now(timezone.utc) - min(all_timestamps))
 
     # LLM curation
     try:
         result = await _llm_curate(config["curation_model"], full_summary, notes_summary, since_last)
     except Exception as e:
         logger.warning("LLM curation failed: %s", e, exc_info=True)
-        # Still update watermark so we don't re-process
-        last_ts = episodes[-1]["created_at"]
-        await _set_watermark(agent_id, last_ts, max_mono_ts)
-        return {"status": "curation_failed", "error": str(e), "episodes_processed": len(episodes), **health}
+        if episodes:
+            last_ts = episodes[-1]["created_at"]
+            await _set_watermark(agent_id, last_ts, max_mono_ts)
+        return {"status": "curation_failed", "error": str(e),
+                "episodes_processed": len(episodes), **health}
 
     # Merge heuristic health with LLM health
     llm_health = result.get("health", {})
@@ -604,8 +804,9 @@ async def curate(agent_id: UUID) -> dict:
     await _execute_actions(agent_id, notebook_id, config, result)
 
     # Update watermark
-    last_ts = episodes[-1]["created_at"]
-    await _set_watermark(agent_id, last_ts, max_mono_ts)
+    if episodes:
+        last_ts = episodes[-1]["created_at"]
+        await _set_watermark(agent_id, last_ts, max_mono_ts)
 
     actions_summary = {
         "created": len(result.get("create_notes", [])),
@@ -614,9 +815,16 @@ async def curate(agent_id: UUID) -> dict:
         "deleted": len(result.get("delete_notes", [])),
     }
 
+    total_items = (
+        len(episodes) + len(ws_episodes) + len(notebook_changes)
+        + len(new_documents) + len(table_changes)
+    )
+
     return {
         "status": "completed",
         "episodes_processed": len(episodes),
+        "total_items_curated": total_items,
+        "sources_used": [s for s in sources if s != "history" or episodes or ws_episodes],
         "actions": actions_summary,
         **health,
     }
