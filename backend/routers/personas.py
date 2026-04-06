@@ -309,6 +309,20 @@ async def inject_context(
     return InjectionResponse(**result)
 
 
+# --- Provisioning ---
+
+
+@router.post("/me/provision")
+async def provision_resources(current_user: dict = Depends(get_current_user)):
+    """Provision personal notebook + history for the calling persona (if missing)."""
+    persona = _require_persona(current_user)
+    from ..services import persona_identity_service
+    result = await persona_identity_service.provision_existing_persona(persona["id"])
+    if not result:
+        raise HTTPException(status_code=404, detail="Persona not found")
+    return result
+
+
 # --- Sleep Agent ---
 
 
