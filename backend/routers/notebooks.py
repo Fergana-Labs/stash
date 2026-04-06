@@ -124,6 +124,24 @@ async def create_ws_page(
     return PageResponse(**page)
 
 
+@ws_router.get("/{notebook_id}/pages/semantic-search")
+async def semantic_search_ws_pages(
+    workspace_id: UUID, notebook_id: UUID,
+    q: str, limit: int = 20,
+    current_user: dict = Depends(get_current_user),
+):
+    """Semantic search on notebook pages using embeddings."""
+    await _check_ws_access(workspace_id, current_user["id"])
+    from ..services import embedding_service
+    if not embedding_service.is_configured():
+        raise HTTPException(status_code=503, detail="Embedding service not configured")
+    query_embedding = await embedding_service.embed_text(q)
+    if query_embedding is None:
+        raise HTTPException(status_code=500, detail="Failed to embed query")
+    pages = await notebook_service.search_pages_vector(notebook_id, query_embedding, limit)
+    return {"pages": pages}
+
+
 @ws_router.get("/{notebook_id}/pages/{page_id}", response_model=PageResponse)
 async def get_ws_page(
     workspace_id: UUID, notebook_id: UUID, page_id: UUID,
@@ -196,24 +214,6 @@ async def get_ws_page_graph(
     """Get the full wiki link graph for a notebook (nodes + edges)."""
     await _check_ws_access(workspace_id, current_user["id"])
     return await notebook_service.get_page_graph(notebook_id)
-
-
-@ws_router.get("/{notebook_id}/pages/semantic-search")
-async def semantic_search_ws_pages(
-    workspace_id: UUID, notebook_id: UUID,
-    q: str, limit: int = 20,
-    current_user: dict = Depends(get_current_user),
-):
-    """Semantic search on notebook pages using embeddings."""
-    await _check_ws_access(workspace_id, current_user["id"])
-    from ..services import embedding_service
-    if not embedding_service.is_configured():
-        raise HTTPException(status_code=503, detail="Embedding service not configured")
-    query_embedding = await embedding_service.embed_text(q)
-    if query_embedding is None:
-        raise HTTPException(status_code=500, detail="Failed to embed query")
-    pages = await notebook_service.search_pages_vector(notebook_id, query_embedding, limit)
-    return {"pages": pages}
 
 
 @ws_router.post("/{notebook_id}/auto-index")
@@ -416,6 +416,22 @@ async def create_personal_page(
     return PageResponse(**page)
 
 
+@personal_router.get("/{notebook_id}/pages/semantic-search")
+async def semantic_search_personal_pages(
+    notebook_id: UUID, q: str, limit: int = 20,
+    current_user: dict = Depends(get_current_user),
+):
+    await _check_notebook_owner(notebook_id, current_user["id"])
+    from ..services import embedding_service
+    if not embedding_service.is_configured():
+        raise HTTPException(status_code=503, detail="Embedding service not configured")
+    query_embedding = await embedding_service.embed_text(q)
+    if query_embedding is None:
+        raise HTTPException(status_code=500, detail="Failed to embed query")
+    pages = await notebook_service.search_pages_vector(notebook_id, query_embedding, limit)
+    return {"pages": pages}
+
+
 @personal_router.get("/{notebook_id}/pages/{page_id}", response_model=PageResponse)
 async def get_personal_page(
     notebook_id: UUID, page_id: UUID,
@@ -485,22 +501,6 @@ async def get_personal_page_graph(
 ):
     await _check_notebook_owner(notebook_id, current_user["id"])
     return await notebook_service.get_page_graph(notebook_id)
-
-
-@personal_router.get("/{notebook_id}/pages/semantic-search")
-async def semantic_search_personal_pages(
-    notebook_id: UUID, q: str, limit: int = 20,
-    current_user: dict = Depends(get_current_user),
-):
-    await _check_notebook_owner(notebook_id, current_user["id"])
-    from ..services import embedding_service
-    if not embedding_service.is_configured():
-        raise HTTPException(status_code=503, detail="Embedding service not configured")
-    query_embedding = await embedding_service.embed_text(q)
-    if query_embedding is None:
-        raise HTTPException(status_code=500, detail="Failed to embed query")
-    pages = await notebook_service.search_pages_vector(notebook_id, query_embedding, limit)
-    return {"pages": pages}
 
 
 @personal_router.post("/{notebook_id}/auto-index")

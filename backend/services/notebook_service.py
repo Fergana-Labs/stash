@@ -143,6 +143,8 @@ async def create_page(
     if content:
         asyncio.create_task(_embed_page(page["id"], content))
         asyncio.create_task(_update_page_links(page["id"], notebook_id, content))
+    # Re-resolve dangling links from other pages that might reference this new page
+    asyncio.create_task(_resolve_dangling_links(notebook_id, name, page["id"]))
     return page
 
 
@@ -389,6 +391,27 @@ async def _update_page_links(page_id: UUID, notebook_id: UUID, content: str) -> 
                 )
     except Exception:
         logger.debug("Failed to update page links for %s", page_id, exc_info=True)
+
+
+async def _resolve_dangling_links(notebook_id: UUID, page_name: str, page_id: UUID) -> None:
+    """When a new page is created, find other pages that reference it by name and create links."""
+    try:
+        pool = get_pool()
+        # Find pages in this notebook whose content contains [[page_name]]
+        pattern = f"%[[{page_name}]]%"
+        rows = await pool.fetch(
+            "SELECT id, content_markdown FROM notebook_pages "
+            "WHERE notebook_id = $1 AND id != $2 AND content_markdown LIKE $3",
+            notebook_id, page_id, pattern,
+        )
+        for row in rows:
+            await pool.execute(
+                "INSERT INTO page_links (source_page_id, target_page_id, link_text) "
+                "VALUES ($1, $2, $3) ON CONFLICT DO NOTHING",
+                row["id"], page_id, page_name,
+            )
+    except Exception:
+        logger.debug("Failed to resolve dangling links for %s", page_name, exc_info=True)
 
 
 async def get_backlinks(page_id: UUID) -> list[dict]:

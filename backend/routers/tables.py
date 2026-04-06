@@ -252,6 +252,25 @@ async def create_ws_rows_batch(
     return {"rows": [RowResponse(**r) for r in rows]}
 
 
+@ws_router.get("/{table_id}/rows/semantic-search")
+async def semantic_search_ws_rows(
+    workspace_id: UUID, table_id: UUID,
+    q: str, limit: int = 20,
+    current_user: dict = Depends(get_current_user),
+):
+    """Semantic search on table rows using embeddings."""
+    await _check_member(workspace_id, current_user["id"])
+    await _check_ws_table(workspace_id, table_id)
+    from ..services import embedding_service
+    if not embedding_service.is_configured():
+        raise HTTPException(status_code=503, detail="Embedding service not configured")
+    query_embedding = await embedding_service.embed_text(q)
+    if query_embedding is None:
+        raise HTTPException(status_code=500, detail="Failed to embed query")
+    rows = await table_service.search_rows_vector(table_id, query_embedding, limit)
+    return {"rows": rows}
+
+
 @ws_router.patch("/{table_id}/rows/{row_id}", response_model=RowResponse)
 async def update_ws_row(
     workspace_id: UUID, table_id: UUID, row_id: UUID, req: RowUpdateRequest,
@@ -357,25 +376,6 @@ async def backfill_ws_embeddings(
     await _check_member(workspace_id, current_user["id"])
     await _check_ws_table(workspace_id, table_id)
     return await table_service.backfill_embeddings(table_id)
-
-
-@ws_router.get("/{table_id}/rows/semantic-search")
-async def semantic_search_ws_rows(
-    workspace_id: UUID, table_id: UUID,
-    q: str, limit: int = 20,
-    current_user: dict = Depends(get_current_user),
-):
-    """Semantic search on table rows using embeddings."""
-    await _check_member(workspace_id, current_user["id"])
-    await _check_ws_table(workspace_id, table_id)
-    from ..services import embedding_service
-    if not embedding_service.is_configured():
-        raise HTTPException(status_code=503, detail="Embedding service not configured")
-    query_embedding = await embedding_service.embed_text(q)
-    if query_embedding is None:
-        raise HTTPException(status_code=500, detail="Failed to embed query")
-    rows = await table_service.search_rows_vector(table_id, query_embedding, limit)
-    return {"rows": rows}
 
 
 @ws_router.get("/{table_id}/export/csv")
