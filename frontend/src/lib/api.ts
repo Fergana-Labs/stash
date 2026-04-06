@@ -1398,6 +1398,26 @@ export async function updateSleepConfig(
   });
 }
 
+export async function getPersonaSleepConfig(personaId: string): Promise<SleepConfig> {
+  return apiFetch<SleepConfig>(`/api/v1/personas/${personaId}/sleep/config`);
+}
+
+export async function updatePersonaSleepConfig(
+  personaId: string,
+  updates: Partial<SleepConfig>
+): Promise<SleepConfig> {
+  return apiFetch<SleepConfig>(`/api/v1/personas/${personaId}/sleep/config`, {
+    method: "PATCH",
+    body: JSON.stringify(updates),
+  });
+}
+
+export async function triggerPersonaSleep(
+  personaId: string
+): Promise<Record<string, unknown>> {
+  return apiFetch(`/api/v1/personas/${personaId}/sleep`, { method: "POST" });
+}
+
 export async function triggerSleep(): Promise<Record<string, unknown>> {
   return apiFetch("/api/v1/personas/me/sleep", { method: "POST" });
 }

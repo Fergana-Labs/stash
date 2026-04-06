@@ -323,7 +323,89 @@ async def provision_resources(current_user: dict = Depends(get_current_user)):
     return result
 
 
-# --- Sleep Agent ---
+# --- Sleep Agent (owner-accessible) ---
+
+
+async def _get_owned_persona(persona_id: UUID, owner_id: UUID) -> dict:
+    """Verify the persona exists and is owned by the caller."""
+    from ..database import get_pool
+    pool = get_pool()
+    row = await pool.fetchrow(
+        "SELECT id, name, type FROM users WHERE id = $1 AND type = 'persona' AND owner_id = $2",
+        persona_id, owner_id,
+    )
+    if not row:
+        raise HTTPException(status_code=404, detail="Persona not found or not owned by you")
+    return dict(row)
+
+
+@router.get("/{persona_id}/sleep/config")
+async def get_persona_sleep_config(
+    persona_id: UUID, current_user: dict = Depends(get_current_user),
+):
+    """Get sleep agent config for an owned persona."""
+    _require_human(current_user)
+    await _get_owned_persona(persona_id, current_user["id"])
+    return await sleep_service._load_sleep_config(persona_id)
+
+
+@router.patch("/{persona_id}/sleep/config")
+async def update_persona_sleep_config(
+    persona_id: UUID, updates: dict,
+    current_user: dict = Depends(get_current_user),
+):
+    """Update sleep agent config for an owned persona."""
+    _require_human(current_user)
+    await _get_owned_persona(persona_id, current_user["id"])
+
+    from ..database import get_pool
+    pool = get_pool()
+
+    allowed_keys = {
+        "enabled", "interval_minutes", "max_pattern_cards", "monologue_batch_size",
+        "monologue_model", "curation_model", "curation_sources", "curation_rules",
+        "workspace_ids",
+    }
+    filtered = {k: v for k, v in updates.items() if k in allowed_keys}
+    if not filtered:
+        raise HTTPException(status_code=400, detail="No valid fields to update")
+
+    sets = []
+    args = [persona_id]
+    idx = 2
+    for key, val in filtered.items():
+        sets.append(f"{key} = ${idx}")
+        args.append(val)
+        idx += 1
+    sets.append("updated_at = now()")
+
+    update_clause = ", ".join(sets)
+    cols = ["persona_id"] + list(filtered.keys()) + ["updated_at"]
+    placeholders = ["$1"] + [f"${i}" for i in range(2, idx)] + ["now()"]
+
+    await pool.execute(
+        f"INSERT INTO sleep_configs ({', '.join(cols)}) VALUES ({', '.join(placeholders)}) "
+        f"ON CONFLICT (persona_id) DO UPDATE SET {update_clause}",
+        *args,
+    )
+    return await sleep_service._load_sleep_config(persona_id)
+
+
+@router.post("/{persona_id}/sleep")
+async def trigger_persona_sleep(
+    persona_id: UUID, current_user: dict = Depends(get_current_user),
+):
+    """Trigger sleep agent for an owned persona."""
+    _require_human(current_user)
+    await _get_owned_persona(persona_id, current_user["id"])
+    try:
+        result = await sleep_service.curate(persona_id)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return result
+
+
+# --- Sleep Agent (self, persona-only) ---
 
 
 @router.post("/me/sleep")
