@@ -1,6 +1,6 @@
 "use client";
 
-import { Node, mergeAttributes } from "@tiptap/react";
+import { Extension } from "@tiptap/react";
 import Suggestion, { SuggestionOptions } from "@tiptap/suggestion";
 import { ReactRenderer } from "@tiptap/react";
 import tippy, { Instance as TippyInstance } from "tippy.js";
@@ -38,10 +38,13 @@ const SuggestionList = forwardRef<SuggestionListRef, SuggestionListProps>(
           setSelectedIndex((i) => (i + 1) % items.length);
           return true;
         }
-        if (event.key === "Enter") {
+        if (event.key === "Enter" || event.key === "Tab") {
           if (items[selectedIndex]) {
             command({ id: items[selectedIndex] });
           }
+          return true;
+        }
+        if (event.key === "Escape") {
           return true;
         }
         return false;
@@ -51,7 +54,7 @@ const SuggestionList = forwardRef<SuggestionListRef, SuggestionListProps>(
     if (items.length === 0) return null;
 
     return (
-      <div className="bg-base border border-border rounded-lg shadow-lg overflow-hidden py-1 min-w-[180px]">
+      <div className="bg-base border border-border rounded-lg shadow-lg overflow-hidden py-1 min-w-[180px] z-50">
         {items.map((item, i) => (
           <button
             key={item}
@@ -121,53 +124,19 @@ function suggestionRenderer() {
   };
 }
 
-// --- WikiLink Node Extension ---
+// --- WikiLink Extension (plain text insertion with autocomplete) ---
 
 export interface WikiLinkOptions {
   pageNames: string[];
 }
 
-export const WikiLink = Node.create<WikiLinkOptions>({
+export const WikiLink = Extension.create<WikiLinkOptions>({
   name: "wikiLink",
-  group: "inline",
-  inline: true,
-  atom: true,
 
   addOptions() {
     return {
       pageNames: [],
     };
-  },
-
-  addAttributes() {
-    return {
-      pageName: {
-        default: null,
-        parseHTML: (element) => element.getAttribute("data-page-name"),
-        renderHTML: (attributes) => ({
-          "data-page-name": attributes.pageName,
-        }),
-      },
-    };
-  },
-
-  parseHTML() {
-    return [{ tag: 'span[data-type="wiki-link"]' }];
-  },
-
-  renderHTML({ node, HTMLAttributes }) {
-    return [
-      "span",
-      mergeAttributes(HTMLAttributes, {
-        "data-type": "wiki-link",
-        class: "text-brand cursor-pointer hover:underline",
-      }),
-      `[[${node.attrs.pageName}]]`,
-    ];
-  },
-
-  addKeyboardShortcuts() {
-    return {};
   },
 
   addProseMirrorPlugins() {
@@ -189,7 +158,7 @@ export const WikiLink = Node.create<WikiLinkOptions>({
           ed.chain()
             .focus()
             .deleteRange(range as { from: number; to: number })
-            .insertContent(`[[${(props as { id: string }).id}]]`)
+            .insertContent(`[[${(props as { id: string }).id}]] `)
             .run();
         },
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
