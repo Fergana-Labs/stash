@@ -1290,8 +1290,39 @@ export async function getPageGraph(
   );
 }
 
+export async function getPersonalOutlinks(
+  notebookId: string,
+  pageId: string
+): Promise<PageLink[]> {
+  const data = await apiFetch<{ outlinks: PageLink[] }>(
+    `/api/v1/notebooks/${notebookId}/pages/${pageId}/outlinks`
+  );
+  return data.outlinks;
+}
+
 export async function getPersonalPageGraph(notebookId: string): Promise<PageGraph> {
   return apiFetch<PageGraph>(`/api/v1/notebooks/${notebookId}/graph`);
+}
+
+export async function semanticSearchPersonalPages(
+  notebookId: string,
+  query: string,
+  limit = 20
+): Promise<NotebookPage[]> {
+  const params = new URLSearchParams({ q: query, limit: String(limit) });
+  const data = await apiFetch<{ pages: NotebookPage[] }>(
+    `/api/v1/notebooks/${notebookId}/pages/semantic-search?${params}`
+  );
+  return data.pages;
+}
+
+export async function autoIndexPersonalNotebook(
+  notebookId: string
+): Promise<NotebookPage> {
+  return apiFetch<NotebookPage>(
+    `/api/v1/notebooks/${notebookId}/auto-index`,
+    { method: "POST" }
+  );
 }
 
 export async function semanticSearchPages(

@@ -455,6 +455,64 @@ async def delete_personal_page(
         raise HTTPException(status_code=404, detail="Page not found")
 
 
+# --- Personal wiki features ---
+
+
+@personal_router.get("/{notebook_id}/pages/{page_id}/backlinks")
+async def get_personal_backlinks(
+    notebook_id: UUID, page_id: UUID,
+    current_user: dict = Depends(get_current_user),
+):
+    await _check_notebook_owner(notebook_id, current_user["id"])
+    links = await notebook_service.get_backlinks(page_id)
+    return {"backlinks": links}
+
+
+@personal_router.get("/{notebook_id}/pages/{page_id}/outlinks")
+async def get_personal_outlinks(
+    notebook_id: UUID, page_id: UUID,
+    current_user: dict = Depends(get_current_user),
+):
+    await _check_notebook_owner(notebook_id, current_user["id"])
+    links = await notebook_service.get_outlinks(page_id)
+    return {"outlinks": links}
+
+
+@personal_router.get("/{notebook_id}/graph")
+async def get_personal_page_graph(
+    notebook_id: UUID,
+    current_user: dict = Depends(get_current_user),
+):
+    await _check_notebook_owner(notebook_id, current_user["id"])
+    return await notebook_service.get_page_graph(notebook_id)
+
+
+@personal_router.get("/{notebook_id}/pages/semantic-search")
+async def semantic_search_personal_pages(
+    notebook_id: UUID, q: str, limit: int = 20,
+    current_user: dict = Depends(get_current_user),
+):
+    await _check_notebook_owner(notebook_id, current_user["id"])
+    from ..services import embedding_service
+    if not embedding_service.is_configured():
+        raise HTTPException(status_code=503, detail="Embedding service not configured")
+    query_embedding = await embedding_service.embed_text(q)
+    if query_embedding is None:
+        raise HTTPException(status_code=500, detail="Failed to embed query")
+    pages = await notebook_service.search_pages_vector(notebook_id, query_embedding, limit)
+    return {"pages": pages}
+
+
+@personal_router.post("/{notebook_id}/auto-index")
+async def auto_index_personal_notebook(
+    notebook_id: UUID,
+    current_user: dict = Depends(get_current_user),
+):
+    await _check_notebook_owner(notebook_id, current_user["id"])
+    page = await notebook_service.auto_index_notebook(notebook_id, current_user["id"])
+    return PageResponse(**page)
+
+
 @personal_router.post("/{notebook_id}/folders", response_model=FolderResponse, status_code=201)
 async def create_personal_folder(
     notebook_id: UUID, req: FolderCreateRequest,
