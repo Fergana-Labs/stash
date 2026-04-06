@@ -53,6 +53,8 @@ Workspace members inherit access to all objects. Objects can be set to:
 - set_webhook, get_webhook, update_webhook, delete_webhook — webhooks
 - upload_file, list_files, get_file_url, delete_file — files (images, PDFs, etc.)
 - upload_document, list_documents, search_documents, get_document_status, delete_document — documents (RAGFlow retrieval)
+- get_backlinks, get_outlinks, get_page_graph, semantic_search_pages, auto_index_notebook — wiki features
+- configure_table_embeddings, backfill_table_embeddings, semantic_search_table_rows — table embeddings
 - get_sleep_config, configure_sleep_agent, trigger_sleep — sleep agent curation
 - universal_search — cross-resource Q&A search
 """,
@@ -1171,6 +1173,195 @@ async def count_table_rows(
         )
         _check_response(resp)
     return f"Count: {resp.json().get('count', 0)}"
+
+
+# ---------------------------------------------------------------------------
+# Wiki Features (Notebooks)
+# ---------------------------------------------------------------------------
+
+
+@mcp.tool()
+async def get_backlinks(
+    ctx: Context,
+    workspace_id: str,
+    notebook_id: str,
+    page_id: str,
+) -> str:
+    """Get pages that link TO this page via [[wiki links]]."""
+    async with _client() as c:
+        resp = await c.get(
+            f"/api/v1/workspaces/{workspace_id}/notebooks/{notebook_id}/pages/{page_id}/backlinks",
+            headers=_auth_headers(ctx),
+        )
+        _check_response(resp)
+    links = resp.json().get("backlinks", [])
+    if not links:
+        return "No backlinks found."
+    return "\n".join(f"- {l['name']} (id: {l['id']})" for l in links)
+
+
+@mcp.tool()
+async def get_outlinks(
+    ctx: Context,
+    workspace_id: str,
+    notebook_id: str,
+    page_id: str,
+) -> str:
+    """Get pages that this page links TO via [[wiki links]]."""
+    async with _client() as c:
+        resp = await c.get(
+            f"/api/v1/workspaces/{workspace_id}/notebooks/{notebook_id}/pages/{page_id}/outlinks",
+            headers=_auth_headers(ctx),
+        )
+        _check_response(resp)
+    links = resp.json().get("outlinks", [])
+    if not links:
+        return "No outlinks found."
+    return "\n".join(f"- {l['name']} (id: {l['id']})" for l in links)
+
+
+@mcp.tool()
+async def get_page_graph(
+    ctx: Context,
+    workspace_id: str,
+    notebook_id: str,
+) -> str:
+    """Get the full wiki link graph for a notebook (nodes and edges)."""
+    async with _client() as c:
+        resp = await c.get(
+            f"/api/v1/workspaces/{workspace_id}/notebooks/{notebook_id}/graph",
+            headers=_auth_headers(ctx),
+        )
+        _check_response(resp)
+    data = resp.json()
+    nodes = data.get("nodes", [])
+    edges = data.get("edges", [])
+    lines = [f"Pages ({len(nodes)}):"]
+    for n in nodes:
+        lines.append(f"  - {n['name']} (id: {n['id']})")
+    lines.append(f"\nLinks ({len(edges)}):")
+    node_map = {n["id"]: n["name"] for n in nodes}
+    for e in edges:
+        lines.append(f"  {node_map.get(e['source'], '?')} -> {node_map.get(e['target'], '?')}")
+    return "\n".join(lines)
+
+
+@mcp.tool()
+async def semantic_search_pages(
+    ctx: Context,
+    workspace_id: str,
+    notebook_id: str,
+    query: str,
+    limit: int = 20,
+) -> str:
+    """Semantic search on notebook pages using embeddings. Finds pages by meaning."""
+    params = {"q": query, "limit": str(limit)}
+    async with _client() as c:
+        resp = await c.get(
+            f"/api/v1/workspaces/{workspace_id}/notebooks/{notebook_id}/pages/semantic-search",
+            params=params, headers=_auth_headers(ctx),
+        )
+        _check_response(resp)
+    pages = resp.json().get("pages", [])
+    if not pages:
+        return "No matching pages found."
+    lines = []
+    for p in pages:
+        sim = p.get("similarity", 0)
+        preview = (p.get("content_markdown") or "")[:200]
+        lines.append(f"- {p['name']} (sim={sim:.2f}): {preview}")
+    return "\n".join(lines)
+
+
+@mcp.tool()
+async def auto_index_notebook(
+    ctx: Context,
+    workspace_id: str,
+    notebook_id: str,
+) -> str:
+    """Generate or update an _index page listing all pages with backlink counts."""
+    async with _client() as c:
+        resp = await c.post(
+            f"/api/v1/workspaces/{workspace_id}/notebooks/{notebook_id}/auto-index",
+            headers=_auth_headers(ctx),
+        )
+        _check_response(resp)
+    page = resp.json()
+    return f"Index page updated: {page.get('name', '_index')} (id: {page.get('id')})"
+
+
+# ---------------------------------------------------------------------------
+# Table Embeddings
+# ---------------------------------------------------------------------------
+
+
+@mcp.tool()
+async def configure_table_embeddings(
+    ctx: Context,
+    workspace_id: str,
+    table_id: str,
+    enabled: bool = True,
+    columns: str = "",
+) -> str:
+    """Configure semantic search embeddings for a table.
+
+    Args:
+        columns: Comma-separated column IDs to embed (e.g. "col_abc,col_def")
+    """
+    col_list = [c.strip() for c in columns.split(",") if c.strip()] if columns else []
+    async with _client() as c:
+        resp = await c.put(
+            f"/api/v1/workspaces/{workspace_id}/tables/{table_id}/embedding",
+            json={"enabled": enabled, "columns": col_list},
+            headers=_auth_headers(ctx),
+        )
+        _check_response(resp)
+    return f"Embedding config saved. Enabled: {enabled}, columns: {col_list}"
+
+
+@mcp.tool()
+async def backfill_table_embeddings(
+    ctx: Context,
+    workspace_id: str,
+    table_id: str,
+) -> str:
+    """Re-embed all rows in a table based on current embedding config."""
+    async with _client() as c:
+        resp = await c.post(
+            f"/api/v1/workspaces/{workspace_id}/tables/{table_id}/embedding/backfill",
+            headers=_auth_headers(ctx),
+        )
+        _check_response(resp)
+    data = resp.json()
+    return f"Backfill started: {data.get('embedded', 0)} of {data.get('total', 0)} rows"
+
+
+@mcp.tool()
+async def semantic_search_table_rows(
+    ctx: Context,
+    workspace_id: str,
+    table_id: str,
+    query: str,
+    limit: int = 20,
+) -> str:
+    """Semantic search on table rows using embeddings."""
+    params = {"q": query, "limit": str(limit)}
+    async with _client() as c:
+        resp = await c.get(
+            f"/api/v1/workspaces/{workspace_id}/tables/{table_id}/rows/semantic-search",
+            params=params, headers=_auth_headers(ctx),
+        )
+        _check_response(resp)
+    rows = resp.json().get("rows", [])
+    if not rows:
+        return "No matching rows found."
+    import json as _json
+    lines = []
+    for r in rows:
+        sim = r.get("similarity", 0)
+        data_preview = _json.dumps(r.get("data", {}), default=str)[:200]
+        lines.append(f"- Row {r['id']} (sim={sim:.2f}): {data_preview}")
+    return "\n".join(lines)
 
 
 # ---------------------------------------------------------------------------
