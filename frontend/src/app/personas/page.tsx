@@ -165,6 +165,36 @@ function SleepAgentConfig() {
           )}
         </div>
 
+        {/* Agent name filter */}
+        <div className="bg-surface border border-border rounded-lg p-4">
+          <div className="text-sm text-foreground font-medium mb-2">Watch events from agents</div>
+          <div className="text-xs text-muted mb-3">Only curate history events from these agent names. Leave empty to watch all agents.</div>
+          <div className="flex items-center gap-1.5 flex-wrap mb-2">
+            {(config.agent_name_filter || []).map((name, i) => (
+              <span key={i} className="inline-flex items-center gap-1 bg-brand/10 text-brand text-xs font-mono px-2 py-1 rounded">
+                {name}
+                <button
+                  onClick={() => setConfig({ ...config, agent_name_filter: config.agent_name_filter.filter((_, j) => j !== i) })}
+                  className="text-brand/50 hover:text-brand ml-1"
+                >&times;</button>
+              </span>
+            ))}
+          </div>
+          <input
+            placeholder="Type agent name and press Enter..."
+            className="w-full bg-raised border border-border rounded px-3 py-1.5 text-sm text-foreground font-mono"
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && e.currentTarget.value.trim()) {
+                const name = e.currentTarget.value.trim();
+                if (!config.agent_name_filter?.includes(name)) {
+                  setConfig({ ...config, agent_name_filter: [...(config.agent_name_filter || []), name] });
+                }
+                e.currentTarget.value = "";
+              }
+            }}
+          />
+        </div>
+
         {/* Model */}
         <div className="bg-surface border border-border rounded-lg p-4">
           <label className="text-sm text-foreground font-medium block mb-2">Curation model</label>
@@ -197,7 +227,7 @@ function SleepAgentConfig() {
   );
 }
 
-function InlineSleepConfig({ personaId, personaWorkspaces }: { personaId: string; personaWorkspaces: { workspace_id: string; workspace_name: string }[] }) {
+function InlineSleepConfig({ personaId, personaWorkspaces, notebookId }: { personaId: string; personaWorkspaces: { workspace_id: string; workspace_name: string }[]; notebookId: string | null }) {
   const [config, setConfig] = useState<SleepConfig | null>(null);
   const [saving, setSaving] = useState(false);
   const [triggerResult, setTriggerResult] = useState("");
@@ -290,15 +320,48 @@ function InlineSleepConfig({ personaId, personaWorkspaces }: { personaId: string
         </div>
       )}
 
-      <div className="flex items-center gap-1.5">
-        <span className="text-xs text-muted">Agent filter:</span>
-        <input
-          value={(config.agent_name_filter || []).join(", ")}
-          onChange={(e) => setConfig({ ...config, agent_name_filter: e.target.value.split(",").map(s => s.trim()).filter(Boolean) })}
-          placeholder="all agents (or: claude-code, web-scraper)"
-          className="flex-1 bg-raised border border-border rounded px-2 py-0.5 text-xs text-foreground font-mono max-w-[280px]"
-        />
+      {/* Agent name filter */}
+      <div>
+        <div className="flex items-center gap-1.5 mb-1">
+          <span className="text-xs text-muted">Watch events from agents:</span>
+        </div>
+        <div className="flex items-center gap-1.5 flex-wrap">
+          {(config.agent_name_filter || []).map((name, i) => (
+            <span key={i} className="inline-flex items-center gap-1 bg-brand/10 text-brand text-[11px] font-mono px-2 py-0.5 rounded">
+              {name}
+              <button
+                onClick={() => setConfig({ ...config, agent_name_filter: config.agent_name_filter.filter((_, j) => j !== i) })}
+                className="text-brand/50 hover:text-brand"
+              >&times;</button>
+            </span>
+          ))}
+          <input
+            placeholder={config.agent_name_filter?.length ? "add another..." : "all agents (type name + Enter)"}
+            className="bg-raised border border-border rounded px-2 py-0.5 text-xs text-foreground font-mono w-40"
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && e.currentTarget.value.trim()) {
+                const name = e.currentTarget.value.trim();
+                if (!config.agent_name_filter?.includes(name)) {
+                  setConfig({ ...config, agent_name_filter: [...(config.agent_name_filter || []), name] });
+                }
+                e.currentTarget.value = "";
+              }
+            }}
+          />
+        </div>
+        {(!config.agent_name_filter || config.agent_name_filter.length === 0) && (
+          <div className="text-[10px] text-muted mt-1">No filter — curates events from all agents in the workspace</div>
+        )}
       </div>
+
+      {/* Target notebook */}
+      {notebookId && (
+        <div className="flex items-center gap-1.5">
+          <span className="text-xs text-muted">Wiki notebook:</span>
+          <a href="/notebooks" className="text-xs text-brand hover:underline font-mono">{notebookId.slice(0, 8)}...</a>
+          <span className="text-[10px] text-muted">(curated wiki is written here)</span>
+        </div>
+      )}
 
       <div className="flex items-center gap-1.5">
         <span className="text-xs text-muted">Model:</span>
@@ -510,6 +573,7 @@ export default function PersonasPage() {
                         <InlineSleepConfig
                           personaId={persona.id}
                           personaWorkspaces={persona.workspaces || []}
+                          notebookId={persona.notebook_id}
                         />
                       )}
                     </div>
