@@ -59,6 +59,7 @@ class PersonaCreateRequest(BaseModel):
     name: str = Field(..., min_length=1, max_length=64, pattern=r"^[a-zA-Z0-9_-]+$")
     display_name: str | None = Field(None, max_length=128)
     description: str = Field("", max_length=500)
+    workspace_id: UUID | None = None
 
 
 class PersonaUpdateRequest(BaseModel):

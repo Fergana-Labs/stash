@@ -7,6 +7,7 @@ import { useAuth } from "../../hooks/useAuth";
 import {
   createPersona,
   deletePersona,
+  listPersonas,
   listPersonasWithContext,
   rotatePersonaKey,
   updatePersona,
@@ -451,6 +452,7 @@ function InlineSleepConfig({ personaId, personaWorkspaces, notebookId }: { perso
 
 export default function PersonasPage() {
   const router = useRouter();
+  const wsId = typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("ws") : null;
   const { user, loading, logout } = useAuth();
   const [personas, setPersonas] = useState<PersonaWithContext[]>([]);
   const [showCreate, setShowCreate] = useState(false);
@@ -466,10 +468,16 @@ export default function PersonasPage() {
 
   const loadPersonas = useCallback(async () => {
     try {
-      const res = await listPersonasWithContext();
-      setPersonas(res?.personas ?? []);
+      if (wsId) {
+        const res = await listPersonas(wsId);
+        // Wrap in PersonaWithContext shape
+        setPersonas((res || []).map((p: any) => ({ ...p, workspaces: [{ workspace_id: wsId, workspace_name: "", role: "member" }] })));
+      } else {
+        const res = await listPersonasWithContext();
+        setPersonas(res?.personas ?? []);
+      }
     } catch { /* ignore */ }
-  }, []);
+  }, [wsId]);
 
   useEffect(() => {
     if (user && user.type === "human") loadPersonas();
@@ -479,7 +487,7 @@ export default function PersonasPage() {
     if (!newName.trim()) return;
     setError("");
     try {
-      const persona = await createPersona(newName.trim(), newDisplayName.trim() || undefined, newDescription.trim() || undefined);
+      const persona = await createPersona(newName.trim(), newDisplayName.trim() || undefined, newDescription.trim() || undefined, wsId || undefined);
       setNewApiKey(persona.api_key);
       setShowCreate(false);
       setNewName("");

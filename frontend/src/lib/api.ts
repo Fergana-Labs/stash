@@ -697,6 +697,11 @@ export async function listPersonasWithContext(): Promise<{ personas: PersonaWith
   return apiFetch("/api/v1/me/personas");
 }
 
+export async function listPersonas(workspaceId?: string): Promise<PersonaProfile[]> {
+  const qs = workspaceId ? `?ws=${workspaceId}` : "";
+  return apiFetch<PersonaProfile[]>(`/api/v1/personas${qs}`);
+}
+
 // --- Decks (workspace-scoped) ---
 
 export async function createDeck(
@@ -1051,14 +1056,11 @@ export async function deleteWebhook(workspaceId: string): Promise<void> {
 
 // --- Personas ---
 
-export async function listPersonas(): Promise<PersonaProfile[]> {
-  return apiFetch("/api/v1/personas");
-}
-
 export async function createPersona(
   name: string,
   displayName?: string,
-  description?: string
+  description?: string,
+  workspaceId?: string,
 ): Promise<PersonaResponse> {
   return apiFetch("/api/v1/personas", {
     method: "POST",
@@ -1066,6 +1068,7 @@ export async function createPersona(
       name,
       display_name: displayName || null,
       description: description || "",
+      workspace_id: workspaceId || null,
     }),
   });
 }
