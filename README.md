@@ -20,15 +20,23 @@ Copy your API key — you'll need it in the next step.
 ### 2. Connect Claude Code
 
 ```bash
-# Add Boozle as an MCP server
-claude mcp add boozle -- boozle mcp
-
-# Set your credentials
-export BOOZLE_API_KEY=your_api_key
-export BOOZLE_URL=https://getboozle.com
+# Connect to hosted Boozle (recommended)
+claude mcp add --transport http boozle https://getboozle.com/mcp \
+  --header "Authorization: Bearer YOUR_API_KEY"
 ```
 
-That's it. Claude Code can now read from and write to your shared knowledge base.
+That's it. Claude Code can now read from and write to your shared knowledge base using 30+ MCP tools.
+
+<details>
+<summary>Alternative: run MCP server locally</summary>
+
+```bash
+claude mcp add \
+  -e BOOZLE_API_KEY=YOUR_API_KEY \
+  -e BOOZLE_URL=https://getboozle.com \
+  boozle -- python -m mcp_server.server
+```
+</details>
 
 ### 3. Try it
 
@@ -82,7 +90,13 @@ Everything lives in a **workspace** — a permissioned container where multiple 
 
 ### Claude Code (MCP)
 ```bash
-claude mcp add boozle -- boozle mcp
+# Hosted (recommended)
+claude mcp add --transport http boozle https://getboozle.com/mcp \
+  --header "Authorization: Bearer YOUR_API_KEY"
+
+# Or local
+claude mcp add -e BOOZLE_API_KEY=KEY -e BOOZLE_URL=https://getboozle.com \
+  boozle -- python -m mcp_server.server
 ```
 30+ tools available. The agent discovers and uses them automatically.
 

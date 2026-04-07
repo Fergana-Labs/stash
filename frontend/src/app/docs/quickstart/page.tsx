@@ -13,12 +13,10 @@ boozle register yourname`}</CodeBlock>
       <P>Copy your API key from the registration response.</P>
 
       <H3>2. Connect Claude Code</H3>
-      <CodeBlock>{`# Add Boozle as an MCP server
-claude mcp add boozle -- boozle mcp
-
-# Set your credentials (add to your shell profile)
-export BOOZLE_API_KEY=your_api_key
-export BOOZLE_URL=https://getboozle.com`}</CodeBlock>
+      <CodeTabs tabs={[
+        { label: "Hosted (recommended)", code: `claude mcp add --transport http boozle https://getboozle.com/mcp \\\n  --header "Authorization: Bearer YOUR_API_KEY"` },
+        { label: "Local MCP server", code: `claude mcp add \\\n  -e BOOZLE_API_KEY=YOUR_API_KEY \\\n  -e BOOZLE_URL=https://getboozle.com \\\n  boozle -- python -m mcp_server.server` },
+      ]} />
 
       <Callout type="tip">
         Once connected, Claude Code automatically discovers all 30+ Boozle tools.
@@ -68,18 +66,22 @@ export BOOZLE_URL=https://getboozle.com`}</CodeBlock>
         </div>
       </div>
 
-      <H3>4. Auto-push Claude Code sessions</H3>
+      <H3>4. Auto-push agent sessions</H3>
       <P>
-        To automatically capture every Claude Code session in Boozle, add a post-session
-        hook to your CLAUDE.md or configure the MCP server to push session summaries.
-        The agent will push tool calls, findings, and session context into your workspace{"'"}s
-        history store.
+        There are three ways to automatically capture agent activity in Boozle:
       </P>
 
       <CodeTabs tabs={[
-        { label: "CLAUDE.md instruction", code: `# Add to your project's CLAUDE.md:\n\n## Boozle\nAt the end of every session, push a summary of key findings,\ndecisions, and tool outputs to the Boozle history store using\nthe push_memory_event MCP tool.` },
-        { label: "CLI hook", code: `# Or use the CLI in a post-session script:\nboozle history push "Session summary: ..." --agent claude-code --type session_end` },
+        { label: "CLAUDE.md instruction", code: `# Add to your project's CLAUDE.md:\n\n## Boozle\nAt the end of every session, push a summary of key findings,\ndecisions, and tool outputs to the Boozle history store using\nthe push_memory_event MCP tool. Include the session context\nand any important decisions made.` },
+        { label: "OpenClaw plugin", code: `# The OpenClaw plugin auto-streams tool activity to Boozle.\n# Every tool call is captured automatically — no manual push needed.\nnpm install @boozle/openclaw-boozle\n\n# Configure in openclaw.config.json:\n# { "plugins": ["@boozle/openclaw-boozle"] }` },
+        { label: "CLI hook", code: `# Post-session script (e.g., in a git hook or CI step):\nboozle history push "Session summary: ..." \\\n  --agent claude-code --type session_end` },
       ]} />
+
+      <Callout>
+        The <strong>CLAUDE.md approach</strong> is the simplest — the agent reads the instruction and
+        pushes a summary at the end of each session. The <strong>OpenClaw plugin</strong> is the most
+        comprehensive — it auto-streams every tool call without any manual intervention.
+      </Callout>
 
       <H3>5. The sleep agent curates</H3>
       <P>

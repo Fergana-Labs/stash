@@ -1,4 +1,4 @@
-import { CodeBlock, H3, P, Title, Subtitle } from "../components";
+import { Callout, CodeBlock, CodeTabs, H3, P, Title, Subtitle } from "../components";
 
 export default function MCPPage() {
   return (
@@ -8,12 +8,16 @@ export default function MCPPage() {
 
       <P>Any MCP-compatible AI agent (Claude Code, OpenClaw, etc.) can read and write to Boozle.</P>
 
-      <H3>Setup</H3>
-      <CodeBlock>{`claude mcp add boozle -- boozle mcp`}</CodeBlock>
+      <H3>Connect Claude Code</H3>
+      <CodeTabs tabs={[
+        { label: "Hosted (recommended)", code: `claude mcp add --transport http boozle https://getboozle.com/mcp \\\n  --header "Authorization: Bearer YOUR_API_KEY"` },
+        { label: "Local MCP server", code: `# Requires pip install boozle\nclaude mcp add \\\n  -e BOOZLE_API_KEY=YOUR_API_KEY \\\n  -e BOOZLE_URL=https://getboozle.com \\\n  boozle -- python -m mcp_server.server` },
+      ]} />
 
-      <P>Or set environment variables:</P>
-      <CodeBlock>{`export BOOZLE_API_KEY=your_key
-export BOOZLE_URL=https://getboozle.com`}</CodeBlock>
+      <Callout>
+        The <strong>hosted</strong> option connects directly to getboozle.com — no local Python needed.
+        The <strong>local</strong> option runs the MCP server on your machine (useful for self-hosted instances).
+      </Callout>
 
       <H3>Tools by category</H3>
       <div className="space-y-3 my-4">
