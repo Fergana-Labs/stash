@@ -1,27 +1,36 @@
+import Link from "next/link";
 import { Callout, P, Title, Subtitle, H3 } from "./components";
 
 export default function DocsOverview() {
   return (
     <>
       <Title>Boozle</Title>
-      <Subtitle>The auto-curating knowledge base for AI-augmented teams.</Subtitle>
+      <Subtitle>A centralized, collaborative memory for teams of AI agents.</Subtitle>
 
       <Callout type="tip">
-        <strong>New here?</strong> Start with the <a href="/docs/quickstart" className="text-brand underline">Quickstart</a> — three commands to import your bookmarks and start searching.
+        <strong>New here?</strong> Start with the <Link href="/docs/quickstart" className="text-brand underline">Quickstart</Link> — connect Claude Code and start building your shared knowledge base.
       </Callout>
 
       <P>
-        Throw in your bookmarks, Claude Code sessions, PDFs, YouTube videos, articles.
-        A sleep agent curates it all into a searchable wiki with backlinks and semantic search.
-        You never write wiki entries manually.
+        Every Claude Code session, every research paper, every webpage, every conversation — it all
+        goes into one shared knowledge base that any agent on your team can access and learn from.
+        A sleep agent curates it into a searchable wiki with categories, backlinks, and semantic search.
       </P>
+
+      <H3>How it works</H3>
+      <ol className="list-decimal list-inside text-sm text-dim space-y-2 mb-6">
+        <li><strong>Agents push data in</strong> — Claude Code sessions, tool outputs, research findings flow in automatically via hooks and MCP tools</li>
+        <li><strong>Humans throw stuff in</strong> — bookmarks, PDFs, YouTube transcripts, web articles via the CLI</li>
+        <li><strong>The sleep agent curates</strong> — periodically reads everything, organizes it into a categorized wiki with [[backlinks]] and folders</li>
+        <li><strong>Anyone can search</strong> — agents and humans search across the entire knowledge base with AI-powered synthesis</li>
+      </ol>
 
       <H3>Consume, Curate, Collaborate</H3>
       <div className="grid grid-cols-3 gap-3 my-4">
         {[
-          { title: "Consume", desc: "Throw stuff in. Bookmarks, files, agent history, structured data.", items: "Files, History, Tables", color: "border-brand/30" },
-          { title: "Curate", desc: "Sleep agent organizes data into a categorized wiki automatically.", items: "Notebooks, Personas", color: "border-green-500/30" },
-          { title: "Collaborate", desc: "Chat with your team. Create and share pages, reports.", items: "Chats, Pages", color: "border-violet-500/30" },
+          { title: "Consume", desc: "Data flows in. Agent sessions, files, bookmarks, structured data. Via hooks, CLI, or MCP tools.", items: "Files, History, Tables", color: "border-brand/30" },
+          { title: "Curate", desc: "Sleep agent organizes everything into a categorized wiki. You search and browse.", items: "Notebooks, Personas", color: "border-green-500/30" },
+          { title: "Collaborate", desc: "Chat with your team. Create and share reports, dashboards, slide decks.", items: "Chats, Pages", color: "border-violet-500/30" },
         ].map((c) => (
           <div key={c.title} className={`border rounded-lg p-3 ${c.color}`}>
             <div className="text-sm font-medium text-foreground mb-1">{c.title}</div>
@@ -33,8 +42,8 @@ export default function DocsOverview() {
 
       <P>
         Everything lives in a <strong>workspace</strong> — a permissioned container where
-        multiple agents and people collaborate. Each workspace has its own files, notebooks,
-        tables, chats, and history.
+        multiple agents and humans collaborate. Each workspace has its own history, notebooks,
+        files, tables, and chats.
       </P>
     </>
   );

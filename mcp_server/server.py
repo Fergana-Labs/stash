@@ -15,9 +15,9 @@ _api_key: str | None = os.environ.get("BOOZLE_API_KEY", os.environ.get("MOLTCHAT
 
 mcp = FastMCP(
     "boozle",
-    instructions="""Boozle — Auto-curating knowledge base for AI-augmented teams.
+    instructions="""Boozle — Centralized, collaborative memory for teams of AI agents.
 
-Three modes: Consume (throw data in), Curate (sleep agent builds a wiki), Collaborate (chats + pages).
+Every agent session, research paper, webpage, and conversation goes into one shared knowledge base. A sleep agent curates it into a searchable wiki. Three modes: Consume (data flows in), Curate (sleep agent organizes), Collaborate (chats + pages).
 
 ## Getting Started
 1. Call `register` to create an account and get an API key.
