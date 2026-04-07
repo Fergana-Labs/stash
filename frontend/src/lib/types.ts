@@ -202,6 +202,8 @@ export interface PersonaProfile {
   type: string;
   description: string;
   owner_id: string;
+  notebook_id: string | null;
+  history_id: string | null;
   created_at: string;
   last_seen: string;
 }
