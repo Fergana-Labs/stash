@@ -6,70 +6,77 @@ Every Claude Code session, every research paper, every webpage, every conversati
 
 ## Quickstart
 
-### 1. Create an account
+### 1. Create an account + persona
 
-Go to [getboozle.com](https://getboozle.com) and register, or use the CLI:
+Go to [getboozle.com](https://getboozle.com) and register. Then create a persona on the Personas page — this is your AI agent's identity. Save the persona's API key.
 
-```bash
-pip install boozle
-boozle register yourname
-```
-
-Copy your API key — you'll need it in the next step.
-
-### 2. Connect Claude Code
+### 2. Install the Claude Code plugin
 
 ```bash
-# Connect to hosted Boozle (recommended)
-claude mcp add --transport http boozle https://getboozle.com/mcp \
-  --header "Authorization: Bearer YOUR_API_KEY"
+claude plugin add ./claude-plugin
 ```
 
-That's it. Claude Code can now read from and write to your shared knowledge base using 30+ MCP tools.
+The plugin will prompt for your persona's API key and agent name.
 
-<details>
-<summary>Alternative: run MCP server locally</summary>
+### 3. Connect to a workspace
 
-```bash
-claude mcp add \
-  -e BOOZLE_API_KEY=YOUR_API_KEY \
-  -e BOOZLE_URL=https://getboozle.com \
-  boozle -- python -m mcp_server.server
+Start Claude Code and run:
+
 ```
-</details>
+/boozle:connect
+```
 
-### 3. Try it
+This wizard connects your persona to a workspace and sets up activity streaming. Every tool call, edit, and message now flows into Boozle automatically.
 
-Open Claude Code and paste these prompts:
+### 4. Try it
+
+Your agent sessions now auto-stream to Boozle. Try these prompts:
 
 **Push knowledge in:**
 > "Search the web for the latest research on RAG architectures and save a summary to my Boozle knowledge base"
 
-**Import your bookmarks:**
-> "Run `boozle import-bookmarks ~/Downloads/bookmarks.html` to import my Chrome bookmarks into the knowledge base"
+**Import bookmarks:**
+> "Run `boozle import-bookmarks ~/Downloads/bookmarks.html` to import my Chrome bookmarks"
 
 **Search across everything:**
 > "Check my Boozle knowledge base — what do we know about authentication patterns?"
 
 **Create a shareable report:**
-> "Create a Boozle page summarizing our key findings on database performance, with charts"
+> "Create a Boozle page summarizing our key findings on database performance"
 
-The agent uses Boozle's MCP tools automatically. You don't need to learn the CLI — just tell the agent what you want.
+### 5. The sleep agent curates
 
-### 4. The sleep agent curates
-
-Every 30 minutes, a sleep agent reads newly ingested data and organizes it into a categorized wiki with [[backlinks]], folders, and summaries. Configure it on the Personas page — choose which agent names to watch and which workspace to curate.
+Every 30 minutes, a sleep agent reads newly ingested data and organizes it into a categorized wiki with [[backlinks]], folders, and summaries. Configure it on the Personas page.
 
 ## How it works
 
 ```
-Agents push data in → Sleep agent curates → Anyone can search
-(Claude Code sessions,    (categorized wiki       (AI-synthesized answers
- bookmarks, PDFs,          with backlinks,          across everything)
- web articles, tables)     folders, summaries)
+Claude Code plugin     → Activity streams to Boozle history
+  auto-captures every    → Sleep agent curates into wiki
+  tool call, edit,       → Anyone can search across everything
+  and session
 ```
 
 Everything lives in a **workspace** — a permissioned container where multiple agents and humans collaborate.
+
+## What the plugin does
+
+The Boozle Claude Code plugin hooks into your session lifecycle:
+
+| Hook | What it does |
+|------|-------------|
+| **SessionStart** | Loads persona context, injects relevant memory into prompt |
+| **PostToolUse** | Streams every tool call to Boozle history (async, doesn't slow you down) |
+| **UserPromptSubmit** | Records prompts for context tracking |
+| **Stop** | Pushes session summary with key findings |
+
+**Skills available in Claude Code:**
+- `/boozle:connect` — connect to a workspace
+- `/boozle:disconnect` — pause activity streaming
+- `/boozle:status` — show connection status
+- `/boozle:sync` — force-refresh local context cache
+- `/boozle:persona` — view or set agent persona
+- `/boozle:config` — view or change config
 
 ## Architecture
 
@@ -86,33 +93,29 @@ Everything lives in a **workspace** — a permissioned container where multiple 
 - **Chats** — real-time messaging, agents alongside humans
 - **Pages** — shareable HTML (reports, dashboards, slide decks)
 
-## Integrations
+## Other integrations
 
-### Claude Code (MCP)
+### MCP Server (for agents without the plugin)
 ```bash
-# Hosted (recommended)
+# Hosted
 claude mcp add --transport http boozle https://getboozle.com/mcp \
   --header "Authorization: Bearer YOUR_API_KEY"
 
-# Or local
+# Local
 claude mcp add -e BOOZLE_API_KEY=KEY -e BOOZLE_URL=https://getboozle.com \
   boozle -- python -m mcp_server.server
 ```
-30+ tools available. The agent discovers and uses them automatically.
 
 ### OpenClaw Plugin
-Server-side scored memory injection, activity streaming, and cross-session context.
 ```bash
-# Install the plugin
 openclaw plugin add @boozle/openclaw-boozle
 ```
 
 ### CLI
-For scripting and automation:
 ```bash
-boozle import-bookmarks <file.html>   # Import bookmarks (scrapes articles, YouTube, PDFs)
+pip install boozle
+boozle import-bookmarks <file.html>   # Import bookmarks
 boozle history push <content>          # Push an event
-boozle notebooks list                  # List notebooks
 boozle --help                          # Full command list
 ```
 
