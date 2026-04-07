@@ -51,11 +51,19 @@ def _err(e: BoozleError) -> None:
 # ===========================================================================
 
 @app.command()
-def register(name: str = typer.Argument(...), type: str = typer.Option("persona"), description: str = typer.Option(""), as_json: bool = typer.Option(False, "--json")):
+def register(
+    name: str = typer.Argument(...),
+    type: str = typer.Option("human"),
+    description: str = typer.Option(""),
+    password: str = typer.Option(None, "--password", help="Password (required for human accounts)"),
+    as_json: bool = typer.Option(False, "--json"),
+):
     """Create account and store API key."""
+    if type == "human" and not password:
+        password = typer.prompt("Password", hide_input=True, confirmation_prompt=True)
     with _client() as c:
         try:
-            data = c.register(name, user_type=type, description=description)
+            data = c.register(name, user_type=type, description=description, password=password)
         except BoozleError as e:
             _err(e)
     save_config(api_key=data["api_key"], username=data["name"])
@@ -1418,6 +1426,187 @@ def config_cmd(key: Optional[str] = typer.Argument(None), value: Optional[str] =
         if display.get("api_key"):
             display["api_key"] = display["api_key"][:10] + "..."
         console.print(json.dumps(display, indent=2, default=str))
+
+
+# ===========================================================================
+# Import Bookmarks
+# ===========================================================================
+
+
+@app.command("import-bookmarks")
+def import_bookmarks_cmd(
+    file: str = typer.Argument(..., help="Path to bookmarks .html file (Chrome/Firefox export)"),
+    notebook: str = typer.Option("Bookmarks", "--notebook", "-n", help="Notebook name to create or use"),
+    workspace_id: str = typer.Option(None, "--ws", help="Workspace ID (uses personal notebook if omitted)"),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Show what would be imported without importing"),
+    skip_scrape: bool = typer.Option(False, "--skip-scrape", help="Import titles + URLs only, skip content extraction"),
+    delay: float = typer.Option(0.5, "--delay", help="Seconds between scrape requests"),
+    as_json: bool = typer.Option(False, "--json"),
+):
+    """Import bookmarks from a Chrome/Firefox HTML export.
+
+    Parses the bookmark file, scrapes each URL (web articles, YouTube transcripts,
+    PDFs), and stores them as notebook pages. The sleep agent will curate them into
+    a searchable wiki.
+
+    Export bookmarks: Chrome → Bookmarks → ⋮ → Export bookmarks
+    """
+    from pathlib import Path
+    from .bookmark_parser import parse_bookmark_file, unique_folders
+    from .scraper import scrape_bookmarks, format_page_content
+
+    path = Path(file)
+    if not path.exists():
+        console.print(f"[red]File not found: {file}[/red]")
+        raise typer.Exit(1)
+
+    # Parse
+    bookmarks = parse_bookmark_file(path)
+    folders = unique_folders(bookmarks)
+    console.print(f"[green]Found {len(bookmarks)} bookmarks in {len(folders)} folders[/green]")
+
+    if not bookmarks:
+        console.print("[yellow]No bookmarks found in the file.[/yellow]")
+        raise typer.Exit(0)
+
+    # Dry run
+    if dry_run:
+        from rich.table import Table
+        table = Table(title="Bookmarks to import")
+        table.add_column("Folder", style="dim")
+        table.add_column("Title")
+        table.add_column("URL", style="dim")
+        for b in bookmarks[:100]:
+            table.add_row(b.folder_label, b.title[:50], b.url[:60])
+        if len(bookmarks) > 100:
+            table.add_row("...", f"({len(bookmarks) - 100} more)", "")
+        console.print(table)
+        raise typer.Exit(0)
+
+    # Scrape content (unless skip_scrape)
+    scraped: dict[str, tuple[str | None, str]] = {}
+    if not skip_scrape:
+        scraped = scrape_bookmarks(bookmarks, delay=delay)
+
+    # Create or reuse notebook
+    with _client() as c:
+        try:
+            if workspace_id:
+                nb = c.create_notebook(workspace_id, notebook)
+            else:
+                nb = c.create_personal_notebook(notebook)
+        except BoozleError as e:
+            if e.status_code == 409:
+                # Notebook exists, find it
+                if workspace_id:
+                    nbs = c.list_notebooks(workspace_id)
+                else:
+                    nbs = c.list_personal_notebooks()
+                nb = next((n for n in nbs if n["name"] == notebook), None)
+                if not nb:
+                    console.print(f"[red]Notebook '{notebook}' exists but could not be found[/red]")
+                    raise typer.Exit(1)
+            else:
+                _err(e)
+
+        notebook_id = nb["id"]
+        console.print(f"Notebook: [bold]{nb['name']}[/bold] ({notebook_id})")
+
+        # Create folders
+        folder_ids: dict[str, str] = {}
+        for folder_name in folders:
+            try:
+                if workspace_id:
+                    f = c.create_folder(workspace_id, notebook_id, folder_name)
+                else:
+                    f = c.create_personal_folder(notebook_id, folder_name)
+                folder_ids[folder_name] = f["id"]
+            except BoozleError:
+                pass  # Folder may already exist, skip
+
+        # Import bookmarks as pages
+        imported = 0
+        failed = 0
+        skipped_scrape_count = 0
+
+        from rich.progress import Progress as RichProgress
+        with RichProgress(transient=False) as progress:
+            task = progress.add_task("Importing pages...", total=len(bookmarks))
+
+            for bm in bookmarks:
+                progress.advance(task)
+                content_md = None
+                content_type = "unknown"
+
+                if bm.url in scraped:
+                    content_md, content_type = scraped[bm.url]
+                    if not content_md:
+                        skipped_scrape_count += 1
+
+                page_content = format_page_content(bm, content_md, content_type)
+                folder_id = folder_ids.get(bm.folder_label)
+
+                # Truncate title to avoid API errors
+                page_name = bm.title[:200] if bm.title else bm.url[:200]
+
+                try:
+                    if workspace_id:
+                        c.create_page(workspace_id, notebook_id, page_name, page_content, folder_id=folder_id)
+                    else:
+                        c.create_personal_page(notebook_id, page_name, page_content)
+                    imported += 1
+                except BoozleError:
+                    failed += 1
+
+    # Summary
+    console.print(f"\n[green]Imported {imported} bookmarks[/green]")
+    if failed:
+        console.print(f"[yellow]Failed: {failed}[/yellow]")
+    if skipped_scrape_count:
+        console.print(f"[dim]Scrape failed for {skipped_scrape_count} URLs (stored as links only)[/dim]")
+    if not skip_scrape:
+        yt = sum(1 for _, (_, t) in scraped.items() if t == "youtube" and _ is not None)
+        pdf = sum(1 for _, (_, t) in scraped.items() if t == "pdf" and _ is not None)
+        art = sum(1 for _, (c, t) in scraped.items() if t == "article" and c is not None)
+        if yt or pdf or art:
+            console.print(f"[dim]Content extracted: {art} articles, {yt} YouTube transcripts, {pdf} PDFs[/dim]")
+
+
+# ===========================================================================
+# Universal Search
+# ===========================================================================
+
+
+@app.command("search")
+def search_cmd(
+    query: str = typer.Argument(..., help="Question or search query"),
+    workspace_id: str = typer.Option(None, "--ws", help="Workspace ID (searches personal resources if omitted)"),
+    types: str = typer.Option(None, "--types", help="Comma-separated resource types: history,notebook,table,document"),
+    as_json: bool = typer.Option(False, "--json"),
+):
+    """Search across all your knowledge — notebooks, history, tables, documents.
+
+    Uses AI-powered synthesis to find answers across all your ingested data.
+    """
+    resource_types = [t.strip() for t in types.split(",")] if types else None
+
+    with _client() as c:
+        try:
+            if workspace_id:
+                result = c.universal_search(workspace_id, query, resource_types=resource_types)
+            else:
+                result = c.personal_search(query, resource_types=resource_types)
+        except BoozleError as e:
+            _err(e)
+
+    if _use_json(as_json):
+        output_json(result)
+    else:
+        answer = result.get("answer", "No answer found.")
+        sources = result.get("sources_used", [])
+        console.print(f"\n{answer}\n")
+        if sources:
+            console.print(f"[dim]Sources: {', '.join(sources)}[/dim]")
 
 
 if __name__ == "__main__":
