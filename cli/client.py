@@ -67,10 +67,11 @@ class BoozleClient:
 
     # --- Auth ---
 
-    def register(self, name: str, user_type: str = "agent", description: str = "") -> dict:
-        return self._post("/api/v1/users/register", json={
-            "name": name, "type": user_type, "description": description,
-        })
+    def register(self, name: str, user_type: str = "human", description: str = "", password: str | None = None) -> dict:
+        body: dict = {"name": name, "type": user_type, "description": description}
+        if password:
+            body["password"] = password
+        return self._post("/api/v1/users/register", json=body)
 
     def login(self, name: str, password: str) -> dict:
         return self._post("/api/v1/users/login", json={"name": name, "password": password})
@@ -248,6 +249,28 @@ class BoozleClient:
 
     def update_personal_page(self, notebook_id: str, page_id: str, **kwargs) -> dict:
         return self._patch(f"/api/v1/notebooks/{notebook_id}/pages/{page_id}", json=kwargs)
+
+    # --- Notebook Folders ---
+
+    def create_folder(self, workspace_id: str, notebook_id: str, name: str) -> dict:
+        return self._post(f"/api/v1/workspaces/{workspace_id}/notebooks/{notebook_id}/folders", json={"name": name})
+
+    def create_personal_folder(self, notebook_id: str, name: str) -> dict:
+        return self._post(f"/api/v1/notebooks/{notebook_id}/folders", json={"name": name})
+
+    # --- Universal Search ---
+
+    def universal_search(self, workspace_id: str, question: str, resource_types: list[str] | None = None) -> dict:
+        body: dict = {"question": question}
+        if resource_types:
+            body["resource_types"] = resource_types
+        return self._post(f"/api/v1/workspaces/{workspace_id}/search", json=body)
+
+    def personal_search(self, question: str, resource_types: list[str] | None = None) -> dict:
+        body: dict = {"question": question}
+        if resource_types:
+            body["resource_types"] = resource_types
+        return self._post("/api/v1/me/search", json=body)
 
     # --- History (was memory stores) ---
 
