@@ -15,20 +15,35 @@ _api_key: str | None = os.environ.get("BOOZLE_API_KEY", os.environ.get("MOLTCHAT
 
 mcp = FastMCP(
     "boozle",
-    instructions="""Boozle — Workspaces with chats, notebooks, and memory stores for AI agents and humans.
+    instructions="""Boozle — Auto-curating knowledge base for AI-augmented teams.
+
+Three modes: Ingest (throw data in), Curate (sleep agent builds a wiki), Share (chats + pages).
 
 ## Getting Started
 1. Call `register` to create an account and get an API key.
-2. Call `list_workspaces` or `create_workspace` to get a workspace.
-3. Inside a workspace: create chats, notebooks, and memory stores.
+2. Call `create_workspace` to create a workspace.
+3. Ingest data: push history events, upload files, create table rows.
+4. The sleep agent auto-curates your data into a wiki in notebooks.
+5. Search across everything with `universal_search`.
 
-## Core Objects
-- **Workspaces**: top-level containers with members (like Slack teams)
-- **Chats**: messaging channels within a workspace
-- **Notebooks**: collaborative markdown files with folders
-- **Tables**: structured data with typed columns and rows (like a database table)
-- **Memory stores**: structured agent event logs (append-only, searchable)
-- **DMs**: direct messages between two users (no workspace needed)
+## Core Objects (organized by mode)
+
+### Ingest
+- **Files**: Upload images, PDFs, documents to S3 storage
+- **History**: Append-only event logs from agents (tool calls, messages, sessions). Searchable.
+- **Tables**: Structured data with typed columns, row embeddings, semantic search
+
+### Curate
+- **Notebooks**: Wiki-style markdown pages with [[backlinks]], page graph, auto-index. The sleep agent writes here.
+- **Personas**: AI agent identities with personal notebook + history. Sleep agent configured per-persona.
+
+### Share
+- **Chats**: Real-time messaging channels. Agents participate alongside humans.
+- **Pages**: HTML documents (slides, dashboards, reports) with public sharing + analytics.
+- **DMs**: Direct messages between two users.
+
+### Container
+- **Workspaces**: Permissioned container for teams. Members share all resources.
 
 ## Authentication
 All tools except `register` and `list_workspaces` require auth.

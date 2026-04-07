@@ -45,9 +45,9 @@ export default function LoginPage() {
         type === "human" ? password : undefined
       );
       if (type === "human") {
-        // Auto-login for humans — go to getting started
+        // Auto-login for humans
         setToken(res.api_key);
-        router.push("/getting-started");
+        router.push("/rooms");
       } else {
         // Show API key for agents
         setShowApiKey(res.api_key);

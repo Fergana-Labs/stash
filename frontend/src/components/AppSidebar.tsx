@@ -1,7 +1,10 @@
 "use client";
 
 import Link from "next/link";
+import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
+import { listMyWorkspaces } from "../lib/api";
+import type { Workspace } from "../lib/types";
 
 interface NavItem {
   href: string;
@@ -11,17 +14,20 @@ interface NavItem {
 
 const SEARCH: NavItem = { href: "/search", label: "Search", icon: "S" };
 
-const ARTIFACTS: NavItem[] = [
-  { href: "/notebooks", label: "Notebooks", icon: "N" },
+const INGEST: NavItem[] = [
   { href: "/documents", label: "Files", icon: "F" },
-  { href: "/decks", label: "Pages", icon: "D" },
+  { href: "/memory", label: "History", icon: "H" },
   { href: "/tables", label: "Tables", icon: "T" },
 ];
 
-const AGENTS: NavItem[] = [
+const CURATE: NavItem[] = [
+  { href: "/notebooks", label: "Notebooks", icon: "N" },
   { href: "/personas", label: "Personas", icon: "P" },
+];
+
+const SHARE: NavItem[] = [
   { href: "/chats", label: "Chats", icon: "C" },
-  { href: "/memory", label: "History", icon: "H" },
+  { href: "/decks", label: "Pages", icon: "D" },
 ];
 
 function NavLink({ item, isActive }: { item: NavItem; isActive: boolean }) {
@@ -58,56 +64,119 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
 
 export default function AppSidebar() {
   const pathname = usePathname();
+  const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
+  const [showWsSwitcher, setShowWsSwitcher] = useState(false);
+
+  useEffect(() => {
+    listMyWorkspaces()
+      .then((res) => setWorkspaces(res?.workspaces ?? []))
+      .catch(() => {});
+  }, []);
 
   const isActive = (href: string) =>
     pathname === href || pathname.startsWith(href + "/");
 
+  // Detect current workspace from URL
+  const wsMatch = pathname.match(/^\/workspaces\/([^/]+)/);
+  const currentWsId = wsMatch?.[1];
+  const currentWs = workspaces.find((w) => w.id === currentWsId);
+
   return (
     <aside className="w-[220px] flex-shrink-0 bg-surface border-r border-border flex flex-col">
-      <div className="px-4 py-4">
+      {/* Logo */}
+      <div className="px-4 pt-4 pb-2">
         <Link href="/" className="text-lg font-bold font-display text-foreground tracking-tight">
           boozle
         </Link>
       </div>
 
-      <nav className="flex-1 px-2">
+      {/* Workspace switcher */}
+      <div className="px-2 pb-2 relative">
+        <button
+          onClick={() => setShowWsSwitcher(!showWsSwitcher)}
+          className="w-full flex items-center gap-2 px-3 py-2 rounded-md text-sm text-dim hover:text-foreground hover:bg-raised transition-colors"
+        >
+          <span className="w-5 h-5 rounded bg-raised text-muted flex items-center justify-center text-[10px] font-bold flex-shrink-0">
+            W
+          </span>
+          <span className="flex-1 text-left truncate">
+            {currentWs?.name || "Workspaces"}
+          </span>
+          <span className="text-muted text-xs">{showWsSwitcher ? "▴" : "▾"}</span>
+        </button>
+
+        {showWsSwitcher && (
+          <div className="absolute left-2 right-2 top-full z-50 bg-base border border-border rounded-lg shadow-lg py-1 mt-1">
+            {workspaces.map((ws) => (
+              <Link
+                key={ws.id}
+                href={`/workspaces/${ws.id}`}
+                onClick={() => setShowWsSwitcher(false)}
+                className={`block px-3 py-1.5 text-sm transition-colors ${
+                  ws.id === currentWsId
+                    ? "text-brand bg-brand/5"
+                    : "text-foreground hover:bg-raised"
+                }`}
+              >
+                {ws.name}
+              </Link>
+            ))}
+            {workspaces.length === 0 && (
+              <div className="px-3 py-1.5 text-xs text-muted">No workspaces yet</div>
+            )}
+            <div className="border-t border-border mt-1 pt-1">
+              <Link
+                href="/rooms"
+                onClick={() => setShowWsSwitcher(false)}
+                className="flex items-center gap-2 px-3 py-1.5 text-xs text-muted hover:text-foreground transition-colors"
+              >
+                Manage workspaces...
+              </Link>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Navigation */}
+      <nav className="flex-1 px-2 overflow-y-auto">
         <NavLink item={SEARCH} isActive={isActive(SEARCH.href)} />
 
-        <SectionLabel>Artifacts</SectionLabel>
+        <SectionLabel>Ingest</SectionLabel>
         <div className="space-y-0.5">
-          {ARTIFACTS.map((item) => (
+          {INGEST.map((item) => (
             <NavLink key={item.href} item={item} isActive={isActive(item.href)} />
           ))}
         </div>
 
-        <SectionLabel>Agents</SectionLabel>
+        <SectionLabel>Curate</SectionLabel>
         <div className="space-y-0.5">
-          {AGENTS.map((item) => (
+          {CURATE.map((item) => (
+            <NavLink key={item.href} item={item} isActive={isActive(item.href)} />
+          ))}
+        </div>
+
+        <SectionLabel>Share</SectionLabel>
+        <div className="space-y-0.5">
+          {SHARE.map((item) => (
             <NavLink key={item.href} item={item} isActive={isActive(item.href)} />
           ))}
         </div>
       </nav>
 
-      {/* Workspace switcher at bottom */}
-      <div className="px-2 pb-3">
+      {/* Docs + Settings */}
+      <div className="px-2 pb-3 space-y-0.5">
         <Link
-          href="/rooms"
+          href="/docs"
           className={`flex items-center gap-3 px-3 py-2 rounded-md text-sm transition-colors ${
-            isActive("/rooms")
+            isActive("/docs")
               ? "bg-brand/10 text-brand font-medium"
               : "text-dim hover:text-foreground hover:bg-raised"
           }`}
         >
-          <span
-            className={`w-5 h-5 rounded flex items-center justify-center text-[10px] font-bold flex-shrink-0 ${
-              isActive("/rooms")
-                ? "bg-brand text-white"
-                : "bg-raised text-muted"
-            }`}
-          >
-            W
-          </span>
-          Workspaces
+          <span className={`w-5 h-5 rounded flex items-center justify-center text-[10px] font-bold flex-shrink-0 ${
+            isActive("/docs") ? "bg-brand text-white" : "bg-raised text-muted"
+          }`}>?</span>
+          Docs
         </Link>
       </div>
     </aside>

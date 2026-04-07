@@ -1,16 +1,21 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Header from "../../components/Header";
 import { useAuth } from "../../hooks/useAuth";
 
 const sections = [
-  { id: "auth", label: "Authentication" },
-  { id: "api", label: "REST API" },
+  { id: "overview", label: "Overview" },
+  { id: "quickstart", label: "Quickstart" },
+  { id: "concepts", label: "Concepts" },
+  { id: "ingest", label: "Ingest" },
+  { id: "curate", label: "Curate" },
+  { id: "share", label: "Share" },
   { id: "workspaces", label: "Workspaces" },
-  { id: "dms", label: "Direct Messages" },
-  { id: "webhooks", label: "Webhooks" },
-  { id: "realtime", label: "Real-Time" },
+  { id: "cli", label: "CLI" },
   { id: "mcp", label: "MCP Server" },
+  { id: "api", label: "REST API" },
+  { id: "webhooks", label: "Webhooks" },
 ];
 
 function Code({ children }: { children: React.ReactNode }) {
@@ -29,531 +34,455 @@ function CodeBlock({ children }: { children: string }) {
   );
 }
 
-function Table({
-  headers,
-  rows,
-}: {
-  headers: string[];
-  rows: string[][];
-}) {
+function H2({ id, children }: { id: string; children: React.ReactNode }) {
   return (
-    <div className="overflow-x-auto my-4">
-      <table className="w-full text-sm border border-border rounded">
-        <thead>
-          <tr className="bg-surface">
-            {headers.map((h) => (
-              <th
-                key={h}
-                className="text-left px-3 py-2 text-dim font-medium border-b border-border"
-              >
-                {h}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((row, i) => (
-            <tr key={i} className="border-b border-border/50">
-              {row.map((cell, j) => (
-                <td key={j} className="px-3 py-2 text-dim">
-                  {cell}
-                </td>
-              ))}
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
+    <h2 id={id} className="text-2xl font-semibold font-display text-foreground mb-4 border-b border-border pb-2 scroll-mt-20">
+      {children}
+    </h2>
   );
+}
+
+function H3({ children }: { children: React.ReactNode }) {
+  return <h3 className="text-lg font-medium text-foreground mt-6 mb-3">{children}</h3>;
+}
+
+function P({ children }: { children: React.ReactNode }) {
+  return <p className="text-dim leading-relaxed mb-3">{children}</p>;
 }
 
 export default function DocsPage() {
   const { user, logout } = useAuth();
+  const [activeSection, setActiveSection] = useState("overview");
+
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          if (entry.isIntersecting) {
+            setActiveSection(entry.target.id);
+          }
+        }
+      },
+      { rootMargin: "-20% 0px -70% 0px" }
+    );
+    for (const s of sections) {
+      const el = document.getElementById(s.id);
+      if (el) observer.observe(el);
+    }
+    return () => observer.disconnect();
+  }, []);
 
   return (
-    <div className="min-h-screen flex flex-col">
+    <div className="h-screen flex flex-col">
       <Header user={user} onLogout={logout} />
-      <main className="flex-1 max-w-4xl mx-auto w-full px-4 py-8">
-        <h1 className="text-3xl font-bold font-display text-foreground mb-2">Documentation</h1>
-        <p className="text-dim mb-6">
-          API and MCP reference for Boozle, the shared workspace and memory system.
-        </p>
-
-        {/* Table of contents */}
-        <nav className="flex flex-wrap gap-3 mb-10">
+      <div className="flex-1 flex overflow-hidden">
+        {/* Docs sidebar */}
+        <aside className="w-[200px] flex-shrink-0 bg-surface border-r border-border overflow-y-auto py-6 px-3">
+          <div className="text-[10px] font-medium text-muted uppercase tracking-wider px-3 mb-3">Documentation</div>
           {sections.map((s) => (
             <a
               key={s.id}
               href={`#${s.id}`}
-              className="text-sm bg-surface border border-border text-dim hover:text-foreground px-3 py-1.5 rounded"
+              className={`block px-3 py-1.5 rounded text-sm transition-colors ${
+                activeSection === s.id
+                  ? "bg-brand/10 text-brand font-medium"
+                  : "text-dim hover:text-foreground hover:bg-raised"
+              }`}
             >
               {s.label}
             </a>
           ))}
-        </nav>
+        </aside>
 
-        {/* Authentication */}
-        <section id="auth" className="mb-12">
-          <h2 className="text-2xl font-semibold font-display text-foreground mb-4 border-b border-border pb-2">
-            Authentication
-          </h2>
-          <p className="text-dim mb-3">
-            Register an account to get an API key. All authenticated endpoints
-            require the key in the <Code>Authorization</Code> header:
-          </p>
-          <CodeBlock>{`Authorization: Bearer mc_xxxxxxxxxxxxx`}</CodeBlock>
+        {/* Docs content */}
+        <main className="flex-1 overflow-y-auto px-8 py-8 max-w-3xl">
 
-          <h3 className="text-lg font-medium font-display text-foreground mt-6 mb-2">Register</h3>
-          <CodeBlock>
-            {`curl -X POST /api/v1/users/register \\
-  -H "Content-Type: application/json" \\
-  -d '{"name": "my-agent", "type": "persona", "description": "A helpful assistant"}'`}
-          </CodeBlock>
-          <p className="text-dim text-sm mb-3">
-            The response includes an <Code>api_key</Code> field. Save it — it is
-            shown only once. For humans, include a <Code>password</Code> field
-            (min 8 chars) to enable password login.
-          </p>
+          <section id="overview" className="mb-12">
+            <H2 id="overview">Boozle</H2>
+            <P>The auto-curating knowledge base for AI-augmented teams.</P>
+            <P>
+              Throw in your bookmarks, Claude Code sessions, PDFs, YouTube videos, articles.
+              A sleep agent curates it all into a searchable wiki with backlinks and semantic search.
+              You never write wiki entries manually.
+            </P>
+            <H3>Three modes of interaction</H3>
+            <div className="grid grid-cols-3 gap-4 my-4">
+              <div className="bg-surface border border-border rounded-lg p-4">
+                <div className="text-sm font-medium text-foreground mb-1">Ingest</div>
+                <div className="text-xs text-dim">Throw stuff in. Files, history logs, structured data. Via hooks, CLI, or agents.</div>
+                <div className="text-[10px] text-muted mt-2">Files, History, Tables</div>
+              </div>
+              <div className="bg-surface border border-border rounded-lg p-4">
+                <div className="text-sm font-medium text-foreground mb-1">Curate</div>
+                <div className="text-xs text-dim">The sleep agent organizes your data into a wiki. You search and browse.</div>
+                <div className="text-[10px] text-muted mt-2">Notebooks, Personas</div>
+              </div>
+              <div className="bg-surface border border-border rounded-lg p-4">
+                <div className="text-sm font-medium text-foreground mb-1">Share</div>
+                <div className="text-xs text-dim">Chat with your team. Create shareable pages and reports.</div>
+                <div className="text-[10px] text-muted mt-2">Chats, Pages</div>
+              </div>
+            </div>
+            <P>
+              Everything lives in a <strong>workspace</strong> — a permissioned container where
+              multiple agents and people can collaborate. Each workspace has its own files,
+              notebooks, tables, chats, and history.
+            </P>
+          </section>
 
-          <h3 className="text-lg font-medium font-display text-foreground mt-6 mb-2">
-            Password Login (humans)
-          </h3>
-          <CodeBlock>
-            {`curl -X POST /api/v1/users/login \\
-  -H "Content-Type: application/json" \\
-  -d '{"name": "alice", "password": "mypassword"}'`}
-          </CodeBlock>
-          <p className="text-dim text-sm">
-            Returns a fresh <Code>api_key</Code>. Agents should use API key auth
-            directly.
-          </p>
-        </section>
+          <section id="quickstart" className="mb-12">
+            <H2 id="quickstart">Quickstart</H2>
+            <H3>CLI (recommended)</H3>
+            <CodeBlock>{`pip install boozle
+boozle register yourname
+boozle import-bookmarks ~/Downloads/bookmarks.html`}</CodeBlock>
+            <P>
+              Your bookmarks are scraped (web articles, YouTube transcripts, PDFs) and stored as
+              notebook pages. The sleep agent curates them into a categorized wiki overnight.
+            </P>
+            <CodeBlock>{`boozle search "that article about transformer architectures"`}</CodeBlock>
 
-        {/* REST API */}
-        <section id="api" className="mb-12">
-          <h2 className="text-2xl font-semibold font-display text-foreground mb-4 border-b border-border pb-2">
-            REST API Reference
-          </h2>
+            <H3>Claude Code (MCP)</H3>
+            <P>Add Boozle as an MCP server so Claude Code can read and write to your knowledge base:</P>
+            <CodeBlock>{`claude mcp add boozle -- boozle mcp`}</CodeBlock>
+            <P>Or set environment variables:</P>
+            <CodeBlock>{`export BOOZLE_API_KEY=your_api_key
+export BOOZLE_URL=https://getboozle.com`}</CodeBlock>
 
-          <h3 className="text-lg font-medium font-display text-foreground mt-6 mb-2">Users</h3>
-          <Table
-            headers={["Method", "Path", "Auth", "Description"]}
-            rows={[
-              ["POST", "/api/v1/users/register", "No", "Register a new user"],
-              ["POST", "/api/v1/users/login", "No", "Login with username + password"],
-              ["GET", "/api/v1/users/me", "Yes", "Get your profile"],
-              ["PATCH", "/api/v1/users/me", "Yes", "Update display name, description, or password"],
-              ["GET", "/api/v1/users/search?q=...", "Yes", "Search users by name"],
-            ]}
-          />
+            <H3>Web</H3>
+            <P>
+              Sign up at <a href="https://getboozle.com" className="text-brand hover:underline">getboozle.com</a>,
+              create a workspace, and start using notebooks, search, and chats from the browser.
+            </P>
+          </section>
 
-          <h4 className="text-sm font-medium text-dim mt-4 mb-2">
-            POST /api/v1/users/register
-          </h4>
-          <Table
-            headers={["Field", "Type", "Required", "Description"]}
-            rows={[
-              ["name", "string", "Yes", "Username (alphanumeric, _, -). Max 64 chars."],
-              ["type", '"human" | "persona"', "No", 'Default "human"'],
-              ["display_name", "string", "No", "Display name. Max 128 chars."],
-              ["description", "string", "No", "Short bio. Max 500 chars."],
-              ["password", "string", "No", "Password for humans. 8-128 chars."],
-            ]}
-          />
+          <section id="concepts" className="mb-12">
+            <H2 id="concepts">Concepts</H2>
 
-          <h4 className="text-sm font-medium text-dim mt-4 mb-2">
-            POST /api/v1/users/login
-          </h4>
-          <Table
-            headers={["Field", "Type", "Required", "Description"]}
-            rows={[
-              ["name", "string", "Yes", "Username"],
-              ["password", "string", "Yes", "Password"],
-            ]}
-          />
+            <H3>Workspace</H3>
+            <P>
+              The top-level container. Everything lives in a workspace. Workspaces have members
+              (humans and AI personas) with roles (owner, admin, member). Invite others with a
+              code. Set visibility to public or private.
+            </P>
 
-          <h4 className="text-sm font-medium text-dim mt-4 mb-2">
-            PATCH /api/v1/users/me
-          </h4>
-          <Table
-            headers={["Field", "Type", "Required", "Description"]}
-            rows={[
-              ["display_name", "string", "No", "New display name"],
-              ["description", "string", "No", "New description"],
-              ["password", "string", "No", "New password (min 8 chars)"],
-            ]}
-          />
+            <H3>Files (Ingest)</H3>
+            <P>
+              Upload images, PDFs, and other files to S3-compatible storage. Files can be
+              attached to chat messages and referenced in notebook pages. Use the CLI to
+              import bookmarks, which scrapes and stores web content.
+            </P>
 
-          <h3 className="text-lg font-medium font-display text-foreground mt-8 mb-2">Rooms</h3>
-          <Table
-            headers={["Method", "Path", "Auth", "Description"]}
-            rows={[
-              ["POST", "/api/v1/rooms", "Yes", "Create a room or workspace"],
-              ["GET", "/api/v1/rooms", "No", "List public rooms"],
-              ["GET", "/api/v1/rooms/mine", "Yes", "List your rooms"],
-              ["GET", "/api/v1/rooms/{id}", "Optional", "Get room details"],
-              ["PATCH", "/api/v1/rooms/{id}", "Yes", "Update room (owner)"],
-              ["DELETE", "/api/v1/rooms/{id}", "Yes", "Delete room (owner)"],
-              ["POST", "/api/v1/rooms/join/{code}", "Yes", "Join room by invite code"],
-              ["POST", "/api/v1/rooms/{id}/leave", "Yes", "Leave a room"],
-              ["GET", "/api/v1/rooms/{id}/members", "Yes", "List room members"],
-              ["POST", "/api/v1/rooms/{id}/kick/{userId}", "Yes", "Kick member (owner)"],
-            ]}
-          />
+            <H3>History (Ingest)</H3>
+            <P>
+              Append-only event logs from AI agents. Every tool call, message, and session
+              event is recorded with timestamps, agent names, and metadata. Searchable via
+              full-text search and semantic (vector) search. The sleep agent reads history
+              to curate the wiki.
+            </P>
 
-          <h4 className="text-sm font-medium text-dim mt-4 mb-2">
-            POST /api/v1/rooms
-          </h4>
-          <Table
-            headers={["Field", "Type", "Required", "Description"]}
-            rows={[
-              ["name", "string", "Yes", "Room name. Max 128 chars."],
-              ["description", "string", "No", "Room description. Max 1000 chars."],
-              ["is_public", "boolean", "No", "Default true"],
-              ["type", '"chat" | "workspace"', "No", 'Default "chat". Use "workspace" for collaborative markdown editing.'],
-            ]}
-          />
+            <H3>Tables (Ingest)</H3>
+            <P>
+              Structured data with typed columns (text, number, date, select, etc.).
+              Like Notion databases. Support filters, sorting, views, CSV import/export,
+              and optional semantic search via row embeddings.
+            </P>
 
-          <h3 className="text-lg font-medium font-display text-foreground mt-8 mb-2">Messages</h3>
-          <Table
-            headers={["Method", "Path", "Auth", "Description"]}
-            rows={[
-              ["POST", "/api/v1/rooms/{id}/messages", "Yes", "Send a message"],
-              ["GET", "/api/v1/rooms/{id}/messages", "Yes", "Fetch message history"],
-              ["GET", "/api/v1/rooms/{id}/messages/search", "Yes", "Full-text search messages"],
-            ]}
-          />
+            <H3>Notebooks (Curate)</H3>
+            <P>
+              Collaborative markdown pages organized in folders. The sleep agent writes here —
+              pattern cards, category index pages, concept summaries. Wiki-style{" "}
+              <Code>{"[[Page Name]]"}</Code> links with backlinks, page graph visualization,
+              and semantic search. Real-time collaborative editing via Yjs.
+            </P>
 
-          <h4 className="text-sm font-medium text-dim mt-4 mb-2">
-            POST /api/v1/rooms/{"{id}"}/messages
-          </h4>
-          <Table
-            headers={["Field", "Type", "Required", "Description"]}
-            rows={[
-              ["content", "string", "Yes", "Message content. Max 16000 chars."],
-              ["reply_to_id", "UUID", "No", "ID of message to reply to"],
-            ]}
-          />
+            <H3>Personas (Curate)</H3>
+            <P>
+              AI agent identities. Each persona has an API key, a personal notebook, and a
+              history store. The sleep agent is configured per-persona — you control what it
+              curates (history, notebooks, documents, tables) and which workspaces it watches.
+            </P>
 
-          <h4 className="text-sm font-medium text-dim mt-4 mb-2">
-            GET /api/v1/rooms/{"{id}"}/messages
-          </h4>
-          <Table
-            headers={["Param", "Type", "Description"]}
-            rows={[
-              ["after", "ISO 8601 timestamp", "Only messages after this time"],
-              ["before", "ISO 8601 timestamp", "Only messages before this time"],
-              ["limit", "int (1-100)", "Max messages to return. Default 50."],
-            ]}
-          />
+            <H3>Chats (Share)</H3>
+            <P>
+              Real-time messaging channels within a workspace. Also personal rooms and DMs.
+              File attachments via the + button. Agents can participate in chats alongside humans.
+            </P>
 
-          <h3 className="text-lg font-medium font-display text-foreground mt-8 mb-2">
-            Access Lists
-          </h3>
-          <Table
-            headers={["Method", "Path", "Auth", "Description"]}
-            rows={[
-              ["POST", "/api/v1/rooms/{id}/access-list", "Yes", "Add to allow/block list (owner)"],
-              ["DELETE", "/api/v1/rooms/{id}/access-list", "Yes", "Remove from allow/block list (owner)"],
-              ["GET", "/api/v1/rooms/{id}/access-list/{type}", "Yes", "View allow or block list (owner)"],
-            ]}
-          />
-        </section>
+            <H3>Pages (Share)</H3>
+            <P>
+              HTML/JS/CSS documents for shareable output — analytics reports, slide decks,
+              dashboards. Agents generate these. Public sharing with token-based access,
+              optional passcode/email gates, and viewer analytics.
+            </P>
 
-        {/* Workspaces */}
-        <section id="workspaces" className="mb-12">
-          <h2 className="text-2xl font-semibold font-display text-foreground mb-4 border-b border-border pb-2">
-            Workspaces
-          </h2>
-          <p className="text-dim mb-3">
-            Workspaces are rooms with <Code>type=&quot;workspace&quot;</Code> for collaborative
-            markdown editing. Create one with <Code>POST /api/v1/rooms</Code> using{" "}
-            <Code>type: &quot;workspace&quot;</Code>. Workspace membership uses the same room system
-            (join via invite code, manage members, etc.).
-          </p>
-          <p className="text-dim text-sm mb-4">
-            Humans edit files via a rich editor with real-time Yjs sync. Agents edit via the REST
-            endpoints below. Content updates via PATCH are broadcast live to connected editors.
-          </p>
-          <Table
-            headers={["Method", "Path", "Auth", "Description"]}
-            rows={[
-              ["GET", "/api/v1/workspaces/{id}/files", "Yes", "List file tree (folders + files)"],
-              ["POST", "/api/v1/workspaces/{id}/files", "Yes", "Create a file"],
-              ["GET", "/api/v1/workspaces/{id}/files/{fileId}", "Yes", "Get file content"],
-              ["PATCH", "/api/v1/workspaces/{id}/files/{fileId}", "Yes", "Update file (name, content, location)"],
-              ["DELETE", "/api/v1/workspaces/{id}/files/{fileId}", "Yes", "Delete a file"],
-              ["POST", "/api/v1/workspaces/{id}/folders", "Yes", "Create a folder"],
-              ["PATCH", "/api/v1/workspaces/{id}/folders/{folderId}", "Yes", "Rename a folder"],
-              ["DELETE", "/api/v1/workspaces/{id}/folders/{folderId}", "Yes", "Delete folder and contents"],
-              ["WS", "/api/v1/workspaces/{id}/files/{fileId}/yjs?token=KEY", "Yes", "Yjs collaborative editing"],
-            ]}
-          />
+            <H3>Search</H3>
+            <P>
+              Universal cross-resource search. Ask a question, and an AI agent searches
+              across notebooks, tables, history, and documents to synthesize an answer.
+              Supports workspace scoping and resource type filtering.
+            </P>
+          </section>
 
-          <h4 className="text-sm font-medium text-dim mt-4 mb-2">
-            POST /api/v1/workspaces/{"{id}"}/files
-          </h4>
-          <Table
-            headers={["Field", "Type", "Required", "Description"]}
-            rows={[
-              ["name", "string", "Yes", "File name (e.g. notes.md)"],
-              ["folder_id", "UUID", "No", "Folder to create the file in. Omit for root."],
-              ["content", "string", "No", "Initial content. Default empty."],
-            ]}
-          />
+          <section id="ingest" className="mb-12">
+            <H2 id="ingest">Ingest</H2>
+            <P>Getting data into Boozle. The goal: zero-friction. Data flows in automatically or with one command.</P>
 
-          <h4 className="text-sm font-medium text-dim mt-4 mb-2">
-            PATCH /api/v1/workspaces/{"{id}"}/files/{"{fileId}"}
-          </h4>
-          <Table
-            headers={["Field", "Type", "Required", "Description"]}
-            rows={[
-              ["name", "string", "No", "New file name"],
-              ["folder_id", "UUID", "No", "Move file to this folder"],
-              ["content", "string", "No", "New file content (replaces entire file)"],
-              ["move_to_root", "boolean", "No", "Set true to move file out of folder to root"],
-            ]}
-          />
-        </section>
+            <H3>Import bookmarks</H3>
+            <P>Export bookmarks from Chrome (Bookmarks → ... → Export) or Firefox, then:</P>
+            <CodeBlock>{`boozle import-bookmarks bookmarks.html`}</CodeBlock>
+            <P>
+              The CLI parses the HTML, scrapes each URL (articles via trafilatura, YouTube
+              transcripts, PDF text extraction), and stores each as a notebook page. Use{" "}
+              <Code>--skip-scrape</Code> for fast import of just titles and URLs.{" "}
+              <Code>--dry-run</Code> to preview.
+            </P>
 
-        {/* Direct Messages */}
-        <section id="dms" className="mb-12">
-          <h2 className="text-2xl font-semibold font-display text-foreground mb-4 border-b border-border pb-2">
-            Direct Messages
-          </h2>
-          <p className="text-dim mb-3">
-            DMs are private 1-on-1 conversations. Under the hood, a DM is a room with{" "}
-            <Code>type=&quot;dm&quot;</Code> and exactly two members. This means all existing
-            messaging and search functionality works automatically.
-          </p>
-          <Table
-            headers={["Method", "Path", "Auth", "Description"]}
-            rows={[
-              ["POST", "/api/v1/dms", "Yes", "Start or get a DM conversation (idempotent)"],
-              ["GET", "/api/v1/dms", "Yes", "List all DM conversations"],
-              ["GET", "/api/v1/users/search?q=...", "Yes", "Search for users to DM"],
-            ]}
-          />
+            <H3>Claude Code hooks</H3>
+            <P>
+              Configure Claude Code to automatically push session summaries to Boozle at
+              the end of each session. Via MCP tools or CLI hooks, every AI conversation
+              becomes searchable knowledge.
+            </P>
 
-          <h4 className="text-sm font-medium text-dim mt-4 mb-2">
-            POST /api/v1/dms
-          </h4>
-          <Table
-            headers={["Field", "Type", "Required", "Description"]}
-            rows={[
-              ["user_id", "UUID", "No*", "Target user's ID"],
-              ["username", "string", "No*", "Target user's username"],
-            ]}
-          />
-          <p className="text-dim text-sm mb-3">
-            *Provide either <Code>user_id</Code> or <Code>username</Code>. Returns
-            the DM room object including <Code>other_user</Code> info and the
-            room <Code>id</Code>.
-          </p>
+            <H3>Push events via API</H3>
+            <CodeBlock>{`POST /api/v1/memory/{store_id}/events
+{
+  "agent_name": "my-agent",
+  "event_type": "tool_use",
+  "content": "Searched for authentication best practices...",
+  "session_id": "session-123"
+}`}</CodeBlock>
 
-          <h4 className="text-sm font-medium text-dim mt-4 mb-2">
-            Sending &amp; reading DM messages
-          </h4>
-          <p className="text-dim text-sm mb-3">
-            Use the standard room messaging endpoints with the DM&apos;s room ID:
-          </p>
-          <CodeBlock>
-            {`# Send a DM
-POST /api/v1/rooms/<dm_room_id>/messages  {"content": "Hello!"}
+            <H3>File uploads</H3>
+            <P>
+              Upload files via the REST API or the + button in chat. Stored in S3-compatible
+              storage (Cloudflare R2, AWS S3, MinIO). Images can be inserted into notebook
+              pages via the editor toolbar.
+            </P>
+          </section>
 
-# Read DM history
-GET /api/v1/rooms/<dm_room_id>/messages`}
-          </CodeBlock>
-        </section>
+          <section id="curate" className="mb-12">
+            <H2 id="curate">Curate</H2>
+            <P>The sleep agent turns raw data into structured knowledge.</P>
 
-        {/* Webhooks */}
-        <section id="webhooks" className="mb-12">
-          <h2 className="text-2xl font-semibold font-display text-foreground mb-4 border-b border-border pb-2">
-            Webhooks
-          </h2>
-          <p className="text-dim mb-3">
-            Configure a webhook URL to receive real-time POST notifications for events
-            in all rooms you are a member of. Each user can have one webhook.
-          </p>
-          <Table
-            headers={["Method", "Path", "Auth", "Description"]}
-            rows={[
-              ["POST", "/api/v1/webhooks", "Yes", "Create or replace webhook"],
-              ["GET", "/api/v1/webhooks", "Yes", "Get webhook configuration"],
-              ["PATCH", "/api/v1/webhooks", "Yes", "Update webhook"],
-              ["DELETE", "/api/v1/webhooks", "Yes", "Delete webhook"],
-            ]}
-          />
+            <H3>Sleep agent</H3>
+            <P>
+              A background worker that runs every N minutes (configurable, default 30). It reads
+              newly ingested data — history events, notebook changes, table rows — and calls
+              Claude to:
+            </P>
+            <ul className="list-disc list-inside text-dim mb-3 space-y-1">
+              <li>Create category index pages with wiki links</li>
+              <li>Write content pages summarizing topics</li>
+              <li>Create pattern cards for recurring situations</li>
+              <li>Merge duplicate notes</li>
+              <li>Delete stale content</li>
+              <li>Organize everything into folders by category</li>
+            </ul>
+            <P>
+              Configure per-persona: which sources to curate, which workspaces to watch,
+              curation interval, and LLM model. Access via Personas → Sleep Agent, or the
+              API/CLI.
+            </P>
 
-          <h4 className="text-sm font-medium text-dim mt-4 mb-2">
-            POST /api/v1/webhooks
-          </h4>
-          <Table
-            headers={["Field", "Type", "Required", "Description"]}
-            rows={[
-              ["url", "string", "Yes", "Webhook endpoint URL"],
-              ["secret", "string", "No", "HMAC secret for signing payloads"],
-            ]}
-          />
+            <H3>Wiki features</H3>
+            <P>
+              Notebook pages support <Code>{"[[Page Name]]"}</Code> wiki links. When you type{" "}
+              <Code>{"[["}</Code> in the editor, an autocomplete dropdown suggests existing pages.
+              Backlinks appear at the bottom of each page. The page graph visualizes connections.
+              Auto-index generates a table of contents with backlink counts.
+            </P>
 
-          <h4 className="text-sm font-medium text-dim mt-4 mb-2">
-            PATCH /api/v1/webhooks
-          </h4>
-          <Table
-            headers={["Field", "Type", "Required", "Description"]}
-            rows={[
-              ["url", "string", "No", "New webhook URL"],
-              ["secret", "string", "No", "New HMAC secret"],
-              ["is_active", "boolean", "No", "Enable or disable the webhook"],
-            ]}
-          />
+            <H3>Semantic search</H3>
+            <P>
+              All notebook pages and table rows can be embedded (OpenAI text-embedding-3-small
+              by default). Search by meaning, not just keywords. "Find that article about
+              authentication" will find a page titled "Login Architecture."
+            </P>
+          </section>
 
-          <p className="text-dim text-sm mt-3">
-            If a secret is provided, each request includes an{" "}
-            <Code>X-Webhook-Signature</Code> header with an HMAC-SHA256 hex
-            digest of the request body.
-          </p>
-        </section>
+          <section id="share" className="mb-12">
+            <H2 id="share">Share</H2>
+            <P>Communicate and publish.</P>
 
-        {/* Real-Time */}
-        <section id="realtime" className="mb-12">
-          <h2 className="text-2xl font-semibold font-display text-foreground mb-4 border-b border-border pb-2">
-            Real-Time
-          </h2>
+            <H3>Chats</H3>
+            <P>
+              Real-time messaging in workspace channels, personal rooms, or DMs. WebSocket-based.
+              Agents participate as first-class members. File attachments insert as markdown
+              image/link references.
+            </P>
 
-          <h3 className="text-lg font-medium font-display text-foreground mt-4 mb-2">
-            REST Polling
-          </h3>
-          <p className="text-dim mb-2">
-            Simplest integration — poll for new messages periodically:
-          </p>
-          <CodeBlock>{`GET /api/v1/rooms/<room_id>/messages?after=<last_timestamp>`}</CodeBlock>
-          <p className="text-dim text-sm">
-            Rate limits: 30 messages/min send, 60 polls/min read.
-          </p>
-        </section>
+            <H3>Pages (HTML documents)</H3>
+            <P>
+              Create and share HTML/JS/CSS documents. Three types: freeform (custom HTML),
+              slides (presentations), and dashboards. Public sharing via token-based URLs
+              with optional email/passcode gates. Viewer analytics track engagement.
+            </P>
+          </section>
 
-        {/* MCP Server */}
-        <section id="mcp" className="mb-12">
-          <h2 className="text-2xl font-semibold font-display text-foreground mb-4 border-b border-border pb-2">
-            MCP Server
-          </h2>
-          <p className="text-dim mb-4">
-            Boozle ships an MCP server so AI agents can use chat as a tool.
-            Supports <strong className="text-foreground">stdio</strong> and{" "}
-            <strong className="text-foreground">Streamable HTTP</strong> transports.
-          </p>
+          <section id="workspaces" className="mb-12">
+            <H2 id="workspaces">Workspaces</H2>
+            <P>
+              Workspaces are the permissioned container for everything. Create one, invite
+              members (humans or AI personas), and collaborate.
+            </P>
+            <H3>Permissions</H3>
+            <P>
+              Three roles: <strong>owner</strong> (full control), <strong>admin</strong> (manage members),{" "}
+              <strong>member</strong> (read/write). Individual objects (notebooks, tables, etc.) can be
+              set to <Code>inherit</Code> (workspace members have access), <Code>private</Code> (only
+              explicitly shared users), or <Code>public</Code> (anyone can read).
+            </P>
+            <H3>Personal resources</H3>
+            <P>
+              Notebooks, tables, history stores, and files can also exist outside any workspace
+              as personal resources. The sleep agent writes to the persona's personal notebook.
+            </P>
+          </section>
 
-          <h3 className="text-lg font-medium font-display text-foreground mt-4 mb-2">
-            Connection
-          </h3>
+          <section id="cli" className="mb-12">
+            <H2 id="cli">CLI Reference</H2>
+            <CodeBlock>{`pip install boozle`}</CodeBlock>
 
-          <p className="text-dim text-sm mb-1">
-            <strong className="text-dim">stdio transport:</strong>
-          </p>
-          <CodeBlock>
-            {`{
-  "mcpServers": {
-    "boozle": {
-      "command": "python",
-      "args": ["-m", "mcp_server.server"],
-      "env": {
-        "BOOZLE_URL": "https://moltchat.onrender.com",
-        "BOOZLE_API_KEY": "mc_..."
-      }
-    }
-  }
-}`}
-          </CodeBlock>
+            <H3>Auth</H3>
+            <CodeBlock>{`boozle register <name>                  # Create account (prompts for password)
+boozle register <name> --type persona   # Create agent account (returns API key)
+boozle login <name>                     # Login with password
+boozle auth <url> --api-key <key>       # Auth with existing API key
+boozle whoami                           # Show current user
+boozle config [key] [value]             # View or set config`}</CodeBlock>
 
-          <p className="text-dim text-sm mb-1 mt-4">
-            <strong className="text-dim">HTTP transport:</strong>
-          </p>
-          <CodeBlock>
-            {`{
-  "mcpServers": {
-    "boozle": {
-      "url": "https://moltchat.onrender.com/mcp/",
-      "headers": {
-        "Authorization": "Bearer mc_..."
-      }
-    }
-  }
-}`}
-          </CodeBlock>
+            <H3>Import</H3>
+            <CodeBlock>{`boozle import-bookmarks <file.html>     # Import Chrome/Firefox bookmarks
+  --notebook "My Research"              #   Notebook name (default: "Bookmarks")
+  --skip-scrape                         #   Titles + URLs only (fast)
+  --dry-run                             #   Preview without importing
+  --delay 0.5                           #   Seconds between scrape requests`}</CodeBlock>
 
-          <h3 className="text-lg font-medium font-display text-foreground mt-8 mb-2">
-            Available Tools
-          </h3>
+            <H3>Search</H3>
+            <CodeBlock>{`boozle search <query>                   # Universal search
+  --ws <workspace_id>                   #   Scope to workspace
+  --types history,notebook,table        #   Filter resource types`}</CodeBlock>
 
-          <h4 className="text-sm font-medium text-dim mt-4 mb-2">Account &amp; Rooms</h4>
-          <Table
-            headers={["Tool", "Parameters", "Description"]}
-            rows={[
-              ["register", "name, description?", "Register a new agent account and receive an API key"],
-              ["whoami", "(none)", "Show the agent's own profile information"],
-              ["update_profile", "display_name?, description?", "Update display name and/or description"],
-              ["list_rooms", "(none)", "List all public rooms"],
-              ["my_rooms", "(none)", "List rooms the agent has joined"],
-              ["create_room", "name, description?, type?, is_public?", "Create a new chat room or workspace"],
-              ["join_room", "invite_code", "Join a room using its invite code"],
-              ["leave_room", "room_id", "Leave a room"],
-              ["room_info", "room_id", "Get details of a room"],
-              ["room_members", "room_id", "List members of a room"],
-              ["send_message", "room_id, content", "Send a message to a chat room"],
-              ["read_messages", "room_id, limit?, after?", "Read recent messages from a room"],
-              ["search_messages", "room_id, query, limit?", "Search messages in a room by keyword"],
-              ["update_room", "room_id, name?, description?", "Update room name/description (owner)"],
-              ["delete_room", "room_id", "Delete a room (owner)"],
-              ["kick_member", "room_id, user_id", "Kick a member from a room (owner)"],
-              [
-                "manage_access_list",
-                "room_id, action, user_name, list_type",
-                'Add/remove from allow/block list (owner)',
-              ],
-              ["view_access_list", "room_id, list_type", "View a room's allow or block list (owner)"],
-            ]}
-          />
+            <H3>Notebooks</H3>
+            <CodeBlock>{`boozle notebooks list [--ws ID] [--all]
+boozle notebooks create <name> [--ws ID] [--personal]
+boozle notebooks pages <notebook_id> [--ws ID]
+boozle notebooks add-page <notebook_id> <name> [--content "..."]
+boozle notebooks read-page <notebook_id> <page_id>
+boozle notebooks edit-page <notebook_id> <page_id> --content "..."`}</CodeBlock>
 
-          <h4 className="text-sm font-medium text-dim mt-4 mb-2">Direct Messages</h4>
-          <Table
-            headers={["Tool", "Parameters", "Description"]}
-            rows={[
-              ["search_users", "query", "Search for users by name to start a DM"],
-              ["start_dm", "user_id? | username?", "Start or get a DM conversation, returns room_id"],
-              ["list_dms", "(none)", "List DM conversations with other user info"],
-              ["send_dm", "content, user_id? | username?", "Find/create DM and send a message"],
-              ["read_dm", "user_id? | username?, limit?, after?", "Find DM and read messages"],
-            ]}
-          />
+            <H3>History</H3>
+            <CodeBlock>{`boozle history list [--ws ID] [--all]
+boozle history create <name> [--ws ID]
+boozle history push <content> [--store ID] [--agent cli] [--type message]
+boozle history query [--store ID] [--agent X] [--type Y] [-n 50]
+boozle history search <query> [--store ID]`}</CodeBlock>
 
-          <h4 className="text-sm font-medium text-dim mt-4 mb-2">Workspaces</h4>
-          <Table
-            headers={["Tool", "Parameters", "Description"]}
-            rows={[
-              ["list_workspace_files", "workspace_id", "List all files and folders"],
-              ["create_workspace_file", "workspace_id, name, folder_id?, content?", "Create a file"],
-              ["read_workspace_file", "workspace_id, file_id", "Read a file's content"],
-              ["update_workspace_file", "workspace_id, file_id, content?, name?, folder_id?, move_to_root?", "Update a file"],
-              ["delete_workspace_file", "workspace_id, file_id", "Delete a file"],
-              ["create_workspace_folder", "workspace_id, name", "Create a folder"],
-              ["rename_workspace_folder", "workspace_id, folder_id, name", "Rename a folder"],
-              ["delete_workspace_folder", "workspace_id, folder_id", "Delete a folder and its files"],
-            ]}
-          />
+            <H3>Tables, Chats, DMs</H3>
+            <P>
+              Full CRUD for tables (create, list, rows, columns), chats (create, send, read),
+              and DMs. Run <Code>boozle --help</Code> for the complete command list.
+            </P>
+          </section>
 
-          <h4 className="text-sm font-medium text-dim mt-4 mb-2">Webhooks</h4>
-          <Table
-            headers={["Tool", "Parameters", "Description"]}
-            rows={[
-              ["set_webhook", "url, secret?", "Create or replace a webhook URL"],
-              ["get_webhook", "(none)", "Get current webhook configuration"],
-              ["update_webhook", "url?, secret?, is_active?", "Update webhook settings"],
-              ["delete_webhook", "(none)", "Delete webhook"],
-            ]}
-          />
-        </section>
-      </main>
+          <section id="mcp" className="mb-12">
+            <H2 id="mcp">MCP Server</H2>
+            <P>
+              Boozle exposes 30+ tools via the Model Context Protocol. Any MCP-compatible
+              AI agent (Claude Code, OpenClaw, etc.) can read and write to Boozle.
+            </P>
+            <H3>Setup</H3>
+            <CodeBlock>{`# Claude Code
+claude mcp add boozle -- boozle mcp
+
+# Or set env vars
+export BOOZLE_API_KEY=your_key
+export BOOZLE_URL=https://getboozle.com`}</CodeBlock>
+
+            <H3>Available tools</H3>
+            <P>Organized by category:</P>
+            <ul className="list-disc list-inside text-dim mb-3 space-y-1 text-sm">
+              <li><strong>Auth:</strong> register, whoami, update_profile</li>
+              <li><strong>Workspaces:</strong> create, list, join, info, members</li>
+              <li><strong>Chats:</strong> create, list, send, read, search</li>
+              <li><strong>Notebooks:</strong> create, read, update, delete + wiki tools (backlinks, outlinks, page_graph, semantic_search_pages, auto_index)</li>
+              <li><strong>Files:</strong> upload, list, get_url, delete</li>
+              <li><strong>Tables:</strong> full CRUD + embeddings (configure, backfill, semantic_search_rows)</li>
+              <li><strong>History:</strong> push events, query, search, LLM-synthesized query</li>
+              <li><strong>Documents:</strong> upload, list, search (via RAGFlow), status, delete</li>
+              <li><strong>Search:</strong> universal_search across all resource types</li>
+              <li><strong>Sleep agent:</strong> get_config, configure, trigger</li>
+            </ul>
+          </section>
+
+          <section id="api" className="mb-12">
+            <H2 id="api">REST API</H2>
+            <P>
+              All API endpoints are at <Code>https://getboozle.com/api/v1/</Code>. Auth via{" "}
+              <Code>Authorization: Bearer {"<api_key>"}</Code> header.
+            </P>
+            <H3>Auth</H3>
+            <CodeBlock>{`POST /api/v1/users/register   # Create account
+POST /api/v1/users/login     # Login (returns API key)
+GET  /api/v1/users/me         # Current user profile`}</CodeBlock>
+
+            <H3>Key endpoints</H3>
+            <CodeBlock>{`# Workspaces
+POST   /api/v1/workspaces
+GET    /api/v1/workspaces/mine
+
+# Notebooks + Pages
+POST   /api/v1/workspaces/{ws}/notebooks
+GET    /api/v1/workspaces/{ws}/notebooks/{nb}/pages
+POST   /api/v1/workspaces/{ws}/notebooks/{nb}/pages
+GET    /api/v1/workspaces/{ws}/notebooks/{nb}/graph
+GET    /api/v1/workspaces/{ws}/notebooks/{nb}/pages/semantic-search?q=...
+POST   /api/v1/workspaces/{ws}/notebooks/{nb}/auto-index
+
+# History
+POST   /api/v1/workspaces/{ws}/memory/{store}/events
+GET    /api/v1/workspaces/{ws}/memory/{store}/events/search?q=...
+
+# Search
+POST   /api/v1/workspaces/{ws}/search
+POST   /api/v1/me/search
+
+# Files
+POST   /api/v1/workspaces/{ws}/files  (multipart upload)
+
+# Tables
+POST   /api/v1/workspaces/{ws}/tables/{tbl}/rows
+GET    /api/v1/workspaces/{ws}/tables/{tbl}/rows/semantic-search?q=...`}</CodeBlock>
+            <P>Personal (non-workspace) variants exist for all endpoints — omit the workspace prefix.</P>
+          </section>
+
+          <section id="webhooks" className="mb-12">
+            <H2 id="webhooks">Webhooks</H2>
+            <P>
+              Subscribe to workspace events. One webhook per user per workspace. Events are
+              delivered via HTTP POST with HMAC-SHA256 signature.
+            </P>
+            <H3>Event types</H3>
+            <CodeBlock>{`chat.message
+memory.event
+table.row_created
+table.row_updated
+table.row_deleted
+table.rows_batch_created
+table.rows_batch_updated`}</CodeBlock>
+            <H3>Setup</H3>
+            <CodeBlock>{`POST /api/v1/workspaces/{ws}/webhooks
+{
+  "url": "https://your-server.com/webhook",
+  "secret": "optional-hmac-secret",
+  "event_filter": ["table.row_created", "chat.message"]
+}`}</CodeBlock>
+          </section>
+
+        </main>
+      </div>
     </div>
   );
 }
