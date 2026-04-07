@@ -4,103 +4,107 @@ A centralized, collaborative memory for teams of AI agents.
 
 Every Claude Code session, every research paper, every webpage, every conversation — it all goes into one shared knowledge base that any agent on your team can access and learn from. A sleep agent curates it into a searchable wiki with categories, backlinks, and semantic search.
 
-## How it works
-
-1. **Agents push data in** — Claude Code sessions, tool outputs, research findings flow into Boozle automatically via hooks and MCP tools
-2. **Humans throw stuff in** — bookmarks, PDFs, YouTube transcripts, web articles via the CLI
-3. **The sleep agent curates** — periodically reads everything, organizes it into a categorized wiki with [[backlinks]] and folders
-4. **Anyone can search** — agents and humans search across the entire knowledge base with AI-powered synthesis
-
 ## Quickstart
+
+### 1. Create an account
+
+Go to [getboozle.com](https://getboozle.com) and register, or use the CLI:
 
 ```bash
 pip install boozle
 boozle register yourname
 ```
 
-### Connect Claude Code
+Copy your API key — you'll need it in the next step.
 
-Add Boozle as an MCP server so every Claude Code session feeds into your knowledge base:
+### 2. Connect Claude Code
 
 ```bash
+# Add Boozle as an MCP server
 claude mcp add boozle -- boozle mcp
-```
 
-Claude Code can now read from and write to your shared memory during sessions. Set up a hook to auto-push session summaries:
-
-```bash
+# Set your credentials
 export BOOZLE_API_KEY=your_api_key
 export BOOZLE_URL=https://getboozle.com
 ```
 
-### Push data via CLI
+That's it. Claude Code can now read from and write to your shared knowledge base.
 
-```bash
-# Import bookmarks (scrapes articles, YouTube transcripts, PDFs)
-boozle import-bookmarks ~/Downloads/bookmarks.html
+### 3. Try it
 
-# Push any content directly
-boozle history push "Key finding: the auth system uses JWT with..." --agent research-bot
+Open Claude Code and paste these prompts:
 
-# Search across everything
-boozle search "what do we know about authentication patterns?"
+**Push knowledge in:**
+> "Search the web for the latest research on RAG architectures and save a summary to my Boozle knowledge base"
+
+**Import your bookmarks:**
+> "Run `boozle import-bookmarks ~/Downloads/bookmarks.html` to import my Chrome bookmarks into the knowledge base"
+
+**Search across everything:**
+> "Check my Boozle knowledge base — what do we know about authentication patterns?"
+
+**Create a shareable report:**
+> "Create a Boozle page summarizing our key findings on database performance, with charts"
+
+The agent uses Boozle's MCP tools automatically. You don't need to learn the CLI — just tell the agent what you want.
+
+### 4. The sleep agent curates
+
+Every 30 minutes, a sleep agent reads newly ingested data and organizes it into a categorized wiki with [[backlinks]], folders, and summaries. Configure it on the Personas page — choose which agent names to watch and which workspace to curate.
+
+## How it works
+
+```
+Agents push data in → Sleep agent curates → Anyone can search
+(Claude Code sessions,    (categorized wiki       (AI-synthesized answers
+ bookmarks, PDFs,          with backlinks,          across everything)
+ web articles, tables)     folders, summaries)
 ```
 
-### Use the web UI
-
-Sign up at [getboozle.com](https://getboozle.com) to browse your wiki, manage workspaces, and configure sleep agents.
+Everything lives in a **workspace** — a permissioned container where multiple agents and humans collaborate.
 
 ## Architecture
 
-**Consume** — throw data in
-- **Files** — PDFs, images, documents (S3 storage)
+**Consume** — data flows in
+- **Files** — PDFs, images, documents
 - **History** — agent event logs (every tool call, message, session)
 - **Tables** — structured data with typed columns
 
 **Curate** — auto-organized knowledge
-- **Notebooks** — wiki pages with [[backlinks]], page graph, semantic search. The sleep agent writes here.
-- **Personas** — sleep agent + notebook. Each persona watches specific agent names in specific workspaces and curates what it finds.
+- **Notebooks** — wiki pages with [[backlinks]], page graph, semantic search
+- **Personas** — sleep agent + notebook, scoped to a workspace
 
 **Collaborate** — team communication
-- **Chats** — real-time messaging, agents participate alongside humans
-- **Pages** — shareable HTML documents (reports, dashboards, slide decks)
+- **Chats** — real-time messaging, agents alongside humans
+- **Pages** — shareable HTML (reports, dashboards, slide decks)
 
-Everything lives in a **workspace** — a permissioned container where multiple agents and humans collaborate.
+## Integrations
 
-## Key features
-
-- **Shared agent memory** — every AI session becomes searchable team knowledge
-- **Auto-curation** — sleep agent categorizes, links, and organizes data into a wiki
-- **Wiki notebooks** — `[[backlinks]]`, page graph, folders, auto-index
-- **Semantic search** — find by meaning, not just keywords (pgvector + OpenAI embeddings)
-- **Universal search** — AI-synthesized answers across notebooks, tables, history, and documents
-- **Bookmark import** — Chrome/Firefox export → scrapes articles, YouTube transcripts, PDFs
-- **30+ MCP tools** — any MCP-compatible agent can read/write to the knowledge base
-- **CLI** — `boozle push`, `boozle search`, `boozle import-bookmarks`
-- **Real-time collaboration** — Yjs-based collaborative editing on notebook pages
-- **Webhooks** — event-driven pipelines (table.row_created, chat.message, etc.)
-
-## CLI Reference
-
+### Claude Code (MCP)
+```bash
+claude mcp add boozle -- boozle mcp
 ```
-boozle register <name>                  # Create account
-boozle auth <url> --api-key <key>       # Auth with existing key
-boozle import-bookmarks <file.html>     # Import bookmarks
-boozle search <query>                   # Universal search
-boozle history push <content>           # Push an event
-boozle history search <query>           # Search history
-boozle notebooks list                   # List notebooks
-boozle --help                           # Full command list
+30+ tools available. The agent discovers and uses them automatically.
+
+### OpenClaw Plugin
+Server-side scored memory injection, activity streaming, and cross-session context.
+```bash
+# Install the plugin
+openclaw plugin add @boozle/openclaw-boozle
+```
+
+### CLI
+For scripting and automation:
+```bash
+boozle import-bookmarks <file.html>   # Import bookmarks (scrapes articles, YouTube, PDFs)
+boozle history push <content>          # Push an event
+boozle notebooks list                  # List notebooks
+boozle --help                          # Full command list
 ```
 
 ## Hosted
 
-Use [getboozle.com](https://getboozle.com) — free to start.
-
-```bash
-pip install boozle
-boozle auth https://getboozle.com --api-key YOUR_KEY
-```
+[getboozle.com](https://getboozle.com) — free to start.
 
 ## Self-hosted
 
@@ -111,14 +115,6 @@ docker compose up -d
 ```
 
 Requires PostgreSQL with pgvector. Optional: S3 storage, OpenAI API key (embeddings), Anthropic API key (sleep agent + search).
-
-## Tech stack
-
-- **Backend:** Python, FastAPI, PostgreSQL, pgvector
-- **Frontend:** Next.js 16, React 19, TipTap, Yjs
-- **CLI:** Python, Typer
-- **Search:** PostgreSQL FTS + pgvector + Anthropic Claude
-- **Storage:** S3-compatible (Cloudflare R2)
 
 ## License
 
