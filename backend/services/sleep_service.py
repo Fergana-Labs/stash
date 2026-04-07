@@ -312,18 +312,41 @@ def _format_episodes_for_llm(episodes: list[dict]) -> str:
 
 
 def _format_notes_for_llm(pages: list[dict]) -> str:
-    lines = []
+    # Group by category for LLM context
+    categories: dict[str, list[dict]] = {}
+    uncategorized: list[dict] = []
     for page in pages:
         meta = page.get("metadata", {})
-        note_type = meta.get("note_type", "note")
-        importance = meta.get("importance", 0.5)
-        keywords = ", ".join(meta.get("keywords", []))
-        preview = page.get("content_markdown", "")[:200]
-        lines.append(
-            f"- {page['id']} [{note_type}] (importance: {importance}): "
-            f"{page['name']} — keywords: {keywords}\n  {preview}"
-        )
-    return "\n".join(lines) if lines else "(no notes yet)"
+        cat = meta.get("category", "")
+        if cat:
+            categories.setdefault(cat, []).append(page)
+        else:
+            uncategorized.append(page)
+
+    lines = []
+    if categories:
+        lines.append("### Categories")
+        for cat_name, cat_pages in sorted(categories.items()):
+            lines.append(f"\n**{cat_name}** ({len(cat_pages)} pages):")
+            for page in cat_pages:
+                meta = page.get("metadata", {})
+                note_type = meta.get("note_type", "note")
+                lines.append(f"  - {page['id']} [{note_type}]: {page['name']}")
+
+    if uncategorized:
+        lines.append("\n### Uncategorized")
+        for page in uncategorized:
+            meta = page.get("metadata", {})
+            note_type = meta.get("note_type", "note")
+            importance = meta.get("importance", 0.5)
+            keywords = ", ".join(meta.get("keywords", []))
+            preview = page.get("content_markdown", "")[:150]
+            lines.append(
+                f"- {page['id']} [{note_type}] (importance: {importance}): "
+                f"{page['name']} — keywords: {keywords}\n  {preview}"
+            )
+
+    return "\n".join(lines) if lines else "(no notes yet — create categories and notes)"
 
 
 # --- LLM calls ---
@@ -391,31 +414,59 @@ Respond ONLY with valid JSON."""
 
 
 async def _llm_curate(model: str, episodes_summary: str, notes_summary: str, since_last: str) -> dict:
-    prompt = f"""You are a memory curator for a software developer's AI assistant. Your job is to
-organize episodic memories into long-term structured notes and pattern cards.
+    prompt = f"""You are a knowledge base curator. Your job is to organize incoming information
+into a structured wiki with categories, topic pages, and cross-linked content.
 
-## Current Notes
+## Current Wiki Pages
 {notes_summary}
 
-## Recent Activity (since last curation: {since_last})
+## New Content (since last curation: {since_last})
 {episodes_summary}
 
 ## Instructions
-Analyze the recent activity and produce a JSON response with these actions:
+Analyze the new content and produce a JSON response with these actions:
 
-1. "create_notes": [{{"title": str, "keywords": [str], "content": str, "importance": float, "type": "note"|"pattern"}}]
-   - For patterns include: "situation", "lessons" (list of strings), "confidence" (0-1)
-2. "update_notes": [{{"page_id": str, "content_additions": str, "keywords": [str], "importance": float}}]
-   - "keywords" replaces the full keyword list (omit to leave unchanged)
-3. "merge_notes": [{{"source_page_ids": [str], "new_title": str}}]
+1. "create_notes": [{{
+     "title": str,
+     "keywords": [str],
+     "content": str,              # Markdown content. Use [[Page Title]] wiki links to reference other pages.
+     "importance": float,          # 0-1 scale
+     "type": "note"|"pattern"|"category",
+     "category": str,             # Category name this belongs to (e.g., "Machine Learning", "Web Development")
+     "folder": str                # Folder name to file this under (same as category usually)
+   }}]
+   - type "category": Create a category index page. Title should be the category name.
+     Content should list and link to all known pages in that category using [[wiki links]].
+   - type "note": A knowledge page about a specific topic. Link to its category page.
+   - type "pattern": A recurring pattern. Include "situation", "lessons" (list), "confidence" (0-1).
+
+2. "update_notes": [{{
+     "page_id": str,
+     "content_additions": str,    # Append to existing content
+     "keywords": [str],           # Replaces keyword list (omit to leave unchanged)
+     "importance": float
+   }}]
+
+3. "merge_notes": [{{"source_page_ids": [str], "new_title": str, "category": str}}]
+
 4. "delete_notes": [page_id strings]
-5. "health": {{"loops_detected": bool, "stuck": bool, "recommend_restart": bool, "message": "optional"}}
 
-Guidelines:
-- Create new pattern cards for situations that recurred 2+ times
-- Merge notes that cover overlapping topics
-- Delete notes that are stale or contradicted by recent behavior
-- Be conservative: only create notes for genuinely useful insights, not noise
+5. "update_categories": [{{
+     "page_id": str,              # ID of an existing category index page
+     "add_links": [str]           # Page titles to add as [[wiki links]] to the category
+   }}]
+
+6. "health": {{"loops_detected": bool, "stuck": bool, "recommend_restart": bool, "message": "optional"}}
+
+## Guidelines
+- **Categorize everything.** Every note should belong to a category. If a category page doesn't exist, create one.
+- **Use [[wiki links]]** liberally. Link notes to their category page. Link related notes to each other.
+- **Category pages** are index pages that list all content in that topic. Format: "# Category Name" followed by bullet list of [[linked pages]].
+- **Be hierarchical.** Broad categories (e.g., "Technology") can link to subcategories (e.g., "[[Machine Learning]]", "[[Web Development]]").
+- **Create a _index page** if one doesn't exist. It should link to all category pages.
+- **Merge duplicates** aggressively. Two notes about the same topic should become one.
+- **Delete noise.** If content has no lasting value, don't create a note for it.
+- **Keep content concise.** Summaries, not raw transcripts.
 
 Respond ONLY with valid JSON."""
 
@@ -559,6 +610,26 @@ async def _execute_actions(agent_id: UUID, notebook_id: UUID, config: dict, resu
     )
     card_count = card_count_row or 0
 
+    # Build folder cache (category name -> folder_id)
+    folder_cache: dict[str, UUID] = {}
+    existing_folders = await pool.fetch(
+        "SELECT id, name FROM notebook_folders WHERE notebook_id = $1", notebook_id,
+    )
+    for f in existing_folders:
+        folder_cache[f["name"]] = f["id"]
+
+    async def _ensure_folder(folder_name: str) -> UUID | None:
+        if not folder_name:
+            return None
+        if folder_name in folder_cache:
+            return folder_cache[folder_name]
+        try:
+            folder = await notebook_service.create_folder(notebook_id, folder_name, agent_id)
+            folder_cache[folder_name] = folder["id"]
+            return folder["id"]
+        except Exception:
+            return None  # Folder may already exist from race condition
+
     # Create notes
     for note_data in result.get("create_notes", []):
         note_type = note_data.get("type", "note")
@@ -569,8 +640,9 @@ async def _execute_actions(agent_id: UUID, notebook_id: UUID, config: dict, resu
             "note_type": note_type,
             "keywords": note_data.get("keywords", []),
             "importance": note_data.get("importance", 0.5),
-            "auto_inject": False,
+            "auto_inject": note_type == "category",  # Category pages are always available
             "source": "sleep_agent",
+            "category": note_data.get("category", ""),
         }
         if note_type == "pattern":
             metadata["outcomes"] = {"success": 0, "partial": 0, "irrelevant": 0, "override": 0, "failure": 0}
@@ -579,13 +651,36 @@ async def _execute_actions(agent_id: UUID, notebook_id: UUID, config: dict, resu
             metadata["confidence"] = note_data.get("confidence", 0.5)
             card_count += 1
 
+        # Create folder for the category if specified
+        folder_id = await _ensure_folder(note_data.get("folder", ""))
+
         await notebook_service.create_page(
             notebook_id=notebook_id,
             name=note_data.get("title", "Untitled"),
             created_by=agent_id,
+            folder_id=folder_id,
             content=note_data.get("content", ""),
             metadata=metadata,
         )
+
+    # Update category pages (add new wiki links)
+    for cat_update in result.get("update_categories", []):
+        page_id_str = cat_update.get("page_id", "")
+        if not page_id_str:
+            continue
+        page = await notebook_service.get_page(UUID(page_id_str), notebook_id)
+        if not page:
+            continue
+        new_links = cat_update.get("add_links", [])
+        if new_links:
+            additions = "\n".join(f"- [[{link}]]" for link in new_links)
+            new_content = page["content_markdown"] + f"\n{additions}"
+            await notebook_service.update_page(
+                page_id=UUID(page_id_str),
+                notebook_id=notebook_id,
+                updated_by=agent_id,
+                content=new_content,
+            )
 
     # Update notes
     for update in result.get("update_notes", []):
