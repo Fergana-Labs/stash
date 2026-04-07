@@ -1,12 +1,13 @@
 "use client";
 
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import AppShell from "../../components/AppShell";
 import { useAuth } from "../../hooks/useAuth";
 import {
   listAllHistories,
+  listHistories,
   queryAllHistoryEvents,
   createPersonalHistory,
 } from "../../lib/api";
@@ -14,6 +15,8 @@ import { HistoryEventWithContext, HistoryWithWorkspace } from "../../lib/types";
 
 export default function MemoryPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const wsId = searchParams.get("ws");
   const { user, loading, logout } = useAuth();
   const [stores, setStores] = useState<HistoryWithWorkspace[]>([]);
   const [events, setEvents] = useState<HistoryEventWithContext[]>([]);
@@ -24,10 +27,16 @@ export default function MemoryPage() {
 
   const loadStores = useCallback(async () => {
     try {
-      const res = await listAllHistories();
-      setStores(res?.stores ?? []);
+      if (wsId) {
+        const res = await listHistories(wsId);
+        const s = (res?.stores ?? []).map((s: any) => ({ ...s, workspace_id: wsId, workspace_name: "" }));
+        setStores(s);
+      } else {
+        const res = await listAllHistories();
+        setStores(res?.stores ?? []);
+      }
     } catch { /* ignore */ }
-  }, []);
+  }, [wsId]);
 
   const loadEvents = useCallback(async () => {
     setEventsLoading(true);

@@ -1,25 +1,33 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import AppShell from "../../components/AppShell";
 import { useAuth } from "../../hooks/useAuth";
-import { listAllDecks, createPersonalDeck, deletePersonalDeck } from "../../lib/api";
+import { listAllDecks, listDecks, createPersonalDeck, deletePersonalDeck } from "../../lib/api";
 import { DeckWithWorkspace } from "../../lib/types";
 
 export default function DecksPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const wsId = searchParams.get("ws");
   const { user, loading, logout } = useAuth();
   const [decks, setDecks] = useState<DeckWithWorkspace[]>([]);
   const [error, setError] = useState("");
 
   const loadDecks = useCallback(async () => {
     try {
-      const res = await listAllDecks();
-      setDecks(res?.decks ?? []);
+      if (wsId) {
+        const res = await listDecks(wsId);
+        const d = (res?.decks ?? []).map((d: any) => ({ ...d, workspace_id: wsId, workspace_name: "" }));
+        setDecks(d);
+      } else {
+        const res = await listAllDecks();
+        setDecks(res?.decks ?? []);
+      }
     } catch { /* ignore */ }
-  }, []);
+  }, [wsId]);
 
   useEffect(() => { if (user) loadDecks(); }, [user, loadDecks]);
 

@@ -1,13 +1,14 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import AppShell from "../../components/AppShell";
 import NotebookTreeComponent from "../../components/workspace/FileTree";
 import MarkdownEditor from "../../components/workspace/MarkdownEditor";
 import { useAuth } from "../../hooks/useAuth";
 import {
   listAllNotebooks,
+  listNotebooks,
   createPersonalNotebook,
   deletePersonalNotebook,
   listPersonalPageTree,
@@ -38,6 +39,8 @@ import { Notebook, NotebookPage, NotebookWithWorkspace, PageGraph, PageLink, Pag
 
 export default function NotebooksPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const wsId = searchParams.get("ws");
   const { user, loading, logout } = useAuth();
   const [notebooks, setNotebooks] = useState<NotebookWithWorkspace[]>([]);
   const [selectedNotebook, setSelectedNotebook] = useState<NotebookWithWorkspace | null>(null);
@@ -54,10 +57,16 @@ export default function NotebooksPage() {
 
   const loadNotebooks = useCallback(async () => {
     try {
-      const res = await listAllNotebooks();
-      setNotebooks(res?.notebooks ?? []);
+      if (wsId) {
+        const res = await listNotebooks(wsId);
+        const nbs = (res?.notebooks ?? []).map((n: any) => ({ ...n, workspace_id: wsId, workspace_name: "" }));
+        setNotebooks(nbs);
+      } else {
+        const res = await listAllNotebooks();
+        setNotebooks(res?.notebooks ?? []);
+      }
     } catch { /* ignore */ }
-  }, []);
+  }, [wsId]);
 
   useEffect(() => { if (user) loadNotebooks(); }, [user, loadNotebooks]);
 
