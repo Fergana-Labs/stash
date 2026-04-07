@@ -30,10 +30,11 @@ const COLLABORATE: NavItem[] = [
   { href: "/decks", label: "Pages", icon: "D" },
 ];
 
-function NavLink({ item, isActive }: { item: NavItem; isActive: boolean }) {
+function NavLink({ item, isActive, wsId }: { item: NavItem; isActive: boolean; wsId?: string | null }) {
+  const href = wsId ? `${item.href}?ws=${wsId}` : item.href;
   return (
     <Link
-      href={item.href}
+      href={href}
       className={`flex items-center gap-3 px-3 py-2 rounded-md text-sm transition-colors ${
         isActive
           ? "bg-brand/10 text-brand font-medium"
@@ -87,12 +88,22 @@ export default function AppSidebar() {
       .catch(() => {});
   }, []);
 
-  // Detect workspace from URL (overrides localStorage)
+  // Detect workspace from URL path or query param (overrides localStorage)
   useEffect(() => {
     const wsMatch = pathname.match(/^\/workspaces\/([^/]+)/);
     if (wsMatch?.[1]) {
       setSelectedWsId(wsMatch[1]);
       localStorage.setItem(WS_STORAGE_KEY, wsMatch[1]);
+      return;
+    }
+    // Check query param
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      const wsParam = params.get("ws");
+      if (wsParam) {
+        setSelectedWsId(wsParam);
+        localStorage.setItem(WS_STORAGE_KEY, wsParam);
+      }
     }
   }, [pathname]);
 
@@ -173,26 +184,26 @@ export default function AppSidebar() {
 
       {/* Navigation — scoped to selected workspace */}
       <nav className="flex-1 px-2 overflow-y-auto">
-        <NavLink item={SEARCH} isActive={isActive(SEARCH.href)} />
+        <NavLink item={SEARCH} isActive={isActive(SEARCH.href)} wsId={selectedWsId} />
 
         <SectionLabel>Consume</SectionLabel>
         <div className="space-y-0.5">
           {CONSUME.map((item) => (
-            <NavLink key={item.href} item={item} isActive={isActive(item.href)} />
+            <NavLink key={item.href} item={item} isActive={isActive(item.href)} wsId={selectedWsId} />
           ))}
         </div>
 
         <SectionLabel>Curate</SectionLabel>
         <div className="space-y-0.5">
           {CURATE.map((item) => (
-            <NavLink key={item.href} item={item} isActive={isActive(item.href)} />
+            <NavLink key={item.href} item={item} isActive={isActive(item.href)} wsId={selectedWsId} />
           ))}
         </div>
 
         <SectionLabel>Collaborate</SectionLabel>
         <div className="space-y-0.5">
           {COLLABORATE.map((item) => (
-            <NavLink key={item.href} item={item} isActive={isActive(item.href)} />
+            <NavLink key={item.href} item={item} isActive={isActive(item.href)} wsId={selectedWsId} />
           ))}
         </div>
       </nav>
