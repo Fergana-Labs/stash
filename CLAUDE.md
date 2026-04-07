@@ -1,6 +1,6 @@
 # Boozle
 
-Auto-curating knowledge base for AI-augmented teams. Consume data (bookmarks, AI sessions, files), curate it into a wiki (sleep agent, notebooks), and collaborate (chats, pages).
+Centralized, collaborative memory for teams of AI agents. Every Claude Code session, research paper, webpage, and conversation goes into one shared knowledge base. A sleep agent curates it into a searchable wiki.
 
 ## Architecture
 
