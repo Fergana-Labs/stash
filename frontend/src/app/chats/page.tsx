@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import AppShell from "../../components/AppShell";
 import NewDMDialog from "../../components/NewDMDialog";
@@ -23,8 +23,7 @@ function buildChatHref(item: {
 
 export default function ChatsPage() {
   const router = useRouter();
-  const searchParams = useSearchParams();
-  const wsId = searchParams.get("ws");
+  const wsId = typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("ws") : null;
   const { user, loading, logout } = useAuth();
   const [chats, setChats] = useState<ChatWithWorkspace[]>([]);
   const [dms, setDMs] = useState<DMWithUser[]>([]);

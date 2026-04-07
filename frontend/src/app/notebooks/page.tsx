@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import AppShell from "../../components/AppShell";
 import NotebookTreeComponent from "../../components/workspace/FileTree";
 import MarkdownEditor from "../../components/workspace/MarkdownEditor";
@@ -39,8 +39,7 @@ import { Notebook, NotebookPage, NotebookWithWorkspace, PageGraph, PageLink, Pag
 
 export default function NotebooksPage() {
   const router = useRouter();
-  const searchParams = useSearchParams();
-  const wsId = searchParams.get("ws");
+  const wsId = typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("ws") : null;
   const { user, loading, logout } = useAuth();
   const [notebooks, setNotebooks] = useState<NotebookWithWorkspace[]>([]);
   const [selectedNotebook, setSelectedNotebook] = useState<NotebookWithWorkspace | null>(null);
