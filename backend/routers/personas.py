@@ -364,7 +364,7 @@ async def update_persona_sleep_config(
     allowed_keys = {
         "enabled", "interval_minutes", "max_pattern_cards", "monologue_batch_size",
         "monologue_model", "curation_model", "curation_sources", "curation_rules",
-        "workspace_ids",
+        "workspace_ids", "agent_name_filter",
     }
     filtered = {k: v for k, v in updates.items() if k in allowed_keys}
     if not filtered:
@@ -484,7 +484,7 @@ async def update_sleep_config(
     allowed_keys = {
         "enabled", "interval_minutes", "max_pattern_cards", "monologue_batch_size",
         "monologue_model", "curation_model", "curation_sources", "curation_rules",
-        "workspace_ids",
+        "workspace_ids", "agent_name_filter",
     }
     filtered = {k: v for k, v in updates.items() if k in allowed_keys}
     if not filtered:

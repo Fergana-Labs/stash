@@ -17,27 +17,27 @@ mcp = FastMCP(
     "boozle",
     instructions="""Boozle — Auto-curating knowledge base for AI-augmented teams.
 
-Three modes: Ingest (throw data in), Curate (sleep agent builds a wiki), Share (chats + pages).
+Three modes: Consume (throw data in), Curate (sleep agent builds a wiki), Collaborate (chats + pages).
 
 ## Getting Started
 1. Call `register` to create an account and get an API key.
 2. Call `create_workspace` to create a workspace.
-3. Ingest data: push history events, upload files, create table rows.
+3. Consume data: push history events, upload files, create table rows.
 4. The sleep agent auto-curates your data into a wiki in notebooks.
 5. Search across everything with `universal_search`.
 
 ## Core Objects (organized by mode)
 
-### Ingest
+### Consume
 - **Files**: Upload images, PDFs, documents to S3 storage
 - **History**: Append-only event logs from agents (tool calls, messages, sessions). Searchable.
 - **Tables**: Structured data with typed columns, row embeddings, semantic search
 
 ### Curate
 - **Notebooks**: Wiki-style markdown pages with [[backlinks]], page graph, auto-index. The sleep agent writes here.
-- **Personas**: AI agent identities with personal notebook + history. Sleep agent configured per-persona.
+- **Personas**: Sleep agent + notebook. Watches workspace histories (filtered by agent_name), curates into a personal notebook wiki.
 
-### Share
+### Collaborate
 - **Chats**: Real-time messaging channels. Agents participate alongside humans.
 - **Pages**: HTML documents (slides, dashboards, reports) with public sharing + analytics.
 - **DMs**: Direct messages between two users.

@@ -171,10 +171,12 @@ function LoggedInHome({ user, logout }: { user: NonNullable<ReturnType<typeof us
     memory: "bg-violet-500/15 text-violet-500",
   };
 
+  const workspaceItems = feed.filter((f) => f.type === "workspace");
+  const activityItems = feed.filter((f) => f.type !== "workspace");
+
   return (
     <AppShell user={user} onLogout={logout}>
       <div className="max-w-3xl mx-auto w-full px-4 py-8">
-        <h1 className="text-2xl font-bold text-foreground mb-6 font-display">Recent Activity</h1>
         {loading ? (
           <p className="text-muted text-sm">Loading...</p>
         ) : feed.length === 0 ? (
@@ -186,23 +188,51 @@ function LoggedInHome({ user, logout }: { user: NonNullable<ReturnType<typeof us
             </div>
           </div>
         ) : (
-          <div className="space-y-0.5">
-            {feed.map((item) => (
-              <Link key={`${item.type}-${item.id}`} href={item.href} className="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-raised transition-colors">
-                <div className={`w-8 h-8 rounded-md flex items-center justify-center text-xs font-bold flex-shrink-0 ${item.badgeColor || iconColors[item.type] || "bg-raised text-muted"}`}>
-                  {item.icon}
+          <>
+            {/* Workspaces */}
+            {workspaceItems.length > 0 && (
+              <section className="mb-8">
+                <div className="flex items-center justify-between mb-3">
+                  <h2 className="text-sm font-medium text-muted uppercase tracking-wider">Workspaces</h2>
+                  <Link href="/rooms" className="text-xs text-brand hover:text-brand-hover">Manage</Link>
                 </div>
-                <div className="min-w-0 flex-1">
-                  <div className="text-sm text-foreground truncate">{item.name}</div>
-                  {item.description && <div className="text-xs text-muted truncate">{item.description}</div>}
+                <div className="grid grid-cols-2 gap-2">
+                  {workspaceItems.map((item) => (
+                    <Link key={item.id} href={item.href} className="bg-surface border border-border rounded-lg p-3 hover:bg-raised transition-colors">
+                      <div className="text-sm text-foreground font-medium truncate">{item.name}</div>
+                      {item.description && <div className="text-xs text-muted truncate mt-0.5">{item.description}</div>}
+                      <div className="text-[10px] text-muted mt-1">{item.badge}</div>
+                    </Link>
+                  ))}
                 </div>
-                <div className="flex items-center gap-2 flex-shrink-0">
-                  {item.badge && <span className="text-[10px] text-muted bg-raised px-1.5 py-0.5 rounded">{item.badge}</span>}
-                  <span className="text-xs text-muted">{formatRelativeTime(item.updatedAt)}</span>
-                </div>
-              </Link>
-            ))}
-          </div>
+              </section>
+            )}
+
+            {/* Recent Activity */}
+            <section>
+              <h2 className="text-sm font-medium text-muted uppercase tracking-wider mb-3">Recent Activity</h2>
+              <div className="space-y-0.5">
+                {activityItems.map((item) => (
+                  <Link key={`${item.type}-${item.id}`} href={item.href} className="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-raised transition-colors">
+                    <div className={`w-8 h-8 rounded-md flex items-center justify-center text-xs font-bold flex-shrink-0 ${item.badgeColor || iconColors[item.type] || "bg-raised text-muted"}`}>
+                      {item.icon}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="text-sm text-foreground truncate">{item.name}</div>
+                      {item.description && <div className="text-xs text-muted truncate">{item.description}</div>}
+                    </div>
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                      {item.badge && <span className="text-[10px] text-muted bg-raised px-1.5 py-0.5 rounded">{item.badge}</span>}
+                      <span className="text-xs text-muted">{formatRelativeTime(item.updatedAt)}</span>
+                    </div>
+                  </Link>
+                ))}
+                {activityItems.length === 0 && (
+                  <p className="text-muted text-sm py-4">No recent activity yet.</p>
+                )}
+              </div>
+            </section>
+          </>
         )}
       </div>
     </AppShell>

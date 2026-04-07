@@ -1,14 +1,14 @@
 # Boozle
 
-Auto-curating knowledge base for AI-augmented teams. Ingest data (bookmarks, AI sessions, files), curate it into a wiki (sleep agent, notebooks), and share it (chats, pages).
+Auto-curating knowledge base for AI-augmented teams. Consume data (bookmarks, AI sessions, files), curate it into a wiki (sleep agent, notebooks), and collaborate (chats, pages).
 
 ## Architecture
 
 Three interaction modes, reflected in the sidebar:
 
-- **Ingest** — Files (S3 uploads), History (agent event logs), Tables (structured data)
-- **Curate** — Notebooks (wiki with [[backlinks]], sleep agent writes here), Personas (AI agents + sleep agent config)
-- **Share** — Chats (real-time messaging), Pages (HTML documents, shareable)
+- **Consume** — Files (S3 uploads), History (agent event logs), Tables (structured data)
+- **Curate** — Notebooks (wiki with [[backlinks]], sleep agent writes here), Personas (sleep agent + notebook, watches workspace histories filtered by agent_name)
+- **Collaborate** — Chats (real-time messaging), Pages (HTML documents, shareable)
 
 Everything lives in a **workspace** — a permissioned container for teams. Personal resources can exist outside workspaces.
 
@@ -24,7 +24,7 @@ Everything lives in a **workspace** — a permissioned container for teams. Pers
 - LLM: Anthropic Claude (sleep agent curation, universal search)
 
 ## Key Services
-- `backend/services/sleep_service.py` — Background curation agent. Reads history/notebooks/tables, calls Claude to create categorized wiki pages with folders and [[wiki links]].
+- `backend/services/sleep_service.py` — Background curation agent. Reads workspace histories (filtered by agent_name_filter), notebooks, and tables. Calls Claude to create categorized wiki pages with folders and [[wiki links]]. Persona = sleep agent + notebook.
 - `backend/services/universal_search_service.py` — Agentic search loop across all resource types.
 - `backend/services/notebook_service.py` — Wiki features: [[link]] parsing, backlinks, page graph, embeddings, auto-index.
 - `backend/services/embedding_service.py` — OpenAI embedding API client. Uses EMBEDDING_API_KEY or OPENAI_API_KEY.
@@ -48,8 +48,8 @@ In QA mode, flag any code that doesn't match DESIGN.md.
 ```
 [Workspace switcher + settings]
 Search
-── Ingest ──  Files, History, Tables
-── Curate ──  Notebooks, Personas
-── Share  ──  Chats, Pages
+── Consume ──     Files, History, Tables
+── Curate ──      Notebooks, Personas
+── Collaborate ── Chats, Pages
 [Docs]
 ```
