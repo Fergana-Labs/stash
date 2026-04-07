@@ -36,7 +36,8 @@ async def _load_sleep_config(agent_id: UUID) -> dict:
     pool = get_pool()
     row = await pool.fetchrow(
         "SELECT enabled, interval_minutes, max_pattern_cards, monologue_batch_size, "
-        "monologue_model, curation_model, curation_sources, curation_rules, workspace_ids "
+        "monologue_model, curation_model, curation_sources, curation_rules, workspace_ids, "
+        "agent_name_filter "
         "FROM sleep_configs WHERE persona_id = $1",
         agent_id,
     )
@@ -52,6 +53,7 @@ async def _load_sleep_config(agent_id: UUID) -> dict:
         "curation_sources": ["history"],
         "curation_rules": {},
         "workspace_ids": [],
+        "agent_name_filter": [],
     }
 
 
@@ -236,29 +238,46 @@ async def _get_table_changes_since(
 
 
 async def _get_workspace_history_since(
-    workspace_ids: list[UUID], after_ts: datetime | None, limit: int = 200,
+    workspace_ids: list[UUID], after_ts: datetime | None,
+    agent_name_filter: list[str] | None = None, limit: int = 200,
 ) -> list[dict]:
-    """Get history events from workspace stores since watermark."""
+    """Get history events from workspace stores since watermark.
+
+    If agent_name_filter is provided, only include events from those agent names.
+    """
     pool = get_pool()
     if not workspace_ids:
         return []
+
+    agent_clause = ""
+    args: list = [workspace_ids]
+    if agent_name_filter:
+        agent_clause = " AND he.agent_name = ANY($%d)" % (len(args) + 1)
+        args.append(agent_name_filter)
+
     if after_ts:
+        args.append(after_ts)
+        ts_idx = len(args)
+        args.append(limit)
+        lim_idx = len(args)
         rows = await pool.fetch(
             "SELECT he.id, he.agent_name, he.event_type, he.content, he.created_at, "
             "h.name AS store_name "
             "FROM history_events he JOIN histories h ON h.id = he.store_id "
-            "WHERE h.workspace_id = ANY($1) AND he.created_at > $2 "
-            "ORDER BY he.created_at ASC LIMIT $3",
-            workspace_ids, after_ts, limit,
+            f"WHERE h.workspace_id = ANY($1){agent_clause} AND he.created_at > ${ts_idx} "
+            f"ORDER BY he.created_at ASC LIMIT ${lim_idx}",
+            *args,
         )
     else:
+        args.append(limit)
+        lim_idx = len(args)
         rows = await pool.fetch(
             "SELECT he.id, he.agent_name, he.event_type, he.content, he.created_at, "
             "h.name AS store_name "
             "FROM history_events he JOIN histories h ON h.id = he.store_id "
-            "WHERE h.workspace_id = ANY($1) "
-            "ORDER BY he.created_at DESC LIMIT $2",
-            workspace_ids, limit,
+            f"WHERE h.workspace_id = ANY($1){agent_clause} "
+            f"ORDER BY he.created_at DESC LIMIT ${lim_idx}",
+            *args,
         )
     return [dict(r) for r in rows]
 
@@ -783,16 +802,20 @@ async def curate(agent_id: UUID) -> dict:
     watermark = await _get_watermark(agent_id)
     sources = config.get("curation_sources", ["history"])
     ws_ids = config.get("workspace_ids", [])
+    agent_filter = config.get("agent_name_filter", []) or []
 
     # --- Gather data from configured sources ---
 
     # Personal history (always gathered for health detection + outcome scoring)
     episodes = await _get_episodes_since(history_id, watermark["last_event_at"])
 
-    # Workspace history events
+    # Workspace history events (filtered by agent_name if configured)
     ws_episodes = []
     if "history" in sources and ws_ids:
-        ws_episodes = await _get_workspace_history_since(ws_ids, watermark["last_event_at"])
+        ws_episodes = await _get_workspace_history_since(
+            ws_ids, watermark["last_event_at"],
+            agent_name_filter=agent_filter if agent_filter else None,
+        )
 
     # Notebook changes
     notebook_changes = []

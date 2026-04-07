@@ -8,9 +8,9 @@ const sections = [
   { id: "overview", label: "Overview" },
   { id: "quickstart", label: "Quickstart" },
   { id: "concepts", label: "Concepts" },
-  { id: "ingest", label: "Ingest" },
+  { id: "consume", label: "Consume" },
   { id: "curate", label: "Curate" },
-  { id: "share", label: "Share" },
+  { id: "collaborate", label: "Collaborate" },
   { id: "workspaces", label: "Workspaces" },
   { id: "cli", label: "CLI" },
   { id: "mcp", label: "MCP Server" },
@@ -105,11 +105,11 @@ export default function DocsPage() {
               A sleep agent curates it all into a searchable wiki with backlinks and semantic search.
               You never write wiki entries manually.
             </P>
-            <H3>Three modes of interaction</H3>
+            <H3>Consume, Curate, Collaborate</H3>
             <div className="grid grid-cols-3 gap-4 my-4">
               <div className="bg-surface border border-border rounded-lg p-4">
-                <div className="text-sm font-medium text-foreground mb-1">Ingest</div>
-                <div className="text-xs text-dim">Throw stuff in. Files, history logs, structured data. Via hooks, CLI, or agents.</div>
+                <div className="text-sm font-medium text-foreground mb-1">Consume</div>
+                <div className="text-xs text-dim">Throw stuff in. Bookmarks, files, history logs, structured data. Via hooks, CLI, or agents.</div>
                 <div className="text-[10px] text-muted mt-2">Files, History, Tables</div>
               </div>
               <div className="bg-surface border border-border rounded-lg p-4">
@@ -118,8 +118,8 @@ export default function DocsPage() {
                 <div className="text-[10px] text-muted mt-2">Notebooks, Personas</div>
               </div>
               <div className="bg-surface border border-border rounded-lg p-4">
-                <div className="text-sm font-medium text-foreground mb-1">Share</div>
-                <div className="text-xs text-dim">Chat with your team. Create shareable pages and reports.</div>
+                <div className="text-sm font-medium text-foreground mb-1">Collaborate</div>
+                <div className="text-xs text-dim">Chat with your team. Create and share pages, reports, dashboards.</div>
                 <div className="text-[10px] text-muted mt-2">Chats, Pages</div>
               </div>
             </div>
@@ -166,14 +166,14 @@ export BOOZLE_URL=https://getboozle.com`}</CodeBlock>
               code. Set visibility to public or private.
             </P>
 
-            <H3>Files (Ingest)</H3>
+            <H3>Files (Consume)</H3>
             <P>
               Upload images, PDFs, and other files to S3-compatible storage. Files can be
               attached to chat messages and referenced in notebook pages. Use the CLI to
               import bookmarks, which scrapes and stores web content.
             </P>
 
-            <H3>History (Ingest)</H3>
+            <H3>History (Consume)</H3>
             <P>
               Append-only event logs from AI agents. Every tool call, message, and session
               event is recorded with timestamps, agent names, and metadata. Searchable via
@@ -181,7 +181,7 @@ export BOOZLE_URL=https://getboozle.com`}</CodeBlock>
               to curate the wiki.
             </P>
 
-            <H3>Tables (Ingest)</H3>
+            <H3>Tables (Consume)</H3>
             <P>
               Structured data with typed columns (text, number, date, select, etc.).
               Like Notion databases. Support filters, sorting, views, CSV import/export,
@@ -198,18 +198,19 @@ export BOOZLE_URL=https://getboozle.com`}</CodeBlock>
 
             <H3>Personas (Curate)</H3>
             <P>
-              AI agent identities. Each persona has an API key, a personal notebook, and a
-              history store. The sleep agent is configured per-persona — you control what it
-              curates (history, notebooks, documents, tables) and which workspaces it watches.
+              A persona is a sleep agent + notebook. Each persona watches workspace history
+              stores (optionally filtered by agent_name) and curates what it finds into its
+              personal notebook wiki. Configure which workspaces to watch, which agent names
+              to filter by, curation sources, and the LLM model.
             </P>
 
-            <H3>Chats (Share)</H3>
+            <H3>Chats (Collaborate)</H3>
             <P>
               Real-time messaging channels within a workspace. Also personal rooms and DMs.
               File attachments via the + button. Agents can participate in chats alongside humans.
             </P>
 
-            <H3>Pages (Share)</H3>
+            <H3>Pages (Collaborate)</H3>
             <P>
               HTML/JS/CSS documents for shareable output — analytics reports, slide decks,
               dashboards. Agents generate these. Public sharing with token-based access,
@@ -224,8 +225,8 @@ export BOOZLE_URL=https://getboozle.com`}</CodeBlock>
             </P>
           </section>
 
-          <section id="ingest" className="mb-12">
-            <H2 id="ingest">Ingest</H2>
+          <section id="consume" className="mb-12">
+            <H2 id="consume">Consume</H2>
             <P>Getting data into Boozle. The goal: zero-friction. Data flows in automatically or with one command.</P>
 
             <H3>Import bookmarks</H3>
@@ -302,8 +303,8 @@ export BOOZLE_URL=https://getboozle.com`}</CodeBlock>
             </P>
           </section>
 
-          <section id="share" className="mb-12">
-            <H2 id="share">Share</H2>
+          <section id="collaborate" className="mb-12">
+            <H2 id="collaborate">Collaborate</H2>
             <P>Communicate and publish.</P>
 
             <H3>Chats</H3>

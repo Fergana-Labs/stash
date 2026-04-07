@@ -205,6 +205,7 @@ CREATE TABLE IF NOT EXISTS sleep_configs (
     curation_sources      JSONB NOT NULL DEFAULT '["history"]',
     curation_rules        JSONB NOT NULL DEFAULT '{}',
     workspace_ids         UUID[] DEFAULT '{}',
+    agent_name_filter     TEXT[] DEFAULT '{}',
     updated_at            TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
@@ -633,6 +634,7 @@ async def init_db():
             ("curation_sources", "JSONB", "'[\"history\"]'"),
             ("curation_rules", "JSONB", "'{}'"),
             ("workspace_ids", "UUID[]", "'{}'"),
+            ("agent_name_filter", "TEXT[]", "'{}'"),
         ]:
             has_col = await conn.fetchval(
                 "SELECT 1 FROM information_schema.columns "

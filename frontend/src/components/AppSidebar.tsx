@@ -14,7 +14,7 @@ interface NavItem {
 
 const SEARCH: NavItem = { href: "/search", label: "Search", icon: "S" };
 
-const INGEST: NavItem[] = [
+const CONSUME: NavItem[] = [
   { href: "/documents", label: "Files", icon: "F" },
   { href: "/memory", label: "History", icon: "H" },
   { href: "/tables", label: "Tables", icon: "T" },
@@ -25,7 +25,7 @@ const CURATE: NavItem[] = [
   { href: "/personas", label: "Personas", icon: "P" },
 ];
 
-const SHARE: NavItem[] = [
+const COLLABORATE: NavItem[] = [
   { href: "/chats", label: "Chats", icon: "C" },
   { href: "/decks", label: "Pages", icon: "D" },
 ];
@@ -141,9 +141,9 @@ export default function AppSidebar() {
       <nav className="flex-1 px-2 overflow-y-auto">
         <NavLink item={SEARCH} isActive={isActive(SEARCH.href)} />
 
-        <SectionLabel>Ingest</SectionLabel>
+        <SectionLabel>Consume</SectionLabel>
         <div className="space-y-0.5">
-          {INGEST.map((item) => (
+          {CONSUME.map((item) => (
             <NavLink key={item.href} item={item} isActive={isActive(item.href)} />
           ))}
         </div>
@@ -155,9 +155,9 @@ export default function AppSidebar() {
           ))}
         </div>
 
-        <SectionLabel>Share</SectionLabel>
+        <SectionLabel>Collaborate</SectionLabel>
         <div className="space-y-0.5">
-          {SHARE.map((item) => (
+          {COLLABORATE.map((item) => (
             <NavLink key={item.href} item={item} isActive={isActive(item.href)} />
           ))}
         </div>

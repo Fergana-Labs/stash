@@ -44,6 +44,7 @@ function SleepAgentConfig() {
         interval_minutes: config.interval_minutes,
         curation_sources: config.curation_sources,
         workspace_ids: config.workspace_ids,
+        agent_name_filter: config.agent_name_filter,
         curation_model: config.curation_model,
       });
       setConfig(updated);
@@ -216,6 +217,7 @@ function InlineSleepConfig({ personaId, personaWorkspaces }: { personaId: string
         interval_minutes: config.interval_minutes,
         curation_sources: config.curation_sources,
         workspace_ids: config.workspace_ids,
+        agent_name_filter: config.agent_name_filter,
         curation_model: config.curation_model,
       });
       setConfig(updated);
@@ -287,6 +289,16 @@ function InlineSleepConfig({ personaId, personaWorkspaces }: { personaId: string
           ))}
         </div>
       )}
+
+      <div className="flex items-center gap-1.5">
+        <span className="text-xs text-muted">Agent filter:</span>
+        <input
+          value={(config.agent_name_filter || []).join(", ")}
+          onChange={(e) => setConfig({ ...config, agent_name_filter: e.target.value.split(",").map(s => s.trim()).filter(Boolean) })}
+          placeholder="all agents (or: claude-code, web-scraper)"
+          className="flex-1 bg-raised border border-border rounded px-2 py-0.5 text-xs text-foreground font-mono max-w-[280px]"
+        />
+      </div>
 
       <div className="flex items-center gap-1.5">
         <span className="text-xs text-muted">Model:</span>

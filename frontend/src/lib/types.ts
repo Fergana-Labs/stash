@@ -431,6 +431,7 @@ export interface SleepConfig {
   curation_sources: string[];
   curation_rules: Record<string, unknown>;
   workspace_ids: string[];
+  agent_name_filter: string[];
 }
 
 // --- Search ---
