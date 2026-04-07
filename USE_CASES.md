@@ -28,7 +28,7 @@ Real-world scenarios for Octopus, from solo developer to multi-agent team.
 
 **Setup:**
 1. Create a workspace and history store ("RAG Research")
-2. Connect via MCP or the Claude Code plugin
+2. Connect via the `octopus` CLI or the Claude Code plugin
 
 **What happens:**
 - The researcher prompts: *"Search the web for the latest papers on RAG architectures and save summaries to Octopus"*
