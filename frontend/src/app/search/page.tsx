@@ -16,9 +16,10 @@ const RESOURCE_TYPES = [
 
 export default function SearchPage() {
   const router = useRouter();
+  const urlWs = typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("ws") : null;
   const { user, loading, logout } = useAuth();
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
-  const [selectedWs, setSelectedWs] = useState<string>("");
+  const [selectedWs, setSelectedWs] = useState<string>(urlWs || "");
   const [question, setQuestion] = useState("");
   const [selectedTypes, setSelectedTypes] = useState<Set<string>>(new Set());
   const [result, setResult] = useState<SearchResponse | null>(null);

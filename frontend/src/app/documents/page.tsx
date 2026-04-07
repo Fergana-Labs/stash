@@ -15,9 +15,10 @@ import type { Document, DocumentChunk, Workspace } from "../../lib/types";
 
 export default function DocumentsPage() {
   const router = useRouter();
+  const urlWs = typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("ws") : null;
   const { user, loading, logout } = useAuth();
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
-  const [selectedWs, setSelectedWs] = useState<string>("");
+  const [selectedWs, setSelectedWs] = useState<string>(urlWs || "");
   const [documents, setDocuments] = useState<Document[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<DocumentChunk[]>([]);

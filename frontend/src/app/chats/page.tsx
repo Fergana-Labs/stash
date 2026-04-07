@@ -1,13 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import AppShell from "../../components/AppShell";
 import NewDMDialog from "../../components/NewDMDialog";
 import { useAuth } from "../../hooks/useAuth";
-import { listAllChats, createPersonalRoom } from "../../lib/api";
-import { ChatWithWorkspace, DMWithUser } from "../../lib/types";
+import { listAllChats, listChats, createPersonalRoom } from "../../lib/api";
+import { Chat, ChatWithWorkspace, DMWithUser } from "../../lib/types";
 
 function buildChatHref(item: {
   id: string;
@@ -23,6 +23,8 @@ function buildChatHref(item: {
 
 export default function ChatsPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const wsId = searchParams.get("ws");
   const { user, loading, logout } = useAuth();
   const [chats, setChats] = useState<ChatWithWorkspace[]>([]);
   const [dms, setDMs] = useState<DMWithUser[]>([]);
@@ -34,13 +36,20 @@ export default function ChatsPage() {
 
   const loadData = useCallback(async () => {
     try {
-      const res = await listAllChats();
-      setChats(res?.chats ?? []);
-      setDMs(res?.dms ?? []);
+      if (wsId) {
+        const res = await listChats(wsId);
+        const c = (res?.chats ?? []).map((c: any) => ({ ...c, workspace_id: wsId, workspace_name: "" }));
+        setChats(c);
+        setDMs([]);
+      } else {
+        const res = await listAllChats();
+        setChats(res?.chats ?? []);
+        setDMs(res?.dms ?? []);
+      }
     } catch {
       // ignore
     }
-  }, []);
+  }, [wsId]);
 
   useEffect(() => {
     if (!loading && user) loadData();
