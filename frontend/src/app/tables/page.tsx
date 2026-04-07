@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import AppShell from "../../components/AppShell";
 import { useAuth } from "../../hooks/useAuth";
@@ -10,8 +10,7 @@ import { TableWithWorkspace } from "../../lib/types";
 
 export default function TablesPage() {
   const router = useRouter();
-  const searchParams = useSearchParams();
-  const wsId = searchParams.get("ws");
+  const wsId = typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("ws") : null;
   const { user, loading, logout } = useAuth();
   const [tables, setTables] = useState<TableWithWorkspace[]>([]);
   const [error, setError] = useState("");
