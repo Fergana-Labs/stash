@@ -2,28 +2,28 @@
 
 ## System overview
 
-Octopus is a collaborative memory platform for AI agent teams. It has three layers: a Next.js frontend, a Python/FastAPI backend (which also serves an MCP endpoint), and PostgreSQL with pgvector for storage.
+Octopus is a collaborative memory platform for AI agent teams. It has three layers: a Next.js frontend, a Python/FastAPI backend, and PostgreSQL with pgvector for storage. The CLI is the primary programmatic interface for humans and agents.
 
 ```
 ┌──────────────────────────────────────────────────────────────────────┐
 │                          Clients                                     │
 │                                                                      │
-│  ┌─────────────┐  ┌─────────────┐  ┌──────────┐  ┌──────────────┐  │
-│  │ Next.js UI  │  │ Claude Code │  │ MCP      │  │ CLI / HTTP   │  │
-│  │ (browser)   │  │ Plugin      │  │ Clients  │  │ Clients      │  │
-│  └──────┬──────┘  └──────┬──────┘  └────┬─────┘  └──────┬───────┘  │
-│         │ REST/WS        │ REST          │ SSE/HTTP       │ REST    │
-└─────────┼────────────────┼──────────────┼────────────────┼──────────┘
-          │                │              │                │
-          ▼                ▼              ▼                ▼
+│  ┌─────────────┐  ┌─────────────┐  ┌──────────────────────────────┐ │
+│  │ Next.js UI  │  │ Claude Code │  │ octopus CLI / REST clients   │ │
+│  │ (browser)   │  │ Plugin      │  │ (agents, scripts, CI)        │ │
+│  └──────┬──────┘  └──────┬──────┘  └──────────────┬───────────────┘ │
+│         │ REST/WS        │ REST                   │ REST             │
+└─────────┼────────────────┼───────────────────────┼──────────────────┘
+          │                │                       │
+          ▼                ▼                       ▼
 ┌──────────────────────────────────────────────────────────────────────┐
 │                      FastAPI Backend (:3456)                          │
 │                                                                      │
-│  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐  │
-│  │ Routers  │ │ Services │ │ Auth     │ │ MCP      │ │ Back-    │  │
-│  │ (REST)   │ │ (logic)  │ │ (keys,  │ │ Server   │ │ ground   │  │
-│  │          │ │          │ │  bcrypt) │ │ (/mcp)   │ │ Loops    │  │
-│  └──────────┘ └──────────┘ └──────────┘ └──────────┘ └──────────┘  │
+│  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────────────────┐    │
+│  │ Routers  │ │ Services │ │ Auth     │ │ Background Loops     │    │
+│  │ (REST)   │ │ (logic)  │ │ (keys,   │ │ (sleep, webhooks,    │    │
+│  │          │ │          │ │  bcrypt) │ │  WS health)          │    │
+│  └──────────┘ └──────────┘ └──────────┘ └──────────────────────┘    │
 │                                                                      │
 │  Background loops:                                                   │
 │    • Sleep agent curation (configurable interval)                    │
@@ -55,7 +55,7 @@ Octopus is a collaborative memory platform for AI agent teams. It has three laye
 
 Octopus is the shared system of record — users, workspaces, chats, notebooks, memory, decks, tables, files, permissions, webhooks. If state is shared, persisted, or user-visible, it belongs here.
 
-External orchestration layers (your own multi-agent framework, local bridge daemons, etc.) integrate with Octopus by pushing history events and syncing notebooks via the REST API or MCP server. They must not implement parallel chat ingress or poll chats as a transport.
+External orchestration layers (your own multi-agent framework, local bridge daemons, etc.) integrate with Octopus by pushing history events and syncing notebooks via the CLI (`octopus <cmd> --json`) or the REST API. They must not implement parallel chat ingress or poll chats as a transport.
 
 ## Data model
 
@@ -182,9 +182,9 @@ Two real-time systems:
 - **Chat WebSocket** (`/api/v1/workspaces/{ws}/chats/{id}/ws`) — bidirectional messaging with `ConnectionManager`. Cross-process delivery via `pg_notify` on channel `octopus_events`.
 - **Yjs WebSocket** (`/api/v1/workspaces/{ws}/notebooks/{nb}/pages/{p}/yjs`) — CRDT sync for collaborative markdown editing.
 
-### MCP Server
+### CLI
 
-Mounted at `/mcp` as a Streamable HTTP transport. Exposes 30+ tools for external agents (history push/query, notebook read/write, chat send, table CRUD, file upload, search). Auth via Bearer token in the `Authorization` header.
+Primary interface for both humans and agents. Installed via `pip install octopus`; entry point `cli/main.py`. Covers the full REST surface (workspaces, chats, notebooks, history, tables, files, docs, webhooks, sleep, personas, watches). Agents invoke `octopus <cmd> --json` via Bash — no persistent protocol, no server-side state.
 
 ## Frontend architecture
 

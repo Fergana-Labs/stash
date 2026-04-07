@@ -104,18 +104,6 @@ The plugin hooks into your session lifecycle:
 **Skills available in Claude Code:**
 `/octopus:connect` · `/octopus:disconnect` · `/octopus:status` · `/octopus:sync` · `/octopus:persona` · `/octopus:config`
 
-### MCP Server
-
-```bash
-# Hosted
-claude mcp add --transport http octopus https://getoctopus.com/mcp \
-  --header "Authorization: Bearer YOUR_API_KEY"
-
-# Local
-claude mcp add -e OCTOPUS_API_KEY=KEY -e OCTOPUS_URL=https://getoctopus.com \
-  octopus -- python -m mcp_server.server
-```
-
 ### OpenClaw Plugin
 
 ```bash
@@ -164,7 +152,7 @@ Includes Caddy for automatic HTTPS. Requires PostgreSQL with pgvector. Optional:
 The sleep agent and universal search use Anthropic Claude. Embeddings use OpenAI `text-embedding-3-small`. You bring your own API keys.
 
 **Can I use this without Claude Code?**
-Yes. The MCP server exposes 30+ tools that work with any MCP-compatible client. The CLI works standalone. The OpenClaw plugin connects to OpenClaw agents.
+Yes. The CLI (`octopus <cmd> --json`) works standalone from any shell, agent framework, or CI environment. The OpenClaw plugin connects to OpenClaw agents.
 
 **Is my data private?**
 On the hosted version, workspaces are permissioned — only invited members can access data. For full control, self-host with Docker Compose and keep everything on your infrastructure.

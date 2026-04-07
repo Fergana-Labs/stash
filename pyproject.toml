@@ -31,7 +31,7 @@ select = ["E", "F", "W", "I", "UP"]
 ignore = ["E501"]
 
 [tool.ruff.lint.isort]
-known-first-party = ["backend", "cli", "mcp_server"]
+known-first-party = ["backend", "cli"]
 
 [tool.black]
 line-length = 100

@@ -468,3 +468,108 @@ class OctopusClient:
     def delete_table_column(self, workspace_id: str | None, table_id: str, column_id: str) -> dict:
         base = f"/api/v1/workspaces/{workspace_id}/tables" if workspace_id else "/api/v1/tables"
         return self._request("DELETE", f"{base}/{table_id}/columns/{column_id}").json()
+
+    def update_table_column(self, workspace_id: str | None, table_id: str, column_id: str, **kwargs) -> dict:
+        base = f"/api/v1/workspaces/{workspace_id}/tables" if workspace_id else "/api/v1/tables"
+        return self._patch(f"{base}/{table_id}/columns/{column_id}", json=kwargs)
+
+    def update_table_rows_batch(self, workspace_id: str | None, table_id: str, updates: list[dict]) -> dict:
+        base = f"/api/v1/workspaces/{workspace_id}/tables" if workspace_id else "/api/v1/tables"
+        return self._post(f"{base}/{table_id}/rows/batch-update", json={"updates": updates})
+
+    # --- Table Embeddings ---
+
+    def configure_table_embeddings(self, workspace_id: str, table_id: str, enabled: bool = True, columns: list[str] | None = None) -> dict:
+        return self._put(f"/api/v1/workspaces/{workspace_id}/tables/{table_id}/embedding", json={"enabled": enabled, "columns": columns or []})
+
+    def backfill_table_embeddings(self, workspace_id: str, table_id: str) -> dict:
+        return self._post(f"/api/v1/workspaces/{workspace_id}/tables/{table_id}/embedding/backfill")
+
+    def semantic_search_table_rows(self, workspace_id: str, table_id: str, query: str, limit: int = 20) -> list:
+        return self._list(f"/api/v1/workspaces/{workspace_id}/tables/{table_id}/rows/semantic-search", "rows", q=query, limit=limit)
+
+    # --- Wiki Features ---
+
+    def get_backlinks(self, workspace_id: str, notebook_id: str, page_id: str) -> list:
+        data = self._get(f"/api/v1/workspaces/{workspace_id}/notebooks/{notebook_id}/pages/{page_id}/backlinks")
+        return data.get("backlinks", []) if isinstance(data, dict) else data
+
+    def get_outlinks(self, workspace_id: str, notebook_id: str, page_id: str) -> list:
+        data = self._get(f"/api/v1/workspaces/{workspace_id}/notebooks/{notebook_id}/pages/{page_id}/outlinks")
+        return data.get("outlinks", []) if isinstance(data, dict) else data
+
+    def get_page_graph(self, workspace_id: str, notebook_id: str) -> dict:
+        return self._get(f"/api/v1/workspaces/{workspace_id}/notebooks/{notebook_id}/graph")
+
+    def semantic_search_pages(self, workspace_id: str, notebook_id: str, query: str, limit: int = 20) -> list:
+        return self._list(f"/api/v1/workspaces/{workspace_id}/notebooks/{notebook_id}/pages/semantic-search", "pages", q=query, limit=limit)
+
+    def auto_index_notebook(self, workspace_id: str, notebook_id: str) -> dict:
+        return self._post(f"/api/v1/workspaces/{workspace_id}/notebooks/{notebook_id}/auto-index")
+
+    # --- Files ---
+
+    def upload_file(self, workspace_id: str, name: str, file_path: str, content_type: str = "application/octet-stream") -> dict:
+        with open(file_path, "rb") as f:
+            resp = self._request("POST", f"/api/v1/workspaces/{workspace_id}/files", files={"file": (name, f, content_type)})
+        return resp.json()
+
+    def list_files(self, workspace_id: str) -> list:
+        return self._list(f"/api/v1/workspaces/{workspace_id}/files", "files")
+
+    def get_file_url(self, workspace_id: str, file_id: str) -> dict:
+        return self._get(f"/api/v1/workspaces/{workspace_id}/files/{file_id}")
+
+    def delete_file(self, workspace_id: str, file_id: str) -> None:
+        self._delete(f"/api/v1/workspaces/{workspace_id}/files/{file_id}")
+
+    # --- Documents (RAGFlow) ---
+
+    def upload_document(self, workspace_id: str, name: str, file_path: str) -> dict:
+        ext = name.rsplit(".", 1)[-1].lower() if "." in name else ""
+        ct_map = {"pdf": "application/pdf", "png": "image/png", "jpg": "image/jpeg",
+                  "jpeg": "image/jpeg", "txt": "text/plain", "md": "text/markdown"}
+        content_type = ct_map.get(ext, "application/octet-stream")
+        with open(file_path, "rb") as f:
+            resp = self._request("POST", f"/api/v1/workspaces/{workspace_id}/documents", files={"file": (name, f, content_type)})
+        return resp.json()
+
+    def list_documents(self, workspace_id: str, status: str = "") -> list:
+        params = {"status": status} if status else {}
+        return self._list(f"/api/v1/workspaces/{workspace_id}/documents", "documents", **params)
+
+    def search_documents(self, workspace_id: str, query: str, limit: int = 20) -> dict:
+        return self._post(f"/api/v1/workspaces/{workspace_id}/documents/search", json={"query": query, "limit": limit})
+
+    def get_document_status(self, workspace_id: str, doc_id: str) -> dict:
+        return self._get(f"/api/v1/workspaces/{workspace_id}/documents/{doc_id}")
+
+    def delete_document(self, workspace_id: str, doc_id: str) -> None:
+        self._delete(f"/api/v1/workspaces/{workspace_id}/documents/{doc_id}")
+
+    # --- Webhooks ---
+
+    def get_webhook(self, workspace_id: str) -> dict:
+        return self._get(f"/api/v1/workspaces/{workspace_id}/webhooks")
+
+    def update_webhook(self, workspace_id: str, **kwargs) -> dict:
+        return self._patch(f"/api/v1/workspaces/{workspace_id}/webhooks", json=kwargs)
+
+    def delete_webhook(self, workspace_id: str) -> None:
+        self._delete(f"/api/v1/workspaces/{workspace_id}/webhooks")
+
+    # --- Sleep Agent ---
+
+    def get_sleep_config(self) -> dict:
+        return self._get("/api/v1/personas/me/sleep/config")
+
+    def configure_sleep_agent(self, **kwargs) -> dict:
+        return self._patch("/api/v1/personas/me/sleep/config", json=kwargs)
+
+    def trigger_sleep(self) -> dict:
+        return self._post("/api/v1/personas/me/sleep")
+
+    # --- Profile ---
+
+    def update_profile(self, **kwargs) -> dict:
+        return self._patch("/api/v1/users/me", json=kwargs)

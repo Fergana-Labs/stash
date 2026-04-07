@@ -101,6 +101,28 @@ def auth(base_url: str = typer.Argument(...), api_key: str = typer.Option(..., "
             console.print("[yellow]Saved but could not verify.[/yellow]")
 
 
+@app.command("update-profile")
+def update_profile(display_name: str = typer.Option(None, "--name"), description: str = typer.Option(None, "--description"), as_json: bool = typer.Option(False, "--json")):
+    """Update your display name or description."""
+    kwargs: dict = {}
+    if display_name is not None:
+        kwargs["display_name"] = display_name
+    if description is not None:
+        kwargs["description"] = description
+    if not kwargs:
+        console.print("[red]Provide --name or --description.[/red]")
+        raise typer.Exit(1)
+    with _client() as c:
+        try:
+            data = c.update_profile(**kwargs)
+        except OctopusError as e:
+            _err(e)
+    if _use_json(as_json):
+        output_json(data)
+    else:
+        console.print("[green]Profile updated.[/green]")
+
+
 @app.command()
 def whoami(as_json: bool = typer.Option(False, "--json")):
     """Show profile."""
@@ -178,6 +200,17 @@ def ws_info(workspace_id: str = typer.Argument(...), as_json: bool = typer.Optio
     else:
         console.print(f"[bold]{data['name']}[/bold]  Members: {data.get('member_count', '?')}  Public: {data['is_public']}")
         console.print(f"ID: {data['id']}  Invite: {data['invite_code']}")
+
+
+@ws_app.command("leave")
+def ws_leave(workspace_id: str = typer.Argument(...)):
+    """Leave a workspace."""
+    with _client() as c:
+        try:
+            c.leave_workspace(workspace_id)
+        except OctopusError as e:
+            _err(e)
+    console.print("[green]Left workspace.[/green]")
 
 
 @ws_app.command("members")
@@ -1699,6 +1732,525 @@ def import_bookmarks_cmd(
         art = sum(1 for _, (c, t) in scraped.items() if t == "article" and c is not None)
         if yt or pdf or art:
             console.print(f"[dim]Content extracted: {art} articles, {yt} YouTube transcripts, {pdf} PDFs[/dim]")
+
+
+# ===========================================================================
+# Wiki Features (Notebooks)
+# ===========================================================================
+
+
+@nb_app.command("backlinks")
+def nb_backlinks(notebook_id: str = typer.Argument(...), page_id: str = typer.Argument(...), workspace_id: str = typer.Option(None, "--ws"), as_json: bool = typer.Option(False, "--json")):
+    """Get pages that link TO this page via [[wiki links]]."""
+    with _client() as c:
+        try:
+            ws = workspace_id or _default_workspace()
+            data = c.get_backlinks(ws, notebook_id, page_id)
+        except OctopusError as e:
+            _err(e)
+    if _use_json(as_json):
+        output_json(data)
+    else:
+        if not data:
+            console.print("[dim]No backlinks found.[/dim]")
+        else:
+            for link in data:
+                console.print(f"  - {link['name']} (id: {link['id']})")
+
+
+@nb_app.command("outlinks")
+def nb_outlinks(notebook_id: str = typer.Argument(...), page_id: str = typer.Argument(...), workspace_id: str = typer.Option(None, "--ws"), as_json: bool = typer.Option(False, "--json")):
+    """Get pages that this page links TO via [[wiki links]]."""
+    with _client() as c:
+        try:
+            ws = workspace_id or _default_workspace()
+            data = c.get_outlinks(ws, notebook_id, page_id)
+        except OctopusError as e:
+            _err(e)
+    if _use_json(as_json):
+        output_json(data)
+    else:
+        if not data:
+            console.print("[dim]No outlinks found.[/dim]")
+        else:
+            for link in data:
+                console.print(f"  - {link['name']} (id: {link['id']})")
+
+
+@nb_app.command("graph")
+def nb_graph(notebook_id: str = typer.Argument(...), workspace_id: str = typer.Option(None, "--ws"), as_json: bool = typer.Option(False, "--json")):
+    """Get the full wiki link graph for a notebook."""
+    with _client() as c:
+        try:
+            ws = workspace_id or _default_workspace()
+            data = c.get_page_graph(ws, notebook_id)
+        except OctopusError as e:
+            _err(e)
+    if _use_json(as_json):
+        output_json(data)
+    else:
+        nodes = data.get("nodes", [])
+        edges = data.get("edges", [])
+        console.print(f"[bold]Pages ({len(nodes)}):[/bold]")
+        for n in nodes:
+            console.print(f"  - {n['name']} (id: {n['id']})")
+        node_map = {n["id"]: n["name"] for n in nodes}
+        console.print(f"\n[bold]Links ({len(edges)}):[/bold]")
+        for e in edges:
+            console.print(f"  {node_map.get(e['source'], '?')} -> {node_map.get(e['target'], '?')}")
+
+
+@nb_app.command("semantic-search")
+def nb_semantic_search(notebook_id: str = typer.Argument(...), query: str = typer.Argument(...), workspace_id: str = typer.Option(None, "--ws"), limit: int = typer.Option(20, "-n", "--limit"), as_json: bool = typer.Option(False, "--json")):
+    """Semantic search on notebook pages using embeddings."""
+    with _client() as c:
+        try:
+            ws = workspace_id or _default_workspace()
+            data = c.semantic_search_pages(ws, notebook_id, query, limit=limit)
+        except OctopusError as e:
+            _err(e)
+    if _use_json(as_json):
+        output_json(data)
+    else:
+        if not data:
+            console.print("[dim]No matching pages found.[/dim]")
+        else:
+            for p in data:
+                sim = p.get("similarity", 0)
+                preview = (p.get("content_markdown") or "")[:200]
+                console.print(f"  - {p['name']} (sim={sim:.2f}): {preview}")
+
+
+@nb_app.command("auto-index")
+def nb_auto_index(notebook_id: str = typer.Argument(...), workspace_id: str = typer.Option(None, "--ws"), as_json: bool = typer.Option(False, "--json")):
+    """Generate or update an _index page listing all pages."""
+    with _client() as c:
+        try:
+            ws = workspace_id or _default_workspace()
+            data = c.auto_index_notebook(ws, notebook_id)
+        except OctopusError as e:
+            _err(e)
+    if _use_json(as_json):
+        output_json(data)
+    else:
+        console.print(f"[green]Index page updated: {data.get('name', '_index')} (id: {data.get('id')})[/green]")
+
+
+# ===========================================================================
+# Files
+# ===========================================================================
+
+files_app = typer.Typer(help="Upload and manage files (images, PDFs, etc.).")
+app.add_typer(files_app, name="files")
+
+
+@files_app.command("upload")
+def files_upload(file_path: str = typer.Argument(..., help="Local file path"), workspace_id: str = typer.Option(None, "--ws"), name: str = typer.Option(None, "--name", help="Override filename"), as_json: bool = typer.Option(False, "--json")):
+    """Upload a file to a workspace."""
+    from pathlib import Path
+    p = Path(file_path)
+    if not p.exists():
+        console.print(f"[red]File not found: {file_path}[/red]")
+        raise typer.Exit(1)
+    fname = name or p.name
+    with _client() as c:
+        try:
+            ws = workspace_id or _default_workspace()
+            data = c.upload_file(ws, fname, file_path)
+        except OctopusError as e:
+            _err(e)
+    if _use_json(as_json):
+        output_json(data)
+    else:
+        console.print(f"[green]Uploaded: {data['name']} ({data.get('size_bytes', 0)} bytes)[/green]  ID: {data['id']}")
+
+
+@files_app.command("list")
+def files_list(workspace_id: str = typer.Option(None, "--ws"), as_json: bool = typer.Option(False, "--json")):
+    """List files in a workspace."""
+    with _client() as c:
+        try:
+            ws = workspace_id or _default_workspace()
+            data = c.list_files(ws)
+        except OctopusError as e:
+            _err(e)
+    if _use_json(as_json):
+        output_json(data)
+    else:
+        if not data:
+            console.print("[dim]No files.[/dim]")
+        else:
+            for f in data:
+                console.print(f"  - {f['name']} ({f.get('content_type', '?')}, {f.get('size_bytes', 0)} bytes) — ID: {f['id']}")
+
+
+@files_app.command("url")
+def files_url(file_id: str = typer.Argument(...), workspace_id: str = typer.Option(None, "--ws"), as_json: bool = typer.Option(False, "--json")):
+    """Get the download URL for a file."""
+    with _client() as c:
+        try:
+            ws = workspace_id or _default_workspace()
+            data = c.get_file_url(ws, file_id)
+        except OctopusError as e:
+            _err(e)
+    if _use_json(as_json):
+        output_json(data)
+    else:
+        console.print(f"{data.get('name', '?')}: {data.get('url', '?')}")
+
+
+@files_app.command("delete")
+def files_delete(file_id: str = typer.Argument(...), workspace_id: str = typer.Option(None, "--ws"), yes: bool = typer.Option(False, "--yes", "-y")):
+    """Delete a file."""
+    if not yes:
+        typer.confirm(f"Delete file {file_id}?", abort=True)
+    with _client() as c:
+        try:
+            ws = workspace_id or _default_workspace()
+            c.delete_file(ws, file_id)
+        except OctopusError as e:
+            _err(e)
+    console.print("[green]File deleted.[/green]")
+
+
+# ===========================================================================
+# Documents (RAGFlow)
+# ===========================================================================
+
+docs_app = typer.Typer(help="Upload and search documents with RAGFlow parsing.")
+app.add_typer(docs_app, name="docs")
+
+
+@docs_app.command("upload")
+def docs_upload(file_path: str = typer.Argument(..., help="Local file path (PDF, image, docx, txt, md)"), workspace_id: str = typer.Option(None, "--ws"), name: str = typer.Option(None, "--name"), as_json: bool = typer.Option(False, "--json")):
+    """Upload a document for RAGFlow processing and semantic retrieval."""
+    from pathlib import Path
+    p = Path(file_path)
+    if not p.exists():
+        console.print(f"[red]File not found: {file_path}[/red]")
+        raise typer.Exit(1)
+    fname = name or p.name
+    with _client() as c:
+        try:
+            ws = workspace_id or _default_workspace()
+            data = c.upload_document(ws, fname, file_path)
+        except OctopusError as e:
+            _err(e)
+    if _use_json(as_json):
+        output_json(data)
+    else:
+        console.print(f"[green]Document uploaded: {data['name']}[/green]  ID: {data['id']}  Status: {data.get('status', '?')}")
+
+
+@docs_app.command("list")
+def docs_list(workspace_id: str = typer.Option(None, "--ws"), status: str = typer.Option("", "--status", help="Filter: pending, processing, ready, error"), as_json: bool = typer.Option(False, "--json")):
+    """List documents in a workspace."""
+    with _client() as c:
+        try:
+            ws = workspace_id or _default_workspace()
+            data = c.list_documents(ws, status=status)
+        except OctopusError as e:
+            _err(e)
+    if _use_json(as_json):
+        output_json(data)
+    else:
+        if not data:
+            console.print("[dim]No documents found.[/dim]")
+        else:
+            for d in data:
+                meta = d.get("metadata", {})
+                chunks = meta.get("chunk_count", "?")
+                console.print(f"  - {d['name']} ({d.get('file_type', '?')}) [{d['status']}] chunks={chunks} — ID: {d['id']}")
+
+
+@docs_app.command("search")
+def docs_search(query: str = typer.Argument(...), workspace_id: str = typer.Option(None, "--ws"), limit: int = typer.Option(20, "-n", "--limit"), as_json: bool = typer.Option(False, "--json")):
+    """Semantic search across parsed documents."""
+    with _client() as c:
+        try:
+            ws = workspace_id or _default_workspace()
+            data = c.search_documents(ws, query, limit=limit)
+        except OctopusError as e:
+            _err(e)
+    if _use_json(as_json):
+        output_json(data)
+    else:
+        chunks = data.get("chunks", [])
+        if not chunks:
+            console.print("[dim]No matching content found.[/dim]")
+        else:
+            for i, ch in enumerate(chunks, 1):
+                preview = ch["content"][:300].replace("\n", " ")
+                console.print(f"  {i}. [{ch['doc_name']}] (sim={ch['similarity']:.2f})")
+                console.print(f"     {preview}\n")
+
+
+@docs_app.command("status")
+def docs_status(doc_id: str = typer.Argument(...), workspace_id: str = typer.Option(None, "--ws"), as_json: bool = typer.Option(False, "--json")):
+    """Check parsing status of a document."""
+    with _client() as c:
+        try:
+            ws = workspace_id or _default_workspace()
+            data = c.get_document_status(ws, doc_id)
+        except OctopusError as e:
+            _err(e)
+    if _use_json(as_json):
+        output_json(data)
+    else:
+        console.print(f"Document: {data['name']}")
+        console.print(f"Status: {data['status']}")
+        meta = data.get("metadata", {})
+        if meta.get("chunk_count"):
+            console.print(f"Chunks: {meta['chunk_count']}")
+        if meta.get("error"):
+            console.print(f"[red]Error: {meta['error']}[/red]")
+
+
+@docs_app.command("delete")
+def docs_delete(doc_id: str = typer.Argument(...), workspace_id: str = typer.Option(None, "--ws"), yes: bool = typer.Option(False, "--yes", "-y")):
+    """Delete a document and its index."""
+    if not yes:
+        typer.confirm(f"Delete document {doc_id}?", abort=True)
+    with _client() as c:
+        try:
+            ws = workspace_id or _default_workspace()
+            c.delete_document(ws, doc_id)
+        except OctopusError as e:
+            _err(e)
+    console.print("[green]Document deleted.[/green]")
+
+
+# ===========================================================================
+# Webhooks
+# ===========================================================================
+
+webhooks_app = typer.Typer(help="Manage workspace webhooks.")
+app.add_typer(webhooks_app, name="webhooks")
+
+
+@webhooks_app.command("set")
+def webhooks_set(url: str = typer.Argument(...), workspace_id: str = typer.Option(None, "--ws"), secret: str = typer.Option(None, "--secret"), as_json: bool = typer.Option(False, "--json")):
+    """Set a webhook URL for a workspace."""
+    with _client() as c:
+        try:
+            ws = workspace_id or _default_workspace()
+            data = c.set_webhook(ws, url, secret=secret)
+        except OctopusError as e:
+            _err(e)
+    if _use_json(as_json):
+        output_json(data)
+    else:
+        console.print(f"[green]Webhook set.[/green]")
+
+
+@webhooks_app.command("get")
+def webhooks_get(workspace_id: str = typer.Option(None, "--ws"), as_json: bool = typer.Option(False, "--json")):
+    """Get the current webhook for a workspace."""
+    with _client() as c:
+        try:
+            ws = workspace_id or _default_workspace()
+            data = c.get_webhook(ws)
+        except OctopusError as e:
+            _err(e)
+    if _use_json(as_json):
+        output_json(data)
+    else:
+        console.print(f"URL: {data.get('url', 'none')}")
+        console.print(f"Active: {data.get('is_active', '?')}")
+
+
+@webhooks_app.command("update")
+def webhooks_update(workspace_id: str = typer.Option(None, "--ws"), url: str = typer.Option(None, "--url"), active: bool = typer.Option(None, "--active/--inactive"), as_json: bool = typer.Option(False, "--json")):
+    """Update webhook URL or active status."""
+    kwargs: dict = {}
+    if url is not None:
+        kwargs["url"] = url
+    if active is not None:
+        kwargs["is_active"] = active
+    with _client() as c:
+        try:
+            ws = workspace_id or _default_workspace()
+            data = c.update_webhook(ws, **kwargs)
+        except OctopusError as e:
+            _err(e)
+    if _use_json(as_json):
+        output_json(data)
+    else:
+        console.print("[green]Webhook updated.[/green]")
+
+
+@webhooks_app.command("delete")
+def webhooks_delete(workspace_id: str = typer.Option(None, "--ws"), yes: bool = typer.Option(False, "--yes", "-y")):
+    """Delete workspace webhook."""
+    if not yes:
+        typer.confirm("Delete webhook?", abort=True)
+    with _client() as c:
+        try:
+            ws = workspace_id or _default_workspace()
+            c.delete_webhook(ws)
+        except OctopusError as e:
+            _err(e)
+    console.print("[green]Webhook deleted.[/green]")
+
+
+# ===========================================================================
+# Sleep Agent
+# ===========================================================================
+
+sleep_app = typer.Typer(help="Configure the sleep agent curation behavior.")
+app.add_typer(sleep_app, name="sleep")
+
+
+@sleep_app.command("config")
+def sleep_config(as_json: bool = typer.Option(False, "--json")):
+    """Show current sleep agent configuration."""
+    with _client() as c:
+        try:
+            data = c.get_sleep_config()
+        except OctopusError as e:
+            _err(e)
+    if _use_json(as_json):
+        output_json(data)
+    else:
+        console.print(f"Enabled: {data.get('enabled', True)}")
+        console.print(f"Interval: {data.get('interval_minutes', 60)} minutes")
+        console.print(f"Sources: {data.get('curation_sources', ['history'])}")
+        console.print(f"Workspaces: {data.get('workspace_ids', [])}")
+        console.print(f"Curation model: {data.get('curation_model', '?')}")
+
+
+@sleep_app.command("set")
+def sleep_set(
+    sources: str = typer.Option(None, "--sources", help="Comma-separated: history,notebooks,documents,tables"),
+    workspaces: str = typer.Option(None, "--workspaces", help="Comma-separated workspace UUIDs"),
+    interval: int = typer.Option(None, "--interval", help="Minutes between curation cycles"),
+    enabled: bool = typer.Option(None, "--enabled/--disabled"),
+    model: str = typer.Option(None, "--model", help="LLM model for curation"),
+    as_json: bool = typer.Option(False, "--json"),
+):
+    """Configure sleep agent settings."""
+    kwargs: dict = {}
+    if sources is not None:
+        kwargs["curation_sources"] = [s.strip() for s in sources.split(",")]
+    if workspaces is not None:
+        kwargs["workspace_ids"] = [s.strip() for s in workspaces.split(",") if s.strip()]
+    if interval is not None:
+        kwargs["interval_minutes"] = interval
+    if enabled is not None:
+        kwargs["enabled"] = enabled
+    if model is not None:
+        kwargs["curation_model"] = model
+    if not kwargs:
+        console.print("[red]Provide at least one option to update.[/red]")
+        raise typer.Exit(1)
+    with _client() as c:
+        try:
+            data = c.configure_sleep_agent(**kwargs)
+        except OctopusError as e:
+            _err(e)
+    if _use_json(as_json):
+        output_json(data)
+    else:
+        console.print("[green]Sleep agent updated.[/green]")
+
+
+@sleep_app.command("trigger")
+def sleep_trigger(as_json: bool = typer.Option(False, "--json")):
+    """Manually trigger a sleep agent curation cycle."""
+    with _client() as c:
+        try:
+            data = c.trigger_sleep()
+        except OctopusError as e:
+            _err(e)
+    if _use_json(as_json):
+        output_json(data)
+    else:
+        console.print(f"[green]Sleep cycle triggered.[/green]  Pages: {data.get('pages_created', 0)} created, {data.get('pages_updated', 0)} updated")
+
+
+# ===========================================================================
+# Table Embeddings
+# ===========================================================================
+
+
+@tables_app.command("embeddings-config")
+def tables_embeddings_config(
+    table_id: str = typer.Argument(...),
+    workspace_id: str = typer.Option(None, "--ws"),
+    enabled: bool = typer.Option(True, "--enabled/--disabled"),
+    columns: str = typer.Option("", "--columns", help="Comma-separated column IDs to embed"),
+    as_json: bool = typer.Option(False, "--json"),
+):
+    """Configure semantic search embeddings for a table."""
+    col_list = [c.strip() for c in columns.split(",") if c.strip()] if columns else []
+    with _client() as c:
+        try:
+            ws = workspace_id or _default_workspace()
+            data = c.configure_table_embeddings(ws, table_id, enabled=enabled, columns=col_list)
+        except OctopusError as e:
+            _err(e)
+    if _use_json(as_json):
+        output_json(data)
+    else:
+        console.print(f"[green]Embedding config saved. Enabled: {enabled}[/green]")
+
+
+@tables_app.command("embeddings-backfill")
+def tables_embeddings_backfill(table_id: str = typer.Argument(...), workspace_id: str = typer.Option(None, "--ws"), as_json: bool = typer.Option(False, "--json")):
+    """Re-embed all rows in a table."""
+    with _client() as c:
+        try:
+            ws = workspace_id or _default_workspace()
+            data = c.backfill_table_embeddings(ws, table_id)
+        except OctopusError as e:
+            _err(e)
+    if _use_json(as_json):
+        output_json(data)
+    else:
+        console.print(f"[green]Backfill started: {data.get('embedded', 0)} of {data.get('total', 0)} rows[/green]")
+
+
+@tables_app.command("semantic-search")
+def tables_semantic_search(table_id: str = typer.Argument(...), query: str = typer.Argument(...), workspace_id: str = typer.Option(None, "--ws"), limit: int = typer.Option(20, "-n", "--limit"), as_json: bool = typer.Option(False, "--json")):
+    """Semantic search on table rows using embeddings."""
+    with _client() as c:
+        try:
+            ws = workspace_id or _default_workspace()
+            data = c.semantic_search_table_rows(ws, table_id, query, limit=limit)
+        except OctopusError as e:
+            _err(e)
+    if _use_json(as_json):
+        output_json(data)
+    else:
+        if not data:
+            console.print("[dim]No matching rows found.[/dim]")
+        else:
+            for r in data:
+                sim = r.get("similarity", 0)
+                console.print(f"  - Row {r['id']} (sim={sim:.2f}): {json.dumps(r.get('data', {}), default=str)[:200]}")
+
+
+# ===========================================================================
+# Search Users
+# ===========================================================================
+
+
+@app.command("search-users")
+def search_users_cmd(query: str = typer.Argument(...), as_json: bool = typer.Option(False, "--json")):
+    """Search for users by name."""
+    with _client() as c:
+        try:
+            data = c.search_users(query)
+        except OctopusError as e:
+            _err(e)
+    if _use_json(as_json):
+        output_json(data)
+    else:
+        if not data:
+            console.print("[dim]No users found.[/dim]")
+        else:
+            for u in data:
+                console.print(f"  - {u.get('name', '?')} ({u.get('type', '?')}) — ID: {u.get('id', '?')}")
 
 
 # ===========================================================================
