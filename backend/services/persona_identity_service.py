@@ -11,10 +11,13 @@ async def create_persona(
     name: str,
     display_name: str | None,
     description: str,
+    workspace_id: UUID | None = None,
 ) -> tuple[dict, str]:
     """Create a persona identity owned by a human user. Returns (persona_row, raw_api_key).
 
     Auto-provisions a personal notebook and history store for the persona.
+    If workspace_id is provided, auto-joins the persona to that workspace
+    and configures the sleep agent to curate from it.
     """
     pool = get_pool()
 
@@ -22,6 +25,15 @@ async def create_persona(
     owner = await pool.fetchrow("SELECT type FROM users WHERE id = $1", owner_id)
     if not owner or owner["type"] != "human":
         raise ValueError("Only human users can create persona identities")
+
+    # Validate workspace membership (owner must be a member)
+    if workspace_id:
+        is_member = await pool.fetchval(
+            "SELECT 1 FROM workspace_members WHERE workspace_id = $1 AND user_id = $2",
+            workspace_id, owner_id,
+        )
+        if not is_member:
+            raise ValueError("You must be a member of the workspace")
 
     # Rate limit
     count = await pool.fetchval(
@@ -74,21 +86,43 @@ async def create_persona(
                 nb_row["id"], hist_row["id"], persona_id,
             )
 
+            # Auto-join workspace and configure sleep agent
+            if workspace_id:
+                await conn.execute(
+                    "INSERT INTO workspace_members (workspace_id, user_id, role) "
+                    "VALUES ($1, $2, 'member') ON CONFLICT DO NOTHING",
+                    workspace_id, persona_id,
+                )
+                await conn.execute(
+                    "INSERT INTO sleep_configs (persona_id, workspace_ids, curation_sources) "
+                    "VALUES ($1, $2, '[\"history\"]') ON CONFLICT DO NOTHING",
+                    persona_id, [workspace_id],
+                )
+
     persona = dict(row)
     persona["notebook_id"] = nb_row["id"]
     persona["history_id"] = hist_row["id"]
     return persona, api_key
 
 
-async def list_owner_personas(owner_id: UUID) -> list[dict]:
-    """List all personas owned by a user."""
+async def list_owner_personas(owner_id: UUID, workspace_id: UUID | None = None) -> list[dict]:
+    """List personas owned by a user, optionally filtered by workspace membership."""
     pool = get_pool()
-    rows = await pool.fetch(
-        "SELECT id, name, display_name, type, description, owner_id, "
-        "notebook_id, history_id, created_at, last_seen "
-        "FROM users WHERE owner_id = $1 ORDER BY created_at",
-        owner_id,
-    )
+    if workspace_id:
+        rows = await pool.fetch(
+            "SELECT u.id, u.name, u.display_name, u.type, u.description, u.owner_id, "
+            "u.notebook_id, u.history_id, u.created_at, u.last_seen "
+            "FROM users u JOIN workspace_members wm ON wm.user_id = u.id "
+            "WHERE u.owner_id = $1 AND wm.workspace_id = $2 ORDER BY u.created_at",
+            owner_id, workspace_id,
+        )
+    else:
+        rows = await pool.fetch(
+            "SELECT id, name, display_name, type, description, owner_id, "
+            "notebook_id, history_id, created_at, last_seen "
+            "FROM users WHERE owner_id = $1 ORDER BY created_at",
+            owner_id,
+        )
     return [dict(r) for r in rows]
 
 

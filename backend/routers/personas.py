@@ -36,6 +36,7 @@ async def create_persona(
             name=req.name,
             display_name=req.display_name,
             description=req.description,
+            workspace_id=req.workspace_id,
         )
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e))
@@ -43,9 +44,14 @@ async def create_persona(
 
 
 @router.get("", response_model=list[PersonaProfile])
-async def list_personas(current_user: dict = Depends(get_current_user)):
+async def list_personas(
+    workspace_id: UUID | None = Query(None, alias="ws"),
+    current_user: dict = Depends(get_current_user),
+):
     _require_human(current_user)
-    personas = await persona_identity_service.list_owner_personas(current_user["id"])
+    personas = await persona_identity_service.list_owner_personas(
+        current_user["id"], workspace_id=workspace_id,
+    )
     return [PersonaProfile(**p) for p in personas]
 
 
