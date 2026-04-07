@@ -227,15 +227,41 @@ function SleepAgentConfig() {
   );
 }
 
+const KNOWN_MODELS = [
+  "claude-haiku-4-5-20251001",
+  "claude-sonnet-4-6-20250514",
+  "claude-opus-4-6-20250515",
+];
+
+const SOURCE_LABELS: Record<string, string> = {
+  history: "Agent history logs",
+  notebooks: "Notebook page changes",
+  documents: "Uploaded documents",
+  tables: "Table row changes",
+};
+
 function InlineSleepConfig({ personaId, personaWorkspaces, notebookId }: { personaId: string; personaWorkspaces: { workspace_id: string; workspace_name: string }[]; notebookId: string | null }) {
   const [config, setConfig] = useState<SleepConfig | null>(null);
   const [saving, setSaving] = useState(false);
   const [triggerResult, setTriggerResult] = useState("");
   const [error, setError] = useState("");
+  const [knownAgents, setKnownAgents] = useState<string[]>([]);
 
   useEffect(() => {
     getPersonaSleepConfig(personaId).then(setConfig).catch(() => {});
   }, [personaId]);
+
+  // Load known agent names from workspace histories
+  useEffect(() => {
+    if (!config?.workspace_ids?.length) return;
+    import("../../lib/api").then(({ listAgentNames }) => {
+      Promise.all(config.workspace_ids.map((wsId) => listAgentNames(wsId).catch(() => [])))
+        .then((results) => {
+          const all = new Set(results.flat());
+          setKnownAgents(Array.from(all).sort());
+        });
+    });
+  }, [config?.workspace_ids]);
 
   const handleSave = async () => {
     if (!config) return;
@@ -281,98 +307,140 @@ function InlineSleepConfig({ personaId, personaWorkspaces, notebookId }: { perso
     setConfig({ ...config, workspace_ids: Array.from(ids) });
   };
 
+  const toggleAgent = (name: string) => {
+    if (!config) return;
+    const filter = new Set(config.agent_name_filter || []);
+    if (filter.has(name)) filter.delete(name); else filter.add(name);
+    setConfig({ ...config, agent_name_filter: Array.from(filter) });
+  };
+
   if (!config) return <div className="text-xs text-muted py-2">Loading config...</div>;
 
   return (
-    <div className="space-y-3 pt-2">
+    <div className="space-y-3 pt-3">
       {error && <p className="text-red-400 text-xs">{error}</p>}
 
+      {/* Enable + Interval */}
       <div className="flex items-center gap-4 flex-wrap">
         <label className="flex items-center gap-1.5 text-xs cursor-pointer">
           <input type="checkbox" checked={config.enabled} onChange={(e) => setConfig({ ...config, enabled: e.target.checked })} className="accent-brand" />
-          Enabled
+          Auto-curate
         </label>
         <div className="flex items-center gap-1.5 text-xs">
-          <span className="text-muted">Every</span>
+          <span className="text-muted">every</span>
           <input type="number" value={config.interval_minutes} onChange={(e) => setConfig({ ...config, interval_minutes: parseInt(e.target.value) || 60 })} min={5} max={1440} className="w-14 bg-raised border border-border rounded px-1.5 py-0.5 text-xs text-foreground" />
-          <span className="text-muted">min</span>
+          <span className="text-muted">minutes</span>
         </div>
       </div>
 
-      <div className="flex items-center gap-1.5 flex-wrap">
-        <span className="text-xs text-muted">Sources:</span>
-        {(["history", "notebooks", "documents", "tables"] as const).map((src) => (
-          <button key={src} onClick={() => toggleSource(src)} className={`text-[11px] px-2 py-0.5 rounded ${config.curation_sources.includes(src) ? "bg-brand/15 text-brand" : "bg-raised text-muted"}`}>
-            {src}
-          </button>
-        ))}
+      {/* What to curate */}
+      <div>
+        <div className="text-[10px] text-muted uppercase tracking-wider mb-1.5">What to curate</div>
+        <div className="flex flex-wrap gap-1.5">
+          {Object.entries(SOURCE_LABELS).map(([key, label]) => (
+            <button key={key} onClick={() => toggleSource(key)} className={`text-[11px] px-2.5 py-1 rounded transition-colors ${config.curation_sources.includes(key) ? "bg-brand/15 text-brand font-medium" : "bg-raised text-muted hover:text-foreground"}`}>
+              {label}
+            </button>
+          ))}
+        </div>
       </div>
 
+      {/* Which workspaces */}
       {personaWorkspaces.length > 0 && (
-        <div className="flex items-center gap-1.5 flex-wrap">
-          <span className="text-xs text-muted">Workspaces:</span>
-          {personaWorkspaces.map((ws) => (
-            <label key={ws.workspace_id} className="flex items-center gap-1 text-xs cursor-pointer">
-              <input type="checkbox" checked={config.workspace_ids.includes(ws.workspace_id)} onChange={() => toggleWorkspace(ws.workspace_id)} className="accent-brand" />
-              {ws.workspace_name}
-            </label>
-          ))}
+        <div>
+          <div className="text-[10px] text-muted uppercase tracking-wider mb-1.5">Curate data from</div>
+          <div className="flex flex-wrap gap-2">
+            {personaWorkspaces.map((ws) => (
+              <label key={ws.workspace_id} className="flex items-center gap-1.5 text-xs cursor-pointer">
+                <input type="checkbox" checked={config.workspace_ids.includes(ws.workspace_id)} onChange={() => toggleWorkspace(ws.workspace_id)} className="accent-brand" />
+                {ws.workspace_name}
+              </label>
+            ))}
+          </div>
         </div>
       )}
 
-      {/* Agent name filter */}
+      {/* Filter by agent name */}
       <div>
-        <div className="flex items-center gap-1.5 mb-1">
-          <span className="text-xs text-muted">Watch events from agents:</span>
-        </div>
-        <div className="flex items-center gap-1.5 flex-wrap">
-          {(config.agent_name_filter || []).map((name, i) => (
-            <span key={i} className="inline-flex items-center gap-1 bg-brand/10 text-brand text-[11px] font-mono px-2 py-0.5 rounded">
-              {name}
+        <div className="text-[10px] text-muted uppercase tracking-wider mb-1.5">Filter by agent</div>
+        {knownAgents.length > 0 ? (
+          <div className="flex flex-wrap gap-1.5">
+            {knownAgents.map((name) => (
               <button
-                onClick={() => setConfig({ ...config, agent_name_filter: config.agent_name_filter.filter((_, j) => j !== i) })}
-                className="text-brand/50 hover:text-brand"
-              >&times;</button>
-            </span>
-          ))}
+                key={name}
+                onClick={() => toggleAgent(name)}
+                className={`text-[11px] font-mono px-2.5 py-1 rounded transition-colors ${
+                  (config.agent_name_filter || []).includes(name)
+                    ? "bg-brand/15 text-brand font-medium"
+                    : "bg-raised text-muted hover:text-foreground"
+                }`}
+              >
+                {name}
+              </button>
+            ))}
+          </div>
+        ) : (
           <input
-            placeholder={config.agent_name_filter?.length ? "add another..." : "all agents (type name + Enter)"}
-            className="bg-raised border border-border rounded px-2 py-0.5 text-xs text-foreground font-mono w-40"
+            placeholder="Type agent name + Enter (or select workspaces first)"
+            className="w-full bg-raised border border-border rounded px-2 py-1 text-xs text-foreground font-mono"
             onKeyDown={(e) => {
               if (e.key === "Enter" && e.currentTarget.value.trim()) {
                 const name = e.currentTarget.value.trim();
-                if (!config.agent_name_filter?.includes(name)) {
+                if (!(config.agent_name_filter || []).includes(name)) {
                   setConfig({ ...config, agent_name_filter: [...(config.agent_name_filter || []), name] });
                 }
                 e.currentTarget.value = "";
               }
             }}
           />
-        </div>
+        )}
+        {(config.agent_name_filter || []).length > 0 && (
+          <div className="flex flex-wrap gap-1 mt-1.5">
+            <span className="text-[10px] text-muted">Active:</span>
+            {config.agent_name_filter.map((name, i) => (
+              <span key={i} className="inline-flex items-center gap-0.5 bg-brand/10 text-brand text-[10px] font-mono px-1.5 py-0.5 rounded">
+                {name}
+                <button onClick={() => setConfig({ ...config, agent_name_filter: config.agent_name_filter.filter((_, j) => j !== i) })} className="text-brand/40 hover:text-brand">&times;</button>
+              </span>
+            ))}
+          </div>
+        )}
         {(!config.agent_name_filter || config.agent_name_filter.length === 0) && (
-          <div className="text-[10px] text-muted mt-1">No filter — curates events from all agents in the workspace</div>
+          <div className="text-[10px] text-muted mt-1">All agents — no filter applied</div>
         )}
       </div>
 
-      {/* Target notebook */}
+      {/* Model */}
+      <div>
+        <div className="text-[10px] text-muted uppercase tracking-wider mb-1.5">Curation model</div>
+        <select
+          value={config.curation_model}
+          onChange={(e) => setConfig({ ...config, curation_model: e.target.value })}
+          className="bg-raised border border-border rounded px-2 py-1 text-xs text-foreground font-mono"
+        >
+          {KNOWN_MODELS.map((m) => <option key={m} value={m}>{m}</option>)}
+          {!KNOWN_MODELS.includes(config.curation_model) && (
+            <option value={config.curation_model}>{config.curation_model}</option>
+          )}
+        </select>
+      </div>
+
+      {/* Wiki notebook link */}
       {notebookId && (
-        <div className="flex items-center gap-1.5">
-          <span className="text-xs text-muted">Wiki notebook:</span>
-          <a href="/notebooks" className="text-xs text-brand hover:underline font-mono">{notebookId.slice(0, 8)}...</a>
-          <span className="text-[10px] text-muted">(curated wiki is written here)</span>
+        <div>
+          <div className="text-[10px] text-muted uppercase tracking-wider mb-1">Wiki output</div>
+          <a href="/notebooks" className="text-xs text-brand hover:underline">
+            Open curated notebook &rarr;
+          </a>
         </div>
       )}
 
-      <div className="flex items-center gap-1.5">
-        <span className="text-xs text-muted">Model:</span>
-        <input value={config.curation_model} onChange={(e) => setConfig({ ...config, curation_model: e.target.value })} className="flex-1 bg-raised border border-border rounded px-2 py-0.5 text-xs text-foreground font-mono max-w-[280px]" />
-      </div>
-
-      <div className="flex items-center gap-2">
-        <button onClick={handleSave} disabled={saving} className="text-xs bg-brand hover:bg-brand-hover text-foreground px-2.5 py-1 rounded disabled:opacity-50">
+      {/* Actions */}
+      <div className="flex items-center gap-2 pt-1">
+        <button onClick={handleSave} disabled={saving} className="text-xs bg-brand hover:bg-brand-hover text-foreground px-3 py-1.5 rounded disabled:opacity-50">
           {saving ? "Saving..." : "Save"}
         </button>
-        <button onClick={handleTrigger} className="text-xs bg-raised hover:bg-border text-foreground px-2.5 py-1 rounded">
+        <button onClick={handleTrigger} className="text-xs bg-raised hover:bg-border text-foreground px-3 py-1.5 rounded">
           Run Now
         </button>
         {triggerResult && <span className="text-xs text-brand">{triggerResult}</span>}
@@ -562,12 +630,17 @@ export default function PersonasPage() {
                     )}
 
                     {/* Sleep Agent */}
-                    <div className="border-t border-border pt-2 mt-2">
+                    <div className="border-t border-border pt-3 mt-3">
                       <button
                         onClick={() => setSleepExpandedId(sleepExpandedId === persona.id ? null : persona.id)}
-                        className="text-[10px] text-muted uppercase tracking-wider hover:text-foreground transition-colors"
+                        className={`w-full flex items-center justify-between px-3 py-2 rounded-md text-xs font-medium transition-colors ${
+                          sleepExpandedId === persona.id
+                            ? "bg-brand/5 text-brand"
+                            : "bg-raised text-dim hover:text-foreground hover:bg-raised"
+                        }`}
                       >
-                        {sleepExpandedId === persona.id ? "▾" : "▸"} Sleep Agent
+                        <span>Sleep Agent Configuration</span>
+                        <span className="text-muted">{sleepExpandedId === persona.id ? "\u25B4" : "\u25BE"}</span>
                       </button>
                       {sleepExpandedId === persona.id && (
                         <InlineSleepConfig

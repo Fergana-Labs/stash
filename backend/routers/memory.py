@@ -158,6 +158,24 @@ async def query_ws_events(
     )
 
 
+@ws_router.get("/agent-names")
+async def list_ws_agent_names(
+    workspace_id: UUID,
+    current_user: dict = Depends(get_current_user),
+):
+    """List distinct agent names across all history stores in a workspace."""
+    await _check_member(workspace_id, current_user["id"])
+    from ..database import get_pool
+    pool = get_pool()
+    rows = await pool.fetch(
+        "SELECT DISTINCT he.agent_name FROM history_events he "
+        "JOIN histories h ON h.id = he.store_id "
+        "WHERE h.workspace_id = $1 ORDER BY he.agent_name",
+        workspace_id,
+    )
+    return {"agent_names": [r["agent_name"] for r in rows]}
+
+
 @ws_router.get("/{store_id}/events/search", response_model=HistoryEventListResponse)
 async def search_ws_events(
     workspace_id: UUID, store_id: UUID,

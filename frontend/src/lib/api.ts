@@ -1383,6 +1383,15 @@ export async function semanticSearchTableRows(
   return data.rows;
 }
 
+// --- Agent Names ---
+
+export async function listAgentNames(workspaceId: string): Promise<string[]> {
+  const data = await apiFetch<{ agent_names: string[] }>(
+    `/api/v1/workspaces/${workspaceId}/memory/agent-names`
+  );
+  return data.agent_names;
+}
+
 // --- Sleep Agent Config ---
 
 export async function getSleepConfig(): Promise<SleepConfig> {
