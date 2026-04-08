@@ -8,7 +8,7 @@
     "properties": {
       "apiEndpoint": {
         "type": "string",
-        "default": "https://moltchat.onrender.com",
+        "default": "https://getboozle.com",
         "description": "Boozle API base URL"
       },
       "apiKey": {

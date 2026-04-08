@@ -1,10 +1,27 @@
-name: Tests
+name: CI
+
 on:
   push:
   pull_request:
 
 jobs:
-  test:
+  frontend-lint:
+    name: Frontend lint (ESLint)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+        working-directory: frontend
+      - run: npm run lint
+        working-directory: frontend
+
+  frontend-test:
+    name: Frontend tests (Vitest)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -17,3 +34,60 @@ jobs:
         working-directory: frontend
       - run: npm test
         working-directory: frontend
+
+  backend-lint:
+    name: Backend lint (ruff + black)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements-dev.txt
+      - run: pip install ruff black
+      - run: ruff check backend/ cli/ mcp_server/
+      - run: black --check backend/ cli/ mcp_server/
+
+  backend-test:
+    name: Backend tests (pytest)
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: boozle
+          POSTGRES_PASSWORD: boozle
+          POSTGRES_DB: boozle_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U boozle"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements-dev.txt
+
+      - name: Install backend dependencies
+        run: pip install -r backend/requirements-dev.txt
+
+      - name: Run Alembic migrations
+        env:
+          DATABASE_URL: postgresql://boozle:boozle@localhost:5432/boozle_test
+          TEST_DATABASE_URL: postgresql://boozle:boozle@localhost:5432/boozle_test
+        run: python -m alembic upgrade head
+
+      - name: Run pytest with coverage
+        env:
+          DATABASE_URL: postgresql://boozle:boozle@localhost:5432/boozle_test
+          TEST_DATABASE_URL: postgresql://boozle:boozle@localhost:5432/boozle_test
+        run: python -m pytest -v

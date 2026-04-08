@@ -278,8 +278,8 @@ async def update_ws_row(
 ):
     await _check_member(workspace_id, current_user["id"])
     await _check_ws_table(workspace_id, table_id)
-    row = await table_service.update_row(row_id, req.data, current_user["id"])
-    if not row or row.get("table_id") != table_id:
+    row = await table_service.update_row(row_id, req.data, current_user["id"], table_id=table_id)
+    if not row:
         raise HTTPException(status_code=404, detail="Row not found")
     asyncio.create_task(webhook_service.dispatch_webhooks(
         workspace_id, "table.row_updated",
@@ -296,11 +296,9 @@ async def delete_ws_row(
 ):
     await _check_member(workspace_id, current_user["id"])
     await _check_ws_table(workspace_id, table_id)
-    # Verify row belongs to this table
-    row = await table_service.get_row(row_id)
-    if not row or row.get("table_id") != table_id:
+    deleted = await table_service.delete_row(row_id, table_id=table_id)
+    if not deleted:
         raise HTTPException(status_code=404, detail="Row not found")
-    await table_service.delete_row(row_id)
     asyncio.create_task(webhook_service.dispatch_webhooks(
         workspace_id, "table.row_deleted",
         {"table_id": str(table_id), "row_id": str(row_id)},
@@ -698,8 +696,8 @@ async def update_personal_row(
     current_user: dict = Depends(get_current_user),
 ):
     await _check_table_owner(table_id, current_user["id"])
-    row = await table_service.update_row(row_id, req.data, current_user["id"])
-    if not row or row.get("table_id") != table_id:
+    row = await table_service.update_row(row_id, req.data, current_user["id"], table_id=table_id)
+    if not row:
         raise HTTPException(status_code=404, detail="Row not found")
     return RowResponse(**row)
 
@@ -709,10 +707,9 @@ async def delete_personal_row(
     table_id: UUID, row_id: UUID, current_user: dict = Depends(get_current_user),
 ):
     await _check_table_owner(table_id, current_user["id"])
-    row = await table_service.get_row(row_id)
-    if not row or row.get("table_id") != table_id:
+    deleted = await table_service.delete_row(row_id, table_id=table_id)
+    if not deleted:
         raise HTTPException(status_code=404, detail="Row not found")
-    await table_service.delete_row(row_id)
 
 
 @personal_router.post("/{table_id}/rows/delete", status_code=200)

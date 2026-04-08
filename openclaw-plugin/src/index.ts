@@ -35,7 +35,7 @@ export default definePluginEntry({
     const pluginCfg = (api as any).getPluginConfig?.("boozle") ?? {};
     const config = {
       apiEndpoint:
-        (pluginCfg.apiEndpoint as string) ?? "https://moltchat.onrender.com",
+        (pluginCfg.apiEndpoint as string) ?? "https://getboozle.com",
       apiKey: (pluginCfg.apiKey as string) ?? "",
       agentName: (pluginCfg.agentName as string) ?? "",
       workspaceId: (pluginCfg.workspaceId as string) ?? "",

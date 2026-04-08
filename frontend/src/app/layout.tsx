@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
 import { Instrument_Sans, JetBrains_Mono } from "next/font/google";
+import { Auth0Provider } from "@auth0/nextjs-auth0/client";
+import AuthTokenBridge from "../components/AuthTokenBridge";
 import "./globals.css";
 
 const instrumentSans = Instrument_Sans({
@@ -33,7 +35,10 @@ export default function RootLayout({
       <body
         className={`${instrumentSans.variable} ${jetbrainsMono.variable} antialiased min-h-screen`}
       >
-        {children}
+        <Auth0Provider>
+          <AuthTokenBridge />
+          {children}
+        </Auth0Provider>
       </body>
     </html>
   );

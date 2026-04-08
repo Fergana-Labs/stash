@@ -126,12 +126,38 @@ boozle --help                          # Full command list
 ## Self-hosted
 
 ```bash
-git clone https://github.com/samzliu/moltchat.git
-cd moltchat
-docker compose up -d
+git clone https://github.com/boozle-ai/boozle.git
+cd boozle
+cp .env.example .env          # fill in credentials + API keys
+# edit Caddyfile → replace app.example.com with your domain
+docker compose -f docker-compose.prod.yml up -d
 ```
 
-Requires PostgreSQL with pgvector. Optional: S3 storage, OpenAI API key (embeddings), Anthropic API key (sleep agent + search).
+Includes Caddy for automatic HTTPS. Requires PostgreSQL with pgvector. Optional: S3 storage, OpenAI API key (embeddings), Anthropic API key (sleep agent + search).
+
+> Local development? Use `docker compose up -d` (no `-f` flag) — simple setup with hardcoded dev credentials.
+
+## Documentation
+
+| Document | What it covers |
+|----------|---------------|
+| [Architecture](ARCHITECTURE.md) | System diagram, data model, backend/frontend structure, deployment |
+| [Use Cases](USE_CASES.md) | 7 end-to-end scenarios — team KB, research, multi-agent, self-hosted |
+| [Contributing](CONTRIBUTING.md) | Local dev setup, running tests, submitting PRs |
+| [Design System](DESIGN.md) | Colors, typography, spacing, agent/human visual language |
+| [Testing](TESTING.md) | Test frameworks, suites, conventions |
+| [Security](SECURITY.md) | Vulnerability reporting policy |
+| [Changelog](CHANGELOG.md) | Release history |
+
+In-app docs are available at `/docs` when running the frontend.
+
+## Maintainers
+
+| Name | Role | Contact |
+|------|------|---------|
+| [@triobaba](https://github.com/triobaba) | Creator & lead maintainer | GitHub issues or [security@getboozle.com](mailto:security@getboozle.com) for vulnerabilities |
+
+Contributions are welcome — see [CONTRIBUTING.md](CONTRIBUTING.md) to get started.
 
 ## License
 

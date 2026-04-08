@@ -78,12 +78,21 @@ async def get_ws_deck(
     return DeckResponse(**deck)
 
 
+async def _check_ws_deck(workspace_id: UUID, deck_id: UUID) -> dict:
+    """Verify deck exists and belongs to the given workspace."""
+    deck = await deck_service.get_deck(deck_id)
+    if not deck or deck.get("workspace_id") != workspace_id:
+        raise HTTPException(status_code=404, detail="Deck not found")
+    return deck
+
+
 @ws_router.patch("/{deck_id}", response_model=DeckResponse)
 async def update_ws_deck(
     workspace_id: UUID, deck_id: UUID, req: DeckUpdateRequest,
     current_user: dict = Depends(get_current_user),
 ):
     await _check_member(workspace_id, current_user["id"])
+    await _check_ws_deck(workspace_id, deck_id)
     deck = await deck_service.update_deck(
         deck_id, current_user["id"],
         name=req.name, description=req.description, html_content=req.html_content,
@@ -101,6 +110,7 @@ async def delete_ws_deck(
     role = await workspace_service.get_member_role(workspace_id, current_user["id"])
     if role not in ("owner", "admin"):
         raise HTTPException(status_code=403, detail="Only owner/admin can delete decks")
+    await _check_ws_deck(workspace_id, deck_id)
     deleted = await deck_service.delete_deck(deck_id)
     if not deleted:
         raise HTTPException(status_code=404, detail="Deck not found")
@@ -115,6 +125,7 @@ async def create_ws_share_link(
     current_user: dict = Depends(get_current_user),
 ):
     await _check_member(workspace_id, current_user["id"])
+    await _check_ws_deck(workspace_id, deck_id)
     share = await deck_service.create_share_link(
         deck_id, current_user["id"],
         name=req.name, require_email=req.require_email,
@@ -130,6 +141,7 @@ async def list_ws_share_links(
     current_user: dict = Depends(get_current_user),
 ):
     await _check_member(workspace_id, current_user["id"])
+    await _check_ws_deck(workspace_id, deck_id)
     shares = await deck_service.list_share_links(deck_id)
     return DeckShareListResponse(shares=[DeckShareResponse(**s) for s in shares])
 
@@ -140,6 +152,7 @@ async def deactivate_ws_share_link(
     current_user: dict = Depends(get_current_user),
 ):
     await _check_member(workspace_id, current_user["id"])
+    await _check_ws_deck(workspace_id, deck_id)
     await deck_service.deactivate_share_link(share_id)
 
 
@@ -150,6 +163,7 @@ async def update_ws_share_link(
     current_user: dict = Depends(get_current_user),
 ):
     await _check_member(workspace_id, current_user["id"])
+    await _check_ws_deck(workspace_id, deck_id)
     share = await deck_service.update_share_link(
         share_id, name=req.name, is_active=req.is_active,
         require_email=req.require_email, passcode=req.passcode,
@@ -167,6 +181,7 @@ async def get_ws_share_analytics(
     current_user: dict = Depends(get_current_user),
 ):
     await _check_member(workspace_id, current_user["id"])
+    await _check_ws_deck(workspace_id, deck_id)
     analytics = await deck_service.get_share_analytics(share_id)
     return DeckShareAnalyticsResponse(**analytics)
 
@@ -180,6 +195,7 @@ async def get_permissions(
     current_user: dict = Depends(get_current_user),
 ):
     await _check_member(workspace_id, current_user["id"])
+    await _check_ws_deck(workspace_id, deck_id)
     perms = await permission_service.get_permissions("deck", deck_id)
     return PermissionResponse(**perms)
 
@@ -192,6 +208,7 @@ async def set_visibility(
     role = await workspace_service.get_member_role(workspace_id, current_user["id"])
     if role not in ("owner", "admin"):
         raise HTTPException(status_code=403, detail="Only owner/admin can change visibility")
+    await _check_ws_deck(workspace_id, deck_id)
     await permission_service.set_visibility("deck", deck_id, req.visibility)
     return {"status": "ok", "visibility": req.visibility}
 
@@ -204,6 +221,7 @@ async def add_share(
     role = await workspace_service.get_member_role(workspace_id, current_user["id"])
     if role not in ("owner", "admin"):
         raise HTTPException(status_code=403, detail="Only owner/admin can share")
+    await _check_ws_deck(workspace_id, deck_id)
     share = await permission_service.add_share(
         "deck", deck_id, req.user_id, req.permission, current_user["id"],
     )
@@ -225,6 +243,7 @@ async def remove_share(
     role = await workspace_service.get_member_role(workspace_id, current_user["id"])
     if role not in ("owner", "admin"):
         raise HTTPException(status_code=403, detail="Only owner/admin can remove shares")
+    await _check_ws_deck(workspace_id, deck_id)
     await permission_service.remove_share("deck", deck_id, user_id)
 
 

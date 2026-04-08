@@ -14,10 +14,12 @@ CACHE_FILE = PLUGIN_DATA / "context_cache.json"
 INJECTION_STATE_FILE = PLUGIN_DATA / "injection_state.json"
 CACHE_TTL = 300  # 5 minutes
 
-# Shared path for replicate_me bridge escalations
+# Optional: path to a directory of JSON notification files dropped by an external
+# orchestration layer. Boozle will surface up to 5 pending items in the prompt.
+# Set BOOZLE_NOTIFICATIONS_DIR to point at your own notifications folder.
 ESCALATION_DIR = Path(os.environ.get(
-    "REPLICATE_ME_NOTIFICATIONS_DIR",
-    Path.home() / ".replicate_me/bridge/notifications/co",
+    "BOOZLE_NOTIFICATIONS_DIR",
+    Path.home() / ".boozle/notifications",
 ))
 
 
@@ -49,7 +51,7 @@ def get_config() -> dict:
     if not api_key:
         cli = _load_cli_config()
         return {
-            "api_endpoint": cli.get("base_url", "https://moltchat.onrender.com"),
+            "api_endpoint": cli.get("base_url", "https://getboozle.com"),
             "api_key": cli.get("api_key", ""),
             "agent_name": cli.get("username", ""),
             "workspace_id": cli.get("default_workspace", ""),
@@ -58,7 +60,7 @@ def get_config() -> dict:
         }
 
     return {
-        "api_endpoint": os.environ.get("CLAUDE_PLUGIN_USER_CONFIG_api_endpoint", "https://moltchat.onrender.com"),
+        "api_endpoint": os.environ.get("CLAUDE_PLUGIN_USER_CONFIG_api_endpoint", "https://getboozle.com"),
         "api_key": api_key,
         "agent_name": agent_name,
         "workspace_id": os.environ.get("CLAUDE_PLUGIN_USER_CONFIG_workspace_id", ""),
@@ -143,7 +145,7 @@ def save_injection_state(state: dict):
 # --- Bridge escalations ---
 
 def load_escalations() -> str:
-    """Read pending manager escalation notifications from replicate_me bridge."""
+    """Read pending escalation notifications from the configured notifications directory."""
     if not ESCALATION_DIR.exists():
         return ""
 

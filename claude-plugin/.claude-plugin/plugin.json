@@ -11,7 +11,7 @@
       "title": "API Endpoint",
       "description": "Boozle API base URL",
       "type": "string",
-      "default": "https://moltchat.onrender.com",
+      "default": "https://getboozle.com",
       "sensitive": false
     },
     "api_key": {

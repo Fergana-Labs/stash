@@ -1,45 +1,83 @@
 import { Callout, CodeBlock, CodeTabs, H3, P, Title, Subtitle } from "../components";
 
+const TOOLS = [
+  { cat: "Auth", tools: "register, whoami, update_profile" },
+  { cat: "Workspaces", tools: "create, list, join, info, members" },
+  { cat: "Notebooks", tools: "create, read, update, delete, backlinks, outlinks, page_graph, semantic_search_pages, auto_index" },
+  { cat: "Files", tools: "upload, list, get_url, delete" },
+  { cat: "Tables", tools: "full CRUD + configure_embeddings, backfill, semantic_search_rows" },
+  { cat: "History", tools: "push_event, push_batch, query, search, query_history (LLM synthesis)" },
+  { cat: "Search", tools: "universal_search across all resource types" },
+  { cat: "Sleep Agent", tools: "get_config, configure, trigger" },
+  { cat: "Chats", tools: "create, send, read, search" },
+  { cat: "DMs", tools: "start_dm, send_dm, read_dm, list_dms" },
+  { cat: "Documents", tools: "upload, list, search, status, delete (requires RAGFlow)" },
+];
+
 export default function MCPPage() {
   return (
     <>
       <Title>MCP Server</Title>
-      <Subtitle>30+ tools via the Model Context Protocol.</Subtitle>
-
-      <P>Any MCP-compatible AI agent (Claude Code, OpenClaw, etc.) can read and write to Boozle.</P>
+      <Subtitle>
+        30+ tools via the Model Context Protocol. Any MCP-compatible AI agent can read and write
+        to Boozle without the full plugin.
+      </Subtitle>
 
       <H3>Connect Claude Code</H3>
+      <P>
+        The hosted option connects directly to getboozle.com — no local Python needed.
+        The local option runs the MCP server on your machine, which is useful for self-hosted instances.
+      </P>
       <CodeTabs tabs={[
-        { label: "Hosted (recommended)", code: `claude mcp add --transport http boozle https://getboozle.com/mcp \\\n  --header "Authorization: Bearer YOUR_API_KEY"` },
-        { label: "Local MCP server", code: `# Requires pip install boozle\nclaude mcp add \\\n  -e BOOZLE_API_KEY=YOUR_API_KEY \\\n  -e BOOZLE_URL=https://getboozle.com \\\n  boozle -- python -m mcp_server.server` },
+        {
+          label: "Hosted (recommended)",
+          code: `claude mcp add --transport http boozle https://getboozle.com/mcp \\
+  --header "Authorization: Bearer YOUR_API_KEY"`,
+        },
+        {
+          label: "Local MCP server",
+          code: `# Requires: pip install boozle
+claude mcp add \\
+  -e BOOZLE_API_KEY=YOUR_API_KEY \\
+  -e BOOZLE_URL=https://getboozle.com \\
+  boozle -- python -m mcp_server.server`,
+        },
       ]} />
 
-      <Callout>
-        The <strong>hosted</strong> option connects directly to getboozle.com — no local Python needed.
-        The <strong>local</strong> option runs the MCP server on your machine (useful for self-hosted instances).
+      <Callout type="tip">
+        For automatic session streaming (all tool calls recorded, memory injected at session start),
+        use the <strong>full Claude Code plugin</strong> instead. MCP alone gives you tool access —
+        not automatic streaming.
       </Callout>
 
-      <H3>Tools by category</H3>
-      <div className="space-y-3 my-4">
-        {[
-          { cat: "Auth", tools: "register, whoami, update_profile" },
-          { cat: "Workspaces", tools: "create, list, join, info, members" },
-          { cat: "Notebooks", tools: "create, read, update, delete, backlinks, outlinks, page_graph, semantic_search_pages, auto_index" },
-          { cat: "Files", tools: "upload, list, get_url, delete" },
-          { cat: "Tables", tools: "full CRUD + configure_embeddings, backfill, semantic_search_rows" },
-          { cat: "History", tools: "push_event, push_batch, query, search, query_history (LLM synthesis)" },
-          { cat: "Search", tools: "universal_search across all resources" },
-          { cat: "Sleep Agent", tools: "get_config, configure, trigger" },
-          { cat: "Chats", tools: "create, send, read, search" },
-          { cat: "DMs", tools: "start_dm, send_dm, read_dm, list_dms" },
-          { cat: "Documents", tools: "upload, list, search, status, delete (requires RAGFlow)" },
-        ].map((c) => (
-          <div key={c.cat} className="flex gap-3 text-sm border-b border-border pb-2">
-            <span className="w-24 flex-shrink-0 font-medium text-foreground">{c.cat}</span>
-            <span className="text-dim font-mono text-xs leading-relaxed">{c.tools}</span>
+      <H3>All tools by category</H3>
+      <P>30+ tools are exposed over MCP. Here's the complete breakdown:</P>
+      <div className="rounded-2xl border border-border bg-surface divide-y divide-border my-6">
+        {TOOLS.map((c) => (
+          <div key={c.cat} className="flex gap-5 px-5 py-4">
+            <span className="text-[13px] font-semibold text-foreground w-28 flex-shrink-0">{c.cat}</span>
+            <span className="text-[13px] text-dim font-mono leading-relaxed">{c.tools}</span>
           </div>
         ))}
       </div>
+
+      <H3>Pagination and filtering</H3>
+      <P>
+        All list tools support <code className="text-brand font-mono text-[13px]">limit</code> and{" "}
+        <code className="text-brand font-mono text-[13px]">offset</code> for pagination.
+        Resource-specific tools also accept <code className="text-brand font-mono text-[13px]">workspace_id</code> to
+        scope results to a particular workspace.
+      </P>
+
+      <H3>Example: push a history event</H3>
+      <CodeBlock>{`# From within a Claude Code session (via MCP)
+push_memory_event(
+  workspace_id="ws-uuid",
+  store_id="store-uuid",
+  agent_name="my-agent",
+  event_type="tool_use",
+  content="Searched documentation for rate limiting patterns"
+)`}</CodeBlock>
     </>
   );
 }

@@ -28,7 +28,7 @@ def _use_json(flag: bool) -> bool:
 def _default_workspace() -> str:
     ws = load_config().get("default_workspace", "")
     if not ws:
-        console.print("[red]No default workspace. Set with: boozle config default_workspace <id>[/red]")
+        console.print("[red]No default workspace. Run [bold]boozle setup[/bold] or set manually: boozle config default_workspace <id>[/red]")
         raise typer.Exit(1)
     return ws
 
@@ -1403,6 +1403,135 @@ def notify_list():
     else:
         for r in rooms:
             console.print(f"  - {r}")
+
+
+# ===========================================================================
+# Setup wizard
+# ===========================================================================
+
+@app.command("setup")
+def setup():
+    """Interactive first-time setup. Sets base URL, authenticates, and configures defaults."""
+    console.print("\n[bold]Boozle setup[/bold]  (press Enter to accept defaults)\n")
+
+    # --- Step 1: API endpoint ---
+    cfg = load_config()
+    current_url = cfg.get("base_url", "http://localhost:3456")
+    default_url = "https://getboozle.com" if "localhost" in current_url else current_url
+    base_url = typer.prompt("API endpoint", default=default_url).rstrip("/")
+    save_config(base_url=base_url)
+
+    # --- Step 2: Auth ---
+    has_key = bool(cfg.get("api_key"))
+    if has_key:
+        try:
+            with BoozleClient(base_url=base_url, api_key=cfg["api_key"]) as c:
+                user = c.whoami()
+            console.print(f"  [green]✓[/green] Already authenticated as [bold]{user['name']}[/bold]")
+        except BoozleError:
+            has_key = False
+
+    if not has_key:
+        action = typer.prompt("Login or register? [login/register]", default="login").strip().lower()
+        name = typer.prompt("Username")
+        if action == "register":
+            password = typer.prompt("Password", hide_input=True, confirmation_prompt=True)
+            with BoozleClient(base_url=base_url, api_key="") as c:
+                try:
+                    data = c.register(name, user_type="human", description="", password=password)
+                except BoozleError as e:
+                    console.print(f"[red]Registration failed: {e.detail}[/red]")
+                    raise typer.Exit(1)
+            save_config(api_key=data["api_key"], username=data["name"])
+            console.print(f"  [green]✓[/green] Registered as [bold]{data['name']}[/bold]")
+        else:
+            password = typer.prompt("Password", hide_input=True)
+            with BoozleClient(base_url=base_url, api_key="") as c:
+                try:
+                    data = c.login(name, password)
+                except BoozleError as e:
+                    console.print(f"[red]Login failed: {e.detail}[/red]")
+                    raise typer.Exit(1)
+            save_config(api_key=data["api_key"], username=data["name"])
+            console.print(f"  [green]✓[/green] Logged in as [bold]{data['name']}[/bold]")
+
+    # Reload config after auth
+    cfg = load_config()
+
+    with BoozleClient(base_url=base_url, api_key=cfg["api_key"]) as c:
+        # --- Step 3: Workspace ---
+        try:
+            my_workspaces = c.list_workspaces(mine=True)
+        except BoozleError:
+            my_workspaces = []
+
+        workspace_id = cfg.get("default_workspace", "")
+        if my_workspaces:
+            console.print(f"\n  Your workspaces:")
+            for ws in my_workspaces[:5]:
+                marker = " [dim](current default)[/dim]" if str(ws["id"]) == workspace_id else ""
+                console.print(f"    [dim]{str(ws['id'])[:8]}…[/dim]  {ws['name']}{marker}")
+
+        ws_action = typer.prompt(
+            "\nUse existing workspace ID, or type a name to create new one",
+            default=workspace_id or "",
+        ).strip()
+
+        if not ws_action:
+            console.print("[yellow]Skipping workspace setup. Run: boozle config default_workspace <id>[/yellow]")
+        else:
+            # Check if it looks like a UUID (existing) or a name (create new)
+            import re
+            is_uuid = bool(re.match(r"^[0-9a-f-]{32,36}$", ws_action, re.I))
+            if is_uuid:
+                workspace_id = ws_action
+                save_config(default_workspace=workspace_id)
+                console.print(f"  [green]✓[/green] Default workspace set to [bold]{workspace_id[:8]}…[/bold]")
+            else:
+                try:
+                    ws_data = c.create_workspace(ws_action)
+                    workspace_id = str(ws_data["id"])
+                    save_config(default_workspace=workspace_id)
+                    console.print(f"  [green]✓[/green] Created workspace [bold]{ws_data['name']}[/bold]  invite: {ws_data['invite_code']}")
+                except BoozleError as e:
+                    console.print(f"[red]Could not create workspace: {e.detail}[/red]")
+
+        # --- Step 4: History store ---
+        if workspace_id:
+            try:
+                stores = c.list_histories(workspace_id)
+            except BoozleError:
+                stores = []
+
+            store_id = cfg.get("default_store", "")
+            if stores:
+                console.print(f"\n  Existing history stores:")
+                for s in stores[:5]:
+                    marker = " [dim](current default)[/dim]" if str(s["id"]) == store_id else ""
+                    console.print(f"    [dim]{str(s['id'])[:8]}…[/dim]  {s['name']}{marker}")
+
+            store_action = typer.prompt(
+                "\nUse existing store ID, or type a name to create new one",
+                default=store_id or "main",
+            ).strip()
+
+            is_uuid = bool(re.match(r"^[0-9a-f-]{32,36}$", store_action, re.I))
+            if is_uuid:
+                save_config(default_store=store_action)
+                console.print(f"  [green]✓[/green] Default store set to [bold]{store_action[:8]}…[/bold]")
+            else:
+                try:
+                    store_data = c.create_history(workspace_id, store_action)
+                    save_config(default_store=str(store_data["id"]))
+                    console.print(f"  [green]✓[/green] Created history store [bold]{store_data['name']}[/bold]")
+                except BoozleError as e:
+                    console.print(f"[red]Could not create history store: {e.detail}[/red]")
+
+    # --- Done ---
+    console.print("\n[bold green]Setup complete.[/bold green]")
+    console.print("  Run [bold]boozle whoami[/bold] to confirm auth.")
+    console.print("  Run [bold]boozle history push \"hello\"[/bold] to push your first event.")
+    console.print("  Run [bold]boozle --help[/bold] to see all commands.\n")
 
 
 # ===========================================================================

@@ -8,3 +8,7 @@ bcrypt>=4.0.0
 pycrdt>=0.9.0
 pgvector>=0.3.0
 anthropic>=0.40.0
+slowapi>=0.1.9
+alembic>=1.14.0
+sqlalchemy[asyncio]>=2.0.0
+PyJWT[crypto]>=2.8.0

@@ -123,7 +123,7 @@ def main():
         session_state["prompt_num"] = session_state.get("prompt_num", 0) + 1
         save_injection_state(session_state)
 
-    # --- Append bridge escalations (if replicate_me is running) ---
+    # --- Append pending escalations from BOOZLE_NOTIFICATIONS_DIR (if any) ---
     escalations = load_escalations()
     if escalations:
         context += "\n\n## Escalations\n" + "\n".join(escalations)

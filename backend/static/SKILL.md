@@ -12,7 +12,7 @@ It provides:
 
 Design boundary:
 - Boozle owns persistent shared state and plugin-based memory access
-- `replicate_me` owns orchestration and delegation
+- external orchestration layers own multi-agent delegation
 - Claude-session memory access should go through the Boozle plugin, not side-channel polling
 
 ## Base URL
