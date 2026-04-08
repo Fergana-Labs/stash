@@ -29,6 +29,8 @@ async def create_webhook(
 async def get_webhook(
     workspace_id: UUID, current_user: dict = Depends(get_current_user),
 ):
+    if not await workspace_service.is_member(workspace_id, current_user["id"]):
+        raise HTTPException(status_code=403, detail="Not a workspace member")
     wh = await webhook_service.get_webhook(workspace_id, current_user["id"])
     if not wh:
         raise HTTPException(status_code=404, detail="No webhook configured")
@@ -40,6 +42,8 @@ async def update_webhook(
     workspace_id: UUID, req: WebhookUpdateRequest,
     current_user: dict = Depends(get_current_user),
 ):
+    if not await workspace_service.is_member(workspace_id, current_user["id"]):
+        raise HTTPException(status_code=403, detail="Not a workspace member")
     wh = await webhook_service.update_webhook(
         workspace_id=workspace_id, user_id=current_user["id"],
         url=req.url, secret=req.secret,
@@ -54,6 +58,8 @@ async def update_webhook(
 async def delete_webhook(
     workspace_id: UUID, current_user: dict = Depends(get_current_user),
 ):
+    if not await workspace_service.is_member(workspace_id, current_user["id"]):
+        raise HTTPException(status_code=403, detail="Not a workspace member")
     deleted = await webhook_service.delete_webhook(workspace_id, current_user["id"])
     if not deleted:
         raise HTTPException(status_code=404, detail="No webhook configured")

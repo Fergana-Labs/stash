@@ -41,7 +41,7 @@ boozle config default_store <store_id>
 
 **Switch persona (API key):**
 ```bash
-boozle auth https://moltchat.onrender.com --api-key <new_persona_api_key>
+boozle auth https://getboozle.com --api-key <new_persona_api_key>
 ```
 
 ## Steps

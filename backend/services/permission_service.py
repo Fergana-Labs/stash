@@ -40,30 +40,21 @@ async def check_access(
             if row:
                 return True
 
-    # Workspace owner/admin always has access
-    if workspace_id:
-        role = await get_workspace_role(workspace_id, user_id)
-        if role in ("owner", "admin"):
-            return True
-        if role == "member" and not require_write:
-            # Check visibility — 'inherit' means workspace members have read access
-            vis = await get_visibility(object_type, object_id)
-            if vis == "inherit":
-                return True
-
-    # Check visibility
+    # Fetch workspace role and visibility once, reuse below
+    role = await get_workspace_role(workspace_id, user_id) if workspace_id else None
     vis = await get_visibility(object_type, object_id)
 
+    # Workspace owner/admin always has access
+    if role in ("owner", "admin"):
+        return True
+
+    # Public objects are readable by anyone
     if vis == "public" and not require_write:
         return True
 
-    if vis == "inherit" and workspace_id:
-        # Workspace member check (already done above for non-write)
-        role = await get_workspace_role(workspace_id, user_id)
-        if role is not None:
-            if not require_write or role in ("owner", "admin"):
-                return True
-            # Members can write by default in inherit mode
+    # 'inherit' grants workspace members read access; write requires explicit share
+    if vis == "inherit" and workspace_id and role is not None:
+        if not require_write:
             return True
 
     # Check object_shares

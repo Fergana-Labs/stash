@@ -1,14 +1,19 @@
 import asyncio
 import logging
-import os
 from contextlib import asynccontextmanager
 
+import asyncpg
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.requests import Request
+from slowapi.errors import RateLimitExceeded
+from slowapi.middleware import SlowAPIMiddleware
+from starlette.responses import JSONResponse
 from starlette.types import ASGIApp, Receive, Scope, Send
 
 from .config import settings
 from .database import close_db, init_db
+from .middleware import limiter
 from .routers import (
     personas, aggregate, chats, deck_viewer, decks, dms, documents, files,
     memory, notebooks, realtime, search, skill, tables, users, webhooks,
@@ -48,8 +53,8 @@ async def _sleep_agent_loop():
     """Periodically run sleep agent curation for all enabled agents."""
     from .services import sleep_service
     while True:
-        await asyncio.sleep(300)  # Check every 5 minutes
-        if not os.getenv("SLEEP_AGENT_ENABLED"):
+        await asyncio.sleep(settings.SLEEP_AGENT_CHECK_INTERVAL)
+        if not settings.SLEEP_AGENT_ENABLED:
             continue
         try:
             agents = await sleep_service.get_due_agents()
@@ -62,21 +67,74 @@ async def _sleep_agent_loop():
             logger.exception("Sleep agent loop error")
 
 
+async def _webhook_delivery_loop():
+    """Poll webhook_deliveries table and dispatch pending items."""
+    from .services import webhook_service
+    while True:
+        await asyncio.sleep(5)
+        try:
+            await webhook_service.process_pending_deliveries()
+        except Exception:
+            logger.exception("Webhook delivery loop error")
+
+
+def _make_pg_notify_callback(loop: asyncio.AbstractEventLoop):
+    """Return an asyncpg LISTEN callback that dispatches to local connections.
+
+    asyncpg fires notification callbacks synchronously on the event loop, so
+    we use loop.create_task() (not run_coroutine_threadsafe, which is for
+    cross-thread scheduling and returns an unchecked Future).
+    """
+    import json
+    from uuid import UUID
+
+    def _callback(conn, pid, channel, payload):
+        try:
+            data = json.loads(payload)
+            room_id = UUID(data["room_id"])
+            message = data["message"]
+            loop.create_task(manager.broadcast_local(room_id, message))
+        except Exception:
+            logger.exception("pg_notify callback error")
+
+    return _callback
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await init_db()
+
+    # Dedicated connection for Postgres LISTEN/NOTIFY (cannot use the pool)
+    notify_conn = await asyncpg.connect(settings.DATABASE_URL)
+    loop = asyncio.get_running_loop()
+    notify_cb = _make_pg_notify_callback(loop)
+    await notify_conn.add_listener("boozle_events", notify_cb)
+
     health_task = asyncio.create_task(_ws_health_loop())
     sleep_task = asyncio.create_task(_sleep_agent_loop())
+    delivery_task = asyncio.create_task(_webhook_delivery_loop())
+
     async with _mcp_app.router.lifespan_context(_mcp_app):
         yield
-    health_task.cancel()
-    sleep_task.cancel()
-    for task in (health_task, sleep_task):
+
+    for task in (health_task, sleep_task, delivery_task):
+        task.cancel()
+    for task in (health_task, sleep_task, delivery_task):
         try:
             await task
         except asyncio.CancelledError:
             pass
+
+    await notify_conn.remove_listener("boozle_events", notify_cb)
+    await notify_conn.close()
     await close_db()
+
+
+def _rate_limit_exceeded_handler(request: Request, exc: RateLimitExceeded) -> JSONResponse:
+    return JSONResponse(
+        status_code=429,
+        content={"detail": f"Rate limit exceeded: {exc.detail}"},
+    )
 
 
 app = FastAPI(
@@ -86,6 +144,9 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+app.add_middleware(SlowAPIMiddleware)
 app.add_middleware(CORSMiddleware,
     allow_origins=settings.CORS_ORIGINS,
     allow_credentials=True,

@@ -9,11 +9,15 @@ async def watch_chat(persona_id: UUID, chat_id: UUID, workspace_id: UUID | None 
     """Subscribe a persona to a chat. Resolves workspace_id from the chat if not provided."""
     pool = get_pool()
 
-    # Validate chat exists and resolve workspace_id
     chat = await pool.fetchrow("SELECT id, workspace_id FROM chats WHERE id = $1", chat_id)
     if not chat:
         raise ValueError(f"Chat {chat_id} not found")
     ws_id = workspace_id or chat["workspace_id"]
+
+    if ws_id:
+        from . import workspace_service
+        if not await workspace_service.is_member(ws_id, persona_id):
+            raise ValueError(f"Persona is not a member of workspace for chat {chat_id}")
 
     row = await pool.fetchrow(
         "INSERT INTO chat_watches (persona_id, chat_id, workspace_id, last_read_at) "

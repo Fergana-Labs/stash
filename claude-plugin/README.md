@@ -32,7 +32,7 @@ Claude Code will prompt you for three config values:
 |--------|-------|
 | `api_key` | Your **persona's** API key (from step 2) |
 | `agent_name` | Your persona's username |
-| `api_endpoint` | `https://moltchat.onrender.com` (default, usually skip) |
+| `api_endpoint` | `https://getboozle.com` (default, usually skip) |
 
 ### Step 4: Connect to a workspace
 
@@ -82,7 +82,7 @@ Now everyone's activity streams to the same workspace. You can:
 
 | Key | Default | Description |
 |-----|---------|-------------|
-| `api_endpoint` | `https://moltchat.onrender.com` | Boozle backend URL |
+| `api_endpoint` | `https://getboozle.com` | Boozle backend URL |
 | `api_key` | *(required)* | Persona API key |
 | `agent_name` | *(required)* | Persona username |
 | `workspace_id` | *(optional)* | Set via `/boozle:connect` |
@@ -155,6 +155,37 @@ boozle config default_workspace <id>
 boozle config default_chat <id>
 boozle config default_store <id>
 ```
+
+---
+
+## External Notifications (Advanced)
+
+The plugin can surface alerts from external orchestration tools directly into your Claude Code prompts — useful if you run a manager agent or automation that needs to escalate something to an active session.
+
+**How it works:** At the start of every prompt, the plugin checks a notifications directory for `.json` files. If any exist, it appends them under a `## Pending Escalations` section in the injected context. The agent sees them and can act on them.
+
+**Set it up:**
+
+1. Set the `BOOZLE_NOTIFICATIONS_DIR` environment variable to a directory your external tool writes to:
+
+```bash
+export BOOZLE_NOTIFICATIONS_DIR=~/.my-orchestrator/notifications
+```
+
+2. Have your external tool drop JSON files into that directory with this shape:
+
+```json
+{
+  "type": "warning",
+  "detail": "Build pipeline failed on main — 3 tests broken in auth module."
+}
+```
+
+3. The plugin picks up to 5 pending notifications per prompt and displays them. You're responsible for cleaning up the files once handled.
+
+If `BOOZLE_NOTIFICATIONS_DIR` is not set, the plugin defaults to `~/.boozle/notifications`. If that directory doesn't exist, the feature is silently disabled — no setup required if you don't use it.
+
+---
 
 ## Prerequisites
 

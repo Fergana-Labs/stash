@@ -2,7 +2,9 @@ node_modules/
 .next/
 __pycache__/
 *.pyc
+*.pyo
 .env
+.env.local
 *.db
 venv/
 .venv/
@@ -10,3 +12,17 @@ dist/
 build/
 .gstack/
 *.egg-info/
+.DS_Store
+.coverage
+htmlcov/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.idea/
+.vscode/
+*.log
+*.pem
+*.key
+*.cert
+.turbo/
+coverage/

@@ -37,20 +37,20 @@ echo "================================"
 
 # --- Backend (FastAPI) ---
 echo "[backend]  Starting on port 3456..."
-cd "$PROJECT_ROOT/backend"
+cd "$PROJECT_ROOT"
 uvicorn backend.main:app --host 0.0.0.0 --port 3456 &
 PIDS+=($!)
 
 # --- Frontend (Next.js) ---
-echo "[frontend] Starting on port 3457..."
+echo "[frontend] Starting on port 3000..."
 cd "$PROJECT_ROOT/frontend"
-npm run dev &
+PORT=3000 npm run dev &
 PIDS+=($!)
 
 echo "================================"
 echo "All services started. Press Ctrl+C to stop."
 echo "  Backend  -> http://localhost:3456"
-echo "  Frontend -> http://localhost:3457"
+echo "  Frontend -> http://localhost:3000"
 echo "================================"
 
 # Wait for all background processes

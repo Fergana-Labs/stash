@@ -1,0 +1,26 @@
+# Boozle — Caddy reverse proxy
+#
+# Replace app.example.com with your actual domain.
+# Caddy automatically provisions and renews TLS certificates via Let's Encrypt.
+
+app.example.com {
+    # Frontend
+    reverse_proxy frontend:3457
+
+    # Backend API + WebSocket
+    handle /api/* {
+        reverse_proxy backend:3456
+    }
+
+    handle /ws/* {
+        reverse_proxy backend:3456
+    }
+
+    handle /mcp/* {
+        reverse_proxy backend:3456
+    }
+
+    handle /health {
+        reverse_proxy backend:3456
+    }
+}
