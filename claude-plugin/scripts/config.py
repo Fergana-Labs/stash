@@ -51,7 +51,7 @@ def get_config() -> dict:
     if not api_key:
         cli = _load_cli_config()
         return {
-            "api_endpoint": cli.get("base_url", "https://getboozle.com"),
+            "api_endpoint": cli.get("base_url", "https://getoctopus.com"),
             "api_key": cli.get("api_key", ""),
             "agent_name": cli.get("username", ""),
             "workspace_id": cli.get("default_workspace", ""),
@@ -60,7 +60,7 @@ def get_config() -> dict:
         }
 
     return {
-        "api_endpoint": os.environ.get("CLAUDE_PLUGIN_USER_CONFIG_api_endpoint", "https://getboozle.com"),
+        "api_endpoint": os.environ.get("CLAUDE_PLUGIN_USER_CONFIG_api_endpoint", "https://getoctopus.com"),
         "api_key": api_key,
         "agent_name": agent_name,
         "workspace_id": os.environ.get("CLAUDE_PLUGIN_USER_CONFIG_workspace_id", ""),

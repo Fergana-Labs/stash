@@ -8,7 +8,7 @@
     "properties": {
       "apiEndpoint": {
         "type": "string",
-        "default": "https://getboozle.com",
+        "default": "https://getoctopus.com",
         "description": "Octopus API base URL"
       },
       "apiKey": {
