@@ -12,7 +12,7 @@
   },
   "dependencies": {
     "@auth0/nextjs-auth0": "^4.16.2",
-    "@tiptap/extension-collaboration": "3.6.6",
+    "@tiptap/extension-collaboration": "3.22.3",
     "@tiptap/extension-image": "^3.22.2",
     "@tiptap/extension-link": "3.6.6",
     "@tiptap/extension-placeholder": "3.6.6",
