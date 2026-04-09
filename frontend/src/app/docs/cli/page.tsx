@@ -34,7 +34,7 @@ octopus config [key] [value]              # View or update any config value`}</C
 
       <Callout>
         After <Code>octopus setup</Code>, your defaults are stored. You can still override
-        any value: e.g. <Code>octopus config base_url https://getboozle.com</Code> or set{" "}
+        any value: e.g. <Code>octopus config base_url https://getoctopus.com</Code> or set{" "}
         <Code>OCTOPUS_API_KEY</Code> / <Code>OCTOPUS_URL</Code> as environment variables for
         CI and scripts.
       </Callout>

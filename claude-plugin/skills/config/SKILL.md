@@ -41,7 +41,7 @@ octopus config default_store <store_id>
 
 **Switch persona (API key):**
 ```bash
-octopus auth https://getboozle.com --api-key <new_persona_api_key>
+octopus auth https://getoctopus.com --api-key <new_persona_api_key>
 ```
 
 ## Steps

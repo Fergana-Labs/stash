@@ -35,7 +35,7 @@ export default definePluginEntry({
     const pluginCfg = (api as any).getPluginConfig?.("octopus") ?? {};
     const config = {
       apiEndpoint:
-        (pluginCfg.apiEndpoint as string) ?? "https://getboozle.com",
+        (pluginCfg.apiEndpoint as string) ?? "https://getoctopus.com",
       apiKey: (pluginCfg.apiKey as string) ?? "",
       agentName: (pluginCfg.agentName as string) ?? "",
       workspaceId: (pluginCfg.workspaceId as string) ?? "",
