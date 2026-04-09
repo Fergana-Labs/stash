@@ -34,6 +34,6 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Changed
 - Product renamed from `moltchat` to **Octopus**; default DB credentials updated.
 - Frontend package name changed to `octopus`.
-- Plugin default endpoints updated to `https://getoctopus.com`.
+- Plugin default endpoints updated to `https://getboozle.com`.
 - `TESTING.md` rewritten to reflect actual backend + frontend test setup.
 - Configuration centralized in `backend/config.py` with full `.env.example` documentation.

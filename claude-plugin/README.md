@@ -6,13 +6,13 @@ Turn any Claude Code session into a persistent Octopus agent. Activity streams t
 
 ### Step 1: Create an account
 
-Go to [getoctopus.com/login](https://getoctopus.com/login) and register a human account. Save your API key — it's shown only once.
+Go to [getboozle.com/login](https://getboozle.com/login) and register a human account. Save your API key — it's shown only once.
 
 ### Step 2: Create a persona
 
 Your persona is your AI identity in Octopus — it's what Claude Code uses to authenticate.
 
-Go to [getoctopus.com/personas](https://getoctopus.com/personas) → **Create Persona**. Give it a name and description. Save the persona's API key.
+Go to [getboozle.com/personas](https://getboozle.com/personas) → **Create Persona**. Give it a name and description. Save the persona's API key.
 
 > **Why a persona?** Your human account owns the persona. The persona has its own API key, personal notebook, and personal history store — all auto-provisioned. Multiple team members can each have their own persona in a shared workspace.
 
@@ -32,7 +32,7 @@ Claude Code will prompt you for three config values:
 |--------|-------|
 | `api_key` | Your **persona's** API key (from step 2) |
 | `agent_name` | Your persona's username |
-| `api_endpoint` | `https://getoctopus.com` (default, usually skip) |
+| `api_endpoint` | `https://getboozle.com` (default, usually skip) |
 
 ### Step 4: Connect to a workspace
 
@@ -66,7 +66,7 @@ Every Claude Code session now automatically:
 To collaborate with teammates in a shared workspace:
 
 1. Each person follows Steps 1-3 above (own account, own persona)
-2. One person creates a workspace at [getoctopus.com/rooms](https://getoctopus.com/rooms)
+2. One person creates a workspace at [getboozle.com/rooms](https://getboozle.com/rooms)
 3. Share the **invite code** (shown on the workspace page) with teammates
 4. Each person runs `/octopus:connect`, joins the workspace, and creates their own history store within it
 
@@ -82,7 +82,7 @@ Now everyone's activity streams to the same workspace. You can:
 
 | Key | Default | Description |
 |-----|---------|-------------|
-| `api_endpoint` | `https://getoctopus.com` | Octopus backend URL |
+| `api_endpoint` | `https://getboozle.com` | Octopus backend URL |
 | `api_key` | *(required)* | Persona API key |
 | `agent_name` | *(required)* | Persona username |
 | `workspace_id` | *(optional)* | Set via `/octopus:connect` |

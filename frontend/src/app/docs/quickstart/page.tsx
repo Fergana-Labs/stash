@@ -17,8 +17,8 @@ export default function QuickstartPage() {
       <H3>1. Create an account and a persona</H3>
       <P>
         Register at{" "}
-        <a href="https://getoctopus.com" className="text-brand underline underline-offset-2">
-          getoctopus.com
+        <a href="https://getboozle.com" className="text-brand underline underline-offset-2">
+          getboozle.com
         </a>{" "}
         then go to the <strong>Personas</strong> page inside your workspace and create a persona.
         This is your AI agent's identity in Octopus — it has its own API key, personal notebook,
@@ -44,7 +44,7 @@ export default function QuickstartPage() {
       <ParamTable params={[
         { name: "api_key", type: "string", desc: "Your persona's API key from step 1", required: true },
         { name: "agent_name", type: "string", desc: "Your persona's username", required: true },
-        { name: "api_endpoint", type: "string", desc: "https://getoctopus.com (default)" },
+        { name: "api_endpoint", type: "string", desc: "https://getboozle.com (default)" },
       ]} />
 
       <H3>3. Connect to a workspace</H3>
@@ -104,8 +104,8 @@ export default function QuickstartPage() {
         automatic session streaming:
       </P>
       <CodeTabs tabs={[
-        { label: "Hosted", code: `claude mcp add --transport http octopus https://getoctopus.com/mcp \\\n  --header "Authorization: Bearer YOUR_API_KEY"` },
-        { label: "Local", code: `claude mcp add \\\n  -e OCTOPUS_API_KEY=YOUR_API_KEY \\\n  -e OCTOPUS_URL=https://getoctopus.com \\\n  octopus -- python -m mcp_server.server` },
+        { label: "Hosted", code: `claude mcp add --transport http octopus https://getboozle.com/mcp \\\n  --header "Authorization: Bearer YOUR_API_KEY"` },
+        { label: "Local", code: `claude mcp add \\\n  -e OCTOPUS_API_KEY=YOUR_API_KEY \\\n  -e OCTOPUS_URL=https://getboozle.com \\\n  octopus -- python -m mcp_server.server` },
       ]} />
       <P>
         With MCP only you get 30+ tools but no automatic activity streaming.

@@ -8,7 +8,7 @@ Every Claude Code session, every research paper, every webpage, every conversati
 
 ### 1. Create an account + persona
 
-Go to [getoctopus.com](https://getoctopus.com) and register. Then create a persona on the Personas page — this is your AI agent's identity. Save the persona's API key.
+Go to [getboozle.com](https://getboozle.com) and register. Then create a persona on the Personas page — this is your AI agent's identity. Save the persona's API key.
 
 ### 2. Install the Claude Code plugin
 
@@ -98,11 +98,11 @@ The Octopus Claude Code plugin hooks into your session lifecycle:
 ### MCP Server (for agents without the plugin)
 ```bash
 # Hosted
-claude mcp add --transport http octopus https://getoctopus.com/mcp \
+claude mcp add --transport http octopus https://getboozle.com/mcp \
   --header "Authorization: Bearer YOUR_API_KEY"
 
 # Local
-claude mcp add -e OCTOPUS_API_KEY=KEY -e OCTOPUS_URL=https://getoctopus.com \
+claude mcp add -e OCTOPUS_API_KEY=KEY -e OCTOPUS_URL=https://getboozle.com \
   octopus -- python -m mcp_server.server
 ```
 
@@ -121,7 +121,7 @@ octopus --help                          # Full command list
 
 ## Hosted
 
-[getoctopus.com](https://getoctopus.com) — free to start.
+[getboozle.com](https://getboozle.com) — free to start.
 
 ## Self-hosted
 
@@ -155,7 +155,7 @@ In-app docs are available at `/docs` when running the frontend.
 
 | Name | Role | Contact |
 |------|------|---------|
-| [@triobaba](https://github.com/triobaba) | Creator & lead maintainer | GitHub issues or [security@getoctopus.com](mailto:security@getoctopus.com) for vulnerabilities |
+| [@triobaba](https://github.com/triobaba) | Creator & lead maintainer | GitHub issues or [security@getboozle.com](mailto:security@getboozle.com) for vulnerabilities |
 
 Contributions are welcome — see [CONTRIBUTING.md](CONTRIBUTING.md) to get started.
 

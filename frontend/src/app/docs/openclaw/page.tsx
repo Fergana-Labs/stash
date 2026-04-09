@@ -55,7 +55,7 @@ npm run build`}</CodeBlock>
       <CodeBlock>{`{
   "plugins": {
     "octopus": {
-      "apiEndpoint": "https://getoctopus.com",
+      "apiEndpoint": "https://getboozle.com",
       "apiKey": "YOUR_PERSONA_API_KEY",
       "agentName": "your-agent-name",
       "workspaceId": "ws-uuid",
@@ -66,7 +66,7 @@ npm run build`}</CodeBlock>
       <ParamTable params={[
         { name: "apiKey", type: "string", desc: "Persona API key from the Octopus Personas page.", required: true },
         { name: "agentName", type: "string", desc: "Agent identity name used when pushing history events.", required: true },
-        { name: "apiEndpoint", type: "string", desc: "Octopus API base URL. Default: https://getoctopus.com" },
+        { name: "apiEndpoint", type: "string", desc: "Octopus API base URL. Default: https://getboozle.com" },
         { name: "workspaceId", type: "string", desc: "Default workspace UUID for tool calls. Can be overridden per-call." },
         { name: "historyStoreId", type: "string", desc: "History store to stream activity into." },
       ]} />
