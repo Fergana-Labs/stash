@@ -18,7 +18,7 @@
     "@tiptap/extension-placeholder": "3.6.6",
     "@tiptap/extension-subscript": "3.6.6",
     "@tiptap/extension-superscript": "3.6.6",
-    "@tiptap/extension-typography": "3.6.6",
+    "@tiptap/extension-typography": "3.22.3",
     "@tiptap/extension-underline": "3.6.6",
     "@tiptap/pm": "3.6.6",
     "@tiptap/react": "3.6.6",
