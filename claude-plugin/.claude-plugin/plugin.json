@@ -11,7 +11,7 @@
       "title": "API Endpoint",
       "description": "Octopus API base URL",
       "type": "string",
-      "default": "https://getoctopus.com",
+      "default": "https://getboozle.com",
       "sensitive": false
     },
     "api_key": {

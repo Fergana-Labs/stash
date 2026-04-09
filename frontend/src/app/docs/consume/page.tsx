@@ -37,7 +37,7 @@ export default function ConsumePage() {
       <CodeTabs tabs={[
         {
           label: "curl",
-          code: `curl -X POST https://getoctopus.com/api/v1/workspaces/{ws}/memory/{store}/events \\
+          code: `curl -X POST https://getboozle.com/api/v1/workspaces/{ws}/memory/{store}/events \\
   -H "Authorization: Bearer $API_KEY" \\
   -H "Content-Type: application/json" \\
   -d '{"agent_name":"my-agent","event_type":"tool_use","content":"..."}'`,

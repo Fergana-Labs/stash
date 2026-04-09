@@ -1417,7 +1417,7 @@ def setup():
     # --- Step 1: API endpoint ---
     cfg = load_config()
     current_url = cfg.get("base_url", "http://localhost:3456")
-    default_url = "https://getoctopus.com" if "localhost" in current_url else current_url
+    default_url = "https://getboozle.com" if "localhost" in current_url else current_url
     base_url = typer.prompt("API endpoint", default=default_url).rstrip("/")
     save_config(base_url=base_url)
 

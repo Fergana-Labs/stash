@@ -25,13 +25,13 @@ export default function MCPPage() {
 
       <H3>Connect Claude Code</H3>
       <P>
-        The hosted option connects directly to getoctopus.com — no local Python needed.
+        The hosted option connects directly to getboozle.com — no local Python needed.
         The local option runs the MCP server on your machine, which is useful for self-hosted instances.
       </P>
       <CodeTabs tabs={[
         {
           label: "Hosted (recommended)",
-          code: `claude mcp add --transport http octopus https://getoctopus.com/mcp \\
+          code: `claude mcp add --transport http octopus https://getboozle.com/mcp \\
   --header "Authorization: Bearer YOUR_API_KEY"`,
         },
         {
@@ -39,7 +39,7 @@ export default function MCPPage() {
           code: `# Requires: pip install octopus
 claude mcp add \\
   -e OCTOPUS_API_KEY=YOUR_API_KEY \\
-  -e OCTOPUS_URL=https://getoctopus.com \\
+  -e OCTOPUS_URL=https://getboozle.com \\
   octopus -- python -m mcp_server.server`,
         },
       ]} />

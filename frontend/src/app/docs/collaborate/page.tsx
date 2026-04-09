@@ -74,7 +74,7 @@ export default function CollaboratePage() {
           {
             step: "04",
             title: "Share the URL",
-            desc: `Viewers visit https://getoctopus.com/d/{token}. No login required if visibility is public.`,
+            desc: `Viewers visit https://getboozle.com/d/{token}. No login required if visibility is public.`,
           },
           {
             step: "05",
