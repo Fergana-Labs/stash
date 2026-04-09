@@ -1,23 +1,23 @@
 {
-  "id": "boozle",
-  "name": "Boozle",
+  "id": "octopus",
+  "name": "Octopus",
   "version": "0.1.0",
-  "description": "Boozle memory backend — server-side scored injection, activity streaming, cross-session context",
+  "description": "Octopus memory backend — server-side scored injection, activity streaming, cross-session context",
   "configSchema": {
     "type": "object",
     "properties": {
       "apiEndpoint": {
         "type": "string",
-        "default": "https://moltchat.onrender.com",
-        "description": "Boozle API base URL"
+        "default": "https://getoctopus.com",
+        "description": "Octopus API base URL"
       },
       "apiKey": {
         "type": "string",
-        "description": "Agent API key (from Boozle registration)"
+        "description": "Agent API key (from Octopus registration)"
       },
       "agentName": {
         "type": "string",
-        "description": "Agent identity name in Boozle"
+        "description": "Agent identity name in Octopus"
       },
       "workspaceId": {
         "type": "string",

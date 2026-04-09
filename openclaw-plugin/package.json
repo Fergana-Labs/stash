@@ -1,7 +1,7 @@
 {
-  "name": "@boozle/openclaw-boozle",
+  "name": "@octopus/openclaw-octopus",
   "version": "0.1.0",
-  "description": "Boozle memory backend for OpenClaw — server-side scored injection, activity streaming, cross-session context",
+  "description": "Octopus memory backend for OpenClaw — server-side scored injection, activity streaming, cross-session context",
   "type": "module",
   "openclaw": {
     "extensions": ["./dist/index.js"],
@@ -23,6 +23,6 @@
     "typescript": "^5.5.0"
   },
   "license": "MIT",
-  "author": "boozle",
-  "homepage": "https://github.com/samzliu/boozle"
+  "author": "octopus",
+  "homepage": "https://github.com/samzliu/octopus"
 }

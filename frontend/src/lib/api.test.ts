@@ -8,13 +8,13 @@ describe("token management", () => {
 
   it("setToken stores token in localStorage", () => {
     setToken("test-token-123");
-    expect(localStorage.getItem("boozle_token")).toBe("test-token-123");
+    expect(localStorage.getItem("octopus_token")).toBe("test-token-123");
   });
 
   it("clearToken removes token from localStorage", () => {
-    localStorage.setItem("boozle_token", "test-token-123");
+    localStorage.setItem("octopus_token", "test-token-123");
     clearToken();
-    expect(localStorage.getItem("boozle_token")).toBeNull();
+    expect(localStorage.getItem("octopus_token")).toBeNull();
   });
 });
 
@@ -30,7 +30,7 @@ describe("apiFetch", () => {
 
   it("includes Authorization header when token is set", async () => {
     const { register } = await import("./api");
-    localStorage.setItem("boozle_token", "my-token");
+    localStorage.setItem("octopus_token", "my-token");
 
     const mockResponse = {
       ok: true,
@@ -53,7 +53,7 @@ describe("apiFetch", () => {
 
   it("throws on non-ok response with detail from body", async () => {
     const { getMe } = await import("./api");
-    localStorage.setItem("boozle_token", "my-token");
+    localStorage.setItem("octopus_token", "my-token");
 
     const mockResponse = {
       ok: false,
@@ -68,7 +68,7 @@ describe("apiFetch", () => {
 
   it("handles 204 No Content responses", async () => {
     const { deleteWorkspace } = await import("./api");
-    localStorage.setItem("boozle_token", "my-token");
+    localStorage.setItem("octopus_token", "my-token");
 
     const mockResponse = {
       ok: true,

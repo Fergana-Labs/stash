@@ -1,8 +1,0 @@
-{
-  "mcpServers": {
-    "boozle": {
-      "type": "http",
-      "url": "https://moltchat.onrender.com/mcp"
-    }
-  }
-}

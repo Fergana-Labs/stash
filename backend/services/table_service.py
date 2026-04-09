@@ -289,15 +289,23 @@ async def get_row(row_id: UUID) -> dict | None:
     return dict(row) if row else None
 
 
-async def update_row(row_id: UUID, data: dict, updated_by: UUID) -> dict | None:
+async def update_row(row_id: UUID, data: dict, updated_by: UUID, table_id: UUID | None = None) -> dict | None:
     """Partial merge update — only specified keys are changed."""
     pool = get_pool()
-    row = await pool.fetchrow(
-        "UPDATE table_rows SET data = data || $1, updated_by = $2, updated_at = now() "
-        "WHERE id = $3 "
-        "RETURNING id, table_id, data, row_order, created_by, updated_by, created_at, updated_at",
-        data, updated_by, row_id,
-    )
+    if table_id is not None:
+        row = await pool.fetchrow(
+            "UPDATE table_rows SET data = data || $1, updated_by = $2, updated_at = now() "
+            "WHERE id = $3 AND table_id = $4 "
+            "RETURNING id, table_id, data, row_order, created_by, updated_by, created_at, updated_at",
+            data, updated_by, row_id, table_id,
+        )
+    else:
+        row = await pool.fetchrow(
+            "UPDATE table_rows SET data = data || $1, updated_by = $2, updated_at = now() "
+            "WHERE id = $3 "
+            "RETURNING id, table_id, data, row_order, created_by, updated_by, created_at, updated_at",
+            data, updated_by, row_id,
+        )
     if not row:
         return None
     result = dict(row)
@@ -305,9 +313,14 @@ async def update_row(row_id: UUID, data: dict, updated_by: UUID) -> dict | None:
     return result
 
 
-async def delete_row(row_id: UUID) -> bool:
+async def delete_row(row_id: UUID, table_id: UUID | None = None) -> bool:
     pool = get_pool()
-    result = await pool.execute("DELETE FROM table_rows WHERE id = $1", row_id)
+    if table_id is not None:
+        result = await pool.execute(
+            "DELETE FROM table_rows WHERE id = $1 AND table_id = $2", row_id, table_id,
+        )
+    else:
+        result = await pool.execute("DELETE FROM table_rows WHERE id = $1", row_id)
     return result == "DELETE 1"
 
 

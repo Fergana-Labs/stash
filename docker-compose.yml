@@ -7,13 +7,13 @@ services:
     ports:
       - "5432:5432"
     environment:
-      POSTGRES_USER: moltchat
-      POSTGRES_PASSWORD: moltchat
-      POSTGRES_DB: moltchat
+      POSTGRES_USER: octopus
+      POSTGRES_PASSWORD: octopus
+      POSTGRES_DB: octopus
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U moltchat"]
+      test: ["CMD-SHELL", "pg_isready -U octopus"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -29,7 +29,7 @@ services:
       postgres:
         condition: service_healthy
     environment:
-      DATABASE_URL: postgresql://moltchat:moltchat@postgres:5432/moltchat
+      DATABASE_URL: postgresql://octopus:octopus@postgres:5432/octopus
       PUBLIC_URL: http://localhost:3457
       CORS_ORIGINS: "http://localhost:3457,http://localhost:3456"
 

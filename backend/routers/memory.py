@@ -35,7 +35,16 @@ async def _check_member(workspace_id: UUID, user_id: UUID) -> None:
         raise HTTPException(status_code=403, detail="Not a workspace member")
 
 
+async def _check_ws_store(workspace_id: UUID, store_id: UUID) -> dict:
+    """Verify store exists and belongs to the given workspace."""
+    store = await memory_service.get_store(store_id, workspace_id)
+    if not store:
+        raise HTTPException(status_code=404, detail="Store not found")
+    return store
+
+
 async def _check_ws_store_access(workspace_id: UUID, store_id: UUID, user_id: UUID) -> None:
+    await _check_ws_store(workspace_id, store_id)
     has_access = await permission_service.check_access(
         "history", store_id, user_id, workspace_id=workspace_id,
     )
@@ -226,6 +235,7 @@ async def get_permissions(
     current_user: dict = Depends(get_current_user),
 ):
     await _check_member(workspace_id, current_user["id"])
+    await _check_ws_store(workspace_id, store_id)
     perms = await permission_service.get_permissions("history", store_id)
     return PermissionResponse(**perms)
 
@@ -238,6 +248,7 @@ async def set_visibility(
     role = await workspace_service.get_member_role(workspace_id, current_user["id"])
     if role not in ("owner", "admin"):
         raise HTTPException(status_code=403, detail="Only owner/admin can change visibility")
+    await _check_ws_store(workspace_id, store_id)
     await permission_service.set_visibility("history", store_id, req.visibility)
     return {"status": "ok", "visibility": req.visibility}
 
@@ -250,6 +261,7 @@ async def add_share(
     role = await workspace_service.get_member_role(workspace_id, current_user["id"])
     if role not in ("owner", "admin"):
         raise HTTPException(status_code=403, detail="Only owner/admin can share")
+    await _check_ws_store(workspace_id, store_id)
     share = await permission_service.add_share(
         "history", store_id, req.user_id, req.permission, current_user["id"],
     )
@@ -271,6 +283,7 @@ async def remove_share(
     role = await workspace_service.get_member_role(workspace_id, current_user["id"])
     if role not in ("owner", "admin"):
         raise HTTPException(status_code=403, detail="Only owner/admin can remove shares")
+    await _check_ws_store(workspace_id, store_id)
     await permission_service.remove_share("history", store_id, user_id)
 
 

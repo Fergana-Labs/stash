@@ -1,5 +1,5 @@
 /**
- * After-tool-call hook — stream tool activity to Boozle history.
+ * After-tool-call hook — stream tool activity to Octopus history.
  * Port of claude-plugin/scripts/on_tool_use.py.
  *
  * OpenClaw SDK signature:
@@ -8,8 +8,8 @@
  * InternalHookEvent = { type, action, sessionKey, context: Record<string, unknown>, timestamp, messages }
  */
 
-import type { BoozleClient } from "../boozle-client.js";
-import type { BoozleConfig } from "../memory/prompt-section.js";
+import type { OctopusClient } from "../octopus-client.js";
+import type { OctopusConfig } from "../memory/prompt-section.js";
 import { loadState } from "../state.js";
 
 const EXCLUDED_TOOLS = new Set([
@@ -68,11 +68,11 @@ function summarizeToolUse(
 
 /**
  * Creates the after-tool-call hook handler.
- * Adapts from InternalHookEvent to the Boozle activity stream.
+ * Adapts from InternalHookEvent to the Octopus activity stream.
  */
 export function createAfterToolCallHook(
-  client: BoozleClient,
-  config: BoozleConfig,
+  client: OctopusClient,
+  config: OctopusConfig,
 ) {
   return async (event: {
     type: string;

@@ -118,7 +118,7 @@ async def delete_ws_file(
         await storage_service.delete_file(row["storage_key"])
     except Exception:
         pass  # Best-effort S3 cleanup
-    await pool.execute("DELETE FROM files WHERE id = $1", file_id)
+    await pool.execute("DELETE FROM files WHERE id = $1 AND workspace_id = $2", file_id, workspace_id)
 
 
 # ===== Personal file endpoints =====

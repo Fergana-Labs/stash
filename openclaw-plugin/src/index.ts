@@ -1,5 +1,5 @@
 /**
- * Boozle plugin for OpenClaw.
+ * Octopus plugin for OpenClaw.
  *
  * Hybrid plugin: memory backend (scored injection, activity streaming)
  * + platform tools (workspaces, chats, DMs, notebooks, memory stores, agents).
@@ -7,7 +7,7 @@
 
 import { definePluginEntry, type OpenClawPluginApi } from "openclaw/plugin-sdk/plugin-entry";
 
-import { BoozleClient } from "./boozle-client.js";
+import { OctopusClient } from "./octopus-client.js";
 import { loadState, saveState, saveCache } from "./state.js";
 import { createPromptSectionBuilder } from "./memory/prompt-section.js";
 import { createFlushPlanResolver } from "./memory/flush-plan.js";
@@ -21,28 +21,28 @@ import { registerPersonaTools } from "./tools/personas.js";
 import { registerTableTools } from "./tools/tables.js";
 
 export default definePluginEntry({
-  id: "boozle",
-  name: "Boozle",
+  id: "octopus",
+  name: "Octopus",
   kind: "memory",
   description:
-    "Boozle memory backend with server-side scored injection, activity streaming, " +
+    "Octopus memory backend with server-side scored injection, activity streaming, " +
     "and full platform access (workspaces, chats, notebooks, tables, memory stores, personas).",
 
   register(api: OpenClawPluginApi) {
     // Read plugin config from the OpenClaw config system.
     // Plugin config keys are stored under the plugin's namespace in the
     // OpenClaw config file; access them via api.getPluginConfig().
-    const pluginCfg = (api as any).getPluginConfig?.("boozle") ?? {};
+    const pluginCfg = (api as any).getPluginConfig?.("octopus") ?? {};
     const config = {
       apiEndpoint:
-        (pluginCfg.apiEndpoint as string) ?? "https://moltchat.onrender.com",
+        (pluginCfg.apiEndpoint as string) ?? "https://getoctopus.com",
       apiKey: (pluginCfg.apiKey as string) ?? "",
       agentName: (pluginCfg.agentName as string) ?? "",
       workspaceId: (pluginCfg.workspaceId as string) ?? "",
       historyStoreId: (pluginCfg.historyStoreId as string) ?? "",
     };
 
-    const client = new BoozleClient(config.apiEndpoint, config.apiKey);
+    const client = new OctopusClient(config.apiEndpoint, config.apiKey);
 
     // --- Memory plugin registrations ---
 
@@ -68,15 +68,15 @@ export default definePluginEntry({
     api.registerCli(
       (ctx) => {
         const cmd = ctx.program
-          .command("boozle")
-          .description("Boozle plugin management");
+          .command("octopus")
+          .description("Octopus plugin management");
 
         cmd
           .command("setup")
-          .description("Set up Boozle connection (verify auth, workspace, history store)")
+          .description("Set up Octopus connection (verify auth, workspace, history store)")
           .action(async () => {
             if (!config.apiKey) {
-              ctx.logger.info("No API key configured. Set boozle.apiKey in your OpenClaw config.");
+              ctx.logger.info("No API key configured. Set octopus.apiKey in your OpenClaw config.");
               return;
             }
             try {
@@ -91,7 +91,7 @@ export default definePluginEntry({
 
         cmd
           .command("status")
-          .description("Show Boozle connection status")
+          .description("Show Octopus connection status")
           .action(async () => {
             const state = loadState();
             ctx.logger.info(`Streaming: ${state.streaming_enabled ? "on" : "off"}`);
@@ -105,7 +105,7 @@ export default definePluginEntry({
           .description("Force-refresh the local context cache")
           .action(async () => {
             if (!config.apiKey || !config.agentName) {
-              ctx.logger.info("Not configured. Run `openclaw boozle setup` first.");
+              ctx.logger.info("Not configured. Run `openclaw octopus setup` first.");
               return;
             }
             try {
@@ -127,7 +127,7 @@ export default definePluginEntry({
 
         cmd
           .command("disconnect")
-          .description("Pause activity streaming to Boozle history")
+          .description("Pause activity streaming to Octopus history")
           .action(() => {
             const state = loadState();
             state.streaming_enabled = false;
@@ -137,7 +137,7 @@ export default definePluginEntry({
 
         cmd
           .command("reconnect")
-          .description("Resume activity streaming to Boozle history")
+          .description("Resume activity streaming to Octopus history")
           .action(() => {
             const state = loadState();
             state.streaming_enabled = true;
@@ -147,7 +147,7 @@ export default definePluginEntry({
       },
       {
         descriptors: [
-          { name: "boozle", description: "Boozle plugin management", hasSubcommands: true },
+          { name: "octopus", description: "Octopus plugin management", hasSubcommands: true },
         ],
       },
     );

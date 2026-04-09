@@ -3,7 +3,7 @@
 Reads from history_events (PostgreSQL), curates notebook_pages (pattern cards,
 monologues), scores outcomes for injected patterns, and manages sleep watermarks.
 
-Ported from replicate_me's local sleep agent (memory/sleep.py + llm.py).
+Core logic for server-side periodic curation per agent.
 """
 
 import json
@@ -542,11 +542,7 @@ async def _score_outcomes(agent_id: UUID, notebook_id: UUID, config: dict, episo
         session_eps = [ep for ep in episodes if ep.get("session_id") == session_id]
         if not session_eps:
             # Try fetching from DB
-            session_eps_raw, _ = await memory_service.query_events(
-                row["injected_items"][0].get("store_id") if injected_items else None,
-                session_id=session_id, limit=100,
-            ) if False else ([], False)
-            # Skip if no episodes available
+                # No episodes available for this session — skip scoring
             await pool.execute("UPDATE injection_sessions SET scored_at = now() WHERE id = $1", row["id"])
             continue
 
@@ -795,6 +791,24 @@ async def curate(agent_id: UUID) -> dict:
     if not config["enabled"]:
         return {"status": "disabled"}
 
+    # Acquire a Postgres advisory lock scoped to this agent so that concurrent
+    # processes (e.g. multiple uvicorn workers) don't curate the same agent
+    # simultaneously.  pg_try_advisory_lock is non-blocking: if another process
+    # holds the lock we skip this cycle rather than queuing.
+    pool = get_pool()
+    lock_key = int(agent_id) & 0x7FFFFFFFFFFFFFFF  # fit into Postgres bigint
+    acquired = await pool.fetchval("SELECT pg_try_advisory_lock($1)", lock_key)
+    if not acquired:
+        return {"status": "locked"}
+
+    try:
+        return await _curate_locked(agent_id, config)
+    finally:
+        await pool.execute("SELECT pg_advisory_unlock($1)", lock_key)
+
+
+async def _curate_locked(agent_id: UUID, config: dict) -> dict:
+    """Inner curation logic, called only when the advisory lock is held."""
     resources = await _get_persona_resources(agent_id)
     notebook_id = resources["notebook_id"]
     history_id = resources["history_id"]

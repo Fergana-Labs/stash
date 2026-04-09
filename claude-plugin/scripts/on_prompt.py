@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """UserPromptSubmit hook: stream user message + inject scored persona context.
 
-1. Always streams the user's prompt to the Boozle history store
+1. Always streams the user's prompt to the Octopus history store
 2. Optionally injects persona/memory context (unless inject_context=false)
 """
 
@@ -27,7 +27,7 @@ def build_fallback_context(
     """Build a basic context string from cached data when API is unreachable."""
     lines = []
     lines.append("## Agent Identity")
-    lines.append(f"You are **{agent_name}**, a Boozle agent.")
+    lines.append(f"You are **{agent_name}**, a Octopus agent.")
     if persona:
         lines.append(persona)
     lines.append("")
@@ -123,7 +123,7 @@ def main():
         session_state["prompt_num"] = session_state.get("prompt_num", 0) + 1
         save_injection_state(session_state)
 
-    # --- Append bridge escalations (if replicate_me is running) ---
+    # --- Append pending escalations from OCTOPUS_NOTIFICATIONS_DIR (if any) ---
     escalations = load_escalations()
     if escalations:
         context += "\n\n## Escalations\n" + "\n".join(escalations)

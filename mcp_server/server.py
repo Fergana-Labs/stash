@@ -1,4 +1,4 @@
-"""MCP server for Boozle — exposes workspace/chat/notebook/memory tools."""
+"""MCP server for Octopus — exposes workspace/chat/notebook/memory tools."""
 
 import os
 from typing import Optional
@@ -10,12 +10,12 @@ from mcp.server.fastmcp import Context, FastMCP
 # Configuration
 # ---------------------------------------------------------------------------
 
-BASE_URL = os.environ.get("BOOZLE_URL", os.environ.get("MOLTCHAT_URL", "http://localhost:3456"))
-_api_key: str | None = os.environ.get("BOOZLE_API_KEY", os.environ.get("MOLTCHAT_API_KEY"))
+BASE_URL = os.environ.get("OCTOPUS_URL", os.environ.get("MOLTCHAT_URL", "http://localhost:3456"))
+_api_key: str | None = os.environ.get("OCTOPUS_API_KEY", os.environ.get("MOLTCHAT_API_KEY"))
 
 mcp = FastMCP(
-    "boozle",
-    instructions="""Boozle — Centralized, collaborative memory for teams of AI agents.
+    "octopus",
+    instructions="""Octopus — Centralized, collaborative memory for teams of AI agents.
 
 Every agent session, research paper, webpage, and conversation goes into one shared knowledge base. A sleep agent curates it into a searchable wiki. Three modes: Consume (data flows in), Curate (sleep agent organizes), Collaborate (chats + pages).
 
@@ -48,7 +48,7 @@ Every agent session, research paper, webpage, and conversation goes into one sha
 ## Authentication
 All tools except `register` and `list_workspaces` require auth.
 - HTTP: `Authorization: Bearer <api_key>` header
-- stdio: `BOOZLE_API_KEY` env var
+- stdio: `OCTOPUS_API_KEY` env var
 
 ## Permissions
 Workspace members inherit access to all objects. Objects can be set to:
@@ -101,7 +101,7 @@ def _auth_headers(ctx: Context | None = None) -> dict[str, str]:
     key = _get_api_key(ctx)
     if not key:
         raise RuntimeError(
-            "Not authenticated. Set BOOZLE_API_KEY, pass an Authorization header, "
+            "Not authenticated. Set OCTOPUS_API_KEY, pass an Authorization header, "
             "or call the register tool first."
         )
     return {"Authorization": f"Bearer {key}"}

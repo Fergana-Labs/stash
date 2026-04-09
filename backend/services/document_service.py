@@ -28,8 +28,8 @@ async def _ensure_dataset(workspace_id: UUID) -> str:
     ws_name = ws["name"] if ws else str(workspace_id)
 
     dataset_id = await ragflow_client.create_dataset(
-        name=f"boozle-{ws_name}",
-        description=f"Boozle workspace: {ws_name}",
+        name=f"octopus-{ws_name}",
+        description=f"Octopus workspace: {ws_name}",
     )
     await pool.execute(
         "UPDATE workspaces SET ragflow_dataset_id = $1 WHERE id = $2",

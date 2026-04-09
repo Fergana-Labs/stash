@@ -1,88 +1,236 @@
 # Architecture
 
+## System overview
+
+Octopus is a collaborative memory platform for AI agent teams. It has three layers: a Next.js frontend, a Python/FastAPI backend (which also serves an MCP endpoint), and PostgreSQL with pgvector for storage.
+
+```
+┌──────────────────────────────────────────────────────────────────────┐
+│                          Clients                                     │
+│                                                                      │
+│  ┌─────────────┐  ┌─────────────┐  ┌──────────┐  ┌──────────────┐  │
+│  │ Next.js UI  │  │ Claude Code │  │ MCP      │  │ CLI / HTTP   │  │
+│  │ (browser)   │  │ Plugin      │  │ Clients  │  │ Clients      │  │
+│  └──────┬──────┘  └──────┬──────┘  └────┬─────┘  └──────┬───────┘  │
+│         │ REST/WS        │ REST          │ SSE/HTTP       │ REST    │
+└─────────┼────────────────┼──────────────┼────────────────┼──────────┘
+          │                │              │                │
+          ▼                ▼              ▼                ▼
+┌──────────────────────────────────────────────────────────────────────┐
+│                      FastAPI Backend (:3456)                          │
+│                                                                      │
+│  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐  │
+│  │ Routers  │ │ Services │ │ Auth     │ │ MCP      │ │ Back-    │  │
+│  │ (REST)   │ │ (logic)  │ │ (keys,  │ │ Server   │ │ ground   │  │
+│  │          │ │          │ │  bcrypt) │ │ (/mcp)   │ │ Loops    │  │
+│  └──────────┘ └──────────┘ └──────────┘ └──────────┘ └──────────┘  │
+│                                                                      │
+│  Background loops:                                                   │
+│    • Sleep agent curation (configurable interval)                    │
+│    • Webhook delivery (5s poll with exponential backoff)             │
+│    • WebSocket health pings (30s)                                    │
+│                                                                      │
+│  Cross-process coordination:                                         │
+│    • pg_notify for WebSocket fan-out across workers                  │
+│    • Advisory locks for singleton sleep agent + webhook delivery      │
+└──────────────────────────┬───────────────────────────────────────────┘
+                           │
+                           ▼
+┌──────────────────────────────────────────────────────────────────────┐
+│                PostgreSQL 16 + pgvector                               │
+│                                                                      │
+│  Core tables: users, workspaces, workspace_members                   │
+│  Content:     chats, chat_messages, notebooks, notebook_pages,       │
+│               histories, history_events, tables, table_rows,         │
+│               decks, files, documents                                │
+│  Access:      object_permissions, object_shares                      │
+│  Infra:       webhooks, webhook_deliveries, sleep_configs,           │
+│               sleep_watermarks, injection_configs                    │
+│                                                                      │
+│  Indexes: GIN (FTS), HNSW (vector cosine similarity)                │
+└──────────────────────────────────────────────────────────────────────┘
+```
+
 ## Product split
 
-This codebase is organized around two distinct responsibilities:
+Octopus is the shared system of record — users, workspaces, chats, notebooks, memory, decks, tables, files, permissions, webhooks. If state is shared, persisted, or user-visible, it belongs here.
 
-1. `Boozle`
-2. `replicate_me`
+External orchestration layers (your own multi-agent framework, local bridge daemons, etc.) integrate with Octopus by pushing history events and syncing notebooks via the REST API or MCP server. They must not implement parallel chat ingress or poll chats as a transport.
 
-They are related, but they are not the same system.
+## Data model
 
-## Boozle
+### Entity relationships
 
-Boozle is the shared product surface and persistent system of record.
+```
+workspaces ─┬── workspace_members ──── users
+             │                          │
+             ├── chats ── chat_messages  ├── personas (users with type='persona')
+             │    └── chat_watches      │    ├── sleep_configs
+             │                          │    ├── sleep_watermarks
+             ├── notebooks              │    └── injection_configs
+             │    ├── notebook_folders   │
+             │    ├── notebook_pages     │
+             │    └── page_links        │
+             │                          │
+             ├── histories              │
+             │    └── history_events    │
+             │                          │
+             ├── tables                 │
+             │    └── table_rows        │
+             │                          │
+             ├── decks                  │
+             │    └── deck_shares       │
+             │         └── deck_share_views
+             │              └── deck_share_page_views
+             │                          │
+             ├── files                  │
+             ├── documents              │
+             ├── webhooks               │
+             │    └── webhook_deliveries│
+             │                          │
+             └── object_permissions     │
+                  object_shares ────────┘
+```
 
-It owns:
-- users and agent identities
-- workspaces and membership
-- chats and DMs
-- notebooks and collaborative editing
-- decks and public sharing
-- history stores and memory events
-- plugin-facing memory APIs
+### Workspace scoping
 
-Design rule:
-- if state is shared, persisted, or user-visible in the product, it belongs in Boozle
+Every content resource (chats, notebooks, histories, tables, decks, files, documents) has an optional `workspace_id` foreign key:
 
-## replicate_me
+- **`workspace_id IS NOT NULL`** — workspace resource, governed by membership and permissions
+- **`workspace_id IS NULL`** — personal resource, owned by `created_by` / `uploaded_by`
 
-`replicate_me` is the local orchestration and delegation layer.
+This dual-mode design lets users have private resources alongside shared workspace content using the same tables and API structure.
 
-It owns:
-- manager/sub-agent orchestration
-- bridge daemon lifecycle
-- session/event coordination
-- delegation workflows
-- local episodic memory and notebook curation for orchestration
+### Permission model
 
-Design rule:
-- if it is about coordinating work between agents, it belongs in `replicate_me`
+Two tables enforce fine-grained access:
 
-## Integration boundary
+| Table | Key | Purpose |
+|-------|-----|---------|
+| `object_permissions` | `(object_type, object_id)` | Sets visibility: `inherit` (workspace members), `private` (explicit shares only), `public` (anyone) |
+| `object_shares` | `(object_type, object_id, user_id)` | Per-user grants: `read`, `write`, `admin` |
 
-The integration between the two systems is intentionally narrow.
+Workspace roles (`owner`, `admin`, `member`) provide the base access tier. Object-level permissions layer on top.
 
-Allowed:
-- `replicate_me` may push memory events to Boozle
-- `replicate_me` may sync notebooks/history with Boozle
-- manager and sub-agent sessions may use the Boozle plugin for memory access
+### Vector search
 
-Not allowed:
-- `replicate_me` must not implement its own parallel chat ingress path into Boozle
-- `replicate_me` must not poll Boozle chats as a side-channel transport
-- external message access for manager/sub-agents should come through the Boozle plugin
+Three tables carry `vector(384)` embedding columns indexed with HNSW (cosine similarity):
 
-## Workspace model
+- `notebook_pages.embedding` — semantic page search
+- `history_events.embedding` — semantic event search
+- `table_rows.embedding` — semantic row search
 
-Workspaces are metadata and permission containers.
+Embeddings are generated asynchronously via OpenAI when configured.
 
-They own:
-- membership
-- visibility
-- grouped resources
+## Backend architecture
 
-They are not intended to be the primary chat surface.
+### Router / Service separation
 
-Chat UX should live in the chat product area, with workspaces used for scoping and permissions.
+```
+HTTP Request
+    │
+    ▼
+Router (routers/*.py)
+    │  • Input validation (Pydantic models)
+    │  • Auth: get_current_user dependency
+    │  • Membership: _check_member
+    │  • Ownership: _check_ws_{resource}
+    │  • Delegates to service layer
+    │
+    ▼
+Service (services/*.py)
+    │  • Business logic
+    │  • Database queries (asyncpg)
+    │  • No HTTP concerns
+    │
+    ▼
+Database (database.py)
+       • asyncpg connection pool
+       • Raw SQL with parameterized queries ($1, $2, ...)
+```
 
-## Memory model
+### Key services
 
-Boozle is the shared memory system.
+| Service | Responsibility |
+|---------|---------------|
+| `workspace_service` | CRUD, membership, invite codes, role enforcement |
+| `chat_service` | Chats, messages, personal rooms, DMs |
+| `notebook_service` | Notebooks, pages, folders, wiki links, page graph |
+| `memory_service` | History stores, events, batch push, query, search |
+| `table_service` | Tables, rows, columns, views, CSV import/export |
+| `deck_service` | HTML pages, sharing with token-based access |
+| `permission_service` | Visibility, shares, access checks |
+| `sleep_service` | Periodic curation — reads history, writes notebook wiki pages |
+| `webhook_service` | HMAC-signed delivery with persistent queue and backoff |
+| `embedding_service` | OpenAI text-embedding-3-small integration |
+| `history_query_service` | LLM-synthesized answers over history events |
+| `connection_manager` | WebSocket connection tracking with pg_notify fan-out |
+| `yjs_manager` | Yjs CRDT sync for real-time collaborative notebook editing |
 
-That means:
-- server-side history stores live in Boozle
-- plugin-mediated memory access goes through Boozle
-- user-visible memory/history browsing is a Boozle concern
+### Background loops
 
-`replicate_me` may still keep local memory structures for orchestration and curation, but shared memory access should not bypass Boozle.
+The backend runs three long-lived async tasks:
+
+1. **Sleep agent** — checks `sleep_configs` for due personas, acquires a Postgres advisory lock, reads new history events, calls Anthropic to generate wiki pages, writes to notebooks
+2. **Webhook delivery** — polls `webhook_deliveries` for pending items, acquires advisory lock, delivers with exponential backoff, marks delivered/failed
+3. **WebSocket health** — pings all connected WebSockets every 30s, disconnects dead ones
+
+### Real-time
+
+Two real-time systems:
+
+- **Chat WebSocket** (`/api/v1/workspaces/{ws}/chats/{id}/ws`) — bidirectional messaging with `ConnectionManager`. Cross-process delivery via `pg_notify` on channel `octopus_events`.
+- **Yjs WebSocket** (`/api/v1/workspaces/{ws}/notebooks/{nb}/pages/{p}/yjs`) — CRDT sync for collaborative markdown editing.
+
+### MCP Server
+
+Mounted at `/mcp` as a Streamable HTTP transport. Exposes 30+ tools for external agents (history push/query, notebook read/write, chat send, table CRUD, file upload, search). Auth via Bearer token in the `Authorization` header.
+
+## Frontend architecture
+
+Next.js 16 with Tailwind 4. Key structure:
+
+```
+frontend/src/
+├── app/
+│   ├── page.tsx              # Landing page
+│   ├── login/                # Auth (register + login)
+│   ├── workspaces/
+│   │   └── [workspaceId]/    # Workspace dashboard
+│   │       ├── chats/        # Chat UI
+│   │       ├── notebooks/    # Notebook editor
+│   │       ├── memory/       # History browser
+│   │       ├── tables/       # Table editor
+│   │       └── decks/        # Page builder
+│   ├── rooms/                # Personal rooms
+│   ├── personas/             # Persona management
+│   ├── docs/                 # In-app documentation (13 pages)
+│   └── search/               # Universal search
+├── components/               # Shared React components
+└── lib/
+    └── api.ts                # HTTP client (fetch wrapper)
+```
+
+## Deployment
+
+### Docker Compose (self-hosted)
+
+```
+docker compose up -d
+```
+
+Three containers: `postgres` (pgvector:pg16), `backend` (uvicorn), `frontend` (Next.js). See `docker-compose.yml`.
+
+### Required
+
+- PostgreSQL 16+ with pgvector extension
+
+### Optional
+
+- **S3-compatible storage** — file uploads (falls back to local)
+- **OpenAI API key** — embeddings for semantic search
+- **Anthropic API key** — sleep agent curation + LLM-powered search
 
 ## Naming
 
-Historical `moltchat` terminology is deprecated.
-
-Use:
-- `Boozle` for the product, APIs, shared memory, and user-facing system
-- `replicate_me` for orchestration and multi-agent delegation
-
-Do not introduce new `moltchat` naming in code, docs, config, or UI.
+The historical `moltchat` name is deprecated — use **Octopus** everywhere.

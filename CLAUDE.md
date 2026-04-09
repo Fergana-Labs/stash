@@ -1,4 +1,4 @@
-# Boozle
+# Octopus
 
 Centralized, collaborative memory for teams of AI agents. Every Claude Code session, research paper, webpage, and conversation goes into one shared knowledge base. A sleep agent curates it into a searchable wiki.
 
@@ -32,11 +32,11 @@ Everything lives in a **workspace** — a permissioned container for teams. Pers
 - `backend/services/ragflow_client.py` — RAGFlow integration for PDF parsing (optional).
 
 ## CLI
-Installed via `pip install boozle`. Entry point: `cli/main.py`. Key commands:
-- `boozle import-bookmarks <file.html>` — Import Chrome/Firefox bookmarks with scraping
-- `boozle search <query>` — Universal cross-resource search
-- `boozle register/login/auth` — Account management
-- `boozle notebooks/history/tables/chats` — Resource CRUD
+Installed via `pip install octopus`. Entry point: `cli/main.py`. Key commands:
+- `octopus import-bookmarks <file.html>` — Import Chrome/Firefox bookmarks with scraping
+- `octopus search <query>` — Universal cross-resource search
+- `octopus register/login/auth` — Account management
+- `octopus notebooks/history/tables/chats` — Resource CRUD
 
 ## Design System
 Always read DESIGN.md before making any visual or UI decisions.

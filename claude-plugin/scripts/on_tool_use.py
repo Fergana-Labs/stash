@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""PostToolUse hook (async): stream tool call + result to Boozle history."""
+"""PostToolUse hook (async): stream tool call + result to Octopus history."""
 
 import json
 import sys

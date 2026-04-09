@@ -1,0 +1,78 @@
+version: "3.9"
+
+# Octopus — production / self-hosting deployment
+#
+# Usage:
+#   cp .env.example .env        # fill in required values (see README)
+#   docker compose -f docker-compose.prod.yml up -d
+#
+# Required env vars in .env:
+#   POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_DB
+#   ANTHROPIC_API_KEY           (sleep agent + universal search)
+#   OPENAI_API_KEY              (semantic embeddings)
+#   PUBLIC_URL                  (your public frontend URL, e.g. https://app.example.com)
+#   CORS_ORIGINS                (comma-separated allowed origins)
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    restart: always
+    expose:
+      - "5432"        # not published to host — only reachable by other services
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    image: ghcr.io/Fergana-Labs/octopus-backend:latest
+    restart: always
+    expose:
+      - "3456"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3456/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  frontend:
+    image: ghcr.io/Fergana-Labs/octopus-frontend:latest
+    restart: always
+    expose:
+      - "3457"
+    depends_on:
+      - backend
+    environment:
+      NEXT_PUBLIC_API_URL: ${PUBLIC_URL}
+
+  caddy:
+    image: caddy:2-alpine
+    restart: always
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - backend
+      - frontend
+
+volumes:
+  postgres_data:
+  caddy_data:
+  caddy_config:
