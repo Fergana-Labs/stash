@@ -1,0 +1,48 @@
+name: Feature request
+description: Suggest an improvement or new feature
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Have an idea? Describe it below. The more context you give, the easier it is to prioritize.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem does this solve?
+      description: Describe the use case or pain point.
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed solution
+      description: What would you like to see? Feel free to include API sketches, UI mockups, or just prose.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives you've considered
+    validations:
+      required: false
+
+  - type: dropdown
+    id: component
+    attributes:
+      label: Which component is this for?
+      options:
+        - Backend (API / sleep agent)
+        - Frontend (UI)
+        - CLI
+        - Claude Code plugin
+        - MCP server
+        - OpenClaw plugin
+        - Self-hosting / Docker
+        - Documentation
+        - Not sure
+    validations:
+      required: false

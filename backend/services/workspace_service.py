@@ -86,7 +86,8 @@ async def update_workspace(
     args.append(workspace_id)
     row = await pool.fetchrow(
         f"UPDATE workspaces SET {', '.join(sets)} WHERE id = ${idx} "
-        "RETURNING id, name, description, creator_id, invite_code, is_public, created_at, updated_at",
+        "RETURNING id, name, description, creator_id, invite_code, is_public, created_at, updated_at, "
+        "(SELECT COUNT(*) FROM workspace_members wm WHERE wm.workspace_id = id) AS member_count",
         *args,
     )
     return dict(row) if row else None
@@ -146,7 +147,13 @@ async def leave_workspace(workspace_id: UUID, user_id: UUID) -> bool:
         "DELETE FROM workspace_members WHERE workspace_id = $1 AND user_id = $2 AND role != 'owner'",
         workspace_id, user_id,
     )
-    return result == "DELETE 1"
+    if result == "DELETE 1":
+        await pool.execute(
+            "DELETE FROM webhooks WHERE workspace_id = $1 AND user_id = $2",
+            workspace_id, user_id,
+        )
+        return True
+    return False
 
 
 async def get_members(workspace_id: UUID) -> list[dict]:
@@ -190,4 +197,10 @@ async def kick_member(workspace_id: UUID, target_user_id: UUID, kicker_id: UUID)
         "DELETE FROM workspace_members WHERE workspace_id = $1 AND user_id = $2",
         workspace_id, target_user_id,
     )
-    return result == "DELETE 1"
+    if result == "DELETE 1":
+        await pool.execute(
+            "DELETE FROM webhooks WHERE workspace_id = $1 AND user_id = $2",
+            workspace_id, target_user_id,
+        )
+        return True
+    return False

@@ -33,7 +33,16 @@ async def _check_member(workspace_id: UUID, user_id: UUID) -> None:
         raise HTTPException(status_code=403, detail="Not a workspace member")
 
 
+async def _check_ws_chat(workspace_id: UUID, chat_id: UUID) -> dict:
+    """Verify chat exists and belongs to the given workspace."""
+    chat = await chat_service.get_chat(chat_id)
+    if not chat or chat.get("workspace_id") != workspace_id:
+        raise HTTPException(status_code=404, detail="Chat not found")
+    return chat
+
+
 async def _check_chat_access(workspace_id: UUID, chat_id: UUID, user_id: UUID) -> None:
+    await _check_ws_chat(workspace_id, chat_id)
     has_access = await permission_service.check_access(
         "chat", chat_id, user_id, workspace_id=workspace_id,
     )
@@ -78,7 +87,7 @@ async def get_chat(
 ):
     await _check_chat_access(workspace_id, chat_id, current_user["id"])
     chat = await chat_service.get_chat(chat_id)
-    if not chat or chat.get("workspace_id") != workspace_id:
+    if not chat:
         raise HTTPException(status_code=404, detail="Chat not found")
     return ChatResponse(**chat)
 
@@ -159,6 +168,7 @@ async def get_permissions(
     current_user: dict = Depends(get_current_user),
 ):
     await _check_member(workspace_id, current_user["id"])
+    await _check_ws_chat(workspace_id, chat_id)
     perms = await permission_service.get_permissions("chat", chat_id)
     return PermissionResponse(**perms)
 
@@ -171,6 +181,7 @@ async def set_visibility(
     role = await workspace_service.get_member_role(workspace_id, current_user["id"])
     if role not in ("owner", "admin"):
         raise HTTPException(status_code=403, detail="Only owner/admin can change visibility")
+    await _check_ws_chat(workspace_id, chat_id)
     await permission_service.set_visibility("chat", chat_id, req.visibility)
     return {"status": "ok", "visibility": req.visibility}
 
@@ -183,6 +194,7 @@ async def add_share(
     role = await workspace_service.get_member_role(workspace_id, current_user["id"])
     if role not in ("owner", "admin"):
         raise HTTPException(status_code=403, detail="Only owner/admin can share")
+    await _check_ws_chat(workspace_id, chat_id)
     share = await permission_service.add_share(
         "chat", chat_id, req.user_id, req.permission, current_user["id"],
     )
@@ -204,6 +216,7 @@ async def remove_share(
     role = await workspace_service.get_member_role(workspace_id, current_user["id"])
     if role not in ("owner", "admin"):
         raise HTTPException(status_code=403, detail="Only owner/admin can remove shares")
+    await _check_ws_chat(workspace_id, chat_id)
     await permission_service.remove_share("chat", chat_id, user_id)
 
 

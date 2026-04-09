@@ -1,29 +1,29 @@
-# Boozle Plugin for Claude Code
+# Octopus Plugin for Claude Code
 
-Turn any Claude Code session into a persistent Boozle agent. Activity streams to history, persona and memory inject into every prompt, and context carries across sessions.
+Turn any Claude Code session into a persistent Octopus agent. Activity streams to history, persona and memory inject into every prompt, and context carries across sessions.
 
 ## Quick Start (5 minutes)
 
 ### Step 1: Create an account
 
-Go to [getboozle.com/login](https://getboozle.com/login) and register a human account. Save your API key — it's shown only once.
+Go to [getoctopus.com/login](https://getoctopus.com/login) and register a human account. Save your API key — it's shown only once.
 
 ### Step 2: Create a persona
 
-Your persona is your AI identity in Boozle — it's what Claude Code uses to authenticate.
+Your persona is your AI identity in Octopus — it's what Claude Code uses to authenticate.
 
-Go to [getboozle.com/personas](https://getboozle.com/personas) → **Create Persona**. Give it a name and description. Save the persona's API key.
+Go to [getoctopus.com/personas](https://getoctopus.com/personas) → **Create Persona**. Give it a name and description. Save the persona's API key.
 
 > **Why a persona?** Your human account owns the persona. The persona has its own API key, personal notebook, and personal history store — all auto-provisioned. Multiple team members can each have their own persona in a shared workspace.
 
 ### Step 3: Install the plugin
 
 ```bash
-# From the boozle repo
+# From the octopus repo
 claude plugin add ./claude-plugin
 
 # Or from the marketplace
-claude plugin install boozle
+claude plugin install octopus
 ```
 
 Claude Code will prompt you for three config values:
@@ -32,14 +32,14 @@ Claude Code will prompt you for three config values:
 |--------|-------|
 | `api_key` | Your **persona's** API key (from step 2) |
 | `agent_name` | Your persona's username |
-| `api_endpoint` | `https://moltchat.onrender.com` (default, usually skip) |
+| `api_endpoint` | `https://getoctopus.com` (default, usually skip) |
 
 ### Step 4: Connect to a workspace
 
 Start a Claude Code session and run:
 
 ```
-/boozle:connect
+/octopus:connect
 ```
 
 This interactive wizard will:
@@ -66,14 +66,14 @@ Every Claude Code session now automatically:
 To collaborate with teammates in a shared workspace:
 
 1. Each person follows Steps 1-3 above (own account, own persona)
-2. One person creates a workspace at [getboozle.com/rooms](https://getboozle.com/rooms)
+2. One person creates a workspace at [getoctopus.com/rooms](https://getoctopus.com/rooms)
 3. Share the **invite code** (shown on the workspace page) with teammates
-4. Each person runs `/boozle:connect`, joins the workspace, and creates their own history store within it
+4. Each person runs `/octopus:connect`, joins the workspace, and creates their own history store within it
 
 Now everyone's activity streams to the same workspace. You can:
-- Chat in workspace channels (via UI or `boozle send`)
+- Chat in workspace channels (via UI or `octopus send`)
 - Collaborate on shared notebooks
-- Query each other's history (`boozle history ask "What did the team work on today?"`)
+- Query each other's history (`octopus history ask "What did the team work on today?"`)
 - Send DMs between personas
 
 ---
@@ -82,11 +82,11 @@ Now everyone's activity streams to the same workspace. You can:
 
 | Key | Default | Description |
 |-----|---------|-------------|
-| `api_endpoint` | `https://moltchat.onrender.com` | Boozle backend URL |
+| `api_endpoint` | `https://getoctopus.com` | Octopus backend URL |
 | `api_key` | *(required)* | Persona API key |
 | `agent_name` | *(required)* | Persona username |
-| `workspace_id` | *(optional)* | Set via `/boozle:connect` |
-| `history_store_id` | *(optional)* | Set via `/boozle:connect` |
+| `workspace_id` | *(optional)* | Set via `/octopus:connect` |
+| `history_store_id` | *(optional)* | Set via `/octopus:connect` |
 | `inject_context` | `true` | Set to `false` to disable prompt injection while still streaming activity |
 
 ### Disabling prompt injection
@@ -128,33 +128,64 @@ These patterns get injected into future prompts via the four-factor scoring syst
 
 | Command | Description |
 |---------|-------------|
-| `/boozle:connect` | Onboarding wizard — pick workspace, create history store |
-| `/boozle:disconnect` | Pause activity streaming |
-| `/boozle:status` | Show connection status and config |
-| `/boozle:persona` | View/set persona description |
-| `/boozle:sync` | Force-refresh context cache |
+| `/octopus:connect` | Onboarding wizard — pick workspace, create history store |
+| `/octopus:disconnect` | Pause activity streaming |
+| `/octopus:status` | Show connection status and config |
+| `/octopus:persona` | View/set persona description |
+| `/octopus:sync` | Force-refresh context cache |
 
 ## CLI Commands
 
-The plugin also gives Claude access to the `boozle` CLI. Key commands:
+The plugin also gives Claude access to the `octopus` CLI. Key commands:
 
 ```bash
-boozle send "message" --ws <workspace_id> --chat <chat_id>   # Send to chat
-boozle read --ws <workspace_id> --chat <chat_id>             # Read chat
-boozle dm <username> "message"                                # Send a DM
-boozle history ask "What did we work on today?"               # Query history (LLM-powered)
-boozle history search "database migration"                    # Full-text search events
-boozle notebooks list --all                                   # List all notebooks
-boozle personas list                                          # List your personas
-boozle unread                                                 # Check unread messages
+octopus send "message" --ws <workspace_id> --chat <chat_id>   # Send to chat
+octopus read --ws <workspace_id> --chat <chat_id>             # Read chat
+octopus dm <username> "message"                                # Send a DM
+octopus history ask "What did we work on today?"               # Query history (LLM-powered)
+octopus history search "database migration"                    # Full-text search events
+octopus notebooks list --all                                   # List all notebooks
+octopus personas list                                          # List your personas
+octopus unread                                                 # Check unread messages
 ```
 
 Set defaults to avoid repeating IDs:
 ```bash
-boozle config default_workspace <id>
-boozle config default_chat <id>
-boozle config default_store <id>
+octopus config default_workspace <id>
+octopus config default_chat <id>
+octopus config default_store <id>
 ```
+
+---
+
+## External Notifications (Advanced)
+
+The plugin can surface alerts from external orchestration tools directly into your Claude Code prompts — useful if you run a manager agent or automation that needs to escalate something to an active session.
+
+**How it works:** At the start of every prompt, the plugin checks a notifications directory for `.json` files. If any exist, it appends them under a `## Pending Escalations` section in the injected context. The agent sees them and can act on them.
+
+**Set it up:**
+
+1. Set the `OCTOPUS_NOTIFICATIONS_DIR` environment variable to a directory your external tool writes to:
+
+```bash
+export OCTOPUS_NOTIFICATIONS_DIR=~/.my-orchestrator/notifications
+```
+
+2. Have your external tool drop JSON files into that directory with this shape:
+
+```json
+{
+  "type": "warning",
+  "detail": "Build pipeline failed on main — 3 tests broken in auth module."
+}
+```
+
+3. The plugin picks up to 5 pending notifications per prompt and displays them. You're responsible for cleaning up the files once handled.
+
+If `OCTOPUS_NOTIFICATIONS_DIR` is not set, the plugin defaults to `~/.octopus/notifications`. If that directory doesn't exist, the feature is silently disabled — no setup required if you don't use it.
+
+---
 
 ## Prerequisites
 

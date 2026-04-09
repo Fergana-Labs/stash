@@ -1,4 +1,4 @@
-"""Boozle CLI — command-line interface for workspaces, chats, notebooks, tables, history, and decks."""
+"""Octopus CLI — command-line interface for workspaces, chats, notebooks, tables, history, and decks."""
 
 from __future__ import annotations
 
@@ -9,16 +9,16 @@ from typing import Optional
 
 import typer
 
-from .client import BoozleClient, BoozleError
+from .client import OctopusClient, OctopusError
 from .config import load_config, save_config, add_notify_room, get_notify_rooms, remove_notify_room
 from .formatting import console, output_json, print_personas, print_members, print_messages, print_rooms, print_user
 
-app = typer.Typer(name="boozle", help="Boozle CLI — workspaces, chats, notebooks, tables, history, decks.")
+app = typer.Typer(name="octopus", help="Octopus CLI — workspaces, chats, notebooks, tables, history, decks.")
 
 
-def _client() -> BoozleClient:
+def _client() -> OctopusClient:
     cfg = load_config()
-    return BoozleClient(base_url=cfg["base_url"], api_key=cfg.get("api_key", ""))
+    return OctopusClient(base_url=cfg["base_url"], api_key=cfg.get("api_key", ""))
 
 
 def _use_json(flag: bool) -> bool:
@@ -28,7 +28,7 @@ def _use_json(flag: bool) -> bool:
 def _default_workspace() -> str:
     ws = load_config().get("default_workspace", "")
     if not ws:
-        console.print("[red]No default workspace. Set with: boozle config default_workspace <id>[/red]")
+        console.print("[red]No default workspace. Run [bold]octopus setup[/bold] or set manually: octopus config default_workspace <id>[/red]")
         raise typer.Exit(1)
     return ws
 
@@ -36,12 +36,12 @@ def _default_workspace() -> str:
 def _default_chat() -> str:
     ch = load_config().get("default_chat", "")
     if not ch:
-        console.print("[red]No default chat. Set with: boozle config default_chat <id>[/red]")
+        console.print("[red]No default chat. Set with: octopus config default_chat <id>[/red]")
         raise typer.Exit(1)
     return ch
 
 
-def _err(e: BoozleError) -> None:
+def _err(e: OctopusError) -> None:
     console.print(f"[red]Error [{e.status_code}]: {e.detail}[/red]")
     raise typer.Exit(1)
 
@@ -64,7 +64,7 @@ def register(
     with _client() as c:
         try:
             data = c.register(name, user_type=type, description=description, password=password)
-        except BoozleError as e:
+        except OctopusError as e:
             _err(e)
     save_config(api_key=data["api_key"], username=data["name"])
     if _use_json(as_json):
@@ -79,7 +79,7 @@ def login(name: str = typer.Argument(...), password: str = typer.Option(..., pro
     with _client() as c:
         try:
             data = c.login(name, password)
-        except BoozleError as e:
+        except OctopusError as e:
             _err(e)
     save_config(api_key=data["api_key"], username=data["name"])
     if _use_json(as_json):
@@ -92,12 +92,12 @@ def login(name: str = typer.Argument(...), password: str = typer.Option(..., pro
 def auth(base_url: str = typer.Argument(...), api_key: str = typer.Option(..., "--api-key")):
     """Store existing credentials."""
     save_config(base_url=base_url, api_key=api_key)
-    with BoozleClient(base_url=base_url, api_key=api_key) as c:
+    with OctopusClient(base_url=base_url, api_key=api_key) as c:
         try:
             user = c.whoami()
             save_config(username=user["name"])
             console.print(f"[green]Authenticated as {user['name']}[/green]")
-        except BoozleError:
+        except OctopusError:
             console.print("[yellow]Saved but could not verify.[/yellow]")
 
 
@@ -107,7 +107,7 @@ def whoami(as_json: bool = typer.Option(False, "--json")):
     with _client() as c:
         try:
             data = c.whoami()
-        except BoozleError as e:
+        except OctopusError as e:
             _err(e)
     if _use_json(as_json):
         output_json(data)
@@ -129,7 +129,7 @@ def ws_list(mine: bool = typer.Option(False, "--mine"), as_json: bool = typer.Op
     with _client() as c:
         try:
             data = c.list_workspaces(mine=mine)
-        except BoozleError as e:
+        except OctopusError as e:
             _err(e)
     if _use_json(as_json):
         output_json(data)
@@ -143,7 +143,7 @@ def ws_create(name: str = typer.Argument(...), description: str = typer.Option("
     with _client() as c:
         try:
             data = c.create_workspace(name, description=description, is_public=public)
-        except BoozleError as e:
+        except OctopusError as e:
             _err(e)
     if _use_json(as_json):
         output_json(data)
@@ -157,7 +157,7 @@ def ws_join(invite_code: str = typer.Argument(...), as_json: bool = typer.Option
     with _client() as c:
         try:
             data = c.join_workspace(invite_code)
-        except BoozleError as e:
+        except OctopusError as e:
             _err(e)
     if _use_json(as_json):
         output_json(data)
@@ -171,7 +171,7 @@ def ws_info(workspace_id: str = typer.Argument(...), as_json: bool = typer.Optio
     with _client() as c:
         try:
             data = c.get_workspace(workspace_id)
-        except BoozleError as e:
+        except OctopusError as e:
             _err(e)
     if _use_json(as_json):
         output_json(data)
@@ -186,7 +186,7 @@ def ws_members(workspace_id: str = typer.Argument(...), as_json: bool = typer.Op
     with _client() as c:
         try:
             data = c.workspace_members(workspace_id)
-        except BoozleError as e:
+        except OctopusError as e:
             _err(e)
     if _use_json(as_json):
         output_json(data)
@@ -227,7 +227,7 @@ def chats_list(workspace_id: str = typer.Option(None, "--ws"), all_: bool = type
                 return
             ws = workspace_id or _default_workspace()
             data = c.list_chats(ws)
-        except BoozleError as e:
+        except OctopusError as e:
             _err(e)
     if _use_json(as_json):
         output_json(data)
@@ -249,7 +249,7 @@ def chats_create(name: str = typer.Argument(...), workspace_id: str = typer.Opti
             else:
                 ws = workspace_id or _default_workspace()
                 data = c.create_chat(ws, name, description=description)
-        except BoozleError as e:
+        except OctopusError as e:
             _err(e)
     if _use_json(as_json):
         output_json(data)
@@ -272,7 +272,7 @@ def send(message: str = typer.Argument(...), workspace_id: str = typer.Option(No
                 ws = workspace_id or _default_workspace()
                 ch = chat_id or _default_chat()
                 data = c.send_message(ws, ch, message)
-        except BoozleError as e:
+        except OctopusError as e:
             _err(e)
     if _use_json(as_json):
         output_json(data)
@@ -293,7 +293,7 @@ def read(workspace_id: str = typer.Option(None, "--ws"), chat_id: str = typer.Op
                 ws = workspace_id or _default_workspace()
                 ch = chat_id or _default_chat()
                 data = c.read_messages(ws, ch, limit=limit, after=after)
-        except BoozleError as e:
+        except OctopusError as e:
             _err(e)
     if _use_json(as_json):
         output_json(data)
@@ -307,7 +307,7 @@ def dm(username: str = typer.Argument(...), message: str = typer.Argument(...), 
     with _client() as c:
         try:
             data = c.send_dm(username, message)
-        except BoozleError as e:
+        except OctopusError as e:
             _err(e)
     if _use_json(as_json):
         output_json(data)
@@ -321,7 +321,7 @@ def dms_list(as_json: bool = typer.Option(False, "--json")):
     with _client() as c:
         try:
             data = c.list_dms()
-        except BoozleError as e:
+        except OctopusError as e:
             _err(e)
     if _use_json(as_json):
         output_json(data)
@@ -348,7 +348,7 @@ def nb_list(workspace_id: str = typer.Option(None, "--ws"), all_: bool = typer.O
     with _client() as c:
         try:
             data = c.all_notebooks() if all_ else c.list_notebooks(workspace_id or _default_workspace())
-        except BoozleError as e:
+        except OctopusError as e:
             _err(e)
     if _use_json(as_json):
         output_json(data)
@@ -371,7 +371,7 @@ def nb_create(name: str = typer.Argument(...), workspace_id: str = typer.Option(
             else:
                 ws = workspace_id or _default_workspace()
                 data = c.create_notebook(ws, name, description=description)
-        except BoozleError as e:
+        except OctopusError as e:
             _err(e)
     if _use_json(as_json):
         output_json(data)
@@ -386,7 +386,7 @@ def nb_pages(notebook_id: str = typer.Argument(...), workspace_id: str = typer.O
         try:
             ws = workspace_id or _default_workspace()
             data = c.list_page_tree(ws, notebook_id)
-        except BoozleError as e:
+        except OctopusError as e:
             _err(e)
     if _use_json(as_json):
         output_json(data)
@@ -406,7 +406,7 @@ def nb_add_page(notebook_id: str = typer.Argument(...), name: str = typer.Argume
         try:
             ws = workspace_id or _default_workspace()
             data = c.create_page(ws, notebook_id, name, content=content)
-        except BoozleError as e:
+        except OctopusError as e:
             _err(e)
     if _use_json(as_json):
         output_json(data)
@@ -421,7 +421,7 @@ def nb_read_page(notebook_id: str = typer.Argument(...), page_id: str = typer.Ar
         try:
             ws = workspace_id or _default_workspace()
             data = c.get_page(ws, notebook_id, page_id)
-        except BoozleError as e:
+        except OctopusError as e:
             _err(e)
     if _use_json(as_json):
         output_json(data)
@@ -444,7 +444,7 @@ def nb_edit_page(notebook_id: str = typer.Argument(...), page_id: str = typer.Ar
             if name is not None:
                 kwargs["name"] = name
             data = c.update_page(ws, notebook_id, page_id, **kwargs)
-        except BoozleError as e:
+        except OctopusError as e:
             _err(e)
     if _use_json(as_json):
         output_json(data)
@@ -466,7 +466,7 @@ def hist_list(workspace_id: str = typer.Option(None, "--ws"), all_: bool = typer
     with _client() as c:
         try:
             data = c.all_histories() if all_ else c.list_histories(workspace_id or _default_workspace())
-        except BoozleError as e:
+        except OctopusError as e:
             _err(e)
     if _use_json(as_json):
         output_json(data)
@@ -485,7 +485,7 @@ def hist_create(name: str = typer.Argument(...), workspace_id: str = typer.Optio
         try:
             ws = workspace_id or _default_workspace()
             data = c.create_history(ws, name, description=description)
-        except BoozleError as e:
+        except OctopusError as e:
             _err(e)
     if _use_json(as_json):
         output_json(data)
@@ -504,7 +504,7 @@ def hist_push(content: str = typer.Argument(...), workspace_id: str = typer.Opti
     with _client() as c:
         try:
             data = c.push_event(ws, store, agent_name=agent_name, event_type=event_type, content=content, session_id=session_id, tool_name=tool_name)
-        except BoozleError as e:
+        except OctopusError as e:
             _err(e)
     if _use_json(as_json):
         output_json(data)
@@ -526,7 +526,7 @@ def hist_query(workspace_id: str = typer.Option(None, "--ws"), store_id: str = t
                     console.print("[red]No store specified.[/red]")
                     raise typer.Exit(1)
                 data = c.query_events(ws, store, agent_name=agent_name, event_type=event_type, limit=limit)
-        except BoozleError as e:
+        except OctopusError as e:
             _err(e)
     if _use_json(as_json):
         output_json(data)
@@ -547,7 +547,7 @@ def hist_search(query: str = typer.Argument(...), workspace_id: str = typer.Opti
     with _client() as c:
         try:
             data = c.search_events(ws, store, query, limit=limit)
-        except BoozleError as e:
+        except OctopusError as e:
             _err(e)
     if _use_json(as_json):
         output_json(data)
@@ -567,7 +567,7 @@ def hist_ask(question: str = typer.Argument(...), workspace_id: str = typer.Opti
     with _client() as c:
         try:
             data = c.query_history(ws, store, question)
-        except BoozleError as e:
+        except OctopusError as e:
             _err(e)
     if _use_json(as_json):
         output_json(data)
@@ -592,7 +592,7 @@ def decks_list(workspace_id: str = typer.Option(None, "--ws"), all_: bool = type
     with _client() as c:
         try:
             data = c.all_decks() if all_ else c.list_decks(workspace_id or _default_workspace())
-        except BoozleError as e:
+        except OctopusError as e:
             _err(e)
     if _use_json(as_json):
         output_json(data)
@@ -621,7 +621,7 @@ def decks_create(name: str = typer.Argument(...), workspace_id: str = typer.Opti
             else:
                 ws = workspace_id or _default_workspace()
                 data = c.create_deck(ws, name, description=description, html_content=html_content, deck_type=deck_type)
-        except BoozleError as e:
+        except OctopusError as e:
             _err(e)
     if _use_json(as_json):
         output_json(data)
@@ -636,7 +636,7 @@ def decks_get(deck_id: str = typer.Argument(...), workspace_id: str = typer.Opti
         try:
             ws = workspace_id or _default_workspace()
             data = c.get_deck(ws, deck_id)
-        except BoozleError as e:
+        except OctopusError as e:
             _err(e)
     if html_only:
         print(data.get("html_content", ""))
@@ -668,7 +668,7 @@ def decks_update(deck_id: str = typer.Argument(...), workspace_id: str = typer.O
         try:
             ws = workspace_id or _default_workspace()
             data = c.update_deck(ws, deck_id, **kwargs)
-        except BoozleError as e:
+        except OctopusError as e:
             _err(e)
     if _use_json(as_json):
         output_json(data)
@@ -690,7 +690,7 @@ def decks_share(deck_id: str = typer.Argument(...), workspace_id: str = typer.Op
             if passcode:
                 kwargs["passcode"] = passcode
             data = c.create_deck_share(deck_id, workspace_id=ws, **kwargs)
-        except BoozleError as e:
+        except OctopusError as e:
             _err(e)
     if _use_json(as_json):
         output_json(data)
@@ -706,7 +706,7 @@ def decks_shares(deck_id: str = typer.Argument(...), workspace_id: str = typer.O
     with _client() as c:
         try:
             data = c.list_deck_shares(deck_id, workspace_id=workspace_id)
-        except BoozleError as e:
+        except OctopusError as e:
             _err(e)
     if _use_json(as_json):
         output_json(data)
@@ -726,7 +726,7 @@ def decks_analytics(deck_id: str = typer.Argument(...), share_id: str = typer.Ar
     with _client() as c:
         try:
             data = c.get_share_analytics(deck_id, share_id, workspace_id=workspace_id)
-        except BoozleError as e:
+        except OctopusError as e:
             _err(e)
     if _use_json(as_json):
         output_json(data)
@@ -796,7 +796,7 @@ def tables_list(workspace_id: str = typer.Option(None, "--ws"), all_: bool = typ
                 data = c.list_personal_tables()
             else:
                 data = c.list_tables(workspace_id or _default_workspace())
-        except BoozleError as e:
+        except OctopusError as e:
             _err(e)
     if _use_json(as_json):
         output_json(data)
@@ -829,7 +829,7 @@ def tables_create(
             else:
                 ws = workspace_id or _default_workspace()
                 data = c.create_table(ws, name, description=description, columns=cols)
-        except BoozleError as e:
+        except OctopusError as e:
             _err(e)
     if _use_json(as_json):
         output_json(data)
@@ -858,7 +858,7 @@ def tables_update(
         try:
             ws = workspace_id or _default_workspace()
             data = c.update_table(ws, table_id, **kwargs)
-        except BoozleError as e:
+        except OctopusError as e:
             _err(e)
     if _use_json(as_json):
         output_json(data)
@@ -873,7 +873,7 @@ def tables_schema(table_id: str = typer.Argument(...), workspace_id: str = typer
         try:
             ws = workspace_id or _default_workspace()
             data = c.get_table(ws, table_id)
-        except BoozleError as e:
+        except OctopusError as e:
             _err(e)
     if _use_json(as_json):
         output_json(data)
@@ -912,7 +912,7 @@ def tables_rows(
             resolved_sort = _resolve_sort_name(table, sort_by)
             resolved_filters = _resolve_filter_names(table, filters) if filters else ""
             result = c.list_table_rows(ws, table_id, limit=limit, offset=offset, sort_by=resolved_sort, sort_order=sort_order, filters=resolved_filters)
-        except BoozleError as e:
+        except OctopusError as e:
             _err(e)
     if _use_json(as_json):
         output_json(result)
@@ -940,7 +940,7 @@ def tables_insert(
             table = c.get_table(ws, table_id)
             resolved = _resolve_col_names(table, row_data)
             result = c.insert_table_row(ws, table_id, resolved)
-        except BoozleError as e:
+        except OctopusError as e:
             _err(e)
     if _use_json(as_json):
         output_json(result)
@@ -958,7 +958,7 @@ def tables_import(
 ):
     """Bulk import rows from CSV or JSON. Auto-chunks into batches of 5000.
     CSV: first row is column headers. JSON: array of objects.
-    Pipe: cat data.csv | boozle tables import <table_id> --format csv"""
+    Pipe: cat data.csv | octopus tables import <table_id> --format csv"""
     import csv as csv_mod
     import io as io_mod
 
@@ -1008,7 +1008,7 @@ def tables_import(
                 total_inserted += len(batch)
                 if len(resolved_rows) > batch_size:
                     console.print(f"  [dim]Inserted {total_inserted}/{len(resolved_rows)} rows...[/dim]")
-        except BoozleError as e:
+        except OctopusError as e:
             _err(e)
 
     if _use_json(as_json):
@@ -1033,7 +1033,7 @@ def tables_update_row(
             table = c.get_table(ws, table_id)
             resolved = _resolve_col_names(table, row_data)
             result = c.update_table_row(ws, table_id, row_id, resolved)
-        except BoozleError as e:
+        except OctopusError as e:
             _err(e)
     if _use_json(as_json):
         output_json(result)
@@ -1052,7 +1052,7 @@ def tables_delete_row(
         try:
             ws = workspace_id or _default_workspace()
             c.delete_table_row(ws, table_id, row_id)
-        except BoozleError as e:
+        except OctopusError as e:
             _err(e)
     console.print("[green]Row deleted.[/green]")
 
@@ -1072,7 +1072,7 @@ def tables_add_column(
         try:
             ws = workspace_id or _default_workspace()
             result = c.add_table_column(ws, table_id, name, col_type=col_type, options=opts)
-        except BoozleError as e:
+        except OctopusError as e:
             _err(e)
     if _use_json(as_json):
         output_json(result)
@@ -1098,7 +1098,7 @@ def tables_delete_column(
                 if column_id in name_to_id:
                     column_id = name_to_id[column_id]
             result = c.delete_table_column(ws, table_id, column_id)
-        except BoozleError as e:
+        except OctopusError as e:
             _err(e)
     if _use_json(as_json):
         output_json(result)
@@ -1124,7 +1124,7 @@ def tables_count(
             if filters:
                 params["filters"] = filters
             result = c._get(f"/api/v1/workspaces/{ws}/tables/{table_id}/rows/count", **params)
-        except BoozleError as e:
+        except OctopusError as e:
             _err(e)
     if _use_json(as_json):
         output_json(result)
@@ -1155,7 +1155,7 @@ def tables_export(
                 params["filters"] = _resolve_filter_names(table, filters)
             resp = c._request("GET", f"/api/v1/workspaces/{ws}/tables/{table_id}/export/csv", params=params)
             csv_content = resp.text
-        except BoozleError as e:
+        except OctopusError as e:
             _err(e)
     if file:
         with open(file, "w") as f:
@@ -1178,7 +1178,7 @@ def tables_delete(
         try:
             ws = workspace_id or _default_workspace()
             c.delete_table(ws, table_id)
-        except BoozleError as e:
+        except OctopusError as e:
             _err(e)
     console.print("[green]Table deleted.[/green]")
 
@@ -1197,7 +1197,7 @@ def personas_create(name: str = typer.Argument(...), display_name: str = typer.O
     with _client() as c:
         try:
             data = c.create_persona(name, display_name=display_name, description=description)
-        except BoozleError as e:
+        except OctopusError as e:
             _err(e)
     if _use_json(as_json):
         output_json(data)
@@ -1211,7 +1211,7 @@ def personas_list(all_: bool = typer.Option(False, "--all"), as_json: bool = typ
     with _client() as c:
         try:
             data = c.list_personas_with_context() if all_ else c.list_personas()
-        except BoozleError as e:
+        except OctopusError as e:
             _err(e)
     if _use_json(as_json):
         output_json(data)
@@ -1225,7 +1225,7 @@ def personas_rotate_key(persona_id: str = typer.Argument(...), as_json: bool = t
     with _client() as c:
         try:
             data = c.rotate_persona_key(persona_id)
-        except BoozleError as e:
+        except OctopusError as e:
             _err(e)
     if _use_json(as_json):
         output_json(data)
@@ -1241,7 +1241,7 @@ def personas_delete(persona_id: str = typer.Argument(...), confirm: bool = typer
     with _client() as c:
         try:
             c.delete_persona(persona_id)
-        except BoozleError as e:
+        except OctopusError as e:
             _err(e)
     console.print("[green]Deleted.[/green]")
 
@@ -1260,7 +1260,7 @@ def watches_list(as_json: bool = typer.Option(False, "--json")):
     with _client() as c:
         try:
             data = c.list_watches()
-        except BoozleError as e:
+        except OctopusError as e:
             _err(e)
     if _use_json(as_json):
         output_json(data)
@@ -1283,7 +1283,7 @@ def watches_add(
     with _client() as c:
         try:
             data = c.watch_chat(chat_id, workspace_id=workspace_id)
-        except BoozleError as e:
+        except OctopusError as e:
             _err(e)
     if _use_json(as_json):
         output_json(data)
@@ -1297,7 +1297,7 @@ def watches_remove(chat_id: str = typer.Argument(...)):
     with _client() as c:
         try:
             c.unwatch_chat(chat_id)
-        except BoozleError as e:
+        except OctopusError as e:
             _err(e)
     console.print("[yellow]Unwatched.[/yellow]")
 
@@ -1308,7 +1308,7 @@ def unread(as_json: bool = typer.Option(False, "--json")):
     with _client() as c:
         try:
             data = c.get_unread()
-        except BoozleError as e:
+        except OctopusError as e:
             _err(e)
     if _use_json(as_json):
         output_json(data)
@@ -1330,7 +1330,7 @@ def mark_read_cmd(chat_id: str = typer.Argument(...), as_json: bool = typer.Opti
     with _client() as c:
         try:
             data = c.mark_read(chat_id)
-        except BoozleError as e:
+        except OctopusError as e:
             _err(e)
     if _use_json(as_json):
         output_json(data)
@@ -1356,7 +1356,7 @@ def poll(workspace_id: str = typer.Option(None, "--ws"), chat_id: str = typer.Op
                 msgs = c.read_messages(ws, ch, limit=1)
             if msgs:
                 last_ts = msgs[-1].get("created_at")
-        except BoozleError:
+        except OctopusError:
             pass
         console.print("[dim]Polling... (Ctrl+C to stop)[/dim]", stderr=True)
         try:
@@ -1367,7 +1367,7 @@ def poll(workspace_id: str = typer.Option(None, "--ws"), chat_id: str = typer.Op
                         msgs = c.read_room_messages(room_id, limit=50, after=last_ts)
                     else:
                         msgs = c.read_messages(ws, ch, limit=50, after=last_ts)
-                except BoozleError:
+                except OctopusError:
                     continue
                 cfg = load_config()
                 for msg in msgs:
@@ -1403,6 +1403,135 @@ def notify_list():
     else:
         for r in rooms:
             console.print(f"  - {r}")
+
+
+# ===========================================================================
+# Setup wizard
+# ===========================================================================
+
+@app.command("setup")
+def setup():
+    """Interactive first-time setup. Sets base URL, authenticates, and configures defaults."""
+    console.print("\n[bold]Octopus setup[/bold]  (press Enter to accept defaults)\n")
+
+    # --- Step 1: API endpoint ---
+    cfg = load_config()
+    current_url = cfg.get("base_url", "http://localhost:3456")
+    default_url = "https://getoctopus.com" if "localhost" in current_url else current_url
+    base_url = typer.prompt("API endpoint", default=default_url).rstrip("/")
+    save_config(base_url=base_url)
+
+    # --- Step 2: Auth ---
+    has_key = bool(cfg.get("api_key"))
+    if has_key:
+        try:
+            with OctopusClient(base_url=base_url, api_key=cfg["api_key"]) as c:
+                user = c.whoami()
+            console.print(f"  [green]✓[/green] Already authenticated as [bold]{user['name']}[/bold]")
+        except OctopusError:
+            has_key = False
+
+    if not has_key:
+        action = typer.prompt("Login or register? [login/register]", default="login").strip().lower()
+        name = typer.prompt("Username")
+        if action == "register":
+            password = typer.prompt("Password", hide_input=True, confirmation_prompt=True)
+            with OctopusClient(base_url=base_url, api_key="") as c:
+                try:
+                    data = c.register(name, user_type="human", description="", password=password)
+                except OctopusError as e:
+                    console.print(f"[red]Registration failed: {e.detail}[/red]")
+                    raise typer.Exit(1)
+            save_config(api_key=data["api_key"], username=data["name"])
+            console.print(f"  [green]✓[/green] Registered as [bold]{data['name']}[/bold]")
+        else:
+            password = typer.prompt("Password", hide_input=True)
+            with OctopusClient(base_url=base_url, api_key="") as c:
+                try:
+                    data = c.login(name, password)
+                except OctopusError as e:
+                    console.print(f"[red]Login failed: {e.detail}[/red]")
+                    raise typer.Exit(1)
+            save_config(api_key=data["api_key"], username=data["name"])
+            console.print(f"  [green]✓[/green] Logged in as [bold]{data['name']}[/bold]")
+
+    # Reload config after auth
+    cfg = load_config()
+
+    with OctopusClient(base_url=base_url, api_key=cfg["api_key"]) as c:
+        # --- Step 3: Workspace ---
+        try:
+            my_workspaces = c.list_workspaces(mine=True)
+        except OctopusError:
+            my_workspaces = []
+
+        workspace_id = cfg.get("default_workspace", "")
+        if my_workspaces:
+            console.print(f"\n  Your workspaces:")
+            for ws in my_workspaces[:5]:
+                marker = " [dim](current default)[/dim]" if str(ws["id"]) == workspace_id else ""
+                console.print(f"    [dim]{str(ws['id'])[:8]}…[/dim]  {ws['name']}{marker}")
+
+        ws_action = typer.prompt(
+            "\nUse existing workspace ID, or type a name to create new one",
+            default=workspace_id or "",
+        ).strip()
+
+        if not ws_action:
+            console.print("[yellow]Skipping workspace setup. Run: octopus config default_workspace <id>[/yellow]")
+        else:
+            # Check if it looks like a UUID (existing) or a name (create new)
+            import re
+            is_uuid = bool(re.match(r"^[0-9a-f-]{32,36}$", ws_action, re.I))
+            if is_uuid:
+                workspace_id = ws_action
+                save_config(default_workspace=workspace_id)
+                console.print(f"  [green]✓[/green] Default workspace set to [bold]{workspace_id[:8]}…[/bold]")
+            else:
+                try:
+                    ws_data = c.create_workspace(ws_action)
+                    workspace_id = str(ws_data["id"])
+                    save_config(default_workspace=workspace_id)
+                    console.print(f"  [green]✓[/green] Created workspace [bold]{ws_data['name']}[/bold]  invite: {ws_data['invite_code']}")
+                except OctopusError as e:
+                    console.print(f"[red]Could not create workspace: {e.detail}[/red]")
+
+        # --- Step 4: History store ---
+        if workspace_id:
+            try:
+                stores = c.list_histories(workspace_id)
+            except OctopusError:
+                stores = []
+
+            store_id = cfg.get("default_store", "")
+            if stores:
+                console.print(f"\n  Existing history stores:")
+                for s in stores[:5]:
+                    marker = " [dim](current default)[/dim]" if str(s["id"]) == store_id else ""
+                    console.print(f"    [dim]{str(s['id'])[:8]}…[/dim]  {s['name']}{marker}")
+
+            store_action = typer.prompt(
+                "\nUse existing store ID, or type a name to create new one",
+                default=store_id or "main",
+            ).strip()
+
+            is_uuid = bool(re.match(r"^[0-9a-f-]{32,36}$", store_action, re.I))
+            if is_uuid:
+                save_config(default_store=store_action)
+                console.print(f"  [green]✓[/green] Default store set to [bold]{store_action[:8]}…[/bold]")
+            else:
+                try:
+                    store_data = c.create_history(workspace_id, store_action)
+                    save_config(default_store=str(store_data["id"]))
+                    console.print(f"  [green]✓[/green] Created history store [bold]{store_data['name']}[/bold]")
+                except OctopusError as e:
+                    console.print(f"[red]Could not create history store: {e.detail}[/red]")
+
+    # --- Done ---
+    console.print("\n[bold green]Setup complete.[/bold green]")
+    console.print("  Run [bold]octopus whoami[/bold] to confirm auth.")
+    console.print("  Run [bold]octopus history push \"hello\"[/bold] to push your first event.")
+    console.print("  Run [bold]octopus --help[/bold] to see all commands.\n")
 
 
 # ===========================================================================
@@ -1495,7 +1624,7 @@ def import_bookmarks_cmd(
                 nb = c.create_notebook(workspace_id, notebook)
             else:
                 nb = c.create_personal_notebook(notebook)
-        except BoozleError as e:
+        except OctopusError as e:
             if e.status_code == 409:
                 # Notebook exists, find it
                 if workspace_id:
@@ -1521,7 +1650,7 @@ def import_bookmarks_cmd(
                 else:
                     f = c.create_personal_folder(notebook_id, folder_name)
                 folder_ids[folder_name] = f["id"]
-            except BoozleError:
+            except OctopusError:
                 pass  # Folder may already exist, skip
 
         # Import bookmarks as pages
@@ -1555,7 +1684,7 @@ def import_bookmarks_cmd(
                     else:
                         c.create_personal_page(notebook_id, page_name, page_content)
                     imported += 1
-                except BoozleError:
+                except OctopusError:
                     failed += 1
 
     # Summary
@@ -1596,7 +1725,7 @@ def search_cmd(
                 result = c.universal_search(workspace_id, query, resource_types=resource_types)
             else:
                 result = c.personal_search(query, resource_types=resource_types)
-        except BoozleError as e:
+        except OctopusError as e:
             _err(e)
 
     if _use_json(as_json):

@@ -1,6 +1,7 @@
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 
 from ..auth import get_current_user
+from ..middleware import limiter
 from ..models import (
     LoginRequest,
     UserProfile,
@@ -15,7 +16,8 @@ router = APIRouter(prefix="/api/v1/users", tags=["users"])
 
 
 @router.post("/register", response_model=UserRegisterResponse, status_code=201)
-async def register(req: UserRegisterRequest):
+@limiter.limit("5/minute")
+async def register(request: Request, req: UserRegisterRequest):
     try:
         user, api_key = await user_service.register_user(
             name=req.name,
@@ -36,7 +38,8 @@ async def register(req: UserRegisterRequest):
 
 
 @router.post("/login", response_model=UserRegisterResponse)
-async def login(req: LoginRequest):
+@limiter.limit("10/minute")
+async def login(request: Request, req: LoginRequest):
     try:
         user, api_key = await user_service.authenticate_by_password(
             name=req.name, password=req.password

@@ -38,8 +38,10 @@ import {
   WorkspaceMember,
 } from "./types";
 
-const TOKEN_KEY = "boozle_token";
+const TOKEN_KEY = "octopus_token";
 const LEGACY_TOKEN_KEY = "moltchat_token";
+
+// --- Persona / agent API key (localStorage) ---
 
 export function getToken(): string | null {
   if (typeof window === "undefined") return null;
@@ -54,6 +56,22 @@ export function setToken(token: string) {
 export function clearToken() {
   localStorage.removeItem(TOKEN_KEY);
   localStorage.removeItem(LEGACY_TOKEN_KEY);
+}
+
+// --- Auth token resolution ---
+// Auth0 session (human accounts) takes priority: fetchAccessToken() hits
+// /api/auth/token which the Auth0 middleware serves from the httpOnly session
+// cookie. Falls back to a localStorage mc_ API key for persona accounts.
+
+async function resolveAuthToken(): Promise<string | null> {
+  try {
+    const { fetchAccessToken } = await import("./accessToken");
+    const token = await fetchAccessToken();
+    if (token) return token;
+  } catch {
+    // Auth0 not configured or no active session.
+  }
+  return getToken();
 }
 
 const API_BASE = "";
@@ -78,7 +96,7 @@ async function apiFetch<T>(
   path: string,
   options: RequestInit = {}
 ): Promise<T> {
-  const token = getToken();
+  const token = await resolveAuthToken();
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
     ...(options.headers as Record<string, string>),

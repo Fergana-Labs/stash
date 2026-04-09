@@ -1,21 +1,21 @@
 /**
- * `openclaw boozle status` — display connection status.
+ * `openclaw octopus status` — display connection status.
  */
 
-import type { BoozleClient } from "../boozle-client.js";
-import type { BoozleConfig } from "../memory/prompt-section.js";
+import type { OctopusClient } from "../octopus-client.js";
+import type { OctopusConfig } from "../memory/prompt-section.js";
 import { loadState, loadCache } from "../state.js";
 
 export function createStatusCommand(
-  client: BoozleClient,
-  config: BoozleConfig,
+  client: OctopusClient,
+  config: OctopusConfig,
 ) {
   return async (): Promise<string> => {
     const state = loadState();
     const cache = loadCache();
     const lines: string[] = [];
 
-    lines.push("=== Boozle Plugin Status ===");
+    lines.push("=== Octopus Plugin Status ===");
     lines.push("");
     lines.push(`Agent:       ${config.agentName || "(not set)"}`);
     lines.push(`Endpoint:    ${config.apiEndpoint}`);

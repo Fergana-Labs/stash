@@ -5,16 +5,16 @@ import { textResult } from "../utils/tool-result.js";
  */
 
 import { Type } from "@sinclair/typebox";
-import type { BoozleClient } from "../boozle-client.js";
+import type { OctopusClient } from "../octopus-client.js";
 
 export function registerTableTools(
   api: OpenClawPluginApi,
-  client: BoozleClient,
+  client: OctopusClient,
 ) {
   api.registerTool({
-    name: "boozle_list_tables",
-    description: "List tables in a Boozle workspace",
-    label: "List tables in a Boozle workspace",
+    name: "octopus_list_tables",
+    description: "List tables in a Octopus workspace",
+    label: "List tables in a Octopus workspace",
     parameters: Type.Object({
       workspace_id: Type.String({ description: "Workspace UUID" }),
     }),
@@ -25,12 +25,12 @@ export function registerTableTools(
   });
 
   api.registerTool({
-    name: "boozle_create_table",
+    name: "octopus_create_table",
     description:
-      "Create a new table in a Boozle workspace. Columns: [{name, type}]. " +
+      "Create a new table in a Octopus workspace. Columns: [{name, type}]. " +
       "Types: text, number, boolean, date, datetime, url, email, select, multiselect, json. " +
       "For select/multiselect, include an 'options' array.",
-    label: "Create a table in a Boozle workspace",
+    label: "Create a table in a Octopus workspace",
     parameters: Type.Object({
       workspace_id: Type.String({ description: "Workspace UUID" }),
       name: Type.String({ description: "Table name" }),
@@ -52,9 +52,9 @@ export function registerTableTools(
   });
 
   api.registerTool({
-    name: "boozle_get_table_schema",
+    name: "octopus_get_table_schema",
     description: "Get a table's column schema and metadata",
-    label: "Get table schema from Boozle",
+    label: "Get table schema from Octopus",
     parameters: Type.Object({
       workspace_id: Type.String({ description: "Workspace UUID" }),
       table_id: Type.String({ description: "Table UUID" }),
@@ -66,12 +66,12 @@ export function registerTableTools(
   });
 
   api.registerTool({
-    name: "boozle_read_table_rows",
+    name: "octopus_read_table_rows",
     description:
       "Read rows from a table with optional filtering and sorting. " +
       'filters is JSON: [{"column_id":"col_x","op":"eq","value":"foo"}]. ' +
       "Ops: eq, neq, gt, gte, lt, lte, contains, is_empty, is_not_empty.",
-    label: "Read rows from a Boozle table",
+    label: "Read rows from a Octopus table",
     parameters: Type.Object({
       workspace_id: Type.String({ description: "Workspace UUID" }),
       table_id: Type.String({ description: "Table UUID" }),
@@ -107,11 +107,11 @@ export function registerTableTools(
   });
 
   api.registerTool({
-    name: "boozle_insert_table_row",
+    name: "octopus_insert_table_row",
     description:
       "Insert a row into a table. data is a JSON object mapping column names to values. " +
       'Example: {"Name": "Alice", "Status": "active"}',
-    label: "Insert a row into a Boozle table",
+    label: "Insert a row into a Octopus table",
     parameters: Type.Object({
       workspace_id: Type.String({ description: "Workspace UUID" }),
       table_id: Type.String({ description: "Table UUID" }),
@@ -139,11 +139,11 @@ export function registerTableTools(
   });
 
   api.registerTool({
-    name: "boozle_insert_table_rows_batch",
+    name: "octopus_insert_table_rows_batch",
     description:
       "Batch insert rows into a table. rows is a JSON array of data objects. " +
       'Example: [{"Name": "Alice"}, {"Name": "Bob"}]',
-    label: "Batch insert rows into a Boozle table",
+    label: "Batch insert rows into a Octopus table",
     parameters: Type.Object({
       workspace_id: Type.String({ description: "Workspace UUID" }),
       table_id: Type.String({ description: "Table UUID" }),
@@ -174,11 +174,11 @@ export function registerTableTools(
   });
 
   api.registerTool({
-    name: "boozle_update_table_row",
+    name: "octopus_update_table_row",
     description:
       "Update a row in a table (partial merge). data is a JSON object with column names as keys. " +
       'Example: {"Status": "done"}',
-    label: "Update a row in a Boozle table",
+    label: "Update a row in a Octopus table",
     parameters: Type.Object({
       workspace_id: Type.String({ description: "Workspace UUID" }),
       table_id: Type.String({ description: "Table UUID" }),
@@ -207,9 +207,9 @@ export function registerTableTools(
   });
 
   api.registerTool({
-    name: "boozle_delete_table_row",
-    description: "Delete a row from a Boozle table",
-    label: "Delete a row from a Boozle table",
+    name: "octopus_delete_table_row",
+    description: "Delete a row from a Octopus table",
+    label: "Delete a row from a Octopus table",
     parameters: Type.Object({
       workspace_id: Type.String({ description: "Workspace UUID" }),
       table_id: Type.String({ description: "Table UUID" }),
@@ -222,10 +222,10 @@ export function registerTableTools(
   });
 
   api.registerTool({
-    name: "boozle_add_table_column",
+    name: "octopus_add_table_column",
     description:
-      "Add a column to a Boozle table. For select/multiselect, provide options as comma-separated string.",
-    label: "Add a column to a Boozle table",
+      "Add a column to a Octopus table. For select/multiselect, provide options as comma-separated string.",
+    label: "Add a column to a Octopus table",
     parameters: Type.Object({
       workspace_id: Type.String({ description: "Workspace UUID" }),
       table_id: Type.String({ description: "Table UUID" }),
@@ -252,9 +252,9 @@ export function registerTableTools(
   });
 
   api.registerTool({
-    name: "boozle_delete_table_column",
-    description: "Delete a column from a Boozle table",
-    label: "Delete a column from a Boozle table",
+    name: "octopus_delete_table_column",
+    description: "Delete a column from a Octopus table",
+    label: "Delete a column from a Octopus table",
     parameters: Type.Object({
       workspace_id: Type.String({ description: "Workspace UUID" }),
       table_id: Type.String({ description: "Table UUID" }),
@@ -267,9 +267,9 @@ export function registerTableTools(
   });
 
   api.registerTool({
-    name: "boozle_update_table",
+    name: "octopus_update_table",
     description: "Rename a table or change its description",
-    label: "Update a Boozle table",
+    label: "Update a Octopus table",
     parameters: Type.Object({
       workspace_id: Type.String({ description: "Workspace UUID" }),
       table_id: Type.String({ description: "Table UUID" }),
@@ -286,9 +286,9 @@ export function registerTableTools(
   });
 
   api.registerTool({
-    name: "boozle_update_table_column",
+    name: "octopus_update_table_column",
     description: "Rename a column, change its type, or update options",
-    label: "Update a column in a Boozle table",
+    label: "Update a column in a Octopus table",
     parameters: Type.Object({
       workspace_id: Type.String({ description: "Workspace UUID" }),
       table_id: Type.String({ description: "Table UUID" }),
@@ -311,11 +311,11 @@ export function registerTableTools(
   });
 
   api.registerTool({
-    name: "boozle_update_table_rows_batch",
+    name: "octopus_update_table_rows_batch",
     description:
       "Batch update rows. rows is JSON: [{\"row_id\":\"...\",\"data\":{\"Status\":\"done\"}}]. " +
       "Data keys can be column names (auto-resolved to IDs).",
-    label: "Batch update rows in a Boozle table",
+    label: "Batch update rows in a Octopus table",
     parameters: Type.Object({
       workspace_id: Type.String({ description: "Workspace UUID" }),
       table_id: Type.String({ description: "Table UUID" }),
@@ -342,9 +342,9 @@ export function registerTableTools(
   });
 
   api.registerTool({
-    name: "boozle_count_table_rows",
+    name: "octopus_count_table_rows",
     description: "Count rows matching optional filters without fetching data",
-    label: "Count rows in a Boozle table",
+    label: "Count rows in a Octopus table",
     parameters: Type.Object({
       workspace_id: Type.String({ description: "Workspace UUID" }),
       table_id: Type.String({ description: "Table UUID" }),

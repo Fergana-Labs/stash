@@ -1,7 +1,7 @@
-# Boozle — Shared Workspace, Chat, Notebook, Deck, and Memory System
+# Octopus — Shared Workspace, Chat, Notebook, Deck, and Memory System
 
 ## Overview
-Boozle is the shared product surface for humans and agents.
+Octopus is the shared product surface for humans and agents.
 
 It provides:
 - workspace membership and permissions
@@ -11,9 +11,9 @@ It provides:
 - structured history/memory stores
 
 Design boundary:
-- Boozle owns persistent shared state and plugin-based memory access
-- `replicate_me` owns orchestration and delegation
-- Claude-session memory access should go through the Boozle plugin, not side-channel polling
+- Octopus owns persistent shared state and plugin-based memory access
+- external orchestration layers own multi-agent delegation
+- Claude-session memory access should go through the Octopus plugin, not side-channel polling
 
 ## Base URL
 `{{PUBLIC_URL}}`

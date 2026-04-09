@@ -36,6 +36,14 @@ async def _check_ws_access(workspace_id: UUID, user_id: UUID) -> None:
         raise HTTPException(status_code=403, detail="Not a workspace member")
 
 
+async def _check_ws_notebook(workspace_id: UUID, notebook_id: UUID) -> dict:
+    """Verify notebook exists and belongs to the given workspace."""
+    nb = await notebook_service.get_notebook(notebook_id)
+    if not nb or nb.get("workspace_id") != workspace_id:
+        raise HTTPException(status_code=404, detail="Notebook not found")
+    return nb
+
+
 async def _check_notebook_owner(notebook_id: UUID, user_id: UUID) -> dict:
     nb = await notebook_service.get_notebook(notebook_id)
     if not nb or nb.get("workspace_id") is not None or nb.get("created_by") != user_id:
@@ -78,9 +86,7 @@ async def get_ws_notebook(
     current_user: dict = Depends(get_current_user),
 ):
     await _check_ws_access(workspace_id, current_user["id"])
-    nb = await notebook_service.get_notebook(notebook_id)
-    if not nb or nb.get("workspace_id") != workspace_id:
-        raise HTTPException(status_code=404, detail="Notebook not found")
+    nb = await _check_ws_notebook(workspace_id, notebook_id)
     return NotebookResponse(**nb)
 
 
@@ -90,9 +96,7 @@ async def delete_ws_notebook(
     current_user: dict = Depends(get_current_user),
 ):
     await _check_ws_access(workspace_id, current_user["id"])
-    nb = await notebook_service.get_notebook(notebook_id)
-    if not nb or nb.get("workspace_id") != workspace_id:
-        raise HTTPException(status_code=404, detail="Notebook not found")
+    await _check_ws_notebook(workspace_id, notebook_id)
     await notebook_service.delete_notebook(notebook_id)
 
 
@@ -102,6 +106,7 @@ async def list_ws_pages(
     current_user: dict = Depends(get_current_user),
 ):
     await _check_ws_access(workspace_id, current_user["id"])
+    await _check_ws_notebook(workspace_id, notebook_id)
     tree = await notebook_service.list_page_tree(notebook_id)
     return PageTreeResponse(**tree)
 
@@ -112,6 +117,7 @@ async def create_ws_page(
     current_user: dict = Depends(get_current_user),
 ):
     await _check_ws_access(workspace_id, current_user["id"])
+    await _check_ws_notebook(workspace_id, notebook_id)
     try:
         page = await notebook_service.create_page(
             notebook_id, req.name, current_user["id"],
@@ -132,6 +138,7 @@ async def semantic_search_ws_pages(
 ):
     """Semantic search on notebook pages using embeddings."""
     await _check_ws_access(workspace_id, current_user["id"])
+    await _check_ws_notebook(workspace_id, notebook_id)
     from ..services import embedding_service
     if not embedding_service.is_configured():
         raise HTTPException(status_code=503, detail="Embedding service not configured")
@@ -148,6 +155,7 @@ async def get_ws_page(
     current_user: dict = Depends(get_current_user),
 ):
     await _check_ws_access(workspace_id, current_user["id"])
+    await _check_ws_notebook(workspace_id, notebook_id)
     page = await notebook_service.get_page(page_id, notebook_id)
     if not page:
         raise HTTPException(status_code=404, detail="Page not found")
@@ -160,6 +168,7 @@ async def update_ws_page(
     current_user: dict = Depends(get_current_user),
 ):
     await _check_ws_access(workspace_id, current_user["id"])
+    await _check_ws_notebook(workspace_id, notebook_id)
     page = await notebook_service.update_page(
         page_id, notebook_id, current_user["id"],
         name=req.name, folder_id=req.folder_id,
@@ -176,6 +185,7 @@ async def delete_ws_page(
     current_user: dict = Depends(get_current_user),
 ):
     await _check_ws_access(workspace_id, current_user["id"])
+    await _check_ws_notebook(workspace_id, notebook_id)
     deleted = await notebook_service.delete_page(page_id, notebook_id)
     if not deleted:
         raise HTTPException(status_code=404, detail="Page not found")
@@ -191,6 +201,7 @@ async def get_ws_backlinks(
 ):
     """Get pages that link to this page via [[wiki links]]."""
     await _check_ws_access(workspace_id, current_user["id"])
+    await _check_ws_notebook(workspace_id, notebook_id)
     links = await notebook_service.get_backlinks(page_id)
     return {"backlinks": links}
 
@@ -202,6 +213,7 @@ async def get_ws_outlinks(
 ):
     """Get pages that this page links to via [[wiki links]]."""
     await _check_ws_access(workspace_id, current_user["id"])
+    await _check_ws_notebook(workspace_id, notebook_id)
     links = await notebook_service.get_outlinks(page_id)
     return {"outlinks": links}
 
@@ -213,6 +225,7 @@ async def get_ws_page_graph(
 ):
     """Get the full wiki link graph for a notebook (nodes + edges)."""
     await _check_ws_access(workspace_id, current_user["id"])
+    await _check_ws_notebook(workspace_id, notebook_id)
     return await notebook_service.get_page_graph(notebook_id)
 
 
@@ -223,6 +236,7 @@ async def auto_index_ws_notebook(
 ):
     """Generate or update an _index page listing all pages with backlink counts."""
     await _check_ws_access(workspace_id, current_user["id"])
+    await _check_ws_notebook(workspace_id, notebook_id)
     page = await notebook_service.auto_index_notebook(notebook_id, current_user["id"])
     return PageResponse(**page)
 
@@ -233,6 +247,7 @@ async def create_ws_folder(
     current_user: dict = Depends(get_current_user),
 ):
     await _check_ws_access(workspace_id, current_user["id"])
+    await _check_ws_notebook(workspace_id, notebook_id)
     try:
         folder = await notebook_service.create_folder(
             notebook_id, req.name, current_user["id"],
@@ -250,6 +265,7 @@ async def rename_ws_folder(
     current_user: dict = Depends(get_current_user),
 ):
     await _check_ws_access(workspace_id, current_user["id"])
+    await _check_ws_notebook(workspace_id, notebook_id)
     folder = await notebook_service.rename_folder(folder_id, notebook_id, req.name)
     if not folder:
         raise HTTPException(status_code=404, detail="Folder not found")
@@ -262,6 +278,7 @@ async def delete_ws_folder(
     current_user: dict = Depends(get_current_user),
 ):
     await _check_ws_access(workspace_id, current_user["id"])
+    await _check_ws_notebook(workspace_id, notebook_id)
     deleted = await notebook_service.delete_folder(folder_id, notebook_id)
     if not deleted:
         raise HTTPException(status_code=404, detail="Folder not found")
@@ -278,6 +295,10 @@ async def ws_yjs_websocket(
         return
     if not await workspace_service.is_member(workspace_id, user["id"]):
         await websocket.close(code=4003, reason="Not a workspace member")
+        return
+    nb = await notebook_service.get_notebook(notebook_id)
+    if not nb or nb.get("workspace_id") != workspace_id:
+        await websocket.close(code=4004, reason="Notebook not found")
         return
 
     await websocket.accept()
@@ -301,6 +322,7 @@ async def get_permissions(
     current_user: dict = Depends(get_current_user),
 ):
     await _check_ws_access(workspace_id, current_user["id"])
+    await _check_ws_notebook(workspace_id, notebook_id)
     perms = await permission_service.get_permissions("notebook", notebook_id)
     return PermissionResponse(**perms)
 
@@ -313,6 +335,7 @@ async def set_visibility(
     role = await workspace_service.get_member_role(workspace_id, current_user["id"])
     if role not in ("owner", "admin"):
         raise HTTPException(status_code=403, detail="Only owner/admin can change visibility")
+    await _check_ws_notebook(workspace_id, notebook_id)
     await permission_service.set_visibility("notebook", notebook_id, req.visibility)
     return {"status": "ok", "visibility": req.visibility}
 
@@ -325,6 +348,7 @@ async def add_share(
     role = await workspace_service.get_member_role(workspace_id, current_user["id"])
     if role not in ("owner", "admin"):
         raise HTTPException(status_code=403, detail="Only owner/admin can share")
+    await _check_ws_notebook(workspace_id, notebook_id)
     share = await permission_service.add_share(
         "notebook", notebook_id, req.user_id, req.permission, current_user["id"],
     )
@@ -346,6 +370,7 @@ async def remove_share(
     role = await workspace_service.get_member_role(workspace_id, current_user["id"])
     if role not in ("owner", "admin"):
         raise HTTPException(status_code=403, detail="Only owner/admin can remove shares")
+    await _check_ws_notebook(workspace_id, notebook_id)
     await permission_service.remove_share("notebook", notebook_id, user_id)
 
 

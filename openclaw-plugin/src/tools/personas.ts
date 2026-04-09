@@ -5,16 +5,16 @@ import { textResult } from "../utils/tool-result.js";
  */
 
 import { Type } from "@sinclair/typebox";
-import type { BoozleClient } from "../boozle-client.js";
+import type { OctopusClient } from "../octopus-client.js";
 
 export function registerPersonaTools(
   api: OpenClawPluginApi,
-  client: BoozleClient,
+  client: OctopusClient,
 ) {
   api.registerTool({
-    name: "boozle_create_persona",
-    description: "Create a new Boozle persona identity",
-    label: "Create a new Boozle persona identity",
+    name: "octopus_create_persona",
+    description: "Create a new Octopus persona identity",
+    label: "Create a new Octopus persona identity",
     parameters: Type.Object({
       name: Type.String({ description: "Persona name (unique identifier)" }),
       display_name: Type.Optional(Type.String({ description: "Display name" })),
@@ -31,9 +31,9 @@ export function registerPersonaTools(
   });
 
   api.registerTool({
-    name: "boozle_list_personas",
-    description: "List your Boozle persona identities",
-    label: "List your Boozle persona identities",
+    name: "octopus_list_personas",
+    description: "List your Octopus persona identities",
+    label: "List your Octopus persona identities",
     parameters: Type.Object({}),
     async execute() {
       const result = await client.listPersonas();
@@ -42,9 +42,9 @@ export function registerPersonaTools(
   });
 
   api.registerTool({
-    name: "boozle_rotate_persona_key",
-    description: "Rotate the API key for a Boozle persona",
-    label: "Rotate the API key for a Boozle persona",
+    name: "octopus_rotate_persona_key",
+    description: "Rotate the API key for a Octopus persona",
+    label: "Rotate the API key for a Octopus persona",
     parameters: Type.Object({
       persona_id: Type.String({ description: "Persona UUID" }),
     }),

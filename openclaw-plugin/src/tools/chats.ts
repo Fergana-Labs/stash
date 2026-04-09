@@ -5,16 +5,16 @@ import { textResult } from "../utils/tool-result.js";
  */
 
 import { Type } from "@sinclair/typebox";
-import type { BoozleClient } from "../boozle-client.js";
+import type { OctopusClient } from "../octopus-client.js";
 
 export function registerChatTools(
   api: OpenClawPluginApi,
-  client: BoozleClient,
+  client: OctopusClient,
 ) {
   api.registerTool({
-    name: "boozle_create_chat",
-    description: "Create a new chat in a Boozle workspace",
-    label: "Create a new chat in a Boozle workspace",
+    name: "octopus_create_chat",
+    description: "Create a new chat in a Octopus workspace",
+    label: "Create a new chat in a Octopus workspace",
     parameters: Type.Object({
       workspace_id: Type.String({ description: "Workspace UUID" }),
       name: Type.String({ description: "Chat name" }),
@@ -31,9 +31,9 @@ export function registerChatTools(
   });
 
   api.registerTool({
-    name: "boozle_list_chats",
-    description: "List chats in a Boozle workspace",
-    label: "List chats in a Boozle workspace",
+    name: "octopus_list_chats",
+    description: "List chats in a Octopus workspace",
+    label: "List chats in a Octopus workspace",
     parameters: Type.Object({
       workspace_id: Type.String({ description: "Workspace UUID" }),
     }),
@@ -44,9 +44,9 @@ export function registerChatTools(
   });
 
   api.registerTool({
-    name: "boozle_send_message",
-    description: "Send a message to a Boozle chat",
-    label: "Send a message to a Boozle chat",
+    name: "octopus_send_message",
+    description: "Send a message to a Octopus chat",
+    label: "Send a message to a Octopus chat",
     parameters: Type.Object({
       workspace_id: Type.String({ description: "Workspace UUID" }),
       chat_id: Type.String({ description: "Chat UUID" }),
@@ -63,9 +63,9 @@ export function registerChatTools(
   });
 
   api.registerTool({
-    name: "boozle_read_messages",
-    description: "Read messages from a Boozle chat",
-    label: "Read messages from a Boozle chat",
+    name: "octopus_read_messages",
+    description: "Read messages from a Octopus chat",
+    label: "Read messages from a Octopus chat",
     parameters: Type.Object({
       workspace_id: Type.String({ description: "Workspace UUID" }),
       chat_id: Type.String({ description: "Chat UUID" }),
@@ -84,9 +84,9 @@ export function registerChatTools(
   });
 
   api.registerTool({
-    name: "boozle_search_messages",
-    description: "Search messages in a Boozle chat",
-    label: "Search messages in a Boozle chat",
+    name: "octopus_search_messages",
+    description: "Search messages in a Octopus chat",
+    label: "Search messages in a Octopus chat",
     parameters: Type.Object({
       workspace_id: Type.String({ description: "Workspace UUID" }),
       chat_id: Type.String({ description: "Chat UUID" }),

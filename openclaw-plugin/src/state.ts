@@ -12,7 +12,7 @@ const DATA_DIR = join(
   ".openclaw",
   "plugins",
   "data",
-  "boozle",
+  "octopus",
 );
 const STATE_FILE = join(DATA_DIR, "state.json");
 const CACHE_FILE = join(DATA_DIR, "context_cache.json");

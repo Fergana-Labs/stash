@@ -1,5 +1,5 @@
 {
-  "name": "frontend",
+  "name": "octopus",
   "version": "0.1.0",
   "private": true,
   "scripts": {
@@ -11,6 +11,7 @@
     "test:watch": "vitest"
   },
   "dependencies": {
+    "@auth0/nextjs-auth0": "^4.16.2",
     "@tiptap/extension-collaboration": "3.6.6",
     "@tiptap/extension-image": "^3.22.2",
     "@tiptap/extension-link": "3.6.6",

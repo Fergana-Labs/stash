@@ -1,6 +1,6 @@
 """Injection scoring service: four-factor scoring with greedy knapsack budget filling.
 
-Ported from replicate_me's injection engine. Scores candidates on:
+Scores candidates on:
   injection_score = relevance x recency x staleness x confidence
 
 Candidate sources: always-inject notes, keyword-matched notes/patterns,
@@ -54,7 +54,7 @@ class SessionState:
     items: dict[str, ItemState] = field(default_factory=dict)
 
 
-# --- Scoring functions (ported from replicate_me/memory/injection.py) ---
+# --- Scoring functions ---
 
 
 def _estimate_tokens(text: str) -> int:

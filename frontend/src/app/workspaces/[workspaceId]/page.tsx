@@ -2,8 +2,9 @@
 
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import { ReactNode, useCallback, useEffect, useState } from "react";
 import AppShell from "../../../components/AppShell";
+import SetupCard from "../../../components/SetupCard";
 import WorkspaceSidebar from "../../../components/workspace/WorkspaceSidebar";
 import { useAuth } from "../../../hooks/useAuth";
 import {
@@ -35,6 +36,38 @@ import {
 } from "../../../lib/api";
 import { Chat, Deck, History, Notebook, Table, Webhook, Workspace, WorkspaceMember } from "../../../lib/types";
 
+interface WorkspaceSectionProps {
+  title: string;
+  description: string;
+  actionLabel?: string;
+  onAction?: () => void;
+  children: ReactNode;
+}
+
+function WorkspaceSection({ title, description, actionLabel, onAction, children }: WorkspaceSectionProps) {
+  return (
+    <section className="bg-surface border border-border rounded-xl px-5 py-4">
+      <div className="flex items-start justify-between gap-4">
+        <div className="min-w-0">
+          <h2 className="text-sm font-semibold text-foreground uppercase tracking-wider">{title}</h2>
+          <p className="text-sm text-dim mt-1">{description}</p>
+        </div>
+        {actionLabel && onAction && (
+          <button
+            onClick={onAction}
+            className="text-xs text-brand hover:text-brand-hover px-2 py-1 rounded-md hover:bg-brand/5 transition-colors flex-shrink-0"
+          >
+            {actionLabel}
+          </button>
+        )}
+      </div>
+      <div className="mt-4 pt-4 border-t border-border-subtle">
+        {children}
+      </div>
+    </section>
+  );
+}
+
 export default function WorkspacePage() {
   const params = useParams();
   const router = useRouter();
@@ -51,6 +84,7 @@ export default function WorkspacePage() {
   const [members, setMembers] = useState<WorkspaceMember[]>([]);
   const [isMember, setIsMember] = useState(false);
   const [error, setError] = useState("");
+  const [dataLoaded, setDataLoaded] = useState(false);
   const [showManageSidebar, setShowManageSidebar] = useState(false);
   const [showWebhookForm, setShowWebhookForm] = useState(false);
   const [webhookUrl, setWebhookUrl] = useState("");
@@ -89,7 +123,8 @@ export default function WorkspacePage() {
       setWebhookState(wh);
       if (wh) { setWebhookUrl(wh.url); }
       if (user) setIsMember(m.some(mem => mem.user_id === user.id));
-    } catch { setIsMember(false); }
+      setDataLoaded(true);
+    } catch { setIsMember(false); setDataLoaded(true); }
   }, [workspaceId, user]);
 
   useEffect(() => { loadWorkspace(); }, [loadWorkspace]);
@@ -232,19 +267,39 @@ export default function WorkspacePage() {
           </div>
         ) : (
           <div className="flex-1 flex overflow-hidden">
-            <div className="flex-1 overflow-y-auto px-6 py-6 max-w-3xl">
-              {/* Chats */}
-              <section className="mb-8">
-                <div className="flex items-center justify-between mb-3">
-                  <h2 className="text-sm font-medium text-muted uppercase tracking-wider">Chats</h2>
-                  <button onClick={handleCreateChat} className="text-xs text-brand hover:text-brand-hover">+ New</button>
+            <div className="flex-1 overflow-y-auto">
+              <div className="max-w-4xl mx-auto w-full px-6 py-8 space-y-5">
+              {dataLoaded && histories.length === 0 && chats.length === 0 && notebooks.length === 0 && (
+                <SetupCard workspaceId={workspaceId} />
+              )}
+
+              <div className="bg-raised border border-border rounded-xl px-5 py-4">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="min-w-0">
+                    <h2 className="text-lg font-semibold text-foreground">{workspace?.name || "Workspace"}</h2>
+                    <p className="text-sm text-dim mt-1">
+                      Organize your agent work across chats, memory, notebooks, decks, tables, and webhooks.
+                    </p>
+                  </div>
+                  <div className="text-right text-xs text-muted flex-shrink-0">
+                    <div>{members.length} member{members.length !== 1 ? "s" : ""}</div>
+                    {workspace?.invite_code && <div className="mt-1">Invite code: {workspace.invite_code}</div>}
+                  </div>
                 </div>
+              </div>
+
+              <WorkspaceSection
+                title="Chats"
+                description="Real-time channels for agents and humans. Create one to start a conversation."
+                actionLabel="+ New"
+                onAction={handleCreateChat}
+              >
                 {chats.length === 0 ? (
-                  <p className="text-muted text-sm">No chats in this workspace yet.</p>
+                  <p className="text-sm text-muted">No chats yet.</p>
                 ) : (
                   <div className="space-y-1">
                     {chats.map(chat => (
-                      <div key={chat.id} className="flex items-center justify-between px-3 py-2 rounded-lg hover:bg-raised transition-colors">
+                      <div key={chat.id} className="group flex items-center justify-between px-3 py-2 rounded-lg hover:bg-raised transition-colors">
                         <Link href={buildWorkspaceChatHref(chat)} className="flex items-center gap-3 flex-1 min-w-0">
                           <div className="w-7 h-7 rounded-md bg-brand/15 text-brand flex items-center justify-center text-xs font-bold">#</div>
                           <div className="text-sm text-foreground">{chat.name}</div>
@@ -256,16 +311,16 @@ export default function WorkspacePage() {
                     ))}
                   </div>
                 )}
-              </section>
+              </WorkspaceSection>
 
-              {/* Notebooks */}
-              <section className="mb-8">
-                <div className="flex items-center justify-between mb-3">
-                  <h2 className="text-sm font-medium text-muted uppercase tracking-wider">Notebooks</h2>
-                  <button onClick={handleCreateNotebook} className="text-xs text-brand hover:text-brand-hover">+ New</button>
-                </div>
+              <WorkspaceSection
+                title="Notebooks"
+                description="The sleep agent writes wiki pages here: categories, backlinks, and summaries."
+                actionLabel="+ New"
+                onAction={handleCreateNotebook}
+              >
                 {notebooks.length === 0 ? (
-                  <p className="text-muted text-sm">No notebooks yet.</p>
+                  <p className="text-sm text-muted">No notebooks yet. Enable curation from <Link href="/personas" className="text-brand hover:underline">Personas</Link>.</p>
                 ) : (
                   <div className="space-y-1">
                     {notebooks.map(nb => (
@@ -282,16 +337,16 @@ export default function WorkspacePage() {
                     ))}
                   </div>
                 )}
-              </section>
+              </WorkspaceSection>
 
-              {/* History Stores */}
-              <section className="mb-8">
-                <div className="flex items-center justify-between mb-3">
-                  <h2 className="text-sm font-medium text-muted uppercase tracking-wider">History</h2>
-                  <button onClick={handleCreateHistory} className="text-xs text-brand hover:text-brand-hover">+ New</button>
-                </div>
+              <WorkspaceSection
+                title="History"
+                description="Agent sessions stream here: every tool call, edit, and message."
+                actionLabel="+ New"
+                onAction={handleCreateHistory}
+              >
                 {histories.length === 0 ? (
-                  <p className="text-muted text-sm">No history stores yet. Create one for agents to stream activity.</p>
+                  <p className="text-sm text-muted">No history stores yet. Connect an agent to start streaming sessions.</p>
                 ) : (
                   <div className="space-y-1">
                     {histories.map(h => (
@@ -308,16 +363,16 @@ export default function WorkspacePage() {
                     ))}
                   </div>
                 )}
-              </section>
+              </WorkspaceSection>
 
-              {/* Decks */}
-              <section className="mb-8">
-                <div className="flex items-center justify-between mb-3">
-                  <h2 className="text-sm font-medium text-muted uppercase tracking-wider">Decks</h2>
-                  <button onClick={handleCreateDeck} className="text-xs text-brand hover:text-brand-hover">+ New</button>
-                </div>
+              <WorkspaceSection
+                title="Decks"
+                description="Shareable HTML for reports, dashboards, and generated pages."
+                actionLabel="+ New"
+                onAction={handleCreateDeck}
+              >
                 {decks.length === 0 ? (
-                  <p className="text-muted text-sm">No decks yet. Create one for HTML pages, slides, or dashboards.</p>
+                  <p className="text-sm text-muted">No decks yet.</p>
                 ) : (
                   <div className="space-y-1">
                     {decks.map(d => (
@@ -334,16 +389,16 @@ export default function WorkspacePage() {
                     ))}
                   </div>
                 )}
-              </section>
+              </WorkspaceSection>
 
-              {/* Tables */}
-              <section className="mb-8">
-                <div className="flex items-center justify-between mb-3">
-                  <h2 className="text-sm font-medium text-muted uppercase tracking-wider">Tables</h2>
-                  <button onClick={handleCreateTable} className="text-xs text-brand hover:text-brand-hover">+ New</button>
-                </div>
+              <WorkspaceSection
+                title="Tables"
+                description="Structured data agents can read and write, like a shared spreadsheet."
+                actionLabel="+ New"
+                onAction={handleCreateTable}
+              >
                 {tables.length === 0 ? (
-                  <p className="text-muted text-sm">No tables yet. Create one for structured data that agents and humans can access.</p>
+                  <p className="text-sm text-muted">No tables yet.</p>
                 ) : (
                   <div className="space-y-1">
                     {tables.map(t => (
@@ -362,16 +417,14 @@ export default function WorkspacePage() {
                     ))}
                   </div>
                 )}
-              </section>
+              </WorkspaceSection>
 
-              {/* Webhooks */}
-              <section className="mb-8">
-                <div className="flex items-center justify-between mb-3">
-                  <h2 className="text-sm font-medium text-muted uppercase tracking-wider">Webhook</h2>
-                  {!webhook && !showWebhookForm && (
-                    <button onClick={() => setShowWebhookForm(true)} className="text-xs text-brand hover:text-brand-hover">+ Configure</button>
-                  )}
-                </div>
+              <WorkspaceSection
+                title="Webhook"
+                description="Receive event notifications when chat or memory activity happens."
+                actionLabel={!webhook && !showWebhookForm ? "+ Configure" : undefined}
+                onAction={!webhook && !showWebhookForm ? () => setShowWebhookForm(true) : undefined}
+              >
                 {webhook && !showWebhookForm ? (
                   <div className="bg-raised border border-border rounded-lg px-4 py-3">
                     <div className="flex items-center justify-between mb-2">
@@ -429,9 +482,10 @@ export default function WorkspacePage() {
                     </div>
                   </div>
                 ) : (
-                  <p className="text-muted text-sm">No webhook configured. Set one up to receive event notifications.</p>
+                  <p className="text-sm text-muted">No webhook configured.</p>
                 )}
-              </section>
+              </WorkspaceSection>
+              </div>
             </div>
 
             {/* Settings sidebar */}
