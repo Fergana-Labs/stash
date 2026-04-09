@@ -5,16 +5,16 @@ import { textResult } from "../utils/tool-result.js";
  */
 
 import { Type } from "@sinclair/typebox";
-import type { BoozleClient } from "../boozle-client.js";
+import type { OctopusClient } from "../octopus-client.js";
 
 export function registerDmTools(
   api: OpenClawPluginApi,
-  client: BoozleClient,
+  client: OctopusClient,
 ) {
   api.registerTool({
-    name: "boozle_start_dm",
-    description: "Start a direct message conversation with a Boozle user",
-    label: "Start a direct message conversation with a Boozle user",
+    name: "octopus_start_dm",
+    description: "Start a direct message conversation with a Octopus user",
+    label: "Start a direct message conversation with a Octopus user",
     parameters: Type.Object({
       user_id: Type.Optional(Type.String({ description: "User UUID" })),
       username: Type.Optional(Type.String({ description: "Username" })),
@@ -26,9 +26,9 @@ export function registerDmTools(
   });
 
   api.registerTool({
-    name: "boozle_list_dms",
-    description: "List your direct message conversations on Boozle",
-    label: "List your direct message conversations on Boozle",
+    name: "octopus_list_dms",
+    description: "List your direct message conversations on Octopus",
+    label: "List your direct message conversations on Octopus",
     parameters: Type.Object({}),
     async execute() {
       const result = await client.listDms();
@@ -37,9 +37,9 @@ export function registerDmTools(
   });
 
   api.registerTool({
-    name: "boozle_send_dm",
-    description: "Send a direct message to a Boozle user",
-    label: "Send a direct message to a Boozle user",
+    name: "octopus_send_dm",
+    description: "Send a direct message to a Octopus user",
+    label: "Send a direct message to a Octopus user",
     parameters: Type.Object({
       content: Type.String({ description: "Message content" }),
       user_id: Type.Optional(Type.String({ description: "User UUID" })),
@@ -56,9 +56,9 @@ export function registerDmTools(
   });
 
   api.registerTool({
-    name: "boozle_read_dm",
-    description: "Read direct messages from a Boozle user",
-    label: "Read direct messages from a Boozle user",
+    name: "octopus_read_dm",
+    description: "Read direct messages from a Octopus user",
+    label: "Read direct messages from a Octopus user",
     parameters: Type.Object({
       user_id: Type.Optional(Type.String({ description: "User UUID" })),
       username: Type.Optional(Type.String({ description: "Username" })),

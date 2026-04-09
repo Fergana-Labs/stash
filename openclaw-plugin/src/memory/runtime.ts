@@ -1,24 +1,24 @@
 /**
- * Memory runtime adapter — Boozle history as the storage backend.
+ * Memory runtime adapter — Octopus history as the storage backend.
  * Registered via api.registerMemoryRuntime().
  *
- * Bridges OpenClaw's memory interface to Boozle's REST API for
+ * Bridges OpenClaw's memory interface to Octopus's REST API for
  * storing, retrieving, and searching memory events.
  */
 
-import type { BoozleClient } from "../boozle-client.js";
-import type { BoozleConfig } from "./prompt-section.js";
+import type { OctopusClient } from "../octopus-client.js";
+import type { OctopusConfig } from "./prompt-section.js";
 import { loadState } from "../state.js";
 
 /**
- * Creates the memory runtime adapter backed by Boozle's history store.
+ * Creates the memory runtime adapter backed by Octopus's history store.
  */
 export function createMemoryRuntime(
-  client: BoozleClient,
-  config: BoozleConfig,
+  client: OctopusClient,
+  config: OctopusConfig,
 ) {
   return {
-    /** Store a memory entry in Boozle history. */
+    /** Store a memory entry in Octopus history. */
     async store(content: string, metadata?: Record<string, unknown>) {
       if (!config.workspaceId || !config.historyStoreId) return;
       const state = loadState();
@@ -33,7 +33,7 @@ export function createMemoryRuntime(
       });
     },
 
-    /** Retrieve recent memory entries from Boozle history. */
+    /** Retrieve recent memory entries from Octopus history. */
     async retrieve(limit = 20): Promise<unknown[]> {
       if (!config.workspaceId || !config.historyStoreId) return [];
       return client.queryEvents({

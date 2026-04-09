@@ -14,7 +14,7 @@ import httpx
 
 from ..database import get_pool
 
-logger = logging.getLogger("boozle")
+logger = logging.getLogger("octopus")
 
 # Private / reserved IP ranges that must not be targeted by webhooks (SSRF guard)
 _BLOCKED_NETWORKS = [

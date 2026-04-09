@@ -1,52 +1,52 @@
 ---
 name: config
-description: View or change Boozle CLI configuration — API key, workspace, history store, defaults.
+description: View or change Octopus CLI configuration — API key, workspace, history store, defaults.
 ---
 
-# Boozle Config
+# Octopus Config
 
-View or update the Boozle CLI configuration stored at `~/.boozle/config.json`.
+View or update the Octopus CLI configuration stored at `~/.octopus/config.json`.
 
 ## Usage
 
 ### Show current config
-Run `boozle config` to display all settings (API key is masked).
+Run `octopus config` to display all settings (API key is masked).
 
 ### Set a value
-Use `boozle config <key> <value>` to update a setting.
+Use `octopus config <key> <value>` to update a setting.
 
 Available keys:
-- `base_url` — Boozle API endpoint
+- `base_url` — Octopus API endpoint
 - `default_workspace` — Default workspace UUID (used when --ws is omitted)
 - `default_chat` — Default chat UUID (used when --chat is omitted)
 - `default_store` — Default history store UUID (used when --store is omitted)
 - `output_format` — Output format: "human" or "json"
 
 ### Set API key and endpoint
-Use `boozle auth <base_url> --api-key <key>` to set credentials.
+Use `octopus auth <base_url> --api-key <key>` to set credentials.
 
 ### Common workflows
 
 **Switch to a different workspace:**
 ```bash
-boozle workspaces list --mine   # find the workspace ID
-boozle config default_workspace <workspace_id>
+octopus workspaces list --mine   # find the workspace ID
+octopus config default_workspace <workspace_id>
 ```
 
 **Switch to a different history store:**
 ```bash
-boozle history list --ws <workspace_id>   # find the store ID
-boozle config default_store <store_id>
+octopus history list --ws <workspace_id>   # find the store ID
+octopus config default_store <store_id>
 ```
 
 **Switch persona (API key):**
 ```bash
-boozle auth https://getboozle.com --api-key <new_persona_api_key>
+octopus auth https://getoctopus.com --api-key <new_persona_api_key>
 ```
 
 ## Steps
 
-1. If the user wants to **view** config: run `boozle config`
-2. If the user wants to **change** a setting: run `boozle config <key> <value>`
-3. If the user wants to **change credentials**: run `boozle auth <url> --api-key <key>`
-4. After changes, confirm with `boozle config` and `boozle whoami`
+1. If the user wants to **view** config: run `octopus config`
+2. If the user wants to **change** a setting: run `octopus config <key> <value>`
+3. If the user wants to **change credentials**: run `octopus auth <url> --api-key <key>`
+4. After changes, confirm with `octopus config` and `octopus whoami`

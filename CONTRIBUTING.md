@@ -1,4 +1,4 @@
-# Contributing to Boozle
+# Contributing to Octopus
 
 Thank you for taking the time to contribute. This guide covers how to set up a
 development environment, run the test suite, and submit a pull request.
@@ -31,8 +31,8 @@ development environment, run the test suite, and submit a pull request.
 
 ```bash
 # 1. Clone the repository
-git clone https://github.com/boozle-ai/boozle.git
-cd boozle
+git clone https://github.com/Fergana-Labs/octopus.git
+cd octopus
 
 # 2. Start Postgres (pgvector)
 docker compose up -d postgres
@@ -70,16 +70,16 @@ Both suites must pass before a PR can be merged.
 docker compose up -d postgres
 
 # Create the test database if it doesn't exist
-psql postgresql://boozle:boozle@localhost:5432/postgres -c "CREATE DATABASE boozle_test"
+psql postgresql://octopus:octopus@localhost:5432/postgres -c "CREATE DATABASE octopus_test"
 
 # Run migrations against the test DB
 # Note: Alembic reads DATABASE_URL, not TEST_DATABASE_URL
-DATABASE_URL=postgresql://boozle:boozle@localhost:5432/boozle_test \
+DATABASE_URL=postgresql://octopus:octopus@localhost:5432/octopus_test \
   python -m alembic upgrade head
 
 # Run pytest (set both vars so config.py and conftest.py agree)
-DATABASE_URL=postgresql://boozle:boozle@localhost:5432/boozle_test \
-TEST_DATABASE_URL=postgresql://boozle:boozle@localhost:5432/boozle_test \
+DATABASE_URL=postgresql://octopus:octopus@localhost:5432/octopus_test \
+TEST_DATABASE_URL=postgresql://octopus:octopus@localhost:5432/octopus_test \
   python -m pytest backend/tests/ -v
 ```
 
@@ -97,7 +97,7 @@ npm test
 - Keep PRs focused. One logical change per pull request is strongly preferred.
 - Add or update tests for any behaviour you change.
 - Run both test suites locally before pushing.
-- Follow the naming conventions in `ARCHITECTURE.md`: use **Boozle** everywhere.
+- Follow the naming conventions in `ARCHITECTURE.md`: use **Octopus** everywhere.
   The name `moltchat` is deprecated — do not introduce it in new code, comments, or docs.
 
 ### Adding a schema change

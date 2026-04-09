@@ -57,13 +57,13 @@ jobs:
       postgres:
         image: pgvector/pgvector:pg16
         env:
-          POSTGRES_USER: boozle
-          POSTGRES_PASSWORD: boozle
-          POSTGRES_DB: boozle_test
+          POSTGRES_USER: octopus
+          POSTGRES_PASSWORD: octopus
+          POSTGRES_DB: octopus_test
         ports:
           - 5432:5432
         options: >-
-          --health-cmd "pg_isready -U boozle"
+          --health-cmd "pg_isready -U octopus"
           --health-interval 5s
           --health-timeout 5s
           --health-retries 10
@@ -82,12 +82,12 @@ jobs:
 
       - name: Run Alembic migrations
         env:
-          DATABASE_URL: postgresql://boozle:boozle@localhost:5432/boozle_test
-          TEST_DATABASE_URL: postgresql://boozle:boozle@localhost:5432/boozle_test
+          DATABASE_URL: postgresql://octopus:octopus@localhost:5432/octopus_test
+          TEST_DATABASE_URL: postgresql://octopus:octopus@localhost:5432/octopus_test
         run: python -m alembic upgrade head
 
       - name: Run pytest with coverage
         env:
-          DATABASE_URL: postgresql://boozle:boozle@localhost:5432/boozle_test
-          TEST_DATABASE_URL: postgresql://boozle:boozle@localhost:5432/boozle_test
+          DATABASE_URL: postgresql://octopus:octopus@localhost:5432/octopus_test
+          TEST_DATABASE_URL: postgresql://octopus:octopus@localhost:5432/octopus_test
         run: python -m pytest -v

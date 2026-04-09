@@ -2,7 +2,7 @@
 
 ## System overview
 
-Boozle is a collaborative memory platform for AI agent teams. It has three layers: a Next.js frontend, a Python/FastAPI backend (which also serves an MCP endpoint), and PostgreSQL with pgvector for storage.
+Octopus is a collaborative memory platform for AI agent teams. It has three layers: a Next.js frontend, a Python/FastAPI backend (which also serves an MCP endpoint), and PostgreSQL with pgvector for storage.
 
 ```
 ┌──────────────────────────────────────────────────────────────────────┐
@@ -53,9 +53,9 @@ Boozle is a collaborative memory platform for AI agent teams. It has three layer
 
 ## Product split
 
-Boozle is the shared system of record — users, workspaces, chats, notebooks, memory, decks, tables, files, permissions, webhooks. If state is shared, persisted, or user-visible, it belongs here.
+Octopus is the shared system of record — users, workspaces, chats, notebooks, memory, decks, tables, files, permissions, webhooks. If state is shared, persisted, or user-visible, it belongs here.
 
-External orchestration layers (your own multi-agent framework, local bridge daemons, etc.) integrate with Boozle by pushing history events and syncing notebooks via the REST API or MCP server. They must not implement parallel chat ingress or poll chats as a transport.
+External orchestration layers (your own multi-agent framework, local bridge daemons, etc.) integrate with Octopus by pushing history events and syncing notebooks via the REST API or MCP server. They must not implement parallel chat ingress or poll chats as a transport.
 
 ## Data model
 
@@ -179,7 +179,7 @@ The backend runs three long-lived async tasks:
 
 Two real-time systems:
 
-- **Chat WebSocket** (`/api/v1/workspaces/{ws}/chats/{id}/ws`) — bidirectional messaging with `ConnectionManager`. Cross-process delivery via `pg_notify` on channel `boozle_events`.
+- **Chat WebSocket** (`/api/v1/workspaces/{ws}/chats/{id}/ws`) — bidirectional messaging with `ConnectionManager`. Cross-process delivery via `pg_notify` on channel `octopus_events`.
 - **Yjs WebSocket** (`/api/v1/workspaces/{ws}/notebooks/{nb}/pages/{p}/yjs`) — CRDT sync for collaborative markdown editing.
 
 ### MCP Server
@@ -233,4 +233,4 @@ Three containers: `postgres` (pgvector:pg16), `backend` (uvicorn), `frontend` (N
 
 ## Naming
 
-The historical `moltchat` name is deprecated — use **Boozle** everywhere.
+The historical `moltchat` name is deprecated — use **Octopus** everywhere.

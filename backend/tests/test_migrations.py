@@ -11,7 +11,7 @@ def test_alembic_upgrade_head():
     """alembic upgrade head completes without error on the test database."""
     db_url = os.environ.get(
         "TEST_DATABASE_URL",
-        "postgresql://boozle:boozle@localhost:5432/boozle_test",
+        "postgresql://octopus:octopus@localhost:5432/octopus_test",
     )
     # Temporarily set DATABASE_URL for the subprocess
     env = os.environ.copy()

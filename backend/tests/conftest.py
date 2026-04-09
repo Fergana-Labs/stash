@@ -7,7 +7,7 @@ Each test's side-effects are cleaned up via TRUNCATE on teardown, keeping
 tests fully isolated without needing to recreate the schema between them.
 
 Required env vars (defaults work against the Docker Compose postgres):
-    TEST_DATABASE_URL  e.g. postgresql://boozle:boozle@localhost:5432/boozle_test
+    TEST_DATABASE_URL  e.g. postgresql://octopus:octopus@localhost:5432/octopus_test
 """
 
 import asyncio
@@ -22,7 +22,7 @@ from httpx import ASGITransport, AsyncClient
 # Override DATABASE_URL before importing anything from the backend
 _TEST_DB_URL = os.getenv(
     "TEST_DATABASE_URL",
-    "postgresql://boozle:boozle@localhost:5432/boozle_test",
+    "postgresql://octopus:octopus@localhost:5432/octopus_test",
 )
 os.environ["DATABASE_URL"] = _TEST_DB_URL
 

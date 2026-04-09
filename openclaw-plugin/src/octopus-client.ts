@@ -1,15 +1,15 @@
 /**
- * Lightweight Boozle HTTP client for the OpenClaw plugin.
- * Port of claude-plugin/scripts/boozle_client.py using native fetch.
+ * Lightweight Octopus HTTP client for the OpenClaw plugin.
+ * Port of claude-plugin/scripts/octopus_client.py using native fetch.
  */
 
-export class BoozleError extends Error {
+export class OctopusError extends Error {
   constructor(
     public statusCode: number,
     public detail: string,
   ) {
     super(`[${statusCode}] ${detail}`);
-    this.name = "BoozleError";
+    this.name = "OctopusError";
   }
 }
 
@@ -45,7 +45,7 @@ export interface InjectResult {
   injected_items: unknown[];
 }
 
-export class BoozleClient {
+export class OctopusClient {
   private baseUrl: string;
   private apiKey: string;
 
@@ -93,7 +93,7 @@ export class BoozleClient {
       } catch {
         detail = resp.statusText;
       }
-      throw new BoozleError(resp.status, detail);
+      throw new OctopusError(resp.status, detail);
     }
 
     if (resp.status === 204) return {};

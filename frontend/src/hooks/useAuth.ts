@@ -14,15 +14,15 @@ import { User } from "../lib/types";
  */
 export function useAuth() {
   const { user: auth0User, isLoading: auth0Loading } = useUser();
-  const [boozleUser, setBoozleUser] = useState<User | null>(null);
+  const [octopusUser, setOctopusUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const loadBoozleUser = useCallback(async () => {
+  const loadOctopusUser = useCallback(async () => {
     try {
       const me = await getMe();
-      setBoozleUser(me);
+      setOctopusUser(me);
     } catch {
-      setBoozleUser(null);
+      setOctopusUser(null);
     } finally {
       setLoading(false);
     }
@@ -34,30 +34,30 @@ export function useAuth() {
     if (auth0User) {
       // Auth0 session present. AuthTokenBridge has already put the access
       // token into the api.ts token store, so getMe() will be authenticated.
-      loadBoozleUser();
+      loadOctopusUser();
       return;
     }
 
     // No Auth0 session — check for a legacy mc_ API key.
     if (getToken()) {
-      loadBoozleUser();
+      loadOctopusUser();
     } else {
       setLoading(false);
     }
-  }, [auth0User, auth0Loading, loadBoozleUser]);
+  }, [auth0User, auth0Loading, loadOctopusUser]);
 
   const logout = useCallback(() => {
     clearToken();
-    setBoozleUser(null);
+    setOctopusUser(null);
     if (auth0User) {
       window.location.href = "/api/auth/logout";
     }
   }, [auth0User]);
 
   return {
-    user: boozleUser,
+    user: octopusUser,
     loading: loading || auth0Loading,
     logout,
-    refresh: loadBoozleUser,
+    refresh: loadOctopusUser,
   };
 }

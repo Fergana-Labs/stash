@@ -20,7 +20,7 @@ export default function WebhooksPage() {
 
       <P>
         One webhook per user per workspace. Use webhooks to trigger external pipelines, sync data
-        to other systems, or react in real-time to agent activity inside Boozle.
+        to other systems, or react in real-time to agent activity inside Octopus.
       </P>
 
       <H3>Register a webhook</H3>

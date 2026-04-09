@@ -1,6 +1,6 @@
 # Use Cases
 
-Real-world scenarios for Boozle, from solo developer to multi-agent team.
+Real-world scenarios for Octopus, from solo developer to multi-agent team.
 
 ---
 
@@ -14,9 +14,9 @@ Real-world scenarios for Boozle, from solo developer to multi-agent team.
 3. Enable the sleep agent on one persona with `curation_sources: ["history"]`
 
 **What happens:**
-- Every Claude Code session auto-streams to Boozle: tool calls, file edits, web searches, session summaries
+- Every Claude Code session auto-streams to Octopus: tool calls, file edits, web searches, session summaries
 - The sleep agent reads new events every 30 minutes and writes wiki pages: "Authentication Patterns", "Database Migration Guide", "API Rate Limiting" — with [[backlinks]] and categories
-- A developer asks Claude: *"Check Boozle — what did we learn about connection pooling last week?"* — gets an AI-synthesized answer with source events
+- A developer asks Claude: *"Check Octopus — what did we learn about connection pooling last week?"* — gets an AI-synthesized answer with source events
 
 **Value:** Institutional memory that builds itself. No manual documentation. When someone new joins, the wiki is already there.
 
@@ -31,10 +31,10 @@ Real-world scenarios for Boozle, from solo developer to multi-agent team.
 2. Connect via MCP or the Claude Code plugin
 
 **What happens:**
-- The researcher prompts: *"Search the web for the latest papers on RAG architectures and save summaries to Boozle"*
+- The researcher prompts: *"Search the web for the latest papers on RAG architectures and save summaries to Octopus"*
 - Each agent session pushes structured events: paper titles, key findings, URLs, methodology notes
 - The sleep agent curates these into a categorized wiki: "Retrieval Methods", "Chunking Strategies", "Evaluation Benchmarks"
-- Later: *"What do we know about hybrid search approaches?"* — Boozle's LLM search synthesizes across all stored events
+- Later: *"What do we know about hybrid search approaches?"* — Octopus's LLM search synthesizes across all stored events
 
 **Value:** Turn a week of scattered research into a structured, searchable knowledge base without manually organizing anything.
 
@@ -68,7 +68,7 @@ Real-world scenarios for Boozle, from solo developer to multi-agent team.
 3. Share pages with clients via token-based links (optional passcode, email gate)
 
 **What happens:**
-- An agent generates a weekly status report as an HTML page: *"Create a Boozle page summarizing this week's progress on the auth migration"*
+- An agent generates a weekly status report as an HTML page: *"Create a Octopus page summarizing this week's progress on the auth migration"*
 - The consultant creates a share link with `require_email: true` and sends it to the client
 - Viewer analytics show who accessed it, when, and for how long
 - All project knowledge stays in the workspace wiki for the team
@@ -83,10 +83,10 @@ Real-world scenarios for Boozle, from solo developer to multi-agent team.
 
 **Setup:**
 1. Export bookmarks from Chrome
-2. Run: `boozle import-bookmarks ~/Downloads/bookmarks.html`
+2. Run: `octopus import-bookmarks ~/Downloads/bookmarks.html`
 
 **What happens:**
-- Boozle ingests hundreds of bookmarks as structured history events (title, URL, folder)
+- Octopus ingests hundreds of bookmarks as structured history events (title, URL, folder)
 - The sleep agent reads them and creates wiki pages grouped by topic: "React Performance", "Kubernetes Networking", "System Design"
 - The developer asks: *"What bookmarks do I have about database indexing?"* — semantic search finds relevant entries even if "indexing" wasn't in the title
 
@@ -103,7 +103,7 @@ Real-world scenarios for Boozle, from solo developer to multi-agent team.
 2. Import existing data via CSV
 
 **What happens:**
-- Agents add rows: *"Add a new experiment to the Boozle table: model=llama-3, metric=0.87, notes='better on long context'"*
+- Agents add rows: *"Add a new experiment to the Octopus table: model=llama-3, metric=0.87, notes='better on long context'"*
 - The table supports views (filtered/sorted subsets), column summaries, and semantic search over row content
 - Export back to CSV anytime
 
@@ -117,8 +117,8 @@ Real-world scenarios for Boozle, from solo developer to multi-agent team.
 
 **Setup:**
 ```bash
-git clone https://github.com/boozle-ai/boozle.git
-cd boozle
+git clone https://github.com/Fergana-Labs/octopus.git
+cd octopus
 docker compose up -d
 ```
 
@@ -127,13 +127,13 @@ docker compose up -d
 - Embeddings and curation work with self-hosted models (set `OPENAI_BASE_URL` and `ANTHROPIC_BASE_URL` to local endpoints)
 - No telemetry, no external calls unless you configure API keys
 
-**Value:** Full Boozle functionality behind your firewall, with MIT license and no vendor lock-in.
+**Value:** Full Octopus functionality behind your firewall, with MIT license and no vendor lock-in.
 
 ---
 
-## Summary: What Boozle replaces
+## Summary: What Octopus replaces
 
-| Before Boozle | With Boozle |
+| Before Octopus | With Octopus |
 |---------------|-------------|
 | Agent sessions are ephemeral — knowledge disappears | Every session persists in searchable history stores |
 | Manual documentation in Notion/Confluence | Sleep agent auto-generates a categorized wiki |

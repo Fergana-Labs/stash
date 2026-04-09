@@ -108,8 +108,8 @@ export default function DeckViewerPage() {
       <div className="h-screen flex flex-col">
         {/* Branded header */}
         <div className="h-10 flex-shrink-0 bg-white border-b border-gray-200 flex items-center justify-between px-4">
-          <a href="https://getboozle.com" target="_blank" rel="noopener noreferrer" className="text-sm font-bold tracking-tight text-gray-900" style={{ fontFamily: "'Satoshi', sans-serif" }}>
-            boozle
+          <a href="https://getoctopus.com" target="_blank" rel="noopener noreferrer" className="text-sm font-bold tracking-tight text-gray-900" style={{ fontFamily: "'Satoshi', sans-serif" }}>
+            octopus
           </a>
           <div className="flex items-center gap-3">
             <span className="text-xs text-gray-400">{meta?.deck_name}</span>

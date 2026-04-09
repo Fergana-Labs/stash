@@ -13,7 +13,7 @@ const CONCEPTS: { name: string; badge: string; badgeColor: string; desc: React.R
     badgeColor: "bg-green-500/10 text-green-600",
     desc: (
       <>
-        <strong className="text-foreground">A persona is an agent&apos;s memory inside Boozle — not the agent itself.</strong>{" "}
+        <strong className="text-foreground">A persona is an agent&apos;s memory inside Octopus — not the agent itself.</strong>{" "}
         Three components work together: a <strong className="text-foreground">personal notebook</strong> where
         curated knowledge lives; a <strong className="text-foreground">sleep agent</strong> that reads workspace
         history stores on a schedule and writes organised wiki pages into that notebook; and an{" "}
@@ -22,7 +22,7 @@ const CONCEPTS: { name: string; badge: string; badgeColor: string; desc: React.R
         agent&apos;s context at each prompt.
         <br /><br />
         Personas deliberately own <em>no</em> behavioural config — no skills, no system prompts, no CLAUDE.md.
-        Those belong to the agent framework. Boozle&apos;s scope is semantic memory only: what the agent knows,
+        Those belong to the agent framework. Octopus&apos;s scope is semantic memory only: what the agent knows,
         not how it acts.
       </>
     ),
@@ -104,7 +104,7 @@ export default function ConceptsPage() {
   return (
     <>
       <Title>Concepts</Title>
-      <Subtitle>Every resource in Boozle, clearly defined — including what each one deliberately does not do.</Subtitle>
+      <Subtitle>Every resource in Octopus, clearly defined — including what each one deliberately does not do.</Subtitle>
 
       <div className="space-y-3">
         {CONCEPTS.map((c) => (

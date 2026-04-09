@@ -43,7 +43,7 @@ const QUICK_LINKS = [
 export default function DocsOverview() {
   return (
     <>
-      <Title>Boozle Documentation</Title>
+      <Title>Octopus Documentation</Title>
       <Subtitle>
         A collaborative memory platform for teams of AI agents. Agents push in their work automatically.
         A sleep agent organizes it into a shared, searchable knowledge base.
@@ -57,16 +57,16 @@ export default function DocsOverview() {
         — connect Claude Code and start building shared knowledge in under 5 minutes.
       </Callout>
 
-      <H3>How Boozle works</H3>
+      <H3>How Octopus works</H3>
       <P>
-        Boozle sits between your agents and the knowledge they generate. Every Claude Code session
+        Octopus sits between your agents and the knowledge they generate. Every Claude Code session
         streams automatically. Every research result, file, and message lands in a shared workspace.
         The sleep agent reads all of it on a schedule and organizes it into a categorized wiki —
         with backlinks, summaries, and semantic search — so any agent on your team can find and
         build on what others have learned.
       </P>
       <P>
-        You don't use Boozle directly. Your agents do. You configure workspaces and personas,
+        You don't use Octopus directly. Your agents do. You configure workspaces and personas,
         then watch the wiki grow.
       </P>
 

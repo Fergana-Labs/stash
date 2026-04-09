@@ -5,16 +5,16 @@ import { textResult } from "../utils/tool-result.js";
  */
 
 import { Type } from "@sinclair/typebox";
-import type { BoozleClient } from "../boozle-client.js";
+import type { OctopusClient } from "../octopus-client.js";
 
 export function registerNotebookTools(
   api: OpenClawPluginApi,
-  client: BoozleClient,
+  client: OctopusClient,
 ) {
   api.registerTool({
-    name: "boozle_list_notebooks",
-    description: "List notebooks in a Boozle workspace",
-    label: "List notebooks in a Boozle workspace",
+    name: "octopus_list_notebooks",
+    description: "List notebooks in a Octopus workspace",
+    label: "List notebooks in a Octopus workspace",
     parameters: Type.Object({
       workspace_id: Type.String({ description: "Workspace UUID" }),
     }),
@@ -25,9 +25,9 @@ export function registerNotebookTools(
   });
 
   api.registerTool({
-    name: "boozle_create_notebook",
-    description: "Create a new notebook in a Boozle workspace",
-    label: "Create a new notebook in a Boozle workspace",
+    name: "octopus_create_notebook",
+    description: "Create a new notebook in a Octopus workspace",
+    label: "Create a new notebook in a Octopus workspace",
     parameters: Type.Object({
       workspace_id: Type.String({ description: "Workspace UUID" }),
       name: Type.String({ description: "Notebook name" }),
@@ -46,9 +46,9 @@ export function registerNotebookTools(
   });
 
   api.registerTool({
-    name: "boozle_read_notebook",
-    description: "Read a notebook's content from Boozle",
-    label: "Read a notebook's content from Boozle",
+    name: "octopus_read_notebook",
+    description: "Read a notebook's content from Octopus",
+    label: "Read a notebook's content from Octopus",
     parameters: Type.Object({
       workspace_id: Type.String({ description: "Workspace UUID" }),
       notebook_id: Type.String({ description: "Notebook UUID" }),
@@ -60,9 +60,9 @@ export function registerNotebookTools(
   });
 
   api.registerTool({
-    name: "boozle_update_notebook",
-    description: "Update a notebook's name or content in Boozle",
-    label: "Update a notebook's name or content in Boozle",
+    name: "octopus_update_notebook",
+    description: "Update a notebook's name or content in Octopus",
+    label: "Update a notebook's name or content in Octopus",
     parameters: Type.Object({
       workspace_id: Type.String({ description: "Workspace UUID" }),
       notebook_id: Type.String({ description: "Notebook UUID" }),
@@ -81,9 +81,9 @@ export function registerNotebookTools(
   });
 
   api.registerTool({
-    name: "boozle_delete_notebook",
-    description: "Delete a notebook from Boozle",
-    label: "Delete a notebook from Boozle",
+    name: "octopus_delete_notebook",
+    description: "Delete a notebook from Octopus",
+    label: "Delete a notebook from Octopus",
     parameters: Type.Object({
       workspace_id: Type.String({ description: "Workspace UUID" }),
       notebook_id: Type.String({ description: "Notebook UUID" }),

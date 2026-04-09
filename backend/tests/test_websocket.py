@@ -149,7 +149,7 @@ async def test_broadcast_uses_pg_notify(pool):
         def on_notify(conn, pid, channel, payload):
             received.append(json.loads(payload))
 
-        await conn.add_listener("boozle_events", on_notify)
+        await conn.add_listener("octopus_events", on_notify)
 
         await mgr.broadcast(room_id, {"type": "message", "content": "cross-process"})
 
@@ -159,7 +159,7 @@ async def test_broadcast_uses_pg_notify(pool):
         assert received[0]["room_id"] == str(room_id)
         assert received[0]["message"]["content"] == "cross-process"
 
-        await conn.remove_listener("boozle_events", on_notify)
+        await conn.remove_listener("octopus_events", on_notify)
     finally:
         await pool.release(conn)
 

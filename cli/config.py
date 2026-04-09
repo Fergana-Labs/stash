@@ -1,10 +1,10 @@
-"""Auth credential and config storage for the boozle CLI."""
+"""Auth credential and config storage for the octopus CLI."""
 
 import json
 import os
 from pathlib import Path
 
-CONFIG_DIR = Path.home() / ".boozle"
+CONFIG_DIR = Path.home() / ".octopus"
 CONFIG_FILE = CONFIG_DIR / "config.json"
 
 DEFAULT_CONFIG = {
@@ -28,9 +28,9 @@ def load_config() -> dict:
         except (json.JSONDecodeError, OSError):
             pass
     # Env var overrides
-    if url := os.environ.get("BOOZLE_URL"):
+    if url := os.environ.get("OCTOPUS_URL"):
         cfg["base_url"] = url
-    if key := os.environ.get("BOOZLE_API_KEY"):
+    if key := os.environ.get("OCTOPUS_API_KEY"):
         cfg["api_key"] = key
     return cfg
 

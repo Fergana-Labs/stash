@@ -3,7 +3,7 @@
 broadcast() sends via Postgres NOTIFY so every process receives the message
 and delivers it to its local subscribers, enabling horizontal scaling without
 Redis.  Each process also holds a dedicated asyncpg connection that LISTENs on
-the 'boozle_events' channel (wired up in main.py lifespan).
+the 'octopus_events' channel (wired up in main.py lifespan).
 
 broadcast_local() delivers only to in-process connections; it is called by the
 LISTEN callback and must NOT re-issue a NOTIFY (would cause an infinite loop).
@@ -93,7 +93,7 @@ class ConnectionManager:
             # Fall back to local-only delivery for oversized messages
             await self.broadcast_local(room_id, message)
             return
-        await pool.execute("SELECT pg_notify('boozle_events', $1)", payload)
+        await pool.execute("SELECT pg_notify('octopus_events', $1)", payload)
 
     # --- Typing indicators (local-only, low priority) ---
 
@@ -134,7 +134,7 @@ class ConnectionManager:
             if not conns:
                 del self._ws_connections[room_id]
         if total_removed:
-            logging.getLogger("boozle").info(
+            logging.getLogger("octopus").info(
                 "ping_all: removed %d dead connection(s)", total_removed
             )
 

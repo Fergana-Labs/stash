@@ -20,7 +20,7 @@ from ..services import notebook_service
 
 COLLAB_SERVER_URL = os.environ.get("COLLAB_SERVER_URL", "http://localhost:1235")
 
-logger = logging.getLogger("boozle.yjs")
+logger = logging.getLogger("octopus.yjs")
 
 MSG_SYNC = 0
 MSG_AWARENESS = 1

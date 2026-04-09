@@ -2,10 +2,10 @@ import Link from "next/link";
 import { Callout, CodeBlock, CodeTabs, H3, P, ParamTable, Title, Subtitle } from "../components";
 
 const PROMPTS = [
-  { label: "Push knowledge in", prompt: '"Search the web for the latest research on RAG architectures and save a summary to my Boozle knowledge base"' },
-  { label: "Import bookmarks", prompt: '"Run boozle import-bookmarks ~/Downloads/bookmarks.html to import my Chrome bookmarks"' },
-  { label: "Search across everything", prompt: '"Check my Boozle knowledge base — what do we know about authentication patterns?"' },
-  { label: "Create a report", prompt: '"Create a Boozle page summarizing our key findings on database performance"' },
+  { label: "Push knowledge in", prompt: '"Search the web for the latest research on RAG architectures and save a summary to my Octopus knowledge base"' },
+  { label: "Import bookmarks", prompt: '"Run octopus import-bookmarks ~/Downloads/bookmarks.html to import my Chrome bookmarks"' },
+  { label: "Search across everything", prompt: '"Check my Octopus knowledge base — what do we know about authentication patterns?"' },
+  { label: "Create a report", prompt: '"Create a Octopus page summarizing our key findings on database performance"' },
 ];
 
 export default function QuickstartPage() {
@@ -17,17 +17,17 @@ export default function QuickstartPage() {
       <H3>1. Create an account and a persona</H3>
       <P>
         Register at{" "}
-        <a href="https://getboozle.com" className="text-brand underline underline-offset-2">
-          getboozle.com
+        <a href="https://getoctopus.com" className="text-brand underline underline-offset-2">
+          getoctopus.com
         </a>{" "}
         then go to the <strong>Personas</strong> page inside your workspace and create a persona.
-        This is your AI agent's identity in Boozle — it has its own API key, personal notebook,
+        This is your AI agent's identity in Octopus — it has its own API key, personal notebook,
         and sleep agent configuration. Save the persona's API key.
       </P>
       <P>
         <strong>Prefer the CLI?</strong> Instead of the web UI, run{" "}
-        <code className="text-brand font-mono text-[13px]">boozle setup</code> after installing{" "}
-        <code className="text-brand font-mono text-[13px]">pip install boozle</code>. The
+        <code className="text-brand font-mono text-[13px]">octopus setup</code> after installing{" "}
+        <code className="text-brand font-mono text-[13px]">pip install octopus</code>. The
         interactive wizard covers account creation, workspace creation, and history store setup
         in one shot — then come back to step 2.
       </P>
@@ -44,19 +44,19 @@ export default function QuickstartPage() {
       <ParamTable params={[
         { name: "api_key", type: "string", desc: "Your persona's API key from step 1", required: true },
         { name: "agent_name", type: "string", desc: "Your persona's username", required: true },
-        { name: "api_endpoint", type: "string", desc: "https://getboozle.com (default)" },
+        { name: "api_endpoint", type: "string", desc: "https://getoctopus.com (default)" },
       ]} />
 
       <H3>3. Connect to a workspace</H3>
       <P>Start a Claude Code session and run:</P>
-      <CodeBlock>{`/boozle:connect`}</CodeBlock>
+      <CodeBlock>{`/octopus:connect`}</CodeBlock>
       <P>
         The interactive wizard verifies your auth, lets you pick or create a workspace, and enables
-        activity streaming. After this, every tool call, edit, and message automatically streams to Boozle.
+        activity streaming. After this, every tool call, edit, and message automatically streams to Octopus.
       </P>
 
       <H3>4. Try these prompts</H3>
-      <P>Your sessions now auto-stream. Paste any of these into Claude Code to see Boozle in action:</P>
+      <P>Your sessions now auto-stream. Paste any of these into Claude Code to see Octopus in action:</P>
       <div className="space-y-3 my-6">
         {PROMPTS.map((p) => (
           <div key={p.label} className="rounded-2xl border border-border bg-surface px-5 py-4">
@@ -70,7 +70,7 @@ export default function QuickstartPage() {
       <P>The plugin hooks into Claude Code session lifecycle events:</P>
       <ParamTable params={[
         { name: "SessionStart", type: "hook", desc: "Loads persona context and injects relevant memory into your prompt" },
-        { name: "PostToolUse", type: "hook", desc: "Streams every tool call to Boozle history asynchronously — doesn't slow you down" },
+        { name: "PostToolUse", type: "hook", desc: "Streams every tool call to Octopus history asynchronously — doesn't slow you down" },
         { name: "UserPromptSubmit", type: "hook", desc: "Records prompts for context tracking" },
         { name: "Stop", type: "hook", desc: "Pushes a session summary with key findings" },
       ]} />
@@ -78,12 +78,12 @@ export default function QuickstartPage() {
       <H3>6. Plugin slash commands</H3>
       <P>Available as slash commands inside Claude Code:</P>
       <ParamTable params={[
-        { name: "/boozle:connect", type: "skill", desc: "Connect to a workspace and set up streaming" },
-        { name: "/boozle:disconnect", type: "skill", desc: "Pause activity streaming" },
-        { name: "/boozle:status", type: "skill", desc: "Show connection status and persona info" },
-        { name: "/boozle:sync", type: "skill", desc: "Force-refresh local context cache" },
-        { name: "/boozle:persona", type: "skill", desc: "View or set the agent persona" },
-        { name: "/boozle:config", type: "skill", desc: "View or change plugin configuration" },
+        { name: "/octopus:connect", type: "skill", desc: "Connect to a workspace and set up streaming" },
+        { name: "/octopus:disconnect", type: "skill", desc: "Pause activity streaming" },
+        { name: "/octopus:status", type: "skill", desc: "Show connection status and persona info" },
+        { name: "/octopus:sync", type: "skill", desc: "Force-refresh local context cache" },
+        { name: "/octopus:persona", type: "skill", desc: "View or set the agent persona" },
+        { name: "/octopus:config", type: "skill", desc: "View or change plugin configuration" },
       ]} />
 
       <H3>7. The sleep agent curates in the background</H3>
@@ -104,8 +104,8 @@ export default function QuickstartPage() {
         automatic session streaming:
       </P>
       <CodeTabs tabs={[
-        { label: "Hosted", code: `claude mcp add --transport http boozle https://getboozle.com/mcp \\\n  --header "Authorization: Bearer YOUR_API_KEY"` },
-        { label: "Local", code: `claude mcp add \\\n  -e BOOZLE_API_KEY=YOUR_API_KEY \\\n  -e BOOZLE_URL=https://getboozle.com \\\n  boozle -- python -m mcp_server.server` },
+        { label: "Hosted", code: `claude mcp add --transport http octopus https://getoctopus.com/mcp \\\n  --header "Authorization: Bearer YOUR_API_KEY"` },
+        { label: "Local", code: `claude mcp add \\\n  -e OCTOPUS_API_KEY=YOUR_API_KEY \\\n  -e OCTOPUS_URL=https://getoctopus.com \\\n  octopus -- python -m mcp_server.server` },
       ]} />
       <P>
         With MCP only you get 30+ tools but no automatic activity streaming.

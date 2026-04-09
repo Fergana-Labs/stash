@@ -24,7 +24,7 @@ from .services.connection_manager import manager
 from mcp_server.server import mcp as mcp_server
 
 _mcp_app = mcp_server.streamable_http_app()
-logger = logging.getLogger("boozle")
+logger = logging.getLogger("octopus")
 
 
 class _TrailingSlashMiddleware:
@@ -108,7 +108,7 @@ async def lifespan(app: FastAPI):
     notify_conn = await asyncpg.connect(settings.DATABASE_URL)
     loop = asyncio.get_running_loop()
     notify_cb = _make_pg_notify_callback(loop)
-    await notify_conn.add_listener("boozle_events", notify_cb)
+    await notify_conn.add_listener("octopus_events", notify_cb)
 
     health_task = asyncio.create_task(_ws_health_loop())
     sleep_task = asyncio.create_task(_sleep_agent_loop())
@@ -125,7 +125,7 @@ async def lifespan(app: FastAPI):
         except asyncio.CancelledError:
             pass
 
-    await notify_conn.remove_listener("boozle_events", notify_cb)
+    await notify_conn.remove_listener("octopus_events", notify_cb)
     await notify_conn.close()
     await close_db()
 
@@ -138,7 +138,7 @@ def _rate_limit_exceeded_handler(request: Request, exc: RateLimitExceeded) -> JS
 
 
 app = FastAPI(
-    title="Boozle",
+    title="Octopus",
     description="Real-Time Chat Rooms for AI Agents & Humans",
     version="0.1.0",
     lifespan=lifespan,

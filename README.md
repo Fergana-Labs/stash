@@ -1,4 +1,4 @@
-# Boozle
+# Octopus
 
 A centralized, collaborative memory for teams of AI agents.
 
@@ -8,7 +8,7 @@ Every Claude Code session, every research paper, every webpage, every conversati
 
 ### 1. Create an account + persona
 
-Go to [getboozle.com](https://getboozle.com) and register. Then create a persona on the Personas page — this is your AI agent's identity. Save the persona's API key.
+Go to [getoctopus.com](https://getoctopus.com) and register. Then create a persona on the Personas page — this is your AI agent's identity. Save the persona's API key.
 
 ### 2. Install the Claude Code plugin
 
@@ -23,26 +23,26 @@ The plugin will prompt for your persona's API key and agent name.
 Start Claude Code and run:
 
 ```
-/boozle:connect
+/octopus:connect
 ```
 
-This wizard connects your persona to a workspace and sets up activity streaming. Every tool call, edit, and message now flows into Boozle automatically.
+This wizard connects your persona to a workspace and sets up activity streaming. Every tool call, edit, and message now flows into Octopus automatically.
 
 ### 4. Try it
 
-Your agent sessions now auto-stream to Boozle. Try these prompts:
+Your agent sessions now auto-stream to Octopus. Try these prompts:
 
 **Push knowledge in:**
-> "Search the web for the latest research on RAG architectures and save a summary to my Boozle knowledge base"
+> "Search the web for the latest research on RAG architectures and save a summary to my Octopus knowledge base"
 
 **Import bookmarks:**
-> "Run `boozle import-bookmarks ~/Downloads/bookmarks.html` to import my Chrome bookmarks"
+> "Run `octopus import-bookmarks ~/Downloads/bookmarks.html` to import my Chrome bookmarks"
 
 **Search across everything:**
-> "Check my Boozle knowledge base — what do we know about authentication patterns?"
+> "Check my Octopus knowledge base — what do we know about authentication patterns?"
 
 **Create a shareable report:**
-> "Create a Boozle page summarizing our key findings on database performance"
+> "Create a Octopus page summarizing our key findings on database performance"
 
 ### 5. The sleep agent curates
 
@@ -51,7 +51,7 @@ Every 30 minutes, a sleep agent reads newly ingested data and organizes it into 
 ## How it works
 
 ```
-Claude Code plugin     → Activity streams to Boozle history
+Claude Code plugin     → Activity streams to Octopus history
   auto-captures every    → Sleep agent curates into wiki
   tool call, edit,       → Anyone can search across everything
   and session
@@ -61,22 +61,22 @@ Everything lives in a **workspace** — a permissioned container where multiple 
 
 ## What the plugin does
 
-The Boozle Claude Code plugin hooks into your session lifecycle:
+The Octopus Claude Code plugin hooks into your session lifecycle:
 
 | Hook | What it does |
 |------|-------------|
 | **SessionStart** | Loads persona context, injects relevant memory into prompt |
-| **PostToolUse** | Streams every tool call to Boozle history (async, doesn't slow you down) |
+| **PostToolUse** | Streams every tool call to Octopus history (async, doesn't slow you down) |
 | **UserPromptSubmit** | Records prompts for context tracking |
 | **Stop** | Pushes session summary with key findings |
 
 **Skills available in Claude Code:**
-- `/boozle:connect` — connect to a workspace
-- `/boozle:disconnect` — pause activity streaming
-- `/boozle:status` — show connection status
-- `/boozle:sync` — force-refresh local context cache
-- `/boozle:persona` — view or set agent persona
-- `/boozle:config` — view or change config
+- `/octopus:connect` — connect to a workspace
+- `/octopus:disconnect` — pause activity streaming
+- `/octopus:status` — show connection status
+- `/octopus:sync` — force-refresh local context cache
+- `/octopus:persona` — view or set agent persona
+- `/octopus:config` — view or change config
 
 ## Architecture
 
@@ -98,36 +98,36 @@ The Boozle Claude Code plugin hooks into your session lifecycle:
 ### MCP Server (for agents without the plugin)
 ```bash
 # Hosted
-claude mcp add --transport http boozle https://getboozle.com/mcp \
+claude mcp add --transport http octopus https://getoctopus.com/mcp \
   --header "Authorization: Bearer YOUR_API_KEY"
 
 # Local
-claude mcp add -e BOOZLE_API_KEY=KEY -e BOOZLE_URL=https://getboozle.com \
-  boozle -- python -m mcp_server.server
+claude mcp add -e OCTOPUS_API_KEY=KEY -e OCTOPUS_URL=https://getoctopus.com \
+  octopus -- python -m mcp_server.server
 ```
 
 ### OpenClaw Plugin
 ```bash
-openclaw plugin add @boozle/openclaw-boozle
+openclaw plugin add @octopus/openclaw-octopus
 ```
 
 ### CLI
 ```bash
-pip install boozle
-boozle import-bookmarks <file.html>   # Import bookmarks
-boozle history push <content>          # Push an event
-boozle --help                          # Full command list
+pip install octopus
+octopus import-bookmarks <file.html>   # Import bookmarks
+octopus history push <content>          # Push an event
+octopus --help                          # Full command list
 ```
 
 ## Hosted
 
-[getboozle.com](https://getboozle.com) — free to start.
+[getoctopus.com](https://getoctopus.com) — free to start.
 
 ## Self-hosted
 
 ```bash
-git clone https://github.com/boozle-ai/boozle.git
-cd boozle
+git clone https://github.com/Fergana-Labs/octopus.git
+cd octopus
 cp .env.example .env          # fill in credentials + API keys
 # edit Caddyfile → replace app.example.com with your domain
 docker compose -f docker-compose.prod.yml up -d
@@ -155,7 +155,7 @@ In-app docs are available at `/docs` when running the frontend.
 
 | Name | Role | Contact |
 |------|------|---------|
-| [@triobaba](https://github.com/triobaba) | Creator & lead maintainer | GitHub issues or [security@getboozle.com](mailto:security@getboozle.com) for vulnerabilities |
+| [@triobaba](https://github.com/triobaba) | Creator & lead maintainer | GitHub issues or [security@getoctopus.com](mailto:security@getoctopus.com) for vulnerabilities |
 
 Contributions are welcome — see [CONTRIBUTING.md](CONTRIBUTING.md) to get started.
 
