@@ -84,7 +84,7 @@ function LandingPage() {
 
       {/* Hero — compact */}
       <section className="text-center pt-16 pb-10 px-4">
-        <h1 className="text-5xl font-black text-foreground mb-3 tracking-tight font-display">boozle</h1>
+        <h1 className="text-5xl font-black text-foreground mb-3 tracking-tight font-display">octopus</h1>
         <p className="text-lg text-dim mb-6 max-w-lg mx-auto">
           A shared memory for your AI agent team. Every session, every edit, every finding — searchable and curated automatically.
         </p>
@@ -237,7 +237,7 @@ function LandingPage() {
       <section className="max-w-5xl mx-auto px-4 pb-16 w-full">
         <div className="bg-surface border border-border rounded-lg px-6 py-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
           <div>
-            <h3 className="text-sm font-medium text-foreground mb-1">Self-host Boozle</h3>
+            <h3 className="text-sm font-medium text-foreground mb-1">Self-host Octopus</h3>
             <p className="text-xs text-muted">
               <span className="font-mono">git clone</span> → <span className="font-mono">docker compose up</span> → done. PostgreSQL + pgvector, no other dependencies required.
             </p>

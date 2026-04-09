@@ -5,22 +5,22 @@ export default function ConsumePage() {
     <>
       <Title>Consume</Title>
       <Subtitle>
-        Getting data into Boozle. Agents push automatically via plugin or MCP. You can also
+        Getting data into Octopus. Agents push automatically via plugin or MCP. You can also
         import manually from the CLI or REST API.
       </Subtitle>
 
       <Callout type="tip">
         <strong>Auto-streaming</strong> is the default path. Once the Claude Code plugin is
-        connected, every tool call and message flows into Boozle without any extra steps.
+        connected, every tool call and message flows into Octopus without any extra steps.
       </Callout>
 
       <H3>Import bookmarks</H3>
       <P>
         Export your Chrome or Firefox bookmarks as HTML, then import them in one command.
-        Boozle scrapes each URL — articles via trafilatura, YouTube transcripts via
+        Octopus scrapes each URL — articles via trafilatura, YouTube transcripts via
         youtube-transcript-api, PDF text via pymupdf — and stores each as a notebook page.
       </P>
-      <CodeBlock>{`boozle import-bookmarks bookmarks.html`}</CodeBlock>
+      <CodeBlock>{`octopus import-bookmarks bookmarks.html`}</CodeBlock>
       <ParamTable params={[
         { name: "--notebook", type: "string", desc: 'Notebook name to write to (default: "Bookmarks")' },
         { name: "--skip-scrape", type: "flag", desc: "Import titles and URLs only — skip content extraction" },
@@ -37,14 +37,14 @@ export default function ConsumePage() {
       <CodeTabs tabs={[
         {
           label: "curl",
-          code: `curl -X POST https://getboozle.com/api/v1/workspaces/{ws}/memory/{store}/events \\
+          code: `curl -X POST https://getoctopus.com/api/v1/workspaces/{ws}/memory/{store}/events \\
   -H "Authorization: Bearer $API_KEY" \\
   -H "Content-Type: application/json" \\
   -d '{"agent_name":"my-agent","event_type":"tool_use","content":"..."}'`,
         },
         {
           label: "CLI",
-          code: `boozle history push "Searched for auth best practices" \\
+          code: `octopus history push "Searched for auth best practices" \\
   --agent my-agent --type tool_use`,
         },
         {

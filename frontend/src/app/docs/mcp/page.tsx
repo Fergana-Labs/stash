@@ -20,27 +20,27 @@ export default function MCPPage() {
       <Title>MCP Server</Title>
       <Subtitle>
         30+ tools via the Model Context Protocol. Any MCP-compatible AI agent can read and write
-        to Boozle without the full plugin.
+        to Octopus without the full plugin.
       </Subtitle>
 
       <H3>Connect Claude Code</H3>
       <P>
-        The hosted option connects directly to getboozle.com — no local Python needed.
+        The hosted option connects directly to getoctopus.com — no local Python needed.
         The local option runs the MCP server on your machine, which is useful for self-hosted instances.
       </P>
       <CodeTabs tabs={[
         {
           label: "Hosted (recommended)",
-          code: `claude mcp add --transport http boozle https://getboozle.com/mcp \\
+          code: `claude mcp add --transport http octopus https://getoctopus.com/mcp \\
   --header "Authorization: Bearer YOUR_API_KEY"`,
         },
         {
           label: "Local MCP server",
-          code: `# Requires: pip install boozle
+          code: `# Requires: pip install octopus
 claude mcp add \\
-  -e BOOZLE_API_KEY=YOUR_API_KEY \\
-  -e BOOZLE_URL=https://getboozle.com \\
-  boozle -- python -m mcp_server.server`,
+  -e OCTOPUS_API_KEY=YOUR_API_KEY \\
+  -e OCTOPUS_URL=https://getoctopus.com \\
+  octopus -- python -m mcp_server.server`,
         },
       ]} />
 

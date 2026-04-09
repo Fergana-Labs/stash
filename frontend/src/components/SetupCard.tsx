@@ -7,7 +7,7 @@ interface SetupCardProps {
   apiKey?: string | null;
 }
 
-const DISMISS_KEY_PREFIX = "boozle_setup_dismissed_";
+const DISMISS_KEY_PREFIX = "octopus_setup_dismissed_";
 
 export default function SetupCard({ workspaceId, apiKey }: SetupCardProps) {
   const storageKey = `${DISMISS_KEY_PREFIX}${workspaceId}`;
@@ -35,10 +35,10 @@ export default function SetupCard({ workspaceId, apiKey }: SetupCardProps) {
   };
 
   const pluginCmd = "claude plugin add ./claude-plugin";
-  const connectCmd = "/boozle:connect";
+  const connectCmd = "/octopus:connect";
   const mcpCmd = apiKey
-    ? `claude mcp add --transport http boozle https://getboozle.com/mcp \\\n  --header "Authorization: Bearer ${apiKey}"`
-    : `claude mcp add --transport http boozle https://getboozle.com/mcp \\\n  --header "Authorization: Bearer YOUR_API_KEY"`;
+    ? `claude mcp add --transport http octopus https://getoctopus.com/mcp \\\n  --header "Authorization: Bearer ${apiKey}"`
+    : `claude mcp add --transport http octopus https://getoctopus.com/mcp \\\n  --header "Authorization: Bearer YOUR_API_KEY"`;
 
   return (
     <div className="bg-[#1a2332] border border-white/10 rounded-lg overflow-hidden mb-8">

@@ -110,7 +110,7 @@ async def _verify_auth0_token(token: str) -> dict:
 
 
 def _make_auth0_username(sub: str, email: str | None, name: str | None) -> str:
-    """Derive a safe Boozle username from Auth0 claims."""
+    """Derive a safe Octopus username from Auth0 claims."""
     # Prefer email prefix, then name, then sub fragment
     if email:
         candidate = email.split("@")[0]

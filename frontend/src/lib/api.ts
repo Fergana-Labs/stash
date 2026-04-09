@@ -38,7 +38,7 @@ import {
   WorkspaceMember,
 } from "./types";
 
-const TOKEN_KEY = "boozle_token";
+const TOKEN_KEY = "octopus_token";
 const LEGACY_TOKEN_KEY = "moltchat_token";
 
 // --- Persona / agent API key (localStorage) ---

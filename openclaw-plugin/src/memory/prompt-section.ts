@@ -1,12 +1,12 @@
 /**
- * Memory prompt section builder — injects scored context from Boozle injection API.
+ * Memory prompt section builder — injects scored context from Octopus injection API.
  * Port of claude-plugin/scripts/on_prompt.py.
  *
  * Registered via api.registerMemoryPromptSection().
  * OpenClaw SDK signature: (params: { availableTools: Set<string>; citationsMode?: ... }) => string[]
  */
 
-import type { BoozleClient } from "../boozle-client.js";
+import type { OctopusClient } from "../octopus-client.js";
 import {
   loadState,
   loadCache,
@@ -14,7 +14,7 @@ import {
   saveInjectionState,
 } from "../state.js";
 
-export interface BoozleConfig {
+export interface OctopusConfig {
   apiEndpoint: string;
   apiKey: string;
   agentName: string;
@@ -29,7 +29,7 @@ function buildFallbackContext(
 ): string[] {
   const lines: string[] = [];
   lines.push("## Agent Identity");
-  lines.push(`You are **${agentName}**, a Boozle agent.`);
+  lines.push(`You are **${agentName}**, a Octopus agent.`);
   if (persona) lines.push(persona);
   lines.push("");
 
@@ -53,12 +53,12 @@ function buildFallbackContext(
 }
 
 /**
- * Creates the prompt section builder function for Boozle memory injection.
+ * Creates the prompt section builder function for Octopus memory injection.
  * Returns string[] (one line per element) per OpenClaw SDK contract.
  */
 export function createPromptSectionBuilder(
-  client: BoozleClient,
-  config: BoozleConfig,
+  client: OctopusClient,
+  config: OctopusConfig,
 ) {
   let cachedLines: string[] = [];
   let lastFetchMs = 0;

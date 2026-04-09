@@ -1,15 +1,15 @@
 /**
- * `openclaw boozle setup` — onboarding wizard.
+ * `openclaw octopus setup` — onboarding wizard.
  * Verifies config, tests auth, sets up workspace and history store.
  */
 
-import type { BoozleClient } from "../boozle-client.js";
-import type { BoozleConfig } from "../memory/prompt-section.js";
+import type { OctopusClient } from "../octopus-client.js";
+import type { OctopusConfig } from "../memory/prompt-section.js";
 import { saveState, loadState, saveCache } from "../state.js";
 
 export function createSetupCommand(
-  client: BoozleClient,
-  config: BoozleConfig,
+  client: OctopusClient,
+  config: OctopusConfig,
 ) {
   return async (args: string[]): Promise<string> => {
     const lines: string[] = [];
@@ -18,8 +18,8 @@ export function createSetupCommand(
     if (!config.apiKey || !config.agentName) {
       return (
         "Missing required config. Set apiKey and agentName in your plugin config:\n" +
-        '  plugins.entries["boozle"].config.apiKey = "your-key"\n' +
-        '  plugins.entries["boozle"].config.agentName = "your-agent"'
+        '  plugins.entries["octopus"].config.apiKey = "your-key"\n' +
+        '  plugins.entries["octopus"].config.agentName = "your-agent"'
       );
     }
 
@@ -39,7 +39,7 @@ export function createSetupCommand(
         const ws = await client.workspaceInfo(config.workspaceId);
         lines.push(`Workspace: ${ws.name} (${config.workspaceId})`);
       } catch {
-        lines.push(`Warning: workspace ${config.workspaceId} not found. List workspaces with boozle_list_workspaces.`);
+        lines.push(`Warning: workspace ${config.workspaceId} not found. List workspaces with octopus_list_workspaces.`);
       }
     } else {
       const workspaces = await client.listWorkspaces(true);
@@ -51,7 +51,7 @@ export function createSetupCommand(
         );
       } else {
         lines.push(
-          "No workspaces found. Create one with boozle_create_workspace, " +
+          "No workspaces found. Create one with octopus_create_workspace, " +
           "then set workspaceId in your plugin config.",
         );
       }
@@ -101,7 +101,7 @@ export function createSetupCommand(
         );
       } catch {
         lines.push(
-          "No history store configured. Create one with boozle_create_memory_store, " +
+          "No history store configured. Create one with octopus_create_memory_store, " +
           "then set historyStoreId in your plugin config.",
         );
       }

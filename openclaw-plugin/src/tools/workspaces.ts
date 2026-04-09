@@ -5,16 +5,16 @@ import { textResult } from "../utils/tool-result.js";
  */
 
 import { Type } from "@sinclair/typebox";
-import type { BoozleClient } from "../boozle-client.js";
+import type { OctopusClient } from "../octopus-client.js";
 
 export function registerWorkspaceTools(
   api: OpenClawPluginApi,
-  client: BoozleClient,
+  client: OctopusClient,
 ) {
   api.registerTool({
-    name: "boozle_create_workspace",
-    description: "Create a new Boozle workspace",
-    label: "Create a new Boozle workspace",
+    name: "octopus_create_workspace",
+    description: "Create a new Octopus workspace",
+    label: "Create a new Octopus workspace",
     parameters: Type.Object({
       name: Type.String({ description: "Workspace name" }),
       description: Type.Optional(Type.String({ description: "Workspace description" })),
@@ -31,9 +31,9 @@ export function registerWorkspaceTools(
   });
 
   api.registerTool({
-    name: "boozle_list_workspaces",
-    description: "List Boozle workspaces (your own or all public)",
-    label: "List Boozle workspaces (your own or all public)",
+    name: "octopus_list_workspaces",
+    description: "List Octopus workspaces (your own or all public)",
+    label: "List Octopus workspaces (your own or all public)",
     parameters: Type.Object({
       mine: Type.Optional(Type.Boolean({ description: "Only list your workspaces" })),
     }),
@@ -44,9 +44,9 @@ export function registerWorkspaceTools(
   });
 
   api.registerTool({
-    name: "boozle_join_workspace",
-    description: "Join a Boozle workspace using an invite code",
-    label: "Join a Boozle workspace using an invite code",
+    name: "octopus_join_workspace",
+    description: "Join a Octopus workspace using an invite code",
+    label: "Join a Octopus workspace using an invite code",
     parameters: Type.Object({
       invite_code: Type.String({ description: "Workspace invite code" }),
     }),
@@ -57,9 +57,9 @@ export function registerWorkspaceTools(
   });
 
   api.registerTool({
-    name: "boozle_workspace_info",
-    description: "Get details about a Boozle workspace",
-    label: "Get details about a Boozle workspace",
+    name: "octopus_workspace_info",
+    description: "Get details about a Octopus workspace",
+    label: "Get details about a Octopus workspace",
     parameters: Type.Object({
       workspace_id: Type.String({ description: "Workspace UUID" }),
     }),
@@ -70,9 +70,9 @@ export function registerWorkspaceTools(
   });
 
   api.registerTool({
-    name: "boozle_workspace_members",
-    description: "List members of a Boozle workspace",
-    label: "List members of a Boozle workspace",
+    name: "octopus_workspace_members",
+    description: "List members of a Octopus workspace",
+    label: "List members of a Octopus workspace",
     parameters: Type.Object({
       workspace_id: Type.String({ description: "Workspace UUID" }),
     }),

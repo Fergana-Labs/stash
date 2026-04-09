@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # -------------------------------------------------------
-# start.sh — Start all Boozle services locally
+# start.sh — Start all Octopus services locally
 # Assumes: PostgreSQL is already running and npm
 #          dependencies are installed.
 # -------------------------------------------------------
@@ -32,7 +32,7 @@ if [ -f "$PROJECT_ROOT/.env" ]; then
     echo "Loaded environment from .env"
 fi
 
-echo "Starting Boozle services..."
+echo "Starting Octopus services..."
 echo "================================"
 
 # --- Backend (FastAPI) ---

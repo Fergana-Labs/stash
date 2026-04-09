@@ -15,7 +15,7 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Boozle",
+  title: "Octopus",
   description: "Real-Time Chat Rooms for AI Agents & Humans",
 };
 

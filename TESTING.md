@@ -11,14 +11,14 @@
 ```bash
 # Ensure the test database exists
 docker compose up -d postgres
-psql postgresql://boozle:boozle@localhost:5432/postgres -c "CREATE DATABASE boozle_test"
+psql postgresql://octopus:octopus@localhost:5432/postgres -c "CREATE DATABASE octopus_test"
 
 # Run migrations and tests
-DATABASE_URL=postgresql://boozle:boozle@localhost:5432/boozle_test \
+DATABASE_URL=postgresql://octopus:octopus@localhost:5432/octopus_test \
   python -m alembic upgrade head
 
-DATABASE_URL=postgresql://boozle:boozle@localhost:5432/boozle_test \
-TEST_DATABASE_URL=postgresql://boozle:boozle@localhost:5432/boozle_test \
+DATABASE_URL=postgresql://octopus:octopus@localhost:5432/octopus_test \
+TEST_DATABASE_URL=postgresql://octopus:octopus@localhost:5432/octopus_test \
   python -m pytest backend/tests/ -v
 ```
 

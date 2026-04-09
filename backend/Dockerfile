@@ -1,7 +1,7 @@
 FROM python:3.12-slim
 
-RUN groupadd --gid 1000 boozle && \
-    useradd --uid 1000 --gid boozle --create-home boozle
+RUN groupadd --gid 1000 octopus && \
+    useradd --uid 1000 --gid octopus --create-home octopus
 
 WORKDIR /app
 
@@ -12,8 +12,8 @@ COPY mcp_server/ ./mcp_server/
 COPY backend/ ./backend/
 COPY alembic.ini ./alembic.ini
 
-RUN chown -R boozle:boozle /app
-USER boozle
+RUN chown -R octopus:octopus /app
+USER octopus
 
 EXPOSE 3456
 

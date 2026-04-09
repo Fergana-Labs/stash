@@ -13,7 +13,7 @@ class Settings:
 
     # --- Database ---
     DATABASE_URL: str = os.getenv(
-        "DATABASE_URL", "postgresql://boozle:boozle@localhost:5432/boozle"
+        "DATABASE_URL", "postgresql://octopus:octopus@localhost:5432/octopus"
     )
     DB_POOL_MIN: int = int(os.getenv("DB_POOL_MIN", "2"))
     DB_POOL_MAX: int = int(os.getenv("DB_POOL_MAX", "20"))
@@ -53,7 +53,7 @@ class Settings:
 
     # --- Auth0 (optional — required for human account SSO login) ---
     # AUTH0_DOMAIN:    e.g. dev-abc123.us.auth0.com
-    # AUTH0_AUDIENCE:  API identifier registered in Auth0, e.g. https://getboozle.com/api
+    # AUTH0_AUDIENCE:  API identifier registered in Auth0, e.g. https://getoctopus.com/api
     AUTH0_DOMAIN: str | None = os.getenv("AUTH0_DOMAIN")
     AUTH0_AUDIENCE: str | None = os.getenv("AUTH0_AUDIENCE")
 

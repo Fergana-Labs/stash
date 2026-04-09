@@ -5,15 +5,15 @@ export default function OpenClawPage() {
     <>
       <Title>OpenClaw Plugin</Title>
       <Subtitle>
-        A TypeScript-native Boozle integration for OpenClaw agents — scored memory injection,
+        A TypeScript-native Octopus integration for OpenClaw agents — scored memory injection,
         activity streaming, and full platform tool access in one plugin.
       </Subtitle>
 
       <H3>What it does</H3>
       <P>
         The OpenClaw plugin is the TypeScript counterpart to the Claude Code plugin. It
-        registers Boozle as a <strong>memory backend</strong> inside an OpenClaw agent session,
-        plus exposes all Boozle platform resources as callable tools. Two things happen
+        registers Octopus as a <strong>memory backend</strong> inside an OpenClaw agent session,
+        plus exposes all Octopus platform resources as callable tools. Two things happen
         automatically on every session:
       </P>
       <div className="rounded-2xl border border-border bg-surface divide-y divide-border my-6">
@@ -28,7 +28,7 @@ export default function OpenClawPage() {
           },
           {
             hook: "message hook",
-            desc: "After every tool call, activity is streamed to the Boozle history store asynchronously, without blocking the agent.",
+            desc: "After every tool call, activity is streamed to the Octopus history store asynchronously, without blocking the agent.",
           },
         ].map((h) => (
           <div key={h.hook} className="flex gap-5 px-5 py-4">
@@ -50,12 +50,12 @@ npm run build`}</CodeBlock>
 
       <H3>Configuration</H3>
       <P>
-        Add a <Code>boozle</Code> section to your OpenClaw config file:
+        Add a <Code>octopus</Code> section to your OpenClaw config file:
       </P>
       <CodeBlock>{`{
   "plugins": {
-    "boozle": {
-      "apiEndpoint": "https://getboozle.com",
+    "octopus": {
+      "apiEndpoint": "https://getoctopus.com",
       "apiKey": "YOUR_PERSONA_API_KEY",
       "agentName": "your-agent-name",
       "workspaceId": "ws-uuid",
@@ -64,9 +64,9 @@ npm run build`}</CodeBlock>
   }
 }`}</CodeBlock>
       <ParamTable params={[
-        { name: "apiKey", type: "string", desc: "Persona API key from the Boozle Personas page.", required: true },
+        { name: "apiKey", type: "string", desc: "Persona API key from the Octopus Personas page.", required: true },
         { name: "agentName", type: "string", desc: "Agent identity name used when pushing history events.", required: true },
-        { name: "apiEndpoint", type: "string", desc: "Boozle API base URL. Default: https://getboozle.com" },
+        { name: "apiEndpoint", type: "string", desc: "Octopus API base URL. Default: https://getoctopus.com" },
         { name: "workspaceId", type: "string", desc: "Default workspace UUID for tool calls. Can be overridden per-call." },
         { name: "historyStoreId", type: "string", desc: "History store to stream activity into." },
       ]} />
@@ -77,16 +77,16 @@ npm run build`}</CodeBlock>
       </Callout>
 
       <H3>CLI subcommands</H3>
-      <P>The plugin adds a <Code>boozle</Code> sub-namespace to the OpenClaw CLI:</P>
-      <CodeBlock>{`openclaw boozle setup      # Verify auth + show workspace / store config
-openclaw boozle status     # Show streaming state, session ID, endpoint
-openclaw boozle sync       # Force-refresh the local context cache (last 20 events)
-openclaw boozle disconnect # Pause activity streaming (memory injection stays on)
-openclaw boozle reconnect  # Resume activity streaming`}</CodeBlock>
+      <P>The plugin adds a <Code>octopus</Code> sub-namespace to the OpenClaw CLI:</P>
+      <CodeBlock>{`openclaw octopus setup      # Verify auth + show workspace / store config
+openclaw octopus status     # Show streaming state, session ID, endpoint
+openclaw octopus sync       # Force-refresh the local context cache (last 20 events)
+openclaw octopus disconnect # Pause activity streaming (memory injection stays on)
+openclaw octopus reconnect  # Resume activity streaming`}</CodeBlock>
 
       <H3>Platform tools</H3>
       <P>
-        Beyond memory, the plugin registers full CRUD tools for every Boozle resource so
+        Beyond memory, the plugin registers full CRUD tools for every Octopus resource so
         your agent can read and write platform data without leaving the session:
       </P>
       <div className="rounded-2xl border border-border bg-surface divide-y divide-border my-6">
@@ -113,7 +113,7 @@ openclaw boozle reconnect  # Resume activity streaming`}</CodeBlock>
           { aspect: "Memory injection", claude: "SessionStart hook injects context via script", openclaw: "registerMemoryPromptSection API — evaluated before first message" },
           { aspect: "Activity streaming", claude: "PostToolUse / Stop hooks write events", openclaw: "message hook + flush plan resolver" },
           { aspect: "Platform tools", claude: "Available via slash commands only", openclaw: "Registered as first-class agent tools" },
-          { aspect: "State persistence", claude: "~/.boozle/ config files", openclaw: "OpenClaw state store (keyed by plugin ID)" },
+          { aspect: "State persistence", claude: "~/.octopus/ config files", openclaw: "OpenClaw state store (keyed by plugin ID)" },
         ].map((r) => (
           <div key={r.aspect} className="grid grid-cols-3 gap-5 px-5 py-4">
             <span className="text-[13px] font-semibold text-foreground">{r.aspect}</span>
@@ -123,7 +123,7 @@ openclaw boozle reconnect  # Resume activity streaming`}</CodeBlock>
         ))}
       </div>
       <Callout type="tip">
-        Both plugins share the same Boozle REST API and the same workspace data. A Claude
+        Both plugins share the same Octopus REST API and the same workspace data. A Claude
         Code session and an OpenClaw session in the same workspace will see each other's
         history events, chat messages, and notebook pages.
       </Callout>

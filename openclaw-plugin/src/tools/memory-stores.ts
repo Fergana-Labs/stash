@@ -5,16 +5,16 @@ import { textResult } from "../utils/tool-result.js";
  */
 
 import { Type } from "@sinclair/typebox";
-import type { BoozleClient } from "../boozle-client.js";
+import type { OctopusClient } from "../octopus-client.js";
 
 export function registerMemoryStoreTools(
   api: OpenClawPluginApi,
-  client: BoozleClient,
+  client: OctopusClient,
 ) {
   api.registerTool({
-    name: "boozle_create_memory_store",
-    description: "Create a new memory store in a Boozle workspace",
-    label: "Create a new memory store in a Boozle workspace",
+    name: "octopus_create_memory_store",
+    description: "Create a new memory store in a Octopus workspace",
+    label: "Create a new memory store in a Octopus workspace",
     parameters: Type.Object({
       workspace_id: Type.String({ description: "Workspace UUID" }),
       name: Type.String({ description: "Store name" }),
@@ -31,9 +31,9 @@ export function registerMemoryStoreTools(
   });
 
   api.registerTool({
-    name: "boozle_list_memory_stores",
-    description: "List memory stores in a Boozle workspace",
-    label: "List memory stores in a Boozle workspace",
+    name: "octopus_list_memory_stores",
+    description: "List memory stores in a Octopus workspace",
+    label: "List memory stores in a Octopus workspace",
     parameters: Type.Object({
       workspace_id: Type.String({ description: "Workspace UUID" }),
     }),
@@ -44,9 +44,9 @@ export function registerMemoryStoreTools(
   });
 
   api.registerTool({
-    name: "boozle_push_event",
-    description: "Push an event to a Boozle memory store",
-    label: "Push an event to a Boozle memory store",
+    name: "octopus_push_event",
+    description: "Push an event to a Octopus memory store",
+    label: "Push an event to a Octopus memory store",
     parameters: Type.Object({
       workspace_id: Type.String({ description: "Workspace UUID" }),
       store_id: Type.String({ description: "Memory store UUID" }),
@@ -72,9 +72,9 @@ export function registerMemoryStoreTools(
   });
 
   api.registerTool({
-    name: "boozle_query_events",
-    description: "Query events from a Boozle memory store",
-    label: "Query events from a Boozle memory store",
+    name: "octopus_query_events",
+    description: "Query events from a Octopus memory store",
+    label: "Query events from a Octopus memory store",
     parameters: Type.Object({
       workspace_id: Type.String({ description: "Workspace UUID" }),
       store_id: Type.String({ description: "Memory store UUID" }),
@@ -98,9 +98,9 @@ export function registerMemoryStoreTools(
   });
 
   api.registerTool({
-    name: "boozle_search_events",
-    description: "Full-text search over events in a Boozle memory store",
-    label: "Full-text search over events in a Boozle memory store",
+    name: "octopus_search_events",
+    description: "Full-text search over events in a Octopus memory store",
+    label: "Full-text search over events in a Octopus memory store",
     parameters: Type.Object({
       workspace_id: Type.String({ description: "Workspace UUID" }),
       store_id: Type.String({ description: "Memory store UUID" }),

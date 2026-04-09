@@ -1,32 +1,32 @@
 ---
 name: status
-description: Show Boozle connection status — persona identity, workspace, history store, streaming state.
+description: Show Octopus connection status — persona identity, workspace, history store, streaming state.
 ---
 
-# Boozle Status
+# Octopus Status
 
-Display the current Boozle plugin configuration and connection health.
+Display the current Octopus plugin configuration and connection health.
 
 ## Steps
 
-1. **Read config**: Run `boozle config` to get CLI config (base_url, default_workspace, default_chat, default_store). Output is already JSON-formatted.
+1. **Read config**: Run `octopus config` to get CLI config (base_url, default_workspace, default_chat, default_store). Output is already JSON-formatted.
 
-2. **Read plugin state** from `~/.claude/plugins/data/boozle/state.json`:
+2. **Read plugin state** from `~/.claude/plugins/data/octopus/state.json`:
    - `streaming_enabled`
    - `persona`
    - `session_id`
 
-3. **Verify connectivity**: `boozle whoami --json`
+3. **Verify connectivity**: `octopus whoami --json`
 
 4. **Check workspace**: If a default workspace is set:
-   `boozle workspaces list --mine --json`
+   `octopus workspaces list --mine --json`
 
 5. **Check history store**: If a default store is set:
-   `boozle history query --ws <workspace_id> --store <store_id> --limit 1 --json`
+   `octopus history query --ws <workspace_id> --store <store_id> --limit 1 --json`
 
 6. **Display** a formatted status summary:
    ```
-   Boozle Status
+   Octopus Status
    ---
    Agent:      {agent_name}
    Endpoint:   {base_url}

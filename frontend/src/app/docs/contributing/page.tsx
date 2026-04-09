@@ -6,7 +6,7 @@ export default function ContributingPage() {
       <Title>Contributing</Title>
       <Subtitle>
         How to set up a local development environment, run the test suites, and
-        submit a pull request to Boozle.
+        submit a pull request to Octopus.
       </Subtitle>
 
       <H3>Prerequisites</H3>
@@ -26,8 +26,8 @@ export default function ContributingPage() {
 
       <H3>Local development setup</H3>
       <CodeBlock>{`# 1. Clone
-git clone https://github.com/boozle-ai/boozle.git
-cd boozle
+git clone https://github.com/Fergana-Labs/octopus.git
+cd octopus
 
 # 2. Start Postgres
 docker compose up -d postgres
@@ -53,15 +53,15 @@ cd frontend && npm ci && cd ..
       <H3>Running tests</H3>
       <P>Both suites must pass before a PR can be merged.</P>
       <CodeBlock>{`# Backend — create a separate test database
-psql postgresql://boozle:boozle@localhost:5432/postgres -c "CREATE DATABASE boozle_test;"
+psql postgresql://octopus:octopus@localhost:5432/postgres -c "CREATE DATABASE octopus_test;"
 
 # Run migrations against the test DB
-DATABASE_URL=postgresql://boozle:boozle@localhost:5432/boozle_test \\
+DATABASE_URL=postgresql://octopus:octopus@localhost:5432/octopus_test \\
   python -m alembic upgrade head
 
 # Run the full test suite
-DATABASE_URL=postgresql://boozle:boozle@localhost:5432/boozle_test \\
-TEST_DATABASE_URL=postgresql://boozle:boozle@localhost:5432/boozle_test \\
+DATABASE_URL=postgresql://octopus:octopus@localhost:5432/octopus_test \\
+TEST_DATABASE_URL=postgresql://octopus:octopus@localhost:5432/octopus_test \\
   python -m pytest backend/tests/ -v
 
 # Frontend
@@ -73,7 +73,7 @@ cd frontend && npm test`}</CodeBlock>
           { rule: "One change per PR", detail: "Keep pull requests focused on a single logical change." },
           { rule: "Tests required", detail: "Add or update tests for any behaviour you change. The minimum coverage threshold is enforced by CI." },
           { rule: "Schema changes", detail: "Create an Alembic migration (python -m alembic revision -m \"description\"). Write both upgrade() and downgrade() using op.execute() with raw SQL." },
-          { rule: "Naming", detail: "Use Boozle for the product. The name moltchat is deprecated — do not introduce it in new code or comments." },
+          { rule: "Naming", detail: "Use Octopus for the product. The name moltchat is deprecated — do not introduce it in new code or comments." },
           { rule: "SQL safety", detail: "All queries must use parameterised placeholders ($1, $2, …). No string interpolation in SQL." },
           { rule: "Python style", detail: "PEP 8, type annotations on all public functions." },
           { rule: "TypeScript style", detail: "ESLint with eslint-config-next. Run npm run lint before pushing." },

@@ -8,18 +8,18 @@ import sys
 import time
 from pathlib import Path
 
-PLUGIN_DATA = Path(os.environ.get("CLAUDE_PLUGIN_DATA", Path.home() / ".claude/plugins/data/boozle"))
+PLUGIN_DATA = Path(os.environ.get("CLAUDE_PLUGIN_DATA", Path.home() / ".claude/plugins/data/octopus"))
 STATE_FILE = PLUGIN_DATA / "state.json"
 CACHE_FILE = PLUGIN_DATA / "context_cache.json"
 INJECTION_STATE_FILE = PLUGIN_DATA / "injection_state.json"
 CACHE_TTL = 300  # 5 minutes
 
 # Optional: path to a directory of JSON notification files dropped by an external
-# orchestration layer. Boozle will surface up to 5 pending items in the prompt.
-# Set BOOZLE_NOTIFICATIONS_DIR to point at your own notifications folder.
+# orchestration layer. Octopus will surface up to 5 pending items in the prompt.
+# Set OCTOPUS_NOTIFICATIONS_DIR to point at your own notifications folder.
 ESCALATION_DIR = Path(os.environ.get(
-    "BOOZLE_NOTIFICATIONS_DIR",
-    Path.home() / ".boozle/notifications",
+    "OCTOPUS_NOTIFICATIONS_DIR",
+    Path.home() / ".octopus/notifications",
 ))
 
 
@@ -32,8 +32,8 @@ def get_stdin_data() -> dict:
 
 
 def _load_cli_config() -> dict:
-    """Load CLI config from ~/.boozle/config.json as fallback."""
-    cli_config = Path.home() / ".boozle" / "config.json"
+    """Load CLI config from ~/.octopus/config.json as fallback."""
+    cli_config = Path.home() / ".octopus" / "config.json"
     if cli_config.exists():
         try:
             return json.loads(cli_config.read_text())
@@ -47,11 +47,11 @@ def get_config() -> dict:
     api_key = os.environ.get("CLAUDE_PLUGIN_USER_CONFIG_api_key", "")
     agent_name = os.environ.get("CLAUDE_PLUGIN_USER_CONFIG_agent_name", "")
 
-    # If env vars aren't set, fall back to CLI config (~/.boozle/config.json)
+    # If env vars aren't set, fall back to CLI config (~/.octopus/config.json)
     if not api_key:
         cli = _load_cli_config()
         return {
-            "api_endpoint": cli.get("base_url", "https://getboozle.com"),
+            "api_endpoint": cli.get("base_url", "https://getoctopus.com"),
             "api_key": cli.get("api_key", ""),
             "agent_name": cli.get("username", ""),
             "workspace_id": cli.get("default_workspace", ""),
@@ -60,7 +60,7 @@ def get_config() -> dict:
         }
 
     return {
-        "api_endpoint": os.environ.get("CLAUDE_PLUGIN_USER_CONFIG_api_endpoint", "https://getboozle.com"),
+        "api_endpoint": os.environ.get("CLAUDE_PLUGIN_USER_CONFIG_api_endpoint", "https://getoctopus.com"),
         "api_key": api_key,
         "agent_name": agent_name,
         "workspace_id": os.environ.get("CLAUDE_PLUGIN_USER_CONFIG_workspace_id", ""),
@@ -70,11 +70,11 @@ def get_config() -> dict:
 
 
 def get_client():
-    """Build a BoozleClient from plugin config."""
+    """Build a OctopusClient from plugin config."""
     # Import here to keep this module lightweight for scripts that don't need the client
-    from boozle_client import BoozleClient
+    from octopus_client import OctopusClient
     cfg = get_config()
-    return BoozleClient(base_url=cfg["api_endpoint"], api_key=cfg["api_key"])
+    return OctopusClient(base_url=cfg["api_endpoint"], api_key=cfg["api_key"])
 
 
 def is_configured() -> bool:

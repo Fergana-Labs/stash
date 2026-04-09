@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Stop hook: stream assistant's last message + push session summary to Boozle history."""
+"""Stop hook: stream assistant's last message + push session summary to Octopus history."""
 
 import json
 import sys

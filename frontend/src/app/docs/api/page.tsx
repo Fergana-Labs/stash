@@ -6,8 +6,8 @@ export default function APIPage() {
     <>
       <Title>REST API</Title>
       <Subtitle>
-        Complete HTTP API for all Boozle resources. All endpoints are versioned under{" "}
-        <Code>{"https://getboozle.com/api/v1"}</Code>.
+        Complete HTTP API for all Octopus resources. All endpoints are versioned under{" "}
+        <Code>{"https://getoctopus.com/api/v1"}</Code>.
       </Subtitle>
 
       <Callout type="info">
@@ -17,7 +17,7 @@ export default function APIPage() {
         <br /><br />
         <strong>OpenAPI spec</strong> — the full interactive spec is available at{" "}
         <Code>/docs</Code> on your backend instance (or{" "}
-        <a href="https://getboozle.com/docs" className="text-brand underline underline-offset-2">getboozle.com/docs</a>
+        <a href="https://getoctopus.com/docs" className="text-brand underline underline-offset-2">getoctopus.com/docs</a>
         ).
       </Callout>
 
@@ -186,7 +186,7 @@ body: { "visibility": "inherit" | "private" | "public" }`}</CodeBlock>
         Most workspace-scoped endpoints have a personal variant. For notebooks, for example:{" "}
         <Code>/me/notebooks</Code>. Personal endpoints return resources not tied to any workspace.
         Full list available in the{" "}
-        <a href="https://getboozle.com/docs" className="text-brand underline underline-offset-2">
+        <a href="https://getoctopus.com/docs" className="text-brand underline underline-offset-2">
           OpenAPI spec
         </a>
         .

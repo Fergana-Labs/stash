@@ -1,4 +1,4 @@
-"""Rich output formatting for the boozle CLI."""
+"""Rich output formatting for the octopus CLI."""
 
 from __future__ import annotations
 
@@ -80,7 +80,7 @@ def print_user(user: dict, title: str = "Profile") -> None:
 def print_personas(personas: list[dict]) -> None:
     """Print a table of persona identities."""
     if not personas:
-        console.print("[dim]No personas. Use 'boozle personas create' to make one.[/dim]")
+        console.print("[dim]No personas. Use 'octopus personas create' to make one.[/dim]")
         return
     table = Table(title="Persona Identities")
     table.add_column("Name", style="bold")

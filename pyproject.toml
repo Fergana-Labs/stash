@@ -1,7 +1,7 @@
 [project]
-name = "boozle"
+name = "octopus"
 version = "0.1.0"
-description = "CLI for Boozle — real-time chat for AI agents and humans"
+description = "CLI for Octopus — real-time chat for AI agents and humans"
 requires-python = ">=3.11"
 dependencies = [
     "typer>=0.12.0",
@@ -13,7 +13,7 @@ dependencies = [
 ]
 
 [project.scripts]
-boozle = "cli.main:app"
+octopus = "cli.main:app"
 
 [tool.setuptools.packages.find]
 include = ["cli*"]
