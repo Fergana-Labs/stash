@@ -38,74 +38,53 @@ import {
   WorkspaceMember,
 } from "./types";
 
-const TOKEN_KEY = "octopus_token";
-const LEGACY_TOKEN_KEY = "moltchat_token";
-
-// --- Persona / agent API key (localStorage) ---
-
-export function getToken(): string | null {
-  if (typeof window === "undefined") return null;
-  return localStorage.getItem(TOKEN_KEY) || localStorage.getItem(LEGACY_TOKEN_KEY);
-}
-
-export function setToken(token: string) {
-  localStorage.setItem(TOKEN_KEY, token);
-  localStorage.removeItem(LEGACY_TOKEN_KEY);
-}
-
-export function clearToken() {
-  localStorage.removeItem(TOKEN_KEY);
-  localStorage.removeItem(LEGACY_TOKEN_KEY);
-}
-
-// --- Auth token resolution ---
-// Auth0 session (human accounts) takes priority: fetchAccessToken() hits
-// /api/auth/token which the Auth0 middleware serves from the httpOnly session
-// cookie. Falls back to a localStorage mc_ API key for persona accounts.
-
-async function resolveAuthToken(): Promise<string | null> {
+/**
+ * Fetch a short-lived token for opening a WebSocket connection.
+ * The token is read from the server-side session (Auth0 or persona) via the
+ * BFF endpoint — it is never stored in localStorage.
+ */
+export async function fetchWsToken(): Promise<string | null> {
   try {
-    const { fetchAccessToken } = await import("./accessToken");
-    const token = await fetchAccessToken();
-    if (token) return token;
+    const res = await fetch("/api/ws-token");
+    if (!res.ok) return null;
+    const data = await res.json();
+    return (data.token as string) || null;
   } catch {
-    // Auth0 not configured or no active session.
+    return null;
   }
-  return getToken();
 }
-
-const API_BASE = "";
 
 /**
- * Build the WebSocket base URL.  Next.js rewrites proxy HTTP /api/* to the
- * backend but they cannot proxy WebSocket upgrades.  When the backend lives
- * on a separate origin (e.g. Render) we must connect directly.
+ * Build the WebSocket base URL. WebSocket upgrades cannot be proxied through
+ * Next.js route handlers, so the browser connects directly to the backend.
+ * When NEXT_PUBLIC_API_URL is set (e.g. Render) that URL is used; otherwise
+ * the same host is assumed (local dev with Next.js rewrites disabled for WS).
  */
 export function getWsBase(): string {
   const apiUrl = process.env.NEXT_PUBLIC_API_URL;
   if (apiUrl) {
-    // Convert http(s) → ws(s)
     return apiUrl.replace(/^http/, "ws");
   }
-  // Local dev — same host
   const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
   return `${protocol}//${window.location.host}`;
 }
 
+/**
+ * All API calls go through the BFF proxy at /api/proxy/* which attaches the
+ * Authorization header server-side. The browser never sees the raw token.
+ */
 async function apiFetch<T>(
   path: string,
   options: RequestInit = {}
 ): Promise<T> {
-  const token = await resolveAuthToken();
+  // Strip the /api/v1 prefix — the proxy route adds it back when forwarding.
+  const proxyPath = path.replace(/^\/api\/v1\//, "");
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
     ...(options.headers as Record<string, string>),
   };
-  if (token) {
-    headers["Authorization"] = `Bearer ${token}`;
-  }
 
-  const res = await fetch(`${API_BASE}${path}`, { ...options, headers });
+  const res = await fetch(`/api/proxy/${proxyPath}`, { ...options, headers });
   if (!res.ok) {
     const body = await res.json().catch(() => ({ detail: res.statusText }));
     throw new Error(body.detail || `API error ${res.status}`);
@@ -1159,12 +1138,12 @@ export async function removeShare(
 // --- Files ---
 
 export async function uploadFile(workspaceId: string, file: File): Promise<FileInfo> {
-  const token = getToken();
   const formData = new FormData();
   formData.append("file", file);
-  const resp = await fetch(`${API_BASE}/api/v1/workspaces/${workspaceId}/files`, {
+  // No Content-Type header — the browser sets it automatically with the
+  // multipart boundary. The BFF proxy forwards it verbatim.
+  const resp = await fetch(`/api/proxy/workspaces/${workspaceId}/files`, {
     method: "POST",
-    headers: token ? { Authorization: `Bearer ${token}` } : {},
     body: formData,
   });
   if (!resp.ok) {
@@ -1175,12 +1154,10 @@ export async function uploadFile(workspaceId: string, file: File): Promise<FileI
 }
 
 export async function uploadPersonalFile(file: File): Promise<FileInfo> {
-  const token = getToken();
   const formData = new FormData();
   formData.append("file", file);
-  const resp = await fetch(`${API_BASE}/api/v1/files`, {
+  const resp = await fetch(`/api/proxy/files`, {
     method: "POST",
-    headers: token ? { Authorization: `Bearer ${token}` } : {},
     body: formData,
   });
   if (!resp.ok) {
@@ -1202,12 +1179,10 @@ export async function deleteFile(workspaceId: string, fileId: string): Promise<v
 // --- Documents ---
 
 export async function uploadDocument(workspaceId: string, file: File): Promise<Document> {
-  const token = getToken();
   const formData = new FormData();
   formData.append("file", file);
-  const resp = await fetch(`${API_BASE}/api/v1/workspaces/${workspaceId}/documents`, {
+  const resp = await fetch(`/api/proxy/workspaces/${workspaceId}/documents`, {
     method: "POST",
-    headers: token ? { Authorization: `Bearer ${token}` } : {},
     body: formData,
   });
   if (!resp.ok) {

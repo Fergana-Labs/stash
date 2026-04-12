@@ -439,31 +439,125 @@ async def get_outlinks(page_id: UUID) -> list[dict]:
 
 
 async def get_page_graph(notebook_id: UUID) -> dict:
-    """Get the full link graph for a notebook: {nodes, edges}."""
+    """Get the full link graph for a notebook: {nodes, edges}.
+
+    Edges include both implicit wiki links (page_links) and explicit typed
+    relations (page_relations, currently valid only).
+    """
     pool = get_pool()
-    # Get all pages as nodes
     pages = await pool.fetch(
         "SELECT id, name FROM notebook_pages WHERE notebook_id = $1", notebook_id,
     )
     nodes = [{"id": str(p["id"]), "name": p["name"]} for p in pages]
 
-    # Get all links between pages in this notebook
     page_ids = [p["id"] for p in pages]
     if not page_ids:
         return {"nodes": nodes, "edges": []}
 
-    edges_rows = await pool.fetch(
+    wiki_rows = await pool.fetch(
         "SELECT source_page_id, target_page_id, link_text FROM page_links "
         "WHERE source_page_id = ANY($1) AND target_page_id = ANY($1)",
         page_ids,
     )
     edges = [
-        {"source": str(e["source_page_id"]), "target": str(e["target_page_id"]),
-         "label": e["link_text"]}
-        for e in edges_rows
+        {
+            "source": str(e["source_page_id"]),
+            "target": str(e["target_page_id"]),
+            "label": e["link_text"],
+            "edge_type": "wiki",
+        }
+        for e in wiki_rows
     ]
 
+    relation_rows = await pool.fetch(
+        "SELECT source_page_id, target_page_id, relation_type, confidence "
+        "FROM page_relations "
+        "WHERE source_page_id = ANY($1) AND target_page_id = ANY($1) "
+        "AND valid_until IS NULL",
+        page_ids,
+    )
+    for r in relation_rows:
+        edges.append({
+            "source": str(r["source_page_id"]),
+            "target": str(r["target_page_id"]),
+            "label": r["relation_type"],
+            "edge_type": "relation",
+            "confidence": r["confidence"],
+        })
+
     return {"nodes": nodes, "edges": edges}
+
+
+# --- Typed knowledge-graph relations ---
+
+
+async def upsert_relation(
+    source_page_id: UUID,
+    relation_type: str,
+    target_page_id: UUID,
+    confidence: float = 0.8,
+) -> None:
+    """Insert or refresh a typed relation between two pages.
+
+    If a row already exists for (source, relation_type, target) it is updated
+    with the new confidence and its valid_until is cleared (re-activated).
+    """
+    pool = get_pool()
+    await pool.execute(
+        "INSERT INTO page_relations "
+        "(source_page_id, relation_type, target_page_id, confidence, valid_from, valid_until) "
+        "VALUES ($1, $2, $3, $4, now(), NULL) "
+        "ON CONFLICT (source_page_id, relation_type, target_page_id) DO UPDATE "
+        "SET confidence = $4, valid_from = now(), valid_until = NULL",
+        source_page_id, relation_type, target_page_id, confidence,
+    )
+
+
+async def invalidate_conflicting_relations(
+    source_page_id: UUID,
+    relation_type: str,
+    superseding_target_id: UUID,
+) -> None:
+    """Expire all current relations of a given type from source, except the new one.
+
+    Use this when a new fact supersedes prior ones of the same kind, e.g. a new
+    "prefers" relation replacing an old one.
+    """
+    pool = get_pool()
+    await pool.execute(
+        "UPDATE page_relations SET valid_until = now() "
+        "WHERE source_page_id = $1 AND relation_type = $2 "
+        "AND target_page_id != $3 AND valid_until IS NULL",
+        source_page_id, relation_type, superseding_target_id,
+    )
+
+
+async def get_page_neighbors(
+    page_ids: list[UUID],
+    notebook_id: UUID,
+) -> list[dict]:
+    """Return 1-hop neighbours via currently-valid page_relations.
+
+    Each result dict contains the neighbouring page's full fields plus
+    the relation metadata (relation_type, confidence, direction).
+    """
+    if not page_ids:
+        return []
+    pool = get_pool()
+    rows = await pool.fetch(
+        "SELECT np.id, np.notebook_id, np.name, np.content_markdown, np.metadata, "
+        "pr.relation_type, pr.confidence, "
+        "CASE WHEN pr.source_page_id = ANY($1) THEN 'outgoing' ELSE 'incoming' END AS direction "
+        "FROM page_relations pr "
+        "JOIN notebook_pages np ON np.id = "
+        "  CASE WHEN pr.source_page_id = ANY($1) THEN pr.target_page_id "
+        "       ELSE pr.source_page_id END "
+        "WHERE (pr.source_page_id = ANY($1) OR pr.target_page_id = ANY($1)) "
+        "AND pr.valid_until IS NULL "
+        "AND np.notebook_id = $2",
+        page_ids, notebook_id,
+    )
+    return [dict(r) for r in rows]
 
 
 # --- Page embeddings ---
