@@ -7,9 +7,12 @@ const nextConfig: NextConfig = {
   output: "standalone",
   async rewrites() {
     return [
+      // Browser HTTP traffic goes through the BFF proxy at /api/proxy/*.
+      // The /api/v1/* rewrite is kept only for non-browser clients (CLI, agents)
+      // that call the Next.js server directly and expect the legacy path.
+      // WebSocket upgrades bypass the route-handler system and must still be
+      // proxied at the network level (Caddy/nginx in production).
       {
-        // Only proxy versioned API calls to the backend.
-        // /api/auth/* is reserved for the Auth0 SDK and must NOT be proxied.
         source: "/api/v1/:path*",
         destination: `${backend}/api/v1/:path*`,
       },
