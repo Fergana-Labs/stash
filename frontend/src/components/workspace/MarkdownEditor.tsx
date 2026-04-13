@@ -19,7 +19,7 @@ import { WebsocketProvider } from "y-websocket";
 import EditorToolbar from "./EditorToolbar";
 import WikiLink from "./extensions/WikiLink";
 import { NotebookPage } from "../../lib/types";
-import { getToken, getWsBase } from "../../lib/api";
+import { fetchWsToken, getWsBase } from "../../lib/api";
 
 // User colors for collaboration cursors
 const COLORS = [
@@ -43,60 +43,58 @@ export default function MarkdownEditor({ workspaceId, notebookId, file, onSave, 
   const [connected, setConnected] = useState(false);
   const [synced, setSynced] = useState(false);
 
-  // Get auth token and user info
-  const token = typeof window !== "undefined" ? getToken() : null;
-  const userName = useMemo(() => {
-    return "User";
-  }, []);
+  const userName = useMemo(() => "User", []);
   const userColor = useMemo(() => getRandomColor(), []);
 
-  // Create Y.Doc and provider
   const [ydoc] = useState(() => new Y.Doc());
   const [provider, setProvider] = useState<WebsocketProvider | null>(null);
 
+  // Fetch a short-lived WS token from the BFF right before connecting.
+  // The token is never stored in localStorage — it lives only in this closure.
   useEffect(() => {
-    if (!token) return;
+    let prov: WebsocketProvider | null = null;
+    let cancelled = false;
 
-    const wsBase = getWsBase();
+    fetchWsToken().then((token) => {
+      if (cancelled || !token) return;
 
-    const wsPath = workspaceId && notebookId
-      ? `/api/v1/workspaces/${workspaceId}/notebooks/${notebookId}/pages/${file.id}`
-      : notebookId
-        ? `/api/v1/notebooks/${notebookId}/pages/${file.id}`
-        : `/api/v1/notebooks/unknown/pages/${file.id}`;
-    const prov = new WebsocketProvider(
-      `${wsBase}${wsPath}`,
-      "yjs",
-      ydoc,
-      {
-        connect: true,
-        params: { token },
-      }
-    );
+      const wsBase = getWsBase();
+      const wsPath = workspaceId && notebookId
+        ? `/api/v1/workspaces/${workspaceId}/notebooks/${notebookId}/pages/${file.id}`
+        : notebookId
+          ? `/api/v1/notebooks/${notebookId}/pages/${file.id}`
+          : `/api/v1/notebooks/unknown/pages/${file.id}`;
 
-    prov.on("status", ({ status }: { status: string }) => {
-      setConnected(status === "connected");
+      prov = new WebsocketProvider(
+        `${wsBase}${wsPath}`,
+        "yjs",
+        ydoc,
+        { connect: true, params: { token } }
+      );
+
+      prov.on("status", ({ status }: { status: string }) => {
+        setConnected(status === "connected");
+      });
+      prov.on("sync", (isSynced: boolean) => {
+        setSynced(isSynced);
+      });
+      prov.awareness.setLocalStateField("user", {
+        name: userName,
+        color: userColor,
+      });
+
+      setProvider(prov);
     });
-
-    prov.on("sync", (isSynced: boolean) => {
-      setSynced(isSynced);
-    });
-
-    prov.awareness.setLocalStateField("user", {
-      name: userName,
-      color: userColor,
-    });
-
-    setProvider(prov);
 
     return () => {
-      prov.disconnect();
-      prov.destroy();
+      cancelled = true;
+      prov?.disconnect();
+      prov?.destroy();
       setProvider(null);
       setConnected(false);
       setSynced(false);
     };
-  }, [token, workspaceId, notebookId, file.id, ydoc, userName, userColor]);
+  }, [workspaceId, notebookId, file.id, ydoc, userName, userColor]);
 
   return (
     <div className="flex flex-col h-full">

@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import Header from "../../components/Header";
 import { useAuth } from "../../hooks/useAuth";
-import { register, setToken } from "../../lib/api";
+import { register } from "../../lib/api";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -36,7 +36,12 @@ export default function LoginPage() {
         undefined,
       );
       setPersonaKey(res.api_key);
-      setToken(res.api_key);
+      // Store the new key in an httpOnly session cookie via the BFF
+      await fetch("/api/persona/session", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ apiKey: res.api_key }),
+      });
     } catch (err) {
       setPersonaError(err instanceof Error ? err.message : "Registration failed");
     }
@@ -49,15 +54,19 @@ export default function LoginPage() {
       setPersonaError("Please enter your API key");
       return;
     }
-    setToken(apiKeyInput.trim());
     try {
-      const { getMe } = await import("../../lib/api");
-      await getMe();
+      const res = await fetch("/api/persona/session", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ apiKey: apiKeyInput.trim() }),
+      });
+      if (!res.ok) {
+        setPersonaError("Invalid API key");
+        return;
+      }
       router.push("/rooms");
     } catch {
-      setPersonaError("Invalid API key");
-      const { clearToken } = await import("../../lib/api");
-      clearToken();
+      setPersonaError("Login failed. Please try again.");
     }
   };
 
