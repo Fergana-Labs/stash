@@ -4,7 +4,8 @@ Scores candidates on:
   injection_score = relevance x recency x staleness x confidence
 
 Candidate sources: always-inject notes, keyword-matched notes/patterns,
-vector-similar events, FTS-matched events.
+1-hop graph neighbours via typed page_relations, vector-similar events,
+FTS-matched events.
 """
 
 import json
@@ -300,6 +301,40 @@ async def compute_injection(
                 ),
                 confidence=confidence,
                 source_type="pattern" if note_type == "pattern" else "note",
+            ))
+
+    # --- Graph expansion: 1-hop neighbours of matched pages via typed relations ---
+    matched_page_ids = [
+        UUID(c.key.split(":", 1)[1])
+        for c in candidates
+        if c.key.startswith("page:")
+    ]
+    if matched_page_ids:
+        neighbour_pages = await notebook_service.get_page_neighbors(matched_page_ids, notebook_id)
+        for nb in neighbour_pages:
+            nb_key = f"page:{nb['id']}"
+            if any(c.key == nb_key for c in candidates):
+                continue
+            nb_meta = nb.get("metadata", {})
+            nb_inject_count = nb_meta.get("inject_count", 0)
+            nb_last_inj_str = nb_meta.get("last_injected_at")
+            nb_last_inj = datetime.fromisoformat(nb_last_inj_str) if nb_last_inj_str else None
+            nb_content = f"## {nb['name']}\n{nb['content_markdown']}"
+
+            # Relevance is discounted because this is an indirect (graph-traversal) match.
+            # The relation confidence from the KG is used directly as the candidate confidence.
+            candidates.append(InjectionCandidate(
+                key=nb_key,
+                content=nb_content,
+                section_header=nb["name"],
+                relevance=0.55,
+                recency=recency_score(nb_inject_count, nb_last_inj, now, recency_intervals),
+                staleness=_compute_staleness(
+                    nb_key, session_state, prompt_num, now,
+                    avg_gap, fast_threshold, decay_fast, decay_slow,
+                ),
+                confidence=float(nb.get("confidence", 0.7)),
+                source_type="note",
             ))
 
     # --- Vector-similar history events ---
