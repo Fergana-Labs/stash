@@ -857,12 +857,20 @@ def setup():
     """Interactive first-time setup. Sets base URL, authenticates, and configures defaults."""
     console.print("\n[bold]Octopus setup[/bold]  (press Enter to accept defaults)\n")
 
+    # --- Step 0: Scope ---
+    console.print("[bold]Config scope[/bold]")
+    console.print("  [bold]project[/bold]  save to [cyan].octopus/config.json[/cyan] in this repo (overrides user config)")
+    console.print("  [bold]user[/bold]     save to [cyan]~/.octopus/config.json[/cyan] (applies everywhere)")
+    console.print("  [dim]Auth (api_key) always goes to user scope — it's per-machine.[/dim]")
+    scope_input = typer.prompt("Scope", default="project").strip().lower()
+    scope = "project" if scope_input.startswith("p") else "user"
+
     # --- Step 1: API endpoint ---
     cfg = load_config()
     current_url = cfg.get("base_url", "http://localhost:3456")
     default_url = "https://getoctopus.com" if "localhost" in current_url else current_url
     base_url = typer.prompt("API endpoint", default=default_url).rstrip("/")
-    save_config(base_url=base_url)
+    save_config(base_url=base_url, scope=scope)
 
     # --- Step 2: Auth ---
     has_key = bool(cfg.get("api_key"))
@@ -928,13 +936,13 @@ def setup():
             is_uuid = bool(re.match(r"^[0-9a-f-]{32,36}$", ws_action, re.I))
             if is_uuid:
                 workspace_id = ws_action
-                save_config(default_workspace=workspace_id)
+                save_config(default_workspace=workspace_id, scope=scope)
                 console.print(f"  [green]✓[/green] Default workspace set to [bold]{workspace_id[:8]}…[/bold]")
             else:
                 try:
                     ws_data = c.create_workspace(ws_action)
                     workspace_id = str(ws_data["id"])
-                    save_config(default_workspace=workspace_id)
+                    save_config(default_workspace=workspace_id, scope=scope)
                     console.print(f"  [green]✓[/green] Created workspace [bold]{ws_data['name']}[/bold]  invite: {ws_data['invite_code']}")
                 except OctopusError as e:
                     console.print(f"[red]Could not create workspace: {e.detail}[/red]")
@@ -960,12 +968,12 @@ def setup():
 
             is_uuid = bool(re.match(r"^[0-9a-f-]{32,36}$", store_action, re.I))
             if is_uuid:
-                save_config(default_store=store_action)
+                save_config(default_store=store_action, scope=scope)
                 console.print(f"  [green]✓[/green] Default store set to [bold]{store_action[:8]}…[/bold]")
             else:
                 try:
                     store_data = c.create_history(workspace_id, store_action)
-                    save_config(default_store=str(store_data["id"]))
+                    save_config(default_store=str(store_data["id"]), scope=scope)
                     console.print(f"  [green]✓[/green] Created history store [bold]{store_data['name']}[/bold]")
                 except OctopusError as e:
                     console.print(f"[red]Could not create history store: {e.detail}[/red]")
@@ -982,22 +990,42 @@ def setup():
 # ===========================================================================
 
 @app.command("config")
-def config_cmd(key: Optional[str] = typer.Argument(None), value: Optional[str] = typer.Argument(None)):
-    """Show or set config. Keys: base_url, default_workspace, default_store, output_format."""
+def config_cmd(
+    key: Optional[str] = typer.Argument(None),
+    value: Optional[str] = typer.Argument(None),
+    project: bool = typer.Option(False, "--project", help="Write to project-level config (.octopus/config.json in the repo)."),
+):
+    """Show or set config. Keys: base_url, default_workspace, default_store, output_format.
+
+    By default writes to ~/.octopus/config.json. Pass --project to write to
+    .octopus/config.json in the current project (created if missing). Project
+    config overrides user config when both exist.
+    """
+    from .config import find_project_config, USER_CONFIG_FILE
+
     if key and value:
-        cfg = load_config()
-        cfg[key] = value
-        save_config(**{k: v for k, v in cfg.items() if k in [
-            "base_url", "api_key", "username", "default_workspace", "default_chat",
-            "default_store", "output_format", "public_url",
-        ]})
-        console.print(f"[green]{key} = {value}[/green]")
-    else:
-        cfg = load_config()
-        display = dict(cfg)
-        if display.get("api_key"):
-            display["api_key"] = display["api_key"][:10] + "..."
-        console.print(json.dumps(display, indent=2, default=str))
+        scope = "project" if project else "user"
+        allowed = {
+            "base_url", "default_workspace", "default_chat",
+            "default_store", "output_format",
+        }
+        if key not in allowed and key not in {"api_key", "username"}:
+            console.print(f"[red]Unknown config key: {key}[/red]")
+            raise typer.Exit(1)
+        save_config(**{key: value, "scope": scope})
+        target = "project" if project else "user"
+        console.print(f"[green]{key} = {value}[/green]  [dim](scope: {target})[/dim]")
+        return
+
+    cfg = load_config()
+    display = dict(cfg)
+    if display.get("api_key"):
+        display["api_key"] = display["api_key"][:10] + "..."
+
+    project_path = find_project_config()
+    console.print(f"[dim]user:    {USER_CONFIG_FILE}[/dim]")
+    console.print(f"[dim]project: {project_path or '(none — project config not set)'}[/dim]\n")
+    console.print(json.dumps(display, indent=2, default=str))
 
 
 # ===========================================================================
