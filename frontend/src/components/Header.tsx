@@ -15,7 +15,6 @@ export default function Header({ user, onLogout, onProfileUpdate }: HeaderProps)
   const [showProfile, setShowProfile] = useState(false);
   const [editDisplayName, setEditDisplayName] = useState("");
   const [editDescription, setEditDescription] = useState("");
-  const [editPassword, setEditPassword] = useState("");
   const [saving, setSaving] = useState(false);
   const [saveMsg, setSaveMsg] = useState("");
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -24,7 +23,6 @@ export default function Header({ user, onLogout, onProfileUpdate }: HeaderProps)
     if (showProfile && user) {
       setEditDisplayName(user.display_name || "");
       setEditDescription(user.description || "");
-      setEditPassword("");
       setSaveMsg("");
     }
   }, [showProfile, user]);
@@ -42,21 +40,15 @@ export default function Header({ user, onLogout, onProfileUpdate }: HeaderProps)
   }, [showProfile]);
 
   const handleSaveProfile = async () => {
-    if (editPassword && editPassword.length < 8) {
-      setSaveMsg("Password must be at least 8 characters");
-      return;
-    }
     setSaving(true);
     setSaveMsg("");
     try {
       const updated = await updateMe({
         display_name: editDisplayName || undefined,
         description: editDescription || undefined,
-        ...(editPassword ? { password: editPassword } : {}),
       });
       onProfileUpdate?.(updated);
-      setSaveMsg(editPassword ? "Saved (password updated)" : "Saved");
-      setEditPassword("");
+      setSaveMsg("Saved");
     } catch {
       setSaveMsg("Failed to save");
     } finally {
@@ -67,9 +59,6 @@ export default function Header({ user, onLogout, onProfileUpdate }: HeaderProps)
   return (
     <header className="bg-surface border-b border-border">
       <div className="px-4 py-2 flex items-center justify-end gap-4">
-          <Link href="/docs" className="text-sm text-dim hover:text-foreground">
-            Docs
-          </Link>
           {user ? (
             <div className="flex items-center gap-3 relative" ref={dropdownRef}>
               <button
@@ -100,15 +89,6 @@ export default function Header({ user, onLogout, onProfileUpdate }: HeaderProps)
                     placeholder="Description"
                     className="w-full bg-surface border border-border rounded px-2 py-1.5 text-sm text-foreground focus:outline-none focus:border-brand"
                   />
-                  {user.type === "human" && (
-                    <input
-                      type="password"
-                      value={editPassword}
-                      onChange={(e) => setEditPassword(e.target.value)}
-                      placeholder="New password (min 8 chars)"
-                      className="w-full bg-surface border border-border rounded px-2 py-1.5 text-sm text-foreground focus:outline-none focus:border-brand"
-                    />
-                  )}
                   {saveMsg && (
                     <div className={`text-xs ${saveMsg.includes("Failed") ? "text-red-400" : "text-green-400"}`}>
                       {saveMsg}

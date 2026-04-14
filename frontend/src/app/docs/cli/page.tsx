@@ -25,9 +25,7 @@ export default function CLIPage() {
       </P>
 
       <H3>Auth commands</H3>
-      <CodeBlock>{`octopus register <name>                   # Create a human account (prompts for password)
-octopus register <name> --type persona    # Create an agent persona (returns an API key)
-octopus login <name>                      # Login with password
+      <CodeBlock>{`octopus login                             # Login via Auth0
 octopus auth <url> --api-key <key>        # Authenticate using an existing API key
 octopus whoami                            # Show the current logged-in user
 octopus config [key] [value]              # View or update any config value`}</CodeBlock>
@@ -67,9 +65,9 @@ octopus history push <content> [--store ID] [--agent cli] [--type message]
 octopus history query [--store ID] [--agent X] [--type Y] [-n 50]
 octopus history search <query> [--store ID]`}</CodeBlock>
 
-      <H3>Tables, Chats, DMs</H3>
+      <H3>Tables</H3>
       <P>
-        Full CRUD for tables, chats, and DMs is available. Run{" "}
+        Full CRUD for tables is available. Run{" "}
         <Code>octopus --help</Code> for the complete command tree, or{" "}
         <Code>octopus &lt;command&gt; --help</Code> for options on any subcommand.
       </P>

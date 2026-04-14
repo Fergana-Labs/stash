@@ -17,7 +17,7 @@ import Placeholder from "@tiptap/extension-placeholder";
 import * as Y from "yjs";
 import { WebsocketProvider } from "y-websocket";
 import EditorToolbar from "./EditorToolbar";
-import WikiLink from "./extensions/WikiLink";
+import WikiLink, { WikiLinkNode } from "./extensions/WikiLink";
 import { NotebookPage } from "../../lib/types";
 import { getToken, getWsBase } from "../../lib/api";
 
@@ -37,9 +37,10 @@ interface MarkdownEditorProps {
   file: NotebookPage;
   onSave: (content: string) => void;
   pageNames?: string[];
+  onNavigateToPage?: (pageName: string) => void;
 }
 
-export default function MarkdownEditor({ workspaceId, notebookId, file, onSave, pageNames = [] }: MarkdownEditorProps) {
+export default function MarkdownEditor({ workspaceId, notebookId, file, onSave, pageNames = [], onNavigateToPage }: MarkdownEditorProps) {
   const [connected, setConnected] = useState(false);
   const [synced, setSynced] = useState(false);
 
@@ -120,6 +121,7 @@ export default function MarkdownEditor({ workspaceId, notebookId, file, onSave, 
           initialMarkdown={file.content_markdown}
           workspaceId={workspaceId}
           pageNames={pageNames}
+          onNavigateToPage={onNavigateToPage}
         />
       ) : (
         <div className="flex-1 flex items-center justify-center bg-background text-muted">
@@ -136,17 +138,19 @@ function CollaborativeEditor({
   initialMarkdown,
   workspaceId,
   pageNames,
+  onNavigateToPage,
 }: {
   ydoc: Y.Doc;
   onSave: (content: string) => void;
   initialMarkdown: string;
   workspaceId: string | null;
   pageNames: string[];
+  onNavigateToPage?: (pageName: string) => void;
 }) {
   const editor = useEditor({
     immediatelyRender: false,
     extensions: [
-      // Match collab server's createTiptapExtensions() exactly
+      // TipTap extensions — must match backend/services/yjs_converter.py schema
       StarterKit.configure({
         blockquote: false,
         codeBlock: false,
@@ -175,6 +179,7 @@ function CollaborativeEditor({
           class: "max-w-full rounded-md my-2",
         },
       }),
+      WikiLinkNode,
       WikiLink.configure({
         pageNames,
       }),
@@ -191,6 +196,18 @@ function CollaborativeEditor({
       },
     },
   });
+
+  // Wiki link click handler
+  useEffect(() => {
+    const handleWikiLinkClick = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (detail?.pageName && onNavigateToPage) {
+        onNavigateToPage(detail.pageName);
+      }
+    };
+    document.addEventListener("wiki-link-click", handleWikiLinkClick);
+    return () => document.removeEventListener("wiki-link-click", handleWikiLinkClick);
+  }, [onNavigateToPage]);
 
   // Keyboard shortcut: Ctrl+S to save
   useEffect(() => {
@@ -248,6 +265,10 @@ function renderNode(node: JSONNode, depth: number): string {
       return `${children.trim().split("\n").map((line) => `> ${line}`).join("\n")}\n\n`;
     case "hardBreak":
       return "\n";
+    case "wikiLinkNode": {
+      const pageName = node.attrs?.pageName || "";
+      return `[[${pageName}]]`;
+    }
     case "text":
       return applyMarks(node.text || "", node.marks || []);
     default:

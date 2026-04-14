@@ -8,33 +8,41 @@ import SetupCard from "../../../components/SetupCard";
 import WorkspaceSidebar from "../../../components/workspace/WorkspaceSidebar";
 import { useAuth } from "../../../hooks/useAuth";
 import {
-  createChat,
   createNotebook,
-  deleteChat,
   deleteNotebook,
   getWorkspace,
   listNotebooks,
-  listChats,
-  listHistories,
-  createHistory,
-  listDecks,
-  createDeck,
-  deleteDeck,
+  listFiles,
   listTables,
   createTable,
   deleteTable,
-  getWebhook,
-  setWebhook,
-  updateWebhook,
-  deleteWebhook,
   joinWorkspace as apiJoinRoom,
   getWorkspaceMembers,
   leaveWorkspace,
   deleteWorkspace,
   kickWorkspaceMember,
   updateWorkspace,
+  getActivityTimeline,
+  getKnowledgeDensity,
+  getEmbeddingProjection,
+  getPageGraph,
 } from "../../../lib/api";
-import { Chat, Deck, History, Notebook, Table, Webhook, Workspace, WorkspaceMember } from "../../../lib/types";
+import {
+  ActivityTimeline,
+  EmbeddingProjection,
+  KnowledgeDensity,
+  Notebook,
+  FileInfo,
+  PageGraph,
+  Table,
+  Workspace,
+  WorkspaceMember,
+} from "../../../lib/types";
+import DashboardSection from "../../../components/viz/DashboardSection";
+import AgentActivityTimeline from "../../../components/viz/AgentActivityTimeline";
+import KnowledgeDensityMap from "../../../components/viz/KnowledgeDensityMap";
+import EmbeddingSpaceExplorer from "../../../components/viz/EmbeddingSpaceExplorer";
+import PageGraphView from "../../../components/workspace/PageGraphView";
 
 interface WorkspaceSectionProps {
   title: string;
@@ -76,28 +84,24 @@ export default function WorkspacePage() {
 
   const [workspace, setWorkspace] = useState<Workspace | null>(null);
   const [notebooks, setNotebooks] = useState<Notebook[]>([]);
-  const [chats, setChats] = useState<Chat[]>([]);
-  const [histories, setHistories] = useState<History[]>([]);
-  const [decks, setDecks] = useState<Deck[]>([]);
   const [tables, setTables] = useState<Table[]>([]);
-  const [webhook, setWebhookState] = useState<Webhook | null>(null);
+  const [recentFiles, setRecentFiles] = useState<FileInfo[]>([]);
   const [members, setMembers] = useState<WorkspaceMember[]>([]);
   const [isMember, setIsMember] = useState(false);
   const [error, setError] = useState("");
   const [dataLoaded, setDataLoaded] = useState(false);
   const [showManageSidebar, setShowManageSidebar] = useState(false);
-  const [showWebhookForm, setShowWebhookForm] = useState(false);
-  const [webhookUrl, setWebhookUrl] = useState("");
-  const [webhookSecret, setWebhookSecret] = useState("");
 
-  const buildWorkspaceChatHref = (chat: Chat) => {
-    const params = new URLSearchParams({
-      kind: "workspace",
-      workspaceId,
-      label: chat.name,
-    });
-    return `/chats/${chat.id}?${params.toString()}`;
-  };
+  // Visualization state
+  const [timeline, setTimeline] = useState<ActivityTimeline | null>(null);
+  const [density, setDensity] = useState<KnowledgeDensity | null>(null);
+  const [projection, setProjection] = useState<EmbeddingProjection | null>(null);
+  const [vizLoading, setVizLoading] = useState(true);
+
+  // Page graph state
+  const [showGraph, setShowGraph] = useState(false);
+  const [pageGraph, setPageGraph] = useState<PageGraph | null>(null);
+  const [graphNotebookId, setGraphNotebookId] = useState<string | null>(null);
 
   const loadWorkspace = useCallback(async () => {
     try { setWorkspace(await getWorkspace(workspaceId)); } catch { setError("Workspace not found"); }
@@ -105,23 +109,16 @@ export default function WorkspacePage() {
 
   const loadData = useCallback(async () => {
     try {
-      const [nbRes, chatRes, m, histRes, deckRes, tblRes, wh] = await Promise.all([
+      const [nbRes, m, tblRes, filesRes] = await Promise.all([
         listNotebooks(workspaceId).then(r => r?.notebooks ?? []).catch(() => [] as Notebook[]),
-        listChats(workspaceId).then(r => r?.chats ?? []).catch(() => [] as Chat[]),
         getWorkspaceMembers(workspaceId).catch(() => [] as WorkspaceMember[]),
-        listHistories(workspaceId).then(r => r?.stores ?? []).catch(() => [] as History[]),
-        listDecks(workspaceId).then(r => r?.decks ?? []).catch(() => [] as Deck[]),
         listTables(workspaceId).then(r => r?.tables ?? []).catch(() => [] as Table[]),
-        getWebhook(workspaceId).catch(() => null),
+        listFiles(workspaceId).catch(() => [] as FileInfo[]),
       ]);
       setNotebooks(nbRes);
-      setChats(chatRes);
       setMembers(m);
-      setHistories(histRes);
-      setDecks(deckRes);
       setTables(tblRes);
-      setWebhookState(wh);
-      if (wh) { setWebhookUrl(wh.url); }
+      setRecentFiles(filesRes.slice(0, 5));
       if (user) setIsMember(m.some(mem => mem.user_id === user.id));
       setDataLoaded(true);
     } catch { setIsMember(false); setDataLoaded(true); }
@@ -129,6 +126,19 @@ export default function WorkspacePage() {
 
   useEffect(() => { loadWorkspace(); }, [loadWorkspace]);
   useEffect(() => { if (user) loadData(); }, [user, loadData]);
+  useEffect(() => {
+    if (!user) return;
+    setVizLoading(true);
+    Promise.all([
+      getActivityTimeline().catch(() => null),
+      getKnowledgeDensity().catch(() => null),
+      getEmbeddingProjection().catch(() => null),
+    ]).then(([t, d, p]) => {
+      setTimeline(t);
+      setDensity(d);
+      setProjection(p);
+    }).finally(() => setVizLoading(false));
+  }, [user]);
 
   const handleJoin = async () => {
     if (!workspace) return;
@@ -143,49 +153,12 @@ export default function WorkspacePage() {
     catch (err) { setError(err instanceof Error ? err.message : "Failed to create notebook"); }
   };
 
-  const handleCreateChat = async () => {
-    const name = prompt("Chat name:");
-    if (!name?.trim()) return;
-    try {
-      const chat = await createChat(workspaceId, name.trim());
-      await loadData();
-      router.push(buildWorkspaceChatHref(chat));
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to create chat");
-    }
-  };
-
-  const handleDeleteChat = async (chatId: string) => {
-    if (!confirm("Delete this chat and all its messages?")) return;
-    try { await deleteChat(workspaceId, chatId); await loadData(); }
-    catch (err) { setError(err instanceof Error ? err.message : "Failed to delete chat"); }
-  };
-
   const handleDeleteNotebook = async (nbId: string) => {
     if (!confirm("Delete this notebook and all its pages?")) return;
     try { await deleteNotebook(workspaceId, nbId); await loadData(); }
     catch (err) { setError(err instanceof Error ? err.message : "Failed to delete"); }
   };
 
-  const handleCreateHistory = async () => {
-    const name = prompt("History store name:");
-    if (!name?.trim()) return;
-    try { await createHistory(workspaceId, name.trim()); await loadData(); }
-    catch (err) { setError(err instanceof Error ? err.message : "Failed to create history store"); }
-  };
-
-  const handleCreateDeck = async () => {
-    const name = prompt("Deck name:");
-    if (!name?.trim()) return;
-    try { await createDeck(workspaceId, name.trim()); await loadData(); }
-    catch (err) { setError(err instanceof Error ? err.message : "Failed to create deck"); }
-  };
-
-  const handleDeleteDeck = async (deckId: string) => {
-    if (!confirm("Delete this deck?")) return;
-    try { await deleteDeck(workspaceId, deckId); await loadData(); }
-    catch (err) { setError(err instanceof Error ? err.message : "Failed to delete deck"); }
-  };
 
   const handleCreateTable = async () => {
     const name = prompt("Table name:");
@@ -200,32 +173,6 @@ export default function WorkspacePage() {
     catch (err) { setError(err instanceof Error ? err.message : "Failed to delete table"); }
   };
 
-  const handleSaveWebhook = async () => {
-    if (!webhookUrl.trim()) return;
-    try {
-      if (webhook) {
-        await updateWebhook(workspaceId, { url: webhookUrl.trim() });
-      } else {
-        await setWebhook(workspaceId, webhookUrl.trim(), webhookSecret || undefined);
-      }
-      await loadData();
-      setShowWebhookForm(false);
-      setWebhookSecret("");
-    } catch (err) { setError(err instanceof Error ? err.message : "Failed to save webhook"); }
-  };
-
-  const handleDeleteWebhook = async () => {
-    if (!confirm("Delete your webhook for this workspace?")) return;
-    try { await deleteWebhook(workspaceId); setWebhookState(null); setWebhookUrl(""); setShowWebhookForm(false); }
-    catch (err) { setError(err instanceof Error ? err.message : "Failed to delete webhook"); }
-  };
-
-  const handleToggleWebhook = async () => {
-    if (!webhook) return;
-    try { await updateWebhook(workspaceId, { is_active: !webhook.is_active }); await loadData(); }
-    catch (err) { setError(err instanceof Error ? err.message : "Failed to update webhook"); }
-  };
-
   const isOwner = members.some(m => m.user_id === user?.id && m.role === "owner");
 
   if (loading) return <div className="min-h-screen flex items-center justify-center text-muted">Loading...</div>;
@@ -237,7 +184,6 @@ export default function WorkspacePage() {
         {/* Workspace header */}
         <div className="bg-surface border-b border-border px-4 py-2 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <Link href="/rooms" className="text-dim hover:text-foreground text-sm">&larr;</Link>
             <h1 className="text-foreground font-medium">{workspace?.name || "Loading..."}</h1>
             {workspace?.description && <span className="text-muted text-sm hidden sm:inline">{workspace.description}</span>}
           </div>
@@ -269,60 +215,89 @@ export default function WorkspacePage() {
           <div className="flex-1 flex overflow-hidden">
             <div className="flex-1 overflow-y-auto">
               <div className="max-w-4xl mx-auto w-full px-6 py-8 space-y-5">
-              {dataLoaded && histories.length === 0 && chats.length === 0 && notebooks.length === 0 && (
+              {dataLoaded && notebooks.length === 0 && (
                 <SetupCard workspaceId={workspaceId} />
               )}
 
-              <div className="bg-raised border border-border rounded-xl px-5 py-4">
-                <div className="flex items-start justify-between gap-4">
-                  <div className="min-w-0">
-                    <h2 className="text-lg font-semibold text-foreground">{workspace?.name || "Workspace"}</h2>
-                    <p className="text-sm text-dim mt-1">
-                      Organize your agent work across chats, memory, notebooks, decks, tables, and webhooks.
-                    </p>
-                  </div>
-                  <div className="text-right text-xs text-muted flex-shrink-0">
-                    <div>{members.length} member{members.length !== 1 ? "s" : ""}</div>
-                    {workspace?.invite_code && <div className="mt-1">Invite code: {workspace.invite_code}</div>}
+              {/* Visualizations */}
+              {(vizLoading || timeline?.buckets.length || density?.clusters.length || projection?.points.length) ? (
+                <div className="space-y-4">
+                  <DashboardSection title="Agent Activity" loading={vizLoading} empty={!timeline?.buckets.length} emptyMessage="No agent activity yet.">
+                    {timeline && <AgentActivityTimeline data={timeline} />}
+                  </DashboardSection>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <DashboardSection title="Key Topics" loading={vizLoading} empty={!density?.clusters.length} emptyMessage="No content yet.">
+                      {density && <KnowledgeDensityMap data={density} onTopicClick={(topic) => router.push(`/search?q=${encodeURIComponent(topic)}`)} />}
+                    </DashboardSection>
+                    <DashboardSection title="Embedding Space" loading={vizLoading} empty={!projection?.points.length} emptyMessage="No embeddings yet.">
+                      {projection && <EmbeddingSpaceExplorer data={projection} />}
+                    </DashboardSection>
                   </div>
                 </div>
-              </div>
+              ) : null}
 
-              <WorkspaceSection
-                title="Chats"
-                description="Real-time channels for agents and humans. Create one to start a conversation."
-                actionLabel="+ New"
-                onAction={handleCreateChat}
-              >
-                {chats.length === 0 ? (
-                  <p className="text-sm text-muted">No chats yet.</p>
-                ) : (
-                  <div className="space-y-1">
-                    {chats.map(chat => (
-                      <div key={chat.id} className="group flex items-center justify-between px-3 py-2 rounded-lg hover:bg-raised transition-colors">
-                        <Link href={buildWorkspaceChatHref(chat)} className="flex items-center gap-3 flex-1 min-w-0">
-                          <div className="w-7 h-7 rounded-md bg-brand/15 text-brand flex items-center justify-center text-xs font-bold">#</div>
-                          <div className="text-sm text-foreground">{chat.name}</div>
-                        </Link>
-                        {isOwner && (
-                          <button onClick={() => handleDeleteChat(chat.id)} className="text-xs text-red-400 hover:text-red-300 px-2 py-1 opacity-0 group-hover:opacity-100">Delete</button>
-                        )}
-                      </div>
-                    ))}
+              {/* Page Graph */}
+              {notebooks.length > 0 && (
+                <div className="bg-surface border border-border rounded-xl px-5 py-4">
+                  <div className="flex items-center justify-between">
+                    <h2 className="text-sm font-semibold text-foreground uppercase tracking-wider">Page Graph</h2>
+                    <div className="flex items-center gap-2">
+                      <select
+                        className="text-xs bg-raised border border-border rounded px-2 py-1 text-foreground"
+                        value={graphNotebookId || ""}
+                        onChange={(e) => {
+                          setGraphNotebookId(e.target.value || null);
+                          setPageGraph(null);
+                          setShowGraph(false);
+                        }}
+                      >
+                        <option value="">Select notebook</option>
+                        {notebooks.map((nb) => (
+                          <option key={nb.id} value={nb.id}>{nb.name}</option>
+                        ))}
+                      </select>
+                      <button
+                        onClick={async () => {
+                          if (!graphNotebookId) return;
+                          try {
+                            const g = await getPageGraph(workspaceId, graphNotebookId);
+                            setPageGraph(g);
+                            setShowGraph(true);
+                          } catch { /* ignore */ }
+                        }}
+                        disabled={!graphNotebookId}
+                        className="text-xs text-brand hover:text-brand-hover px-2 py-1 rounded hover:bg-brand/5 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                      >
+                        View
+                      </button>
+                    </div>
                   </div>
-                )}
-              </WorkspaceSection>
+                  {showGraph && pageGraph && (
+                    <div className="mt-4 pt-4 border-t border-border-subtle">
+                      <PageGraphView
+                        graph={pageGraph}
+                        onClose={() => setShowGraph(false)}
+                        onSelectPage={() => router.push("/notebooks")}
+                        inline
+                      />
+                    </div>
+                  )}
+                </div>
+              )}
 
               <WorkspaceSection
-                title="Notebooks"
-                description="The sleep agent writes wiki pages here: categories, backlinks, and summaries."
-                actionLabel="+ New"
-                onAction={handleCreateNotebook}
+                title="Wiki"
+                description="Notebooks and tables — wiki pages with backlinks, and structured data."
               >
+                {/* Notebooks */}
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-[10px] font-medium text-muted uppercase tracking-wider">Notebooks</span>
+                  <button onClick={handleCreateNotebook} className="text-xs text-brand hover:text-brand-hover">+ New</button>
+                </div>
                 {notebooks.length === 0 ? (
-                  <p className="text-sm text-muted">No notebooks yet. Enable curation from <Link href="/personas" className="text-brand hover:underline">Personas</Link>.</p>
+                  <p className="text-sm text-muted mb-4">No notebooks yet.</p>
                 ) : (
-                  <div className="space-y-1">
+                  <div className="space-y-1 mb-4">
                     {notebooks.map(nb => (
                       <div key={nb.id} className="flex items-center justify-between px-3 py-2 rounded-lg hover:bg-raised transition-colors">
                         <Link href="/notebooks" className="flex items-center gap-3 flex-1 min-w-0">
@@ -332,71 +307,17 @@ export default function WorkspacePage() {
                             {nb.description && <div className="text-xs text-muted">{nb.description}</div>}
                           </div>
                         </Link>
-                        <button onClick={() => handleDeleteNotebook(nb.id)} className="text-xs text-red-400 hover:text-red-300 px-2 py-1">Delete</button>
+                        <button onClick={() => handleDeleteNotebook(nb.id)} className="text-xs text-red-400 hover:text-red-300 px-2 py-1 opacity-0 group-hover:opacity-100">Delete</button>
                       </div>
                     ))}
                   </div>
                 )}
-              </WorkspaceSection>
 
-              <WorkspaceSection
-                title="History"
-                description="Agent sessions stream here: every tool call, edit, and message."
-                actionLabel="+ New"
-                onAction={handleCreateHistory}
-              >
-                {histories.length === 0 ? (
-                  <p className="text-sm text-muted">No history stores yet. Connect an agent to start streaming sessions.</p>
-                ) : (
-                  <div className="space-y-1">
-                    {histories.map(h => (
-                      <Link key={h.id} href="/memory" className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-raised transition-colors">
-                        <div className="w-7 h-7 rounded-md bg-violet-500/15 text-violet-500 flex items-center justify-center text-xs font-bold">H</div>
-                        <div className="flex-1 min-w-0">
-                          <div className="text-sm text-foreground">{h.name}</div>
-                          {h.description && <div className="text-xs text-muted truncate">{h.description}</div>}
-                        </div>
-                        {h.event_count != null && (
-                          <span className="text-xs text-muted">{h.event_count} events</span>
-                        )}
-                      </Link>
-                    ))}
-                  </div>
-                )}
-              </WorkspaceSection>
-
-              <WorkspaceSection
-                title="Decks"
-                description="Shareable HTML for reports, dashboards, and generated pages."
-                actionLabel="+ New"
-                onAction={handleCreateDeck}
-              >
-                {decks.length === 0 ? (
-                  <p className="text-sm text-muted">No decks yet.</p>
-                ) : (
-                  <div className="space-y-1">
-                    {decks.map(d => (
-                      <div key={d.id} className="flex items-center justify-between px-3 py-2 rounded-lg hover:bg-raised transition-colors">
-                        <Link href={`/decks/${d.id}/edit?workspaceId=${workspaceId}`} className="flex items-center gap-3 flex-1 min-w-0">
-                          <div className="w-7 h-7 rounded-md bg-blue-500/15 text-blue-500 flex items-center justify-center text-xs font-bold">D</div>
-                          <div>
-                            <div className="text-sm text-foreground">{d.name}</div>
-                            <div className="text-xs text-muted">{d.deck_type}</div>
-                          </div>
-                        </Link>
-                        <button onClick={() => handleDeleteDeck(d.id)} className="text-xs text-red-400 hover:text-red-300 px-2 py-1">Delete</button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </WorkspaceSection>
-
-              <WorkspaceSection
-                title="Tables"
-                description="Structured data agents can read and write, like a shared spreadsheet."
-                actionLabel="+ New"
-                onAction={handleCreateTable}
-              >
+                {/* Tables */}
+                <div className="flex items-center justify-between mb-2 pt-3 border-t border-border-subtle">
+                  <span className="text-[10px] font-medium text-muted uppercase tracking-wider">Tables</span>
+                  <button onClick={handleCreateTable} className="text-xs text-brand hover:text-brand-hover">+ New</button>
+                </div>
                 {tables.length === 0 ? (
                   <p className="text-sm text-muted">No tables yet.</p>
                 ) : (
@@ -420,71 +341,45 @@ export default function WorkspacePage() {
               </WorkspaceSection>
 
               <WorkspaceSection
-                title="Webhook"
-                description="Receive event notifications when chat or memory activity happens."
-                actionLabel={!webhook && !showWebhookForm ? "+ Configure" : undefined}
-                onAction={!webhook && !showWebhookForm ? () => setShowWebhookForm(true) : undefined}
+                title="History"
+                description="Agent sessions — every tool call, edit, and message."
               >
-                {webhook && !showWebhookForm ? (
-                  <div className="bg-raised border border-border rounded-lg px-4 py-3">
-                    <div className="flex items-center justify-between mb-2">
-                      <div className="flex items-center gap-2">
-                        <div className={`w-2 h-2 rounded-full ${webhook.is_active ? "bg-green-500" : "bg-gray-400"}`} />
-                        <span className="text-sm text-foreground">{webhook.is_active ? "Active" : "Paused"}</span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <button onClick={handleToggleWebhook} className="text-xs text-dim hover:text-foreground">
-                          {webhook.is_active ? "Pause" : "Resume"}
-                        </button>
-                        <button onClick={() => setShowWebhookForm(true)} className="text-xs text-brand hover:text-brand-hover">Edit</button>
-                        <button onClick={handleDeleteWebhook} className="text-xs text-red-400 hover:text-red-300">Delete</button>
-                      </div>
-                    </div>
-                    <div className="text-xs text-muted font-mono truncate">{webhook.url}</div>
-                    {webhook.has_secret && <div className="text-xs text-muted mt-1">HMAC-SHA256 signing enabled</div>}
-                    {webhook.event_filter.length > 0 && (
-                      <div className="text-xs text-muted mt-1">Events: {webhook.event_filter.join(", ")}</div>
-                    )}
-                  </div>
-                ) : showWebhookForm ? (
-                  <div className="bg-raised border border-border rounded-lg px-4 py-3 space-y-3">
-                    <div>
-                      <label className="block text-xs text-dim mb-1">Webhook URL</label>
-                      <input
-                        type="url"
-                        value={webhookUrl}
-                        onChange={e => setWebhookUrl(e.target.value)}
-                        placeholder="https://example.com/webhook"
-                        className="w-full bg-surface border border-border rounded px-3 py-2 text-sm text-foreground focus:outline-none focus:border-brand"
-                      />
-                    </div>
-                    {!webhook && (
-                      <div>
-                        <label className="block text-xs text-dim mb-1">Secret (optional, for HMAC-SHA256 signing)</label>
-                        <input
-                          type="text"
-                          value={webhookSecret}
-                          onChange={e => setWebhookSecret(e.target.value)}
-                          placeholder="your-webhook-secret"
-                          className="w-full bg-surface border border-border rounded px-3 py-2 text-sm text-foreground focus:outline-none focus:border-brand"
-                        />
-                      </div>
-                    )}
-                    <div className="text-xs text-muted">
-                      Receives <code className="text-foreground">chat.message</code> and <code className="text-foreground">memory.event</code> payloads via POST.
-                    </div>
-                    <div className="flex gap-2">
-                      <button onClick={handleSaveWebhook} className="bg-brand hover:bg-brand-hover text-foreground px-3 py-1.5 rounded text-sm">
-                        {webhook ? "Update" : "Create"}
-                      </button>
-                      <button onClick={() => { setShowWebhookForm(false); if (webhook) setWebhookUrl(webhook.url); }}
-                        className="text-sm text-dim hover:text-foreground px-3 py-1.5">Cancel</button>
-                    </div>
-                  </div>
+                <Link href={`/memory?ws=${workspaceId}`} className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-raised transition-colors">
+                  <div className="w-7 h-7 rounded-md bg-violet-500/15 text-violet-500 flex items-center justify-center text-xs font-bold">H</div>
+                  <div className="text-sm text-foreground">View agent sessions</div>
+                </Link>
+              </WorkspaceSection>
+
+              <WorkspaceSection
+                title="Files"
+                description="Uploaded images, documents, and attachments."
+                actionLabel="View all"
+                onAction={() => router.push(`/files?ws=${workspaceId}`)}
+              >
+                {recentFiles.length === 0 ? (
+                  <p className="text-sm text-muted">No files uploaded yet.</p>
                 ) : (
-                  <p className="text-sm text-muted">No webhook configured.</p>
+                  <div className="space-y-1">
+                    {recentFiles.map(f => (
+                      <a key={f.id} href={f.url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-raised transition-colors">
+                        <div className="w-7 h-7 rounded-md bg-amber-500/15 text-amber-500 flex items-center justify-center text-[10px] font-bold">
+                          {f.content_type.startsWith("image/") ? "IMG" : "FILE"}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="text-sm text-foreground truncate">{f.name}</div>
+                          <div className="text-xs text-muted">{(f.size_bytes / 1024).toFixed(1)} KB</div>
+                        </div>
+                      </a>
+                    ))}
+                    {recentFiles.length >= 5 && (
+                      <Link href={`/files?ws=${workspaceId}`} className="block px-3 py-1.5 text-xs text-brand hover:text-brand-hover">
+                        View all files...
+                      </Link>
+                    )}
+                  </div>
                 )}
               </WorkspaceSection>
+
               </div>
             </div>
 
@@ -499,6 +394,18 @@ export default function WorkspacePage() {
                 onDelete={async () => { await deleteWorkspace(workspaceId); router.push("/rooms"); }}
                 onKickMember={async (uid) => { await kickWorkspaceMember(workspaceId, uid); await loadData(); }}
                 onUpdateWorkspace={async (data) => { setWorkspace(await updateWorkspace(workspaceId, data)); }}
+                onAddMember={async (username) => {
+                  const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3456"}/api/v1/workspaces/${workspaceId}/members`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json", "Authorization": `Bearer ${localStorage.getItem("octopus_token") || ""}` },
+                    body: JSON.stringify({ username }),
+                  });
+                  if (!res.ok) {
+                    const data = await res.json().catch(() => ({}));
+                    throw new Error(data.detail || "Failed to add member");
+                  }
+                  await loadData();
+                }}
               />
             )}
           </div>

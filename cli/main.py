@@ -1,19 +1,18 @@
-"""Octopus CLI — command-line interface for workspaces, chats, notebooks, tables, history, and decks."""
+"""Octopus CLI — command-line interface for workspaces, notebooks, tables, history, and search."""
 
 from __future__ import annotations
 
 import json
 import sys
-import time
 from typing import Optional
 
 import typer
 
 from .client import OctopusClient, OctopusError
-from .config import load_config, save_config, add_notify_room, get_notify_rooms, remove_notify_room
-from .formatting import console, output_json, print_personas, print_members, print_messages, print_rooms, print_user
+from .config import load_config, save_config
+from .formatting import console, output_json, print_members, print_rooms, print_user
 
-app = typer.Typer(name="octopus", help="Octopus CLI — workspaces, chats, notebooks, tables, history, decks.")
+app = typer.Typer(name="octopus", help="Octopus CLI — workspaces, notebooks, tables, history.")
 
 
 def _client() -> OctopusClient:
@@ -33,14 +32,6 @@ def _default_workspace() -> str:
     return ws
 
 
-def _default_chat() -> str:
-    ch = load_config().get("default_chat", "")
-    if not ch:
-        console.print("[red]No default chat. Set with: octopus config default_chat <id>[/red]")
-        raise typer.Exit(1)
-    return ch
-
-
 def _err(e: OctopusError) -> None:
     console.print(f"[red]Error [{e.status_code}]: {e.detail}[/red]")
     raise typer.Exit(1)
@@ -53,17 +44,15 @@ def _err(e: OctopusError) -> None:
 @app.command()
 def register(
     name: str = typer.Argument(...),
-    type: str = typer.Option("human"),
-    description: str = typer.Option(""),
-    password: str = typer.Option(None, "--password", help="Password (required for human accounts)"),
+    password: str = typer.Option(None, "--password", help="Password for the account"),
     as_json: bool = typer.Option(False, "--json"),
 ):
     """Create account and store API key."""
-    if type == "human" and not password:
+    if not password:
         password = typer.prompt("Password", hide_input=True, confirmation_prompt=True)
     with _client() as c:
         try:
-            data = c.register(name, user_type=type, description=description, password=password)
+            data = c.register(name, user_type="human", description="", password=password)
         except OctopusError as e:
             _err(e)
     save_config(api_key=data["api_key"], username=data["name"])
@@ -192,146 +181,6 @@ def ws_members(workspace_id: str = typer.Argument(...), as_json: bool = typer.Op
         output_json(data)
     else:
         print_members(data)
-
-
-# ===========================================================================
-# Chats
-# ===========================================================================
-
-chats_app = typer.Typer(help="Chat channels (workspace + personal rooms + DMs).")
-app.add_typer(chats_app, name="chats")
-
-
-@chats_app.command("list")
-def chats_list(workspace_id: str = typer.Option(None, "--ws"), all_: bool = typer.Option(False, "--all"), as_json: bool = typer.Option(False, "--json")):
-    """List chats. --all for cross-workspace view, --ws for single workspace."""
-    with _client() as c:
-        try:
-            if all_:
-                data = c.all_chats()
-                if _use_json(as_json):
-                    output_json(data)
-                else:
-                    chats = data.get("chats", [])
-                    dms = data.get("dms", [])
-                    if chats:
-                        console.print("[bold]Rooms[/bold]")
-                        for ch in chats:
-                            ws = f" [{ch.get('workspace_name', 'personal')}]" if ch.get("workspace_name") else ""
-                            console.print(f"  #{ch['name']}{ws}  (id: {str(ch['id'])[:8]})")
-                    if dms:
-                        console.print("[bold]DMs[/bold]")
-                        for dm in dms:
-                            other = dm.get("other_user") or {}
-                            console.print(f"  @{other.get('name', '?')}  (id: {str(dm['id'])[:8]})")
-                return
-            ws = workspace_id or _default_workspace()
-            data = c.list_chats(ws)
-        except OctopusError as e:
-            _err(e)
-    if _use_json(as_json):
-        output_json(data)
-    else:
-        if not data:
-            console.print("[dim]No chats.[/dim]")
-        else:
-            for ch in data:
-                console.print(f"  #{ch['name']}  (id: {str(ch['id'])[:8]})")
-
-
-@chats_app.command("create")
-def chats_create(name: str = typer.Argument(...), workspace_id: str = typer.Option(None, "--ws"), description: str = typer.Option(""), personal: bool = typer.Option(False, "--personal"), as_json: bool = typer.Option(False, "--json")):
-    """Create a chat. --personal for personal room, otherwise workspace chat."""
-    with _client() as c:
-        try:
-            if personal:
-                data = c.create_room(name, description=description)
-            else:
-                ws = workspace_id or _default_workspace()
-                data = c.create_chat(ws, name, description=description)
-        except OctopusError as e:
-            _err(e)
-    if _use_json(as_json):
-        output_json(data)
-    else:
-        console.print(f"[green]Chat '{data['name']}' created.[/green]  ID: {data['id']}")
-
-
-# ===========================================================================
-# Messaging
-# ===========================================================================
-
-@app.command()
-def send(message: str = typer.Argument(...), workspace_id: str = typer.Option(None, "--ws"), chat_id: str = typer.Option(None, "--chat"), room_id: str = typer.Option(None, "--room"), as_json: bool = typer.Option(False, "--json")):
-    """Send a message. Use --room for personal rooms, --ws + --chat for workspace chats."""
-    with _client() as c:
-        try:
-            if room_id:
-                data = c.send_room_message(room_id, message)
-            else:
-                ws = workspace_id or _default_workspace()
-                ch = chat_id or _default_chat()
-                data = c.send_message(ws, ch, message)
-        except OctopusError as e:
-            _err(e)
-    if _use_json(as_json):
-        output_json(data)
-    else:
-        console.print("[green]Sent.[/green]")
-
-
-@app.command()
-def read(workspace_id: str = typer.Option(None, "--ws"), chat_id: str = typer.Option(None, "--chat"), room_id: str = typer.Option(None, "--room"), dm_id: str = typer.Option(None, "--dm"), limit: int = typer.Option(50, "-n", "--limit"), after: Optional[str] = typer.Option(None, "--after"), as_json: bool = typer.Option(False, "--json")):
-    """Read messages. Use --room, --dm, or --ws + --chat."""
-    with _client() as c:
-        try:
-            if room_id:
-                data = c.read_room_messages(room_id, limit=limit, after=after)
-            elif dm_id:
-                data = c.read_dm_messages(dm_id, limit=limit, after=after)
-            else:
-                ws = workspace_id or _default_workspace()
-                ch = chat_id or _default_chat()
-                data = c.read_messages(ws, ch, limit=limit, after=after)
-        except OctopusError as e:
-            _err(e)
-    if _use_json(as_json):
-        output_json(data)
-    else:
-        print_messages(data)
-
-
-@app.command()
-def dm(username: str = typer.Argument(...), message: str = typer.Argument(...), as_json: bool = typer.Option(False, "--json")):
-    """Send a direct message."""
-    with _client() as c:
-        try:
-            data = c.send_dm(username, message)
-        except OctopusError as e:
-            _err(e)
-    if _use_json(as_json):
-        output_json(data)
-    else:
-        console.print(f"[green]DM sent to {username}.[/green]")
-
-
-@app.command("dms")
-def dms_list(as_json: bool = typer.Option(False, "--json")):
-    """List DM conversations."""
-    with _client() as c:
-        try:
-            data = c.list_dms()
-        except OctopusError as e:
-            _err(e)
-    if _use_json(as_json):
-        output_json(data)
-    else:
-        if not data:
-            console.print("[dim]No DMs.[/dim]")
-        else:
-            for d in data:
-                other = d.get("other_user") or {}
-                console.print(f"  @{other.get('name', '?')}  (id: {str(d['id'])[:8]})")
 
 
 # ===========================================================================
@@ -554,190 +403,6 @@ def hist_search(query: str = typer.Argument(...), workspace_id: str = typer.Opti
     else:
         for ev in data:
             console.print(f"  [{ev['created_at'][:19]}] {ev['agent_name']}/{ev['event_type']}: {ev['content'][:200]}")
-
-
-@hist_app.command("ask")
-def hist_ask(question: str = typer.Argument(...), workspace_id: str = typer.Option(None, "--ws"), store_id: str = typer.Option(None, "--store"), as_json: bool = typer.Option(False, "--json")):
-    """Ask a question about a history store (LLM-powered)."""
-    ws = workspace_id or _default_workspace()
-    store = store_id or load_config().get("default_store", "")
-    if not store:
-        console.print("[red]No store specified.[/red]")
-        raise typer.Exit(1)
-    with _client() as c:
-        try:
-            data = c.query_history(ws, store, question)
-        except OctopusError as e:
-            _err(e)
-    if _use_json(as_json):
-        output_json(data)
-    else:
-        console.print(f"\n[bold]{data.get('answer', '')}[/bold]\n")
-        sources = data.get("sources", [])
-        if sources:
-            console.print(f"[dim]Based on {len(sources)} events[/dim]")
-
-
-# ===========================================================================
-# Decks
-# ===========================================================================
-
-decks_app = typer.Typer(help="Decks — HTML/JS/CSS documents with public sharing.")
-app.add_typer(decks_app, name="decks")
-
-
-@decks_app.command("list")
-def decks_list(workspace_id: str = typer.Option(None, "--ws"), all_: bool = typer.Option(False, "--all"), as_json: bool = typer.Option(False, "--json")):
-    """List decks. --all for cross-workspace."""
-    with _client() as c:
-        try:
-            data = c.all_decks() if all_ else c.list_decks(workspace_id or _default_workspace())
-        except OctopusError as e:
-            _err(e)
-    if _use_json(as_json):
-        output_json(data)
-    else:
-        if not data:
-            console.print("[dim]No decks.[/dim]")
-        else:
-            for d in data:
-                ws = f" [{d.get('workspace_name', '')}]" if d.get("workspace_name") else ""
-                console.print(f"  {d['name']}{ws}  ({d.get('deck_type', 'freeform')}, id: {str(d['id'])[:8]})")
-
-
-@decks_app.command("create")
-def decks_create(name: str = typer.Argument(...), workspace_id: str = typer.Option(None, "--ws"), description: str = typer.Option(""), deck_type: str = typer.Option("freeform", "--type"), html_file: str = typer.Option(None, "--file"), personal: bool = typer.Option(False, "--personal"), as_json: bool = typer.Option(False, "--json")):
-    """Create a deck. Use --file to load HTML from a file, or pipe via stdin."""
-    html_content = ""
-    if html_file:
-        with open(html_file) as f:
-            html_content = f.read()
-    elif not sys.stdin.isatty():
-        html_content = sys.stdin.read()
-    with _client() as c:
-        try:
-            if personal:
-                data = c.create_personal_deck(name, description=description, html_content=html_content, deck_type=deck_type)
-            else:
-                ws = workspace_id or _default_workspace()
-                data = c.create_deck(ws, name, description=description, html_content=html_content, deck_type=deck_type)
-        except OctopusError as e:
-            _err(e)
-    if _use_json(as_json):
-        output_json(data)
-    else:
-        console.print(f"[green]Deck '{data['name']}' created.[/green]  ID: {data['id']}")
-
-
-@decks_app.command("get")
-def decks_get(deck_id: str = typer.Argument(...), workspace_id: str = typer.Option(None, "--ws"), html_only: bool = typer.Option(False, "--html"), as_json: bool = typer.Option(False, "--json")):
-    """Get a deck. --html to output only the HTML content."""
-    with _client() as c:
-        try:
-            ws = workspace_id or _default_workspace()
-            data = c.get_deck(ws, deck_id)
-        except OctopusError as e:
-            _err(e)
-    if html_only:
-        print(data.get("html_content", ""))
-    elif _use_json(as_json):
-        output_json(data)
-    else:
-        console.print(f"[bold]{data['name']}[/bold]  ({data.get('deck_type', 'freeform')})")
-        console.print(f"ID: {data['id']}")
-        if data.get("description"):
-            console.print(f"Description: {data['description']}")
-        html = data.get("html_content", "")
-        console.print(f"HTML: {len(html)} chars")
-
-
-@decks_app.command("update")
-def decks_update(deck_id: str = typer.Argument(...), workspace_id: str = typer.Option(None, "--ws"), name: str = typer.Option(None, "--name"), description: str = typer.Option(None, "--description"), html_file: str = typer.Option(None, "--file"), as_json: bool = typer.Option(False, "--json")):
-    """Update a deck. Use --file to load HTML, or pipe via stdin."""
-    kwargs: dict = {}
-    if name is not None:
-        kwargs["name"] = name
-    if description is not None:
-        kwargs["description"] = description
-    if html_file:
-        with open(html_file) as f:
-            kwargs["html_content"] = f.read()
-    elif not sys.stdin.isatty():
-        kwargs["html_content"] = sys.stdin.read()
-    with _client() as c:
-        try:
-            ws = workspace_id or _default_workspace()
-            data = c.update_deck(ws, deck_id, **kwargs)
-        except OctopusError as e:
-            _err(e)
-    if _use_json(as_json):
-        output_json(data)
-    else:
-        console.print(f"[green]Deck updated.[/green]")
-
-
-@decks_app.command("share")
-def decks_share(deck_id: str = typer.Argument(...), workspace_id: str = typer.Option(None, "--ws"), name: str = typer.Option(None, "--name"), require_email: bool = typer.Option(False, "--require-email"), passcode: str = typer.Option(None, "--passcode"), as_json: bool = typer.Option(False, "--json")):
-    """Create a public share link for a deck."""
-    with _client() as c:
-        try:
-            ws = workspace_id
-            kwargs: dict = {}
-            if name:
-                kwargs["name"] = name
-            if require_email:
-                kwargs["require_email"] = True
-            if passcode:
-                kwargs["passcode"] = passcode
-            data = c.create_deck_share(deck_id, workspace_id=ws, **kwargs)
-        except OctopusError as e:
-            _err(e)
-    if _use_json(as_json):
-        output_json(data)
-    else:
-        cfg = load_config()
-        base = cfg.get("public_url", cfg["base_url"])
-        console.print(f"[green]Share link created:[/green] {base}/d/{data['token']}")
-
-
-@decks_app.command("shares")
-def decks_shares(deck_id: str = typer.Argument(...), workspace_id: str = typer.Option(None, "--ws"), as_json: bool = typer.Option(False, "--json")):
-    """List share links for a deck."""
-    with _client() as c:
-        try:
-            data = c.list_deck_shares(deck_id, workspace_id=workspace_id)
-        except OctopusError as e:
-            _err(e)
-    if _use_json(as_json):
-        output_json(data)
-    else:
-        if not data:
-            console.print("[dim]No share links.[/dim]")
-        else:
-            for s in data:
-                status = "[green]active[/green]" if s.get("is_active") else "[red]inactive[/red]"
-                views = s.get("view_count", 0)
-                console.print(f"  /d/{s['token']}  {status}  views: {views}  (id: {str(s['id'])[:8]})")
-
-
-@decks_app.command("analytics")
-def decks_analytics(deck_id: str = typer.Argument(...), share_id: str = typer.Argument(...), workspace_id: str = typer.Option(None, "--ws"), as_json: bool = typer.Option(False, "--json")):
-    """View analytics for a share link."""
-    with _client() as c:
-        try:
-            data = c.get_share_analytics(deck_id, share_id, workspace_id=workspace_id)
-        except OctopusError as e:
-            _err(e)
-    if _use_json(as_json):
-        output_json(data)
-    else:
-        console.print(f"Views: {data.get('total_views', 0)}  Unique: {data.get('unique_viewers', 0)}  Avg duration: {data.get('avg_duration_seconds', 0)}s")
-        viewers = data.get("viewers", [])
-        if viewers:
-            console.print("\n[bold]Viewers[/bold]")
-            for v in viewers:
-                who = v.get("viewer_email") or v.get("viewer_ip") or "anonymous"
-                console.print(f"  {who}  duration: {v.get('total_duration_seconds', 0)}s  last: {str(v.get('last_active_at', ''))[:19]}")
 
 
 # ===========================================================================
@@ -1184,228 +849,6 @@ def tables_delete(
 
 
 # ===========================================================================
-# Personas
-# ===========================================================================
-
-personas_app = typer.Typer(help="Manage persona identities.")
-app.add_typer(personas_app, name="personas")
-
-
-@personas_app.command("create")
-def personas_create(name: str = typer.Argument(...), display_name: str = typer.Option(""), description: str = typer.Option(""), as_json: bool = typer.Option(False, "--json")):
-    """Create persona identity."""
-    with _client() as c:
-        try:
-            data = c.create_persona(name, display_name=display_name, description=description)
-        except OctopusError as e:
-            _err(e)
-    if _use_json(as_json):
-        output_json(data)
-    else:
-        console.print(f"[green]Persona '{data['name']}' created.[/green]  API key: [bold]{data['api_key']}[/bold]")
-
-
-@personas_app.command("list")
-def personas_list(all_: bool = typer.Option(False, "--all"), as_json: bool = typer.Option(False, "--json")):
-    """List personas. --all includes workspace context."""
-    with _client() as c:
-        try:
-            data = c.list_personas_with_context() if all_ else c.list_personas()
-        except OctopusError as e:
-            _err(e)
-    if _use_json(as_json):
-        output_json(data)
-    else:
-        print_personas(data)
-
-
-@personas_app.command("rotate-key")
-def personas_rotate_key(persona_id: str = typer.Argument(...), as_json: bool = typer.Option(False, "--json")):
-    """Rotate persona API key."""
-    with _client() as c:
-        try:
-            data = c.rotate_persona_key(persona_id)
-        except OctopusError as e:
-            _err(e)
-    if _use_json(as_json):
-        output_json(data)
-    else:
-        console.print(f"[green]New key: [bold]{data['api_key']}[/bold][/green]")
-
-
-@personas_app.command("delete")
-def personas_delete(persona_id: str = typer.Argument(...), confirm: bool = typer.Option(False, "--yes", "-y")):
-    """Delete persona."""
-    if not confirm:
-        typer.confirm(f"Delete persona {persona_id}?", abort=True)
-    with _client() as c:
-        try:
-            c.delete_persona(persona_id)
-        except OctopusError as e:
-            _err(e)
-    console.print("[green]Deleted.[/green]")
-
-
-# ===========================================================================
-# Chat Watches
-# ===========================================================================
-
-watches_app = typer.Typer(help="Chat watch subscriptions for agent notifications.")
-app.add_typer(watches_app, name="watches")
-
-
-@watches_app.command("list")
-def watches_list(as_json: bool = typer.Option(False, "--json")):
-    """List watched chats."""
-    with _client() as c:
-        try:
-            data = c.list_watches()
-        except OctopusError as e:
-            _err(e)
-    if _use_json(as_json):
-        output_json(data)
-    else:
-        if not data:
-            console.print("[dim]No watched chats.[/dim]")
-        else:
-            for w in data:
-                ws = f" [{w.get('workspace_name', '')}]" if w.get('workspace_name') else ""
-                console.print(f"  {w['chat_name']}{ws}  chat_id={w['chat_id']}  last_read={str(w.get('last_read_at', ''))[:19]}")
-
-
-@watches_app.command("add")
-def watches_add(
-    chat_id: str = typer.Argument(...),
-    workspace_id: str = typer.Option(None, "--ws"),
-    as_json: bool = typer.Option(False, "--json"),
-):
-    """Watch a chat for new messages."""
-    with _client() as c:
-        try:
-            data = c.watch_chat(chat_id, workspace_id=workspace_id)
-        except OctopusError as e:
-            _err(e)
-    if _use_json(as_json):
-        output_json(data)
-    else:
-        console.print(f"[green]Now watching chat {chat_id}.[/green]")
-
-
-@watches_app.command("remove")
-def watches_remove(chat_id: str = typer.Argument(...)):
-    """Stop watching a chat."""
-    with _client() as c:
-        try:
-            c.unwatch_chat(chat_id)
-        except OctopusError as e:
-            _err(e)
-    console.print("[yellow]Unwatched.[/yellow]")
-
-
-@app.command()
-def unread(as_json: bool = typer.Option(False, "--json")):
-    """Show unread messages across watched chats."""
-    with _client() as c:
-        try:
-            data = c.get_unread()
-        except OctopusError as e:
-            _err(e)
-    if _use_json(as_json):
-        output_json(data)
-    else:
-        items = data.get("unread", [])
-        if not items or data.get("total_unread", 0) == 0:
-            console.print("[dim]No unread messages.[/dim]")
-        else:
-            for item in items:
-                if item["unread_count"] == 0:
-                    continue
-                ws = f" [{item.get('workspace_name', '')}]" if item.get('workspace_name') else ""
-                console.print(f"  #{item['chat_name']}{ws}: [bold]{item['unread_count']}[/bold] unread")
-
-
-@app.command("mark-read")
-def mark_read_cmd(chat_id: str = typer.Argument(...), as_json: bool = typer.Option(False, "--json")):
-    """Mark a watched chat as read."""
-    with _client() as c:
-        try:
-            data = c.mark_read(chat_id)
-        except OctopusError as e:
-            _err(e)
-    if _use_json(as_json):
-        output_json(data)
-    else:
-        console.print("[green]Marked as read.[/green]")
-
-
-# ===========================================================================
-# Poll + Notify
-# ===========================================================================
-
-@app.command()
-def poll(workspace_id: str = typer.Option(None, "--ws"), chat_id: str = typer.Option(None, "--chat"), room_id: str = typer.Option(None, "--room"), interval: int = typer.Option(5, "-i")):
-    """Poll for new messages (JSON lines to stdout). Use --room for personal rooms."""
-    ws = workspace_id or (None if room_id else _default_workspace())
-    ch = chat_id or (None if room_id else _default_chat())
-    last_ts = None
-    with _client() as c:
-        try:
-            if room_id:
-                msgs = c.read_room_messages(room_id, limit=1)
-            else:
-                msgs = c.read_messages(ws, ch, limit=1)
-            if msgs:
-                last_ts = msgs[-1].get("created_at")
-        except OctopusError:
-            pass
-        console.print("[dim]Polling... (Ctrl+C to stop)[/dim]", stderr=True)
-        try:
-            while True:
-                time.sleep(interval)
-                try:
-                    if room_id:
-                        msgs = c.read_room_messages(room_id, limit=50, after=last_ts)
-                    else:
-                        msgs = c.read_messages(ws, ch, limit=50, after=last_ts)
-                except OctopusError:
-                    continue
-                cfg = load_config()
-                for msg in msgs:
-                    last_ts = msg.get("created_at", last_ts)
-                    if msg.get("sender_name") == cfg.get("username"):
-                        continue
-                    print(json.dumps(msg, default=str), flush=True)
-        except KeyboardInterrupt:
-            console.print("\n[dim]Stopped.[/dim]", stderr=True)
-
-
-notify_app = typer.Typer(help="Notification subscriptions.")
-app.add_typer(notify_app, name="notify")
-
-
-@notify_app.command("on")
-def notify_on(room_id: str = typer.Argument(...)):
-    add_notify_room(room_id)
-    console.print("[green]Subscribed.[/green]")
-
-
-@notify_app.command("off")
-def notify_off(room_id: str = typer.Argument(...)):
-    remove_notify_room(room_id)
-    console.print("[yellow]Unsubscribed.[/yellow]")
-
-
-@notify_app.command("list")
-def notify_list():
-    rooms = get_notify_rooms()
-    if not rooms:
-        console.print("[dim]None.[/dim]")
-    else:
-        for r in rooms:
-            console.print(f"  - {r}")
-
-
-# ===========================================================================
 # Setup wizard
 # ===========================================================================
 
@@ -1540,7 +983,7 @@ def setup():
 
 @app.command("config")
 def config_cmd(key: Optional[str] = typer.Argument(None), value: Optional[str] = typer.Argument(None)):
-    """Show or set config. Keys: base_url, default_workspace, default_chat, default_store, output_format."""
+    """Show or set config. Keys: base_url, default_workspace, default_store, output_format."""
     if key and value:
         cfg = load_config()
         cfg[key] = value
@@ -1575,7 +1018,7 @@ def import_bookmarks_cmd(
     """Import bookmarks from a Chrome/Firefox HTML export.
 
     Parses the bookmark file, scrapes each URL (web articles, YouTube transcripts,
-    PDFs), and stores them as notebook pages. The sleep agent will curate them into
+    PDFs), and stores them as notebook pages. Use the curate tool to organize them into
     a searchable wiki.
 
     Export bookmarks: Chrome → Bookmarks → ⋮ → Export bookmarks
@@ -1699,43 +1142,6 @@ def import_bookmarks_cmd(
         art = sum(1 for _, (c, t) in scraped.items() if t == "article" and c is not None)
         if yt or pdf or art:
             console.print(f"[dim]Content extracted: {art} articles, {yt} YouTube transcripts, {pdf} PDFs[/dim]")
-
-
-# ===========================================================================
-# Universal Search
-# ===========================================================================
-
-
-@app.command("search")
-def search_cmd(
-    query: str = typer.Argument(..., help="Question or search query"),
-    workspace_id: str = typer.Option(None, "--ws", help="Workspace ID (searches personal resources if omitted)"),
-    types: str = typer.Option(None, "--types", help="Comma-separated resource types: history,notebook,table,document"),
-    as_json: bool = typer.Option(False, "--json"),
-):
-    """Search across all your knowledge — notebooks, history, tables, documents.
-
-    Uses AI-powered synthesis to find answers across all your ingested data.
-    """
-    resource_types = [t.strip() for t in types.split(",")] if types else None
-
-    with _client() as c:
-        try:
-            if workspace_id:
-                result = c.universal_search(workspace_id, query, resource_types=resource_types)
-            else:
-                result = c.personal_search(query, resource_types=resource_types)
-        except OctopusError as e:
-            _err(e)
-
-    if _use_json(as_json):
-        output_json(result)
-    else:
-        answer = result.get("answer", "No answer found.")
-        sources = result.get("sources_used", [])
-        console.print(f"\n{answer}\n")
-        if sources:
-            console.print(f"[dim]Sources: {', '.join(sources)}[/dim]")
 
 
 if __name__ == "__main__":

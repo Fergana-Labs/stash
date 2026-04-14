@@ -2,8 +2,8 @@
 
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import AppShell from "../../components/AppShell";
-import WorkspaceCard from "../../components/RoomCard";
 import { useAuth } from "../../hooks/useAuth";
 import { createWorkspace, listMyWorkspaces, listPublicWorkspaces, joinWorkspace } from "../../lib/api";
 import { Workspace } from "../../lib/types";
@@ -96,7 +96,11 @@ export default function WorkspacesPage() {
         {myWorkspaces.length > 0 && (
           <section className="mb-8">
             <h2 className="text-lg font-medium text-foreground mb-3 font-display">My Workspaces</h2>
-            <div className="grid gap-3 sm:grid-cols-2">{myWorkspaces.map((ws) => <WorkspaceCard key={ws.id} workspace={ws} isMember />)}</div>
+            <div className="grid gap-3 sm:grid-cols-2">{myWorkspaces.map((ws) => <Link key={ws.id} href={`/workspaces/${ws.id}`} className="bg-surface border border-border rounded-lg p-4 hover:border-brand transition-colors">
+                    <div className="text-foreground font-medium">{ws.name}</div>
+                    {ws.description && <div className="text-dim text-sm mt-1">{ws.description}</div>}
+                    <div className="text-[10px] text-muted mt-1">{ws.member_count ?? 0} members</div>
+                  </Link>)}</div>
           </section>
         )}
         {(() => {
@@ -105,7 +109,11 @@ export default function WorkspacesPage() {
           return (
             <section>
               <h2 className="text-lg font-medium text-foreground mb-3 font-display">Public Workspaces</h2>
-              <div className="grid gap-3 sm:grid-cols-2">{filtered.map((ws) => <WorkspaceCard key={ws.id} workspace={ws} isMember={false} />)}</div>
+              <div className="grid gap-3 sm:grid-cols-2">{filtered.map((ws) => <Link key={ws.id} href={`/workspaces/${ws.id}`} className="bg-surface border border-border rounded-lg p-4 hover:border-brand transition-colors">
+                    <div className="text-foreground font-medium">{ws.name}</div>
+                    {ws.description && <div className="text-dim text-sm mt-1">{ws.description}</div>}
+                    <div className="text-[10px] text-muted mt-1">Public</div>
+                  </Link>)}</div>
             </section>
           );
         })()}

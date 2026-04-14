@@ -1,7 +1,10 @@
-"""History service: structured agent event storage with FTS, vector search, and batch insert."""
+"""History service: structured agent event storage with FTS, vector search, and batch insert.
+
+Events belong directly to a workspace (or are personal with workspace_id=NULL).
+Grouped by agent_name → session_id for display.
+"""
 
 import asyncio
-import json
 import logging
 from uuid import UUID
 
@@ -11,161 +14,6 @@ from ..database import get_pool
 from . import embedding_service
 
 logger = logging.getLogger(__name__)
-
-
-# --- Store CRUD ---
-
-
-async def create_store(
-    workspace_id: UUID | None, name: str, description: str, created_by: UUID,
-) -> dict:
-    """Create a history store. Pass workspace_id=None for a personal store."""
-    pool = get_pool()
-    row = await pool.fetchrow(
-        "INSERT INTO histories (workspace_id, name, description, created_by) "
-        "VALUES ($1, $2, $3, $4) "
-        "RETURNING id, workspace_id, name, description, created_by, created_at",
-        workspace_id, name, description, created_by,
-    )
-    store = dict(row)
-    store["event_count"] = 0
-    return store
-
-
-async def get_store(store_id: UUID, workspace_id: UUID | None, user_id: UUID | None = None) -> dict | None:
-    """Get a store. For personal stores, pass workspace_id=None and user_id."""
-    pool = get_pool()
-    if workspace_id is not None:
-        row = await pool.fetchrow(
-            "SELECT ms.*, "
-            "(SELECT COUNT(*) FROM history_events me WHERE me.store_id = ms.id) AS event_count "
-            "FROM histories ms WHERE ms.id = $1 AND ms.workspace_id = $2",
-            store_id, workspace_id,
-        )
-    else:
-        row = await pool.fetchrow(
-            "SELECT ms.*, "
-            "(SELECT COUNT(*) FROM history_events me WHERE me.store_id = ms.id) AS event_count "
-            "FROM histories ms WHERE ms.id = $1 AND ms.workspace_id IS NULL AND ms.created_by = $2",
-            store_id, user_id,
-        )
-    return dict(row) if row else None
-
-
-async def list_stores(workspace_id: UUID | None, user_id: UUID | None = None) -> list[dict]:
-    """List stores. For personal stores, pass workspace_id=None and user_id."""
-    pool = get_pool()
-    if workspace_id is not None:
-        rows = await pool.fetch(
-            "SELECT ms.*, "
-            "(SELECT COUNT(*) FROM history_events me WHERE me.store_id = ms.id) AS event_count "
-            "FROM histories ms WHERE ms.workspace_id = $1 ORDER BY ms.created_at",
-            workspace_id,
-        )
-    else:
-        rows = await pool.fetch(
-            "SELECT ms.*, "
-            "(SELECT COUNT(*) FROM history_events me WHERE me.store_id = ms.id) AS event_count "
-            "FROM histories ms WHERE ms.workspace_id IS NULL AND ms.created_by = $1 "
-            "ORDER BY ms.created_at",
-            user_id,
-        )
-    return [dict(r) for r in rows]
-
-
-async def delete_store(store_id: UUID, workspace_id: UUID | None, user_id: UUID | None = None) -> bool:
-    """Delete a store. For personal stores, pass workspace_id=None and user_id."""
-    pool = get_pool()
-    if workspace_id is not None:
-        result = await pool.execute(
-            "DELETE FROM histories WHERE id = $1 AND workspace_id = $2",
-            store_id, workspace_id,
-        )
-    else:
-        result = await pool.execute(
-            "DELETE FROM histories WHERE id = $1 AND workspace_id IS NULL AND created_by = $2",
-            store_id, user_id,
-        )
-    return result == "DELETE 1"
-
-
-# --- Aggregate Queries ---
-
-
-async def list_all_user_stores(user_id: UUID) -> list[dict]:
-    """All historys from workspaces user is member of + personal."""
-    pool = get_pool()
-    rows = await pool.fetch(
-        "SELECT ms.id, ms.workspace_id, ms.name, ms.description, ms.created_by, ms.created_at, "
-        "(SELECT COUNT(*) FROM history_events me WHERE me.store_id = ms.id) AS event_count, "
-        "w.name AS workspace_name "
-        "FROM histories ms "
-        "LEFT JOIN workspaces w ON w.id = ms.workspace_id "
-        "WHERE ms.workspace_id IN ("
-        "  SELECT workspace_id FROM workspace_members WHERE user_id = $1"
-        ") OR (ms.workspace_id IS NULL AND ms.created_by = $1) "
-        "ORDER BY ms.created_at DESC",
-        user_id,
-    )
-    return [dict(r) for r in rows]
-
-
-async def query_all_user_events(
-    user_id: UUID,
-    agent_name: str | None = None,
-    event_type: str | None = None,
-    after: str | None = None,
-    before: str | None = None,
-    limit: int = 50,
-) -> tuple[list[dict], bool]:
-    """Events across ALL accessible stores, with filters."""
-    pool = get_pool()
-    limit = min(limit, 200)
-
-    conditions = [
-        "(ms.workspace_id IN (SELECT workspace_id FROM workspace_members WHERE user_id = $1) "
-        "OR (ms.workspace_id IS NULL AND ms.created_by = $1))"
-    ]
-    args: list = [user_id]
-    idx = 2
-
-    if agent_name:
-        conditions.append(f"me.agent_name = ${idx}")
-        args.append(agent_name)
-        idx += 1
-    if event_type:
-        conditions.append(f"me.event_type = ${idx}")
-        args.append(event_type)
-        idx += 1
-    if after:
-        conditions.append(f"me.created_at > ${idx}")
-        args.append(after)
-        idx += 1
-    if before:
-        conditions.append(f"me.created_at < ${idx}")
-        args.append(before)
-        idx += 1
-
-    where = " AND ".join(conditions)
-    args.append(limit + 1)
-
-    rows = await pool.fetch(
-        f"SELECT me.id, me.store_id, me.agent_name, me.event_type, me.session_id, "
-        f"me.tool_name, me.content, me.metadata, me.created_at, "
-        f"ms.name AS store_name, ms.workspace_id, w.name AS workspace_name "
-        f"FROM history_events me "
-        f"JOIN histories ms ON ms.id = me.store_id "
-        f"LEFT JOIN workspaces w ON w.id = ms.workspace_id "
-        f"WHERE {where} "
-        f"ORDER BY me.created_at DESC LIMIT ${idx}",
-        *args,
-    )
-
-    events = [dict(r) for r in rows]
-    has_more = len(events) > limit
-    if has_more:
-        events = events[:limit]
-    return events, has_more
 
 
 # --- Embedding helpers ---
@@ -205,43 +53,38 @@ async def _embed_events_batch(event_ids: list[UUID], contents: list[str]) -> Non
 
 
 async def push_event(
-    store_id: UUID,
+    workspace_id: UUID | None,
     agent_name: str,
     event_type: str,
     content: str,
+    created_by: UUID,
     session_id: str | None = None,
     tool_name: str | None = None,
     metadata: dict | None = None,
     attachments: list[dict] | None = None,
 ) -> dict:
-    """Push a single event to a history."""
+    """Push a single event."""
     pool = get_pool()
     meta = metadata or {}
     row = await pool.fetchrow(
-        "INSERT INTO history_events (store_id, agent_name, event_type, content, session_id, tool_name, metadata, attachments) "
-        "VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8) "
-        "RETURNING id, store_id, agent_name, event_type, session_id, tool_name, content, metadata, attachments, created_at",
-        store_id, agent_name, event_type, content, session_id, tool_name, meta, attachments,
+        "INSERT INTO history_events "
+        "(workspace_id, created_by, agent_name, event_type, content, session_id, tool_name, metadata, attachments) "
+        "VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9) "
+        "RETURNING id, workspace_id, created_by, agent_name, event_type, session_id, "
+        "tool_name, content, metadata, attachments, created_at",
+        workspace_id, created_by, agent_name, event_type, content,
+        session_id, tool_name, meta, attachments,
     )
     event = dict(row)
-    # Fire-and-forget embedding
     if embedding_service.is_configured():
         asyncio.create_task(_embed_event(event["id"], content))
-    # Mark injection session as complete on session_end
-    if event_type == "session_end" and session_id:
-        try:
-            await pool.execute(
-                "UPDATE injection_sessions SET completed_at = now() "
-                "WHERE session_id = $1 AND completed_at IS NULL",
-                session_id,
-            )
-        except Exception:
-            logger.debug("Failed to mark injection session complete", exc_info=True)
     return event
 
 
-async def push_events_batch(store_id: UUID, events: list[dict]) -> list[dict]:
-    """Batch push events to a history. Returns list of created events."""
+async def push_events_batch(
+    workspace_id: UUID | None, created_by: UUID, events: list[dict],
+) -> list[dict]:
+    """Batch push events. Returns list of created events."""
     pool = get_pool()
     results = []
     async with pool.acquire() as conn:
@@ -250,21 +93,17 @@ async def push_events_batch(store_id: UUID, events: list[dict]) -> list[dict]:
                 meta = evt.get("metadata", {})
                 row = await conn.fetchrow(
                     "INSERT INTO history_events "
-                    "(store_id, agent_name, event_type, content, session_id, tool_name, metadata, attachments) "
-                    "VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8) "
-                    "RETURNING id, store_id, agent_name, event_type, session_id, tool_name, "
-                    "content, metadata, attachments, created_at",
-                    store_id,
-                    evt["agent_name"],
-                    evt["event_type"],
-                    evt["content"],
-                    evt.get("session_id"),
-                    evt.get("tool_name"),
-                    meta,
+                    "(workspace_id, created_by, agent_name, event_type, content, "
+                    "session_id, tool_name, metadata, attachments) "
+                    "VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9) "
+                    "RETURNING id, workspace_id, created_by, agent_name, event_type, "
+                    "session_id, tool_name, content, metadata, attachments, created_at",
+                    workspace_id, created_by,
+                    evt["agent_name"], evt["event_type"], evt["content"],
+                    evt.get("session_id"), evt.get("tool_name"), meta,
                     evt.get("attachments"),
                 )
                 results.append(dict(row))
-    # Fire-and-forget batch embedding
     if embedding_service.is_configured() and results:
         ids = [r["id"] for r in results]
         contents = [r["content"] for r in results]
@@ -272,19 +111,24 @@ async def push_events_batch(store_id: UUID, events: list[dict]) -> list[dict]:
     return results
 
 
-async def get_event(event_id: UUID, store_id: UUID) -> dict | None:
+async def get_event(event_id: UUID, workspace_id: UUID | None = None) -> dict | None:
     pool = get_pool()
-    row = await pool.fetchrow(
-        "SELECT id, store_id, agent_name, event_type, session_id, tool_name, "
-        "content, metadata, attachments, created_at "
-        "FROM history_events WHERE id = $1 AND store_id = $2",
-        event_id, store_id,
-    )
+    if workspace_id is not None:
+        row = await pool.fetchrow(
+            "SELECT * FROM history_events WHERE id = $1 AND workspace_id = $2",
+            event_id, workspace_id,
+        )
+    else:
+        row = await pool.fetchrow(
+            "SELECT * FROM history_events WHERE id = $1",
+            event_id,
+        )
     return dict(row) if row else None
 
 
 async def query_events(
-    store_id: UUID,
+    workspace_id: UUID | None,
+    user_id: UUID | None = None,
     agent_name: str | None = None,
     session_id: str | None = None,
     event_type: str | None = None,
@@ -296,9 +140,18 @@ async def query_events(
     pool = get_pool()
     limit = min(limit, 200)
 
-    conditions = ["store_id = $1"]
-    args: list = [store_id]
-    idx = 2
+    conditions: list[str] = []
+    args: list = []
+    idx = 1
+
+    if workspace_id is not None:
+        conditions.append(f"workspace_id = ${idx}")
+        args.append(workspace_id)
+        idx += 1
+    elif user_id is not None:
+        conditions.append(f"workspace_id IS NULL AND created_by = ${idx}")
+        args.append(user_id)
+        idx += 1
 
     if agent_name:
         conditions.append(f"agent_name = ${idx}")
@@ -321,12 +174,12 @@ async def query_events(
         args.append(before)
         idx += 1
 
-    where = " AND ".join(conditions)
+    where = " AND ".join(conditions) if conditions else "TRUE"
     args.append(limit + 1)
 
     rows = await pool.fetch(
-        f"SELECT id, store_id, agent_name, event_type, session_id, tool_name, "
-        f"content, metadata, attachments, created_at "
+        f"SELECT id, workspace_id, created_by, agent_name, event_type, session_id, "
+        f"tool_name, content, metadata, attachments, created_at "
         f"FROM history_events WHERE {where} "
         f"ORDER BY created_at ASC LIMIT ${idx}",
         *args,
@@ -340,36 +193,153 @@ async def query_events(
 
 
 async def search_events(
-    store_id: UUID, query: str, limit: int = 50,
+    workspace_id: UUID | None, query: str, user_id: UUID | None = None, limit: int = 50,
 ) -> list[dict]:
-    """Full-text search on memory events."""
+    """Full-text search on events."""
     pool = get_pool()
     limit = min(limit, 200)
-    rows = await pool.fetch(
-        "SELECT id, store_id, agent_name, event_type, session_id, tool_name, "
-        "content, metadata, attachments, created_at, "
-        "ts_rank(to_tsvector('english', content), websearch_to_tsquery('english', $2)) AS rank "
-        "FROM history_events "
-        "WHERE store_id = $1 AND to_tsvector('english', content) @@ websearch_to_tsquery('english', $2) "
-        "ORDER BY rank DESC LIMIT $3",
-        store_id, query, limit,
-    )
+
+    if workspace_id is not None:
+        rows = await pool.fetch(
+            "SELECT id, workspace_id, created_by, agent_name, event_type, session_id, "
+            "tool_name, content, metadata, attachments, created_at, "
+            "ts_rank(to_tsvector('english', content), websearch_to_tsquery('english', $2)) AS rank "
+            "FROM history_events "
+            "WHERE workspace_id = $1 AND to_tsvector('english', content) @@ websearch_to_tsquery('english', $2) "
+            "ORDER BY rank DESC LIMIT $3",
+            workspace_id, query, limit,
+        )
+    else:
+        rows = await pool.fetch(
+            "SELECT id, workspace_id, created_by, agent_name, event_type, session_id, "
+            "tool_name, content, metadata, attachments, created_at, "
+            "ts_rank(to_tsvector('english', content), websearch_to_tsquery('english', $2)) AS rank "
+            "FROM history_events "
+            "WHERE workspace_id IS NULL AND created_by = $1 "
+            "AND to_tsvector('english', content) @@ websearch_to_tsquery('english', $2) "
+            "ORDER BY rank DESC LIMIT $3",
+            user_id, query, limit,
+        )
     return [dict(r) for r in rows]
 
 
 async def search_events_vector(
-    store_id: UUID, query_embedding: np.ndarray, limit: int = 20,
+    workspace_id: UUID | None, query_embedding: np.ndarray,
+    user_id: UUID | None = None, limit: int = 20,
 ) -> list[dict]:
     """Semantic vector search using pgvector cosine distance."""
     pool = get_pool()
     limit = min(limit, 200)
-    rows = await pool.fetch(
-        "SELECT id, store_id, agent_name, event_type, session_id, tool_name, "
-        "content, metadata, attachments, created_at, "
-        "1 - (embedding <=> $2) AS similarity "
-        "FROM history_events "
-        "WHERE store_id = $1 AND embedding IS NOT NULL "
-        "ORDER BY embedding <=> $2 LIMIT $3",
-        store_id, query_embedding, limit,
-    )
+
+    if workspace_id is not None:
+        rows = await pool.fetch(
+            "SELECT id, workspace_id, created_by, agent_name, event_type, session_id, "
+            "tool_name, content, metadata, attachments, created_at, "
+            "1 - (embedding <=> $2) AS similarity "
+            "FROM history_events "
+            "WHERE workspace_id = $1 AND embedding IS NOT NULL "
+            "ORDER BY embedding <=> $2 LIMIT $3",
+            workspace_id, query_embedding, limit,
+        )
+    else:
+        rows = await pool.fetch(
+            "SELECT id, workspace_id, created_by, agent_name, event_type, session_id, "
+            "tool_name, content, metadata, attachments, created_at, "
+            "1 - (embedding <=> $2) AS similarity "
+            "FROM history_events "
+            "WHERE workspace_id IS NULL AND created_by = $1 AND embedding IS NOT NULL "
+            "ORDER BY embedding <=> $2 LIMIT $3",
+            user_id, query_embedding, limit,
+        )
     return [dict(r) for r in rows]
+
+
+# --- Aggregate queries ---
+
+
+async def query_all_user_events(
+    user_id: UUID,
+    agent_name: str | None = None,
+    event_type: str | None = None,
+    after: str | None = None,
+    before: str | None = None,
+    limit: int = 50,
+) -> tuple[list[dict], bool]:
+    """Events across ALL accessible workspaces + personal, with filters."""
+    pool = get_pool()
+    limit = min(limit, 200)
+
+    conditions = [
+        "(he.workspace_id IN (SELECT workspace_id FROM workspace_members WHERE user_id = $1) "
+        "OR (he.workspace_id IS NULL AND he.created_by = $1))"
+    ]
+    args: list = [user_id]
+    idx = 2
+
+    if agent_name:
+        conditions.append(f"he.agent_name = ${idx}")
+        args.append(agent_name)
+        idx += 1
+    if event_type:
+        conditions.append(f"he.event_type = ${idx}")
+        args.append(event_type)
+        idx += 1
+    if after:
+        conditions.append(f"he.created_at > ${idx}")
+        args.append(after)
+        idx += 1
+    if before:
+        conditions.append(f"he.created_at < ${idx}")
+        args.append(before)
+        idx += 1
+
+    where = " AND ".join(conditions)
+    args.append(limit + 1)
+
+    rows = await pool.fetch(
+        f"SELECT he.id, he.workspace_id, he.created_by, he.agent_name, he.event_type, "
+        f"he.session_id, he.tool_name, he.content, he.metadata, he.created_at, "
+        f"w.name AS workspace_name "
+        f"FROM history_events he "
+        f"LEFT JOIN workspaces w ON w.id = he.workspace_id "
+        f"WHERE {where} "
+        f"ORDER BY he.created_at DESC LIMIT ${idx}",
+        *args,
+    )
+
+    events = [dict(r) for r in rows]
+    has_more = len(events) > limit
+    if has_more:
+        events = events[:limit]
+    return events, has_more
+
+
+async def delete_agent_events(
+    agent_name: str,
+    workspace_id: UUID | None = None,
+    user_id: UUID | None = None,
+) -> int:
+    """Delete all events for a given agent. Returns count deleted."""
+    pool = get_pool()
+    if workspace_id is not None:
+        result = await pool.execute(
+            "DELETE FROM history_events WHERE agent_name = $1 AND workspace_id = $2",
+            agent_name, workspace_id,
+        )
+    elif user_id is not None:
+        result = await pool.execute(
+            "DELETE FROM history_events WHERE agent_name = $1 AND workspace_id IS NULL AND created_by = $2",
+            agent_name, user_id,
+        )
+    else:
+        return 0
+    return int(result.split()[-1]) if result else 0
+
+
+async def get_workspace_event_count(workspace_id: UUID) -> int:
+    """Count events in a workspace."""
+    pool = get_pool()
+    return await pool.fetchval(
+        "SELECT COUNT(*) FROM history_events WHERE workspace_id = $1",
+        workspace_id,
+    ) or 0

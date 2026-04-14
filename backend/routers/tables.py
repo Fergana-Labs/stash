@@ -1,6 +1,5 @@
 """Table router: workspace and personal structured data tables."""
 
-import asyncio
 import csv
 import io
 import json
@@ -29,7 +28,7 @@ from ..models import (
     TableResponse,
     TableUpdateRequest,
 )
-from ..services import table_service, permission_service, webhook_service, workspace_service
+from ..services import table_service, permission_service, workspace_service
 
 ws_router = APIRouter(prefix="/api/v1/workspaces/{workspace_id}/tables", tags=["tables"])
 personal_router = APIRouter(prefix="/api/v1/tables", tags=["personal_tables"])
@@ -227,11 +226,6 @@ async def create_ws_row(
     await _check_member(workspace_id, current_user["id"])
     await _check_ws_table(workspace_id, table_id)
     row = await table_service.create_row(table_id, req.data, current_user["id"])
-    asyncio.create_task(webhook_service.dispatch_webhooks(
-        workspace_id, "table.row_created",
-        {"table_id": str(table_id), "row": row},
-        sender_id=current_user["id"],
-    ))
     return RowResponse(**row)
 
 
@@ -244,11 +238,6 @@ async def create_ws_rows_batch(
     await _check_ws_table(workspace_id, table_id)
     rows_data = [r.data for r in req.rows]
     rows = await table_service.create_rows_batch(table_id, rows_data, current_user["id"])
-    asyncio.create_task(webhook_service.dispatch_webhooks(
-        workspace_id, "table.rows_batch_created",
-        {"table_id": str(table_id), "row_ids": [str(r["id"]) for r in rows], "count": len(rows)},
-        sender_id=current_user["id"],
-    ))
     return {"rows": [RowResponse(**r) for r in rows]}
 
 
@@ -281,11 +270,6 @@ async def update_ws_row(
     row = await table_service.update_row(row_id, req.data, current_user["id"], table_id=table_id)
     if not row:
         raise HTTPException(status_code=404, detail="Row not found")
-    asyncio.create_task(webhook_service.dispatch_webhooks(
-        workspace_id, "table.row_updated",
-        {"table_id": str(table_id), "row": row},
-        sender_id=current_user["id"],
-    ))
     return RowResponse(**row)
 
 
@@ -299,11 +283,6 @@ async def delete_ws_row(
     deleted = await table_service.delete_row(row_id, table_id=table_id)
     if not deleted:
         raise HTTPException(status_code=404, detail="Row not found")
-    asyncio.create_task(webhook_service.dispatch_webhooks(
-        workspace_id, "table.row_deleted",
-        {"table_id": str(table_id), "row_id": str(row_id)},
-        sender_id=current_user["id"],
-    ))
 
 
 @ws_router.post("/{table_id}/rows/delete", status_code=200)
@@ -327,11 +306,6 @@ async def update_ws_rows_batch(
     await _check_ws_table(workspace_id, table_id)
     updates = [{"row_id": r.row_id, "data": r.data} for r in req.rows]
     rows = await table_service.update_rows_batch(table_id, updates, current_user["id"])
-    asyncio.create_task(webhook_service.dispatch_webhooks(
-        workspace_id, "table.rows_batch_updated",
-        {"table_id": str(table_id), "row_ids": [str(r["id"]) for r in rows], "count": len(rows)},
-        sender_id=current_user["id"],
-    ))
     return {"rows": [RowResponse(**r) for r in rows]}
 
 

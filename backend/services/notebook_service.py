@@ -363,6 +363,15 @@ async def get_yjs_state(page_id: UUID) -> bytes | None:
     return row["yjs_state"] if row else None
 
 
+async def get_page_markdown(page_id: UUID) -> str | None:
+    """Get content_markdown for a page (used as fallback when yjs_state is NULL)."""
+    pool = get_pool()
+    row = await pool.fetchrow(
+        "SELECT content_markdown FROM notebook_pages WHERE id = $1", page_id,
+    )
+    return row["content_markdown"] if row else None
+
+
 # --- Injection query helpers ---
 
 
@@ -575,42 +584,3 @@ async def search_pages_vector(
     return [dict(r) for r in rows]
 
 
-async def auto_index_notebook(notebook_id: UUID, created_by: UUID) -> dict:
-    """Generate or update an index page listing all pages with link counts."""
-    pool = get_pool()
-
-    pages = await pool.fetch(
-        "SELECT np.id, np.name, np.folder_id, nf.name AS folder_name, "
-        "(SELECT COUNT(*) FROM page_links pl WHERE pl.target_page_id = np.id) AS backlink_count "
-        "FROM notebook_pages np "
-        "LEFT JOIN notebook_folders nf ON nf.id = np.folder_id "
-        "WHERE np.notebook_id = $1 AND np.name != '_index' "
-        "ORDER BY nf.name NULLS FIRST, np.name",
-        notebook_id,
-    )
-
-    lines = ["# Index\n"]
-    current_folder = None
-    for p in pages:
-        folder = p["folder_name"] or "(root)"
-        if folder != current_folder:
-            current_folder = folder
-            lines.append(f"\n## {folder}\n")
-        backlinks = f" ({p['backlink_count']} backlinks)" if p["backlink_count"] else ""
-        lines.append(f"- [[{p['name']}]]{backlinks}")
-
-    content = "\n".join(lines)
-
-    # Upsert the _index page
-    existing = await pool.fetchrow(
-        "SELECT id FROM notebook_pages WHERE notebook_id = $1 AND name = '_index'",
-        notebook_id,
-    )
-    if existing:
-        return await update_page(
-            existing["id"], notebook_id, created_by, content=content,
-        )
-    else:
-        return await create_page(
-            notebook_id, "_index", created_by, content=content,
-        )

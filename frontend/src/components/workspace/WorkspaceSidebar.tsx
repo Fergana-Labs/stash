@@ -1,8 +1,98 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 
 import { Workspace, WorkspaceMember } from "../../lib/types";
+
+interface UserResult { id: string; name: string; display_name: string; type: string }
+
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3456";
+
+function AddMemberInput({ onAdd, existingMemberIds }: { onAdd: (username: string) => Promise<void>; existingMemberIds: string[] }) {
+  const [query, setQuery] = useState("");
+  const [results, setResults] = useState<UserResult[]>([]);
+  const [searching, setSearching] = useState(false);
+  const [status, setStatus] = useState<{ msg: string; ok: boolean } | null>(null);
+  const [adding, setAdding] = useState(false);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const search = useCallback(async (q: string) => {
+    if (q.length < 1) { setResults([]); return; }
+    setSearching(true);
+    try {
+      const token = localStorage.getItem("octopus_token") || "";
+      const res = await fetch(`${API_BASE}/api/v1/users/search?q=${encodeURIComponent(q)}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        const data: UserResult[] = await res.json();
+        // Filter out existing members and personas
+        setResults(data.filter(u => u.type === "human" && !existingMemberIds.includes(u.id)));
+      }
+    } catch { /* ignore */ }
+    setSearching(false);
+  }, [existingMemberIds]);
+
+  const handleInput = (val: string) => {
+    setQuery(val);
+    setStatus(null);
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => search(val), 200);
+  };
+
+  const handleSelect = async (user: UserResult) => {
+    setAdding(true);
+    setStatus(null);
+    try {
+      await onAdd(user.name);
+      setQuery("");
+      setResults([]);
+      setStatus({ msg: `Added ${user.display_name || user.name}`, ok: true });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Failed to add";
+      setStatus({ msg, ok: false });
+    }
+    setAdding(false);
+  };
+
+  return (
+    <div className="relative">
+      <input
+        type="text"
+        value={query}
+        onChange={(e) => handleInput(e.target.value)}
+        placeholder="Search users to add..."
+        className="w-full bg-raised border border-border rounded px-2 py-1 text-xs text-foreground focus:outline-none focus:border-brand"
+        disabled={adding}
+      />
+      {results.length > 0 && (
+        <div className="absolute left-0 right-0 top-full mt-1 bg-surface border border-border rounded-lg shadow-xl z-50 py-1 max-h-[150px] overflow-y-auto">
+          {results.map((u) => (
+            <button
+              key={u.id}
+              onClick={() => handleSelect(u)}
+              className="w-full text-left px-2 py-1.5 text-xs hover:bg-raised transition-colors flex items-center gap-2"
+            >
+              <div className="w-5 h-5 rounded-full bg-human-muted text-human flex items-center justify-center text-[9px] font-bold flex-shrink-0">
+                {(u.display_name || u.name).charAt(0).toUpperCase()}
+              </div>
+              <div className="min-w-0">
+                <div className="text-foreground truncate">{u.display_name || u.name}</div>
+                <div className="text-muted text-[10px]">@{u.name}</div>
+              </div>
+            </button>
+          ))}
+        </div>
+      )}
+      {searching && <p className="text-[10px] text-muted mt-1">Searching...</p>}
+      {status && (
+        <p className={`text-[10px] mt-1 ${status.ok ? "text-green-400" : "text-red-400"}`}>
+          {status.msg}
+        </p>
+      )}
+    </div>
+  );
+}
 
 interface WorkspaceSidebarProps {
   workspace: Workspace;
@@ -13,6 +103,7 @@ interface WorkspaceSidebarProps {
   onDelete: () => void;
   onKickMember: (userId: string) => void;
   onUpdateWorkspace: (data: { name?: string; description?: string }) => void;
+  onAddMember: (username: string) => Promise<void>;
   onAddToAccessList?: (userName: string, listType: "allow" | "block") => Promise<void>;
   onRemoveFromAccessList?: (userName: string, listType: "allow" | "block") => Promise<void>;
   onGetAccessList?: (listType: "allow" | "block") => Promise<any[]>;
@@ -27,6 +118,7 @@ export default function WorkspaceSidebar({
   onDelete,
   onKickMember,
   onUpdateWorkspace,
+  onAddMember,
   onAddToAccessList,
   onRemoveFromAccessList,
   onGetAccessList,
@@ -184,18 +276,12 @@ export default function WorkspaceSidebar({
 
       <div className="flex-1 overflow-y-auto p-4">
         <h3 className="text-xs uppercase tracking-wider text-muted mb-2">
-          Members ({members.length})
+          Members ({members.filter(m => m.type !== "persona").length})
         </h3>
         <div className="space-y-2">
-          {members.map((m) => (
+          {members.filter(m => m.type !== "persona").map((m) => (
             <div key={m.user_id} className="flex items-center gap-2 group">
-              <div
-                className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold ${
-                  m.type === "persona"
-                    ? "bg-agent-muted text-agent"
-                    : "bg-human-muted text-human"
-                }`}
-              >
+              <div className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold bg-human-muted text-human">
                 {(m.display_name || m.name).charAt(0).toUpperCase()}
               </div>
               <div className="min-w-0 flex-1">
@@ -203,21 +289,28 @@ export default function WorkspaceSidebar({
                   {m.display_name || m.name}
                 </div>
                 <div className="text-[10px] text-muted">
-                  {m.role} · {m.type}
+                  {m.role}
                 </div>
               </div>
               {isOwner && m.user_id !== currentUserId && (
                 <button
                   onClick={() => onKickMember(m.user_id)}
                   className="hidden group-hover:block text-[10px] text-red-400 hover:text-red-300 px-1"
-                  title={`Kick ${m.display_name || m.name}`}
+                  title={`Remove ${m.display_name || m.name}`}
                 >
-                  Kick
+                  Remove
                 </button>
               )}
             </div>
           ))}
         </div>
+
+        {/* Add member */}
+        {isOwner && (
+          <div className="mt-3">
+            <AddMemberInput onAdd={onAddMember} existingMemberIds={members.map(m => m.user_id)} />
+          </div>
+        )}
 
         {isOwner && onGetAccessList && (
           <div className="mt-4">
