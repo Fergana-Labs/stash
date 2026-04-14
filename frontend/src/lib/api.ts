@@ -20,6 +20,9 @@ import {
   TableWithWorkspace,
   Workspace,
   WorkspaceMember,
+  ActivityTimeline,
+  KnowledgeDensity,
+  EmbeddingProjection,
 } from "./types";
 
 const TOKEN_KEY = "octopus_token";
@@ -516,6 +519,27 @@ export async function queryAllHistoryEvents(
 
 export async function listAllTables(): Promise<{ tables: TableWithWorkspace[] }> {
   return apiFetch("/api/v1/me/tables");
+}
+
+// --- Dashboard Visualizations ---
+
+export async function getActivityTimeline(
+  days = 30, bucket = "day"
+): Promise<ActivityTimeline> {
+  return apiFetch(`/api/v1/me/activity-timeline?days=${days}&bucket=${bucket}`);
+}
+
+export async function getKnowledgeDensity(
+  maxClusters = 20
+): Promise<KnowledgeDensity> {
+  return apiFetch(`/api/v1/me/knowledge-density?max_clusters=${maxClusters}`);
+}
+
+export async function getEmbeddingProjection(
+  maxPoints = 500, source?: string
+): Promise<EmbeddingProjection> {
+  const qs = source ? `&source=${source}` : "";
+  return apiFetch(`/api/v1/me/embedding-projection?max_points=${maxPoints}${qs}`);
 }
 
 // --- Tables (workspace-scoped) ---
