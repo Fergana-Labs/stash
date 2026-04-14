@@ -8,8 +8,6 @@ const nextConfig: NextConfig = {
   async rewrites() {
     return [
       {
-        // Only proxy versioned API calls to the backend.
-        // /api/auth/* is reserved for the Auth0 SDK and must NOT be proxied.
         source: "/api/v1/:path*",
         destination: `${backend}/api/v1/:path*`,
       },

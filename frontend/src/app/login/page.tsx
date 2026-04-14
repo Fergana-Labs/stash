@@ -56,20 +56,7 @@ export default function LoginPage() {
       <main className="flex-1 flex items-center justify-center px-4 py-12">
         <div className="w-full max-w-sm space-y-4">
           <div className="rounded-2xl border border-border bg-surface p-6">
-            <h2 className="text-base font-semibold text-foreground mb-1">Sign in</h2>
-            <p className="text-sm text-dim mb-6">
-              Secure login via Auth0 — Google, GitHub, email and more.
-            </p>
-            <a
-              href="/api/auth/login"
-              className="block w-full text-center bg-brand hover:bg-brand-hover text-foreground py-2.5 rounded-xl text-sm font-medium transition-colors"
-            >
-              Continue with Auth0
-            </a>
-          </div>
-
-          <div className="rounded-2xl border border-border bg-surface p-6">
-            <h2 className="text-base font-semibold text-foreground mb-4">Password login</h2>
+            <h2 className="text-base font-semibold text-foreground mb-4">Sign in</h2>
             <form onSubmit={handlePasswordLogin} className="space-y-3">
               <input
                 type="text"
