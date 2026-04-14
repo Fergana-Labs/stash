@@ -179,7 +179,7 @@ Found a bug? [Open an issue](https://github.com/Fergana-Labs/octopus/issues).
 
 | Name | Role | Contact |
 |------|------|---------|
-| [@henry-dowling](https://github.com/henry-dowling) | Lead maintainer | GitHub issues or [security@getoctopus.com](mailto:security@getoctopus.com) for vulnerabilities |
+| [@henry-dowling](https://github.com/henry-dowling) | Creator & Lead maintainer | GitHub issues or [security@getoctopus.com](mailto:security@getoctopus.com) for vulnerabilities |
 | [@samzliu](https://github.com/samzliu) | Creator | GitHub issues |
 | [@triobaba](https://github.com/triobaba) | Creator | GitHub issues |
 
