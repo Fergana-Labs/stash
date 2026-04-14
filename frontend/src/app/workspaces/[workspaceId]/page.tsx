@@ -25,6 +25,7 @@ import {
   getActivityTimeline,
   getKnowledgeDensity,
   getEmbeddingProjection,
+  getPageGraph,
 } from "../../../lib/api";
 import {
   ActivityTimeline,
@@ -32,6 +33,7 @@ import {
   KnowledgeDensity,
   Notebook,
   FileInfo,
+  PageGraph,
   Table,
   Workspace,
   WorkspaceMember,
@@ -40,6 +42,7 @@ import DashboardSection from "../../../components/viz/DashboardSection";
 import AgentActivityTimeline from "../../../components/viz/AgentActivityTimeline";
 import KnowledgeDensityMap from "../../../components/viz/KnowledgeDensityMap";
 import EmbeddingSpaceExplorer from "../../../components/viz/EmbeddingSpaceExplorer";
+import PageGraphView from "../../../components/workspace/PageGraphView";
 
 interface WorkspaceSectionProps {
   title: string;
@@ -94,6 +97,11 @@ export default function WorkspacePage() {
   const [density, setDensity] = useState<KnowledgeDensity | null>(null);
   const [projection, setProjection] = useState<EmbeddingProjection | null>(null);
   const [vizLoading, setVizLoading] = useState(true);
+
+  // Page graph state
+  const [showGraph, setShowGraph] = useState(false);
+  const [pageGraph, setPageGraph] = useState<PageGraph | null>(null);
+  const [graphNotebookId, setGraphNotebookId] = useState<string | null>(null);
 
   const loadWorkspace = useCallback(async () => {
     try { setWorkspace(await getWorkspace(workspaceId)); } catch { setError("Workspace not found"); }
@@ -219,8 +227,8 @@ export default function WorkspacePage() {
                     {timeline && <AgentActivityTimeline data={timeline} />}
                   </DashboardSection>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <DashboardSection title="Knowledge Density" loading={vizLoading} empty={!density?.clusters.length} emptyMessage="No content yet.">
-                      {density && <KnowledgeDensityMap data={density} onTopicClick={(topic) => { window.location.href = `/search?q=${encodeURIComponent(topic)}`; }} />}
+                    <DashboardSection title="Key Topics" loading={vizLoading} empty={!density?.clusters.length} emptyMessage="No content yet.">
+                      {density && <KnowledgeDensityMap data={density} onTopicClick={(topic) => router.push(`/search?q=${encodeURIComponent(topic)}`)} />}
                     </DashboardSection>
                     <DashboardSection title="Embedding Space" loading={vizLoading} empty={!projection?.points.length} emptyMessage="No embeddings yet.">
                       {projection && <EmbeddingSpaceExplorer data={projection} />}
@@ -228,6 +236,55 @@ export default function WorkspacePage() {
                   </div>
                 </div>
               ) : null}
+
+              {/* Page Graph */}
+              {notebooks.length > 0 && (
+                <div className="bg-surface border border-border rounded-xl px-5 py-4">
+                  <div className="flex items-center justify-between">
+                    <h2 className="text-sm font-semibold text-foreground uppercase tracking-wider">Page Graph</h2>
+                    <div className="flex items-center gap-2">
+                      <select
+                        className="text-xs bg-raised border border-border rounded px-2 py-1 text-foreground"
+                        value={graphNotebookId || ""}
+                        onChange={(e) => {
+                          setGraphNotebookId(e.target.value || null);
+                          setPageGraph(null);
+                          setShowGraph(false);
+                        }}
+                      >
+                        <option value="">Select notebook</option>
+                        {notebooks.map((nb) => (
+                          <option key={nb.id} value={nb.id}>{nb.name}</option>
+                        ))}
+                      </select>
+                      <button
+                        onClick={async () => {
+                          if (!graphNotebookId) return;
+                          try {
+                            const g = await getPageGraph(workspaceId, graphNotebookId);
+                            setPageGraph(g);
+                            setShowGraph(true);
+                          } catch { /* ignore */ }
+                        }}
+                        disabled={!graphNotebookId}
+                        className="text-xs text-brand hover:text-brand-hover px-2 py-1 rounded hover:bg-brand/5 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                      >
+                        View
+                      </button>
+                    </div>
+                  </div>
+                  {showGraph && pageGraph && (
+                    <div className="mt-4 pt-4 border-t border-border-subtle">
+                      <PageGraphView
+                        graph={pageGraph}
+                        onClose={() => setShowGraph(false)}
+                        onSelectPage={() => router.push("/notebooks")}
+                        inline
+                      />
+                    </div>
+                  )}
+                </div>
+              )}
 
               <WorkspaceSection
                 title="Wiki"
