@@ -24,7 +24,7 @@ from .bookmark_parser import Bookmark
 
 logger = logging.getLogger(__name__)
 
-_USER_AGENT = "Mozilla/5.0 (compatible; Octopus/1.0; +https://getboozle.com)"
+_USER_AGENT = "Mozilla/5.0 (compatible; Octopus/1.0; +https://getoctopus.com)"
 
 _YOUTUBE_PATTERNS = [
     re.compile(r"(?:youtube\.com/watch\?v=|youtu\.be/|youtube\.com/embed/)([a-zA-Z0-9_-]{11})"),
