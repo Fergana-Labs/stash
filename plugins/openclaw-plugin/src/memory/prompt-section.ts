@@ -1,18 +1,13 @@
 /**
- * Memory prompt section builder — injects scored context from Octopus injection API.
- * Originally ported from the Claude Code plugin (removed).
+ * Memory prompt section builder — injects agent identity + recent activity
+ * from the local context cache populated by the sync loop.
  *
  * Registered via api.registerMemoryPromptSection().
  * OpenClaw SDK signature: (params: { availableTools: Set<string>; citationsMode?: ... }) => string[]
  */
 
 import type { OctopusClient } from "../octopus-client.js";
-import {
-  loadState,
-  loadCache,
-  loadInjectionState,
-  saveInjectionState,
-} from "../state.js";
+import { loadCache } from "../state.js";
 
 export interface OctopusConfig {
   apiEndpoint: string;
@@ -22,15 +17,15 @@ export interface OctopusConfig {
   historyStoreId?: string;
 }
 
-function buildFallbackContext(
+function buildContext(
   agentName: string,
-  persona: string,
+  description: string,
   recentEvents: Record<string, unknown>[],
 ): string[] {
   const lines: string[] = [];
   lines.push("## Agent Identity");
   lines.push(`You are **${agentName}**, a Octopus agent.`);
-  if (persona) lines.push(persona);
+  if (description) lines.push(description);
   lines.push("");
 
   if (recentEvents.length > 0) {
@@ -57,46 +52,26 @@ function buildFallbackContext(
  * Returns string[] (one line per element) per OpenClaw SDK contract.
  */
 export function createPromptSectionBuilder(
-  client: OctopusClient,
+  _client: OctopusClient,
   config: OctopusConfig,
 ) {
   let cachedLines: string[] = [];
   let lastFetchMs = 0;
   const CACHE_TTL_MS = 30_000;
 
-  void prefetch();
+  void refresh();
 
-  async function prefetch() {
-    const state = loadState();
-    let injectionState = loadInjectionState();
-    const sessionId = state.session_id;
-
-    try {
-      const result = await client.inject({
-        promptText: ".",
-        sessionState: injectionState as unknown as Record<string, unknown>,
-        sessionId,
-      });
-      const context = result.context ?? "";
-      cachedLines = context.split("\n");
-      const updatedState = result.updated_session_state ?? injectionState;
-      saveInjectionState(updatedState as unknown as typeof injectionState);
-      lastFetchMs = Date.now();
-    } catch {
-      const cache = loadCache();
-      let persona = state.persona;
-      if (!persona && cache?.profile) {
-        persona = String(cache.profile.description ?? "");
-      }
-      const recentEvents = cache?.recent_events ?? [];
-      cachedLines = buildFallbackContext(config.agentName, persona, recentEvents);
-      lastFetchMs = Date.now();
-    }
+  function refresh() {
+    const cache = loadCache();
+    const description = String(cache?.profile?.description ?? "");
+    const recentEvents = cache?.recent_events ?? [];
+    cachedLines = buildContext(config.agentName, description, recentEvents);
+    lastFetchMs = Date.now();
   }
 
   return (_params: { availableTools: Set<string> }): string[] => {
     if (Date.now() - lastFetchMs > CACHE_TTL_MS) {
-      void prefetch();
+      refresh();
     }
     return cachedLines;
   };

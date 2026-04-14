@@ -4,7 +4,7 @@ import { useCallback, useRef, useState } from "react";
 
 import { Workspace, WorkspaceMember } from "../../lib/types";
 
-interface UserResult { id: string; name: string; display_name: string; type: string }
+interface UserResult { id: string; name: string; display_name: string }
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3456";
 
@@ -26,8 +26,7 @@ function AddMemberInput({ onAdd, existingMemberIds }: { onAdd: (username: string
       });
       if (res.ok) {
         const data: UserResult[] = await res.json();
-        // Filter out existing members and personas
-        setResults(data.filter(u => u.type === "human" && !existingMemberIds.includes(u.id)));
+        setResults(data.filter(u => !existingMemberIds.includes(u.id)));
       }
     } catch { /* ignore */ }
     setSearching(false);
@@ -276,10 +275,10 @@ export default function WorkspaceSidebar({
 
       <div className="flex-1 overflow-y-auto p-4">
         <h3 className="text-xs uppercase tracking-wider text-muted mb-2">
-          Members ({members.filter(m => m.type !== "persona").length})
+          Members ({members.length})
         </h3>
         <div className="space-y-2">
-          {members.filter(m => m.type !== "persona").map((m) => (
+          {members.map((m) => (
             <div key={m.user_id} className="flex items-center gap-2 group">
               <div className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold bg-human-muted text-human">
                 {(m.display_name || m.name).charAt(0).toUpperCase()}

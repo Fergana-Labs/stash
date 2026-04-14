@@ -30,7 +30,7 @@ export async function proxy(request: NextRequest) {
         { status: 501, headers: { "Content-Type": "application/json" } },
       );
     }
-    // All other routes — pass through. Persona/API key auth still works.
+    // All other routes — pass through. API key auth still works.
     return;
   }
 

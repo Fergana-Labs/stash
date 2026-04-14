@@ -22,7 +22,6 @@ export function createStatusCommand(
     lines.push(`Workspace:   ${config.workspaceId || "(not set)"}`);
     lines.push(`History:     ${config.historyStoreId || "(not set)"}`);
     lines.push(`Streaming:   ${state.streaming_enabled ? "enabled" : "paused"}`);
-    lines.push(`Agent Name:  ${state.persona || "(default)"}`);
     lines.push(`Session:     ${state.session_id || "(none)"}`);
     lines.push(`Cache:       ${cache ? "fresh" : "stale/empty"}`);
 

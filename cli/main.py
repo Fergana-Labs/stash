@@ -52,7 +52,7 @@ def register(
         password = typer.prompt("Password", hide_input=True, confirmation_prompt=True)
     with _client() as c:
         try:
-            data = c.register(name, user_type="human", description="", password=password)
+            data = c.register(name, description="", password=password)
         except OctopusError as e:
             _err(e)
     save_config(api_key=data["api_key"], username=data["name"])
@@ -881,7 +881,7 @@ def setup():
             password = typer.prompt("Password", hide_input=True, confirmation_prompt=True)
             with OctopusClient(base_url=base_url, api_key="") as c:
                 try:
-                    data = c.register(name, user_type="human", description="", password=password)
+                    data = c.register(name, description="", password=password)
                 except OctopusError as e:
                     console.print(f"[red]Registration failed: {e.detail}[/red]")
                     raise typer.Exit(1)

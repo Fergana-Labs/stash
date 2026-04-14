@@ -115,19 +115,6 @@ async def join_workspace(workspace_id: UUID, user_id: UUID) -> dict | None:
         "INSERT INTO workspace_members (workspace_id, user_id, role) VALUES ($1, $2, 'member')",
         workspace_id, user_id,
     )
-    # Auto-share agent resources with workspace (read-only via public visibility)
-    user = await pool.fetchrow(
-        "SELECT type, notebook_id, history_id FROM users WHERE id = $1", user_id,
-    )
-    if user and user["type"] == "persona":
-        from . import permission_service
-        for obj_type, obj_id in [
-            ("notebook", user["notebook_id"]),
-            ("history", user["history_id"]),
-        ]:
-            if obj_id:
-                await permission_service.set_visibility(obj_type, obj_id, "public")
-
     return await get_workspace(workspace_id)
 
 
@@ -159,8 +146,7 @@ async def leave_workspace(workspace_id: UUID, user_id: UUID) -> bool:
 async def get_members(workspace_id: UUID) -> list[dict]:
     pool = get_pool()
     rows = await pool.fetch(
-        "SELECT u.id AS user_id, u.name, u.display_name, u.type, "
-        "u.notebook_id, u.history_id, wm.role, wm.joined_at "
+        "SELECT u.id AS user_id, u.name, u.display_name, wm.role, wm.joined_at "
         "FROM workspace_members wm JOIN users u ON u.id = wm.user_id "
         "WHERE wm.workspace_id = $1 ORDER BY wm.joined_at",
         workspace_id,

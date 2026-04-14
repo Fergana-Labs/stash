@@ -20,7 +20,7 @@ export default function OpenClawPage() {
         {[
           {
             hook: "Prompt section",
-            desc: "Before the first message, the plugin calls POST /personas/me/inject to score and select the most relevant notebook pages and history events, then prepends them as context.",
+            desc: "Before the first message, the plugin reads its local context cache (agent profile + recent history events) and prepends agent identity and recent activity as context.",
           },
           {
             hook: "Flush plan",
@@ -56,7 +56,7 @@ npm run build`}</CodeBlock>
   "plugins": {
     "octopus": {
       "apiEndpoint": "https://getoctopus.com",
-      "apiKey": "YOUR_PERSONA_API_KEY",
+      "apiKey": "YOUR_API_KEY",
       "agentName": "your-agent-name",
       "workspaceId": "ws-uuid",
       "historyStoreId": "store-uuid"
@@ -97,7 +97,6 @@ openclaw octopus reconnect  # Resume activity streaming`}</CodeBlock>
           { group: "Notebooks", tools: "create, read pages, create pages, update, delete" },
           { group: "Memory stores", tools: "create, push event, push batch, query, search" },
           { group: "Tables", tools: "create, list, insert rows, update rows, delete rows" },
-          { group: "Personas", tools: "create, list, rotate key, delete" },
         ].map((g) => (
           <div key={g.group} className="flex gap-5 px-5 py-4">
             <span className="text-[13px] font-semibold text-foreground w-36 flex-shrink-0">{g.group}</span>

@@ -33,18 +33,6 @@ export interface QueryEventsParams {
   after?: string;
 }
 
-export interface InjectParams {
-  promptText: string;
-  sessionState: Record<string, unknown>;
-  sessionId?: string;
-}
-
-export interface InjectResult {
-  context: string;
-  updated_session_state: Record<string, unknown>;
-  injected_items: unknown[];
-}
-
 export class OctopusClient {
   private baseUrl: string;
   private apiKey: string;
@@ -199,20 +187,6 @@ export class OctopusClient {
       { q: query, limit },
     )) as Record<string, unknown>;
     return (data.events ?? data) as unknown[];
-  }
-
-  // --- Injection (agent-scoped) ---
-
-  async inject(params: InjectParams): Promise<InjectResult> {
-    const body: Record<string, unknown> = {
-      prompt_text: params.promptText,
-      session_state: params.sessionState,
-    };
-    if (params.sessionId) body.session_id = params.sessionId;
-    return (await this.post(
-      "/api/v1/personas/me/inject",
-      body,
-    )) as InjectResult;
   }
 
   // --- Workspaces (extended) ---
@@ -402,31 +376,6 @@ export class OctopusClient {
     );
   }
 
-  // --- Personas ---
-
-  async createPersona(
-    name: string,
-    displayName = "",
-    description = "",
-  ): Promise<Record<string, unknown>> {
-    return (await this.post("/api/v1/personas", {
-      name,
-      display_name: displayName,
-      description,
-    })) as Record<string, unknown>;
-  }
-
-  async listPersonas(): Promise<unknown[]> {
-    const data = (await this.get("/api/v1/personas")) as Record<string, unknown>;
-    return (data.personas ?? data) as unknown[];
-  }
-
-  async rotatePersonaKey(personaId: string): Promise<Record<string, unknown>> {
-    return (await this.post(
-      `/api/v1/personas/${personaId}/rotate-key`,
-    )) as Record<string, unknown>;
-  }
-
   // --- Tables ---
 
   async listTables(workspaceId: string): Promise<unknown[]> {
@@ -607,18 +556,4 @@ export class OctopusClient {
     )) as Record<string, unknown>;
   }
 
-  // --- Chat Watches ---
-
-  async getUnread(): Promise<Record<string, unknown>> {
-    return (await this.get("/api/v1/personas/me/unread")) as Record<
-      string,
-      unknown
-    >;
-  }
-
-  async markRead(chatId: string): Promise<Record<string, unknown>> {
-    return (await this.post(
-      `/api/v1/personas/me/watches/${chatId}/mark-read`,
-    )) as Record<string, unknown>;
-  }
 }

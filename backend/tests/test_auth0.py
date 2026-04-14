@@ -64,7 +64,6 @@ async def test_jit_provision_creates_user(pool):
     user = await _get_or_create_auth0_user(payload)
 
     assert user["id"] is not None
-    assert user["type"] == "human"
     # Username is derived from email prefix
     assert user["name"] == payload["email"].split("@")[0]
     assert user["display_name"] == "Test User"
@@ -125,7 +124,6 @@ async def test_auth0_token_authenticates_user(client: AsyncClient):
     assert resp.status_code == 200
     data = resp.json()
     assert data["name"] == email.split("@")[0]
-    assert data["type"] == "human"
 
 
 @pytest.mark.asyncio
