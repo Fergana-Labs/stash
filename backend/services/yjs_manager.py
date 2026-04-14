@@ -15,6 +15,7 @@ from pycrdt import Doc
 from ..services import notebook_service
 from ..services.yjs_converter import (
     apply_markdown_update,
+    build_fragment_from_markdown,
     cached_yjs_to_markdown,
     markdown_to_yjs_state,
 )
@@ -71,7 +72,7 @@ class YjsDocHandle:
         self._loaded = False
 
     async def load_from_db(self):
-        """Load Yjs state from database."""
+        """Load Yjs state from database, falling back to content_markdown."""
         if self._loaded:
             return
         state = await notebook_service.get_yjs_state(self.file_id)
@@ -85,9 +86,22 @@ class YjsDocHandle:
                 if "default" in keys and not isinstance(self.doc["default"], XmlFragment):
                     logger.warning(f"Incompatible Yjs type for file {self.file_id}, resetting")
                     self.doc = Doc()
+                    state = None
             except Exception:
                 logger.warning(f"Failed to apply stored Yjs state for file {self.file_id}, starting fresh")
                 self.doc = Doc()
+                state = None
+
+        if not state:
+            # No Yjs state — try to bootstrap from content_markdown
+            markdown = await notebook_service.get_page_markdown(self.file_id)
+            if markdown:
+                build_fragment_from_markdown(self.doc, markdown)
+                # Persist the generated Yjs state so future loads skip this path
+                yjs_state = self.doc.get_update()
+                await notebook_service.save_yjs_state(self.file_id, yjs_state, content_markdown=markdown)
+                logger.info(f"Bootstrapped Yjs state from markdown for file {self.file_id}")
+
         self._loaded = True
 
     def get_state_vector(self) -> bytes:

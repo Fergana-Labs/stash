@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import AppShell from "../../components/AppShell";
 import NotebookTreeComponent from "../../components/workspace/FileTree";
@@ -32,7 +32,6 @@ import {
   getPersonalBacklinks,
   getPageGraph,
   getPersonalPageGraph,
-  autoIndexNotebook,
   semanticSearchPages,
   listAllTables,
   listTables,
@@ -46,12 +45,18 @@ type WikiTab = "pages" | "tables";
 
 export default function WikiPage() {
   const router = useRouter();
-  const wsId = typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("ws") : null;
-  const tabParam = typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("tab") : null;
+  const searchParams = useSearchParams();
+  const wsId = searchParams.get("ws");
+  const tabParam = searchParams.get("tab");
   const { user, loading, logout } = useAuth();
 
-  // Tab state
+  // Tab state — sync with URL
   const [activeTab, setActiveTab] = useState<WikiTab>((tabParam as WikiTab) || "pages");
+  useEffect(() => {
+    if (tabParam === "tables" || tabParam === "pages") {
+      setActiveTab(tabParam);
+    }
+  }, [tabParam]);
 
   // --- Pages tab state ---
   const [notebooks, setNotebooks] = useState<NotebookWithWorkspace[]>([]);
@@ -230,14 +235,6 @@ export default function WikiPage() {
     } catch { setError("Failed to load page graph"); }
   }, [selectedNotebook]);
 
-  const handleAutoIndex = useCallback(async () => {
-    if (!selectedNotebook?.workspace_id) return;
-    try {
-      await autoIndexNotebook(selectedNotebook.workspace_id, selectedNotebook.id);
-      loadTree(selectedNotebook);
-    } catch { setError("Failed to generate index"); }
-  }, [selectedNotebook, loadTree]);
-
   const handleSemanticSearch = useCallback(async () => {
     if (!selectedNotebook?.workspace_id || !semanticQuery.trim()) return;
     setSemanticSearching(true);
@@ -402,102 +399,89 @@ export default function WikiPage() {
         {/* Pages tab */}
         {activeTab === "pages" && (
           <div className="flex flex-1 overflow-hidden">
-            {/* Notebook list */}
-            <div className="w-[200px] flex-shrink-0 bg-surface border-r border-border overflow-y-auto">
-              <div className="px-3 py-3 flex items-center justify-between border-b border-border">
-                <span className="text-[10px] font-medium text-muted uppercase tracking-wider">Notebooks</span>
-                <button onClick={handleCreateNotebook} className="text-xs text-brand hover:text-brand-hover">+ New</button>
-              </div>
-              {Object.entries(grouped).map(([key, group]) => (
-                <div key={key} className="px-2 py-2">
-                  <div className="text-[10px] font-medium text-muted uppercase tracking-wider px-2 mb-1">{group.name}</div>
-                  {group.notebooks.map((nb) => (
-                    <div key={nb.id} className="group flex items-center">
-                      <button
-                        onClick={() => handleSelectNotebook(nb)}
-                        className={`flex-1 text-left px-2 py-1.5 rounded text-sm truncate transition-colors ${
-                          selectedNotebook?.id === nb.id ? "bg-brand/10 text-brand font-medium" : "text-dim hover:text-foreground hover:bg-raised"
-                        }`}
-                      >
-                        {nb.name}
-                      </button>
-                      {!nb.workspace_id && (
-                        <button
-                          onClick={async (e) => {
-                            e.stopPropagation();
-                            if (!confirm(`Delete notebook "${nb.name}"?`)) return;
-                            try {
-                              await deletePersonalNotebook(nb.id);
-                              if (selectedNotebook?.id === nb.id) { setSelectedNotebook(null); setTree({ folders: [], root_files: [] }); setSelectedPage(null); }
-                              loadNotebooks();
-                            } catch { /* ignore */ }
-                          }}
-                          className="text-red-400 hover:text-red-300 text-xs px-1 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0"
-                          title="Delete notebook"
-                        >
-                          &times;
-                        </button>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              ))}
-              {notebooks.length === 0 && <div className="px-4 py-8 text-center text-muted text-sm">No notebooks yet</div>}
-            </div>
-
-            {/* File tree (when notebook selected) */}
-            {selectedNotebook && (
-              <div className="w-[200px] flex-shrink-0 bg-surface border-r border-border overflow-hidden flex flex-col">
-                {/* Semantic search */}
-                {selectedNotebook.workspace_id && (
-                  <div className="px-2 pt-2 pb-1 border-b border-border">
-                    <div className="flex gap-1">
-                      <input
-                        type="text"
-                        placeholder="Search pages..."
-                        value={semanticQuery}
-                        onChange={(e) => { setSemanticQuery(e.target.value); if (!e.target.value) setSemanticResults([]); }}
-                        onKeyDown={(e) => e.key === "Enter" && handleSemanticSearch()}
-                        className="flex-1 text-[11px] bg-raised border border-border rounded px-2 py-1 text-foreground placeholder:text-muted min-w-0"
-                      />
-                    </div>
-                    {semanticSearching && <div className="text-[10px] text-muted px-1 py-1">Searching...</div>}
-                    {semanticResults.length > 0 && (
-                      <div className="mt-1 space-y-0.5 max-h-[150px] overflow-y-auto">
-                        {semanticResults.map((p) => (
-                          <button
-                            key={p.id}
-                            onClick={() => { handleSelectPage(p.id); setSemanticResults([]); setSemanticQuery(""); }}
-                            className="w-full text-left text-[11px] text-foreground hover:bg-raised px-2 py-1 rounded truncate"
-                          >
-                            {p.name}
-                            {"similarity" in p && (
-                              <span className="text-muted ml-1">
-                                {Math.round(((p as unknown as Record<string, number>).similarity ?? 0) * 100)}%
-                              </span>
-                            )}
-                          </button>
+            {/* Single sidebar: notebook dropdown + file tree */}
+            <div className="w-[240px] flex-shrink-0 bg-surface border-r border-border overflow-hidden flex flex-col">
+              {/* Notebook dropdown */}
+              <div className="px-3 py-2.5 border-b border-border">
+                <div className="flex items-center gap-2">
+                  <select
+                    value={selectedNotebook?.id || ""}
+                    onChange={(e) => {
+                      const nb = notebooks.find((n) => n.id === e.target.value);
+                      if (nb) handleSelectNotebook(nb);
+                    }}
+                    className="flex-1 text-sm bg-raised border border-border rounded-md px-2 py-1.5 text-foreground outline-none focus:ring-1 focus:ring-brand truncate"
+                  >
+                    <option value="" disabled>Select notebook</option>
+                    {Object.entries(grouped).map(([key, group]) => (
+                      <optgroup key={key} label={group.name}>
+                        {group.notebooks.map((nb) => (
+                          <option key={nb.id} value={nb.id}>{nb.name}</option>
                         ))}
-                      </div>
-                    )}
-                  </div>
-                )}
-                <div className="flex-1 overflow-hidden">
-                <NotebookTreeComponent
-                  tree={tree}
-                  selectedFileId={selectedPageId}
-                  onSelectFile={handleSelectPage}
-                  onCreateFile={handleCreatePage}
-                  onCreateFolder={handleCreateFolder}
-                  onDeleteFile={handleDeletePage}
-                  onDeleteFolder={handleDeleteFolder}
-                  onRenameFile={handleRenamePage}
-                  onRenameFolder={handleRenameFolder}
-                  onMoveFile={handleMovePage}
-                />
+                      </optgroup>
+                    ))}
+                  </select>
+                  <button onClick={handleCreateNotebook} className="text-xs text-brand hover:text-brand-hover flex-shrink-0">+</button>
                 </div>
               </div>
-            )}
+
+              {/* Semantic search */}
+              {selectedNotebook?.workspace_id && (
+                <div className="px-2 pt-2 pb-1 border-b border-border">
+                  <div className="flex gap-1">
+                    <input
+                      type="text"
+                      placeholder="Search pages..."
+                      value={semanticQuery}
+                      onChange={(e) => { setSemanticQuery(e.target.value); if (!e.target.value) setSemanticResults([]); }}
+                      onKeyDown={(e) => e.key === "Enter" && handleSemanticSearch()}
+                      className="flex-1 text-[11px] bg-raised border border-border rounded px-2 py-1 text-foreground placeholder:text-muted min-w-0"
+                    />
+                  </div>
+                  {semanticSearching && <div className="text-[10px] text-muted px-1 py-1">Searching...</div>}
+                  {semanticResults.length > 0 && (
+                    <div className="mt-1 space-y-0.5 max-h-[150px] overflow-y-auto">
+                      {semanticResults.map((p) => (
+                        <button
+                          key={p.id}
+                          onClick={() => { handleSelectPage(p.id); setSemanticResults([]); setSemanticQuery(""); }}
+                          className="w-full text-left text-[11px] text-foreground hover:bg-raised px-2 py-1 rounded truncate"
+                        >
+                          {p.name}
+                          {"similarity" in p && (
+                            <span className="text-muted ml-1">
+                              {Math.round(((p as unknown as Record<string, number>).similarity ?? 0) * 100)}%
+                            </span>
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* File tree */}
+              {selectedNotebook ? (
+                <div className="flex-1 overflow-hidden">
+                  <NotebookTreeComponent
+                    tree={tree}
+                    selectedFileId={selectedPageId}
+                    onSelectFile={handleSelectPage}
+                    onCreateFile={handleCreatePage}
+                    onCreateFolder={handleCreateFolder}
+                    onDeleteFile={handleDeletePage}
+                    onDeleteFolder={handleDeleteFolder}
+                    onRenameFile={handleRenamePage}
+                    onRenameFolder={handleRenameFolder}
+                    onMoveFile={handleMovePage}
+                  />
+                </div>
+              ) : (
+                <div className="flex-1 flex items-center justify-center">
+                  <p className="text-sm text-muted">{notebooks.length === 0 ? "No notebooks yet" : "Select a notebook"}</p>
+                </div>
+              )}
+            </div>
 
             {/* Editor + Wiki Panel */}
             <div className="flex-1 flex flex-col overflow-hidden">
@@ -538,14 +522,6 @@ export default function WikiPage() {
                     >
                       Graph
                     </button>
-                    {selectedNotebook.workspace_id && (
-                      <button
-                        onClick={handleAutoIndex}
-                        className="text-xs text-dim hover:text-foreground px-2 py-1 rounded hover:bg-raised transition-colors"
-                      >
-                        Auto Index
-                      </button>
-                    )}
                   </div>
                 </div>
               )}

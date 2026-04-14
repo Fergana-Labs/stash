@@ -910,15 +910,6 @@ export async function semanticSearchPersonalPages(
   return data.pages;
 }
 
-export async function autoIndexPersonalNotebook(
-  notebookId: string
-): Promise<NotebookPage> {
-  return apiFetch<NotebookPage>(
-    `/api/v1/notebooks/${notebookId}/auto-index`,
-    { method: "POST" }
-  );
-}
-
 export async function semanticSearchPages(
   workspaceId: string,
   notebookId: string,
@@ -930,16 +921,6 @@ export async function semanticSearchPages(
     `/api/v1/workspaces/${workspaceId}/notebooks/${notebookId}/pages/semantic-search?${params}`
   );
   return data.pages;
-}
-
-export async function autoIndexNotebook(
-  workspaceId: string,
-  notebookId: string
-): Promise<NotebookPage> {
-  return apiFetch<NotebookPage>(
-    `/api/v1/workspaces/${workspaceId}/notebooks/${notebookId}/auto-index`,
-    { method: "POST" }
-  );
 }
 
 // --- Table Embeddings ---

@@ -122,6 +122,30 @@ async def get_members(
     return [WorkspaceMember(**m) for m in members]
 
 
+@router.post("/{workspace_id}/members")
+async def add_member(
+    workspace_id: UUID,
+    req: dict,
+    current_user: dict = Depends(get_current_user),
+):
+    """Add a registered user to the workspace by username."""
+    role = await workspace_service.get_member_role(workspace_id, current_user["id"])
+    if role not in ("owner", "admin"):
+        raise HTTPException(status_code=403, detail="Only owner/admin can add members")
+    username = req.get("username", "").strip()
+    if not username:
+        raise HTTPException(status_code=400, detail="username is required")
+    from ..database import get_pool
+    pool = get_pool()
+    user = await pool.fetchrow("SELECT id FROM users WHERE name = $1", username)
+    if not user:
+        raise HTTPException(status_code=404, detail=f"User '{username}' not found")
+    result = await workspace_service.join_workspace(workspace_id, user["id"])
+    if not result:
+        raise HTTPException(status_code=409, detail="User is already a member")
+    return {"status": "ok", "user_id": str(user["id"])}
+
+
 @router.post("/{workspace_id}/kick/{user_id}", status_code=204)
 async def kick_member(
     workspace_id: UUID, user_id: UUID,

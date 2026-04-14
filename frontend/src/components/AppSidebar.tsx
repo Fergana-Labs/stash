@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { listMyWorkspaces } from "../lib/api";
 import type { Workspace } from "../lib/types";
 
@@ -47,6 +47,7 @@ const WS_STORAGE_KEY = "octopus_selected_workspace";
 
 export default function AppSidebar() {
   const pathname = usePathname();
+  const router = useRouter();
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [selectedWsId, setSelectedWsId] = useState<string | null>(null);
   const [showWsSwitcher, setShowWsSwitcher] = useState(false);
@@ -107,8 +108,7 @@ export default function AppSidebar() {
 
       {/* Workspace switcher */}
       <div className="px-2 pb-2 relative">
-        <button
-          onClick={() => setShowWsSwitcher(!showWsSwitcher)}
+        <div
           className={`w-full flex items-center gap-2 px-3 py-2 rounded-md text-sm transition-colors ${
             selectedWs ? "text-foreground bg-raised" : "text-dim hover:text-foreground hover:bg-raised"
           }`}
@@ -116,11 +116,19 @@ export default function AppSidebar() {
           <span className="w-5 h-5 rounded bg-brand/15 text-brand flex items-center justify-center text-[10px] font-bold flex-shrink-0">
             W
           </span>
-          <span className="flex-1 text-left truncate font-medium">
+          <button
+            onClick={() => selectedWsId && router.push(`/workspaces/${selectedWsId}`)}
+            className="flex-1 text-left truncate font-medium hover:text-brand transition-colors"
+          >
             {selectedWs?.name || "Select workspace"}
-          </span>
-          <span className="text-muted text-xs">{showWsSwitcher ? "\u25B4" : "\u25BE"}</span>
-        </button>
+          </button>
+          <button
+            onClick={() => setShowWsSwitcher(!showWsSwitcher)}
+            className="text-muted text-xs hover:text-foreground px-1"
+          >
+            {showWsSwitcher ? "\u25B4" : "\u25BE"}
+          </button>
+        </div>
 
         {showWsSwitcher && (
           <>

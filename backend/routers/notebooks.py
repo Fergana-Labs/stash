@@ -191,7 +191,7 @@ async def delete_ws_page(
         raise HTTPException(status_code=404, detail="Page not found")
 
 
-# --- Wiki features (backlinks, page graph, semantic search, auto-index) ---
+# --- Wiki features (backlinks, page graph, semantic search) ---
 
 
 @ws_router.get("/{notebook_id}/pages/{page_id}/backlinks")
@@ -228,17 +228,6 @@ async def get_ws_page_graph(
     await _check_ws_notebook(workspace_id, notebook_id)
     return await notebook_service.get_page_graph(notebook_id)
 
-
-@ws_router.post("/{notebook_id}/auto-index")
-async def auto_index_ws_notebook(
-    workspace_id: UUID, notebook_id: UUID,
-    current_user: dict = Depends(get_current_user),
-):
-    """Generate or update an _index page listing all pages with backlink counts."""
-    await _check_ws_access(workspace_id, current_user["id"])
-    await _check_ws_notebook(workspace_id, notebook_id)
-    page = await notebook_service.auto_index_notebook(notebook_id, current_user["id"])
-    return PageResponse(**page)
 
 
 @ws_router.post("/{notebook_id}/folders", response_model=FolderResponse, status_code=201)
@@ -527,15 +516,6 @@ async def get_personal_page_graph(
     await _check_notebook_owner(notebook_id, current_user["id"])
     return await notebook_service.get_page_graph(notebook_id)
 
-
-@personal_router.post("/{notebook_id}/auto-index")
-async def auto_index_personal_notebook(
-    notebook_id: UUID,
-    current_user: dict = Depends(get_current_user),
-):
-    await _check_notebook_owner(notebook_id, current_user["id"])
-    page = await notebook_service.auto_index_notebook(notebook_id, current_user["id"])
-    return PageResponse(**page)
 
 
 @personal_router.post("/{notebook_id}/folders", response_model=FolderResponse, status_code=201)
