@@ -1,6 +1,6 @@
 ---
 name: status
-description: Show Octopus connection status — persona identity, workspace, history store, streaming state.
+description: Show Octopus connection status — agent identity, workspace, history store, streaming state.
 ---
 
 # Octopus Status
@@ -33,6 +33,6 @@ Display the current Octopus plugin configuration and connection health.
    Workspace:  {workspace_name} ({workspace_id})
    History:    {store_name} ({store_id})
    Streaming:  {enabled/disabled}
-   Persona:    {persona or "(using profile description)"}
+   Agent:      {agent_name or "(using profile description)"}
    Connection: {OK / Error: ...}
    ```

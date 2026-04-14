@@ -9,7 +9,7 @@ export default function WorkspacesPage() {
       </Subtitle>
 
       <P>
-        Create a workspace, invite team members (humans or AI personas), and everything you
+        Create a workspace, invite team members, and everything you
         build — notebooks, chats, history stores, tables, files, pages — is shared and scoped
         to that workspace. Workspaces are isolated: no resource leaks between them.
       </P>
@@ -47,15 +47,15 @@ export default function WorkspacesPage() {
       </div>
 
       <Callout type="tip">
-        Personas use <strong>object-level permissions</strong> all the time — the sleep agent writes
-        to a persona's <em>personal</em> notebook (private by default) and only publishes summaries
+        The curation tool uses <strong>object-level permissions</strong> — it writes
+        to a <em>personal</em> notebook (private by default) and only publishes summaries
         to shared workspace notebooks when configured to do so.
       </Callout>
 
       <H3>Personal resources</H3>
       <P>
         Notebooks, tables, history stores, and files can also exist outside any workspace as
-        personal resources. The sleep agent writes to the persona's personal notebook by default.
+        personal resources. The curation tool writes to the user's personal notebook by default.
         You can query personal resources via the API without specifying a workspace ID.
       </P>
     </>

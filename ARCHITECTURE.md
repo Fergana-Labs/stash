@@ -26,13 +26,13 @@ Octopus is a collaborative memory platform for AI agent teams. It has three laye
 │  └──────────┘ └──────────┘ └──────────┘ └──────────┘ └──────────┘  │
 │                                                                      │
 │  Background loops:                                                   │
-│    • Sleep agent curation (configurable interval)                    │
+│    • Curation (user-invoked via MCP tool)                            │
 │    • Webhook delivery (5s poll with exponential backoff)             │
 │    • WebSocket health pings (30s)                                    │
 │                                                                      │
 │  Cross-process coordination:                                         │
 │    • pg_notify for WebSocket fan-out across workers                  │
-│    • Advisory locks for singleton sleep agent + webhook delivery      │
+│    • Advisory locks for singleton curation + webhook delivery         │
 └──────────────────────────┬───────────────────────────────────────────┘
                            │
                            ▼
@@ -44,8 +44,7 @@ Octopus is a collaborative memory platform for AI agent teams. It has three laye
 │               histories, history_events, tables, table_rows,         │
 │               decks, files, documents                                │
 │  Access:      object_permissions, object_shares                      │
-│  Infra:       webhooks, webhook_deliveries, sleep_configs,           │
-│               sleep_watermarks, injection_configs                    │
+│  Infra:       webhooks, webhook_deliveries, injection_configs        │
 │                                                                      │
 │  Indexes: GIN (FTS), HNSW (vector cosine similarity)                │
 └──────────────────────────────────────────────────────────────────────┘
@@ -64,10 +63,10 @@ External orchestration layers (your own multi-agent framework, local bridge daem
 ```
 workspaces ─┬── workspace_members ──── users
              │                          │
-             ├── chats ── chat_messages  ├── personas (users with type='persona')
-             │    └── chat_watches      │    ├── sleep_configs
-             │                          │    ├── sleep_watermarks
-             ├── notebooks              │    └── injection_configs
+             ├── chats ── chat_messages  ├── injection_configs
+             │    └── chat_watches      │
+             │                          │
+             ├── notebooks              │
              │    ├── notebook_folders   │
              │    ├── notebook_pages     │
              │    └── page_links        │
@@ -160,7 +159,7 @@ Database (database.py)
 | `table_service` | Tables, rows, columns, views, CSV import/export |
 | `deck_service` | HTML pages, sharing with token-based access |
 | `permission_service` | Visibility, shares, access checks |
-| `sleep_service` | Periodic curation — reads history, writes notebook wiki pages |
+| `sleep_service` | On-demand curation — reads history, writes notebook wiki pages |
 | `webhook_service` | HMAC-signed delivery with persistent queue and backoff |
 | `embedding_service` | OpenAI text-embedding-3-small integration |
 | `history_query_service` | LLM-synthesized answers over history events |
@@ -171,7 +170,7 @@ Database (database.py)
 
 The backend runs three long-lived async tasks:
 
-1. **Sleep agent** — checks `sleep_configs` for due personas, acquires a Postgres advisory lock, reads new history events, calls Anthropic to generate wiki pages, writes to notebooks
+1. **Curation** — invoked via MCP tool, acquires a Postgres advisory lock, reads new history events, calls Anthropic to generate wiki pages, writes to notebooks
 2. **Webhook delivery** — polls `webhook_deliveries` for pending items, acquires advisory lock, delivers with exponential backoff, marks delivered/failed
 3. **WebSocket health** — pings all connected WebSockets every 30s, disconnects dead ones
 
@@ -203,7 +202,7 @@ frontend/src/
 │   │       ├── tables/       # Table editor
 │   │       └── decks/        # Page builder
 │   ├── rooms/                # Personal rooms
-│   ├── personas/             # Persona management
+│   ├── personas/             # Agent name management
 │   ├── docs/                 # In-app documentation (13 pages)
 │   └── search/               # Universal search
 ├── components/               # Shared React components
@@ -229,7 +228,7 @@ Three containers: `postgres` (pgvector:pg16), `backend` (uvicorn), `frontend` (N
 
 - **S3-compatible storage** — file uploads (falls back to local)
 - **OpenAI API key** — embeddings for semantic search
-- **Anthropic API key** — sleep agent curation + LLM-powered search
+- **Anthropic API key** — curation tool + LLM-powered search
 
 ## Naming
 

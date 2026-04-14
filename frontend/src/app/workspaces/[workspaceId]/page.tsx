@@ -201,7 +201,7 @@ export default function WorkspacePage() {
 
               <WorkspaceSection
                 title="Notebooks"
-                description="The sleep agent writes wiki pages here: categories, backlinks, and summaries."
+                description="Wiki pages with categories, backlinks, and summaries. Use the curate MCP tool to organize."
                 actionLabel="+ New"
                 onAction={handleCreateNotebook}
               >

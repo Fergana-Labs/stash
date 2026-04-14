@@ -7,10 +7,9 @@ from ..database import get_pool
 async def register_user(
     name: str,
     display_name: str | None,
-    user_type: str,
-    description: str,
+    user_type: str = "human",
+    description: str = "",
     password: str | None = None,
-    owner_id: UUID | None = None,
 ) -> tuple[dict, str]:
     """Register a new user. Returns (user_row, raw_api_key)."""
     pool = get_pool()
@@ -19,16 +18,15 @@ async def register_user(
     pw_hash = hash_password(password) if password else None
     try:
         row = await pool.fetchrow(
-            "INSERT INTO users (name, display_name, type, api_key_hash, password_hash, description, owner_id) "
-            "VALUES ($1, $2, $3, $4, $5, $6, $7) "
-            "RETURNING id, name, display_name, type, description, owner_id, created_at, last_seen",
+            "INSERT INTO users (name, display_name, type, api_key_hash, password_hash, description) "
+            "VALUES ($1, $2, $3, $4, $5, $6) "
+            "RETURNING id, name, display_name, type, description, created_at, last_seen",
             name,
             display_name or name,
             user_type,
             key_hash,
             pw_hash,
             description,
-            owner_id,
         )
     except Exception as e:
         if "unique" in str(e).lower() and "name" in str(e).lower():
@@ -40,7 +38,7 @@ async def register_user(
 async def get_user_by_id(user_id: UUID) -> dict | None:
     pool = get_pool()
     row = await pool.fetchrow(
-        "SELECT id, name, display_name, type, description, owner_id, created_at, last_seen "
+        "SELECT id, name, display_name, type, description, created_at, last_seen "
         "FROM users WHERE id = $1",
         user_id,
     )
@@ -71,7 +69,7 @@ async def update_user(
         idx += 1
     if not sets:
         row = await pool.fetchrow(
-            "SELECT id, name, display_name, type, description, owner_id, created_at, last_seen "
+            "SELECT id, name, display_name, type, description, created_at, last_seen "
             "FROM users WHERE id = $1",
             user_id,
         )
@@ -89,7 +87,7 @@ async def authenticate_by_password(name: str, password: str) -> tuple[dict, str]
     """Authenticate by username + password. Returns (user_dict, new_api_key)."""
     pool = get_pool()
     row = await pool.fetchrow(
-        "SELECT id, name, display_name, type, description, owner_id, created_at, last_seen, password_hash "
+        "SELECT id, name, display_name, type, description, created_at, last_seen, password_hash "
         "FROM users WHERE name = $1",
         name,
     )

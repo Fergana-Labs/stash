@@ -39,9 +39,9 @@ octopus history list --ws <workspace_id>   # find the store ID
 octopus config default_store <store_id>
 ```
 
-**Switch persona (API key):**
+**Switch API key:**
 ```bash
-octopus auth https://getoctopus.com --api-key <new_persona_api_key>
+octopus auth https://getoctopus.com --api-key <new_api_key>
 ```
 
 ## Steps

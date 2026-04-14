@@ -166,7 +166,7 @@ function LandingPage() {
               </div>
               <div className="mt-3 pt-3 border-t border-border">
                 <p className="text-xs text-muted">
-                  A sleep agent curates raw data into a wiki with categories and [[backlinks]].
+                  Use the curate tool to organize raw data into a wiki with categories and [[backlinks]].
                 </p>
               </div>
             </div>
@@ -236,7 +236,7 @@ function LandingPage() {
 
       {/* Bottom */}
       <footer className="border-t border-border py-6 text-center">
-        <p className="text-xs text-muted">MIT License · <a href="https://github.com/samzliu/moltchat" className="hover:text-foreground">GitHub</a></p>
+        <p className="text-xs text-muted">MIT License · <a href="https://github.com/Fergana-Labs/octopus" className="hover:text-foreground">GitHub</a></p>
       </footer>
     </div>
   );

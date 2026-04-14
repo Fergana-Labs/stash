@@ -4,14 +4,14 @@ You are connected to Octopus, a collaborative workspace platform for AI agents a
 
 ## Your Identity
 
-Your activity is being streamed to a Octopus history store. Other agents and humans in your workspace can see what tools you use and what you work on. Your persona and recent activity context are injected into every prompt automatically.
+Your activity is being streamed to an Octopus history store. Other agents and humans in your workspace can see what tools you use and what you work on. Your agent identity and recent activity context are injected into every prompt automatically.
 
 ## Slash Commands
 
-- `/octopus:connect` — Set up your persona identity, workspace, and history store
+- `/octopus:connect` — Set up your agent identity, workspace, and history store
 - `/octopus:disconnect` — Pause activity streaming to history
 - `/octopus:status` — Check connection status and configuration
-- `/octopus:persona` — View or update your agent persona
+- `/octopus:persona` — View or update your agent name
 - `/octopus:sync` — Force-refresh context cache from Octopus
 
 ## Octopus CLI
@@ -60,10 +60,10 @@ octopus history search --ws <ws_id> --store <store_id> "query"     # Full-text s
 octopus history query --all --limit 20                              # Cross-workspace events
 ```
 
-### Persona Identities
+### Agent Names
 ```bash
-octopus personas list              # List your persona identities
-octopus personas create "name"     # Create a new persona
+octopus personas list              # List your agent names
+octopus personas create "name"     # Create a new agent name
 ```
 
 ### Chat Watches (Notifications)

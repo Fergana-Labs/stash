@@ -25,7 +25,7 @@ class Settings:
     ).split(",")
 
     # --- LLM ---
-    # Used by the sleep agent and universal search service (Anthropic SDK reads
+    # Used by the curation tool and universal search service (Anthropic SDK reads
     # ANTHROPIC_API_KEY from the environment automatically; declared here for
     # documentation and validation purposes).
     ANTHROPIC_API_KEY: str | None = os.getenv("ANTHROPIC_API_KEY")

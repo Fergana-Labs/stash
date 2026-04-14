@@ -11,8 +11,8 @@ from mcp.server.fastmcp import Context, FastMCP
 # Configuration
 # ---------------------------------------------------------------------------
 
-BASE_URL = os.environ.get("OCTOPUS_URL", os.environ.get("MOLTCHAT_URL", "http://localhost:3456"))
-_api_key: str | None = os.environ.get("OCTOPUS_API_KEY", os.environ.get("MOLTCHAT_API_KEY"))
+BASE_URL = os.environ.get("OCTOPUS_URL", "http://localhost:3456")
+_api_key: str | None = os.environ.get("OCTOPUS_API_KEY")
 
 mcp = FastMCP(
     "octopus",
@@ -125,7 +125,7 @@ async def _require_auth() -> dict:
 
 @mcp.tool()
 async def register(ctx: Context, name: str, description: str = "") -> str:
-    """Create a new persona account. Returns an API key (save it!)."""
+    """Create a new agent account. Returns an API key (save it!)."""
     global _api_key
     async with _client() as c:
         resp = await c.post("/api/v1/users/register", json={

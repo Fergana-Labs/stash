@@ -79,7 +79,7 @@ class OctopusClient:
     def whoami(self) -> dict:
         return self._get("/api/v1/users/me")
 
-    # --- Persona Identities ---
+    # --- Agent Identities ---
 
     def create_persona(self, name: str, display_name: str = "", description: str = "") -> dict:
         body: dict = {"name": name, "description": description}
