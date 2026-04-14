@@ -71,7 +71,7 @@ async def query_ws_events(
     current_user: dict = Depends(get_current_user),
 ):
     await _check_member(workspace_id, current_user["id"])
-    events, has_more = await memory_service.query_events(
+    events, has_more = await memory_service.query_workspace_events(
         workspace_id, agent_name=agent_name, session_id=session_id,
         event_type=event_type, after=after, before=before, limit=limit,
     )
@@ -89,7 +89,7 @@ async def search_ws_events(
     current_user: dict = Depends(get_current_user),
 ):
     await _check_member(workspace_id, current_user["id"])
-    events = await memory_service.search_events(workspace_id, q, limit=limit)
+    events = await memory_service.search_workspace_events(workspace_id, q, limit=limit)
     return HistoryEventListResponse(
         events=[HistoryEventResponse(**e) for e in events],
         has_more=False,
@@ -102,7 +102,7 @@ async def get_ws_event(
     current_user: dict = Depends(get_current_user),
 ):
     await _check_member(workspace_id, current_user["id"])
-    event = await memory_service.get_event(event_id, workspace_id)
+    event = await memory_service.get_workspace_event(event_id, workspace_id)
     if not event:
         raise HTTPException(status_code=404, detail="Event not found")
     return HistoryEventResponse(**event)
@@ -115,7 +115,7 @@ async def delete_ws_agent(
 ):
     """Delete all events for an agent in this workspace."""
     await _check_member(workspace_id, current_user["id"])
-    await memory_service.delete_agent_events(agent_name, workspace_id=workspace_id)
+    await memory_service.delete_workspace_agent_events(agent_name, workspace_id)
 
 
 @ws_router.get("/agent-names")
@@ -144,7 +144,7 @@ async def delete_personal_agent(
     current_user: dict = Depends(get_current_user),
 ):
     """Delete all personal events for an agent."""
-    await memory_service.delete_agent_events(agent_name, user_id=current_user["id"])
+    await memory_service.delete_personal_agent_events(agent_name, current_user["id"])
 
 
 @personal_router.post("/events", response_model=HistoryEventResponse, status_code=201)
@@ -182,8 +182,8 @@ async def query_personal_events(
     limit: int = Query(50, ge=1, le=200),
     current_user: dict = Depends(get_current_user),
 ):
-    events, has_more = await memory_service.query_events(
-        None, user_id=current_user["id"],
+    events, has_more = await memory_service.query_personal_events(
+        current_user["id"],
         agent_name=agent_name, session_id=session_id,
         event_type=event_type, after=after, before=before, limit=limit,
     )
@@ -199,8 +199,8 @@ async def search_personal_events(
     limit: int = Query(50, ge=1, le=200),
     current_user: dict = Depends(get_current_user),
 ):
-    events = await memory_service.search_events(
-        None, q, user_id=current_user["id"], limit=limit,
+    events = await memory_service.search_personal_events(
+        current_user["id"], q, limit=limit,
     )
     return HistoryEventListResponse(
         events=[HistoryEventResponse(**e) for e in events],
@@ -213,7 +213,7 @@ async def get_personal_event(
     event_id: UUID,
     current_user: dict = Depends(get_current_user),
 ):
-    event = await memory_service.get_event(event_id)
-    if not event or (event.get("workspace_id") is not None) or (event.get("created_by") != current_user["id"]):
+    event = await memory_service.get_personal_event(event_id, current_user["id"])
+    if not event:
         raise HTTPException(status_code=404, detail="Event not found")
     return HistoryEventResponse(**event)
