@@ -13,7 +13,6 @@ import {
   PageTree,
   ObjectPermission,
   RegisterResponse,
-  SearchResponse,
   User,
   UserSearchResult,
   Table,
@@ -408,20 +407,6 @@ export async function searchHistoryEvents(
   if (limit) searchParams.set("limit", String(limit));
   return apiFetch(
     `/api/v1/workspaces/${workspaceId}/memory/${storeId}/events/search?${searchParams.toString()}`
-  );
-}
-
-export async function queryHistory(
-  workspaceId: string,
-  storeId: string,
-  question: string,
-): Promise<{ answer: string; sources: HistoryEvent[] }> {
-  return apiFetch(
-    `/api/v1/workspaces/${workspaceId}/memory/${storeId}/query`,
-    {
-      method: "POST",
-      body: JSON.stringify({ question }),
-    }
   );
 }
 
@@ -830,24 +815,6 @@ export async function listFiles(workspaceId: string): Promise<FileInfo[]> {
 
 export async function deleteFile(workspaceId: string, fileId: string): Promise<void> {
   await apiFetch(`/api/v1/workspaces/${workspaceId}/files/${fileId}`, { method: "DELETE" });
-}
-
-// --- Universal Search ---
-
-export async function universalSearch(
-  question: string,
-  workspaceId?: string,
-  resourceTypes?: string[]
-): Promise<SearchResponse> {
-  const body: Record<string, unknown> = { question };
-  if (resourceTypes) body.resource_types = resourceTypes;
-  const url = workspaceId
-    ? `/api/v1/workspaces/${workspaceId}/search`
-    : `/api/v1/me/search`;
-  return apiFetch<SearchResponse>(url, {
-    method: "POST",
-    body: JSON.stringify(body),
-  });
 }
 
 // --- Wiki: Backlinks, Page Graph, Semantic Search ---

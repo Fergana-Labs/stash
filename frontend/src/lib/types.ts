@@ -216,13 +216,6 @@ export interface Attachment {
   content_type: string;
 }
 
-// --- Universal Search ---
-
-export interface SearchResponse {
-  answer: string;
-  sources_used: string[];
-}
-
 // --- Wiki / Page Links ---
 
 export interface PageLink {

@@ -12,7 +12,7 @@ from .client import OctopusClient, OctopusError
 from .config import load_config, save_config
 from .formatting import console, output_json, print_members, print_rooms, print_user
 
-app = typer.Typer(name="octopus", help="Octopus CLI — workspaces, notebooks, tables, history, search.")
+app = typer.Typer(name="octopus", help="Octopus CLI — workspaces, notebooks, tables, history.")
 
 
 def _client() -> OctopusClient:
@@ -403,28 +403,6 @@ def hist_search(query: str = typer.Argument(...), workspace_id: str = typer.Opti
     else:
         for ev in data:
             console.print(f"  [{ev['created_at'][:19]}] {ev['agent_name']}/{ev['event_type']}: {ev['content'][:200]}")
-
-
-@hist_app.command("ask")
-def hist_ask(question: str = typer.Argument(...), workspace_id: str = typer.Option(None, "--ws"), store_id: str = typer.Option(None, "--store"), as_json: bool = typer.Option(False, "--json")):
-    """Ask a question about a history store (LLM-powered)."""
-    ws = workspace_id or _default_workspace()
-    store = store_id or load_config().get("default_store", "")
-    if not store:
-        console.print("[red]No store specified.[/red]")
-        raise typer.Exit(1)
-    with _client() as c:
-        try:
-            data = c.query_history(ws, store, question)
-        except OctopusError as e:
-            _err(e)
-    if _use_json(as_json):
-        output_json(data)
-    else:
-        console.print(f"\n[bold]{data.get('answer', '')}[/bold]\n")
-        sources = data.get("sources", [])
-        if sources:
-            console.print(f"[dim]Based on {len(sources)} events[/dim]")
 
 
 # ===========================================================================
@@ -1164,43 +1142,6 @@ def import_bookmarks_cmd(
         art = sum(1 for _, (c, t) in scraped.items() if t == "article" and c is not None)
         if yt or pdf or art:
             console.print(f"[dim]Content extracted: {art} articles, {yt} YouTube transcripts, {pdf} PDFs[/dim]")
-
-
-# ===========================================================================
-# Universal Search
-# ===========================================================================
-
-
-@app.command("search")
-def search_cmd(
-    query: str = typer.Argument(..., help="Question or search query"),
-    workspace_id: str = typer.Option(None, "--ws", help="Workspace ID (searches personal resources if omitted)"),
-    types: str = typer.Option(None, "--types", help="Comma-separated resource types: history,notebook,table,document"),
-    as_json: bool = typer.Option(False, "--json"),
-):
-    """Search across all your knowledge — notebooks, history, tables, documents.
-
-    Uses AI-powered synthesis to find answers across all your ingested data.
-    """
-    resource_types = [t.strip() for t in types.split(",")] if types else None
-
-    with _client() as c:
-        try:
-            if workspace_id:
-                result = c.universal_search(workspace_id, query, resource_types=resource_types)
-            else:
-                result = c.personal_search(query, resource_types=resource_types)
-        except OctopusError as e:
-            _err(e)
-
-    if _use_json(as_json):
-        output_json(result)
-    else:
-        answer = result.get("answer", "No answer found.")
-        sources = result.get("sources_used", [])
-        console.print(f"\n{answer}\n")
-        if sources:
-            console.print(f"[dim]Sources: {', '.join(sources)}[/dim]")
 
 
 if __name__ == "__main__":
