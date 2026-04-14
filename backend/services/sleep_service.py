@@ -432,6 +432,42 @@ Respond ONLY with valid JSON."""
     return json.loads(text)
 
 
+async def _llm_merge_update(model: str, intent: str, current_content: str) -> str:
+    """Re-run the LLM to rewrite an update on top of a concurrently-changed page.
+
+    Called from the on_conflict hook in notebook_service.update_page. `intent` is
+    a plain-English description of the edit we originally wanted to make;
+    `current_content` is the fresh page content after another writer committed.
+    Returns the merged full page content.
+    """
+    prompt = f"""You are merging a wiki page edit on top of a version that was changed
+by another agent while you were working. Produce the new full page content that
+applies your intended edit on top of what's currently there.
+
+## Current page content (after the other agent's edit)
+{current_content}
+
+## The edit you wanted to make
+{intent}
+
+## Instructions
+- Preserve the other agent's changes.
+- Apply your intended edit; skip any parts that the other agent already added.
+- Keep the page coherent: deduplicate, tidy formatting, maintain [[wiki links]].
+- Respond with ONLY the final markdown content — no JSON, no code fences, no commentary."""
+
+    client = _get_anthropic()
+    response = await client.messages.create(
+        model=model,
+        max_tokens=4000,
+        messages=[{"role": "user", "content": prompt}],
+    )
+    text = response.content[0].text.strip()
+    if text.startswith("```"):
+        text = text.split("\n", 1)[1].rsplit("```", 1)[0].rstrip()
+    return text
+
+
 async def _llm_curate(model: str, episodes_summary: str, notes_summary: str, since_last: str) -> dict:
     prompt = f"""You are a knowledge base curator. Your job is to organize incoming information
 into a structured wiki with categories, topic pages, and cross-linked content.
@@ -690,12 +726,24 @@ async def _execute_actions(agent_id: UUID, notebook_id: UUID, config: dict, resu
         if new_links:
             additions = "\n".join(f"- [[{link}]]" for link in new_links)
             new_content = page["content_markdown"] + f"\n{additions}"
-            await notebook_service.update_page(
-                page_id=UUID(page_id_str),
-                notebook_id=notebook_id,
-                updated_by=agent_id,
-                content=new_content,
+            intent = (
+                "Add the following wiki links to the category page's bullet list. "
+                "Skip any links that are already present.\n\n" + additions
             )
+
+            async def _merge_category(fresh: dict, _model=config["curation_model"], _intent=intent) -> str:
+                return await _llm_merge_update(_model, _intent, fresh["content_markdown"])
+
+            try:
+                await notebook_service.update_page(
+                    page_id=UUID(page_id_str),
+                    notebook_id=notebook_id,
+                    updated_by=agent_id,
+                    content=new_content,
+                    on_conflict=_merge_category,
+                )
+            except notebook_service.ConcurrentEditError:
+                logger.warning("category update exhausted retries for page %s", page_id_str)
 
     # Update notes
     for update in result.get("update_notes", []):
@@ -707,8 +755,8 @@ async def _execute_actions(agent_id: UUID, notebook_id: UUID, config: dict, resu
         if not page:
             continue
 
+        additions = update.get("content_additions") or ""
         new_content = page["content_markdown"]
-        additions = update.get("content_additions")
         if additions:
             new_content += f"\n\n{additions}"
 
@@ -718,13 +766,29 @@ async def _execute_actions(agent_id: UUID, notebook_id: UUID, config: dict, resu
         if update.get("importance") is not None:
             new_meta["importance"] = update["importance"]
 
-        await notebook_service.update_page(
-            page_id=page_id,
-            notebook_id=notebook_id,
-            updated_by=agent_id,
-            content=new_content,
-            metadata=new_meta,
-        )
+        merge_cb = None
+        if additions:
+            intent = (
+                "Append the following content to the page, blending it in sensibly "
+                "rather than duplicating anything already present:\n\n" + additions
+            )
+
+            async def _merge_note(fresh: dict, _model=config["curation_model"], _intent=intent) -> str:
+                return await _llm_merge_update(_model, _intent, fresh["content_markdown"])
+
+            merge_cb = _merge_note
+
+        try:
+            await notebook_service.update_page(
+                page_id=page_id,
+                notebook_id=notebook_id,
+                updated_by=agent_id,
+                content=new_content,
+                metadata=new_meta,
+                on_conflict=merge_cb,
+            )
+        except notebook_service.ConcurrentEditError:
+            logger.warning("note update exhausted retries for page %s", page_id)
 
     # Merge notes
     for merge in result.get("merge_notes", []):
