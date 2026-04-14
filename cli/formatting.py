@@ -78,11 +78,11 @@ def print_user(user: dict, title: str = "Profile") -> None:
 
 
 def print_personas(personas: list[dict]) -> None:
-    """Print a table of persona identities."""
+    """Print a table of agent identities."""
     if not personas:
-        console.print("[dim]No personas. Use 'octopus personas create' to make one.[/dim]")
+        console.print("[dim]No agent identities. Use 'octopus personas create' to make one.[/dim]")
         return
-    table = Table(title="Persona Identities")
+    table = Table(title="Agent Identities")
     table.add_column("Name", style="bold")
     table.add_column("ID", style="dim")
     table.add_column("Display Name")

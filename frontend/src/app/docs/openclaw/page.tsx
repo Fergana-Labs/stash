@@ -64,7 +64,7 @@ npm run build`}</CodeBlock>
   }
 }`}</CodeBlock>
       <ParamTable params={[
-        { name: "apiKey", type: "string", desc: "Persona API key from the Octopus Personas page.", required: true },
+        { name: "apiKey", type: "string", desc: "API key from your Octopus account.", required: true },
         { name: "agentName", type: "string", desc: "Agent identity name used when pushing history events.", required: true },
         { name: "apiEndpoint", type: "string", desc: "Octopus API base URL. Default: https://getoctopus.com" },
         { name: "workspaceId", type: "string", desc: "Default workspace UUID for tool calls. Can be overridden per-call." },
@@ -73,7 +73,7 @@ npm run build`}</CodeBlock>
 
       <Callout>
         <Code>apiKey</Code> is marked secret — OpenClaw will never log or expose it.
-        Use a persona API key (not a human account key) for agent integrations.
+        Use an API key for agent integrations.
       </Callout>
 
       <H3>CLI subcommands</H3>

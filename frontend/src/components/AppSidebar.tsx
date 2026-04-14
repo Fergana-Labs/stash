@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { listMyWorkspaces } from "../lib/api";
 import type { Workspace } from "../lib/types";
 
@@ -12,22 +12,10 @@ interface NavItem {
   icon: string;
 }
 
-const SEARCH: NavItem = { href: "/search", label: "Search", icon: "S" };
-
-const CONSUME: NavItem[] = [
-  { href: "/documents", label: "Files", icon: "F" },
+const NAV_ITEMS: NavItem[] = [
+  { href: "/search", label: "Search", icon: "S" },
   { href: "/memory", label: "History", icon: "H" },
-  { href: "/tables", label: "Tables", icon: "T" },
-];
-
-const CURATE: NavItem[] = [
-  { href: "/notebooks", label: "Notebooks", icon: "N" },
-  { href: "/personas", label: "Personas", icon: "P" },
-];
-
-const COLLABORATE: NavItem[] = [
-  { href: "/chats", label: "Chats", icon: "C" },
-  { href: "/decks", label: "Pages", icon: "D" },
+  { href: "/notebooks", label: "Wiki", icon: "W" },
 ];
 
 function NavLink({ item, isActive, wsId }: { item: NavItem; isActive: boolean; wsId?: string | null }) {
@@ -55,18 +43,11 @@ function NavLink({ item, isActive, wsId }: { item: NavItem; isActive: boolean; w
   );
 }
 
-function SectionLabel({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="text-[10px] font-medium text-muted uppercase tracking-wider px-3 pt-4 pb-1">
-      {children}
-    </div>
-  );
-}
-
 const WS_STORAGE_KEY = "octopus_selected_workspace";
 
 export default function AppSidebar() {
   const pathname = usePathname();
+  const router = useRouter();
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [selectedWsId, setSelectedWsId] = useState<string | null>(null);
   const [showWsSwitcher, setShowWsSwitcher] = useState(false);
@@ -77,7 +58,6 @@ export default function AppSidebar() {
       .then((res) => {
         const ws = res?.workspaces ?? [];
         setWorkspaces(ws);
-        // Restore from localStorage, or select first
         const saved = typeof window !== "undefined" ? localStorage.getItem(WS_STORAGE_KEY) : null;
         if (saved && ws.some((w) => w.id === saved)) {
           setSelectedWsId(saved);
@@ -88,7 +68,7 @@ export default function AppSidebar() {
       .catch(() => {});
   }, []);
 
-  // Detect workspace from URL path or query param (overrides localStorage)
+  // Detect workspace from URL path or query param
   useEffect(() => {
     const wsMatch = pathname.match(/^\/workspaces\/([^/]+)/);
     if (wsMatch?.[1]) {
@@ -96,7 +76,6 @@ export default function AppSidebar() {
       localStorage.setItem(WS_STORAGE_KEY, wsMatch[1]);
       return;
     }
-    // Check query param
     if (typeof window !== "undefined") {
       const params = new URLSearchParams(window.location.search);
       const wsParam = params.get("ws");
@@ -129,8 +108,7 @@ export default function AppSidebar() {
 
       {/* Workspace switcher */}
       <div className="px-2 pb-2 relative">
-        <button
-          onClick={() => setShowWsSwitcher(!showWsSwitcher)}
+        <div
           className={`w-full flex items-center gap-2 px-3 py-2 rounded-md text-sm transition-colors ${
             selectedWs ? "text-foreground bg-raised" : "text-dim hover:text-foreground hover:bg-raised"
           }`}
@@ -138,15 +116,22 @@ export default function AppSidebar() {
           <span className="w-5 h-5 rounded bg-brand/15 text-brand flex items-center justify-center text-[10px] font-bold flex-shrink-0">
             W
           </span>
-          <span className="flex-1 text-left truncate font-medium">
+          <button
+            onClick={() => selectedWsId && router.push(`/workspaces/${selectedWsId}`)}
+            className="flex-1 text-left truncate font-medium hover:text-brand transition-colors"
+          >
             {selectedWs?.name || "Select workspace"}
-          </span>
-          <span className="text-muted text-xs">{showWsSwitcher ? "\u25B4" : "\u25BE"}</span>
-        </button>
+          </button>
+          <button
+            onClick={() => setShowWsSwitcher(!showWsSwitcher)}
+            className="text-muted text-xs hover:text-foreground px-1"
+          >
+            {showWsSwitcher ? "\u25B4" : "\u25BE"}
+          </button>
+        </div>
 
         {showWsSwitcher && (
           <>
-            {/* Backdrop to close dropdown */}
             <div className="fixed inset-0 z-40" onClick={() => setShowWsSwitcher(false)} />
             <div className="absolute left-2 right-2 top-full z-50 bg-surface border border-border rounded-lg shadow-xl py-1 mt-1">
               {workspaces.map((ws) => (
@@ -182,27 +167,10 @@ export default function AppSidebar() {
         )}
       </div>
 
-      {/* Navigation — scoped to selected workspace */}
+      {/* Navigation */}
       <nav className="flex-1 px-2 overflow-y-auto">
-        <NavLink item={SEARCH} isActive={isActive(SEARCH.href)} wsId={selectedWsId} />
-
-        <SectionLabel>Consume</SectionLabel>
         <div className="space-y-0.5">
-          {CONSUME.map((item) => (
-            <NavLink key={item.href} item={item} isActive={isActive(item.href)} wsId={selectedWsId} />
-          ))}
-        </div>
-
-        <SectionLabel>Curate</SectionLabel>
-        <div className="space-y-0.5">
-          {CURATE.map((item) => (
-            <NavLink key={item.href} item={item} isActive={isActive(item.href)} wsId={selectedWsId} />
-          ))}
-        </div>
-
-        <SectionLabel>Collaborate</SectionLabel>
-        <div className="space-y-0.5">
-          {COLLABORATE.map((item) => (
+          {NAV_ITEMS.map((item) => (
             <NavLink key={item.href} item={item} isActive={isActive(item.href)} wsId={selectedWsId} />
           ))}
         </div>
