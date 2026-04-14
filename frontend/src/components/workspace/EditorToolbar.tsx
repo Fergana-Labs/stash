@@ -171,17 +171,6 @@ export default function EditorToolbar({ editor, workspaceId }: EditorToolbarProp
         <Separator />
 
         <ToolbarButton
-          onClick={() => {
-            const url = prompt("Image URL:");
-            if (url) {
-              editor.chain().focus().setImage({ src: url }).run();
-            }
-          }}
-          title="Insert image by URL"
-        >
-          Img
-        </ToolbarButton>
-        <ToolbarButton
           onClick={() => fileInputRef.current?.click()}
           title="Upload image or file"
         >

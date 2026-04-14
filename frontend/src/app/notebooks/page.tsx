@@ -30,16 +30,13 @@ import {
   deletePageFolder,
   getBacklinks,
   getPersonalBacklinks,
-  getPageGraph,
-  getPersonalPageGraph,
   semanticSearchPages,
   listAllTables,
   listTables,
   createPersonalTable,
   deletePersonalTable,
 } from "../../lib/api";
-import PageGraphView from "../../components/workspace/PageGraphView";
-import { Notebook, NotebookPage, NotebookWithWorkspace, PageGraph, PageLink, PageTree, TableWithWorkspace } from "../../lib/types";
+import { Notebook, NotebookPage, NotebookWithWorkspace, PageLink, PageTree, TableWithWorkspace } from "../../lib/types";
 
 type WikiTab = "pages" | "tables";
 
@@ -65,8 +62,8 @@ export default function WikiPage() {
   const [selectedPageId, setSelectedPageId] = useState<string | null>(null);
   const [selectedPage, setSelectedPage] = useState<NotebookPage | null>(null);
   const [backlinks, setBacklinks] = useState<PageLink[]>([]);
-  const [showGraph, setShowGraph] = useState(false);
-  const [pageGraph, setPageGraph] = useState<PageGraph | null>(null);
+
+
   const [semanticQuery, setSemanticQuery] = useState("");
   const [semanticResults, setSemanticResults] = useState<NotebookPage[]>([]);
   const [semanticSearching, setSemanticSearching] = useState(false);
@@ -224,16 +221,8 @@ export default function WikiPage() {
     return parts;
   }, [selectedNotebook, selectedPage, tree]);
 
-  const handleShowGraph = useCallback(async () => {
-    if (!selectedNotebook) return;
-    try {
-      const g = selectedNotebook.workspace_id
-        ? await getPageGraph(selectedNotebook.workspace_id, selectedNotebook.id)
-        : await getPersonalPageGraph(selectedNotebook.id);
-      setPageGraph(g);
-      setShowGraph(true);
-    } catch { setError("Failed to load page graph"); }
-  }, [selectedNotebook]);
+
+
 
   const handleSemanticSearch = useCallback(async () => {
     if (!selectedNotebook?.workspace_id || !semanticQuery.trim()) return;
@@ -514,25 +503,9 @@ export default function WikiPage() {
                       </span>
                     ))}
                   </nav>
-                  {/* Actions */}
-                  <div className="flex items-center gap-2 flex-shrink-0">
-                    <button
-                      onClick={handleShowGraph}
-                      className="text-xs text-dim hover:text-foreground px-2 py-1 rounded hover:bg-raised transition-colors"
-                    >
-                      Graph
-                    </button>
-                  </div>
-                </div>
-              )}
 
-              {/* Graph modal */}
-              {showGraph && pageGraph && (
-                <PageGraphView
-                  graph={pageGraph}
-                  onClose={() => setShowGraph(false)}
-                  onSelectPage={handleSelectPage}
-                />
+
+                </div>
               )}
 
               {selectedPage ? (
