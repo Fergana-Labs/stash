@@ -30,15 +30,37 @@ def get_stdin_data() -> dict:
         return {}
 
 
+def _read_json(path: Path) -> dict:
+    try:
+        return json.loads(path.read_text())
+    except Exception:
+        return {}
+
+
+def _find_project_config() -> Path | None:
+    """Walk up from cwd looking for .octopus/config.json."""
+    try:
+        cur = Path.cwd().resolve()
+    except Exception:
+        return None
+    for parent in [cur, *cur.parents]:
+        candidate = parent / ".octopus" / "config.json"
+        if candidate.exists():
+            return candidate
+    return None
+
+
 def _load_cli_config() -> dict:
-    """Load CLI config from ~/.octopus/config.json as fallback."""
-    cli_config = Path.home() / ".octopus" / "config.json"
-    if cli_config.exists():
-        try:
-            return json.loads(cli_config.read_text())
-        except Exception:
-            pass
-    return {}
+    """Load CLI config. Project-level (.octopus/config.json walking up from cwd)
+    overrides user-level (~/.octopus/config.json)."""
+    merged: dict = {}
+    user_path = Path.home() / ".octopus" / "config.json"
+    if user_path.exists():
+        merged.update(_read_json(user_path))
+    project_path = _find_project_config()
+    if project_path:
+        merged.update(_read_json(project_path))
+    return merged
 
 
 def get_config() -> dict:
