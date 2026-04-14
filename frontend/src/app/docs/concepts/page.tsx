@@ -21,7 +21,7 @@ const CONCEPTS: { name: string; badge: string; badgeColor: string; desc: React.R
       <>
         Wiki-style markdown pages organized in folders. Supports{" "}
         <Code>{"[[Page Name]]"}</Code> wiki links with backlinks, page graph visualization, and semantic
-        search. Real-time collaborative editing via Yjs. The curation tool writes here when invoked.
+        search. Rich-text editor with autosave. The curation tool writes here when invoked.
       </>
     ),
   },

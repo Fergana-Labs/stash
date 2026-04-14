@@ -217,27 +217,3 @@ async def get_current_user_optional(
     if credentials is None:
         return None
     return await get_current_user(credentials)
-
-
-async def get_user_from_api_key(token: str) -> dict | None:
-    """Used by WebSocket endpoints that pass the token as a query param.
-
-    Accepts both mc_ API keys and Auth0 JWTs.
-    """
-    if token.startswith("mc_"):
-        key_hash = hash_api_key(token)
-        pool = get_pool()
-        row = await pool.fetchrow(
-            "SELECT id, name, display_name, type, description, "
-            "       created_at, last_seen "
-            "FROM users WHERE api_key_hash = $1",
-            key_hash,
-        )
-        return dict(row) if row else None
-
-    # Try Auth0 JWT
-    try:
-        payload = await _verify_auth0_token(token)
-        return await _get_or_create_auth0_user(payload)
-    except Exception:
-        return None
