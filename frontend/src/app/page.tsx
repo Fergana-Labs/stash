@@ -6,18 +6,16 @@ import AppShell from "../components/AppShell";
 import Header from "../components/Header";
 import { useAuth } from "../hooks/useAuth";
 import {
-  listAllChats,
-  listAllDecks,
   listAllNotebooks,
   listAllHistories,
   listMyWorkspaces,
   listPublicWorkspaces,
 } from "../lib/api";
-import { ChatWithWorkspace, DeckWithWorkspace, DMWithUser, HistoryWithWorkspace, NotebookWithWorkspace, Workspace } from "../lib/types";
+import { HistoryWithWorkspace, NotebookWithWorkspace, Workspace } from "../lib/types";
 
 interface FeedItem {
   id: string;
-  type: "workspace" | "dm" | "chat" | "notebook" | "deck" | "memory";
+  type: "workspace" | "notebook" | "memory";
   name: string;
   description?: string;
   href: string;
@@ -25,18 +23,6 @@ interface FeedItem {
   icon: string;
   badge?: string;
   badgeColor?: string;
-}
-
-function buildChatHref(item: {
-  id: string;
-  kind: "workspace" | "room" | "dm";
-  workspaceId?: string | null;
-  label?: string;
-}): string {
-  const params = new URLSearchParams({ kind: item.kind });
-  if (item.workspaceId) params.set("workspaceId", item.workspaceId);
-  if (item.label) params.set("label", item.label);
-  return `/chats/${item.id}?${params.toString()}`;
 }
 
 function EventLine({ time, agent, agentColor, action, detail }: { time: string; agent: string; agentColor: string; action: string; detail: string }) {
@@ -264,50 +250,16 @@ function LoggedInHome({ user, logout }: { user: NonNullable<ReturnType<typeof us
     setLoading(true);
     Promise.all([
       listMyWorkspaces().then((r) => r?.workspaces ?? []).catch(() => [] as Workspace[]),
-      listAllChats().catch(() => ({ chats: [] as ChatWithWorkspace[], dms: [] as DMWithUser[] })),
       listAllNotebooks().then((r) => r?.notebooks ?? []).catch(() => [] as NotebookWithWorkspace[]),
       listAllHistories().then((r) => r?.stores ?? []).catch(() => [] as HistoryWithWorkspace[]),
-      listAllDecks().then((r) => r?.decks ?? []).catch(() => [] as DeckWithWorkspace[]),
-    ]).then(([workspaces, chatResult, notebooks, stores, deckList]) => {
+    ]).then(([workspaces, notebooks, stores]) => {
       const items: FeedItem[] = [];
-      const chats = chatResult?.chats ?? [];
-      const dms = chatResult?.dms ?? [];
 
       for (const ws of workspaces) {
         items.push({
           id: ws.id, type: "workspace", name: ws.name, description: ws.description,
           href: `/workspaces/${ws.id}`, updatedAt: ws.updated_at, icon: "W",
           badge: `${ws.member_count ?? 0} members`,
-        });
-      }
-
-      for (const chat of chats) {
-        items.push({
-          id: chat.id, type: "chat", name: chat.name, description: chat.workspace_name || undefined,
-          href: buildChatHref({
-            id: chat.id,
-            kind: chat.workspace_id ? "workspace" : "room",
-            workspaceId: chat.workspace_id,
-            label: chat.name,
-          }),
-          updatedAt: chat.updated_at, icon: "#",
-          badge: chat.workspace_name || "Personal",
-        });
-      }
-
-      for (const dm of dms) {
-        const other = dm.other_user;
-        items.push({
-          id: dm.id, type: "dm",
-          name: other?.display_name || other?.name || "Unknown",
-          description: `@${other?.name || "unknown"}`,
-          href: buildChatHref({
-            id: dm.id,
-            kind: "dm",
-            label: other?.display_name || other?.name || "Unknown",
-          }), updatedAt: dm.updated_at, icon: other?.type === "persona" ? "P" : "H",
-          badge: "DM",
-          badgeColor: other?.type === "persona" ? "text-agent bg-agent-muted" : "text-human bg-human-muted",
         });
       }
 
@@ -328,15 +280,6 @@ function LoggedInHome({ user, logout }: { user: NonNullable<ReturnType<typeof us
         });
       }
 
-      for (const deck of (deckList ?? [])) {
-        items.push({
-          id: deck.id, type: "deck", name: deck.name,
-          description: deck.workspace_name || "Personal",
-          href: `/decks/${deck.id}/edit`, updatedAt: deck.updated_at, icon: "D",
-          badge: deck.deck_type,
-        });
-      }
-
       items.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
       setFeed(items);
       setLoading(false);
@@ -345,10 +288,7 @@ function LoggedInHome({ user, logout }: { user: NonNullable<ReturnType<typeof us
 
   const iconColors: Record<string, string> = {
     workspace: "bg-brand/15 text-brand",
-    dm: "bg-human-muted text-human",
-    chat: "bg-brand/15 text-brand",
     notebook: "bg-green-500/15 text-green-500",
-    deck: "bg-pink-500/15 text-pink-500",
     memory: "bg-violet-500/15 text-violet-500",
   };
 

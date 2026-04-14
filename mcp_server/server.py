@@ -1,7 +1,8 @@
-"""MCP server for Octopus — exposes workspace/chat/notebook/memory tools."""
+"""MCP server for Octopus — exposes workspace/notebook/memory/table/file tools."""
 
+import json
 import os
-from typing import Optional
+from uuid import UUID
 
 import httpx
 from mcp.server.fastmcp import Context, FastMCP
@@ -15,63 +16,42 @@ _api_key: str | None = os.environ.get("OCTOPUS_API_KEY", os.environ.get("MOLTCHA
 
 mcp = FastMCP(
     "octopus",
-    instructions="""Octopus — Centralized, collaborative memory for teams of AI agents.
+    instructions="""Octopus v0 — Shared memory for AI agents.
 
-Every agent session, research paper, webpage, and conversation goes into one shared knowledge base. A sleep agent curates it into a searchable wiki. Three modes: Consume (data flows in), Curate (sleep agent organizes), Collaborate (chats + pages).
+Push history events, organize knowledge in wiki notebooks, store structured data in tables, attach files, and search across everything. Call `curate` to run LLM-powered curation that turns raw history into categorized wiki pages.
 
 ## Getting Started
 1. Call `register` to create an account and get an API key.
 2. Call `create_workspace` to create a workspace.
-3. Consume data: push history events, upload files, create table rows.
-4. The sleep agent auto-curates your data into a wiki in notebooks.
+3. Push history events, upload files, create table rows.
+4. Create notebooks and wiki pages, or call `curate` to auto-generate them from history.
 5. Search across everything with `universal_search`.
 
-## Core Objects (organized by mode)
+## Core Objects
 
-### Consume
-- **Files**: Upload images, PDFs, documents to S3 storage
-- **History**: Append-only event logs from agents (tool calls, messages, sessions). Searchable.
-- **Tables**: Structured data with typed columns, row embeddings, semantic search
-
-### Curate
-- **Notebooks**: Wiki-style markdown pages with [[backlinks]], page graph, auto-index. The sleep agent writes here.
-- **Personas**: Sleep agent + notebook. Watches workspace histories (filtered by agent_name), curates into a personal notebook wiki.
-
-### Collaborate
-- **Chats**: Real-time messaging channels. Agents participate alongside humans.
-- **Pages**: HTML documents (slides, dashboards, reports) with public sharing + analytics.
-- **DMs**: Direct messages between two users.
-
-### Container
 - **Workspaces**: Permissioned container for teams. Members share all resources.
+- **History**: Append-only event logs from agents (tool calls, messages, sessions). Searchable.
+- **Notebooks**: Wiki-style markdown pages with [[backlinks]], page graph, auto-index.
+- **Tables**: Structured data with typed columns, row embeddings, semantic search.
+- **Files**: Upload images, PDFs, and other attachments to S3 storage.
+- **Curation**: LLM reads workspace history and organizes it into notebook wiki pages with [[wiki links]].
 
 ## Authentication
 All tools except `register` and `list_workspaces` require auth.
 - HTTP: `Authorization: Bearer <api_key>` header
 - stdio: `OCTOPUS_API_KEY` env var
 
-## Permissions
-Workspace members inherit access to all objects. Objects can be set to:
-- `inherit` (default): workspace members have access
-- `private`: only explicitly shared users
-- `public`: anyone can read
-
 ## Tools
 - register, whoami, update_profile — account
-- create_persona, list_my_personas, rotate_persona_key, delete_persona — persona identities
-- create_workspace, list_workspaces, my_workspaces, join_workspace, workspace_info, workspace_members — workspaces
-- create_chat, list_chats, send_message, read_messages, search_messages — chats
-- search_users, start_dm, list_dms, send_dm, read_dm — DMs
-- list_notebooks, create_notebook, read_notebook, update_notebook, delete_notebook — notebooks
-- create_memory_store, list_memory_stores, push_memory_event, push_memory_events_batch, query_memory_events, search_memory_events, query_history — memory
-- list_tables, create_table, get_table_schema, update_table, read_table_rows, insert_table_row, insert_table_rows_batch, update_table_row, update_table_rows_batch, delete_table_row, count_table_rows, add_table_column, update_table_column, delete_table_column — tables
-- set_webhook, get_webhook, update_webhook, delete_webhook — webhooks
-- upload_file, list_files, get_file_url, delete_file — files (images, PDFs, etc.)
-- upload_document, list_documents, search_documents, get_document_status, delete_document — documents (RAGFlow retrieval)
+- create_workspace, list_workspaces, my_workspaces, join_workspace, workspace_info, workspace_members, leave_workspace — workspaces
+- list_notebooks, create_notebook, read_notebook, update_notebook, delete_notebook, create_notebook_folder, delete_notebook_folder — notebooks
 - get_backlinks, get_outlinks, get_page_graph, semantic_search_pages, auto_index_notebook — wiki features
+- create_memory_store, list_memory_stores, push_memory_event, push_memory_events_batch, query_memory_events, search_memory_events, query_history — history
+- list_tables, create_table, get_table_schema, update_table, read_table_rows, insert_table_row, insert_table_rows_batch, update_table_row, update_table_rows_batch, delete_table_row, count_table_rows, add_table_column, update_table_column, delete_table_column — tables
 - configure_table_embeddings, backfill_table_embeddings, semantic_search_table_rows — table embeddings
-- get_sleep_config, configure_sleep_agent, trigger_sleep — sleep agent curation
-- universal_search — cross-resource Q&A search
+- upload_file, list_files, get_file_url, delete_file — files
+- curate — LLM-powered curation of history into wiki pages
+- universal_search — cross-resource AI search
 """,
     streamable_http_path="/",
 )
@@ -126,12 +106,17 @@ def _check_response(resp: httpx.Response) -> None:
     raise RuntimeError(f"Request failed ({resp.status_code}): {detail}")
 
 
-def _fmt_msg(m: dict) -> str:
-    sender = m.get("sender_display_name") or m.get("sender_name", "?")
-    tag = " [agent]" if m.get("sender_type") == "agent" else ""
-    if m.get("message_type") == "system":
-        tag = " [system]"
-    return f"[{m['created_at']}] {sender}{tag}: {m['content']}"
+async def _require_auth() -> dict:
+    """Fetch the current user profile using the stored API key. Returns the user dict."""
+    key = _api_key
+    if not key:
+        raise RuntimeError(
+            "Not authenticated. Set OCTOPUS_API_KEY or call the register tool first."
+        )
+    async with _client() as c:
+        resp = await c.get("/api/v1/users/me", headers={"Authorization": f"Bearer {key}"})
+        _check_response(resp)
+        return resp.json()
 
 
 # ---------------------------------------------------------------------------
@@ -174,56 +159,6 @@ async def update_profile(ctx: Context, display_name: str = "", description: str 
         resp = await c.patch("/api/v1/users/me", json=body, headers=_auth_headers(ctx))
         _check_response(resp)
     return "Profile updated."
-
-
-# ---------------------------------------------------------------------------
-# Persona Identities
-# ---------------------------------------------------------------------------
-
-@mcp.tool()
-async def create_persona(ctx: Context, name: str, display_name: str = "", description: str = "") -> str:
-    """Create a persona identity under your account (human users only)."""
-    body: dict = {"name": name, "description": description}
-    if display_name:
-        body["display_name"] = display_name
-    async with _client() as c:
-        resp = await c.post("/api/v1/personas", json=body, headers=_auth_headers(ctx))
-        _check_response(resp)
-        data = resp.json()
-    return f"Persona '{data['name']}' created.\nID: {data['id']}\nAPI Key: {data['api_key']}\n⚠️ Save this key."
-
-
-@mcp.tool()
-async def list_my_personas(ctx: Context) -> str:
-    """List persona identities you own."""
-    async with _client() as c:
-        resp = await c.get("/api/v1/personas", headers=_auth_headers(ctx))
-        _check_response(resp)
-        personas = resp.json()
-    if not personas:
-        return "No personas. Use create_persona to make one."
-    return "\n".join(f"  - {p['name']} (id: {p['id']})" for p in personas)
-
-
-@mcp.tool()
-async def rotate_persona_key(ctx: Context, persona_id: str) -> str:
-    """Generate a new API key for a persona you own."""
-    async with _client() as c:
-        resp = await c.post(f"/api/v1/personas/{persona_id}/rotate-key", headers=_auth_headers(ctx))
-        _check_response(resp)
-        data = resp.json()
-    return f"New key for {data['name']}: {data['api_key']}"
-
-
-@mcp.tool()
-async def delete_persona(ctx: Context, persona_id: str) -> str:
-    """Delete a persona identity you own."""
-    async with _client() as c:
-        resp = await c.delete(f"/api/v1/personas/{persona_id}", headers=_auth_headers(ctx))
-        if resp.status_code == 404:
-            return "Persona not found."
-        _check_response(resp)
-    return "Persona deleted."
 
 
 # ---------------------------------------------------------------------------
@@ -305,180 +240,6 @@ async def leave_workspace(ctx: Context, workspace_id: str) -> str:
         resp = await c.post(f"/api/v1/workspaces/{workspace_id}/leave", headers=_auth_headers(ctx))
         _check_response(resp)
     return "Left workspace."
-
-
-# ---------------------------------------------------------------------------
-# Chats (within workspaces)
-# ---------------------------------------------------------------------------
-
-@mcp.tool()
-async def create_chat(ctx: Context, workspace_id: str, name: str, description: str = "") -> str:
-    """Create a chat channel in a workspace."""
-    async with _client() as c:
-        resp = await c.post(f"/api/v1/workspaces/{workspace_id}/chats", json={
-            "name": name, "description": description,
-        }, headers=_auth_headers(ctx))
-        _check_response(resp)
-        d = resp.json()
-    return f"Chat '{d['name']}' created. ID: {d['id']}"
-
-
-@mcp.tool()
-async def list_chats(ctx: Context, workspace_id: str) -> str:
-    """List chats in a workspace."""
-    async with _client() as c:
-        resp = await c.get(f"/api/v1/workspaces/{workspace_id}/chats", headers=_auth_headers(ctx))
-        _check_response(resp)
-        data = resp.json()
-    chats = data.get("chats", [])
-    if not chats:
-        return "No chats. Use create_chat to make one."
-    return "\n".join(f"  {ch['name']} (id: {ch['id']})" for ch in chats)
-
-
-@mcp.tool()
-async def send_message(ctx: Context, workspace_id: str, chat_id: str, content: str) -> str:
-    """Send a message to a chat (1-16000 chars)."""
-    async with _client() as c:
-        resp = await c.post(
-            f"/api/v1/workspaces/{workspace_id}/chats/{chat_id}/messages",
-            json={"content": content}, headers=_auth_headers(ctx),
-        )
-        _check_response(resp)
-    return "Message sent."
-
-
-@mcp.tool()
-async def read_messages(ctx: Context, workspace_id: str, chat_id: str, limit: int = 20, after: str = "") -> str:
-    """Read recent messages from a chat."""
-    params: dict = {"limit": limit}
-    if after:
-        params["after"] = after
-    async with _client() as c:
-        resp = await c.get(
-            f"/api/v1/workspaces/{workspace_id}/chats/{chat_id}/messages",
-            params=params, headers=_auth_headers(ctx),
-        )
-        _check_response(resp)
-        data = resp.json()
-    msgs = data.get("messages", [])
-    if not msgs:
-        return "No messages."
-    lines = [_fmt_msg(m) for m in msgs]
-    if data.get("has_more"):
-        lines.append("(more messages available — use 'after' parameter)")
-    return "\n".join(lines)
-
-
-@mcp.tool()
-async def search_messages(ctx: Context, workspace_id: str, chat_id: str, query: str, limit: int = 20) -> str:
-    """Full-text search on chat messages."""
-    async with _client() as c:
-        resp = await c.get(
-            f"/api/v1/workspaces/{workspace_id}/chats/{chat_id}/messages/search",
-            params={"q": query, "limit": limit}, headers=_auth_headers(ctx),
-        )
-        _check_response(resp)
-        data = resp.json()
-    msgs = data.get("messages", [])
-    if not msgs:
-        return "No results."
-    return "\n".join(_fmt_msg(m) for m in msgs)
-
-
-# ---------------------------------------------------------------------------
-# DMs
-# ---------------------------------------------------------------------------
-
-@mcp.tool()
-async def search_users(ctx: Context, query: str) -> str:
-    """Search for users by name."""
-    async with _client() as c:
-        resp = await c.get("/api/v1/dms/users/search", params={"q": query}, headers=_auth_headers(ctx))
-        _check_response(resp)
-        users = resp.json()
-    if not users:
-        return "No users found."
-    return "\n".join(f"  {u['name']} ({u['type']}) id: {u['id']}" for u in users)
-
-
-@mcp.tool()
-async def start_dm(ctx: Context, user_id: str = "", username: str = "") -> str:
-    """Start or get a DM conversation."""
-    body: dict = {}
-    if user_id:
-        body["user_id"] = user_id
-    if username:
-        body["username"] = username
-    async with _client() as c:
-        resp = await c.post("/api/v1/dms", json=body, headers=_auth_headers(ctx))
-        _check_response(resp)
-        d = resp.json()
-    other = d.get("other_user", {})
-    return f"DM with {other.get('name', '?')}. Chat ID: {d['id']}"
-
-
-@mcp.tool()
-async def list_dms(ctx: Context) -> str:
-    """List your DM conversations."""
-    async with _client() as c:
-        resp = await c.get("/api/v1/dms", headers=_auth_headers(ctx))
-        _check_response(resp)
-        data = resp.json()
-    dms = data.get("dms", [])
-    if not dms:
-        return "No DMs."
-    lines = []
-    for dm in dms:
-        other = dm.get("other_user", {})
-        lines.append(f"  {other.get('name', '?')} (chat_id: {dm['id']}, last: {dm.get('last_message_at', 'never')})")
-    return "\n".join(lines)
-
-
-@mcp.tool()
-async def send_dm(ctx: Context, content: str, user_id: str = "", username: str = "") -> str:
-    """Send a DM. Creates the conversation if needed."""
-    body: dict = {}
-    if user_id:
-        body["user_id"] = user_id
-    if username:
-        body["username"] = username
-    async with _client() as c:
-        # Get or create DM
-        resp = await c.post("/api/v1/dms", json=body, headers=_auth_headers(ctx))
-        _check_response(resp)
-        dm = resp.json()
-        # Send message
-        resp2 = await c.post(
-            f"/api/v1/dms/{dm['id']}/messages",
-            json={"content": content}, headers=_auth_headers(ctx),
-        )
-        _check_response(resp2)
-    return "DM sent."
-
-
-@mcp.tool()
-async def read_dm(ctx: Context, user_id: str = "", username: str = "", limit: int = 20, after: str = "") -> str:
-    """Read DM messages with a user."""
-    body: dict = {}
-    if user_id:
-        body["user_id"] = user_id
-    if username:
-        body["username"] = username
-    async with _client() as c:
-        resp = await c.post("/api/v1/dms", json=body, headers=_auth_headers(ctx))
-        _check_response(resp)
-        dm = resp.json()
-        params: dict = {"limit": limit}
-        if after:
-            params["after"] = after
-        resp2 = await c.get(f"/api/v1/dms/{dm['id']}/messages", params=params, headers=_auth_headers(ctx))
-        _check_response(resp2)
-        data = resp2.json()
-    msgs = data.get("messages", [])
-    if not msgs:
-        return "No messages."
-    return "\n".join(_fmt_msg(m) for m in msgs)
 
 
 # ---------------------------------------------------------------------------
@@ -732,58 +493,6 @@ async def query_history(ctx: Context, workspace_id: str, store_id: str, question
     if len(sources) > 5:
         result += f"\n... and {len(sources) - 5} more"
     return result
-
-
-# ---------------------------------------------------------------------------
-# Webhooks (per-workspace)
-# ---------------------------------------------------------------------------
-
-@mcp.tool()
-async def set_webhook(ctx: Context, workspace_id: str, url: str, secret: str = "") -> str:
-    """Set a webhook for a workspace."""
-    body: dict = {"url": url}
-    if secret:
-        body["secret"] = secret
-    async with _client() as c:
-        resp = await c.post(f"/api/v1/workspaces/{workspace_id}/webhooks", json=body, headers=_auth_headers(ctx))
-        _check_response(resp)
-    return "Webhook set."
-
-
-@mcp.tool()
-async def get_webhook(ctx: Context, workspace_id: str) -> str:
-    """Get your webhook for a workspace."""
-    async with _client() as c:
-        resp = await c.get(f"/api/v1/workspaces/{workspace_id}/webhooks", headers=_auth_headers(ctx))
-        if resp.status_code == 404:
-            return "No webhook configured."
-        _check_response(resp)
-        d = resp.json()
-    return f"URL: {d['url']}\nActive: {d['is_active']}\nSecret: {'yes' if d['has_secret'] else 'no'}"
-
-
-@mcp.tool()
-async def update_webhook(ctx: Context, workspace_id: str, url: str = "", is_active: bool = True) -> str:
-    """Update your webhook."""
-    body: dict = {}
-    if url:
-        body["url"] = url
-    body["is_active"] = is_active
-    async with _client() as c:
-        resp = await c.patch(f"/api/v1/workspaces/{workspace_id}/webhooks", json=body, headers=_auth_headers(ctx))
-        _check_response(resp)
-    return "Webhook updated."
-
-
-@mcp.tool()
-async def delete_webhook(ctx: Context, workspace_id: str) -> str:
-    """Delete your webhook."""
-    async with _client() as c:
-        resp = await c.delete(f"/api/v1/workspaces/{workspace_id}/webhooks", headers=_auth_headers(ctx))
-        if resp.status_code == 404:
-            return "No webhook to delete."
-        _check_response(resp)
-    return "Webhook deleted."
 
 
 # ---------------------------------------------------------------------------
@@ -1463,134 +1172,6 @@ async def delete_file(
 
 
 # ---------------------------------------------------------------------------
-# Documents (RAGFlow)
-# ---------------------------------------------------------------------------
-
-
-@mcp.tool()
-async def upload_document(
-    ctx: Context,
-    workspace_id: str,
-    name: str,
-    base64_content: str,
-) -> str:
-    """Upload a document (PDF, image, etc.) for RAGFlow processing and semantic retrieval.
-    Content must be base64-encoded. The document will be parsed asynchronously."""
-    import base64 as _b64
-    file_bytes = _b64.b64decode(base64_content)
-    # Determine content type from extension
-    ext = name.rsplit(".", 1)[-1].lower() if "." in name else ""
-    ct_map = {"pdf": "application/pdf", "png": "image/png", "jpg": "image/jpeg",
-              "jpeg": "image/jpeg", "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-              "txt": "text/plain", "md": "text/markdown"}
-    content_type = ct_map.get(ext, "application/octet-stream")
-    async with _client() as c:
-        resp = await c.post(
-            f"/api/v1/workspaces/{workspace_id}/documents",
-            headers=_auth_headers(ctx),
-            files={"file": (name, file_bytes, content_type)},
-        )
-        _check_response(resp)
-    d = resp.json()
-    return f"Document uploaded: {d['name']}\nID: {d['id']}\nStatus: {d['status']} (parsing in progress)"
-
-
-@mcp.tool()
-async def list_documents(
-    ctx: Context,
-    workspace_id: str,
-    status: str = "",
-) -> str:
-    """List documents in a workspace. Optionally filter by status: pending, processing, ready, error."""
-    params = {}
-    if status:
-        params["status"] = status
-    async with _client() as c:
-        resp = await c.get(
-            f"/api/v1/workspaces/{workspace_id}/documents",
-            params=params, headers=_auth_headers(ctx),
-        )
-        _check_response(resp)
-    docs = resp.json().get("documents", [])
-    if not docs:
-        return "No documents found."
-    lines = []
-    for d in docs:
-        meta = d.get("metadata", {})
-        chunks = meta.get("chunk_count", "?")
-        lines.append(f"- {d['name']} ({d['file_type']}) [{d['status']}] chunks={chunks} — ID: {d['id']}")
-    return "\n".join(lines)
-
-
-@mcp.tool()
-async def search_documents(
-    ctx: Context,
-    workspace_id: str,
-    query: str,
-    limit: int = 20,
-) -> str:
-    """Search across all parsed documents in a workspace using RAGFlow semantic retrieval."""
-    async with _client() as c:
-        resp = await c.post(
-            f"/api/v1/workspaces/{workspace_id}/documents/search",
-            json={"query": query, "limit": limit},
-            headers=_auth_headers(ctx),
-        )
-        _check_response(resp)
-    chunks = resp.json().get("chunks", [])
-    if not chunks:
-        return "No matching content found."
-    lines = []
-    for i, ch in enumerate(chunks, 1):
-        preview = ch["content"][:300].replace("\n", " ")
-        lines.append(f"{i}. [{ch['doc_name']}] (sim={ch['similarity']:.2f})\n   {preview}")
-    return "\n\n".join(lines)
-
-
-@mcp.tool()
-async def get_document_status(
-    ctx: Context,
-    workspace_id: str,
-    doc_id: str,
-) -> str:
-    """Check the parsing status of a document."""
-    async with _client() as c:
-        resp = await c.get(
-            f"/api/v1/workspaces/{workspace_id}/documents/{doc_id}",
-            headers=_auth_headers(ctx),
-        )
-        _check_response(resp)
-    d = resp.json()
-    meta = d.get("metadata", {})
-    lines = [
-        f"Document: {d['name']}",
-        f"Status: {d['status']}",
-        f"Type: {d['file_type']}",
-    ]
-    if meta.get("chunk_count"):
-        lines.append(f"Chunks: {meta['chunk_count']}")
-    if meta.get("error"):
-        lines.append(f"Error: {meta['error']}")
-    return "\n".join(lines)
-
-
-@mcp.tool()
-async def delete_document(
-    ctx: Context,
-    workspace_id: str,
-    doc_id: str,
-) -> str:
-    """Delete a document and its RAGFlow index from a workspace."""
-    async with _client() as c:
-        resp = await c.delete(
-            f"/api/v1/workspaces/{workspace_id}/documents/{doc_id}",
-            headers=_auth_headers(ctx),
-        )
-        _check_response(resp)
-    return "Document deleted."
-
-
-# ---------------------------------------------------------------------------
 # Universal Search
 # ---------------------------------------------------------------------------
 
@@ -1626,100 +1207,28 @@ async def universal_search(
 
 
 # ---------------------------------------------------------------------------
-# Sleep Agent
+# Curation
 # ---------------------------------------------------------------------------
 
 
 @mcp.tool()
-async def get_sleep_config(ctx: Context) -> str:
-    """Get the current sleep agent curation configuration."""
-    async with _client() as c:
-        resp = await c.get(
-            "/api/v1/personas/me/sleep/config",
-            headers=_auth_headers(ctx),
-        )
-        _check_response(resp)
-    cfg = resp.json()
-    lines = [
-        f"Enabled: {cfg.get('enabled', True)}",
-        f"Interval: {cfg.get('interval_minutes', 60)} minutes",
-        f"Max pattern cards: {cfg.get('max_pattern_cards', 500)}",
-        f"Curation model: {cfg.get('curation_model', '?')}",
-        f"Monologue model: {cfg.get('monologue_model', '?')}",
-        f"Sources: {cfg.get('curation_sources', ['history'])}",
-        f"Workspace IDs: {cfg.get('workspace_ids', [])}",
-        f"Rules: {cfg.get('curation_rules', {})}",
-    ]
-    return "\n".join(lines)
-
-
-@mcp.tool()
-async def configure_sleep_agent(
-    ctx: Context,
-    curation_sources: Optional[str] = None,
-    workspace_ids: Optional[str] = None,
-    interval_minutes: Optional[int] = None,
-    enabled: Optional[bool] = None,
-    curation_model: Optional[str] = None,
+async def curate(
+    workspace_id: str,
+    notebook_id: str,
+    agent_name_filter: list[str] | None = None,
+    model: str = "claude-haiku-4-5-20251001",
 ) -> str:
-    """Configure the sleep agent curation behavior.
-
-    Args:
-        curation_sources: Comma-separated list of sources to curate: history, notebooks, documents, tables
-        workspace_ids: Comma-separated workspace UUIDs to curate (agent must be a member)
-        interval_minutes: Minutes between curation cycles
-        enabled: Enable or disable the sleep agent
-        curation_model: LLM model for curation (e.g. claude-sonnet-4-6-20250514)
-    """
-    import json as _json
-    updates = {}
-    if curation_sources is not None:
-        updates["curation_sources"] = [s.strip() for s in curation_sources.split(",")]
-    if workspace_ids is not None:
-        updates["workspace_ids"] = [s.strip() for s in workspace_ids.split(",") if s.strip()]
-    if interval_minutes is not None:
-        updates["interval_minutes"] = interval_minutes
-    if enabled is not None:
-        updates["enabled"] = enabled
-    if curation_model is not None:
-        updates["curation_model"] = curation_model
-
-    if not updates:
-        return "No configuration changes specified."
-
-    async with _client() as c:
-        resp = await c.patch(
-            "/api/v1/personas/me/sleep/config",
-            json=updates, headers=_auth_headers(ctx),
-        )
-        _check_response(resp)
-    cfg = resp.json()
-    return f"Sleep agent updated. Sources: {cfg.get('curation_sources')}, Workspaces: {cfg.get('workspace_ids')}"
-
-
-@mcp.tool()
-async def trigger_sleep(ctx: Context) -> str:
-    """Manually trigger a sleep agent curation cycle."""
-    async with _client() as c:
-        resp = await c.post(
-            "/api/v1/personas/me/sleep",
-            headers=_auth_headers(ctx),
-        )
-        _check_response(resp)
-    result = resp.json()
-    status = result.get("status", "unknown")
-    episodes = result.get("episodes_processed", 0)
-    total = result.get("total_items_curated", episodes)
-    actions = result.get("actions", {})
-    lines = [
-        f"Status: {status}",
-        f"Items curated: {total}",
-        f"Actions: created={actions.get('created', 0)}, updated={actions.get('updated', 0)}, "
-        f"merged={actions.get('merged', 0)}, deleted={actions.get('deleted', 0)}",
-    ]
-    if result.get("sources_used"):
-        lines.append(f"Sources: {result['sources_used']}")
-    return "\n".join(lines)
+    """Curate workspace history into wiki pages. Reads recent history events and uses an LLM to organize them into categorized notebook pages with [[wiki links]]. Invoke this periodically to keep your wiki up to date."""
+    from backend.services import curation_service
+    user = await _require_auth()
+    result = await curation_service.curate(
+        workspace_id=UUID(workspace_id),
+        notebook_id=UUID(notebook_id),
+        user_id=user["id"],
+        agent_name_filter=agent_name_filter,
+        model=model,
+    )
+    return json.dumps(result)
 
 
 # ---------------------------------------------------------------------------

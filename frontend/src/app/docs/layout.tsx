@@ -23,9 +23,8 @@ const NAV: NavSection[] = [
   {
     title: "Guides",
     items: [
-      { href: "/docs/consume", label: "Consume" },
-      { href: "/docs/curate", label: "Curate" },
-      { href: "/docs/collaborate", label: "Collaborate" },
+      { href: "/docs/consume", label: "History & Files" },
+      { href: "/docs/curate", label: "Wiki & Curation" },
       { href: "/docs/workspaces", label: "Workspaces" },
     ],
   },
@@ -36,7 +35,6 @@ const NAV: NavSection[] = [
       { href: "/docs/mcp", label: "MCP Server" },
       { href: "/docs/openclaw", label: "OpenClaw Plugin" },
       { href: "/docs/api", label: "REST API" },
-      { href: "/docs/webhooks", label: "Webhooks" },
     ],
   },
   {

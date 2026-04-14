@@ -1,8 +1,10 @@
 "use client";
 
+import { Node, mergeAttributes } from "@tiptap/core";
 import { Extension } from "@tiptap/react";
 import Suggestion, { SuggestionOptions } from "@tiptap/suggestion";
 import { ReactRenderer } from "@tiptap/react";
+import { NodeViewWrapper, ReactNodeViewRenderer } from "@tiptap/react";
 import tippy, { Instance as TippyInstance } from "tippy.js";
 import {
   forwardRef,
@@ -124,7 +126,85 @@ function suggestionRenderer() {
   };
 }
 
-// --- WikiLink Extension (plain text insertion with autocomplete) ---
+// --- WikiLinkNode: renders [[Page Name]] as a clickable styled element ---
+
+function WikiLinkNodeView({ node }: { node: { attrs: Record<string, unknown> } }) {
+  const pageName = (node.attrs.pageName as string) || "";
+  return (
+    <NodeViewWrapper as="span" className="wiki-link-wrapper">
+      <span
+        className="text-[#F97316] hover:text-[#EA580C] cursor-pointer hover:underline font-medium transition-colors duration-150"
+        data-wiki-link={pageName}
+        role="link"
+        tabIndex={0}
+        onClick={(e) => {
+          e.preventDefault();
+          // Dispatch a custom event that the page component can listen to
+          const event = new CustomEvent("wiki-link-click", {
+            detail: { pageName },
+            bubbles: true,
+          });
+          e.currentTarget.dispatchEvent(event);
+        }}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            const event = new CustomEvent("wiki-link-click", {
+              detail: { pageName },
+              bubbles: true,
+            });
+            e.currentTarget.dispatchEvent(event);
+          }
+        }}
+      >
+        [[{pageName}]]
+      </span>
+    </NodeViewWrapper>
+  );
+}
+
+export const WikiLinkNode = Node.create({
+  name: "wikiLinkNode",
+  group: "inline",
+  inline: true,
+  atom: true,
+
+  addAttributes() {
+    return {
+      pageName: {
+        default: "",
+      },
+    };
+  },
+
+  parseHTML() {
+    return [
+      {
+        tag: 'span[data-wiki-link]',
+        getAttrs: (el) => {
+          const element = el as HTMLElement;
+          return { pageName: element.getAttribute("data-wiki-link") || "" };
+        },
+      },
+    ];
+  },
+
+  renderHTML({ HTMLAttributes }) {
+    return [
+      "span",
+      mergeAttributes(HTMLAttributes, {
+        "data-wiki-link": HTMLAttributes.pageName,
+        class: "text-brand cursor-pointer hover:underline font-medium",
+      }),
+      `[[${HTMLAttributes.pageName}]]`,
+    ];
+  },
+
+  addNodeView() {
+    return ReactNodeViewRenderer(WikiLinkNodeView);
+  },
+});
+
+// --- WikiLink Suggestion Extension (autocomplete with [[ trigger) ---
 
 export interface WikiLinkOptions {
   pageNames: string[];
@@ -158,7 +238,11 @@ export const WikiLink = Extension.create<WikiLinkOptions>({
           ed.chain()
             .focus()
             .deleteRange(range as { from: number; to: number })
-            .insertContent(`[[${(props as { id: string }).id}]] `)
+            .insertContent({
+              type: "wikiLinkNode",
+              attrs: { pageName: (props as { id: string }).id },
+            })
+            .insertContent(" ")
             .run();
         },
         // eslint-disable-next-line @typescript-eslint/no-explicit-any

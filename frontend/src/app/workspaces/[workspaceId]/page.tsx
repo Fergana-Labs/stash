@@ -8,25 +8,15 @@ import SetupCard from "../../../components/SetupCard";
 import WorkspaceSidebar from "../../../components/workspace/WorkspaceSidebar";
 import { useAuth } from "../../../hooks/useAuth";
 import {
-  createChat,
   createNotebook,
-  deleteChat,
   deleteNotebook,
   getWorkspace,
   listNotebooks,
-  listChats,
   listHistories,
   createHistory,
-  listDecks,
-  createDeck,
-  deleteDeck,
   listTables,
   createTable,
   deleteTable,
-  getWebhook,
-  setWebhook,
-  updateWebhook,
-  deleteWebhook,
   joinWorkspace as apiJoinRoom,
   getWorkspaceMembers,
   leaveWorkspace,
@@ -34,7 +24,7 @@ import {
   kickWorkspaceMember,
   updateWorkspace,
 } from "../../../lib/api";
-import { Chat, Deck, History, Notebook, Table, Webhook, Workspace, WorkspaceMember } from "../../../lib/types";
+import { History, Notebook, Table, Workspace, WorkspaceMember } from "../../../lib/types";
 
 interface WorkspaceSectionProps {
   title: string;
@@ -76,28 +66,13 @@ export default function WorkspacePage() {
 
   const [workspace, setWorkspace] = useState<Workspace | null>(null);
   const [notebooks, setNotebooks] = useState<Notebook[]>([]);
-  const [chats, setChats] = useState<Chat[]>([]);
   const [histories, setHistories] = useState<History[]>([]);
-  const [decks, setDecks] = useState<Deck[]>([]);
   const [tables, setTables] = useState<Table[]>([]);
-  const [webhook, setWebhookState] = useState<Webhook | null>(null);
   const [members, setMembers] = useState<WorkspaceMember[]>([]);
   const [isMember, setIsMember] = useState(false);
   const [error, setError] = useState("");
   const [dataLoaded, setDataLoaded] = useState(false);
   const [showManageSidebar, setShowManageSidebar] = useState(false);
-  const [showWebhookForm, setShowWebhookForm] = useState(false);
-  const [webhookUrl, setWebhookUrl] = useState("");
-  const [webhookSecret, setWebhookSecret] = useState("");
-
-  const buildWorkspaceChatHref = (chat: Chat) => {
-    const params = new URLSearchParams({
-      kind: "workspace",
-      workspaceId,
-      label: chat.name,
-    });
-    return `/chats/${chat.id}?${params.toString()}`;
-  };
 
   const loadWorkspace = useCallback(async () => {
     try { setWorkspace(await getWorkspace(workspaceId)); } catch { setError("Workspace not found"); }
@@ -105,23 +80,16 @@ export default function WorkspacePage() {
 
   const loadData = useCallback(async () => {
     try {
-      const [nbRes, chatRes, m, histRes, deckRes, tblRes, wh] = await Promise.all([
+      const [nbRes, m, histRes, tblRes] = await Promise.all([
         listNotebooks(workspaceId).then(r => r?.notebooks ?? []).catch(() => [] as Notebook[]),
-        listChats(workspaceId).then(r => r?.chats ?? []).catch(() => [] as Chat[]),
         getWorkspaceMembers(workspaceId).catch(() => [] as WorkspaceMember[]),
         listHistories(workspaceId).then(r => r?.stores ?? []).catch(() => [] as History[]),
-        listDecks(workspaceId).then(r => r?.decks ?? []).catch(() => [] as Deck[]),
         listTables(workspaceId).then(r => r?.tables ?? []).catch(() => [] as Table[]),
-        getWebhook(workspaceId).catch(() => null),
       ]);
       setNotebooks(nbRes);
-      setChats(chatRes);
       setMembers(m);
       setHistories(histRes);
-      setDecks(deckRes);
       setTables(tblRes);
-      setWebhookState(wh);
-      if (wh) { setWebhookUrl(wh.url); }
       if (user) setIsMember(m.some(mem => mem.user_id === user.id));
       setDataLoaded(true);
     } catch { setIsMember(false); setDataLoaded(true); }
@@ -143,24 +111,6 @@ export default function WorkspacePage() {
     catch (err) { setError(err instanceof Error ? err.message : "Failed to create notebook"); }
   };
 
-  const handleCreateChat = async () => {
-    const name = prompt("Chat name:");
-    if (!name?.trim()) return;
-    try {
-      const chat = await createChat(workspaceId, name.trim());
-      await loadData();
-      router.push(buildWorkspaceChatHref(chat));
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to create chat");
-    }
-  };
-
-  const handleDeleteChat = async (chatId: string) => {
-    if (!confirm("Delete this chat and all its messages?")) return;
-    try { await deleteChat(workspaceId, chatId); await loadData(); }
-    catch (err) { setError(err instanceof Error ? err.message : "Failed to delete chat"); }
-  };
-
   const handleDeleteNotebook = async (nbId: string) => {
     if (!confirm("Delete this notebook and all its pages?")) return;
     try { await deleteNotebook(workspaceId, nbId); await loadData(); }
@@ -174,19 +124,6 @@ export default function WorkspacePage() {
     catch (err) { setError(err instanceof Error ? err.message : "Failed to create history store"); }
   };
 
-  const handleCreateDeck = async () => {
-    const name = prompt("Deck name:");
-    if (!name?.trim()) return;
-    try { await createDeck(workspaceId, name.trim()); await loadData(); }
-    catch (err) { setError(err instanceof Error ? err.message : "Failed to create deck"); }
-  };
-
-  const handleDeleteDeck = async (deckId: string) => {
-    if (!confirm("Delete this deck?")) return;
-    try { await deleteDeck(workspaceId, deckId); await loadData(); }
-    catch (err) { setError(err instanceof Error ? err.message : "Failed to delete deck"); }
-  };
-
   const handleCreateTable = async () => {
     const name = prompt("Table name:");
     if (!name?.trim()) return;
@@ -198,32 +135,6 @@ export default function WorkspacePage() {
     if (!confirm("Delete this table and all its data?")) return;
     try { await deleteTable(workspaceId, tableId); await loadData(); }
     catch (err) { setError(err instanceof Error ? err.message : "Failed to delete table"); }
-  };
-
-  const handleSaveWebhook = async () => {
-    if (!webhookUrl.trim()) return;
-    try {
-      if (webhook) {
-        await updateWebhook(workspaceId, { url: webhookUrl.trim() });
-      } else {
-        await setWebhook(workspaceId, webhookUrl.trim(), webhookSecret || undefined);
-      }
-      await loadData();
-      setShowWebhookForm(false);
-      setWebhookSecret("");
-    } catch (err) { setError(err instanceof Error ? err.message : "Failed to save webhook"); }
-  };
-
-  const handleDeleteWebhook = async () => {
-    if (!confirm("Delete your webhook for this workspace?")) return;
-    try { await deleteWebhook(workspaceId); setWebhookState(null); setWebhookUrl(""); setShowWebhookForm(false); }
-    catch (err) { setError(err instanceof Error ? err.message : "Failed to delete webhook"); }
-  };
-
-  const handleToggleWebhook = async () => {
-    if (!webhook) return;
-    try { await updateWebhook(workspaceId, { is_active: !webhook.is_active }); await loadData(); }
-    catch (err) { setError(err instanceof Error ? err.message : "Failed to update webhook"); }
   };
 
   const isOwner = members.some(m => m.user_id === user?.id && m.role === "owner");
@@ -269,7 +180,7 @@ export default function WorkspacePage() {
           <div className="flex-1 flex overflow-hidden">
             <div className="flex-1 overflow-y-auto">
               <div className="max-w-4xl mx-auto w-full px-6 py-8 space-y-5">
-              {dataLoaded && histories.length === 0 && chats.length === 0 && notebooks.length === 0 && (
+              {dataLoaded && histories.length === 0 && notebooks.length === 0 && (
                 <SetupCard workspaceId={workspaceId} />
               )}
 
@@ -278,7 +189,7 @@ export default function WorkspacePage() {
                   <div className="min-w-0">
                     <h2 className="text-lg font-semibold text-foreground">{workspace?.name || "Workspace"}</h2>
                     <p className="text-sm text-dim mt-1">
-                      Organize your agent work across chats, memory, notebooks, decks, tables, and webhooks.
+                      Organize your agent work across memory, notebooks, and tables.
                     </p>
                   </div>
                   <div className="text-right text-xs text-muted flex-shrink-0">
@@ -289,38 +200,13 @@ export default function WorkspacePage() {
               </div>
 
               <WorkspaceSection
-                title="Chats"
-                description="Real-time channels for agents and humans. Create one to start a conversation."
-                actionLabel="+ New"
-                onAction={handleCreateChat}
-              >
-                {chats.length === 0 ? (
-                  <p className="text-sm text-muted">No chats yet.</p>
-                ) : (
-                  <div className="space-y-1">
-                    {chats.map(chat => (
-                      <div key={chat.id} className="group flex items-center justify-between px-3 py-2 rounded-lg hover:bg-raised transition-colors">
-                        <Link href={buildWorkspaceChatHref(chat)} className="flex items-center gap-3 flex-1 min-w-0">
-                          <div className="w-7 h-7 rounded-md bg-brand/15 text-brand flex items-center justify-center text-xs font-bold">#</div>
-                          <div className="text-sm text-foreground">{chat.name}</div>
-                        </Link>
-                        {isOwner && (
-                          <button onClick={() => handleDeleteChat(chat.id)} className="text-xs text-red-400 hover:text-red-300 px-2 py-1 opacity-0 group-hover:opacity-100">Delete</button>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </WorkspaceSection>
-
-              <WorkspaceSection
                 title="Notebooks"
                 description="The sleep agent writes wiki pages here: categories, backlinks, and summaries."
                 actionLabel="+ New"
                 onAction={handleCreateNotebook}
               >
                 {notebooks.length === 0 ? (
-                  <p className="text-sm text-muted">No notebooks yet. Enable curation from <Link href="/personas" className="text-brand hover:underline">Personas</Link>.</p>
+                  <p className="text-sm text-muted">No notebooks yet.</p>
                 ) : (
                   <div className="space-y-1">
                     {notebooks.map(nb => (
@@ -366,32 +252,6 @@ export default function WorkspacePage() {
               </WorkspaceSection>
 
               <WorkspaceSection
-                title="Decks"
-                description="Shareable HTML for reports, dashboards, and generated pages."
-                actionLabel="+ New"
-                onAction={handleCreateDeck}
-              >
-                {decks.length === 0 ? (
-                  <p className="text-sm text-muted">No decks yet.</p>
-                ) : (
-                  <div className="space-y-1">
-                    {decks.map(d => (
-                      <div key={d.id} className="flex items-center justify-between px-3 py-2 rounded-lg hover:bg-raised transition-colors">
-                        <Link href={`/decks/${d.id}/edit?workspaceId=${workspaceId}`} className="flex items-center gap-3 flex-1 min-w-0">
-                          <div className="w-7 h-7 rounded-md bg-blue-500/15 text-blue-500 flex items-center justify-center text-xs font-bold">D</div>
-                          <div>
-                            <div className="text-sm text-foreground">{d.name}</div>
-                            <div className="text-xs text-muted">{d.deck_type}</div>
-                          </div>
-                        </Link>
-                        <button onClick={() => handleDeleteDeck(d.id)} className="text-xs text-red-400 hover:text-red-300 px-2 py-1">Delete</button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </WorkspaceSection>
-
-              <WorkspaceSection
                 title="Tables"
                 description="Structured data agents can read and write, like a shared spreadsheet."
                 actionLabel="+ New"
@@ -419,72 +279,6 @@ export default function WorkspacePage() {
                 )}
               </WorkspaceSection>
 
-              <WorkspaceSection
-                title="Webhook"
-                description="Receive event notifications when chat or memory activity happens."
-                actionLabel={!webhook && !showWebhookForm ? "+ Configure" : undefined}
-                onAction={!webhook && !showWebhookForm ? () => setShowWebhookForm(true) : undefined}
-              >
-                {webhook && !showWebhookForm ? (
-                  <div className="bg-raised border border-border rounded-lg px-4 py-3">
-                    <div className="flex items-center justify-between mb-2">
-                      <div className="flex items-center gap-2">
-                        <div className={`w-2 h-2 rounded-full ${webhook.is_active ? "bg-green-500" : "bg-gray-400"}`} />
-                        <span className="text-sm text-foreground">{webhook.is_active ? "Active" : "Paused"}</span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <button onClick={handleToggleWebhook} className="text-xs text-dim hover:text-foreground">
-                          {webhook.is_active ? "Pause" : "Resume"}
-                        </button>
-                        <button onClick={() => setShowWebhookForm(true)} className="text-xs text-brand hover:text-brand-hover">Edit</button>
-                        <button onClick={handleDeleteWebhook} className="text-xs text-red-400 hover:text-red-300">Delete</button>
-                      </div>
-                    </div>
-                    <div className="text-xs text-muted font-mono truncate">{webhook.url}</div>
-                    {webhook.has_secret && <div className="text-xs text-muted mt-1">HMAC-SHA256 signing enabled</div>}
-                    {webhook.event_filter.length > 0 && (
-                      <div className="text-xs text-muted mt-1">Events: {webhook.event_filter.join(", ")}</div>
-                    )}
-                  </div>
-                ) : showWebhookForm ? (
-                  <div className="bg-raised border border-border rounded-lg px-4 py-3 space-y-3">
-                    <div>
-                      <label className="block text-xs text-dim mb-1">Webhook URL</label>
-                      <input
-                        type="url"
-                        value={webhookUrl}
-                        onChange={e => setWebhookUrl(e.target.value)}
-                        placeholder="https://example.com/webhook"
-                        className="w-full bg-surface border border-border rounded px-3 py-2 text-sm text-foreground focus:outline-none focus:border-brand"
-                      />
-                    </div>
-                    {!webhook && (
-                      <div>
-                        <label className="block text-xs text-dim mb-1">Secret (optional, for HMAC-SHA256 signing)</label>
-                        <input
-                          type="text"
-                          value={webhookSecret}
-                          onChange={e => setWebhookSecret(e.target.value)}
-                          placeholder="your-webhook-secret"
-                          className="w-full bg-surface border border-border rounded px-3 py-2 text-sm text-foreground focus:outline-none focus:border-brand"
-                        />
-                      </div>
-                    )}
-                    <div className="text-xs text-muted">
-                      Receives <code className="text-foreground">chat.message</code> and <code className="text-foreground">memory.event</code> payloads via POST.
-                    </div>
-                    <div className="flex gap-2">
-                      <button onClick={handleSaveWebhook} className="bg-brand hover:bg-brand-hover text-foreground px-3 py-1.5 rounded text-sm">
-                        {webhook ? "Update" : "Create"}
-                      </button>
-                      <button onClick={() => { setShowWebhookForm(false); if (webhook) setWebhookUrl(webhook.url); }}
-                        className="text-sm text-dim hover:text-foreground px-3 py-1.5">Cancel</button>
-                    </div>
-                  </div>
-                ) : (
-                  <p className="text-sm text-muted">No webhook configured.</p>
-                )}
-              </WorkspaceSection>
               </div>
             </div>
 

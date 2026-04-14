@@ -8,10 +8,6 @@ const PROTECTED_ROUTES = [
   "/notebooks",
   "/memory",
   "/tables",
-  "/decks",
-  "/chats",
-  "/documents",
-  "/personas",
   "/search",
 ];
 

@@ -122,12 +122,12 @@ export default function FileTreeComponent({
         <button
           onClick={() => onCreateFile(null)}
           className="text-xs bg-raised hover:bg-raised text-dim px-2 py-1 rounded flex items-center gap-1"
-          title="New file"
+          title="New page"
         >
           <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
           </svg>
-          File
+          Page
         </button>
         <button
           onClick={onCreateFolder}
@@ -147,7 +147,7 @@ export default function FileTreeComponent({
         {tree.root_files.map(renderFile)}
         {tree.folders.length === 0 && tree.root_files.length === 0 && (
           <p className="text-sm text-muted text-center py-8">
-            No files yet. Create one to get started.
+            No pages yet. Create one to get started.
           </p>
         )}
       </div>
@@ -180,7 +180,7 @@ export default function FileTreeComponent({
               }}
               className="w-full text-left px-3 py-1.5 text-sm text-dim hover:bg-raised"
             >
-              New file here
+              New page here
             </button>
           )}
           {contextMenu.type === "file" && (

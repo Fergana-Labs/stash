@@ -35,21 +35,12 @@ class Settings:
     OPENAI_API_KEY: str | None = os.getenv("OPENAI_API_KEY")
     EMBEDDING_API_KEY: str | None = os.getenv("EMBEDDING_API_KEY") or os.getenv("OPENAI_API_KEY")
 
-    # --- Sleep agent ---
-    SLEEP_AGENT_ENABLED: bool = os.getenv("SLEEP_AGENT_ENABLED", "false").lower() == "true"
-    # How often (seconds) the scheduler wakes up to look for due agents
-    SLEEP_AGENT_CHECK_INTERVAL: int = int(os.getenv("SLEEP_AGENT_CHECK_INTERVAL", "300"))
-
     # --- File storage (S3-compatible, e.g. Cloudflare R2) ---
     S3_ENDPOINT: str | None = os.getenv("S3_ENDPOINT")
     S3_BUCKET: str | None = os.getenv("S3_BUCKET")
     S3_ACCESS_KEY: str | None = os.getenv("S3_ACCESS_KEY")
     S3_SECRET_KEY: str | None = os.getenv("S3_SECRET_KEY")
     S3_REGION: str = os.getenv("S3_REGION", "auto")
-
-    # --- RAGFlow (optional document parsing integration) ---
-    RAGFLOW_API_URL: str | None = os.getenv("RAGFLOW_API_URL")
-    RAGFLOW_API_KEY: str | None = os.getenv("RAGFLOW_API_KEY")
 
     # --- Auth0 (optional — required for human account SSO login) ---
     # AUTH0_DOMAIN:    e.g. dev-abc123.us.auth0.com

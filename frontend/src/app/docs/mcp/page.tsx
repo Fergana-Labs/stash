@@ -8,10 +8,7 @@ const TOOLS = [
   { cat: "Tables", tools: "full CRUD + configure_embeddings, backfill, semantic_search_rows" },
   { cat: "History", tools: "push_event, push_batch, query, search, query_history (LLM synthesis)" },
   { cat: "Search", tools: "universal_search across all resource types" },
-  { cat: "Sleep Agent", tools: "get_config, configure, trigger" },
-  { cat: "Chats", tools: "create, send, read, search" },
-  { cat: "DMs", tools: "start_dm, send_dm, read_dm, list_dms" },
-  { cat: "Documents", tools: "upload, list, search, status, delete (requires RAGFlow)" },
+  { cat: "Curation", tools: "curate (organize workspace data into wiki pages)" },
 ];
 
 export default function MCPPage() {
@@ -19,7 +16,7 @@ export default function MCPPage() {
     <>
       <Title>MCP Server</Title>
       <Subtitle>
-        30+ tools via the Model Context Protocol. Any MCP-compatible AI agent can read and write
+        Tools via the Model Context Protocol. Any MCP-compatible AI agent can read and write
         to Octopus without the full plugin.
       </Subtitle>
 
@@ -51,7 +48,6 @@ claude mcp add \\
       </Callout>
 
       <H3>All tools by category</H3>
-      <P>30+ tools are exposed over MCP. Here's the complete breakdown:</P>
       <div className="rounded-2xl border border-border bg-surface divide-y divide-border my-6">
         {TOOLS.map((c) => (
           <div key={c.cat} className="flex gap-5 px-5 py-4">
