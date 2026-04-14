@@ -55,8 +55,20 @@ async def test_list_my_workspaces(client: AsyncClient):
 
     resp = await client.get("/api/v1/workspaces/mine", headers=h)
     assert resp.status_code == 200
+    # Registration auto-provisions a default workspace, so WS1/WS2 come alongside it.
     names = {w["name"] for w in resp.json()["workspaces"]}
-    assert names == {"WS1", "WS2"}
+    assert {"WS1", "WS2"}.issubset(names)
+
+
+@pytest.mark.asyncio
+async def test_registration_auto_provisions_default_workspace(client: AsyncClient):
+    key, body = await _register(client)
+    resp = await client.get("/api/v1/workspaces/mine", headers=_auth(key))
+    assert resp.status_code == 200
+    workspaces = resp.json()["workspaces"]
+    assert len(workspaces) == 1
+    assert workspaces[0]["name"] == f"{body['display_name']}'s Workspace"
+    assert workspaces[0]["member_count"] == 1
 
 
 # --- Invite flow ---
