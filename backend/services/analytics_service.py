@@ -116,7 +116,7 @@ async def get_knowledge_density(
     user_id: UUID,
     max_clusters: int = 20,
 ) -> dict:
-    """Topic clusters from FTS term extraction for the density heatmap."""
+    """Topic clusters from word frequency for the key topics treemap."""
     pool = get_pool()
     max_clusters = min(max_clusters, 50)
 
@@ -128,81 +128,57 @@ async def get_knowledge_density(
         if now - cached_at < _DENSITY_TTL:
             return cached_result
 
-    # Get accessible notebook IDs first, then build ts_stat query
-    nb_ids = await pool.fetch(
-        "SELECT n.id FROM notebooks n "
-        "WHERE n.workspace_id IN (SELECT workspace_id FROM workspace_members WHERE user_id = $1) "
-        "   OR (n.workspace_id IS NULL AND n.created_by = $1)",
-        user_id,
+    # Extract top words from notebook pages using tsvector unnesting.
+    # This avoids ts_stat (which needs literal SQL) and instead
+    # unnests each page's tsvector into individual lexemes, then aggregates.
+    rows = await pool.fetch(
+        _ACCESSIBLE_NOTEBOOKS_CTE + """
+        SELECT word, COUNT(DISTINCT np.id) AS ndoc
+        FROM notebook_pages np,
+             LATERAL unnest(to_tsvector('english', COALESCE(np.content_markdown, ''))) AS t(word, positions, weights)
+        WHERE np.notebook_id IN (SELECT notebook_id FROM accessible_notebooks)
+          AND np.content_markdown IS NOT NULL
+          AND np.content_markdown != ''
+          AND length(word) > 2
+        GROUP BY word
+        ORDER BY ndoc DESC
+        LIMIT $2
+        """,
+        user_id, max_clusters * 5,
     )
-    nb_id_list = [str(r["id"]) for r in nb_ids]
+    page_terms = [(r["word"], r["ndoc"]) for r in rows]
 
-    page_terms: list = []
-    if nb_id_list:
-        # ts_stat requires a literal SQL string — build it with escaped UUIDs
-        ids_literal = ",".join(f"'{uid}'" for uid in nb_id_list)
-        page_terms = await pool.fetch(
-            f"SELECT word, ndoc, nentry "
-            f"FROM ts_stat("
-            f"  'SELECT to_tsvector(''english'', np.content_markdown) "
-            f"   FROM notebook_pages np "
-            f"   WHERE np.notebook_id IN ({ids_literal})'"
-            f") "
-            f"WHERE length(word) > 2 "
-            f"ORDER BY ndoc DESC, nentry DESC "
-            f"LIMIT $1",
-            max_clusters * 5,  # fetch more to account for stop word filtering
-        )
-
-    # Get accessible table IDs
-    tbl_ids = await pool.fetch(
-        "SELECT t.id FROM tables t "
-        "WHERE t.workspace_id IN (SELECT workspace_id FROM workspace_members WHERE user_id = $1) "
-        "   OR (t.workspace_id IS NULL AND t.created_by = $1)",
-        user_id,
+    # Same for table rows
+    tbl_rows = await pool.fetch(
+        _ACCESSIBLE_TABLES_CTE + """
+        SELECT word, COUNT(DISTINCT tr.id) AS ndoc
+        FROM table_rows tr,
+             LATERAL unnest(to_tsvector('english', COALESCE(tr.data::text, ''))) AS t(word, positions, weights)
+        WHERE tr.table_id IN (SELECT table_id FROM accessible_tables)
+          AND tr.data IS NOT NULL
+          AND length(word) > 2
+        GROUP BY word
+        ORDER BY ndoc DESC
+        LIMIT $2
+        """,
+        user_id, max_clusters * 5,
     )
-    tbl_id_list = [str(r["id"]) for r in tbl_ids]
-
-    table_terms: list = []
-    if tbl_id_list:
-        ids_literal = ",".join(f"'{uid}'" for uid in tbl_id_list)
-        table_terms = await pool.fetch(
-            f"SELECT word, ndoc, nentry "
-            f"FROM ts_stat("
-            f"  'SELECT to_tsvector(''english'', tr.data::text) "
-            f"   FROM table_rows tr "
-            f"   WHERE tr.table_id IN ({ids_literal})'"
-            f") "
-            f"WHERE length(word) > 2 "
-            f"ORDER BY ndoc DESC, nentry DESC "
-            f"LIMIT $1",
-            max_clusters * 5,
-        )
+    table_terms = [(r["word"], r["ndoc"]) for r in tbl_rows]
 
     # Merge term counts, filtering out stop stems
     term_counts: dict[str, dict] = {}
-    for row in page_terms:
-        w = row["word"]
+    for w, ndoc in page_terms:
         if w in _STOP_STEMS:
             continue
-        term_counts[w] = {
-            "notebook_pages": row["ndoc"],
-            "table_rows": 0,
-            "total": row["ndoc"],
-        }
-    for row in table_terms:
-        w = row["word"]
+        term_counts[w] = {"notebook_pages": ndoc, "table_rows": 0, "total": ndoc}
+    for w, ndoc in table_terms:
         if w in _STOP_STEMS:
             continue
         if w in term_counts:
-            term_counts[w]["table_rows"] = row["ndoc"]
-            term_counts[w]["total"] += row["ndoc"]
+            term_counts[w]["table_rows"] = ndoc
+            term_counts[w]["total"] += ndoc
         else:
-            term_counts[w] = {
-                "notebook_pages": 0,
-                "table_rows": row["ndoc"],
-                "total": row["ndoc"],
-            }
+            term_counts[w] = {"notebook_pages": 0, "table_rows": ndoc, "total": ndoc}
 
     # Sort by total and take top N
     top_terms = sorted(term_counts.items(), key=lambda x: x[1]["total"], reverse=True)[
@@ -210,68 +186,34 @@ async def get_knowledge_density(
     ]
 
     if not top_terms:
-        result = {"clusters": []}
+        result: dict = {"clusters": []}
         _density_cache[cache_key] = (now, result)
         return result
 
     # Batch enrichment: get sample titles + timestamps for ALL terms in one query
-    # Uses LATERAL join to get top 3 matching pages per term
     words = [w for w, _ in top_terms]
     enrichment: dict[str, list[dict]] = {w: [] for w in words}
 
-    if nb_id_list:
-        rows = await pool.fetch(
-            "SELECT term.word, np.name, np.created_at, np.updated_at "
-            "FROM unnest($1::text[]) AS term(word) "
-            "CROSS JOIN LATERAL ("
-            "  SELECT np.name, np.created_at, np.updated_at "
-            "  FROM notebook_pages np "
-            "  WHERE np.notebook_id = ANY($2::uuid[]) "
-            "    AND to_tsvector('english', np.content_markdown) @@ plainto_tsquery('english', term.word) "
-            "  ORDER BY np.updated_at DESC "
-            "  LIMIT 3"
-            ") np",
-            words, nb_id_list,
-        )
-        for r in rows:
-            enrichment[r["word"]].append(r)
+    enrich_rows = await pool.fetch(
+        _ACCESSIBLE_NOTEBOOKS_CTE + """
+        SELECT term.word, np.name, np.created_at, np.updated_at
+        FROM unnest($2::text[]) AS term(word)
+        CROSS JOIN LATERAL (
+          SELECT np.name, np.created_at, np.updated_at
+          FROM notebook_pages np
+          WHERE np.notebook_id IN (SELECT notebook_id FROM accessible_notebooks)
+            AND np.content_markdown IS NOT NULL
+            AND to_tsvector('english', np.content_markdown) @@ plainto_tsquery('english', term.word)
+          ORDER BY np.updated_at DESC
+          LIMIT 3
+        ) np
+        """,
+        user_id, words,
+    )
+    for r in enrich_rows:
+        enrichment[r["word"]].append(r)
 
-    # Map stems back to surface forms by finding the most common original word
-    # that reduces to each stem
-    surface_forms: dict[str, str] = {}
-    if nb_id_list:
-        # For each stem, find the most frequent original word in page content
-        surface_rows = await pool.fetch(
-            "SELECT stem.word AS stem, token, COUNT(*) AS freq "
-            "FROM unnest($1::text[]) AS stem(word) "
-            "CROSS JOIN LATERAL ("
-            "  SELECT DISTINCT ON (token) token "
-            "  FROM ("
-            "    SELECT ts_lexize('english_stem', token)::text[] AS lexemes, token "
-            "    FROM ("
-            "      SELECT alias AS token "
-            "      FROM ts_debug('english', ("
-            "        SELECT string_agg(np.content_markdown, ' ') "
-            "        FROM notebook_pages np "
-            "        WHERE np.notebook_id = ANY($2::uuid[])"
-            "      ))"
-            "      WHERE alias IS NOT NULL"
-            "    ) raw "
-            "    WHERE ts_lexize('english_stem', token) IS NOT NULL"
-            "  ) lexed "
-            "  WHERE lexemes[1] = stem.word "
-            "  LIMIT 10"
-            ") surface "
-            "GROUP BY stem.word, token "
-            "ORDER BY stem.word, freq DESC",
-            words, nb_id_list,
-        )
-        for r in surface_rows:
-            stem = r["stem"]
-            if stem not in surface_forms:
-                surface_forms[stem] = r["token"]
-
-    # Build clusters
+    # Build clusters — use the stem directly as label (capitalize it)
     clusters = []
     for word, counts in top_terms:
         samples = enrichment.get(word, [])
@@ -287,11 +229,8 @@ async def get_knowledge_density(
                 if oldest_at is None or ts < oldest_at:
                     oldest_at = ts
 
-        # Use surface form if available, otherwise capitalize the stem
-        label = surface_forms.get(word, word)
-
         clusters.append({
-            "label": label,
+            "label": word.capitalize(),
             "count": counts["total"],
             "sources": {
                 "notebook_pages": counts["notebook_pages"],

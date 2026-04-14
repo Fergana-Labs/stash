@@ -340,7 +340,7 @@ function LoggedInHome({ user, logout }: { user: NonNullable<ReturnType<typeof us
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <DashboardSection
-                title="Knowledge Density"
+                title="Key Topics"
                 loading={vizLoading}
                 empty={!density?.clusters.length}
                 emptyMessage="No knowledge base content yet. Create a notebook or push data to a table."
