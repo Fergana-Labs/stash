@@ -231,6 +231,42 @@ export interface PageGraph {
   edges: { source: string; target: string; label: string }[];
 }
 
+// --- Dashboard Visualizations ---
+
+export interface ActivityTimeline {
+  agents: string[];
+  buckets: {
+    date: string;
+    agents: Record<string, { total: number; by_type: Record<string, number> }>;
+  }[];
+}
+
+export interface KnowledgeDensity {
+  clusters: {
+    label: string;
+    count: number;
+    sources: { notebook_pages: number; table_rows: number };
+    newest_at: string | null;
+    oldest_at: string | null;
+    sample_titles: string[];
+  }[];
+}
+
+export interface EmbeddingProjectionPoint {
+  id: string;
+  x: number;
+  y: number;
+  source: "notebook_pages" | "table_rows" | "history_events";
+  label: string;
+  created_at: string | null;
+}
+
+export interface EmbeddingProjection {
+  points: EmbeddingProjectionPoint[];
+  stats: { total_embeddings: number; projected: number };
+  cached: boolean;
+}
+
 // --- Search ---
 
 export interface UserSearchResult {

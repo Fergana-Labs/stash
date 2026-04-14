@@ -10,8 +10,22 @@ import {
   listAllHistories,
   listMyWorkspaces,
   listPublicWorkspaces,
+  getActivityTimeline,
+  getKnowledgeDensity,
+  getEmbeddingProjection,
 } from "../lib/api";
-import { HistoryWithWorkspace, NotebookWithWorkspace, Workspace } from "../lib/types";
+import {
+  ActivityTimeline,
+  EmbeddingProjection,
+  HistoryWithWorkspace,
+  KnowledgeDensity,
+  NotebookWithWorkspace,
+  Workspace,
+} from "../lib/types";
+import DashboardSection from "../components/viz/DashboardSection";
+import AgentActivityTimeline from "../components/viz/AgentActivityTimeline";
+import KnowledgeDensityMap from "../components/viz/KnowledgeDensityMap";
+import EmbeddingSpaceExplorer from "../components/viz/EmbeddingSpaceExplorer";
 
 interface FeedItem {
   id: string;
@@ -246,6 +260,27 @@ function LoggedInHome({ user, logout }: { user: NonNullable<ReturnType<typeof us
   const [feed, setFeed] = useState<FeedItem[]>([]);
   const [loading, setLoading] = useState(true);
 
+  // Visualization state
+  const [timeline, setTimeline] = useState<ActivityTimeline | null>(null);
+  const [density, setDensity] = useState<KnowledgeDensity | null>(null);
+  const [projection, setProjection] = useState<EmbeddingProjection | null>(null);
+  const [vizLoading, setVizLoading] = useState(true);
+
+  // Fetch visualizations in parallel
+  useEffect(() => {
+    setVizLoading(true);
+    Promise.all([
+      getActivityTimeline().catch(() => null),
+      getKnowledgeDensity().catch(() => null),
+      getEmbeddingProjection().catch(() => null),
+    ]).then(([tl, kd, ep]) => {
+      setTimeline(tl);
+      setDensity(kd);
+      setProjection(ep);
+      setVizLoading(false);
+    });
+  }, []);
+
   useEffect(() => {
     setLoading(true);
     Promise.all([
@@ -295,12 +330,58 @@ function LoggedInHome({ user, logout }: { user: NonNullable<ReturnType<typeof us
   const workspaceItems = feed.filter((f) => f.type === "workspace");
   const activityItems = feed.filter((f) => f.type !== "workspace");
 
+  const hasVizData = timeline?.buckets.length || density?.clusters.length || projection?.points.length;
+
   return (
     <AppShell user={user} onLogout={logout}>
-      <div className="max-w-3xl mx-auto w-full px-4 py-8">
+      <div className="max-w-6xl mx-auto w-full px-4 py-8">
+        {/* Dashboard Visualizations */}
+        {(vizLoading || hasVizData) ? (
+          <div className="mb-8 space-y-4">
+            {/* Agent Activity Timeline — full width */}
+            <DashboardSection
+              title="Agent Activity"
+              loading={vizLoading}
+              empty={!timeline?.buckets.length}
+              emptyMessage="No agent activity yet. Connect an agent to start tracking."
+            >
+              {timeline && <AgentActivityTimeline data={timeline} />}
+            </DashboardSection>
+
+            {/* Two-column row: density + embedding */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <DashboardSection
+                title="Knowledge Density"
+                loading={vizLoading}
+                empty={!density?.clusters.length}
+                emptyMessage="No knowledge base content yet. Create a notebook or push data to a table."
+              >
+                {density && (
+                  <KnowledgeDensityMap
+                    data={density}
+                    onTopicClick={(topic) => {
+                      window.location.href = `/search?q=${encodeURIComponent(topic)}`;
+                    }}
+                  />
+                )}
+              </DashboardSection>
+
+              <DashboardSection
+                title="Embedding Space"
+                loading={vizLoading}
+                empty={!projection?.points.length}
+                emptyMessage="No embeddings yet. Embeddings are generated when you add content to notebooks, tables, or history."
+              >
+                {projection && <EmbeddingSpaceExplorer data={projection} />}
+              </DashboardSection>
+            </div>
+          </div>
+        ) : null}
+
+        {/* Existing content: workspace cards + activity feed */}
         {loading ? (
           <p className="text-muted text-sm">Loading...</p>
-        ) : feed.length === 0 ? (
+        ) : feed.length === 0 && !hasVizData ? (
           <div className="text-center py-12">
             <p className="text-dim mb-4">Nothing here yet. Get started by creating something.</p>
             <div className="flex gap-3 justify-center">
