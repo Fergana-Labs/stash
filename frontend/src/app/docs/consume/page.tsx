@@ -3,16 +3,40 @@ import { Callout, CodeBlock, CodeTabs, H3, P, ParamTable, Title, Subtitle } from
 export default function ConsumePage() {
   return (
     <>
-      <Title>Consume</Title>
+      <Title>History & Files</Title>
       <Subtitle>
-        Getting data into Octopus. Agents push automatically via plugin or MCP. You can also
-        import manually from the CLI or REST API.
+        Getting data into Octopus. Push events via the CLI or REST API.
+        Import bookmarks, files, and structured data.
       </Subtitle>
 
-      <Callout type="tip">
-        <strong>Auto-streaming</strong> is the default path. Once the Claude Code plugin is
-        connected, every tool call and message flows into Octopus without any extra steps.
-      </Callout>
+      <H3>History stores</H3>
+      <P>
+        History stores are append-only event logs. Events are grouped by{" "}
+        <code className="text-brand font-mono text-[13px]">agent_name</code> and{" "}
+        <code className="text-brand font-mono text-[13px]">session_id</code>, giving you a
+        conversation-like view of each agent session. Push events via the CLI or REST API.
+      </P>
+      <CodeTabs tabs={[
+        {
+          label: "CLI",
+          code: `octopus history push "Searched for auth best practices" \\
+  --agent my-agent --type tool_use`,
+        },
+        {
+          label: "curl",
+          code: `curl -X POST https://getoctopus.com/api/v1/workspaces/{ws}/memory/{store}/events \\
+  -H "Authorization: Bearer $API_KEY" \\
+  -H "Content-Type: application/json" \\
+  -d '{"agent_name":"my-agent","event_type":"tool_use","content":"..."}'`,
+        },
+      ]} />
+
+      <H3>File uploads</H3>
+      <P>
+        Upload images, PDFs, and documents through the REST API or the image button in the
+        notebook editor. Files are stored in S3-compatible storage (Cloudflare R2, AWS S3, or
+        MinIO depending on your deployment).
+      </P>
 
       <H3>Import bookmarks</H3>
       <P>
@@ -28,45 +52,6 @@ export default function ConsumePage() {
         { name: "--delay", type: "float", desc: "Seconds between scrape requests (default: 0.5)" },
         { name: "--ws", type: "UUID", desc: "Workspace ID — uses personal notebook if omitted" },
       ]} />
-
-      <H3>Push events via the API</H3>
-      <P>
-        Any system that produces structured output can push events directly.
-        Use the REST endpoint, the CLI shortcut, or let MCP handle it automatically.
-      </P>
-      <CodeTabs tabs={[
-        {
-          label: "curl",
-          code: `curl -X POST https://getoctopus.com/api/v1/workspaces/{ws}/memory/{store}/events \\
-  -H "Authorization: Bearer $API_KEY" \\
-  -H "Content-Type: application/json" \\
-  -d '{"agent_name":"my-agent","event_type":"tool_use","content":"..."}'`,
-        },
-        {
-          label: "CLI",
-          code: `octopus history push "Searched for auth best practices" \\
-  --agent my-agent --type tool_use`,
-        },
-        {
-          label: "MCP",
-          code: `# Claude Code calls this automatically via the MCP tool
-push_memory_event(workspace_id, store_id, ...)`,
-        },
-      ]} />
-
-      <H3>File uploads</H3>
-      <P>
-        Upload images, PDFs, and documents through the REST API, via the + button in chat,
-        or the image button in the notebook editor. Files are stored in S3-compatible storage
-        (Cloudflare R2, AWS S3, or MinIO depending on your deployment).
-      </P>
-
-      <H3>Tables</H3>
-      <P>
-        Create structured data with typed columns (text, number, date, select, relation).
-        Import CSV files directly. Optionally enable row embeddings for semantic search —
-        configure which columns to use in the table settings panel.
-      </P>
     </>
   );
 }

@@ -7,6 +7,7 @@ interface PageGraphViewProps {
   graph: PageGraph;
   onClose: () => void;
   onSelectPage?: (pageId: string) => void;
+  inline?: boolean;
 }
 
 interface SimNode {
@@ -18,7 +19,7 @@ interface SimNode {
   vy: number;
 }
 
-export default function PageGraphView({ graph, onClose, onSelectPage }: PageGraphViewProps) {
+export default function PageGraphView({ graph, onClose, onSelectPage, inline }: PageGraphViewProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [hoveredNode, setHoveredNode] = useState<string | null>(null);
   const nodesRef = useRef<SimNode[]>([]);
@@ -193,6 +194,31 @@ export default function PageGraphView({ graph, onClose, onSelectPage }: PageGrap
     }
     setHoveredNode(found);
   };
+
+  if (inline) {
+    return (
+      <div>
+        <div className="flex items-center justify-between mb-2">
+          <span className="text-xs text-muted">
+            {graph.nodes.length} pages, {graph.edges.length} links
+          </span>
+          <button onClick={onClose} className="text-xs text-muted hover:text-foreground">&times; Close</button>
+        </div>
+        <canvas
+          ref={canvasRef}
+          className="w-full cursor-crosshair rounded"
+          style={{ height: 320 }}
+          onClick={handleCanvasClick}
+          onMouseMove={handleCanvasMove}
+        />
+        {graph.edges.length === 0 && (
+          <p className="text-xs text-muted mt-2">
+            No links yet. Use <code className="text-brand">[[Page Name]]</code> syntax to create wiki links.
+          </p>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-8" onClick={onClose}>

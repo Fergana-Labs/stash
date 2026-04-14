@@ -4,28 +4,51 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import AppShell from "../../components/AppShell";
 import { useAuth } from "../../hooks/useAuth";
-import { listMyWorkspaces, universalSearch } from "../../lib/api";
-import type { SearchResponse, Workspace } from "../../lib/types";
+import {
+  listMyWorkspaces,
+  listHistories,
+  listNotebooks,
+  listTables,
+  searchHistoryEvents,
+  semanticSearchPages,
+  semanticSearchTableRows,
+} from "../../lib/api";
+import type {
+  HistoryEvent,
+  History,
+  Notebook,
+  NotebookPage,
+  Table,
+  TableRow,
+  Workspace,
+} from "../../lib/types";
 
-const RESOURCE_TYPES = [
-  { key: "history", label: "History" },
-  { key: "notebook", label: "Notebooks" },
-  { key: "table", label: "Tables" },
-  { key: "document", label: "Documents" },
-];
+interface SearchResults {
+  historyEvents: { event: HistoryEvent; storeName: string }[];
+  wikiPages: { page: NotebookPage; notebookName: string }[];
+  tableRows: { row: TableRow; tableName: string; tableId: string }[];
+}
+
+const EMPTY_RESULTS: SearchResults = {
+  historyEvents: [],
+  wikiPages: [],
+  tableRows: [],
+};
 
 export default function SearchPage() {
   const router = useRouter();
-  const urlWs = typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("ws") : null;
+  const urlWs =
+    typeof window !== "undefined"
+      ? new URLSearchParams(window.location.search).get("ws")
+      : null;
   const { user, loading, logout } = useAuth();
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [selectedWs, setSelectedWs] = useState<string>(urlWs || "");
-  const [question, setQuestion] = useState("");
-  const [selectedTypes, setSelectedTypes] = useState<Set<string>>(new Set());
-  const [result, setResult] = useState<SearchResponse | null>(null);
+  const [query, setQuery] = useState("");
+  const [results, setResults] = useState<SearchResults>(EMPTY_RESULTS);
   const [searching, setSearching] = useState(false);
-  const [history, setHistory] = useState<{ q: string; a: string }[]>([]);
   const [error, setError] = useState("");
+  const [searchedQuery, setSearchedQuery] = useState("");
 
   const loadWorkspaces = useCallback(async () => {
     try {
@@ -40,148 +63,259 @@ export default function SearchPage() {
   }, [user, loadWorkspaces]);
 
   const handleSearch = async () => {
-    if (!question.trim()) return;
+    const q = query.trim();
+    if (!q || !selectedWs) return;
     setSearching(true);
     setError("");
-    setResult(null);
+    setResults(EMPTY_RESULTS);
+    setSearchedQuery(q);
+
+    const historyEvents: SearchResults["historyEvents"] = [];
+    const wikiPages: SearchResults["wikiPages"] = [];
+    const tableRows: SearchResults["tableRows"] = [];
+
     try {
-      const types = selectedTypes.size > 0 ? Array.from(selectedTypes) : undefined;
-      const res = await universalSearch(
-        question.trim(),
-        selectedWs || undefined,
-        types,
-      );
-      setResult(res);
-      setHistory((prev) => [{ q: question.trim(), a: res.answer }, ...prev].slice(0, 20));
+      // Discover resources in the workspace
+      const [historiesRes, notebooksRes, tablesRes] = await Promise.all([
+        listHistories(selectedWs).catch(() => ({ stores: [] as History[] })),
+        listNotebooks(selectedWs).catch(() => ({ notebooks: [] as Notebook[] })),
+        listTables(selectedWs).catch(() => ({ tables: [] as Table[] })),
+      ]);
+
+      const stores = historiesRes.stores ?? [];
+      const notebooks = notebooksRes.notebooks ?? [];
+      const tables = tablesRes.tables ?? [];
+
+      // Search all resource types in parallel
+      const searches = await Promise.allSettled([
+        // History full-text search across all stores
+        ...stores.map(async (store) => {
+          const res = await searchHistoryEvents(selectedWs, store.id, q, 10);
+          for (const event of res.events ?? []) {
+            historyEvents.push({ event, storeName: store.name });
+          }
+        }),
+        // Notebook semantic search across all notebooks
+        ...notebooks.map(async (nb) => {
+          const pages = await semanticSearchPages(selectedWs, nb.id, q, 10);
+          for (const page of pages ?? []) {
+            wikiPages.push({ page, notebookName: nb.name });
+          }
+        }),
+        // Table semantic search across all tables
+        ...tables.map(async (table) => {
+          try {
+            const rows = await semanticSearchTableRows(selectedWs, table.id, q, 10);
+            for (const row of rows ?? []) {
+              tableRows.push({ row, tableName: table.name, tableId: table.id });
+            }
+          } catch {
+            // Table may not have embeddings enabled -- skip silently
+          }
+        }),
+      ]);
+
+      // Check if all searches failed
+      const allFailed = searches.every((s) => s.status === "rejected");
+      if (allFailed && searches.length > 0) {
+        setError("All searches failed. Check that the workspace has accessible resources.");
+      }
+
+      setResults({ historyEvents, wikiPages, tableRows });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Search failed");
     }
     setSearching(false);
   };
 
-  const toggleType = (key: string) => {
-    setSelectedTypes((prev) => {
-      const next = new Set(prev);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
-      return next;
-    });
-  };
+  const totalResults =
+    results.historyEvents.length +
+    results.wikiPages.length +
+    results.tableRows.length;
 
-  if (loading) return <div className="min-h-screen flex items-center justify-center text-muted">Loading...</div>;
-  if (!user) { router.push("/login"); return null; }
+  if (loading)
+    return (
+      <div className="min-h-screen flex items-center justify-center text-muted">
+        Loading...
+      </div>
+    );
+  if (!user) {
+    router.push("/login");
+    return null;
+  }
 
   return (
     <AppShell user={user} onLogout={logout}>
       <div className="max-w-3xl mx-auto w-full px-4 py-8">
-        <h1 className="text-2xl font-bold text-foreground font-display mb-6">Search</h1>
+        <h1 className="text-2xl font-bold text-foreground font-display mb-6">
+          Search
+        </h1>
 
         {/* Search Controls */}
         <div className="bg-surface border border-border rounded-lg p-4 mb-6">
           <div className="flex gap-2 mb-3">
             <input
               type="text"
-              placeholder="Ask a question across all your data..."
-              value={question}
-              onChange={(e) => setQuestion(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && handleSearch()}
+              placeholder="Search across history, notebooks, and tables..."
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              onKeyDown={(e) =>
+                e.key === "Enter" && !e.shiftKey && handleSearch()
+              }
               className="flex-1 text-sm bg-base border border-border rounded px-3 py-2.5 text-foreground placeholder:text-muted"
             />
             <button
               onClick={handleSearch}
-              disabled={searching || !question.trim()}
+              disabled={searching || !query.trim() || !selectedWs}
               className="text-sm bg-brand hover:bg-brand-hover text-foreground px-4 py-2.5 rounded disabled:opacity-50 whitespace-nowrap"
             >
               {searching ? "Searching..." : "Search"}
             </button>
           </div>
 
-          <div className="flex items-center gap-4">
-            {/* Workspace scope */}
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-muted">Scope:</span>
-              <select
-                value={selectedWs}
-                onChange={(e) => setSelectedWs(e.target.value)}
-                className="text-xs bg-base border border-border rounded px-2 py-1 text-foreground"
-              >
-                <option value="">All (personal)</option>
-                {workspaces.map((ws) => (
-                  <option key={ws.id} value={ws.id}>{ws.name}</option>
-                ))}
-              </select>
-            </div>
-
-            {/* Resource type filters */}
-            <div className="flex items-center gap-1">
-              <span className="text-xs text-muted mr-1">Sources:</span>
-              {RESOURCE_TYPES.map(({ key, label }) => (
-                <button
-                  key={key}
-                  onClick={() => toggleType(key)}
-                  className={`text-xs px-2 py-0.5 rounded transition-colors ${
-                    selectedTypes.has(key)
-                      ? "bg-brand/15 text-brand"
-                      : selectedTypes.size === 0
-                        ? "bg-raised text-dim"
-                        : "bg-raised text-muted"
-                  }`}
-                >
-                  {label}
-                </button>
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-muted">Workspace:</span>
+            <select
+              value={selectedWs}
+              onChange={(e) => setSelectedWs(e.target.value)}
+              className="text-xs bg-base border border-border rounded px-2 py-1 text-foreground"
+            >
+              <option value="">Select a workspace</option>
+              {workspaces.map((ws) => (
+                <option key={ws.id} value={ws.id}>
+                  {ws.name}
+                </option>
               ))}
-            </div>
+            </select>
+            {!selectedWs && (
+              <span className="text-xs text-muted">
+                Select a workspace to search
+              </span>
+            )}
           </div>
         </div>
 
         {error && <p className="text-red-400 text-sm mb-4">{error}</p>}
 
-        {/* Result */}
+        {/* Loading */}
         {searching && (
           <div className="text-center py-8">
-            <div className="text-muted text-sm">Searching across your data...</div>
+            <div className="text-muted text-sm">
+              Searching across history, notebooks, and tables...
+            </div>
           </div>
         )}
 
-        {result && !searching && (
-          <div className="bg-surface border border-border rounded-lg p-5 mb-6">
-            <div className="prose prose-sm max-w-none">
-              <div className="text-sm text-foreground whitespace-pre-wrap leading-relaxed">
-                {result.answer}
-              </div>
-            </div>
-            {result.sources_used.length > 0 && (
-              <div className="mt-4 pt-3 border-t border-border">
-                <span className="text-xs text-muted">Sources: </span>
-                {result.sources_used.map((s, i) => (
-                  <span key={s} className="text-xs text-brand">
-                    {s}{i < result.sources_used.length - 1 ? ", " : ""}
-                  </span>
-                ))}
-              </div>
+        {/* Results */}
+        {!searching && searchedQuery && (
+          <div className="space-y-6">
+            {totalResults === 0 && (
+              <p className="text-sm text-muted text-center py-8">
+                No results found for &ldquo;{searchedQuery}&rdquo;
+              </p>
+            )}
+
+            {/* History Events */}
+            {results.historyEvents.length > 0 && (
+              <section>
+                <h2 className="text-xs font-medium text-muted uppercase tracking-wider mb-3 font-mono">
+                  History Events ({results.historyEvents.length})
+                </h2>
+                <div className="space-y-2">
+                  {results.historyEvents.map(({ event, storeName }) => (
+                    <div
+                      key={event.id}
+                      className="bg-surface border border-border rounded-lg px-4 py-3"
+                    >
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="text-xs font-mono px-1.5 py-0.5 rounded bg-violet-500/15 text-violet-400">
+                          {event.agent_name}
+                        </span>
+                        <span className="text-xs text-muted font-mono">
+                          {event.event_type}
+                        </span>
+                        <span className="text-xs text-muted ml-auto">
+                          {new Date(event.created_at).toLocaleDateString()}
+                        </span>
+                      </div>
+                      <p className="text-sm text-foreground line-clamp-3">
+                        {event.content}
+                      </p>
+                      <p className="text-xs text-muted mt-1">
+                        Store: {storeName}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </section>
+            )}
+
+            {/* Wiki Pages */}
+            {results.wikiPages.length > 0 && (
+              <section>
+                <h2 className="text-xs font-medium text-muted uppercase tracking-wider mb-3 font-mono">
+                  Wiki Pages ({results.wikiPages.length})
+                </h2>
+                <div className="space-y-2">
+                  {results.wikiPages.map(({ page, notebookName }) => (
+                    <a
+                      key={page.id}
+                      href={`/notebooks/${page.notebook_id}/pages/${page.id}?ws=${selectedWs}`}
+                      className="block bg-surface border border-border rounded-lg px-4 py-3 hover:border-brand/40 transition-colors"
+                    >
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="text-sm font-medium text-foreground">
+                          {page.name}
+                        </span>
+                        <span className="text-xs text-muted ml-auto">
+                          {new Date(page.updated_at).toLocaleDateString()}
+                        </span>
+                      </div>
+                      <p className="text-sm text-muted line-clamp-2">
+                        {page.content_markdown?.slice(0, 200)}
+                      </p>
+                      <p className="text-xs text-muted mt-1">
+                        Notebook: {notebookName}
+                      </p>
+                    </a>
+                  ))}
+                </div>
+              </section>
+            )}
+
+            {/* Table Rows */}
+            {results.tableRows.length > 0 && (
+              <section>
+                <h2 className="text-xs font-medium text-muted uppercase tracking-wider mb-3 font-mono">
+                  Table Rows ({results.tableRows.length})
+                </h2>
+                <div className="space-y-2">
+                  {results.tableRows.map(({ row, tableName, tableId }) => (
+                    <a
+                      key={row.id}
+                      href={`/tables/${tableId}?ws=${selectedWs}`}
+                      className="block bg-surface border border-border rounded-lg px-4 py-3 hover:border-brand/40 transition-colors"
+                    >
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="text-sm font-medium text-foreground">
+                          {tableName}
+                        </span>
+                        <span className="text-xs text-muted ml-auto">
+                          {new Date(row.updated_at).toLocaleDateString()}
+                        </span>
+                      </div>
+                      <p className="text-sm text-muted line-clamp-2 font-mono">
+                        {Object.entries(row.data)
+                          .slice(0, 4)
+                          .map(([k, v]) => `${k}: ${String(v)}`)
+                          .join(" | ")}
+                      </p>
+                    </a>
+                  ))}
+                </div>
+              </section>
             )}
           </div>
-        )}
-
-        {/* Search History */}
-        {history.length > 0 && (
-          <section>
-            <h2 className="text-sm font-medium text-muted uppercase tracking-wider mb-3">
-              Recent Searches
-            </h2>
-            <div className="space-y-2">
-              {history.map((h, i) => (
-                <button
-                  key={i}
-                  onClick={() => { setQuestion(h.q); setResult({ answer: h.a, sources_used: [] }); }}
-                  className="w-full text-left px-3 py-2 rounded-lg hover:bg-raised transition-colors"
-                >
-                  <div className="text-sm text-foreground truncate">{h.q}</div>
-                  <div className="text-xs text-muted truncate mt-0.5">{h.a.slice(0, 120)}...</div>
-                </button>
-              ))}
-            </div>
-          </section>
         )}
       </div>
     </AppShell>

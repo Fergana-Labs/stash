@@ -1,22 +1,9 @@
 import {
-  PersonaProfile,
-  PersonaResponse,
-  PersonaWithContext,
-  Chat,
-  ChatWithWorkspace,
-  Deck,
-  DeckShare,
-  DeckWithWorkspace,
-  DMWithUser,
-  DMConversation,
-  Document,
-  DocumentChunk,
   FileInfo,
   HistoryEvent,
   HistoryEventWithContext,
   History,
   HistoryWithWorkspace,
-  Message,
   Notebook,
   NotebookFolder,
   NotebookPage,
@@ -26,42 +13,38 @@ import {
   PageTree,
   ObjectPermission,
   RegisterResponse,
-  SearchResponse,
-  SleepConfig,
   User,
   UserSearchResult,
   Table,
   TableRow,
   TableWithWorkspace,
-  Webhook,
   Workspace,
   WorkspaceMember,
+  ActivityTimeline,
+  KnowledgeDensity,
+  EmbeddingProjection,
 } from "./types";
 
 const TOKEN_KEY = "octopus_token";
-const LEGACY_TOKEN_KEY = "moltchat_token";
 
-// --- Persona / agent API key (localStorage) ---
+// --- Token management (for CLI API key fallback) ---
 
 export function getToken(): string | null {
   if (typeof window === "undefined") return null;
-  return localStorage.getItem(TOKEN_KEY) || localStorage.getItem(LEGACY_TOKEN_KEY);
+  return localStorage.getItem(TOKEN_KEY);
 }
 
 export function setToken(token: string) {
   localStorage.setItem(TOKEN_KEY, token);
-  localStorage.removeItem(LEGACY_TOKEN_KEY);
 }
 
 export function clearToken() {
   localStorage.removeItem(TOKEN_KEY);
-  localStorage.removeItem(LEGACY_TOKEN_KEY);
 }
 
 // --- Auth token resolution ---
-// Auth0 session (human accounts) takes priority: fetchAccessToken() hits
-// /api/auth/token which the Auth0 middleware serves from the httpOnly session
-// cookie. Falls back to a localStorage mc_ API key for persona accounts.
+// Auth0 session takes priority: fetchAccessToken() hits /api/auth/token.
+// Falls back to localStorage API key for CLI-bootstrapped sessions.
 
 async function resolveAuthToken(): Promise<string | null> {
   try {
@@ -76,18 +59,11 @@ async function resolveAuthToken(): Promise<string | null> {
 
 const API_BASE = "";
 
-/**
- * Build the WebSocket base URL.  Next.js rewrites proxy HTTP /api/* to the
- * backend but they cannot proxy WebSocket upgrades.  When the backend lives
- * on a separate origin (e.g. Render) we must connect directly.
- */
 export function getWsBase(): string {
   const apiUrl = process.env.NEXT_PUBLIC_API_URL;
   if (apiUrl) {
-    // Convert http(s) → ws(s)
     return apiUrl.replace(/^http/, "ws");
   }
-  // Local dev — same host
   const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
   return `${protocol}//${window.location.host}`;
 }
@@ -118,7 +94,6 @@ async function apiFetch<T>(
 
 export async function register(
   name: string,
-  type: "human" | "persona",
   displayName?: string,
   description?: string,
   password?: string
@@ -127,7 +102,6 @@ export async function register(
     method: "POST",
     body: JSON.stringify({
       name,
-      type,
       display_name: displayName || name,
       description: description || "",
       ...(password ? { password } : {}),
@@ -158,6 +132,10 @@ export async function updateMe(data: {
     method: "PATCH",
     body: JSON.stringify(data),
   });
+}
+
+export async function searchUsers(query: string): Promise<UserSearchResult[]> {
+  return apiFetch(`/api/v1/users/search?q=${encodeURIComponent(query)}`);
 }
 
 // --- Workspaces ---
@@ -219,114 +197,7 @@ export async function kickWorkspaceMember(workspaceId: string, userId: string): 
   await apiFetch(`/api/v1/workspaces/${workspaceId}/kick/${userId}`, { method: "POST" });
 }
 
-// --- Chats (within workspaces) ---
-
-export async function createChat(
-  workspaceId: string,
-  name: string,
-  description?: string
-): Promise<Chat> {
-  return apiFetch(`/api/v1/workspaces/${workspaceId}/chats`, {
-    method: "POST",
-    body: JSON.stringify({ name, description: description || "" }),
-  });
-}
-
-export async function listChats(workspaceId: string): Promise<{ chats: Chat[] }> {
-  return apiFetch(`/api/v1/workspaces/${workspaceId}/chats`);
-}
-
-export async function getChat(workspaceId: string, chatId: string): Promise<Chat> {
-  return apiFetch(`/api/v1/workspaces/${workspaceId}/chats/${chatId}`);
-}
-
-export async function deleteChat(workspaceId: string, chatId: string): Promise<void> {
-  await apiFetch(`/api/v1/workspaces/${workspaceId}/chats/${chatId}`, { method: "DELETE" });
-}
-
-// --- Messages ---
-
-export async function sendMessage(
-  workspaceId: string,
-  chatId: string,
-  content: string,
-  replyToId?: string
-): Promise<Message> {
-  return apiFetch(`/api/v1/workspaces/${workspaceId}/chats/${chatId}/messages`, {
-    method: "POST",
-    body: JSON.stringify({ content, reply_to_id: replyToId || null }),
-  });
-}
-
-export async function getMessages(
-  workspaceId: string,
-  chatId: string,
-  params?: { after?: string; before?: string; limit?: number }
-): Promise<{ messages: Message[]; has_more: boolean }> {
-  const searchParams = new URLSearchParams();
-  if (params?.after) searchParams.set("after", params.after);
-  if (params?.before) searchParams.set("before", params.before);
-  if (params?.limit) searchParams.set("limit", String(params.limit));
-  const qs = searchParams.toString();
-  return apiFetch(`/api/v1/workspaces/${workspaceId}/chats/${chatId}/messages${qs ? `?${qs}` : ""}`);
-}
-
-export async function searchMessages(
-  workspaceId: string,
-  chatId: string,
-  query: string,
-  limit?: number
-): Promise<{ messages: Message[]; has_more: boolean }> {
-  const searchParams = new URLSearchParams({ q: query });
-  if (limit) searchParams.set("limit", String(limit));
-  return apiFetch(
-    `/api/v1/workspaces/${workspaceId}/chats/${chatId}/messages/search?${searchParams.toString()}`
-  );
-}
-
-// --- DMs ---
-
-export async function sendDMMessage(chatId: string, content: string, replyToId?: string): Promise<Message> {
-  return apiFetch(`/api/v1/dms/${chatId}/messages`, {
-    method: "POST",
-    body: JSON.stringify({ content, reply_to_id: replyToId || null }),
-  });
-}
-
-export async function getDMMessages(
-  chatId: string,
-  params?: { after?: string; limit?: number }
-): Promise<{ messages: Message[]; has_more: boolean }> {
-  const searchParams = new URLSearchParams();
-  if (params?.after) searchParams.set("after", params.after);
-  if (params?.limit) searchParams.set("limit", String(params.limit));
-  const qs = searchParams.toString();
-  return apiFetch(`/api/v1/dms/${chatId}/messages${qs ? `?${qs}` : ""}`);
-}
-
-export async function createOrGetDM(userId: string): Promise<DMConversation> {
-  return apiFetch("/api/v1/dms", {
-    method: "POST",
-    body: JSON.stringify({ user_id: userId }),
-  });
-}
-
-export async function createOrGetDMByUsername(username: string): Promise<DMConversation> {
-  return apiFetch("/api/v1/dms", {
-    method: "POST",
-    body: JSON.stringify({ username }),
-  });
-}
-
-export async function listDMs(): Promise<{ dms: DMConversation[] }> {
-  return apiFetch("/api/v1/dms");
-}
-
-export async function searchUsers(query: string): Promise<UserSearchResult[]> {
-  return apiFetch(`/api/v1/dms/users/search?q=${encodeURIComponent(query)}`);
-}
-
-// --- Notebooks (collections) ---
+// --- Notebooks (workspace-scoped) ---
 
 export async function listNotebooks(workspaceId: string): Promise<{ notebooks: Notebook[] }> {
   return apiFetch(`/api/v1/workspaces/${workspaceId}/notebooks`);
@@ -347,7 +218,7 @@ export async function deleteNotebook(workspaceId: string, notebookId: string): P
   await apiFetch(`/api/v1/workspaces/${workspaceId}/notebooks/${notebookId}`, { method: "DELETE" });
 }
 
-// --- Notebook Pages (files within a notebook, workspace-scoped) ---
+// --- Notebook Pages (workspace-scoped) ---
 
 export async function listPageTree(workspaceId: string, notebookId: string): Promise<PageTree> {
   return apiFetch(`/api/v1/workspaces/${workspaceId}/notebooks/${notebookId}/pages`);
@@ -410,124 +281,6 @@ export async function deletePageFolder(
   workspaceId: string, notebookId: string, folderId: string
 ): Promise<void> {
   await apiFetch(`/api/v1/workspaces/${workspaceId}/notebooks/${notebookId}/folders/${folderId}`, { method: "DELETE" });
-}
-
-// --- History ---
-
-export async function createHistory(
-  workspaceId: string,
-  name: string,
-  description?: string
-): Promise<History> {
-  return apiFetch(`/api/v1/workspaces/${workspaceId}/memory`, {
-    method: "POST",
-    body: JSON.stringify({ name, description: description || "" }),
-  });
-}
-
-export async function listHistories(workspaceId: string): Promise<{ stores: History[] }> {
-  return apiFetch(`/api/v1/workspaces/${workspaceId}/memory`);
-}
-
-export async function getHistory(workspaceId: string, storeId: string): Promise<History> {
-  return apiFetch(`/api/v1/workspaces/${workspaceId}/memory/${storeId}`);
-}
-
-export async function queryHistoryEvents(
-  workspaceId: string,
-  storeId: string,
-  params?: {
-    agent_name?: string;
-    session_id?: string;
-    event_type?: string;
-    after?: string;
-    before?: string;
-    limit?: number;
-  }
-): Promise<{ events: HistoryEvent[]; has_more: boolean }> {
-  const searchParams = new URLSearchParams();
-  if (params?.agent_name) searchParams.set("agent_name", params.agent_name);
-  if (params?.session_id) searchParams.set("session_id", params.session_id);
-  if (params?.event_type) searchParams.set("event_type", params.event_type);
-  if (params?.after) searchParams.set("after", params.after);
-  if (params?.before) searchParams.set("before", params.before);
-  if (params?.limit) searchParams.set("limit", String(params.limit));
-  const qs = searchParams.toString();
-  return apiFetch(`/api/v1/workspaces/${workspaceId}/memory/${storeId}/events${qs ? `?${qs}` : ""}`);
-}
-
-export async function searchHistoryEvents(
-  workspaceId: string,
-  storeId: string,
-  query: string,
-  limit?: number
-): Promise<{ events: HistoryEvent[]; has_more: boolean }> {
-  const searchParams = new URLSearchParams({ q: query });
-  if (limit) searchParams.set("limit", String(limit));
-  return apiFetch(
-    `/api/v1/workspaces/${workspaceId}/memory/${storeId}/events/search?${searchParams.toString()}`
-  );
-}
-
-export async function queryHistory(
-  workspaceId: string,
-  storeId: string,
-  question: string,
-): Promise<{ answer: string; sources: HistoryEvent[] }> {
-  return apiFetch(
-    `/api/v1/workspaces/${workspaceId}/memory/${storeId}/query`,
-    {
-      method: "POST",
-      body: JSON.stringify({ question }),
-    }
-  );
-}
-
-// --- Personal Rooms ---
-
-export async function createPersonalRoom(
-  name: string,
-  description?: string
-): Promise<Chat> {
-  return apiFetch("/api/v1/rooms", {
-    method: "POST",
-    body: JSON.stringify({ name, description: description || "" }),
-  });
-}
-
-export async function listPersonalRooms(): Promise<{ chats: Chat[] }> {
-  return apiFetch("/api/v1/rooms");
-}
-
-export async function getPersonalRoom(chatId: string): Promise<Chat> {
-  return apiFetch(`/api/v1/rooms/${chatId}`);
-}
-
-export async function deletePersonalRoom(chatId: string): Promise<void> {
-  await apiFetch(`/api/v1/rooms/${chatId}`, { method: "DELETE" });
-}
-
-export async function sendPersonalRoomMessage(
-  chatId: string,
-  content: string,
-  replyToId?: string
-): Promise<Message> {
-  return apiFetch(`/api/v1/rooms/${chatId}/messages`, {
-    method: "POST",
-    body: JSON.stringify({ content, reply_to_id: replyToId || null }),
-  });
-}
-
-export async function getPersonalRoomMessages(
-  chatId: string,
-  params?: { after?: string; before?: string; limit?: number }
-): Promise<{ messages: Message[]; has_more: boolean }> {
-  const searchParams = new URLSearchParams();
-  if (params?.after) searchParams.set("after", params.after);
-  if (params?.before) searchParams.set("before", params.before);
-  if (params?.limit) searchParams.set("limit", String(params.limit));
-  const qs = searchParams.toString();
-  return apiFetch(`/api/v1/rooms/${chatId}/messages${qs ? `?${qs}` : ""}`);
 }
 
 // --- Personal Notebooks ---
@@ -603,7 +356,64 @@ export async function deletePersonalPageFolder(notebookId: string, folderId: str
   await apiFetch(`/api/v1/notebooks/${notebookId}/folders/${folderId}`, { method: "DELETE" });
 }
 
-// --- Personal Memory ---
+// --- History (workspace-scoped) ---
+
+export async function createHistory(
+  workspaceId: string,
+  name: string,
+  description?: string
+): Promise<History> {
+  return apiFetch(`/api/v1/workspaces/${workspaceId}/memory`, {
+    method: "POST",
+    body: JSON.stringify({ name, description: description || "" }),
+  });
+}
+
+export async function listHistories(workspaceId: string): Promise<{ stores: History[] }> {
+  return apiFetch(`/api/v1/workspaces/${workspaceId}/memory`);
+}
+
+export async function getHistory(workspaceId: string, storeId: string): Promise<History> {
+  return apiFetch(`/api/v1/workspaces/${workspaceId}/memory/${storeId}`);
+}
+
+export async function queryHistoryEvents(
+  workspaceId: string,
+  storeId: string,
+  params?: {
+    agent_name?: string;
+    session_id?: string;
+    event_type?: string;
+    after?: string;
+    before?: string;
+    limit?: number;
+  }
+): Promise<{ events: HistoryEvent[]; has_more: boolean }> {
+  const searchParams = new URLSearchParams();
+  if (params?.agent_name) searchParams.set("agent_name", params.agent_name);
+  if (params?.session_id) searchParams.set("session_id", params.session_id);
+  if (params?.event_type) searchParams.set("event_type", params.event_type);
+  if (params?.after) searchParams.set("after", params.after);
+  if (params?.before) searchParams.set("before", params.before);
+  if (params?.limit) searchParams.set("limit", String(params.limit));
+  const qs = searchParams.toString();
+  return apiFetch(`/api/v1/workspaces/${workspaceId}/memory/${storeId}/events${qs ? `?${qs}` : ""}`);
+}
+
+export async function searchHistoryEvents(
+  workspaceId: string,
+  storeId: string,
+  query: string,
+  limit?: number
+): Promise<{ events: HistoryEvent[]; has_more: boolean }> {
+  const searchParams = new URLSearchParams({ q: query });
+  if (limit) searchParams.set("limit", String(limit));
+  return apiFetch(
+    `/api/v1/workspaces/${workspaceId}/memory/${storeId}/events/search?${searchParams.toString()}`
+  );
+}
+
+// --- Personal History ---
 
 export async function createPersonalHistory(
   name: string,
@@ -680,10 +490,6 @@ export async function searchPersonalHistoryEvents(
 
 // --- Aggregate (cross-workspace) ---
 
-export async function listAllChats(): Promise<{ chats: ChatWithWorkspace[]; dms: DMWithUser[] }> {
-  return apiFetch("/api/v1/me/chats");
-}
-
 export async function listAllNotebooks(): Promise<{ notebooks: NotebookWithWorkspace[] }> {
   return apiFetch("/api/v1/me/notebooks");
 }
@@ -711,118 +517,29 @@ export async function queryAllHistoryEvents(
   return apiFetch(`/api/v1/me/history-events${qs ? `?${qs}` : ""}`);
 }
 
-export async function listPersonasWithContext(): Promise<{ personas: PersonaWithContext[] }> {
-  return apiFetch("/api/v1/me/personas");
+export async function listAllTables(): Promise<{ tables: TableWithWorkspace[] }> {
+  return apiFetch("/api/v1/me/tables");
 }
 
-export async function listPersonas(workspaceId?: string): Promise<PersonaProfile[]> {
-  const qs = workspaceId ? `?ws=${workspaceId}` : "";
-  return apiFetch<PersonaProfile[]>(`/api/v1/personas${qs}`);
+// --- Dashboard Visualizations ---
+
+export async function getActivityTimeline(
+  days = 30, bucket = "day"
+): Promise<ActivityTimeline> {
+  return apiFetch(`/api/v1/me/activity-timeline?days=${days}&bucket=${bucket}`);
 }
 
-// --- Decks (workspace-scoped) ---
-
-export async function createDeck(
-  workspaceId: string, name: string, description?: string,
-  htmlContent?: string, deckType?: string
-): Promise<Deck> {
-  return apiFetch(`/api/v1/workspaces/${workspaceId}/decks`, {
-    method: "POST",
-    body: JSON.stringify({
-      name, description: description || "", html_content: htmlContent || "",
-      deck_type: deckType || "freeform",
-    }),
-  });
+export async function getKnowledgeDensity(
+  maxClusters = 20
+): Promise<KnowledgeDensity> {
+  return apiFetch(`/api/v1/me/knowledge-density?max_clusters=${maxClusters}`);
 }
 
-export async function listDecks(workspaceId: string): Promise<{ decks: Deck[] }> {
-  return apiFetch(`/api/v1/workspaces/${workspaceId}/decks`);
-}
-
-export async function getDeck(workspaceId: string, deckId: string): Promise<Deck> {
-  return apiFetch(`/api/v1/workspaces/${workspaceId}/decks/${deckId}`);
-}
-
-export async function updateDeck(
-  workspaceId: string, deckId: string,
-  data: { name?: string; description?: string; html_content?: string }
-): Promise<Deck> {
-  return apiFetch(`/api/v1/workspaces/${workspaceId}/decks/${deckId}`, {
-    method: "PATCH", body: JSON.stringify(data),
-  });
-}
-
-export async function deleteDeck(workspaceId: string, deckId: string): Promise<void> {
-  await apiFetch(`/api/v1/workspaces/${workspaceId}/decks/${deckId}`, { method: "DELETE" });
-}
-
-// --- Personal Decks ---
-
-export async function createPersonalDeck(
-  name: string, description?: string, htmlContent?: string, deckType?: string
-): Promise<Deck> {
-  return apiFetch("/api/v1/decks", {
-    method: "POST",
-    body: JSON.stringify({
-      name, description: description || "", html_content: htmlContent || "",
-      deck_type: deckType || "freeform",
-    }),
-  });
-}
-
-export async function listPersonalDecks(): Promise<{ decks: Deck[] }> {
-  return apiFetch("/api/v1/decks");
-}
-
-export async function getPersonalDeck(deckId: string): Promise<Deck> {
-  return apiFetch(`/api/v1/decks/${deckId}`);
-}
-
-export async function updatePersonalDeck(
-  deckId: string, data: { name?: string; description?: string; html_content?: string }
-): Promise<Deck> {
-  return apiFetch(`/api/v1/decks/${deckId}`, { method: "PATCH", body: JSON.stringify(data) });
-}
-
-export async function deletePersonalDeck(deckId: string): Promise<void> {
-  await apiFetch(`/api/v1/decks/${deckId}`, { method: "DELETE" });
-}
-
-// --- Deck Share Links ---
-
-export async function createDeckShare(
-  deckId: string, workspaceId?: string,
-  data?: { name?: string; require_email?: boolean; passcode?: string; allow_download?: boolean; expires_at?: string }
-): Promise<DeckShare> {
-  const base = workspaceId ? `/api/v1/workspaces/${workspaceId}/decks` : "/api/v1/decks";
-  return apiFetch(`${base}/${deckId}/shares`, { method: "POST", body: JSON.stringify(data || {}) });
-}
-
-export async function listDeckShares(deckId: string, workspaceId?: string): Promise<{ shares: DeckShare[] }> {
-  const base = workspaceId ? `/api/v1/workspaces/${workspaceId}/decks` : "/api/v1/decks";
-  return apiFetch(`${base}/${deckId}/shares`);
-}
-
-// --- Public Deck Viewer ---
-
-export async function getDeckByToken(token: string): Promise<{ deck_name: string; deck_type: string; require_email: boolean; has_passcode: boolean; allow_download: boolean }> {
-  return apiFetch(`/api/v1/d/${token}`);
-}
-
-export async function getDeckContent(token: string): Promise<{ html_content: string; deck_name: string; deck_type: string; session_token: string }> {
-  return apiFetch(`/api/v1/d/${token}/content`);
-}
-
-export async function verifyDeckAccess(token: string, email?: string, passcode?: string): Promise<{ html_content: string; deck_name: string; deck_type: string; session_token: string }> {
-  return apiFetch(`/api/v1/d/${token}/verify`, {
-    method: "POST", body: JSON.stringify({ email, passcode }),
-  });
-}
-
-// --- Aggregate Decks ---
-
-export async function listAllDecks(): Promise<{ decks: DeckWithWorkspace[] }> {
-  return apiFetch("/api/v1/me/decks");
+export async function getEmbeddingProjection(
+  maxPoints = 500, source?: string
+): Promise<EmbeddingProjection> {
+  const qs = source ? `&source=${source}` : "";
+  return apiFetch(`/api/v1/me/embedding-projection?max_points=${maxPoints}${qs}`);
 }
 
 // --- Tables (workspace-scoped) ---
@@ -1034,81 +751,6 @@ export async function deleteTableView(
   return apiFetch(`${base}/${tableId}/views/${viewId}`, { method: "DELETE" });
 }
 
-// --- Aggregate Tables ---
-
-export async function listAllTables(): Promise<{ tables: TableWithWorkspace[] }> {
-  return apiFetch("/api/v1/me/tables");
-}
-
-// --- Webhooks ---
-
-export async function getWebhook(workspaceId: string): Promise<Webhook | null> {
-  try {
-    return await apiFetch(`/api/v1/workspaces/${workspaceId}/webhooks`);
-  } catch {
-    return null;
-  }
-}
-
-export async function setWebhook(
-  workspaceId: string, url: string, secret?: string, eventFilter?: string[]
-): Promise<Webhook> {
-  return apiFetch(`/api/v1/workspaces/${workspaceId}/webhooks`, {
-    method: "POST",
-    body: JSON.stringify({ url, secret: secret || undefined, event_filter: eventFilter || [] }),
-  });
-}
-
-export async function updateWebhook(
-  workspaceId: string, data: { url?: string; is_active?: boolean; event_filter?: string[] }
-): Promise<Webhook> {
-  return apiFetch(`/api/v1/workspaces/${workspaceId}/webhooks`, {
-    method: "PATCH",
-    body: JSON.stringify(data),
-  });
-}
-
-export async function deleteWebhook(workspaceId: string): Promise<void> {
-  await apiFetch(`/api/v1/workspaces/${workspaceId}/webhooks`, { method: "DELETE" });
-}
-
-// --- Personas ---
-
-export async function createPersona(
-  name: string,
-  displayName?: string,
-  description?: string,
-  workspaceId?: string,
-): Promise<PersonaResponse> {
-  return apiFetch("/api/v1/personas", {
-    method: "POST",
-    body: JSON.stringify({
-      name,
-      display_name: displayName || null,
-      description: description || "",
-      workspace_id: workspaceId || null,
-    }),
-  });
-}
-
-export async function updatePersona(
-  personaId: string,
-  data: { display_name?: string; description?: string }
-): Promise<PersonaProfile> {
-  return apiFetch(`/api/v1/personas/${personaId}`, {
-    method: "PATCH",
-    body: JSON.stringify(data),
-  });
-}
-
-export async function rotatePersonaKey(personaId: string): Promise<PersonaResponse> {
-  return apiFetch(`/api/v1/personas/${personaId}/rotate-key`, { method: "POST" });
-}
-
-export async function deletePersona(personaId: string): Promise<void> {
-  await apiFetch(`/api/v1/personas/${personaId}`, { method: "DELETE" });
-}
-
 // --- Permissions ---
 
 export async function getPermissions(
@@ -1159,7 +801,7 @@ export async function removeShare(
 // --- Files ---
 
 export async function uploadFile(workspaceId: string, file: File): Promise<FileInfo> {
-  const token = getToken();
+  const token = await resolveAuthToken();
   const formData = new FormData();
   formData.append("file", file);
   const resp = await fetch(`${API_BASE}/api/v1/workspaces/${workspaceId}/files`, {
@@ -1175,7 +817,7 @@ export async function uploadFile(workspaceId: string, file: File): Promise<FileI
 }
 
 export async function uploadPersonalFile(file: File): Promise<FileInfo> {
-  const token = getToken();
+  const token = await resolveAuthToken();
   const formData = new FormData();
   formData.append("file", file);
   const resp = await fetch(`${API_BASE}/api/v1/files`, {
@@ -1197,75 +839,6 @@ export async function listFiles(workspaceId: string): Promise<FileInfo[]> {
 
 export async function deleteFile(workspaceId: string, fileId: string): Promise<void> {
   await apiFetch(`/api/v1/workspaces/${workspaceId}/files/${fileId}`, { method: "DELETE" });
-}
-
-// --- Documents ---
-
-export async function uploadDocument(workspaceId: string, file: File): Promise<Document> {
-  const token = getToken();
-  const formData = new FormData();
-  formData.append("file", file);
-  const resp = await fetch(`${API_BASE}/api/v1/workspaces/${workspaceId}/documents`, {
-    method: "POST",
-    headers: token ? { Authorization: `Bearer ${token}` } : {},
-    body: formData,
-  });
-  if (!resp.ok) {
-    const detail = await resp.json().then((d) => d.detail).catch(() => resp.statusText);
-    throw new Error(detail);
-  }
-  return resp.json();
-}
-
-export async function listDocuments(
-  workspaceId: string,
-  status?: string
-): Promise<Document[]> {
-  const params = new URLSearchParams();
-  if (status) params.set("status", status);
-  const qs = params.toString();
-  const data = await apiFetch<{ documents: Document[] }>(
-    `/api/v1/workspaces/${workspaceId}/documents${qs ? `?${qs}` : ""}`
-  );
-  return data.documents;
-}
-
-export async function getDocument(workspaceId: string, docId: string): Promise<Document> {
-  return apiFetch<Document>(`/api/v1/workspaces/${workspaceId}/documents/${docId}`);
-}
-
-export async function searchDocuments(
-  workspaceId: string,
-  query: string,
-  limit = 20
-): Promise<DocumentChunk[]> {
-  const data = await apiFetch<{ chunks: DocumentChunk[] }>(
-    `/api/v1/workspaces/${workspaceId}/documents/search`,
-    { method: "POST", body: JSON.stringify({ query, limit }) }
-  );
-  return data.chunks;
-}
-
-export async function deleteDocument(workspaceId: string, docId: string): Promise<void> {
-  await apiFetch(`/api/v1/workspaces/${workspaceId}/documents/${docId}`, { method: "DELETE" });
-}
-
-// --- Universal Search ---
-
-export async function universalSearch(
-  question: string,
-  workspaceId?: string,
-  resourceTypes?: string[]
-): Promise<SearchResponse> {
-  const body: Record<string, unknown> = { question };
-  if (resourceTypes) body.resource_types = resourceTypes;
-  const url = workspaceId
-    ? `/api/v1/workspaces/${workspaceId}/search`
-    : `/api/v1/me/search`;
-  return apiFetch<SearchResponse>(url, {
-    method: "POST",
-    body: JSON.stringify(body),
-  });
 }
 
 // --- Wiki: Backlinks, Page Graph, Semantic Search ---
@@ -1337,15 +910,6 @@ export async function semanticSearchPersonalPages(
   return data.pages;
 }
 
-export async function autoIndexPersonalNotebook(
-  notebookId: string
-): Promise<NotebookPage> {
-  return apiFetch<NotebookPage>(
-    `/api/v1/notebooks/${notebookId}/auto-index`,
-    { method: "POST" }
-  );
-}
-
 export async function semanticSearchPages(
   workspaceId: string,
   notebookId: string,
@@ -1357,16 +921,6 @@ export async function semanticSearchPages(
     `/api/v1/workspaces/${workspaceId}/notebooks/${notebookId}/pages/semantic-search?${params}`
   );
   return data.pages;
-}
-
-export async function autoIndexNotebook(
-  workspaceId: string,
-  notebookId: string
-): Promise<NotebookPage> {
-  return apiFetch<NotebookPage>(
-    `/api/v1/workspaces/${workspaceId}/notebooks/${notebookId}/auto-index`,
-    { method: "POST" }
-  );
 }
 
 // --- Table Embeddings ---
@@ -1411,43 +965,4 @@ export async function listAgentNames(workspaceId: string): Promise<string[]> {
     `/api/v1/workspaces/${workspaceId}/memory/agent-names`
   );
   return data.agent_names;
-}
-
-// --- Sleep Agent Config ---
-
-export async function getSleepConfig(): Promise<SleepConfig> {
-  return apiFetch<SleepConfig>("/api/v1/personas/me/sleep/config");
-}
-
-export async function updateSleepConfig(
-  updates: Partial<SleepConfig>
-): Promise<SleepConfig> {
-  return apiFetch<SleepConfig>("/api/v1/personas/me/sleep/config", {
-    method: "PATCH",
-    body: JSON.stringify(updates),
-  });
-}
-
-export async function getPersonaSleepConfig(personaId: string): Promise<SleepConfig> {
-  return apiFetch<SleepConfig>(`/api/v1/personas/${personaId}/sleep/config`);
-}
-
-export async function updatePersonaSleepConfig(
-  personaId: string,
-  updates: Partial<SleepConfig>
-): Promise<SleepConfig> {
-  return apiFetch<SleepConfig>(`/api/v1/personas/${personaId}/sleep/config`, {
-    method: "PATCH",
-    body: JSON.stringify(updates),
-  });
-}
-
-export async function triggerPersonaSleep(
-  personaId: string
-): Promise<Record<string, unknown>> {
-  return apiFetch(`/api/v1/personas/${personaId}/sleep`, { method: "POST" });
-}
-
-export async function triggerSleep(): Promise<Record<string, unknown>> {
-  return apiFetch("/api/v1/personas/me/sleep", { method: "POST" });
 }

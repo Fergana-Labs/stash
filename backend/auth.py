@@ -132,7 +132,7 @@ async def _get_or_create_auth0_user(payload: dict) -> dict:
     pool = get_pool()
 
     row = await pool.fetchrow(
-        "SELECT id, name, display_name, type, description, owner_id, notebook_id, history_id, created_at, last_seen "
+        "SELECT id, name, display_name, type, description, created_at, last_seen "
         "FROM users WHERE auth0_sub = $1",
         sub,
     )
@@ -162,8 +162,8 @@ async def _get_or_create_auth0_user(payload: dict) -> dict:
         "INSERT INTO users "
         "  (name, display_name, type, api_key_hash, auth0_sub, description) "
         "VALUES ($1, $2, 'human', $3, $4, '') "
-        "RETURNING id, name, display_name, type, description, owner_id, "
-        "          notebook_id, history_id, created_at, last_seen",
+        "RETURNING id, name, display_name, type, description, "
+        "          created_at, last_seen",
         username, display, placeholder_key_hash, sub,
     )
     return dict(row)
@@ -179,12 +179,12 @@ async def get_current_user(
     token: str = credentials.credentials
 
     if token.startswith("mc_"):
-        # --- Legacy / persona API key path ---
+        # --- API key path (CLI) ---
         key_hash = hash_api_key(token)
         pool = get_pool()
         row = await pool.fetchrow(
-            "SELECT id, name, display_name, type, description, owner_id, "
-            "       notebook_id, history_id, created_at, last_seen "
+            "SELECT id, name, display_name, type, description, "
+            "       created_at, last_seen "
             "FROM users WHERE api_key_hash = $1",
             key_hash,
         )
@@ -219,16 +219,25 @@ async def get_current_user_optional(
     return await get_current_user(credentials)
 
 
-async def get_user_from_api_key(api_key: str) -> dict | None:
-    """Used by WebSocket endpoints that pass the key as a query param."""
-    key_hash = hash_api_key(api_key)
-    pool = get_pool()
-    row = await pool.fetchrow(
-        "SELECT id, name, display_name, type, description, owner_id, "
-        "       notebook_id, history_id, created_at, last_seen "
-        "FROM users WHERE api_key_hash = $1",
-        key_hash,
-    )
-    if row:
-        return dict(row)
-    return None
+async def get_user_from_api_key(token: str) -> dict | None:
+    """Used by WebSocket endpoints that pass the token as a query param.
+
+    Accepts both mc_ API keys and Auth0 JWTs.
+    """
+    if token.startswith("mc_"):
+        key_hash = hash_api_key(token)
+        pool = get_pool()
+        row = await pool.fetchrow(
+            "SELECT id, name, display_name, type, description, "
+            "       created_at, last_seen "
+            "FROM users WHERE api_key_hash = $1",
+            key_hash,
+        )
+        return dict(row) if row else None
+
+    # Try Auth0 JWT
+    try:
+        payload = await _verify_auth0_token(token)
+        return await _get_or_create_auth0_user(payload)
+    except Exception:
+        return None

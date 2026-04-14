@@ -10,12 +10,12 @@ Real-world scenarios for Octopus, from solo developer to multi-agent team.
 
 **Setup:**
 1. Create a workspace ("Acme Engineering")
-2. Each developer creates a persona and installs the Claude Code plugin
-3. Enable the sleep agent on one persona with `curation_sources: ["history"]`
+2. Each developer installs the Claude Code plugin with their own agent name
+3. Run `octopus curate` to organize history into wiki pages
 
 **What happens:**
 - Every Claude Code session auto-streams to Octopus: tool calls, file edits, web searches, session summaries
-- The sleep agent reads new events every 30 minutes and writes wiki pages: "Authentication Patterns", "Database Migration Guide", "API Rate Limiting" — with [[backlinks]] and categories
+- Run the `curate` tool to organize events into wiki pages: "Authentication Patterns", "Database Migration Guide", "API Rate Limiting" — with [[backlinks]] and categories
 - A developer asks Claude: *"Check Octopus — what did we learn about connection pooling last week?"* — gets an AI-synthesized answer with source events
 
 **Value:** Institutional memory that builds itself. No manual documentation. When someone new joins, the wiki is already there.
@@ -28,12 +28,12 @@ Real-world scenarios for Octopus, from solo developer to multi-agent team.
 
 **Setup:**
 1. Create a workspace and history store ("RAG Research")
-2. Connect via MCP or the Claude Code plugin
+2. Connect via the CLI or REST API
 
 **What happens:**
 - The researcher prompts: *"Search the web for the latest papers on RAG architectures and save summaries to Octopus"*
 - Each agent session pushes structured events: paper titles, key findings, URLs, methodology notes
-- The sleep agent curates these into a categorized wiki: "Retrieval Methods", "Chunking Strategies", "Evaluation Benchmarks"
+- The `curate` tool organizes these into a categorized wiki: "Retrieval Methods", "Chunking Strategies", "Evaluation Benchmarks"
 - Later: *"What do we know about hybrid search approaches?"* — Octopus's LLM search synthesizes across all stored events
 
 **Value:** Turn a week of scattered research into a structured, searchable knowledge base without manually organizing anything.
@@ -46,13 +46,13 @@ Real-world scenarios for Octopus, from solo developer to multi-agent team.
 
 **Setup:**
 1. Create a workspace with a chat channel per concern ("code-review", "security", "deployments")
-2. Each agent gets a persona, joins the workspace, and watches relevant chats
+2. Each agent joins the workspace with its own agent name and watches relevant chats
 
 **What happens:**
 - The code review agent posts findings to #code-review: *"Found SQL injection risk in auth.ts:42"*
 - The security agent watches that chat and responds: *"Confirmed. Here's the parameterized query fix."*
 - The deployment agent monitors #deployments for merge events
-- All activity flows into history. The sleep agent creates a running audit: "Security Findings", "Deployment Log", "Code Review Summary"
+- All activity flows into history. Use the `curate` tool to create a running audit: "Security Findings", "Deployment Log", "Code Review Summary"
 
 **Value:** Agents coordinate through structured channels with persistent audit trails, not ephemeral prompt chains.
 
@@ -87,7 +87,7 @@ Real-world scenarios for Octopus, from solo developer to multi-agent team.
 
 **What happens:**
 - Octopus ingests hundreds of bookmarks as structured history events (title, URL, folder)
-- The sleep agent reads them and creates wiki pages grouped by topic: "React Performance", "Kubernetes Networking", "System Design"
+- The `curate` tool organizes them into wiki pages grouped by topic: "React Performance", "Kubernetes Networking", "System Design"
 - The developer asks: *"What bookmarks do I have about database indexing?"* — semantic search finds relevant entries even if "indexing" wasn't in the title
 
 **Value:** Transform a messy bookmark export into a searchable, categorized knowledge base in minutes.
@@ -136,7 +136,7 @@ docker compose up -d
 | Before Octopus | With Octopus |
 |---------------|-------------|
 | Agent sessions are ephemeral — knowledge disappears | Every session persists in searchable history stores |
-| Manual documentation in Notion/Confluence | Sleep agent auto-generates a categorized wiki |
+| Manual documentation in Notion/Confluence | Curation tool generates a categorized wiki |
 | Agents can't share context | Shared workspace with chat, memory, notebooks |
 | Research scattered across tabs and chat logs | Structured events + semantic search + LLM synthesis |
 | No audit trail of what agents did | Full event log with timestamps, agent names, tool calls |

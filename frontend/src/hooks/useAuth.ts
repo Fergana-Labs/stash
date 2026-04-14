@@ -8,9 +8,9 @@ import { User } from "../lib/types";
 /**
  * Unified auth hook.
  *
- * Human accounts  → Auth0 session (httpOnly cookie). AuthTokenBridge keeps
- *                   the access token in memory; apiFetch picks it up.
- * Persona accounts → mc_ API key in localStorage (legacy path).
+ * Auth0 session (httpOnly cookie) is the primary path. AuthTokenBridge
+ * keeps the access token in memory; apiFetch picks it up.
+ * CLI users can also auth via mc_ API key in localStorage.
  */
 export function useAuth() {
   const { user: auth0User, isLoading: auth0Loading } = useUser();
@@ -38,7 +38,7 @@ export function useAuth() {
       return;
     }
 
-    // No Auth0 session — check for a legacy mc_ API key.
+    // No Auth0 session — check for an mc_ API key.
     if (getToken()) {
       loadOctopusUser();
     } else {

@@ -10,7 +10,7 @@ from ..models import (
     UserSearchResult,
     UserUpdateRequest,
 )
-from ..services import user_service, dm_service
+from ..services import user_service
 
 router = APIRouter(prefix="/api/v1/users", tags=["users"])
 
@@ -22,7 +22,7 @@ async def register(request: Request, req: UserRegisterRequest):
         user, api_key = await user_service.register_user(
             name=req.name,
             display_name=req.display_name,
-            user_type=req.type,
+            user_type="human",
             description=req.description,
             password=req.password,
         )
@@ -81,5 +81,13 @@ async def search_users(
     current_user: dict = Depends(get_current_user),
 ):
     """Search for users by name or display name."""
-    results = await dm_service.find_users(q, current_user["id"])
-    return results
+    from ..database import get_pool
+    pool = get_pool()
+    rows = await pool.fetch(
+        "SELECT id, name, display_name, type FROM users "
+        "WHERE (name ILIKE $1 OR display_name ILIKE $1) AND id != $2 "
+        "LIMIT 20",
+        f"%{q}%",
+        current_user["id"],
+    )
+    return [UserSearchResult(**dict(r)) for r in rows]

@@ -6,7 +6,7 @@
 
 <p align="center">
   Every session, paper, webpage, and conversation goes into one shared knowledge base.<br/>
-  A sleep agent curates it into a searchable wiki — so your whole team learns from every agent.
+  A curation tool organizes it into a searchable wiki — so your whole team learns from every agent.
 </p>
 
 <p align="center">
@@ -32,9 +32,7 @@
 
 ## Features
 
-**Automatic knowledge capture** — The Claude Code plugin streams every tool call, edit, and session into Octopus. No manual effort. Your agents build the knowledge base just by working.
-
-**Sleep agent curation** — A background agent reads new data every 30 minutes and organizes it into a categorized wiki with folders, summaries, and [[backlinks]]. Knowledge stays structured without human maintenance.
+**Curation** — The `octopus curate` CLI command reads history data and organizes it into a categorized wiki with folders, summaries, and [[backlinks]]. Knowledge stays structured without manual maintenance.
 
 **Wiki notebooks** — Rich collaborative pages with [[wiki links]], page graph visualization, backlink tracking, and semantic search powered by pgvector embeddings.
 
@@ -46,83 +44,27 @@
 
 ## Quick Start
 
-### 1. Create an account + persona
+### 1. Create an account
 
-Go to [getoctopus.com](https://getoctopus.com) and register. Then create a persona on the Personas page — this is your AI agent's identity. Save the persona's API key.
+Go to [getoctopus.com](https://getoctopus.com) and register. Save your API key.
 
-### 2. Install the Claude Code plugin
-
-```bash
-claude plugin add ./claude-plugin
-```
-
-The plugin will prompt for your persona's API key and agent name.
-
-### 3. Connect to a workspace
-
-Start Claude Code and run:
-
-```
-/octopus:connect
-```
-
-This wizard connects your persona to a workspace and sets up activity streaming. Every tool call, edit, and message now flows into Octopus automatically.
-
-### 4. Try it
-
-Your agent sessions now auto-stream to Octopus. Try these prompts:
-
-**Push knowledge in:**
-> "Search the web for the latest research on RAG architectures and save a summary to my Octopus knowledge base"
-
-**Import bookmarks:**
-> "Run `octopus import-bookmarks ~/Downloads/bookmarks.html` to import my Chrome bookmarks"
-
-**Search across everything:**
-> "Check my Octopus knowledge base — what do we know about authentication patterns?"
-
-**Create a shareable report:**
-> "Create an Octopus page summarizing our key findings on database performance"
-
-### 5. The sleep agent curates
-
-Every 30 minutes, a sleep agent reads newly ingested data and organizes it into a categorized wiki with [[backlinks]], folders, and summaries. Configure it on the Personas page.
-
-## Integrations
-
-### Claude Code Plugin
-
-The plugin hooks into your session lifecycle:
-
-| Hook | What it does |
-|------|-------------|
-| **SessionStart** | Loads persona context, injects relevant memory into prompt |
-| **PostToolUse** | Streams every tool call to Octopus history (async, non-blocking) |
-| **UserPromptSubmit** | Records prompts for context tracking |
-| **Stop** | Pushes session summary with key findings |
-
-**Skills available in Claude Code:**
-`/octopus:connect` · `/octopus:disconnect` · `/octopus:status` · `/octopus:sync` · `/octopus:persona` · `/octopus:config`
-
-### MCP Server
+### 2. Install the CLI
 
 ```bash
-# Hosted
-claude mcp add --transport http octopus https://getoctopus.com/mcp \
-  --header "Authorization: Bearer YOUR_API_KEY"
-
-# Local
-claude mcp add -e OCTOPUS_API_KEY=KEY -e OCTOPUS_URL=https://getoctopus.com \
-  octopus -- python -m mcp_server.server
+pip install octopus
+octopus login
 ```
 
-### OpenClaw Plugin
+### 3. Try it
 
 ```bash
-openclaw plugin add @octopus/openclaw-octopus
+octopus import-bookmarks ~/Downloads/bookmarks.html   # Import bookmarks
+octopus search "authentication patterns"               # Universal search
+octopus history push "session notes here"              # Push an event
+octopus --help                                         # Full command list
 ```
 
-### CLI
+## CLI
 
 ```bash
 pip install octopus
@@ -142,7 +84,7 @@ cp .env.example .env          # fill in credentials + API keys
 docker compose -f docker-compose.prod.yml up -d
 ```
 
-Includes Caddy for automatic HTTPS. Requires PostgreSQL with pgvector. Optional: S3 storage, OpenAI API key (embeddings), Anthropic API key (sleep agent + search).
+Includes Caddy for automatic HTTPS. Requires PostgreSQL with pgvector. Optional: S3 storage, OpenAI API key (embeddings), Anthropic API key (curation + search).
 
 > Local development? Use `docker compose up -d` (no `-f` flag) — simple setup with hardcoded dev credentials.
 
@@ -161,10 +103,10 @@ Includes Caddy for automatic HTTPS. Requires PostgreSQL with pgvector. Optional:
 ## FAQ
 
 **What LLMs does Octopus use?**
-The sleep agent and universal search use Anthropic Claude. Embeddings use OpenAI `text-embedding-3-small`. You bring your own API keys.
+The curation tool and universal search use Anthropic Claude. Embeddings use OpenAI `text-embedding-3-small`. You bring your own API keys.
 
 **Can I use this without Claude Code?**
-Yes. The MCP server exposes 30+ tools that work with any MCP-compatible client. The CLI works standalone. The OpenClaw plugin connects to OpenClaw agents.
+Yes. The CLI and REST API work standalone with any client.
 
 **Is my data private?**
 On the hosted version, workspaces are permissioned — only invited members can access data. For full control, self-host with Docker Compose and keep everything on your infrastructure.

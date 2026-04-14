@@ -2,176 +2,498 @@
 
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import AppShell from "../../components/AppShell";
 import { useAuth } from "../../hooks/useAuth";
 import {
-  listAllHistories,
-  listHistories,
   queryAllHistoryEvents,
-  createPersonalHistory,
 } from "../../lib/api";
-import { HistoryEventWithContext, HistoryWithWorkspace } from "../../lib/types";
+import { HistoryEventWithContext } from "../../lib/types";
+
+/* ── helpers ── */
+
+interface SessionGroup {
+  sessionId: string;
+  agentName: string;
+  events: HistoryEventWithContext[];
+  firstContent: string;
+  timeRange: string;
+  lastTimestamp: number;
+}
+
+interface AgentGroup {
+  agentName: string;
+  sessions: SessionGroup[];
+  eventCount: number;
+}
+
+function truncate(s: string, max: number): string {
+  if (!s) return "(empty)";
+  const line = s.split("\n")[0];
+  return line.length > max ? line.slice(0, max) + "..." : line;
+}
+
+function formatTime(iso: string): string {
+  return new Date(iso).toLocaleString(undefined, {
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function formatTimeShort(iso: string): string {
+  return new Date(iso).toLocaleTimeString(undefined, {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function shouldShowTimestamp(a: string, b: string): boolean {
+  return Math.abs(new Date(a).getTime() - new Date(b).getTime()) > 5 * 60 * 1000;
+}
+
+function buildGroups(events: HistoryEventWithContext[]): AgentGroup[] {
+  const agentMap = new Map<string, Map<string, HistoryEventWithContext[]>>();
+
+  for (const evt of events) {
+    const agent = evt.agent_name || "unknown";
+    const session = evt.session_id || "no-session";
+    if (!agentMap.has(agent)) agentMap.set(agent, new Map());
+    const sessionMap = agentMap.get(agent)!;
+    if (!sessionMap.has(session)) sessionMap.set(session, []);
+    sessionMap.get(session)!.push(evt);
+  }
+
+  const groups: AgentGroup[] = [];
+
+  for (const [agentName, sessionMap] of agentMap) {
+    const sessions: SessionGroup[] = [];
+
+    for (const [sessionId, evts] of sessionMap) {
+      const sorted = evts.sort(
+        (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+      );
+      const first = sorted[0];
+      const last = sorted[sorted.length - 1];
+      sessions.push({
+        sessionId,
+        agentName,
+        events: sorted,
+        firstContent: truncate(first.content, 60),
+        timeRange: `${formatTime(first.created_at)} — ${formatTimeShort(last.created_at)}`,
+        lastTimestamp: new Date(last.created_at).getTime(),
+      });
+    }
+
+    sessions.sort((a, b) => b.lastTimestamp - a.lastTimestamp);
+
+    groups.push({
+      agentName,
+      sessions,
+      eventCount: sessions.reduce((sum, s) => sum + s.events.length, 0),
+    });
+  }
+
+  groups.sort((a, b) => {
+    const aLatest = a.sessions[0]?.lastTimestamp ?? 0;
+    const bLatest = b.sessions[0]?.lastTimestamp ?? 0;
+    return bLatest - aLatest;
+  });
+
+  return groups;
+}
+
+/* ── component ── */
 
 export default function MemoryPage() {
   const router = useRouter();
-  const wsId = typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("ws") : null;
+  const wsId =
+    typeof window !== "undefined"
+      ? new URLSearchParams(window.location.search).get("ws")
+      : null;
   const { user, loading, logout } = useAuth();
-  const [stores, setStores] = useState<HistoryWithWorkspace[]>([]);
   const [events, setEvents] = useState<HistoryEventWithContext[]>([]);
-  const [hasMore, setHasMore] = useState(false);
-  const [filterAgent, setFilterAgent] = useState("");
-  const [filterType, setFilterType] = useState("");
   const [eventsLoading, setEventsLoading] = useState(false);
 
-  const loadStores = useCallback(async () => {
-    try {
-      if (wsId) {
-        const res = await listHistories(wsId);
-        const s = (res?.stores ?? []).map((s: any) => ({ ...s, workspace_id: wsId, workspace_name: "" }));
-        setStores(s);
-      } else {
-        const res = await listAllHistories();
-        setStores(res?.stores ?? []);
-      }
-    } catch { /* ignore */ }
-  }, [wsId]);
+  /* sidebar selection */
+  const [selectedAgent, setSelectedAgent] = useState<string | null>(null);
+  const [selectedSession, setSelectedSession] = useState<string | null>(null);
 
   const loadEvents = useCallback(async () => {
     setEventsLoading(true);
     try {
-      const res = await queryAllHistoryEvents({
-        agent_name: filterAgent || undefined,
-        event_type: filterType || undefined,
-        limit: 100,
-      });
+      const res = await queryAllHistoryEvents({ limit: 200 });
       setEvents(res?.events ?? []);
-      setHasMore(res?.has_more ?? false);
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
     setEventsLoading(false);
-  }, [filterAgent, filterType]);
+  }, []);
 
   useEffect(() => {
     if (user) {
-      loadStores();
       loadEvents();
     }
-  }, [user, loadStores, loadEvents]);
+  }, [user, loadEvents]);
+
+  const groups = useMemo(() => buildGroups(events), [events]);
+
+  /* derive selected session's events */
+  const selectedEvents = useMemo(() => {
+    if (!selectedSession) return null;
+    for (const ag of groups) {
+      for (const s of ag.sessions) {
+        if (s.sessionId === selectedSession) return s.events;
+      }
+    }
+    return null;
+  }, [groups, selectedSession]);
 
   if (loading) {
-    return <div className="min-h-screen flex items-center justify-center text-muted">Loading...</div>;
+    return (
+      <div className="min-h-screen flex items-center justify-center text-muted">
+        Loading...
+      </div>
+    );
   }
-  if (!user) { router.push("/login"); return null; }
+  if (!user) {
+    router.push("/login");
+    return null;
+  }
 
   return (
     <AppShell user={user} onLogout={logout}>
-      <div className="max-w-4xl mx-auto w-full px-4 py-8">
-        <div className="flex items-center justify-between mb-6">
-          <h1 className="text-2xl font-bold text-foreground font-display">History</h1>
-          <div className="flex items-center gap-3">
-            <span className="text-xs text-muted">
-              {stores.length} store{stores.length !== 1 ? "s" : ""} across all workspaces
-            </span>
-            <button
-              onClick={async () => {
-                const name = prompt("Store name:");
-                if (!name) return;
-                try {
-                  await createPersonalHistory(name);
-                  loadStores();
-                } catch { /* ignore */ }
-              }}
-              className="text-sm bg-brand hover:bg-brand-hover text-foreground px-3 py-1.5 rounded"
-            >
-              New Store
-            </button>
+      <div className="flex h-full overflow-hidden">
+        {/* ── Left sidebar ── */}
+        <aside className="w-[250px] flex-shrink-0 border-r border-border bg-surface overflow-y-auto">
+          {/* Header */}
+          <div className="px-3 py-3 border-b border-border">
+            <h2 className="text-sm font-semibold text-foreground font-display">
+              History
+            </h2>
+            <p className="text-[11px] text-muted mt-1">
+              {events.length} events
+            </p>
           </div>
-        </div>
 
-        {/* Filters */}
-        <div className="flex gap-2 mb-6">
-          <input
-            type="text"
-            value={filterAgent}
-            onChange={(e) => setFilterAgent(e.target.value)}
-            placeholder="Filter by agent name..."
-            className="flex-1 bg-raised border border-border rounded px-3 py-2 text-sm text-foreground focus:outline-none focus:border-brand"
-          />
-          <input
-            type="text"
-            value={filterType}
-            onChange={(e) => setFilterType(e.target.value)}
-            placeholder="Event type..."
-            className="w-40 bg-raised border border-border rounded px-3 py-2 text-sm text-foreground focus:outline-none focus:border-brand"
-          />
-          <button
-            onClick={loadEvents}
-            className="bg-brand hover:bg-brand-hover text-foreground px-4 py-2 rounded text-sm"
-          >
-            Filter
-          </button>
-        </div>
-
-        {/* Event stream */}
-        {stores.length > 0 && (
-          <div className="grid gap-2 sm:grid-cols-2 mb-6">
-            {stores.map((store) => {
-              const params = new URLSearchParams();
-              if (store.workspace_id) params.set("workspaceId", store.workspace_id);
-              if (store.workspace_name) params.set("workspaceName", store.workspace_name);
-              const href = params.toString() ? `/memory/${store.id}?${params.toString()}` : `/memory/${store.id}`;
-              return (
-                <Link key={store.id} href={href} className="bg-surface border border-border rounded-lg p-3 hover:bg-raised transition-colors">
-                  <div className="text-sm text-foreground">{store.name}</div>
-                  <div className="text-xs text-muted mt-1">{store.workspace_name || "Personal"}</div>
-                </Link>
-              );
-            })}
-          </div>
-        )}
-        <div className="text-xs text-muted mb-3">
-          {eventsLoading ? "Loading..." : `${events.length} event${events.length !== 1 ? "s" : ""}${hasMore ? " (more available)" : ""}`}
-        </div>
-
-        {events.length === 0 && !eventsLoading ? (
-          <p className="text-muted text-sm">No events found. Agent activity will appear here as events are logged.</p>
-        ) : (
-          <div className="space-y-2">
-            {events.map((evt) => (
-              <div key={evt.id} className="bg-surface border border-border rounded-lg p-3">
-                <div className="flex items-center gap-2 mb-1 flex-wrap">
-                  <span className="text-xs font-medium text-agent bg-agent-muted px-1.5 py-0.5 rounded">{evt.agent_name}</span>
-                  <span className="text-xs bg-raised text-muted px-1.5 py-0.5 rounded">{evt.event_type}</span>
-                  {evt.store_name && (
-                    <span className="text-xs text-muted">in {evt.store_name}</span>
-                  )}
-                  {evt.workspace_name && (
-                    <span className="text-[10px] text-muted bg-raised px-1.5 py-0.5 rounded">{evt.workspace_name}</span>
-                  )}
-                  {evt.session_id && (
-                    <span className="text-xs text-muted font-mono">session:{evt.session_id}</span>
-                  )}
-                  {evt.tool_name && (
-                    <span className="text-xs text-muted font-mono">tool:{evt.tool_name}</span>
-                  )}
-                  <span className="text-xs text-muted ml-auto flex-shrink-0">
-                    {new Date(evt.created_at).toLocaleString()}
+          {/* Agents */}
+          {eventsLoading ? (
+            <p className="px-3 py-2 text-[11px] text-muted">Loading...</p>
+          ) : (
+            <div className="px-2 py-2">
+              {groups.map((ag) => (
+                <button
+                  key={ag.agentName}
+                  onClick={() => {
+                    setSelectedAgent(
+                      selectedAgent === ag.agentName ? null : ag.agentName
+                    );
+                    setSelectedSession(null);
+                  }}
+                  className={`w-full text-left flex items-center gap-1.5 px-2 py-2 rounded transition-colors duration-[150ms] mb-0.5 ${
+                    selectedAgent === ag.agentName
+                      ? "bg-agent-muted"
+                      : "hover:bg-raised"
+                  }`}
+                >
+                  <span className="w-1.5 h-1.5 rounded-full bg-agent flex-shrink-0" />
+                  <span className="text-[13px] font-medium text-foreground truncate">
+                    {ag.agentName}
                   </span>
-                </div>
-                <div className="text-sm text-foreground whitespace-pre-wrap">{evt.content}</div>
-                {Object.keys(evt.metadata).length > 0 && (
-                  <details className="mt-2">
-                    <summary className="text-xs text-muted cursor-pointer">Metadata</summary>
-                    <pre className="text-xs text-dim mt-1 bg-raised p-2 rounded overflow-x-auto">
-                      {JSON.stringify(evt.metadata, null, 2)}
-                    </pre>
-                  </details>
-                )}
-              </div>
-            ))}
+                  <span className="text-[10px] text-muted ml-auto font-mono">
+                    {ag.eventCount}
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
+        </aside>
+
+        {/* ── Main panel ── */}
+        <div className="flex-1 overflow-y-auto">
+          <div className="max-w-3xl mx-auto px-6 py-6">
+            {selectedSession && selectedEvents ? (
+              /* ── Session conversation view ── */
+              <SessionView
+                events={selectedEvents}
+                sessionId={selectedSession}
+                agentName={selectedAgent || ""}
+              />
+            ) : selectedAgent ? (
+              /* ── Agent overview: all sessions ── */
+              <AgentOverview
+                groups={groups}
+                agentName={selectedAgent}
+                onSelectSession={(sid) => setSelectedSession(sid)}
+                onDelete={async () => {
+                  try {
+                    const { apiFetch } = await import("../../lib/api");
+                    // Try workspace delete first, fall back to personal
+                    if (wsId) {
+                      await apiFetch(`/api/v1/workspaces/${wsId}/memory/agents/${encodeURIComponent(selectedAgent)}`, { method: "DELETE" });
+                    } else {
+                      await apiFetch(`/api/v1/memory/agents/${encodeURIComponent(selectedAgent)}`, { method: "DELETE" });
+                    }
+                    setSelectedAgent(null);
+                    loadEvents();
+                  } catch { /* ignore */ }
+                }}
+              />
+            ) : (
+              /* ── All events, grouped by agent ── */
+              <AllEventsView
+                groups={groups}
+                eventsLoading={eventsLoading}
+                onSelectSession={(agent, sid) => {
+                  setSelectedAgent(agent);
+                  setSelectedSession(sid);
+                }}
+              />
+            )}
           </div>
-        )}
+        </div>
       </div>
     </AppShell>
+  );
+}
+
+/* ── Session conversation view ── */
+
+function SessionView({
+  events,
+  sessionId,
+  agentName,
+}: {
+  events: HistoryEventWithContext[];
+  sessionId: string;
+  agentName: string;
+}) {
+  return (
+    <div>
+      <div className="mb-6">
+        <h1 className="text-xl font-bold text-foreground font-display">{agentName}</h1>
+        <p className="text-[11px] text-muted font-mono mt-1">
+          session: {sessionId} &middot; {events.length} event
+          {events.length !== 1 ? "s" : ""}
+        </p>
+      </div>
+
+      <div className="space-y-1">
+        {events.map((evt, i) => {
+          const showTime =
+            i === 0 ||
+            shouldShowTimestamp(events[i - 1].created_at, evt.created_at);
+
+          return (
+            <div key={evt.id}>
+              {showTime && (
+                <div className="flex items-center gap-3 my-4">
+                  <div className="flex-1 h-px bg-border" />
+                  <span className="text-[10px] text-muted font-mono">
+                    {formatTime(evt.created_at)}
+                  </span>
+                  <div className="flex-1 h-px bg-border" />
+                </div>
+              )}
+              <EventCard event={evt} />
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/* ── Agent overview ── */
+
+function AgentOverview({
+  groups,
+  agentName,
+  onSelectSession,
+  onDelete,
+}: {
+  groups: AgentGroup[];
+  agentName: string;
+  onSelectSession: (sid: string) => void;
+  onDelete: () => void;
+}) {
+  const ag = groups.find((g) => g.agentName === agentName);
+  if (!ag) return <p className="text-muted text-sm">No data for this agent.</p>;
+
+  return (
+    <div>
+      <div className="mb-6 flex items-start justify-between">
+        <div>
+          <h1 className="text-xl font-bold text-foreground font-display flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-agent" />
+            {agentName}
+          </h1>
+          <p className="text-[11px] text-muted mt-1">
+            {ag.sessions.length} session{ag.sessions.length !== 1 ? "s" : ""} &middot;{" "}
+            {ag.eventCount} events
+          </p>
+        </div>
+        <button
+          onClick={() => {
+            if (confirm(`Delete all ${ag.eventCount} events for "${agentName}"?`)) {
+              onDelete();
+            }
+          }}
+          className="text-xs text-red-400 hover:text-red-300 px-2 py-1 rounded hover:bg-red-400/10 transition-colors"
+        >
+          Delete agent
+        </button>
+      </div>
+
+      <div className="space-y-2">
+        {ag.sessions.map((sess) => (
+          <button
+            key={sess.sessionId}
+            onClick={() => onSelectSession(sess.sessionId)}
+            className="w-full text-left bg-surface border border-border rounded-lg p-3 hover:bg-raised transition-colors duration-[150ms] group"
+          >
+            <div className="flex items-center gap-2">
+              <span className="text-[13px] text-foreground font-medium truncate">
+                {sess.firstContent}
+              </span>
+              <span className="text-[10px] text-muted font-mono ml-auto flex-shrink-0">
+                {sess.events.length} event{sess.events.length !== 1 ? "s" : ""}
+              </span>
+            </div>
+            <p className="text-[11px] text-muted mt-1">{sess.timeRange}</p>
+            <p className="text-[11px] text-muted font-mono mt-0.5 truncate opacity-60">
+              {sess.sessionId}
+            </p>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/* ── All events grouped view ── */
+
+function AllEventsView({
+  groups,
+  eventsLoading,
+  onSelectSession,
+}: {
+  groups: AgentGroup[];
+  eventsLoading: boolean;
+  onSelectSession: (agent: string, sid: string) => void;
+}) {
+  if (eventsLoading) {
+    return <p className="text-muted text-sm">Loading events...</p>;
+  }
+
+  if (groups.length === 0) {
+    return (
+      <p className="text-muted text-sm">
+        No events found. Agent activity will appear here as events are logged.
+      </p>
+    );
+  }
+
+  return (
+    <div>
+      <h1 className="text-xl font-bold text-foreground font-display mb-6">
+        Recent Activity
+      </h1>
+
+      {groups.map((ag) => (
+        <div key={ag.agentName} className="mb-6">
+          <div className="flex items-center gap-2 mb-2">
+            <span className="w-2 h-2 rounded-full bg-agent" />
+            <h2 className="text-[15px] font-semibold text-foreground">{ag.agentName}</h2>
+            <span className="text-[10px] text-muted font-mono">
+              {ag.eventCount} events
+            </span>
+          </div>
+
+          <div className="space-y-1.5 ml-4">
+            {ag.sessions.slice(0, 5).map((sess) => (
+              <button
+                key={sess.sessionId}
+                onClick={() => onSelectSession(ag.agentName, sess.sessionId)}
+                className="w-full text-left bg-surface border border-border rounded-lg p-2.5 hover:bg-raised transition-colors duration-[150ms]"
+              >
+                <div className="flex items-center gap-2">
+                  <span className="text-[13px] text-foreground truncate">
+                    {sess.firstContent}
+                  </span>
+                  <span className="text-[10px] text-muted font-mono ml-auto flex-shrink-0">
+                    {sess.events.length}
+                  </span>
+                </div>
+                <p className="text-[11px] text-muted mt-0.5">{sess.timeRange}</p>
+              </button>
+            ))}
+            {ag.sessions.length > 5 && (
+              <p className="text-[11px] text-muted pl-2">
+                + {ag.sessions.length - 5} more session
+                {ag.sessions.length - 5 !== 1 ? "s" : ""}
+              </p>
+            )}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/* ── Event card (chat-like message) ── */
+
+function EventCard({ event }: { event: HistoryEventWithContext }) {
+  return (
+    <div className="flex gap-3 py-1.5">
+      {/* Left border accent */}
+      <div className="w-0.5 rounded-full bg-agent/40 flex-shrink-0 mt-1" />
+
+      <div className="flex-1 min-w-0">
+        {/* Header row */}
+        <div className="flex items-center gap-1.5 mb-1 flex-wrap">
+          <span className="text-[11px] font-medium text-agent bg-agent-muted px-1.5 py-0.5 rounded font-mono uppercase tracking-[0.05em]">
+            {event.agent_name}
+          </span>
+          <span className="text-[11px] bg-raised text-muted px-1.5 py-0.5 rounded">
+            {event.event_type}
+          </span>
+          {event.tool_name && (
+            <span className="text-[10px] text-dim font-mono bg-raised px-1.5 py-0.5 rounded">
+              {event.tool_name}
+            </span>
+          )}
+          {event.store_name && (
+            <span className="text-[10px] text-muted">in {event.store_name}</span>
+          )}
+          {event.workspace_name && (
+            <span className="text-[10px] text-muted bg-raised px-1 py-0.5 rounded">
+              {event.workspace_name}
+            </span>
+          )}
+          <span className="text-[10px] text-muted ml-auto flex-shrink-0 font-mono">
+            {formatTimeShort(event.created_at)}
+          </span>
+        </div>
+
+        {/* Content */}
+        <div className="text-[14px] text-foreground whitespace-pre-wrap leading-relaxed">
+          {event.content}
+        </div>
+
+        {/* Metadata */}
+        {Object.keys(event.metadata).length > 0 && (
+          <details className="mt-1.5">
+            <summary className="text-[10px] text-muted cursor-pointer hover:text-dim transition-colors duration-[150ms]">
+              Metadata
+            </summary>
+            <pre className="text-[11px] text-dim mt-1 bg-raised p-2 rounded overflow-x-auto font-mono">
+              {JSON.stringify(event.metadata, null, 2)}
+            </pre>
+          </details>
+        )}
+      </div>
+    </div>
   );
 }

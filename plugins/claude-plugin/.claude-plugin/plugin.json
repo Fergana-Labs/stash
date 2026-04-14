@@ -1,0 +1,51 @@
+{
+  "name": "octopus",
+  "version": "0.1.0",
+  "description": "Connect Claude Code to Octopus — stream activity to history, inject agent memory/context, collaborate in workspaces.",
+  "author": {
+    "name": "Fergana Labs"
+  },
+  "homepage": "https://github.com/samzliu/octopus",
+  "userConfig": {
+    "api_endpoint": {
+      "title": "API Endpoint",
+      "description": "Octopus API base URL",
+      "type": "string",
+      "default": "https://getoctopus.com",
+      "sensitive": false
+    },
+    "api_key": {
+      "title": "API Key",
+      "description": "API key (from Octopus registration)",
+      "type": "string",
+      "sensitive": true
+    },
+    "agent_name": {
+      "title": "Agent Name",
+      "description": "Agent identity name in Octopus",
+      "type": "string",
+      "sensitive": false
+    },
+    "workspace_id": {
+      "title": "Workspace ID",
+      "description": "Default workspace UUID (optional, set via /octopus:connect)",
+      "type": "string",
+      "sensitive": false
+    },
+    "history_store_id": {
+      "title": "History Store ID",
+      "description": "History store UUID for activity streaming (optional, set via /octopus:connect)",
+      "type": "string",
+      "sensitive": false
+    },
+    "inject_context": {
+      "title": "Inject Context",
+      "description": "Inject memory/context into prompts (true/false, default true)",
+      "type": "string",
+      "default": "true",
+      "sensitive": false
+    }
+  },
+  "skills": "./skills/",
+  "hooks": "./hooks/hooks.json"
+}
