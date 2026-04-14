@@ -202,13 +202,13 @@ def _walk_tokens(
             elem = XmlElement(node_name)
             frag_or_elem.children.append(elem)
 
-            # Set heading level
+            # Set heading level — must be string to match TipTap/y-prosemirror
             if base == "heading" and tok.markup:
-                elem.attributes["level"] = len(tok.markup)
+                elem.attributes["level"] = str(len(tok.markup))
 
             # Set ordered list start
             if base == "ordered_list" and tok.attrs and tok.attrs.get("start"):
-                elem.attributes["start"] = tok.attrs["start"]
+                elem.attributes["start"] = str(tok.attrs["start"])
 
             # Find matching close and recurse into children
             close_type = base + "_close"
