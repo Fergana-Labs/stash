@@ -12,4 +12,7 @@ If you are about to ask the user to do something for you, think about whether yo
 
 Previous Claude coding sessions are stored as `.jsonl` files in your ~/.claude file. Read these to understand prior decisions, debugging sessions, and context that isn't in git history.
 
+When you create or update a PR, share both the GitHub link and the Assert review link with the user at the end of your session:
 
+- GitHub: `https://github.com/Assert-Labs/assert/pull/<number>`
+- Assert: `https://app.assert.dev/review/github/Assert-Labs/assert/<number>`
