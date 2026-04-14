@@ -13,7 +13,7 @@ export default function CuratePage() {
       <P>
         Wiki-style markdown pages organized in folders. Supports{" "}
         <Code>{"[[Page Name]]"}</Code> wiki links with backlinks, page graph visualization, and
-        semantic search. Real-time collaborative editing via Yjs.
+        semantic search. Rich-text editor with autosave.
       </P>
 
       <H3>Tables</H3>

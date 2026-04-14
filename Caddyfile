@@ -7,16 +7,8 @@ app.example.com {
     # Frontend
     reverse_proxy frontend:3457
 
-    # Backend API + WebSocket
+    # Backend API
     handle /api/* {
-        reverse_proxy backend:3456
-    }
-
-    handle /ws/* {
-        reverse_proxy backend:3456
-    }
-
-    handle /mcp/* {
         reverse_proxy backend:3456
     }
 
