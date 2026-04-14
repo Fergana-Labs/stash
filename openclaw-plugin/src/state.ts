@@ -1,6 +1,6 @@
 /**
  * State persistence — local JSON files for session state, context cache, and injection state.
- * Port of claude-plugin/scripts/config.py.
+ * Originally ported from the Claude Code plugin (removed).
  */
 
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from "node:fs";

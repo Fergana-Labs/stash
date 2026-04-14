@@ -32,7 +32,6 @@ const NAV: NavSection[] = [
     title: "Reference",
     items: [
       { href: "/docs/cli", label: "CLI" },
-      { href: "/docs/mcp", label: "MCP Server" },
       { href: "/docs/openclaw", label: "OpenClaw Plugin" },
       { href: "/docs/api", label: "REST API" },
     ],

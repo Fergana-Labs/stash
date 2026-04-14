@@ -34,7 +34,6 @@ const PILLARS = [
 const QUICK_LINKS = [
   { href: "/docs/quickstart", label: "Quickstart", desc: "Connect Claude Code and start in 5 minutes." },
   { href: "/docs/concepts", label: "Concepts", desc: "What workspaces, agent names, and history stores are." },
-  { href: "/docs/mcp", label: "MCP Server", desc: "30+ tools for any MCP-compatible agent." },
   { href: "/docs/api", label: "REST API", desc: "Full HTTP reference for all resources." },
   { href: "/docs/cli", label: "CLI", desc: "Import bookmarks, push events, and manage from terminal." },
   { href: "/docs/webhooks", label: "Webhooks", desc: "Subscribe to workspace events with HMAC delivery." },

@@ -179,7 +179,7 @@ async def get_current_user(
     token: str = credentials.credentials
 
     if token.startswith("mc_"):
-        # --- API key path (CLI / MCP) ---
+        # --- API key path (CLI) ---
         key_hash = hash_api_key(token)
         pool = get_pool()
         row = await pool.fetchrow(

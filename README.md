@@ -32,9 +32,7 @@
 
 ## Features
 
-**Automatic knowledge capture** — The Claude Code plugin streams every tool call, edit, and session into Octopus. No manual effort. Your agents build the knowledge base just by working.
-
-**Curation tool** — The `curate` MCP tool reads history data and organizes it into a categorized wiki with folders, summaries, and [[backlinks]]. Knowledge stays structured without manual maintenance.
+**Curation** — The `octopus curate` CLI command reads history data and organizes it into a categorized wiki with folders, summaries, and [[backlinks]]. Knowledge stays structured without manual maintenance.
 
 **Wiki notebooks** — Rich collaborative pages with [[wiki links]], page graph visualization, backlink tracking, and semantic search powered by pgvector embeddings.
 
@@ -50,79 +48,23 @@
 
 Go to [getoctopus.com](https://getoctopus.com) and register. Save your API key.
 
-### 2. Install the Claude Code plugin
+### 2. Install the CLI
 
 ```bash
-claude plugin add ./claude-plugin
+pip install octopus
+octopus login
 ```
 
-The plugin will prompt for your API key and agent name.
-
-### 3. Connect to a workspace
-
-Start Claude Code and run:
-
-```
-/octopus:connect
-```
-
-This wizard connects you to a workspace and sets up activity streaming. Every tool call, edit, and message now flows into Octopus automatically.
-
-### 4. Try it
-
-Your agent sessions now auto-stream to Octopus. Try these prompts:
-
-**Push knowledge in:**
-> "Search the web for the latest research on RAG architectures and save a summary to my Octopus knowledge base"
-
-**Import bookmarks:**
-> "Run `octopus import-bookmarks ~/Downloads/bookmarks.html` to import my Chrome bookmarks"
-
-**Search across everything:**
-> "Check my Octopus knowledge base — what do we know about authentication patterns?"
-
-**Create a shareable report:**
-> "Create an Octopus page summarizing our key findings on database performance"
-
-### 5. Curate your knowledge base
-
-Use the `curate` MCP tool to organize ingested data into a categorized wiki with [[backlinks]], folders, and summaries.
-
-## Integrations
-
-### Claude Code Plugin
-
-The plugin hooks into your session lifecycle:
-
-| Hook | What it does |
-|------|-------------|
-| **SessionStart** | Loads agent context, injects relevant memory into prompt |
-| **PostToolUse** | Streams every tool call to Octopus history (async, non-blocking) |
-| **UserPromptSubmit** | Records prompts for context tracking |
-| **Stop** | Pushes session summary with key findings |
-
-**Skills available in Claude Code:**
-`/octopus:connect` · `/octopus:disconnect` · `/octopus:status` · `/octopus:sync` · `/octopus:config`
-
-### MCP Server
+### 3. Try it
 
 ```bash
-# Hosted
-claude mcp add --transport http octopus https://getoctopus.com/mcp \
-  --header "Authorization: Bearer YOUR_API_KEY"
-
-# Local
-claude mcp add -e OCTOPUS_API_KEY=KEY -e OCTOPUS_URL=https://getoctopus.com \
-  octopus -- python -m mcp_server.server
+octopus import-bookmarks ~/Downloads/bookmarks.html   # Import bookmarks
+octopus search "authentication patterns"               # Universal search
+octopus history push "session notes here"              # Push an event
+octopus --help                                         # Full command list
 ```
 
-### OpenClaw Plugin
-
-```bash
-openclaw plugin add @octopus/openclaw-octopus
-```
-
-### CLI
+## CLI
 
 ```bash
 pip install octopus
@@ -164,7 +106,7 @@ Includes Caddy for automatic HTTPS. Requires PostgreSQL with pgvector. Optional:
 The curation tool and universal search use Anthropic Claude. Embeddings use OpenAI `text-embedding-3-small`. You bring your own API keys.
 
 **Can I use this without Claude Code?**
-Yes. The MCP server exposes 30+ tools that work with any MCP-compatible client. The CLI works standalone. The OpenClaw plugin connects to OpenClaw agents.
+Yes. The CLI and REST API work standalone with any client.
 
 **Is my data private?**
 On the hosted version, workspaces are permissioned — only invited members can access data. For full control, self-host with Docker Compose and keep everything on your infrastructure.

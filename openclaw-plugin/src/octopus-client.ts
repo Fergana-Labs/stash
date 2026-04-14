@@ -1,6 +1,6 @@
 /**
  * Lightweight Octopus HTTP client for the OpenClaw plugin.
- * Port of claude-plugin/scripts/octopus_client.py using native fetch.
+ * Lightweight Octopus HTTP client. Originally ported from the Claude Code plugin (removed).
  */
 
 export class OctopusError extends Error {

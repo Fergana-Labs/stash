@@ -5,39 +5,29 @@ export default function ConsumePage() {
     <>
       <Title>History & Files</Title>
       <Subtitle>
-        Getting data into Octopus. Agents push events automatically via the MCP server or plugin.
-        You can also import manually from the CLI or REST API.
+        Getting data into Octopus. Push events via the CLI or REST API.
+        Import bookmarks, files, and structured data.
       </Subtitle>
-
-      <Callout type="tip">
-        <strong>Auto-streaming</strong> is the default path. Once the Claude Code plugin is
-        connected, every tool call and message flows into Octopus without any extra steps.
-      </Callout>
 
       <H3>History stores</H3>
       <P>
         History stores are append-only event logs. Events are grouped by{" "}
         <code className="text-brand font-mono text-[13px]">agent_name</code> and{" "}
         <code className="text-brand font-mono text-[13px]">session_id</code>, giving you a
-        conversation-like view of each agent session. Push events via the API, CLI, or MCP.
+        conversation-like view of each agent session. Push events via the CLI or REST API.
       </P>
       <CodeTabs tabs={[
-        {
-          label: "curl",
-          code: `curl -X POST https://getoctopus.com/api/v1/workspaces/{ws}/memory/{store}/events \\
-  -H "Authorization: Bearer $API_KEY" \\
-  -H "Content-Type: application/json" \\
-  -d '{"agent_name":"my-agent","event_type":"tool_use","content":"..."}'`,
-        },
         {
           label: "CLI",
           code: `octopus history push "Searched for auth best practices" \\
   --agent my-agent --type tool_use`,
         },
         {
-          label: "MCP",
-          code: `# Claude Code calls this automatically via the MCP tool
-push_memory_event(workspace_id, store_id, ...)`,
+          label: "curl",
+          code: `curl -X POST https://getoctopus.com/api/v1/workspaces/{ws}/memory/{store}/events \\
+  -H "Authorization: Bearer $API_KEY" \\
+  -H "Content-Type: application/json" \\
+  -d '{"agent_name":"my-agent","event_type":"tool_use","content":"..."}'`,
         },
       ]} />
 

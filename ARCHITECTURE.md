@@ -2,31 +2,31 @@
 
 ## System overview
 
-Octopus is a collaborative memory platform for AI agent teams. It has three layers: a Next.js frontend, a Python/FastAPI backend (which also serves an MCP endpoint), and PostgreSQL with pgvector for storage.
+Octopus is a collaborative memory platform for AI agent teams. It has three layers: a Next.js frontend, a Python/FastAPI backend, and PostgreSQL with pgvector for storage.
 
 ```
 ┌──────────────────────────────────────────────────────────────────────┐
 │                          Clients                                     │
 │                                                                      │
-│  ┌─────────────┐  ┌─────────────┐  ┌──────────┐  ┌──────────────┐  │
-│  │ Next.js UI  │  │ Claude Code │  │ MCP      │  │ CLI / HTTP   │  │
-│  │ (browser)   │  │ Plugin      │  │ Clients  │  │ Clients      │  │
-│  └──────┬──────┘  └──────┬──────┘  └────┬─────┘  └──────┬───────┘  │
-│         │ REST/WS        │ REST          │ SSE/HTTP       │ REST    │
+│  ┌─────────────┐  ┌──────────────┐                                  │
+│  │ Next.js UI  │  │ CLI / HTTP   │                                  │
+│  │ (browser)   │  │ Clients      │                                  │
+│  └──────┬──────┘  └──────┬───────┘                                  │
+│         │ REST/WS        │ REST                                     │
 └─────────┼────────────────┼──────────────┼────────────────┼──────────┘
           │                │              │                │
           ▼                ▼              ▼                ▼
 ┌──────────────────────────────────────────────────────────────────────┐
 │                      FastAPI Backend (:3456)                          │
 │                                                                      │
-│  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐  │
-│  │ Routers  │ │ Services │ │ Auth     │ │ MCP      │ │ Back-    │  │
-│  │ (REST)   │ │ (logic)  │ │ (keys,  │ │ Server   │ │ ground   │  │
-│  │          │ │          │ │  bcrypt) │ │ (/mcp)   │ │ Loops    │  │
-│  └──────────┘ └──────────┘ └──────────┘ └──────────┘ └──────────┘  │
+│  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐               │
+│  │ Routers  │ │ Services │ │ Auth     │ │ Back-    │               │
+│  │ (REST)   │ │ (logic)  │ │ (keys,  │ │ ground   │               │
+│  │          │ │          │ │  bcrypt) │ │ Loops    │               │
+│  └──────────┘ └──────────┘ └──────────┘ └──────────┘               │
 │                                                                      │
 │  Background loops:                                                   │
-│    • Curation (user-invoked via MCP tool)                            │
+│    • Curation (user-invoked via CLI)                                 │
 │    • Webhook delivery (5s poll with exponential backoff)             │
 │    • WebSocket health pings (30s)                                    │
 │                                                                      │
@@ -54,7 +54,7 @@ Octopus is a collaborative memory platform for AI agent teams. It has three laye
 
 Octopus is the shared system of record — users, workspaces, chats, notebooks, memory, decks, tables, files, permissions, webhooks. If state is shared, persisted, or user-visible, it belongs here.
 
-External orchestration layers (your own multi-agent framework, local bridge daemons, etc.) integrate with Octopus by pushing history events and syncing notebooks via the REST API or MCP server. They must not implement parallel chat ingress or poll chats as a transport.
+External orchestration layers (your own multi-agent framework, local bridge daemons, etc.) integrate with Octopus by pushing history events and syncing notebooks via the REST API or CLI. They must not implement parallel chat ingress or poll chats as a transport.
 
 ## Data model
 
@@ -170,7 +170,7 @@ Database (database.py)
 
 The backend runs three long-lived async tasks:
 
-1. **Curation** — invoked via MCP tool, acquires a Postgres advisory lock, reads new history events, calls Anthropic to generate wiki pages, writes to notebooks
+1. **Curation** — invoked via CLI, acquires a Postgres advisory lock, reads new history events, calls Anthropic to generate wiki pages, writes to notebooks
 2. **Webhook delivery** — polls `webhook_deliveries` for pending items, acquires advisory lock, delivers with exponential backoff, marks delivered/failed
 3. **WebSocket health** — pings all connected WebSockets every 30s, disconnects dead ones
 
@@ -180,10 +180,6 @@ Two real-time systems:
 
 - **Chat WebSocket** (`/api/v1/workspaces/{ws}/chats/{id}/ws`) — bidirectional messaging with `ConnectionManager`. Cross-process delivery via `pg_notify` on channel `octopus_events`.
 - **Yjs WebSocket** (`/api/v1/workspaces/{ws}/notebooks/{nb}/pages/{p}/yjs`) — CRDT sync for collaborative markdown editing.
-
-### MCP Server
-
-Mounted at `/mcp` as a Streamable HTTP transport. Exposes 30+ tools for external agents (history push/query, notebook read/write, chat send, table CRUD, file upload, search). Auth via Bearer token in the `Authorization` header.
 
 ## Frontend architecture
 
