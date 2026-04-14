@@ -2,7 +2,7 @@
 
 Revision ID: 0001
 Revises:
-Create Date: 2026-04-07
+Create Date: 2026-04-14
 """
 from alembic import op
 
@@ -23,6 +23,7 @@ CREATE TABLE IF NOT EXISTS users (
     type VARCHAR(8) NOT NULL CHECK(type IN ('human', 'persona')),
     api_key_hash VARCHAR(64) NOT NULL UNIQUE,
     password_hash VARCHAR(72),
+    auth0_sub VARCHAR(128) UNIQUE,
     description TEXT DEFAULT '',
     owner_id UUID REFERENCES users(id) ON DELETE CASCADE,
     notebook_id UUID,
@@ -133,7 +134,6 @@ CREATE TABLE IF NOT EXISTS notebook_pages (
     content_markdown TEXT NOT NULL DEFAULT '',
     content_hash VARCHAR(64),
     metadata JSONB DEFAULT '{}',
-    yjs_state BYTEA,
     embedding vector(384),
     created_by UUID NOT NULL REFERENCES users(id),
     updated_by UUID REFERENCES users(id),
@@ -153,21 +153,10 @@ CREATE TABLE IF NOT EXISTS page_links (
 """)
 
     op.execute("""
-CREATE TABLE IF NOT EXISTS histories (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    workspace_id UUID REFERENCES workspaces(id) ON DELETE CASCADE,
-    name VARCHAR(128) NOT NULL,
-    description TEXT DEFAULT '',
-    created_by UUID NOT NULL REFERENCES users(id),
-    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    UNIQUE(workspace_id, name)
-)
-""")
-
-    op.execute("""
 CREATE TABLE IF NOT EXISTS history_events (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    store_id UUID NOT NULL REFERENCES histories(id) ON DELETE CASCADE,
+    workspace_id UUID REFERENCES workspaces(id) ON DELETE CASCADE,
+    created_by UUID REFERENCES users(id),
     agent_name VARCHAR(64) NOT NULL,
     event_type VARCHAR(64) NOT NULL,
     session_id VARCHAR(64),
@@ -190,16 +179,6 @@ CREATE TABLE IF NOT EXISTS injection_configs (
     staleness_decay_slow REAL NOT NULL DEFAULT 0.40,
     staleness_fast_threshold_seconds REAL NOT NULL DEFAULT 60.0,
     embedding_dims INTEGER NOT NULL DEFAULT 384,
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
-)
-""")
-
-    op.execute("""
-CREATE TABLE IF NOT EXISTS sleep_watermarks (
-    persona_id UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
-    last_event_at TIMESTAMPTZ,
-    last_monologue_event_at TIMESTAMPTZ,
-    last_run_at TIMESTAMPTZ,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 )
 """)
@@ -405,6 +384,17 @@ CREATE TABLE IF NOT EXISTS webhook_deliveries (
 )
 """)
 
+    op.execute("""
+CREATE TABLE IF NOT EXISTS embedding_projections (
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    source_type VARCHAR(32) NOT NULL DEFAULT '_all',
+    points JSONB NOT NULL DEFAULT '[]',
+    embedding_count INTEGER NOT NULL DEFAULT 0,
+    computed_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (user_id, source_type)
+)
+""")
+
     # Standard indexes
     op.execute("CREATE INDEX IF NOT EXISTS idx_users_api_key_hash ON users(api_key_hash)")
     op.execute("CREATE INDEX IF NOT EXISTS idx_users_owner ON users(owner_id) WHERE owner_id IS NOT NULL")
@@ -418,11 +408,8 @@ CREATE TABLE IF NOT EXISTS webhook_deliveries (
     op.execute("CREATE INDEX IF NOT EXISTS idx_notebook_pages_notebook ON notebook_pages(notebook_id)")
     op.execute("CREATE INDEX IF NOT EXISTS idx_notebook_pages_folder ON notebook_pages(folder_id)")
     op.execute("CREATE INDEX IF NOT EXISTS idx_notebook_folders_notebook ON notebook_folders(notebook_id)")
-    op.execute("CREATE INDEX IF NOT EXISTS idx_histories_workspace ON histories(workspace_id)")
-    op.execute("CREATE INDEX IF NOT EXISTS idx_history_events_store_created ON history_events(store_id, created_at)")
-    op.execute("CREATE INDEX IF NOT EXISTS idx_history_events_agent ON history_events(store_id, agent_name)")
-    op.execute("CREATE INDEX IF NOT EXISTS idx_history_events_session ON history_events(store_id, session_id) WHERE session_id IS NOT NULL")
-    op.execute("CREATE INDEX IF NOT EXISTS idx_history_events_type ON history_events(store_id, event_type)")
+    op.execute("CREATE INDEX IF NOT EXISTS idx_history_events_workspace ON history_events(workspace_id)")
+    op.execute("CREATE INDEX IF NOT EXISTS idx_history_events_agent_session ON history_events(agent_name, session_id)")
     op.execute("CREATE INDEX IF NOT EXISTS idx_history_events_fts ON history_events USING GIN(to_tsvector('english', content))")
     op.execute("CREATE INDEX IF NOT EXISTS idx_history_events_metadata ON history_events USING GIN(metadata)")
     op.execute("CREATE INDEX IF NOT EXISTS idx_notebook_pages_fts ON notebook_pages USING GIN(to_tsvector('english', content_markdown))")
@@ -448,10 +435,8 @@ CREATE TABLE IF NOT EXISTS webhook_deliveries (
     op.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_dm_unique_pair ON chats(dm_user_a, dm_user_b) WHERE is_dm = true")
     op.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_notebook_pages_root_unique ON notebook_pages(notebook_id, name) WHERE folder_id IS NULL")
     op.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_notebook_pages_folder_unique ON notebook_pages(notebook_id, folder_id, name) WHERE folder_id IS NOT NULL")
-    op.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_personal_history_unique ON histories(created_by, name) WHERE workspace_id IS NULL")
     op.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_personal_notebook_unique ON notebooks(created_by, name) WHERE workspace_id IS NULL")
     op.execute("CREATE INDEX IF NOT EXISTS idx_notebooks_personal ON notebooks(created_by) WHERE workspace_id IS NULL")
-    op.execute("CREATE INDEX IF NOT EXISTS idx_histories_personal ON histories(created_by) WHERE workspace_id IS NULL")
     op.execute("CREATE INDEX IF NOT EXISTS idx_chats_personal ON chats(creator_id) WHERE workspace_id IS NULL AND is_dm = false")
     op.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_personal_deck_unique ON decks(created_by, name) WHERE workspace_id IS NULL")
     op.execute("CREATE INDEX IF NOT EXISTS idx_decks_personal ON decks(created_by) WHERE workspace_id IS NULL")
@@ -466,6 +451,7 @@ CREATE TABLE IF NOT EXISTS webhook_deliveries (
 
 def downgrade() -> None:
     # Drop in reverse FK-dependency order
+    op.execute("DROP TABLE IF EXISTS embedding_projections CASCADE")
     op.execute("DROP TABLE IF EXISTS webhook_deliveries CASCADE")
     op.execute("DROP TABLE IF EXISTS webhooks CASCADE")
     op.execute("DROP TABLE IF EXISTS documents CASCADE")
@@ -479,11 +465,9 @@ def downgrade() -> None:
     op.execute("DROP TABLE IF EXISTS deck_shares CASCADE")
     op.execute("DROP TABLE IF EXISTS decks CASCADE")
     op.execute("DROP TABLE IF EXISTS sleep_configs CASCADE")
-    op.execute("DROP TABLE IF EXISTS sleep_watermarks CASCADE")
     op.execute("DROP TABLE IF EXISTS injection_sessions CASCADE")
     op.execute("DROP TABLE IF EXISTS injection_configs CASCADE")
     op.execute("DROP TABLE IF EXISTS history_events CASCADE")
-    op.execute("DROP TABLE IF EXISTS histories CASCADE")
     op.execute("DROP TABLE IF EXISTS page_links CASCADE")
     op.execute("DROP TABLE IF EXISTS notebook_pages CASCADE")
     op.execute("DROP TABLE IF EXISTS notebook_folders CASCADE")
