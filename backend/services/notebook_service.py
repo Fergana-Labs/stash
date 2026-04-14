@@ -1,4 +1,4 @@
-"""Notebook service: collection CRUD, page/folder CRUD, Yjs collaborative editing, wiki links."""
+"""Notebook service: collection CRUD, page/folder CRUD, wiki links, embeddings."""
 
 import asyncio
 import hashlib
@@ -335,41 +335,6 @@ async def list_page_tree(notebook_id: UUID) -> dict:
     return {"folders": list(folder_map.values()), "root_files": root_files}
 
 
-# --- Yjs ---
-
-
-async def save_yjs_state(
-    page_id: UUID, yjs_state: bytes, content_markdown: str | None = None,
-) -> None:
-    pool = get_pool()
-    if content_markdown is not None:
-        await pool.execute(
-            "UPDATE notebook_pages SET yjs_state = $1, content_markdown = $2, updated_at = now() "
-            "WHERE id = $3",
-            yjs_state, content_markdown, page_id,
-        )
-    else:
-        await pool.execute(
-            "UPDATE notebook_pages SET yjs_state = $1, updated_at = now() WHERE id = $2",
-            yjs_state, page_id,
-        )
-
-
-async def get_yjs_state(page_id: UUID) -> bytes | None:
-    pool = get_pool()
-    row = await pool.fetchrow(
-        "SELECT yjs_state FROM notebook_pages WHERE id = $1", page_id,
-    )
-    return row["yjs_state"] if row else None
-
-
-async def get_page_markdown(page_id: UUID) -> str | None:
-    """Get content_markdown for a page (used as fallback when yjs_state is NULL)."""
-    pool = get_pool()
-    row = await pool.fetchrow(
-        "SELECT content_markdown FROM notebook_pages WHERE id = $1", page_id,
-    )
-    return row["content_markdown"] if row else None
 
 
 # --- Injection query helpers ---

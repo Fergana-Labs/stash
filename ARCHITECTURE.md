@@ -13,26 +13,24 @@ Octopus is a collaborative memory platform for AI agent teams. It has three laye
 │  │ (browser)   │  │ Clients      │                                  │
 │  └──────┬──────┘  └──────┬───────┘                                  │
 │         │ REST/WS        │ REST                                     │
-└─────────┼────────────────┼──────────────┼────────────────┼──────────┘
-          │                │              │                │
-          ▼                ▼              ▼                ▼
+└─────────┼────────────────┼─────────────────────────────────────────┘
+          │                │
+          ▼                ▼
 ┌──────────────────────────────────────────────────────────────────────┐
 │                      FastAPI Backend (:3456)                          │
 │                                                                      │
-│  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐               │
-│  │ Routers  │ │ Services │ │ Auth     │ │ Back-    │               │
-│  │ (REST)   │ │ (logic)  │ │ (keys,  │ │ ground   │               │
-│  │          │ │          │ │  bcrypt) │ │ Loops    │               │
-│  └──────────┘ └──────────┘ └──────────┘ └──────────┘               │
+│  ┌──────────┐ ┌──────────┐ ┌──────────┐                             │
+│  │ Routers  │ │ Services │ │ Auth     │                             │
+│  │ (REST)   │ │ (logic)  │ │ (keys +  │                             │
+│  │          │ │          │ │  JWT)    │                             │
+│  └──────────┘ └──────────┘ └──────────┘                             │
 │                                                                      │
-│  Background loops:                                                   │
-│    • Curation (user-invoked via CLI)                                 │
-│    • Webhook delivery (5s poll with exponential backoff)             │
-│    • WebSocket health pings (30s)                                    │
+│  Async side-effects (fire-and-forget tasks):                         │
+│    • Embedding generation on page / row / event write                │
+│    • Wiki link extraction + resolution on page write                 │
 │                                                                      │
-│  Cross-process coordination:                                         │
-│    • pg_notify for WebSocket fan-out across workers                  │
-│    • Advisory locks for singleton curation + webhook delivery         │
+│  No long-lived background loops. Zero LLM inference in backend —     │
+│  curation and universal search live in plugin skills on the client.  │
 └──────────────────────────┬───────────────────────────────────────────┘
                            │
                            ▼
@@ -40,21 +38,20 @@ Octopus is a collaborative memory platform for AI agent teams. It has three laye
 │                PostgreSQL 16 + pgvector                               │
 │                                                                      │
 │  Core tables: users, workspaces, workspace_members                   │
-│  Content:     chats, chat_messages, notebooks, notebook_pages,       │
-│               histories, history_events, tables, table_rows,         │
-│               decks, files, documents                                │
+│  Content:     notebooks, notebook_folders, notebook_pages,           │
+│               history_events, tables, table_rows, files              │
 │  Access:      object_permissions, object_shares                      │
-│  Infra:       webhooks, webhook_deliveries, injection_configs        │
+│  Analytics:   embedding_projections                                   │
 │                                                                      │
-│  Indexes: GIN (FTS), HNSW (vector cosine similarity)                │
+│  Indexes: GIN (FTS on content), HNSW (vector cosine similarity)      │
 └──────────────────────────────────────────────────────────────────────┘
 ```
 
 ## Product split
 
-Octopus is the shared system of record — users, workspaces, chats, notebooks, memory, decks, tables, files, permissions, webhooks. If state is shared, persisted, or user-visible, it belongs here.
+Octopus is the shared system of record — users, workspaces, notebooks, history, tables, files, permissions. If state is shared, persisted, or user-visible, it belongs here.
 
-External orchestration layers (your own multi-agent framework, local bridge daemons, etc.) integrate with Octopus by pushing history events and syncing notebooks via the REST API or CLI. They must not implement parallel chat ingress or poll chats as a transport.
+External orchestration layers (your own multi-agent framework, local bridge daemons, etc.) integrate with Octopus by pushing history events and syncing notebooks via the REST API or CLI.
 
 ## Data model
 
@@ -62,38 +59,28 @@ External orchestration layers (your own multi-agent framework, local bridge daem
 
 ```
 workspaces ─┬── workspace_members ──── users
-             │                          │
-             ├── chats ── chat_messages  ├── injection_configs
-             │    └── chat_watches      │
-             │                          │
-             ├── notebooks              │
-             │    ├── notebook_folders   │
-             │    ├── notebook_pages     │
-             │    └── page_links        │
-             │                          │
-             ├── histories              │
-             │    └── history_events    │
-             │                          │
-             ├── tables                 │
-             │    └── table_rows        │
-             │                          │
-             ├── decks                  │
-             │    └── deck_shares       │
-             │         └── deck_share_views
-             │              └── deck_share_page_views
-             │                          │
-             ├── files                  │
-             ├── documents              │
-             ├── webhooks               │
-             │    └── webhook_deliveries│
-             │                          │
-             └── object_permissions     │
-                  object_shares ────────┘
+             │
+             ├── notebooks
+             │    ├── notebook_folders
+             │    ├── notebook_pages
+             │    └── page_links
+             │
+             ├── history_events
+             │
+             ├── tables
+             │    └── table_rows
+             │
+             ├── files
+             │
+             └── object_permissions
+                  object_shares
 ```
+
+`history_events` lives directly under a workspace (no intermediate "store" abstraction). Grouping in the UI is by `agent_name` + `session_id` on the event row.
 
 ### Workspace scoping
 
-Every content resource (chats, notebooks, histories, tables, decks, files, documents) has an optional `workspace_id` foreign key:
+Every content resource (notebooks, history_events, tables, files) has an optional `workspace_id` foreign key:
 
 - **`workspace_id IS NOT NULL`** — workspace resource, governed by membership and permissions
 - **`workspace_id IS NULL`** — personal resource, owned by `created_by` / `uploaded_by`
@@ -152,34 +139,27 @@ Database (database.py)
 
 | Service | Responsibility |
 |---------|---------------|
-| `workspace_service` | CRUD, membership, invite codes, role enforcement |
-| `chat_service` | Chats, messages, personal rooms, DMs |
-| `notebook_service` | Notebooks, pages, folders, wiki links, page graph |
-| `memory_service` | History stores, events, batch push, query, search |
-| `table_service` | Tables, rows, columns, views, CSV import/export |
-| `deck_service` | HTML pages, sharing with token-based access |
+| `user_service` | Account CRUD, password auth, API key issuance |
+| `workspace_service` | Workspace CRUD, membership, invite codes, role enforcement |
+| `notebook_service` | Notebooks, pages, folders, wiki links, page graph, embeddings |
+| `memory_service` | History events: push (single + batch), query, FTS, vector search |
+| `table_service` | Tables, rows, columns, CSV import/export, row embeddings |
 | `permission_service` | Visibility, shares, access checks |
-| `sleep_service` | On-demand curation — reads history, writes notebook wiki pages |
-| `webhook_service` | HMAC-signed delivery with persistent queue and backoff |
 | `embedding_service` | OpenAI text-embedding-3-small integration |
-| `history_query_service` | LLM-synthesized answers over history events |
-| `connection_manager` | WebSocket connection tracking with pg_notify fan-out |
-| `yjs_manager` | Yjs CRDT sync for real-time collaborative notebook editing |
+| `storage_service` | S3-compatible file upload and serve |
+| `analytics_service` | Dashboard views: activity timeline, key topics, embedding projection |
 
-### Background loops
+### No background loops
 
-The backend runs three long-lived async tasks:
+The backend runs no long-lived async tasks. Side-effects that used to be loops have moved:
 
-1. **Curation** — invoked via CLI, acquires a Postgres advisory lock, reads new history events, calls Anthropic to generate wiki pages, writes to notebooks
-2. **Webhook delivery** — polls `webhook_deliveries` for pending items, acquires advisory lock, delivers with exponential backoff, marks delivered/failed
-3. **WebSocket health** — pings all connected WebSockets every 30s, disconnects dead ones
+- **Curation** — now a plugin skill on the client. The CLI invokes Claude locally and POSTs the resulting wiki pages back via REST. Zero LLM inference in the backend.
+- **Universal search** — same story. The agentic search loop runs in the plugin; the backend only serves the underlying resource queries.
+- **Embedding generation** — fire-and-forget `asyncio.create_task` on each write, not a loop.
 
-### Real-time
+### Persistence
 
-Two real-time systems:
-
-- **Chat WebSocket** (`/api/v1/workspaces/{ws}/chats/{id}/ws`) — bidirectional messaging with `ConnectionManager`. Cross-process delivery via `pg_notify` on channel `octopus_events`.
-- **Yjs WebSocket** (`/api/v1/workspaces/{ws}/notebooks/{nb}/pages/{p}/yjs`) — CRDT sync for collaborative markdown editing.
+Notebook pages are edited locally in TipTap and persisted via debounced `PATCH /pages/{id}` with the full markdown body. Last-write-wins. No WebSocket, no CRDT.
 
 ## Frontend architecture
 
@@ -188,19 +168,16 @@ Next.js 16 with Tailwind 4. Key structure:
 ```
 frontend/src/
 ├── app/
-│   ├── page.tsx              # Landing page
-│   ├── login/                # Auth (register + login)
+│   ├── page.tsx              # Home / landing
+│   ├── login/                # Auth (register + login, Auth0 optional)
 │   ├── workspaces/
 │   │   └── [workspaceId]/    # Workspace dashboard
-│   │       ├── chats/        # Chat UI
-│   │       ├── notebooks/    # Notebook editor
-│   │       ├── memory/       # History browser
-│   │       ├── tables/       # Table editor
-│   │       └── decks/        # Page builder
-│   ├── rooms/                # Personal rooms
-│   ├── personas/             # Agent name management
-│   ├── docs/                 # In-app documentation (13 pages)
-│   └── search/               # Universal search
+│   ├── notebooks/            # Wiki notebook editor (TipTap)
+│   ├── memory/               # History browser + stores
+│   ├── tables/               # Table editor
+│   ├── files/                # File uploads
+│   ├── search/               # Universal search
+│   └── docs/                 # In-app documentation
 ├── components/               # Shared React components
 └── lib/
     └── api.ts                # HTTP client (fetch wrapper)
@@ -224,7 +201,7 @@ Three containers: `postgres` (pgvector:pg16), `backend` (uvicorn), `frontend` (N
 
 - **S3-compatible storage** — file uploads (falls back to local)
 - **OpenAI API key** — embeddings for semantic search
-- **Anthropic API key** — curation tool + LLM-powered search
+- **Auth0** — social login / SSO. Without it, password auth still works.
 
 ## Naming
 

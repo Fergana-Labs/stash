@@ -4,12 +4,9 @@ asyncpg==0.30.0
 pydantic==2.10.4
 httpx>=0.27.0
 bcrypt>=4.0.0
-pycrdt>=0.9.0
 pgvector>=0.3.0
-anthropic>=0.40.0
 slowapi>=0.1.9
 alembic>=1.14.0
 sqlalchemy[asyncio]>=2.0.0
 PyJWT[crypto]>=2.8.0
 umap-learn>=0.5.0
-markdown-it-py>=3.0.0

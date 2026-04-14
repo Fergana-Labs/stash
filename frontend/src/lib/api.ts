@@ -59,15 +59,6 @@ async function resolveAuthToken(): Promise<string | null> {
 
 const API_BASE = "";
 
-export function getWsBase(): string {
-  const apiUrl = process.env.NEXT_PUBLIC_API_URL;
-  if (apiUrl) {
-    return apiUrl.replace(/^http/, "ws");
-  }
-  const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-  return `${protocol}//${window.location.host}`;
-}
-
 async function apiFetch<T>(
   path: string,
   options: RequestInit = {}
