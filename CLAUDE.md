@@ -1,4 +1,4 @@
-We are a startup. Write extremely easy to consume code, optimize for how easy the code is to read. make the code skimmable.  avoid cleverness. use early returns
+This is an internal tool. Write extremely easy to consume code, optimize for how easy the code is to read. make the code skimmable.  avoid cleverness. use early returns
 
 ### Be self-sufficient
 If you are about to ask the user to do something for you, think about whether you can do it yourself.
