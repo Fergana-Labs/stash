@@ -349,8 +349,9 @@ export default function WikiPage() {
     } catch (err) { setTablesError(err instanceof Error ? err.message : "Failed to create table"); }
   };
 
+  useEffect(() => { if (!loading && !user) router.push("/login"); }, [user, loading, router]);
   if (loading) return <div className="min-h-screen flex items-center justify-center text-muted">Loading...</div>;
-  if (!user) { router.push("/login"); return null; }
+  if (!user) return null;
 
   return (
     <AppShell user={user} onLogout={logout}>
