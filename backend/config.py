@@ -24,14 +24,9 @@ class Settings:
         "CORS_ORIGINS", "http://localhost:3457,http://localhost:3456"
     ).split(",")
 
-    # --- LLM ---
-    # Used by the curation tool and universal search service (Anthropic SDK reads
-    # ANTHROPIC_API_KEY from the environment automatically; declared here for
-    # documentation and validation purposes).
-    ANTHROPIC_API_KEY: str | None = os.getenv("ANTHROPIC_API_KEY")
-
-    # Used by the embedding service (OpenAI SDK reads OPENAI_API_KEY
-    # automatically; EMBEDDING_API_KEY is the project-specific alias).
+    # --- Embeddings ---
+    # Used by the embedding service for semantic search (OpenAI SDK reads
+    # OPENAI_API_KEY automatically; EMBEDDING_API_KEY is a project-specific alias).
     OPENAI_API_KEY: str | None = os.getenv("OPENAI_API_KEY")
     EMBEDDING_API_KEY: str | None = os.getenv("EMBEDDING_API_KEY") or os.getenv("OPENAI_API_KEY")
 

@@ -1,6 +1,6 @@
 # Octopus
 
-Shared memory for AI agents. Every Claude Code session, research paper, webpage, and conversation goes into one searchable knowledge base. A user-invoked curation tool organizes it into a wiki.
+Shared memory for AI agents. Every Claude Code session, research paper, webpage, and conversation goes into one searchable knowledge base. A Claude Code skill ("sleep time compute") organizes it into a wiki.
 
 ## Architecture
 
@@ -20,10 +20,9 @@ Everything lives in a **workspace** — a permissioned container for teams. Pers
 - Real-time: Yjs WebSocket (notebook collaboration)
 - Storage: S3-compatible (Cloudflare R2)
 - Embeddings: OpenAI text-embedding-3-small (384 dims)
-- LLM: Anthropic Claude (curation, universal search)
 
 ## Key Services
-- `backend/services/curation_service.py` — User-invoked curation. Reads workspace histories, notebooks, and tables. Calls Claude to create categorized wiki pages with folders and [[wiki links]].
+- `claude-plugin/skills/sleep/SKILL.md` — Sleep time compute skill. The user's Claude Code session reads history and organizes it into wiki pages via CLI/MCP tools.
 - `backend/services/universal_search_service.py` — Agentic search loop across all resource types.
 - `backend/services/notebook_service.py` — Wiki features: [[link]] parsing, backlinks, page graph, embeddings, auto-index.
 - `backend/services/embedding_service.py` — OpenAI embedding API client. Uses EMBEDDING_API_KEY or OPENAI_API_KEY.

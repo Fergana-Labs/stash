@@ -1,8 +1,6 @@
 """MCP server for Octopus — exposes workspace/notebook/memory/table/file tools."""
 
-import json
 import os
-from uuid import UUID
 
 import httpx
 from mcp.server.fastmcp import Context, FastMCP
@@ -18,14 +16,13 @@ mcp = FastMCP(
     "octopus",
     instructions="""Octopus v0 — Shared memory for AI agents.
 
-Push history events, organize knowledge in wiki notebooks, store structured data in tables, attach files, and search across everything. Call `curate` to run LLM-powered curation that turns raw history into categorized wiki pages.
+Push history events, organize knowledge in wiki notebooks, store structured data in tables, attach files, and search across everything.
 
 ## Getting Started
 1. Call `register` to create an account and get an API key.
 2. Call `create_workspace` to create a workspace.
 3. Push history events, upload files, create table rows.
-4. Create notebooks and wiki pages, or call `curate` to auto-generate them from history.
-5. Search across everything with `universal_search`.
+4. Create notebooks and wiki pages to organize knowledge.
 
 ## Core Objects
 
@@ -34,7 +31,7 @@ Push history events, organize knowledge in wiki notebooks, store structured data
 - **Notebooks**: Wiki-style markdown pages with [[backlinks]], page graph, auto-index.
 - **Tables**: Structured data with typed columns, row embeddings, semantic search.
 - **Files**: Upload images, PDFs, and other attachments to S3 storage.
-- **Curation**: LLM reads workspace history and organizes it into notebook wiki pages with [[wiki links]].
+- **Curation**: Organize history into notebook wiki pages with [[wiki links]].
 
 ## Authentication
 All tools except `register` and `list_workspaces` require auth.
@@ -46,12 +43,10 @@ All tools except `register` and `list_workspaces` require auth.
 - create_workspace, list_workspaces, my_workspaces, join_workspace, workspace_info, workspace_members, leave_workspace — workspaces
 - list_notebooks, create_notebook, read_notebook, update_notebook, delete_notebook, create_notebook_folder, delete_notebook_folder — notebooks
 - get_backlinks, get_outlinks, get_page_graph, semantic_search_pages, auto_index_notebook — wiki features
-- create_memory_store, list_memory_stores, push_memory_event, push_memory_events_batch, query_memory_events, search_memory_events, query_history — history
+- create_memory_store, list_memory_stores, push_memory_event, push_memory_events_batch, query_memory_events, search_memory_events — history
 - list_tables, create_table, get_table_schema, update_table, read_table_rows, insert_table_row, insert_table_rows_batch, update_table_row, update_table_rows_batch, delete_table_row, count_table_rows, add_table_column, update_table_column, delete_table_column — tables
 - configure_table_embeddings, backfill_table_embeddings, semantic_search_table_rows — table embeddings
 - upload_file, list_files, get_file_url, delete_file — files
-- curate — LLM-powered curation of history into wiki pages
-- universal_search — cross-resource AI search
 """,
     streamable_http_path="/",
 )
@@ -104,19 +99,6 @@ def _check_response(resp: httpx.Response) -> None:
     if resp.status_code == 409:
         raise RuntimeError(f"Conflict: {detail or 'already exists'}")
     raise RuntimeError(f"Request failed ({resp.status_code}): {detail}")
-
-
-async def _require_auth() -> dict:
-    """Fetch the current user profile using the stored API key. Returns the user dict."""
-    key = _api_key
-    if not key:
-        raise RuntimeError(
-            "Not authenticated. Set OCTOPUS_API_KEY or call the register tool first."
-        )
-    async with _client() as c:
-        resp = await c.get("/api/v1/users/me", headers={"Authorization": f"Bearer {key}"})
-        _check_response(resp)
-        return resp.json()
 
 
 # ---------------------------------------------------------------------------
@@ -473,26 +455,6 @@ async def search_memory_events(ctx: Context, workspace_id: str, store_id: str, q
     for e in events:
         lines.append(f"[{e['created_at']}] {e['agent_name']}/{e['event_type']}: {e['content'][:200]}")
     return "\n".join(lines)
-
-
-@mcp.tool()
-async def query_history(ctx: Context, workspace_id: str, store_id: str, question: str) -> str:
-    """Ask a question about a history store. Returns an LLM-synthesized answer based on the stored events."""
-    async with _client() as c:
-        resp = await c.post(
-            f"/api/v1/workspaces/{workspace_id}/memory/{store_id}/query",
-            json={"question": question}, headers=_auth_headers(ctx),
-        )
-        _check_response(resp)
-        data = resp.json()
-    answer = data.get("answer", "")
-    sources = data.get("sources", [])
-    result = f"{answer}\n\n--- Sources ({len(sources)} events) ---"
-    for s in sources[:5]:
-        result += f"\n[{s['created_at']}] {s['agent_name']}/{s['event_type']}: {s['content'][:100]}"
-    if len(sources) > 5:
-        result += f"\n... and {len(sources) - 5} more"
-    return result
 
 
 # ---------------------------------------------------------------------------
@@ -1169,66 +1131,6 @@ async def delete_file(
         )
         _check_response(resp)
     return "File deleted."
-
-
-# ---------------------------------------------------------------------------
-# Universal Search
-# ---------------------------------------------------------------------------
-
-
-@mcp.tool()
-async def universal_search(
-    ctx: Context,
-    question: str,
-    workspace_id: str = "",
-    resource_types: str = "",
-) -> str:
-    """Search across all resources (history, notebooks, tables, documents) using AI-powered synthesis.
-
-    Args:
-        question: Your question or what to search for
-        workspace_id: Optional workspace UUID to scope the search
-        resource_types: Optional comma-separated filter: history, notebook, table, document
-    """
-    body: dict = {"question": question}
-    if resource_types:
-        body["resource_types"] = [s.strip() for s in resource_types.split(",")]
-
-    url = f"/api/v1/workspaces/{workspace_id}/search" if workspace_id else "/api/v1/me/search"
-    async with _client() as c:
-        resp = await c.post(url, json=body, headers=_auth_headers(ctx))
-        _check_response(resp)
-    data = resp.json()
-    lines = [data.get("answer", "No answer")]
-    sources = data.get("sources_used", [])
-    if sources:
-        lines.append(f"\nSources: {', '.join(sources)}")
-    return "\n".join(lines)
-
-
-# ---------------------------------------------------------------------------
-# Curation
-# ---------------------------------------------------------------------------
-
-
-@mcp.tool()
-async def curate(
-    workspace_id: str,
-    notebook_id: str,
-    agent_name_filter: list[str] | None = None,
-    model: str = "claude-haiku-4-5-20251001",
-) -> str:
-    """Curate workspace history into wiki pages. Reads recent history events and uses an LLM to organize them into categorized notebook pages with [[wiki links]]. Invoke this periodically to keep your wiki up to date."""
-    from backend.services import curation_service
-    user = await _require_auth()
-    result = await curation_service.curate(
-        workspace_id=UUID(workspace_id),
-        notebook_id=UUID(notebook_id),
-        user_id=user["id"],
-        agent_name_filter=agent_name_filter,
-        model=model,
-    )
-    return json.dumps(result)
 
 
 # ---------------------------------------------------------------------------

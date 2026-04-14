@@ -31,7 +31,6 @@ cd octopus
 cp .env.example .env`}</CodeBlock>
       <P>
         At minimum set <Code>POSTGRES_USER</Code>, <Code>POSTGRES_PASSWORD</Code>,{" "}
-        <Code>ANTHROPIC_API_KEY</Code> (curation + universal search),
         <Code>OPENAI_API_KEY</Code> (semantic search), and <Code>PUBLIC_URL</Code> (your domain).
       </P>
       <P>
@@ -64,7 +63,6 @@ cp .env.example .env`}</CodeBlock>
       <ParamTable params={[
         { name: "POSTGRES_USER / POSTGRES_PASSWORD / POSTGRES_DB", type: "string", desc: "Postgres credentials. Defaults are octopus/octopus/octopus — change before going to production." },
         { name: "DATABASE_URL", type: "string", desc: "Full PostgreSQL connection string. Defaults to postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@localhost:5432/${POSTGRES_DB}.", required: true },
-        { name: "ANTHROPIC_API_KEY", type: "string", desc: "Required for curation and LLM-synthesised history queries." },
         { name: "OPENAI_API_KEY", type: "string", desc: "Required for semantic search (text-embedding-3-small)." },
         { name: "PUBLIC_URL", type: "string", desc: "Frontend origin. Used in invite links and CORS config. Default: http://localhost:3457" },
         { name: "CORS_ORIGINS", type: "string", desc: "Comma-separated allowed origins. Default: http://localhost:3457,http://localhost:3456" },

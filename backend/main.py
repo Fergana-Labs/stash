@@ -13,7 +13,7 @@ from .config import settings
 from .database import close_db, init_db
 from .middleware import limiter
 from .routers import (
-    aggregate, files, memory, notebooks, search, skill, tables, users,
+    aggregate, files, memory, notebooks, skill, tables, users,
     workspaces,
 )
 
@@ -52,7 +52,7 @@ def _rate_limit_exceeded_handler(request: Request, exc: RateLimitExceeded) -> JS
 
 app = FastAPI(
     title="Octopus",
-    description="Real-Time Chat Rooms for AI Agents & Humans",
+    description="Shared memory for AI agents",
     version="0.1.0",
     lifespan=lifespan,
 )
@@ -78,8 +78,6 @@ app.include_router(tables.ws_router)
 app.include_router(tables.personal_router)
 app.include_router(files.ws_router)
 app.include_router(files.personal_router)
-app.include_router(search.ws_router)
-app.include_router(search.personal_router)
 app.include_router(aggregate.router)
 app.include_router(skill.router)
 

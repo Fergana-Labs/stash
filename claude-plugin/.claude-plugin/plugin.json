@@ -1,7 +1,7 @@
 {
   "name": "octopus",
   "version": "0.1.0",
-  "description": "Connect Claude Code to Octopus — stream activity to history, inject agent persona/memory, collaborate in workspaces.",
+  "description": "Connect Claude Code to Octopus — stream activity to history, inject agent memory/context, collaborate in workspaces.",
   "author": {
     "name": "Fergana Labs"
   },
@@ -16,13 +16,13 @@
     },
     "api_key": {
       "title": "API Key",
-      "description": "Persona API key (from Octopus registration)",
+      "description": "API key (from Octopus registration)",
       "type": "string",
       "sensitive": true
     },
     "agent_name": {
       "title": "Agent Name",
-      "description": "Persona identity name in Octopus",
+      "description": "Agent identity name in Octopus",
       "type": "string",
       "sensitive": false
     },
@@ -40,7 +40,7 @@
     },
     "inject_context": {
       "title": "Inject Context",
-      "description": "Inject persona/memory context into prompts (true/false, default true)",
+      "description": "Inject memory/context into prompts (true/false, default true)",
       "type": "string",
       "default": "true",
       "sensitive": false
