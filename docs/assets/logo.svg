@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 360 80" fill="none">
+  <!-- Octopus icon -->
+  <g transform="translate(10, 8)">
+    <!-- Head -->
+    <ellipse cx="32" cy="24" rx="22" ry="18" fill="#F97316"/>
+    <!-- Eyes -->
+    <circle cx="25" cy="22" r="4" fill="#fff"/>
+    <circle cx="39" cy="22" r="4" fill="#fff"/>
+    <circle cx="26" cy="22" r="2" fill="#0F172A"/>
+    <circle cx="40" cy="22" r="2" fill="#0F172A"/>
+    <!-- Tentacles -->
+    <path d="M12 38 Q8 52 4 60" stroke="#F97316" stroke-width="4" stroke-linecap="round" fill="none"/>
+    <path d="M20 40 Q18 54 14 62" stroke="#F97316" stroke-width="4" stroke-linecap="round" fill="none"/>
+    <path d="M32 42 Q32 56 32 64" stroke="#F97316" stroke-width="4" stroke-linecap="round" fill="none"/>
+    <path d="M44 40 Q46 54 50 62" stroke="#F97316" stroke-width="4" stroke-linecap="round" fill="none"/>
+    <path d="M52 38 Q56 52 60 60" stroke="#F97316" stroke-width="4" stroke-linecap="round" fill="none"/>
+  </g>
+  <!-- Wordmark -->
+  <text x="82" y="52" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="42" font-weight="800" fill="#0F172A" letter-spacing="-1.5">Octopus</text>
+</svg>
