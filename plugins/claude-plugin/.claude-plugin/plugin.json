@@ -44,6 +44,13 @@
       "type": "string",
       "default": "true",
       "sensitive": false
+    },
+    "auto_curate": {
+      "title": "Auto-curate Wiki",
+      "description": "Run /octopus:sleep headless at session end to re-index history into wiki pages (true/false, default true)",
+      "type": "string",
+      "default": "true",
+      "sensitive": false
     }
   },
   "skills": "./skills/",
