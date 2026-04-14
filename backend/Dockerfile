@@ -8,7 +8,6 @@ WORKDIR /app
 COPY backend/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY mcp_server/ ./mcp_server/
 COPY backend/ ./backend/
 COPY alembic.ini ./alembic.ini
 

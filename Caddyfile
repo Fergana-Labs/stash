@@ -16,10 +16,6 @@ app.example.com {
         reverse_proxy backend:3456
     }
 
-    handle /mcp/* {
-        reverse_proxy backend:3456
-    }
-
     handle /health {
         reverse_proxy backend:3456
     }

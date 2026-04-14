@@ -39,7 +39,6 @@ body:
         - Frontend (UI)
         - CLI
         - Claude Code plugin
-        - MCP server
         - OpenClaw plugin
         - Self-hosting / Docker
         - Documentation
