@@ -5,6 +5,7 @@ import hashlib
 import json
 import logging
 import re
+from collections.abc import Awaitable, Callable
 from uuid import UUID
 
 from ..database import get_pool
@@ -170,56 +171,128 @@ async def get_sync_manifest(notebook_id: UUID) -> list[dict]:
     return [dict(r) for r in rows]
 
 
+MAX_UPDATE_RETRIES = 3
+
+
+class ConcurrentEditError(Exception):
+    """Raised when update_page detects a concurrent write and the caller did
+    not supply a merge strategy. Carries the freshly-read page state so the
+    caller can decide how to reconcile."""
+
+    def __init__(self, page: dict):
+        super().__init__(f"concurrent edit on page {page.get('id')}")
+        self.page = page
+
+
 async def update_page(
     page_id: UUID, notebook_id: UUID, updated_by: UUID,
     name: str | None = None, folder_id: UUID | None = None,
     content: str | None = None, move_to_root: bool = False,
     metadata: dict | None = None,
+    on_conflict: Callable[[dict], Awaitable[str]] | None = None,
 ) -> dict | None:
+    """Update a page with optimistic concurrency on content_hash.
+
+    When `content` is being updated, the UPDATE is guarded by the
+    content_hash we observed before the write. On conflict (another writer
+    changed content in between):
+      - If `on_conflict` is provided, it is awaited with the freshly-read
+        page dict and must return the new content_markdown to write on
+        this retry. This is the hook LLM-driven callers use to re-reason
+        about their edit on top of the concurrent writer's changes.
+      - Otherwise, a ConcurrentEditError is raised.
+    Bounded to MAX_UPDATE_RETRIES attempts.
+    """
     pool = get_pool()
-    sets = ["updated_at = now()", "updated_by = $1"]
-    args: list = [updated_by]
-    idx = 2
 
-    if name is not None:
-        sets.append(f"name = ${idx}")
-        args.append(name)
-        idx += 1
-    if move_to_root:
-        sets.append("folder_id = NULL")
-    elif folder_id is not None:
-        sets.append(f"folder_id = ${idx}")
-        args.append(folder_id)
-        idx += 1
-    if content is not None:
-        sets.append(f"content_markdown = ${idx}")
-        args.append(content)
-        idx += 1
-        sets.append(f"content_hash = ${idx}")
-        args.append(_content_hash(content))
-        idx += 1
-    if metadata is not None:
-        sets.append(f"metadata = ${idx}::jsonb")
-        args.append(metadata)
-        idx += 1
+    for attempt in range(MAX_UPDATE_RETRIES):
+        expected_hash: str | None = None
+        if content is not None:
+            current = await pool.fetchrow(
+                "SELECT content_hash FROM notebook_pages WHERE id = $1 AND notebook_id = $2",
+                page_id, notebook_id,
+            )
+            if current is None:
+                return None
+            expected_hash = current["content_hash"]
 
-    args.append(page_id)
-    args.append(notebook_id)
-    row = await pool.fetchrow(
-        f"UPDATE notebook_pages SET {', '.join(sets)} "
-        f"WHERE id = ${idx} AND notebook_id = ${idx + 1} "
-        "RETURNING id, notebook_id, folder_id, name, content_markdown, content_hash, metadata, "
-        "created_by, updated_by, created_at, updated_at",
-        *args,
+        sets = ["updated_at = now()", "updated_by = $1"]
+        args: list = [updated_by]
+        idx = 2
+
+        if name is not None:
+            sets.append(f"name = ${idx}")
+            args.append(name)
+            idx += 1
+        if move_to_root:
+            sets.append("folder_id = NULL")
+        elif folder_id is not None:
+            sets.append(f"folder_id = ${idx}")
+            args.append(folder_id)
+            idx += 1
+        if content is not None:
+            sets.append(f"content_markdown = ${idx}")
+            args.append(content)
+            idx += 1
+            sets.append(f"content_hash = ${idx}")
+            args.append(_content_hash(content))
+            idx += 1
+        if metadata is not None:
+            sets.append(f"metadata = ${idx}::jsonb")
+            args.append(metadata)
+            idx += 1
+
+        args.append(page_id)
+        args.append(notebook_id)
+        where = f"id = ${idx} AND notebook_id = ${idx + 1}"
+        if expected_hash is not None:
+            args.append(expected_hash)
+            where += f" AND content_hash = ${idx + 2}"
+
+        row = await pool.fetchrow(
+            f"UPDATE notebook_pages SET {', '.join(sets)} WHERE {where} "
+            "RETURNING id, notebook_id, folder_id, name, content_markdown, content_hash, metadata, "
+            "created_by, updated_by, created_at, updated_at",
+            *args,
+        )
+        if row:
+            page = dict(row)
+            if content is not None:
+                asyncio.create_task(_embed_page(page["id"], content))
+                asyncio.create_task(_update_page_links(page["id"], notebook_id, content))
+            return page
+
+        if expected_hash is None:
+            return None
+
+        fresh = await pool.fetchrow(
+            "SELECT id, notebook_id, folder_id, name, content_markdown, content_hash, metadata, "
+            "created_by, updated_by, created_at, updated_at "
+            "FROM notebook_pages WHERE id = $1 AND notebook_id = $2",
+            page_id, notebook_id,
+        )
+        if fresh is None:
+            return None
+
+        fresh_page = dict(fresh)
+        logger.info(
+            "update_page conflict on page %s (attempt %d/%d)",
+            page_id, attempt + 1, MAX_UPDATE_RETRIES,
+        )
+        if on_conflict is None:
+            raise ConcurrentEditError(fresh_page)
+        content = await on_conflict(fresh_page)
+        await asyncio.sleep(0.02 * (2 ** attempt))
+
+    logger.warning("update_page exhausted retries for page %s", page_id)
+    fresh = await pool.fetchrow(
+        "SELECT id, notebook_id, folder_id, name, content_markdown, content_hash "
+        "FROM notebook_pages WHERE id = $1 AND notebook_id = $2",
+        page_id, notebook_id,
     )
-    if not row:
+    if fresh is None:
         return None
-    page = dict(row)
-    # Fire-and-forget: re-embed + re-extract wiki links when content changes
-    if content is not None:
-        asyncio.create_task(_embed_page(page["id"], content))
-        asyncio.create_task(_update_page_links(page["id"], notebook_id, content))
-    return page
+    raise ConcurrentEditError(dict(fresh))
 
 
 async def delete_page(page_id: UUID, notebook_id: UUID) -> bool:

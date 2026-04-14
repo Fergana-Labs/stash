@@ -78,8 +78,9 @@ export default function FilesPage() {
     } catch { /* ignore */ }
   };
 
+  useEffect(() => { if (!loading && !user) router.push("/login"); }, [user, loading, router]);
   if (loading) return <div className="min-h-screen flex items-center justify-center text-muted">Loading...</div>;
-  if (!user) { router.push("/login"); return null; }
+  if (!user) return null;
   if (!workspaceId) return <div className="min-h-screen flex items-center justify-center text-muted">No workspace selected</div>;
 
   return (
