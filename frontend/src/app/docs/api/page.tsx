@@ -45,8 +45,7 @@ GET    /workspaces/{ws}/notebooks/{nb}/pages/{id}/backlinks Incoming links
 GET    /workspaces/{ws}/notebooks/{nb}/pages/{id}/outlinks  Outgoing links
 GET    /workspaces/{ws}/notebooks/{nb}/graph               Page link graph (nodes + edges)
 
-GET    /workspaces/{ws}/notebooks/{nb}/pages/semantic-search?q=   Semantic search
-POST   /workspaces/{ws}/notebooks/{nb}/auto-index          Auto-generate index page`}</CodeBlock>
+GET    /workspaces/{ws}/notebooks/{nb}/pages/semantic-search?q=   Semantic search`}</CodeBlock>
 
       <H3>History stores</H3>
       <CodeBlock>{`POST   /workspaces/{ws}/memory                              Create store

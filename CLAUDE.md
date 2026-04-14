@@ -22,7 +22,7 @@ Everything lives in a **workspace** — a permissioned container for teams. Pers
 
 ## Key Services
 - `backend/services/universal_search_service.py` — Agentic search loop across all resource types.
-- `backend/services/notebook_service.py` — Wiki features: [[link]] parsing, backlinks, page graph, embeddings, auto-index.
+- `backend/services/notebook_service.py` — Wiki features: [[link]] parsing, backlinks, page graph, embeddings.
 - `backend/services/embedding_service.py` — OpenAI embedding API client. Uses EMBEDDING_API_KEY or OPENAI_API_KEY.
 - `backend/services/yjs_converter.py` — Native Python markdown ↔ Yjs XmlFragment conversion. No Node.js collab server needed.
 - `backend/services/storage_service.py` — S3-compatible file upload/serve.

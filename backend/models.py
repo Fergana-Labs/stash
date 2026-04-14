@@ -286,25 +286,6 @@ class RowListResponse(BaseModel):
 # --- History ---
 
 
-class HistoryCreateRequest(BaseModel):
-    name: str = Field(..., min_length=1, max_length=128)
-    description: str = Field("", max_length=1000)
-
-
-class HistoryResponse(BaseModel):
-    id: UUID
-    workspace_id: UUID | None
-    name: str
-    description: str
-    created_by: UUID
-    created_at: datetime
-    event_count: int | None = None
-
-
-class HistoryListResponse(BaseModel):
-    stores: list[HistoryResponse]
-
-
 class Attachment(BaseModel):
     file_id: UUID
     name: str
@@ -327,7 +308,8 @@ class HistoryEventBatchRequest(BaseModel):
 
 class HistoryEventResponse(BaseModel):
     id: UUID
-    store_id: UUID
+    workspace_id: UUID | None = None
+    created_by: UUID | None = None
     agent_name: str
     event_type: str
     session_id: str | None
@@ -336,6 +318,7 @@ class HistoryEventResponse(BaseModel):
     metadata: dict
     attachments: list[dict] | None = None
     created_at: datetime
+    workspace_name: str | None = None
 
 
 class HistoryEventListResponse(BaseModel):

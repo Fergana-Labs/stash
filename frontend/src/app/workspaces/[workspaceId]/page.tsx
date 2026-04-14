@@ -12,8 +12,7 @@ import {
   deleteNotebook,
   getWorkspace,
   listNotebooks,
-  listHistories,
-  createHistory,
+  listFiles,
   listTables,
   createTable,
   deleteTable,
@@ -23,8 +22,24 @@ import {
   deleteWorkspace,
   kickWorkspaceMember,
   updateWorkspace,
+  getActivityTimeline,
+  getKnowledgeDensity,
+  getEmbeddingProjection,
 } from "../../../lib/api";
-import { History, Notebook, Table, Workspace, WorkspaceMember } from "../../../lib/types";
+import {
+  ActivityTimeline,
+  EmbeddingProjection,
+  KnowledgeDensity,
+  Notebook,
+  FileInfo,
+  Table,
+  Workspace,
+  WorkspaceMember,
+} from "../../../lib/types";
+import DashboardSection from "../../../components/viz/DashboardSection";
+import AgentActivityTimeline from "../../../components/viz/AgentActivityTimeline";
+import KnowledgeDensityMap from "../../../components/viz/KnowledgeDensityMap";
+import EmbeddingSpaceExplorer from "../../../components/viz/EmbeddingSpaceExplorer";
 
 interface WorkspaceSectionProps {
   title: string;
@@ -66,13 +81,19 @@ export default function WorkspacePage() {
 
   const [workspace, setWorkspace] = useState<Workspace | null>(null);
   const [notebooks, setNotebooks] = useState<Notebook[]>([]);
-  const [histories, setHistories] = useState<History[]>([]);
   const [tables, setTables] = useState<Table[]>([]);
+  const [recentFiles, setRecentFiles] = useState<FileInfo[]>([]);
   const [members, setMembers] = useState<WorkspaceMember[]>([]);
   const [isMember, setIsMember] = useState(false);
   const [error, setError] = useState("");
   const [dataLoaded, setDataLoaded] = useState(false);
   const [showManageSidebar, setShowManageSidebar] = useState(false);
+
+  // Visualization state
+  const [timeline, setTimeline] = useState<ActivityTimeline | null>(null);
+  const [density, setDensity] = useState<KnowledgeDensity | null>(null);
+  const [projection, setProjection] = useState<EmbeddingProjection | null>(null);
+  const [vizLoading, setVizLoading] = useState(true);
 
   const loadWorkspace = useCallback(async () => {
     try { setWorkspace(await getWorkspace(workspaceId)); } catch { setError("Workspace not found"); }
@@ -80,16 +101,16 @@ export default function WorkspacePage() {
 
   const loadData = useCallback(async () => {
     try {
-      const [nbRes, m, histRes, tblRes] = await Promise.all([
+      const [nbRes, m, tblRes, filesRes] = await Promise.all([
         listNotebooks(workspaceId).then(r => r?.notebooks ?? []).catch(() => [] as Notebook[]),
         getWorkspaceMembers(workspaceId).catch(() => [] as WorkspaceMember[]),
-        listHistories(workspaceId).then(r => r?.stores ?? []).catch(() => [] as History[]),
         listTables(workspaceId).then(r => r?.tables ?? []).catch(() => [] as Table[]),
+        listFiles(workspaceId).catch(() => [] as FileInfo[]),
       ]);
       setNotebooks(nbRes);
       setMembers(m);
-      setHistories(histRes);
       setTables(tblRes);
+      setRecentFiles(filesRes.slice(0, 5));
       if (user) setIsMember(m.some(mem => mem.user_id === user.id));
       setDataLoaded(true);
     } catch { setIsMember(false); setDataLoaded(true); }
@@ -97,6 +118,19 @@ export default function WorkspacePage() {
 
   useEffect(() => { loadWorkspace(); }, [loadWorkspace]);
   useEffect(() => { if (user) loadData(); }, [user, loadData]);
+  useEffect(() => {
+    if (!user) return;
+    setVizLoading(true);
+    Promise.all([
+      getActivityTimeline().catch(() => null),
+      getKnowledgeDensity().catch(() => null),
+      getEmbeddingProjection().catch(() => null),
+    ]).then(([t, d, p]) => {
+      setTimeline(t);
+      setDensity(d);
+      setProjection(p);
+    }).finally(() => setVizLoading(false));
+  }, [user]);
 
   const handleJoin = async () => {
     if (!workspace) return;
@@ -117,12 +151,6 @@ export default function WorkspacePage() {
     catch (err) { setError(err instanceof Error ? err.message : "Failed to delete"); }
   };
 
-  const handleCreateHistory = async () => {
-    const name = prompt("History store name:");
-    if (!name?.trim()) return;
-    try { await createHistory(workspaceId, name.trim()); await loadData(); }
-    catch (err) { setError(err instanceof Error ? err.message : "Failed to create history store"); }
-  };
 
   const handleCreateTable = async () => {
     const name = prompt("Table name:");
@@ -180,35 +208,40 @@ export default function WorkspacePage() {
           <div className="flex-1 flex overflow-hidden">
             <div className="flex-1 overflow-y-auto">
               <div className="max-w-4xl mx-auto w-full px-6 py-8 space-y-5">
-              {dataLoaded && histories.length === 0 && notebooks.length === 0 && (
+              {dataLoaded && notebooks.length === 0 && (
                 <SetupCard workspaceId={workspaceId} />
               )}
 
-              <div className="bg-raised border border-border rounded-xl px-5 py-4">
-                <div className="flex items-start justify-between gap-4">
-                  <div className="min-w-0">
-                    <h2 className="text-lg font-semibold text-foreground">{workspace?.name || "Workspace"}</h2>
-                    <p className="text-sm text-dim mt-1">
-                      Organize your agent work across memory, notebooks, and tables.
-                    </p>
-                  </div>
-                  <div className="text-right text-xs text-muted flex-shrink-0">
-                    <div>{members.length} member{members.length !== 1 ? "s" : ""}</div>
-                    {workspace?.invite_code && <div className="mt-1">Invite code: {workspace.invite_code}</div>}
+              {/* Visualizations */}
+              {(vizLoading || timeline?.buckets.length || density?.clusters.length || projection?.points.length) ? (
+                <div className="space-y-4">
+                  <DashboardSection title="Agent Activity" loading={vizLoading} empty={!timeline?.buckets.length} emptyMessage="No agent activity yet.">
+                    {timeline && <AgentActivityTimeline data={timeline} />}
+                  </DashboardSection>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <DashboardSection title="Knowledge Density" loading={vizLoading} empty={!density?.clusters.length} emptyMessage="No content yet.">
+                      {density && <KnowledgeDensityMap data={density} onTopicClick={(topic) => { window.location.href = `/search?q=${encodeURIComponent(topic)}`; }} />}
+                    </DashboardSection>
+                    <DashboardSection title="Embedding Space" loading={vizLoading} empty={!projection?.points.length} emptyMessage="No embeddings yet.">
+                      {projection && <EmbeddingSpaceExplorer data={projection} />}
+                    </DashboardSection>
                   </div>
                 </div>
-              </div>
+              ) : null}
 
               <WorkspaceSection
-                title="Notebooks"
-                description="Wiki pages with categories, backlinks, and summaries. Use octopus curate to organize."
-                actionLabel="+ New"
-                onAction={handleCreateNotebook}
+                title="Wiki"
+                description="Notebooks and tables — wiki pages with backlinks, and structured data."
               >
+                {/* Notebooks */}
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-[10px] font-medium text-muted uppercase tracking-wider">Notebooks</span>
+                  <button onClick={handleCreateNotebook} className="text-xs text-brand hover:text-brand-hover">+ New</button>
+                </div>
                 {notebooks.length === 0 ? (
-                  <p className="text-sm text-muted">No notebooks yet.</p>
+                  <p className="text-sm text-muted mb-4">No notebooks yet.</p>
                 ) : (
-                  <div className="space-y-1">
+                  <div className="space-y-1 mb-4">
                     {notebooks.map(nb => (
                       <div key={nb.id} className="flex items-center justify-between px-3 py-2 rounded-lg hover:bg-raised transition-colors">
                         <Link href="/notebooks" className="flex items-center gap-3 flex-1 min-w-0">
@@ -218,45 +251,17 @@ export default function WorkspacePage() {
                             {nb.description && <div className="text-xs text-muted">{nb.description}</div>}
                           </div>
                         </Link>
-                        <button onClick={() => handleDeleteNotebook(nb.id)} className="text-xs text-red-400 hover:text-red-300 px-2 py-1">Delete</button>
+                        <button onClick={() => handleDeleteNotebook(nb.id)} className="text-xs text-red-400 hover:text-red-300 px-2 py-1 opacity-0 group-hover:opacity-100">Delete</button>
                       </div>
                     ))}
                   </div>
                 )}
-              </WorkspaceSection>
 
-              <WorkspaceSection
-                title="History"
-                description="Agent sessions stream here: every tool call, edit, and message."
-                actionLabel="+ New"
-                onAction={handleCreateHistory}
-              >
-                {histories.length === 0 ? (
-                  <p className="text-sm text-muted">No history stores yet. Connect an agent to start streaming sessions.</p>
-                ) : (
-                  <div className="space-y-1">
-                    {histories.map(h => (
-                      <Link key={h.id} href="/memory" className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-raised transition-colors">
-                        <div className="w-7 h-7 rounded-md bg-violet-500/15 text-violet-500 flex items-center justify-center text-xs font-bold">H</div>
-                        <div className="flex-1 min-w-0">
-                          <div className="text-sm text-foreground">{h.name}</div>
-                          {h.description && <div className="text-xs text-muted truncate">{h.description}</div>}
-                        </div>
-                        {h.event_count != null && (
-                          <span className="text-xs text-muted">{h.event_count} events</span>
-                        )}
-                      </Link>
-                    ))}
-                  </div>
-                )}
-              </WorkspaceSection>
-
-              <WorkspaceSection
-                title="Tables"
-                description="Structured data agents can read and write, like a shared spreadsheet."
-                actionLabel="+ New"
-                onAction={handleCreateTable}
-              >
+                {/* Tables */}
+                <div className="flex items-center justify-between mb-2 pt-3 border-t border-border-subtle">
+                  <span className="text-[10px] font-medium text-muted uppercase tracking-wider">Tables</span>
+                  <button onClick={handleCreateTable} className="text-xs text-brand hover:text-brand-hover">+ New</button>
+                </div>
                 {tables.length === 0 ? (
                   <p className="text-sm text-muted">No tables yet.</p>
                 ) : (
@@ -279,6 +284,46 @@ export default function WorkspacePage() {
                 )}
               </WorkspaceSection>
 
+              <WorkspaceSection
+                title="History"
+                description="Agent sessions — every tool call, edit, and message."
+              >
+                <Link href={`/memory?ws=${workspaceId}`} className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-raised transition-colors">
+                  <div className="w-7 h-7 rounded-md bg-violet-500/15 text-violet-500 flex items-center justify-center text-xs font-bold">H</div>
+                  <div className="text-sm text-foreground">View agent sessions</div>
+                </Link>
+              </WorkspaceSection>
+
+              <WorkspaceSection
+                title="Files"
+                description="Uploaded images, documents, and attachments."
+                actionLabel="View all"
+                onAction={() => router.push(`/files?ws=${workspaceId}`)}
+              >
+                {recentFiles.length === 0 ? (
+                  <p className="text-sm text-muted">No files uploaded yet.</p>
+                ) : (
+                  <div className="space-y-1">
+                    {recentFiles.map(f => (
+                      <a key={f.id} href={f.url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-raised transition-colors">
+                        <div className="w-7 h-7 rounded-md bg-amber-500/15 text-amber-500 flex items-center justify-center text-[10px] font-bold">
+                          {f.content_type.startsWith("image/") ? "IMG" : "FILE"}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="text-sm text-foreground truncate">{f.name}</div>
+                          <div className="text-xs text-muted">{(f.size_bytes / 1024).toFixed(1)} KB</div>
+                        </div>
+                      </a>
+                    ))}
+                    {recentFiles.length >= 5 && (
+                      <Link href={`/files?ws=${workspaceId}`} className="block px-3 py-1.5 text-xs text-brand hover:text-brand-hover">
+                        View all files...
+                      </Link>
+                    )}
+                  </div>
+                )}
+              </WorkspaceSection>
+
               </div>
             </div>
 
@@ -293,6 +338,18 @@ export default function WorkspacePage() {
                 onDelete={async () => { await deleteWorkspace(workspaceId); router.push("/rooms"); }}
                 onKickMember={async (uid) => { await kickWorkspaceMember(workspaceId, uid); await loadData(); }}
                 onUpdateWorkspace={async (data) => { setWorkspace(await updateWorkspace(workspaceId, data)); }}
+                onAddMember={async (username) => {
+                  const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3456"}/api/v1/workspaces/${workspaceId}/members`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json", "Authorization": `Bearer ${localStorage.getItem("octopus_token") || ""}` },
+                    body: JSON.stringify({ username }),
+                  });
+                  if (!res.ok) {
+                    const data = await res.json().catch(() => ({}));
+                    throw new Error(data.detail || "Failed to add member");
+                  }
+                  await loadData();
+                }}
               />
             )}
           </div>

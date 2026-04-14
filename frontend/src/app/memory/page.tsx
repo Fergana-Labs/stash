@@ -6,12 +6,9 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import AppShell from "../../components/AppShell";
 import { useAuth } from "../../hooks/useAuth";
 import {
-  listAllHistories,
-  listHistories,
   queryAllHistoryEvents,
-  createPersonalHistory,
 } from "../../lib/api";
-import { HistoryEventWithContext, HistoryWithWorkspace } from "../../lib/types";
+import { HistoryEventWithContext } from "../../lib/types";
 
 /* ── helpers ── */
 
@@ -116,32 +113,12 @@ export default function MemoryPage() {
       ? new URLSearchParams(window.location.search).get("ws")
       : null;
   const { user, loading, logout } = useAuth();
-  const [stores, setStores] = useState<HistoryWithWorkspace[]>([]);
   const [events, setEvents] = useState<HistoryEventWithContext[]>([]);
   const [eventsLoading, setEventsLoading] = useState(false);
 
   /* sidebar selection */
   const [selectedAgent, setSelectedAgent] = useState<string | null>(null);
   const [selectedSession, setSelectedSession] = useState<string | null>(null);
-
-  const loadStores = useCallback(async () => {
-    try {
-      if (wsId) {
-        const res = await listHistories(wsId);
-        const s = (res?.stores ?? []).map((s: any) => ({
-          ...s,
-          workspace_id: wsId,
-          workspace_name: "",
-        }));
-        setStores(s);
-      } else {
-        const res = await listAllHistories();
-        setStores(res?.stores ?? []);
-      }
-    } catch {
-      /* ignore */
-    }
-  }, [wsId]);
 
   const loadEvents = useCallback(async () => {
     setEventsLoading(true);
@@ -156,10 +133,9 @@ export default function MemoryPage() {
 
   useEffect(() => {
     if (user) {
-      loadStores();
       loadEvents();
     }
-  }, [user, loadStores, loadEvents]);
+  }, [user, loadEvents]);
 
   const groups = useMemo(() => buildGroups(events), [events]);
 
@@ -193,133 +169,42 @@ export default function MemoryPage() {
         <aside className="w-[250px] flex-shrink-0 border-r border-border bg-surface overflow-y-auto">
           {/* Header */}
           <div className="px-3 py-3 border-b border-border">
-            <div className="flex items-center justify-between">
-              <h2 className="text-sm font-semibold text-foreground font-display">
-                History
-              </h2>
-              <button
-                onClick={async () => {
-                  const name = prompt("Store name:");
-                  if (!name) return;
-                  try {
-                    await createPersonalHistory(name);
-                    loadStores();
-                  } catch {
-                    /* ignore */
-                  }
-                }}
-                className="text-[11px] bg-brand hover:bg-brand-hover text-white px-2 py-0.5 rounded"
-              >
-                + Store
-              </button>
-            </div>
+            <h2 className="text-sm font-semibold text-foreground font-display">
+              History
+            </h2>
             <p className="text-[11px] text-muted mt-1">
-              {stores.length} store{stores.length !== 1 ? "s" : ""} &middot;{" "}
               {events.length} events
             </p>
           </div>
 
-          {/* Stores */}
-          {stores.length > 0 && (
-            <div className="px-2 py-2 border-b border-border">
-              <p className="text-[10px] uppercase tracking-[0.05em] text-muted font-mono px-1 mb-1">
-                Stores
-              </p>
-              {stores.map((store) => {
-                const params = new URLSearchParams();
-                if (store.workspace_id) params.set("workspaceId", store.workspace_id);
-                if (store.workspace_name) params.set("workspaceName", store.workspace_name);
-                const href = params.toString()
-                  ? `/memory/${store.id}?${params.toString()}`
-                  : `/memory/${store.id}`;
-                return (
-                  <Link
-                    key={store.id}
-                    href={href}
-                    className="block px-2 py-1 text-[13px] text-foreground hover:bg-raised rounded transition-colors duration-[150ms]"
-                  >
-                    {store.name}
-                    <span className="text-[11px] text-muted ml-1">
-                      {store.workspace_name || "Personal"}
-                    </span>
-                  </Link>
-                );
-              })}
-            </div>
-          )}
-
-          {/* "All" option */}
-          <div className="px-2 pt-2">
-            <button
-              onClick={() => {
-                setSelectedAgent(null);
-                setSelectedSession(null);
-              }}
-              className={`w-full text-left px-2 py-1.5 rounded text-[13px] font-medium transition-colors duration-[150ms] ${
-                !selectedSession && !selectedAgent
-                  ? "bg-brand/15 text-brand"
-                  : "text-foreground hover:bg-raised"
-              }`}
-            >
-              All Events
-            </button>
-          </div>
-
-          {/* Agent + session tree */}
+          {/* Agents */}
           {eventsLoading ? (
-            <p className="px-3 py-2 text-[11px] text-muted">Loading events...</p>
+            <p className="px-3 py-2 text-[11px] text-muted">Loading...</p>
           ) : (
             <div className="px-2 py-2">
               {groups.map((ag) => (
-                <div key={ag.agentName} className="mb-2">
-                  <button
-                    onClick={() => {
-                      setSelectedAgent(
-                        selectedAgent === ag.agentName ? null : ag.agentName
-                      );
-                      setSelectedSession(null);
-                    }}
-                    className={`w-full text-left flex items-center gap-1.5 px-2 py-1 rounded transition-colors duration-[150ms] ${
-                      selectedAgent === ag.agentName && !selectedSession
-                        ? "bg-agent-muted"
-                        : "hover:bg-raised"
-                    }`}
-                  >
-                    <span className="w-1.5 h-1.5 rounded-full bg-agent flex-shrink-0" />
-                    <span className="text-[13px] font-medium text-foreground truncate">
-                      {ag.agentName}
-                    </span>
-                    <span className="text-[10px] text-muted ml-auto font-mono">
-                      {ag.eventCount}
-                    </span>
-                  </button>
-
-                  {/* Sessions under this agent, always visible */}
-                  <div className="ml-3 mt-0.5">
-                    {ag.sessions.map((sess) => (
-                      <button
-                        key={sess.sessionId}
-                        onClick={() => {
-                          setSelectedAgent(ag.agentName);
-                          setSelectedSession(sess.sessionId);
-                        }}
-                        className={`w-full text-left px-2 py-1 rounded transition-colors duration-[150ms] ${
-                          selectedSession === sess.sessionId
-                            ? "bg-agent-muted"
-                            : "hover:bg-raised"
-                        }`}
-                      >
-                        <p className="text-[12px] text-foreground truncate leading-tight">
-                          {sess.firstContent}
-                        </p>
-                        <p className="text-[10px] text-muted font-mono leading-tight mt-0.5">
-                          {sess.events.length} event{sess.events.length !== 1 ? "s" : ""}{" "}
-                          &middot; {formatTime(sess.events[0].created_at)}
-                        </p>
-                      </button>
-                    ))}
-                  </div>
-                </div>
+                <button
+                  key={ag.agentName}
+                  onClick={() => {
+                    setSelectedAgent(
+                      selectedAgent === ag.agentName ? null : ag.agentName
+                    );
+                    setSelectedSession(null);
+                  }}
+                  className={`w-full text-left flex items-center gap-1.5 px-2 py-2 rounded transition-colors duration-[150ms] mb-0.5 ${
+                    selectedAgent === ag.agentName
+                      ? "bg-agent-muted"
+                      : "hover:bg-raised"
+                  }`}
+                >
+                  <span className="w-1.5 h-1.5 rounded-full bg-agent flex-shrink-0" />
+                  <span className="text-[13px] font-medium text-foreground truncate">
+                    {ag.agentName}
+                  </span>
+                  <span className="text-[10px] text-muted ml-auto font-mono">
+                    {ag.eventCount}
+                  </span>
+                </button>
               ))}
             </div>
           )}
@@ -341,6 +226,19 @@ export default function MemoryPage() {
                 groups={groups}
                 agentName={selectedAgent}
                 onSelectSession={(sid) => setSelectedSession(sid)}
+                onDelete={async () => {
+                  try {
+                    const { apiFetch } = await import("../../lib/api");
+                    // Try workspace delete first, fall back to personal
+                    if (wsId) {
+                      await apiFetch(`/api/v1/workspaces/${wsId}/memory/agents/${encodeURIComponent(selectedAgent)}`, { method: "DELETE" });
+                    } else {
+                      await apiFetch(`/api/v1/memory/agents/${encodeURIComponent(selectedAgent)}`, { method: "DELETE" });
+                    }
+                    setSelectedAgent(null);
+                    loadEvents();
+                  } catch { /* ignore */ }
+                }}
               />
             ) : (
               /* ── All events, grouped by agent ── */
@@ -413,25 +311,39 @@ function AgentOverview({
   groups,
   agentName,
   onSelectSession,
+  onDelete,
 }: {
   groups: AgentGroup[];
   agentName: string;
   onSelectSession: (sid: string) => void;
+  onDelete: () => void;
 }) {
   const ag = groups.find((g) => g.agentName === agentName);
   if (!ag) return <p className="text-muted text-sm">No data for this agent.</p>;
 
   return (
     <div>
-      <div className="mb-6">
-        <h1 className="text-xl font-bold text-foreground font-display flex items-center gap-2">
-          <span className="w-2 h-2 rounded-full bg-agent" />
-          {agentName}
-        </h1>
-        <p className="text-[11px] text-muted mt-1">
-          {ag.sessions.length} session{ag.sessions.length !== 1 ? "s" : ""} &middot;{" "}
-          {ag.eventCount} events
-        </p>
+      <div className="mb-6 flex items-start justify-between">
+        <div>
+          <h1 className="text-xl font-bold text-foreground font-display flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-agent" />
+            {agentName}
+          </h1>
+          <p className="text-[11px] text-muted mt-1">
+            {ag.sessions.length} session{ag.sessions.length !== 1 ? "s" : ""} &middot;{" "}
+            {ag.eventCount} events
+          </p>
+        </div>
+        <button
+          onClick={() => {
+            if (confirm(`Delete all ${ag.eventCount} events for "${agentName}"?`)) {
+              onDelete();
+            }
+          }}
+          className="text-xs text-red-400 hover:text-red-300 px-2 py-1 rounded hover:bg-red-400/10 transition-colors"
+        >
+          Delete agent
+        </button>
       </div>
 
       <div className="space-y-2">

@@ -10,13 +10,13 @@ from ..database import get_pool
 
 logger = logging.getLogger(__name__)
 
-# Shared CTE for workspace access filtering
-_ACCESSIBLE_STORES_CTE = """
-WITH accessible_stores AS (
-    SELECT ms.id AS store_id
-    FROM histories ms
-    WHERE ms.workspace_id IN (SELECT workspace_id FROM workspace_members WHERE user_id = $1)
-       OR (ms.workspace_id IS NULL AND ms.created_by = $1)
+# Shared CTE for workspace access filtering on history_events
+_ACCESSIBLE_EVENTS_CTE = """
+WITH accessible_events AS (
+    SELECT he.id AS event_id
+    FROM history_events he
+    WHERE he.workspace_id IN (SELECT workspace_id FROM workspace_members WHERE user_id = $1)
+       OR (he.workspace_id IS NULL AND he.created_by = $1)
 )
 """
 
@@ -53,14 +53,14 @@ async def get_activity_timeline(
     cutoff = datetime.now(timezone.utc) - timedelta(days=days)
 
     rows = await pool.fetch(
-        _ACCESSIBLE_STORES_CTE + """
+        _ACCESSIBLE_EVENTS_CTE + """
         SELECT
             DATE_TRUNC($2, me.created_at) AS bucket_date,
             me.agent_name,
             me.event_type,
             COUNT(*) AS cnt
         FROM history_events me
-        JOIN accessible_stores a ON a.store_id = me.store_id
+        JOIN accessible_events a ON a.event_id = me.id
         WHERE me.created_at >= $3
         GROUP BY bucket_date, me.agent_name, me.event_type
         ORDER BY bucket_date
@@ -270,9 +270,9 @@ async def get_embedding_projection(
 
     if source is None or source == "history_events":
         row = await pool.fetchval(
-            _ACCESSIBLE_STORES_CTE + """
+            _ACCESSIBLE_EVENTS_CTE + """
             SELECT COUNT(*) FROM history_events me
-            JOIN accessible_stores a ON a.store_id = me.store_id
+            JOIN accessible_events a ON a.event_id = me.id
             WHERE me.embedding IS NOT NULL
             """,
             user_id,
@@ -342,10 +342,10 @@ async def get_embedding_projection(
 
     if source is None or source == "history_events":
         rows = await pool.fetch(
-            _ACCESSIBLE_STORES_CTE + """
+            _ACCESSIBLE_EVENTS_CTE + """
             SELECT me.id, me.agent_name, me.event_type, me.embedding, me.created_at
             FROM history_events me
-            JOIN accessible_stores a ON a.store_id = me.store_id
+            JOIN accessible_events a ON a.event_id = me.id
             WHERE me.embedding IS NOT NULL
             ORDER BY me.created_at DESC
             LIMIT $2

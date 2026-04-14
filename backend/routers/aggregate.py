@@ -15,13 +15,6 @@ async def list_all_notebooks(current_user: dict = Depends(get_current_user)):
     return {"notebooks": notebooks}
 
 
-@router.get("/history")
-async def list_all_histories(current_user: dict = Depends(get_current_user)):
-    """All historys from workspaces + personal."""
-    stores = await memory_service.list_all_user_stores(current_user["id"])
-    return {"stores": stores}
-
-
 @router.get("/history-events")
 async def list_all_history_events(
     agent_name: str | None = Query(None),
@@ -31,7 +24,7 @@ async def list_all_history_events(
     limit: int = Query(50, ge=1, le=200),
     current_user: dict = Depends(get_current_user),
 ):
-    """Events across all accessible stores with filters."""
+    """Events across all accessible workspaces + personal, with filters."""
     events, has_more = await memory_service.query_all_user_events(
         current_user["id"],
         agent_name=agent_name,

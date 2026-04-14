@@ -4,6 +4,55 @@ import { useCallback, useState } from "react";
 
 import { Workspace, WorkspaceMember } from "../../lib/types";
 
+function AddMemberInput({ onAdd }: { onAdd: (username: string) => Promise<void> }) {
+  const [value, setValue] = useState("");
+  const [status, setStatus] = useState<{ msg: string; ok: boolean } | null>(null);
+  const [adding, setAdding] = useState(false);
+
+  const handleAdd = async () => {
+    const username = value.trim();
+    if (!username || adding) return;
+    setAdding(true);
+    setStatus(null);
+    try {
+      await onAdd(username);
+      setValue("");
+      setStatus({ msg: `Added ${username}`, ok: true });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Failed to add";
+      setStatus({ msg, ok: false });
+    }
+    setAdding(false);
+  };
+
+  return (
+    <div>
+      <div className="flex gap-1">
+        <input
+          type="text"
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && handleAdd()}
+          placeholder="Add by username..."
+          className="flex-1 bg-raised border border-border rounded px-2 py-1 text-xs text-foreground focus:outline-none focus:border-brand"
+        />
+        <button
+          onClick={handleAdd}
+          disabled={adding || !value.trim()}
+          className="text-xs bg-brand hover:bg-brand-hover text-white px-2 py-1 rounded disabled:opacity-50"
+        >
+          Add
+        </button>
+      </div>
+      {status && (
+        <p className={`text-[10px] mt-1 ${status.ok ? "text-green-400" : "text-red-400"}`}>
+          {status.msg}
+        </p>
+      )}
+    </div>
+  );
+}
+
 interface WorkspaceSidebarProps {
   workspace: Workspace;
   members: WorkspaceMember[];
@@ -13,6 +62,7 @@ interface WorkspaceSidebarProps {
   onDelete: () => void;
   onKickMember: (userId: string) => void;
   onUpdateWorkspace: (data: { name?: string; description?: string }) => void;
+  onAddMember: (username: string) => Promise<void>;
   onAddToAccessList?: (userName: string, listType: "allow" | "block") => Promise<void>;
   onRemoveFromAccessList?: (userName: string, listType: "allow" | "block") => Promise<void>;
   onGetAccessList?: (listType: "allow" | "block") => Promise<any[]>;
@@ -27,6 +77,7 @@ export default function WorkspaceSidebar({
   onDelete,
   onKickMember,
   onUpdateWorkspace,
+  onAddMember,
   onAddToAccessList,
   onRemoveFromAccessList,
   onGetAccessList,
@@ -184,18 +235,12 @@ export default function WorkspaceSidebar({
 
       <div className="flex-1 overflow-y-auto p-4">
         <h3 className="text-xs uppercase tracking-wider text-muted mb-2">
-          Members ({members.length})
+          Members ({members.filter(m => m.type !== "persona").length})
         </h3>
         <div className="space-y-2">
-          {members.map((m) => (
+          {members.filter(m => m.type !== "persona").map((m) => (
             <div key={m.user_id} className="flex items-center gap-2 group">
-              <div
-                className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold ${
-                  m.type === "persona"
-                    ? "bg-agent-muted text-agent"
-                    : "bg-human-muted text-human"
-                }`}
-              >
+              <div className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold bg-human-muted text-human">
                 {(m.display_name || m.name).charAt(0).toUpperCase()}
               </div>
               <div className="min-w-0 flex-1">
@@ -203,21 +248,28 @@ export default function WorkspaceSidebar({
                   {m.display_name || m.name}
                 </div>
                 <div className="text-[10px] text-muted">
-                  {m.role} · {m.type}
+                  {m.role}
                 </div>
               </div>
               {isOwner && m.user_id !== currentUserId && (
                 <button
                   onClick={() => onKickMember(m.user_id)}
                   className="hidden group-hover:block text-[10px] text-red-400 hover:text-red-300 px-1"
-                  title={`Kick ${m.display_name || m.name}`}
+                  title={`Remove ${m.display_name || m.name}`}
                 >
-                  Kick
+                  Remove
                 </button>
               )}
             </div>
           ))}
         </div>
+
+        {/* Add member */}
+        {isOwner && (
+          <div className="mt-3">
+            <AddMemberInput onAdd={onAddMember} />
+          </div>
+        )}
 
         {isOwner && onGetAccessList && (
           <div className="mt-4">
