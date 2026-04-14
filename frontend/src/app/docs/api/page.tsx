@@ -21,7 +21,8 @@ export default function APIPage() {
       </Callout>
 
       <H3>Auth</H3>
-      <CodeBlock>{`POST   /auth/login          Login via Auth0 — returns api_key
+      <CodeBlock>{`POST   /users/register      Register a new user — returns api_key
+POST   /users/login         Password login — returns api_key
 GET    /users/me            Current user profile
 PATCH  /users/me            Update profile (name, avatar, etc.)`}</CodeBlock>
 

@@ -15,7 +15,6 @@ body:
         - Backend (API / sleep agent)
         - Frontend (UI)
         - CLI
-        - OpenClaw plugin
         - Self-hosting / Docker
         - Documentation
         - Other

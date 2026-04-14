@@ -25,7 +25,7 @@ export default function CLIPage() {
       </P>
 
       <H3>Auth commands</H3>
-      <CodeBlock>{`octopus login                             # Login via Auth0
+      <CodeBlock>{`octopus login                             # Password login
 octopus auth <url> --api-key <key>        # Authenticate using an existing API key
 octopus whoami                            # Show the current logged-in user
 octopus config [key] [value]              # View or update any config value`}</CodeBlock>
