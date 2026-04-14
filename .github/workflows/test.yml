@@ -46,8 +46,8 @@ jobs:
           cache: pip
           cache-dependency-path: backend/requirements-dev.txt
       - run: pip install ruff black
-      - run: ruff check backend/ cli/ mcp_server/
-      - run: black --check backend/ cli/ mcp_server/
+      - run: ruff check backend/ cli/
+      - run: black --check backend/ cli/
 
   backend-test:
     name: Backend tests (pytest)

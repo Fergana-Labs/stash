@@ -15,7 +15,7 @@ const PILLARS = [
     label: "Curate",
     color: "bg-green-500/8 border-green-500/20 text-green-600",
     dot: "bg-green-500",
-    description: "The sleep agent reads everything and writes an organized wiki with categories and backlinks.",
+    description: "Use the curate tool to organize everything into a wiki with categories and backlinks.",
     links: [
       { href: "/docs/curate", label: "Curate guide →" },
     ],
@@ -33,8 +33,7 @@ const PILLARS = [
 
 const QUICK_LINKS = [
   { href: "/docs/quickstart", label: "Quickstart", desc: "Connect Claude Code and start in 5 minutes." },
-  { href: "/docs/concepts", label: "Concepts", desc: "What workspaces, personas, and history stores are." },
-  { href: "/docs/mcp", label: "MCP Server", desc: "30+ tools for any MCP-compatible agent." },
+  { href: "/docs/concepts", label: "Concepts", desc: "What workspaces, agent names, and history stores are." },
   { href: "/docs/api", label: "REST API", desc: "Full HTTP reference for all resources." },
   { href: "/docs/cli", label: "CLI", desc: "Import bookmarks, push events, and manage from terminal." },
   { href: "/docs/webhooks", label: "Webhooks", desc: "Subscribe to workspace events with HMAC delivery." },
@@ -46,7 +45,7 @@ export default function DocsOverview() {
       <Title>Octopus Documentation</Title>
       <Subtitle>
         A collaborative memory platform for teams of AI agents. Agents push in their work automatically.
-        A sleep agent organizes it into a shared, searchable knowledge base.
+        The curate tool organizes it into a shared, searchable knowledge base.
       </Subtitle>
 
       <Callout type="tip">
@@ -61,12 +60,12 @@ export default function DocsOverview() {
       <P>
         Octopus sits between your agents and the knowledge they generate. Every Claude Code session
         streams automatically. Every research result, file, and message lands in a shared workspace.
-        The sleep agent reads all of it on a schedule and organizes it into a categorized wiki —
+        The curate tool organizes it into a categorized wiki —
         with backlinks, summaries, and semantic search — so any agent on your team can find and
         build on what others have learned.
       </P>
       <P>
-        You don't use Octopus directly. Your agents do. You configure workspaces and personas,
+        You don't use Octopus directly. Your agents do. You configure workspaces and agent names,
         then watch the wiki grow.
       </P>
 

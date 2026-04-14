@@ -34,18 +34,14 @@ export default function SetupCard({ workspaceId, apiKey }: SetupCardProps) {
     setTimeout(() => setCopied(null), 2000);
   };
 
-  const pluginCmd = "claude plugin add ./claude-plugin";
-  const connectCmd = "/octopus:connect";
-  const mcpCmd = apiKey
-    ? `claude mcp add --transport http octopus https://getoctopus.com/mcp \\\n  --header "Authorization: Bearer ${apiKey}"`
-    : `claude mcp add --transport http octopus https://getoctopus.com/mcp \\\n  --header "Authorization: Bearer YOUR_API_KEY"`;
+  const cliCmd = "pip install octopus && octopus login";
 
   return (
     <div className="bg-[#1a2332] border border-white/10 rounded-lg overflow-hidden mb-8">
       <div className="px-5 py-4">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-sm font-medium text-slate-100 uppercase tracking-wider font-mono">
-            Connect your first agent
+            Get started with the CLI
           </h3>
           <button
             onClick={handleDismiss}
@@ -56,50 +52,27 @@ export default function SetupCard({ workspaceId, apiKey }: SetupCardProps) {
         </div>
 
         <div className="space-y-3">
-          {/* Plugin method */}
           <div>
             <div className="text-[10px] text-slate-400 uppercase tracking-wider mb-1.5 font-mono">
-              Claude Code plugin
+              Install and authenticate
             </div>
             <div className="bg-[#0f1720] rounded-md px-4 py-3 font-mono text-sm text-slate-300 flex items-start justify-between gap-3">
-              <div className="space-y-1">
-                <div>
-                  <span className="text-slate-500 select-none">$ </span>
-                  {pluginCmd}
-                </div>
-                <div>
-                  <span className="text-slate-500 select-none">$ </span>
-                  <span className="text-orange-400">{connectCmd}</span>
-                </div>
+              <div>
+                <span className="text-slate-500 select-none">$ </span>
+                {cliCmd}
               </div>
               <button
-                onClick={() => copyText(`${pluginCmd}\n${connectCmd}`, "plugin")}
+                onClick={() => copyText(cliCmd, "cli")}
                 className="text-[10px] text-slate-400 hover:text-slate-100 px-2 py-1 rounded border border-white/10 hover:border-white/20 transition-colors flex-shrink-0"
               >
-                {copied === "plugin" ? "Copied" : "Copy"}
-              </button>
-            </div>
-          </div>
-
-          {/* MCP method */}
-          <div>
-            <div className="text-[10px] text-slate-400 uppercase tracking-wider mb-1.5 font-mono">
-              Or add the MCP server
-            </div>
-            <div className="bg-[#0f1720] rounded-md px-4 py-3 font-mono text-sm text-slate-300 flex items-start justify-between gap-3">
-              <pre className="whitespace-pre-wrap text-xs leading-relaxed"><span className="text-slate-500 select-none">$ </span>{mcpCmd}</pre>
-              <button
-                onClick={() => copyText(mcpCmd, "mcp")}
-                className="text-[10px] text-slate-400 hover:text-slate-100 px-2 py-1 rounded border border-white/10 hover:border-white/20 transition-colors flex-shrink-0"
-              >
-                {copied === "mcp" ? "Copied" : "Copy"}
+                {copied === "cli" ? "Copied" : "Copy"}
               </button>
             </div>
           </div>
         </div>
 
         <p className="text-xs text-slate-400 mt-3">
-          The plugin auto-streams every tool call, edit, and message to this workspace.{" "}
+          Use the CLI to push events, search, import bookmarks, and manage your workspace.{" "}
           <a href="/docs/quickstart" className="text-orange-400 hover:text-orange-300 hover:underline">
             Full quickstart →
           </a>

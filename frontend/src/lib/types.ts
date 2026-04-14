@@ -2,9 +2,8 @@ export interface User {
   id: string;
   name: string;
   display_name: string | null;
-  type: "human" | "persona";
+  type: string;
   description: string;
-  owner_id: string | null;
   created_at: string;
   last_seen: string;
 }
@@ -35,50 +34,9 @@ export interface WorkspaceMember {
   user_id: string;
   name: string;
   display_name: string | null;
-  type: "human" | "persona";
+  type: string;
   role: string;
   joined_at: string;
-}
-
-// --- Chats ---
-
-export interface Chat {
-  id: string;
-  workspace_id: string | null;
-  name: string;
-  description: string;
-  creator_id: string;
-  is_dm: boolean;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface Message {
-  id: string;
-  chat_id: string;
-  sender_id: string;
-  sender_name: string;
-  sender_display_name: string | null;
-  sender_type: "human" | "persona";
-  content: string;
-  message_type: "text" | "system";
-  reply_to_id: string | null;
-  created_at: string;
-}
-
-export interface WSEvent {
-  type: "message" | "typing" | "system";
-  user?: string;
-  id?: string;
-  chat_id?: string;
-  sender_id?: string;
-  sender_name?: string;
-  sender_display_name?: string | null;
-  sender_type?: string;
-  content?: string;
-  message_type?: string;
-  reply_to_id?: string | null;
-  created_at?: string;
 }
 
 // --- Notebooks (collections) ---
@@ -92,8 +50,6 @@ export interface Notebook {
   created_at: string;
   updated_at: string;
 }
-
-// --- Notebook Pages (files within a notebook) ---
 
 export interface NotebookPage {
   id: string;
@@ -160,20 +116,14 @@ export interface HistoryEvent {
   created_at: string;
 }
 
-// --- DMs ---
-
-export interface DMOtherUser {
-  id: string;
-  name: string;
-  display_name: string | null;
-  type: string;
+export interface HistoryWithWorkspace extends History {
+  workspace_name: string | null;
 }
 
-export interface DMConversation {
-  id: string;
-  other_user: DMOtherUser | null;
-  last_message_at: string | null;
-  created_at: string;
+export interface HistoryEventWithContext extends HistoryEvent {
+  store_name: string;
+  workspace_id: string | null;
+  workspace_name: string | null;
 }
 
 // --- Permissions ---
@@ -191,73 +141,6 @@ export interface Share {
   permission: "read" | "write" | "admin";
   granted_by: string;
   created_at: string;
-}
-
-// --- Personas ---
-
-export interface PersonaProfile {
-  id: string;
-  name: string;
-  display_name: string | null;
-  type: string;
-  description: string;
-  owner_id: string;
-  notebook_id: string | null;
-  history_id: string | null;
-  created_at: string;
-  last_seen: string;
-}
-
-export interface PersonaResponse {
-  id: string;
-  name: string;
-  display_name: string | null;
-  type: string;
-  description: string;
-  api_key: string;
-  owner_id: string;
-  created_at: string;
-}
-
-// --- Decks ---
-
-export interface Deck {
-  id: string;
-  workspace_id: string | null;
-  name: string;
-  description: string;
-  html_content: string;
-  deck_type: string;
-  created_by: string;
-  updated_by: string | null;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface DeckShare {
-  id: string;
-  deck_id: string;
-  token: string;
-  name: string | null;
-  is_active: boolean;
-  require_email: boolean;
-  has_passcode: boolean;
-  allow_download: boolean;
-  expires_at: string | null;
-  created_at: string;
-}
-
-export interface DeckWithWorkspace {
-  id: string;
-  workspace_id: string | null;
-  name: string;
-  description: string;
-  deck_type: string;
-  created_by: string;
-  updated_by: string | null;
-  created_at: string;
-  updated_at: string;
-  workspace_name: string | null;
 }
 
 // --- Tables ---
@@ -310,52 +193,8 @@ export interface TableWithWorkspace extends Table {
   workspace_name: string | null;
 }
 
-// --- Aggregate ---
-
-export interface ChatWithWorkspace extends Chat {
-  workspace_name?: string;
-}
-
-export interface DMWithUser {
-  id: string;
-  workspace_id: string | null;
-  name: string;
-  description: string;
-  creator_id: string;
-  is_dm: boolean;
-  created_at: string;
-  updated_at: string;
-  other_user: DMOtherUser | null;
-}
-
 export interface NotebookWithWorkspace extends Notebook {
   workspace_name: string | null;
-}
-
-export interface HistoryWithWorkspace extends History {
-  workspace_name: string | null;
-}
-
-export interface HistoryEventWithContext extends HistoryEvent {
-  store_name: string;
-  workspace_id: string | null;
-  workspace_name: string | null;
-}
-
-export interface Webhook {
-  id: string;
-  workspace_id: string;
-  user_id: string;
-  url: string;
-  has_secret: boolean;
-  event_filter: string[];
-  is_active: boolean;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface PersonaWithContext extends PersonaProfile {
-  workspaces: { workspace_id: string; workspace_name: string; role: string }[];
 }
 
 // --- Files ---
@@ -377,35 +216,6 @@ export interface Attachment {
   content_type: string;
 }
 
-// --- Documents ---
-
-export interface Document {
-  id: string;
-  workspace_id: string | null;
-  file_id: string | null;
-  name: string;
-  file_type: string;
-  status: "pending" | "processing" | "ready" | "error";
-  metadata: Record<string, unknown>;
-  created_by: string;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface DocumentChunk {
-  content: string;
-  doc_name: string;
-  doc_id: string;
-  similarity: number;
-}
-
-// --- Universal Search ---
-
-export interface SearchResponse {
-  answer: string;
-  sources_used: string[];
-}
-
 // --- Wiki / Page Links ---
 
 export interface PageLink {
@@ -421,19 +231,40 @@ export interface PageGraph {
   edges: { source: string; target: string; label: string }[];
 }
 
-// --- Sleep Agent Config ---
+// --- Dashboard Visualizations ---
 
-export interface SleepConfig {
-  enabled: boolean;
-  interval_minutes: number;
-  max_pattern_cards: number;
-  monologue_batch_size: number;
-  monologue_model: string;
-  curation_model: string;
-  curation_sources: string[];
-  curation_rules: Record<string, unknown>;
-  workspace_ids: string[];
-  agent_name_filter: string[];
+export interface ActivityTimeline {
+  agents: string[];
+  buckets: {
+    date: string;
+    agents: Record<string, { total: number; by_type: Record<string, number> }>;
+  }[];
+}
+
+export interface KnowledgeDensity {
+  clusters: {
+    label: string;
+    count: number;
+    sources: { notebook_pages: number; table_rows: number };
+    newest_at: string | null;
+    oldest_at: string | null;
+    sample_titles: string[];
+  }[];
+}
+
+export interface EmbeddingProjectionPoint {
+  id: string;
+  x: number;
+  y: number;
+  source: "notebook_pages" | "table_rows" | "history_events";
+  label: string;
+  created_at: string | null;
+}
+
+export interface EmbeddingProjection {
+  points: EmbeddingProjectionPoint[];
+  stats: { total_embeddings: number; projected: number };
+  cached: boolean;
 }
 
 // --- Search ---

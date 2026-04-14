@@ -6,19 +6,19 @@ Speaks the y-websocket binary protocol:
   - messageAwareness = 1
 """
 import asyncio
-import base64
 import logging
-import os
 from uuid import UUID
 
-import httpx
 from fastapi import WebSocket
-
 from pycrdt import Doc
 
 from ..services import notebook_service
-
-COLLAB_SERVER_URL = os.environ.get("COLLAB_SERVER_URL", "http://localhost:1235")
+from ..services.yjs_converter import (
+    apply_markdown_update,
+    build_fragment_from_markdown,
+    cached_yjs_to_markdown,
+    markdown_to_yjs_state,
+)
 
 logger = logging.getLogger("octopus.yjs")
 
@@ -72,7 +72,7 @@ class YjsDocHandle:
         self._loaded = False
 
     async def load_from_db(self):
-        """Load Yjs state from database."""
+        """Load Yjs state from database, falling back to content_markdown."""
         if self._loaded:
             return
         state = await notebook_service.get_yjs_state(self.file_id)
@@ -86,9 +86,22 @@ class YjsDocHandle:
                 if "default" in keys and not isinstance(self.doc["default"], XmlFragment):
                     logger.warning(f"Incompatible Yjs type for file {self.file_id}, resetting")
                     self.doc = Doc()
+                    state = None
             except Exception:
                 logger.warning(f"Failed to apply stored Yjs state for file {self.file_id}, starting fresh")
                 self.doc = Doc()
+                state = None
+
+        if not state:
+            # No Yjs state — try to bootstrap from content_markdown
+            markdown = await notebook_service.get_page_markdown(self.file_id)
+            if markdown:
+                build_fragment_from_markdown(self.doc, markdown)
+                # Persist the generated Yjs state so future loads skip this path
+                yjs_state = self.doc.get_update()
+                await notebook_service.save_yjs_state(self.file_id, yjs_state, content_markdown=markdown)
+                logger.info(f"Bootstrapped Yjs state from markdown for file {self.file_id}")
+
         self._loaded = True
 
     def get_state_vector(self) -> bytes:
@@ -108,7 +121,7 @@ class YjsDocHandle:
         if not self._dirty:
             return
         state = self.doc.get_update()
-        markdown = await yjs_manager._yjs_to_markdown(state)
+        markdown = cached_yjs_to_markdown(str(self.file_id), state)
         await notebook_service.save_yjs_state(
             self.file_id, state, content_markdown=markdown
         )
@@ -257,38 +270,13 @@ class YjsManager:
 
     async def apply_rest_update(self, file_id: UUID, workspace_id: UUID | str | None, content: str) -> None:
         """Convert markdown to Yjs state and update the in-memory doc + broadcast to connected editors."""
-        yjs_state = await self._markdown_to_yjs(content)
-        if yjs_state is None:
-            return
-
         handle = self._docs.get(file_id)
         if handle:
-            # Capture state before so we can compute a delta update for clients
-            sv_before = handle.doc.get_state()
-
-            # Clear existing XmlFragment content, then apply new state —
-            # all on the same doc so deletes propagate to clients via CRDT.
-            from pycrdt import XmlFragment
-            handle.doc["default"] = XmlFragment()
-            fragment = handle.doc["default"]
-            try:
-                n = len(fragment.children)
-                if n > 0:
-                    del fragment.children[0:n]
-            except Exception:
-                pass  # Fragment was empty or not yet populated
-
-            # Apply the new content from a temp doc into the existing doc
-            # by computing what the temp doc has that ours doesn't
-            temp_doc = Doc()
-            temp_doc.apply_update(yjs_state)
-            diff = temp_doc.get_update(sv_before)
-            handle.doc.apply_update(diff)
-
+            # Apply update to live doc and get incremental diff
+            update = apply_markdown_update(handle.doc, content)
             handle._dirty = True
 
-            # Compute the full update (delete + insert) relative to pre-edit state
-            update = handle.doc.get_update(sv_before)
+            # Broadcast the update to connected editors
             update_msg = bytes([MSG_SYNC, SYNC_UPDATE]) + _encode_varint(len(update)) + update
             for client in handle.clients:
                 try:
@@ -297,36 +285,9 @@ class YjsManager:
                     pass
             await handle.save_to_db()
         else:
-            # No editors connected — just save yjs_state directly to DB
-            await notebook_service.save_yjs_state(file_id, yjs_state)
-
-    async def _markdown_to_yjs(self, markdown: str) -> bytes | None:
-        """Convert markdown to Yjs binary state via the collab server."""
-        try:
-            async with httpx.AsyncClient(timeout=5) as client:
-                resp = await client.post(
-                    f"{COLLAB_SERVER_URL}/convert/markdown-to-yjs",
-                    json={"markdown": markdown},
-                )
-                resp.raise_for_status()
-                return base64.b64decode(resp.json()["yjs_state"])
-        except Exception:
-            logger.warning("Failed to convert markdown to Yjs via collab server", exc_info=True)
-            return None
-
-    async def _yjs_to_markdown(self, yjs_state: bytes) -> str | None:
-        """Convert Yjs binary state to markdown via the collab server."""
-        try:
-            async with httpx.AsyncClient(timeout=5) as client:
-                resp = await client.post(
-                    f"{COLLAB_SERVER_URL}/convert/yjs-to-markdown",
-                    json={"yjs_state": base64.b64encode(yjs_state).decode()},
-                )
-                resp.raise_for_status()
-                return resp.json()["markdown"]
-        except Exception:
-            logger.warning("Failed to convert Yjs to markdown via collab server", exc_info=True)
-            return None
+            # No editors connected — create Yjs state and save directly
+            yjs_state = markdown_to_yjs_state(content)
+            await notebook_service.save_yjs_state(file_id, yjs_state, content_markdown=content)
 
 
 yjs_manager = YjsManager()

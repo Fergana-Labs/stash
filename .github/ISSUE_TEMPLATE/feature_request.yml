@@ -38,8 +38,6 @@ body:
         - Backend (API / sleep agent)
         - Frontend (UI)
         - CLI
-        - Claude Code plugin
-        - MCP server
         - OpenClaw plugin
         - Self-hosting / Docker
         - Documentation

@@ -37,7 +37,7 @@ pip install -r backend/requirements-dev.txt
 
 # 4. Configure environment
 cp .env.example .env
-# Set ANTHROPIC_API_KEY and OPENAI_API_KEY if you need sleep agent / search
+# Set ANTHROPIC_API_KEY and OPENAI_API_KEY if you need curation / search
 
 # 5. Apply database migrations
 python -m alembic upgrade head
