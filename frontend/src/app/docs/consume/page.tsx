@@ -3,10 +3,10 @@ import { Callout, CodeBlock, CodeTabs, H3, P, ParamTable, Title, Subtitle } from
 export default function ConsumePage() {
   return (
     <>
-      <Title>Consume</Title>
+      <Title>History & Files</Title>
       <Subtitle>
-        Getting data into Octopus. Agents push automatically via plugin or MCP. You can also
-        import manually from the CLI or REST API.
+        Getting data into Octopus. Agents push events automatically via the MCP server or plugin.
+        You can also import manually from the CLI or REST API.
       </Subtitle>
 
       <Callout type="tip">
@@ -14,25 +14,12 @@ export default function ConsumePage() {
         connected, every tool call and message flows into Octopus without any extra steps.
       </Callout>
 
-      <H3>Import bookmarks</H3>
+      <H3>History stores</H3>
       <P>
-        Export your Chrome or Firefox bookmarks as HTML, then import them in one command.
-        Octopus scrapes each URL — articles via trafilatura, YouTube transcripts via
-        youtube-transcript-api, PDF text via pymupdf — and stores each as a notebook page.
-      </P>
-      <CodeBlock>{`octopus import-bookmarks bookmarks.html`}</CodeBlock>
-      <ParamTable params={[
-        { name: "--notebook", type: "string", desc: 'Notebook name to write to (default: "Bookmarks")' },
-        { name: "--skip-scrape", type: "flag", desc: "Import titles and URLs only — skip content extraction" },
-        { name: "--dry-run", type: "flag", desc: "Preview what would be imported without writing anything" },
-        { name: "--delay", type: "float", desc: "Seconds between scrape requests (default: 0.5)" },
-        { name: "--ws", type: "UUID", desc: "Workspace ID — uses personal notebook if omitted" },
-      ]} />
-
-      <H3>Push events via the API</H3>
-      <P>
-        Any system that produces structured output can push events directly.
-        Use the REST endpoint, the CLI shortcut, or let MCP handle it automatically.
+        History stores are append-only event logs. Events are grouped by{" "}
+        <code className="text-brand font-mono text-[13px]">agent_name</code> and{" "}
+        <code className="text-brand font-mono text-[13px]">session_id</code>, giving you a
+        conversation-like view of each agent session. Push events via the API, CLI, or MCP.
       </P>
       <CodeTabs tabs={[
         {
@@ -56,17 +43,25 @@ push_memory_event(workspace_id, store_id, ...)`,
 
       <H3>File uploads</H3>
       <P>
-        Upload images, PDFs, and documents through the REST API, via the + button in chat,
-        or the image button in the notebook editor. Files are stored in S3-compatible storage
-        (Cloudflare R2, AWS S3, or MinIO depending on your deployment).
+        Upload images, PDFs, and documents through the REST API or the image button in the
+        notebook editor. Files are stored in S3-compatible storage (Cloudflare R2, AWS S3, or
+        MinIO depending on your deployment).
       </P>
 
-      <H3>Tables</H3>
+      <H3>Import bookmarks</H3>
       <P>
-        Create structured data with typed columns (text, number, date, select, relation).
-        Import CSV files directly. Optionally enable row embeddings for semantic search —
-        configure which columns to use in the table settings panel.
+        Export your Chrome or Firefox bookmarks as HTML, then import them in one command.
+        Octopus scrapes each URL — articles via trafilatura, YouTube transcripts via
+        youtube-transcript-api, PDF text via pymupdf — and stores each as a notebook page.
       </P>
+      <CodeBlock>{`octopus import-bookmarks bookmarks.html`}</CodeBlock>
+      <ParamTable params={[
+        { name: "--notebook", type: "string", desc: 'Notebook name to write to (default: "Bookmarks")' },
+        { name: "--skip-scrape", type: "flag", desc: "Import titles and URLs only — skip content extraction" },
+        { name: "--dry-run", type: "flag", desc: "Preview what would be imported without writing anything" },
+        { name: "--delay", type: "float", desc: "Seconds between scrape requests (default: 0.5)" },
+        { name: "--ws", type: "UUID", desc: "Workspace ID — uses personal notebook if omitted" },
+      ]} />
     </>
   );
 }

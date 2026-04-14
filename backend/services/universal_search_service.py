@@ -86,21 +86,6 @@ TOOLS = [
         },
     },
     {
-        "name": "search_documents",
-        "description": (
-            "Search across parsed documents (PDFs, etc.) using RAGFlow semantic retrieval. "
-            "Works across all documents in the workspace."
-        ),
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "query": {"type": "string", "description": "Search query"},
-                "limit": {"type": "integer", "default": 20},
-            },
-            "required": ["query"],
-        },
-    },
-    {
         "name": "list_resources",
         "description": (
             "List all available resources in scope: history stores, notebooks, tables. "
@@ -162,11 +147,6 @@ async def _list_resources(workspace_id: UUID | None, user_id: UUID) -> str:
         tables = await pool.fetch(
             "SELECT id, name FROM tables WHERE workspace_id = $1", workspace_id,
         )
-        docs_count = await pool.fetchval(
-            "SELECT COUNT(*) FROM documents WHERE workspace_id = $1 AND status = 'ready'",
-            workspace_id,
-        )
-
         lines.append("## History Stores")
         for h in histories:
             lines.append(f"- {h['name']} (id: {h['id']})")
@@ -176,7 +156,6 @@ async def _list_resources(workspace_id: UUID | None, user_id: UUID) -> str:
         lines.append("\n## Tables")
         for t in tables:
             lines.append(f"- {t['name']} (id: {t['id']})")
-        lines.append(f"\n## Documents: {docs_count or 0} ready documents (search_documents searches all)")
     else:
         # Personal resources
         histories = await pool.fetch(
@@ -238,15 +217,6 @@ def _format_rows(rows: list[dict]) -> str:
     return "\n".join(lines)
 
 
-def _format_chunks(chunks: list[dict]) -> str:
-    if not chunks:
-        return "(no results)"
-    lines = []
-    for c in chunks:
-        lines.append(f"[{c.get('doc_name', '?')}] (sim={c.get('similarity', 0):.2f}): {c.get('content', '')[:300]}")
-    return "\n".join(lines)
-
-
 async def _execute_tool(
     workspace_id: UUID | None, user_id: UUID,
     tool_name: str, tool_input: dict,
@@ -275,15 +245,6 @@ async def _execute_tool(
         limit = tool_input.get("limit", 20)
         rows, _ = await table_service.search_rows(table_id, query, limit=limit)
         return _format_rows(rows)
-
-    elif tool_name == "search_documents":
-        if not workspace_id:
-            return "(document search requires a workspace)"
-        from . import document_service
-        query = tool_input.get("query", "")
-        limit = tool_input.get("limit", 20)
-        chunks = await document_service.search_documents(workspace_id, query, limit=limit)
-        return _format_chunks(chunks)
 
     elif tool_name == "read_page":
         notebook_id = UUID(tool_input["notebook_id"])
@@ -321,14 +282,11 @@ async def universal_search(
             exclude.update({"search_notebooks", "read_page"})
         if "table" not in resource_types:
             exclude.add("search_tables")
-        if "document" not in resource_types:
-            exclude.add("search_documents")
         tools = [t for t in tools if t["name"] not in exclude]
 
     system = (
         "You are a research assistant that searches across multiple data sources to answer questions. "
-        "Available sources: history event logs, notebook pages (markdown), structured tables, "
-        "and parsed documents (PDFs, etc.).\n\n"
+        "Available sources: history event logs, notebook pages (markdown), and structured tables.\n\n"
         "Strategy:\n"
         "1. First call list_resources to discover what's available\n"
         "2. Search relevant resources with targeted queries\n"

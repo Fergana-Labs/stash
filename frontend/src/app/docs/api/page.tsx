@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { Callout, Code, CodeBlock, H3, P, Title, Subtitle } from "../components";
 
 export default function APIPage() {
@@ -13,7 +12,7 @@ export default function APIPage() {
       <Callout type="info">
         <strong>Authentication</strong> — include{" "}
         <code className="font-mono text-[13px]">Authorization: Bearer {"<api_key>"}</code> on every request.
-        Get your API key from the Personas page (for agent accounts) or via <Code>POST /users/login</Code>.
+        Get your API key from the settings page or via <Code>POST /auth/login</Code>.
         <br /><br />
         <strong>OpenAPI spec</strong> — the full interactive spec is available at{" "}
         <Code>/docs</Code> on your backend instance (or{" "}
@@ -22,10 +21,9 @@ export default function APIPage() {
       </Callout>
 
       <H3>Auth</H3>
-      <CodeBlock>{`POST   /users/register     Create an account — returns api_key
-POST   /users/login        Login with email + password — returns api_key
-GET    /users/me           Current user profile
-PATCH  /users/me           Update profile (name, avatar, etc.)`}</CodeBlock>
+      <CodeBlock>{`POST   /auth/login          Login via Auth0 — returns api_key
+GET    /users/me            Current user profile
+PATCH  /users/me            Update profile (name, avatar, etc.)`}</CodeBlock>
 
       <H3>Workspaces</H3>
       <CodeBlock>{`POST   /workspaces              Create a new workspace
@@ -85,67 +83,6 @@ GET    /workspaces/{ws}/tables/{tbl}/rows/semantic-search?q= Semantic search
 PUT    /workspaces/{ws}/tables/{tbl}/embedding               Configure row embeddings
 POST   /workspaces/{ws}/tables/{tbl}/embedding/backfill      Backfill embeddings for existing rows`}</CodeBlock>
 
-      <H3>Chats</H3>
-      <CodeBlock>{`POST   /workspaces/{ws}/chats                  Create a chat channel
-GET    /workspaces/{ws}/chats                  List workspace channels
-POST   /workspaces/{ws}/chats/{id}/messages    Send a message
-GET    /workspaces/{ws}/chats/{id}/messages    Read message history
-GET    /workspaces/{ws}/chats/{id}/messages/search?q=   Full-text search messages`}</CodeBlock>
-
-      <H3>Real-time: WebSocket and SSE</H3>
-      <P>
-        Chats support both a WebSocket (bidirectional) and an SSE stream (server-push) in
-        addition to REST polling. Use the same <Code>api_key</Code> as a query parameter
-        for auth — headers are not supported on WebSocket connections.
-      </P>
-      <CodeBlock>{`# WebSocket — bidirectional, lowest latency
-ws://your-host/api/v1/workspaces/{ws}/chats/{chat_id}/ws?token=API_KEY
-
-# Send a message
-{"type": "message", "content": "Hello!"}
-
-# Send a typing indicator
-{"type": "typing"}
-
-# Events received
-{"type": "message",  "id": "...", "sender_name": "...", "content": "...", ...}
-{"type": "typing",   "sender_name": "..."}
-
-# SSE — server-push only (combine with REST POST to send)
-GET /api/v1/workspaces/{ws}/chats/{chat_id}/stream
-Authorization: Bearer API_KEY`}</CodeBlock>
-
-      <H3>Personas & sleep agent</H3>
-      <CodeBlock>{`POST   /personas                           Create a persona identity
-GET    /personas                           List all your personas
-DELETE /personas/{id}                      Delete a persona
-POST   /personas/{id}/rotate-key           Rotate a persona's API key
-
-# Memory injection (call this at the start of every agent session)
-POST   /personas/me/inject                 Score + select context for current prompt
-  body: { "query": "current prompt", "token_budget": 4000 }
-
-# Sleep agent configuration (per persona)
-GET    /personas/me/sleep-config           Get sleep agent settings
-PUT    /personas/me/sleep-config           Update sleep agent settings
-POST   /personas/me/sleep/trigger          Manually trigger a curation run`}</CodeBlock>
-
-      <H3>Decks (Published pages)</H3>
-      <CodeBlock>{`POST   /workspaces/{ws}/decks              Create a deck (freeform / slides / dashboard)
-GET    /workspaces/{ws}/decks              List workspace decks
-GET    /workspaces/{ws}/decks/{id}         Get deck with HTML content
-PATCH  /workspaces/{ws}/decks/{id}         Update deck content or metadata
-DELETE /workspaces/{ws}/decks/{id}         Delete a deck
-
-# Public sharing
-POST   /workspaces/{ws}/decks/{id}/shares  Create a share link (optional passcode / email gate)
-GET    /workspaces/{ws}/decks/{id}/shares  List share links
-PUT    /workspaces/{ws}/decks/{id}/shares/{sid}  Update share (e.g. disable)
-GET    /workspaces/{ws}/decks/{id}/shares/{sid}/analytics  View + duration analytics
-
-# Public viewer (no auth required)
-GET    /d/{token}                          Render a shared deck by its token`}</CodeBlock>
-
       <H3>Permissions</H3>
       <P>
         Every workspace resource has a visibility setting. Set it with a{" "}
@@ -169,8 +106,7 @@ body: { "visibility": "inherit" | "private" | "public" }`}</CodeBlock>
       <H3>Rate limits</H3>
       <div className="rounded-2xl border border-border bg-surface divide-y divide-border my-6">
         {[
-          { endpoint: "Message send (chat / DM)", limit: "30 requests / minute" },
-          { endpoint: "REST polling / reads", limit: "60 requests / minute" },
+          { endpoint: "REST reads", limit: "60 requests / minute" },
           { endpoint: "File upload", limit: "10 requests / minute" },
           { endpoint: "Auth endpoints", limit: "20 requests / minute" },
         ].map((r) => (
@@ -194,4 +130,3 @@ body: { "visibility": "inherit" | "private" | "public" }`}</CodeBlock>
     </>
   );
 }
-

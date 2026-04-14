@@ -1,6 +1,5 @@
 """History router: workspace and personal structured agent event storage."""
 
-import asyncio
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -21,7 +20,7 @@ from ..models import (
     ShareRequest,
     ShareResponse,
 )
-from ..services import memory_service, permission_service, workspace_service, webhook_service, history_query_service
+from ..services import memory_service, permission_service, workspace_service, history_query_service
 
 ws_router = APIRouter(prefix="/api/v1/workspaces/{workspace_id}/memory", tags=["memory"])
 personal_router = APIRouter(prefix="/api/v1/memory", tags=["personal_memory"])
@@ -125,11 +124,6 @@ async def push_ws_event(
         content=req.content, session_id=req.session_id,
         tool_name=req.tool_name, metadata=req.metadata,
         attachments=attachments,
-    )
-    asyncio.create_task(
-        webhook_service.dispatch_webhooks(
-            workspace_id, "memory.event", event, sender_id=current_user["id"],
-        )
     )
     return HistoryEventResponse(**event)
 

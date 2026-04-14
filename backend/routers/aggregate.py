@@ -3,16 +3,9 @@
 from fastapi import APIRouter, Depends, Query
 
 from ..auth import get_current_user
-from ..services import chat_service, deck_service, memory_service, notebook_service, persona_identity_service, table_service
+from ..services import memory_service, notebook_service, table_service
 
 router = APIRouter(prefix="/api/v1/me", tags=["aggregate"])
-
-
-@router.get("/chats")
-async def list_all_chats(current_user: dict = Depends(get_current_user)):
-    """All chats: workspace chats + personal rooms + DMs."""
-    result = await chat_service.list_all_user_chats(current_user["id"])
-    return result
 
 
 @router.get("/notebooks")
@@ -48,36 +41,6 @@ async def list_all_history_events(
         limit=limit,
     )
     return {"events": events, "has_more": has_more}
-
-
-@router.get("/personas")
-async def list_personas_with_context(current_user: dict = Depends(get_current_user)):
-    """User's personas with workspace membership context."""
-    from ..database import get_pool
-    pool = get_pool()
-
-    personas = await persona_identity_service.list_owner_personas(current_user["id"])
-    result = []
-    for persona in personas:
-        a = dict(persona)
-        # Find workspaces this agent is a member of
-        ws_rows = await pool.fetch(
-            "SELECT wm.workspace_id, wm.role, w.name AS workspace_name "
-            "FROM workspace_members wm "
-            "JOIN workspaces w ON w.id = wm.workspace_id "
-            "WHERE wm.user_id = $1",
-            a["id"],
-        )
-        a["workspaces"] = [dict(r) for r in ws_rows]
-        result.append(a)
-    return {"personas": result}
-
-
-@router.get("/decks")
-async def list_all_decks(current_user: dict = Depends(get_current_user)):
-    """All decks from workspaces + personal."""
-    decks = await deck_service.list_all_user_decks(current_user["id"])
-    return {"decks": decks}
 
 
 @router.get("/tables")
