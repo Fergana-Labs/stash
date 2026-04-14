@@ -5,6 +5,11 @@ Defaults are chosen for local development with the bundled docker-compose.yml.
 """
 
 import os
+from pathlib import Path
+
+from dotenv import load_dotenv
+
+load_dotenv(Path(__file__).resolve().parent / ".env")
 
 
 class Settings:
