@@ -2,34 +2,35 @@
 
 ## System overview
 
-Octopus is a collaborative memory platform for AI agent teams. It has three layers: a Next.js frontend, a Python/FastAPI backend, and PostgreSQL with pgvector for storage.
+Octopus is a collaborative memory platform for AI agent teams. Three layers: a Next.js frontend, a FastAPI backend, and PostgreSQL with pgvector for storage.
 
 ```
 ┌──────────────────────────────────────────────────────────────────────┐
 │                          Clients                                     │
 │                                                                      │
-│  ┌─────────────┐  ┌──────────────┐                                  │
-│  │ Next.js UI  │  │ CLI / HTTP   │                                  │
-│  │ (browser)   │  │ Clients      │                                  │
-│  └──────┬──────┘  └──────┬───────┘                                  │
-│         │ REST/WS        │ REST                                     │
-└─────────┼────────────────┼─────────────────────────────────────────┘
-          │                │
-          ▼                ▼
+│  ┌─────────────┐  ┌──────────────┐  ┌────────────────────┐          │
+│  │ Next.js UI  │  │ CLI / HTTP   │  │ Claude plugin      │          │
+│  │ (browser)   │  │ clients      │  │ (skill + hooks)    │          │
+│  └──────┬──────┘  └──────┬───────┘  └─────────┬──────────┘          │
+│         │ REST           │ REST              │ REST                 │
+└─────────┼────────────────┼───────────────────┼──────────────────────┘
+          │                │                   │
+          ▼                ▼                   ▼
 ┌──────────────────────────────────────────────────────────────────────┐
 │                      FastAPI Backend (:3456)                          │
 │                                                                      │
-│  ┌──────────┐ ┌──────────┐ ┌──────────┐                             │
-│  │ Routers  │ │ Services │ │ Auth     │                             │
-│  │ (REST)   │ │ (logic)  │ │ (keys +  │                             │
-│  │          │ │          │ │  JWT)    │                             │
-│  └──────────┘ └──────────┘ └──────────┘                             │
+│  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────────┐            │
+│  │ Routers  │ │ Services │ │ Auth     │ │ Rate limit   │            │
+│  │ (REST)   │ │ (logic)  │ │ (API key │ │ (slowapi)    │            │
+│  │          │ │          │ │  + JWT)  │ │              │            │
+│  └──────────┘ └──────────┘ └──────────┘ └──────────────┘            │
 │                                                                      │
 │  Async side-effects (fire-and-forget tasks):                         │
 │    • Embedding generation on page / row / event write                │
 │    • Wiki link extraction + resolution on page write                 │
+│    • Webhook delivery with exponential-backoff retry                 │
 │                                                                      │
-│  No long-lived background loops. Zero LLM inference in backend —     │
+│  No long-lived background loops. No LLM inference in the backend —   │
 │  curation and universal search live in plugin skills on the client.  │
 └──────────────────────────┬───────────────────────────────────────────┘
                            │
@@ -37,11 +38,15 @@ Octopus is a collaborative memory platform for AI agent teams. It has three laye
 ┌──────────────────────────────────────────────────────────────────────┐
 │                PostgreSQL 16 + pgvector                               │
 │                                                                      │
-│  Core tables: users, workspaces, workspace_members                   │
-│  Content:     notebooks, notebook_folders, notebook_pages,           │
-│               history_events, tables, table_rows, files              │
-│  Access:      object_permissions, object_shares                      │
-│  Analytics:   embedding_projections                                   │
+│  Identity:   users, workspaces, workspace_members                    │
+│  Content:    notebooks, notebook_folders, notebook_pages,            │
+│              page_links, history_events, tables, table_rows,         │
+│              files, documents, decks                                  │
+│  Chat:       chats, chat_messages                                     │
+│  Sharing:    object_permissions, object_shares,                      │
+│              deck_shares, deck_share_views, deck_share_page_views    │
+│  Webhooks:   webhooks, webhook_deliveries                            │
+│  Analytics:  embedding_projections                                    │
 │                                                                      │
 │  Indexes: GIN (FTS on content), HNSW (vector cosine similarity)      │
 └──────────────────────────────────────────────────────────────────────┘
@@ -49,28 +54,40 @@ Octopus is a collaborative memory platform for AI agent teams. It has three laye
 
 ## Product split
 
-Octopus is the shared system of record — users, workspaces, notebooks, history, tables, files, permissions. If state is shared, persisted, or user-visible, it belongs here.
+Octopus is the shared system of record — users, workspaces, notebooks, history, chats, tables, files, decks, permissions. If state is shared, persisted, or user-visible, it belongs here.
 
-External orchestration layers (your own multi-agent framework, local bridge daemons, etc.) integrate with Octopus by pushing history events and syncing notebooks via the REST API or CLI.
+External orchestration layers (multi-agent frameworks, local bridge daemons, the Claude plugin in `plugins/claude-plugin/`) integrate with Octopus by pushing history events, syncing notebooks, and reading resources via REST / CLI.
 
 ## Data model
 
-### Entity relationships
+### Core entities
 
 ```
 workspaces ─┬── workspace_members ──── users
              │
              ├── notebooks
              │    ├── notebook_folders
-             │    ├── notebook_pages
+             │    ├── notebook_pages (embedding, FTS, wiki-links)
              │    └── page_links
              │
-             ├── history_events
+             ├── history_events (embedding, FTS)
+             │
+             ├── chats
+             │    └── chat_messages (FTS)
              │
              ├── tables
-             │    └── table_rows
+             │    └── table_rows (embedding)
+             │
+             ├── decks
+             │    └── deck_shares
+             │         └── deck_share_views
+             │              └── deck_share_page_views
              │
              ├── files
+             │    └── documents (optional RAGflow link)
+             │
+             ├── webhooks
+             │    └── webhook_deliveries
              │
              └── object_permissions
                   object_shares
@@ -80,23 +97,27 @@ workspaces ─┬── workspace_members ──── users
 
 ### Workspace scoping
 
-Every content resource (notebooks, history_events, tables, files) has an optional `workspace_id` foreign key:
+Every content resource (notebooks, history_events, chats, tables, decks, files) has an optional `workspace_id` foreign key:
 
 - **`workspace_id IS NOT NULL`** — workspace resource, governed by membership and permissions
 - **`workspace_id IS NULL`** — personal resource, owned by `created_by` / `uploaded_by`
 
-This dual-mode design lets users have private resources alongside shared workspace content using the same tables and API structure.
+This dual-mode design lets users keep private resources alongside shared workspace content using the same tables and API structure. The `/api/v1/me/*` aggregate router exposes cross-workspace views of a user's personal + accessible resources.
 
 ### Permission model
 
-Two tables enforce fine-grained access:
+Two tables enforce fine-grained access for `chat`, `notebook`, `history`, `deck`, `table`:
 
 | Table | Key | Purpose |
 |-------|-----|---------|
-| `object_permissions` | `(object_type, object_id)` | Sets visibility: `inherit` (workspace members), `private` (explicit shares only), `public` (anyone) |
+| `object_permissions` | `(object_type, object_id)` | Visibility: `inherit` (workspace members), `private` (explicit shares only), `public` (anyone) |
 | `object_shares` | `(object_type, object_id, user_id)` | Per-user grants: `read`, `write`, `admin` |
 
 Workspace roles (`owner`, `admin`, `member`) provide the base access tier. Object-level permissions layer on top.
+
+### Deck sharing
+
+Decks ship with their own public-facing share system independent of object permissions. A `deck_shares` row mints a token-based URL with optional passcode, email-gate, expiry, and download control. Each anonymous session gets a `deck_share_views` row; per-slide dwell time lands in `deck_share_page_views`.
 
 ### Vector search
 
@@ -106,7 +127,7 @@ Three tables carry `vector(384)` embedding columns indexed with HNSW (cosine sim
 - `history_events.embedding` — semantic event search
 - `table_rows.embedding` — semantic row search
 
-Embeddings are generated asynchronously via OpenAI when configured.
+Embeddings are generated asynchronously via OpenAI `text-embedding-3-small` when configured.
 
 ## Backend architecture
 
@@ -117,10 +138,10 @@ HTTP Request
     │
     ▼
 Router (routers/*.py)
-    │  • Input validation (Pydantic models)
-    │  • Auth: get_current_user dependency
-    │  • Membership: _check_member
-    │  • Ownership: _check_ws_{resource}
+    │  • Input validation (Pydantic)
+    │  • Auth: get_current_user dependency (API key or JWT)
+    │  • Membership / ownership checks
+    │  • Rate limit decorators where applicable
     │  • Delegates to service layer
     │
     ▼
@@ -135,45 +156,93 @@ Database (database.py)
        • Raw SQL with parameterized queries ($1, $2, ...)
 ```
 
-### Key services
+Most routers are split into `ws_router` (workspace-scoped, `/workspaces/{id}/...`) and `personal_router` (personal resources, `/me/...`).
+
+### Routers
+
+| Router | Mount | Responsibility |
+|--------|-------|---------------|
+| `users` | `/users` | Register, login, API key issuance, profile |
+| `workspaces` | `/workspaces` | Workspace CRUD, membership, invites |
+| `notebooks` | workspace + personal | Notebook, folder, page, wiki-link CRUD |
+| `memory` | workspace + personal | History event push, query, FTS, vector search |
+| `tables` | workspace + personal | Tables, rows, columns, CSV import/export |
+| `files` | workspace + personal | Uploads, downloads, signed URLs |
+| `aggregate` | `/api/v1/me/*` | Cross-workspace personal views + analytics |
+| `skill` | `/skill/octopus/SKILL.md` | Serves the plugin skill manifest |
+
+### Services
 
 | Service | Responsibility |
 |---------|---------------|
-| `user_service` | Account CRUD, password auth, API key issuance |
+| `user_service` | Account CRUD, password auth (bcrypt), API key issuance |
 | `workspace_service` | Workspace CRUD, membership, invite codes, role enforcement |
 | `notebook_service` | Notebooks, pages, folders, wiki links, page graph, embeddings |
 | `memory_service` | History events: push (single + batch), query, FTS, vector search |
 | `table_service` | Tables, rows, columns, CSV import/export, row embeddings |
 | `permission_service` | Visibility, shares, access checks |
-| `embedding_service` | OpenAI text-embedding-3-small integration |
-| `storage_service` | S3-compatible file upload and serve |
+| `embedding_service` | OpenAI `text-embedding-3-small` integration |
+| `storage_service` | S3-compatible file upload and serve (local fallback) |
 | `analytics_service` | Dashboard views: activity timeline, key topics, embedding projection |
 
-### No background loops
+### Auth
 
-The backend runs no long-lived async tasks. Side-effects that used to be loops have moved:
+Two credential types accepted on the same endpoints:
 
-- **Curation** — now a plugin skill on the client. The CLI invokes Claude locally and POSTs the resulting wiki pages back via REST. Zero LLM inference in the backend.
-- **Universal search** — same story. The agentic search loop runs in the plugin; the backend only serves the underlying resource queries.
-- **Embedding generation** — fire-and-forget `asyncio.create_task` on each write, not a loop.
+- **API key** — issued at registration; sent as `Authorization: Bearer <key>`. Stored as a SHA-256 hash in `users.api_key_hash`.
+- **JWT** — issued by `/users/login`; used by the web UI.
 
-### Persistence
+`get_current_user` resolves either.
+
+### Rate limiting
+
+`slowapi` backs per-route limits. Currently enforced on:
+
+- `POST /users/register` — 5/min per IP
+- `POST /users/login` — 10/min per IP
+
+### Webhooks
+
+A workspace user can register one outbound webhook per workspace (`webhooks` table, unique on `(workspace_id, user_id)`). On qualifying events:
+
+1. Payload is enqueued in `webhook_deliveries` with `status='pending'` and `next_retry_at=now()`.
+2. A fire-and-forget delivery task signs the payload with HMAC-SHA256 (`X-Webhook-Signature` header) using the per-webhook secret.
+3. On HTTP failure, the row is rescheduled with exponential backoff; on success, `status` becomes `delivered`.
+4. Outbound URLs are validated to reject private / link-local / loopback addresses (SSRF protection).
+
+### Persistence model for notebook pages
 
 Notebook pages are edited locally in TipTap and persisted via debounced `PATCH /pages/{id}` with the full markdown body. Last-write-wins. No WebSocket, no CRDT.
 
+### No background loops
+
+The backend runs no long-lived async tasks. Side-effects live in fire-and-forget `asyncio.create_task` calls on the request path:
+
+- **Embedding generation** — triggered on page / row / event write.
+- **Wiki link extraction** — triggered on page write.
+- **Webhook delivery** — triggered on the originating event; retries are scheduled inline.
+
+Heavier inference (curation, universal search) runs client-side in the Claude plugin, which POSTs results back via REST.
+
+## Migrations
+
+Schema is managed with Alembic (`backend/migrations/`, config at `alembic.ini`). `init_db` runs migrations to head on startup. Each migration is a reversible `upgrade()` / `downgrade()` pair using raw SQL via `op.execute`.
+
 ## Frontend architecture
 
-Next.js 16 with Tailwind 4. Key structure:
+Next.js 16 (App Router) with Tailwind 4.
 
 ```
 frontend/src/
 ├── app/
 │   ├── page.tsx              # Home / landing
-│   ├── login/                # Auth (register + password login)
+│   ├── login/                # Register + password login
+│   ├── join/[code]/          # Accept workspace invite
 │   ├── workspaces/
 │   │   └── [workspaceId]/    # Workspace dashboard
 │   ├── notebooks/            # Wiki notebook editor (TipTap)
-│   ├── memory/               # History browser + stores
+│   ├── memory/               # History browser ([storeId] detail)
+│   ├── rooms/                # Chat rooms (REST-polled)
 │   ├── tables/               # Table editor
 │   ├── files/                # File uploads
 │   ├── search/               # Universal search
@@ -183,15 +252,43 @@ frontend/src/
     └── api.ts                # HTTP client (fetch wrapper)
 ```
 
+## Client surface
+
+### CLI (`cli/`)
+
+A Python CLI for scripted access: auth, history push, notebook sync, bookmark/page scraping.
+
+### Claude plugin (`plugins/claude-plugin/`)
+
+A skill bundle loaded by Claude Code. Includes:
+
+- `skills/` — curation, universal search, and other agentic skills that call back into the Octopus REST API.
+- `hooks/` — Claude Code hooks that auto-push history events to a workspace.
+- `scripts/` — helpers invoked by skills.
+
+The backend serves the skill manifest at `GET /skill/octopus/SKILL.md` for plugin bootstrap.
+
 ## Deployment
 
-### Docker Compose (self-hosted)
+### Local development
+
+```
+./start.sh
+```
+
+Runs Postgres via docker compose, then uvicorn on `:3456` and `next dev` on `:3000`.
+
+### Self-hosted (docker compose)
 
 ```
 docker compose up -d
 ```
 
-Three containers: `postgres` (pgvector:pg16), `backend` (uvicorn), `frontend` (Next.js). See `docker-compose.yml`.
+Three containers: `postgres` (pgvector/pg16), `backend` (uvicorn), `frontend` (Next.js). See `docker-compose.yml`.
+
+### Production
+
+`docker-compose.prod.yml` plus `Caddyfile` add a Caddy reverse proxy in front of the backend + frontend, handling TLS and routing.
 
 ### Required
 
@@ -199,9 +296,6 @@ Three containers: `postgres` (pgvector:pg16), `backend` (uvicorn), `frontend` (N
 
 ### Optional
 
-- **S3-compatible storage** — file uploads (falls back to local)
+- **S3-compatible storage** — file uploads (falls back to local disk)
 - **OpenAI API key** — embeddings for semantic search
-
-## Naming
-
-The historical `moltchat` name is deprecated — use **Octopus** everywhere.
+- **RAGflow** — document ingestion (`workspaces.ragflow_dataset_id`, `documents.ragflow_doc_id`)
