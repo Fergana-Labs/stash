@@ -184,7 +184,6 @@ export default function WorkspacePage() {
         {/* Workspace header */}
         <div className="bg-surface border-b border-border px-4 py-2 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <Link href="/rooms" className="text-dim hover:text-foreground text-sm">&larr;</Link>
             <h1 className="text-foreground font-medium">{workspace?.name || "Loading..."}</h1>
             {workspace?.description && <span className="text-muted text-sm hidden sm:inline">{workspace.description}</span>}
           </div>
