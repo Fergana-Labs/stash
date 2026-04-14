@@ -13,10 +13,10 @@ Three top-level sections in the sidebar:
 Everything lives in a **workspace** — a permissioned container for teams. Personal resources can exist outside workspaces.
 
 ## Tech Stack
-- Frontend: Next.js 16, React 19, Tailwind 4, TipTap (collaborative editing), Yjs (CRDT)
+- Frontend: Next.js 16, React 19, Tailwind 4, TipTap (rich-text editor)
 - Backend: Python, FastAPI, PostgreSQL, pgvector
 - CLI: Python, Typer (`cli/main.py`)
-- Real-time: Yjs WebSocket relay (pycrdt), native Python markdown ↔ Yjs conversion
+- Persistence: plain REST PATCH on markdown; no WebSocket, no CRDT
 - Storage: S3-compatible (Cloudflare R2)
 - Embeddings: OpenAI text-embedding-3-small (384 dims)
 
@@ -24,7 +24,6 @@ Everything lives in a **workspace** — a permissioned container for teams. Pers
 - `backend/services/universal_search_service.py` — Agentic search loop across all resource types.
 - `backend/services/notebook_service.py` — Wiki features: [[link]] parsing, backlinks, page graph, embeddings.
 - `backend/services/embedding_service.py` — OpenAI embedding API client. Uses EMBEDDING_API_KEY or OPENAI_API_KEY.
-- `backend/services/yjs_converter.py` — Native Python markdown ↔ Yjs XmlFragment conversion. No Node.js collab server needed.
 - `backend/services/storage_service.py` — S3-compatible file upload/serve.
 
 ## CLI
