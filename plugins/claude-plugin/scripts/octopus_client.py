@@ -114,19 +114,3 @@ class OctopusClient:
     def search_events(self, workspace_id: str, store_id: str, query: str, limit: int = 50) -> list:
         return self._list(f"/api/v1/workspaces/{workspace_id}/memory/{store_id}/events/search", "events", q=query, limit=limit)
 
-    # --- Injection (agent-scoped) ---
-
-    def inject(self, prompt_text: str, session_state: dict, session_id: str = "") -> dict:
-        """Call the server-side injection scoring endpoint."""
-        body: dict = {"prompt_text": prompt_text, "session_state": session_state}
-        if session_id:
-            body["session_id"] = session_id
-        return self._post("/api/v1/personas/me/inject", json=body)
-
-    # --- Chat Watches ---
-
-    def get_unread(self) -> dict:
-        return self._get("/api/v1/personas/me/unread")
-
-    def mark_read(self, chat_id: str) -> dict:
-        return self._post(f"/api/v1/personas/me/watches/{chat_id}/mark-read")

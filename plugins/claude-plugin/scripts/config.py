@@ -11,7 +11,6 @@ from pathlib import Path
 PLUGIN_DATA = Path(os.environ.get("CLAUDE_PLUGIN_DATA", Path.home() / ".claude/plugins/data/octopus"))
 STATE_FILE = PLUGIN_DATA / "state.json"
 CACHE_FILE = PLUGIN_DATA / "context_cache.json"
-INJECTION_STATE_FILE = PLUGIN_DATA / "injection_state.json"
 CACHE_TTL = 300  # 5 minutes
 
 # Optional: path to a directory of JSON notification files dropped by an external
@@ -93,7 +92,7 @@ def load_state() -> dict:
             return json.loads(STATE_FILE.read_text())
         except Exception:
             pass
-    return {"streaming_enabled": True, "persona": "", "session_id": "", "last_sync": None}
+    return {"streaming_enabled": True, "session_id": "", "last_sync": None}
 
 
 def save_state(state: dict):
@@ -124,24 +123,6 @@ def save_cache(profile: dict, recent_events: list):
         "profile": profile,
         "recent_events": recent_events,
     }, indent=2))
-
-
-# --- Injection state (per-session scoring state) ---
-
-def load_injection_state() -> dict:
-    """Load injection session state from disk."""
-    if INJECTION_STATE_FILE.exists():
-        try:
-            return json.loads(INJECTION_STATE_FILE.read_text())
-        except Exception:
-            pass
-    return {"prompt_num": 0, "session_start": "", "items": {}}
-
-
-def save_injection_state(state: dict):
-    """Save injection session state to disk."""
-    PLUGIN_DATA.mkdir(parents=True, exist_ok=True)
-    INJECTION_STATE_FILE.write_text(json.dumps(state, indent=2))
 
 
 # --- Bridge escalations ---

@@ -67,8 +67,8 @@ class OctopusClient:
 
     # --- Auth ---
 
-    def register(self, name: str, user_type: str = "human", description: str = "", password: str | None = None) -> dict:
-        body: dict = {"name": name, "type": user_type, "description": description}
+    def register(self, name: str, description: str = "", password: str | None = None) -> dict:
+        body: dict = {"name": name, "description": description}
         if password:
             body["password"] = password
         return self._post("/api/v1/users/register", json=body)
@@ -78,26 +78,6 @@ class OctopusClient:
 
     def whoami(self) -> dict:
         return self._get("/api/v1/users/me")
-
-    # --- Agent Identities ---
-
-    def create_persona(self, name: str, display_name: str = "", description: str = "") -> dict:
-        body: dict = {"name": name, "description": description}
-        if display_name:
-            body["display_name"] = display_name
-        return self._post("/api/v1/personas", json=body)
-
-    def list_personas(self) -> list:
-        return self._get("/api/v1/personas")
-
-    def rotate_persona_key(self, persona_id: str) -> dict:
-        return self._post(f"/api/v1/personas/{persona_id}/rotate-key")
-
-    def delete_persona(self, persona_id: str) -> None:
-        self._delete(f"/api/v1/personas/{persona_id}")
-
-    def list_personas_with_context(self) -> list:
-        return self._list("/api/v1/me/personas", "personas")
 
     # --- Workspaces ---
 
@@ -383,24 +363,6 @@ class OctopusClient:
         if secret:
             body["secret"] = secret
         return self._post(f"/api/v1/workspaces/{workspace_id}/webhooks", json=body)
-
-    # --- Chat Watches ---
-
-    def watch_chat(self, chat_id: str, workspace_id: str | None = None) -> dict:
-        params = f"?workspace_id={workspace_id}" if workspace_id else ""
-        return self._post(f"/api/v1/personas/me/watches/{chat_id}{params}")
-
-    def unwatch_chat(self, chat_id: str) -> None:
-        self._delete(f"/api/v1/personas/me/watches/{chat_id}")
-
-    def list_watches(self) -> list:
-        return self._list("/api/v1/personas/me/watches", "watches")
-
-    def get_unread(self) -> dict:
-        return self._get("/api/v1/personas/me/unread")
-
-    def mark_read(self, chat_id: str) -> dict:
-        return self._post(f"/api/v1/personas/me/watches/{chat_id}/mark-read")
 
     def search_users(self, query: str) -> list:
         return self._get("/api/v1/dms/users/search", q=query)
