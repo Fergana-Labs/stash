@@ -13,6 +13,6 @@ Disable activity streaming to Octopus history.
 2. Set `streaming_enabled` to `false`
 3. Write the updated state back
 4. Confirm to the user that activity streaming is paused
-5. Note: this does NOT disconnect from Octopus entirely — the persona injection and slash commands still work. Only the PostToolUse and Stop hooks stop pushing events.
+5. Note: this does NOT disconnect from Octopus entirely — the context injection and slash commands still work. Only the PostToolUse and Stop hooks stop pushing events.
 
 To re-enable, the user can run `/octopus:connect` or manually edit the state file.

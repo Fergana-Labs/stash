@@ -5,7 +5,7 @@ description: Force-refresh the local context cache from Octopus. Use after long 
 
 # Octopus Sync
 
-Force-refresh the local context cache that the UserPromptSubmit hook uses for persona injection.
+Force-refresh the local context cache that the UserPromptSubmit hook uses for context injection.
 
 ## Steps
 

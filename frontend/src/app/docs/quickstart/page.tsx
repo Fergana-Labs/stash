@@ -14,15 +14,13 @@ export default function QuickstartPage() {
       <Title>Quickstart</Title>
       <Subtitle>Connect Claude Code and start building shared knowledge in 5 minutes.</Subtitle>
 
-      <H3>1. Create an account and a persona</H3>
+      <H3>1. Create an account</H3>
       <P>
         Register at{" "}
         <a href="https://getoctopus.com" className="text-brand underline underline-offset-2">
           getoctopus.com
         </a>{" "}
-        then go to the <strong>Personas</strong> page inside your workspace and create a persona.
-        This is your AI agent's identity in Octopus — it has its own API key, personal notebook,
-        and sleep agent configuration. Save the persona's API key.
+        and save your API key.
       </P>
       <P>
         <strong>Prefer the CLI?</strong> Instead of the web UI, run{" "}
@@ -33,17 +31,16 @@ export default function QuickstartPage() {
       </P>
 
       <Callout>
-        <strong>Why a persona?</strong> A persona is the identity your agent operates under.
-        Multiple team members can have separate personas in a shared workspace, each with its
-        own curated wiki and agent name filter.
+        <strong>Agent names</strong> are just strings on history events that identify which agent produced them.
+        Multiple team members can use different agent names in a shared workspace.
       </Callout>
 
       <H3>2. Install the Claude Code plugin</H3>
       <CodeBlock>{`claude plugin add ./claude-plugin`}</CodeBlock>
       <P>The plugin will prompt for three values:</P>
       <ParamTable params={[
-        { name: "api_key", type: "string", desc: "Your persona's API key from step 1", required: true },
-        { name: "agent_name", type: "string", desc: "Your persona's username", required: true },
+        { name: "api_key", type: "string", desc: "Your API key from step 1", required: true },
+        { name: "agent_name", type: "string", desc: "A name for this agent (any string)", required: true },
         { name: "api_endpoint", type: "string", desc: "https://getoctopus.com (default)" },
       ]} />
 
@@ -69,7 +66,7 @@ export default function QuickstartPage() {
       <H3>5. What the plugin does automatically</H3>
       <P>The plugin hooks into Claude Code session lifecycle events:</P>
       <ParamTable params={[
-        { name: "SessionStart", type: "hook", desc: "Loads persona context and injects relevant memory into your prompt" },
+        { name: "SessionStart", type: "hook", desc: "Loads agent context and injects relevant memory into your prompt" },
         { name: "PostToolUse", type: "hook", desc: "Streams every tool call to Octopus history asynchronously — doesn't slow you down" },
         { name: "UserPromptSubmit", type: "hook", desc: "Records prompts for context tracking" },
         { name: "Stop", type: "hook", desc: "Pushes a session summary with key findings" },
@@ -80,21 +77,20 @@ export default function QuickstartPage() {
       <ParamTable params={[
         { name: "/octopus:connect", type: "skill", desc: "Connect to a workspace and set up streaming" },
         { name: "/octopus:disconnect", type: "skill", desc: "Pause activity streaming" },
-        { name: "/octopus:status", type: "skill", desc: "Show connection status and persona info" },
+        { name: "/octopus:status", type: "skill", desc: "Show connection status and agent info" },
         { name: "/octopus:sync", type: "skill", desc: "Force-refresh local context cache" },
-        { name: "/octopus:persona", type: "skill", desc: "View or set the agent persona" },
+        { name: "/octopus:persona", type: "skill", desc: "View or set the agent name" },
         { name: "/octopus:config", type: "skill", desc: "View or change plugin configuration" },
       ]} />
 
-      <H3>7. The sleep agent curates in the background</H3>
+      <H3>7. Curate your knowledge base</H3>
       <P>
-        Every 30 minutes (configurable), the sleep agent reads newly ingested data and organizes
-        it into a categorized wiki with <code className="text-brand font-mono text-[13px]">[[backlinks]]</code>,
-        folders, and summaries. Configure it on the Personas page — choose which agent names to
-        watch and which Claude model to use.
+        Use the <code className="text-brand font-mono text-[13px]">curate</code> MCP tool to organize
+        ingested data into a categorized wiki with <code className="text-brand font-mono text-[13px]">[[backlinks]]</code>,
+        folders, and summaries.
       </P>
       <Callout type="tip">
-        The more sessions your team runs, the richer the wiki gets. The sleep agent merges
+        The more sessions your team runs, the richer the wiki gets. The curation tool merges
         duplicates, creates category pages, and links related content automatically.
       </Callout>
 

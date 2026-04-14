@@ -1040,7 +1040,7 @@ def import_bookmarks_cmd(
     """Import bookmarks from a Chrome/Firefox HTML export.
 
     Parses the bookmark file, scrapes each URL (web articles, YouTube transcripts,
-    PDFs), and stores them as notebook pages. The sleep agent will curate them into
+    PDFs), and stores them as notebook pages. Use the curate tool to organize them into
     a searchable wiki.
 
     Export bookmarks: Chrome → Bookmarks → ⋮ → Export bookmarks

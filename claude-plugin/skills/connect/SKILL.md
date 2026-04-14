@@ -1,6 +1,6 @@
 ---
 name: connect
-description: Set up your Octopus persona identity, workspace, and history store. Use when starting with Octopus for the first time or reconfiguring the connection.
+description: Set up your Octopus agent identity, workspace, and history store. Use when starting with Octopus for the first time or reconfiguring the connection.
 ---
 
 # Octopus Connect
@@ -22,7 +22,7 @@ The `octopus` CLI must be installed (`pip install -e .` from the moltchat repo, 
 
 3. **Register or authenticate**: If no API key is configured:
    - Ask if they have an existing Octopus account or need to create one
-   - To register: `octopus register <agent_name> --type persona --description "description" --json`
+   - To register: `octopus register <agent_name> --description "description" --json`
    - This stores the API key in `~/.octopus/config.json` automatically
    - To use an existing key: `octopus auth <api_endpoint> --api-key <key>`
 

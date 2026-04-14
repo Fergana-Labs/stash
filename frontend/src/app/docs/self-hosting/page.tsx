@@ -31,7 +31,7 @@ cd octopus
 cp .env.example .env`}</CodeBlock>
       <P>
         At minimum set <Code>POSTGRES_USER</Code>, <Code>POSTGRES_PASSWORD</Code>,{" "}
-        <Code>ANTHROPIC_API_KEY</Code> (sleep agent + universal search),
+        <Code>ANTHROPIC_API_KEY</Code> (curation + universal search),
         <Code>OPENAI_API_KEY</Code> (semantic search), and <Code>PUBLIC_URL</Code> (your domain).
       </P>
       <P>
@@ -45,8 +45,8 @@ cp .env.example .env`}</CodeBlock>
       <div className="rounded-2xl border border-border bg-surface divide-y divide-border my-6">
         {[
           { svc: "postgres", port: "5432", desc: "PostgreSQL 16 with pgvector — stores all workspace data" },
-          { svc: "backend", port: "3456", desc: "FastAPI — REST API, WebSocket, MCP, sleep agent scheduler" },
-          { svc: "frontend", port: "3457", desc: "Next.js UI — dashboard, docs, deck viewer" },
+          { svc: "backend", port: "3456", desc: "FastAPI — REST API, WebSocket (Yjs), MCP server" },
+          { svc: "frontend", port: "3457", desc: "Next.js UI — dashboard, docs" },
         ].map((s) => (
           <div key={s.svc} className="flex gap-5 px-5 py-4">
             <span className="text-[13px] font-semibold text-foreground font-mono w-24 flex-shrink-0">{s.svc}</span>
@@ -64,19 +64,15 @@ cp .env.example .env`}</CodeBlock>
       <ParamTable params={[
         { name: "POSTGRES_USER / POSTGRES_PASSWORD / POSTGRES_DB", type: "string", desc: "Postgres credentials. Defaults are octopus/octopus/octopus — change before going to production." },
         { name: "DATABASE_URL", type: "string", desc: "Full PostgreSQL connection string. Defaults to postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@localhost:5432/${POSTGRES_DB}.", required: true },
-        { name: "ANTHROPIC_API_KEY", type: "string", desc: "Required for sleep agent curation and LLM-synthesised history queries." },
+        { name: "ANTHROPIC_API_KEY", type: "string", desc: "Required for curation and LLM-synthesised history queries." },
         { name: "OPENAI_API_KEY", type: "string", desc: "Required for semantic search (text-embedding-3-small)." },
         { name: "PUBLIC_URL", type: "string", desc: "Frontend origin. Used in invite links and CORS config. Default: http://localhost:3457" },
         { name: "CORS_ORIGINS", type: "string", desc: "Comma-separated allowed origins. Default: http://localhost:3457,http://localhost:3456" },
         { name: "PORT", type: "number", desc: "Backend port. Default: 3456" },
-        { name: "SLEEP_AGENT_ENABLED", type: "bool", desc: "Enable background curation scheduler. Default: true" },
-        { name: "SLEEP_AGENT_CHECK_INTERVAL", type: "number", desc: "Seconds between scheduler ticks. Default: 300" },
         { name: "DB_POOL_MIN / DB_POOL_MAX", type: "number", desc: "Database connection pool size. Raise DB_POOL_MAX for high-traffic deployments." },
         { name: "S3_ENDPOINT", type: "string", desc: "S3-compatible endpoint for file uploads (AWS, Cloudflare R2, MinIO). Leave blank to disable." },
         { name: "S3_BUCKET", type: "string", desc: "S3 bucket name." },
         { name: "S3_ACCESS_KEY / S3_SECRET_KEY", type: "string", desc: "S3 credentials." },
-        { name: "RAGFLOW_API_URL", type: "string", desc: "Self-hosted RAGFlow URL for structured document ingestion. Leave blank to disable." },
-        { name: "RAGFLOW_API_KEY", type: "string", desc: "RAGFlow API key." },
       ]} />
 
       <H3>Optional: file storage</H3>
@@ -105,27 +101,14 @@ S3_ACCESS_KEY=octopus
 S3_SECRET_KEY=octopusdev
 S3_REGION=us-east-1`}</CodeBlock>
 
-      <H3>Optional: RAGFlow for document ingestion</H3>
-      <P>
-        RAGFlow is an external service that parses PDFs and other documents into structured
-        chunks for semantic retrieval. To enable the Documents feature in Octopus, stand up a
-        RAGFlow instance and set:
-      </P>
-      <CodeBlock>{`RAGFLOW_API_URL=http://your-ragflow-host:9380
-RAGFLOW_API_KEY=your-ragflow-key`}</CodeBlock>
-      <P>
-        Without RAGFlow, the Documents tab is hidden and{" "}
-        <Code>upload_document</Code> MCP tools return errors. All other features work normally.
-      </P>
-
       <H3>Production checklist</H3>
       <div className="rounded-2xl border border-border bg-surface divide-y divide-border my-6">
         {[
           { item: "Change default Postgres credentials", detail: "Set POSTGRES_USER, POSTGRES_PASSWORD, and POSTGRES_DB in your .env before first run. Docker Compose and DATABASE_URL both pick them up automatically." },
-          { item: "Set a strong SECRET_KEY", detail: "Used for signing share tokens and webhooks. Generate with: python -c \"import secrets; print(secrets.token_hex(32))\"" },
+          { item: "Set a strong SECRET_KEY", detail: "Used for signing tokens. Generate with: python -c \"import secrets; print(secrets.token_hex(32))\"" },
           { item: "Configure CORS_ORIGINS", detail: "Set to your production frontend domain(s) only." },
           { item: "Set PUBLIC_URL", detail: "Set to your production frontend URL so invite links and share links resolve correctly." },
-          { item: "Enable TLS", detail: "Put Nginx or Caddy in front of both services. The backend WebSocket endpoint also needs wss://." },
+          { item: "Enable TLS", detail: "Put Nginx or Caddy in front of both services. The Yjs WebSocket endpoint also needs wss://." },
           { item: "Tune DB_POOL_MAX", detail: "Raise to 50–100 for production load. Ensure your Postgres max_connections is higher." },
           { item: "External Postgres", detail: "For production, use a managed database (RDS, Supabase) with pgvector enabled. Remove the postgres service from docker-compose.yml." },
         ].map((c) => (
