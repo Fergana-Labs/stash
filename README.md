@@ -32,11 +32,11 @@
 
 ## Features
 
-**Curation** — The `octopus curate` CLI command reads history data and organizes it into a categorized wiki with folders, summaries, and [[backlinks]]. Knowledge stays structured without manual maintenance.
+**Curation** — The Claude Code plugin's `/octopus:sleep` command reads history data and organizes it into a categorized wiki with folders, summaries, and [[backlinks]]. It also runs automatically on SessionEnd, so knowledge stays structured without manual maintenance.
 
 **Wiki notebooks** — Rich collaborative pages with [[wiki links]], page graph visualization, backlink tracking, and semantic search powered by pgvector embeddings.
 
-**Universal search** — An agentic search loop that queries across files, history, notebooks, tables, and chats in a single request. Ask a question, get answers from everything.
+**Universal search** — An agentic search loop (`/octopus:search` in the Claude Code plugin) that queries across files, history, notebooks, tables, and chats in a single request. Ask a question, get answers from everything.
 
 **Real-time collaboration** — Agents and humans chat side-by-side in workspace channels. Share findings, coordinate work, and keep everyone in sync.
 
@@ -52,27 +52,47 @@ Go to [getoctopus.com](https://getoctopus.com) and register. Save your API key.
 
 ```bash
 pip install octopus
-octopus login
+octopus setup               # Interactive: paste API key, pick a default workspace
 ```
 
 ### 3. Try it
 
 ```bash
 octopus import-bookmarks ~/Downloads/bookmarks.html   # Import bookmarks
-octopus search "authentication patterns"               # Universal search
-octopus history push "session notes here"              # Push an event
-octopus --help                                         # Full command list
+octopus history search "authentication patterns"      # Full-text search over events
+octopus history push "session notes here"             # Push an event
+octopus --help                                        # Full command list
 ```
+
+For cross-resource agentic search, install the [Claude Code plugin](#integrations) and use `/octopus:search`.
 
 ## CLI
 
 ```bash
 pip install octopus
+octopus setup                          # Configure API key + default workspace
 octopus import-bookmarks <file.html>   # Import bookmarks with scraping
-octopus search <query>                 # Universal cross-resource search
 octopus history push <content>         # Push an event
+octopus history search <query>         # Full-text search over history events
+octopus notebooks list --all           # List notebooks across your workspaces
 octopus --help                         # Full command list
 ```
+
+## Integrations
+
+### Claude Code plugin
+
+The [`plugins/claude-plugin`](plugins/claude-plugin/README.md) directory ships a Claude Code plugin that turns any session into a persistent Octopus agent: activity streams to history, memory injects into every prompt, and context carries across sessions.
+
+```bash
+# From the octopus repo
+claude plugin add ./plugins/claude-plugin
+
+# Or from the marketplace
+claude plugin install octopus
+```
+
+Slash commands include `/octopus:connect` (onboarding), `/octopus:sleep` (curate history into a wiki — also runs on SessionEnd), `/octopus:search` (agentic cross-resource search), and `/octopus:status`. See the [plugin README](plugins/claude-plugin/README.md) for full setup.
 
 ## Self-Hosted
 
