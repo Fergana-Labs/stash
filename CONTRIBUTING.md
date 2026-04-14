@@ -97,7 +97,6 @@ npm test
 - Add or update tests for any behaviour you change.
 - Run both test suites locally before pushing.
 - Follow the naming conventions in `ARCHITECTURE.md`: use **Octopus** everywhere.
-  The name `moltchat` is deprecated — do not introduce it in new code, comments, or docs.
 
 ### Adding a schema change
 
