@@ -36,10 +36,13 @@ async def register_user(
 
     # Auto-provision a default workspace for new humans. Agent/persona users
     # get their workspaces via the persona flow, so skip them here.
+    # workspaces.name is VARCHAR(128); trim the display so the suffix always fits.
     if user_type == "human":
         from . import workspace_service
+        suffix = "'s Workspace"
+        ws_name = f"{user['display_name'][: 128 - len(suffix)]}{suffix}"
         await workspace_service.create_workspace(
-            name=f"{user['display_name']}'s Workspace",
+            name=ws_name,
             description="",
             creator_id=user["id"],
             is_public=False,
