@@ -202,6 +202,17 @@ Three containers: `postgres` (pgvector:pg16), `backend` (uvicorn), `frontend` (N
 - **S3-compatible storage** — file uploads (falls back to local)
 - **OpenAI API key** — embeddings for semantic search
 
+### Admin password reset
+
+Users have no self-serve password reset (no email column, no SMTP). To reset
+a password as an admin:
+
+```
+python -m backend.scripts.reset_password <username> <new_password>
+```
+
+Runs against `DATABASE_URL`. Prints `password reset for <username>` on success.
+
 ## Naming
 
 The historical `moltchat` name is deprecated — use **Octopus** everywhere.
