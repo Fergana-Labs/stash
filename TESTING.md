@@ -27,7 +27,6 @@ TEST_DATABASE_URL=postgresql://octopus:octopus@localhost:5432/octopus_test \
 | File | Covers |
 |------|--------|
 | `test_auth.py` | Registration, login, API key auth, password validation |
-| `test_auth0.py` | Auth0 JWT path: username derivation, JIT provisioning, idempotency, collision resolution, expired/invalid token rejection, unconfigured 501 |
 | `test_permissions.py` | Visibility modes, member/owner access, write-access gating |
 | `test_webhooks.py` | SSRF URL validation, secret hashing, delivery logic |
 | `test_sleep_agent.py` | Curation tool lifecycle, advisory locks, watermark advancement |
