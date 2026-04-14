@@ -150,7 +150,7 @@ function CollaborativeEditor({
   const editor = useEditor({
     immediatelyRender: false,
     extensions: [
-      // Match collab server's createTiptapExtensions() exactly
+      // TipTap extensions — must match backend/services/yjs_converter.py schema
       StarterKit.configure({
         blockquote: false,
         codeBlock: false,
