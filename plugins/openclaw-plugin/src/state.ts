@@ -1,5 +1,5 @@
 /**
- * State persistence — local JSON files for session state, context cache, and injection state.
+ * State persistence — local JSON files for session state and context cache.
  * Originally ported from the Claude Code plugin (removed).
  */
 
@@ -16,7 +16,6 @@ const DATA_DIR = join(
 );
 const STATE_FILE = join(DATA_DIR, "state.json");
 const CACHE_FILE = join(DATA_DIR, "context_cache.json");
-const INJECTION_STATE_FILE = join(DATA_DIR, "injection_state.json");
 const CACHE_TTL = 300; // 5 minutes
 
 function ensureDir(): void {
@@ -43,14 +42,12 @@ function writeJson(path: string, data: unknown): void {
 export interface PluginState {
   session_id: string;
   streaming_enabled: boolean;
-  persona: string;
   last_sync: number | null;
 }
 
 const DEFAULT_STATE: PluginState = {
   session_id: "",
   streaming_enabled: true,
-  persona: "",
   last_sync: null,
 };
 
@@ -89,25 +86,3 @@ export function saveCache(
   });
 }
 
-// --- Injection State ---
-
-export interface InjectionState {
-  prompt_num: number;
-  session_start: string;
-  items: Record<string, unknown>;
-}
-
-const DEFAULT_INJECTION_STATE: InjectionState = {
-  prompt_num: 0,
-  session_start: "",
-  items: {},
-};
-
-export function loadInjectionState(): InjectionState {
-  const data = readJson(INJECTION_STATE_FILE);
-  return { ...DEFAULT_INJECTION_STATE, ...data } as InjectionState;
-}
-
-export function saveInjectionState(state: InjectionState): void {
-  writeJson(INJECTION_STATE_FILE, state);
-}

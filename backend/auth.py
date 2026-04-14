@@ -132,7 +132,7 @@ async def _get_or_create_auth0_user(payload: dict) -> dict:
     pool = get_pool()
 
     row = await pool.fetchrow(
-        "SELECT id, name, display_name, type, description, created_at, last_seen "
+        "SELECT id, name, display_name, description, created_at, last_seen "
         "FROM users WHERE auth0_sub = $1",
         sub,
     )
@@ -160,9 +160,9 @@ async def _get_or_create_auth0_user(payload: dict) -> dict:
 
     row = await pool.fetchrow(
         "INSERT INTO users "
-        "  (name, display_name, type, api_key_hash, auth0_sub, description) "
-        "VALUES ($1, $2, 'human', $3, $4, '') "
-        "RETURNING id, name, display_name, type, description, "
+        "  (name, display_name, api_key_hash, auth0_sub, description) "
+        "VALUES ($1, $2, $3, $4, '') "
+        "RETURNING id, name, display_name, description, "
         "          created_at, last_seen",
         username, display, placeholder_key_hash, sub,
     )
@@ -183,7 +183,7 @@ async def get_current_user(
         key_hash = hash_api_key(token)
         pool = get_pool()
         row = await pool.fetchrow(
-            "SELECT id, name, display_name, type, description, "
+            "SELECT id, name, display_name, description, "
             "       created_at, last_seen "
             "FROM users WHERE api_key_hash = $1",
             key_hash,

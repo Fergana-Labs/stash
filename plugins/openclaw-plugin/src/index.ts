@@ -1,8 +1,8 @@
 /**
  * Octopus plugin for OpenClaw.
  *
- * Hybrid plugin: memory backend (scored injection, activity streaming)
- * + platform tools (workspaces, chats, DMs, notebooks, memory stores, agents).
+ * Hybrid plugin: memory backend (context injection, activity streaming)
+ * + platform tools (workspaces, chats, DMs, notebooks, memory stores, tables).
  */
 
 import { definePluginEntry, type OpenClawPluginApi } from "openclaw/plugin-sdk/plugin-entry";
@@ -17,7 +17,6 @@ import { registerChatTools } from "./tools/chats.js";
 import { registerDmTools } from "./tools/dms.js";
 import { registerNotebookTools } from "./tools/notebooks.js";
 import { registerMemoryStoreTools } from "./tools/memory-stores.js";
-import { registerPersonaTools } from "./tools/personas.js";
 import { registerTableTools } from "./tools/tables.js";
 
 export default definePluginEntry({
@@ -25,8 +24,8 @@ export default definePluginEntry({
   name: "Octopus",
   kind: "memory",
   description:
-    "Octopus memory backend with server-side scored injection, activity streaming, " +
-    "and full platform access (workspaces, chats, notebooks, tables, memory stores, personas).",
+    "Octopus memory backend with local context injection, activity streaming, " +
+    "and full platform access (workspaces, chats, notebooks, tables, memory stores).",
 
   register(api: OpenClawPluginApi) {
     // Read plugin config from the OpenClaw config system.
@@ -53,14 +52,13 @@ export default definePluginEntry({
 
     api.registerHook("message", createAfterToolCallHook(client, config));
 
-    // --- Platform tools (workspaces, chats, DMs, notebooks, memory, personas) ---
+    // --- Platform tools (workspaces, chats, DMs, notebooks, memory, tables) ---
 
     registerWorkspaceTools(api, client);
     registerChatTools(api, client);
     registerDmTools(api, client);
     registerNotebookTools(api, client);
     registerMemoryStoreTools(api, client);
-    registerPersonaTools(api, client);
     registerTableTools(api, client);
 
     // --- CLI subcommands ---
@@ -81,7 +79,7 @@ export default definePluginEntry({
             }
             try {
               const me = await client.whoami();
-              ctx.logger.info(`Authenticated as ${me.name} (${me.type})`);
+              ctx.logger.info(`Authenticated as ${me.name}`);
               if (config.workspaceId) ctx.logger.info(`Workspace: ${config.workspaceId}`);
               if (config.historyStoreId) ctx.logger.info(`History store: ${config.historyStoreId}`);
             } catch (err) {

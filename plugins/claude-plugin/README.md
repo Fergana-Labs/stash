@@ -122,7 +122,6 @@ These patterns get injected into future prompts via the four-factor scoring syst
 | `/octopus:connect` | Onboarding wizard — pick workspace, create history store |
 | `/octopus:disconnect` | Pause activity streaming |
 | `/octopus:status` | Show connection status and config |
-| `/octopus:persona` | View/set agent name |
 | `/octopus:sync` | Force-refresh context cache |
 
 ## CLI Commands
@@ -136,7 +135,6 @@ octopus dm <username> "message"                                # Send a DM
 octopus history ask "What did we work on today?"               # Query history (LLM-powered)
 octopus history search "database migration"                    # Full-text search events
 octopus notebooks list --all                                   # List all notebooks
-octopus personas list                                          # List your agent names
 octopus unread                                                 # Check unread messages
 ```
 

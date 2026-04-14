@@ -10,19 +10,18 @@ from .conftest import unique_name
 async def test_register_success(client: AsyncClient):
     name = unique_name()
     resp = await client.post("/api/v1/users/register", json={
-        "name": name, "type": "human", "password": "securepassword1",
+        "name": name, "password": "securepassword1",
     })
     assert resp.status_code == 201
     body = resp.json()
     assert body["name"] == name
-    assert body["type"] == "human"
     assert body["api_key"].startswith("mc_")
 
 
 @pytest.mark.asyncio
 async def test_register_duplicate_name(client: AsyncClient):
     name = unique_name()
-    payload = {"name": name, "type": "human", "password": "securepassword1"}
+    payload = {"name": name, "password": "securepassword1"}
     await client.post("/api/v1/users/register", json=payload)
     resp = await client.post("/api/v1/users/register", json=payload)
     assert resp.status_code == 409
@@ -31,7 +30,7 @@ async def test_register_duplicate_name(client: AsyncClient):
 @pytest.mark.asyncio
 async def test_register_rejects_short_password(client: AsyncClient):
     resp = await client.post("/api/v1/users/register", json={
-        "name": unique_name(), "type": "human", "password": "short",
+        "name": unique_name(), "password": "short",
     })
     assert resp.status_code == 422
 
@@ -41,7 +40,7 @@ async def test_login_success(client: AsyncClient):
     name = unique_name()
     password = "correctpassword1"
     reg = await client.post("/api/v1/users/register", json={
-        "name": name, "type": "human", "password": password,
+        "name": name, "password": password,
     })
     assert reg.status_code == 201
 
@@ -54,7 +53,7 @@ async def test_login_success(client: AsyncClient):
 async def test_login_wrong_password(client: AsyncClient):
     name = unique_name()
     await client.post("/api/v1/users/register", json={
-        "name": name, "type": "human", "password": "correctpassword1",
+        "name": name, "password": "correctpassword1",
     })
     resp = await client.post("/api/v1/users/login", json={"name": name, "password": "wrongpassword"})
     assert resp.status_code == 401
@@ -64,7 +63,7 @@ async def test_login_wrong_password(client: AsyncClient):
 async def test_api_key_auth(client: AsyncClient):
     name = unique_name()
     reg = await client.post("/api/v1/users/register", json={
-        "name": name, "type": "human", "password": "securepassword1",
+        "name": name, "password": "securepassword1",
     })
     api_key = reg.json()["api_key"]
 

@@ -66,9 +66,6 @@ export default function Header({ user, onLogout, onProfileUpdate }: HeaderProps)
                 className="text-sm text-dim hover:text-foreground flex items-center gap-1"
               >
                 {user.display_name || user.name}
-                <span className="ml-1 text-xs px-1.5 py-0.5 rounded bg-raised text-muted">
-                  {user.type}
-                </span>
               </button>
               {showProfile && (
                 <div className="absolute top-full right-0 mt-2 w-64 bg-raised border border-border rounded-lg shadow-xl z-50 p-3 space-y-2">
