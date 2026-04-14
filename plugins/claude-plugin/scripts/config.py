@@ -57,6 +57,7 @@ def get_config() -> dict:
             "workspace_id": cli.get("default_workspace", ""),
             "history_store_id": cli.get("default_store", ""),
             "inject_context": os.environ.get("CLAUDE_PLUGIN_USER_CONFIG_inject_context", "true"),
+            "auto_curate": os.environ.get("CLAUDE_PLUGIN_USER_CONFIG_auto_curate", "true"),
         }
 
     return {
@@ -66,6 +67,7 @@ def get_config() -> dict:
         "workspace_id": os.environ.get("CLAUDE_PLUGIN_USER_CONFIG_workspace_id", ""),
         "history_store_id": os.environ.get("CLAUDE_PLUGIN_USER_CONFIG_history_store_id", ""),
         "inject_context": os.environ.get("CLAUDE_PLUGIN_USER_CONFIG_inject_context", "true"),
+        "auto_curate": os.environ.get("CLAUDE_PLUGIN_USER_CONFIG_auto_curate", "true"),
     }
 
 
