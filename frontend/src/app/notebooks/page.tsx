@@ -386,36 +386,61 @@ export default function WikiPage() {
         </div>
 
         {/* Pages tab */}
-        {activeTab === "pages" && (
-          <div className="flex flex-1 overflow-hidden">
-            {/* Single sidebar: notebook dropdown + file tree */}
-            <div className="w-[240px] flex-shrink-0 bg-surface border-r border-border overflow-hidden flex flex-col">
-              {/* Notebook dropdown */}
-              <div className="px-3 py-2.5 border-b border-border">
-                <div className="flex items-center gap-2">
-                  <select
-                    value={selectedNotebook?.id || ""}
-                    onChange={(e) => {
-                      const nb = notebooks.find((n) => n.id === e.target.value);
-                      if (nb) handleSelectNotebook(nb);
-                    }}
-                    className="flex-1 text-sm bg-raised border border-border rounded-md px-2 py-1.5 text-foreground outline-none focus:ring-1 focus:ring-brand truncate"
-                  >
-                    <option value="" disabled>Select notebook</option>
-                    {Object.entries(grouped).map(([key, group]) => (
-                      <optgroup key={key} label={group.name}>
-                        {group.notebooks.map((nb) => (
-                          <option key={nb.id} value={nb.id}>{nb.name}</option>
-                        ))}
-                      </optgroup>
-                    ))}
-                  </select>
-                  <button onClick={handleCreateNotebook} className="text-xs text-brand hover:text-brand-hover flex-shrink-0">+</button>
+        {activeTab === "pages" && !selectedNotebook && (
+          /* ── Notebook list (landing) ── */
+          <div className="flex-1 overflow-y-auto">
+            <div className="max-w-3xl mx-auto w-full px-4 py-8">
+              <div className="flex items-center justify-between mb-6">
+                <h2 className="text-xl font-bold text-foreground font-display">Notebooks</h2>
+                <button onClick={handleCreateNotebook} className="text-sm bg-brand hover:bg-brand-hover text-foreground px-3 py-1.5 rounded transition-colors">
+                  New Notebook
+                </button>
+              </div>
+              {error && <p className="text-red-400 text-sm mb-4">{error}<button onClick={() => setError("")} className="ml-2 text-red-500">&times;</button></p>}
+              {notebooks.length === 0 ? (
+                <p className="text-muted text-sm">No notebooks yet. Create one to start writing wiki pages.</p>
+              ) : (
+                <div className="space-y-2">
+                  {Object.entries(grouped).map(([key, group]) => (
+                    <div key={key}>
+                      <p className="text-[10px] font-medium text-muted uppercase tracking-wider mb-2">{group.name}</p>
+                      {group.notebooks.map((nb) => (
+                        <button
+                          key={nb.id}
+                          onClick={() => handleSelectNotebook(nb)}
+                          className="w-full text-left flex items-center gap-3 px-4 py-3 rounded-lg border border-border bg-surface hover:bg-raised transition-colors mb-2"
+                        >
+                          <div className="w-8 h-8 rounded-md bg-green-500/15 text-green-500 flex items-center justify-center text-xs font-bold flex-shrink-0">N</div>
+                          <div className="min-w-0 flex-1">
+                            <div className="text-sm font-medium text-foreground">{nb.name}</div>
+                            {nb.description && <div className="text-xs text-muted truncate">{nb.description}</div>}
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  ))}
                 </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {activeTab === "pages" && selectedNotebook && (
+          /* ── Notebook open: sidebar + editor ── */
+          <div className="flex flex-1 overflow-hidden">
+            {/* Sidebar: file tree */}
+            <div className="w-[240px] flex-shrink-0 bg-surface border-r border-border overflow-hidden flex flex-col">
+              {/* Notebook header */}
+              <div className="px-3 py-2.5 border-b border-border flex items-center gap-2">
+                <button
+                  onClick={() => { setSelectedNotebook(null); setSelectedPage(null); setSelectedPageId(null); setTree({ folders: [], root_files: [] }); }}
+                  className="text-muted hover:text-foreground text-sm flex-shrink-0"
+                >&larr;</button>
+                <span className="text-sm font-medium text-foreground truncate">{selectedNotebook.name}</span>
               </div>
 
               {/* Semantic search */}
-              {selectedNotebook?.workspace_id && (
+              {selectedNotebook.workspace_id && (
                 <div className="px-2 pt-2 pb-1 border-b border-border">
                   <div className="flex gap-1">
                     <input
@@ -450,26 +475,20 @@ export default function WikiPage() {
               )}
 
               {/* File tree */}
-              {selectedNotebook ? (
-                <div className="flex-1 overflow-hidden">
-                  <NotebookTreeComponent
-                    tree={tree}
-                    selectedFileId={selectedPageId}
-                    onSelectFile={handleSelectPage}
-                    onCreateFile={handleCreatePage}
-                    onCreateFolder={handleCreateFolder}
-                    onDeleteFile={handleDeletePage}
-                    onDeleteFolder={handleDeleteFolder}
-                    onRenameFile={handleRenamePage}
-                    onRenameFolder={handleRenameFolder}
-                    onMoveFile={handleMovePage}
-                  />
-                </div>
-              ) : (
-                <div className="flex-1 flex items-center justify-center">
-                  <p className="text-sm text-muted">{notebooks.length === 0 ? "No notebooks yet" : "Select a notebook"}</p>
-                </div>
-              )}
+              <div className="flex-1 overflow-hidden">
+                <NotebookTreeComponent
+                  tree={tree}
+                  selectedFileId={selectedPageId}
+                  onSelectFile={handleSelectPage}
+                  onCreateFile={handleCreatePage}
+                  onCreateFolder={handleCreateFolder}
+                  onDeleteFile={handleDeletePage}
+                  onDeleteFolder={handleDeleteFolder}
+                  onRenameFile={handleRenamePage}
+                  onRenameFolder={handleRenameFolder}
+                  onMoveFile={handleMovePage}
+                />
+              </div>
             </div>
 
             {/* Editor + Wiki Panel */}
@@ -480,48 +499,45 @@ export default function WikiPage() {
                 </div>
               )}
 
-              {/* Breadcrumb + Wiki toolbar */}
-              {selectedNotebook && (
-                <div className="flex items-center justify-between px-4 py-1.5 border-b border-border bg-surface">
-                  {/* Breadcrumbs */}
-                  <nav className="flex items-center gap-1 text-[12px] text-muted min-w-0">
-                    {breadcrumbs.map((crumb, i) => (
-                      <span key={i} className="flex items-center gap-1 min-w-0">
-                        {i > 0 && <span className="text-border flex-shrink-0">/</span>}
-                        {crumb.onClick ? (
-                          <button
-                            onClick={crumb.onClick}
-                            className="hover:text-foreground transition-colors truncate"
-                          >
-                            {crumb.label}
-                          </button>
-                        ) : (
-                          <span className={i === breadcrumbs.length - 1 ? "text-foreground font-medium truncate" : "truncate"}>
-                            {crumb.label}
-                          </span>
-                        )}
-                      </span>
-                    ))}
-                  </nav>
-
-
-                </div>
-              )}
+              {/* Breadcrumbs */}
+              <div className="flex items-center justify-between px-4 py-1.5 border-b border-border bg-surface">
+                <nav className="flex items-center gap-1 text-[12px] text-muted min-w-0">
+                  <button
+                    onClick={() => { setSelectedNotebook(null); setSelectedPage(null); setSelectedPageId(null); setTree({ folders: [], root_files: [] }); }}
+                    className="hover:text-foreground transition-colors"
+                  >
+                    Wiki
+                  </button>
+                  <span className="text-border">/</span>
+                  <button
+                    onClick={() => { setSelectedPage(null); setSelectedPageId(null); }}
+                    className="hover:text-foreground transition-colors truncate"
+                  >
+                    {selectedNotebook.name}
+                  </button>
+                  {selectedPage && (
+                    <>
+                      <span className="text-border">/</span>
+                      <span className="text-foreground font-medium truncate">{selectedPage.name}</span>
+                    </>
+                  )}
+                </nav>
+              </div>
 
               {selectedPage ? (
                 <div className="flex-1 flex flex-col overflow-hidden">
                   <div className="flex-1 overflow-y-auto">
                     <MarkdownEditor
                       key={selectedPage.id}
-                      notebookId={selectedNotebook?.id || null}
-                      workspaceId={selectedNotebook?.workspace_id || null}
+                      notebookId={selectedNotebook.id}
+                      workspaceId={selectedNotebook.workspace_id || null}
                       file={selectedPage}
                       onSave={handleSavePage}
                       pageNames={pageNames}
                       onNavigateToPage={handleNavigateToPage}
                     />
 
-                    {/* Backlinks section — always visible */}
+                    {/* Backlinks */}
                     <div className="border-t border-border bg-surface px-6 py-4 flex-shrink-0">
                       <h4 className="text-[11px] font-semibold text-muted uppercase tracking-wider mb-3">
                         Linked from
@@ -539,19 +555,14 @@ export default function WikiPage() {
                           ))}
                         </div>
                       ) : (
-                        <p className="text-xs text-muted">No pages link to this page yet. Use <code className="text-brand text-[11px]">[[Page Name]]</code> in other pages to create links.</p>
+                        <p className="text-xs text-muted">No pages link here yet. Use <code className="text-brand text-[11px]">[[Page Name]]</code> to create links.</p>
                       )}
                     </div>
                   </div>
                 </div>
               ) : (
                 <div className="flex-1 flex items-center justify-center text-muted">
-                  <div className="text-center">
-                    {selectedNotebook
-                      ? <><p className="text-lg mb-2">Select a page to edit</p><p className="text-sm">or create one from the sidebar</p></>
-                      : <><p className="text-lg mb-2">Select a notebook</p><p className="text-sm">or create a new one</p></>
-                    }
-                  </div>
+                  <p className="text-sm">Select a page or create one from the sidebar</p>
                 </div>
               )}
             </div>
