@@ -44,7 +44,7 @@ cp .env.example .env`}</CodeBlock>
       <div className="rounded-2xl border border-border bg-surface divide-y divide-border my-6">
         {[
           { svc: "postgres", port: "5432", desc: "PostgreSQL 16 with pgvector — stores all workspace data" },
-          { svc: "backend", port: "3456", desc: "FastAPI — REST API, WebSocket (Yjs)" },
+          { svc: "backend", port: "3456", desc: "FastAPI — REST API" },
           { svc: "frontend", port: "3457", desc: "Next.js UI — dashboard, docs" },
         ].map((s) => (
           <div key={s.svc} className="flex gap-5 px-5 py-4">
@@ -106,7 +106,7 @@ S3_REGION=us-east-1`}</CodeBlock>
           { item: "Set a strong SECRET_KEY", detail: "Used for signing tokens. Generate with: python -c \"import secrets; print(secrets.token_hex(32))\"" },
           { item: "Configure CORS_ORIGINS", detail: "Set to your production frontend domain(s) only." },
           { item: "Set PUBLIC_URL", detail: "Set to your production frontend URL so invite links and share links resolve correctly." },
-          { item: "Enable TLS", detail: "Put Nginx or Caddy in front of both services. The Yjs WebSocket endpoint also needs wss://." },
+          { item: "Enable TLS", detail: "Put Nginx or Caddy in front of both services." },
           { item: "Tune DB_POOL_MAX", detail: "Raise to 50–100 for production load. Ensure your Postgres max_connections is higher." },
           { item: "External Postgres", detail: "For production, use a managed database (RDS, Supabase) with pgvector enabled. Remove the postgres service from docker-compose.yml." },
         ].map((c) => (
