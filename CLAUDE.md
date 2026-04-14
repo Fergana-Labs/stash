@@ -16,13 +16,11 @@ Everything lives in a **workspace** — a permissioned container for teams. Pers
 - Frontend: Next.js 16, React 19, Tailwind 4, TipTap (collaborative editing), Yjs (CRDT)
 - Backend: Python, FastAPI, PostgreSQL, pgvector
 - CLI: Python, Typer (`cli/main.py`)
-- MCP Server: tools for all resources (`mcp_server/server.py`)
 - Real-time: Yjs WebSocket (notebook collaboration)
 - Storage: S3-compatible (Cloudflare R2)
 - Embeddings: OpenAI text-embedding-3-small (384 dims)
 
 ## Key Services
-- `claude-plugin/skills/sleep/SKILL.md` — Sleep time compute skill. The user's Claude Code session reads history and organizes it into wiki pages via CLI/MCP tools.
 - `backend/services/universal_search_service.py` — Agentic search loop across all resource types.
 - `backend/services/notebook_service.py` — Wiki features: [[link]] parsing, backlinks, page graph, embeddings, auto-index.
 - `backend/services/embedding_service.py` — OpenAI embedding API client. Uses EMBEDDING_API_KEY or OPENAI_API_KEY.

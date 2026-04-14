@@ -201,7 +201,7 @@ export default function WorkspacePage() {
 
               <WorkspaceSection
                 title="Notebooks"
-                description="Wiki pages with categories, backlinks, and summaries. Use the curate MCP tool to organize."
+                description="Wiki pages with categories, backlinks, and summaries. Use octopus curate to organize."
                 actionLabel="+ New"
                 onAction={handleCreateNotebook}
               >

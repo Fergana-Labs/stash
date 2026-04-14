@@ -1,6 +1,6 @@
 /**
  * Memory prompt section builder — injects scored context from Octopus injection API.
- * Port of claude-plugin/scripts/on_prompt.py.
+ * Originally ported from the Claude Code plugin (removed).
  *
  * Registered via api.registerMemoryPromptSection().
  * OpenClaw SDK signature: (params: { availableTools: Set<string>; citationsMode?: ... }) => string[]

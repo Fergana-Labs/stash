@@ -24,7 +24,7 @@ import {
 
 const TOKEN_KEY = "octopus_token";
 
-// --- Token management (for CLI/MCP API key fallback) ---
+// --- Token management (for CLI API key fallback) ---
 
 export function getToken(): string | null {
   if (typeof window === "undefined") return null;

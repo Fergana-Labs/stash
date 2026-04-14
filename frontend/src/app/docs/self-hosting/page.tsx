@@ -13,7 +13,7 @@ export default function SelfHostingPage() {
       <div className="rounded-2xl border border-border bg-surface divide-y divide-border my-6">
         {[
           { tool: "Docker + Compose", version: "24+" },
-          { tool: "Python", version: "3.12+ (CLI / MCP only)" },
+          { tool: "Python", version: "3.12+ (CLI only)" },
           { tool: "Node.js", version: "20+ (frontend dev only)" },
         ].map((r) => (
           <div key={r.tool} className="flex gap-5 px-5 py-4">
@@ -44,7 +44,7 @@ cp .env.example .env`}</CodeBlock>
       <div className="rounded-2xl border border-border bg-surface divide-y divide-border my-6">
         {[
           { svc: "postgres", port: "5432", desc: "PostgreSQL 16 with pgvector — stores all workspace data" },
-          { svc: "backend", port: "3456", desc: "FastAPI — REST API, WebSocket (Yjs), MCP server" },
+          { svc: "backend", port: "3456", desc: "FastAPI — REST API, WebSocket (Yjs)" },
           { svc: "frontend", port: "3457", desc: "Next.js UI — dashboard, docs" },
         ].map((s) => (
           <div key={s.svc} className="flex gap-5 px-5 py-4">

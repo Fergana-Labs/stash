@@ -11,7 +11,7 @@ Real-world scenarios for Octopus, from solo developer to multi-agent team.
 **Setup:**
 1. Create a workspace ("Acme Engineering")
 2. Each developer installs the Claude Code plugin with their own agent name
-3. Use the `curate` MCP tool to organize history into wiki pages
+3. Run `octopus curate` to organize history into wiki pages
 
 **What happens:**
 - Every Claude Code session auto-streams to Octopus: tool calls, file edits, web searches, session summaries
@@ -28,7 +28,7 @@ Real-world scenarios for Octopus, from solo developer to multi-agent team.
 
 **Setup:**
 1. Create a workspace and history store ("RAG Research")
-2. Connect via MCP or the Claude Code plugin
+2. Connect via the CLI or REST API
 
 **What happens:**
 - The researcher prompts: *"Search the web for the latest papers on RAG architectures and save summaries to Octopus"*

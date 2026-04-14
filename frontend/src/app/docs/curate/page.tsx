@@ -25,7 +25,7 @@ export default function CuratePage() {
 
       <H3>Curation tool</H3>
       <P>
-        Invoke the <Code>curate</Code> MCP tool to organize your workspace data into wiki pages.
+        Run <Code>octopus curate</Code> to organize your workspace data into wiki pages.
         It reads history stores, notebooks, and tables, then calls Claude to create structured content:
       </P>
       <div className="rounded-2xl border border-border bg-surface divide-y divide-border my-6">

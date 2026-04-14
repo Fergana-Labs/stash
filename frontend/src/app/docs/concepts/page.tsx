@@ -47,7 +47,7 @@ const CONCEPTS: { name: string; badge: string; badgeColor: string; desc: React.R
     name: "Curation",
     badge: "Tool",
     badgeColor: "bg-amber-500/10 text-amber-600",
-    desc: "User-invoked MCP tool that reads workspace data (history, notebooks, tables) and calls Claude to organize it into categorized wiki pages — merging duplicates, creating backlinks, and organizing folders. Run it whenever you want your knowledge base tidied up.",
+    desc: "CLI command that reads workspace data (history, notebooks, tables) and calls Claude to organize it into categorized wiki pages — merging duplicates, creating backlinks, and organizing folders. Run it whenever you want your knowledge base tidied up.",
   },
 ];
 

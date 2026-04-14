@@ -1,6 +1,6 @@
 /**
  * After-tool-call hook — stream tool activity to Octopus history.
- * Port of claude-plugin/scripts/on_tool_use.py.
+ * Originally ported from the Claude Code plugin (removed).
  *
  * OpenClaw SDK signature:
  *   (event: InternalHookEvent) => Promise<void> | void

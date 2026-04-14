@@ -10,7 +10,7 @@ import { User } from "../lib/types";
  *
  * Auth0 session (httpOnly cookie) is the primary path. AuthTokenBridge
  * keeps the access token in memory; apiFetch picks it up.
- * CLI/MCP users can also auth via mc_ API key in localStorage.
+ * CLI users can also auth via mc_ API key in localStorage.
  */
 export function useAuth() {
   const { user: auth0User, isLoading: auth0Loading } = useUser();
