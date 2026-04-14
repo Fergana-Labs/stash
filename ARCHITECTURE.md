@@ -163,8 +163,6 @@ Database (database.py)
 | `webhook_service` | HMAC-signed delivery with persistent queue and backoff |
 | `embedding_service` | OpenAI text-embedding-3-small integration |
 | `history_query_service` | LLM-synthesized answers over history events |
-| `connection_manager` | WebSocket connection tracking with pg_notify fan-out |
-| `yjs_manager` | Yjs CRDT sync for real-time collaborative notebook editing |
 
 ### Background loops
 
@@ -174,12 +172,9 @@ The backend runs three long-lived async tasks:
 2. **Webhook delivery** — polls `webhook_deliveries` for pending items, acquires advisory lock, delivers with exponential backoff, marks delivered/failed
 3. **WebSocket health** — pings all connected WebSockets every 30s, disconnects dead ones
 
-### Real-time
+### Persistence
 
-Two real-time systems:
-
-- **Chat WebSocket** (`/api/v1/workspaces/{ws}/chats/{id}/ws`) — bidirectional messaging with `ConnectionManager`. Cross-process delivery via `pg_notify` on channel `octopus_events`.
-- **Yjs WebSocket** (`/api/v1/workspaces/{ws}/notebooks/{nb}/pages/{p}/yjs`) — CRDT sync for collaborative markdown editing.
+Notebook pages are edited locally in TipTap and persisted via debounced `PATCH /pages/{id}` with the full markdown body. Last-write-wins. No WebSocket, no CRDT.
 
 ## Frontend architecture
 

@@ -2,9 +2,9 @@
 
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, Depends, HTTPException
 
-from ..auth import get_current_user, get_user_from_api_key
+from ..auth import get_current_user
 from ..models import (
     FolderCreateRequest,
     FolderResponse,
@@ -22,7 +22,6 @@ from ..models import (
     ShareResponse,
 )
 from ..services import notebook_service, permission_service, workspace_service
-from ..services.yjs_manager import yjs_manager as yjs_mgr
 
 ws_router = APIRouter(prefix="/api/v1/workspaces/{workspace_id}/notebooks", tags=["notebooks"])
 personal_router = APIRouter(prefix="/api/v1/notebooks", tags=["personal_notebooks"])
@@ -271,35 +270,6 @@ async def delete_ws_folder(
     deleted = await notebook_service.delete_folder(folder_id, notebook_id)
     if not deleted:
         raise HTTPException(status_code=404, detail="Folder not found")
-
-
-@ws_router.websocket("/{notebook_id}/pages/{page_id}/yjs")
-async def ws_yjs_websocket(
-    workspace_id: UUID, notebook_id: UUID, page_id: UUID,
-    websocket: WebSocket, token: str = "",
-):
-    user = await get_user_from_api_key(token)
-    if not user:
-        await websocket.close(code=4001, reason="Invalid token")
-        return
-    if not await workspace_service.is_member(workspace_id, user["id"]):
-        await websocket.close(code=4003, reason="Not a workspace member")
-        return
-    nb = await notebook_service.get_notebook(notebook_id)
-    if not nb or nb.get("workspace_id") != workspace_id:
-        await websocket.close(code=4004, reason="Notebook not found")
-        return
-
-    await websocket.accept()
-    await yjs_mgr.handle_ws_connect(websocket, str(page_id), str(notebook_id))
-    try:
-        while True:
-            data = await websocket.receive_bytes()
-            await yjs_mgr.handle_ws_message(websocket, str(page_id), data)
-    except WebSocketDisconnect:
-        pass
-    finally:
-        await yjs_mgr.handle_ws_disconnect(websocket, str(page_id))
 
 
 # --- Workspace permissions ---
@@ -558,26 +528,3 @@ async def delete_personal_folder(
         raise HTTPException(status_code=404, detail="Folder not found")
 
 
-@personal_router.websocket("/{notebook_id}/pages/{page_id}/yjs")
-async def personal_yjs_websocket(
-    notebook_id: UUID, page_id: UUID, websocket: WebSocket, token: str = "",
-):
-    user = await get_user_from_api_key(token)
-    if not user:
-        await websocket.close(code=4001, reason="Invalid token")
-        return
-    nb = await notebook_service.get_notebook(notebook_id)
-    if not nb or (nb.get("workspace_id") is not None) or (nb.get("created_by") != user["id"]):
-        await websocket.close(code=4003, reason="Not the notebook owner")
-        return
-
-    await websocket.accept()
-    await yjs_mgr.handle_ws_connect(websocket, str(page_id), str(notebook_id))
-    try:
-        while True:
-            data = await websocket.receive_bytes()
-            await yjs_mgr.handle_ws_message(websocket, str(page_id), data)
-    except WebSocketDisconnect:
-        pass
-    finally:
-        await yjs_mgr.handle_ws_disconnect(websocket, str(page_id))
