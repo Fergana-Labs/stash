@@ -32,7 +32,19 @@ async def register_user(
         if "unique" in str(e).lower() and "name" in str(e).lower():
             raise ValueError(f"Username '{name}' is already taken")
         raise
-    return dict(row), api_key
+    user = dict(row)
+
+    # Auto-provision a default workspace for new humans. Agent/persona users
+    # get their workspaces via the persona flow, so skip them here.
+    if user_type == "human":
+        from . import workspace_service
+        await workspace_service.create_workspace(
+            name=f"{user['display_name']}'s Workspace",
+            description="",
+            creator_id=user["id"],
+            is_public=False,
+        )
+    return user, api_key
 
 
 async def get_user_by_id(user_id: UUID) -> dict | None:
