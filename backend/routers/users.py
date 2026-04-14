@@ -22,7 +22,6 @@ async def register(request: Request, req: UserRegisterRequest):
         user, api_key = await user_service.register_user(
             name=req.name,
             display_name=req.display_name,
-            user_type="human",
             description=req.description,
             password=req.password,
         )
@@ -32,7 +31,6 @@ async def register(request: Request, req: UserRegisterRequest):
         id=user["id"],
         name=user["name"],
         display_name=user["display_name"],
-        type=user["type"],
         api_key=api_key,
     )
 
@@ -52,7 +50,6 @@ async def login(request: Request, req: LoginRequest):
         id=user["id"],
         name=user["name"],
         display_name=user["display_name"],
-        type=user["type"],
         api_key=api_key,
     )
 
@@ -84,7 +81,7 @@ async def search_users(
     from ..database import get_pool
     pool = get_pool()
     rows = await pool.fetch(
-        "SELECT id, name, display_name, type FROM users "
+        "SELECT id, name, display_name FROM users "
         "WHERE (name ILIKE $1 OR display_name ILIKE $1) AND id != $2 "
         "LIMIT 20",
         f"%{q}%",

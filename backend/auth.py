@@ -75,7 +75,7 @@ async def get_current_user(
     key_hash = hash_api_key(token)
     pool = get_pool()
     row = await pool.fetchrow(
-        "SELECT id, name, display_name, type, description, "
+        "SELECT id, name, display_name, description, "
         "       created_at, last_seen "
         "FROM users WHERE api_key_hash = $1",
         key_hash,

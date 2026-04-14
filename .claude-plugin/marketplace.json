@@ -8,7 +8,7 @@
     {
       "name": "octopus",
       "source": "./plugins/claude-plugin",
-      "description": "Connect Claude Code to Octopus — stream activity to history, inject agent persona/memory, collaborate in workspaces.",
+      "description": "Connect Claude Code to Octopus — stream activity to history, inject agent memory, collaborate in workspaces.",
       "version": "0.1.0",
       "author": {
         "name": "Fergana Labs"

@@ -9,7 +9,7 @@ from .conftest import unique_name
 async def _register(client: AsyncClient, name: str | None = None) -> tuple[str, dict]:
     name = name or unique_name()
     resp = await client.post("/api/v1/users/register", json={
-        "name": name, "type": "human", "password": "securepassword1",
+        "name": name, "password": "securepassword1",
     })
     assert resp.status_code == 201
     body = resp.json()

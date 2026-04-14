@@ -18,7 +18,6 @@ class UserRegisterResponse(BaseModel):
     id: UUID
     name: str
     display_name: str | None
-    type: str
     api_key: str
 
 
@@ -26,7 +25,6 @@ class UserProfile(BaseModel):
     id: UUID
     name: str
     display_name: str | None
-    type: str
     description: str
     created_at: datetime
     last_seen: datetime
@@ -47,7 +45,6 @@ class UserSearchResult(BaseModel):
     id: UUID
     name: str
     display_name: str | None
-    type: str
 
 
 # --- Workspaces ---
@@ -84,7 +81,6 @@ class WorkspaceMember(BaseModel):
     user_id: UUID
     name: str
     display_name: str | None
-    type: str
     role: str
     joined_at: datetime
 

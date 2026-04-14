@@ -7,7 +7,6 @@ from ..database import get_pool
 async def register_user(
     name: str,
     display_name: str | None,
-    user_type: str = "human",
     description: str = "",
     password: str | None = None,
 ) -> tuple[dict, str]:
@@ -18,12 +17,11 @@ async def register_user(
     pw_hash = hash_password(password) if password else None
     try:
         row = await pool.fetchrow(
-            "INSERT INTO users (name, display_name, type, api_key_hash, password_hash, description) "
-            "VALUES ($1, $2, $3, $4, $5, $6) "
-            "RETURNING id, name, display_name, type, description, created_at, last_seen",
+            "INSERT INTO users (name, display_name, api_key_hash, password_hash, description) "
+            "VALUES ($1, $2, $3, $4, $5) "
+            "RETURNING id, name, display_name, description, created_at, last_seen",
             name,
             display_name or name,
-            user_type,
             key_hash,
             pw_hash,
             description,
@@ -34,26 +32,24 @@ async def register_user(
         raise
     user = dict(row)
 
-    # Auto-provision a default workspace for new humans. Agent/persona users
-    # get their workspaces via the persona flow, so skip them here.
+    # Auto-provision a default workspace for new users.
     # workspaces.name is VARCHAR(128); trim the display so the suffix always fits.
-    if user_type == "human":
-        from . import workspace_service
-        suffix = "'s Workspace"
-        ws_name = f"{user['display_name'][: 128 - len(suffix)]}{suffix}"
-        await workspace_service.create_workspace(
-            name=ws_name,
-            description="",
-            creator_id=user["id"],
-            is_public=False,
-        )
+    from . import workspace_service
+    suffix = "'s Workspace"
+    ws_name = f"{user['display_name'][: 128 - len(suffix)]}{suffix}"
+    await workspace_service.create_workspace(
+        name=ws_name,
+        description="",
+        creator_id=user["id"],
+        is_public=False,
+    )
     return user, api_key
 
 
 async def get_user_by_id(user_id: UUID) -> dict | None:
     pool = get_pool()
     row = await pool.fetchrow(
-        "SELECT id, name, display_name, type, description, created_at, last_seen "
+        "SELECT id, name, display_name, description, created_at, last_seen "
         "FROM users WHERE id = $1",
         user_id,
     )
@@ -84,7 +80,7 @@ async def update_user(
         idx += 1
     if not sets:
         row = await pool.fetchrow(
-            "SELECT id, name, display_name, type, description, created_at, last_seen "
+            "SELECT id, name, display_name, description, created_at, last_seen "
             "FROM users WHERE id = $1",
             user_id,
         )
@@ -92,7 +88,7 @@ async def update_user(
     args.append(user_id)
     row = await pool.fetchrow(
         f"UPDATE users SET {', '.join(sets)} WHERE id = ${idx} "
-        "RETURNING id, name, display_name, type, description, created_at, last_seen",
+        "RETURNING id, name, display_name, description, created_at, last_seen",
         *args,
     )
     return dict(row)
@@ -102,7 +98,7 @@ async def authenticate_by_password(name: str, password: str) -> tuple[dict, str]
     """Authenticate by username + password. Returns (user_dict, new_api_key)."""
     pool = get_pool()
     row = await pool.fetchrow(
-        "SELECT id, name, display_name, type, description, created_at, last_seen, password_hash "
+        "SELECT id, name, display_name, description, created_at, last_seen, password_hash "
         "FROM users WHERE name = $1",
         name,
     )
