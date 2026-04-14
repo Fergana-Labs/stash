@@ -42,11 +42,5 @@ class Settings:
     S3_SECRET_KEY: str | None = os.getenv("S3_SECRET_KEY")
     S3_REGION: str = os.getenv("S3_REGION", "auto")
 
-    # --- Auth0 (optional — required for human account SSO login) ---
-    # AUTH0_DOMAIN:    e.g. dev-abc123.us.auth0.com
-    # AUTH0_AUDIENCE:  API identifier registered in Auth0, e.g. https://getoctopus.com/api
-    AUTH0_DOMAIN: str | None = os.getenv("AUTH0_DOMAIN")
-    AUTH0_AUDIENCE: str | None = os.getenv("AUTH0_AUDIENCE")
-
 
 settings = Settings()

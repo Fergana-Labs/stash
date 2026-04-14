@@ -42,28 +42,13 @@ export function clearToken() {
   localStorage.removeItem(TOKEN_KEY);
 }
 
-// --- Auth token resolution ---
-// Auth0 session takes priority: fetchAccessToken() hits /api/auth/token.
-// Falls back to localStorage API key for CLI-bootstrapped sessions.
-
-async function resolveAuthToken(): Promise<string | null> {
-  try {
-    const { fetchAccessToken } = await import("./accessToken");
-    const token = await fetchAccessToken();
-    if (token) return token;
-  } catch {
-    // Auth0 not configured or no active session.
-  }
-  return getToken();
-}
-
 const API_BASE = "";
 
-async function apiFetch<T>(
+export async function apiFetch<T>(
   path: string,
   options: RequestInit = {}
 ): Promise<T> {
-  const token = await resolveAuthToken();
+  const token = getToken();
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
     ...(options.headers as Record<string, string>),
@@ -792,7 +777,7 @@ export async function removeShare(
 // --- Files ---
 
 export async function uploadFile(workspaceId: string, file: File): Promise<FileInfo> {
-  const token = await resolveAuthToken();
+  const token = getToken();
   const formData = new FormData();
   formData.append("file", file);
   const resp = await fetch(`${API_BASE}/api/v1/workspaces/${workspaceId}/files`, {
@@ -808,7 +793,7 @@ export async function uploadFile(workspaceId: string, file: File): Promise<FileI
 }
 
 export async function uploadPersonalFile(file: File): Promise<FileInfo> {
-  const token = await resolveAuthToken();
+  const token = getToken();
   const formData = new FormData();
   formData.append("file", file);
   const resp = await fetch(`${API_BASE}/api/v1/files`, {

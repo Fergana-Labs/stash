@@ -169,7 +169,7 @@ Next.js 16 with Tailwind 4. Key structure:
 frontend/src/
 ├── app/
 │   ├── page.tsx              # Home / landing
-│   ├── login/                # Auth (register + login, Auth0 optional)
+│   ├── login/                # Auth (register + password login)
 │   ├── workspaces/
 │   │   └── [workspaceId]/    # Workspace dashboard
 │   ├── notebooks/            # Wiki notebook editor (TipTap)
@@ -201,7 +201,6 @@ Three containers: `postgres` (pgvector:pg16), `backend` (uvicorn), `frontend` (N
 
 - **S3-compatible storage** — file uploads (falls back to local)
 - **OpenAI API key** — embeddings for semantic search
-- **Auth0** — social login / SSO. Without it, password auth still works.
 
 ## Naming
 
