@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
-"""Stop: Codex has no separate SessionEnd, so we clear state here too."""
+"""Stop: Codex has no separate SessionEnd — stream the stop event, curate, clear state."""
 
 from config import DATA_DIR, get_client, get_config, get_stdin_data, is_configured
 from hooks import stream_stop
 from state import load_state, save_state
 
 from adapt import adapt_stop
+from curate_spawn import spawn_curation
 
 
 def main():
@@ -21,6 +22,7 @@ def main():
             stream_stop(client, cfg, state, event)
     except Exception:
         pass
+    spawn_curation("codex", ["exec"])
     state["session_id"] = ""
     save_state(DATA_DIR, state)
 
