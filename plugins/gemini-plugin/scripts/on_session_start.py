@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
-from config import DATA_DIR, get_client, get_config, get_stdin_data, is_configured
-from hooks import warm_cache
+"""Gemini SessionStart: save session_id for downstream streaming."""
+
+from config import DATA_DIR, get_stdin_data, is_configured
 from state import load_state, save_state
 
 from adapt import adapt_session_start
@@ -13,12 +14,6 @@ def main():
     state = load_state(DATA_DIR)
     state["session_id"] = event.session_id
     save_state(DATA_DIR, state)
-    cfg = get_config()
-    try:
-        with get_client() as client:
-            warm_cache(client, cfg, DATA_DIR)
-    except Exception:
-        pass
 
 
 if __name__ == "__main__":

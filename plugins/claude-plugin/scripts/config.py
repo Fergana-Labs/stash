@@ -23,11 +23,6 @@ DATA_DIR = Path(os.environ.get(
     Path.home() / ".claude/plugins/data/octopus",
 ))
 
-ESCALATION_DIR = Path(os.environ.get(
-    "OCTOPUS_NOTIFICATIONS_DIR",
-    Path.home() / ".octopus/notifications",
-))
-
 
 def get_stdin_data() -> dict:
     try:
@@ -79,7 +74,6 @@ def get_config() -> dict:
             "api_key": cli.get("api_key", ""),
             "agent_name": cli.get("username", ""),
             "workspace_id": cli.get("default_workspace", ""),
-            "inject_context": os.environ.get("CLAUDE_PLUGIN_USER_CONFIG_inject_context", "true"),
             "auto_curate": os.environ.get("CLAUDE_PLUGIN_USER_CONFIG_auto_curate", "true"),
             "client": "claude_code",
         }
@@ -89,7 +83,6 @@ def get_config() -> dict:
         "api_key": api_key,
         "agent_name": agent_name,
         "workspace_id": os.environ.get("CLAUDE_PLUGIN_USER_CONFIG_workspace_id", ""),
-        "inject_context": os.environ.get("CLAUDE_PLUGIN_USER_CONFIG_inject_context", "true"),
         "auto_curate": os.environ.get("CLAUDE_PLUGIN_USER_CONFIG_auto_curate", "true"),
         "client": "claude_code",
     }

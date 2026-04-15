@@ -1,7 +1,7 @@
 {
   "name": "octopus",
   "version": "0.1.0",
-  "description": "Connect Claude Code to Octopus — stream activity to history, inject agent memory/context, collaborate in workspaces.",
+  "description": "Connect Claude Code to Octopus — stream activity to history and collaborate in workspaces.",
   "author": {
     "name": "Fergana Labs"
   },
@@ -30,13 +30,6 @@
       "title": "Workspace ID",
       "description": "Default workspace UUID (optional, set via /octopus:connect)",
       "type": "string",
-      "sensitive": false
-    },
-    "inject_context": {
-      "title": "Inject Context",
-      "description": "Inject memory/context into prompts (true/false, default true)",
-      "type": "string",
-      "default": "true",
       "sensitive": false
     },
     "auto_curate": {

@@ -22,11 +22,6 @@ DATA_DIR = Path(os.environ.get(
     Path.home() / ".octopus/plugins/cursor",
 ))
 
-ESCALATION_DIR = Path(os.environ.get(
-    "OCTOPUS_NOTIFICATIONS_DIR",
-    Path.home() / ".octopus/notifications",
-))
-
 
 def get_stdin_data() -> dict:
     try:
@@ -74,7 +69,6 @@ def get_config() -> dict:
         "api_key": cli.get("api_key", ""),
         "agent_name": cli.get("username", ""),
         "workspace_id": cli.get("default_workspace", ""),
-        "inject_context": os.environ.get("OCTOPUS_INJECT_CONTEXT", "true"),
         "auto_curate": os.environ.get("OCTOPUS_AUTO_CURATE", "false"),  # off by default for Cursor
         "client": "cursor",
     }
