@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""UserPromptSubmit: stream user message + inject scored context."""
+"""beforeSubmitPrompt: stream user prompt + inject context.
+
+Cursor protocol: to add context to a prompt, print JSON to stdout with an
+`injected_context` key (documented at cursor.com/docs/agent/hooks).
+"""
 
 import json
 
@@ -29,9 +33,7 @@ def main():
         return
 
     context = build_injection_context(cfg, state, DATA_DIR, ESCALATION_DIR)
-
-    # Claude Code reads {additionalContext} from stdout
-    print(json.dumps({"additionalContext": context}))
+    print(json.dumps({"injected_context": context}))
 
 
 if __name__ == "__main__":

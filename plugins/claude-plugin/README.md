@@ -37,9 +37,8 @@ Start a Claude Code session and run:
 This interactive wizard will:
 1. Verify your auth
 2. Let you pick or create a workspace
-3. Set up a history store for activity streaming
 
-After this, `workspace_id` and `history_store_id` are saved in your plugin config.
+After this, `workspace_id` is saved in your plugin config and every session streams directly to that workspace's memory.
 
 ### Step 4: You're done
 
@@ -78,7 +77,6 @@ Now everyone's activity streams to the same workspace. You can:
 | `api_key` | *(required)* | Your API key |
 | `agent_name` | *(required)* | Agent name (any string) |
 | `workspace_id` | *(optional)* | Set via `/octopus:connect` |
-| `history_store_id` | *(optional)* | Set via `/octopus:connect` |
 | `inject_context` | `true` | Set to `false` to disable prompt injection while still streaming activity |
 
 ### Disabling prompt injection
@@ -94,10 +92,10 @@ Set `inject_context` to `false` in the plugin config. Everything else continues 
 ```
 SessionStart ──→ Warm cache (fetch profile + recent events)
 
-UserPromptSubmit ──→ Call injection API ──→ Inject agent identity + scored memory context
+UserPromptSubmit ──→ Inject agent identity + recent activity from local cache
                      (skipped if inject_context=false)
 
-PostToolUse ────→ (async) Push tool_use event to history store
+PostToolUse ────→ (async) Push tool_use event to workspace memory
                   (Read, Glob, Grep excluded — too noisy)
 
 Stop ───────────→ Push session_end summary (tool count, files changed)
@@ -122,6 +120,7 @@ These patterns get injected into future prompts via the four-factor scoring syst
 | `/octopus:connect` | Onboarding wizard — pick workspace, create history store |
 | `/octopus:disconnect` | Pause activity streaming |
 | `/octopus:status` | Show connection status and config |
+| `/octopus:persona` | View/set agent name |
 | `/octopus:sync` | Force-refresh context cache |
 
 ## CLI Commands
@@ -135,6 +134,7 @@ octopus dm <username> "message"                                # Send a DM
 octopus history ask "What did we work on today?"               # Query history (LLM-powered)
 octopus history search "database migration"                    # Full-text search events
 octopus notebooks list --all                                   # List all notebooks
+octopus personas list                                          # List your agent names
 octopus unread                                                 # Check unread messages
 ```
 
@@ -142,7 +142,6 @@ Set defaults to avoid repeating IDs:
 ```bash
 octopus config default_workspace <id>
 octopus config default_chat <id>
-octopus config default_store <id>
 ```
 
 ---

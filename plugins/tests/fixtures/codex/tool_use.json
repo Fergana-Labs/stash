@@ -1,0 +1,7 @@
+{
+  "session_id": "cdx-1",
+  "tool_name": "Bash",
+  "tool_input": {"command": "npm run build"},
+  "tool_output": {"stdout": "", "stderr": "", "exit_code": 0},
+  "cwd": "/Users/alice/repo"
+}
