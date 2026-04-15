@@ -1,6 +1,9 @@
 {
   "type": "agent-turn-complete",
-  "session_id": "cdx-1",
-  "last-assistant-message": "Turn complete.",
-  "cwd": "/Users/alice/repo"
+  "thread-id": "cdx-1",
+  "turn-id": "t-1",
+  "cwd": "/Users/alice/repo",
+  "client": "codex-tui",
+  "input-messages": ["fix the build"],
+  "last-assistant-message": "Turn complete."
 }

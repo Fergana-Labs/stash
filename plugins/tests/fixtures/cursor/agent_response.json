@@ -2,15 +2,10 @@
   "conversation_id": "cur-1",
   "generation_id": "gen-2",
   "model": "claude-3.7-sonnet",
-  "hook_event_name": "postToolUse",
+  "hook_event_name": "afterAgentResponse",
   "cursor_version": "1.7.0",
   "workspace_roots": ["/Users/alice/repo"],
   "user_email": "alice@example.com",
   "transcript_path": "/Users/alice/.cursor/transcripts/cur-1.jsonl",
-  "cwd": "/Users/alice/repo",
-  "tool_name": "Shell",
-  "tool_input": {"command": "pytest -q"},
-  "tool_output": "{\"stdout\":\"3 passed\",\"exitCode\":0}",
-  "tool_use_id": "tu-1",
-  "duration": 420
+  "text": "Done."
 }
