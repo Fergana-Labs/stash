@@ -2,7 +2,7 @@
 """SessionStart: save session_id for downstream streaming."""
 
 from config import DATA_DIR, get_stdin_data, is_configured
-from state import load_state, save_state
+from state import load_state, reset_stats, save_state
 
 from adapt import adapt_session_start
 
@@ -16,6 +16,7 @@ def main():
     state = load_state(DATA_DIR)
     state["session_id"] = event.session_id
     save_state(DATA_DIR, state)
+    reset_stats(DATA_DIR)
 
 
 if __name__ == "__main__":

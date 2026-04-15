@@ -11,7 +11,7 @@ the new one.
 from config import DATA_DIR, get_client, get_config, get_stdin_data, is_configured
 from event import HookEvent
 from hooks import stream_session_end
-from state import load_state, save_state
+from state import load_state, reset_stats, save_state
 
 from adapt import adapt_session_start
 from curate_spawn import spawn_curation
@@ -44,6 +44,7 @@ def main():
 
     state["session_id"] = event.session_id
     save_state(DATA_DIR, state)
+    reset_stats(DATA_DIR)
 
 
 if __name__ == "__main__":

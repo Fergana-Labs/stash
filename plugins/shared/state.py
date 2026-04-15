@@ -22,10 +22,13 @@ CODEX_HOOKS_FRESHNESS_SECONDS = 60
 
 CENTRAL_CONFIG_PATH = Path.home() / ".octopus" / "config.json"
 
+_DEFAULT_STATS = {"tool_count": 0, "tools_used": [], "files_changed": []}
+
 DEFAULT_STATE = {
     "streaming_enabled": True,
     "session_id": "",
     "last_sync": None,
+    "stats": dict(_DEFAULT_STATS),
 }
 
 
@@ -63,6 +66,52 @@ def load_state(data_dir: Path) -> dict:
 
 def save_state(data_dir: Path, state: dict) -> None:
     _write_json(data_dir / "state.json", state)
+
+
+# ---------------------------------------------------------------------------
+# Session stats: incremented on every tool_use, read at session_end.
+#
+# Replaces reading the agent's transcript at session_end, which was Claude-only
+# and blew through Codex's 5s hook timeout on huge sessions. One read+write of
+# state.json per tool_use amortizes the cost and works for every plugin.
+# ---------------------------------------------------------------------------
+
+def _load_stats(state: dict) -> dict:
+    stats = state.get("stats")
+    if not isinstance(stats, dict):
+        return dict(_DEFAULT_STATS)
+    return {
+        "tool_count": int(stats.get("tool_count", 0) or 0),
+        "tools_used": list(stats.get("tools_used") or []),
+        "files_changed": list(stats.get("files_changed") or []),
+    }
+
+
+def record_tool_use(data_dir: Path, tool_name: str, file_path: str | None) -> None:
+    """Increment tool counter + sets. Called from every plugin's on_tool_use."""
+    if not tool_name:
+        return
+    state = _read_json(data_dir / "state.json", dict(DEFAULT_STATE))
+    stats = _load_stats(state)
+    stats["tool_count"] += 1
+    if tool_name not in stats["tools_used"]:
+        stats["tools_used"].append(tool_name)
+    if file_path and tool_name in ("edit", "write") and file_path not in stats["files_changed"]:
+        stats["files_changed"].append(file_path)
+    state["stats"] = stats
+    _write_json(data_dir / "state.json", state)
+
+
+def reset_stats(data_dir: Path) -> None:
+    """Called from session_start after session_id is saved."""
+    state = _read_json(data_dir / "state.json", dict(DEFAULT_STATE))
+    state["stats"] = dict(_DEFAULT_STATS)
+    _write_json(data_dir / "state.json", state)
+
+
+def read_stats(state: dict) -> dict:
+    """Pull stats out of an already-loaded state dict. Used by stream_session_end."""
+    return _load_stats(state)
 
 
 # ---------------------------------------------------------------------------
