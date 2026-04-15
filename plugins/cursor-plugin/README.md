@@ -1,9 +1,8 @@
 # Octopus Plugin for Cursor
 
 Streams Cursor sessions to an Octopus workspace. Mirrors the Claude Code
-plugin's event coverage, minus auto-curation (Cursor has no headless
-entry point) and prompt-time context injection (Cursor's `beforeSubmitPrompt`
-protocol has no context-injection key).
+plugin's event coverage minus auto-curation (Cursor has no headless entry
+point).
 
 ## Prerequisites
 
@@ -43,13 +42,12 @@ Reads from `~/.octopus/config.json` (populated by `octopus login` +
 
 Override with env vars (set in Cursor's environment):
 - `OCTOPUS_CURSOR_DATA=<path>` — custom state dir (default `~/.octopus/plugins/cursor`)
-- `OCTOPUS_NOTIFICATIONS_DIR=<path>` — pending escalation notifications
 
 ## What streams
 
 | Cursor event | Octopus event | Content |
 |---|---|---|
-| `sessionStart` | — (warms cache only) | — |
+| `sessionStart` | — (records session id) | — |
 | `beforeSubmitPrompt` | `user_message` | User's prompt text |
 | `postToolUse` | `tool_use` | Tool name, tool_input, tool_output preview |
 | `afterAgentResponse` | `assistant_message` | Final model text for the turn |
@@ -60,7 +58,6 @@ Override with env vars (set in Cursor's environment):
 
 - No auto-curation on SessionEnd (no `cursor -p` equivalent)
 - No slash commands (`/octopus:connect` etc.) — use the `octopus` CLI directly
-- No prompt-time context injection — Cursor's `beforeSubmitPrompt` protocol has no context-injection key
 
 ## Retrieval
 

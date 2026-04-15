@@ -32,14 +32,13 @@ Restart opencode.
 |---|---|
 | `chat.message` (keyed hook) | `user_message` |
 | `tool.execute.after` (keyed hook) | `tool_use` |
-| bus event `session.created` | — (warms cache) |
+| bus event `session.created` | — (records session id) |
 | bus event `session.deleted` | `session_end` (clears state) |
 
 Ignored on purpose: `session.idle` fires on every turn completion (not session end), `message.updated` streams repeatedly. Capturing final assistant text per turn is a future TODO.
 
 ## Known gaps
 
-- No prompt-time context injection (opencode has no analogous protocol).
 - No final-assistant-message capture — `session.idle` fires too often to treat as "stop."
 - No auto-curation hook — run `octopus curate` on a cron if desired.
 
