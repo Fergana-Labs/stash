@@ -19,11 +19,20 @@ interface SimNode {
   vy: number;
 }
 
+interface TooltipInfo {
+  x: number;
+  y: number;
+  name: string;
+}
+
 export default function PageGraphView({ graph, onClose, onSelectPage, inline }: PageGraphViewProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [hoveredNode, setHoveredNode] = useState<string | null>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [tooltip, setTooltip] = useState<TooltipInfo | null>(null);
+  const hoveredRef = useRef<string | null>(null);
   const nodesRef = useRef<SimNode[]>([]);
   const animRef = useRef<number>(0);
+  const tickRef = useRef(0);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -39,7 +48,7 @@ export default function PageGraphView({ graph, onClose, onSelectPage, inline }: 
     const dh = h / 2;
 
     // Initialize nodes with random positions
-    const nodes: SimNode[] = graph.nodes.map((n, i) => ({
+    const nodes: SimNode[] = graph.nodes.map((n) => ({
       id: n.id,
       name: n.name,
       x: dw / 2 + (Math.random() - 0.5) * dw * 0.6,
@@ -48,6 +57,7 @@ export default function PageGraphView({ graph, onClose, onSelectPage, inline }: 
       vy: 0,
     }));
     nodesRef.current = nodes;
+    tickRef.current = 0;
 
     const nodeMap = new Map(nodes.map((n) => [n.id, n]));
     const edges = graph.edges.map((e) => ({
@@ -57,11 +67,14 @@ export default function PageGraphView({ graph, onClose, onSelectPage, inline }: 
     })).filter((e) => e.source && e.target);
 
     const tick = () => {
-      // Force simulation
-      const k = 0.01; // spring constant
-      const repulsion = 8000;
+      tickRef.current++;
+
+      // Decay simulation energy over time — settle after ~200 ticks
+      const cooling = Math.max(0.01, 1 - tickRef.current / 200);
+      const k = 0.01 * cooling;
+      const repulsion = 8000 * cooling;
       const damping = 0.85;
-      const centerPull = 0.005;
+      const centerPull = 0.005 * cooling;
 
       // Repulsion between all nodes
       for (let i = 0; i < nodes.length; i++) {
@@ -102,53 +115,85 @@ export default function PageGraphView({ graph, onClose, onSelectPage, inline }: 
         node.vy *= damping;
         node.x += node.vx;
         node.y += node.vy;
-        // Bounds
         node.x = Math.max(40, Math.min(dw - 40, node.x));
         node.y = Math.max(40, Math.min(dh - 40, node.y));
       }
 
       // Draw
+      const hovered = hoveredRef.current;
       ctx.clearRect(0, 0, dw, dh);
+
+      // Build a set of bidirectional edge pairs so we only draw each line once
+      const bidir = new Set<string>();
+      const drawn = new Set<string>();
+      for (const e of edges) {
+        const rev = edges.find((o) => o.source.id === e.target.id && o.target.id === e.source.id);
+        if (rev) {
+          bidir.add(e.source.id + ":" + e.target.id);
+          bidir.add(e.target.id + ":" + e.source.id);
+        }
+      }
+
+      const drawArrow = (tipX: number, tipY: number, angle: number) => {
+        const len = 8;
+        ctx.beginPath();
+        ctx.moveTo(tipX, tipY);
+        ctx.lineTo(tipX - len * Math.cos(angle - 0.4), tipY - len * Math.sin(angle - 0.4));
+        ctx.moveTo(tipX, tipY);
+        ctx.lineTo(tipX - len * Math.cos(angle + 0.4), tipY - len * Math.sin(angle + 0.4));
+        ctx.stroke();
+      };
 
       // Edges
       ctx.strokeStyle = "#3E4E63";
       ctx.lineWidth = 1.5;
       for (const edge of edges) {
+        const key = edge.source.id + ":" + edge.target.id;
+        const isBidir = bidir.has(key);
+
+        // For bidirectional edges, only draw once (skip the reverse)
+        if (isBidir) {
+          const canonKey = [edge.source.id, edge.target.id].sort().join(":");
+          if (drawn.has(canonKey)) continue;
+          drawn.add(canonKey);
+        }
+
+        // Line
         ctx.beginPath();
         ctx.moveTo(edge.source.x, edge.source.y);
         ctx.lineTo(edge.target.x, edge.target.y);
         ctx.stroke();
 
-        // Arrow
         const angle = Math.atan2(edge.target.y - edge.source.y, edge.target.x - edge.source.x);
-        const arrowLen = 8;
-        const mx = (edge.source.x + edge.target.x) / 2;
-        const my = (edge.source.y + edge.target.y) / 2;
-        ctx.beginPath();
-        ctx.moveTo(mx, my);
-        ctx.lineTo(mx - arrowLen * Math.cos(angle - 0.4), my - arrowLen * Math.sin(angle - 0.4));
-        ctx.moveTo(mx, my);
-        ctx.lineTo(mx - arrowLen * Math.cos(angle + 0.4), my - arrowLen * Math.sin(angle + 0.4));
-        ctx.stroke();
+        const nodeRadius = 10;
+
+        if (isBidir) {
+          // Arrows at both ends, just outside each node
+          const tipTargetX = edge.target.x - Math.cos(angle) * nodeRadius;
+          const tipTargetY = edge.target.y - Math.sin(angle) * nodeRadius;
+          drawArrow(tipTargetX, tipTargetY, angle);
+
+          const tipSourceX = edge.source.x + Math.cos(angle) * nodeRadius;
+          const tipSourceY = edge.source.y + Math.sin(angle) * nodeRadius;
+          drawArrow(tipSourceX, tipSourceY, angle + Math.PI);
+        } else {
+          // Single arrow near the target node
+          const tipX = edge.target.x - Math.cos(angle) * nodeRadius;
+          const tipY = edge.target.y - Math.sin(angle) * nodeRadius;
+          drawArrow(tipX, tipY, angle);
+        }
       }
 
       // Nodes
       for (const node of nodes) {
-        const isHovered = node.id === hoveredNode;
+        const isHovered = node.id === hovered;
         const hasEdge = edges.some((e) => e.source.id === node.id || e.target.id === node.id);
 
-        // Circle
         ctx.beginPath();
         ctx.arc(node.x, node.y, isHovered ? 10 : 7, 0, Math.PI * 2);
-        ctx.fillStyle = hasEdge ? "#F97316" : "#8B5CF6";
-        if (isHovered) ctx.fillStyle = "#EA580C";
+        ctx.fillStyle = isHovered ? "#EA580C" : hasEdge ? "#F97316" : "#8B5CF6";
         ctx.fill();
 
-        // Label
-        ctx.font = `${isHovered ? "bold " : ""}11px 'Instrument Sans', sans-serif`;
-        ctx.fillStyle = "#F1F5F9";
-        ctx.textAlign = "center";
-        ctx.fillText(node.name, node.x, node.y - 14);
       }
 
       animRef.current = requestAnimationFrame(tick);
@@ -157,7 +202,7 @@ export default function PageGraphView({ graph, onClose, onSelectPage, inline }: 
     animRef.current = requestAnimationFrame(tick);
 
     return () => cancelAnimationFrame(animRef.current);
-  }, [graph, hoveredNode]);
+  }, [graph]);
 
   const handleCanvasClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current;
@@ -180,29 +225,42 @@ export default function PageGraphView({ graph, onClose, onSelectPage, inline }: 
     const canvas = canvasRef.current;
     if (!canvas) return;
     const rect = canvas.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
+    const mx = e.clientX - rect.left;
+    const my = e.clientY - rect.top;
 
-    let found: string | null = null;
+    let found: SimNode | null = null;
     for (const node of nodesRef.current) {
-      const dx = node.x - x;
-      const dy = node.y - y;
+      const dx = node.x - mx;
+      const dy = node.y - my;
       if (dx * dx + dy * dy < 15 * 15) {
-        found = node.id;
+        found = node;
         break;
       }
     }
-    setHoveredNode(found);
+    hoveredRef.current = found?.id ?? null;
+    if (found) {
+      setTooltip({ x: mx, y: my, name: found.name });
+    } else {
+      setTooltip(null);
+    }
   };
+
+  const tooltipEl = tooltip && (
+    <div
+      className="absolute z-10 bg-base border border-border rounded-md px-3 py-1.5 pointer-events-none shadow-lg"
+      style={{ left: tooltip.x + 12, top: tooltip.y - 8 }}
+    >
+      <div className="text-xs font-medium text-foreground">{tooltip.name}</div>
+    </div>
+  );
 
   if (inline) {
     return (
-      <div>
-        <div className="flex items-center justify-between mb-2">
+      <div ref={containerRef} className="relative">
+        <div className="mb-2">
           <span className="text-xs text-muted">
             {graph.nodes.length} pages, {graph.edges.length} links
           </span>
-          <button onClick={onClose} className="text-xs text-muted hover:text-foreground">&times; Close</button>
         </div>
         <canvas
           ref={canvasRef}
@@ -210,7 +268,9 @@ export default function PageGraphView({ graph, onClose, onSelectPage, inline }: 
           style={{ height: 320 }}
           onClick={handleCanvasClick}
           onMouseMove={handleCanvasMove}
+          onMouseLeave={() => { hoveredRef.current = null; setTooltip(null); }}
         />
+        {tooltipEl}
         {graph.edges.length === 0 && (
           <p className="text-xs text-muted mt-2">
             No links yet. Use <code className="text-brand">[[Page Name]]</code> syntax to create wiki links.
@@ -232,13 +292,17 @@ export default function PageGraphView({ graph, onClose, onSelectPage, inline }: 
           </h3>
           <button onClick={onClose} className="text-muted hover:text-foreground text-lg">&times;</button>
         </div>
-        <canvas
-          ref={canvasRef}
-          className="w-full cursor-crosshair"
-          style={{ height: 400 }}
-          onClick={handleCanvasClick}
-          onMouseMove={handleCanvasMove}
-        />
+        <div className="relative">
+          <canvas
+            ref={canvasRef}
+            className="w-full cursor-crosshair"
+            style={{ height: 400 }}
+            onClick={handleCanvasClick}
+            onMouseMove={handleCanvasMove}
+            onMouseLeave={() => { hoveredRef.current = null; setTooltip(null); }}
+          />
+          {tooltipEl}
+        </div>
         {graph.edges.length === 0 && (
           <div className="px-4 py-3 border-t border-border">
             <p className="text-xs text-muted">
