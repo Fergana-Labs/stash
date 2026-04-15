@@ -50,6 +50,7 @@ def stream_user_message(client: OctopusClient, cfg: dict, state: dict, prompt_te
             event_type="user_message",
             content=prompt_text[:2000],
             session_id=state.get("session_id", ""),
+            client=cfg.get("client") or None,
         )
     except Exception:
         pass
@@ -118,6 +119,7 @@ def stream_tool_use(
             session_id=state.get("session_id", ""),
             tool_name=event.tool_name,
             metadata=metadata,
+            client=cfg.get("client") or None,
         )
     except Exception:
         pass
@@ -174,6 +176,7 @@ def stream_stop(
                 event_type="assistant_message",
                 content=event.last_assistant_message[:4000],
                 session_id=state.get("session_id", ""),
+                client=cfg.get("client") or None,
             )
 
         stats = count_transcript_stats(event.transcript_path)
@@ -199,6 +202,7 @@ def stream_stop(
                 "files_changed": files_changed,
                 "tools_used": tools_used,
             },
+            client=cfg.get("client") or None,
         )
     except Exception:
         pass

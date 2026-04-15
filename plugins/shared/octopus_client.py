@@ -92,15 +92,18 @@ class OctopusClient:
         self, workspace_id: str | None,
         agent_name: str, event_type: str, content: str,
         session_id: str | None = None, tool_name: str | None = None,
-        metadata: dict | None = None,
+        metadata: dict | None = None, client: str | None = None,
     ) -> dict:
         body: dict = {"agent_name": agent_name, "event_type": event_type, "content": content}
         if session_id:
             body["session_id"] = session_id
         if tool_name:
             body["tool_name"] = tool_name
-        if metadata:
-            body["metadata"] = metadata
+        merged_meta = dict(metadata or {})
+        if client:
+            merged_meta["client"] = client
+        if merged_meta:
+            body["metadata"] = merged_meta
         return self._post(self._events_path(workspace_id), json=body)
 
     def query_events(

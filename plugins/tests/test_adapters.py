@@ -82,6 +82,40 @@ def test_codex_notify_fallback():
     assert event.last_assistant_message == "Turn complete."
 
 
+def test_push_event_stamps_client_into_metadata():
+    """OctopusClient.push_event should merge the `client` facet into metadata."""
+    from octopus_client import OctopusClient
+
+    calls = []
+
+    class FakeClient(OctopusClient):
+        def _post(self, path, **kwargs):
+            calls.append((path, kwargs))
+            return {}
+
+    c = FakeClient(base_url="http://x", api_key="k")
+
+    c.push_event(
+        workspace_id="ws1", agent_name="henry", event_type="tool_use",
+        content="...", tool_name="edit", metadata={"cwd": "/tmp"}, client="cursor",
+    )
+    body = calls[-1][1]["json"]
+    assert body["metadata"] == {"cwd": "/tmp", "client": "cursor"}
+
+    c.push_event(
+        workspace_id="ws1", agent_name="henry", event_type="user_message",
+        content="hi", client="claude_code",
+    )
+    body = calls[-1][1]["json"]
+    assert body["metadata"] == {"client": "claude_code"}
+
+    c.push_event(
+        workspace_id="ws1", agent_name="henry", event_type="user_message", content="hi",
+    )
+    body = calls[-1][1]["json"]
+    assert "metadata" not in body
+
+
 def test_tool_name_normalization():
     """Each plugin's adapter should normalize its agent-native tool names."""
     cases = [
