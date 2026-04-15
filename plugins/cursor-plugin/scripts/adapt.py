@@ -14,7 +14,11 @@ Per-event extras we care about:
 
 Notes:
 - `cwd` is only on tool events; fall back to workspace_roots[0].
-- `beforeSubmitPrompt` does not carry a session_id; use conversation_id.
+- session_id is read from the payload when present (sessionStart / sessionEnd).
+  All downstream streaming uses state.session_id (saved at sessionStart), so
+  events without session_id (beforeSubmitPrompt, postToolUse, afterAgentResponse)
+  produce HookEvents with empty session_id — that's fine, the field is unused
+  on those code paths.
 - `tool_output` is a JSON-stringified string — parse before handing to summarize_tool_use.
 - Tool names are PascalCase: Shell, Read, Write, Grep, Delete, Task, MCP:<name>.
 """
@@ -51,14 +55,10 @@ def _cwd(data: dict) -> str:
     return ""
 
 
-def _sid(data: dict) -> str:
-    return data.get("session_id") or data.get("conversation_id", "")
-
-
 def adapt_session_start(data: dict) -> HookEvent:
     return HookEvent(
         kind="session_start",
-        session_id=_sid(data),
+        session_id=data.get("session_id", ""),
         cwd=_cwd(data),
     )
 
@@ -66,7 +66,7 @@ def adapt_session_start(data: dict) -> HookEvent:
 def adapt_prompt(data: dict) -> HookEvent:
     return HookEvent(
         kind="prompt",
-        session_id=_sid(data),
+        session_id=data.get("session_id", ""),
         cwd=_cwd(data),
         prompt_text=data.get("prompt", ""),
     )
@@ -94,7 +94,7 @@ def adapt_tool_use(data: dict) -> HookEvent:
         tool_input = {"raw": tool_input}
     return HookEvent(
         kind="tool_use",
-        session_id=_sid(data),
+        session_id=data.get("session_id", ""),
         cwd=_cwd(data),
         tool_name=_normalize(data.get("tool_name", "")),
         tool_input=tool_input,
@@ -106,7 +106,7 @@ def adapt_agent_response(data: dict) -> HookEvent:
     """afterAgentResponse: final assistant text for the turn."""
     return HookEvent(
         kind="stop",
-        session_id=_sid(data),
+        session_id=data.get("session_id", ""),
         cwd=_cwd(data),
         last_assistant_message=data.get("text", ""),
     )
@@ -115,6 +115,6 @@ def adapt_agent_response(data: dict) -> HookEvent:
 def adapt_session_end(data: dict) -> HookEvent:
     return HookEvent(
         kind="session_end",
-        session_id=_sid(data),
+        session_id=data.get("session_id", ""),
         cwd=_cwd(data),
     )

@@ -45,12 +45,19 @@ def test_session_start(plugin):
     assert event.session_id  # non-empty
 
 
+# Cursor's beforeSubmitPrompt/postToolUse/afterAgentResponse payloads don't
+# carry session_id (only conversation_id). Streaming reads state.session_id,
+# saved at sessionStart, so the empty event.session_id is intentional.
+_PLUGINS_WITH_PROMPT_SID = [p for p in PLUGINS if p != "cursor"]
+
+
 @pytest.mark.parametrize("plugin", PLUGINS)
 def test_prompt(plugin):
     adapt = _load_adapt(plugin)
     event = adapt.adapt_prompt(_load_fixture(plugin, "prompt"))
     assert event.kind == "prompt"
-    assert event.session_id
+    if plugin in _PLUGINS_WITH_PROMPT_SID:
+        assert event.session_id
     assert event.prompt_text  # non-empty
 
 
@@ -59,7 +66,8 @@ def test_tool_use(plugin):
     adapt = _load_adapt(plugin)
     event = adapt.adapt_tool_use(_load_fixture(plugin, "tool_use"))
     assert event.kind == "tool_use"
-    assert event.session_id
+    if plugin in _PLUGINS_WITH_PROMPT_SID:
+        assert event.session_id
     assert event.tool_name  # non-empty normalized name
     # Tool names should be lowercase canonical names
     assert event.tool_name == event.tool_name.lower()
@@ -81,7 +89,7 @@ def test_cursor_agent_response():
     adapt = _load_adapt("cursor")
     event = adapt.adapt_agent_response(_load_fixture("cursor", "agent_response"))
     assert event.kind == "stop"
-    assert event.session_id
+    # afterAgentResponse has no session_id; streaming uses state.session_id.
     assert event.last_assistant_message == "Done."
 
 
