@@ -89,31 +89,40 @@ body {
   pointer-events: none;
 }
 
+/* Wiki body — Notion-like spacious typography */
+.wiki-body {
+  font-size: 16px;
+  line-height: 1.7;
+  color: var(--text-dim);
+}
+
 /* ProseMirror heading styles */
 .ProseMirror h1 {
   font-family: var(--font-display), sans-serif;
-  font-size: 1.75rem;
+  font-size: 1.875rem;
   font-weight: 700;
-  margin-top: 1.5rem;
-  margin-bottom: 1rem;
+  margin-top: 2rem;
+  margin-bottom: 0.5rem;
   color: var(--text-primary);
+  letter-spacing: -0.01em;
 }
 
 .ProseMirror h2 {
   font-family: var(--font-display), sans-serif;
   font-size: 1.5rem;
   font-weight: 600;
-  margin-top: 1.25rem;
-  margin-bottom: 0.75rem;
+  margin-top: 1.75rem;
+  margin-bottom: 0.5rem;
   color: var(--text-primary);
+  letter-spacing: -0.01em;
 }
 
 .ProseMirror h3 {
   font-family: var(--font-display), sans-serif;
   font-size: 1.25rem;
   font-weight: 600;
-  margin-top: 1rem;
-  margin-bottom: 0.5rem;
+  margin-top: 1.5rem;
+  margin-bottom: 0.375rem;
   color: var(--text-primary);
 }
 
@@ -193,7 +202,7 @@ body {
 
 /* ProseMirror paragraph spacing */
 .ProseMirror p {
-  margin: 0.25em 0;
+  margin: 0.5em 0;
   color: var(--text-dim);
 }
 
