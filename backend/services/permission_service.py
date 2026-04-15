@@ -35,7 +35,8 @@ async def check_access(
             table, col = table_map[object_type]
             row = await pool.fetchrow(
                 f"SELECT 1 FROM {table} WHERE id = $1 AND {col} = $2 AND workspace_id IS NULL",
-                object_id, user_id,
+                object_id,
+                user_id,
             )
             if row:
                 return True
@@ -61,7 +62,9 @@ async def check_access(
     share = await pool.fetchrow(
         "SELECT permission FROM object_shares "
         "WHERE object_type = $1 AND object_id = $2 AND user_id = $3",
-        object_type, object_id, user_id,
+        object_type,
+        object_id,
+        user_id,
     )
     if share:
         if not require_write:
@@ -76,7 +79,8 @@ async def get_workspace_role(workspace_id: UUID, user_id: UUID) -> str | None:
     pool = get_pool()
     row = await pool.fetchrow(
         "SELECT role FROM workspace_members WHERE workspace_id = $1 AND user_id = $2",
-        workspace_id, user_id,
+        workspace_id,
+        user_id,
     )
     return row["role"] if row else None
 
@@ -89,9 +93,9 @@ async def get_visibility(object_type: str, object_id: UUID) -> str:
     """Get object visibility. Returns 'inherit' if no row exists."""
     pool = get_pool()
     row = await pool.fetchrow(
-        "SELECT visibility FROM object_permissions "
-        "WHERE object_type = $1 AND object_id = $2",
-        object_type, object_id,
+        "SELECT visibility FROM object_permissions " "WHERE object_type = $1 AND object_id = $2",
+        object_type,
+        object_id,
     )
     return row["visibility"] if row else "inherit"
 
@@ -103,14 +107,17 @@ async def set_visibility(object_type: str, object_id: UUID, visibility: str) -> 
         # Remove the row (inherit is default)
         await pool.execute(
             "DELETE FROM object_permissions WHERE object_type = $1 AND object_id = $2",
-            object_type, object_id,
+            object_type,
+            object_id,
         )
     else:
         await pool.execute(
             "INSERT INTO object_permissions (object_type, object_id, visibility) "
             "VALUES ($1, $2, $3) "
             "ON CONFLICT (object_type, object_id) DO UPDATE SET visibility = $3",
-            object_type, object_id, visibility,
+            object_type,
+            object_id,
+            visibility,
         )
 
 
@@ -128,7 +135,11 @@ async def add_share(
         "VALUES ($1, $2, $3, $4, $5) "
         "ON CONFLICT (object_type, object_id, user_id) DO UPDATE SET permission = $4 "
         "RETURNING *",
-        object_type, object_id, user_id, permission, granted_by,
+        object_type,
+        object_id,
+        user_id,
+        permission,
+        granted_by,
     )
     return dict(row)
 
@@ -138,7 +149,9 @@ async def remove_share(object_type: str, object_id: UUID, user_id: UUID) -> bool
     pool = get_pool()
     result = await pool.execute(
         "DELETE FROM object_shares WHERE object_type = $1 AND object_id = $2 AND user_id = $3",
-        object_type, object_id, user_id,
+        object_type,
+        object_id,
+        user_id,
     )
     return result == "DELETE 1"
 
@@ -151,7 +164,8 @@ async def get_shares(object_type: str, object_id: UUID) -> list[dict]:
         "FROM object_shares os JOIN users u ON u.id = os.user_id "
         "WHERE os.object_type = $1 AND os.object_id = $2 "
         "ORDER BY os.created_at",
-        object_type, object_id,
+        object_type,
+        object_id,
     )
     return [dict(r) for r in rows]
 

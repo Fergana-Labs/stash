@@ -12,7 +12,13 @@ from .config import settings
 from .database import close_db, init_db
 from .middleware import limiter
 from .routers import (
-    aggregate, files, memory, notebooks, skill, tables, users,
+    aggregate,
+    files,
+    memory,
+    notebooks,
+    skill,
+    tables,
+    users,
     workspaces,
 )
 
@@ -43,7 +49,8 @@ app = FastAPI(
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 app.add_middleware(SlowAPIMiddleware)
-app.add_middleware(CORSMiddleware,
+app.add_middleware(
+    CORSMiddleware,
     allow_origins=settings.CORS_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
