@@ -5,9 +5,9 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, UploadFile
 
 from ..auth import get_current_user
+from ..database import get_pool
 from ..models import FileListResponse, FileResponse
 from ..services import storage_service, workspace_service
-from ..database import get_pool
 
 ws_router = APIRouter(prefix="/api/v1/workspaces/{workspace_id}/files", tags=["files"])
 personal_router = APIRouter(prefix="/api/v1/files", tags=["personal_files"])
@@ -55,7 +55,10 @@ async def upload_ws_file(
     filename = file.filename or "upload"
 
     storage_key = await storage_service.upload_file(
-        str(workspace_id), filename, content, content_type,
+        str(workspace_id),
+        filename,
+        content,
+        content_type,
     )
 
     pool = get_pool()
@@ -63,7 +66,12 @@ async def upload_ws_file(
         "INSERT INTO files (workspace_id, name, content_type, size_bytes, storage_key, uploaded_by) "
         "VALUES ($1, $2, $3, $4, $5, $6) "
         "RETURNING id, workspace_id, name, content_type, size_bytes, storage_key, uploaded_by, created_at",
-        workspace_id, filename, content_type, len(content), storage_key, current_user["id"],
+        workspace_id,
+        filename,
+        content_type,
+        len(content),
+        storage_key,
+        current_user["id"],
     )
     return await _file_to_response(dict(row))
 
@@ -86,7 +94,8 @@ async def list_ws_files(
 
 @ws_router.get("/{file_id}", response_model=FileResponse)
 async def get_ws_file(
-    workspace_id: UUID, file_id: UUID,
+    workspace_id: UUID,
+    file_id: UUID,
     current_user: dict = Depends(get_current_user),
 ):
     await _check_member(workspace_id, current_user["id"])
@@ -94,7 +103,8 @@ async def get_ws_file(
     row = await pool.fetchrow(
         "SELECT id, workspace_id, name, content_type, size_bytes, storage_key, uploaded_by, created_at "
         "FROM files WHERE id = $1 AND workspace_id = $2",
-        file_id, workspace_id,
+        file_id,
+        workspace_id,
     )
     if not row:
         raise HTTPException(status_code=404, detail="File not found")
@@ -103,14 +113,16 @@ async def get_ws_file(
 
 @ws_router.delete("/{file_id}", status_code=204)
 async def delete_ws_file(
-    workspace_id: UUID, file_id: UUID,
+    workspace_id: UUID,
+    file_id: UUID,
     current_user: dict = Depends(get_current_user),
 ):
     await _check_member(workspace_id, current_user["id"])
     pool = get_pool()
     row = await pool.fetchrow(
         "SELECT storage_key FROM files WHERE id = $1 AND workspace_id = $2",
-        file_id, workspace_id,
+        file_id,
+        workspace_id,
     )
     if not row:
         raise HTTPException(status_code=404, detail="File not found")
@@ -118,7 +130,9 @@ async def delete_ws_file(
         await storage_service.delete_file(row["storage_key"])
     except Exception:
         pass  # Best-effort S3 cleanup
-    await pool.execute("DELETE FROM files WHERE id = $1 AND workspace_id = $2", file_id, workspace_id)
+    await pool.execute(
+        "DELETE FROM files WHERE id = $1 AND workspace_id = $2", file_id, workspace_id
+    )
 
 
 # ===== Personal file endpoints =====
@@ -140,7 +154,10 @@ async def upload_personal_file(
     filename = file.filename or "upload"
 
     storage_key = await storage_service.upload_file(
-        None, filename, content, content_type,
+        None,
+        filename,
+        content,
+        content_type,
     )
 
     pool = get_pool()
@@ -148,7 +165,11 @@ async def upload_personal_file(
         "INSERT INTO files (name, content_type, size_bytes, storage_key, uploaded_by) "
         "VALUES ($1, $2, $3, $4, $5) "
         "RETURNING id, workspace_id, name, content_type, size_bytes, storage_key, uploaded_by, created_at",
-        filename, content_type, len(content), storage_key, current_user["id"],
+        filename,
+        content_type,
+        len(content),
+        storage_key,
+        current_user["id"],
     )
     return await _file_to_response(dict(row))
 
@@ -176,7 +197,8 @@ async def get_personal_file(
     row = await pool.fetchrow(
         "SELECT id, workspace_id, name, content_type, size_bytes, storage_key, uploaded_by, created_at "
         "FROM files WHERE id = $1 AND workspace_id IS NULL AND uploaded_by = $2",
-        file_id, current_user["id"],
+        file_id,
+        current_user["id"],
     )
     if not row:
         raise HTTPException(status_code=404, detail="File not found")
@@ -191,7 +213,8 @@ async def delete_personal_file(
     pool = get_pool()
     row = await pool.fetchrow(
         "SELECT storage_key FROM files WHERE id = $1 AND workspace_id IS NULL AND uploaded_by = $2",
-        file_id, current_user["id"],
+        file_id,
+        current_user["id"],
     )
     if not row:
         raise HTTPException(status_code=404, detail="File not found")

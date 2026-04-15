@@ -35,6 +35,7 @@ async def register_user(
     # Auto-provision a default workspace for new users.
     # workspaces.name is VARCHAR(128); trim the display so the suffix always fits.
     from . import workspace_service
+
     suffix = "'s Workspace"
     ws_name = f"{user['display_name'][: 128 - len(suffix)]}{suffix}"
     await workspace_service.create_workspace(

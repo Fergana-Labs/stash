@@ -6,6 +6,7 @@ Configured via environment variables.
 
 import logging
 import os
+from datetime import UTC
 from uuid import uuid4
 
 import httpx
@@ -55,9 +56,9 @@ async def upload_file(
     # For simplicity, use the S3 REST API directly via httpx
     import hashlib
     import hmac
-    from datetime import datetime, timezone
+    from datetime import datetime
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     date_stamp = now.strftime("%Y%m%d")
     amz_date = now.strftime("%Y%m%dT%H%M%SZ")
 
@@ -75,13 +76,9 @@ async def upload_file(
         "content-type": content_type,
     }
     signed_headers = ";".join(sorted(headers_to_sign.keys()))
-    canonical_headers = "".join(
-        f"{k}:{v}\n" for k, v in sorted(headers_to_sign.items())
-    )
+    canonical_headers = "".join(f"{k}:{v}\n" for k, v in sorted(headers_to_sign.items()))
 
-    canonical_request = (
-        f"PUT\n{uri}\n\n{canonical_headers}\n{signed_headers}\n{payload_hash}"
-    )
+    canonical_request = f"PUT\n{uri}\n\n{canonical_headers}\n{signed_headers}\n{payload_hash}"
 
     credential_scope = f"{date_stamp}/{S3_REGION}/s3/aws4_request"
     string_to_sign = (
@@ -102,9 +99,7 @@ async def upload_file(
         ),
         "aws4_request",
     )
-    signature = hmac.new(
-        signing_key, string_to_sign.encode(), hashlib.sha256
-    ).hexdigest()
+    signature = hmac.new(signing_key, string_to_sign.encode(), hashlib.sha256).hexdigest()
 
     auth_header = (
         f"AWS4-HMAC-SHA256 Credential={S3_ACCESS_KEY}/{credential_scope}, "
@@ -136,10 +131,10 @@ async def get_file_url(key: str, expires_in: int = 3600) -> str:
 
     import hashlib
     import hmac
-    from datetime import datetime, timezone
+    from datetime import datetime
     from urllib.parse import quote
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     date_stamp = now.strftime("%Y%m%d")
     amz_date = now.strftime("%Y%m%dT%H%M%SZ")
 
@@ -158,9 +153,7 @@ async def get_file_url(key: str, expires_in: int = 3600) -> str:
         f"&X-Amz-SignedHeaders=host"
     )
 
-    canonical_request = (
-        f"GET\n{uri}\n{query_params}\nhost:{host}\n\nhost\nUNSIGNED-PAYLOAD"
-    )
+    canonical_request = f"GET\n{uri}\n{query_params}\nhost:{host}\n\nhost\nUNSIGNED-PAYLOAD"
 
     string_to_sign = (
         f"AWS4-HMAC-SHA256\n{amz_date}\n{credential_scope}\n"
@@ -180,9 +173,7 @@ async def get_file_url(key: str, expires_in: int = 3600) -> str:
         ),
         "aws4_request",
     )
-    signature = hmac.new(
-        signing_key, string_to_sign.encode(), hashlib.sha256
-    ).hexdigest()
+    signature = hmac.new(signing_key, string_to_sign.encode(), hashlib.sha256).hexdigest()
 
     return f"{scheme}://{host}{uri}?{query_params}&X-Amz-Signature={signature}"
 
@@ -194,9 +185,9 @@ async def delete_file(key: str) -> None:
 
     import hashlib
     import hmac
-    from datetime import datetime, timezone
+    from datetime import datetime
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     date_stamp = now.strftime("%Y%m%d")
     amz_date = now.strftime("%Y%m%dT%H%M%SZ")
 
@@ -212,13 +203,9 @@ async def delete_file(key: str) -> None:
         "x-amz-date": amz_date,
     }
     signed_headers = ";".join(sorted(headers_to_sign.keys()))
-    canonical_headers = "".join(
-        f"{k}:{v}\n" for k, v in sorted(headers_to_sign.items())
-    )
+    canonical_headers = "".join(f"{k}:{v}\n" for k, v in sorted(headers_to_sign.items()))
 
-    canonical_request = (
-        f"DELETE\n{uri}\n\n{canonical_headers}\n{signed_headers}\n{payload_hash}"
-    )
+    canonical_request = f"DELETE\n{uri}\n\n{canonical_headers}\n{signed_headers}\n{payload_hash}"
 
     credential_scope = f"{date_stamp}/{S3_REGION}/s3/aws4_request"
     string_to_sign = (
@@ -239,9 +226,7 @@ async def delete_file(key: str) -> None:
         ),
         "aws4_request",
     )
-    signature = hmac.new(
-        signing_key, string_to_sign.encode(), hashlib.sha256
-    ).hexdigest()
+    signature = hmac.new(signing_key, string_to_sign.encode(), hashlib.sha256).hexdigest()
 
     auth_header = (
         f"AWS4-HMAC-SHA256 Credential={S3_ACCESS_KEY}/{credential_scope}, "

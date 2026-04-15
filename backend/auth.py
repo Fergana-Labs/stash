@@ -42,6 +42,7 @@ _last_seen_written = _LastSeenCache(_LAST_SEEN_CACHE_SIZE)
 # API key helpers
 # ---------------------------------------------------------------------------
 
+
 def generate_api_key() -> str:
     return "mc_" + secrets.token_urlsafe(32)
 
@@ -62,15 +63,14 @@ def verify_password(password: str, password_hash: str) -> bool:
 # FastAPI dependencies
 # ---------------------------------------------------------------------------
 
+
 async def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(security),
 ) -> dict:
     token: str = credentials.credentials
 
     if not token.startswith("mc_"):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid API key"
-        )
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid API key")
 
     key_hash = hash_api_key(token)
     pool = get_pool()
@@ -81,25 +81,19 @@ async def get_current_user(
         key_hash,
     )
     if not row:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid API key"
-        )
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid API key")
     user = dict(row)
 
     uid = str(user["id"])
     now = time.monotonic()
     if now - _last_seen_written.get(uid) > _LAST_SEEN_DEBOUNCE_SECONDS:
         _last_seen_written.set(uid, now)
-        await pool.execute(
-            "UPDATE users SET last_seen = now() WHERE id = $1", user["id"]
-        )
+        await pool.execute("UPDATE users SET last_seen = now() WHERE id = $1", user["id"])
     return user
 
 
 async def get_current_user_optional(
-    credentials: HTTPAuthorizationCredentials | None = Depends(
-        HTTPBearer(auto_error=False)
-    ),
+    credentials: HTTPAuthorizationCredentials | None = Depends(HTTPBearer(auto_error=False)),
 ) -> dict | None:
     if credentials is None:
         return None

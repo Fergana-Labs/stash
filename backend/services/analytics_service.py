@@ -1,7 +1,8 @@
 """Analytics service: aggregated views for dashboard visualizations."""
 
 import logging
-from datetime import datetime, timedelta, timezone
+import re
+from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
 import numpy as np
@@ -50,7 +51,7 @@ async def get_activity_timeline(
     if bucket not in ("hour", "day", "week"):
         bucket = "day"
 
-    cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+    cutoff = datetime.now(UTC) - timedelta(days=days)
 
     rows = await pool.fetch(
         _ACCESSIBLE_EVENTS_CTE + """
@@ -65,7 +66,9 @@ async def get_activity_timeline(
         GROUP BY bucket_date, me.agent_name, me.event_type
         ORDER BY bucket_date
         """,
-        user_id, bucket, cutoff,
+        user_id,
+        bucket,
+        cutoff,
     )
 
     # Build response shape
@@ -88,9 +91,7 @@ async def get_activity_timeline(
             b["agents"][agent] = {"total": 0, "by_type": {}}
 
         b["agents"][agent]["total"] += cnt
-        b["agents"][agent]["by_type"][etype] = (
-            b["agents"][agent]["by_type"].get(etype, 0) + cnt
-        )
+        b["agents"][agent]["by_type"][etype] = b["agents"][agent]["by_type"].get(etype, 0) + cnt
 
     return {
         "agents": sorted(agents_set),
@@ -102,23 +103,104 @@ _density_cache: dict[str, tuple[float, dict]] = {}
 _DENSITY_TTL = 300  # 5 minutes
 
 # Common words that survive Postgres stemming but aren't meaningful topics
-_STOP_STEMS = frozenset({
-    "use", "also", "one", "two", "new", "get", "set", "may", "need",
-    "make", "like", "work", "want", "know", "see", "run", "add",
-    "way", "tri", "call", "chang", "type", "name", "valu", "file",
-    "data", "page", "tabl", "creat", "updat", "delet", "list",
-    "function", "return", "true", "false", "null", "string", "number",
-    "error", "code", "time", "note", "item", "can", "would", "could",
-    "via", "first", "within", "includ", "each", "allow", "provid",
-    "ensur", "base", "current", "follow", "implement", "specif",
-    "exist", "requir", "support", "differ", "key", "singl", "multi",
-    "per", "high", "low", "medium", "fast", "slow", "cost", "date",
-    "releas", "window", "context", "speed", "qualiti", "mtok",
-    "generat", "check", "result", "build", "process", "issu",
-    "perform", "test", "start", "stop", "open", "close", "sourc",
-})
-
-import re
+_STOP_STEMS = frozenset(
+    {
+        "use",
+        "also",
+        "one",
+        "two",
+        "new",
+        "get",
+        "set",
+        "may",
+        "need",
+        "make",
+        "like",
+        "work",
+        "want",
+        "know",
+        "see",
+        "run",
+        "add",
+        "way",
+        "tri",
+        "call",
+        "chang",
+        "type",
+        "name",
+        "valu",
+        "file",
+        "data",
+        "page",
+        "tabl",
+        "creat",
+        "updat",
+        "delet",
+        "list",
+        "function",
+        "return",
+        "true",
+        "false",
+        "null",
+        "string",
+        "number",
+        "error",
+        "code",
+        "time",
+        "note",
+        "item",
+        "can",
+        "would",
+        "could",
+        "via",
+        "first",
+        "within",
+        "includ",
+        "each",
+        "allow",
+        "provid",
+        "ensur",
+        "base",
+        "current",
+        "follow",
+        "implement",
+        "specif",
+        "exist",
+        "requir",
+        "support",
+        "differ",
+        "key",
+        "singl",
+        "multi",
+        "per",
+        "high",
+        "low",
+        "medium",
+        "fast",
+        "slow",
+        "cost",
+        "date",
+        "releas",
+        "window",
+        "context",
+        "speed",
+        "qualiti",
+        "mtok",
+        "generat",
+        "check",
+        "result",
+        "build",
+        "process",
+        "issu",
+        "perform",
+        "test",
+        "start",
+        "stop",
+        "open",
+        "close",
+        "sourc",
+    }
+)
 
 # Matches auto-generated column names like col1, col2, column_3, etc.
 _COLUMN_NAME_RE = re.compile(r"^col\d+$|^column\d+$|^field\d+$|^row\d+$|^val\d+$")
@@ -134,7 +216,7 @@ async def get_knowledge_density(
 
     # Check in-memory cache
     cache_key = f"{user_id}:{max_clusters}"
-    now = datetime.now(timezone.utc).timestamp()
+    now = datetime.now(UTC).timestamp()
     if cache_key in _density_cache:
         cached_at, cached_result = _density_cache[cache_key]
         if now - cached_at < _DENSITY_TTL:
@@ -173,7 +255,8 @@ async def get_knowledge_density(
             LIMIT 1
         ) orig
         """,
-        user_id, max_clusters * 5,
+        user_id,
+        max_clusters * 5,
     )
     page_terms = [(r["stem"], r["original_word"], r["ndoc"]) for r in rows]
 
@@ -192,7 +275,8 @@ async def get_knowledge_density(
         ORDER BY ndoc DESC
         LIMIT $2
         """,
-        user_id, max_clusters * 5,
+        user_id,
+        max_clusters * 5,
     )
     table_terms = [(r["stem"], r["ndoc"]) for r in tbl_rows]
 
@@ -209,22 +293,28 @@ async def get_knowledge_density(
         return False
 
     # Count total documents for TF-IDF denominator
-    total_pages = await pool.fetchval(
-        _ACCESSIBLE_NOTEBOOKS_CTE + """
+    total_pages = (
+        await pool.fetchval(
+            _ACCESSIBLE_NOTEBOOKS_CTE + """
         SELECT COUNT(*) FROM notebook_pages np
         WHERE np.notebook_id IN (SELECT notebook_id FROM accessible_notebooks)
           AND np.content_markdown IS NOT NULL AND np.content_markdown != ''
         """,
-        user_id,
-    ) or 1
-    total_tbl_rows = await pool.fetchval(
-        _ACCESSIBLE_TABLES_CTE + """
+            user_id,
+        )
+        or 1
+    )
+    total_tbl_rows = (
+        await pool.fetchval(
+            _ACCESSIBLE_TABLES_CTE + """
         SELECT COUNT(*) FROM table_rows tr
         WHERE tr.table_id IN (SELECT table_id FROM accessible_tables)
           AND tr.data IS NOT NULL
         """,
-        user_id,
-    ) or 1
+            user_id,
+        )
+        or 1
+    )
     total_docs = total_pages + total_tbl_rows
 
     import math
@@ -264,7 +354,9 @@ async def get_knowledge_density(
 
     # Rank by TF-IDF (surfaces distinctive terms), take top N
     top_terms = sorted(
-        term_counts.items(), key=lambda x: x[1]["tfidf"], reverse=True,
+        term_counts.items(),
+        key=lambda x: x[1]["tfidf"],
+        reverse=True,
     )[:max_clusters]
 
     if not top_terms:
@@ -290,7 +382,8 @@ async def get_knowledge_density(
           LIMIT 3
         ) np
         """,
-        user_id, words,
+        user_id,
+        words,
     )
     for r in enrich_rows:
         enrichment[r["word"]].append(r)
@@ -311,17 +404,19 @@ async def get_knowledge_density(
                 if oldest_at is None or ts < oldest_at:
                     oldest_at = ts
 
-        clusters.append({
-            "label": counts.get("label", word.capitalize()),
-            "count": counts["raw_total"],
-            "sources": {
-                "notebook_pages": counts["notebook_pages"],
-                "table_rows": counts["table_rows"],
-            },
-            "newest_at": newest_at.isoformat() if newest_at else None,
-            "oldest_at": oldest_at.isoformat() if oldest_at else None,
-            "sample_titles": sample_titles,
-        })
+        clusters.append(
+            {
+                "label": counts.get("label", word.capitalize()),
+                "count": counts["raw_total"],
+                "sources": {
+                    "notebook_pages": counts["notebook_pages"],
+                    "table_rows": counts["table_rows"],
+                },
+                "newest_at": newest_at.isoformat() if newest_at else None,
+                "oldest_at": oldest_at.isoformat() if oldest_at else None,
+                "sample_titles": sample_titles,
+            }
+        )
 
     result = {"clusters": clusters}
     _density_cache[cache_key] = (now, result)
@@ -343,7 +438,8 @@ async def get_embedding_projection(
     cache = await pool.fetchrow(
         "SELECT points, embedding_count, computed_at FROM embedding_projections "
         "WHERE user_id = $1 AND source_type = $2",
-        user_id, source_key,
+        user_id,
+        source_key,
     )
 
     # Count current embeddings
@@ -382,7 +478,7 @@ async def get_embedding_projection(
         total_count += row or 0
 
     # Check if cache is still valid
-    one_hour_ago = datetime.now(timezone.utc) - timedelta(hours=1)
+    one_hour_ago = datetime.now(UTC) - timedelta(hours=1)
     if cache and cache["computed_at"] > one_hour_ago:
         count_diff = abs(total_count - cache["embedding_count"])
         if count_diff / max(cache["embedding_count"], 1) < 0.1:
@@ -409,16 +505,19 @@ async def get_embedding_projection(
             ORDER BY np.updated_at DESC
             LIMIT $2
             """,
-            user_id, per_source_limit,
+            user_id,
+            per_source_limit,
         )
         for r in rows:
-            all_items.append({
-                "id": str(r["id"]),
-                "label": r["label"],
-                "source": "notebook_pages",
-                "created_at": r["created_at"].isoformat() if r["created_at"] else None,
-                "embedding": np.array(r["embedding"]),
-            })
+            all_items.append(
+                {
+                    "id": str(r["id"]),
+                    "label": r["label"],
+                    "source": "notebook_pages",
+                    "created_at": r["created_at"].isoformat() if r["created_at"] else None,
+                    "embedding": np.array(r["embedding"]),
+                }
+            )
 
     if source is None or source == "table_rows":
         rows = await pool.fetch(
@@ -431,16 +530,19 @@ async def get_embedding_projection(
             ORDER BY tr.created_at DESC
             LIMIT $2
             """,
-            user_id, per_source_limit,
+            user_id,
+            per_source_limit,
         )
         for r in rows:
-            all_items.append({
-                "id": str(r["id"]),
-                "label": r["table_name"],
-                "source": "table_rows",
-                "created_at": r["created_at"].isoformat() if r["created_at"] else None,
-                "embedding": np.array(r["embedding"]),
-            })
+            all_items.append(
+                {
+                    "id": str(r["id"]),
+                    "label": r["table_name"],
+                    "source": "table_rows",
+                    "created_at": r["created_at"].isoformat() if r["created_at"] else None,
+                    "embedding": np.array(r["embedding"]),
+                }
+            )
 
     if source is None or source == "history_events":
         rows = await pool.fetch(
@@ -452,19 +554,26 @@ async def get_embedding_projection(
             ORDER BY me.created_at DESC
             LIMIT $2
             """,
-            user_id, per_source_limit,
+            user_id,
+            per_source_limit,
         )
         for r in rows:
-            all_items.append({
-                "id": str(r["id"]),
-                "label": f"{r['agent_name'] or 'agent'}: {r['event_type'] or 'event'}",
-                "source": "history_events",
-                "created_at": r["created_at"].isoformat() if r["created_at"] else None,
-                "embedding": np.array(r["embedding"]),
-            })
+            all_items.append(
+                {
+                    "id": str(r["id"]),
+                    "label": f"{r['agent_name'] or 'agent'}: {r['event_type'] or 'event'}",
+                    "source": "history_events",
+                    "created_at": r["created_at"].isoformat() if r["created_at"] else None,
+                    "embedding": np.array(r["embedding"]),
+                }
+            )
 
     if not all_items:
-        return {"points": [], "stats": {"total_embeddings": total_count, "projected": 0}, "cached": False}
+        return {
+            "points": [],
+            "stats": {"total_embeddings": total_count, "projected": 0},
+            "cached": False,
+        }
 
     # 3D PCA projection
     embeddings_matrix = np.stack([item["embedding"] for item in all_items])
@@ -485,15 +594,17 @@ async def get_embedding_projection(
     # Build points
     points = []
     for i, item in enumerate(all_items):
-        points.append({
-            "id": item["id"],
-            "x": round(float(coords[i, 0]), 4),
-            "y": round(float(coords[i, 1]), 4),
-            "z": round(float(coords[i, 2]), 4),
-            "source": item["source"],
-            "label": item["label"],
-            "created_at": item["created_at"],
-        })
+        points.append(
+            {
+                "id": item["id"],
+                "x": round(float(coords[i, 0]), 4),
+                "y": round(float(coords[i, 1]), 4),
+                "z": round(float(coords[i, 2]), 4),
+                "source": item["source"],
+                "label": item["label"],
+                "created_at": item["created_at"],
+            }
+        )
 
     # Update cache
     await pool.execute(
@@ -501,7 +612,10 @@ async def get_embedding_projection(
         "VALUES ($1, $2, $3, $4, NOW()) "
         "ON CONFLICT (user_id, source_type) "
         "DO UPDATE SET points = $3, embedding_count = $4, computed_at = NOW()",
-        user_id, source_key, points, total_count,
+        user_id,
+        source_key,
+        points,
+        total_count,
     )
 
     return {

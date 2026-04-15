@@ -43,9 +43,7 @@ async def login(request: Request, req: LoginRequest):
             name=req.name, password=req.password
         )
     except ValueError as e:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED, detail=str(e)
-        )
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(e))
     return UserRegisterResponse(
         id=user["id"],
         name=user["name"],
@@ -60,9 +58,7 @@ async def get_me(current_user: dict = Depends(get_current_user)):
 
 
 @router.patch("/me", response_model=UserProfile)
-async def update_me(
-    req: UserUpdateRequest, current_user: dict = Depends(get_current_user)
-):
+async def update_me(req: UserUpdateRequest, current_user: dict = Depends(get_current_user)):
     updated = await user_service.update_user(
         user_id=current_user["id"],
         display_name=req.display_name,
@@ -79,6 +75,7 @@ async def search_users(
 ):
     """Search for users by name or display name."""
     from ..database import get_pool
+
     pool = get_pool()
     rows = await pool.fetch(
         "SELECT id, name, display_name FROM users "
