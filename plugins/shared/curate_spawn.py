@@ -14,11 +14,6 @@ import subprocess
 from sleep_prompt import SLEEP_PROMPT
 from state import auto_curate_enabled, curate_cooldown_active, record_curate_run
 
-# Cursor's `cursor-agent -p` has open reports of hanging indefinitely. Cap the
-# subprocess lifetime so a stuck curation can never starve future sessions.
-CURSOR_TIMEOUT_SECONDS = 10 * 60
-
-
 def spawn_curation(binary: str, prompt_flags: list[str]) -> bool:
     """Spawn `binary <prompt_flags> <SLEEP_PROMPT>` detached. Return True on spawn.
 
@@ -56,28 +51,8 @@ def spawn_curation(binary: str, prompt_flags: list[str]) -> bool:
     record_curate_run()
 
     try:
-        proc = subprocess.Popen(argv, **popen_kwargs)
+        subprocess.Popen(argv, **popen_kwargs)
     except Exception:
         return False
 
-    if binary == "cursor-agent":
-        _enforce_cursor_timeout(proc)
-
     return True
-
-
-def _enforce_cursor_timeout(proc: subprocess.Popen) -> None:
-    """Fire-and-forget watcher that kills `cursor-agent` if it hangs past the cap."""
-    import threading
-
-    def _watch():
-        try:
-            proc.wait(timeout=CURSOR_TIMEOUT_SECONDS)
-        except subprocess.TimeoutExpired:
-            try:
-                proc.kill()
-            except Exception:
-                pass
-
-    t = threading.Thread(target=_watch, daemon=True)
-    t.start()
