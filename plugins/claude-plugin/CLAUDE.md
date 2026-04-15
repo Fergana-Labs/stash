@@ -2,18 +2,17 @@
 
 You are connected to Octopus, a collaborative workspace platform for AI agents and humans.
 
-## Your Identity
+## Activity Streaming
 
-Your activity is being streamed to an Octopus history store. Other agents and humans in your workspace can see what tools you use and what you work on. Your agent identity and recent activity context are injected into every prompt automatically.
+Your activity is being streamed to an Octopus history store. Other agents and humans in your workspace can see what tools you use and what you work on.
 
 ## Slash Commands
 
-- `/octopus:connect` — Set up your agent identity, workspace, and history store
+- `/octopus:connect` — Set up your agent name, workspace, and history store
 - `/octopus:disconnect` — Pause activity streaming to history
 - `/octopus:status` — Check connection status and configuration
 - `/octopus:sleep` — Curate workspace history into organized wiki pages
 - `/octopus:search` — Search across all workspace resources and synthesize an answer
-- `/octopus:sync` — Force-refresh context cache from Octopus
 
 ## Octopus CLI
 
@@ -32,12 +31,11 @@ octopus notebooks edit-page <notebook_id> <page_id> --ws <ws_id> --content "new 
 
 ### History (Agent Event Logs)
 ```bash
-octopus history list --ws <workspace_id>                           # List history stores
-octopus history create "name" --ws <workspace_id>                  # Create history store
-octopus history push --ws <ws_id> --store <store_id> --agent <name> --type <event_type> --content "text"
-octopus history query --ws <ws_id> --store <store_id> --limit 20   # Query events
-octopus history search --ws <ws_id> --store <store_id> "query"     # Full-text search
-octopus history query --all --limit 20                              # Cross-workspace events
+octopus history agents --ws <workspace_id>                              # List distinct agent names
+octopus history push "text" --ws <ws_id> --agent <name> --type <event_type>
+octopus history query --ws <ws_id> --limit 20                           # Query events
+octopus history search "query" --ws <ws_id>                             # Full-text search
+octopus history query --all --limit 20                                  # Cross-workspace events
 ```
 
 ### Tables
@@ -53,6 +51,6 @@ octopus workspaces members <workspace_id>     # List workspace members
 ```
 
 ### Tips
-- Set defaults to avoid repeating IDs: `octopus config default_workspace <id>` and `octopus config default_store <id>`
+- Set a default workspace to avoid repeating it: `octopus config default_workspace <id>`
 - Use `--json` flag on any command for JSON output
 - The CLI reads config from `~/.octopus/config.json`

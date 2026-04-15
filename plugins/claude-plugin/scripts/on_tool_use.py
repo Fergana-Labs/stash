@@ -90,7 +90,7 @@ def main():
     tool_response = data.get("tool_response")
 
     cfg = get_config()
-    if not cfg["workspace_id"] or not cfg["history_store_id"]:
+    if not cfg["workspace_id"]:
         return
 
     content, metadata = summarize_tool_use(tool_name, tool_input, tool_response)
@@ -100,7 +100,6 @@ def main():
         with get_client() as client:
             client.push_event(
                 workspace_id=cfg["workspace_id"],
-                store_id=cfg["history_store_id"],
                 agent_name=cfg["agent_name"],
                 event_type="tool_use",
                 content=content,

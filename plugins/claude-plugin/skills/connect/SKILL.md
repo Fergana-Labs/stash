@@ -1,6 +1,6 @@
 ---
 name: connect
-description: Set up your Octopus agent identity, workspace, and history store. Use when starting with Octopus for the first time or reconfiguring the connection.
+description: Set up your Octopus agent name and workspace. Use when starting with Octopus for the first time or reconfiguring the connection.
 ---
 
 # Octopus Connect
@@ -20,7 +20,7 @@ The `octopus` CLI must be installed (`pip install -e .` from the octopus repo, o
 
 2. **Check current config**: Run `octopus config` to see if credentials are already set, which scope they're in, and whether a project config already exists. Also check plugin state at `~/.claude/plugins/data/octopus/state.json`.
 
-3. **Pick a config scope**: Ask the user where to save workspace/store defaults:
+3. **Pick a config scope**: Ask the user where to save the workspace default:
    - **project** (default): saves to `.octopus/config.json` in the current repo. Hooks only fire with these settings when Claude runs inside this repo. Good for per-project workspaces and keeping other repos untouched.
    - **user**: saves to `~/.octopus/config.json`. Hooks fire with these settings in every Claude session on this machine.
    - Project config overrides user config when both exist.
@@ -41,14 +41,9 @@ The `octopus` CLI must be installed (`pip install -e .` from the octopus repo, o
    - If none, create one: `octopus workspaces create "workspace-name" --json`
    - Set as default (add `--project` if project scope was chosen): `octopus config default_workspace <workspace_id> [--project]`
 
-7. **Create history store**:
-   - List existing: `octopus history list --ws <workspace_id> --json`
-   - Create if needed: `octopus history create "<agent_name>-activity" --ws <workspace_id> --json`
-   - Set as default (add `--project` if project scope was chosen): `octopus config default_store <store_id> [--project]`
+7. **Update plugin config**: Tell the user to update their Octopus plugin settings with the workspace_id value.
 
-8. **Update plugin config**: Tell the user to update their Octopus plugin settings with the workspace_id and history_store_id values.
+8. **Test connectivity**: Push a test event:
+   `octopus history push "Octopus plugin connected successfully." --ws <workspace_id> --agent <agent_name> --type session_start`
 
-9. **Test connectivity**: Push a test event:
-   `octopus history push --ws <workspace_id> --store <store_id> --agent <agent_name> --type session_start --content "Octopus plugin connected successfully."`
-
-10. **Confirm**: Report success and summarize the configuration, including which scope (project or user) the workspace/store settings were saved to.
+9. **Confirm**: Report success and summarize the configuration, including which scope (project or user) the workspace setting was saved to.

@@ -45,7 +45,7 @@ def main():
         return
 
     cfg = get_config()
-    if not cfg["workspace_id"] or not cfg["history_store_id"]:
+    if not cfg["workspace_id"]:
         return
 
     data = get_stdin_data()
@@ -57,7 +57,6 @@ def main():
             if last_message:
                 client.push_event(
                     workspace_id=cfg["workspace_id"],
-                    store_id=cfg["history_store_id"],
                     agent_name=cfg["agent_name"],
                     event_type="assistant_message",
                     content=last_message[:4000],
@@ -88,7 +87,6 @@ def main():
 
             client.push_event(
                 workspace_id=cfg["workspace_id"],
-                store_id=cfg["history_store_id"],
                 agent_name=cfg["agent_name"],
                 event_type="session_end",
                 content=content,

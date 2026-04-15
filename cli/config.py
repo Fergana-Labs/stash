@@ -28,7 +28,6 @@ DEFAULT_CONFIG = {
     "username": "",
     "default_workspace": "",
     "default_chat": "",
-    "default_store": "",
     "output_format": "human",
     "notify_rooms": [],
 }
@@ -98,7 +97,6 @@ def save_config(
     username: str | None = None,
     default_workspace: str | None = None,
     default_chat: str | None = None,
-    default_store: str | None = None,
     output_format: str | None = None,
     notify_rooms: list[str] | None = None,
 ) -> None:
@@ -113,7 +111,6 @@ def save_config(
         "username": username,
         "default_workspace": default_workspace,
         "default_chat": default_chat,
-        "default_store": default_store,
         "output_format": output_format,
         "notify_rooms": notify_rooms,
     }
