@@ -9,6 +9,9 @@ set -euo pipefail
 
 PROJECT_ROOT="$(cd "$(dirname "$0")" && pwd)"
 PIDS=()
+# Keep local dev ports aligned with backend defaults and docker compose.
+BACKEND_PORT=3456
+FRONTEND_PORT=3457
 
 cleanup() {
     echo ""
@@ -36,21 +39,21 @@ echo "Starting Octopus services..."
 echo "================================"
 
 # --- Backend (FastAPI) ---
-echo "[backend]  Starting on port 3456..."
+echo "[backend]  Starting on port ${BACKEND_PORT}..."
 cd "$PROJECT_ROOT"
-uvicorn backend.main:app --host 0.0.0.0 --port 3456 &
+uvicorn backend.main:app --host 0.0.0.0 --port "$BACKEND_PORT" &
 PIDS+=($!)
 
 # --- Frontend (Next.js) ---
-echo "[frontend] Starting on port 3000..."
+echo "[frontend] Starting on port ${FRONTEND_PORT}..."
 cd "$PROJECT_ROOT/frontend"
-PORT=3000 npm run dev &
+PORT="$FRONTEND_PORT" npm run dev &
 PIDS+=($!)
 
 echo "================================"
 echo "All services started. Press Ctrl+C to stop."
-echo "  Backend  -> http://localhost:3456"
-echo "  Frontend -> http://localhost:3000"
+echo "  Backend  -> http://localhost:${BACKEND_PORT}"
+echo "  Frontend -> http://localhost:${FRONTEND_PORT}"
 echo "================================"
 
 # Wait for all background processes
