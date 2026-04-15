@@ -70,6 +70,7 @@ def get_config() -> dict:
         "workspace_id": cli.get("default_workspace", ""),
         "inject_context": os.environ.get("OCTOPUS_INJECT_CONTEXT", "true"),
         "auto_curate": os.environ.get("OCTOPUS_AUTO_CURATE", "false"),
+        "client": "gemini_cli",
     }
 
 
