@@ -309,50 +309,32 @@ hist_app = typer.Typer(help="History — structured agent event logs.")
 app.add_typer(hist_app, name="history")
 
 
-@hist_app.command("list")
-def hist_list(workspace_id: str = typer.Option(None, "--ws"), all_: bool = typer.Option(False, "--all"), as_json: bool = typer.Option(False, "--json")):
-    """List history stores."""
+@hist_app.command("agents")
+def hist_agents(workspace_id: str = typer.Option(None, "--ws"), as_json: bool = typer.Option(False, "--json")):
+    """List distinct agent names that have logged events in this workspace."""
+    ws = workspace_id or _default_workspace()
     with _client() as c:
         try:
-            data = c.all_histories() if all_ else c.list_histories(workspace_id or _default_workspace())
+            data = c.list_agent_names(ws)
         except OctopusError as e:
             _err(e)
     if _use_json(as_json):
         output_json(data)
     else:
         if not data:
-            console.print("[dim]No history stores.[/dim]")
+            console.print("[dim]No agents have logged events yet.[/dim]")
         else:
-            for s in data:
-                console.print(f"  {s['name']}  (id: {str(s['id'])[:8]}, events: {s.get('event_count', 0)})")
-
-
-@hist_app.command("create")
-def hist_create(name: str = typer.Argument(...), workspace_id: str = typer.Option(None, "--ws"), description: str = typer.Option(""), as_json: bool = typer.Option(False, "--json")):
-    """Create a history store."""
-    with _client() as c:
-        try:
-            ws = workspace_id or _default_workspace()
-            data = c.create_history(ws, name, description=description)
-        except OctopusError as e:
-            _err(e)
-    if _use_json(as_json):
-        output_json(data)
-    else:
-        console.print(f"[green]History '{data['name']}' created.[/green]  ID: {data['id']}")
+            for name in data:
+                console.print(f"  {name}")
 
 
 @hist_app.command("push")
-def hist_push(content: str = typer.Argument(...), workspace_id: str = typer.Option(None, "--ws"), store_id: str = typer.Option(None, "--store"), agent_name: str = typer.Option("cli", "--agent"), event_type: str = typer.Option("message", "--type"), session_id: str = typer.Option(None, "--session"), tool_name: str = typer.Option(None, "--tool"), as_json: bool = typer.Option(False, "--json")):
-    """Push an event to a history store."""
+def hist_push(content: str = typer.Argument(...), workspace_id: str = typer.Option(None, "--ws"), agent_name: str = typer.Option("cli", "--agent"), event_type: str = typer.Option("message", "--type"), session_id: str = typer.Option(None, "--session"), tool_name: str = typer.Option(None, "--tool"), as_json: bool = typer.Option(False, "--json")):
+    """Push an event to the workspace history."""
     ws = workspace_id or _default_workspace()
-    store = store_id or load_config().get("default_store", "")
-    if not store:
-        console.print("[red]No store specified. Use --store or set default_store.[/red]")
-        raise typer.Exit(1)
     with _client() as c:
         try:
-            data = c.push_event(ws, store, agent_name=agent_name, event_type=event_type, content=content, session_id=session_id, tool_name=tool_name)
+            data = c.push_event(ws, agent_name=agent_name, event_type=event_type, content=content, session_id=session_id, tool_name=tool_name)
         except OctopusError as e:
             _err(e)
     if _use_json(as_json):
@@ -362,7 +344,7 @@ def hist_push(content: str = typer.Argument(...), workspace_id: str = typer.Opti
 
 
 @hist_app.command("query")
-def hist_query(workspace_id: str = typer.Option(None, "--ws"), store_id: str = typer.Option(None, "--store"), agent_name: str = typer.Option(None, "--agent"), event_type: str = typer.Option(None, "--type"), limit: int = typer.Option(50, "-n", "--limit"), all_: bool = typer.Option(False, "--all"), as_json: bool = typer.Option(False, "--json")):
+def hist_query(workspace_id: str = typer.Option(None, "--ws"), agent_name: str = typer.Option(None, "--agent"), event_type: str = typer.Option(None, "--type"), limit: int = typer.Option(50, "-n", "--limit"), all_: bool = typer.Option(False, "--all"), as_json: bool = typer.Option(False, "--json")):
     """Query events. --all for cross-workspace."""
     with _client() as c:
         try:
@@ -370,11 +352,7 @@ def hist_query(workspace_id: str = typer.Option(None, "--ws"), store_id: str = t
                 data = c.all_events(agent_name=agent_name, event_type=event_type, limit=limit)
             else:
                 ws = workspace_id or _default_workspace()
-                store = store_id or load_config().get("default_store", "")
-                if not store:
-                    console.print("[red]No store specified.[/red]")
-                    raise typer.Exit(1)
-                data = c.query_events(ws, store, agent_name=agent_name, event_type=event_type, limit=limit)
+                data = c.query_events(ws, agent_name=agent_name, event_type=event_type, limit=limit)
         except OctopusError as e:
             _err(e)
     if _use_json(as_json):
@@ -386,16 +364,12 @@ def hist_query(workspace_id: str = typer.Option(None, "--ws"), store_id: str = t
 
 
 @hist_app.command("search")
-def hist_search(query: str = typer.Argument(...), workspace_id: str = typer.Option(None, "--ws"), store_id: str = typer.Option(None, "--store"), limit: int = typer.Option(50, "-n", "--limit"), as_json: bool = typer.Option(False, "--json")):
-    """Full-text search on events."""
+def hist_search(query: str = typer.Argument(...), workspace_id: str = typer.Option(None, "--ws"), limit: int = typer.Option(50, "-n", "--limit"), as_json: bool = typer.Option(False, "--json")):
+    """Full-text search on events in a workspace."""
     ws = workspace_id or _default_workspace()
-    store = store_id or load_config().get("default_store", "")
-    if not store:
-        console.print("[red]No store specified.[/red]")
-        raise typer.Exit(1)
     with _client() as c:
         try:
-            data = c.search_events(ws, store, query, limit=limit)
+            data = c.search_events(ws, query, limit=limit)
         except OctopusError as e:
             _err(e)
     if _use_json(as_json):
@@ -947,37 +921,6 @@ def setup():
                 except OctopusError as e:
                     console.print(f"[red]Could not create workspace: {e.detail}[/red]")
 
-        # --- Step 4: History store ---
-        if workspace_id:
-            try:
-                stores = c.list_histories(workspace_id)
-            except OctopusError:
-                stores = []
-
-            store_id = cfg.get("default_store", "")
-            if stores:
-                console.print(f"\n  Existing history stores:")
-                for s in stores[:5]:
-                    marker = " [dim](current default)[/dim]" if str(s["id"]) == store_id else ""
-                    console.print(f"    [dim]{str(s['id'])[:8]}…[/dim]  {s['name']}{marker}")
-
-            store_action = typer.prompt(
-                "\nUse existing store ID, or type a name to create new one",
-                default=store_id or "main",
-            ).strip()
-
-            is_uuid = bool(re.match(r"^[0-9a-f-]{32,36}$", store_action, re.I))
-            if is_uuid:
-                save_config(default_store=store_action, scope=scope)
-                console.print(f"  [green]✓[/green] Default store set to [bold]{store_action[:8]}…[/bold]")
-            else:
-                try:
-                    store_data = c.create_history(workspace_id, store_action)
-                    save_config(default_store=str(store_data["id"]), scope=scope)
-                    console.print(f"  [green]✓[/green] Created history store [bold]{store_data['name']}[/bold]")
-                except OctopusError as e:
-                    console.print(f"[red]Could not create history store: {e.detail}[/red]")
-
     # --- Done ---
     console.print("\n[bold green]Setup complete.[/bold green]")
     console.print("  Run [bold]octopus whoami[/bold] to confirm auth.")
@@ -995,7 +938,7 @@ def config_cmd(
     value: Optional[str] = typer.Argument(None),
     project: bool = typer.Option(False, "--project", help="Write to project-level config (.octopus/config.json in the repo)."),
 ):
-    """Show or set config. Keys: base_url, default_workspace, default_store, output_format.
+    """Show or set config. Keys: base_url, default_workspace, output_format.
 
     By default writes to ~/.octopus/config.json. Pass --project to write to
     .octopus/config.json in the current project (created if missing). Project
@@ -1007,7 +950,7 @@ def config_cmd(
         scope = "project" if project else "user"
         allowed = {
             "base_url", "default_workspace", "default_chat",
-            "default_store", "output_format",
+            "output_format",
         }
         if key not in allowed and key not in {"api_key", "username"}:
             console.print(f"[red]Unknown config key: {key}[/red]")

@@ -11,20 +11,19 @@ Search across all Octopus resources in a workspace and synthesize an answer with
 
 1. **Get the question**: Use the skill invocation argument as the search query. If no argument was provided, ask the user what they want to find.
 
-2. **Load config**: Run `octopus config --json` to get `default_workspace` and `default_store`. If not set, ask the user for workspace_id.
+2. **Load config**: Run `octopus config --json` to get `default_workspace`. If not set, ask the user for workspace_id.
 
 3. **Discover resources**: List what is available in the workspace:
    ```bash
-   octopus history list --ws <workspace_id> --json
    octopus notebooks list --ws <workspace_id> --json
    octopus tables list --ws <workspace_id> --json
    ```
 
 4. **Search across resources**:
 
-   - **History stores**: For each history store, run full-text search:
+   - **History events**: Full-text search on the workspace's event log:
      ```bash
-     octopus history search --ws <workspace_id> --store <store_id> "query" --json
+     octopus history search "query" --ws <workspace_id> --json
      ```
 
    - **Notebooks**: For each notebook, list pages and search by title/content. If the MCP server is available, use semantic search. Otherwise, list pages and read the most relevant ones:
@@ -41,7 +40,7 @@ Search across all Octopus resources in a workspace and synthesize an answer with
 5. **Read the most relevant results in full**: For the top results from each source, read the full content to get complete context. For history events, this means reading the full event. For wiki pages, read the full page content. For table rows, examine the full row data.
 
 6. **Synthesize an answer**: Combine the information from all sources into a clear, concise answer. Always cite your sources:
-   - For history events: cite the store name, agent name, and timestamp
+   - For history events: cite the agent name and timestamp
    - For wiki pages: cite the notebook name and page title
    - For table rows: cite the table name and relevant column values
 

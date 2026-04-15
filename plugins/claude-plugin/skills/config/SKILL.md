@@ -1,6 +1,6 @@
 ---
 name: config
-description: View or change Octopus CLI configuration — API key, workspace, history store, defaults.
+description: View or change Octopus CLI configuration — API key, workspace, defaults.
 ---
 
 # Octopus Config
@@ -19,7 +19,6 @@ Available keys:
 - `base_url` — Octopus API endpoint
 - `default_workspace` — Default workspace UUID (used when --ws is omitted)
 - `default_chat` — Default chat UUID (used when --chat is omitted)
-- `default_store` — Default history store UUID (used when --store is omitted)
 - `output_format` — Output format: "human" or "json"
 
 ### Set API key and endpoint
@@ -31,12 +30,6 @@ Use `octopus auth <base_url> --api-key <key>` to set credentials.
 ```bash
 octopus workspaces list --mine   # find the workspace ID
 octopus config default_workspace <workspace_id>
-```
-
-**Switch to a different history store:**
-```bash
-octopus history list --ws <workspace_id>   # find the store ID
-octopus config default_store <store_id>
 ```
 
 **Switch API key:**
