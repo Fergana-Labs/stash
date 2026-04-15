@@ -1,0 +1,8 @@
+{
+  "name": "@octopus/opencode-plugin",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "plugin.ts",
+  "description": "Stream opencode sessions to an Octopus workspace.",
+  "dependencies": {}
+}

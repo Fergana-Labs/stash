@@ -1,7 +1,7 @@
-"""Claude-plugin-specific config: reads CLAUDE_PLUGIN_USER_CONFIG_* env vars.
+"""Cursor plugin config: reads from ~/.octopus/config.json (CLI config).
 
-Everything agent-agnostic lives in plugins/shared/. This module only handles
-the Claude-specific env surface + paths, then hands off.
+Cursor has no plugin-level userConfig surface, so we piggyback on the CLI
+config the user already set up with `octopus login`.
 """
 
 from __future__ import annotations
@@ -11,7 +11,6 @@ import os
 import sys
 from pathlib import Path
 
-# Add shared/ to sys.path so on_*.py scripts can import it
 SHARED = Path(__file__).resolve().parent.parent.parent / "shared"
 if str(SHARED) not in sys.path:
     sys.path.insert(0, str(SHARED))
@@ -19,8 +18,8 @@ if str(SHARED) not in sys.path:
 from octopus_client import OctopusClient  # noqa: E402
 
 DATA_DIR = Path(os.environ.get(
-    "CLAUDE_PLUGIN_DATA",
-    Path.home() / ".claude/plugins/data/octopus",
+    "OCTOPUS_CURSOR_DATA",
+    Path.home() / ".octopus/plugins/cursor",
 ))
 
 ESCALATION_DIR = Path(os.environ.get(
@@ -56,7 +55,7 @@ def _project_config() -> Path | None:
     return None
 
 
-def _load_cli_config() -> dict:
+def _cli_config() -> dict:
     """User config (~/.octopus/config.json) overlaid with project config (walk-up)."""
     merged: dict = {}
     user_path = Path.home() / ".octopus" / "config.json"
@@ -69,27 +68,14 @@ def _load_cli_config() -> dict:
 
 
 def get_config() -> dict:
-    api_key = os.environ.get("CLAUDE_PLUGIN_USER_CONFIG_api_key", "")
-    agent_name = os.environ.get("CLAUDE_PLUGIN_USER_CONFIG_agent_name", "")
-
-    if not api_key:
-        cli = _load_cli_config()
-        return {
-            "api_endpoint": cli.get("base_url", "https://getoctopus.com"),
-            "api_key": cli.get("api_key", ""),
-            "agent_name": cli.get("username", ""),
-            "workspace_id": cli.get("default_workspace", ""),
-            "inject_context": os.environ.get("CLAUDE_PLUGIN_USER_CONFIG_inject_context", "true"),
-            "auto_curate": os.environ.get("CLAUDE_PLUGIN_USER_CONFIG_auto_curate", "true"),
-        }
-
+    cli = _cli_config()
     return {
-        "api_endpoint": os.environ.get("CLAUDE_PLUGIN_USER_CONFIG_api_endpoint", "https://getoctopus.com"),
-        "api_key": api_key,
-        "agent_name": agent_name,
-        "workspace_id": os.environ.get("CLAUDE_PLUGIN_USER_CONFIG_workspace_id", ""),
-        "inject_context": os.environ.get("CLAUDE_PLUGIN_USER_CONFIG_inject_context", "true"),
-        "auto_curate": os.environ.get("CLAUDE_PLUGIN_USER_CONFIG_auto_curate", "true"),
+        "api_endpoint": cli.get("base_url", "https://getoctopus.com"),
+        "api_key": cli.get("api_key", ""),
+        "agent_name": cli.get("username", ""),
+        "workspace_id": cli.get("default_workspace", ""),
+        "inject_context": os.environ.get("OCTOPUS_INJECT_CONTEXT", "true"),
+        "auto_curate": os.environ.get("OCTOPUS_AUTO_CURATE", "false"),  # off by default for Cursor
     }
 
 

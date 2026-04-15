@@ -1,0 +1,7 @@
+{
+  "session_id": "gem-1",
+  "tool_name": "run_shell_command",
+  "tool_args": {"command": "pytest"},
+  "tool_result": {"stdout": "3 passed", "exit_code": 0},
+  "cwd": "/Users/alice/repo"
+}
