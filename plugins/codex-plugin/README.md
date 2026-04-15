@@ -51,3 +51,15 @@ The `config.toml.snippet` has two mutually-exclusive variants.
 | `PostToolUse` | `tool_use` | **Bash only today** |
 | `Stop` | `assistant_message` + `session_end` | — |
 | `notify` (fallback) | `assistant_message` + `session_end` | Dedups with Stop |
+
+## Retrieval
+
+Codex has shell access. For reads mid-conversation, have the agent invoke
+the `octopus` CLI — all commands support `--json`:
+
+```
+octopus history query --ws <id> --limit 20 --json
+octopus history search "<query>" --ws <id> --json
+octopus whoami --json
+octopus workspace list --mine --json
+```
