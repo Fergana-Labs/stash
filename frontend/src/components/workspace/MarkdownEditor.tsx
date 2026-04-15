@@ -161,18 +161,47 @@ type JSONNode = {
   content?: JSONNode[];
 };
 
+function parseInlineMarkdown(text: string): JSONNode[] {
+  // Parse inline markdown (bold, italic, wiki links) into TipTap nodes/marks.
+  // Regex matches: [[wiki links]], **bold**, *italic*
+  const inlinePattern = /(\[\[([^\]]+)\]\]|\*\*(.+?)\*\*|\*(.+?)\*)/g;
+  const nodes: JSONNode[] = [];
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+
+  while ((match = inlinePattern.exec(text)) !== null) {
+    // Push plain text before this match
+    if (match.index > lastIndex) {
+      nodes.push({ type: "text", text: text.slice(lastIndex, match.index) });
+    }
+
+    if (match[2] !== undefined) {
+      // [[wiki link]]
+      nodes.push({ type: "wikiLinkNode", attrs: { pageName: match[2] } });
+    } else if (match[3] !== undefined) {
+      // **bold**
+      nodes.push({ type: "text", text: match[3], marks: [{ type: "bold" }] });
+    } else if (match[4] !== undefined) {
+      // *italic*
+      nodes.push({ type: "text", text: match[4], marks: [{ type: "italic" }] });
+    }
+
+    lastIndex = match.index + match[0].length;
+  }
+
+  // Push remaining plain text
+  if (lastIndex < text.length) {
+    nodes.push({ type: "text", text: text.slice(lastIndex) });
+  }
+
+  return nodes.length > 0 ? nodes : [{ type: "text", text }];
+}
+
 function markdownToInitialJSON(markdown: string): JSONNode {
-  // TipTap accepts markdown-ish HTML via `content`, but since we store markdown,
-  // we hand off a simple doc with a paragraph containing the raw text as a
-  // starting point. TipTap's Typography extension handles inline formatting as
-  // the user types; round-trips go through serializeMarkdown on the way out.
-  // For initial load of existing markdown, we use a minimal JSON representation.
   if (!markdown || !markdown.trim()) {
     return { type: "doc", content: [{ type: "paragraph" }] };
   }
-  // Split on blank lines into paragraphs/headings; richer structure appears
-  // once the user edits. This mirrors the behavior of the previous bootstrap
-  // path that rebuilt the Yjs fragment from markdown on first load.
+
   const blocks = markdown.split(/\n{2,}/).map((b) => b.trim()).filter(Boolean);
   const nodes: JSONNode[] = blocks.map((block) => {
     const headingMatch = block.match(/^(#{1,3})\s+(.+)$/);
@@ -180,12 +209,12 @@ function markdownToInitialJSON(markdown: string): JSONNode {
       return {
         type: "heading",
         attrs: { level: headingMatch[1].length },
-        content: [{ type: "text", text: headingMatch[2] }],
+        content: parseInlineMarkdown(headingMatch[2]),
       };
     }
     return {
       type: "paragraph",
-      content: [{ type: "text", text: block }],
+      content: parseInlineMarkdown(block),
     };
   });
   return { type: "doc", content: nodes };
