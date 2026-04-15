@@ -37,10 +37,23 @@ Restart opencode.
 
 Ignored on purpose: `session.idle` fires on every turn completion (not session end), `message.updated` streams repeatedly. Capturing final assistant text per turn is a future TODO.
 
+## Commands
+
+Everything is a plain `octopus` CLI subcommand — no opencode-specific slash commands:
+
+| Command | Description |
+|---------|-------------|
+| `octopus connect` | Interactive setup (auth + workspace + store) |
+| `octopus status` | Central config, streaming state, last curate |
+| `octopus disconnect` | Pause event streaming across every installed plugin |
+
+When the opencode bus emits `session.deleted` the plugin spawns `opencode run …`
+headless with a shared curation prompt. Toggle with `auto_curate` in
+`~/.octopus/config.json`.
+
 ## Known gaps
 
 - No final-assistant-message capture — `session.idle` fires too often to treat as "stop."
-- No auto-curation hook — run `octopus curate` on a cron if desired.
 
 ## Retrieval
 
