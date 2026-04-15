@@ -19,16 +19,19 @@ import { NotebookPage } from "../../lib/types";
 
 const AUTOSAVE_DEBOUNCE_MS = 1500;
 
+export type SaveStatus = "saved" | "dirty" | "saving";
+
 interface MarkdownEditorProps {
   workspaceId: string | null;
   notebookId: string | null;
   file: NotebookPage;
   onSave: (content: string) => void;
+  onSaveStatusChange?: (status: SaveStatus) => void;
   pageNames?: string[];
   onNavigateToPage?: (pageName: string) => void;
 }
 
-export default function MarkdownEditor({ workspaceId, file, onSave, pageNames = [], onNavigateToPage }: MarkdownEditorProps) {
+export default function MarkdownEditor({ workspaceId, file, onSave, onSaveStatusChange, pageNames = [], onNavigateToPage }: MarkdownEditorProps) {
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -83,6 +86,13 @@ export default function MarkdownEditor({ workspaceId, file, onSave, pageNames = 
     },
   });
 
+  // Bubble save status to parent
+  useEffect(() => {
+    if (onSaveStatusChange) {
+      onSaveStatusChange(saving ? "saving" : dirty ? "dirty" : "saved");
+    }
+  }, [saving, dirty, onSaveStatusChange]);
+
   // Flush pending save on unmount / page switch
   useEffect(() => {
     return () => {
@@ -131,20 +141,8 @@ export default function MarkdownEditor({ workspaceId, file, onSave, pageNames = 
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [editor, onSave]);
 
-  const statusLabel = saving ? "Saving..." : dirty ? "Unsaved changes" : "Saved";
-  const statusColor = saving || dirty ? "bg-yellow-400" : "bg-green-400";
-
   return (
     <div className="flex flex-col h-full">
-      <div className="flex items-center justify-between px-4 py-2 bg-surface border-b border-border">
-        <div className="flex items-center gap-3">
-          <span className="text-foreground text-sm font-medium">{file.name}</span>
-          <span
-            className={`w-2 h-2 rounded-full ${statusColor}`}
-            title={statusLabel}
-          />
-        </div>
-      </div>
       <EditorToolbar editor={editor} workspaceId={workspaceId} />
       <div className="flex-1 overflow-y-auto bg-background">
         <EditorContent editor={editor} className="h-full" />
