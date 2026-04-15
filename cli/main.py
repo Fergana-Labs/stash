@@ -828,6 +828,26 @@ def tables_delete(
 # Connect wizard
 # ===========================================================================
 
+def _self_host_walkthrough(cfg: dict) -> str:
+    """Walk the user through standing up a local Octopus instance, then return its URL."""
+    console.print("\n[bold cyan]Self-hosting Octopus[/bold cyan]\n")
+    console.print("You'll need [bold]Docker[/bold] installed.  https://docker.com/get-started\n")
+    console.print("Run these commands in a separate terminal:\n")
+    console.print("  [dim]1.[/dim] [cyan]git clone https://github.com/Fergana-Labs/octopus.git[/cyan]")
+    console.print("  [dim]2.[/dim] [cyan]cd octopus[/cyan]")
+    console.print("  [dim]3.[/dim] [cyan]docker compose up -d[/cyan]")
+    console.print("\n  [dim]Already running? Skip to the URL prompt below.[/dim]\n")
+
+    ready = questionary.confirm("Is your instance running?", default=True).ask()
+    if ready is None or not ready:
+        console.print("\n[yellow]No problem — run [bold]octopus connect[/bold] again when ready.[/yellow]")
+        raise typer.Exit(0)
+
+    current_url = cfg.get("base_url", "http://localhost:3456")
+    default_url = current_url if "localhost" in current_url or current_url != "https://getoctopus.com" else "http://localhost:3456"
+    return typer.prompt("URL of your instance", default=default_url).rstrip("/")
+
+
 @app.command("connect")
 def connect():
     """Interactive first-time setup. Sets base URL, authenticates, and configures defaults."""
@@ -855,8 +875,8 @@ def connect():
     mode = questionary.select(
         "How do you want to use Octopus?",
         choices=[
-            questionary.Choice("Managed      (hosted at getoctopus.com)", value="managed"),
-            questionary.Choice("Self-hosted  (your own backend)", value="self"),
+            questionary.Choice("Use the hosted version  (getoctopus.com — recommended)", value="managed"),
+            questionary.Choice("Self-host               (run on your own machine)", value="self"),
         ],
         use_shortcuts=True,
     ).ask()
@@ -866,9 +886,7 @@ def connect():
     if mode == "managed":
         base_url = "https://getoctopus.com"
     else:
-        current_url = cfg.get("base_url", "http://localhost:3456")
-        default_url = current_url if "localhost" not in current_url else "http://localhost:3456"
-        base_url = typer.prompt("Self-hosted URL", default=default_url).rstrip("/")
+        base_url = _self_host_walkthrough(cfg)
     save_config(base_url=base_url, scope=scope)
 
     # --- Step 2: Auth ---
