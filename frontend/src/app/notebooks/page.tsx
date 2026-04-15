@@ -45,6 +45,8 @@ export default function WikiPage() {
   const searchParams = useSearchParams();
   const wsId = searchParams.get("ws");
   const tabParam = searchParams.get("tab");
+  const nbParam = searchParams.get("nb");
+  const pageParam = searchParams.get("page");
   const { user, loading, logout } = useAuth();
 
   // Tab state — sync with URL
@@ -175,6 +177,20 @@ export default function WikiPage() {
       } catch { /* backlinks are optional */ }
     } catch { setError("Failed to load page"); }
   }, [selectedNotebook]);
+
+  // Deep-link: auto-select notebook (and page) from URL params
+  useEffect(() => {
+    if (!nbParam || notebooks.length === 0) return;
+    if (selectedNotebook?.id === nbParam) return;
+    const nb = notebooks.find((n) => n.id === nbParam);
+    if (nb) handleSelectNotebook(nb);
+  }, [nbParam, notebooks, selectedNotebook, handleSelectNotebook]);
+
+  useEffect(() => {
+    if (!pageParam || !selectedNotebook || selectedNotebook.id !== nbParam) return;
+    if (selectedPageId === pageParam) return;
+    handleSelectPage(pageParam);
+  }, [pageParam, nbParam, selectedNotebook, selectedPageId, handleSelectPage]);
 
   // Navigate to a page by name (for wiki link clicks)
   const handleNavigateToPage = useCallback((pageName: string) => {

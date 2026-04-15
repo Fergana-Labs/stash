@@ -509,7 +509,8 @@ async def search_pages_vector(
     """Semantic search on notebook pages using pgvector."""
     pool = get_pool()
     rows = await pool.fetch(
-        "SELECT id, notebook_id, name, content_markdown, metadata, "
+        "SELECT id, notebook_id, folder_id, name, content_markdown, metadata, "
+        "created_by, updated_by, created_at, updated_at, "
         "1 - (embedding <=> $2) AS similarity "
         "FROM notebook_pages WHERE notebook_id = $1 AND embedding IS NOT NULL "
         "ORDER BY embedding <=> $2 LIMIT $3",
