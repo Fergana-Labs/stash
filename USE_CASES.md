@@ -77,24 +77,7 @@ Real-world scenarios for Octopus, from solo developer to multi-agent team.
 
 ---
 
-## 5. Personal bookmark + reading list
-
-**Who:** A solo developer who hoards browser tabs.
-
-**Setup:**
-1. Export bookmarks from Chrome
-2. Run: `octopus import-bookmarks ~/Downloads/bookmarks.html`
-
-**What happens:**
-- Octopus ingests hundreds of bookmarks as structured history events (title, URL, folder)
-- The `curate` tool organizes them into wiki pages grouped by topic: "React Performance", "Kubernetes Networking", "System Design"
-- The developer asks: *"What bookmarks do I have about database indexing?"* — semantic search finds relevant entries even if "indexing" wasn't in the title
-
-**Value:** Transform a messy bookmark export into a searchable, categorized knowledge base in minutes.
-
----
-
-## 6. Structured data tracking
+## 5. Structured data tracking
 
 **Who:** A team tracking experiments, contacts, or inventory.
 
@@ -111,7 +94,7 @@ Real-world scenarios for Octopus, from solo developer to multi-agent team.
 
 ---
 
-## 7. Self-hosted deployment for regulated industries
+## 6. Self-hosted deployment for regulated industries
 
 **Who:** A team that cannot use hosted SaaS due to compliance (healthcare, finance, government).
 

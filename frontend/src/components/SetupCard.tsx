@@ -72,7 +72,7 @@ export default function SetupCard({ workspaceId, apiKey }: SetupCardProps) {
         </div>
 
         <p className="text-xs text-slate-400 mt-3">
-          Use the CLI to push events, search, import bookmarks, and manage your workspace.{" "}
+          Use the CLI to push events, search, and manage your workspace.{" "}
           <a href="/docs/quickstart" className="text-orange-400 hover:text-orange-300 hover:underline">
             Full quickstart →
           </a>

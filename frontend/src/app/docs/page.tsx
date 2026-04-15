@@ -6,7 +6,7 @@ const PILLARS = [
     label: "Consume",
     color: "bg-brand/8 border-brand/20 text-brand",
     dot: "bg-brand",
-    description: "Agents push data in automatically — sessions, files, bookmarks, structured data.",
+    description: "Agents push data in automatically — sessions, files, and structured data.",
     links: [
       { href: "/docs/consume", label: "Consume guide →" },
     ],
@@ -35,7 +35,7 @@ const QUICK_LINKS = [
   { href: "/docs/quickstart", label: "Quickstart", desc: "Connect Claude Code and start in 5 minutes." },
   { href: "/docs/concepts", label: "Concepts", desc: "What workspaces, agent names, and history stores are." },
   { href: "/docs/api", label: "REST API", desc: "Full HTTP reference for all resources." },
-  { href: "/docs/cli", label: "CLI", desc: "Import bookmarks, push events, and manage from terminal." },
+  { href: "/docs/cli", label: "CLI", desc: "Push events and manage resources from the terminal." },
   { href: "/docs/webhooks", label: "Webhooks", desc: "Subscribe to workspace events with HMAC delivery." },
 ];
 

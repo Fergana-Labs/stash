@@ -5,8 +5,8 @@ export default function CLIPage() {
     <>
       <Title>CLI Reference</Title>
       <Subtitle>
-        A command-line interface for managing Octopus from your terminal — import bookmarks,
-        push history events, and manage all resources.
+        A command-line interface for managing Octopus from your terminal — push history events
+        and manage all resources.
       </Subtitle>
 
       <H3>Install</H3>
@@ -37,15 +37,8 @@ octopus config [key] [value]              # View or update any config value`}</C
         CI and scripts.
       </Callout>
 
-      <H3>Import & Search</H3>
-      <CodeBlock>{`# Import Chrome or Firefox bookmark HTML exports
-octopus import-bookmarks <file.html>
-  --notebook "My Research"     Notebook name (default: "Bookmarks")
-  --skip-scrape                Titles and URLs only — fast mode
-  --dry-run                    Preview without writing
-  --delay 0.5                  Seconds between scrape requests
-
-# Universal search across all data types
+      <H3>Search</H3>
+      <CodeBlock>{`# Universal search across all data types
 octopus search <query>
   --ws <workspace_id>          Scope to a workspace
   --types history,notebook,table   Filter by resource type`}</CodeBlock>
