@@ -296,7 +296,7 @@ class HistoryEventCreateRequest(BaseModel):
     tool_name: str | None = Field(None, max_length=128)
     metadata: dict = Field(default_factory=dict)
     attachments: list[Attachment] | None = None
-    created_at: str | None = Field(None, description="ISO timestamp; defaults to now if omitted")
+    created_at: datetime | None = Field(None, description="ISO timestamp; defaults to now if omitted")
 
 
 class HistoryEventBatchRequest(BaseModel):
