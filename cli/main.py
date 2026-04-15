@@ -7,6 +7,7 @@ import sys
 from pathlib import Path
 from typing import Optional
 
+import questionary
 import typer
 
 from .client import OctopusClient, OctopusError
@@ -833,18 +834,41 @@ def connect():
     console.print("\n[bold]Octopus connect[/bold]  (press Enter to accept defaults)\n")
 
     # --- Step 0: Scope ---
-    console.print("[bold]Config scope[/bold]")
-    console.print("  [bold]project[/bold]  save to [cyan].octopus/config.json[/cyan] in this repo (overrides user config)")
-    console.print("  [bold]user[/bold]     save to [cyan]~/.octopus/config.json[/cyan] (applies everywhere)")
-    console.print("  [dim]Auth (api_key) always goes to user scope — it's per-machine.[/dim]")
-    scope_input = typer.prompt("Scope", default="project").strip().lower()
-    scope = "project" if scope_input.startswith("p") else "user"
+    scope_options = [
+        ("Everywhere on this machine (default)", "~/.octopus/config.json", "user"),
+        ("Only this directory", "./.octopus/config.json", "project"),
+    ]
+    label_width = max(len(label) for label, _, _ in scope_options)
+    scope = questionary.select(
+        "Where do you want to install octopus?",
+        choices=[
+            questionary.Choice(f"{label:<{label_width}}   {path}", value=value)
+            for label, path, value in scope_options
+        ],
+        use_shortcuts=True,
+    ).ask()
+    if scope is None:
+        raise typer.Exit(1)
 
     # --- Step 1: API endpoint ---
     cfg = load_config()
-    current_url = cfg.get("base_url", "http://localhost:3456")
-    default_url = "https://getoctopus.com" if "localhost" in current_url else current_url
-    base_url = typer.prompt("API endpoint", default=default_url).rstrip("/")
+    mode = questionary.select(
+        "How do you want to use Octopus?",
+        choices=[
+            questionary.Choice("Managed      (hosted at getoctopus.com)", value="managed"),
+            questionary.Choice("Self-hosted  (your own backend)", value="self"),
+        ],
+        use_shortcuts=True,
+    ).ask()
+    if mode is None:
+        raise typer.Exit(1)
+
+    if mode == "managed":
+        base_url = "https://getoctopus.com"
+    else:
+        current_url = cfg.get("base_url", "http://localhost:3456")
+        default_url = current_url if "localhost" not in current_url else "http://localhost:3456"
+        base_url = typer.prompt("Self-hosted URL", default=default_url).rstrip("/")
     save_config(base_url=base_url, scope=scope)
 
     # --- Step 2: Auth ---
