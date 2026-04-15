@@ -58,7 +58,6 @@ octopus setup               # Interactive: paste API key, pick a default workspa
 ### 3. Try it
 
 ```bash
-octopus import-bookmarks ~/Downloads/bookmarks.html   # Import bookmarks
 octopus history search "authentication patterns"      # Full-text search over events
 octopus history push "session notes here"             # Push an event
 octopus --help                                        # Full command list
@@ -71,7 +70,6 @@ For cross-resource agentic search, install the [Claude Code plugin](#integration
 ```bash
 pip install octopus
 octopus setup                          # Configure API key + default workspace
-octopus import-bookmarks <file.html>   # Import bookmarks with scraping
 octopus history push <content>         # Push an event
 octopus history search <query>         # Full-text search over history events
 octopus notebooks list --all           # List notebooks across your workspaces
