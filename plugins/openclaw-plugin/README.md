@@ -1,62 +1,62 @@
 # Octopus Plugin for Openclaw
 
-Streams Openclaw sessions to an Octopus workspace and injects persona context
-into every prompt. Mirrors the Cursor plugin feature for feature.
+Streams Openclaw gateway sessions to an Octopus workspace so you can read
+history from the `octopus` CLI or the Assert review app.
 
-## Prerequisites
+**Openclaw is a self-hosted chat-app gateway**, not an IDE — it bridges
+WhatsApp / Telegram / Slack / iMessage / etc. to a coding agent running on
+your own machine. This plugin registers against Openclaw's internal hook
+system (`command:*`, `message:*`) and streams the gateway-visible slice of
+each session to Octopus.
 
-- `octopus` CLI installed and logged in (`pip install octopus && octopus login`)
-- `octopus config default_workspace <id>` set
-- Python 3.10+ on PATH
-- `httpx` installed (`pip install httpx`)
-- Openclaw `>= 0.9` (hooks API landed in the 2026-03 release)
+Tool-call history (`edit`, `bash`, etc.) is captured by the IDE-side plugin
+for whichever agent Openclaw delegates to (Claude Code / Codex / Pi). Install
+that plugin too if you want full-fidelity history.
+
+## Layout
+
+```
+openclaw-plugin/
+├── HOOK.md          # Openclaw hook manifest (frontmatter matches openclaw/openclaw)
+├── handler.ts       # Hook entrypoint — exports default HookHandler
+├── package.json
+├── scripts/         # Python scripts reusing plugins/shared/
+│   ├── adapt.py
+│   ├── config.py
+│   ├── on_session_start.py
+│   ├── on_prompt.py
+│   ├── on_stop.py
+│   └── on_session_end.py
+└── README.md
+```
+
+`handler.ts` runs inside the Openclaw Node process, filters the events it
+cares about, and pipes a flat JSON payload into the matching Python script.
+The Python side reuses `plugins/shared/` just like every other agent's plugin.
 
 ## Install
 
+See `HOOK.md` for the full install flow. Short version:
+
 ```bash
-cd path/to/octopus/plugins/openclaw-plugin
-
-# Symlink hooks.json into Openclaw with PLUGIN_ROOT baked in.
-export PLUGIN_ROOT=$(pwd)
-mkdir -p ~/.openclaw
-envsubst < hooks.json > ~/.openclaw/hooks.json
+openclaw plugins install github:Fergana-Labs/octopus#plugins/openclaw-plugin
+openclaw hooks enable octopus
+# restart the gateway
 ```
 
-Or, for per-project use, drop `hooks.json` into `<project>/.openclaw/hooks.json`
-with `${PLUGIN_ROOT}` replaced by the absolute path.
+## Event mapping
 
-## Verify
+| Openclaw event | Octopus event |
+|---|---|
+| `command:new` | `session_start` |
+| `message:received` | `user_message` |
+| `message:sent` (success=true) | `assistant_message` + `session_end` frame |
+| `command:reset`, `command:stop` | `session_end` |
 
-```
-# In Openclaw, open a new session and send any message.
-# Then from a shell:
-octopus history query --limit 5
-```
+## Known gaps
 
-You should see a `user_message` event with the prompt you just sent.
-
-## Config
-
-Reads from `~/.octopus/config.json` (populated by `octopus login` +
-`octopus config …`). No Openclaw-specific config surface.
-
-Override with env vars (set in Openclaw's environment):
-- `OCTOPUS_INJECT_CONTEXT=false` — disable prompt injection
-- `OCTOPUS_OPENCLAW_DATA=<path>` — custom state dir (default `~/.octopus/plugins/openclaw`)
-- `OCTOPUS_NOTIFICATIONS_DIR=<path>` — pending escalation notifications
-
-## What streams
-
-| Openclaw event | Octopus event | Content |
-|---|---|---|
-| `session.start` | — (warms cache only) | — |
-| `prompt.submit` | `user_message` | User's prompt text |
-| `tool.after` | `tool_use` | Tool name, args, response preview |
-| `turn.end` | `assistant_message` + `session_end` | Last model message + tool-count summary |
-| `session.end` | — (clears session state) | — |
-
-## Known gaps vs Claude plugin
-
-- No auto-curation on session.end (no headless `openclaw -p` equivalent yet)
-- No slash commands (`/octopus:connect` etc.) — use the `octopus` CLI directly
-- Prompt injection uses Openclaw's `contextInject` stdout protocol — verify your Openclaw version supports it
+- **No `tool_use` stream** — Openclaw's gateway has no tool-call visibility.
+  Rely on the delegated agent's own Octopus plugin.
+- **No prompt injection** — Openclaw forwards raw channel messages; persona
+  injection is the underlying agent's job.
+- **Session IDs are Openclaw `sessionKey`s**, not Octopus UUIDs.
