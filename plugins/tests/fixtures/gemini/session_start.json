@@ -1,0 +1,8 @@
+{
+  "session_id": "gem-1",
+  "transcript_path": "/Users/alice/.gemini/transcripts/gem-1.json",
+  "cwd": "/Users/alice/repo",
+  "hook_event_name": "SessionStart",
+  "timestamp": "2026-04-14T12:00:00Z",
+  "source": "startup"
+}

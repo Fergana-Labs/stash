@@ -1,0 +1,13 @@
+{
+  "session_id": "gem-1",
+  "transcript_path": "/Users/alice/.gemini/transcripts/gem-1.json",
+  "cwd": "/Users/alice/repo",
+  "hook_event_name": "AfterTool",
+  "timestamp": "2026-04-14T12:00:02Z",
+  "tool_name": "run_shell_command",
+  "tool_input": {"command": "pytest"},
+  "tool_response": {
+    "llmContent": "3 passed",
+    "returnDisplay": "3 passed in 0.04s"
+  }
+}

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import sys
+from pathlib import Path
 from typing import Optional
 
 import typer
@@ -27,7 +28,7 @@ def _use_json(flag: bool) -> bool:
 def _default_workspace() -> str:
     ws = load_config().get("default_workspace", "")
     if not ws:
-        console.print("[red]No default workspace. Run [bold]octopus setup[/bold] or set manually: octopus config default_workspace <id>[/red]")
+        console.print("[red]No default workspace. Run [bold]octopus connect[/bold] or set manually: octopus config default_workspace <id>[/red]")
         raise typer.Exit(1)
     return ws
 
@@ -823,13 +824,13 @@ def tables_delete(
 
 
 # ===========================================================================
-# Setup wizard
+# Connect wizard
 # ===========================================================================
 
-@app.command("setup")
-def setup():
+@app.command("connect")
+def connect():
     """Interactive first-time setup. Sets base URL, authenticates, and configures defaults."""
-    console.print("\n[bold]Octopus setup[/bold]  (press Enter to accept defaults)\n")
+    console.print("\n[bold]Octopus connect[/bold]  (press Enter to accept defaults)\n")
 
     # --- Step 0: Scope ---
     console.print("[bold]Config scope[/bold]")
@@ -926,6 +927,92 @@ def setup():
     console.print("  Run [bold]octopus whoami[/bold] to confirm auth.")
     console.print("  Run [bold]octopus history push \"hello\"[/bold] to push your first event.")
     console.print("  Run [bold]octopus --help[/bold] to see all commands.\n")
+
+
+# ===========================================================================
+# Plugin control (agent-agnostic — applies to every installed plugin)
+# ===========================================================================
+
+PLUGIN_DATA_DIRS = {
+    "claude": Path.home() / ".claude/plugins/data/octopus",
+    "codex": Path.home() / ".octopus/plugins/codex",
+    "cursor": Path.home() / ".octopus/plugins/cursor",
+    "gemini": Path.home() / ".octopus/plugins/gemini",
+    "opencode": Path.home() / ".octopus/plugins/opencode",
+}
+
+
+@app.command("status")
+def status(as_json: bool = typer.Option(False, "--json")):
+    """Show central Octopus config, streaming state, and last curate run."""
+    cfg = load_config()
+    central = _read_central_config()
+
+    display_cfg = dict(cfg)
+    if display_cfg.get("api_key"):
+        display_cfg["api_key"] = display_cfg["api_key"][:10] + "..."
+
+    streaming_enabled = bool(central.get("streaming_enabled", True))
+    auto_curate = bool(central.get("auto_curate", True))
+    last_curate_at = central.get("last_curate_at")
+
+    plugins_seen = [name for name, d in PLUGIN_DATA_DIRS.items() if d.exists()]
+
+    if as_json or cfg.get("output_format") == "json":
+        output_json({
+            "config": display_cfg,
+            "streaming_enabled": streaming_enabled,
+            "auto_curate": auto_curate,
+            "last_curate_at": last_curate_at,
+            "plugins_installed": plugins_seen,
+        })
+        return
+
+    console.print("[bold]Octopus status[/bold]")
+    console.print(f"  User:       {cfg.get('username') or '(not logged in)'}")
+    console.print(f"  Endpoint:   {cfg.get('base_url')}")
+    console.print(f"  Workspace:  {cfg.get('default_workspace') or '(none)'}")
+    console.print(f"  Store:      {cfg.get('default_store') or '(none)'}")
+    console.print(f"  Streaming:  {'enabled' if streaming_enabled else '[yellow]disabled[/yellow]'}")
+    console.print(f"  Auto-curate: {'on' if auto_curate else 'off'}")
+    if last_curate_at:
+        import datetime as _dt
+        ts = _dt.datetime.fromtimestamp(float(last_curate_at)).isoformat(timespec="seconds")
+        console.print(f"  Last curate: {ts}")
+    else:
+        console.print("  Last curate: (never)")
+    console.print(f"  Plugins installed: {', '.join(plugins_seen) or '(none detected)'}")
+
+
+@app.command("disconnect")
+def disconnect(as_json: bool = typer.Option(False, "--json")):
+    """Pause activity streaming across every installed plugin."""
+    _write_central_config({"streaming_enabled": False})
+    if as_json or load_config().get("output_format") == "json":
+        output_json({"streaming_enabled": False})
+        return
+    console.print("[yellow]Streaming disabled.[/yellow] Hooks will stop pushing events.")
+    console.print("  Re-enable with [bold]octopus connect[/bold] or edit [cyan]~/.octopus/config.json[/cyan].")
+
+
+def _read_central_config() -> dict:
+    from .config import USER_CONFIG_FILE
+    if not USER_CONFIG_FILE.exists():
+        return {}
+    try:
+        return json.loads(USER_CONFIG_FILE.read_text())
+    except Exception:
+        return {}
+
+
+def _write_central_config(updates: dict) -> None:
+    from .config import USER_CONFIG_FILE
+    existing = _read_central_config()
+    existing.update(updates)
+    USER_CONFIG_FILE.parent.mkdir(parents=True, exist_ok=True)
+    tmp = USER_CONFIG_FILE.with_suffix(USER_CONFIG_FILE.suffix + ".tmp")
+    tmp.write_text(json.dumps(existing, indent=2) + "\n")
+    tmp.replace(USER_CONFIG_FILE)
 
 
 # ===========================================================================

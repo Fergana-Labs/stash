@@ -18,7 +18,7 @@ export default function CLIPage() {
         (login or register), creates a workspace, and creates a default history store — all in
         one shot. No manual config editing required.
       </P>
-      <CodeBlock>{`octopus setup`}</CodeBlock>
+      <CodeBlock>{`octopus connect`}</CodeBlock>
       <P>
         The wizard saves everything to <Code>~/.octopus/config.json</Code>. Once complete,
         commands like <Code>octopus history push</Code> work without extra flags.
@@ -31,7 +31,7 @@ octopus whoami                            # Show the current logged-in user
 octopus config [key] [value]              # View or update any config value`}</CodeBlock>
 
       <Callout>
-        After <Code>octopus setup</Code>, your defaults are stored. You can still override
+        After <Code>octopus connect</Code>, your defaults are stored. You can still override
         any value: e.g. <Code>octopus config base_url https://getoctopus.com</Code> or set{" "}
         <Code>OCTOPUS_API_KEY</Code> / <Code>OCTOPUS_URL</Code> as environment variables for
         CI and scripts.

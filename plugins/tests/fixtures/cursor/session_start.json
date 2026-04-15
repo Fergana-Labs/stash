@@ -1,0 +1,13 @@
+{
+  "conversation_id": "conv-abc",
+  "generation_id": "gen-1",
+  "model": "claude-3.7-sonnet",
+  "hook_event_name": "sessionStart",
+  "cursor_version": "1.7.0",
+  "workspace_roots": ["/Users/alice/repo"],
+  "user_email": "alice@example.com",
+  "transcript_path": "/Users/alice/.cursor/transcripts/conv-abc.jsonl",
+  "session_id": "cur-1",
+  "is_background_agent": false,
+  "composer_mode": "chat"
+}
