@@ -14,10 +14,18 @@ Never call `stream_session_end` from a per-turn hook — you'll emit a bogus
 from __future__ import annotations
 
 import json
+import os
 
 from event import HookEvent
 from octopus_client import OctopusClient
 from summarize import summarize_tool_use
+
+# Read at most this many bytes from the tail of a transcript when computing
+# session_end stats. Long Claude sessions can produce hundreds of MB of JSONL;
+# parsing all of it past Codex's 5s hook timeout kills the session_end push
+# AND the curate spawn that follows. Tail-only is best-effort: stats undercount
+# on huge sessions, but the load-bearing curate trigger still fires.
+_TRANSCRIPT_TAIL_BYTES = 5 * 1024 * 1024
 
 
 # --- Prompt streaming ---
@@ -103,16 +111,24 @@ def count_transcript_stats(transcript_path: str) -> dict:
     Claude-specific format (`{"type":"tool_use", "name":..., "input":...}`).
     Non-Claude transcripts produce zero counts — the caller should gate by
     `cfg.client == "claude_code"` to avoid reading opaque files.
+
+    Reads at most _TRANSCRIPT_TAIL_BYTES from the end of the file so the hook
+    completes inside the host's timeout even on multi-hundred-MB transcripts.
     """
-    stats = {"tool_count": 0, "files_changed": set(), "tools_used": set()}
+    stats = {"tool_count": 0, "files_changed": set(), "tools_used": set(), "truncated": False}
     if not transcript_path:
-        return {"tool_count": 0, "files_changed": [], "tools_used": []}
+        return _finalize_stats(stats)
 
     try:
-        with open(transcript_path) as f:
-            for line in f:
+        size = os.path.getsize(transcript_path)
+        with open(transcript_path, "rb") as f:
+            if size > _TRANSCRIPT_TAIL_BYTES:
+                f.seek(size - _TRANSCRIPT_TAIL_BYTES)
+                f.readline()  # discard partial first line
+                stats["truncated"] = True
+            for raw in f:
                 try:
-                    entry = json.loads(line)
+                    entry = json.loads(raw)
                 except Exception:
                     continue
                 if entry.get("type") != "tool_use":
@@ -128,9 +144,16 @@ def count_transcript_stats(transcript_path: str) -> dict:
     except Exception:
         pass
 
-    stats["files_changed"] = list(stats["files_changed"])
-    stats["tools_used"] = list(stats["tools_used"])
-    return stats
+    return _finalize_stats(stats)
+
+
+def _finalize_stats(stats: dict) -> dict:
+    return {
+        "tool_count": stats["tool_count"],
+        "files_changed": list(stats["files_changed"]) if isinstance(stats["files_changed"], set) else stats["files_changed"],
+        "tools_used": list(stats["tools_used"]) if isinstance(stats["tools_used"], set) else stats["tools_used"],
+        "truncated": stats.get("truncated", False),
+    }
 
 
 def stream_session_end(
@@ -145,15 +168,17 @@ def stream_session_end(
     if cfg.get("client") == "claude_code" and event.transcript_path:
         stats = count_transcript_stats(event.transcript_path)
     else:
-        stats = {"tool_count": 0, "files_changed": [], "tools_used": []}
+        stats = {"tool_count": 0, "files_changed": [], "tools_used": [], "truncated": False}
 
     tool_count = stats["tool_count"]
     files_changed = stats["files_changed"]
     tools_used = stats["tools_used"]
+    truncated = stats.get("truncated", False)
 
     parts = ["Session ended."]
     if tool_count:
-        parts.append(f"{tool_count} tool uses.")
+        suffix = "+" if truncated else ""
+        parts.append(f"{tool_count}{suffix} tool uses.")
     if files_changed:
         parts.append(f"{len(files_changed)} files changed.")
 
@@ -169,6 +194,7 @@ def stream_session_end(
                 "tool_count": tool_count,
                 "files_changed": files_changed,
                 "tools_used": tools_used,
+                "stats_truncated": truncated,
             },
             client=cfg.get("client") or None,
         )
