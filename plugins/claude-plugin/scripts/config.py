@@ -1,4 +1,8 @@
-"""Plugin configuration and persistent state."""
+"""Claude-plugin-specific config: reads CLAUDE_PLUGIN_USER_CONFIG_* env vars.
+
+Everything agent-agnostic lives in plugins/shared/. This module only handles
+the Claude-specific env surface + paths, then hands off.
+"""
 
 from __future__ import annotations
 
@@ -7,12 +11,20 @@ import os
 import sys
 from pathlib import Path
 
-PLUGIN_DATA = Path(os.environ.get("CLAUDE_PLUGIN_DATA", Path.home() / ".claude/plugins/data/octopus"))
-STATE_FILE = PLUGIN_DATA / "state.json"
+# Add shared/ to sys.path so on_*.py scripts can import it
+SHARED = Path(__file__).resolve().parent.parent.parent / "shared"
+if str(SHARED) not in sys.path:
+    sys.path.insert(0, str(SHARED))
+
+from octopus_client import OctopusClient  # noqa: E402
+
+DATA_DIR = Path(os.environ.get(
+    "CLAUDE_PLUGIN_DATA",
+    Path.home() / ".claude/plugins/data/octopus",
+))
 
 
 def get_stdin_data() -> dict:
-    """Read JSON from stdin (Claude Code hook protocol)."""
     try:
         return json.loads(sys.stdin.read())
     except Exception:
@@ -26,7 +38,7 @@ def _read_json(path: Path) -> dict:
         return {}
 
 
-def _find_project_config() -> Path | None:
+def _project_config() -> Path | None:
     """Walk up from cwd looking for .octopus/config.json."""
     try:
         cur = Path.cwd().resolve()
@@ -39,25 +51,37 @@ def _find_project_config() -> Path | None:
     return None
 
 
+# Keys that ONLY the user-scoped ~/.octopus/config.json is allowed to set.
+# A project-scoped .octopus/config.json (walked up from cwd) must not be able
+# to override these — otherwise any writable ancestor dir becomes an exfil
+# vector (attacker points base_url at their own server, captures every
+# prompt + tool output).
+_USER_ONLY_KEYS = {"base_url", "api_key"}
+
+
 def _load_cli_config() -> dict:
-    """Load CLI config. Project-level (.octopus/config.json walking up from cwd)
-    overrides user-level (~/.octopus/config.json)."""
+    """User config (~/.octopus/config.json) overlaid with project config.
+
+    Project config may override workspace/username scoping, but NOT the
+    transport credentials (base_url, api_key).
+    """
     merged: dict = {}
     user_path = Path.home() / ".octopus" / "config.json"
     if user_path.exists():
         merged.update(_read_json(user_path))
-    project_path = _find_project_config()
+    project_path = _project_config()
     if project_path:
-        merged.update(_read_json(project_path))
+        project = _read_json(project_path)
+        for key in _USER_ONLY_KEYS:
+            project.pop(key, None)
+        merged.update(project)
     return merged
 
 
 def get_config() -> dict:
-    """Read plugin userConfig from environment variables, falling back to CLI config."""
     api_key = os.environ.get("CLAUDE_PLUGIN_USER_CONFIG_api_key", "")
     agent_name = os.environ.get("CLAUDE_PLUGIN_USER_CONFIG_agent_name", "")
 
-    # If env vars aren't set, fall back to CLI config (~/.octopus/config.json)
     if not api_key:
         cli = _load_cli_config()
         return {
@@ -66,6 +90,7 @@ def get_config() -> dict:
             "agent_name": cli.get("username", ""),
             "workspace_id": cli.get("default_workspace", ""),
             "auto_curate": os.environ.get("CLAUDE_PLUGIN_USER_CONFIG_auto_curate", "true"),
+            "client": "claude_code",
         }
 
     return {
@@ -74,34 +99,15 @@ def get_config() -> dict:
         "agent_name": agent_name,
         "workspace_id": os.environ.get("CLAUDE_PLUGIN_USER_CONFIG_workspace_id", ""),
         "auto_curate": os.environ.get("CLAUDE_PLUGIN_USER_CONFIG_auto_curate", "true"),
+        "client": "claude_code",
     }
 
 
-def get_client():
-    """Build a OctopusClient from plugin config."""
-    # Import here to keep this module lightweight for scripts that don't need the client
-    from octopus_client import OctopusClient
+def get_client() -> OctopusClient:
     cfg = get_config()
-    return OctopusClient(base_url=cfg["api_endpoint"], api_key=cfg["api_key"])
+    return OctopusClient(base_url=cfg["api_endpoint"], api_key=cfg["api_key"], data_dir=DATA_DIR)
 
 
 def is_configured() -> bool:
-    """Check if the minimum config is set (api_key + agent_name)."""
     cfg = get_config()
     return bool(cfg["api_key"] and cfg["agent_name"])
-
-
-# --- State (persistent across sessions) ---
-
-def load_state() -> dict:
-    if STATE_FILE.exists():
-        try:
-            return json.loads(STATE_FILE.read_text())
-        except Exception:
-            pass
-    return {"streaming_enabled": True, "session_id": ""}
-
-
-def save_state(state: dict):
-    PLUGIN_DATA.mkdir(parents=True, exist_ok=True)
-    STATE_FILE.write_text(json.dumps(state, indent=2))
