@@ -50,6 +50,11 @@ def main():
         return
 
     event = adapt_notify(data)
+    # When SessionStart never ran (older Codex builds without codex_hooks),
+    # state.session_id is empty. Fall back to the thread-id pulled from the
+    # notify payload so assistant_message events stay correlatable.
+    if not state.get("session_id") and event.session_id:
+        state = {**state, "session_id": event.session_id}
     cfg = get_config()
     try:
         with get_client() as client:
