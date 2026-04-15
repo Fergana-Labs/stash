@@ -27,11 +27,12 @@ interface MarkdownEditorProps {
   file: NotebookPage;
   onSave: (content: string) => void;
   onSaveStatusChange?: (status: SaveStatus) => void;
+  onRename?: (name: string) => void;
   pageNames?: string[];
   onNavigateToPage?: (pageName: string) => void;
 }
 
-export default function MarkdownEditor({ workspaceId, file, onSave, onSaveStatusChange, pageNames = [], onNavigateToPage }: MarkdownEditorProps) {
+export default function MarkdownEditor({ workspaceId, file, onSave, onSaveStatusChange, onRename, pageNames = [], onNavigateToPage }: MarkdownEditorProps) {
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -68,7 +69,7 @@ export default function MarkdownEditor({ workspaceId, file, onSave, onSaveStatus
     ],
     editorProps: {
       attributes: {
-        class: "max-w-none px-6 py-4 min-h-full focus:outline-none",
+        class: "max-w-none min-h-[200px] focus:outline-none wiki-body",
       },
     },
     onUpdate: ({ editor }) => {
@@ -141,11 +142,34 @@ export default function MarkdownEditor({ workspaceId, file, onSave, onSaveStatus
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [editor, onSave]);
 
+  const [title, setTitle] = useState(file.name);
+  const titleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const handleTitleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const newTitle = e.target.value;
+    setTitle(newTitle);
+    if (!onRename || !newTitle.trim()) return;
+    if (titleTimer.current) clearTimeout(titleTimer.current);
+    titleTimer.current = setTimeout(() => onRename(newTitle.trim()), AUTOSAVE_DEBOUNCE_MS);
+  };
+
   return (
     <div className="flex flex-col h-full">
       <EditorToolbar editor={editor} workspaceId={workspaceId} />
       <div className="flex-1 overflow-y-auto bg-background">
-        <EditorContent editor={editor} className="h-full" />
+        <div className="max-w-[720px] mx-auto w-full px-8 py-10">
+          <input
+            type="text"
+            value={title}
+            onChange={handleTitleChange}
+            placeholder="Untitled"
+            className="w-full text-3xl font-bold text-foreground bg-transparent border-none outline-none placeholder:text-muted/40 mb-1 font-display"
+          />
+          <div className="text-[11px] text-muted mb-6">
+            {file.updated_at ? `Last edited ${new Date(file.updated_at).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}` : ""}
+          </div>
+          <EditorContent editor={editor} className="wiki-content" />
+        </div>
       </div>
     </div>
   );
