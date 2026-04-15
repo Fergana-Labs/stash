@@ -1,56 +1,51 @@
 # Octopus Plugin for opencode
 
-Streams opencode sessions to an Octopus workspace. Richest event model of
-the bunch — opencode's plugin API exposes ~25 events and we use 5 of them.
+Streams opencode sessions to an Octopus workspace.
 
 ## Prerequisites
 
-- `octopus` CLI installed and logged in (`pip install octopus && octopus login`)
+- `octopus` CLI installed and logged in
 - `octopus config default_workspace <id>` set
 - Python 3.10+ and `httpx`
-- opencode installed (Node 20+)
+- opencode installed (Bun-based runtime — opencode transpiles TS directly, no build step needed)
 
 ## Install
 
-Point your opencode plugins config at `plugin.ts`. Per the opencode docs,
-either:
+Point your opencode config at `plugin.ts`. The config key is `plugin` (singular):
 
 ```jsonc
-// ~/.config/opencode/config.json
+// ~/.config/opencode/opencode.json (or <project>/opencode.json)
 {
-  "plugins": ["/absolute/path/to/octopus/plugins/opencode-plugin/plugin.ts"]
+  "plugin": ["/absolute/path/to/octopus/plugins/opencode-plugin/plugin.ts"]
 }
 ```
 
-Or drop a symlink into your project's `.opencode/plugins/` directory.
+Or drop the plugin into your project's `.opencode/plugin/` directory (note: singular `plugin/`, not `plugins/`).
 
 Restart opencode.
 
 ## How it works
 
-`plugin.ts` is a thin TypeScript shim — it subscribes to five opencode
-events, normalizes each payload to JSON, and pipes it into the matching
-Python script via stdin. All real logic lives in `plugins/shared/` and is
-identical to the Claude/Cursor/Gemini/Codex plugins.
+`plugin.ts` registers two keyed hooks (`chat.message`, `tool.execute.after`) plus a single `event` dispatcher for bus events. All real logic lives in `plugins/shared/` and is identical to the Claude/Cursor/Gemini/Codex plugins.
 
-| opencode event | Octopus event |
+| opencode signal | Octopus event |
 |---|---|
-| `session.created` | — (warms cache) |
-| `message.updated` (user role) | `user_message` |
-| `tool.execute.after` | `tool_use` |
-| `session.idle` | `assistant_message` + `session_end` |
-| `session.deleted` | — (clears state) |
+| `chat.message` (keyed hook) | `user_message` |
+| `tool.execute.after` (keyed hook) | `tool_use` |
+| bus event `session.created` | — (warms cache) |
+| bus event `session.deleted` | `session_end` (clears state) |
+
+Ignored on purpose: `session.idle` fires on every turn completion (not session end), `message.updated` streams repeatedly. Capturing final assistant text per turn is a future TODO.
 
 ## Known gaps
 
-- No prompt-time context injection (opencode has no analogous protocol). Rely
-  on the pre-session cache warm, or have the agent shell out (see Retrieval).
+- No prompt-time context injection (opencode has no analogous protocol).
+- No final-assistant-message capture — `session.idle` fires too often to treat as "stop."
 - No auto-curation hook — run `octopus curate` on a cron if desired.
 
 ## Retrieval
 
-opencode agents have shell access. Point the agent at the `octopus` CLI for
-reads mid-conversation — all commands support `--json`:
+opencode agents have shell access. Point the agent at the `octopus` CLI for reads mid-conversation — all commands support `--json`:
 
 ```
 octopus history query --ws <id> --limit 20 --json

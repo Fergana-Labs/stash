@@ -1,9 +1,9 @@
 # Octopus Plugin for Cursor
 
-Streams Cursor sessions to an Octopus workspace and injects agent identity
-and recent activity context into every prompt. Mirrors the Claude Code
-plugin feature for feature, minus auto-curation (Cursor has no headless
-entry point).
+Streams Cursor sessions to an Octopus workspace. Mirrors the Claude Code
+plugin's event coverage, minus auto-curation (Cursor has no headless
+entry point) and prompt-time context injection (Cursor's `beforeSubmitPrompt`
+protocol has no context-injection key).
 
 ## Prerequisites
 
@@ -42,7 +42,6 @@ Reads from `~/.octopus/config.json` (populated by `octopus login` +
 `octopus config …`). No Cursor-specific config surface.
 
 Override with env vars (set in Cursor's environment):
-- `OCTOPUS_INJECT_CONTEXT=false` — disable prompt injection
 - `OCTOPUS_CURSOR_DATA=<path>` — custom state dir (default `~/.octopus/plugins/cursor`)
 - `OCTOPUS_NOTIFICATIONS_DIR=<path>` — pending escalation notifications
 
@@ -52,15 +51,16 @@ Override with env vars (set in Cursor's environment):
 |---|---|---|
 | `sessionStart` | — (warms cache only) | — |
 | `beforeSubmitPrompt` | `user_message` | User's prompt text |
-| `postToolUse` | `tool_use` | Tool name, args, response preview |
-| `stop` | `assistant_message` + `session_end` | Last model message + tool-count summary |
+| `postToolUse` | `tool_use` | Tool name, tool_input, tool_output preview |
+| `afterAgentResponse` | `assistant_message` | Final model text for the turn |
+| `stop` | `session_end` | Tool-count summary |
 | `sessionEnd` | — (clears session state) | — |
 
 ## Known gaps vs Claude plugin
 
 - No auto-curation on SessionEnd (no `cursor -p` equivalent)
 - No slash commands (`/octopus:connect` etc.) — use the `octopus` CLI directly
-- Prompt injection uses Cursor's `injected_context` stdout protocol — verify your Cursor version supports it
+- No prompt-time context injection — Cursor's `beforeSubmitPrompt` protocol has no context-injection key
 
 ## Retrieval
 

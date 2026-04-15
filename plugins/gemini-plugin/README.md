@@ -1,7 +1,6 @@
 # Octopus Plugin for Gemini CLI
 
-Streams Gemini CLI sessions to an Octopus workspace and injects agent
-identity and recent activity context into every prompt.
+Streams Gemini CLI sessions to an Octopus workspace.
 
 ## Prerequisites
 
@@ -32,7 +31,7 @@ Reload with `/hooks reload` inside Gemini CLI, or restart the session.
 | Gemini event | Octopus event |
 |---|---|
 | `SessionStart` | — (warms cache) |
-| `BeforeAgent` | `user_message` + context injection |
+| `BeforeAgent` | `user_message` |
 | `AfterTool` | `tool_use` |
 | `AfterAgent` | `assistant_message` + `session_end` |
 | `SessionEnd` | — (clears state) |

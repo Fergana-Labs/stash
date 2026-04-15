@@ -1,5 +1,10 @@
 {
   "session_id": "gem-1",
-  "last_message": "Tests pass.",
-  "cwd": "/Users/alice/repo"
+  "transcript_path": "/Users/alice/.gemini/transcripts/gem-1.json",
+  "cwd": "/Users/alice/repo",
+  "hook_event_name": "AfterAgent",
+  "timestamp": "2026-04-14T12:00:03Z",
+  "prompt": "what does this do",
+  "prompt_response": "Tests pass.",
+  "stop_hook_active": false
 }

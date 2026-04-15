@@ -1,21 +1,11 @@
 #!/usr/bin/env python3
-"""BeforeAgent: stream user prompt + inject context.
+"""BeforeAgent: stream user prompt to Octopus."""
 
-Gemini context injection protocol: print JSON with `additional_context` to
-stdout (per github.com/google-gemini/gemini-cli docs/hooks).
-"""
-
-import json
-
-from config import DATA_DIR, ESCALATION_DIR, get_client, get_config, get_stdin_data, is_configured
-from hooks import build_injection_context, stream_user_message
+from config import DATA_DIR, get_client, get_config, get_stdin_data, is_configured
+from hooks import stream_user_message
 from state import load_state
 
 from adapt import adapt_prompt
-
-
-def _injection_disabled(cfg: dict) -> bool:
-    return cfg.get("inject_context", "true").lower() in ("false", "0", "no", "off")
 
 
 def main():
@@ -26,14 +16,11 @@ def main():
     cfg = get_config()
     state = load_state(DATA_DIR)
 
-    with get_client() as client:
-        stream_user_message(client, cfg, state, event.prompt_text)
-
-    if _injection_disabled(cfg):
-        return
-
-    context = build_injection_context(cfg, state, DATA_DIR, ESCALATION_DIR)
-    print(json.dumps({"additional_context": context}))
+    try:
+        with get_client() as client:
+            stream_user_message(client, cfg, state, event.prompt_text)
+    except Exception:
+        pass
 
 
 if __name__ == "__main__":
