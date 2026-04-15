@@ -1,7 +1,13 @@
 {
   "session_id": "cdx-1",
+  "cwd": "/Users/alice/repo",
+  "hook_event_name": "PostToolUse",
+  "transcript_path": "/Users/alice/.codex/transcripts/cdx-1.jsonl",
+  "model": "gpt-5-codex",
+  "permission_mode": "default",
+  "turn_id": "t-1",
   "tool_name": "Bash",
   "tool_input": {"command": "npm run build"},
-  "tool_output": {"stdout": "", "stderr": "", "exit_code": 0},
-  "cwd": "/Users/alice/repo"
+  "tool_response": {"stdout": "done", "stderr": "", "exit_code": 0},
+  "tool_use_id": "tu-1"
 }

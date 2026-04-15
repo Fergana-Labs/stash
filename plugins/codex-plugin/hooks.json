@@ -1,21 +1,34 @@
 {
-  "_comment": "Copy to ~/.codex/hooks.json. Requires `features.codex_hooks = true` in ~/.codex/config.toml. Tool hooks are Bash-only today; non-Bash tools fall back to the `notify` command in config.toml (see README).",
+  "_comment": "Copy to ~/.codex/hooks.json. Requires `features.codex_hooks = true` in ~/.codex/config.toml. Timeouts are in SECONDS. `matcher` is a regex string. Tool hooks are Bash-only today; non-Bash tools fall back to the `notify` command in config.toml (see README).",
   "hooks": {
     "SessionStart": [
-      { "command": ["python3", "${PLUGIN_ROOT}/scripts/on_session_start.py"], "timeout_ms": 5000 }
+      {
+        "hooks": [
+          { "type": "command", "command": "python3 ${PLUGIN_ROOT}/scripts/on_session_start.py", "timeout": 5 }
+        ]
+      }
     ],
     "UserPromptSubmit": [
-      { "command": ["python3", "${PLUGIN_ROOT}/scripts/on_prompt.py"], "timeout_ms": 3000 }
+      {
+        "hooks": [
+          { "type": "command", "command": "python3 ${PLUGIN_ROOT}/scripts/on_prompt.py", "timeout": 3 }
+        ]
+      }
     ],
     "PostToolUse": [
       {
-        "matcher": { "tool": "Bash" },
-        "command": ["python3", "${PLUGIN_ROOT}/scripts/on_tool_use.py"],
-        "timeout_ms": 2000
+        "matcher": "^Bash$",
+        "hooks": [
+          { "type": "command", "command": "python3 ${PLUGIN_ROOT}/scripts/on_tool_use.py", "timeout": 5 }
+        ]
       }
     ],
     "Stop": [
-      { "command": ["python3", "${PLUGIN_ROOT}/scripts/on_stop.py"], "timeout_ms": 10000 }
+      {
+        "hooks": [
+          { "type": "command", "command": "python3 ${PLUGIN_ROOT}/scripts/on_stop.py", "timeout": 10 }
+        ]
+      }
     ]
   }
 }

@@ -1,5 +1,12 @@
 {
-  "session_id": "cur-1",
+  "conversation_id": "cur-1",
+  "generation_id": "gen-2",
+  "model": "claude-3.7-sonnet",
+  "hook_event_name": "beforeSubmitPrompt",
+  "cursor_version": "1.7.0",
+  "workspace_roots": ["/Users/alice/repo"],
+  "user_email": "alice@example.com",
+  "transcript_path": "/Users/alice/.cursor/transcripts/cur-1.jsonl",
   "prompt": "add a test",
-  "cwd": "/Users/alice/repo"
+  "attachments": []
 }

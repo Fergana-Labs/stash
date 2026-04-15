@@ -1,4 +1,9 @@
 {
   "session_id": "cdx-1",
-  "cwd": "/Users/alice/repo"
+  "cwd": "/Users/alice/repo",
+  "hook_event_name": "SessionStart",
+  "transcript_path": "/Users/alice/.codex/transcripts/cdx-1.jsonl",
+  "model": "gpt-5-codex",
+  "permission_mode": "default",
+  "source": "startup"
 }

@@ -2,8 +2,11 @@
 # Enabling both causes every turn to fire twice (Stop hook + notify).
 
 # Variant A (recommended) — native hooks, covers session_start/prompt/Bash tools/stop.
+# `codex_hooks` is Stage::UnderDevelopment — the second line suppresses the
+# unstable-feature warning at startup.
 [features]
 codex_hooks = true
+suppress_unstable_features_warning = true
 
 # Variant B (fallback) — only if your Codex build lacks features.codex_hooks.
 # Comment out Variant A above, then uncomment this line:
