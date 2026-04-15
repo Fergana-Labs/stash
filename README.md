@@ -16,9 +16,8 @@
   <a href="https://getoctopus.com"><img src="https://img.shields.io/badge/Website-getoctopus.com-F97316" alt="Website" /></a>
 </p>
 
-<!-- TODO: Add product screenshot or GIF here -->
-<img width="1194" height="1085" alt="Screenshot 2026-04-14 at 7 09 11 PM" src="https://github.com/user-attachments/assets/ecd48e25-8843-4f7a-a517-6ea1c5eb31ff" />
----
+<img width="1195" height="1055" alt="Screenshot 2026-04-14 at 7 11 31 PM" src="https://github.com/user-attachments/assets/265c638f-64eb-460e-91e8-e677740cf97b" />
+
 
 ## Table of Contents
 
