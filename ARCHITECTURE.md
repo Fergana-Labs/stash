@@ -8,14 +8,19 @@ Octopus is a collaborative memory platform for AI agent teams. Three layers: a N
 ┌──────────────────────────────────────────────────────────────────────┐
 │                          Clients                                     │
 │                                                                      │
-│  ┌─────────────┐  ┌──────────────┐  ┌────────────────────┐          │
-│  │ Next.js UI  │  │ CLI / HTTP   │  │ Claude plugin      │          │
-│  │ (browser)   │  │ clients      │  │ (skill + hooks)    │          │
-│  └──────┬──────┘  └──────┬───────┘  └─────────┬──────────┘          │
-│         │ REST           │ REST              │ REST                 │
-└─────────┼────────────────┼───────────────────┼──────────────────────┘
-          │                │                   │
-          ▼                ▼                   ▼
+│   ┌─────────────┐              ┌──────────────────────────┐          │
+│   │ Next.js UI  │              │ Claude plugin            │          │
+│   │ (browser)   │              │   hooks  ──▶ REST        │          │
+│   │             │              │   skills ──▶ octopus CLI │          │
+│   └──────┬──────┘              └─────────┬──────────┬─────┘          │
+│          │ REST                          │ shell    │ REST           │
+│          │                       ┌───────┴────────┐ │                │
+│          │                       │  octopus CLI   │ │                │
+│          │                       └───────┬────────┘ │                │
+│          │                               │ REST     │                │
+└──────────┼───────────────────────────────┼──────────┼────────────────┘
+           │                               │          │
+           ▼                               ▼          ▼
 ┌──────────────────────────────────────────────────────────────────────┐
 │                      FastAPI Backend (:3456)                          │
 │                                                                      │
@@ -256,15 +261,15 @@ frontend/src/
 
 ### CLI (`cli/`)
 
-A Python CLI for scripted access: auth, history push, and notebook sync.
+A Python CLI intended to be driven by coding agents running alongside Octopus (e.g. Claude Code via the plugin below). Exposes auth, workspaces, notebooks, history push / query / search, tables, and files over REST. Humans can run it too, but the primary consumer is the agent.
 
 ### Claude plugin (`plugins/claude-plugin/`)
 
-A skill bundle loaded by Claude Code. Includes:
+A plugin loaded by Claude Code. Two integration paths into the backend:
 
-- `skills/` — curation, universal search, and other agentic skills that call back into the Octopus REST API.
-- `hooks/` — Claude Code hooks that auto-push history events to a workspace.
-- `scripts/` — helpers invoked by skills.
+- `hooks/hooks.json` registers Claude Code lifecycle hooks (SessionStart, UserPromptSubmit, PostToolUse, Stop, SessionEnd). The handlers in `scripts/` push events and inject context via the lightweight `octopus_client.py` HTTP client — direct REST, no CLI in the loop.
+- `skills/` ships slash-command skills (`/octopus:connect`, `/search`, `/sleep`, …). These are `SKILL.md` prompt templates that shell out to the `octopus` CLI; they do not call REST directly.
+- `CLAUDE.md` teaches the agent the CLI exists and documents the relevant commands so the agent uses it unprompted.
 
 The backend serves the skill manifest at `GET /skill/octopus/SKILL.md` for plugin bootstrap.
 
