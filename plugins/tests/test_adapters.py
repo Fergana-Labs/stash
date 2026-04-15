@@ -34,7 +34,7 @@ def _load_fixture(plugin: str, name: str) -> dict:
     return json.loads((FIXTURES / plugin / f"{name}.json").read_text())
 
 
-PLUGINS = ["claude", "cursor", "gemini", "codex", "opencode"]
+PLUGINS = ["claude", "cursor", "gemini", "codex", "opencode", "openclaw"]
 
 
 @pytest.mark.parametrize("plugin", PLUGINS)
@@ -94,6 +94,8 @@ def test_tool_name_normalization():
         ("codex", "Bash", "bash"),
         ("codex", "apply_patch", "edit"),
         ("opencode", "edit", "edit"),
+        ("openclaw", "file.edit", "edit"),
+        ("openclaw", "shell.run", "bash"),
     ]
     for plugin, raw, expected in cases:
         adapt = _load_adapt(plugin)
