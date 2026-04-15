@@ -194,11 +194,6 @@ export default function PageGraphView({ graph, onClose, onSelectPage, inline }: 
         ctx.fillStyle = isHovered ? "#EA580C" : hasEdge ? "#F97316" : "#8B5CF6";
         ctx.fill();
 
-        // Always draw label on canvas
-        ctx.font = `${isHovered ? "bold " : ""}11px 'Instrument Sans', sans-serif`;
-        ctx.fillStyle = "#F1F5F9";
-        ctx.textAlign = "center";
-        ctx.fillText(node.name, node.x, node.y - 14);
       }
 
       animRef.current = requestAnimationFrame(tick);
@@ -262,11 +257,10 @@ export default function PageGraphView({ graph, onClose, onSelectPage, inline }: 
   if (inline) {
     return (
       <div ref={containerRef} className="relative">
-        <div className="flex items-center justify-between mb-2">
+        <div className="mb-2">
           <span className="text-xs text-muted">
             {graph.nodes.length} pages, {graph.edges.length} links
           </span>
-          <button onClick={onClose} className="text-xs text-muted hover:text-foreground">&times; Close</button>
         </div>
         <canvas
           ref={canvasRef}
