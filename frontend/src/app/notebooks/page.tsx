@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import AppShell from "../../components/AppShell";
@@ -179,19 +179,26 @@ export default function WikiPage() {
     } catch { setError("Failed to load page"); }
   }, [selectedNotebook]);
 
-  // Deep-link: auto-select notebook (and page) from URL params
+  // Deep-link: auto-select notebook and page from URL params (once on load)
+  const deepLinked = useRef(false);
   useEffect(() => {
-    if (!nbParam || notebooks.length === 0) return;
-    if (selectedNotebook?.id === nbParam) return;
+    if (deepLinked.current || !nbParam || notebooks.length === 0) return;
     const nb = notebooks.find((n) => n.id === nbParam);
-    if (nb) handleSelectNotebook(nb);
-  }, [nbParam, notebooks, selectedNotebook, handleSelectNotebook]);
+    if (!nb) return;
+    deepLinked.current = true;
+    handleSelectNotebook(nb);
+    // Clear URL params so they don't interfere with future navigation
+    const url = new URL(window.location.href);
+    url.searchParams.delete("nb");
+    url.searchParams.delete("page");
+    window.history.replaceState({}, "", url.toString());
+  }, [nbParam, notebooks, handleSelectNotebook]);
 
   useEffect(() => {
-    if (!pageParam || !selectedNotebook || selectedNotebook.id !== nbParam) return;
-    if (selectedPageId === pageParam) return;
+    if (!pageParam || !deepLinked.current) return;
+    if (!selectedNotebook || selectedPageId !== null) return;
     handleSelectPage(pageParam);
-  }, [pageParam, nbParam, selectedNotebook, selectedPageId, handleSelectPage]);
+  }, [pageParam, selectedNotebook, selectedPageId, handleSelectPage]);
 
   // Navigate to a page by name (for wiki link clicks)
   const handleNavigateToPage = useCallback((pageName: string) => {
@@ -324,6 +331,17 @@ export default function WikiPage() {
     } catch (err) { setError(err instanceof Error ? err.message : "Failed to rename"); }
   }, [selectedNotebook, selectedPageId, loadTree]);
 
+  const handleInlineRename = useCallback(async (name: string) => {
+    if (!selectedNotebook || !selectedPageId) return;
+    try {
+      const updated = selectedNotebook.workspace_id
+        ? await updatePage(selectedNotebook.workspace_id, selectedNotebook.id, selectedPageId, { name })
+        : await updatePersonalPage(selectedNotebook.id, selectedPageId, { name });
+      setSelectedPage(updated);
+      await loadTree(selectedNotebook);
+    } catch { /* silent — title updates are best-effort */ }
+  }, [selectedNotebook, selectedPageId, loadTree]);
+
   const handleRenameFolder = useCallback(async (folderId: string, currentName: string) => {
     if (!selectedNotebook) return;
     const name = prompt("New name:", currentName);
@@ -448,14 +466,6 @@ export default function WikiPage() {
           <div className="flex flex-1 overflow-hidden">
             {/* Sidebar: file tree */}
             <div className="w-[240px] flex-shrink-0 bg-surface border-r border-border overflow-hidden flex flex-col">
-              {/* Notebook header */}
-              <div className="px-3 py-2.5 border-b border-border flex items-center gap-2">
-                <button
-                  onClick={() => { setSelectedNotebook(null); setSelectedPage(null); setSelectedPageId(null); setTree({ folders: [], root_files: [] }); }}
-                  className="text-muted hover:text-foreground text-sm flex-shrink-0"
-                >&larr;</button>
-                <span className="text-sm font-medium text-foreground truncate">{selectedNotebook.name}</span>
-              </div>
 
               {/* Semantic search */}
               {selectedNotebook.workspace_id && (
@@ -560,31 +570,32 @@ export default function WikiPage() {
                       file={selectedPage}
                       onSave={handleSavePage}
                       onSaveStatusChange={setSaveStatus}
+                      onRename={handleInlineRename}
                       pageNames={pageNames}
                       onNavigateToPage={handleNavigateToPage}
                     />
 
                     {/* Backlinks */}
-                    <div className="border-t border-border bg-surface px-6 py-4 flex-shrink-0">
-                      <h4 className="text-[11px] font-semibold text-muted uppercase tracking-wider mb-3">
-                        Linked from
-                      </h4>
-                      {backlinks.length > 0 ? (
-                        <div className="flex flex-wrap gap-2">
-                          {backlinks.map((bl) => (
-                            <button
-                              key={bl.id}
-                              onClick={() => handleSelectPage(bl.id)}
-                              className="text-sm text-brand hover:text-brand-hover hover:underline transition-colors"
-                            >
-                              {bl.name}
-                            </button>
-                          ))}
+                    {backlinks.length > 0 && (
+                      <div className="max-w-[720px] mx-auto w-full px-8 pb-10">
+                        <div className="border-t border-border/50 pt-6 mt-2">
+                          <h4 className="text-[11px] font-medium text-muted uppercase tracking-wider mb-3">
+                            Linked from
+                          </h4>
+                          <div className="flex flex-wrap gap-x-4 gap-y-1">
+                            {backlinks.map((bl) => (
+                              <button
+                                key={bl.id}
+                                onClick={() => handleSelectPage(bl.id)}
+                                className="text-sm text-muted hover:text-brand transition-colors"
+                              >
+                                {bl.name}
+                              </button>
+                            ))}
+                          </div>
                         </div>
-                      ) : (
-                        <p className="text-xs text-muted">No pages link here yet. Use <code className="text-brand text-[11px]">[[Page Name]]</code> to create links.</p>
-                      )}
-                    </div>
+                      </div>
+                    )}
                   </div>
                 </div>
               ) : (
