@@ -1,0 +1,7 @@
+{
+  "session_id": "abc-123",
+  "tool_name": "Edit",
+  "tool_input": {"file_path": "/tmp/x.py", "old_string": "foo", "new_string": "bar"},
+  "tool_response": {},
+  "cwd": "/Users/alice/repo"
+}

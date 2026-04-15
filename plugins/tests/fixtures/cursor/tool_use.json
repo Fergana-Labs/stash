@@ -1,0 +1,7 @@
+{
+  "session_id": "cur-1",
+  "tool_name": "edit_file",
+  "args": {"file_path": "/tmp/x.py", "old_string": "foo", "new_string": "bar"},
+  "result": {"success": true},
+  "cwd": "/Users/alice/repo"
+}
