@@ -15,7 +15,6 @@ import os
 import uuid
 
 import asyncpg
-import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 
@@ -26,8 +25,8 @@ _TEST_DB_URL = os.getenv(
 )
 os.environ["DATABASE_URL"] = _TEST_DB_URL
 
-from backend.main import app  # noqa: E402 — must come after env override
 from backend import database as db_module  # noqa: E402
+from backend.main import app  # noqa: E402 — must come after env override
 
 
 @pytest_asyncio.fixture(scope="session")
@@ -43,8 +42,9 @@ async def _db_pool():
 
     def _run_alembic():
         ini_path = os.path.join(os.path.dirname(__file__), "..", "..", "alembic.ini")
-        from alembic.config import Config
         from alembic import command as alembic_cmd
+        from alembic.config import Config
+
         cfg = Config(ini_path)
         alembic_cmd.upgrade(cfg, "head")
 
@@ -53,16 +53,19 @@ async def _db_pool():
 
     # Create the shared pool used by the app
     import json
+
     from pgvector.asyncpg import register_vector
 
     async def _init_connection(conn):
         await register_vector(conn)
-        await conn.set_type_codec("jsonb", encoder=json.dumps, decoder=json.loads, schema="pg_catalog")
-        await conn.set_type_codec("json", encoder=json.dumps, decoder=json.loads, schema="pg_catalog")
+        await conn.set_type_codec(
+            "jsonb", encoder=json.dumps, decoder=json.loads, schema="pg_catalog"
+        )
+        await conn.set_type_codec(
+            "json", encoder=json.dumps, decoder=json.loads, schema="pg_catalog"
+        )
 
-    pool = await asyncpg.create_pool(
-        _TEST_DB_URL, min_size=2, max_size=5, init=_init_connection
-    )
+    pool = await asyncpg.create_pool(_TEST_DB_URL, min_size=2, max_size=5, init=_init_connection)
     db_module.pool = pool
     yield pool
     await pool.close()
@@ -87,17 +90,29 @@ async def pool(_db_pool):
 
 
 _TRUNCATE_TABLES = [
-    "webhook_deliveries", "webhooks",
-    "documents", "files",
-    "object_shares", "object_permissions",
+    "webhook_deliveries",
+    "webhooks",
+    "documents",
+    "files",
+    "object_shares",
+    "object_permissions",
     "history_events",
-    "page_links", "notebook_pages", "notebook_folders",
-    "deck_share_page_views", "deck_share_views", "deck_shares",
+    "page_links",
+    "notebook_pages",
+    "notebook_folders",
+    "deck_share_page_views",
+    "deck_share_views",
+    "deck_shares",
     "table_rows",
     "chat_messages",
     "workspace_members",
-    "chats", "notebooks", "histories", "decks", "tables",
-    "workspaces", "users",
+    "chats",
+    "notebooks",
+    "histories",
+    "decks",
+    "tables",
+    "workspaces",
+    "users",
 ]
 
 

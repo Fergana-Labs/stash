@@ -26,25 +26,31 @@ def get_embedder() -> BaseEmbedder:
 
     if provider == "openai":
         from .openai_compat import OpenAICompatEmbedder
+
         _embedder = OpenAICompatEmbedder()
 
     elif provider == "huggingface":
         from .huggingface import HuggingFaceEmbedder
+
         _embedder = HuggingFaceEmbedder()
 
     elif provider == "local":
         from .local import LocalEmbedder
+
         _embedder = LocalEmbedder()
 
     elif provider == "auto":
         if os.getenv("OPENAI_API_KEY") or os.getenv("EMBEDDING_API_KEY"):
             from .openai_compat import OpenAICompatEmbedder
+
             _embedder = OpenAICompatEmbedder()
         elif os.getenv("HF_TOKEN"):
             from .huggingface import HuggingFaceEmbedder
+
             _embedder = HuggingFaceEmbedder()
         else:
             from .local import LocalEmbedder
+
             _embedder = LocalEmbedder()
 
     else:

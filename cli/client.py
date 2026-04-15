@@ -82,9 +82,14 @@ class OctopusClient:
     # --- Workspaces ---
 
     def create_workspace(self, name: str, description: str = "", is_public: bool = False) -> dict:
-        return self._post("/api/v1/workspaces", json={
-            "name": name, "description": description, "is_public": is_public,
-        })
+        return self._post(
+            "/api/v1/workspaces",
+            json={
+                "name": name,
+                "description": description,
+                "is_public": is_public,
+            },
+        )
 
     def list_workspaces(self, mine: bool = False) -> list:
         path = "/api/v1/workspaces/mine" if mine else "/api/v1/workspaces"
@@ -105,9 +110,13 @@ class OctopusClient:
     # --- Chats (workspace-scoped) ---
 
     def create_chat(self, workspace_id: str, name: str, description: str = "") -> dict:
-        return self._post(f"/api/v1/workspaces/{workspace_id}/chats", json={
-            "name": name, "description": description,
-        })
+        return self._post(
+            f"/api/v1/workspaces/{workspace_id}/chats",
+            json={
+                "name": name,
+                "description": description,
+            },
+        )
 
     def list_chats(self, workspace_id: str) -> list:
         return self._list(f"/api/v1/workspaces/{workspace_id}/chats", "chats")
@@ -118,14 +127,23 @@ class OctopusClient:
             json={"content": content},
         )
 
-    def read_messages(self, workspace_id: str, chat_id: str, limit: int = 50, after: str | None = None) -> list:
+    def read_messages(
+        self, workspace_id: str, chat_id: str, limit: int = 50, after: str | None = None
+    ) -> list:
         params: dict = {"limit": limit}
         if after:
             params["after"] = after
-        return self._list(f"/api/v1/workspaces/{workspace_id}/chats/{chat_id}/messages", "messages", **params)
+        return self._list(
+            f"/api/v1/workspaces/{workspace_id}/chats/{chat_id}/messages", "messages", **params
+        )
 
     def search_messages(self, workspace_id: str, chat_id: str, query: str, limit: int = 20) -> list:
-        return self._list(f"/api/v1/workspaces/{workspace_id}/chats/{chat_id}/messages/search", "messages", q=query, limit=limit)
+        return self._list(
+            f"/api/v1/workspaces/{workspace_id}/chats/{chat_id}/messages/search",
+            "messages",
+            q=query,
+            limit=limit,
+        )
 
     # --- Personal Rooms ---
 
@@ -179,9 +197,13 @@ class OctopusClient:
     # --- Notebooks (collections) ---
 
     def create_notebook(self, workspace_id: str, name: str, description: str = "") -> dict:
-        return self._post(f"/api/v1/workspaces/{workspace_id}/notebooks", json={
-            "name": name, "description": description,
-        })
+        return self._post(
+            f"/api/v1/workspaces/{workspace_id}/notebooks",
+            json={
+                "name": name,
+                "description": description,
+            },
+        )
 
     def list_notebooks(self, workspace_id: str) -> list:
         return self._list(f"/api/v1/workspaces/{workspace_id}/notebooks", "notebooks")
@@ -197,26 +219,42 @@ class OctopusClient:
 
     # --- Notebook Pages ---
 
-    def create_page(self, workspace_id: str, notebook_id: str, name: str, content: str = "", folder_id: str | None = None) -> dict:
+    def create_page(
+        self,
+        workspace_id: str,
+        notebook_id: str,
+        name: str,
+        content: str = "",
+        folder_id: str | None = None,
+    ) -> dict:
         body: dict = {"name": name, "content": content}
         if folder_id:
             body["folder_id"] = folder_id
-        return self._post(f"/api/v1/workspaces/{workspace_id}/notebooks/{notebook_id}/pages", json=body)
+        return self._post(
+            f"/api/v1/workspaces/{workspace_id}/notebooks/{notebook_id}/pages", json=body
+        )
 
     def list_page_tree(self, workspace_id: str, notebook_id: str) -> dict:
         return self._get(f"/api/v1/workspaces/{workspace_id}/notebooks/{notebook_id}/pages")
 
     def get_page(self, workspace_id: str, notebook_id: str, page_id: str) -> dict:
-        return self._get(f"/api/v1/workspaces/{workspace_id}/notebooks/{notebook_id}/pages/{page_id}")
+        return self._get(
+            f"/api/v1/workspaces/{workspace_id}/notebooks/{notebook_id}/pages/{page_id}"
+        )
 
     def update_page(self, workspace_id: str, notebook_id: str, page_id: str, **kwargs) -> dict:
-        return self._patch(f"/api/v1/workspaces/{workspace_id}/notebooks/{notebook_id}/pages/{page_id}", json=kwargs)
+        return self._patch(
+            f"/api/v1/workspaces/{workspace_id}/notebooks/{notebook_id}/pages/{page_id}",
+            json=kwargs,
+        )
 
     def delete_page(self, workspace_id: str, notebook_id: str, page_id: str) -> None:
         self._delete(f"/api/v1/workspaces/{workspace_id}/notebooks/{notebook_id}/pages/{page_id}")
 
     def create_personal_page(self, notebook_id: str, name: str, content: str = "") -> dict:
-        return self._post(f"/api/v1/notebooks/{notebook_id}/pages", json={"name": name, "content": content})
+        return self._post(
+            f"/api/v1/notebooks/{notebook_id}/pages", json={"name": name, "content": content}
+        )
 
     def list_personal_page_tree(self, notebook_id: str) -> dict:
         return self._get(f"/api/v1/notebooks/{notebook_id}/pages")
@@ -230,7 +268,10 @@ class OctopusClient:
     # --- Notebook Folders ---
 
     def create_folder(self, workspace_id: str, notebook_id: str, name: str) -> dict:
-        return self._post(f"/api/v1/workspaces/{workspace_id}/notebooks/{notebook_id}/folders", json={"name": name})
+        return self._post(
+            f"/api/v1/workspaces/{workspace_id}/notebooks/{notebook_id}/folders",
+            json={"name": name},
+        )
 
     def create_personal_folder(self, notebook_id: str, name: str) -> dict:
         return self._post(f"/api/v1/notebooks/{notebook_id}/folders", json={"name": name})
@@ -242,8 +283,13 @@ class OctopusClient:
         return data.get("agent_names", []) if isinstance(data, dict) else data
 
     def push_event(
-        self, workspace_id: str, agent_name: str, event_type: str, content: str,
-        session_id: str | None = None, tool_name: str | None = None,
+        self,
+        workspace_id: str,
+        agent_name: str,
+        event_type: str,
+        content: str,
+        session_id: str | None = None,
+        tool_name: str | None = None,
         metadata: dict | None = None,
     ) -> dict:
         body: dict = {"agent_name": agent_name, "event_type": event_type, "content": content}
@@ -256,9 +302,12 @@ class OctopusClient:
         return self._post(f"/api/v1/workspaces/{workspace_id}/memory/events", json=body)
 
     def query_events(
-        self, workspace_id: str,
-        agent_name: str | None = None, event_type: str | None = None,
-        limit: int = 50, after: str | None = None,
+        self,
+        workspace_id: str,
+        agent_name: str | None = None,
+        event_type: str | None = None,
+        limit: int = 50,
+        after: str | None = None,
     ) -> list:
         params: dict = {"limit": limit}
         if agent_name:
@@ -270,9 +319,16 @@ class OctopusClient:
         return self._list(f"/api/v1/workspaces/{workspace_id}/memory/events", "events", **params)
 
     def search_events(self, workspace_id: str, query: str, limit: int = 50) -> list:
-        return self._list(f"/api/v1/workspaces/{workspace_id}/memory/events/search", "events", q=query, limit=limit)
+        return self._list(
+            f"/api/v1/workspaces/{workspace_id}/memory/events/search",
+            "events",
+            q=query,
+            limit=limit,
+        )
 
-    def all_events(self, agent_name: str | None = None, event_type: str | None = None, limit: int = 50) -> list:
+    def all_events(
+        self, agent_name: str | None = None, event_type: str | None = None, limit: int = 50
+    ) -> list:
         params: dict = {"limit": limit}
         if agent_name:
             params["agent_name"] = agent_name
@@ -282,10 +338,23 @@ class OctopusClient:
 
     # --- Decks ---
 
-    def create_deck(self, workspace_id: str, name: str, description: str = "", html_content: str = "", deck_type: str = "freeform") -> dict:
-        return self._post(f"/api/v1/workspaces/{workspace_id}/decks", json={
-            "name": name, "description": description, "html_content": html_content, "deck_type": deck_type,
-        })
+    def create_deck(
+        self,
+        workspace_id: str,
+        name: str,
+        description: str = "",
+        html_content: str = "",
+        deck_type: str = "freeform",
+    ) -> dict:
+        return self._post(
+            f"/api/v1/workspaces/{workspace_id}/decks",
+            json={
+                "name": name,
+                "description": description,
+                "html_content": html_content,
+                "deck_type": deck_type,
+            },
+        )
 
     def list_decks(self, workspace_id: str) -> list:
         return self._list(f"/api/v1/workspaces/{workspace_id}/decks", "decks")
@@ -299,10 +368,18 @@ class OctopusClient:
     def delete_deck(self, workspace_id: str, deck_id: str) -> None:
         self._delete(f"/api/v1/workspaces/{workspace_id}/decks/{deck_id}")
 
-    def create_personal_deck(self, name: str, description: str = "", html_content: str = "", deck_type: str = "freeform") -> dict:
-        return self._post("/api/v1/decks", json={
-            "name": name, "description": description, "html_content": html_content, "deck_type": deck_type,
-        })
+    def create_personal_deck(
+        self, name: str, description: str = "", html_content: str = "", deck_type: str = "freeform"
+    ) -> dict:
+        return self._post(
+            "/api/v1/decks",
+            json={
+                "name": name,
+                "description": description,
+                "html_content": html_content,
+                "deck_type": deck_type,
+            },
+        )
 
     def list_personal_decks(self) -> list:
         return self._list("/api/v1/decks", "decks")
@@ -323,11 +400,15 @@ class OctopusClient:
         base = f"/api/v1/workspaces/{workspace_id}/decks" if workspace_id else "/api/v1/decks"
         return self._list(f"{base}/{deck_id}/shares", "shares")
 
-    def update_deck_share(self, deck_id: str, share_id: str, workspace_id: str | None = None, **kwargs) -> dict:
+    def update_deck_share(
+        self, deck_id: str, share_id: str, workspace_id: str | None = None, **kwargs
+    ) -> dict:
         base = f"/api/v1/workspaces/{workspace_id}/decks" if workspace_id else "/api/v1/decks"
         return self._put(f"{base}/{deck_id}/shares/{share_id}", json=kwargs)
 
-    def get_share_analytics(self, deck_id: str, share_id: str, workspace_id: str | None = None) -> dict:
+    def get_share_analytics(
+        self, deck_id: str, share_id: str, workspace_id: str | None = None
+    ) -> dict:
         base = f"/api/v1/workspaces/{workspace_id}/decks" if workspace_id else "/api/v1/decks"
         return self._get(f"{base}/{deck_id}/shares/{share_id}/analytics")
 
@@ -344,7 +425,9 @@ class OctopusClient:
 
     # --- Tables ---
 
-    def create_table(self, workspace_id: str, name: str, description: str = "", columns: list | None = None) -> dict:
+    def create_table(
+        self, workspace_id: str, name: str, description: str = "", columns: list | None = None
+    ) -> dict:
         body: dict = {"name": name, "description": description, "columns": columns or []}
         return self._post(f"/api/v1/workspaces/{workspace_id}/tables", json=body)
 
@@ -360,7 +443,9 @@ class OctopusClient:
     def delete_table(self, workspace_id: str, table_id: str) -> None:
         self._delete(f"/api/v1/workspaces/{workspace_id}/tables/{table_id}")
 
-    def create_personal_table(self, name: str, description: str = "", columns: list | None = None) -> dict:
+    def create_personal_table(
+        self, name: str, description: str = "", columns: list | None = None
+    ) -> dict:
         body: dict = {"name": name, "description": description, "columns": columns or []}
         return self._post("/api/v1/tables", json=body)
 
@@ -370,7 +455,16 @@ class OctopusClient:
     def all_tables(self) -> list:
         return self._list("/api/v1/me/tables", "tables")
 
-    def list_table_rows(self, workspace_id: str | None, table_id: str, limit: int = 50, offset: int = 0, sort_by: str = "", sort_order: str = "asc", filters: str = "") -> dict:
+    def list_table_rows(
+        self,
+        workspace_id: str | None,
+        table_id: str,
+        limit: int = 50,
+        offset: int = 0,
+        sort_by: str = "",
+        sort_order: str = "asc",
+        filters: str = "",
+    ) -> dict:
         base = f"/api/v1/workspaces/{workspace_id}/tables" if workspace_id else "/api/v1/tables"
         params: dict = {"limit": limit, "offset": offset, "sort_order": sort_order}
         if sort_by:
@@ -383,11 +477,17 @@ class OctopusClient:
         base = f"/api/v1/workspaces/{workspace_id}/tables" if workspace_id else "/api/v1/tables"
         return self._post(f"{base}/{table_id}/rows", json={"data": data})
 
-    def insert_table_rows_batch(self, workspace_id: str | None, table_id: str, rows: list[dict]) -> dict:
+    def insert_table_rows_batch(
+        self, workspace_id: str | None, table_id: str, rows: list[dict]
+    ) -> dict:
         base = f"/api/v1/workspaces/{workspace_id}/tables" if workspace_id else "/api/v1/tables"
-        return self._post(f"{base}/{table_id}/rows/batch", json={"rows": [{"data": r} for r in rows]})
+        return self._post(
+            f"{base}/{table_id}/rows/batch", json={"rows": [{"data": r} for r in rows]}
+        )
 
-    def update_table_row(self, workspace_id: str | None, table_id: str, row_id: str, data: dict) -> dict:
+    def update_table_row(
+        self, workspace_id: str | None, table_id: str, row_id: str, data: dict
+    ) -> dict:
         base = f"/api/v1/workspaces/{workspace_id}/tables" if workspace_id else "/api/v1/tables"
         return self._patch(f"{base}/{table_id}/rows/{row_id}", json={"data": data})
 
@@ -395,7 +495,14 @@ class OctopusClient:
         base = f"/api/v1/workspaces/{workspace_id}/tables" if workspace_id else "/api/v1/tables"
         self._delete(f"{base}/{table_id}/rows/{row_id}")
 
-    def add_table_column(self, workspace_id: str | None, table_id: str, name: str, col_type: str = "text", options: list | None = None) -> dict:
+    def add_table_column(
+        self,
+        workspace_id: str | None,
+        table_id: str,
+        name: str,
+        col_type: str = "text",
+        options: list | None = None,
+    ) -> dict:
         base = f"/api/v1/workspaces/{workspace_id}/tables" if workspace_id else "/api/v1/tables"
         body: dict = {"name": name, "type": col_type}
         if options:
