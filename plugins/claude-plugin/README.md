@@ -1,6 +1,6 @@
 # Octopus Plugin for Claude Code
 
-Turn any Claude Code session into a persistent Octopus agent. Activity streams to history, memory injects into every prompt, and context carries across sessions.
+Turn any Claude Code session into an Octopus agent. Every prompt, tool use, and session summary streams to your workspace's shared history.
 
 ## Quick Start (5 minutes)
 
@@ -43,10 +43,9 @@ After this, `workspace_id` is saved in your plugin config and every session stre
 ### Step 4: You're done
 
 Every Claude Code session now automatically:
-- Injects your agent identity and recent activity into prompts
-- Streams tool usage (edits, commands, writes) to your history store
+- Streams the user's prompts to the workspace history
+- Streams tool usage (edits, commands, writes) to the workspace history
 - Pushes a session summary when you stop
-- Carries context across sessions via server-side memory
 
 **This is set-and-forget.** Config persists — new sessions work automatically with no re-configuration.
 
@@ -59,13 +58,11 @@ To collaborate with teammates in a shared workspace:
 1. Each person follows Steps 1-2 above (own account, plugin installed)
 2. One person creates a workspace at [getoctopus.com/rooms](https://getoctopus.com/rooms)
 3. Share the **invite code** (shown on the workspace page) with teammates
-4. Each person runs `/octopus:connect`, joins the workspace, and creates their own history store within it
+4. Each person runs `/octopus:connect` and joins the workspace
 
 Now everyone's activity streams to the same workspace. You can:
-- Chat in workspace channels (via UI or `octopus send`)
 - Collaborate on shared notebooks
-- Query each other's history (`octopus history ask "What did the team work on today?"`)
-- Send DMs between agents
+- Query each other's activity (`octopus history query --ws <workspace_id>`)
 
 ---
 
@@ -77,39 +74,25 @@ Now everyone's activity streams to the same workspace. You can:
 | `api_key` | *(required)* | Your API key |
 | `agent_name` | *(required)* | Agent name (any string) |
 | `workspace_id` | *(optional)* | Set via `/octopus:connect` |
-| `inject_context` | `true` | Set to `false` to disable prompt injection while still streaming activity |
-
-### Disabling prompt injection
-
-If you want activity to stream to the history store (for the team to see) but **don't** want memory context injected into your prompts:
-
-Set `inject_context` to `false` in the plugin config. Everything else continues working — tool streaming and session summaries.
+| `auto_curate` | `true` | Run `/octopus:sleep` at session end to re-index history into wiki pages |
 
 ---
 
 ## What Happens Each Session
 
 ```
-SessionStart ──→ Warm cache (fetch profile + recent events)
+SessionStart ──→ Record session ID
 
-UserPromptSubmit ──→ Inject agent identity + recent activity from local cache
-                     (skipped if inject_context=false)
+UserPromptSubmit ──→ Push user_message event to workspace history
 
-PostToolUse ────→ (async) Push tool_use event to workspace memory
+PostToolUse ────→ (async) Push tool_use event to workspace history
                   (Read, Glob, Grep excluded — too noisy)
 
 Stop ───────────→ Push session_end summary (tool count, files changed)
+
+SessionEnd ─────→ Optional: spawn `/octopus:sleep` to curate history
+                  (gated by auto_curate + 30-min cooldown)
 ```
-
-### Curation
-
-Use the `curate` MCP tool to organize your history into wiki pages. It:
-
-1. Generates summaries of your sessions
-2. Extracts reusable pattern cards (e.g., "When deploying, always check X")
-3. Writes them to your personal notebook
-
-These patterns get injected into future prompts via the four-factor scoring system (relevance x recency x staleness x confidence).
 
 ---
 
@@ -117,59 +100,28 @@ These patterns get injected into future prompts via the four-factor scoring syst
 
 | Command | Description |
 |---------|-------------|
-| `/octopus:connect` | Onboarding wizard — pick workspace, create history store |
+| `/octopus:connect` | Onboarding wizard — pick workspace |
 | `/octopus:disconnect` | Pause activity streaming |
 | `/octopus:status` | Show connection status and config |
-| `/octopus:sync` | Force-refresh context cache |
+| `/octopus:sleep` | Curate workspace history into wiki pages |
+| `/octopus:search` | Search across workspace resources |
 
 ## CLI Commands
 
 The plugin also gives Claude access to the `octopus` CLI. Key commands:
 
 ```bash
-octopus send "message" --ws <workspace_id> --chat <chat_id>   # Send to chat
-octopus read --ws <workspace_id> --chat <chat_id>             # Read chat
-octopus dm <username> "message"                                # Send a DM
-octopus history ask "What did we work on today?"               # Query history (LLM-powered)
-octopus history search "database migration"                    # Full-text search events
-octopus notebooks list --all                                   # List all notebooks
-octopus unread                                                 # Check unread messages
+octopus history search "database migration" --ws <workspace_id>   # Full-text search events
+octopus history query --ws <workspace_id> --limit 20              # Recent events
+octopus history query --all --limit 20                             # Cross-workspace events
+octopus notebooks list --all                                       # List all notebooks
+octopus workspaces list --mine                                     # List your workspaces
 ```
 
-Set defaults to avoid repeating IDs:
+Set a default workspace to avoid repeating it:
 ```bash
 octopus config default_workspace <id>
-octopus config default_chat <id>
 ```
-
----
-
-## External Notifications (Advanced)
-
-The plugin can surface alerts from external orchestration tools directly into your Claude Code prompts — useful if you run a manager agent or automation that needs to escalate something to an active session.
-
-**How it works:** At the start of every prompt, the plugin checks a notifications directory for `.json` files. If any exist, it appends them under a `## Pending Escalations` section in the injected context. The agent sees them and can act on them.
-
-**Set it up:**
-
-1. Set the `OCTOPUS_NOTIFICATIONS_DIR` environment variable to a directory your external tool writes to:
-
-```bash
-export OCTOPUS_NOTIFICATIONS_DIR=~/.my-orchestrator/notifications
-```
-
-2. Have your external tool drop JSON files into that directory with this shape:
-
-```json
-{
-  "type": "warning",
-  "detail": "Build pipeline failed on main — 3 tests broken in auth module."
-}
-```
-
-3. The plugin picks up to 5 pending notifications per prompt and displays them. You're responsible for cleaning up the files once handled.
-
-If `OCTOPUS_NOTIFICATIONS_DIR` is not set, the plugin defaults to `~/.octopus/notifications`. If that directory doesn't exist, the feature is silently disabled — no setup required if you don't use it.
 
 ---
 

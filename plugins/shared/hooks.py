@@ -9,31 +9,10 @@ user's coding session.
 from __future__ import annotations
 
 import json
-from pathlib import Path
 
 from event import HookEvent
 from octopus_client import OctopusClient
-from state import load_cache, load_escalations, save_cache
 from summarize import summarize_tool_use
-
-
-# --- Session start ---
-
-def warm_cache(client: OctopusClient, cfg: dict, data_dir: Path) -> None:
-    """Fetch user profile + recent events and write to the local cache."""
-    try:
-        profile = client.whoami()
-    except Exception:
-        return
-
-    recent_events = []
-    if cfg.get("workspace_id"):
-        try:
-            recent_events = client.query_events(cfg["workspace_id"], limit=20)
-        except Exception:
-            pass
-
-    save_cache(data_dir, profile, recent_events)
 
 
 # --- Prompt streaming ---
@@ -54,45 +33,6 @@ def stream_user_message(client: OctopusClient, cfg: dict, state: dict, prompt_te
         )
     except Exception:
         pass
-
-
-# --- Context injection (for UserPromptSubmit-style hooks) ---
-
-def _build_fallback_context(agent_name: str, recent_events: list) -> str:
-    lines = ["## Agent Identity", f"You are **{agent_name}**, a Octopus agent.", ""]
-
-    if recent_events:
-        lines.append("## Recent Activity (your previous sessions)")
-        for ev in recent_events[:15]:
-            ts = str(ev.get("created_at", ""))[:16]
-            tool = ev.get("tool_name", "")
-            content = str(ev.get("content", ""))[:200]
-            etype = ev.get("event_type", "")
-            if tool:
-                lines.append(f"- [{ts}] {tool}: {content}")
-            else:
-                lines.append(f"- [{ts}] ({etype}) {content}")
-        lines.append("")
-
-    return "\n".join(lines)
-
-
-def build_injection_context(
-    cfg: dict, state: dict, data_dir: Path, escalation_dir: Path,
-) -> str:
-    """Return the context string to inject into this prompt.
-
-    Uses the local cache populated by warm_cache: agent identity + recent
-    activity from the configured workspace. Appends pending escalations last.
-    """
-    cache = load_cache(data_dir)
-    recent_events = cache.get("recent_events", []) if cache else []
-    context = _build_fallback_context(cfg["agent_name"], recent_events)
-
-    escalations = load_escalations(escalation_dir)
-    if escalations:
-        context += escalations
-    return context
 
 
 # --- Tool use streaming ---

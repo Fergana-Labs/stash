@@ -1,10 +1,5 @@
 #!/usr/bin/env python3
-"""opencode prompt hook: stream user message + build injection context.
-
-opencode has no stdout-based injection protocol — the TS shim calls us for
-streaming only. We still build the context so that /octopus:status etc can
-read it, but we don't print it anywhere.
-"""
+"""opencode prompt hook: stream the user's prompt to Octopus history."""
 
 from config import DATA_DIR, get_client, get_config, get_stdin_data, is_configured
 from hooks import stream_user_message
