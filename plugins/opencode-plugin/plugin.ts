@@ -21,6 +21,31 @@ const PLUGIN_ROOT = dirname(fileURLToPath(import.meta.url));
 const SCRIPTS = join(PLUGIN_ROOT, "scripts");
 const PYTHON = process.env.OCTOPUS_PYTHON ?? "python3";
 
+// opencode never emits a clean session-end signal. After this much idle time
+// inside a live opencode process, treat the session as ended and fire
+// on_session_end.py. Reset on every activity event (chat, tool, session.idle).
+const IDLE_END_MS = 10 * 60 * 1000;
+
+let idleTimer: ReturnType<typeof setTimeout> | null = null;
+let activeSessionId = "";
+
+function scheduleIdleEnd(sessionId: string): void {
+  if (idleTimer) clearTimeout(idleTimer);
+  if (!sessionId) return;
+  activeSessionId = sessionId;
+  idleTimer = setTimeout(() => {
+    runHook("on_session_end.py", { session_id: sessionId });
+    activeSessionId = "";
+    idleTimer = null;
+  }, IDLE_END_MS);
+}
+
+function cancelIdleEnd(): void {
+  if (idleTimer) clearTimeout(idleTimer);
+  idleTimer = null;
+  activeSessionId = "";
+}
+
 function runHook(script: string, payload: unknown): void {
   // Fire-and-forget. We never want a flaky Octopus backend to stall opencode.
   // detached + unref so the child belongs to its own process group and gets
@@ -63,11 +88,9 @@ export const OctopusPlugin = async ({
       output: { message: any; parts: any[] },
     ) => {
       const text = extractText(output?.parts) || output?.message?.content || "";
-      runHook("on_prompt.py", {
-        session_id: output?.message?.sessionID ?? "",
-        prompt: text,
-        cwd,
-      });
+      const sid = output?.message?.sessionID ?? "";
+      runHook("on_prompt.py", { session_id: sid, prompt: text, cwd });
+      scheduleIdleEnd(sid);
     },
 
     // Keyed hook: fires once per tool call, after execution.
@@ -89,6 +112,7 @@ export const OctopusPlugin = async ({
         },
         cwd,
       });
+      scheduleIdleEnd(input?.sessionID ?? "");
     },
 
     // Generic bus-event dispatcher. Every session.* / message.* / file.* event
@@ -97,22 +121,23 @@ export const OctopusPlugin = async ({
       switch (event?.type) {
         case "session.created": {
           const info = event.properties?.info;
-          runHook("on_session_start.py", {
-            session_id: info?.id ?? "",
-            cwd,
-          });
+          const sid = info?.id ?? "";
+          runHook("on_session_start.py", { session_id: sid, cwd });
+          scheduleIdleEnd(sid);
           break;
         }
         case "session.deleted": {
           const info = event.properties?.info;
-          runHook("on_session_end.py", {
-            session_id: info?.id ?? "",
-          });
+          runHook("on_session_end.py", { session_id: info?.id ?? "" });
+          cancelIdleEnd();
           break;
         }
-        // `session.idle` fires on every turn completion, not session end —
-        // we intentionally ignore it. `message.updated` streams repeatedly —
-        // also ignored. Final assistant text capture is a future TODO.
+        case "session.idle": {
+          // session.idle fires every turn completion — refresh the idle timer
+          // so the 10-min countdown only fires after real inactivity.
+          scheduleIdleEnd(activeSessionId);
+          break;
+        }
       }
     },
   };
