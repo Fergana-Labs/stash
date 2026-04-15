@@ -1,15 +1,21 @@
-"""Per-plugin persistent state.
+"""Per-plugin persistent state plus shared curate-gating helpers.
 
-Each agent plugin passes in its own data_dir (e.g. ~/.claude/plugins/data/octopus,
-~/.cursor/octopus, ~/.gemini/octopus). The shape of what we write is identical
-across agents — only the directory differs.
+Per-plugin state (session_id) lives under each agent's `data_dir`.
+Auto-curate toggling, the cross-agent cooldown, and the streaming kill switch
+live in the central CLI config at `~/.octopus/config.json` so one toggle
+controls every installed plugin.
 """
 
 from __future__ import annotations
 
 import json
 import os
+import time
 from pathlib import Path
+
+CURATE_COOLDOWN_SECONDS = 30 * 60
+
+CENTRAL_CONFIG_PATH = Path.home() / ".octopus" / "config.json"
 
 DEFAULT_STATE = {
     "streaming_enabled": True,
@@ -35,8 +41,61 @@ def _write_json(path: Path, data: dict) -> None:
 
 
 def load_state(data_dir: Path) -> dict:
-    return _read_json(data_dir / "state.json", dict(DEFAULT_STATE))
+    """Return per-plugin state merged with centralized toggles.
+
+    `streaming_enabled` lives in central config (~/.octopus/config.json) so one
+    toggle controls every installed plugin. Per-plugin `session_id` still lives
+    under `data_dir/state.json`.
+    """
+    state = _read_json(data_dir / "state.json", dict(DEFAULT_STATE))
+    central = _read_central()
+    if "streaming_enabled" in central:
+        state["streaming_enabled"] = bool(central["streaming_enabled"])
+    return state
 
 
 def save_state(data_dir: Path, state: dict) -> None:
     _write_json(data_dir / "state.json", state)
+
+
+# ---------------------------------------------------------------------------
+# Central config helpers (auto_curate flag, streaming kill switch, cooldown)
+# ---------------------------------------------------------------------------
+
+def _read_central() -> dict:
+    return _read_json(CENTRAL_CONFIG_PATH, {})
+
+
+def _write_central(updates: dict) -> None:
+    existing = _read_central()
+    existing.update(updates)
+    _write_json(CENTRAL_CONFIG_PATH, existing)
+
+
+def set_streaming_enabled(enabled: bool) -> None:
+    _write_central({"streaming_enabled": bool(enabled)})
+
+
+def auto_curate_enabled() -> bool:
+    """Read the central `auto_curate` flag. Defaults to True when unset."""
+    raw = _read_central().get("auto_curate", True)
+    if isinstance(raw, bool):
+        return raw
+    return str(raw).strip().lower() in ("1", "true", "yes", "on")
+
+
+def set_auto_curate(enabled: bool) -> None:
+    _write_central({"auto_curate": bool(enabled)})
+
+
+def curate_cooldown_active() -> bool:
+    last = _read_central().get("last_curate_at", 0) or 0
+    try:
+        last_f = float(last)
+    except Exception:
+        return False
+    return (time.time() - last_f) < CURATE_COOLDOWN_SECONDS
+
+
+def record_curate_run() -> None:
+    _write_central({"last_curate_at": time.time()})

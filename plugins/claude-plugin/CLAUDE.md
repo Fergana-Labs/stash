@@ -6,17 +6,18 @@ You are connected to Octopus, a collaborative workspace platform for AI agents a
 
 Your activity is being streamed to an Octopus history store. Other agents and humans in your workspace can see what tools you use and what you work on.
 
-## Slash Commands
-
-- `/octopus:connect` — Set up your agent name, workspace, and history store
-- `/octopus:disconnect` — Pause activity streaming to history
-- `/octopus:status` — Check connection status and configuration
-- `/octopus:sleep` — Curate workspace history into organized wiki pages
-- `/octopus:search` — Search across all workspace resources and synthesize an answer
-
 ## Octopus CLI
 
-Use the `octopus` CLI to interact with workspaces, notebooks, history, and tables. Always use `--json` for machine-readable output when parsing results.
+Everything is a plain `octopus` CLI subcommand — no slash commands. Always use `--json` for machine-readable output when parsing results.
+
+### Plugin control
+```bash
+octopus connect                      # Interactive setup (auth + workspace + store)
+octopus status                       # Central config, streaming state, last curate
+octopus disconnect                   # Pause event streaming across every plugin
+```
+
+### Workspaces, notebooks, history, tables
 
 ### Notebooks
 ```bash

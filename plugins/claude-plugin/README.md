@@ -28,17 +28,18 @@ Claude Code will prompt you for three config values:
 
 ### Step 3: Connect to a workspace
 
-Start a Claude Code session and run:
+From any shell, run:
 
 ```
-/octopus:connect
+octopus connect
 ```
 
 This interactive wizard will:
 1. Verify your auth
 2. Let you pick or create a workspace
+3. Save defaults to `~/.octopus/config.json`
 
-After this, `workspace_id` is saved in your plugin config and every session streams directly to that workspace's memory.
+After this, every session streams directly to that workspace's memory.
 
 ### Step 4: You're done
 
@@ -58,7 +59,7 @@ To collaborate with teammates in a shared workspace:
 1. Each person follows Steps 1-2 above (own account, plugin installed)
 2. One person creates a workspace at [getoctopus.com/rooms](https://getoctopus.com/rooms)
 3. Share the **invite code** (shown on the workspace page) with teammates
-4. Each person runs `/octopus:connect` and joins the workspace
+4. Each person runs `octopus connect` and joins the workspace
 
 Now everyone's activity streams to the same workspace. You can:
 - Collaborate on shared notebooks
@@ -73,8 +74,8 @@ Now everyone's activity streams to the same workspace. You can:
 | `api_endpoint` | `https://getoctopus.com` | Octopus backend URL |
 | `api_key` | *(required)* | Your API key |
 | `agent_name` | *(required)* | Agent name (any string) |
-| `workspace_id` | *(optional)* | Set via `/octopus:connect` |
-| `auto_curate` | `true` | Run `/octopus:sleep` at session end to re-index history into wiki pages |
+| `workspace_id` | *(optional)* | Set via `octopus connect` |
+| `auto_curate` | `true` | Spawn `claude -p` headless at session end to curate history into wiki pages. Stored in `~/.octopus/config.json`. |
 
 ---
 
@@ -90,25 +91,32 @@ PostToolUse ────→ (async) Push tool_use event to workspace history
 
 Stop ───────────→ Push session_end summary (tool count, files changed)
 
-SessionEnd ─────→ Optional: spawn `/octopus:sleep` to curate history
-                  (gated by auto_curate + 30-min cooldown)
+SessionEnd ─────→ Spawn `claude -p` headless with the shared sleep prompt to
+                  curate recent history into wiki pages. Gated by `auto_curate`
+                  + a 30-min cooldown stored in ~/.octopus/config.json.
 ```
+
+### Curation (sleep time compute)
+
+At SessionEnd the plugin shells out to the user's own agent CLI (`claude -p …`)
+and hands it a shared curation prompt. The agent reads recent history, merges
+it into an organized wiki notebook, and exits. Every installed plugin uses the
+same prompt — Codex users get Codex curation, Gemini users get Gemini
+curation, and so on.
 
 ---
 
-## Slash Commands
+## Commands
+
+Everything is an `octopus` CLI subcommand — there are no slash commands.
 
 | Command | Description |
 |---------|-------------|
-| `/octopus:connect` | Onboarding wizard — pick workspace |
-| `/octopus:disconnect` | Pause activity streaming |
-| `/octopus:status` | Show connection status and config |
-| `/octopus:sleep` | Curate workspace history into wiki pages |
-| `/octopus:search` | Search across workspace resources |
+| `octopus connect` | Onboarding wizard — pick workspace, create history store |
+| `octopus status` | Show central config, streaming state, last curate run |
+| `octopus disconnect` | Pause activity streaming across every installed plugin |
 
-## CLI Commands
-
-The plugin also gives Claude access to the `octopus` CLI. Key commands:
+The plugin also gives Claude access to the rest of the `octopus` CLI. Key commands:
 
 ```bash
 octopus history search "database migration" --ws <workspace_id>   # Full-text search events

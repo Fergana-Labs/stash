@@ -36,10 +36,21 @@ Reload with `/hooks reload` inside Gemini CLI, or restart the session.
 | `AfterAgent` | `assistant_message` + `session_end` |
 | `SessionEnd` | — (clears state) |
 
+## Commands
+
+Everything is a plain `octopus` CLI subcommand — no Gemini-specific slash commands:
+
+| Command | Description |
+|---------|-------------|
+| `octopus connect` | Interactive setup (auth + workspace + store) |
+| `octopus status` | Central config, streaming state, last curate |
+| `octopus disconnect` | Pause event streaming across every installed plugin |
+
+At SessionEnd the plugin spawns `gemini -p …` headless with a shared curation
+prompt. Toggle with `auto_curate` in `~/.octopus/config.json`.
+
 ## Known gaps
 
-- No auto-curation on SessionEnd (Gemini has no headless `-p` flag today)
-- No Octopus slash commands — use the `octopus` CLI directly
 - `BeforeTool` fires before tool args are final in some tool flavors — we only subscribe to `AfterTool` to avoid noise
 
 ## Retrieval

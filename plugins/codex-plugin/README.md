@@ -24,6 +24,19 @@ envsubst < hooks.json > ~/.codex/hooks.json
 envsubst < config.toml.snippet >> ~/.codex/config.toml
 ```
 
+## Commands
+
+Everything is a plain `octopus` CLI subcommand — no slash commands or skills:
+
+| Command | Description |
+|---------|-------------|
+| `octopus connect` | Interactive setup (auth + workspace + store) |
+| `octopus status` | Central config, streaming state, last curate |
+| `octopus disconnect` | Pause event streaming across every installed plugin |
+
+At session end (Codex `Stop`) the plugin spawns `codex exec …` headless with
+a shared curation prompt. Toggle with `auto_curate` in `~/.octopus/config.json`.
+
 ## ⚠️ Known gaps
 
 1. **Bash-only tool hooks.** Codex's `PostToolUse` today only fires for Bash.
@@ -31,7 +44,7 @@ envsubst < config.toml.snippet >> ~/.codex/config.toml
    `on_stop.py` session summary captures turn-level stats even without
    per-tool hooks.
 2. **Windows.** Codex hook support is disabled on Windows in current builds.
-3. **No SessionEnd event.** We clear state in `Stop` instead.
+3. **No SessionEnd event.** We clear state + trigger curation in `Stop` instead.
 
 ## Fallback: the `notify` path
 
