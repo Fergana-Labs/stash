@@ -1,4 +1,7 @@
-"""Lightweight Octopus HTTP client for plugin hooks. Extracted from cli/client.py."""
+"""Lightweight Octopus HTTP client for plugin hooks. Extracted from cli/client.py.
+
+Events now live directly on a workspace. No intermediate "store" abstraction.
+"""
 
 from __future__ import annotations
 
@@ -16,7 +19,10 @@ class OctopusClient:
     def __init__(self, base_url: str, api_key: str = ""):
         self._base_url = base_url.rstrip("/")
         self._api_key = api_key
-        self._http = httpx.Client(base_url=self._base_url, timeout=10)
+        self._http = httpx.Client(
+            base_url=self._base_url,
+            timeout=httpx.Timeout(2.0, connect=1.0),
+        )
 
     def close(self) -> None:
         self._http.close()
@@ -72,18 +78,18 @@ class OctopusClient:
         path = "/api/v1/workspaces/mine" if mine else "/api/v1/workspaces"
         return self._list(path, "workspaces")
 
-    # --- History ---
+    # --- Events ---
+    #
+    # workspace_id=None targets the personal store (/api/v1/memory/events).
+    # A non-empty workspace_id scopes to that workspace.
 
-    def create_history(self, workspace_id: str, name: str, description: str = "") -> dict:
-        return self._post(f"/api/v1/workspaces/{workspace_id}/memory", json={
-            "name": name, "description": description,
-        })
-
-    def list_histories(self, workspace_id: str) -> list:
-        return self._list(f"/api/v1/workspaces/{workspace_id}/memory", "stores")
+    def _events_path(self, workspace_id: str | None) -> str:
+        if workspace_id:
+            return f"/api/v1/workspaces/{workspace_id}/memory/events"
+        return "/api/v1/memory/events"
 
     def push_event(
-        self, workspace_id: str, store_id: str,
+        self, workspace_id: str | None,
         agent_name: str, event_type: str, content: str,
         session_id: str | None = None, tool_name: str | None = None,
         metadata: dict | None = None,
@@ -95,11 +101,12 @@ class OctopusClient:
             body["tool_name"] = tool_name
         if metadata:
             body["metadata"] = metadata
-        return self._post(f"/api/v1/workspaces/{workspace_id}/memory/{store_id}/events", json=body)
+        return self._post(self._events_path(workspace_id), json=body)
 
     def query_events(
-        self, workspace_id: str, store_id: str,
+        self, workspace_id: str | None,
         agent_name: str | None = None, event_type: str | None = None,
+        session_id: str | None = None,
         limit: int = 50, after: str | None = None,
     ) -> list:
         params: dict = {"limit": limit}
@@ -107,10 +114,27 @@ class OctopusClient:
             params["agent_name"] = agent_name
         if event_type:
             params["event_type"] = event_type
+        if session_id:
+            params["session_id"] = session_id
         if after:
             params["after"] = after
-        return self._list(f"/api/v1/workspaces/{workspace_id}/memory/{store_id}/events", "events", **params)
+        return self._list(self._events_path(workspace_id), "events", **params)
 
-    def search_events(self, workspace_id: str, store_id: str, query: str, limit: int = 50) -> list:
-        return self._list(f"/api/v1/workspaces/{workspace_id}/memory/{store_id}/events/search", "events", q=query, limit=limit)
+    def search_events(self, workspace_id: str | None, query: str, limit: int = 50) -> list:
+        return self._list(
+            f"{self._events_path(workspace_id)}/search",
+            "events", q=query, limit=limit,
+        )
 
+    # --- Cross-workspace aggregate (optional) ---
+
+    def list_all_history_events(
+        self, agent_name: str | None = None, event_type: str | None = None,
+        limit: int = 50,
+    ) -> list:
+        params: dict = {"limit": limit}
+        if agent_name:
+            params["agent_name"] = agent_name
+        if event_type:
+            params["event_type"] = event_type
+        return self._list("/api/v1/me/history-events", "events", **params)
