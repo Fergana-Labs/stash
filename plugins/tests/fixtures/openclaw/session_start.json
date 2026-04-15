@@ -1,4 +1,4 @@
 {
-  "sessionId": "ocw-1",
-  "workspaceUri": "/Users/alice/repo"
+  "session_id": "agent:main:main",
+  "cwd": "/Users/alice/.openclaw/workspace"
 }

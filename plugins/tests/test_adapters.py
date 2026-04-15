@@ -36,6 +36,10 @@ def _load_fixture(plugin: str, name: str) -> dict:
 
 PLUGINS = ["claude", "cursor", "gemini", "codex", "opencode", "openclaw"]
 
+# Openclaw runs at the gateway level and has no tool-call visibility, so its
+# adapter intentionally omits adapt_tool_use.
+PLUGINS_WITH_TOOL_USE = [p for p in PLUGINS if p != "openclaw"]
+
 
 @pytest.mark.parametrize("plugin", PLUGINS)
 def test_session_start(plugin):
@@ -54,7 +58,7 @@ def test_prompt(plugin):
     assert event.prompt_text  # non-empty
 
 
-@pytest.mark.parametrize("plugin", PLUGINS)
+@pytest.mark.parametrize("plugin", PLUGINS_WITH_TOOL_USE)
 def test_tool_use(plugin):
     adapt = _load_adapt(plugin)
     event = adapt.adapt_tool_use(_load_fixture(plugin, "tool_use"))
@@ -94,8 +98,6 @@ def test_tool_name_normalization():
         ("codex", "Bash", "bash"),
         ("codex", "apply_patch", "edit"),
         ("opencode", "edit", "edit"),
-        ("openclaw", "file.edit", "edit"),
-        ("openclaw", "shell.run", "bash"),
     ]
     for plugin, raw, expected in cases:
         adapt = _load_adapt(plugin)
