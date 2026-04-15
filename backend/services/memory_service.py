@@ -62,18 +62,21 @@ async def push_event(
     tool_name: str | None = None,
     metadata: dict | None = None,
     attachments: list[dict] | None = None,
+    created_at: str | None = None,
 ) -> dict:
     """Push a single event."""
+    from datetime import datetime, timezone
     pool = get_pool()
     meta = metadata or {}
+    ts = datetime.fromisoformat(created_at.replace("Z", "+00:00")) if created_at else datetime.now(timezone.utc)
     row = await pool.fetchrow(
         "INSERT INTO history_events "
-        "(workspace_id, created_by, agent_name, event_type, content, session_id, tool_name, metadata, attachments) "
-        "VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9) "
+        "(workspace_id, created_by, agent_name, event_type, content, session_id, tool_name, metadata, attachments, created_at) "
+        "VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9, $10) "
         "RETURNING id, workspace_id, created_by, agent_name, event_type, session_id, "
         "tool_name, content, metadata, attachments, created_at",
         workspace_id, created_by, agent_name, event_type, content,
-        session_id, tool_name, meta, attachments,
+        session_id, tool_name, meta, attachments, ts,
     )
     event = dict(row)
     if embedding_service.is_configured():
@@ -85,23 +88,26 @@ async def push_events_batch(
     workspace_id: UUID | None, created_by: UUID, events: list[dict],
 ) -> list[dict]:
     """Batch push events. Returns list of created events."""
+    from datetime import datetime, timezone
     pool = get_pool()
     results = []
     async with pool.acquire() as conn:
         async with conn.transaction():
             for evt in events:
                 meta = evt.get("metadata", {})
+                raw_ts = evt.get("created_at")
+                ts = datetime.fromisoformat(raw_ts.replace("Z", "+00:00")) if raw_ts else datetime.now(timezone.utc)
                 row = await conn.fetchrow(
                     "INSERT INTO history_events "
                     "(workspace_id, created_by, agent_name, event_type, content, "
-                    "session_id, tool_name, metadata, attachments) "
-                    "VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9) "
+                    "session_id, tool_name, metadata, attachments, created_at) "
+                    "VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9, $10) "
                     "RETURNING id, workspace_id, created_by, agent_name, event_type, "
                     "session_id, tool_name, content, metadata, attachments, created_at",
                     workspace_id, created_by,
                     evt["agent_name"], evt["event_type"], evt["content"],
                     evt.get("session_id"), evt.get("tool_name"), meta,
-                    evt.get("attachments"),
+                    evt.get("attachments"), ts,
                 )
                 results.append(dict(row))
     if embedding_service.is_configured() and results:
