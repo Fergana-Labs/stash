@@ -109,7 +109,19 @@ _STOP_STEMS = frozenset({
     "data", "page", "tabl", "creat", "updat", "delet", "list",
     "function", "return", "true", "false", "null", "string", "number",
     "error", "code", "time", "note", "item", "can", "would", "could",
+    "via", "first", "within", "includ", "each", "allow", "provid",
+    "ensur", "base", "current", "follow", "implement", "specif",
+    "exist", "requir", "support", "differ", "key", "singl", "multi",
+    "per", "high", "low", "medium", "fast", "slow", "cost", "date",
+    "releas", "window", "context", "speed", "qualiti", "mtok",
+    "generat", "check", "result", "build", "process", "issu",
+    "perform", "test", "start", "stop", "open", "close", "sourc",
 })
+
+import re
+
+# Matches auto-generated column names like col1, col2, column_3, etc.
+_COLUMN_NAME_RE = re.compile(r"^col\d+$|^column\d+$|^field\d+$|^row\d+$|^val\d+$")
 
 
 async def get_knowledge_density(
@@ -128,32 +140,51 @@ async def get_knowledge_density(
         if now - cached_at < _DENSITY_TTL:
             return cached_result
 
-    # Extract top words from notebook pages using tsvector unnesting.
-    # This avoids ts_stat (which needs literal SQL) and instead
-    # unnests each page's tsvector into individual lexemes, then aggregates.
+    # Extract top stems from notebook pages, plus the most common original
+    # word that produced each stem so we can display a readable label.
     rows = await pool.fetch(
         _ACCESSIBLE_NOTEBOOKS_CTE + """
-        SELECT word, COUNT(DISTINCT np.id) AS ndoc
-        FROM notebook_pages np,
-             LATERAL unnest(to_tsvector('english', COALESCE(np.content_markdown, ''))) AS t(word, positions, weights)
-        WHERE np.notebook_id IN (SELECT notebook_id FROM accessible_notebooks)
-          AND np.content_markdown IS NOT NULL
-          AND np.content_markdown != ''
-          AND length(word) > 2
-        GROUP BY word
-        ORDER BY ndoc DESC
-        LIMIT $2
+        SELECT stem, original_word, ndoc
+        FROM (
+            SELECT word AS stem,
+                   COUNT(DISTINCT np.id) AS ndoc
+            FROM notebook_pages np,
+                 LATERAL unnest(to_tsvector('english', COALESCE(np.content_markdown, '')))
+                     AS t(word, positions, weights)
+            WHERE np.notebook_id IN (SELECT notebook_id FROM accessible_notebooks)
+              AND np.content_markdown IS NOT NULL
+              AND np.content_markdown != ''
+              AND length(word) > 2
+            GROUP BY word
+            ORDER BY ndoc DESC
+            LIMIT $2
+        ) stems
+        CROSS JOIN LATERAL (
+            SELECT w AS original_word
+            FROM notebook_pages np2,
+                 LATERAL regexp_split_to_table(
+                     lower(COALESCE(np2.content_markdown, '')), '[^a-z]+'
+                 ) AS w
+            WHERE np2.notebook_id IN (SELECT notebook_id FROM accessible_notebooks)
+              AND to_tsvector('english', w) @@ to_tsquery(stems.stem)
+              AND length(w) > 2
+            GROUP BY w
+            ORDER BY COUNT(*) DESC
+            LIMIT 1
+        ) orig
         """,
         user_id, max_clusters * 5,
     )
-    page_terms = [(r["word"], r["ndoc"]) for r in rows]
+    page_terms = [(r["stem"], r["original_word"], r["ndoc"]) for r in rows]
 
-    # Same for table rows
+    # Same for table rows (stems only, no original-word resolution needed
+    # since table data tends to be structured)
     tbl_rows = await pool.fetch(
         _ACCESSIBLE_TABLES_CTE + """
-        SELECT word, COUNT(DISTINCT tr.id) AS ndoc
+        SELECT word AS stem, COUNT(DISTINCT tr.id) AS ndoc
         FROM table_rows tr,
-             LATERAL unnest(to_tsvector('english', COALESCE(tr.data::text, ''))) AS t(word, positions, weights)
+             LATERAL unnest(to_tsvector('english', COALESCE(tr.data::text, '')))
+                 AS t(word, positions, weights)
         WHERE tr.table_id IN (SELECT table_id FROM accessible_tables)
           AND tr.data IS NOT NULL
           AND length(word) > 2
@@ -163,27 +194,78 @@ async def get_knowledge_density(
         """,
         user_id, max_clusters * 5,
     )
-    table_terms = [(r["word"], r["ndoc"]) for r in tbl_rows]
+    table_terms = [(r["stem"], r["ndoc"]) for r in tbl_rows]
 
-    # Merge term counts, filtering out stop stems
+    def _is_noise(stem: str) -> bool:
+        if stem in _STOP_STEMS:
+            return True
+        if _COLUMN_NAME_RE.match(stem):
+            return True
+        if len(stem) <= 3:
+            return True
+        # Skip pure numbers and numeric-like stems (years, counts)
+        if stem.replace(".", "").replace("-", "").isdigit():
+            return True
+        return False
+
+    # Count total documents for TF-IDF denominator
+    total_pages = await pool.fetchval(
+        _ACCESSIBLE_NOTEBOOKS_CTE + """
+        SELECT COUNT(*) FROM notebook_pages np
+        WHERE np.notebook_id IN (SELECT notebook_id FROM accessible_notebooks)
+          AND np.content_markdown IS NOT NULL AND np.content_markdown != ''
+        """,
+        user_id,
+    ) or 1
+    total_tbl_rows = await pool.fetchval(
+        _ACCESSIBLE_TABLES_CTE + """
+        SELECT COUNT(*) FROM table_rows tr
+        WHERE tr.table_id IN (SELECT table_id FROM accessible_tables)
+          AND tr.data IS NOT NULL
+        """,
+        user_id,
+    ) or 1
+    total_docs = total_pages + total_tbl_rows
+
+    import math
+
+    # Merge term counts with TF-IDF scoring.
+    # IDF = log(total_docs / doc_freq) — down-weights terms that appear everywhere.
+    # We use raw doc_freq as the "count" for display sizing, but rank by TF-IDF.
     term_counts: dict[str, dict] = {}
-    for w, ndoc in page_terms:
-        if w in _STOP_STEMS:
+    for stem, original, ndoc in page_terms:
+        if _is_noise(stem):
             continue
-        term_counts[w] = {"notebook_pages": ndoc, "table_rows": 0, "total": ndoc}
-    for w, ndoc in table_terms:
-        if w in _STOP_STEMS:
+        term_counts[stem] = {
+            "label": original.capitalize(),
+            "notebook_pages": ndoc,
+            "table_rows": 0,
+            "raw_total": ndoc,
+        }
+    for stem, ndoc in table_terms:
+        if _is_noise(stem):
             continue
-        if w in term_counts:
-            term_counts[w]["table_rows"] = ndoc
-            term_counts[w]["total"] += ndoc
+        if stem in term_counts:
+            term_counts[stem]["table_rows"] = ndoc
+            term_counts[stem]["raw_total"] += ndoc
         else:
-            term_counts[w] = {"notebook_pages": 0, "table_rows": ndoc, "total": ndoc}
+            term_counts[stem] = {
+                "label": stem.capitalize(),
+                "notebook_pages": 0,
+                "table_rows": ndoc,
+                "raw_total": ndoc,
+            }
 
-    # Sort by total and take top N
-    top_terms = sorted(term_counts.items(), key=lambda x: x[1]["total"], reverse=True)[
-        :max_clusters
-    ]
+    # Compute TF-IDF score for ranking
+    for stem, counts in term_counts.items():
+        df = counts["raw_total"]
+        idf = math.log(total_docs / max(df, 1))
+        counts["tfidf"] = df * idf
+
+    # Rank by TF-IDF (surfaces distinctive terms), take top N
+    top_terms = sorted(
+        term_counts.items(), key=lambda x: x[1]["tfidf"], reverse=True,
+    )[:max_clusters]
 
     if not top_terms:
         result: dict = {"clusters": []}
@@ -213,7 +295,7 @@ async def get_knowledge_density(
     for r in enrich_rows:
         enrichment[r["word"]].append(r)
 
-    # Build clusters — use the stem directly as label (capitalize it)
+    # Build clusters — use the resolved original word as label
     clusters = []
     for word, counts in top_terms:
         samples = enrichment.get(word, [])
@@ -230,8 +312,8 @@ async def get_knowledge_density(
                     oldest_at = ts
 
         clusters.append({
-            "label": word.capitalize(),
-            "count": counts["total"],
+            "label": counts.get("label", word.capitalize()),
+            "count": counts["raw_total"],
             "sources": {
                 "notebook_pages": counts["notebook_pages"],
                 "table_rows": counts["table_rows"],
@@ -251,7 +333,7 @@ async def get_embedding_projection(
     max_points: int = 500,
     source: str | None = None,
 ) -> dict:
-    """2D UMAP projection of embeddings for the space explorer."""
+    """3D PCA projection of embeddings for the space explorer."""
     pool = get_pool()
     max_points = min(max_points, 2000)
 
@@ -384,40 +466,21 @@ async def get_embedding_projection(
     if not all_items:
         return {"points": [], "stats": {"total_embeddings": total_count, "projected": 0}, "cached": False}
 
-    # Run UMAP projection
-    try:
-        from umap import UMAP
-
-        embeddings_matrix = np.stack([item["embedding"] for item in all_items])
-        n_neighbors = min(15, len(all_items) - 1)
-        if n_neighbors < 2:
-            # Not enough points for UMAP, just spread randomly
-            coords = np.random.uniform(-1, 1, (len(all_items), 2))
-        else:
-            reducer = UMAP(n_components=2, n_neighbors=n_neighbors, min_dist=0.1, random_state=42)
-            coords = reducer.fit_transform(embeddings_matrix)
-            # Normalize to [-1, 1]
-            for dim in range(2):
-                mn, mx = coords[:, dim].min(), coords[:, dim].max()
-                rng = mx - mn if mx != mn else 1.0
-                coords[:, dim] = 2.0 * (coords[:, dim] - mn) / rng - 1.0
-    except ImportError:
-        logger.warning("umap-learn not installed, using PCA fallback")
-        # PCA fallback: center, compute top 2 eigenvectors
-        embeddings_matrix = np.stack([item["embedding"] for item in all_items])
-        mean = embeddings_matrix.mean(axis=0)
-        centered = embeddings_matrix - mean
-        if centered.shape[0] > 1:
-            cov = np.cov(centered.T)
-            eigenvalues, eigenvectors = np.linalg.eigh(cov)
-            top2 = eigenvectors[:, -2:]
-            coords = centered @ top2
-            for dim in range(2):
-                mn, mx = coords[:, dim].min(), coords[:, dim].max()
-                rng = mx - mn if mx != mn else 1.0
-                coords[:, dim] = 2.0 * (coords[:, dim] - mn) / rng - 1.0
-        else:
-            coords = np.zeros((len(all_items), 2))
+    # 3D PCA projection
+    embeddings_matrix = np.stack([item["embedding"] for item in all_items])
+    mean = embeddings_matrix.mean(axis=0)
+    centered = embeddings_matrix - mean
+    if centered.shape[0] > 2:
+        cov = np.cov(centered.T)
+        eigenvalues, eigenvectors = np.linalg.eigh(cov)
+        top3 = eigenvectors[:, -3:][:, ::-1]  # descending by eigenvalue
+        coords = centered @ top3
+        for dim in range(3):
+            mn, mx = coords[:, dim].min(), coords[:, dim].max()
+            rng = mx - mn if mx != mn else 1.0
+            coords[:, dim] = 2.0 * (coords[:, dim] - mn) / rng - 1.0
+    else:
+        coords = np.zeros((len(all_items), 3))
 
     # Build points
     points = []
@@ -426,6 +489,7 @@ async def get_embedding_projection(
             "id": item["id"],
             "x": round(float(coords[i, 0]), 4),
             "y": round(float(coords[i, 1]), 4),
+            "z": round(float(coords[i, 2]), 4),
             "source": item["source"],
             "label": item["label"],
             "created_at": item["created_at"],

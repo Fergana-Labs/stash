@@ -26,27 +26,55 @@ interface TooltipInfo {
   point: EmbeddingProjectionPoint;
 }
 
+// Rotate a 3D point around the Y axis, then X axis
+function rotatePoint(
+  px: number, py: number, pz: number,
+  rotY: number, rotX: number,
+): [number, number, number] {
+  // Y-axis rotation
+  const cosY = Math.cos(rotY);
+  const sinY = Math.sin(rotY);
+  const x1 = px * cosY + pz * sinY;
+  const z1 = -px * sinY + pz * cosY;
+
+  // X-axis rotation
+  const cosX = Math.cos(rotX);
+  const sinX = Math.sin(rotX);
+  const y1 = py * cosX - z1 * sinX;
+  const z2 = py * sinX + z1 * cosX;
+
+  return [x1, y1, z2];
+}
+
 export default function EmbeddingSpaceExplorer({ data, onPointClick }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [tooltip, setTooltip] = useState<TooltipInfo | null>(null);
 
-  // Pan/zoom state
-  const panRef = useRef({ x: 0, y: 0 });
-  const zoomRef = useRef(1);
+  // Rotation state (radians)
+  const rotYRef = useRef(0.4);
+  const rotXRef = useRef(0.3);
   const draggingRef = useRef(false);
   const lastMouseRef = useRef({ x: 0, y: 0 });
+  const autoRotateRef = useRef(true);
+  const animRef = useRef<number>(0);
 
-  const toScreen = useCallback((px: number, py: number, w: number, h: number) => {
-    const zoom = zoomRef.current;
-    const pan = panRef.current;
-    const cx = w / 2 + pan.x;
-    const cy = h / 2 + pan.y;
-    const scale = Math.min(w, h) * 0.4 * zoom;
-    return {
-      sx: cx + px * scale,
-      sy: cy + py * scale,
-    };
-  }, []);
+  // Project a 3D point to 2D screen coordinates with perspective
+  const project = useCallback(
+    (px: number, py: number, pz: number, w: number, h: number) => {
+      const [rx, ry, rz] = rotatePoint(px, py, pz, rotYRef.current, rotXRef.current);
+
+      const fov = 3;
+      const viewDist = fov + rz;
+      const scale = Math.min(w, h) * 0.35 * (fov / Math.max(viewDist, 0.5));
+
+      return {
+        sx: w / 2 + rx * scale,
+        sy: h / 2 + ry * scale,
+        depth: rz,
+      };
+    },
+    [],
+  );
 
   const draw = useCallback(() => {
     const canvas = canvasRef.current;
@@ -67,18 +95,52 @@ export default function EmbeddingSpaceExplorer({ data, onPointClick }: Props) {
 
     ctx.clearRect(0, 0, containerWidth, containerHeight);
 
-    // Draw points
-    const radius = 3.5;
-    for (const point of data.points) {
-      const { sx, sy } = toScreen(point.x, point.y, containerWidth, containerHeight);
+    // Sort points by depth (back to front) for correct overlap
+    const projected = data.points.map((point) => {
+      const { sx, sy, depth } = project(point.x, point.y, point.z, containerWidth, containerHeight);
+      return { point, sx, sy, depth };
+    });
+    projected.sort((a, b) => a.depth - b.depth);
 
-      // Skip if off-screen
+    // Draw axes (faint guide lines through origin)
+    const axisLen = 0.8;
+    const axes = [
+      { dir: [axisLen, 0, 0] as const, label: "PC1", color: "#475569" },
+      { dir: [0, axisLen, 0] as const, label: "PC2", color: "#475569" },
+      { dir: [0, 0, axisLen] as const, label: "PC3", color: "#475569" },
+    ];
+    for (const axis of axes) {
+      const start = project(-axis.dir[0], -axis.dir[1], -axis.dir[2], containerWidth, containerHeight);
+      const end = project(axis.dir[0], axis.dir[1], axis.dir[2], containerWidth, containerHeight);
+      ctx.beginPath();
+      ctx.moveTo(start.sx, start.sy);
+      ctx.lineTo(end.sx, end.sy);
+      ctx.strokeStyle = axis.color;
+      ctx.lineWidth = 0.5;
+      ctx.globalAlpha = 0.3;
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+
+      // Axis label at the positive end
+      ctx.font = "400 9px 'JetBrains Mono', monospace";
+      ctx.fillStyle = "#64748B";
+      ctx.textAlign = "center";
+      ctx.fillText(axis.label, end.sx, end.sy - 6);
+    }
+
+    // Draw points
+    for (const { point, sx, sy, depth } of projected) {
       if (sx < -10 || sx > containerWidth + 10 || sy < -10 || sy > containerHeight + 10) continue;
+
+      // Size and opacity based on depth (closer = bigger/brighter)
+      const depthNorm = (depth + 1.5) / 3; // roughly 0..1
+      const radius = 2.5 + depthNorm * 2.5;
+      const alpha = 0.3 + depthNorm * 0.5;
 
       ctx.beginPath();
       ctx.arc(sx, sy, radius, 0, Math.PI * 2);
       ctx.fillStyle = SOURCE_COLORS[point.source] || "#94A3B8";
-      ctx.globalAlpha = 0.7;
+      ctx.globalAlpha = alpha;
       ctx.fill();
       ctx.globalAlpha = 1;
     }
@@ -108,15 +170,25 @@ export default function EmbeddingSpaceExplorer({ data, onPointClick }: Props) {
     ctx.font = "400 10px 'JetBrains Mono', monospace";
     ctx.fillStyle = "#64748B";
     ctx.textAlign = "left";
+    ctx.textBaseline = "alphabetic";
     ctx.fillText(
-      `${data.stats.projected} / ${data.stats.total_embeddings} points`,
+      `${data.stats.projected} / ${data.stats.total_embeddings} points · 3D PCA`,
       8,
       containerHeight - 8,
     );
-  }, [data, toScreen]);
+  }, [data, project]);
 
+  // Animation loop for auto-rotation
   useEffect(() => {
-    draw();
+    const tick = () => {
+      if (autoRotateRef.current) {
+        rotYRef.current += 0.003;
+      }
+      draw();
+      animRef.current = requestAnimationFrame(tick);
+    };
+    animRef.current = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(animRef.current);
   }, [draw]);
 
   const findPoint = useCallback(
@@ -125,19 +197,24 @@ export default function EmbeddingSpaceExplorer({ data, onPointClick }: Props) {
       if (!canvas) return null;
       const w = canvas.clientWidth;
       const h = canvas.clientHeight;
-      const hitRadius = 8;
+      const hitRadius = 10;
 
+      // Check front-to-back (reverse of draw order)
+      let best: { point: EmbeddingProjectionPoint; dist: number } | null = null;
       for (const point of data.points) {
-        const { sx, sy } = toScreen(point.x, point.y, w, h);
+        const { sx, sy } = project(point.x, point.y, point.z, w, h);
         const dx = mx - sx;
         const dy = my - sy;
-        if (dx * dx + dy * dy < hitRadius * hitRadius) {
-          return point;
+        const dist = dx * dx + dy * dy;
+        if (dist < hitRadius * hitRadius) {
+          if (!best || dist < best.dist) {
+            best = { point, dist };
+          }
         }
       }
-      return null;
+      return best?.point ?? null;
     },
-    [data, toScreen],
+    [data, project],
   );
 
   const handleMouseMove = useCallback(
@@ -149,12 +226,13 @@ export default function EmbeddingSpaceExplorer({ data, onPointClick }: Props) {
       const my = e.clientY - rect.top;
 
       if (draggingRef.current) {
-        panRef.current = {
-          x: panRef.current.x + (mx - lastMouseRef.current.x),
-          y: panRef.current.y + (my - lastMouseRef.current.y),
-        };
+        const dx = mx - lastMouseRef.current.x;
+        const dy = my - lastMouseRef.current.y;
+        rotYRef.current -= dx * 0.008;
+        rotXRef.current += dy * 0.008;
+        // Clamp X rotation to avoid flipping
+        rotXRef.current = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, rotXRef.current));
         lastMouseRef.current = { x: mx, y: my };
-        draw();
         setTooltip(null);
         return;
       }
@@ -166,23 +244,14 @@ export default function EmbeddingSpaceExplorer({ data, onPointClick }: Props) {
         setTooltip(null);
       }
     },
-    [draw, findPoint],
-  );
-
-  const handleWheel = useCallback(
-    (e: React.WheelEvent) => {
-      e.preventDefault();
-      const delta = e.deltaY > 0 ? 0.9 : 1.1;
-      zoomRef.current = Math.max(0.3, Math.min(10, zoomRef.current * delta));
-      draw();
-    },
-    [draw],
+    [findPoint],
   );
 
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
     const rect = canvasRef.current?.getBoundingClientRect();
     if (!rect) return;
     draggingRef.current = true;
+    autoRotateRef.current = false;
     lastMouseRef.current = { x: e.clientX - rect.left, y: e.clientY - rect.top };
   }, []);
 
@@ -213,7 +282,6 @@ export default function EmbeddingSpaceExplorer({ data, onPointClick }: Props) {
           setTooltip(null);
           draggingRef.current = false;
         }}
-        onWheel={handleWheel}
         onMouseDown={handleMouseDown}
         onMouseUp={handleMouseUp}
         onClick={handleClick}
