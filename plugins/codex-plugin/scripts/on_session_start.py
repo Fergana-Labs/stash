@@ -1,32 +1,24 @@
 #!/usr/bin/env python3
-"""Stop: stream assistant's last message + push session summary."""
-
 from config import DATA_DIR, get_client, get_config, get_stdin_data, is_configured
-from hooks import stream_stop
+from hooks import warm_cache
 from state import load_state, save_state
 
-from adapt import adapt_stop
+from adapt import adapt_session_start
 
 
 def main():
     if not is_configured():
         return
-
+    event = adapt_session_start(get_stdin_data())
     state = load_state(DATA_DIR)
-    if not state.get("streaming_enabled", True):
-        return
-
-    event = adapt_stop(get_stdin_data())
+    state["session_id"] = event.session_id
+    save_state(DATA_DIR, state)
     cfg = get_config()
-
     try:
         with get_client() as client:
-            stream_stop(client, cfg, state, event)
+            warm_cache(client, cfg, DATA_DIR)
     except Exception:
         pass
-
-    state["session_id"] = ""
-    save_state(DATA_DIR, state)
 
 
 if __name__ == "__main__":

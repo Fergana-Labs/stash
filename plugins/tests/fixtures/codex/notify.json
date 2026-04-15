@@ -1,0 +1,6 @@
+{
+  "type": "agent-turn-complete",
+  "session_id": "cdx-1",
+  "last-assistant-message": "Turn complete.",
+  "cwd": "/Users/alice/repo"
+}
