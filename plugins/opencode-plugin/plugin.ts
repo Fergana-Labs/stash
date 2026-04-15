@@ -22,8 +22,12 @@ function runHook(script: string, payload: unknown): void {
     detached: false,
   });
   child.on("error", () => { /* python missing / crash — swallow */ });
-  child.stdin.write(JSON.stringify(payload));
-  child.stdin.end();
+  try {
+    child.stdin.write(JSON.stringify(payload));
+    child.stdin.end();
+  } catch {
+    // spawn failed synchronously (e.g. ENOENT on python3) — swallow
+  }
 }
 
 export const OctopusPlugin = async ({ project }: { project: { worktree: string } }) => ({
