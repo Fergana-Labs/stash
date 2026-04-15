@@ -139,16 +139,14 @@ export default function MemoryPage() {
 
   const groups = useMemo(() => buildGroups(events), [events]);
 
-  /* derive selected session's events */
+  /* derive selected session's events — match both agent and session */
   const selectedEvents = useMemo(() => {
-    if (!selectedSession) return null;
-    for (const ag of groups) {
-      for (const s of ag.sessions) {
-        if (s.sessionId === selectedSession) return s.events;
-      }
-    }
-    return null;
-  }, [groups, selectedSession]);
+    if (!selectedSession || !selectedAgent) return null;
+    const ag = groups.find((g) => g.agentName === selectedAgent);
+    if (!ag) return null;
+    const sess = ag.sessions.find((s) => s.sessionId === selectedSession);
+    return sess?.events ?? null;
+  }, [groups, selectedAgent, selectedSession]);
 
   if (loading) {
     return (
@@ -177,34 +175,61 @@ export default function MemoryPage() {
             </p>
           </div>
 
-          {/* Agents */}
+          {/* Agents + sessions tree */}
           {eventsLoading ? (
             <p className="px-3 py-2 text-[11px] text-muted">Loading...</p>
           ) : (
             <div className="px-2 py-2">
               {groups.map((ag) => (
-                <button
-                  key={ag.agentName}
-                  onClick={() => {
-                    setSelectedAgent(
-                      selectedAgent === ag.agentName ? null : ag.agentName
-                    );
-                    setSelectedSession(null);
-                  }}
-                  className={`w-full text-left flex items-center gap-1.5 px-2 py-2 rounded transition-colors duration-[150ms] mb-0.5 ${
-                    selectedAgent === ag.agentName
-                      ? "bg-agent-muted"
-                      : "hover:bg-raised"
-                  }`}
-                >
-                  <span className="w-1.5 h-1.5 rounded-full bg-agent flex-shrink-0" />
-                  <span className="text-[13px] font-medium text-foreground truncate">
-                    {ag.agentName}
-                  </span>
-                  <span className="text-[10px] text-muted ml-auto font-mono">
-                    {ag.eventCount}
-                  </span>
-                </button>
+                <div key={ag.agentName} className="mb-2">
+                  <button
+                    onClick={() => {
+                      setSelectedAgent(
+                        selectedAgent === ag.agentName ? null : ag.agentName
+                      );
+                      setSelectedSession(null);
+                    }}
+                    className={`w-full text-left flex items-center gap-1.5 px-2 py-1.5 rounded transition-colors duration-[150ms] ${
+                      selectedAgent === ag.agentName && !selectedSession
+                        ? "bg-agent-muted"
+                        : "hover:bg-raised"
+                    }`}
+                  >
+                    <span className="w-1.5 h-1.5 rounded-full bg-agent flex-shrink-0" />
+                    <span className="text-[13px] font-medium text-foreground truncate">
+                      {ag.agentName}
+                    </span>
+                    <span className="text-[10px] text-muted ml-auto font-mono">
+                      {ag.eventCount}
+                    </span>
+                  </button>
+
+                  {selectedAgent === ag.agentName && (
+                    <div className="ml-3 mt-0.5">
+                      {ag.sessions.map((sess) => (
+                        <button
+                          key={sess.sessionId}
+                          onClick={() => {
+                            setSelectedAgent(ag.agentName);
+                            setSelectedSession(sess.sessionId);
+                          }}
+                          className={`w-full text-left px-2 py-1 rounded transition-colors duration-[150ms] ${
+                            selectedSession === sess.sessionId
+                              ? "bg-agent-muted"
+                              : "hover:bg-raised"
+                          }`}
+                        >
+                          <span className="text-[12px] text-foreground truncate block">
+                            {sess.firstContent}
+                          </span>
+                          <span className="text-[10px] text-muted">
+                            {sess.events.length} events
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
               ))}
             </div>
           )}
