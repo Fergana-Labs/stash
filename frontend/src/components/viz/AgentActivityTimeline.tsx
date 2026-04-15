@@ -9,7 +9,7 @@ interface Props {
 
 const CELL_SIZE = 14;
 const CELL_GAP = 2;
-const LABEL_WIDTH = 80;
+const LABEL_WIDTH = 120;
 const PADDING = 16;
 
 // Orange intensity scale matching brand color

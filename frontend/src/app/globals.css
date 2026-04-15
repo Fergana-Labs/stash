@@ -28,6 +28,7 @@
 @theme inline {
   /* Semantic background colors */
   --color-background: var(--bg-base);
+  --color-base: var(--bg-base);
   --color-foreground: var(--text-primary);
   --color-surface: var(--bg-surface);
   --color-raised: var(--bg-raised);

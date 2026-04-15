@@ -102,6 +102,7 @@ export default function WorkspacePage() {
   const [showGraph, setShowGraph] = useState(false);
   const [pageGraph, setPageGraph] = useState<PageGraph | null>(null);
   const [graphNotebookId, setGraphNotebookId] = useState<string | null>(null);
+  const [graphAutoLoaded, setGraphAutoLoaded] = useState(false);
 
   const loadWorkspace = useCallback(async () => {
     try { setWorkspace(await getWorkspace(workspaceId)); } catch { setError("Workspace not found"); }
@@ -139,6 +140,18 @@ export default function WorkspacePage() {
       setProjection(p);
     }).finally(() => setVizLoading(false));
   }, [user]);
+
+  // Auto-select first notebook for page graph
+  useEffect(() => {
+    if (graphAutoLoaded) return;
+    if (notebooks.length === 0) return;
+    const firstId = notebooks[0].id;
+    setGraphNotebookId(firstId);
+    setGraphAutoLoaded(true);
+    getPageGraph(workspaceId, firstId)
+      .then((g) => { setPageGraph(g); setShowGraph(true); })
+      .catch(() => {});
+  }, [notebooks, graphAutoLoaded, workspaceId]);
 
   const handleJoin = async () => {
     if (!workspace) return;
@@ -242,36 +255,24 @@ export default function WorkspacePage() {
                 <div className="bg-surface border border-border rounded-xl px-5 py-4">
                   <div className="flex items-center justify-between">
                     <h2 className="text-sm font-semibold text-foreground uppercase tracking-wider">Page Graph</h2>
-                    <div className="flex items-center gap-2">
-                      <select
-                        className="text-xs bg-raised border border-border rounded px-2 py-1 text-foreground"
-                        value={graphNotebookId || ""}
-                        onChange={(e) => {
-                          setGraphNotebookId(e.target.value || null);
-                          setPageGraph(null);
-                          setShowGraph(false);
-                        }}
-                      >
-                        <option value="">Select notebook</option>
-                        {notebooks.map((nb) => (
-                          <option key={nb.id} value={nb.id}>{nb.name}</option>
-                        ))}
-                      </select>
-                      <button
-                        onClick={async () => {
-                          if (!graphNotebookId) return;
-                          try {
-                            const g = await getPageGraph(workspaceId, graphNotebookId);
-                            setPageGraph(g);
-                            setShowGraph(true);
-                          } catch { /* ignore */ }
-                        }}
-                        disabled={!graphNotebookId}
-                        className="text-xs text-brand hover:text-brand-hover px-2 py-1 rounded hover:bg-brand/5 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-                      >
-                        View
-                      </button>
-                    </div>
+                    <select
+                      className="text-xs bg-raised border border-border rounded px-2 py-1 text-foreground"
+                      value={graphNotebookId || ""}
+                      onChange={async (e) => {
+                        const nbId = e.target.value || null;
+                        setGraphNotebookId(nbId);
+                        if (!nbId) { setPageGraph(null); setShowGraph(false); return; }
+                        try {
+                          const g = await getPageGraph(workspaceId, nbId);
+                          setPageGraph(g);
+                          setShowGraph(true);
+                        } catch { /* ignore */ }
+                      }}
+                    >
+                      {notebooks.map((nb) => (
+                        <option key={nb.id} value={nb.id}>{nb.name}</option>
+                      ))}
+                    </select>
                   </div>
                   {showGraph && pageGraph && (
                     <div className="mt-4 pt-4 border-t border-border-subtle">
