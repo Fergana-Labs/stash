@@ -16,9 +16,8 @@ Use the `octopus` CLI for everything — every subcommand supports `--json`.
 
 ## Steps
 
-1. **Load config.** Run `octopus config --json` to get `default_workspace` and
-   `default_store`. If either is missing, stop and report that the user needs to
-   run `octopus setup`.
+1. **Load config.** Run `octopus config --json` to get `default_workspace`. If
+   it is missing, stop and report that the user needs to run `octopus setup`.
 
 2. **List notebooks.** Run `octopus notebooks list --ws <workspace_id> --json`.
    Look for an existing curation notebook (named "Wiki", "Knowledge Base", or
@@ -26,9 +25,9 @@ Use the `octopus` CLI for everything — every subcommand supports `--json`.
    `octopus notebooks create "Wiki" --ws <workspace_id> --json`.
 
 3. **Read recent history events.**
-   `octopus history query --ws <workspace_id> --store <store_id> --limit 200 --json`.
-   If the workspace has multiple history stores, list them with
-   `octopus history list --ws <workspace_id> --json` and query each.
+   `octopus history query --ws <workspace_id> --limit 200 --json`.
+   Narrow by agent or event type with `--agent <name>` or `--type <event_type>`
+   if the result set is noisy.
 
 4. **Read existing wiki pages.** Get the current state of the notebook:
    `octopus notebooks pages <notebook_id> --ws <workspace_id> --json`. Then

@@ -28,7 +28,7 @@
     },
     "workspace_id": {
       "title": "Workspace ID",
-      "description": "Default workspace UUID (optional, set via /octopus:connect)",
+      "description": "Default workspace UUID (optional, set via `octopus connect`)",
       "type": "string",
       "sensitive": false
     },
