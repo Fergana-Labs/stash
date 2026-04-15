@@ -44,6 +44,7 @@ async def push_ws_event(
         content=req.content, created_by=current_user["id"],
         session_id=req.session_id, tool_name=req.tool_name,
         metadata=req.metadata, attachments=attachments,
+        created_at=req.created_at,
     )
     return HistoryEventResponse(**event)
 
@@ -158,6 +159,7 @@ async def push_personal_event(
         content=req.content, created_by=current_user["id"],
         session_id=req.session_id, tool_name=req.tool_name,
         metadata=req.metadata, attachments=attachments,
+        created_at=req.created_at,
     )
     return HistoryEventResponse(**event)
 
