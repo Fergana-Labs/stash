@@ -54,10 +54,28 @@ Override with env vars (set in Cursor's environment):
 | `stop` | `session_end` | Tool-count summary |
 | `sessionEnd` | — (clears session state) | — |
 
+## Commands
+
+Everything is a plain `octopus` CLI subcommand — no Cursor-specific slash commands:
+
+| Command | Description |
+|---------|-------------|
+| `octopus connect` | Interactive setup (auth + workspace + store) |
+| `octopus status` | Central config, streaming state, last curate |
+| `octopus disconnect` | Pause event streaming across every installed plugin |
+
+At SessionEnd the plugin spawns `cursor-agent -p …` headless with a shared
+curation prompt. Because `cursor-agent -p` has open hang reports, the spawn
+helper kills the subprocess after 10 minutes. Toggle with `auto_curate` in
+`~/.octopus/config.json`; Cursor curation may still be experimental depending
+on your upstream `cursor-agent` build.
+
 ## Known gaps vs Claude plugin
 
-- No auto-curation on SessionEnd (no `cursor -p` equivalent)
-- No slash commands (`/octopus:connect` etc.) — use the `octopus` CLI directly
+- Cursor curation is best-effort — `cursor-agent -p` can hang; the helper
+  enforces a 10-minute kill-on-overrun
+- No prompt-time context injection — Cursor's `beforeSubmitPrompt` protocol
+  has no context-injection key
 
 ## Retrieval
 
