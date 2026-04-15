@@ -102,7 +102,7 @@ cp .env.example .env          # fill in credentials + API keys
 docker compose -f docker-compose.prod.yml up -d
 ```
 
-Includes Caddy for automatic HTTPS. Requires PostgreSQL with pgvector. Optional: S3 storage, OpenAI API key (embeddings), Anthropic API key (curation + search).
+Includes Caddy for automatic HTTPS. Requires PostgreSQL with pgvector. Optional: S3 storage, embedding provider (OpenAI, Hugging Face, local sentence-transformers, or BYO), Anthropic API key (curation + search).
 
 > Local development? Use `docker compose up -d` (no `-f` flag) — simple setup with hardcoded dev credentials.
 
@@ -121,7 +121,7 @@ Includes Caddy for automatic HTTPS. Requires PostgreSQL with pgvector. Optional:
 ## FAQ
 
 **What LLMs does Octopus use?**
-The curation tool and universal search use Anthropic Claude. Embeddings use OpenAI `text-embedding-3-small`. You bring your own API keys.
+The curation tool and universal search use Anthropic Claude. Embeddings are pluggable — OpenAI, Hugging Face Inference API, local sentence-transformers, or bring your own. Set `EMBEDDING_PROVIDER` in `.env` (defaults to auto-detect). See `.env.example` for details.
 
 **Can I use this without Claude Code?**
 Yes. The CLI and REST API work standalone with any client.

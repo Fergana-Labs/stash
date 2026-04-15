@@ -250,7 +250,7 @@ async def semantic_search_ws_rows(
     """Semantic search on table rows using embeddings."""
     await _check_member(workspace_id, current_user["id"])
     await _check_ws_table(workspace_id, table_id)
-    from ..services import embedding_service
+    from ..services import embeddings as embedding_service
     if not embedding_service.is_configured():
         raise HTTPException(status_code=503, detail="Embedding service not configured")
     query_embedding = await embedding_service.embed_text(q)

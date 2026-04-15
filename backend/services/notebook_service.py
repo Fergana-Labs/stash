@@ -488,7 +488,7 @@ async def get_page_graph(notebook_id: UUID) -> dict:
 async def _embed_page(page_id: UUID, content: str) -> None:
     """Fire-and-forget: embed page content and store in database."""
     try:
-        from . import embedding_service
+        from . import embeddings as embedding_service
         if not embedding_service.is_configured():
             return
         embedding = await embedding_service.embed_text(content)
