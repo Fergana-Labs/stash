@@ -18,7 +18,7 @@ def main():
     cfg = get_config()
     try:
         with get_client() as client:
-            stream_tool_use(client, cfg, state, event)
+            stream_tool_use(client, cfg, state, event, DATA_DIR)
     except Exception:
         pass
 
