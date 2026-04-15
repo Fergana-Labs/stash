@@ -281,7 +281,7 @@ The backend serves the skill manifest at `GET /skill/octopus/SKILL.md` for plugi
 ./start.sh
 ```
 
-Runs Postgres via docker compose, then uvicorn on `:3456` and `next dev` on `:3000`.
+Runs Postgres via docker compose, then uvicorn on `:3456` and `next dev` on `:3457`.
 
 ### Self-hosted (docker compose)
 
