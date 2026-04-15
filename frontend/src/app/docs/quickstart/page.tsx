@@ -2,7 +2,6 @@ import { Callout, CodeBlock, H3, P, Title, Subtitle } from "../components";
 
 const PROMPTS = [
   { label: "Push knowledge in", prompt: '"Search the web for the latest research on RAG architectures and save a summary to my Octopus knowledge base"' },
-  { label: "Import bookmarks", prompt: '"Run octopus import-bookmarks ~/Downloads/bookmarks.html to import my Chrome bookmarks"' },
   { label: "Search across everything", prompt: '"Check my Octopus knowledge base — what do we know about authentication patterns?"' },
   { label: "Create a report", prompt: '"Create a Octopus page summarizing our key findings on database performance"' },
 ];

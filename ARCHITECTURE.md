@@ -256,7 +256,7 @@ frontend/src/
 
 ### CLI (`cli/`)
 
-A Python CLI for scripted access: auth, history push, notebook sync, bookmark/page scraping.
+A Python CLI for scripted access: auth, history push, and notebook sync.
 
 ### Claude plugin (`plugins/claude-plugin/`)
 
