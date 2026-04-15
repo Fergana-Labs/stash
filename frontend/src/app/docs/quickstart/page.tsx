@@ -22,7 +22,7 @@ export default function QuickstartPage() {
       </P>
       <P>
         <strong>Prefer the CLI?</strong> Instead of the web UI, run{" "}
-        <code className="text-brand font-mono text-[13px]">octopus setup</code> after installing{" "}
+        <code className="text-brand font-mono text-[13px]">octopus connect</code> after installing{" "}
         <code className="text-brand font-mono text-[13px]">pip install octopus</code>. The
         interactive wizard covers account creation, workspace creation, and history store setup
         in one shot — then come back to step 2.

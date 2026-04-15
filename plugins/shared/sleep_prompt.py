@@ -17,7 +17,7 @@ Use the `octopus` CLI for everything — every subcommand supports `--json`.
 ## Steps
 
 1. **Load config.** Run `octopus config --json` to get `default_workspace`. If
-   it is missing, stop and report that the user needs to run `octopus setup`.
+   it is missing, stop and report that the user needs to run `octopus connect`.
 
 2. **List notebooks.** Run `octopus notebooks list --ws <workspace_id> --json`.
    Look for an existing curation notebook (named "Wiki", "Knowledge Base", or
