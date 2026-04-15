@@ -27,6 +27,13 @@ class LocalEmbedder(BaseEmbedder):
         self.dims = dims or int(os.getenv("EMBEDDING_DIMS", "384"))
         self._model = None
 
+    def is_configured(self) -> bool:
+        try:
+            import sentence_transformers  # noqa: F401
+            return True
+        except ImportError:
+            return False
+
     def _load(self):
         if self._model is not None:
             return
