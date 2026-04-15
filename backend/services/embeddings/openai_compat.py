@@ -25,11 +25,7 @@ class OpenAICompatEmbedder(BaseEmbedder):
         model: str | None = None,
         dims: int | None = None,
     ):
-        self.api_key = (
-            api_key
-            or os.getenv("EMBEDDING_API_KEY")
-            or os.getenv("OPENAI_API_KEY", "")
-        )
+        self.api_key = api_key or os.getenv("EMBEDDING_API_KEY") or os.getenv("OPENAI_API_KEY", "")
         self.api_url = api_url or os.getenv(
             "EMBEDDING_API_URL", "https://api.openai.com/v1/embeddings"
         )
