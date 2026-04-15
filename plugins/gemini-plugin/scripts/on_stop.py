@@ -1,7 +1,13 @@
 #!/usr/bin/env python3
+"""AfterAgent: stream the assistant's final message for this turn.
+
+Gemini's AfterAgent fires per-turn, not per-session. We only push
+assistant_message here; session_end lives in on_session_end.py.
+"""
+
 from config import DATA_DIR, get_client, get_config, get_stdin_data, is_configured
-from hooks import stream_stop
-from state import load_state, save_state
+from hooks import stream_assistant_message
+from state import load_state
 
 from adapt import adapt_stop
 
@@ -16,7 +22,7 @@ def main():
     cfg = get_config()
     try:
         with get_client() as client:
-            stream_stop(client, cfg, state, event)
+            stream_assistant_message(client, cfg, state, event)
     except Exception:
         pass
 

@@ -50,6 +50,11 @@ def spawn_curation(binary: str, prompt_flags: list[str]) -> bool:
         close_fds=True,
     )
 
+    # Claim the cooldown BEFORE spawning so two concurrent SessionEnds can't
+    # both pass curate_cooldown_active() and double-spawn. If the spawn then
+    # fails we eat one wasted cooldown window — cheaper than two curates.
+    record_curate_run()
+
     try:
         proc = subprocess.Popen(argv, **popen_kwargs)
     except Exception:
@@ -58,7 +63,6 @@ def spawn_curation(binary: str, prompt_flags: list[str]) -> bool:
     if binary == "cursor-agent":
         _enforce_cursor_timeout(proc)
 
-    record_curate_run()
     return True
 
 

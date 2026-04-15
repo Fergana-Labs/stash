@@ -7,6 +7,10 @@ Registered via the top-level `notify` array in ~/.codex/config.toml.
 Codex's notify passes the JSON payload as argv[-1] (not stdin), and child
 stdin/stdout/stderr are nulled — we can't return anything or read stdin.
 
+Turn-end semantics only. Uses state["session_id"] (from SessionStart),
+not the notify payload's `thread-id`, to keep session correlation
+consistent with the codex_hooks path.
+
 Pick ONE of codex_hooks OR notify — enabling both double-fires every turn.
 """
 
@@ -14,7 +18,7 @@ import json
 import sys
 
 from config import DATA_DIR, get_client, get_config, is_configured
-from hooks import stream_stop
+from hooks import stream_assistant_message
 from state import load_state
 
 from adapt import adapt_notify
@@ -45,7 +49,7 @@ def main():
     cfg = get_config()
     try:
         with get_client() as client:
-            stream_stop(client, cfg, state, event)
+            stream_assistant_message(client, cfg, state, event)
     except Exception:
         pass
 

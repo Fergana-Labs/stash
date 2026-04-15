@@ -2,11 +2,13 @@
 """afterAgentResponse: stream the final assistant text for the turn.
 
 Cursor's `stop` event has no assistant text; `afterAgentResponse` is the only
-place to capture it. Payload: {text: "..."}.
+place to capture it. Fires per-turn, not per-session, so only push the
+assistant_message — session_end lives in on_session_end.py.
+Payload: {text: "..."}.
 """
 
 from config import DATA_DIR, get_client, get_config, get_stdin_data, is_configured
-from hooks import stream_stop
+from hooks import stream_assistant_message
 from state import load_state
 
 from adapt import adapt_agent_response
@@ -24,7 +26,7 @@ def main():
     cfg = get_config()
     try:
         with get_client() as client:
-            stream_stop(client, cfg, state, event)
+            stream_assistant_message(client, cfg, state, event)
     except Exception:
         pass
 

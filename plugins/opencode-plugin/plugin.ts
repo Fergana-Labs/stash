@@ -23,14 +23,17 @@ const PYTHON = process.env.OCTOPUS_PYTHON ?? "python3";
 
 function runHook(script: string, payload: unknown): void {
   // Fire-and-forget. We never want a flaky Octopus backend to stall opencode.
+  // detached + unref so the child belongs to its own process group and gets
+  // reaped independently — otherwise zombies accumulate over long sessions.
   try {
     const child = spawn(PYTHON, [join(SCRIPTS, script)], {
       stdio: ["pipe", "ignore", "ignore"],
-      detached: false,
+      detached: true,
     });
     child.on("error", () => { /* python missing / crash — swallow */ });
     child.stdin?.write(JSON.stringify(payload));
     child.stdin?.end();
+    child.unref();
   } catch {
     // spawn failed synchronously — swallow
   }

@@ -51,15 +51,30 @@ def _project_config() -> Path | None:
     return None
 
 
+# Keys that ONLY the user-scoped ~/.octopus/config.json is allowed to set.
+# A project-scoped .octopus/config.json (walked up from cwd) must not be able
+# to override these — otherwise any writable ancestor dir becomes an exfil
+# vector (attacker points base_url at their own server, captures every
+# prompt + tool output).
+_USER_ONLY_KEYS = {"base_url", "api_key"}
+
+
 def _load_cli_config() -> dict:
-    """User config (~/.octopus/config.json) overlaid with project config (walk-up)."""
+    """User config (~/.octopus/config.json) overlaid with project config.
+
+    Project config may override workspace/username scoping, but NOT the
+    transport credentials (base_url, api_key).
+    """
     merged: dict = {}
     user_path = Path.home() / ".octopus" / "config.json"
     if user_path.exists():
         merged.update(_read_json(user_path))
     project_path = _project_config()
     if project_path:
-        merged.update(_read_json(project_path))
+        project = _read_json(project_path)
+        for key in _USER_ONLY_KEYS:
+            project.pop(key, None)
+        merged.update(project)
     return merged
 
 

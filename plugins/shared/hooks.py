@@ -4,6 +4,11 @@ here. Nothing in this file knows about any specific agent's payload shape.
 
 Every function swallows network exceptions so a flaky backend never kills a
 user's coding session.
+
+Naming: `stream_assistant_message` fires at every turn end (assistant finished
+talking). `stream_session_end` fires once when the whole conversation ends.
+Never call `stream_session_end` from a per-turn hook — you'll emit a bogus
+`session_end` event on every turn and break session correlation downstream.
 """
 
 from __future__ import annotations
@@ -65,13 +70,39 @@ def stream_tool_use(
         pass
 
 
-# --- Stop / session end ---
+# --- Turn end (assistant finished responding; session still open) ---
+
+def stream_assistant_message(
+    client: OctopusClient, cfg: dict, state: dict, event: HookEvent,
+) -> None:
+    """Push the final assistant text for a turn. Call from per-turn Stop /
+    afterAgentResponse / AfterAgent hooks. Never emits session_end — the
+    session is still live."""
+    if not cfg.get("workspace_id"):
+        return
+    if not event.last_assistant_message:
+        return
+    try:
+        client.push_event(
+            workspace_id=cfg["workspace_id"],
+            agent_name=cfg["agent_name"],
+            event_type="assistant_message",
+            content=event.last_assistant_message[:4000],
+            session_id=state.get("session_id", ""),
+            client=cfg.get("client") or None,
+        )
+    except Exception:
+        pass
+
+
+# --- Session end (conversation over) ---
 
 def count_transcript_stats(transcript_path: str) -> dict:
-    """Count tool uses + files changed from a JSONL transcript.
+    """Count tool uses + files changed from a Claude Code JSONL transcript.
 
-    Only supports Claude Code's transcript format today; other agents may add
-    their own or pass '' to skip. Gracefully returns empty stats on any error.
+    Claude-specific format (`{"type":"tool_use", "name":..., "input":...}`).
+    Non-Claude transcripts produce zero counts — the caller should gate by
+    `cfg.client == "claude_code"` to avoid reading opaque files.
     """
     stats = {"tool_count": 0, "files_changed": set(), "tools_used": set()}
     if not transcript_path:
@@ -102,34 +133,31 @@ def count_transcript_stats(transcript_path: str) -> dict:
     return stats
 
 
-def stream_stop(
+def stream_session_end(
     client: OctopusClient, cfg: dict, state: dict, event: HookEvent,
 ) -> None:
+    """Push the final session_end summary. Call ONCE per conversation from
+    SessionEnd / session.deleted hooks. Claude plugins optionally include
+    transcript-derived stats."""
     if not cfg.get("workspace_id"):
         return
 
-    try:
-        if event.last_assistant_message:
-            client.push_event(
-                workspace_id=cfg["workspace_id"],
-                agent_name=cfg["agent_name"],
-                event_type="assistant_message",
-                content=event.last_assistant_message[:4000],
-                session_id=state.get("session_id", ""),
-                client=cfg.get("client") or None,
-            )
-
+    if cfg.get("client") == "claude_code" and event.transcript_path:
         stats = count_transcript_stats(event.transcript_path)
-        tool_count = stats.get("tool_count", 0)
-        files_changed = stats.get("files_changed", [])
-        tools_used = stats.get("tools_used", [])
+    else:
+        stats = {"tool_count": 0, "files_changed": [], "tools_used": []}
 
-        parts = ["Session ended."]
-        if tool_count:
-            parts.append(f"{tool_count} tool uses.")
-        if files_changed:
-            parts.append(f"{len(files_changed)} files changed.")
+    tool_count = stats["tool_count"]
+    files_changed = stats["files_changed"]
+    tools_used = stats["tools_used"]
 
+    parts = ["Session ended."]
+    if tool_count:
+        parts.append(f"{tool_count} tool uses.")
+    if files_changed:
+        parts.append(f"{len(files_changed)} files changed.")
+
+    try:
         client.push_event(
             workspace_id=cfg["workspace_id"],
             agent_name=cfg["agent_name"],
