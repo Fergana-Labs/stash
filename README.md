@@ -1,3 +1,4 @@
+
 <p align="center">
   <img src="docs/assets/logo.svg" alt="Octopus" width="320" />
 </p>
@@ -16,7 +17,7 @@
 </p>
 
 <!-- TODO: Add product screenshot or GIF here -->
-
+<img width="1194" height="1085" alt="Screenshot 2026-04-14 at 7 09 11 PM" src="https://github.com/user-attachments/assets/ecd48e25-8843-4f7a-a517-6ea1c5eb31ff" />
 ---
 
 ## Table of Contents
