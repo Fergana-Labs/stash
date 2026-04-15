@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""UserPromptSubmit: stream user message + inject scored context."""
+"""UserPromptSubmit: stream prompt + inject context.
+
+Codex injection protocol: print JSON with `additional_context` on stdout
+(per developers.openai.com/codex/hooks).
+"""
 
 import json
 
@@ -17,7 +21,6 @@ def _injection_disabled(cfg: dict) -> bool:
 def main():
     if not is_configured():
         return
-
     event = adapt_prompt(get_stdin_data())
     cfg = get_config()
     state = load_state(DATA_DIR)
@@ -29,9 +32,7 @@ def main():
         return
 
     context = build_injection_context(cfg, state, DATA_DIR, ESCALATION_DIR)
-
-    # Claude Code reads {additionalContext} from stdout
-    print(json.dumps({"additionalContext": context}))
+    print(json.dumps({"additional_context": context}))
 
 
 if __name__ == "__main__":

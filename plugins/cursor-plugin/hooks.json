@@ -1,0 +1,20 @@
+{
+  "_comment": "Symlink or copy to ~/.cursor/hooks.json or <project>/.cursor/hooks.json. PLUGIN_ROOT must be set to the absolute path of this directory.",
+  "hooks": {
+    "sessionStart": [
+      { "command": "python3 ${PLUGIN_ROOT}/scripts/on_session_start.py", "timeout": 5000 }
+    ],
+    "beforeSubmitPrompt": [
+      { "command": "python3 ${PLUGIN_ROOT}/scripts/on_prompt.py", "timeout": 3000 }
+    ],
+    "postToolUse": [
+      { "command": "python3 ${PLUGIN_ROOT}/scripts/on_tool_use.py", "async": true }
+    ],
+    "stop": [
+      { "command": "python3 ${PLUGIN_ROOT}/scripts/on_stop.py", "timeout": 10000 }
+    ],
+    "sessionEnd": [
+      { "command": "python3 ${PLUGIN_ROOT}/scripts/on_session_end.py", "timeout": 5000 }
+    ]
+  }
+}

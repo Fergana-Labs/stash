@@ -13,6 +13,7 @@ Display the current Octopus plugin configuration and connection health.
 
 2. **Read plugin state** from `~/.claude/plugins/data/octopus/state.json`:
    - `streaming_enabled`
+   - `persona`
    - `session_id`
 
 3. **Verify connectivity**: `octopus whoami --json`
@@ -31,5 +32,6 @@ Display the current Octopus plugin configuration and connection health.
    Endpoint:   {base_url}
    Workspace:  {workspace_name} ({workspace_id})
    Streaming:  {enabled/disabled}
+   Agent:      {agent_name or "(using profile description)"}
    Connection: {OK / Error: ...}
    ```
