@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Header from "../../components/Header";
 import { useAuth } from "../../hooks/useAuth";
-import { setToken } from "../../lib/api";
+import { setToken, listMyWorkspaces } from "../../lib/api";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3456";
 
@@ -17,9 +17,17 @@ export default function LoginPage() {
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
-    if (user) {
-      router.push("/memory");
-    }
+    if (!user) return;
+
+    listMyWorkspaces().then(({ workspaces }) => {
+      if (workspaces.length === 1) {
+        router.push(`/workspaces/${workspaces[0].id}`);
+      } else {
+        router.push("/");
+      }
+    }).catch(() => {
+      router.push("/");
+    });
   }, [user, router]);
 
   if (user) {
