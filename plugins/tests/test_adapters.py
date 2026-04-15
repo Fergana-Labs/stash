@@ -72,13 +72,24 @@ def test_stop(plugin):
     event = adapt.adapt_stop(_load_fixture(plugin, "stop"))
     assert event.kind == "stop"
     assert event.session_id
-    assert event.last_assistant_message  # non-empty
+    # Cursor's stop event has no assistant text — captured via afterAgentResponse.
+    if plugin != "cursor":
+        assert event.last_assistant_message
+
+
+def test_cursor_agent_response():
+    adapt = _load_adapt("cursor")
+    event = adapt.adapt_agent_response(_load_fixture("cursor", "agent_response"))
+    assert event.kind == "stop"
+    assert event.session_id
+    assert event.last_assistant_message == "Done."
 
 
 def test_codex_notify_fallback():
     adapt = _load_adapt("codex")
     event = adapt.adapt_notify(_load_fixture("codex", "notify"))
     assert event.kind == "stop"
+    assert event.session_id == "cdx-1"  # comes from thread-id
     assert event.last_assistant_message == "Turn complete."
 
 
@@ -117,17 +128,25 @@ def test_push_event_stamps_client_into_metadata():
 
 
 def test_tool_name_normalization():
-    """Each plugin's adapter should normalize its agent-native tool names."""
+    """Each plugin's adapter should normalize its agent-native tool names.
+
+    Raw names come from each agent's actual wire format: Claude uses PascalCase
+    (`Edit`, `Bash`), Cursor uses PascalCase (`Shell`, `Read`), Gemini uses
+    snake_case (`run_shell_command`, `read_file`), Codex hardcodes `Bash` for
+    every shell call, opencode uses lowercase (`edit`, `bash`).
+    """
     cases = [
         ("claude", "Edit", "edit"),
         ("claude", "Bash", "bash"),
-        ("cursor", "edit_file", "edit"),
-        ("cursor", "run_terminal_cmd", "bash"),
+        ("cursor", "Shell", "bash"),
+        ("cursor", "Read", "read"),
+        ("cursor", "Grep", "grep"),
         ("gemini", "run_shell_command", "bash"),
         ("gemini", "read_file", "read"),
+        ("gemini", "replace", "edit"),
         ("codex", "Bash", "bash"),
-        ("codex", "apply_patch", "edit"),
         ("opencode", "edit", "edit"),
+        ("opencode", "bash", "bash"),
     ]
     for plugin, raw, expected in cases:
         adapt = _load_adapt(plugin)
@@ -135,3 +154,42 @@ def test_tool_name_normalization():
         assert event.tool_name == expected, (
             f"{plugin}: {raw!r} -> {event.tool_name!r}, expected {expected!r}"
         )
+
+
+def test_client_facet_flows_through_stream_paths():
+    """cfg['client'] must survive stream_user_message / stream_tool_use / stream_stop
+    and land as metadata.client on the wire."""
+    from event import HookEvent
+    from hooks import stream_stop, stream_tool_use, stream_user_message
+    from octopus_client import OctopusClient
+
+    calls = []
+
+    class FakeClient(OctopusClient):
+        def _post(self, path, **kwargs):
+            calls.append(kwargs.get("json", {}))
+            return {}
+
+    for client_name in ("cursor", "gemini_cli", "codex_cli", "opencode"):
+        calls.clear()
+        cfg = {
+            "workspace_id": "ws1",
+            "agent_name": "henry",
+            "client": client_name,
+        }
+        state = {"session_id": "s1"}
+        c = FakeClient(base_url="http://x", api_key="k")
+
+        stream_user_message(c, cfg, state, "hello")
+        stream_tool_use(c, cfg, state, HookEvent(
+            kind="tool_use", tool_name="bash",
+            tool_input={"command": "echo hi"}, tool_response={"stdout": "hi"},
+        ))
+        stream_stop(c, cfg, state, HookEvent(
+            kind="stop", last_assistant_message="done.",
+        ))
+
+        for body in calls:
+            assert body.get("metadata", {}).get("client") == client_name, (
+                f"{client_name}: missing client facet in {body}"
+            )

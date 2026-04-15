@@ -47,10 +47,10 @@ The `config.toml.snippet` has two mutually-exclusive variants.
 | Codex event | Octopus event | Notes |
 |---|---|---|
 | `SessionStart` | — (warms cache) | — |
-| `UserPromptSubmit` | `user_message` + injection | — |
-| `PostToolUse` | `tool_use` | **Bash only today** |
+| `UserPromptSubmit` | `user_message` | — |
+| `PostToolUse` | `tool_use` | **Bash only today** — Codex hardcodes `tool_name="Bash"` for every shell call |
 | `Stop` | `assistant_message` + `session_end` | — |
-| `notify` (fallback) | `assistant_message` + `session_end` | Dedups with Stop |
+| `notify` (fallback) | `assistant_message` + `session_end` | Dedups with Stop — pick one |
 
 ## Retrieval
 
