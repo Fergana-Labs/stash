@@ -1,7 +1,6 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import AppShell from "../../components/AppShell";
 import { useAuth } from "../../hooks/useAuth";
@@ -116,7 +115,6 @@ export default function MemoryPage() {
   const [events, setEvents] = useState<HistoryEventWithContext[]>([]);
   const [eventsLoading, setEventsLoading] = useState(false);
 
-  /* sidebar selection */
   const [selectedAgent, setSelectedAgent] = useState<string | null>(null);
   const [selectedSession, setSelectedSession] = useState<string | null>(null);
 
@@ -132,14 +130,21 @@ export default function MemoryPage() {
   }, []);
 
   useEffect(() => {
-    if (user) {
-      loadEvents();
-    }
+    if (user) loadEvents();
   }, [user, loadEvents]);
 
   const groups = useMemo(() => buildGroups(events), [events]);
 
-  /* derive selected session's events — match both agent and session */
+  // All sessions across all agents, sorted by recency
+  const allSessions = useMemo(() => {
+    const sessions: SessionGroup[] = [];
+    for (const ag of groups) {
+      for (const s of ag.sessions) sessions.push(s);
+    }
+    sessions.sort((a, b) => b.lastTimestamp - a.lastTimestamp);
+    return sessions;
+  }, [groups]);
+
   const selectedEvents = useMemo(() => {
     if (!selectedSession || !selectedAgent) return null;
     const ag = groups.find((g) => g.agentName === selectedAgent);
@@ -163,9 +168,8 @@ export default function MemoryPage() {
   return (
     <AppShell user={user} onLogout={logout}>
       <div className="flex h-full overflow-hidden">
-        {/* ── Left sidebar ── */}
+        {/* ── Sidebar: flat agent list ── */}
         <aside className="w-[250px] flex-shrink-0 border-r border-border bg-surface overflow-y-auto">
-          {/* Header */}
           <div className="px-3 py-3 border-b border-border">
             <h2 className="text-sm font-semibold text-foreground font-display">
               History
@@ -175,61 +179,31 @@ export default function MemoryPage() {
             </p>
           </div>
 
-          {/* Agents + sessions tree */}
           {eventsLoading ? (
             <p className="px-3 py-2 text-[11px] text-muted">Loading...</p>
           ) : (
             <div className="px-2 py-2">
               {groups.map((ag) => (
-                <div key={ag.agentName} className="mb-2">
-                  <button
-                    onClick={() => {
-                      setSelectedAgent(
-                        selectedAgent === ag.agentName ? null : ag.agentName
-                      );
-                      setSelectedSession(null);
-                    }}
-                    className={`w-full text-left flex items-center gap-1.5 px-2 py-1.5 rounded transition-colors duration-[150ms] ${
-                      selectedAgent === ag.agentName && !selectedSession
-                        ? "bg-agent-muted"
-                        : "hover:bg-raised"
-                    }`}
-                  >
-                    <span className="w-1.5 h-1.5 rounded-full bg-agent flex-shrink-0" />
-                    <span className="text-[13px] font-medium text-foreground truncate">
-                      {ag.agentName}
-                    </span>
-                    <span className="text-[10px] text-muted ml-auto font-mono">
-                      {ag.eventCount}
-                    </span>
-                  </button>
-
-                  {selectedAgent === ag.agentName && (
-                    <div className="ml-3 mt-0.5">
-                      {ag.sessions.map((sess) => (
-                        <button
-                          key={sess.sessionId}
-                          onClick={() => {
-                            setSelectedAgent(ag.agentName);
-                            setSelectedSession(sess.sessionId);
-                          }}
-                          className={`w-full text-left px-2 py-1 rounded transition-colors duration-[150ms] ${
-                            selectedSession === sess.sessionId
-                              ? "bg-agent-muted"
-                              : "hover:bg-raised"
-                          }`}
-                        >
-                          <span className="text-[12px] text-foreground truncate block">
-                            {sess.firstContent}
-                          </span>
-                          <span className="text-[10px] text-muted">
-                            {sess.events.length} events
-                          </span>
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
+                <button
+                  key={ag.agentName}
+                  onClick={() => {
+                    setSelectedAgent(ag.agentName);
+                    setSelectedSession(null);
+                  }}
+                  className={`w-full text-left flex items-center gap-1.5 px-2 py-1.5 rounded transition-colors duration-[150ms] mb-0.5 ${
+                    selectedAgent === ag.agentName
+                      ? "bg-agent-muted"
+                      : "hover:bg-raised"
+                  }`}
+                >
+                  <span className="w-1.5 h-1.5 rounded-full bg-agent flex-shrink-0" />
+                  <span className="text-[13px] font-medium text-foreground truncate">
+                    {ag.agentName}
+                  </span>
+                  <span className="text-[10px] text-muted ml-auto font-mono">
+                    {ag.eventCount}
+                  </span>
+                </button>
               ))}
             </div>
           )}
@@ -239,41 +213,55 @@ export default function MemoryPage() {
         <div className="flex-1 overflow-y-auto">
           <div className="max-w-3xl mx-auto px-6 py-6">
             {selectedSession && selectedEvents ? (
-              /* ── Session conversation view ── */
-              <SessionView
-                events={selectedEvents}
-                sessionId={selectedSession}
-                agentName={selectedAgent || ""}
-              />
+              /* Session → back to agent */
+              <div>
+                <button
+                  onClick={() => setSelectedSession(null)}
+                  className="text-sm text-muted hover:text-foreground transition-colors mb-4"
+                >
+                  &larr; {selectedAgent}
+                </button>
+                <SessionView
+                  events={selectedEvents}
+                  sessionId={selectedSession}
+                  agentName={selectedAgent || ""}
+                />
+              </div>
             ) : selectedAgent ? (
-              /* ── Agent overview: all sessions ── */
-              <AgentOverview
-                groups={groups}
-                agentName={selectedAgent}
-                onSelectSession={(sid) => setSelectedSession(sid)}
-                onDelete={async () => {
-                  try {
-                    const { apiFetch } = await import("../../lib/api");
-                    // Try workspace delete first, fall back to personal
-                    if (wsId) {
-                      await apiFetch(`/api/v1/workspaces/${wsId}/memory/agents/${encodeURIComponent(selectedAgent)}`, { method: "DELETE" });
-                    } else {
-                      await apiFetch(`/api/v1/memory/agents/${encodeURIComponent(selectedAgent)}`, { method: "DELETE" });
-                    }
-                    setSelectedAgent(null);
-                    loadEvents();
-                  } catch { /* ignore */ }
-                }}
-              />
+              /* Agent → back to recent activity */
+              <div>
+                <button
+                  onClick={() => { setSelectedAgent(null); setSelectedSession(null); }}
+                  className="text-sm text-muted hover:text-foreground transition-colors mb-4"
+                >
+                  &larr; Recent Activity
+                </button>
+                <AgentOverview
+                  groups={groups}
+                  agentName={selectedAgent}
+                  wsId={wsId}
+                  onSelectSession={(sid) => setSelectedSession(sid)}
+                  onDelete={async () => {
+                    try {
+                      const { apiFetch } = await import("../../lib/api");
+                      if (wsId) {
+                        await apiFetch(`/api/v1/workspaces/${wsId}/memory/agents/${encodeURIComponent(selectedAgent)}`, { method: "DELETE" });
+                      } else {
+                        await apiFetch(`/api/v1/memory/agents/${encodeURIComponent(selectedAgent)}`, { method: "DELETE" });
+                      }
+                      setSelectedAgent(null);
+                      loadEvents();
+                    } catch { /* ignore */ }
+                  }}
+                />
+              </div>
             ) : (
-              /* ── All events, grouped by agent ── */
-              <AllEventsView
-                groups={groups}
+              /* Recent activity: all sessions by recency */
+              <RecentActivityView
+                allSessions={allSessions}
                 eventsLoading={eventsLoading}
-                onSelectSession={(agent, sid) => {
-                  setSelectedAgent(agent);
-                  setSelectedSession(sid);
-                }}
+                onSelectAgent={(agent) => { setSelectedAgent(agent); setSelectedSession(null); }}
+                onSelectSession={(agent, sid) => { setSelectedAgent(agent); setSelectedSession(sid); }}
               />
             )}
           </div>
@@ -335,11 +323,13 @@ function SessionView({
 function AgentOverview({
   groups,
   agentName,
+  wsId,
   onSelectSession,
   onDelete,
 }: {
   groups: AgentGroup[];
   agentName: string;
+  wsId: string | null;
   onSelectSession: (sid: string) => void;
   onDelete: () => void;
 }) {
@@ -376,7 +366,7 @@ function AgentOverview({
           <button
             key={sess.sessionId}
             onClick={() => onSelectSession(sess.sessionId)}
-            className="w-full text-left bg-surface border border-border rounded-lg p-3 hover:bg-raised transition-colors duration-[150ms] group"
+            className="w-full text-left bg-surface border border-border rounded-lg p-3 hover:bg-raised transition-colors duration-[150ms]"
           >
             <div className="flex items-center gap-2">
               <span className="text-[13px] text-foreground font-medium truncate">
@@ -387,9 +377,6 @@ function AgentOverview({
               </span>
             </div>
             <p className="text-[11px] text-muted mt-1">{sess.timeRange}</p>
-            <p className="text-[11px] text-muted font-mono mt-0.5 truncate opacity-60">
-              {sess.sessionId}
-            </p>
           </button>
         ))}
       </div>
@@ -397,22 +384,24 @@ function AgentOverview({
   );
 }
 
-/* ── All events grouped view ── */
+/* ── Recent activity: all sessions sorted by recency ── */
 
-function AllEventsView({
-  groups,
+function RecentActivityView({
+  allSessions,
   eventsLoading,
+  onSelectAgent,
   onSelectSession,
 }: {
-  groups: AgentGroup[];
+  allSessions: SessionGroup[];
   eventsLoading: boolean;
+  onSelectAgent: (agent: string) => void;
   onSelectSession: (agent: string, sid: string) => void;
 }) {
   if (eventsLoading) {
     return <p className="text-muted text-sm">Loading events...</p>;
   }
 
-  if (groups.length === 0) {
+  if (allSessions.length === 0) {
     return (
       <p className="text-muted text-sm">
         No events found. Agent activity will appear here as events are logged.
@@ -426,43 +415,31 @@ function AllEventsView({
         Recent Activity
       </h1>
 
-      {groups.map((ag) => (
-        <div key={ag.agentName} className="mb-6">
-          <div className="flex items-center gap-2 mb-2">
-            <span className="w-2 h-2 rounded-full bg-agent" />
-            <h2 className="text-[15px] font-semibold text-foreground">{ag.agentName}</h2>
-            <span className="text-[10px] text-muted font-mono">
-              {ag.eventCount} events
-            </span>
-          </div>
-
-          <div className="space-y-1.5 ml-4">
-            {ag.sessions.slice(0, 5).map((sess) => (
+      <div className="space-y-2">
+        {allSessions.map((sess) => (
+          <div
+            key={`${sess.agentName}-${sess.sessionId}`}
+            onClick={() => onSelectSession(sess.agentName, sess.sessionId)}
+            className="w-full text-left bg-surface border border-border rounded-lg p-3 hover:bg-raised transition-colors duration-[150ms] cursor-pointer"
+          >
+            <div className="flex items-center gap-2">
               <button
-                key={sess.sessionId}
-                onClick={() => onSelectSession(ag.agentName, sess.sessionId)}
-                className="w-full text-left bg-surface border border-border rounded-lg p-2.5 hover:bg-raised transition-colors duration-[150ms]"
+                onClick={(e) => { e.stopPropagation(); onSelectAgent(sess.agentName); }}
+                className="text-[11px] font-medium text-agent bg-agent-muted px-1.5 py-0.5 rounded font-mono uppercase tracking-[0.05em] hover:bg-agent/20 transition-colors flex-shrink-0"
               >
-                <div className="flex items-center gap-2">
-                  <span className="text-[13px] text-foreground truncate">
-                    {sess.firstContent}
-                  </span>
-                  <span className="text-[10px] text-muted font-mono ml-auto flex-shrink-0">
-                    {sess.events.length}
-                  </span>
-                </div>
-                <p className="text-[11px] text-muted mt-0.5">{sess.timeRange}</p>
+                {sess.agentName}
               </button>
-            ))}
-            {ag.sessions.length > 5 && (
-              <p className="text-[11px] text-muted pl-2">
-                + {ag.sessions.length - 5} more session
-                {ag.sessions.length - 5 !== 1 ? "s" : ""}
-              </p>
-            )}
+              <span className="text-[13px] text-foreground truncate">
+                {sess.firstContent}
+              </span>
+              <span className="text-[10px] text-muted font-mono ml-auto flex-shrink-0">
+                {sess.events.length}
+              </span>
+            </div>
+            <p className="text-[11px] text-muted mt-1">{sess.timeRange}</p>
           </div>
-        </div>
-      ))}
+        ))}
+      </div>
     </div>
   );
 }
