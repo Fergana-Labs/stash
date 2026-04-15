@@ -16,7 +16,6 @@ CACHE_TTL = 300  # 5 minutes
 
 DEFAULT_STATE = {
     "streaming_enabled": True,
-    "persona": "",
     "session_id": "",
     "last_sync": None,
 }

@@ -57,11 +57,8 @@ def stream_user_message(client: OctopusClient, cfg: dict, state: dict, prompt_te
 
 # --- Context injection (for UserPromptSubmit-style hooks) ---
 
-def _build_fallback_context(agent_name: str, persona: str, recent_events: list) -> str:
-    lines = ["## Agent Identity", f"You are **{agent_name}**, a Octopus agent."]
-    if persona:
-        lines.append(persona)
-    lines.append("")
+def _build_fallback_context(agent_name: str, recent_events: list) -> str:
+    lines = ["## Agent Identity", f"You are **{agent_name}**, a Octopus agent.", ""]
 
     if recent_events:
         lines.append("## Recent Activity (your previous sessions)")
@@ -88,11 +85,8 @@ def build_injection_context(
     activity from the configured workspace. Appends pending escalations last.
     """
     cache = load_cache(data_dir)
-    persona = state.get("persona", "")
-    if not persona and cache and cache.get("profile"):
-        persona = str(cache["profile"].get("description", ""))
     recent_events = cache.get("recent_events", []) if cache else []
-    context = _build_fallback_context(cfg["agent_name"], persona, recent_events)
+    context = _build_fallback_context(cfg["agent_name"], recent_events)
 
     escalations = load_escalations(escalation_dir)
     if escalations:
