@@ -1,8 +1,9 @@
 # Octopus Plugin for Cursor
 
-Streams Cursor sessions to an Octopus workspace and injects persona context
-into every prompt. Mirrors the Claude Code plugin feature for feature,
-minus auto-curation (Cursor has no headless entry point).
+Streams Cursor sessions to an Octopus workspace and injects agent identity
+and recent activity context into every prompt. Mirrors the Claude Code
+plugin feature for feature, minus auto-curation (Cursor has no headless
+entry point).
 
 ## Prerequisites
 

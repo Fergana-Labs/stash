@@ -1,7 +1,7 @@
 # Octopus Plugin for Gemini CLI
 
-Streams Gemini CLI sessions to an Octopus workspace and injects persona context
-into every prompt.
+Streams Gemini CLI sessions to an Octopus workspace and injects agent
+identity and recent activity context into every prompt.
 
 ## Prerequisites
 
