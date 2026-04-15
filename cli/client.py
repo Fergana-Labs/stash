@@ -173,9 +173,6 @@ class OctopusClient:
     def all_notebooks(self) -> list:
         return self._list("/api/v1/me/notebooks", "notebooks")
 
-    def all_histories(self) -> list:
-        return self._list("/api/v1/me/history", "stores")
-
     def all_decks(self) -> list:
         return self._list("/api/v1/me/decks", "decks")
 
@@ -238,33 +235,14 @@ class OctopusClient:
     def create_personal_folder(self, notebook_id: str, name: str) -> dict:
         return self._post(f"/api/v1/notebooks/{notebook_id}/folders", json={"name": name})
 
-    # --- Universal Search ---
+    # --- History (workspace events) ---
 
-    def universal_search(self, workspace_id: str, question: str, resource_types: list[str] | None = None) -> dict:
-        body: dict = {"question": question}
-        if resource_types:
-            body["resource_types"] = resource_types
-        return self._post(f"/api/v1/workspaces/{workspace_id}/search", json=body)
-
-    def personal_search(self, question: str, resource_types: list[str] | None = None) -> dict:
-        body: dict = {"question": question}
-        if resource_types:
-            body["resource_types"] = resource_types
-        return self._post("/api/v1/me/search", json=body)
-
-    # --- History (was memory stores) ---
-
-    def create_history(self, workspace_id: str, name: str, description: str = "") -> dict:
-        return self._post(f"/api/v1/workspaces/{workspace_id}/memory", json={
-            "name": name, "description": description,
-        })
-
-    def list_histories(self, workspace_id: str) -> list:
-        return self._list(f"/api/v1/workspaces/{workspace_id}/memory", "stores")
+    def list_agent_names(self, workspace_id: str) -> list:
+        data = self._get(f"/api/v1/workspaces/{workspace_id}/memory/agent-names")
+        return data.get("agent_names", []) if isinstance(data, dict) else data
 
     def push_event(
-        self, workspace_id: str, store_id: str,
-        agent_name: str, event_type: str, content: str,
+        self, workspace_id: str, agent_name: str, event_type: str, content: str,
         session_id: str | None = None, tool_name: str | None = None,
         metadata: dict | None = None,
     ) -> dict:
@@ -275,10 +253,10 @@ class OctopusClient:
             body["tool_name"] = tool_name
         if metadata:
             body["metadata"] = metadata
-        return self._post(f"/api/v1/workspaces/{workspace_id}/memory/{store_id}/events", json=body)
+        return self._post(f"/api/v1/workspaces/{workspace_id}/memory/events", json=body)
 
     def query_events(
-        self, workspace_id: str, store_id: str,
+        self, workspace_id: str,
         agent_name: str | None = None, event_type: str | None = None,
         limit: int = 50, after: str | None = None,
     ) -> list:
@@ -289,13 +267,10 @@ class OctopusClient:
             params["event_type"] = event_type
         if after:
             params["after"] = after
-        return self._list(f"/api/v1/workspaces/{workspace_id}/memory/{store_id}/events", "events", **params)
+        return self._list(f"/api/v1/workspaces/{workspace_id}/memory/events", "events", **params)
 
-    def search_events(self, workspace_id: str, store_id: str, query: str, limit: int = 50) -> list:
-        return self._list(f"/api/v1/workspaces/{workspace_id}/memory/{store_id}/events/search", "events", q=query, limit=limit)
-
-    def query_history(self, workspace_id: str, store_id: str, question: str) -> dict:
-        return self._post(f"/api/v1/workspaces/{workspace_id}/memory/{store_id}/query", json={"question": question})
+    def search_events(self, workspace_id: str, query: str, limit: int = 50) -> list:
+        return self._list(f"/api/v1/workspaces/{workspace_id}/memory/events/search", "events", q=query, limit=limit)
 
     def all_events(self, agent_name: str | None = None, event_type: str | None = None, limit: int = 50) -> list:
         params: dict = {"limit": limit}

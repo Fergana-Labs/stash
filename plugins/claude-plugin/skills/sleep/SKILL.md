@@ -9,7 +9,7 @@ Curate workspace history into organized, categorized wiki pages. This is the "sl
 
 ## Steps
 
-1. **Load config**: Run `octopus config --json` to get `default_workspace` and `default_store`. If not set, ask the user for workspace_id and history_store_id.
+1. **Load config**: Run `octopus config --json` to get `default_workspace`. If not set, ask the user for the workspace_id.
 
 2. **List notebooks**: Run `octopus notebooks list --ws <workspace_id> --json`. Look for an existing curation notebook (named "Wiki", "Knowledge Base", or similar). If none exists, ask the user which notebook to use or create one:
    ```bash
@@ -18,9 +18,8 @@ Curate workspace history into organized, categorized wiki pages. This is the "sl
 
 3. **Read recent history events**: Fetch the latest activity:
    ```bash
-   octopus history query --ws <workspace_id> --store <store_id> --limit 200 --json
+   octopus history query --ws <workspace_id> --limit 200 --json
    ```
-   If the workspace has multiple history stores, list them with `octopus history list --ws <workspace_id> --json` and query each.
 
 4. **Read existing wiki pages**: Get the current state of the notebook:
    ```bash
