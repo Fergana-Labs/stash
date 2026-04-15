@@ -152,23 +152,42 @@ export default function KnowledgeDensityMap({ data, onTopicClick }: Props) {
       ctx.lineWidth = 0.5;
       ctx.stroke();
 
-      // Label (only if rect is big enough)
-      if (rw > 40 && rh > 28) {
-        ctx.font = "500 11px 'JetBrains Mono', monospace";
-        ctx.fillStyle = "#F1F5F9";
+      // Label — always render, rotating for tall-thin rects
+      const isWide = rw >= rh;
+      const longSide = Math.max(rw, rh);
+      const shortSide = Math.min(rw, rh);
+
+      // Pick font size based on available space
+      const fontSize = shortSide < 20 ? 8 : longSide < 50 ? 9 : 11;
+      ctx.font = `500 ${fontSize}px 'JetBrains Mono', monospace`;
+      ctx.fillStyle = "#F1F5F9";
+
+      if (isWide || rw >= 30) {
+        // Horizontal label
         ctx.textAlign = "left";
         ctx.textBaseline = "top";
-
-        const maxChars = Math.floor(rw / 7);
-        const label = rect.label.length > maxChars
-          ? rect.label.slice(0, maxChars - 1) + "\u2026"
-          : rect.label;
-        ctx.fillText(label, rx + 6, ry + 6);
-
-        // Count
-        ctx.font = "400 10px 'JetBrains Mono', monospace";
-        ctx.fillStyle = "#94A3B8";
-        ctx.fillText(`${rect.count}`, rx + 6, ry + 20);
+        const maxChars = Math.floor((rw - 10) / (fontSize * 0.62));
+        if (maxChars >= 2) {
+          const label = rect.label.length > maxChars
+            ? rect.label.slice(0, maxChars - 1) + "\u2026"
+            : rect.label;
+          ctx.fillText(label, rx + 5, ry + 4);
+        }
+      } else if (rh >= 30) {
+        // Vertical (rotated) label for tall thin rects
+        ctx.save();
+        ctx.translate(rx + rw / 2, ry + rh - 5);
+        ctx.rotate(-Math.PI / 2);
+        ctx.textAlign = "left";
+        ctx.textBaseline = "middle";
+        const maxChars = Math.floor((rh - 10) / (fontSize * 0.62));
+        if (maxChars >= 2) {
+          const label = rect.label.length > maxChars
+            ? rect.label.slice(0, maxChars - 1) + "\u2026"
+            : rect.label;
+          ctx.fillText(label, 0, 0);
+        }
+        ctx.restore();
       }
     }
   }, [data]);

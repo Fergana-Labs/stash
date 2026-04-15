@@ -18,7 +18,7 @@ export default function DashboardSection({
   children,
 }: DashboardSectionProps) {
   return (
-    <div className="bg-surface border border-border rounded-lg overflow-hidden">
+    <div className="bg-surface border border-border rounded-lg overflow-visible">
       <div className="px-4 py-2.5 border-b border-border">
         <span className="text-[11px] font-mono font-medium text-muted uppercase tracking-[0.05em]">
           {title}
