@@ -14,5 +14,5 @@ Previous Claude coding sessions are stored as `.jsonl` files in your ~/.claude f
 
 When you create or update a PR, share both the GitHub link and the Assert review link with the user at the end of your session:
 
-- GitHub: `https://github.com/Assert-Labs/assert/pull/<number>`
-- Assert: `https://app.assert.dev/review/github/Assert-Labs/assert/<number>`
+- GitHub: `https://github.com/Fergana-Labs/assert/pull/<number>`
+- Assert: `https://app.assert.dev/review/github/Fergana-Labs/assert/<number>`
