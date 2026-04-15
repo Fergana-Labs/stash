@@ -253,6 +253,7 @@ export interface EmbeddingProjectionPoint {
   id: string;
   x: number;
   y: number;
+  z: number;
   source: "notebook_pages" | "table_rows" | "history_events";
   label: string;
   created_at: string | null;
