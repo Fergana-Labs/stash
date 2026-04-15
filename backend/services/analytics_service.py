@@ -166,7 +166,7 @@ async def get_knowledge_density(
                      lower(COALESCE(np2.content_markdown, '')), '[^a-z]+'
                  ) AS w
             WHERE np2.notebook_id IN (SELECT notebook_id FROM accessible_notebooks)
-              AND to_tsvector('english', w) @@ to_tsquery(stems.stem)
+              AND to_tsvector('english', w) @@ plainto_tsquery('english', stems.stem)
               AND length(w) > 2
             GROUP BY w
             ORDER BY COUNT(*) DESC
