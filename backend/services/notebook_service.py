@@ -2,7 +2,6 @@
 
 import asyncio
 import hashlib
-import json
 import logging
 import re
 from collections.abc import Awaitable, Callable
@@ -22,14 +21,20 @@ def _content_hash(content: str) -> str:
 
 
 async def create_notebook(
-    workspace_id: UUID | None, name: str, description: str, created_by: UUID,
+    workspace_id: UUID | None,
+    name: str,
+    description: str,
+    created_by: UUID,
 ) -> dict:
     pool = get_pool()
     row = await pool.fetchrow(
         "INSERT INTO notebooks (workspace_id, name, description, created_by) "
         "VALUES ($1, $2, $3, $4) "
         "RETURNING id, workspace_id, name, description, created_by, created_at, updated_at",
-        workspace_id, name, description, created_by,
+        workspace_id,
+        name,
+        description,
+        created_by,
     )
     return dict(row)
 
@@ -95,7 +100,9 @@ async def create_folder(notebook_id: UUID, name: str, created_by: UUID) -> dict:
         "INSERT INTO notebook_folders (notebook_id, name, created_by) "
         "VALUES ($1, $2, $3) "
         "RETURNING id, notebook_id, name, created_by, created_at, updated_at",
-        notebook_id, name, created_by,
+        notebook_id,
+        name,
+        created_by,
     )
     return dict(row)
 
@@ -106,7 +113,9 @@ async def rename_folder(folder_id: UUID, notebook_id: UUID, name: str) -> dict |
         "UPDATE notebook_folders SET name = $1, updated_at = now() "
         "WHERE id = $2 AND notebook_id = $3 "
         "RETURNING id, notebook_id, name, created_by, created_at, updated_at",
-        name, folder_id, notebook_id,
+        name,
+        folder_id,
+        notebook_id,
     )
     return dict(row) if row else None
 
@@ -115,7 +124,8 @@ async def delete_folder(folder_id: UUID, notebook_id: UUID) -> bool:
     pool = get_pool()
     result = await pool.execute(
         "DELETE FROM notebook_folders WHERE id = $1 AND notebook_id = $2",
-        folder_id, notebook_id,
+        folder_id,
+        notebook_id,
     )
     return result == "DELETE 1"
 
@@ -124,8 +134,11 @@ async def delete_folder(folder_id: UUID, notebook_id: UUID) -> bool:
 
 
 async def create_page(
-    notebook_id: UUID, name: str, created_by: UUID,
-    folder_id: UUID | None = None, content: str = "",
+    notebook_id: UUID,
+    name: str,
+    created_by: UUID,
+    folder_id: UUID | None = None,
+    content: str = "",
     metadata: dict | None = None,
 ) -> dict:
     pool = get_pool()
@@ -137,7 +150,13 @@ async def create_page(
         "VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $7) "
         "RETURNING id, notebook_id, folder_id, name, content_markdown, content_hash, metadata, "
         "created_by, updated_by, created_at, updated_at",
-        notebook_id, folder_id, name, content, ch, meta, created_by,
+        notebook_id,
+        folder_id,
+        name,
+        content,
+        ch,
+        meta,
+        created_by,
     )
     page = dict(row)
     # Fire-and-forget: embed page + extract wiki links
@@ -155,7 +174,8 @@ async def get_page(page_id: UUID, notebook_id: UUID) -> dict | None:
         "SELECT id, notebook_id, folder_id, name, content_markdown, content_hash, metadata, "
         "created_by, updated_by, created_at, updated_at "
         "FROM notebook_pages WHERE id = $1 AND notebook_id = $2",
-        page_id, notebook_id,
+        page_id,
+        notebook_id,
     )
     return dict(row) if row else None
 
@@ -185,9 +205,13 @@ class ConcurrentEditError(Exception):
 
 
 async def update_page(
-    page_id: UUID, notebook_id: UUID, updated_by: UUID,
-    name: str | None = None, folder_id: UUID | None = None,
-    content: str | None = None, move_to_root: bool = False,
+    page_id: UUID,
+    notebook_id: UUID,
+    updated_by: UUID,
+    name: str | None = None,
+    folder_id: UUID | None = None,
+    content: str | None = None,
+    move_to_root: bool = False,
     metadata: dict | None = None,
     on_conflict: Callable[[dict], Awaitable[str]] | None = None,
 ) -> dict | None:
@@ -210,7 +234,8 @@ async def update_page(
         if content is not None:
             current = await pool.fetchrow(
                 "SELECT content_hash FROM notebook_pages WHERE id = $1 AND notebook_id = $2",
-                page_id, notebook_id,
+                page_id,
+                notebook_id,
             )
             if current is None:
                 return None
@@ -269,7 +294,8 @@ async def update_page(
             "SELECT id, notebook_id, folder_id, name, content_markdown, content_hash, metadata, "
             "created_by, updated_by, created_at, updated_at "
             "FROM notebook_pages WHERE id = $1 AND notebook_id = $2",
-            page_id, notebook_id,
+            page_id,
+            notebook_id,
         )
         if fresh is None:
             return None
@@ -277,18 +303,21 @@ async def update_page(
         fresh_page = dict(fresh)
         logger.info(
             "update_page conflict on page %s (attempt %d/%d)",
-            page_id, attempt + 1, MAX_UPDATE_RETRIES,
+            page_id,
+            attempt + 1,
+            MAX_UPDATE_RETRIES,
         )
         if on_conflict is None:
             raise ConcurrentEditError(fresh_page)
         content = await on_conflict(fresh_page)
-        await asyncio.sleep(0.02 * (2 ** attempt))
+        await asyncio.sleep(0.02 * (2**attempt))
 
     logger.warning("update_page exhausted retries for page %s", page_id)
     fresh = await pool.fetchrow(
         "SELECT id, notebook_id, folder_id, name, content_markdown, content_hash "
         "FROM notebook_pages WHERE id = $1 AND notebook_id = $2",
-        page_id, notebook_id,
+        page_id,
+        notebook_id,
     )
     if fresh is None:
         return None
@@ -299,7 +328,8 @@ async def delete_page(page_id: UUID, notebook_id: UUID) -> bool:
     pool = get_pool()
     result = await pool.execute(
         "DELETE FROM notebook_pages WHERE id = $1 AND notebook_id = $2",
-        page_id, notebook_id,
+        page_id,
+        notebook_id,
     )
     return result == "DELETE 1"
 
@@ -335,8 +365,6 @@ async def list_page_tree(notebook_id: UUID) -> dict:
     return {"folders": list(folder_map.values()), "root_files": root_files}
 
 
-
-
 async def search_pages_fts(notebook_id: UUID, query: str, limit: int = 10) -> list[dict]:
     """FTS search on notebook page content + keywords (keywords weighted A, content weighted B)."""
     pool = get_pool()
@@ -357,7 +385,9 @@ async def search_pages_fts(notebook_id: UUID, query: str, limit: int = 10) -> li
         f"WHERE notebook_id = $1 "
         f"AND ({vec_expr}) @@ websearch_to_tsquery('english', $2) "
         f"ORDER BY rank DESC LIMIT $3",
-        notebook_id, query, limit,
+        notebook_id,
+        query,
+        limit,
     )
     return [dict(r) for r in rows]
 
@@ -379,7 +409,8 @@ async def _resolve_page_name(notebook_id: UUID, page_name: str) -> UUID | None:
     pool = get_pool()
     row = await pool.fetchrow(
         "SELECT id FROM notebook_pages WHERE notebook_id = $1 AND name = $2",
-        notebook_id, page_name.strip(),
+        notebook_id,
+        page_name.strip(),
     )
     return row["id"] if row else None
 
@@ -390,7 +421,8 @@ async def _update_page_links(page_id: UUID, notebook_id: UUID, content: str) -> 
         pool = get_pool()
         # Delete existing outlinks from this page
         await pool.execute(
-            "DELETE FROM page_links WHERE source_page_id = $1", page_id,
+            "DELETE FROM page_links WHERE source_page_id = $1",
+            page_id,
         )
 
         link_names = _extract_wiki_links(content)
@@ -403,7 +435,9 @@ async def _update_page_links(page_id: UUID, notebook_id: UUID, content: str) -> 
                 await pool.execute(
                     "INSERT INTO page_links (source_page_id, target_page_id, link_text) "
                     "VALUES ($1, $2, $3) ON CONFLICT DO NOTHING",
-                    page_id, target_id, name,
+                    page_id,
+                    target_id,
+                    name,
                 )
     except Exception:
         logger.debug("Failed to update page links for %s", page_id, exc_info=True)
@@ -418,13 +452,17 @@ async def _resolve_dangling_links(notebook_id: UUID, page_name: str, page_id: UU
         rows = await pool.fetch(
             "SELECT id, content_markdown FROM notebook_pages "
             "WHERE notebook_id = $1 AND id != $2 AND content_markdown LIKE $3",
-            notebook_id, page_id, pattern,
+            notebook_id,
+            page_id,
+            pattern,
         )
         for row in rows:
             await pool.execute(
                 "INSERT INTO page_links (source_page_id, target_page_id, link_text) "
                 "VALUES ($1, $2, $3) ON CONFLICT DO NOTHING",
-                row["id"], page_id, page_name,
+                row["id"],
+                page_id,
+                page_name,
             )
     except Exception:
         logger.debug("Failed to resolve dangling links for %s", page_name, exc_info=True)
@@ -459,7 +497,8 @@ async def get_page_graph(notebook_id: UUID) -> dict:
     pool = get_pool()
     # Get all pages as nodes
     pages = await pool.fetch(
-        "SELECT id, name FROM notebook_pages WHERE notebook_id = $1", notebook_id,
+        "SELECT id, name FROM notebook_pages WHERE notebook_id = $1",
+        notebook_id,
     )
     nodes = [{"id": str(p["id"]), "name": p["name"]} for p in pages]
 
@@ -474,8 +513,11 @@ async def get_page_graph(notebook_id: UUID) -> dict:
         page_ids,
     )
     edges = [
-        {"source": str(e["source_page_id"]), "target": str(e["target_page_id"]),
-         "label": e["link_text"]}
+        {
+            "source": str(e["source_page_id"]),
+            "target": str(e["target_page_id"]),
+            "label": e["link_text"],
+        }
         for e in edges_rows
     ]
 
@@ -489,6 +531,7 @@ async def _embed_page(page_id: UUID, content: str) -> None:
     """Fire-and-forget: embed page content and store in database."""
     try:
         from . import embedding_service
+
         if not embedding_service.is_configured():
             return
         embedding = await embedding_service.embed_text(content)
@@ -497,14 +540,17 @@ async def _embed_page(page_id: UUID, content: str) -> None:
         pool = get_pool()
         await pool.execute(
             "UPDATE notebook_pages SET embedding = $1 WHERE id = $2",
-            embedding, page_id,
+            embedding,
+            page_id,
         )
     except Exception:
         logger.debug("Failed to embed page %s", page_id, exc_info=True)
 
 
 async def search_pages_vector(
-    notebook_id: UUID, query_embedding, limit: int = 20,
+    notebook_id: UUID,
+    query_embedding,
+    limit: int = 20,
 ) -> list[dict]:
     """Semantic search on notebook pages using pgvector."""
     pool = get_pool()
@@ -514,8 +560,8 @@ async def search_pages_vector(
         "1 - (embedding <=> $2) AS similarity "
         "FROM notebook_pages WHERE notebook_id = $1 AND embedding IS NOT NULL "
         "ORDER BY embedding <=> $2 LIMIT $3",
-        notebook_id, query_embedding, limit,
+        notebook_id,
+        query_embedding,
+        limit,
     )
     return [dict(r) for r in rows]
-
-

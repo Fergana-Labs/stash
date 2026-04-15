@@ -34,16 +34,22 @@ async def _check_member(workspace_id: UUID, user_id: UUID) -> None:
 
 @ws_router.post("/events", response_model=HistoryEventResponse, status_code=201)
 async def push_ws_event(
-    workspace_id: UUID, req: HistoryEventCreateRequest,
+    workspace_id: UUID,
+    req: HistoryEventCreateRequest,
     current_user: dict = Depends(get_current_user),
 ):
     await _check_member(workspace_id, current_user["id"])
     attachments = [a.model_dump(mode="json") for a in req.attachments] if req.attachments else None
     event = await memory_service.push_event(
-        workspace_id, agent_name=req.agent_name, event_type=req.event_type,
-        content=req.content, created_by=current_user["id"],
-        session_id=req.session_id, tool_name=req.tool_name,
-        metadata=req.metadata, attachments=attachments,
+        workspace_id,
+        agent_name=req.agent_name,
+        event_type=req.event_type,
+        content=req.content,
+        created_by=current_user["id"],
+        session_id=req.session_id,
+        tool_name=req.tool_name,
+        metadata=req.metadata,
+        attachments=attachments,
         created_at=req.created_at,
     )
     return HistoryEventResponse(**event)
@@ -51,7 +57,8 @@ async def push_ws_event(
 
 @ws_router.post("/events/batch", response_model=list[HistoryEventResponse], status_code=201)
 async def push_ws_events_batch(
-    workspace_id: UUID, req: HistoryEventBatchRequest,
+    workspace_id: UUID,
+    req: HistoryEventBatchRequest,
     current_user: dict = Depends(get_current_user),
 ):
     await _check_member(workspace_id, current_user["id"])
@@ -73,8 +80,13 @@ async def query_ws_events(
 ):
     await _check_member(workspace_id, current_user["id"])
     events, has_more = await memory_service.query_workspace_events(
-        workspace_id, agent_name=agent_name, session_id=session_id,
-        event_type=event_type, after=after, before=before, limit=limit,
+        workspace_id,
+        agent_name=agent_name,
+        session_id=session_id,
+        event_type=event_type,
+        after=after,
+        before=before,
+        limit=limit,
     )
     return HistoryEventListResponse(
         events=[HistoryEventResponse(**e) for e in events],
@@ -99,7 +111,8 @@ async def search_ws_events(
 
 @ws_router.get("/events/{event_id}", response_model=HistoryEventResponse)
 async def get_ws_event(
-    workspace_id: UUID, event_id: UUID,
+    workspace_id: UUID,
+    event_id: UUID,
     current_user: dict = Depends(get_current_user),
 ):
     await _check_member(workspace_id, current_user["id"])
@@ -111,7 +124,8 @@ async def get_ws_event(
 
 @ws_router.delete("/agents/{agent_name}", status_code=204)
 async def delete_ws_agent(
-    workspace_id: UUID, agent_name: str,
+    workspace_id: UUID,
+    agent_name: str,
     current_user: dict = Depends(get_current_user),
 ):
     """Delete all events for an agent in this workspace."""
@@ -127,6 +141,7 @@ async def list_ws_agent_names(
     """List distinct agent names in this workspace."""
     await _check_member(workspace_id, current_user["id"])
     from ..database import get_pool
+
     pool = get_pool()
     rows = await pool.fetch(
         "SELECT DISTINCT agent_name FROM history_events "
@@ -155,10 +170,15 @@ async def push_personal_event(
 ):
     attachments = [a.model_dump(mode="json") for a in req.attachments] if req.attachments else None
     event = await memory_service.push_event(
-        None, agent_name=req.agent_name, event_type=req.event_type,
-        content=req.content, created_by=current_user["id"],
-        session_id=req.session_id, tool_name=req.tool_name,
-        metadata=req.metadata, attachments=attachments,
+        None,
+        agent_name=req.agent_name,
+        event_type=req.event_type,
+        content=req.content,
+        created_by=current_user["id"],
+        session_id=req.session_id,
+        tool_name=req.tool_name,
+        metadata=req.metadata,
+        attachments=attachments,
         created_at=req.created_at,
     )
     return HistoryEventResponse(**event)
@@ -186,8 +206,12 @@ async def query_personal_events(
 ):
     events, has_more = await memory_service.query_personal_events(
         current_user["id"],
-        agent_name=agent_name, session_id=session_id,
-        event_type=event_type, after=after, before=before, limit=limit,
+        agent_name=agent_name,
+        session_id=session_id,
+        event_type=event_type,
+        after=after,
+        before=before,
+        limit=limit,
     )
     return HistoryEventListResponse(
         events=[HistoryEventResponse(**e) for e in events],
@@ -202,7 +226,9 @@ async def search_personal_events(
     current_user: dict = Depends(get_current_user),
 ):
     events = await memory_service.search_personal_events(
-        current_user["id"], q, limit=limit,
+        current_user["id"],
+        q,
+        limit=limit,
     )
     return HistoryEventListResponse(
         events=[HistoryEventResponse(**e) for e in events],

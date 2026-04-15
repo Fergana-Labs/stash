@@ -3,7 +3,6 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
-
 # --- Users ---
 
 
@@ -181,7 +180,8 @@ class ColumnDefinition(BaseModel):
     id: str = Field("", max_length=64)
     name: str = Field(..., min_length=1, max_length=128)
     type: str = Field(
-        ..., pattern=r"^(text|number|boolean|date|datetime|url|email|select|multiselect|json)$",
+        ...,
+        pattern=r"^(text|number|boolean|date|datetime|url|email|select|multiselect|json)$",
     )
     order: int = Field(0, ge=0)
     required: bool = False
@@ -220,7 +220,8 @@ class TableListResponse(BaseModel):
 class ColumnAddRequest(BaseModel):
     name: str = Field(..., min_length=1, max_length=128)
     type: str = Field(
-        ..., pattern=r"^(text|number|boolean|date|datetime|url|email|select|multiselect|json)$",
+        ...,
+        pattern=r"^(text|number|boolean|date|datetime|url|email|select|multiselect|json)$",
     )
     required: bool = False
     default: str | int | float | bool | list | None = None
@@ -230,7 +231,8 @@ class ColumnAddRequest(BaseModel):
 class ColumnUpdateRequest(BaseModel):
     name: str | None = Field(None, min_length=1, max_length=128)
     type: str | None = Field(
-        None, pattern=r"^(text|number|boolean|date|datetime|url|email|select|multiselect|json)$",
+        None,
+        pattern=r"^(text|number|boolean|date|datetime|url|email|select|multiselect|json)$",
     )
     required: bool | None = None
     default: str | int | float | bool | list | None = None
@@ -296,7 +298,9 @@ class HistoryEventCreateRequest(BaseModel):
     tool_name: str | None = Field(None, max_length=128)
     metadata: dict = Field(default_factory=dict)
     attachments: list[Attachment] | None = None
-    created_at: datetime | None = Field(None, description="ISO timestamp; defaults to now if omitted")
+    created_at: datetime | None = Field(
+        None, description="ISO timestamp; defaults to now if omitted"
+    )
 
 
 class HistoryEventBatchRequest(BaseModel):
