@@ -35,7 +35,9 @@ def _read_json(path: Path, default: dict) -> dict:
 
 def _write_json(path: Path, data: dict) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_suffix(path.suffix + ".tmp")
+    # pid-suffix the tmp so concurrent writers from different processes don't
+    # clobber each other's in-flight tmp file. os.replace itself is atomic.
+    tmp = path.with_suffix(f"{path.suffix}.{os.getpid()}.tmp")
     tmp.write_text(json.dumps(data, indent=2))
     os.replace(tmp, path)
 

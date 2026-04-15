@@ -14,9 +14,6 @@
     "afterAgentResponse": [
       { "command": "python3 ${PLUGIN_ROOT}/scripts/on_agent_response.py", "timeout": 10 }
     ],
-    "stop": [
-      { "command": "python3 ${PLUGIN_ROOT}/scripts/on_stop.py", "timeout": 5 }
-    ],
     "sessionEnd": [
       { "command": "python3 ${PLUGIN_ROOT}/scripts/on_session_end.py", "timeout": 5 }
     ]

@@ -66,15 +66,15 @@ def test_tool_use(plugin):
     assert isinstance(event.tool_input, dict)
 
 
-@pytest.mark.parametrize("plugin", PLUGINS)
+@pytest.mark.parametrize("plugin", ["claude", "gemini", "codex", "opencode"])
 def test_stop(plugin):
+    # Cursor intentionally has no stop hook — afterAgentResponse + sessionEnd
+    # cover what used to be Cursor's `stop`. See cursor-plugin/hooks.json.
     adapt = _load_adapt(plugin)
     event = adapt.adapt_stop(_load_fixture(plugin, "stop"))
     assert event.kind == "stop"
     assert event.session_id
-    # Cursor's stop event has no assistant text — captured via afterAgentResponse.
-    if plugin != "cursor":
-        assert event.last_assistant_message
+    assert event.last_assistant_message
 
 
 def test_cursor_agent_response():
@@ -83,6 +83,30 @@ def test_cursor_agent_response():
     assert event.kind == "stop"
     assert event.session_id
     assert event.last_assistant_message == "Done."
+
+
+def test_cursor_tool_output_json_string_parses():
+    """Cursor's tool_output is a JSON-stringified string. The adapter must
+    parse it to a dict so summarize_tool_use doesn't crash on `.get()`."""
+    adapt = _load_adapt("cursor")
+    event = adapt.adapt_tool_use({
+        "tool_name": "Shell",
+        "session_id": "s1",
+        "tool_input": {"command": "ls"},
+        "tool_output": '{"stdout": "file.txt\\n", "exit_code": 0}',
+    })
+    assert isinstance(event.tool_response, dict)
+    assert event.tool_response.get("stdout") == "file.txt\n"
+    assert event.tool_response.get("exit_code") == 0
+
+    # Non-JSON text falls back to {"raw": ...}.
+    event2 = adapt.adapt_tool_use({
+        "tool_name": "Shell",
+        "session_id": "s1",
+        "tool_input": {"command": "ls"},
+        "tool_output": "not-json-text",
+    })
+    assert event2.tool_response == {"raw": "not-json-text"}
 
 
 def test_codex_notify_fallback():
@@ -157,10 +181,13 @@ def test_tool_name_normalization():
 
 
 def test_client_facet_flows_through_stream_paths():
-    """cfg['client'] must survive stream_user_message / stream_tool_use / stream_stop
-    and land as metadata.client on the wire."""
+    """cfg['client'] must survive every stream_* helper and land as
+    metadata.client on the wire."""
     from event import HookEvent
-    from hooks import stream_stop, stream_tool_use, stream_user_message
+    from hooks import (
+        stream_assistant_message, stream_session_end, stream_tool_use,
+        stream_user_message,
+    )
     from octopus_client import OctopusClient
 
     calls = []
@@ -185,11 +212,38 @@ def test_client_facet_flows_through_stream_paths():
             kind="tool_use", tool_name="bash",
             tool_input={"command": "echo hi"}, tool_response={"stdout": "hi"},
         ))
-        stream_stop(c, cfg, state, HookEvent(
+        stream_assistant_message(c, cfg, state, HookEvent(
             kind="stop", last_assistant_message="done.",
         ))
+        stream_session_end(c, cfg, state, HookEvent(kind="session_end"))
 
         for body in calls:
             assert body.get("metadata", {}).get("client") == client_name, (
                 f"{client_name}: missing client facet in {body}"
             )
+
+
+def test_stream_session_end_not_emitted_on_assistant_message():
+    """stream_assistant_message must NOT emit a session_end event — that's
+    the whole point of splitting it from stream_session_end."""
+    from event import HookEvent
+    from hooks import stream_assistant_message
+    from octopus_client import OctopusClient
+
+    calls = []
+
+    class FakeClient(OctopusClient):
+        def _post(self, path, **kwargs):
+            calls.append(kwargs.get("json", {}))
+            return {}
+
+    c = FakeClient(base_url="http://x", api_key="k")
+    cfg = {"workspace_id": "ws1", "agent_name": "henry", "client": "claude_code"}
+    state = {"session_id": "s1"}
+    stream_assistant_message(c, cfg, state, HookEvent(
+        kind="stop", last_assistant_message="turn complete.",
+    ))
+
+    event_types = [b.get("event_type") for b in calls]
+    assert "assistant_message" in event_types
+    assert "session_end" not in event_types

@@ -1,9 +1,14 @@
 #!/usr/bin/env python3
-"""Stop: stream assistant's last message + push session summary."""
+"""Stop: stream the assistant's final message for this turn.
+
+Claude Code's Stop hook fires per-turn (every time the model finishes
+responding), not per-session. We only push assistant_message here;
+session_end lives in on_session_end.py.
+"""
 
 from config import DATA_DIR, get_client, get_config, get_stdin_data, is_configured
-from hooks import stream_stop
-from state import load_state, save_state
+from hooks import stream_assistant_message
+from state import load_state
 
 from adapt import adapt_stop
 
@@ -21,12 +26,9 @@ def main():
 
     try:
         with get_client() as client:
-            stream_stop(client, cfg, state, event)
+            stream_assistant_message(client, cfg, state, event)
     except Exception:
         pass
-
-    state["session_id"] = ""
-    save_state(DATA_DIR, state)
 
 
 if __name__ == "__main__":

@@ -10,7 +10,7 @@
             "name": "octopus-session-start",
             "command": "python3 ${PLUGIN_ROOT}/scripts/on_session_start.py",
             "timeout": 5000,
-            "description": "Warm Octopus context cache"
+            "description": "Record Octopus session id"
           }
         ]
       }
@@ -37,7 +37,7 @@
             "type": "command",
             "name": "octopus-tool-use",
             "command": "python3 ${PLUGIN_ROOT}/scripts/on_tool_use.py",
-            "timeout": 2000,
+            "timeout": 5000,
             "description": "Stream tool use to Octopus history"
           }
         ]

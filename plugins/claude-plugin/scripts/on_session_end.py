@@ -1,14 +1,17 @@
 #!/usr/bin/env python3
-"""SessionEnd: spawn `claude -p <SLEEP_PROMPT>` headless to curate the wiki.
+"""SessionEnd: push the session_end event, then spawn `claude -p <SLEEP_PROMPT>`
+headless to curate the wiki.
 
-Gated by the central `auto_curate` flag, the shared 30-min cooldown, and the
-OCTOPUS_SKIP_AUTO_CURATE=1 recursion guard so the spawned sleep session
-doesn't re-trigger itself.
+Curation is gated by the central `auto_curate` flag, the shared 30-min cooldown
+in `~/.octopus/config.json`, and the OCTOPUS_SKIP_AUTO_CURATE=1 recursion
+guard (set before spawn so the curate session doesn't re-trigger itself).
 """
 
-from config import DATA_DIR, get_config, is_configured
+from config import DATA_DIR, get_client, get_config, get_stdin_data, is_configured
+from hooks import stream_session_end
 from state import load_state, save_state
 
+from adapt import adapt_stop
 from curate_spawn import spawn_curation
 
 
@@ -16,15 +19,18 @@ def main():
     if not is_configured():
         return
 
-    cfg = get_config()
-    if not cfg.get("workspace_id"):
-        return
-
     state = load_state(DATA_DIR)
-    if not state.get("streaming_enabled", True):
-        return
+    cfg = get_config()
 
-    spawn_curation("claude", ["-p"])
+    if state.get("streaming_enabled", True) and cfg.get("workspace_id"):
+        event = adapt_stop(get_stdin_data())
+        try:
+            with get_client() as client:
+                stream_session_end(client, cfg, state, event)
+        except Exception:
+            pass
+
+        spawn_curation("claude", ["-p"])
 
     state["session_id"] = ""
     save_state(DATA_DIR, state)

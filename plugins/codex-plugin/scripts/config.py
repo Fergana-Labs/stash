@@ -45,14 +45,26 @@ def _project_config() -> Path | None:
     return None
 
 
+# base_url + api_key are user-only to prevent a .octopus/config.json in any
+# writable ancestor dir from hijacking the transport endpoint.
+_USER_ONLY_KEYS = {"base_url", "api_key"}
+
+
 def _cli_config() -> dict:
+    """User config (~/.octopus/config.json) overlaid with project config.
+
+    Project config may not override base_url / api_key.
+    """
     merged: dict = {}
     user_path = Path.home() / ".octopus" / "config.json"
     if user_path.exists():
         merged.update(_read_json(user_path))
     project_path = _project_config()
     if project_path:
-        merged.update(_read_json(project_path))
+        project = _read_json(project_path)
+        for key in _USER_ONLY_KEYS:
+            project.pop(key, None)
+        merged.update(project)
     return merged
 
 

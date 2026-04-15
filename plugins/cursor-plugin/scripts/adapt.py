@@ -10,17 +10,18 @@ Per-event extras we care about:
   beforeSubmitPrompt   {prompt, attachments}
   postToolUse          {tool_name, tool_input, tool_output, tool_use_id, cwd, duration}
   afterAgentResponse   {text}
-  stop                 {status, loop_count}
   sessionEnd           {session_id, reason, duration_ms, final_status}
 
 Notes:
 - `cwd` is only on tool events; fall back to workspace_roots[0].
 - `beforeSubmitPrompt` does not carry a session_id; use conversation_id.
-- `stop` has no final assistant text — use afterAgentResponse for that.
+- `tool_output` is a JSON-stringified string — parse before handing to summarize_tool_use.
 - Tool names are PascalCase: Shell, Read, Write, Grep, Delete, Task, MCP:<name>.
 """
 
 from __future__ import annotations
+
+import json
 
 from event import HookEvent
 
@@ -71,18 +72,33 @@ def adapt_prompt(data: dict) -> HookEvent:
     )
 
 
+def _parse_tool_output(raw) -> dict | None:
+    """Cursor's tool_output is a JSON-stringified string; summarize_tool_use
+    expects a dict. Parse it; fall back to {"raw": ...} for non-JSON text."""
+    if raw is None:
+        return None
+    if isinstance(raw, dict):
+        return raw
+    if isinstance(raw, str):
+        try:
+            parsed = json.loads(raw)
+        except Exception:
+            return {"raw": raw}
+        return parsed if isinstance(parsed, dict) else {"raw": raw}
+    return {"raw": str(raw)}
+
+
 def adapt_tool_use(data: dict) -> HookEvent:
     tool_input = data.get("tool_input", {}) or {}
     if isinstance(tool_input, str):
         tool_input = {"raw": tool_input}
-    # Cursor's tool_output is a JSON-stringified string.
     return HookEvent(
         kind="tool_use",
         session_id=_sid(data),
         cwd=_cwd(data),
         tool_name=_normalize(data.get("tool_name", "")),
         tool_input=tool_input,
-        tool_response=data.get("tool_output"),
+        tool_response=_parse_tool_output(data.get("tool_output")),
     )
 
 
@@ -93,16 +109,6 @@ def adapt_agent_response(data: dict) -> HookEvent:
         session_id=_sid(data),
         cwd=_cwd(data),
         last_assistant_message=data.get("text", ""),
-    )
-
-
-def adapt_stop(data: dict) -> HookEvent:
-    # `stop` has no assistant text; we emit a stop without a message.
-    return HookEvent(
-        kind="stop",
-        session_id=_sid(data),
-        cwd=_cwd(data),
-        transcript_path=data.get("transcript_path", ""),
     )
 
 
