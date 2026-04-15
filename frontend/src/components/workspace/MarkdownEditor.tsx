@@ -19,16 +19,20 @@ import { NotebookPage } from "../../lib/types";
 
 const AUTOSAVE_DEBOUNCE_MS = 1500;
 
+export type SaveStatus = "saved" | "dirty" | "saving";
+
 interface MarkdownEditorProps {
   workspaceId: string | null;
   notebookId: string | null;
   file: NotebookPage;
   onSave: (content: string) => void;
+  onSaveStatusChange?: (status: SaveStatus) => void;
+  onRename?: (name: string) => void;
   pageNames?: string[];
   onNavigateToPage?: (pageName: string) => void;
 }
 
-export default function MarkdownEditor({ workspaceId, file, onSave, pageNames = [], onNavigateToPage }: MarkdownEditorProps) {
+export default function MarkdownEditor({ workspaceId, file, onSave, onSaveStatusChange, onRename, pageNames = [], onNavigateToPage }: MarkdownEditorProps) {
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -65,7 +69,7 @@ export default function MarkdownEditor({ workspaceId, file, onSave, pageNames = 
     ],
     editorProps: {
       attributes: {
-        class: "max-w-none px-6 py-4 min-h-full focus:outline-none",
+        class: "max-w-none min-h-[200px] focus:outline-none wiki-body",
       },
     },
     onUpdate: ({ editor }) => {
@@ -82,6 +86,13 @@ export default function MarkdownEditor({ workspaceId, file, onSave, pageNames = 
       }, AUTOSAVE_DEBOUNCE_MS);
     },
   });
+
+  // Bubble save status to parent
+  useEffect(() => {
+    if (onSaveStatusChange) {
+      onSaveStatusChange(saving ? "saving" : dirty ? "dirty" : "saved");
+    }
+  }, [saving, dirty, onSaveStatusChange]);
 
   // Flush pending save on unmount / page switch
   useEffect(() => {
@@ -131,23 +142,34 @@ export default function MarkdownEditor({ workspaceId, file, onSave, pageNames = 
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [editor, onSave]);
 
-  const statusLabel = saving ? "Saving..." : dirty ? "Unsaved changes" : "Saved";
-  const statusColor = saving || dirty ? "bg-yellow-400" : "bg-green-400";
+  const [title, setTitle] = useState(file.name);
+  const titleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const handleTitleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const newTitle = e.target.value;
+    setTitle(newTitle);
+    if (!onRename || !newTitle.trim()) return;
+    if (titleTimer.current) clearTimeout(titleTimer.current);
+    titleTimer.current = setTimeout(() => onRename(newTitle.trim()), AUTOSAVE_DEBOUNCE_MS);
+  };
 
   return (
     <div className="flex flex-col h-full">
-      <div className="flex items-center justify-between px-4 py-2 bg-surface border-b border-border">
-        <div className="flex items-center gap-3">
-          <span className="text-foreground text-sm font-medium">{file.name}</span>
-          <span
-            className={`w-2 h-2 rounded-full ${statusColor}`}
-            title={statusLabel}
-          />
-        </div>
-      </div>
       <EditorToolbar editor={editor} workspaceId={workspaceId} />
       <div className="flex-1 overflow-y-auto bg-background">
-        <EditorContent editor={editor} className="h-full" />
+        <div className="max-w-[720px] mx-auto w-full px-8 py-10">
+          <input
+            type="text"
+            value={title}
+            onChange={handleTitleChange}
+            placeholder="Untitled"
+            className="w-full text-3xl font-bold text-foreground bg-transparent border-none outline-none placeholder:text-muted/40 mb-1 font-display"
+          />
+          <div className="text-[11px] text-muted mb-6">
+            {file.updated_at ? `Last edited ${new Date(file.updated_at).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}` : ""}
+          </div>
+          <EditorContent editor={editor} className="wiki-content" />
+        </div>
       </div>
     </div>
   );
@@ -161,18 +183,47 @@ type JSONNode = {
   content?: JSONNode[];
 };
 
+function parseInlineMarkdown(text: string): JSONNode[] {
+  // Parse inline markdown (bold, italic, wiki links) into TipTap nodes/marks.
+  // Regex matches: [[wiki links]], **bold**, *italic*
+  const inlinePattern = /(\[\[([^\]]+)\]\]|\*\*(.+?)\*\*|\*(.+?)\*)/g;
+  const nodes: JSONNode[] = [];
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+
+  while ((match = inlinePattern.exec(text)) !== null) {
+    // Push plain text before this match
+    if (match.index > lastIndex) {
+      nodes.push({ type: "text", text: text.slice(lastIndex, match.index) });
+    }
+
+    if (match[2] !== undefined) {
+      // [[wiki link]]
+      nodes.push({ type: "wikiLinkNode", attrs: { pageName: match[2] } });
+    } else if (match[3] !== undefined) {
+      // **bold**
+      nodes.push({ type: "text", text: match[3], marks: [{ type: "bold" }] });
+    } else if (match[4] !== undefined) {
+      // *italic*
+      nodes.push({ type: "text", text: match[4], marks: [{ type: "italic" }] });
+    }
+
+    lastIndex = match.index + match[0].length;
+  }
+
+  // Push remaining plain text
+  if (lastIndex < text.length) {
+    nodes.push({ type: "text", text: text.slice(lastIndex) });
+  }
+
+  return nodes.length > 0 ? nodes : [{ type: "text", text }];
+}
+
 function markdownToInitialJSON(markdown: string): JSONNode {
-  // TipTap accepts markdown-ish HTML via `content`, but since we store markdown,
-  // we hand off a simple doc with a paragraph containing the raw text as a
-  // starting point. TipTap's Typography extension handles inline formatting as
-  // the user types; round-trips go through serializeMarkdown on the way out.
-  // For initial load of existing markdown, we use a minimal JSON representation.
   if (!markdown || !markdown.trim()) {
     return { type: "doc", content: [{ type: "paragraph" }] };
   }
-  // Split on blank lines into paragraphs/headings; richer structure appears
-  // once the user edits. This mirrors the behavior of the previous bootstrap
-  // path that rebuilt the Yjs fragment from markdown on first load.
+
   const blocks = markdown.split(/\n{2,}/).map((b) => b.trim()).filter(Boolean);
   const nodes: JSONNode[] = blocks.map((block) => {
     const headingMatch = block.match(/^(#{1,3})\s+(.+)$/);
@@ -180,12 +231,12 @@ function markdownToInitialJSON(markdown: string): JSONNode {
       return {
         type: "heading",
         attrs: { level: headingMatch[1].length },
-        content: [{ type: "text", text: headingMatch[2] }],
+        content: parseInlineMarkdown(headingMatch[2]),
       };
     }
     return {
       type: "paragraph",
-      content: [{ type: "text", text: block }],
+      content: parseInlineMarkdown(block),
     };
   });
   return { type: "doc", content: nodes };
