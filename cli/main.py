@@ -828,6 +828,12 @@ def tables_delete(
 # Connect wizard
 # ===========================================================================
 
+def _reserve_bottom_padding(lines: int = 4) -> None:
+    """Scroll the terminal up `lines` rows so prompts don't render flush against the bottom."""
+    sys.stdout.write("\n" * lines + f"\033[{lines}A")
+    sys.stdout.flush()
+
+
 def _self_host_walkthrough(cfg: dict) -> str:
     """Walk the user through standing up a local Octopus instance, then return its URL."""
     console.print("\n[bold cyan]Self-hosting Octopus[/bold cyan]\n")
@@ -838,6 +844,7 @@ def _self_host_walkthrough(cfg: dict) -> str:
     console.print("  [dim]3.[/dim] [cyan]docker compose up -d[/cyan]")
     console.print("\n  [dim]Already running? Skip to the URL prompt below.[/dim]\n")
 
+    _reserve_bottom_padding(6)
     ready = questionary.confirm("Is your instance running?", default=True).ask()
     if ready is None or not ready:
         console.print("\n[yellow]No problem — run [bold]octopus connect[/bold] again when ready.[/yellow]")
@@ -859,6 +866,7 @@ def connect():
         ("Only this directory", "./.octopus/config.json", "project"),
     ]
     label_width = max(len(label) for label, _, _ in scope_options)
+    _reserve_bottom_padding(8)
     scope = questionary.select(
         "Where do you want to install octopus?",
         choices=[
@@ -872,11 +880,18 @@ def connect():
 
     # --- Step 1: API endpoint ---
     cfg = load_config()
+    mode_options = [
+        ("Managed", "hosted at getoctopus.com", "managed"),
+        ("Self-host", "run on your own machine", "self"),
+    ]
+    mode_label_w = max(len(label) for label, _, _ in mode_options)
+    mode_desc_w = max(len(desc) for _, desc, _ in mode_options)
+    _reserve_bottom_padding(8)
     mode = questionary.select(
         "How do you want to use Octopus?",
         choices=[
-            questionary.Choice("Use the hosted version  (getoctopus.com — recommended)", value="managed"),
-            questionary.Choice("Self-host               (run on your own machine)", value="self"),
+            questionary.Choice(f"{label:<{mode_label_w}}   ({desc:<{mode_desc_w}})", value=value)
+            for label, desc, value in mode_options
         ],
         use_shortcuts=True,
     ).ask()
