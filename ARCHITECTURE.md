@@ -132,7 +132,7 @@ Three tables carry `vector(384)` embedding columns indexed with HNSW (cosine sim
 - `history_events.embedding` — semantic event search
 - `table_rows.embedding` — semantic row search
 
-Embeddings are generated asynchronously via OpenAI `text-embedding-3-small` when configured.
+Embeddings are generated asynchronously via a pluggable provider (OpenAI-compatible, Hugging Face Inference API, local sentence-transformers, or bring your own). Set `EMBEDDING_PROVIDER` in `.env`; defaults to auto-detect.
 
 ## Backend architecture
 
@@ -186,7 +186,7 @@ Most routers are split into `ws_router` (workspace-scoped, `/workspaces/{id}/...
 | `memory_service` | History events: push (single + batch), query, FTS, vector search |
 | `table_service` | Tables, rows, columns, CSV import/export, row embeddings |
 | `permission_service` | Visibility, shares, access checks |
-| `embedding_service` | OpenAI `text-embedding-3-small` integration |
+| `embeddings` | Pluggable embedding providers (OpenAI-compat, HuggingFace, local, BYO) |
 | `storage_service` | S3-compatible file upload and serve (local fallback) |
 | `analytics_service` | Dashboard views: activity timeline, key topics, embedding projection |
 
@@ -302,5 +302,5 @@ Three containers: `postgres` (pgvector/pg16), `backend` (uvicorn), `frontend` (N
 ### Optional
 
 - **S3-compatible storage** — file uploads (falls back to local disk)
-- **OpenAI API key** — embeddings for semantic search
+- **Embedding provider** — for semantic search (OpenAI, Hugging Face, local sentence-transformers, or BYO)
 - **RAGflow** — document ingestion (`workspaces.ragflow_dataset_id`, `documents.ragflow_doc_id`)

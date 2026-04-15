@@ -670,7 +670,7 @@ def _build_embedding_text(row_data: dict, config: dict, columns: list[dict]) -> 
 async def _embed_row(row_id: UUID, text: str) -> None:
     """Fire-and-forget: embed row text and store in database."""
     try:
-        from . import embedding_service
+        from . import embeddings as embedding_service
         if not embedding_service.is_configured():
             return
         embedding = await embedding_service.embed_text(text)
@@ -688,7 +688,7 @@ async def _embed_row(row_id: UUID, text: str) -> None:
 async def _embed_rows_batch(row_ids: list[UUID], texts: list[str]) -> None:
     """Fire-and-forget: batch embed rows."""
     try:
-        from . import embedding_service
+        from . import embeddings as embedding_service
         if not embedding_service.is_configured() or not texts:
             return
         embeddings = await embedding_service.embed_batch(texts)

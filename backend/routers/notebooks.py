@@ -138,7 +138,7 @@ async def semantic_search_ws_pages(
     """Semantic search on notebook pages using embeddings."""
     await _check_ws_access(workspace_id, current_user["id"])
     await _check_ws_notebook(workspace_id, notebook_id)
-    from ..services import embedding_service
+    from ..services import embeddings as embedding_service
     if not embedding_service.is_configured():
         raise HTTPException(status_code=503, detail="Embedding service not configured")
     query_embedding = await embedding_service.embed_text(q)
@@ -406,7 +406,7 @@ async def semantic_search_personal_pages(
     current_user: dict = Depends(get_current_user),
 ):
     await _check_notebook_owner(notebook_id, current_user["id"])
-    from ..services import embedding_service
+    from ..services import embeddings as embedding_service
     if not embedding_service.is_configured():
         raise HTTPException(status_code=503, detail="Embedding service not configured")
     query_embedding = await embedding_service.embed_text(q)

@@ -11,7 +11,7 @@ from uuid import UUID
 import numpy as np
 
 from ..database import get_pool
-from . import embedding_service
+from . import embeddings as embedding_service
 
 logger = logging.getLogger(__name__)
 

@@ -30,10 +30,14 @@ class Settings:
     ).split(",")
 
     # --- Embeddings ---
-    # Used by the embedding service for semantic search (OpenAI SDK reads
-    # OPENAI_API_KEY automatically; EMBEDDING_API_KEY is a project-specific alias).
+    # Provider: "openai", "huggingface", "local", or "auto" (default).
+    # Auto-detect: OPENAI_API_KEY → openai, HF_TOKEN → huggingface, else → local.
+    EMBEDDING_PROVIDER: str = os.getenv("EMBEDDING_PROVIDER", "auto")
     OPENAI_API_KEY: str | None = os.getenv("OPENAI_API_KEY")
     EMBEDDING_API_KEY: str | None = os.getenv("EMBEDDING_API_KEY") or os.getenv("OPENAI_API_KEY")
+    HF_TOKEN: str | None = os.getenv("HF_TOKEN")
+    EMBEDDING_MODEL: str | None = os.getenv("EMBEDDING_MODEL")
+    EMBEDDING_DIMS: int = int(os.getenv("EMBEDDING_DIMS", "384"))
 
     # --- File storage (S3-compatible, e.g. Cloudflare R2) ---
     S3_ENDPOINT: str | None = os.getenv("S3_ENDPOINT")
