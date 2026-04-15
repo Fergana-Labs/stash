@@ -11,7 +11,7 @@ only curation trigger.
 
 from config import DATA_DIR, get_client, get_config, get_stdin_data, is_configured
 from hooks import stream_assistant_message
-from state import load_state
+from state import load_state, mark_codex_hooks_active
 
 from adapt import adapt_stop
 from curate_spawn import spawn_curation
@@ -20,6 +20,9 @@ from curate_spawn import spawn_curation
 def main():
     if not is_configured():
         return
+    # Heartbeat so the notify-array fallback can self-suppress when both
+    # codex_hooks and notify are wired up.
+    mark_codex_hooks_active()
     state = load_state(DATA_DIR)
     if not state.get("streaming_enabled", True):
         return

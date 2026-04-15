@@ -15,6 +15,11 @@ from pathlib import Path
 
 CURATE_COOLDOWN_SECONDS = 30 * 60
 
+# How recently codex_hooks Stop must have fired for the `notify` fallback to
+# self-suppress. One turn is usually well under a minute; 60s is generous
+# without leaving a long window where a downgraded Codex would get no events.
+CODEX_HOOKS_FRESHNESS_SECONDS = 60
+
 CENTRAL_CONFIG_PATH = Path.home() / ".octopus" / "config.json"
 
 DEFAULT_STATE = {
@@ -101,3 +106,23 @@ def curate_cooldown_active() -> bool:
 
 def record_curate_run() -> None:
     _write_central({"last_curate_at": time.time()})
+
+
+# ---------------------------------------------------------------------------
+# Codex dedup: codex_hooks Stop and the notify fallback both push
+# assistant_message. If a user enables both, every turn double-fires. The
+# Stop hook stamps a heartbeat; the notify path skips when that heartbeat
+# is fresh.
+# ---------------------------------------------------------------------------
+
+def mark_codex_hooks_active() -> None:
+    _write_central({"codex_hooks_last_seen": time.time()})
+
+
+def codex_hooks_recently_active() -> bool:
+    last = _read_central().get("codex_hooks_last_seen", 0) or 0
+    try:
+        last_f = float(last)
+    except Exception:
+        return False
+    return (time.time() - last_f) < CODEX_HOOKS_FRESHNESS_SECONDS

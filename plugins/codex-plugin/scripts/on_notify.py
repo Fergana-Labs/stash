@@ -11,7 +11,9 @@ Turn-end semantics only. Uses state["session_id"] (from SessionStart),
 not the notify payload's `thread-id`, to keep session correlation
 consistent with the codex_hooks path.
 
-Pick ONE of codex_hooks OR notify — enabling both double-fires every turn.
+Safe to enable alongside codex_hooks: this script self-suppresses when
+the codex_hooks Stop heartbeat is fresh, so newer Codex builds get one
+event per turn while older builds still get full coverage from notify.
 """
 
 import json
@@ -19,7 +21,7 @@ import sys
 
 from config import DATA_DIR, get_client, get_config, is_configured
 from hooks import stream_assistant_message
-from state import load_state
+from state import codex_hooks_recently_active, load_state
 
 from adapt import adapt_notify
 
@@ -36,6 +38,8 @@ def _parse_argv() -> dict:
 
 def main():
     if not is_configured():
+        return
+    if codex_hooks_recently_active():
         return
     state = load_state(DATA_DIR)
     if not state.get("streaming_enabled", True):
