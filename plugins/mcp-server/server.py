@@ -86,7 +86,7 @@ def query_history(
     falls back to the user's default workspace, or personal memory if none set.
     """
     ws = workspace_id or _default_workspace()
-    if workspace_id and not _valid_id(ws):
+    if ws and not _valid_id(ws):
         return []
     limit = max(1, min(limit, 200))
     with _client() as c:
@@ -105,7 +105,7 @@ def search_history(query: str, workspace_id: str = "", limit: int = 20) -> list:
     Empty workspace_id falls back to default workspace, then personal memory.
     """
     ws = workspace_id or _default_workspace()
-    if workspace_id and not _valid_id(ws):
+    if ws and not _valid_id(ws):
         return []
     limit = max(1, min(limit, 200))
     query = query[:2000]
