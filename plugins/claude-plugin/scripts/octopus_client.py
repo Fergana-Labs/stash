@@ -74,17 +74,8 @@ class OctopusClient:
 
     # --- History ---
 
-    def create_history(self, workspace_id: str, name: str, description: str = "") -> dict:
-        return self._post(f"/api/v1/workspaces/{workspace_id}/memory", json={
-            "name": name, "description": description,
-        })
-
-    def list_histories(self, workspace_id: str) -> list:
-        return self._list(f"/api/v1/workspaces/{workspace_id}/memory", "stores")
-
     def push_event(
-        self, workspace_id: str, store_id: str,
-        agent_name: str, event_type: str, content: str,
+        self, workspace_id: str, agent_name: str, event_type: str, content: str,
         session_id: str | None = None, tool_name: str | None = None,
         metadata: dict | None = None,
     ) -> dict:
@@ -95,10 +86,10 @@ class OctopusClient:
             body["tool_name"] = tool_name
         if metadata:
             body["metadata"] = metadata
-        return self._post(f"/api/v1/workspaces/{workspace_id}/memory/{store_id}/events", json=body)
+        return self._post(f"/api/v1/workspaces/{workspace_id}/memory/events", json=body)
 
     def query_events(
-        self, workspace_id: str, store_id: str,
+        self, workspace_id: str,
         agent_name: str | None = None, event_type: str | None = None,
         limit: int = 50, after: str | None = None,
     ) -> list:
@@ -109,8 +100,8 @@ class OctopusClient:
             params["event_type"] = event_type
         if after:
             params["after"] = after
-        return self._list(f"/api/v1/workspaces/{workspace_id}/memory/{store_id}/events", "events", **params)
+        return self._list(f"/api/v1/workspaces/{workspace_id}/memory/events", "events", **params)
 
-    def search_events(self, workspace_id: str, store_id: str, query: str, limit: int = 50) -> list:
-        return self._list(f"/api/v1/workspaces/{workspace_id}/memory/{store_id}/events/search", "events", q=query, limit=limit)
+    def search_events(self, workspace_id: str, query: str, limit: int = 50) -> list:
+        return self._list(f"/api/v1/workspaces/{workspace_id}/memory/events/search", "events", q=query, limit=limit)
 

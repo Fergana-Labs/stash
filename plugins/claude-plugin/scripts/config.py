@@ -1,25 +1,14 @@
-"""Plugin configuration, state, and cache management."""
+"""Plugin configuration and persistent state."""
 
 from __future__ import annotations
 
 import json
 import os
 import sys
-import time
 from pathlib import Path
 
 PLUGIN_DATA = Path(os.environ.get("CLAUDE_PLUGIN_DATA", Path.home() / ".claude/plugins/data/octopus"))
 STATE_FILE = PLUGIN_DATA / "state.json"
-CACHE_FILE = PLUGIN_DATA / "context_cache.json"
-CACHE_TTL = 300  # 5 minutes
-
-# Optional: path to a directory of JSON notification files dropped by an external
-# orchestration layer. Octopus will surface up to 5 pending items in the prompt.
-# Set OCTOPUS_NOTIFICATIONS_DIR to point at your own notifications folder.
-ESCALATION_DIR = Path(os.environ.get(
-    "OCTOPUS_NOTIFICATIONS_DIR",
-    Path.home() / ".octopus/notifications",
-))
 
 
 def get_stdin_data() -> dict:
@@ -76,8 +65,6 @@ def get_config() -> dict:
             "api_key": cli.get("api_key", ""),
             "agent_name": cli.get("username", ""),
             "workspace_id": cli.get("default_workspace", ""),
-            "history_store_id": cli.get("default_store", ""),
-            "inject_context": os.environ.get("CLAUDE_PLUGIN_USER_CONFIG_inject_context", "true"),
             "auto_curate": os.environ.get("CLAUDE_PLUGIN_USER_CONFIG_auto_curate", "true"),
         }
 
@@ -86,8 +73,6 @@ def get_config() -> dict:
         "api_key": api_key,
         "agent_name": agent_name,
         "workspace_id": os.environ.get("CLAUDE_PLUGIN_USER_CONFIG_workspace_id", ""),
-        "history_store_id": os.environ.get("CLAUDE_PLUGIN_USER_CONFIG_history_store_id", ""),
-        "inject_context": os.environ.get("CLAUDE_PLUGIN_USER_CONFIG_inject_context", "true"),
         "auto_curate": os.environ.get("CLAUDE_PLUGIN_USER_CONFIG_auto_curate", "true"),
     }
 
@@ -114,57 +99,9 @@ def load_state() -> dict:
             return json.loads(STATE_FILE.read_text())
         except Exception:
             pass
-    return {"streaming_enabled": True, "session_id": "", "last_sync": None}
+    return {"streaming_enabled": True, "session_id": ""}
 
 
 def save_state(state: dict):
     PLUGIN_DATA.mkdir(parents=True, exist_ok=True)
     STATE_FILE.write_text(json.dumps(state, indent=2))
-
-
-# --- Cache (local context to avoid blocking API calls) ---
-
-def load_cache() -> dict | None:
-    """Load cached context. Returns None if stale or missing."""
-    if not CACHE_FILE.exists():
-        return None
-    try:
-        data = json.loads(CACHE_FILE.read_text())
-    except Exception:
-        return None
-    if time.time() - data.get("_timestamp", 0) > CACHE_TTL:
-        return None
-    return data
-
-
-def save_cache(profile: dict, recent_events: list):
-    """Save context to local cache with timestamp."""
-    PLUGIN_DATA.mkdir(parents=True, exist_ok=True)
-    CACHE_FILE.write_text(json.dumps({
-        "_timestamp": time.time(),
-        "profile": profile,
-        "recent_events": recent_events,
-    }, indent=2))
-
-
-# --- Bridge escalations ---
-
-def load_escalations() -> str:
-    """Read pending escalation notifications from the configured notifications directory."""
-    if not ESCALATION_DIR.exists():
-        return ""
-
-    lines = []
-    notifications = sorted(ESCALATION_DIR.glob("*.json"))[:5]
-    for nf in notifications:
-        try:
-            nd = json.loads(nf.read_text())
-            detail = nd.get("detail", nd.get("content", ""))[:300]
-            ntype = nd.get("type", "info")
-            lines.append(f"- [{ntype}] {detail}")
-        except Exception:
-            continue
-
-    if not lines:
-        return ""
-    return "\n\n## Pending Manager Escalations\n" + "\n".join(lines) + "\n"

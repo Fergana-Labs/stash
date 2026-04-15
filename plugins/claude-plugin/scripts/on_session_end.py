@@ -31,7 +31,7 @@ def main():
     if str(cfg.get("auto_curate", "true")).lower() != "true":
         return
 
-    if not cfg["workspace_id"] or not cfg["history_store_id"]:
+    if not cfg["workspace_id"]:
         return
 
     state = load_state()
