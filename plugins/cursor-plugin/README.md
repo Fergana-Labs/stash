@@ -60,3 +60,15 @@ Override with env vars (set in Cursor's environment):
 - No auto-curation on SessionEnd (no `cursor -p` equivalent)
 - No slash commands (`/octopus:connect` etc.) — use the `octopus` CLI directly
 - Prompt injection uses Cursor's `injected_context` stdout protocol — verify your Cursor version supports it
+
+## Retrieval
+
+Cursor's agent has shell access, so for reads mid-conversation just let it
+shell out to the `octopus` CLI. All commands support `--json`:
+
+```
+octopus history query --ws <id> --limit 20 --json
+octopus history search "<query>" --ws <id> --json
+octopus whoami --json
+octopus workspace list --mine --json
+```

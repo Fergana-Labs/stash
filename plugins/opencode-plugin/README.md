@@ -43,6 +43,18 @@ identical to the Claude/Cursor/Gemini/Codex plugins.
 
 ## Known gaps
 
-- No prompt-time context injection (opencode has no analogous protocol). Use
-  the MCP server for retrieval or rely on the pre-session cache warm.
+- No prompt-time context injection (opencode has no analogous protocol). Rely
+  on the pre-session cache warm, or have the agent shell out (see Retrieval).
 - No auto-curation hook — run `octopus curate` on a cron if desired.
+
+## Retrieval
+
+opencode agents have shell access. Point the agent at the `octopus` CLI for
+reads mid-conversation — all commands support `--json`:
+
+```
+octopus history query --ws <id> --limit 20 --json
+octopus history search "<query>" --ws <id> --json
+octopus whoami --json
+octopus workspace list --mine --json
+```

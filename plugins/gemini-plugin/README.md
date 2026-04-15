@@ -42,3 +42,15 @@ Reload with `/hooks reload` inside Gemini CLI, or restart the session.
 - No auto-curation on SessionEnd (Gemini has no headless `-p` flag today)
 - No Octopus slash commands — use the `octopus` CLI directly
 - `BeforeTool` fires before tool args are final in some tool flavors — we only subscribe to `AfterTool` to avoid noise
+
+## Retrieval
+
+Gemini CLI has shell access. For reads mid-conversation, let the agent
+shell out to the `octopus` CLI — all commands support `--json`:
+
+```
+octopus history query --ws <id> --limit 20 --json
+octopus history search "<query>" --ws <id> --json
+octopus whoami --json
+octopus workspace list --mine --json
+```
