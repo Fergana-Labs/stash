@@ -15,11 +15,8 @@ logger = logging.getLogger(__name__)
 
 
 async def create_table(
-    workspace_id: UUID | None,
-    name: str,
-    description: str,
-    columns: list[dict],
-    created_by: UUID,
+    workspace_id: UUID | None, name: str, description: str,
+    columns: list[dict], created_by: UUID,
 ) -> dict:
     pool = get_pool()
     # Assign server-generated IDs and order to columns
@@ -32,11 +29,7 @@ async def create_table(
         "VALUES ($1, $2, $3, $4, $5, $5) "
         "RETURNING id, workspace_id, name, description, columns, views, "
         "created_by, updated_by, created_at, updated_at",
-        workspace_id,
-        name,
-        description,
-        columns,
-        created_by,
+        workspace_id, name, description, columns, created_by,
     )
     result = dict(row)
     result["row_count"] = 0
@@ -56,10 +49,8 @@ async def get_table(table_id: UUID) -> dict | None:
 
 
 async def update_table(
-    table_id: UUID,
-    updated_by: UUID,
-    name: str | None = None,
-    description: str | None = None,
+    table_id: UUID, updated_by: UUID,
+    name: str | None = None, description: str | None = None,
 ) -> dict | None:
     pool = get_pool()
     sets = ["updated_at = now()", "updated_by = $1"]
@@ -86,8 +77,7 @@ async def update_table(
         return None
     result = dict(row)
     count = await pool.fetchval(
-        "SELECT COUNT(*) FROM table_rows WHERE table_id = $1",
-        table_id,
+        "SELECT COUNT(*) FROM table_rows WHERE table_id = $1", table_id,
     )
     result["row_count"] = count
     return result
@@ -165,18 +155,14 @@ async def add_column(table_id: UUID, column: dict, updated_by: UUID) -> dict:
         "WHERE id = $3 "
         "RETURNING id, workspace_id, name, description, columns, views, "
         "created_by, updated_by, created_at, updated_at",
-        cols,
-        updated_by,
-        table_id,
+        cols, updated_by, table_id,
     )
     result = dict(row)
     result["row_count"] = table["row_count"]
     return result
 
 
-async def update_column(
-    table_id: UUID, column_id: str, updates: dict, updated_by: UUID
-) -> dict | None:
+async def update_column(table_id: UUID, column_id: str, updates: dict, updated_by: UUID) -> dict | None:
     pool = get_pool()
     table = await get_table(table_id)
     if not table:
@@ -197,9 +183,7 @@ async def update_column(
         "WHERE id = $3 "
         "RETURNING id, workspace_id, name, description, columns, views, "
         "created_by, updated_by, created_at, updated_at",
-        cols,
-        updated_by,
-        table_id,
+        cols, updated_by, table_id,
     )
     result = dict(row)
     result["row_count"] = table["row_count"]
@@ -220,9 +204,7 @@ async def delete_column(table_id: UUID, column_id: str, updated_by: UUID) -> dic
         "WHERE id = $3 "
         "RETURNING id, workspace_id, name, description, columns, views, "
         "created_by, updated_by, created_at, updated_at",
-        cols,
-        updated_by,
-        table_id,
+        cols, updated_by, table_id,
     )
     result = dict(row)
     result["row_count"] = table["row_count"]
@@ -247,9 +229,7 @@ async def reorder_columns(table_id: UUID, column_ids: list[str], updated_by: UUI
         "WHERE id = $3 "
         "RETURNING id, workspace_id, name, description, columns, views, "
         "created_by, updated_by, created_at, updated_at",
-        reordered,
-        updated_by,
-        table_id,
+        reordered, updated_by, table_id,
     )
     result = dict(row)
     result["row_count"] = table["row_count"]
@@ -267,9 +247,7 @@ async def create_row(table_id: UUID, data: dict, created_by: UUID) -> dict:
         "  COALESCE((SELECT MAX(row_order) FROM table_rows WHERE table_id = $1), -1) + 1, "
         "  $3, $3) "
         "RETURNING id, table_id, data, row_order, created_by, updated_by, created_at, updated_at",
-        table_id,
-        data,
-        created_by,
+        table_id, data, created_by,
     )
     result = dict(row)
     asyncio.create_task(maybe_embed_row(table_id, result["id"], data))
@@ -295,10 +273,7 @@ async def create_rows_batch(table_id: UUID, rows_data: list[dict], created_by: U
                     "INSERT INTO table_rows (table_id, data, row_order, created_by, updated_by) "
                     "VALUES ($1, $2, $3, $4, $4) "
                     "RETURNING id, table_id, data, row_order, created_by, updated_by, created_at, updated_at",
-                    table_id,
-                    data,
-                    max_order + 1 + i,
-                    created_by,
+                    table_id, data, max_order + 1 + i, created_by,
                 )
                 results.append(dict(row))
     return results
@@ -314,9 +289,7 @@ async def get_row(row_id: UUID) -> dict | None:
     return dict(row) if row else None
 
 
-async def update_row(
-    row_id: UUID, data: dict, updated_by: UUID, table_id: UUID | None = None
-) -> dict | None:
+async def update_row(row_id: UUID, data: dict, updated_by: UUID, table_id: UUID | None = None) -> dict | None:
     """Partial merge update — only specified keys are changed."""
     pool = get_pool()
     if table_id is not None:
@@ -324,19 +297,14 @@ async def update_row(
             "UPDATE table_rows SET data = data || $1, updated_by = $2, updated_at = now() "
             "WHERE id = $3 AND table_id = $4 "
             "RETURNING id, table_id, data, row_order, created_by, updated_by, created_at, updated_at",
-            data,
-            updated_by,
-            row_id,
-            table_id,
+            data, updated_by, row_id, table_id,
         )
     else:
         row = await pool.fetchrow(
             "UPDATE table_rows SET data = data || $1, updated_by = $2, updated_at = now() "
             "WHERE id = $3 "
             "RETURNING id, table_id, data, row_order, created_by, updated_by, created_at, updated_at",
-            data,
-            updated_by,
-            row_id,
+            data, updated_by, row_id,
         )
     if not row:
         return None
@@ -349,9 +317,7 @@ async def delete_row(row_id: UUID, table_id: UUID | None = None) -> bool:
     pool = get_pool()
     if table_id is not None:
         result = await pool.execute(
-            "DELETE FROM table_rows WHERE id = $1 AND table_id = $2",
-            row_id,
-            table_id,
+            "DELETE FROM table_rows WHERE id = $1 AND table_id = $2", row_id, table_id,
         )
     else:
         result = await pool.execute("DELETE FROM table_rows WHERE id = $1", row_id)
@@ -371,10 +337,7 @@ async def update_rows_batch(table_id: UUID, updates: list[dict], updated_by: UUI
                     "UPDATE table_rows SET data = data || $1, updated_by = $2, updated_at = now() "
                     "WHERE id = $3 AND table_id = $4 "
                     "RETURNING id, table_id, data, row_order, created_by, updated_by, created_at, updated_at",
-                    item["data"],
-                    updated_by,
-                    item["row_id"],
-                    table_id,
+                    item["data"], updated_by, item["row_id"], table_id,
                 )
                 if row:
                     results.append(dict(row))
@@ -387,8 +350,7 @@ async def delete_rows_batch(table_id: UUID, row_ids: list[UUID]) -> int:
     pool = get_pool()
     result = await pool.execute(
         "DELETE FROM table_rows WHERE table_id = $1 AND id = ANY($2)",
-        table_id,
-        row_ids,
+        table_id, row_ids,
     )
     try:
         return int(result.split()[-1])
@@ -482,9 +444,7 @@ async def list_rows(
     rows = await pool.fetch(
         f"SELECT id, table_id, data, row_order, created_by, updated_by, created_at, updated_at "
         f"FROM table_rows WHERE {where} ORDER BY {order} LIMIT ${idx} OFFSET ${idx + 1}",
-        *args,
-        limit,
-        offset,
+        *args, limit, offset,
     )
     return [dict(r) for r in rows], total
 
@@ -509,9 +469,7 @@ async def save_view(table_id: UUID, view: dict, updated_by: UUID) -> dict | None
         "WHERE id = $3 "
         "RETURNING id, workspace_id, name, description, columns, views, "
         "created_by, updated_by, created_at, updated_at",
-        views,
-        updated_by,
-        table_id,
+        views, updated_by, table_id,
     )
     result = dict(row)
     result["row_count"] = table["row_count"]
@@ -529,9 +487,7 @@ async def delete_view(table_id: UUID, view_id: str, updated_by: UUID) -> dict | 
         "WHERE id = $3 "
         "RETURNING id, workspace_id, name, description, columns, views, "
         "created_by, updated_by, created_at, updated_at",
-        views,
-        updated_by,
-        table_id,
+        views, updated_by, table_id,
     )
     result = dict(row)
     result["row_count"] = table["row_count"]
@@ -543,37 +499,25 @@ async def count_rows(table_id: UUID, filters: list[dict] | None = None) -> int:
     if not filters:
         pool = get_pool()
         return await pool.fetchval(
-            "SELECT COUNT(*) FROM table_rows WHERE table_id = $1",
-            table_id,
+            "SELECT COUNT(*) FROM table_rows WHERE table_id = $1", table_id,
         )
     # Reuse list_rows logic with limit=0 to get count
     _, total = await list_rows(table_id, filters=filters, limit=0, offset=0)
     return total
 
 
-async def export_rows_all(
-    table_id: UUID,
-    filters: list[dict] | None = None,
-    sort_by: str | None = None,
-    sort_order: str = "asc",
-) -> list[dict]:
+async def export_rows_all(table_id: UUID, filters: list[dict] | None = None,
+                          sort_by: str | None = None, sort_order: str = "asc") -> list[dict]:
     """Fetch ALL rows for export (no limit). Use for CSV export."""
     rows, _ = await list_rows(
-        table_id,
-        filters=filters,
-        sort_by=sort_by,
-        sort_order=sort_order,
-        limit=2_000_000,
-        offset=0,
+        table_id, filters=filters, sort_by=sort_by, sort_order=sort_order,
+        limit=2_000_000, offset=0,
     )
     return rows
 
 
 async def search_rows(
-    table_id: UUID,
-    query: str,
-    limit: int = 100,
-    offset: int = 0,
+    table_id: UUID, query: str, limit: int = 100, offset: int = 0,
 ) -> tuple[list[dict], int]:
     """Search across all text/email/url columns using ILIKE."""
     pool = get_pool()
@@ -587,23 +531,17 @@ async def search_rows(
     or_clauses = " OR ".join(f"data->>'{c['id']}' ILIKE $2" for c in text_cols)
     where = f"table_id = $1 AND ({or_clauses})"
     like_val = f"%{query}%"
-    total = await pool.fetchval(
-        f"SELECT COUNT(*) FROM table_rows WHERE {where}", table_id, like_val
-    )
+    total = await pool.fetchval(f"SELECT COUNT(*) FROM table_rows WHERE {where}", table_id, like_val)
     rows = await pool.fetch(
         f"SELECT id, table_id, data, row_order, created_by, updated_by, created_at, updated_at "
         f"FROM table_rows WHERE {where} ORDER BY row_order ASC LIMIT $3 OFFSET $4",
-        table_id,
-        like_val,
-        limit,
-        offset,
+        table_id, like_val, limit, offset,
     )
     return [dict(r) for r in rows], total
 
 
 async def summarize_rows(
-    table_id: UUID,
-    filters: list[dict] | None = None,
+    table_id: UUID, filters: list[dict] | None = None,
 ) -> dict:
     """Compute aggregates per column: count, sum, avg, min, max for numbers; count for all."""
     pool = get_pool()
@@ -661,11 +599,7 @@ async def summarize_rows(
                     "name": c["name"],
                     "filled": row[f"{cid}_count"],
                     "sum": float(row[f"{cid}_sum"]) if row[f"{cid}_sum"] is not None else None,
-                    "avg": (
-                        round(float(row[f"{cid}_avg"]), 2)
-                        if row[f"{cid}_avg"] is not None
-                        else None
-                    ),
+                    "avg": round(float(row[f"{cid}_avg"]), 2) if row[f"{cid}_avg"] is not None else None,
                     "min": float(row[f"{cid}_min"]) if row[f"{cid}_min"] is not None else None,
                     "max": float(row[f"{cid}_max"]) if row[f"{cid}_max"] is not None else None,
                 }
@@ -683,6 +617,7 @@ async def summarize_rows(
 
 async def duplicate_row(row_id: UUID, table_id: UUID, created_by: UUID) -> dict | None:
     """Duplicate a row — copy data with new ID and row_order."""
+    pool = get_pool()
     source = await get_row(row_id)
     if not source or source.get("table_id") != table_id:
         return None
@@ -696,8 +631,7 @@ async def get_embedding_config(table_id: UUID) -> dict | None:
     """Get embedding config for a table. Returns None if not configured."""
     pool = get_pool()
     row = await pool.fetchrow(
-        "SELECT embedding_config FROM tables WHERE id = $1",
-        table_id,
+        "SELECT embedding_config FROM tables WHERE id = $1", table_id,
     )
     return row["embedding_config"] if row and row["embedding_config"] else None
 
@@ -713,9 +647,7 @@ async def set_embedding_config(table_id: UUID, config: dict, updated_by: UUID) -
         "WHERE id = $3 "
         "RETURNING id, workspace_id, name, description, columns, views, embedding_config, "
         "created_by, updated_by, created_at, updated_at",
-        config,
-        updated_by,
-        table_id,
+        config, updated_by, table_id,
     )
     return dict(row) if row else None
 
@@ -738,8 +670,7 @@ def _build_embedding_text(row_data: dict, config: dict, columns: list[dict]) -> 
 async def _embed_row(row_id: UUID, text: str) -> None:
     """Fire-and-forget: embed row text and store in database."""
     try:
-        from . import embedding_service
-
+        from . import embeddings as embedding_service
         if not embedding_service.is_configured():
             return
         embedding = await embedding_service.embed_text(text)
@@ -748,8 +679,7 @@ async def _embed_row(row_id: UUID, text: str) -> None:
         pool = get_pool()
         await pool.execute(
             "UPDATE table_rows SET embedding = $1 WHERE id = $2",
-            embedding,
-            row_id,
+            embedding, row_id,
         )
     except Exception:
         logger.debug("Failed to embed row %s", row_id, exc_info=True)
@@ -758,8 +688,7 @@ async def _embed_row(row_id: UUID, text: str) -> None:
 async def _embed_rows_batch(row_ids: list[UUID], texts: list[str]) -> None:
     """Fire-and-forget: batch embed rows."""
     try:
-        from . import embedding_service
-
+        from . import embeddings as embedding_service
         if not embedding_service.is_configured() or not texts:
             return
         embeddings = await embedding_service.embed_batch(texts)
@@ -770,8 +699,7 @@ async def _embed_rows_batch(row_ids: list[UUID], texts: list[str]) -> None:
             for row_id, emb in zip(row_ids, embeddings):
                 await conn.execute(
                     "UPDATE table_rows SET embedding = $1 WHERE id = $2",
-                    emb,
-                    row_id,
+                    emb, row_id,
                 )
     except Exception:
         logger.debug("Failed to batch embed rows", exc_info=True)
@@ -798,9 +726,7 @@ async def search_rows_vector(table_id: UUID, query_embedding, limit: int = 20) -
         "1 - (embedding <=> $2) AS similarity "
         "FROM table_rows WHERE table_id = $1 AND embedding IS NOT NULL "
         "ORDER BY embedding <=> $2 LIMIT $3",
-        table_id,
-        query_embedding,
-        limit,
+        table_id, query_embedding, limit,
     )
     return [dict(r) for r in rows]
 
@@ -817,8 +743,7 @@ async def backfill_embeddings(table_id: UUID) -> dict:
         return {"embedded": 0, "total": 0, "error": "table not found"}
 
     rows = await pool.fetch(
-        "SELECT id, data FROM table_rows WHERE table_id = $1",
-        table_id,
+        "SELECT id, data FROM table_rows WHERE table_id = $1", table_id,
     )
 
     texts = []

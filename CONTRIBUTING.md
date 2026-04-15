@@ -42,7 +42,8 @@ pip install -r backend/requirements-dev.txt
 
 # 4. Copy and edit environment variables
 cp .env.example .env
-# — Set ANTHROPIC_API_KEY and OPENAI_API_KEY if you want curation / search features
+# — Set ANTHROPIC_API_KEY for curation features
+# — For embeddings: set OPENAI_API_KEY, HF_TOKEN, or EMBEDDING_PROVIDER=local (see .env.example)
 
 # 5. Run Alembic migrations
 python -m alembic upgrade head
