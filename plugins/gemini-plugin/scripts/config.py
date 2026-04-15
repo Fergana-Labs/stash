@@ -82,7 +82,7 @@ def get_config() -> dict:
 
 def get_client() -> OctopusClient:
     cfg = get_config()
-    return OctopusClient(base_url=cfg["api_endpoint"], api_key=cfg["api_key"])
+    return OctopusClient(base_url=cfg["api_endpoint"], api_key=cfg["api_key"], data_dir=DATA_DIR)
 
 
 def is_configured() -> bool:

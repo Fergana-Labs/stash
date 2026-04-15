@@ -1,11 +1,25 @@
 """Lightweight Octopus HTTP client for plugin hooks. Extracted from cli/client.py.
 
 Events now live directly on a workspace. No intermediate "store" abstraction.
+
+Failed event pushes (network blip, backend cold start, slow GC) get appended to
+`<data_dir>/event_queue.jsonl`. The next successful push drains a batch of the
+backlog so the queue clears during normal traffic instead of needing a separate
+flush daemon.
 """
 
 from __future__ import annotations
 
+import fcntl
+import json
+import time
+from pathlib import Path
+
 import httpx
+
+QUEUE_FILENAME = "event_queue.jsonl"
+QUEUE_MAX_ENTRIES = 1000  # cap so a long backend outage doesn't fill the disk
+DRAIN_BATCH = 50          # how many backlog rows to flush per successful push
 
 
 class OctopusError(Exception):
@@ -16,9 +30,10 @@ class OctopusError(Exception):
 
 
 class OctopusClient:
-    def __init__(self, base_url: str, api_key: str = ""):
+    def __init__(self, base_url: str, api_key: str = "", data_dir: str | Path | None = None):
         self._base_url = base_url.rstrip("/")
         self._api_key = api_key
+        self._data_dir = Path(data_dir) if data_dir else None
         self._http = httpx.Client(
             base_url=self._base_url,
             timeout=httpx.Timeout(2.0, connect=1.0),
@@ -104,7 +119,94 @@ class OctopusClient:
             merged_meta["client"] = client
         if merged_meta:
             body["metadata"] = merged_meta
-        return self._post(self._events_path(workspace_id), json=body)
+
+        path = self._events_path(workspace_id)
+        try:
+            result = self._post(path, json=body)
+        except Exception:
+            self._enqueue(path, body)
+            raise
+        # Backend reachable — try to flush some of the backlog while we're here.
+        self._drain_queue()
+        return result
+
+    # --- Failed-event queue ---
+
+    def _queue_path(self) -> Path | None:
+        if not self._data_dir:
+            return None
+        return self._data_dir / QUEUE_FILENAME
+
+    def _enqueue(self, path: str, body: dict) -> None:
+        qp = self._queue_path()
+        if not qp:
+            return
+        try:
+            qp.parent.mkdir(parents=True, exist_ok=True)
+            entry = json.dumps({"path": path, "body": body, "ts": time.time()})
+            with open(qp, "a") as f:
+                fcntl.flock(f.fileno(), fcntl.LOCK_EX)
+                try:
+                    f.write(entry + "\n")
+                finally:
+                    fcntl.flock(f.fileno(), fcntl.LOCK_UN)
+            # Cheap upper bound: trim only when grossly oversized.
+            self._maybe_trim_queue(qp)
+        except Exception:
+            pass
+
+    def _maybe_trim_queue(self, qp: Path) -> None:
+        try:
+            with open(qp, "r+") as f:
+                fcntl.flock(f.fileno(), fcntl.LOCK_EX)
+                try:
+                    lines = f.read().splitlines()
+                    if len(lines) <= QUEUE_MAX_ENTRIES:
+                        return
+                    # Keep the most recent QUEUE_MAX_ENTRIES; oldest are sacrificed.
+                    keep = lines[-QUEUE_MAX_ENTRIES:]
+                    f.seek(0)
+                    f.truncate()
+                    f.write("\n".join(keep) + ("\n" if keep else ""))
+                finally:
+                    fcntl.flock(f.fileno(), fcntl.LOCK_UN)
+        except Exception:
+            pass
+
+    def _drain_queue(self) -> None:
+        qp = self._queue_path()
+        if not qp or not qp.exists():
+            return
+        try:
+            with open(qp, "r+") as f:
+                fcntl.flock(f.fileno(), fcntl.LOCK_EX)
+                try:
+                    lines = f.read().splitlines()
+                    if not lines:
+                        return
+                    remaining: list[str] = []
+                    sent = 0
+                    for line in lines:
+                        if sent >= DRAIN_BATCH:
+                            remaining.append(line)
+                            continue
+                        try:
+                            entry = json.loads(line)
+                            self._post(entry["path"], json=entry["body"])
+                            sent += 1
+                        except Exception:
+                            # Backend still unhappy. Stop now; keep this and the rest.
+                            remaining.append(line)
+                            # Don't try further entries — likely all will fail.
+                            sent = DRAIN_BATCH
+                    f.seek(0)
+                    f.truncate()
+                    if remaining:
+                        f.write("\n".join(remaining) + "\n")
+                finally:
+                    fcntl.flock(f.fileno(), fcntl.LOCK_UN)
+        except Exception:
+            pass
 
     def query_events(
         self, workspace_id: str | None,
