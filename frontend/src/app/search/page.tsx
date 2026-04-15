@@ -260,7 +260,7 @@ export default function SearchPage() {
                   {results.wikiPages.map(({ page, notebookName }) => (
                     <a
                       key={page.id}
-                      href={`/notebooks/${page.notebook_id}/pages/${page.id}?ws=${selectedWs}`}
+                      href={`/notebooks?ws=${selectedWs}&nb=${page.notebook_id}&page=${page.id}`}
                       className="block bg-surface border border-border rounded-lg px-4 py-3 hover:border-brand/40 transition-colors"
                     >
                       <div className="flex items-center gap-2 mb-1">
