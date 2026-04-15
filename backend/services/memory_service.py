@@ -6,6 +6,7 @@ Grouped by agent_name → session_id for display.
 
 import asyncio
 import logging
+from datetime import datetime, timezone
 from uuid import UUID
 
 import numpy as np
@@ -62,13 +63,17 @@ async def push_event(
     tool_name: str | None = None,
     metadata: dict | None = None,
     attachments: list[dict] | None = None,
-    created_at: str | None = None,
+    created_at: datetime | None = None,
 ) -> dict:
     """Push a single event."""
-    from datetime import datetime, timezone
     pool = get_pool()
     meta = metadata or {}
-    ts = datetime.fromisoformat(created_at.replace("Z", "+00:00")) if created_at else datetime.now(timezone.utc)
+    if created_at is None:
+        ts = datetime.now(timezone.utc)
+    elif created_at.tzinfo is None:
+        ts = created_at.replace(tzinfo=timezone.utc)
+    else:
+        ts = created_at
     row = await pool.fetchrow(
         "INSERT INTO history_events "
         "(workspace_id, created_by, agent_name, event_type, content, session_id, tool_name, metadata, attachments, created_at) "
@@ -88,7 +93,6 @@ async def push_events_batch(
     workspace_id: UUID | None, created_by: UUID, events: list[dict],
 ) -> list[dict]:
     """Batch push events. Returns list of created events."""
-    from datetime import datetime, timezone
     pool = get_pool()
     results = []
     async with pool.acquire() as conn:
@@ -96,7 +100,12 @@ async def push_events_batch(
             for evt in events:
                 meta = evt.get("metadata", {})
                 raw_ts = evt.get("created_at")
-                ts = datetime.fromisoformat(raw_ts.replace("Z", "+00:00")) if raw_ts else datetime.now(timezone.utc)
+                if raw_ts is None:
+                    ts = datetime.now(timezone.utc)
+                elif raw_ts.tzinfo is None:
+                    ts = raw_ts.replace(tzinfo=timezone.utc)
+                else:
+                    ts = raw_ts
                 row = await conn.fetchrow(
                     "INSERT INTO history_events "
                     "(workspace_id, created_by, agent_name, event_type, content, "
