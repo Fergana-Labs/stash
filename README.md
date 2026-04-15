@@ -52,7 +52,7 @@ Go to [getoctopus.com](https://getoctopus.com) and register. Save your API key.
 
 ```bash
 pip install octopus
-octopus setup               # Interactive: paste API key, pick a default workspace
+octopus connect               # Interactive: paste API key, pick a default workspace
 ```
 
 ### 3. Try it
@@ -69,7 +69,7 @@ For cross-resource agentic search, install the [Claude Code plugin](#integration
 
 ```bash
 pip install octopus
-octopus setup                          # Configure API key + default workspace
+octopus connect                          # Configure API key + default workspace
 octopus history push <content>         # Push an event
 octopus history search <query>         # Full-text search over history events
 octopus notebooks list --all           # List notebooks across your workspaces

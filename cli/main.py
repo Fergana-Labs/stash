@@ -28,7 +28,7 @@ def _use_json(flag: bool) -> bool:
 def _default_workspace() -> str:
     ws = load_config().get("default_workspace", "")
     if not ws:
-        console.print("[red]No default workspace. Run [bold]octopus setup[/bold] or set manually: octopus config default_workspace <id>[/red]")
+        console.print("[red]No default workspace. Run [bold]octopus connect[/bold] or set manually: octopus config default_workspace <id>[/red]")
         raise typer.Exit(1)
     return ws
 
@@ -824,13 +824,13 @@ def tables_delete(
 
 
 # ===========================================================================
-# Setup wizard
+# Connect wizard
 # ===========================================================================
 
-@app.command("setup")
-def setup():
+@app.command("connect")
+def connect():
     """Interactive first-time setup. Sets base URL, authenticates, and configures defaults."""
-    console.print("\n[bold]Octopus setup[/bold]  (press Enter to accept defaults)\n")
+    console.print("\n[bold]Octopus connect[/bold]  (press Enter to accept defaults)\n")
 
     # --- Step 0: Scope ---
     console.print("[bold]Config scope[/bold]")
@@ -940,12 +940,6 @@ PLUGIN_DATA_DIRS = {
     "gemini": Path.home() / ".octopus/plugins/gemini",
     "opencode": Path.home() / ".octopus/plugins/opencode",
 }
-
-
-@app.command("connect")
-def connect():
-    """Interactive first-time setup (alias of `octopus setup`)."""
-    setup()
 
 
 @app.command("status")
