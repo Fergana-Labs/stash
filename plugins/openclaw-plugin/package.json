@@ -1,0 +1,11 @@
+{
+  "name": "@octopus/openclaw-plugin",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "handler.ts",
+  "description": "Stream Openclaw gateway sessions to an Octopus workspace.",
+  "peerDependencies": {
+    "@openclaw/sdk": ">=0.9.0"
+  },
+  "dependencies": {}
+}

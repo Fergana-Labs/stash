@@ -34,7 +34,11 @@ def _load_fixture(plugin: str, name: str) -> dict:
     return json.loads((FIXTURES / plugin / f"{name}.json").read_text())
 
 
-PLUGINS = ["claude", "cursor", "gemini", "codex", "opencode"]
+PLUGINS = ["claude", "cursor", "gemini", "codex", "opencode", "openclaw"]
+
+# Openclaw runs at the gateway level and has no tool-call visibility, so its
+# adapter intentionally omits adapt_tool_use.
+PLUGINS_WITH_TOOL_USE = [p for p in PLUGINS if p != "openclaw"]
 
 
 @pytest.mark.parametrize("plugin", PLUGINS)
@@ -54,7 +58,7 @@ def test_prompt(plugin):
     assert event.prompt_text  # non-empty
 
 
-@pytest.mark.parametrize("plugin", PLUGINS)
+@pytest.mark.parametrize("plugin", PLUGINS_WITH_TOOL_USE)
 def test_tool_use(plugin):
     adapt = _load_adapt(plugin)
     event = adapt.adapt_tool_use(_load_fixture(plugin, "tool_use"))
