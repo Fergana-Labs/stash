@@ -8,9 +8,13 @@ from .conftest import unique_name
 
 async def _register(client: AsyncClient, name: str | None = None) -> tuple[str, dict]:
     name = name or unique_name()
-    resp = await client.post("/api/v1/users/register", json={
-        "name": name, "password": "securepassword1",
-    })
+    resp = await client.post(
+        "/api/v1/users/register",
+        json={
+            "name": name,
+            "password": "securepassword1",
+        },
+    )
     assert resp.status_code == 201
     body = resp.json()
     return body["api_key"], body
@@ -83,9 +87,13 @@ async def test_send_and_retrieve_message(client: AsyncClient):
     ws = await _create_workspace(client, key)
     h = _auth(key)
 
-    chat = (await client.post(
-        f"/api/v1/workspaces/{ws['id']}/chats", json={"name": "general"}, headers=h,
-    )).json()
+    chat = (
+        await client.post(
+            f"/api/v1/workspaces/{ws['id']}/chats",
+            json={"name": "general"},
+            headers=h,
+        )
+    ).json()
 
     msg_resp = await client.post(
         f"/api/v1/workspaces/{ws['id']}/chats/{chat['id']}/messages",
@@ -113,9 +121,13 @@ async def test_message_pagination(client: AsyncClient):
     ws = await _create_workspace(client, key)
     h = _auth(key)
 
-    chat = (await client.post(
-        f"/api/v1/workspaces/{ws['id']}/chats", json={"name": "busy"}, headers=h,
-    )).json()
+    chat = (
+        await client.post(
+            f"/api/v1/workspaces/{ws['id']}/chats",
+            json={"name": "busy"},
+            headers=h,
+        )
+    ).json()
 
     for i in range(5):
         await client.post(
@@ -140,9 +152,13 @@ async def test_non_member_cannot_send_message(client: AsyncClient):
     ws = await _create_workspace(client, owner_key)
     h = _auth(owner_key)
 
-    chat = (await client.post(
-        f"/api/v1/workspaces/{ws['id']}/chats", json={"name": "private"}, headers=h,
-    )).json()
+    chat = (
+        await client.post(
+            f"/api/v1/workspaces/{ws['id']}/chats",
+            json={"name": "private"},
+            headers=h,
+        )
+    ).json()
 
     resp = await client.post(
         f"/api/v1/workspaces/{ws['id']}/chats/{chat['id']}/messages",
@@ -161,9 +177,13 @@ async def test_owner_can_delete_chat(client: AsyncClient):
     ws = await _create_workspace(client, key)
     h = _auth(key)
 
-    chat = (await client.post(
-        f"/api/v1/workspaces/{ws['id']}/chats", json={"name": "temp"}, headers=h,
-    )).json()
+    chat = (
+        await client.post(
+            f"/api/v1/workspaces/{ws['id']}/chats",
+            json={"name": "temp"},
+            headers=h,
+        )
+    ).json()
 
     resp = await client.delete(f"/api/v1/workspaces/{ws['id']}/chats/{chat['id']}", headers=h)
     assert resp.status_code == 204
@@ -177,12 +197,17 @@ async def test_member_cannot_delete_chat(client: AsyncClient):
 
     await client.post(f"/api/v1/workspaces/join/{ws['invite_code']}", headers=_auth(member_key))
 
-    chat = (await client.post(
-        f"/api/v1/workspaces/{ws['id']}/chats", json={"name": "protected"}, headers=_auth(owner_key),
-    )).json()
+    chat = (
+        await client.post(
+            f"/api/v1/workspaces/{ws['id']}/chats",
+            json={"name": "protected"},
+            headers=_auth(owner_key),
+        )
+    ).json()
 
     resp = await client.delete(
-        f"/api/v1/workspaces/{ws['id']}/chats/{chat['id']}", headers=_auth(member_key),
+        f"/api/v1/workspaces/{ws['id']}/chats/{chat['id']}",
+        headers=_auth(member_key),
     )
     assert resp.status_code == 403
 
@@ -213,7 +238,9 @@ async def test_cannot_access_other_users_room(client: AsyncClient):
     owner_key, _ = await _register(client)
     other_key, _ = await _register(client)
 
-    room = (await client.post("/api/v1/rooms", json={"name": "secret"}, headers=_auth(owner_key))).json()
+    room = (
+        await client.post("/api/v1/rooms", json={"name": "secret"}, headers=_auth(owner_key))
+    ).json()
 
     resp = await client.delete(f"/api/v1/rooms/{room['id']}", headers=_auth(other_key))
     assert resp.status_code == 404

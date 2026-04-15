@@ -17,7 +17,9 @@ from ..services import workspace_service
 router = APIRouter(prefix="/api/v1/workspaces", tags=["workspaces"])
 
 
-async def _serialize_workspace_for_viewer(workspace: dict, viewer_id: UUID | None) -> WorkspaceResponse:
+async def _serialize_workspace_for_viewer(
+    workspace: dict, viewer_id: UUID | None
+) -> WorkspaceResponse:
     is_member = bool(viewer_id and await workspace_service.is_member(workspace["id"], viewer_id))
     is_public = bool(workspace.get("is_public"))
     if not is_public and not is_member:
@@ -31,11 +33,14 @@ async def _serialize_workspace_for_viewer(workspace: dict, viewer_id: UUID | Non
 
 @router.post("", response_model=WorkspaceResponse, status_code=201)
 async def create_workspace(
-    req: WorkspaceCreateRequest, current_user: dict = Depends(get_current_user),
+    req: WorkspaceCreateRequest,
+    current_user: dict = Depends(get_current_user),
 ):
     ws = await workspace_service.create_workspace(
-        name=req.name, description=req.description,
-        creator_id=current_user["id"], is_public=req.is_public,
+        name=req.name,
+        description=req.description,
+        creator_id=current_user["id"],
+        is_public=req.is_public,
     )
     return WorkspaceResponse(**ws)
 
@@ -44,10 +49,7 @@ async def create_workspace(
 async def list_workspaces(current_user: dict | None = Depends(get_current_user_optional)):
     workspaces = await workspace_service.list_public_workspaces()
     viewer_id = current_user["id"] if current_user else None
-    serialized = [
-        await _serialize_workspace_for_viewer(w, viewer_id)
-        for w in workspaces
-    ]
+    serialized = [await _serialize_workspace_for_viewer(w, viewer_id) for w in workspaces]
     return WorkspaceListResponse(workspaces=serialized)
 
 
@@ -59,7 +61,8 @@ async def list_my_workspaces(current_user: dict = Depends(get_current_user)):
 
 @router.get("/{workspace_id}", response_model=WorkspaceResponse)
 async def get_workspace(
-    workspace_id: UUID, current_user: dict | None = Depends(get_current_user_optional),
+    workspace_id: UUID,
+    current_user: dict | None = Depends(get_current_user_optional),
 ):
     ws = await workspace_service.get_workspace(workspace_id)
     if not ws:
@@ -70,14 +73,17 @@ async def get_workspace(
 
 @router.patch("/{workspace_id}", response_model=WorkspaceResponse)
 async def update_workspace(
-    workspace_id: UUID, req: WorkspaceUpdateRequest,
+    workspace_id: UUID,
+    req: WorkspaceUpdateRequest,
     current_user: dict = Depends(get_current_user),
 ):
     role = await workspace_service.get_member_role(workspace_id, current_user["id"])
     if role not in ("owner", "admin"):
         raise HTTPException(status_code=403, detail="Only owner/admin can update workspace")
     ws = await workspace_service.update_workspace(
-        workspace_id, name=req.name, description=req.description,
+        workspace_id,
+        name=req.name,
+        description=req.description,
     )
     if not ws:
         raise HTTPException(status_code=404, detail="Workspace not found")
@@ -86,7 +92,8 @@ async def update_workspace(
 
 @router.delete("/{workspace_id}", status_code=204)
 async def delete_workspace(
-    workspace_id: UUID, current_user: dict = Depends(get_current_user),
+    workspace_id: UUID,
+    current_user: dict = Depends(get_current_user),
 ):
     deleted = await workspace_service.delete_workspace(workspace_id, current_user["id"])
     if not deleted:
@@ -95,7 +102,8 @@ async def delete_workspace(
 
 @router.post("/join/{invite_code}", response_model=WorkspaceResponse)
 async def join_workspace(
-    invite_code: str, current_user: dict = Depends(get_current_user),
+    invite_code: str,
+    current_user: dict = Depends(get_current_user),
 ):
     ws = await workspace_service.join_by_invite(invite_code, current_user["id"])
     if not ws:
@@ -105,7 +113,8 @@ async def join_workspace(
 
 @router.post("/{workspace_id}/leave", status_code=204)
 async def leave_workspace(
-    workspace_id: UUID, current_user: dict = Depends(get_current_user),
+    workspace_id: UUID,
+    current_user: dict = Depends(get_current_user),
 ):
     left = await workspace_service.leave_workspace(workspace_id, current_user["id"])
     if not left:
@@ -114,7 +123,8 @@ async def leave_workspace(
 
 @router.get("/{workspace_id}/members", response_model=list[WorkspaceMember])
 async def get_members(
-    workspace_id: UUID, current_user: dict = Depends(get_current_user),
+    workspace_id: UUID,
+    current_user: dict = Depends(get_current_user),
 ):
     if not await workspace_service.is_member(workspace_id, current_user["id"]):
         raise HTTPException(status_code=403, detail="Not a workspace member")
@@ -136,6 +146,7 @@ async def add_member(
     if not username:
         raise HTTPException(status_code=400, detail="username is required")
     from ..database import get_pool
+
     pool = get_pool()
     user = await pool.fetchrow("SELECT id FROM users WHERE name = $1", username)
     if not user:
@@ -148,7 +159,8 @@ async def add_member(
 
 @router.post("/{workspace_id}/kick/{user_id}", status_code=204)
 async def kick_member(
-    workspace_id: UUID, user_id: UUID,
+    workspace_id: UUID,
+    user_id: UUID,
     current_user: dict = Depends(get_current_user),
 ):
     kicked = await workspace_service.kick_member(workspace_id, user_id, current_user["id"])

@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 import sys
 from pathlib import Path
-from typing import Optional
 
 import typer
 
@@ -28,7 +27,9 @@ def _use_json(flag: bool) -> bool:
 def _default_workspace() -> str:
     ws = load_config().get("default_workspace", "")
     if not ws:
-        console.print("[red]No default workspace. Run [bold]octopus connect[/bold] or set manually: octopus config default_workspace <id>[/red]")
+        console.print(
+            "[red]No default workspace. Run [bold]octopus connect[/bold] or set manually: octopus config default_workspace <id>[/red]"
+        )
         raise typer.Exit(1)
     return ws
 
@@ -41,6 +42,7 @@ def _err(e: OctopusError) -> None:
 # ===========================================================================
 # Auth
 # ===========================================================================
+
 
 @app.command()
 def register(
@@ -60,11 +62,17 @@ def register(
     if _use_json(as_json):
         output_json(data)
     else:
-        console.print(f"[green]Registered as {data['name']}[/green]  API key: [bold]{data['api_key']}[/bold]")
+        console.print(
+            f"[green]Registered as {data['name']}[/green]  API key: [bold]{data['api_key']}[/bold]"
+        )
 
 
 @app.command()
-def login(name: str = typer.Argument(...), password: str = typer.Option(..., prompt=True, hide_input=True), as_json: bool = typer.Option(False, "--json")):
+def login(
+    name: str = typer.Argument(...),
+    password: str = typer.Option(..., prompt=True, hide_input=True),
+    as_json: bool = typer.Option(False, "--json"),
+):
     """Login with password."""
     with _client() as c:
         try:
@@ -114,7 +122,9 @@ app.add_typer(ws_app, name="workspaces")
 
 
 @ws_app.command("list")
-def ws_list(mine: bool = typer.Option(False, "--mine"), as_json: bool = typer.Option(False, "--json")):
+def ws_list(
+    mine: bool = typer.Option(False, "--mine"), as_json: bool = typer.Option(False, "--json")
+):
     """List workspaces."""
     with _client() as c:
         try:
@@ -128,7 +138,12 @@ def ws_list(mine: bool = typer.Option(False, "--mine"), as_json: bool = typer.Op
 
 
 @ws_app.command("create")
-def ws_create(name: str = typer.Argument(...), description: str = typer.Option(""), public: bool = typer.Option(False, "--public"), as_json: bool = typer.Option(False, "--json")):
+def ws_create(
+    name: str = typer.Argument(...),
+    description: str = typer.Option(""),
+    public: bool = typer.Option(False, "--public"),
+    as_json: bool = typer.Option(False, "--json"),
+):
     """Create workspace."""
     with _client() as c:
         try:
@@ -138,7 +153,9 @@ def ws_create(name: str = typer.Argument(...), description: str = typer.Option("
     if _use_json(as_json):
         output_json(data)
     else:
-        console.print(f"[green]Created '{data['name']}'[/green]  ID: {data['id']}  Invite: {data['invite_code']}")
+        console.print(
+            f"[green]Created '{data['name']}'[/green]  ID: {data['id']}  Invite: {data['invite_code']}"
+        )
 
 
 @ws_app.command("join")
@@ -166,12 +183,16 @@ def ws_info(workspace_id: str = typer.Argument(...), as_json: bool = typer.Optio
     if _use_json(as_json):
         output_json(data)
     else:
-        console.print(f"[bold]{data['name']}[/bold]  Members: {data.get('member_count', '?')}  Public: {data['is_public']}")
+        console.print(
+            f"[bold]{data['name']}[/bold]  Members: {data.get('member_count', '?')}  Public: {data['is_public']}"
+        )
         console.print(f"ID: {data['id']}  Invite: {data['invite_code']}")
 
 
 @ws_app.command("members")
-def ws_members(workspace_id: str = typer.Argument(...), as_json: bool = typer.Option(False, "--json")):
+def ws_members(
+    workspace_id: str = typer.Argument(...), as_json: bool = typer.Option(False, "--json")
+):
     """List workspace members."""
     with _client() as c:
         try:
@@ -193,11 +214,19 @@ app.add_typer(nb_app, name="notebooks")
 
 
 @nb_app.command("list")
-def nb_list(workspace_id: str = typer.Option(None, "--ws"), all_: bool = typer.Option(False, "--all"), as_json: bool = typer.Option(False, "--json")):
+def nb_list(
+    workspace_id: str = typer.Option(None, "--ws"),
+    all_: bool = typer.Option(False, "--all"),
+    as_json: bool = typer.Option(False, "--json"),
+):
     """List notebooks. --all for cross-workspace, --ws for single workspace."""
     with _client() as c:
         try:
-            data = c.all_notebooks() if all_ else c.list_notebooks(workspace_id or _default_workspace())
+            data = (
+                c.all_notebooks()
+                if all_
+                else c.list_notebooks(workspace_id or _default_workspace())
+            )
         except OctopusError as e:
             _err(e)
     if _use_json(as_json):
@@ -212,7 +241,13 @@ def nb_list(workspace_id: str = typer.Option(None, "--ws"), all_: bool = typer.O
 
 
 @nb_app.command("create")
-def nb_create(name: str = typer.Argument(...), workspace_id: str = typer.Option(None, "--ws"), description: str = typer.Option(""), personal: bool = typer.Option(False, "--personal"), as_json: bool = typer.Option(False, "--json")):
+def nb_create(
+    name: str = typer.Argument(...),
+    workspace_id: str = typer.Option(None, "--ws"),
+    description: str = typer.Option(""),
+    personal: bool = typer.Option(False, "--personal"),
+    as_json: bool = typer.Option(False, "--json"),
+):
     """Create a notebook collection."""
     with _client() as c:
         try:
@@ -230,7 +265,11 @@ def nb_create(name: str = typer.Argument(...), workspace_id: str = typer.Option(
 
 
 @nb_app.command("pages")
-def nb_pages(notebook_id: str = typer.Argument(...), workspace_id: str = typer.Option(None, "--ws"), as_json: bool = typer.Option(False, "--json")):
+def nb_pages(
+    notebook_id: str = typer.Argument(...),
+    workspace_id: str = typer.Option(None, "--ws"),
+    as_json: bool = typer.Option(False, "--json"),
+):
     """List pages in a notebook."""
     with _client() as c:
         try:
@@ -250,7 +289,13 @@ def nb_pages(notebook_id: str = typer.Argument(...), workspace_id: str = typer.O
 
 
 @nb_app.command("add-page")
-def nb_add_page(notebook_id: str = typer.Argument(...), name: str = typer.Argument(...), workspace_id: str = typer.Option(None, "--ws"), content: str = typer.Option(""), as_json: bool = typer.Option(False, "--json")):
+def nb_add_page(
+    notebook_id: str = typer.Argument(...),
+    name: str = typer.Argument(...),
+    workspace_id: str = typer.Option(None, "--ws"),
+    content: str = typer.Option(""),
+    as_json: bool = typer.Option(False, "--json"),
+):
     """Add a page to a notebook."""
     with _client() as c:
         try:
@@ -265,7 +310,12 @@ def nb_add_page(notebook_id: str = typer.Argument(...), name: str = typer.Argume
 
 
 @nb_app.command("read-page")
-def nb_read_page(notebook_id: str = typer.Argument(...), page_id: str = typer.Argument(...), workspace_id: str = typer.Option(None, "--ws"), as_json: bool = typer.Option(False, "--json")):
+def nb_read_page(
+    notebook_id: str = typer.Argument(...),
+    page_id: str = typer.Argument(...),
+    workspace_id: str = typer.Option(None, "--ws"),
+    as_json: bool = typer.Option(False, "--json"),
+):
     """Read a page's content."""
     with _client() as c:
         try:
@@ -281,7 +331,14 @@ def nb_read_page(notebook_id: str = typer.Argument(...), page_id: str = typer.Ar
 
 
 @nb_app.command("edit-page")
-def nb_edit_page(notebook_id: str = typer.Argument(...), page_id: str = typer.Argument(...), content: str = typer.Option(None, "--content"), name: str = typer.Option(None, "--name"), workspace_id: str = typer.Option(None, "--ws"), as_json: bool = typer.Option(False, "--json")):
+def nb_edit_page(
+    notebook_id: str = typer.Argument(...),
+    page_id: str = typer.Argument(...),
+    content: str = typer.Option(None, "--content"),
+    name: str = typer.Option(None, "--name"),
+    workspace_id: str = typer.Option(None, "--ws"),
+    as_json: bool = typer.Option(False, "--json"),
+):
     """Update a page. Reads from stdin if --content not given."""
     if content is None and not sys.stdin.isatty():
         content = sys.stdin.read()
@@ -299,7 +356,7 @@ def nb_edit_page(notebook_id: str = typer.Argument(...), page_id: str = typer.Ar
     if _use_json(as_json):
         output_json(data)
     else:
-        console.print(f"[green]Page updated.[/green]")
+        console.print("[green]Page updated.[/green]")
 
 
 # ===========================================================================
@@ -311,7 +368,9 @@ app.add_typer(hist_app, name="history")
 
 
 @hist_app.command("agents")
-def hist_agents(workspace_id: str = typer.Option(None, "--ws"), as_json: bool = typer.Option(False, "--json")):
+def hist_agents(
+    workspace_id: str = typer.Option(None, "--ws"), as_json: bool = typer.Option(False, "--json")
+):
     """List distinct agent names that have logged events in this workspace."""
     ws = workspace_id or _default_workspace()
     with _client() as c:
@@ -330,12 +389,27 @@ def hist_agents(workspace_id: str = typer.Option(None, "--ws"), as_json: bool = 
 
 
 @hist_app.command("push")
-def hist_push(content: str = typer.Argument(...), workspace_id: str = typer.Option(None, "--ws"), agent_name: str = typer.Option("cli", "--agent"), event_type: str = typer.Option("message", "--type"), session_id: str = typer.Option(None, "--session"), tool_name: str = typer.Option(None, "--tool"), as_json: bool = typer.Option(False, "--json")):
+def hist_push(
+    content: str = typer.Argument(...),
+    workspace_id: str = typer.Option(None, "--ws"),
+    agent_name: str = typer.Option("cli", "--agent"),
+    event_type: str = typer.Option("message", "--type"),
+    session_id: str = typer.Option(None, "--session"),
+    tool_name: str = typer.Option(None, "--tool"),
+    as_json: bool = typer.Option(False, "--json"),
+):
     """Push an event to the workspace history."""
     ws = workspace_id or _default_workspace()
     with _client() as c:
         try:
-            data = c.push_event(ws, agent_name=agent_name, event_type=event_type, content=content, session_id=session_id, tool_name=tool_name)
+            data = c.push_event(
+                ws,
+                agent_name=agent_name,
+                event_type=event_type,
+                content=content,
+                session_id=session_id,
+                tool_name=tool_name,
+            )
         except OctopusError as e:
             _err(e)
     if _use_json(as_json):
@@ -345,7 +419,14 @@ def hist_push(content: str = typer.Argument(...), workspace_id: str = typer.Opti
 
 
 @hist_app.command("query")
-def hist_query(workspace_id: str = typer.Option(None, "--ws"), agent_name: str = typer.Option(None, "--agent"), event_type: str = typer.Option(None, "--type"), limit: int = typer.Option(50, "-n", "--limit"), all_: bool = typer.Option(False, "--all"), as_json: bool = typer.Option(False, "--json")):
+def hist_query(
+    workspace_id: str = typer.Option(None, "--ws"),
+    agent_name: str = typer.Option(None, "--agent"),
+    event_type: str = typer.Option(None, "--type"),
+    limit: int = typer.Option(50, "-n", "--limit"),
+    all_: bool = typer.Option(False, "--all"),
+    as_json: bool = typer.Option(False, "--json"),
+):
     """Query events. --all for cross-workspace."""
     with _client() as c:
         try:
@@ -361,11 +442,18 @@ def hist_query(workspace_id: str = typer.Option(None, "--ws"), agent_name: str =
     else:
         for ev in data:
             tool = f" ({ev['tool_name']})" if ev.get("tool_name") else ""
-            console.print(f"  [{ev['created_at'][:19]}] {ev['agent_name']}/{ev['event_type']}{tool}: {ev['content'][:200]}")
+            console.print(
+                f"  [{ev['created_at'][:19]}] {ev['agent_name']}/{ev['event_type']}{tool}: {ev['content'][:200]}"
+            )
 
 
 @hist_app.command("search")
-def hist_search(query: str = typer.Argument(...), workspace_id: str = typer.Option(None, "--ws"), limit: int = typer.Option(50, "-n", "--limit"), as_json: bool = typer.Option(False, "--json")):
+def hist_search(
+    query: str = typer.Argument(...),
+    workspace_id: str = typer.Option(None, "--ws"),
+    limit: int = typer.Option(50, "-n", "--limit"),
+    as_json: bool = typer.Option(False, "--json"),
+):
     """Full-text search on events in a workspace."""
     ws = workspace_id or _default_workspace()
     with _client() as c:
@@ -377,7 +465,9 @@ def hist_search(query: str = typer.Argument(...), workspace_id: str = typer.Opti
         output_json(data)
     else:
         for ev in data:
-            console.print(f"  [{ev['created_at'][:19]}] {ev['agent_name']}/{ev['event_type']}: {ev['content'][:200]}")
+            console.print(
+                f"  [{ev['created_at'][:19]}] {ev['agent_name']}/{ev['event_type']}: {ev['content'][:200]}"
+            )
 
 
 # ===========================================================================
@@ -426,7 +516,12 @@ def _resolve_sort_name(table: dict, sort_by: str) -> str:
 
 
 @tables_app.command("list")
-def tables_list(workspace_id: str = typer.Option(None, "--ws"), all_: bool = typer.Option(False, "--all"), personal: bool = typer.Option(False, "--personal"), as_json: bool = typer.Option(False, "--json")):
+def tables_list(
+    workspace_id: str = typer.Option(None, "--ws"),
+    all_: bool = typer.Option(False, "--all"),
+    personal: bool = typer.Option(False, "--personal"),
+    as_json: bool = typer.Option(False, "--json"),
+):
     """List tables. --all for cross-workspace, --personal for personal tables."""
     with _client() as c:
         try:
@@ -448,7 +543,9 @@ def tables_list(workspace_id: str = typer.Option(None, "--ws"), all_: bool = typ
                 ws = f" [{t.get('workspace_name', '')}]" if t.get("workspace_name") else ""
                 cols = len(t.get("columns", []))
                 rows = t.get("row_count", 0)
-                console.print(f"  {t['name']}{ws}  ({cols} cols, {rows} rows, id: {str(t['id'])[:8]})")
+                console.print(
+                    f"  {t['name']}{ws}  ({cols} cols, {rows} rows, id: {str(t['id'])[:8]})"
+                )
 
 
 @tables_app.command("create")
@@ -507,7 +604,11 @@ def tables_update(
 
 
 @tables_app.command("schema")
-def tables_schema(table_id: str = typer.Argument(...), workspace_id: str = typer.Option(None, "--ws"), as_json: bool = typer.Option(False, "--json")):
+def tables_schema(
+    table_id: str = typer.Argument(...),
+    workspace_id: str = typer.Option(None, "--ws"),
+    as_json: bool = typer.Option(False, "--json"),
+):
     """Show a table's column schema."""
     with _client() as c:
         try:
@@ -540,7 +641,9 @@ def tables_rows(
     offset: int = typer.Option(0, "--offset"),
     sort_by: str = typer.Option("", "--sort", help="Column name or ID to sort by"),
     sort_order: str = typer.Option("asc", "--order"),
-    filters: str = typer.Option("", "--filter", help='JSON: [{"column_id":"Name","op":"eq","value":"Alice"}]'),
+    filters: str = typer.Option(
+        "", "--filter", help='JSON: [{"column_id":"Name","op":"eq","value":"Alice"}]'
+    ),
     as_json: bool = typer.Option(False, "--json"),
 ):
     """Read rows. --sort and --filter accept column names (auto-resolved)."""
@@ -551,7 +654,15 @@ def tables_rows(
             id_to_name = {col["id"]: col["name"] for col in table.get("columns", [])}
             resolved_sort = _resolve_sort_name(table, sort_by)
             resolved_filters = _resolve_filter_names(table, filters) if filters else ""
-            result = c.list_table_rows(ws, table_id, limit=limit, offset=offset, sort_by=resolved_sort, sort_order=sort_order, filters=resolved_filters)
+            result = c.list_table_rows(
+                ws,
+                table_id,
+                limit=limit,
+                offset=offset,
+                sort_by=resolved_sort,
+                sort_order=sort_order,
+                filters=resolved_filters,
+            )
         except OctopusError as e:
             _err(e)
     if _use_json(as_json):
@@ -591,8 +702,12 @@ def tables_insert(
 @tables_app.command("import")
 def tables_import(
     table_id: str = typer.Argument(...),
-    file: str = typer.Option(None, "--file", "-f", help="CSV or JSON file path (or pipe via stdin)"),
-    format_: str = typer.Option("auto", "--format", help="csv, json, or auto (detect from extension/content)"),
+    file: str = typer.Option(
+        None, "--file", "-f", help="CSV or JSON file path (or pipe via stdin)"
+    ),
+    format_: str = typer.Option(
+        "auto", "--format", help="csv, json, or auto (detect from extension/content)"
+    ),
     workspace_id: str = typer.Option(None, "--ws"),
     as_json: bool = typer.Option(False, "--json"),
 ):
@@ -612,7 +727,9 @@ def tables_import(
         raw = sys.stdin.read()
         if format_ == "auto":
             raw_stripped = raw.strip()
-            format_ = "json" if raw_stripped.startswith("[") or raw_stripped.startswith("{") else "csv"
+            format_ = (
+                "json" if raw_stripped.startswith("[") or raw_stripped.startswith("{") else "csv"
+            )
     else:
         console.print("[red]Provide --file or pipe data via stdin.[/red]")
         raise typer.Exit(1)
@@ -643,11 +760,13 @@ def tables_import(
             batch_size = 5000
             total_inserted = 0
             for i in range(0, len(resolved_rows), batch_size):
-                batch = resolved_rows[i:i + batch_size]
+                batch = resolved_rows[i : i + batch_size]
                 c.insert_table_rows_batch(ws, table_id, batch)
                 total_inserted += len(batch)
                 if len(resolved_rows) > batch_size:
-                    console.print(f"  [dim]Inserted {total_inserted}/{len(resolved_rows)} rows...[/dim]")
+                    console.print(
+                        f"  [dim]Inserted {total_inserted}/{len(resolved_rows)} rows...[/dim]"
+                    )
         except OctopusError as e:
             _err(e)
 
@@ -702,7 +821,9 @@ def tables_add_column(
     table_id: str = typer.Argument(...),
     name: str = typer.Argument(...),
     col_type: str = typer.Option("text", "--type"),
-    options: str = typer.Option("", "--options", help="Comma-separated options for select/multiselect"),
+    options: str = typer.Option(
+        "", "--options", help="Comma-separated options for select/multiselect"
+    ),
     workspace_id: str = typer.Option(None, "--ws"),
     as_json: bool = typer.Option(False, "--json"),
 ):
@@ -743,7 +864,7 @@ def tables_delete_column(
     if _use_json(as_json):
         output_json(result)
     else:
-        console.print(f"[green]Column deleted.[/green]")
+        console.print("[green]Column deleted.[/green]")
 
 
 @tables_app.command("count")
@@ -793,7 +914,9 @@ def tables_export(
                 if "table" not in dir():
                     table = c.get_table(ws, table_id)
                 params["filters"] = _resolve_filter_names(table, filters)
-            resp = c._request("GET", f"/api/v1/workspaces/{ws}/tables/{table_id}/export/csv", params=params)
+            resp = c._request(
+                "GET", f"/api/v1/workspaces/{ws}/tables/{table_id}/export/csv", params=params
+            )
             csv_content = resp.text
         except OctopusError as e:
             _err(e)
@@ -827,6 +950,7 @@ def tables_delete(
 # Connect wizard
 # ===========================================================================
 
+
 @app.command("connect")
 def connect():
     """Interactive first-time setup. Sets base URL, authenticates, and configures defaults."""
@@ -834,8 +958,12 @@ def connect():
 
     # --- Step 0: Scope ---
     console.print("[bold]Config scope[/bold]")
-    console.print("  [bold]project[/bold]  save to [cyan].octopus/config.json[/cyan] in this repo (overrides user config)")
-    console.print("  [bold]user[/bold]     save to [cyan]~/.octopus/config.json[/cyan] (applies everywhere)")
+    console.print(
+        "  [bold]project[/bold]  save to [cyan].octopus/config.json[/cyan] in this repo (overrides user config)"
+    )
+    console.print(
+        "  [bold]user[/bold]     save to [cyan]~/.octopus/config.json[/cyan] (applies everywhere)"
+    )
     console.print("  [dim]Auth (api_key) always goes to user scope — it's per-machine.[/dim]")
     scope_input = typer.prompt("Scope", default="project").strip().lower()
     scope = "project" if scope_input.startswith("p") else "user"
@@ -853,12 +981,16 @@ def connect():
         try:
             with OctopusClient(base_url=base_url, api_key=cfg["api_key"]) as c:
                 user = c.whoami()
-            console.print(f"  [green]✓[/green] Already authenticated as [bold]{user['name']}[/bold]")
+            console.print(
+                f"  [green]✓[/green] Already authenticated as [bold]{user['name']}[/bold]"
+            )
         except OctopusError:
             has_key = False
 
     if not has_key:
-        action = typer.prompt("Login or register? [login/register]", default="login").strip().lower()
+        action = (
+            typer.prompt("Login or register? [login/register]", default="login").strip().lower()
+        )
         name = typer.prompt("Username")
         if action == "register":
             password = typer.prompt("Password", hide_input=True, confirmation_prompt=True)
@@ -893,7 +1025,7 @@ def connect():
 
         workspace_id = cfg.get("default_workspace", "")
         if my_workspaces:
-            console.print(f"\n  Your workspaces:")
+            console.print("\n  Your workspaces:")
             for ws in my_workspaces[:5]:
                 marker = " [dim](current default)[/dim]" if str(ws["id"]) == workspace_id else ""
                 console.print(f"    [dim]{str(ws['id'])[:8]}…[/dim]  {ws['name']}{marker}")
@@ -904,28 +1036,35 @@ def connect():
         ).strip()
 
         if not ws_action:
-            console.print("[yellow]Skipping workspace setup. Run: octopus config default_workspace <id>[/yellow]")
+            console.print(
+                "[yellow]Skipping workspace setup. Run: octopus config default_workspace <id>[/yellow]"
+            )
         else:
             # Check if it looks like a UUID (existing) or a name (create new)
             import re
+
             is_uuid = bool(re.match(r"^[0-9a-f-]{32,36}$", ws_action, re.I))
             if is_uuid:
                 workspace_id = ws_action
                 save_config(default_workspace=workspace_id, scope=scope)
-                console.print(f"  [green]✓[/green] Default workspace set to [bold]{workspace_id[:8]}…[/bold]")
+                console.print(
+                    f"  [green]✓[/green] Default workspace set to [bold]{workspace_id[:8]}…[/bold]"
+                )
             else:
                 try:
                     ws_data = c.create_workspace(ws_action)
                     workspace_id = str(ws_data["id"])
                     save_config(default_workspace=workspace_id, scope=scope)
-                    console.print(f"  [green]✓[/green] Created workspace [bold]{ws_data['name']}[/bold]  invite: {ws_data['invite_code']}")
+                    console.print(
+                        f"  [green]✓[/green] Created workspace [bold]{ws_data['name']}[/bold]  invite: {ws_data['invite_code']}"
+                    )
                 except OctopusError as e:
                     console.print(f"[red]Could not create workspace: {e.detail}[/red]")
 
     # --- Done ---
     console.print("\n[bold green]Setup complete.[/bold green]")
     console.print("  Run [bold]octopus whoami[/bold] to confirm auth.")
-    console.print("  Run [bold]octopus history push \"hello\"[/bold] to push your first event.")
+    console.print('  Run [bold]octopus history push "hello"[/bold] to push your first event.')
     console.print("  Run [bold]octopus --help[/bold] to see all commands.\n")
 
 
@@ -959,13 +1098,15 @@ def status(as_json: bool = typer.Option(False, "--json")):
     plugins_seen = [name for name, d in PLUGIN_DATA_DIRS.items() if d.exists()]
 
     if as_json or cfg.get("output_format") == "json":
-        output_json({
-            "config": display_cfg,
-            "streaming_enabled": streaming_enabled,
-            "auto_curate": auto_curate,
-            "last_curate_at": last_curate_at,
-            "plugins_installed": plugins_seen,
-        })
+        output_json(
+            {
+                "config": display_cfg,
+                "streaming_enabled": streaming_enabled,
+                "auto_curate": auto_curate,
+                "last_curate_at": last_curate_at,
+                "plugins_installed": plugins_seen,
+            }
+        )
         return
 
     console.print("[bold]Octopus status[/bold]")
@@ -973,10 +1114,13 @@ def status(as_json: bool = typer.Option(False, "--json")):
     console.print(f"  Endpoint:   {cfg.get('base_url')}")
     console.print(f"  Workspace:  {cfg.get('default_workspace') or '(none)'}")
     console.print(f"  Store:      {cfg.get('default_store') or '(none)'}")
-    console.print(f"  Streaming:  {'enabled' if streaming_enabled else '[yellow]disabled[/yellow]'}")
+    console.print(
+        f"  Streaming:  {'enabled' if streaming_enabled else '[yellow]disabled[/yellow]'}"
+    )
     console.print(f"  Auto-curate: {'on' if auto_curate else 'off'}")
     if last_curate_at:
         import datetime as _dt
+
         ts = _dt.datetime.fromtimestamp(float(last_curate_at)).isoformat(timespec="seconds")
         console.print(f"  Last curate: {ts}")
     else:
@@ -992,11 +1136,14 @@ def disconnect(as_json: bool = typer.Option(False, "--json")):
         output_json({"streaming_enabled": False})
         return
     console.print("[yellow]Streaming disabled.[/yellow] Hooks will stop pushing events.")
-    console.print("  Re-enable with [bold]octopus connect[/bold] or edit [cyan]~/.octopus/config.json[/cyan].")
+    console.print(
+        "  Re-enable with [bold]octopus connect[/bold] or edit [cyan]~/.octopus/config.json[/cyan]."
+    )
 
 
 def _read_central_config() -> dict:
     from .config import USER_CONFIG_FILE
+
     if not USER_CONFIG_FILE.exists():
         return {}
     try:
@@ -1007,6 +1154,7 @@ def _read_central_config() -> dict:
 
 def _write_central_config(updates: dict) -> None:
     from .config import USER_CONFIG_FILE
+
     existing = _read_central_config()
     existing.update(updates)
     USER_CONFIG_FILE.parent.mkdir(parents=True, exist_ok=True)
@@ -1019,11 +1167,14 @@ def _write_central_config(updates: dict) -> None:
 # Config
 # ===========================================================================
 
+
 @app.command("config")
 def config_cmd(
-    key: Optional[str] = typer.Argument(None),
-    value: Optional[str] = typer.Argument(None),
-    project: bool = typer.Option(False, "--project", help="Write to project-level config (.octopus/config.json in the repo)."),
+    key: str | None = typer.Argument(None),
+    value: str | None = typer.Argument(None),
+    project: bool = typer.Option(
+        False, "--project", help="Write to project-level config (.octopus/config.json in the repo)."
+    ),
 ):
     """Show or set config. Keys: base_url, default_workspace, output_format.
 
@@ -1031,12 +1182,14 @@ def config_cmd(
     .octopus/config.json in the current project (created if missing). Project
     config overrides user config when both exist.
     """
-    from .config import find_project_config, USER_CONFIG_FILE
+    from .config import USER_CONFIG_FILE, find_project_config
 
     if key and value:
         scope = "project" if project else "user"
         allowed = {
-            "base_url", "default_workspace", "default_chat",
+            "base_url",
+            "default_workspace",
+            "default_chat",
             "output_format",
         }
         if key not in allowed and key not in {"api_key", "username"}:
