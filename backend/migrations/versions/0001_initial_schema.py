@@ -4,6 +4,7 @@ Revision ID: 0001
 Revises:
 Create Date: 2026-04-14
 """
+
 from alembic import op
 
 revision = "0001"
@@ -397,30 +398,64 @@ CREATE TABLE IF NOT EXISTS embedding_projections (
 
     # Standard indexes
     op.execute("CREATE INDEX IF NOT EXISTS idx_users_api_key_hash ON users(api_key_hash)")
-    op.execute("CREATE INDEX IF NOT EXISTS idx_users_owner ON users(owner_id) WHERE owner_id IS NOT NULL")
+    op.execute(
+        "CREATE INDEX IF NOT EXISTS idx_users_owner ON users(owner_id) WHERE owner_id IS NOT NULL"
+    )
     op.execute("CREATE INDEX IF NOT EXISTS idx_workspaces_invite_code ON workspaces(invite_code)")
-    op.execute("CREATE INDEX IF NOT EXISTS idx_workspace_members_user ON workspace_members(user_id)")
-    op.execute("CREATE INDEX IF NOT EXISTS idx_chats_workspace ON chats(workspace_id) WHERE workspace_id IS NOT NULL")
-    op.execute("CREATE INDEX IF NOT EXISTS idx_chat_messages_chat_created ON chat_messages(chat_id, created_at)")
-    op.execute("CREATE INDEX IF NOT EXISTS idx_chat_messages_fts ON chat_messages USING GIN(to_tsvector('english', content))")
-    op.execute("CREATE INDEX IF NOT EXISTS idx_chat_watches_persona ON chat_watches(persona_id) WHERE enabled = true")
+    op.execute(
+        "CREATE INDEX IF NOT EXISTS idx_workspace_members_user ON workspace_members(user_id)"
+    )
+    op.execute(
+        "CREATE INDEX IF NOT EXISTS idx_chats_workspace ON chats(workspace_id) WHERE workspace_id IS NOT NULL"
+    )
+    op.execute(
+        "CREATE INDEX IF NOT EXISTS idx_chat_messages_chat_created ON chat_messages(chat_id, created_at)"
+    )
+    op.execute(
+        "CREATE INDEX IF NOT EXISTS idx_chat_messages_fts ON chat_messages USING GIN(to_tsvector('english', content))"
+    )
+    op.execute(
+        "CREATE INDEX IF NOT EXISTS idx_chat_watches_persona ON chat_watches(persona_id) WHERE enabled = true"
+    )
     op.execute("CREATE INDEX IF NOT EXISTS idx_notebooks_workspace ON notebooks(workspace_id)")
-    op.execute("CREATE INDEX IF NOT EXISTS idx_notebook_pages_notebook ON notebook_pages(notebook_id)")
+    op.execute(
+        "CREATE INDEX IF NOT EXISTS idx_notebook_pages_notebook ON notebook_pages(notebook_id)"
+    )
     op.execute("CREATE INDEX IF NOT EXISTS idx_notebook_pages_folder ON notebook_pages(folder_id)")
-    op.execute("CREATE INDEX IF NOT EXISTS idx_notebook_folders_notebook ON notebook_folders(notebook_id)")
-    op.execute("CREATE INDEX IF NOT EXISTS idx_history_events_workspace ON history_events(workspace_id)")
-    op.execute("CREATE INDEX IF NOT EXISTS idx_history_events_agent_session ON history_events(agent_name, session_id)")
-    op.execute("CREATE INDEX IF NOT EXISTS idx_history_events_fts ON history_events USING GIN(to_tsvector('english', content))")
-    op.execute("CREATE INDEX IF NOT EXISTS idx_history_events_metadata ON history_events USING GIN(metadata)")
-    op.execute("CREATE INDEX IF NOT EXISTS idx_notebook_pages_fts ON notebook_pages USING GIN(to_tsvector('english', content_markdown))")
+    op.execute(
+        "CREATE INDEX IF NOT EXISTS idx_notebook_folders_notebook ON notebook_folders(notebook_id)"
+    )
+    op.execute(
+        "CREATE INDEX IF NOT EXISTS idx_history_events_workspace ON history_events(workspace_id)"
+    )
+    op.execute(
+        "CREATE INDEX IF NOT EXISTS idx_history_events_agent_session ON history_events(agent_name, session_id)"
+    )
+    op.execute(
+        "CREATE INDEX IF NOT EXISTS idx_history_events_fts ON history_events USING GIN(to_tsvector('english', content))"
+    )
+    op.execute(
+        "CREATE INDEX IF NOT EXISTS idx_history_events_metadata ON history_events USING GIN(metadata)"
+    )
+    op.execute(
+        "CREATE INDEX IF NOT EXISTS idx_notebook_pages_fts ON notebook_pages USING GIN(to_tsvector('english', content_markdown))"
+    )
     op.execute("CREATE INDEX IF NOT EXISTS idx_page_links_target ON page_links(target_page_id)")
-    op.execute("CREATE INDEX IF NOT EXISTS idx_injection_sessions_persona ON injection_sessions(persona_id)")
+    op.execute(
+        "CREATE INDEX IF NOT EXISTS idx_injection_sessions_persona ON injection_sessions(persona_id)"
+    )
     op.execute("CREATE INDEX IF NOT EXISTS idx_decks_workspace ON decks(workspace_id)")
     op.execute("CREATE INDEX IF NOT EXISTS idx_deck_shares_deck ON deck_shares(deck_id)")
     op.execute("CREATE INDEX IF NOT EXISTS idx_deck_shares_token ON deck_shares(token)")
-    op.execute("CREATE INDEX IF NOT EXISTS idx_deck_share_views_share ON deck_share_views(share_id)")
-    op.execute("CREATE INDEX IF NOT EXISTS idx_deck_share_views_session ON deck_share_views(session_token)")
-    op.execute("CREATE INDEX IF NOT EXISTS idx_deck_share_page_views_view ON deck_share_page_views(view_id)")
+    op.execute(
+        "CREATE INDEX IF NOT EXISTS idx_deck_share_views_share ON deck_share_views(share_id)"
+    )
+    op.execute(
+        "CREATE INDEX IF NOT EXISTS idx_deck_share_views_session ON deck_share_views(session_token)"
+    )
+    op.execute(
+        "CREATE INDEX IF NOT EXISTS idx_deck_share_page_views_view ON deck_share_page_views(view_id)"
+    )
     op.execute("CREATE INDEX IF NOT EXISTS idx_tables_workspace ON tables(workspace_id)")
     op.execute("CREATE INDEX IF NOT EXISTS idx_table_rows_table ON table_rows(table_id, row_order)")
     op.execute("CREATE INDEX IF NOT EXISTS idx_table_rows_data ON table_rows USING GIN(data)")
@@ -428,25 +463,59 @@ CREATE TABLE IF NOT EXISTS embedding_projections (
     op.execute("CREATE INDEX IF NOT EXISTS idx_documents_workspace ON documents(workspace_id)")
     op.execute("CREATE INDEX IF NOT EXISTS idx_documents_status ON documents(workspace_id, status)")
     op.execute("CREATE INDEX IF NOT EXISTS idx_object_shares_user ON object_shares(user_id)")
-    op.execute("CREATE INDEX IF NOT EXISTS idx_webhooks_workspace ON webhooks(workspace_id) WHERE is_active = true")
-    op.execute("CREATE INDEX IF NOT EXISTS idx_webhook_deliveries_pending ON webhook_deliveries(status, next_retry_at) WHERE status = 'pending'")
+    op.execute(
+        "CREATE INDEX IF NOT EXISTS idx_webhooks_workspace ON webhooks(workspace_id) WHERE is_active = true"
+    )
+    op.execute(
+        "CREATE INDEX IF NOT EXISTS idx_webhook_deliveries_pending ON webhook_deliveries(status, next_retry_at) WHERE status = 'pending'"
+    )
 
     # Partial / HNSW indexes
-    op.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_dm_unique_pair ON chats(dm_user_a, dm_user_b) WHERE is_dm = true")
-    op.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_notebook_pages_root_unique ON notebook_pages(notebook_id, name) WHERE folder_id IS NULL")
-    op.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_notebook_pages_folder_unique ON notebook_pages(notebook_id, folder_id, name) WHERE folder_id IS NOT NULL")
-    op.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_personal_notebook_unique ON notebooks(created_by, name) WHERE workspace_id IS NULL")
-    op.execute("CREATE INDEX IF NOT EXISTS idx_notebooks_personal ON notebooks(created_by) WHERE workspace_id IS NULL")
-    op.execute("CREATE INDEX IF NOT EXISTS idx_chats_personal ON chats(creator_id) WHERE workspace_id IS NULL AND is_dm = false")
-    op.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_personal_deck_unique ON decks(created_by, name) WHERE workspace_id IS NULL")
-    op.execute("CREATE INDEX IF NOT EXISTS idx_decks_personal ON decks(created_by) WHERE workspace_id IS NULL")
-    op.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_personal_table_unique ON tables(created_by, name) WHERE workspace_id IS NULL")
-    op.execute("CREATE INDEX IF NOT EXISTS idx_tables_personal ON tables(created_by) WHERE workspace_id IS NULL")
-    op.execute("CREATE INDEX IF NOT EXISTS idx_files_personal ON files(uploaded_by) WHERE workspace_id IS NULL")
-    op.execute("CREATE INDEX IF NOT EXISTS idx_injection_sessions_pending ON injection_sessions(persona_id) WHERE completed_at IS NOT NULL AND scored_at IS NULL")
-    op.execute("CREATE INDEX IF NOT EXISTS idx_table_rows_embedding ON table_rows USING hnsw (embedding vector_cosine_ops) WHERE embedding IS NOT NULL")
-    op.execute("CREATE INDEX IF NOT EXISTS idx_notebook_pages_embedding ON notebook_pages USING hnsw (embedding vector_cosine_ops) WHERE embedding IS NOT NULL")
-    op.execute("CREATE INDEX IF NOT EXISTS idx_history_events_embedding ON history_events USING hnsw (embedding vector_cosine_ops) WHERE embedding IS NOT NULL")
+    op.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_dm_unique_pair ON chats(dm_user_a, dm_user_b) WHERE is_dm = true"
+    )
+    op.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_notebook_pages_root_unique ON notebook_pages(notebook_id, name) WHERE folder_id IS NULL"
+    )
+    op.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_notebook_pages_folder_unique ON notebook_pages(notebook_id, folder_id, name) WHERE folder_id IS NOT NULL"
+    )
+    op.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_personal_notebook_unique ON notebooks(created_by, name) WHERE workspace_id IS NULL"
+    )
+    op.execute(
+        "CREATE INDEX IF NOT EXISTS idx_notebooks_personal ON notebooks(created_by) WHERE workspace_id IS NULL"
+    )
+    op.execute(
+        "CREATE INDEX IF NOT EXISTS idx_chats_personal ON chats(creator_id) WHERE workspace_id IS NULL AND is_dm = false"
+    )
+    op.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_personal_deck_unique ON decks(created_by, name) WHERE workspace_id IS NULL"
+    )
+    op.execute(
+        "CREATE INDEX IF NOT EXISTS idx_decks_personal ON decks(created_by) WHERE workspace_id IS NULL"
+    )
+    op.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_personal_table_unique ON tables(created_by, name) WHERE workspace_id IS NULL"
+    )
+    op.execute(
+        "CREATE INDEX IF NOT EXISTS idx_tables_personal ON tables(created_by) WHERE workspace_id IS NULL"
+    )
+    op.execute(
+        "CREATE INDEX IF NOT EXISTS idx_files_personal ON files(uploaded_by) WHERE workspace_id IS NULL"
+    )
+    op.execute(
+        "CREATE INDEX IF NOT EXISTS idx_injection_sessions_pending ON injection_sessions(persona_id) WHERE completed_at IS NOT NULL AND scored_at IS NULL"
+    )
+    op.execute(
+        "CREATE INDEX IF NOT EXISTS idx_table_rows_embedding ON table_rows USING hnsw (embedding vector_cosine_ops) WHERE embedding IS NOT NULL"
+    )
+    op.execute(
+        "CREATE INDEX IF NOT EXISTS idx_notebook_pages_embedding ON notebook_pages USING hnsw (embedding vector_cosine_ops) WHERE embedding IS NOT NULL"
+    )
+    op.execute(
+        "CREATE INDEX IF NOT EXISTS idx_history_events_embedding ON history_events USING hnsw (embedding vector_cosine_ops) WHERE embedding IS NOT NULL"
+    )
 
 
 def downgrade() -> None:

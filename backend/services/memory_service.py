@@ -6,7 +6,7 @@ Grouped by agent_name → session_id for display.
 
 import asyncio
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from uuid import UUID
 
 import numpy as np
@@ -28,7 +28,8 @@ async def _embed_event(event_id: UUID, content: str) -> None:
             pool = get_pool()
             await pool.execute(
                 "UPDATE history_events SET embedding = $1 WHERE id = $2",
-                vec, event_id,
+                vec,
+                event_id,
             )
     except Exception:
         logger.debug("Failed to embed event %s", event_id, exc_info=True)
@@ -44,7 +45,8 @@ async def _embed_events_batch(event_ids: list[UUID], contents: list[str]) -> Non
                 for eid, vec in zip(event_ids, vecs):
                     await conn.execute(
                         "UPDATE history_events SET embedding = $1 WHERE id = $2",
-                        vec, eid,
+                        vec,
+                        eid,
                     )
     except Exception:
         logger.debug("Failed to batch-embed events", exc_info=True)
@@ -69,9 +71,9 @@ async def push_event(
     pool = get_pool()
     meta = metadata or {}
     if created_at is None:
-        ts = datetime.now(timezone.utc)
+        ts = datetime.now(UTC)
     elif created_at.tzinfo is None:
-        ts = created_at.replace(tzinfo=timezone.utc)
+        ts = created_at.replace(tzinfo=UTC)
     else:
         ts = created_at
     row = await pool.fetchrow(
@@ -80,8 +82,16 @@ async def push_event(
         "VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9, $10) "
         "RETURNING id, workspace_id, created_by, agent_name, event_type, session_id, "
         "tool_name, content, metadata, attachments, created_at",
-        workspace_id, created_by, agent_name, event_type, content,
-        session_id, tool_name, meta, attachments, ts,
+        workspace_id,
+        created_by,
+        agent_name,
+        event_type,
+        content,
+        session_id,
+        tool_name,
+        meta,
+        attachments,
+        ts,
     )
     event = dict(row)
     if embedding_service.is_configured():
@@ -90,7 +100,9 @@ async def push_event(
 
 
 async def push_events_batch(
-    workspace_id: UUID | None, created_by: UUID, events: list[dict],
+    workspace_id: UUID | None,
+    created_by: UUID,
+    events: list[dict],
 ) -> list[dict]:
     """Batch push events. Returns list of created events."""
     pool = get_pool()
@@ -101,9 +113,9 @@ async def push_events_batch(
                 meta = evt.get("metadata", {})
                 raw_ts = evt.get("created_at")
                 if raw_ts is None:
-                    ts = datetime.now(timezone.utc)
+                    ts = datetime.now(UTC)
                 elif raw_ts.tzinfo is None:
-                    ts = raw_ts.replace(tzinfo=timezone.utc)
+                    ts = raw_ts.replace(tzinfo=UTC)
                 else:
                     ts = raw_ts
                 row = await conn.fetchrow(
@@ -113,10 +125,16 @@ async def push_events_batch(
                     "VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9, $10) "
                     "RETURNING id, workspace_id, created_by, agent_name, event_type, "
                     "session_id, tool_name, content, metadata, attachments, created_at",
-                    workspace_id, created_by,
-                    evt["agent_name"], evt["event_type"], evt["content"],
-                    evt.get("session_id"), evt.get("tool_name"), meta,
-                    evt.get("attachments"), ts,
+                    workspace_id,
+                    created_by,
+                    evt["agent_name"],
+                    evt["event_type"],
+                    evt["content"],
+                    evt.get("session_id"),
+                    evt.get("tool_name"),
+                    meta,
+                    evt.get("attachments"),
+                    ts,
                 )
                 results.append(dict(row))
     if embedding_service.is_configured() and results:
@@ -130,7 +148,8 @@ async def get_workspace_event(event_id: UUID, workspace_id: UUID) -> dict | None
     pool = get_pool()
     row = await pool.fetchrow(
         "SELECT * FROM history_events WHERE id = $1 AND workspace_id = $2",
-        event_id, workspace_id,
+        event_id,
+        workspace_id,
     )
     return dict(row) if row else None
 
@@ -140,7 +159,8 @@ async def get_personal_event(event_id: UUID, user_id: UUID) -> dict | None:
     row = await pool.fetchrow(
         "SELECT * FROM history_events "
         "WHERE id = $1 AND workspace_id IS NULL AND created_by = $2",
-        event_id, user_id,
+        event_id,
+        user_id,
     )
     return dict(row) if row else None
 
@@ -184,7 +204,10 @@ def _build_event_filters(
 
 
 async def _query_events(
-    where: str, args: list, limit_idx: int, limit: int,
+    where: str,
+    args: list,
+    limit_idx: int,
+    limit: int,
 ) -> tuple[list[dict], bool]:
     pool = get_pool()
     args = [*args, limit + 1]
@@ -214,8 +237,13 @@ async def query_workspace_events(
     """Query events in a workspace. Returns (events, has_more)."""
     limit = min(limit, 200)
     where, args, next_idx = _build_event_filters(
-        "workspace_id = $1", [workspace_id],
-        agent_name, session_id, event_type, after, before,
+        "workspace_id = $1",
+        [workspace_id],
+        agent_name,
+        session_id,
+        event_type,
+        after,
+        before,
     )
     return await _query_events(where, args, next_idx, limit)
 
@@ -232,14 +260,21 @@ async def query_personal_events(
     """Query personal (non-workspace) events for a user. Returns (events, has_more)."""
     limit = min(limit, 200)
     where, args, next_idx = _build_event_filters(
-        "workspace_id IS NULL AND created_by = $1", [user_id],
-        agent_name, session_id, event_type, after, before,
+        "workspace_id IS NULL AND created_by = $1",
+        [user_id],
+        agent_name,
+        session_id,
+        event_type,
+        after,
+        before,
     )
     return await _query_events(where, args, next_idx, limit)
 
 
 async def search_workspace_events(
-    workspace_id: UUID, query: str, limit: int = 50,
+    workspace_id: UUID,
+    query: str,
+    limit: int = 50,
 ) -> list[dict]:
     """Full-text search on workspace events."""
     pool = get_pool()
@@ -251,13 +286,17 @@ async def search_workspace_events(
         "FROM history_events "
         "WHERE workspace_id = $1 AND to_tsvector('english', content) @@ websearch_to_tsquery('english', $2) "
         "ORDER BY rank DESC LIMIT $3",
-        workspace_id, query, limit,
+        workspace_id,
+        query,
+        limit,
     )
     return [dict(r) for r in rows]
 
 
 async def search_personal_events(
-    user_id: UUID, query: str, limit: int = 50,
+    user_id: UUID,
+    query: str,
+    limit: int = 50,
 ) -> list[dict]:
     """Full-text search on personal events."""
     pool = get_pool()
@@ -270,13 +309,17 @@ async def search_personal_events(
         "WHERE workspace_id IS NULL AND created_by = $1 "
         "AND to_tsvector('english', content) @@ websearch_to_tsquery('english', $2) "
         "ORDER BY rank DESC LIMIT $3",
-        user_id, query, limit,
+        user_id,
+        query,
+        limit,
     )
     return [dict(r) for r in rows]
 
 
 async def search_workspace_events_vector(
-    workspace_id: UUID, query_embedding: np.ndarray, limit: int = 20,
+    workspace_id: UUID,
+    query_embedding: np.ndarray,
+    limit: int = 20,
 ) -> list[dict]:
     """Semantic vector search on workspace events."""
     pool = get_pool()
@@ -288,13 +331,17 @@ async def search_workspace_events_vector(
         "FROM history_events "
         "WHERE workspace_id = $1 AND embedding IS NOT NULL "
         "ORDER BY embedding <=> $2 LIMIT $3",
-        workspace_id, query_embedding, limit,
+        workspace_id,
+        query_embedding,
+        limit,
     )
     return [dict(r) for r in rows]
 
 
 async def search_personal_events_vector(
-    user_id: UUID, query_embedding: np.ndarray, limit: int = 20,
+    user_id: UUID,
+    query_embedding: np.ndarray,
+    limit: int = 20,
 ) -> list[dict]:
     """Semantic vector search on personal events."""
     pool = get_pool()
@@ -306,7 +353,9 @@ async def search_personal_events_vector(
         "FROM history_events "
         "WHERE workspace_id IS NULL AND created_by = $1 AND embedding IS NOT NULL "
         "ORDER BY embedding <=> $2 LIMIT $3",
-        user_id, query_embedding, limit,
+        user_id,
+        query_embedding,
+        limit,
     )
     return [dict(r) for r in rows]
 
@@ -376,7 +425,8 @@ async def delete_workspace_agent_events(agent_name: str, workspace_id: UUID) -> 
     pool = get_pool()
     result = await pool.execute(
         "DELETE FROM history_events WHERE agent_name = $1 AND workspace_id = $2",
-        agent_name, workspace_id,
+        agent_name,
+        workspace_id,
     )
     return int(result.split()[-1]) if result else 0
 
@@ -386,7 +436,8 @@ async def delete_personal_agent_events(agent_name: str, user_id: UUID) -> int:
     pool = get_pool()
     result = await pool.execute(
         "DELETE FROM history_events WHERE agent_name = $1 AND workspace_id IS NULL AND created_by = $2",
-        agent_name, user_id,
+        agent_name,
+        user_id,
     )
     return int(result.split()[-1]) if result else 0
 
@@ -394,7 +445,10 @@ async def delete_personal_agent_events(agent_name: str, user_id: UUID) -> int:
 async def get_workspace_event_count(workspace_id: UUID) -> int:
     """Count events in a workspace."""
     pool = get_pool()
-    return await pool.fetchval(
-        "SELECT COUNT(*) FROM history_events WHERE workspace_id = $1",
-        workspace_id,
-    ) or 0
+    return (
+        await pool.fetchval(
+            "SELECT COUNT(*) FROM history_events WHERE workspace_id = $1",
+            workspace_id,
+        )
+        or 0
+    )
