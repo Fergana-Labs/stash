@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import AppShell from "../../components/AppShell";
 import NotebookTreeComponent from "../../components/workspace/FileTree";
-import MarkdownEditor from "../../components/workspace/MarkdownEditor";
+import MarkdownEditor, { SaveStatus } from "../../components/workspace/MarkdownEditor";
 import { useAuth } from "../../hooks/useAuth";
 import {
   listAllNotebooks,
@@ -66,6 +66,7 @@ export default function WikiPage() {
   const [backlinks, setBacklinks] = useState<PageLink[]>([]);
 
 
+  const [saveStatus, setSaveStatus] = useState<SaveStatus>("saved");
   const [semanticQuery, setSemanticQuery] = useState("");
   const [semanticResults, setSemanticResults] = useState<NotebookPage[]>([]);
   const [semanticSearching, setSemanticSearching] = useState(false);
@@ -539,6 +540,14 @@ export default function WikiPage() {
                     </>
                   )}
                 </nav>
+                {selectedPage && (
+                  <span
+                    className={`w-2 h-2 rounded-full flex-shrink-0 ${
+                      saveStatus === "saved" ? "bg-green-400" : "bg-yellow-400"
+                    }`}
+                    title={saveStatus === "saving" ? "Saving..." : saveStatus === "dirty" ? "Unsaved changes" : "Saved"}
+                  />
+                )}
               </div>
 
               {selectedPage ? (
@@ -550,6 +559,7 @@ export default function WikiPage() {
                       workspaceId={selectedNotebook.workspace_id || null}
                       file={selectedPage}
                       onSave={handleSavePage}
+                      onSaveStatusChange={setSaveStatus}
                       pageNames={pageNames}
                       onNavigateToPage={handleNavigateToPage}
                     />
