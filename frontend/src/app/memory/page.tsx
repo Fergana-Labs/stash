@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import AppShell from "../../components/AppShell";
 import { useAuth } from "../../hooks/useAuth";
 import {
@@ -115,6 +115,8 @@ export default function MemoryPage() {
   const [events, setEvents] = useState<HistoryEventWithContext[]>([]);
   const [eventsLoading, setEventsLoading] = useState(false);
 
+  const [hasMore, setHasMore] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [selectedAgent, setSelectedAgent] = useState<string | null>(null);
   const [selectedSession, setSelectedSession] = useState<string | null>(null);
 
@@ -123,11 +125,27 @@ export default function MemoryPage() {
     try {
       const res = await queryAllHistoryEvents({ limit: 200 });
       setEvents(res?.events ?? []);
+      setHasMore(res?.has_more ?? false);
     } catch {
       /* ignore */
     }
     setEventsLoading(false);
   }, []);
+
+  const loadMore = useCallback(async () => {
+    if (!events.length || loadingMore) return;
+    setLoadingMore(true);
+    try {
+      const oldest = events[events.length - 1];
+      const res = await queryAllHistoryEvents({ limit: 200, before: oldest.created_at });
+      const newEvents = res?.events ?? [];
+      setEvents((prev) => [...prev, ...newEvents]);
+      setHasMore(res?.has_more ?? false);
+    } catch {
+      /* ignore */
+    }
+    setLoadingMore(false);
+  }, [events, loadingMore]);
 
   useEffect(() => {
     if (user) loadEvents();
@@ -153,16 +171,16 @@ export default function MemoryPage() {
     return sess?.events ?? null;
   }, [groups, selectedAgent, selectedSession]);
 
-  if (loading) {
+  useEffect(() => {
+    if (!loading && !user) router.push("/login");
+  }, [loading, user, router]);
+
+  if (loading || !user) {
     return (
       <div className="min-h-screen flex items-center justify-center text-muted">
         Loading...
       </div>
     );
-  }
-  if (!user) {
-    router.push("/login");
-    return null;
   }
 
   return (
@@ -260,6 +278,9 @@ export default function MemoryPage() {
               <RecentActivityView
                 allSessions={allSessions}
                 eventsLoading={eventsLoading}
+                hasMore={hasMore}
+                loadingMore={loadingMore}
+                onLoadMore={loadMore}
                 onSelectAgent={(agent) => { setSelectedAgent(agent); setSelectedSession(null); }}
                 onSelectSession={(agent, sid) => { setSelectedAgent(agent); setSelectedSession(sid); }}
               />
@@ -273,6 +294,9 @@ export default function MemoryPage() {
 
 /* ── Session conversation view ── */
 
+const SESSION_PAGE_SIZE = 50;
+type SortOrder = "oldest" | "newest";
+
 function SessionView({
   events,
   sessionId,
@@ -282,21 +306,120 @@ function SessionView({
   sessionId: string;
   agentName: string;
 }) {
+  const [typeFilter, setTypeFilter] = useState<string>("all");
+  const [toolFilter, setToolFilter] = useState<string>("all");
+  const [search, setSearch] = useState("");
+  const [sort, setSort] = useState<SortOrder>("oldest");
+  const [visibleCount, setVisibleCount] = useState(SESSION_PAGE_SIZE);
+  const sentinelRef = useRef<HTMLDivElement>(null);
+
+  const eventTypes = useMemo(() => [...new Set(events.map((e) => e.event_type))].sort(), [events]);
+  const toolNames = useMemo(() => [...new Set(events.map((e) => e.tool_name).filter(Boolean))].sort() as string[], [events]);
+
+  const filtered = useMemo(() => {
+    let result = events;
+    if (typeFilter !== "all") result = result.filter((e) => e.event_type === typeFilter);
+    if (toolFilter !== "all") result = result.filter((e) => e.tool_name === toolFilter);
+    if (search.trim()) {
+      const q = search.toLowerCase();
+      result = result.filter((e) =>
+        e.content.toLowerCase().includes(q) ||
+        e.agent_name.toLowerCase().includes(q) ||
+        (e.tool_name && e.tool_name.toLowerCase().includes(q))
+      );
+    }
+    if (sort === "newest") result = [...result].reverse();
+    return result;
+  }, [events, typeFilter, toolFilter, search, sort]);
+
+  // Reset visible count when filters change
+  useEffect(() => { setVisibleCount(SESSION_PAGE_SIZE); }, [typeFilter, toolFilter, search, sort]);
+
+  const visible = filtered.slice(0, visibleCount);
+  const hasMoreEvents = visibleCount < filtered.length;
+
+  // Infinite scroll via IntersectionObserver
+  useEffect(() => {
+    if (!hasMoreEvents || !sentinelRef.current) return;
+    const observer = new IntersectionObserver(
+      ([entry]) => { if (entry.isIntersecting) setVisibleCount((c) => c + SESSION_PAGE_SIZE); },
+      { rootMargin: "200px" }
+    );
+    observer.observe(sentinelRef.current);
+    return () => observer.disconnect();
+  }, [hasMoreEvents, filtered]);
+
+  const hasFilters = typeFilter !== "all" || toolFilter !== "all" || search.trim() !== "";
+
   return (
     <div>
-      <div className="mb-6">
+      <div className="mb-4">
         <h1 className="text-xl font-bold text-foreground font-display">{agentName}</h1>
         <p className="text-[11px] text-muted font-mono mt-1">
           session: {sessionId} &middot; {events.length} event
           {events.length !== 1 ? "s" : ""}
+          {hasFilters && ` (showing ${filtered.length})`}
         </p>
       </div>
 
+      {/* Search + filters + sort */}
+      <div className="flex items-center gap-2 mb-4 flex-wrap">
+        <input
+          type="text"
+          placeholder="Search events..."
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className="text-[11px] bg-surface border border-border rounded px-2 py-1 text-foreground placeholder:text-muted w-40"
+        />
+
+        <select
+          value={typeFilter}
+          onChange={(e) => setTypeFilter(e.target.value)}
+          className="text-[11px] bg-surface border border-border rounded px-2 py-1 text-foreground"
+        >
+          <option value="all">All types</option>
+          {eventTypes.map((t) => (
+            <option key={t} value={t}>{t}</option>
+          ))}
+        </select>
+
+        {toolNames.length > 0 && (
+          <select
+            value={toolFilter}
+            onChange={(e) => setToolFilter(e.target.value)}
+            className="text-[11px] bg-surface border border-border rounded px-2 py-1 text-foreground"
+          >
+            <option value="all">All tools</option>
+            {toolNames.map((t) => (
+              <option key={t} value={t}>{t}</option>
+            ))}
+          </select>
+        )}
+
+        <select
+          value={sort}
+          onChange={(e) => setSort(e.target.value as SortOrder)}
+          className="text-[11px] bg-surface border border-border rounded px-2 py-1 text-foreground"
+        >
+          <option value="oldest">Oldest first</option>
+          <option value="newest">Newest first</option>
+        </select>
+
+        {hasFilters && (
+          <button
+            onClick={() => { setTypeFilter("all"); setToolFilter("all"); setSearch(""); }}
+            className="text-[11px] text-muted hover:text-foreground transition-colors"
+          >
+            Clear
+          </button>
+        )}
+      </div>
+
       <div className="space-y-1">
-        {events.map((evt, i) => {
+        {visible.map((evt, i) => {
           const showTime =
             i === 0 ||
-            shouldShowTimestamp(events[i - 1].created_at, evt.created_at);
+            shouldShowTimestamp(visible[i - 1].created_at, evt.created_at);
 
           return (
             <div key={evt.id}>
@@ -313,6 +436,10 @@ function SessionView({
             </div>
           );
         })}
+        {filtered.length === 0 && (
+          <p className="text-sm text-muted py-4">No events match the current filters.</p>
+        )}
+        {hasMoreEvents && <div ref={sentinelRef} className="h-8" />}
       </div>
     </div>
   );
@@ -386,17 +513,49 @@ function AgentOverview({
 
 /* ── Recent activity: all sessions sorted by recency ── */
 
+const SESSIONS_PAGE_SIZE = 20;
+
 function RecentActivityView({
   allSessions,
   eventsLoading,
+  hasMore: hasMoreEvents,
+  loadingMore: loadingMoreEvents,
+  onLoadMore: onLoadMoreEvents,
   onSelectAgent,
   onSelectSession,
 }: {
   allSessions: SessionGroup[];
   eventsLoading: boolean;
+  hasMore: boolean;
+  loadingMore: boolean;
+  onLoadMore: () => void;
   onSelectAgent: (agent: string) => void;
   onSelectSession: (agent: string, sid: string) => void;
 }) {
+  const [visibleCount, setVisibleCount] = useState(SESSIONS_PAGE_SIZE);
+  const sentinelRef = useRef<HTMLDivElement>(null);
+
+  const visible = allSessions.slice(0, visibleCount);
+  const hasMoreSessions = visibleCount < allSessions.length;
+
+  // Infinite scroll — show more sessions, or fetch more events if we've shown them all
+  useEffect(() => {
+    if (!sentinelRef.current) return;
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (!entry.isIntersecting) return;
+        if (hasMoreSessions) {
+          setVisibleCount((c) => c + SESSIONS_PAGE_SIZE);
+        } else if (hasMoreEvents && !loadingMoreEvents) {
+          onLoadMoreEvents();
+        }
+      },
+      { rootMargin: "200px" }
+    );
+    observer.observe(sentinelRef.current);
+    return () => observer.disconnect();
+  }, [hasMoreSessions, hasMoreEvents, loadingMoreEvents, onLoadMoreEvents]);
+
   if (eventsLoading) {
     return <p className="text-muted text-sm">Loading events...</p>;
   }
@@ -416,7 +575,7 @@ function RecentActivityView({
       </h1>
 
       <div className="space-y-2">
-        {allSessions.map((sess) => (
+        {visible.map((sess) => (
           <div
             key={`${sess.agentName}-${sess.sessionId}`}
             onClick={() => onSelectSession(sess.agentName, sess.sessionId)}
@@ -440,6 +599,12 @@ function RecentActivityView({
           </div>
         ))}
       </div>
+
+      {(hasMoreSessions || hasMoreEvents) && (
+        <div ref={sentinelRef} className="h-8 flex items-center justify-center">
+          {loadingMoreEvents && <span className="text-[11px] text-muted">Loading...</span>}
+        </div>
+      )}
     </div>
   );
 }
