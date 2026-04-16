@@ -9,6 +9,19 @@ import { setToken, listMyWorkspaces } from "../../lib/api";
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3456";
 const AUTH0_ENABLED = process.env.NEXT_PUBLIC_AUTH0_ENABLED === "true";
 
+// FastAPI returns `detail` as either a string or an array of validation errors
+// like [{ loc, msg, type }]. Flatten to a human-readable string.
+function formatApiError(detail: unknown, fallback: string): string {
+  if (typeof detail === "string") return detail;
+  if (Array.isArray(detail)) {
+    const msgs = detail
+      .map((d) => (d && typeof d === "object" && "msg" in d ? String(d.msg) : ""))
+      .filter(Boolean);
+    if (msgs.length > 0) return msgs.join("; ");
+  }
+  return fallback;
+}
+
 export default function LoginPage() {
   return (
     <Suspense fallback={<div className="min-h-screen flex items-center justify-center text-muted">Loading...</div>}>
@@ -105,7 +118,7 @@ function LoginPageInner() {
 
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        throw new Error(data.detail || "Sign-in failed");
+        throw new Error(formatApiError(data.detail, "Sign-in failed"));
       }
 
       const data = await res.json();
