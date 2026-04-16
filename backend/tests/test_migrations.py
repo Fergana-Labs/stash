@@ -4,8 +4,6 @@ import os
 import subprocess
 import sys
 
-import pytest
-
 
 def test_alembic_upgrade_head():
     """alembic upgrade head completes without error on the test database."""
@@ -25,9 +23,9 @@ def test_alembic_upgrade_head():
         capture_output=True,
         text=True,
     )
-    assert result.returncode == 0, (
-        f"alembic upgrade head failed:\nSTDOUT:\n{result.stdout}\nSTDERR:\n{result.stderr}"
-    )
+    assert (
+        result.returncode == 0
+    ), f"alembic upgrade head failed:\nSTDOUT:\n{result.stdout}\nSTDERR:\n{result.stderr}"
 
 
 def test_alembic_history_is_linear():

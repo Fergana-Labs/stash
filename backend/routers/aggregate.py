@@ -51,7 +51,9 @@ async def activity_timeline(
 ):
     """Agent activity bucketed by time for the dashboard timeline."""
     return await analytics_service.get_activity_timeline(
-        current_user["id"], days=days, bucket=bucket,
+        current_user["id"],
+        days=days,
+        bucket=bucket,
     )
 
 
@@ -62,7 +64,8 @@ async def knowledge_density(
 ):
     """Topic clusters for the knowledge density heatmap."""
     return await analytics_service.get_knowledge_density(
-        current_user["id"], max_clusters=max_clusters,
+        current_user["id"],
+        max_clusters=max_clusters,
     )
 
 
@@ -74,5 +77,7 @@ async def embedding_projection(
 ):
     """2D UMAP projection of embeddings for the space explorer."""
     return await analytics_service.get_embedding_projection(
-        current_user["id"], max_points=max_points, source=source,
+        current_user["id"],
+        max_points=max_points,
+        source=source,
     )
