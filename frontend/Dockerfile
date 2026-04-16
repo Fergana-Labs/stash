@@ -14,6 +14,13 @@ WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
+# NEXT_PUBLIC_* vars must be present at build time so Next.js inlines them
+# into the client bundle. Render passes service env vars as --build-arg.
+ARG NEXT_PUBLIC_API_URL
+ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
+ARG NEXT_PUBLIC_AUTH0_ENABLED
+ENV NEXT_PUBLIC_AUTH0_ENABLED=$NEXT_PUBLIC_AUTH0_ENABLED
+
 ENV NEXT_TELEMETRY_DISABLED=1
 RUN npm run build
 
