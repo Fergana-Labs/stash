@@ -3,3 +3,4 @@ node_modules
 .vercel
 *.tsbuildinfo
 .env*.local
+next-env.d.ts
