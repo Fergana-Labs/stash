@@ -1201,6 +1201,21 @@ def _show_setup_complete_splash() -> None:
         "[bold]Q&A[/bold]\n"
         "  [bold]Q[/bold] Do you inject anything into my coding agent's context automatically?\n"
         "  [bold]A[/bold] No.\n"
+        "\n"
+        "  [bold]Q[/bold] What gets pushed to the shared store?\n"
+        "  [bold]A[/bold] Event streams from your session — your prompts, each assistant\n"
+        "     reply, summarized tool activity, and a short session summary. Long fields\n"
+        "     are truncated; it is not a full byte-for-byte transcript.\n"
+        "\n"
+        "  [bold]Q[/bold] How do I see my transcripts?\n"
+        "  [bold]A[/bold] With the CLI: [cyan]stash history query[/cyan] and\n"
+        "     [cyan]stash history search[/cyan] (use your default workspace or [cyan]--ws[/cyan]).\n"
+        "     You can also open the Memory / History views in the Stash web app.\n"
+        "\n"
+        "  [bold]Q[/bold] How do I share my workspace with my team?\n"
+        "  [bold]A[/bold] Share the invite code ([cyan]stash workspaces info <id>[/cyan] prints it).\n"
+        "     Teammates run [cyan]stash connect[/cyan] if needed, then\n"
+        "     [cyan]stash workspaces join <invite_code>[/cyan].\n"
     )
     console.print(
         Panel(
