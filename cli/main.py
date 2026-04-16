@@ -1119,6 +1119,7 @@ def connect():
                 marker = " [dim](current default)[/dim]" if str(ws["id"]) == workspace_id else ""
                 console.print(f"    [dim]{str(ws['id'])[:8]}…[/dim]  {ws['name']}{marker}")
 
+        _reserve_bottom_padding(4)
         ws_action = typer.prompt(
             "\nUse existing workspace ID, or type a name to create new one",
             default=workspace_id or "",
@@ -1151,10 +1152,25 @@ def connect():
                     console.print(f"[red]Could not create workspace: {e.detail}[/red]")
 
     # --- Done ---
-    console.print("\n[bold green]Setup complete.[/bold green]")
-    console.print("  Run [bold]stash whoami[/bold] to confirm auth.")
-    console.print('  Run [bold]stash history push "hello"[/bold] to push your first event.')
-    console.print("  Run [bold]stash --help[/bold] to see all commands.\n")
+    _show_setup_complete_splash()
+
+
+STASH_LOGO = r"""
+ ███████╗████████╗ █████╗ ███████╗██╗  ██╗
+ ██╔════╝╚══██╔══╝██╔══██╗██╔════╝██║  ██║
+ ███████╗   ██║   ███████║███████╗███████║
+ ╚════██║   ██║   ██╔══██║╚════██║██╔══██║
+ ███████║   ██║   ██║  ██║███████║██║  ██║
+ ╚══════╝   ╚═╝   ╚═╝  ╚═╝╚══════╝╚═╝  ╚═╝
+"""
+
+
+def _show_setup_complete_splash() -> None:
+    """Clear the onboarding transcript and show a clean success splash."""
+    console.clear()
+    console.print(f"[bold cyan]{STASH_LOGO}[/bold cyan]")
+    console.print("  [bold green]You're all set up.[/bold green]\n")
+    console.print("  Run [bold]stash --help[/bold] to see what's next.\n")
 
 
 # ===========================================================================
