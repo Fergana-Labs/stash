@@ -1059,9 +1059,13 @@ def connect():
             console.print(f"[red]Could not reach {base_url}: {e}[/red]")
             raise typer.Exit(1)
 
-        # Build the login URL — for self-hosted, frontend is on port 3000
+        # Build the login URL. The backend and frontend are separate deployments.
+        # - Local self-host: backend on :3456, frontend on :3000.
+        # - Managed: frontend lives at stash-web-dr40.onrender.com.
         if "localhost" in base_url or "127.0.0.1" in base_url:
             frontend_url = base_url.replace(":3456", ":3000")
+        elif base_url == "https://moltchat.onrender.com":
+            frontend_url = "https://stash-web-dr40.onrender.com"
         else:
             frontend_url = base_url
         login_url = f"{frontend_url}/login?cli={session_id}"
