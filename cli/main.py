@@ -903,7 +903,7 @@ def connect():
         base_url = _self_host_walkthrough(cfg)
     save_config(base_url=base_url, scope=scope)
 
-    # --- Step 2: Auth ---
+    # --- Step 2: Auth (browser-based) ---
     has_key = bool(cfg.get("api_key"))
     if has_key:
         try:
@@ -914,28 +914,54 @@ def connect():
             has_key = False
 
     if not has_key:
-        action = typer.prompt("Login or register? [login/register]", default="login").strip().lower()
-        name = typer.prompt("Username")
-        if action == "register":
-            password = typer.prompt("Password", hide_input=True, confirmation_prompt=True)
-            with OctopusClient(base_url=base_url, api_key="") as c:
-                try:
-                    data = c.register(name, description="", password=password)
-                except OctopusError as e:
-                    console.print(f"[red]Registration failed: {e.detail}[/red]")
-                    raise typer.Exit(1)
-            save_config(api_key=data["api_key"], username=data["name"])
-            console.print(f"  [green]✓[/green] Registered as [bold]{data['name']}[/bold]")
+        import time as _time
+        import webbrowser
+
+        import httpx
+
+        # Create a CLI auth session
+        try:
+            resp = httpx.post(f"{base_url}/api/v1/users/cli-auth/sessions", timeout=10)
+            resp.raise_for_status()
+            session_id = resp.json()["session_id"]
+        except Exception as e:
+            console.print(f"[red]Could not reach {base_url}: {e}[/red]")
+            raise typer.Exit(1)
+
+        # Build the login URL — for self-hosted, frontend is on port 3000
+        if "localhost" in base_url or "127.0.0.1" in base_url:
+            frontend_url = base_url.replace(":3456", ":3000")
         else:
-            password = typer.prompt("Password", hide_input=True)
-            with OctopusClient(base_url=base_url, api_key="") as c:
+            frontend_url = base_url
+        login_url = f"{frontend_url}/login?cli={session_id}"
+
+        console.print(f"\n  Opening browser to sign in...")
+        console.print(f"  [dim]{login_url}[/dim]\n")
+        webbrowser.open(login_url)
+
+        _reserve_bottom_padding(4)
+        console.print("  Waiting for authentication... [dim](press Ctrl+C to cancel)[/dim]")
+
+        # Poll for the result
+        try:
+            for _ in range(120):  # 2 minutes max
+                _time.sleep(1)
                 try:
-                    data = c.login(name, password)
-                except OctopusError as e:
-                    console.print(f"[red]Login failed: {e.detail}[/red]")
-                    raise typer.Exit(1)
-            save_config(api_key=data["api_key"], username=data["name"])
-            console.print(f"  [green]✓[/green] Logged in as [bold]{data['name']}[/bold]")
+                    poll = httpx.get(f"{base_url}/api/v1/users/cli-auth/sessions/{session_id}", timeout=5)
+                    if poll.status_code == 200:
+                        result = poll.json()
+                        if result["status"] == "complete":
+                            save_config(api_key=result["api_key"], username=result["username"])
+                            console.print(f"  [green]✓[/green] Logged in as [bold]{result['username']}[/bold]")
+                            break
+                except httpx.HTTPError:
+                    pass
+            else:
+                console.print("[red]Timed out waiting for authentication.[/red]")
+                raise typer.Exit(1)
+        except KeyboardInterrupt:
+            console.print("\n[yellow]Cancelled.[/yellow]")
+            raise typer.Exit(1)
 
     # Reload config after auth
     cfg = load_config()
