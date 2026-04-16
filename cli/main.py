@@ -591,7 +591,12 @@ def hist_transcript(
     workspace_id: str = typer.Option(None, "--ws"),
     save: str = typer.Option(None, "--save"),
 ):
-    """Fetch a full session transcript (.jsonl) and print or save it."""
+    """Fetch a full session transcript (.jsonl) and print or save it.
+
+    Transcripts are stored gzipped on the server; we decompress here so
+    `--save` writes plain .jsonl and stdout is readable.
+    """
+    import gzip
     import httpx
 
     ws = workspace_id or _default_workspace()
@@ -602,7 +607,11 @@ def hist_transcript(
     if "download_url" not in meta:
         console.print(f"[red]{meta.get('detail', 'not found')}[/red]")
         raise typer.Exit(1)
-    body = httpx.get(meta["download_url"], timeout=60).text
+    raw = httpx.get(meta["download_url"], timeout=60).content
+    # Detect gzip via magic bytes so legacy uncompressed uploads still work.
+    if raw[:2] == b"\x1f\x8b":
+        raw = gzip.decompress(raw)
+    body = raw.decode("utf-8", errors="replace")
     if save:
         Path(save).write_text(body)
         console.print(f"[green]Saved {len(body):,} chars to {save}[/green]")

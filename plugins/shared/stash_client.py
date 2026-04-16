@@ -231,21 +231,30 @@ class StashClient:
             "events", q=query, limit=limit,
         )
 
-    # --- Transcript upload (default client timeout is 2s — way too short for
-    # a 50MB file, so we override per-request).
+    # --- Transcript upload: gzip the .jsonl client-side (compresses 5-10x),
+    # then upload. Backend stores the gzipped blob as-is. Default client
+    # timeout is 2s — way too short for a big file — so we override per-
+    # request.
     def upload_transcript(
         self, workspace_id: str, session_id: str, transcript_path: Path,
         agent_name: str, cwd: str | None = None,
     ) -> dict:
-        with open(transcript_path, "rb") as fh:
-            resp = self._http.request(
-                "POST",
-                f"/api/v1/workspaces/{workspace_id}/transcripts",
-                headers=self._headers(),
-                data={"session_id": session_id, "agent_name": agent_name, "cwd": cwd or ""},
-                files={"file": (transcript_path.name, fh, "application/jsonl")},
-                timeout=httpx.Timeout(60.0, connect=5.0),
-            )
+        import gzip
+
+        raw = transcript_path.read_bytes()
+        body = gzip.compress(raw)
+        name = transcript_path.name
+        if not name.endswith(".gz"):
+            name = name + ".gz"
+
+        resp = self._http.request(
+            "POST",
+            f"/api/v1/workspaces/{workspace_id}/transcripts",
+            headers=self._headers(),
+            data={"session_id": session_id, "agent_name": agent_name, "cwd": cwd or ""},
+            files={"file": (name, body, "application/gzip")},
+            timeout=httpx.Timeout(60.0, connect=5.0),
+        )
         if not resp.is_success:
             raise StashError(resp.status_code, resp.text)
         return resp.json()

@@ -12,9 +12,11 @@ update so the Q&A matches reality.
 - `plugins/shared/hooks.py` — one `_short_circuit` helper gates all four
   `stream_*` functions. `stream_session_end` does a synchronous
   `client.upload_transcript(...)` after pushing the summary event.
-- `plugins/shared/stash_client.py` — adds `upload_transcript` with a
-  per-request `httpx.Timeout(60, connect=5)` override. The default 2s
-  client timeout stays for small events.
+- `plugins/shared/stash_client.py` — adds `upload_transcript`. Gzips the
+  `.jsonl` client-side (5-10× compression on JSON) before multipart POST,
+  so the server's 50MB cap effectively covers ~500MB of raw transcript.
+  Per-request `httpx.Timeout(60, connect=5)` override; default 2s client
+  timeout stays for small events.
 - Backend: `session_transcripts` table (migration 0009) + `POST` and `GET`
   endpoints. Reuses `storage_service` (50MB cap matches `/files`).
 - CLI: `stash history transcript <session_id>` (fetch + print/save),
