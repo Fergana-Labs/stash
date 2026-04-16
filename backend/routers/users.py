@@ -4,6 +4,7 @@ import time
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 
 from ..auth import get_current_user
+from ..config import settings
 from ..middleware import limiter
 from ..models import (
     LoginRequest,
@@ -32,9 +33,18 @@ def _prune_cli_sessions() -> None:
         del _cli_sessions[k]
 
 
+def _require_password_auth() -> None:
+    if settings.AUTH0_ENABLED:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Password auth is disabled; use Auth0",
+        )
+
+
 @router.post("/register", response_model=UserRegisterResponse, status_code=201)
 @limiter.limit("5/minute")
 async def register(request: Request, req: UserRegisterRequest):
+    _require_password_auth()
     try:
         user, api_key = await user_service.register_user(
             name=req.name,
@@ -55,6 +65,7 @@ async def register(request: Request, req: UserRegisterRequest):
 @router.post("/login", response_model=UserRegisterResponse)
 @limiter.limit("10/minute")
 async def login(request: Request, req: LoginRequest):
+    _require_password_auth()
     try:
         user, api_key = await user_service.authenticate_by_password(
             name=req.name, password=req.password

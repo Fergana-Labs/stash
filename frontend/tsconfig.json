@@ -19,7 +19,8 @@
       }
     ],
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": ["./src/*"],
+      "@managed/*": ["../managed/frontend/*"]
     }
   },
   "include": [
@@ -28,7 +29,9 @@
     "**/*.tsx",
     ".next/types/**/*.ts",
     ".next/dev/types/**/*.ts",
-    "**/*.mts"
+    "**/*.mts",
+    "../managed/frontend/**/*.ts",
+    "../managed/frontend/**/*.tsx"
   ],
   "exclude": ["node_modules"]
 }

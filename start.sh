@@ -38,9 +38,18 @@ fi
 echo "Starting Octopus services..."
 echo "================================"
 
+# --- Migrations ---
+cd "$PROJECT_ROOT"
+echo "[migrate]  Running OSS migrations..."
+alembic upgrade head
+
+if [ "${AUTH0_ENABLED:-false}" = "true" ]; then
+    echo "[migrate]  Running managed migrations..."
+    alembic -c managed/backend/alembic.ini upgrade head
+fi
+
 # --- Backend (FastAPI) ---
 echo "[backend]  Starting on port ${BACKEND_PORT}..."
-cd "$PROJECT_ROOT"
 uvicorn backend.main:app --host 0.0.0.0 --port "$BACKEND_PORT" &
 PIDS+=($!)
 
