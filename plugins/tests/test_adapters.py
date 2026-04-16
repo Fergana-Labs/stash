@@ -34,7 +34,12 @@ def _load_fixture(plugin: str, name: str) -> dict:
     return json.loads((FIXTURES / plugin / f"{name}.json").read_text())
 
 
-PLUGINS = ["claude", "cursor", "gemini", "codex", "opencode"]
+PLUGINS = ["claude", "cursor", "gemini", "codex", "opencode", "openclaw"]
+
+# Openclaw's gateway has no tool-call visibility (tool_use comes from the
+# delegated coding agent's own plugin), so its adapter intentionally omits
+# adapt_tool_use.
+_PLUGINS_WITH_TOOL_USE = [p for p in PLUGINS if p != "openclaw"]
 
 
 @pytest.mark.parametrize("plugin", PLUGINS)
@@ -61,7 +66,7 @@ def test_prompt(plugin):
     assert event.prompt_text  # non-empty
 
 
-@pytest.mark.parametrize("plugin", PLUGINS)
+@pytest.mark.parametrize("plugin", _PLUGINS_WITH_TOOL_USE)
 def test_tool_use(plugin):
     adapt = _load_adapt(plugin)
     event = adapt.adapt_tool_use(_load_fixture(plugin, "tool_use"))
@@ -74,7 +79,7 @@ def test_tool_use(plugin):
     assert isinstance(event.tool_input, dict)
 
 
-@pytest.mark.parametrize("plugin", ["claude", "gemini", "codex", "opencode"])
+@pytest.mark.parametrize("plugin", ["claude", "gemini", "codex", "opencode", "openclaw"])
 def test_stop(plugin):
     # Cursor intentionally has no stop hook — afterAgentResponse + sessionEnd
     # cover what used to be Cursor's `stop`. See cursor-plugin/hooks.json.

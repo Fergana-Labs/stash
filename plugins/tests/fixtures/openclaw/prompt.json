@@ -1,0 +1,6 @@
+{
+  "session_id": "agent:main:main",
+  "prompt": "add a test",
+  "cwd": "/Users/alice/.openclaw/workspace",
+  "channel_id": "telegram"
+}
