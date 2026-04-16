@@ -11,7 +11,7 @@
       "name": "stash",
       "source": "./plugins/claude-plugin",
       "description": "Connect Claude Code to Stash — stream activity to history, inject agent memory, collaborate in workspaces.",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "category": "productivity",
       "homepage": "https://stash.ac",
       "author": {
