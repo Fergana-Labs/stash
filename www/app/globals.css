@@ -1,0 +1,59 @@
+@import "tailwindcss";
+
+:root {
+  --bg-base: #FFFFFF;
+  --bg-surface: #F8FAFC;
+  --bg-raised: #F1F5F9;
+  --bg-inverted: #0F172A;
+
+  --border: #E2E8F0;
+  --border-subtle: #F1F5F9;
+
+  --text-strong: #0F172A;
+  --text: #334155;
+  --text-dim: #64748B;
+  --text-muted: #94A3B8;
+  --text-on-inverted: #E2E8F0;
+  --text-on-inverted-dim: #94A3B8;
+
+  --brand: #F97316;
+  --brand-hover: #EA580C;
+  --brand-ink: #7C2D12;
+}
+
+@theme inline {
+  --color-background: var(--bg-base);
+  --color-surface: var(--bg-surface);
+  --color-raised: var(--bg-raised);
+  --color-inverted: var(--bg-inverted);
+
+  --color-border: var(--border);
+  --color-border-subtle: var(--border-subtle);
+
+  --color-ink: var(--text-strong);
+  --color-foreground: var(--text);
+  --color-dim: var(--text-dim);
+  --color-muted: var(--text-muted);
+  --color-on-inverted: var(--text-on-inverted);
+  --color-on-inverted-dim: var(--text-on-inverted-dim);
+
+  --color-brand: var(--brand);
+  --color-brand-hover: var(--brand-hover);
+  --color-brand-ink: var(--brand-ink);
+
+  --font-sans: var(--font-instrument-sans), 'Instrument Sans', sans-serif;
+  --font-display: 'Satoshi', var(--font-instrument-sans), sans-serif;
+  --font-mono: var(--font-jetbrains-mono), 'JetBrains Mono', monospace;
+}
+
+html, body {
+  background: var(--bg-base);
+  color: var(--text);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+::selection {
+  background: var(--brand);
+  color: #FFFFFF;
+}
