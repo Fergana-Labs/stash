@@ -8,12 +8,12 @@ import ChatInput from "../../../components/ChatInput";
 import MessageList from "../../../components/MessageList";
 import { useAuth } from "../../../hooks/useAuth";
 import {
+  fetchWsToken,
   getChat,
   getDMMessages,
   getMessages,
   getPersonalRoom,
   getPersonalRoomMessages,
-  getToken,
   sendDMMessage,
   sendMessage,
   sendPersonalRoomMessage,
@@ -82,48 +82,52 @@ export default function ChatThreadPage() {
 
   useEffect(() => {
     if (!user) return;
-    const token = getToken();
-    if (!token) return;
+    let ws: WebSocket | null = null;
+    let cancelled = false;
 
-    const wsPath = kind === "workspace" && workspaceId
-      ? `/api/v1/workspaces/${workspaceId}/chats/${chatId}/ws`
-      : kind === "dm"
-        ? `/api/v1/dms/${chatId}/ws`
-        : `/api/v1/rooms/${chatId}/ws`;
-    const ws = new WebSocket(`${getWsBase()}${wsPath}?token=${token}`);
-    wsRef.current = ws;
+    fetchWsToken().then((token) => {
+      if (cancelled || !token) return;
+      const wsPath = kind === "workspace" && workspaceId
+        ? `/api/v1/workspaces/${workspaceId}/chats/${chatId}/ws`
+        : kind === "dm"
+          ? `/api/v1/dms/${chatId}/ws`
+          : `/api/v1/rooms/${chatId}/ws`;
+      ws = new WebSocket(`${getWsBase()}${wsPath}?token=${token}`);
+      wsRef.current = ws;
 
-    ws.onmessage = (event) => {
-      try {
-        const data: WSEvent = JSON.parse(event.data);
-        if (data.type === "message" && data.id) {
-          const messageId = data.id;
-          setMessages((prev) => [
-            ...prev,
-            {
-              id: messageId,
-              chat_id: data.chat_id || chatId,
-              sender_id: data.sender_id || "",
-              sender_name: data.sender_name || "",
-              sender_display_name: data.sender_display_name || null,
-              sender_type: (data.sender_type as "human" | "persona") || "human",
-              content: data.content || "",
-              message_type: (data.message_type as "text" | "system") || "text",
-              reply_to_id: data.reply_to_id || null,
-              created_at: data.created_at || new Date().toISOString(),
-            },
-          ]);
-        } else if (data.type === "typing" && data.user) {
-          setTypingUser(data.user);
-          setTimeout(() => setTypingUser(null), 3000);
+      ws.onmessage = (event) => {
+        try {
+          const data: WSEvent = JSON.parse(event.data);
+          if (data.type === "message" && data.id) {
+            const messageId = data.id;
+            setMessages((prev) => [
+              ...prev,
+              {
+                id: messageId,
+                chat_id: data.chat_id || chatId,
+                sender_id: data.sender_id || "",
+                sender_name: data.sender_name || "",
+                sender_display_name: data.sender_display_name || null,
+                sender_type: (data.sender_type as "human" | "persona") || "human",
+                content: data.content || "",
+                message_type: (data.message_type as "text" | "system") || "text",
+                reply_to_id: data.reply_to_id || null,
+                created_at: data.created_at || new Date().toISOString(),
+              },
+            ]);
+          } else if (data.type === "typing" && data.user) {
+            setTypingUser(data.user);
+            setTimeout(() => setTypingUser(null), 3000);
+          }
+        } catch {
+          setError("Realtime connection failed");
         }
-      } catch {
-        setError("Realtime connection failed");
-      }
-    };
+      };
+    });
 
     return () => {
-      ws.close();
+      cancelled = true;
+      ws?.close();
       wsRef.current = null;
     };
   }, [chatId, kind, user, workspaceId]);
