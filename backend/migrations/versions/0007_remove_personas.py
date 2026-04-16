@@ -10,6 +10,7 @@ were deprecated in PR25. This migration removes their remaining schema footprint
 Revision ID: 0007
 Revises: 0006
 """
+
 from alembic import op
 
 revision = "0007"
@@ -38,6 +39,5 @@ def downgrade() -> None:
     op.execute("ALTER TABLE users ADD COLUMN history_id UUID")
     op.execute("ALTER TABLE users ADD COLUMN notebook_id UUID")
     op.execute(
-        "ALTER TABLE users ADD COLUMN owner_id UUID "
-        "REFERENCES users(id) ON DELETE CASCADE"
+        "ALTER TABLE users ADD COLUMN owner_id UUID " "REFERENCES users(id) ON DELETE CASCADE"
     )

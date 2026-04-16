@@ -13,12 +13,8 @@ pool: asyncpg.Pool | None = None
 
 async def _init_connection(conn: asyncpg.Connection) -> None:
     await register_vector(conn)
-    await conn.set_type_codec(
-        "jsonb", encoder=json.dumps, decoder=json.loads, schema="pg_catalog"
-    )
-    await conn.set_type_codec(
-        "json", encoder=json.dumps, decoder=json.loads, schema="pg_catalog"
-    )
+    await conn.set_type_codec("jsonb", encoder=json.dumps, decoder=json.loads, schema="pg_catalog")
+    await conn.set_type_codec("json", encoder=json.dumps, decoder=json.loads, schema="pg_catalog")
 
 
 async def init_db() -> None:
@@ -41,8 +37,8 @@ async def init_db() -> None:
     def _run_alembic():
         # alembic.ini lives next to pyproject.toml at the repo root
         ini_path = os.path.join(os.path.dirname(__file__), "..", "alembic.ini")
-        from alembic.config import Config
         from alembic import command as alembic_cmd
+        from alembic.config import Config
 
         cfg = Config(ini_path)
         alembic_cmd.upgrade(cfg, "head")

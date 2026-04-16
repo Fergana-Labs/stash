@@ -5,6 +5,7 @@ Auth0 integration is removed; login is password + API key only.
 Revision ID: 0006
 Revises: 0001
 """
+
 from alembic import op
 
 revision = "0006"

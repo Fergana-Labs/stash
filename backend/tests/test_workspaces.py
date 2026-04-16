@@ -9,9 +9,13 @@ from .conftest import unique_name
 async def _register(client: AsyncClient, name: str | None = None) -> tuple[str, dict]:
     """Register a user. Returns (api_key, response_body)."""
     name = name or unique_name()
-    resp = await client.post("/api/v1/users/register", json={
-        "name": name, "password": "securepassword1",
-    })
+    resp = await client.post(
+        "/api/v1/users/register",
+        json={
+            "name": name,
+            "password": "securepassword1",
+        },
+    )
     assert resp.status_code == 201
     body = resp.json()
     return body["api_key"], body
@@ -27,9 +31,14 @@ def _auth(api_key: str) -> dict:
 @pytest.mark.asyncio
 async def test_create_workspace(client: AsyncClient):
     key, _ = await _register(client)
-    resp = await client.post("/api/v1/workspaces", json={
-        "name": "My Workspace", "description": "desc",
-    }, headers=_auth(key))
+    resp = await client.post(
+        "/api/v1/workspaces",
+        json={
+            "name": "My Workspace",
+            "description": "desc",
+        },
+        headers=_auth(key),
+    )
     assert resp.status_code == 201
     body = resp.json()
     assert body["name"] == "My Workspace"
@@ -79,18 +88,24 @@ async def test_join_by_invite_code(client: AsyncClient):
     owner_key, _ = await _register(client)
     joiner_key, _ = await _register(client)
 
-    ws = (await client.post("/api/v1/workspaces", json={"name": "Team"}, headers=_auth(owner_key))).json()
+    ws = (
+        await client.post("/api/v1/workspaces", json={"name": "Team"}, headers=_auth(owner_key))
+    ).json()
     invite_code = ws["invite_code"]
 
     resp = await client.post(
-        f"/api/v1/workspaces/join/{invite_code}", headers=_auth(joiner_key),
+        f"/api/v1/workspaces/join/{invite_code}",
+        headers=_auth(joiner_key),
     )
     assert resp.status_code == 200
     assert resp.json()["name"] == "Team"
 
-    members = (await client.get(
-        f"/api/v1/workspaces/{ws['id']}/members", headers=_auth(joiner_key),
-    )).json()
+    members = (
+        await client.get(
+            f"/api/v1/workspaces/{ws['id']}/members",
+            headers=_auth(joiner_key),
+        )
+    ).json()
     assert len(members) == 2
 
 
@@ -110,7 +125,9 @@ async def test_update_workspace(client: AsyncClient):
     ws = (await client.post("/api/v1/workspaces", json={"name": "Old"}, headers=_auth(key))).json()
 
     resp = await client.patch(
-        f"/api/v1/workspaces/{ws['id']}", json={"name": "New"}, headers=_auth(key),
+        f"/api/v1/workspaces/{ws['id']}",
+        json={"name": "New"},
+        headers=_auth(key),
     )
     assert resp.status_code == 200
     assert resp.json()["name"] == "New"
@@ -121,11 +138,15 @@ async def test_member_cannot_update_workspace(client: AsyncClient):
     owner_key, _ = await _register(client)
     member_key, _ = await _register(client)
 
-    ws = (await client.post("/api/v1/workspaces", json={"name": "Team"}, headers=_auth(owner_key))).json()
+    ws = (
+        await client.post("/api/v1/workspaces", json={"name": "Team"}, headers=_auth(owner_key))
+    ).json()
     await client.post(f"/api/v1/workspaces/join/{ws['invite_code']}", headers=_auth(member_key))
 
     resp = await client.patch(
-        f"/api/v1/workspaces/{ws['id']}", json={"name": "Hacked"}, headers=_auth(member_key),
+        f"/api/v1/workspaces/{ws['id']}",
+        json={"name": "Hacked"},
+        headers=_auth(member_key),
     )
     assert resp.status_code == 403
 
@@ -147,7 +168,9 @@ async def test_non_owner_cannot_delete_workspace(client: AsyncClient):
     owner_key, _ = await _register(client)
     member_key, _ = await _register(client)
 
-    ws = (await client.post("/api/v1/workspaces", json={"name": "Team"}, headers=_auth(owner_key))).json()
+    ws = (
+        await client.post("/api/v1/workspaces", json={"name": "Team"}, headers=_auth(owner_key))
+    ).json()
     await client.post(f"/api/v1/workspaces/join/{ws['invite_code']}", headers=_auth(member_key))
 
     resp = await client.delete(f"/api/v1/workspaces/{ws['id']}", headers=_auth(member_key))
@@ -162,15 +185,20 @@ async def test_member_can_leave(client: AsyncClient):
     owner_key, _ = await _register(client)
     member_key, _ = await _register(client)
 
-    ws = (await client.post("/api/v1/workspaces", json={"name": "Team"}, headers=_auth(owner_key))).json()
+    ws = (
+        await client.post("/api/v1/workspaces", json={"name": "Team"}, headers=_auth(owner_key))
+    ).json()
     await client.post(f"/api/v1/workspaces/join/{ws['invite_code']}", headers=_auth(member_key))
 
     resp = await client.post(f"/api/v1/workspaces/{ws['id']}/leave", headers=_auth(member_key))
     assert resp.status_code == 204
 
-    members = (await client.get(
-        f"/api/v1/workspaces/{ws['id']}/members", headers=_auth(owner_key),
-    )).json()
+    members = (
+        await client.get(
+            f"/api/v1/workspaces/{ws['id']}/members",
+            headers=_auth(owner_key),
+        )
+    ).json()
     assert len(members) == 1
 
 

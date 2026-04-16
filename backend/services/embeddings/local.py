@@ -30,6 +30,7 @@ class LocalEmbedder(BaseEmbedder):
     def is_configured(self) -> bool:
         try:
             import sentence_transformers  # noqa: F401
+
             return True
         except ImportError:
             return False
