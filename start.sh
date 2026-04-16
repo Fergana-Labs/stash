@@ -45,7 +45,7 @@ alembic upgrade head
 
 if [ "${AUTH0_ENABLED:-false}" = "true" ]; then
     echo "[migrate]  Running managed migrations..."
-    alembic -c managed/backend/alembic.ini upgrade head
+    alembic -c backend/managed/alembic.ini upgrade head
 fi
 
 # --- Backend (FastAPI) ---
