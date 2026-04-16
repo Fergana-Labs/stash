@@ -7,11 +7,7 @@ import os
 import sys
 from pathlib import Path
 
-SHARED = Path(__file__).resolve().parent.parent.parent / "shared"
-if str(SHARED) not in sys.path:
-    sys.path.insert(0, str(SHARED))
-
-from stash_client import StashClient  # noqa: E402
+from stashai.plugin.stash_client import StashClient
 
 DATA_DIR = Path(os.environ.get(
     "STASH_CODEX_DATA",

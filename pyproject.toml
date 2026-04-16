@@ -1,6 +1,6 @@
 [project]
 name = "stashai"
-version = "0.1.0"
+version = "0.1.1"
 description = "CLI for Stash — shared memory for AI coding agents"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -31,7 +31,7 @@ Repository = "https://github.com/Fergana-Labs/stash"
 stash = "cli.main:app"
 
 [tool.setuptools.packages.find]
-include = ["cli*"]
+include = ["cli*", "stashai*"]
 
 [build-system]
 requires = ["setuptools>=68.0"]
@@ -46,7 +46,7 @@ select = ["E", "F", "W", "I", "UP"]
 ignore = ["E501"]
 
 [tool.ruff.lint.isort]
-known-first-party = ["backend", "cli"]
+known-first-party = ["backend", "cli", "stashai"]
 
 [tool.black]
 line-length = 100

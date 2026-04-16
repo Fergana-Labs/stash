@@ -20,7 +20,7 @@ openclaw-plugin/
 ├── HOOK.md          # Openclaw hook manifest (frontmatter matches openclaw/openclaw)
 ├── handler.ts       # Hook entrypoint — exports default HookHandler
 ├── package.json
-├── scripts/         # Python scripts reusing plugins/shared/
+├── scripts/         # Python scripts reusing stashai.plugin (pip install stashai)
 │   ├── adapt.py
 │   ├── config.py
 │   ├── on_session_start.py
@@ -32,7 +32,7 @@ openclaw-plugin/
 
 `handler.ts` runs inside the Openclaw Node process, filters the events it
 cares about, and pipes a flat JSON payload into the matching Python script.
-The Python side reuses `plugins/shared/` just like every other agent's plugin.
+The Python side imports from `stashai.plugin` (shipped via `pip install stashai`) just like every other agent's plugin.
 
 ## Install
 

@@ -10,7 +10,7 @@ Claude Code hook stdin shapes (as of 2026-04):
 
 from __future__ import annotations
 
-from event import HookEvent
+from stashai.plugin.event import HookEvent
 
 # Claude PascalCase tool names -> canonical lowercase
 _TOOL_MAP = {

@@ -2,7 +2,7 @@
 """Codex SessionStart: save session_id for downstream streaming."""
 
 from config import DATA_DIR, get_stdin_data, is_configured
-from state import load_state, reset_stats, save_state
+from stashai.plugin.state import load_state, reset_stats, save_state
 
 from adapt import adapt_session_start
 

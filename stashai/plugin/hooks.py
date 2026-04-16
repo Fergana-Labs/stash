@@ -15,11 +15,11 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from event import HookEvent
-from scope import cwd_in_scope
-from stash_client import StashClient
-from state import get_scope_config, read_stats, record_tool_use
-from summarize import summarize_tool_use
+from stashai.plugin.event import HookEvent
+from stashai.plugin.scope import cwd_in_scope
+from stashai.plugin.stash_client import StashClient
+from stashai.plugin.state import get_scope_config, read_stats, record_tool_use
+from stashai.plugin.summarize import summarize_tool_use
 
 
 def _short_circuit(cfg: dict, event: HookEvent | None) -> bool:

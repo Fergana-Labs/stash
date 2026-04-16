@@ -15,7 +15,7 @@ Payloads our TS shim emits:
 
 from __future__ import annotations
 
-from event import HookEvent
+from stashai.plugin.event import HookEvent
 
 _TOOL_MAP = {
     "edit": "edit",

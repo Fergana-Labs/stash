@@ -11,8 +11,8 @@ import os
 import shutil
 import subprocess
 
-from sleep_prompt import SLEEP_PROMPT
-from state import auto_curate_enabled, curate_cooldown_active, record_curate_run
+from stashai.plugin.sleep_prompt import SLEEP_PROMPT
+from stashai.plugin.state import auto_curate_enabled, curate_cooldown_active, record_curate_run
 
 def spawn_curation(binary: str, prompt_flags: list[str]) -> bool:
     """Spawn `binary <prompt_flags> <SLEEP_PROMPT>` detached. Return True on spawn.

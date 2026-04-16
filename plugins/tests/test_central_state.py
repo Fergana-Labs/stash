@@ -9,20 +9,16 @@ tempdir and verify the read/write/gating logic.
 from __future__ import annotations
 
 import os
-import sys
 import time
 from pathlib import Path
 
 import pytest
 
-SHARED = Path(__file__).resolve().parent.parent / "shared"
-sys.path.insert(0, str(SHARED))
-
 
 @pytest.fixture()
 def central(tmp_path, monkeypatch):
     """Point CENTRAL_CONFIG_PATH at a tempfile for the duration of the test."""
-    import state as state_mod
+    from stashai.plugin import state as state_mod
 
     path = tmp_path / "config.json"
     monkeypatch.setattr(state_mod, "CENTRAL_CONFIG_PATH", path)
@@ -70,7 +66,7 @@ def test_curate_cooldown_expires(central, monkeypatch):
 
 
 def _fake_popen_calls(monkeypatch):
-    import curate_spawn
+    from stashai.plugin import curate_spawn
 
     calls = []
 
@@ -91,7 +87,7 @@ def _fake_popen_calls(monkeypatch):
 def test_spawn_curation_fires_binary_with_sleep_prompt(central, monkeypatch):
     curate_spawn, calls = _fake_popen_calls(monkeypatch)
     monkeypatch.delenv("STASH_SKIP_AUTO_CURATE", raising=False)
-    from sleep_prompt import SLEEP_PROMPT
+    from stashai.plugin.sleep_prompt import SLEEP_PROMPT
 
     for binary, flags in [
         ("claude", ["-p"]),

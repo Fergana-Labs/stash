@@ -19,7 +19,7 @@ and have their own Stash plugins), so there is no tool_use adapter.
 
 from __future__ import annotations
 
-from event import HookEvent
+from stashai.plugin.event import HookEvent
 
 
 def adapt_session_start(data: dict) -> HookEvent:

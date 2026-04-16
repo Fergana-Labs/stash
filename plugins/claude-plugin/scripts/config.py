@@ -1,6 +1,6 @@
 """Claude-plugin-specific config: reads CLAUDE_PLUGIN_USER_CONFIG_* env vars.
 
-Everything agent-agnostic lives in plugins/shared/. This module only handles
+Everything agent-agnostic lives in `stashai.plugin`. This module only handles
 the Claude-specific env surface + paths, then hands off.
 """
 
@@ -11,12 +11,7 @@ import os
 import sys
 from pathlib import Path
 
-# Add shared/ to sys.path so on_*.py scripts can import it
-SHARED = Path(__file__).resolve().parent.parent.parent / "shared"
-if str(SHARED) not in sys.path:
-    sys.path.insert(0, str(SHARED))
-
-from stash_client import StashClient  # noqa: E402
+from stashai.plugin.stash_client import StashClient
 
 DATA_DIR = Path(os.environ.get(
     "CLAUDE_PLUGIN_DATA",

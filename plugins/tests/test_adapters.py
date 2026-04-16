@@ -9,16 +9,12 @@ from __future__ import annotations
 
 import importlib.util
 import json
-import sys
 from pathlib import Path
 
 import pytest
 
 PLUGINS_DIR = Path(__file__).resolve().parent.parent
-SHARED = PLUGINS_DIR / "shared"
 FIXTURES = Path(__file__).resolve().parent / "fixtures"
-
-sys.path.insert(0, str(SHARED))
 
 
 def _load_adapt(plugin: str):
@@ -132,7 +128,7 @@ def test_codex_notify_fallback():
 
 def test_push_event_stamps_client_into_metadata():
     """StashClient.push_event should merge the `client` facet into metadata."""
-    from stash_client import StashClient
+    from stashai.plugin.stash_client import StashClient
 
     calls = []
 
@@ -196,12 +192,12 @@ def test_tool_name_normalization():
 def test_client_facet_flows_through_stream_paths():
     """cfg['client'] must survive every stream_* helper and land as
     metadata.client on the wire."""
-    from event import HookEvent
-    from hooks import (
+    from stashai.plugin.event import HookEvent
+    from stashai.plugin.hooks import (
         stream_assistant_message, stream_session_end, stream_tool_use,
         stream_user_message,
     )
-    from stash_client import StashClient
+    from stashai.plugin.stash_client import StashClient
 
     calls = []
 
@@ -239,9 +235,9 @@ def test_client_facet_flows_through_stream_paths():
 def test_stream_session_end_not_emitted_on_assistant_message():
     """stream_assistant_message must NOT emit a session_end event — that's
     the whole point of splitting it from stream_session_end."""
-    from event import HookEvent
-    from hooks import stream_assistant_message
-    from stash_client import StashClient
+    from stashai.plugin.event import HookEvent
+    from stashai.plugin.hooks import stream_assistant_message
+    from stashai.plugin.stash_client import StashClient
 
     calls = []
 

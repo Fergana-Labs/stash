@@ -20,7 +20,7 @@ Notes:
 
 from __future__ import annotations
 
-from event import HookEvent
+from stashai.plugin.event import HookEvent
 
 _TOOL_MAP = {
     "read_file": "read",

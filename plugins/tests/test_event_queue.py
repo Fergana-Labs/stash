@@ -8,15 +8,11 @@ push drains a batch of the backlog so the queue clears during normal traffic.
 from __future__ import annotations
 
 import json
-import sys
 from pathlib import Path
 
 import pytest
 
-SHARED = Path(__file__).resolve().parent.parent / "shared"
-sys.path.insert(0, str(SHARED))
-
-from stash_client import StashClient, StashError, QUEUE_FILENAME  # noqa: E402
+from stashai.plugin.stash_client import StashClient, StashError, QUEUE_FILENAME
 
 
 class _Recorder:

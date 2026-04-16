@@ -7,8 +7,8 @@ channel). This hook pushes `assistant_message`; session_end is separate
 """
 
 from config import DATA_DIR, get_client, get_config, get_stdin_data, is_configured
-from hooks import stream_assistant_message
-from state import load_state
+from stashai.plugin.hooks import stream_assistant_message
+from stashai.plugin.state import load_state
 
 from adapt import adapt_stop
 

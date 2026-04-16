@@ -27,7 +27,7 @@ from __future__ import annotations
 
 import json
 
-from event import HookEvent
+from stashai.plugin.event import HookEvent
 
 _TOOL_MAP = {
     "Shell": "bash",

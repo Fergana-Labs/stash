@@ -25,7 +25,7 @@ argv[last] with stdin nulled. Only emits `agent-turn-complete`.
 
 from __future__ import annotations
 
-from event import HookEvent
+from stashai.plugin.event import HookEvent
 
 _TOOL_MAP = {
     "Bash": "bash",
