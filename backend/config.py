@@ -46,5 +46,13 @@ class Settings:
     S3_SECRET_KEY: str | None = os.getenv("S3_SECRET_KEY")
     S3_REGION: str = os.getenv("S3_REGION", "auto")
 
+    # --- Auth0 (managed deployment only) ---
+    # When AUTH0_ENABLED=true, password login/register is disabled and the
+    # managed auth0 router is mounted at /api/v1/auth0/. Requires the
+    # managed/ directory to be present in the deployment.
+    AUTH0_ENABLED: bool = os.getenv("AUTH0_ENABLED", "false").lower() == "true"
+    AUTH0_DOMAIN: str | None = os.getenv("AUTH0_DOMAIN")
+    AUTH0_AUDIENCE: str | None = os.getenv("AUTH0_AUDIENCE")
+
 
 settings = Settings()
