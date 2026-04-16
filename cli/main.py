@@ -1614,6 +1614,8 @@ def status(as_json: bool = typer.Option(False, "--json")):
     streaming_enabled = bool(central.get("streaming_enabled", True))
     auto_curate = bool(central.get("auto_curate", True))
     last_curate_at = central.get("last_curate_at")
+    scope = (central.get("scope") or "repo").strip().lower()
+    install_repo = central.get("install_repo_common_dir") or ""
 
     plugins_seen = [name for name, d in PLUGIN_DATA_DIRS.items() if d.exists()]
 
@@ -1625,6 +1627,8 @@ def status(as_json: bool = typer.Option(False, "--json")):
                 "auto_curate": auto_curate,
                 "last_curate_at": last_curate_at,
                 "plugins_installed": plugins_seen,
+                "scope": scope,
+                "install_repo_common_dir": install_repo,
             }
         )
         return
@@ -1646,6 +1650,9 @@ def status(as_json: bool = typer.Option(False, "--json")):
     else:
         console.print("  Last curate: (never)")
     console.print(f"  Plugins installed: {', '.join(plugins_seen) or '(none detected)'}")
+    console.print(f"  Scope:      {scope}")
+    if scope == "repo":
+        console.print(f"  Install repo: {install_repo or '(none)'}")
 
 
 @app.command("disconnect")
