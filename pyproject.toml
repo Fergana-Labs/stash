@@ -1,5 +1,5 @@
 [project]
-name = "stash-cli"
+name = "stashai"
 version = "0.1.0"
 description = "CLI for Stash — shared memory for AI coding agents"
 readme = "README.md"

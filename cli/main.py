@@ -226,7 +226,7 @@ def _format_invite_share_block(
     uses_blurb = "single-use" if max_uses == 1 else f"up to {max_uses} uses"
     return (
         "\n"
-        f"  pipx install stash-cli && \\\n"
+        f"  pipx install stashai && \\\n"
         f"    stash connect --invite {token} --endpoint {base_url.rstrip('/')}\n"
         "\n"
     )

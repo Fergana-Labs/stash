@@ -1,4 +1,4 @@
-name: Publish stash-cli to PyPI
+name: Publish stashai to PyPI
 
 on:
   push:
