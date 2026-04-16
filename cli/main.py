@@ -209,6 +209,125 @@ def ws_members(
 
 
 # ===========================================================================
+# Magic-link invites
+# ===========================================================================
+
+invite_app = typer.Typer(
+    help="Magic-link invites — single-use, TTL-bounded tokens for zero-friction workspace onboarding.",
+    invoke_without_command=True,
+)
+app.add_typer(invite_app, name="invite")
+
+
+def _format_invite_share_block(
+    token: str, base_url: str, workspace_name: str, max_uses: int, expires_at: str
+) -> str:
+    """The prose the sender copies into Slack/DMs to share a workspace."""
+    uses_blurb = "single-use" if max_uses == 1 else f"up to {max_uses} uses"
+    return (
+        f"Hey — I'm inviting you to my Stash workspace (\"{workspace_name}\").\n"
+        "Stash is a shared memory layer for our coding agents, so we can see\n"
+        "what each other is working on.\n"
+        "\n"
+        "To join, paste this into your coding agent (or run it yourself):\n"
+        "\n"
+        f"  pipx install stash-cli && \\\n"
+        f"    stash connect --invite {token} --endpoint {base_url.rstrip('/')}\n"
+        "\n"
+        "You'll be prompted for a display name. No browser sign-in needed.\n"
+        f"({uses_blurb}, expires {expires_at})\n"
+    )
+
+
+@invite_app.callback()
+def invite_default(
+    ctx: typer.Context,
+    workspace_id: str = typer.Option(None, "--ws"),
+    uses: int = typer.Option(1, "--uses", help="Maximum times the link can be redeemed."),
+    days: int = typer.Option(7, "--days", help="Days until the link expires."),
+    as_json: bool = typer.Option(False, "--json"),
+):
+    """Mint a shareable invite link for a workspace (default: your default workspace)."""
+    if ctx.invoked_subcommand is not None:
+        return
+    ws = workspace_id or _default_workspace()
+    cfg = load_config()
+    with _client() as c:
+        try:
+            data = c.create_invite_token(ws, max_uses=uses, ttl_days=days)
+        except StashError as e:
+            _err(e)
+    if _use_json(as_json):
+        output_json(data)
+        return
+    share_block = _format_invite_share_block(
+        token=data["token"],
+        base_url=cfg.get("base_url", ""),
+        workspace_name=data["workspace_name"],
+        max_uses=data["max_uses"],
+        expires_at=str(data["expires_at"])[:10],
+    )
+    console.print(
+        f"\n[green]Generated invite for [bold]{data['workspace_name']}[/bold][/green]"
+        f"  [dim](id: {data['id']})[/dim]\n"
+    )
+    console.print(
+        Panel(
+            share_block,
+            title="[bold]Copy this and send it to a teammate[/bold]",
+            border_style="green",
+            padding=(1, 2),
+        )
+    )
+    console.print(
+        "\n[dim]Revoke anytime with:[/dim] "
+        f"[cyan]stash invite revoke {data['id']}[/cyan]\n"
+    )
+
+
+@invite_app.command("list")
+def invite_list(
+    workspace_id: str = typer.Option(None, "--ws"),
+    as_json: bool = typer.Option(False, "--json"),
+):
+    """List active invite tokens for a workspace."""
+    ws = workspace_id or _default_workspace()
+    with _client() as c:
+        try:
+            tokens = c.list_invite_tokens(ws)
+        except StashError as e:
+            _err(e)
+    if _use_json(as_json):
+        output_json(tokens)
+        return
+    if not tokens:
+        console.print("[dim]No invite tokens.[/dim]")
+        return
+    console.print(f"[bold]Invite tokens for workspace {ws[:8]}…[/bold]\n")
+    for t in tokens:
+        status = "revoked" if t.get("revoked_at") else f"{t['uses_count']}/{t['max_uses']} used"
+        console.print(
+            f"  [dim]{str(t['id'])[:8]}…[/dim]  {status}  "
+            f"expires {str(t['expires_at'])[:10]}"
+        )
+
+
+@invite_app.command("revoke")
+def invite_revoke(
+    token_id: str = typer.Argument(...),
+    workspace_id: str = typer.Option(None, "--ws"),
+):
+    """Revoke an invite token so it can no longer be redeemed."""
+    ws = workspace_id or _default_workspace()
+    with _client() as c:
+        try:
+            c.revoke_invite_token(ws, token_id)
+        except StashError as e:
+            _err(e)
+    console.print(f"[green]Revoked invite token {token_id[:8]}…[/green]")
+
+
+# ===========================================================================
 # Notebooks
 # ===========================================================================
 
@@ -982,9 +1101,104 @@ def _self_host_walkthrough(cfg: dict) -> str:
 
 
 
+def _git_or_env_username_default() -> str:
+    """Best-effort default for the display name prompt on magic-link redeem."""
+    import os
+    import subprocess
+
+    try:
+        out = subprocess.run(
+            ["git", "config", "--get", "user.name"],
+            capture_output=True, text=True, timeout=2,
+        )
+        candidate = out.stdout.strip()
+        if candidate:
+            return candidate
+    except Exception:
+        pass
+    return os.environ.get("USER") or os.environ.get("USERNAME") or "teammate"
+
+
+def _connect_via_invite(token: str, endpoint: str | None, scope_flag: str | None) -> None:
+    """Non-interactive connect path: redeem a magic-link token, save config, show splash.
+
+    Auto-detects whether the user already has a stash account on this machine and
+    picks the authenticated or unauthenticated redeem endpoint accordingly.
+    """
+    cfg = load_config()
+    base_url = (endpoint or cfg.get("base_url") or "").rstrip("/")
+    if not base_url:
+        console.print(
+            "[red]--endpoint is required (or run `stash connect` once without --invite first).[/red]"
+        )
+        raise typer.Exit(1)
+    scope = scope_flag or "user"
+
+    existing_key = cfg.get("api_key", "")
+    if existing_key:
+        # Authenticated redeem — just join the workspace on top of existing identity.
+        try:
+            with StashClient(base_url=base_url, api_key=existing_key) as c:
+                ws = c.redeem_invite_authed(token)
+        except StashError as e:
+            console.print(f"[red]Could not redeem invite: {e.detail}[/red]")
+            raise typer.Exit(1)
+        save_config(base_url=base_url, default_workspace=str(ws["id"]), scope=scope)
+        _show_setup_complete_splash(
+            workspace_name=ws["name"], joined_via_invite=True
+        )
+        return
+
+    # No existing auth — unauthenticated redeem creates a fresh user.
+    default_name = _git_or_env_username_default()
+    _reserve_bottom_padding(4)
+    display_name = typer.prompt(
+        "What display name should your teammates see?", default=default_name
+    ).strip()
+    if not display_name:
+        console.print("[red]Display name is required.[/red]")
+        raise typer.Exit(1)
+
+    try:
+        result = StashClient.redeem_invite_unauthenticated(
+            base_url=base_url, token=token, display_name=display_name
+        )
+    except StashError as e:
+        console.print(f"[red]Could not redeem invite: {e.detail}[/red]")
+        raise typer.Exit(1)
+
+    save_config(
+        base_url=base_url,
+        api_key=result["api_key"],
+        username=result["username"],
+        default_workspace=str(result["workspace_id"]),
+        scope=scope,
+    )
+    console.print(
+        f"  [green]✓[/green] Signed in as [bold]{result.get('display_name') or result['username']}[/bold]"
+    )
+    _show_setup_complete_splash(
+        workspace_name=result["workspace_name"], joined_via_invite=True
+    )
+
+
 @app.command("connect")
-def connect():
+def connect(
+    invite: str = typer.Option(
+        None, "--invite", help="Redeem a magic-link invite token (skips the interactive flow)."
+    ),
+    endpoint: str = typer.Option(
+        None, "--endpoint", help="Stash API URL (required with --invite if not already configured)."
+    ),
+    scope: str = typer.Option(
+        None, "--scope", help="Where to write config (user | project). Only used with --invite."
+    ),
+):
     """Interactive first-time setup. Sets base URL, authenticates, and configures defaults."""
+    if invite:
+        _connect_via_invite(token=invite, endpoint=endpoint, scope_flag=scope)
+        return
+
     console.print("\n[bold]Stash connect[/bold]  (press Enter to accept defaults)\n")
 
     # --- Step 0: Scope ---
@@ -1172,11 +1386,18 @@ STASH_LOGO = r"""
 """
 
 
-def _show_setup_complete_splash() -> None:
+def _show_setup_complete_splash(
+    workspace_name: str = "", joined_via_invite: bool = False
+) -> None:
     """Clear the onboarding transcript and show a clean success splash."""
     console.clear()
     console.print(f"[bold cyan]{STASH_LOGO}[/bold cyan]")
-    console.print("  [bold green]You're all set up.[/bold green]\n")
+    if joined_via_invite and workspace_name:
+        console.print(
+            f"  [bold green]You joined[/bold green] [bold]{workspace_name}[/bold].\n"
+        )
+    else:
+        console.print("  [bold green]You're all set up.[/bold green]\n")
 
     body = (
         "[bold]What just happened[/bold]\n"
@@ -1225,6 +1446,25 @@ def _show_setup_complete_splash() -> None:
             padding=(1, 2),
         )
     )
+
+    if joined_via_invite and workspace_name:
+        joined_body = (
+            f"You're now a member of [bold]{workspace_name}[/bold] and your default\n"
+            "workspace is set. Try one of these to see what your teammates are up to:\n"
+            "\n"
+            "  [cyan]stash history agents[/cyan]           who's been active in this workspace\n"
+            '  [cyan]stash history search "<query>"[/cyan]   full-text search across transcripts\n'
+            "  [cyan]stash history query --limit 20[/cyan]    latest events in your new workspace"
+        )
+        console.print(
+            Panel(
+                joined_body,
+                title=f"[bold]Welcome to {workspace_name}[/bold]",
+                border_style="green",
+                padding=(1, 2),
+            )
+        )
+
     console.print()
 
 

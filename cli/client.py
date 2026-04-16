@@ -107,6 +107,43 @@ class StashClient:
     def workspace_members(self, workspace_id: str) -> list:
         return self._get(f"/api/v1/workspaces/{workspace_id}/members")
 
+    # --- Magic-link invite tokens ---
+
+    def create_invite_token(
+        self, workspace_id: str, max_uses: int = 1, ttl_days: int = 7
+    ) -> dict:
+        return self._post(
+            f"/api/v1/workspaces/{workspace_id}/invite-tokens",
+            json={"max_uses": max_uses, "ttl_days": ttl_days},
+        )
+
+    def list_invite_tokens(self, workspace_id: str) -> list:
+        return self._list(f"/api/v1/workspaces/{workspace_id}/invite-tokens", "tokens")
+
+    def revoke_invite_token(self, workspace_id: str, token_id: str) -> None:
+        self._delete(f"/api/v1/workspaces/{workspace_id}/invite-tokens/{token_id}")
+
+    def redeem_invite_authed(self, token: str) -> dict:
+        return self._post("/api/v1/workspaces/redeem-invite", json={"token": token})
+
+    @staticmethod
+    def redeem_invite_unauthenticated(base_url: str, token: str, display_name: str) -> dict:
+        """One-shot, no api_key required — creates a new user + joins workspace."""
+        resp = httpx.post(
+            f"{base_url.rstrip('/')}/api/v1/users/cli-auth/redeem-invite",
+            json={"token": token, "display_name": display_name},
+            timeout=30,
+            follow_redirects=True,
+        )
+        if not resp.is_success:
+            detail = ""
+            try:
+                detail = resp.json().get("detail", resp.text)
+            except Exception:
+                detail = resp.text
+            raise StashError(resp.status_code, detail)
+        return resp.json()
+
     # --- Chats (workspace-scoped) ---
 
     def create_chat(self, workspace_id: str, name: str, description: str = "") -> dict:

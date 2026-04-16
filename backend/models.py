@@ -84,6 +84,59 @@ class WorkspaceMember(BaseModel):
     joined_at: datetime
 
 
+# --- Invite tokens (magic-link onboarding) ---
+
+
+class InviteTokenCreateRequest(BaseModel):
+    max_uses: int = Field(1, ge=1, le=1000)
+    ttl_days: int = Field(7, ge=1, le=90)
+
+
+class InviteTokenCreateResponse(BaseModel):
+    id: UUID
+    token: str
+    workspace_id: UUID
+    workspace_name: str
+    max_uses: int
+    expires_at: datetime
+
+
+class InviteTokenSummary(BaseModel):
+    id: UUID
+    workspace_id: UUID
+    max_uses: int
+    uses_count: int
+    expires_at: datetime
+    created_at: datetime
+    revoked_at: datetime | None = None
+
+
+class InviteTokenListResponse(BaseModel):
+    tokens: list[InviteTokenSummary]
+
+
+class RedeemInviteRequest(BaseModel):
+    """Unauthenticated redemption: creates a fresh user + joins the workspace."""
+
+    token: str = Field(..., min_length=8, max_length=128)
+    display_name: str = Field(..., min_length=1, max_length=128)
+
+
+class RedeemInviteResponse(BaseModel):
+    api_key: str
+    user_id: UUID
+    username: str
+    display_name: str | None
+    workspace_id: UUID
+    workspace_name: str
+
+
+class RedeemInviteAuthedRequest(BaseModel):
+    """Authenticated redemption: just joins the existing user to the workspace."""
+
+    token: str = Field(..., min_length=8, max_length=128)
+
+
 # --- Notebooks (collections) ---
 
 
