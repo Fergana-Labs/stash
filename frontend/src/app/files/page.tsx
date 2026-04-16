@@ -1,9 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-
-export const dynamic = "force-dynamic";
 import AppShell from "../../components/AppShell";
 import { useAuth } from "../../hooks/useAuth";
 import { listFiles, deleteFile, uploadFile } from "../../lib/api";
@@ -36,6 +34,14 @@ function getFileIcon(contentType: string): string {
 }
 
 export default function FilesPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen flex items-center justify-center text-muted">Loading...</div>}>
+      <FilesPageInner />
+    </Suspense>
+  );
+}
+
+function FilesPageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const workspaceId = searchParams.get("ws");

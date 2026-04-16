@@ -1,9 +1,7 @@
 "use client";
 
-export const dynamic = "force-dynamic";
-
 import { useParams, useRouter, useSearchParams } from "next/navigation";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import AppShell from "../../../components/AppShell";
 import { useAuth } from "../../../hooks/useAuth";
 import {
@@ -30,6 +28,14 @@ interface FilterDef { column_id: string; op: string; value: string }
 type SummaryData = { total_rows: number; columns: Record<string, { name: string; filled: number; sum?: number; avg?: number; min?: number; max?: number }> };
 
 export default function TableEditorPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen flex items-center justify-center text-muted">Loading...</div>}>
+      <TableEditorPageInner />
+    </Suspense>
+  );
+}
+
+function TableEditorPageInner() {
   const params = useParams();
   const searchParams = useSearchParams();
   const router = useRouter();

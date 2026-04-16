@@ -1,9 +1,7 @@
 "use client";
 
-export const dynamic = "force-dynamic";
-
 import { useParams, useRouter, useSearchParams } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import AppShell from "../../../components/AppShell";
 import { useAuth } from "../../../hooks/useAuth";
 import {
@@ -112,6 +110,14 @@ function buildGroups(events: HistoryEvent[]): AgentGroup[] {
 /* ── component ── */
 
 export default function HistoryDetailPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen flex items-center justify-center text-muted">Loading...</div>}>
+      <HistoryDetailPageInner />
+    </Suspense>
+  );
+}
+
+function HistoryDetailPageInner() {
   const params = useParams();
   const searchParams = useSearchParams();
   const router = useRouter();

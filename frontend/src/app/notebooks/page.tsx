@@ -1,8 +1,6 @@
 "use client";
 
-export const dynamic = "force-dynamic";
-
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import AppShell from "../../components/AppShell";
@@ -34,6 +32,14 @@ import { Notebook, NotebookPage, NotebookWithWorkspace, PageLink, PageTree, Tabl
 type WikiTab = "pages" | "tables";
 
 export default function WikiPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen flex items-center justify-center text-muted">Loading...</div>}>
+      <WikiPageInner />
+    </Suspense>
+  );
+}
+
+function WikiPageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const wsId = searchParams.get("ws");
