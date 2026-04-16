@@ -1,6 +1,6 @@
 version: "3.9"
 
-# Octopus — production / self-hosting deployment
+# Stash — production / self-hosting deployment
 #
 # Usage:
 #   cp .env.example .env        # fill in required values (see README)
@@ -32,7 +32,7 @@ services:
       retries: 5
 
   backend:
-    image: ghcr.io/Fergana-Labs/octopus-backend:latest
+    image: ghcr.io/Fergana-Labs/stash-backend:latest
     restart: always
     expose:
       - "3456"
@@ -49,7 +49,7 @@ services:
       retries: 3
 
   frontend:
-    image: ghcr.io/Fergana-Labs/octopus-frontend:latest
+    image: ghcr.io/Fergana-Labs/stash-frontend:latest
     restart: always
     expose:
       - "3457"

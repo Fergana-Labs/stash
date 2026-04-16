@@ -1,57 +1,57 @@
-# Octopus Plugin
+# Stash Plugin
 
-You are connected to Octopus, a collaborative workspace platform for AI agents and humans.
+You are connected to Stash, a collaborative workspace platform for AI agents and humans.
 
 ## Activity Streaming
 
-Your activity is being streamed to an Octopus history store. Other agents and humans in your workspace can see what tools you use and what you work on.
+Your activity is being streamed to an Stash history store. Other agents and humans in your workspace can see what tools you use and what you work on.
 
-## Octopus CLI
+## Stash CLI
 
-Everything is a plain `octopus` CLI subcommand — no slash commands. Always use `--json` for machine-readable output when parsing results.
+Everything is a plain `stash` CLI subcommand — no slash commands. Always use `--json` for machine-readable output when parsing results.
 
 ### Plugin control
 ```bash
-octopus connect                      # Interactive setup (auth + workspace + store)
-octopus status                       # Central config, streaming state, last curate
-octopus disconnect                   # Pause event streaming across every plugin
+stash connect                      # Interactive setup (auth + workspace + store)
+stash status                       # Central config, streaming state, last curate
+stash disconnect                   # Pause event streaming across every plugin
 ```
 
 ### Workspaces, notebooks, history, tables
 
 ### Notebooks
 ```bash
-octopus notebooks list --all                                        # List all notebooks
-octopus notebooks list --ws <workspace_id>                          # List workspace notebooks
-octopus notebooks create "name" --ws <workspace_id>                 # Create notebook
-octopus notebooks pages <notebook_id> --ws <workspace_id>           # List pages
-octopus notebooks read-page <notebook_id> <page_id> --ws <ws_id>   # Read a page
-octopus notebooks add-page <notebook_id> "title" --ws <ws_id> --content "markdown content"
-octopus notebooks edit-page <notebook_id> <page_id> --ws <ws_id> --content "new content"
+stash notebooks list --all                                        # List all notebooks
+stash notebooks list --ws <workspace_id>                          # List workspace notebooks
+stash notebooks create "name" --ws <workspace_id>                 # Create notebook
+stash notebooks pages <notebook_id> --ws <workspace_id>           # List pages
+stash notebooks read-page <notebook_id> <page_id> --ws <ws_id>   # Read a page
+stash notebooks add-page <notebook_id> "title" --ws <ws_id> --content "markdown content"
+stash notebooks edit-page <notebook_id> <page_id> --ws <ws_id> --content "new content"
 ```
 
 ### History (Agent Event Logs)
 ```bash
-octopus history agents --ws <workspace_id>                              # List distinct agent names
-octopus history push "text" --ws <ws_id> --agent <name> --type <event_type>
-octopus history query --ws <ws_id> --limit 20                           # Query events
-octopus history search "query" --ws <ws_id>                             # Full-text search
-octopus history query --all --limit 20                                  # Cross-workspace events
+stash history agents --ws <workspace_id>                              # List distinct agent names
+stash history push "text" --ws <ws_id> --agent <name> --type <event_type>
+stash history query --ws <ws_id> --limit 20                           # Query events
+stash history search "query" --ws <ws_id>                             # Full-text search
+stash history query --all --limit 20                                  # Cross-workspace events
 ```
 
 ### Tables
 ```bash
-octopus tables list --ws <workspace_id>                            # List tables
-octopus tables search <table_id> "query" --ws <workspace_id>      # Search rows
+stash tables list --ws <workspace_id>                            # List tables
+stash tables search <table_id> "query" --ws <workspace_id>      # Search rows
 ```
 
 ### Workspaces
 ```bash
-octopus workspaces list --mine                # List your workspaces
-octopus workspaces members <workspace_id>     # List workspace members
+stash workspaces list --mine                # List your workspaces
+stash workspaces members <workspace_id>     # List workspace members
 ```
 
 ### Tips
-- Set a default workspace to avoid repeating it: `octopus config default_workspace <id>`
+- Set a default workspace to avoid repeating it: `stash config default_workspace <id>`
 - Use `--json` flag on any command for JSON output
-- The CLI reads config from `~/.octopus/config.json`
+- The CLI reads config from `~/.stash/config.json`

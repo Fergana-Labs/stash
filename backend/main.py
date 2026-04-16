@@ -22,7 +22,7 @@ from .routers import (
     workspaces,
 )
 
-logger = logging.getLogger("octopus")
+logger = logging.getLogger("stash")
 
 
 @asynccontextmanager
@@ -40,7 +40,7 @@ def _rate_limit_exceeded_handler(request: Request, exc: RateLimitExceeded) -> JS
 
 
 app = FastAPI(
-    title="Octopus",
+    title="Stash",
     description="Shared memory for AI agents",
     version="0.1.0",
     lifespan=lifespan,

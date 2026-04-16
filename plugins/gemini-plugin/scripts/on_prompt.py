@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""BeforeAgent: stream user prompt to Octopus."""
+"""BeforeAgent: stream user prompt to Stash."""
 
 from config import DATA_DIR, get_client, get_config, get_stdin_data, is_configured
 from hooks import stream_user_message

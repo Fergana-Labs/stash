@@ -77,7 +77,7 @@ export default function DocsLayout({ children }: { children: React.ReactNode }) 
       <header className="sticky top-0 z-30 border-b border-border bg-base/95 backdrop-blur">
         <div className="h-14 max-w-[1440px] mx-auto px-6 lg:px-8 flex items-center justify-between">
           <div className="flex items-center gap-6">
-            <Link href="/" className="text-lg font-bold font-display text-foreground tracking-tight">octopus</Link>
+            <Link href="/" className="text-lg font-bold font-display text-foreground tracking-tight">stash</Link>
             <span className="text-xs text-muted font-medium uppercase tracking-[0.2em]">Documentation</span>
           </div>
           <div className="flex items-center gap-4">

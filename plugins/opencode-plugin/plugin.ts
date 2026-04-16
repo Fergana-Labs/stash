@@ -1,5 +1,5 @@
 /**
- * Octopus plugin for opencode.
+ * Stash plugin for opencode.
  *
  * Thin TS shim: each opencode event handler serializes its input and pipes it
  * into the matching Python hook script via stdin. All real work happens in
@@ -19,7 +19,7 @@ import { fileURLToPath } from "node:url";
 
 const PLUGIN_ROOT = dirname(fileURLToPath(import.meta.url));
 const SCRIPTS = join(PLUGIN_ROOT, "scripts");
-const PYTHON = process.env.OCTOPUS_PYTHON ?? "python3";
+const PYTHON = process.env.STASH_PYTHON ?? "python3";
 
 // opencode never emits a clean session-end signal. After this much idle time
 // inside a live opencode process, treat the session as ended and fire
@@ -47,7 +47,7 @@ function cancelIdleEnd(): void {
 }
 
 function runHook(script: string, payload: unknown): void {
-  // Fire-and-forget. We never want a flaky Octopus backend to stall opencode.
+  // Fire-and-forget. We never want a flaky Stash backend to stall opencode.
   // detached + unref so the child belongs to its own process group and gets
   // reaped independently — otherwise zombies accumulate over long sessions.
   try {
@@ -72,7 +72,7 @@ function extractText(parts: any[] | undefined): string {
     .join("\n");
 }
 
-export const OctopusPlugin = async ({
+export const StashPlugin = async ({
   project,
   worktree,
 }: {
@@ -143,4 +143,4 @@ export const OctopusPlugin = async ({
   };
 };
 
-export default OctopusPlugin;
+export default StashPlugin;

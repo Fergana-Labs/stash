@@ -6,33 +6,33 @@ using its own auth.
 """
 
 SLEEP_PROMPT = """\
-# Sleep Time Compute — Octopus Wiki Curation
+# Sleep Time Compute — Stash Wiki Curation
 
 Curate workspace history into organized, categorized wiki pages. This is the
 "sleep agent" workflow: read recent activity, analyze it, and write structured
 knowledge into a notebook with categories, summaries, and [[wiki links]].
 
-Use the `octopus` CLI for everything — every subcommand supports `--json`.
+Use the `stash` CLI for everything — every subcommand supports `--json`.
 
 ## Steps
 
-1. **Load config.** Run `octopus config --json` to get `default_workspace`. If
-   it is missing, stop and report that the user needs to run `octopus connect`.
+1. **Load config.** Run `stash config --json` to get `default_workspace`. If
+   it is missing, stop and report that the user needs to run `stash connect`.
 
-2. **List notebooks.** Run `octopus notebooks list --ws <workspace_id> --json`.
+2. **List notebooks.** Run `stash notebooks list --ws <workspace_id> --json`.
    Look for an existing curation notebook (named "Wiki", "Knowledge Base", or
    similar). If none exists, create one:
-   `octopus notebooks create "Wiki" --ws <workspace_id> --json`.
+   `stash notebooks create "Wiki" --ws <workspace_id> --json`.
 
 3. **Read recent history events.**
-   `octopus history query --ws <workspace_id> --limit 200 --json`.
+   `stash history query --ws <workspace_id> --limit 200 --json`.
    Narrow by agent or event type with `--agent <name>` or `--type <event_type>`
    if the result set is noisy.
 
 4. **Read existing wiki pages.** Get the current state of the notebook:
-   `octopus notebooks pages <notebook_id> --ws <workspace_id> --json`. Then
+   `stash notebooks pages <notebook_id> --ws <workspace_id> --json`. Then
    read key pages (especially category index pages) with
-   `octopus notebooks read-page <notebook_id> <page_id> --ws <workspace_id> --json`
+   `stash notebooks read-page <notebook_id> <page_id> --ws <workspace_id> --json`
    to understand what already exists.
 
 5. **Analyze and plan.** Compare the history events against existing pages.
@@ -46,8 +46,8 @@ Use the `octopus` CLI for everything — every subcommand supports `--json`.
      trivial status checks, ephemeral debugging).
 
 6. **Execute.** Apply the plan with the CLI:
-   - Create: `octopus notebooks add-page <notebook_id> "Page Title" --ws <workspace_id> --content "markdown with [[wiki links]]"`
-   - Update: `octopus notebooks edit-page <notebook_id> <page_id> --ws <workspace_id> --content "updated markdown"`
+   - Create: `stash notebooks add-page <notebook_id> "Page Title" --ws <workspace_id> --content "markdown with [[wiki links]]"`
+   - Update: `stash notebooks edit-page <notebook_id> <page_id> --ws <workspace_id> --content "updated markdown"`
 
 7. **Report.** Summarize what was created, updated, merged, or skipped with a
    one-line description per page.

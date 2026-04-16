@@ -1,4 +1,4 @@
-"""Octopus CLI — command-line interface for workspaces, notebooks, tables, history, and search."""
+"""Stash CLI — command-line interface for workspaces, notebooks, tables, history, and search."""
 
 from __future__ import annotations
 
@@ -9,16 +9,16 @@ from pathlib import Path
 import questionary
 import typer
 
-from .client import OctopusClient, OctopusError
+from .client import StashClient, StashError
 from .config import load_config, save_config
 from .formatting import console, output_json, print_members, print_rooms, print_user
 
-app = typer.Typer(name="octopus", help="Octopus CLI — workspaces, notebooks, tables, history.")
+app = typer.Typer(name="stash", help="Stash CLI — workspaces, notebooks, tables, history.")
 
 
-def _client() -> OctopusClient:
+def _client() -> StashClient:
     cfg = load_config()
-    return OctopusClient(base_url=cfg["base_url"], api_key=cfg.get("api_key", ""))
+    return StashClient(base_url=cfg["base_url"], api_key=cfg.get("api_key", ""))
 
 
 def _use_json(flag: bool) -> bool:
@@ -29,13 +29,13 @@ def _default_workspace() -> str:
     ws = load_config().get("default_workspace", "")
     if not ws:
         console.print(
-            "[red]No default workspace. Run [bold]octopus connect[/bold] or set manually: octopus config default_workspace <id>[/red]"
+            "[red]No default workspace. Run [bold]stash connect[/bold] or set manually: stash config default_workspace <id>[/red]"
         )
         raise typer.Exit(1)
     return ws
 
 
-def _err(e: OctopusError) -> None:
+def _err(e: StashError) -> None:
     console.print(f"[red]Error [{e.status_code}]: {e.detail}[/red]")
     raise typer.Exit(1)
 
@@ -57,7 +57,7 @@ def register(
     with _client() as c:
         try:
             data = c.register(name, description="", password=password)
-        except OctopusError as e:
+        except StashError as e:
             _err(e)
     save_config(api_key=data["api_key"], username=data["name"])
     if _use_json(as_json):
@@ -78,7 +78,7 @@ def login(
     with _client() as c:
         try:
             data = c.login(name, password)
-        except OctopusError as e:
+        except StashError as e:
             _err(e)
     save_config(api_key=data["api_key"], username=data["name"])
     if _use_json(as_json):
@@ -91,12 +91,12 @@ def login(
 def auth(base_url: str = typer.Argument(...), api_key: str = typer.Option(..., "--api-key")):
     """Store existing credentials."""
     save_config(base_url=base_url, api_key=api_key)
-    with OctopusClient(base_url=base_url, api_key=api_key) as c:
+    with StashClient(base_url=base_url, api_key=api_key) as c:
         try:
             user = c.whoami()
             save_config(username=user["name"])
             console.print(f"[green]Authenticated as {user['name']}[/green]")
-        except OctopusError:
+        except StashError:
             console.print("[yellow]Saved but could not verify.[/yellow]")
 
 
@@ -106,7 +106,7 @@ def whoami(as_json: bool = typer.Option(False, "--json")):
     with _client() as c:
         try:
             data = c.whoami()
-        except OctopusError as e:
+        except StashError as e:
             _err(e)
     if _use_json(as_json):
         output_json(data)
@@ -130,7 +130,7 @@ def ws_list(
     with _client() as c:
         try:
             data = c.list_workspaces(mine=mine)
-        except OctopusError as e:
+        except StashError as e:
             _err(e)
     if _use_json(as_json):
         output_json(data)
@@ -149,7 +149,7 @@ def ws_create(
     with _client() as c:
         try:
             data = c.create_workspace(name, description=description, is_public=public)
-        except OctopusError as e:
+        except StashError as e:
             _err(e)
     if _use_json(as_json):
         output_json(data)
@@ -165,7 +165,7 @@ def ws_join(invite_code: str = typer.Argument(...), as_json: bool = typer.Option
     with _client() as c:
         try:
             data = c.join_workspace(invite_code)
-        except OctopusError as e:
+        except StashError as e:
             _err(e)
     if _use_json(as_json):
         output_json(data)
@@ -179,7 +179,7 @@ def ws_info(workspace_id: str = typer.Argument(...), as_json: bool = typer.Optio
     with _client() as c:
         try:
             data = c.get_workspace(workspace_id)
-        except OctopusError as e:
+        except StashError as e:
             _err(e)
     if _use_json(as_json):
         output_json(data)
@@ -198,7 +198,7 @@ def ws_members(
     with _client() as c:
         try:
             data = c.workspace_members(workspace_id)
-        except OctopusError as e:
+        except StashError as e:
             _err(e)
     if _use_json(as_json):
         output_json(data)
@@ -228,7 +228,7 @@ def nb_list(
                 if all_
                 else c.list_notebooks(workspace_id or _default_workspace())
             )
-        except OctopusError as e:
+        except StashError as e:
             _err(e)
     if _use_json(as_json):
         output_json(data)
@@ -257,7 +257,7 @@ def nb_create(
             else:
                 ws = workspace_id or _default_workspace()
                 data = c.create_notebook(ws, name, description=description)
-        except OctopusError as e:
+        except StashError as e:
             _err(e)
     if _use_json(as_json):
         output_json(data)
@@ -276,7 +276,7 @@ def nb_pages(
         try:
             ws = workspace_id or _default_workspace()
             data = c.list_page_tree(ws, notebook_id)
-        except OctopusError as e:
+        except StashError as e:
             _err(e)
     if _use_json(as_json):
         output_json(data)
@@ -302,7 +302,7 @@ def nb_add_page(
         try:
             ws = workspace_id or _default_workspace()
             data = c.create_page(ws, notebook_id, name, content=content)
-        except OctopusError as e:
+        except StashError as e:
             _err(e)
     if _use_json(as_json):
         output_json(data)
@@ -322,7 +322,7 @@ def nb_read_page(
         try:
             ws = workspace_id or _default_workspace()
             data = c.get_page(ws, notebook_id, page_id)
-        except OctopusError as e:
+        except StashError as e:
             _err(e)
     if _use_json(as_json):
         output_json(data)
@@ -352,7 +352,7 @@ def nb_edit_page(
             if name is not None:
                 kwargs["name"] = name
             data = c.update_page(ws, notebook_id, page_id, **kwargs)
-        except OctopusError as e:
+        except StashError as e:
             _err(e)
     if _use_json(as_json):
         output_json(data)
@@ -377,7 +377,7 @@ def hist_agents(
     with _client() as c:
         try:
             data = c.list_agent_names(ws)
-        except OctopusError as e:
+        except StashError as e:
             _err(e)
     if _use_json(as_json):
         output_json(data)
@@ -411,7 +411,7 @@ def hist_push(
                 session_id=session_id,
                 tool_name=tool_name,
             )
-        except OctopusError as e:
+        except StashError as e:
             _err(e)
     if _use_json(as_json):
         output_json(data)
@@ -436,7 +436,7 @@ def hist_query(
             else:
                 ws = workspace_id or _default_workspace()
                 data = c.query_events(ws, agent_name=agent_name, event_type=event_type, limit=limit)
-        except OctopusError as e:
+        except StashError as e:
             _err(e)
     if _use_json(as_json):
         output_json(data)
@@ -460,7 +460,7 @@ def hist_search(
     with _client() as c:
         try:
             data = c.search_events(ws, query, limit=limit)
-        except OctopusError as e:
+        except StashError as e:
             _err(e)
     if _use_json(as_json):
         output_json(data)
@@ -532,7 +532,7 @@ def tables_list(
                 data = c.list_personal_tables()
             else:
                 data = c.list_tables(workspace_id or _default_workspace())
-        except OctopusError as e:
+        except StashError as e:
             _err(e)
     if _use_json(as_json):
         output_json(data)
@@ -567,7 +567,7 @@ def tables_create(
             else:
                 ws = workspace_id or _default_workspace()
                 data = c.create_table(ws, name, description=description, columns=cols)
-        except OctopusError as e:
+        except StashError as e:
             _err(e)
     if _use_json(as_json):
         output_json(data)
@@ -596,7 +596,7 @@ def tables_update(
         try:
             ws = workspace_id or _default_workspace()
             data = c.update_table(ws, table_id, **kwargs)
-        except OctopusError as e:
+        except StashError as e:
             _err(e)
     if _use_json(as_json):
         output_json(data)
@@ -615,7 +615,7 @@ def tables_schema(
         try:
             ws = workspace_id or _default_workspace()
             data = c.get_table(ws, table_id)
-        except OctopusError as e:
+        except StashError as e:
             _err(e)
     if _use_json(as_json):
         output_json(data)
@@ -664,7 +664,7 @@ def tables_rows(
                 sort_order=sort_order,
                 filters=resolved_filters,
             )
-        except OctopusError as e:
+        except StashError as e:
             _err(e)
     if _use_json(as_json):
         output_json(result)
@@ -692,7 +692,7 @@ def tables_insert(
             table = c.get_table(ws, table_id)
             resolved = _resolve_col_names(table, row_data)
             result = c.insert_table_row(ws, table_id, resolved)
-        except OctopusError as e:
+        except StashError as e:
             _err(e)
     if _use_json(as_json):
         output_json(result)
@@ -714,7 +714,7 @@ def tables_import(
 ):
     """Bulk import rows from CSV or JSON. Auto-chunks into batches of 5000.
     CSV: first row is column headers. JSON: array of objects.
-    Pipe: cat data.csv | octopus tables import <table_id> --format csv"""
+    Pipe: cat data.csv | stash tables import <table_id> --format csv"""
     import csv as csv_mod
     import io as io_mod
 
@@ -768,7 +768,7 @@ def tables_import(
                     console.print(
                         f"  [dim]Inserted {total_inserted}/{len(resolved_rows)} rows...[/dim]"
                     )
-        except OctopusError as e:
+        except StashError as e:
             _err(e)
 
     if _use_json(as_json):
@@ -793,7 +793,7 @@ def tables_update_row(
             table = c.get_table(ws, table_id)
             resolved = _resolve_col_names(table, row_data)
             result = c.update_table_row(ws, table_id, row_id, resolved)
-        except OctopusError as e:
+        except StashError as e:
             _err(e)
     if _use_json(as_json):
         output_json(result)
@@ -812,7 +812,7 @@ def tables_delete_row(
         try:
             ws = workspace_id or _default_workspace()
             c.delete_table_row(ws, table_id, row_id)
-        except OctopusError as e:
+        except StashError as e:
             _err(e)
     console.print("[green]Row deleted.[/green]")
 
@@ -834,7 +834,7 @@ def tables_add_column(
         try:
             ws = workspace_id or _default_workspace()
             result = c.add_table_column(ws, table_id, name, col_type=col_type, options=opts)
-        except OctopusError as e:
+        except StashError as e:
             _err(e)
     if _use_json(as_json):
         output_json(result)
@@ -860,7 +860,7 @@ def tables_delete_column(
                 if column_id in name_to_id:
                     column_id = name_to_id[column_id]
             result = c.delete_table_column(ws, table_id, column_id)
-        except OctopusError as e:
+        except StashError as e:
             _err(e)
     if _use_json(as_json):
         output_json(result)
@@ -886,7 +886,7 @@ def tables_count(
             if filters:
                 params["filters"] = filters
             result = c._get(f"/api/v1/workspaces/{ws}/tables/{table_id}/rows/count", **params)
-        except OctopusError as e:
+        except StashError as e:
             _err(e)
     if _use_json(as_json):
         output_json(result)
@@ -919,7 +919,7 @@ def tables_export(
                 "GET", f"/api/v1/workspaces/{ws}/tables/{table_id}/export/csv", params=params
             )
             csv_content = resp.text
-        except OctopusError as e:
+        except StashError as e:
             _err(e)
     if file:
         with open(file, "w") as f:
@@ -942,7 +942,7 @@ def tables_delete(
         try:
             ws = workspace_id or _default_workspace()
             c.delete_table(ws, table_id)
-        except OctopusError as e:
+        except StashError as e:
             _err(e)
     console.print("[green]Table deleted.[/green]")
 
@@ -958,8 +958,8 @@ def _reserve_bottom_padding(lines: int = 4) -> None:
 
 
 def _self_host_walkthrough(cfg: dict) -> str:
-    """Walk the user through standing up a local Octopus instance, then return its URL."""
-    console.print("\n[bold cyan]Self-hosting Octopus[/bold cyan]\n")
+    """Walk the user through standing up a local Stash instance, then return its URL."""
+    console.print("\n[bold cyan]Self-hosting Stash[/bold cyan]\n")
     console.print("You'll need [bold]Docker[/bold] installed.  https://docker.com/get-started\n")
     console.print("Run these commands in a separate terminal:\n")
     console.print("  [dim]1.[/dim] [cyan]git clone https://github.com/Fergana-Labs/octopus.git[/cyan]")
@@ -970,11 +970,11 @@ def _self_host_walkthrough(cfg: dict) -> str:
     _reserve_bottom_padding(6)
     ready = questionary.confirm("Is your instance running?", default=True).ask()
     if ready is None or not ready:
-        console.print("\n[yellow]No problem — run [bold]octopus connect[/bold] again when ready.[/yellow]")
+        console.print("\n[yellow]No problem — run [bold]stash connect[/bold] again when ready.[/yellow]")
         raise typer.Exit(0)
 
     current_url = cfg.get("base_url", "http://localhost:3456")
-    default_url = current_url if "localhost" in current_url or current_url != "https://getoctopus.com" else "http://localhost:3456"
+    default_url = current_url if "localhost" in current_url or current_url != "https://stash.ac" else "http://localhost:3456"
     return typer.prompt("URL of your instance", default=default_url).rstrip("/")
 
 
@@ -982,17 +982,17 @@ def _self_host_walkthrough(cfg: dict) -> str:
 @app.command("connect")
 def connect():
     """Interactive first-time setup. Sets base URL, authenticates, and configures defaults."""
-    console.print("\n[bold]Octopus connect[/bold]  (press Enter to accept defaults)\n")
+    console.print("\n[bold]Stash connect[/bold]  (press Enter to accept defaults)\n")
 
     # --- Step 0: Scope ---
     scope_options = [
-        ("Everywhere on this machine (default)", "~/.octopus/config.json", "user"),
-        ("Only this directory", "./.octopus/config.json", "project"),
+        ("Everywhere on this machine (default)", "~/.stash/config.json", "user"),
+        ("Only this directory", "./.stash/config.json", "project"),
     ]
     label_width = max(len(label) for label, _, _ in scope_options)
     _reserve_bottom_padding(8)
     scope = questionary.select(
-        "Where do you want to install octopus?",
+        "Where do you want to install stash?",
         choices=[
             questionary.Choice(f"{label:<{label_width}}   {path}", value=value)
             for label, path, value in scope_options
@@ -1005,13 +1005,13 @@ def connect():
     # --- Step 1: API endpoint ---
     cfg = load_config()
     mode_options = [
-        ("Managed", "hosted at getoctopus.com", "managed"),
+        ("Managed", "hosted at stash.ac", "managed"),
         ("Self-host", "run on your own machine", "self"),
     ]
     mode_label_w = max(len(label) for label, _, _ in mode_options)
     _reserve_bottom_padding(8)
     mode = questionary.select(
-        "How do you want to use Octopus?",
+        "How do you want to use Stash?",
         choices=[
             questionary.Choice(f"{label:<{mode_label_w}}   ({desc})", value=value)
             for label, desc, value in mode_options
@@ -1022,7 +1022,7 @@ def connect():
         raise typer.Exit(1)
 
     if mode == "managed":
-        base_url = "https://getoctopus.com"
+        base_url = "https://stash.ac"
     else:
         base_url = _self_host_walkthrough(cfg)
     save_config(base_url=base_url, scope=scope)
@@ -1031,12 +1031,12 @@ def connect():
     has_key = bool(cfg.get("api_key"))
     if has_key:
         try:
-            with OctopusClient(base_url=base_url, api_key=cfg["api_key"]) as c:
+            with StashClient(base_url=base_url, api_key=cfg["api_key"]) as c:
                 user = c.whoami()
             console.print(
                 f"  [green]✓[/green] Already authenticated as [bold]{user['name']}[/bold]"
             )
-        except OctopusError:
+        except StashError:
             has_key = False
 
     if not has_key:
@@ -1092,11 +1092,11 @@ def connect():
     # Reload config after auth
     cfg = load_config()
 
-    with OctopusClient(base_url=base_url, api_key=cfg["api_key"]) as c:
+    with StashClient(base_url=base_url, api_key=cfg["api_key"]) as c:
         # --- Step 3: Workspace ---
         try:
             my_workspaces = c.list_workspaces(mine=True)
-        except OctopusError:
+        except StashError:
             my_workspaces = []
 
         workspace_id = cfg.get("default_workspace", "")
@@ -1113,7 +1113,7 @@ def connect():
 
         if not ws_action:
             console.print(
-                "[yellow]Skipping workspace setup. Run: octopus config default_workspace <id>[/yellow]"
+                "[yellow]Skipping workspace setup. Run: stash config default_workspace <id>[/yellow]"
             )
         else:
             # Check if it looks like a UUID (existing) or a name (create new)
@@ -1134,14 +1134,14 @@ def connect():
                     console.print(
                         f"  [green]✓[/green] Created workspace [bold]{ws_data['name']}[/bold]  invite: {ws_data['invite_code']}"
                     )
-                except OctopusError as e:
+                except StashError as e:
                     console.print(f"[red]Could not create workspace: {e.detail}[/red]")
 
     # --- Done ---
     console.print("\n[bold green]Setup complete.[/bold green]")
-    console.print("  Run [bold]octopus whoami[/bold] to confirm auth.")
-    console.print('  Run [bold]octopus history push "hello"[/bold] to push your first event.')
-    console.print("  Run [bold]octopus --help[/bold] to see all commands.\n")
+    console.print("  Run [bold]stash whoami[/bold] to confirm auth.")
+    console.print('  Run [bold]stash history push "hello"[/bold] to push your first event.')
+    console.print("  Run [bold]stash --help[/bold] to see all commands.\n")
 
 
 # ===========================================================================
@@ -1149,17 +1149,17 @@ def connect():
 # ===========================================================================
 
 PLUGIN_DATA_DIRS = {
-    "claude": Path.home() / ".claude/plugins/data/octopus",
-    "codex": Path.home() / ".octopus/plugins/codex",
-    "cursor": Path.home() / ".octopus/plugins/cursor",
-    "gemini": Path.home() / ".octopus/plugins/gemini",
-    "opencode": Path.home() / ".octopus/plugins/opencode",
+    "claude": Path.home() / ".claude/plugins/data/stash",
+    "codex": Path.home() / ".stash/plugins/codex",
+    "cursor": Path.home() / ".stash/plugins/cursor",
+    "gemini": Path.home() / ".stash/plugins/gemini",
+    "opencode": Path.home() / ".stash/plugins/opencode",
 }
 
 
 @app.command("status")
 def status(as_json: bool = typer.Option(False, "--json")):
-    """Show central Octopus config, streaming state, and last curate run."""
+    """Show central Stash config, streaming state, and last curate run."""
     cfg = load_config()
     central = _read_central_config()
 
@@ -1185,7 +1185,7 @@ def status(as_json: bool = typer.Option(False, "--json")):
         )
         return
 
-    console.print("[bold]Octopus status[/bold]")
+    console.print("[bold]Stash status[/bold]")
     console.print(f"  User:       {cfg.get('username') or '(not logged in)'}")
     console.print(f"  Endpoint:   {cfg.get('base_url')}")
     console.print(f"  Workspace:  {cfg.get('default_workspace') or '(none)'}")
@@ -1213,7 +1213,7 @@ def disconnect(as_json: bool = typer.Option(False, "--json")):
         return
     console.print("[yellow]Streaming disabled.[/yellow] Hooks will stop pushing events.")
     console.print(
-        "  Re-enable with [bold]octopus connect[/bold] or edit [cyan]~/.octopus/config.json[/cyan]."
+        "  Re-enable with [bold]stash connect[/bold] or edit [cyan]~/.stash/config.json[/cyan]."
     )
 
 
@@ -1249,13 +1249,13 @@ def config_cmd(
     key: str | None = typer.Argument(None),
     value: str | None = typer.Argument(None),
     project: bool = typer.Option(
-        False, "--project", help="Write to project-level config (.octopus/config.json in the repo)."
+        False, "--project", help="Write to project-level config (.stash/config.json in the repo)."
     ),
 ):
     """Show or set config. Keys: base_url, default_workspace, output_format.
 
-    By default writes to ~/.octopus/config.json. Pass --project to write to
-    .octopus/config.json in the current project (created if missing). Project
+    By default writes to ~/.stash/config.json. Pass --project to write to
+    .stash/config.json in the current project (created if missing). Project
     config overrides user config when both exist.
     """
     from .config import USER_CONFIG_FILE, find_project_config

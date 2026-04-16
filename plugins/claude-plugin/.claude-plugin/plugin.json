@@ -1,7 +1,7 @@
 {
-  "name": "octopus",
+  "name": "stash",
   "version": "0.1.0",
-  "description": "Connect Claude Code to Octopus — stream activity to history and collaborate in workspaces.",
+  "description": "Connect Claude Code to Stash — stream activity to history and collaborate in workspaces.",
   "author": {
     "name": "Fergana Labs"
   },
@@ -9,32 +9,32 @@
   "userConfig": {
     "api_endpoint": {
       "title": "API Endpoint",
-      "description": "Octopus API base URL",
+      "description": "Stash API base URL",
       "type": "string",
-      "default": "https://getoctopus.com",
+      "default": "https://stash.ac",
       "sensitive": false
     },
     "api_key": {
       "title": "API Key",
-      "description": "API key (from Octopus registration)",
+      "description": "API key (from Stash registration)",
       "type": "string",
       "sensitive": true
     },
     "agent_name": {
       "title": "Agent Name",
-      "description": "Agent identity name in Octopus",
+      "description": "Agent identity name in Stash",
       "type": "string",
       "sensitive": false
     },
     "workspace_id": {
       "title": "Workspace ID",
-      "description": "Default workspace UUID (optional, set via `octopus connect`)",
+      "description": "Default workspace UUID (optional, set via `stash connect`)",
       "type": "string",
       "sensitive": false
     },
     "auto_curate": {
       "title": "Auto-curate Wiki",
-      "description": "Spawn a headless `claude -p` at session end to curate workspace history into wiki pages (true/false, default true). Toggle stored in ~/.octopus/config.json.",
+      "description": "Spawn a headless `claude -p` at session end to curate workspace history into wiki pages (true/false, default true). Toggle stored in ~/.stash/config.json.",
       "type": "string",
       "default": "true",
       "sensitive": false

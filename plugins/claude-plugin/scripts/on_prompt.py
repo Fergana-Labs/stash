@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""UserPromptSubmit: stream the user's prompt to Octopus history."""
+"""UserPromptSubmit: stream the user's prompt to Stash history."""
 
 from config import DATA_DIR, get_client, get_config, get_stdin_data, is_configured
 from hooks import stream_user_message
