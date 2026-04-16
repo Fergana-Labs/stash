@@ -959,6 +959,15 @@ def _reserve_bottom_padding(lines: int = 4) -> None:
     sys.stdout.flush()
 
 
+def _frontend_url_for(base_url: str) -> str:
+    """Map the API base URL to the matching web app URL where users sign in / accept invites."""
+    if "localhost" in base_url or "127.0.0.1" in base_url:
+        return base_url.replace(":3456", ":3000")
+    if base_url == "https://moltchat.onrender.com":
+        return "https://stash-web-dr40.onrender.com"
+    return base_url
+
+
 def _self_host_walkthrough(cfg: dict) -> str:
     """Walk the user through standing up a local Stash instance, then return its URL."""
     console.print("\n[bold cyan]Self-hosting Stash[/bold cyan]\n")
@@ -1061,16 +1070,7 @@ def connect():
             console.print(f"[red]Could not reach {base_url}: {e}[/red]")
             raise typer.Exit(1)
 
-        # Build the login URL. The backend and frontend are separate deployments.
-        # - Local self-host: backend on :3456, frontend on :3000.
-        # - Managed: frontend lives at stash-web-dr40.onrender.com.
-        if "localhost" in base_url or "127.0.0.1" in base_url:
-            frontend_url = base_url.replace(":3456", ":3000")
-        elif base_url == "https://moltchat.onrender.com":
-            frontend_url = "https://stash-web-dr40.onrender.com"
-        else:
-            frontend_url = base_url
-        login_url = f"{frontend_url}/login?cli={session_id}"
+        login_url = f"{_frontend_url_for(base_url)}/login?cli={session_id}"
 
         console.print(f"\n  Opening browser to sign in...")
         console.print(f"  [dim]{login_url}[/dim]\n")
@@ -1136,6 +1136,7 @@ def connect():
             default=default_name,
         ).strip()
 
+        chosen_ws: dict | None = None
         if not ws_name:
             console.print("[yellow]Skipping workspace setup.[/yellow]")
         else:
@@ -1147,19 +1148,26 @@ def connect():
                 console.print(
                     f"  [green]✓[/green] Using workspace [bold]{matched['name']}[/bold]"
                 )
+                chosen_ws = matched
             else:
                 try:
                     ws_data = c.create_workspace(ws_name)
                     workspace_id = str(ws_data["id"])
                     save_config(default_workspace=workspace_id, scope=scope)
                     console.print(
-                        f"  [green]✓[/green] Created workspace [bold]{ws_data['name']}[/bold]  invite: {ws_data['invite_code']}"
+                        f"  [green]✓[/green] Created workspace [bold]{ws_data['name']}[/bold]"
                     )
+                    chosen_ws = ws_data
                 except StashError as e:
                     console.print(f"[red]Could not create workspace: {e.detail}[/red]")
 
     # --- Done ---
-    _show_setup_complete_splash()
+    join_url = ""
+    workspace_label = ""
+    if chosen_ws and chosen_ws.get("invite_code"):
+        join_url = f"{_frontend_url_for(base_url)}/join/{chosen_ws['invite_code']}"
+        workspace_label = chosen_ws["name"]
+    _show_setup_complete_splash(workspace_label, join_url)
 
 
 STASH_LOGO = r"""
@@ -1172,7 +1180,7 @@ STASH_LOGO = r"""
 """
 
 
-def _show_setup_complete_splash() -> None:
+def _show_setup_complete_splash(workspace_name: str = "", join_url: str = "") -> None:
     """Clear the onboarding transcript and show a clean success splash."""
     console.clear()
     console.print(f"[bold cyan]{STASH_LOGO}[/bold cyan]")
@@ -1225,6 +1233,24 @@ def _show_setup_complete_splash() -> None:
             padding=(1, 2),
         )
     )
+
+    if join_url:
+        invite_body = (
+            f"Send this link to anyone you want in [bold]{workspace_name}[/bold]:\n"
+            f"\n"
+            f"  [bold cyan]{join_url}[/bold cyan]\n"
+            f"\n"
+            "They'll sign in (or register) and land directly inside the workspace."
+        )
+        console.print(
+            Panel(
+                invite_body,
+                title="[bold]Invite your team[/bold]",
+                border_style="green",
+                padding=(1, 2),
+            )
+        )
+
     console.print()
 
 
