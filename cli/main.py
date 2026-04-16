@@ -885,12 +885,11 @@ def connect():
         ("Self-host", "run on your own machine", "self"),
     ]
     mode_label_w = max(len(label) for label, _, _ in mode_options)
-    mode_desc_w = max(len(desc) for _, desc, _ in mode_options)
     _reserve_bottom_padding(8)
     mode = questionary.select(
         "How do you want to use Octopus?",
         choices=[
-            questionary.Choice(f"{label:<{mode_label_w}}   ({desc:<{mode_desc_w}})", value=value)
+            questionary.Choice(f"{label:<{mode_label_w}}   ({desc})", value=value)
             for label, desc, value in mode_options
         ],
         use_shortcuts=True,
