@@ -475,7 +475,18 @@ Analyze the new content and produce a JSON response with these actions:
      "add_links": [str]           # Page titles to add as [[wiki links]] to the category
    }}]
 
-6. "health": {{"loops_detected": bool, "stuck": bool, "recommend_restart": bool, "message": "optional"}}
+6. "extract_relations": [{{
+     "source_title": str,         # Title of the source page (must already exist)
+     "relation_type": str,        # Short verb phrase: "uses", "prefers", "works_on", "knows", "related_to", "replaced_by", etc.
+     "target_title": str,         # Title of the target page (must already exist)
+     "confidence": float,         # 0-1 confidence in this relation
+     "supersedes": bool           # If true, expire all prior relations of the same type from source
+   }}]
+   - Only emit relations between pages that you know exist (current or just created).
+   - Use "supersedes": true when new information replaces old (e.g. user now prefers Vue over React).
+   - Keep relation_type short and consistent across sessions (reuse the same verbs).
+
+7. "health": {{"loops_detected": bool, "stuck": bool, "recommend_restart": bool, "message": "optional"}}
 
 ## Guidelines
 - **Categorize everything.** Every note should belong to a category. If a category page doesn't exist, create one.
@@ -758,6 +769,41 @@ async def _execute_actions(agent_id: UUID, notebook_id: UUID, config: dict, resu
             )
             for pid_str in source_ids:
                 await notebook_service.delete_page(UUID(pid_str), notebook_id)
+
+    # Extract typed relations
+    for rel in result.get("extract_relations", []):
+        source_title = rel.get("source_title", "").strip()
+        target_title = rel.get("target_title", "").strip()
+        relation_type = rel.get("relation_type", "").strip()
+        if not (source_title and target_title and relation_type):
+            continue
+        confidence = float(rel.get("confidence", 0.8))
+        supersedes = bool(rel.get("supersedes", False))
+
+        source_row = await pool.fetchrow(
+            "SELECT id FROM notebook_pages WHERE notebook_id = $1 AND name = $2",
+            notebook_id, source_title,
+        )
+        target_row = await pool.fetchrow(
+            "SELECT id FROM notebook_pages WHERE notebook_id = $1 AND name = $2",
+            notebook_id, target_title,
+        )
+        if not source_row or not target_row:
+            continue
+
+        source_id = source_row["id"]
+        target_id = target_row["id"]
+        try:
+            await notebook_service.upsert_relation(source_id, relation_type, target_id, confidence)
+            if supersedes:
+                await notebook_service.invalidate_conflicting_relations(
+                    source_id, relation_type, target_id,
+                )
+        except Exception:
+            logger.debug(
+                "Failed to upsert relation %s -[%s]-> %s",
+                source_title, relation_type, target_title, exc_info=True,
+            )
 
     # Delete notes
     for page_id_str in result.get("delete_notes", []):
