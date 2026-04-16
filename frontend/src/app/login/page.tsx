@@ -7,6 +7,7 @@ import { useAuth } from "../../hooks/useAuth";
 import { setToken, listMyWorkspaces } from "../../lib/api";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3456";
+const AUTH0_ENABLED = process.env.NEXT_PUBLIC_AUTH0_ENABLED === "true";
 
 export default function LoginPage() {
   return (
@@ -77,6 +78,17 @@ function LoginPageInner() {
 
   if (user && !cliSession) {
     return null;
+  }
+
+  if (AUTH0_ENABLED) {
+    return (
+      <Auth0LoginPanel
+        user={user}
+        logout={logout}
+        cliSession={cliSession}
+        onCliApproved={() => setCliApproved(true)}
+      />
+    );
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -170,4 +182,74 @@ function LoginPageInner() {
       </main>
     </div>
   );
+}
+
+type Auth0PanelProps = {
+  user: ReturnType<typeof useAuth>["user"];
+  logout: ReturnType<typeof useAuth>["logout"];
+  cliSession: string | null;
+  onCliApproved: () => void;
+};
+
+function Auth0LoginPanel({ user, logout, cliSession, onCliApproved }: Auth0PanelProps) {
+  const [hasSession, setHasSession] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("/auth/profile", { credentials: "include" });
+        if (!cancelled) setHasSession(res.ok);
+      } catch {
+        if (!cancelled) setHasSession(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  return (
+    <div className="min-h-screen flex flex-col">
+      <Header user={user} onLogout={logout} />
+      <main className="flex-1 flex items-center justify-center px-4 py-12">
+        <div className="w-full max-w-sm space-y-4">
+          <div className="rounded-2xl border border-border bg-surface p-6">
+            <h2 className="text-base font-semibold text-foreground mb-4">
+              {cliSession ? "Sign in to authorize the CLI" : "Sign in"}
+            </h2>
+            {hasSession === null ? (
+              <p className="text-sm text-muted text-center">Loading…</p>
+            ) : hasSession ? (
+              <Auth0Exchange cliSession={cliSession} onCliApproved={onCliApproved} />
+            ) : (
+              <Auth0LoginButton cliSession={cliSession} />
+            )}
+          </div>
+        </div>
+      </main>
+    </div>
+  );
+}
+
+// Lazy re-exports so the managed/ code is never loaded in OSS builds.
+function Auth0LoginButton(props: { cliSession: string | null }) {
+  const [Comp, setComp] = useState<React.ComponentType<{ cliSession: string | null }> | null>(null);
+  useEffect(() => {
+    import("@managed/auth0/LoginButton").then((m) => setComp(() => m.default));
+  }, []);
+  if (!Comp) return null;
+  return <Comp cliSession={props.cliSession} />;
+}
+
+function Auth0Exchange(props: { cliSession: string | null; onCliApproved: () => void }) {
+  const [Comp, setComp] = useState<React.ComponentType<{
+    cliSession: string | null;
+    onCliApproved: () => void;
+  }> | null>(null);
+  useEffect(() => {
+    import("@managed/auth0/ExchangeAndRedirect").then((m) => setComp(() => m.default));
+  }, []);
+  if (!Comp) return null;
+  return <Comp cliSession={props.cliSession} onCliApproved={props.onCliApproved} />;
 }
