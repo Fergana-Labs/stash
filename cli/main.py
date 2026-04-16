@@ -1184,6 +1184,11 @@ def _connect_via_invite(token: str, endpoint: str | None, scope_flag: str | None
 
 @app.command("connect")
 def connect(
+    welcome: bool = typer.Option(
+        False,
+        "--welcome",
+        help="Print the post-install welcome as plain markdown and exit. For Claude Code / other agents that re-render stdout as markdown.",
+    ),
     invite: str = typer.Option(
         None, "--invite", help="Redeem a magic-link invite token (skips the interactive flow)."
     ),
@@ -1195,6 +1200,9 @@ def connect(
     ),
 ):
     """Interactive first-time setup. Sets base URL, authenticates, and configures defaults."""
+    if welcome:
+        print(_WELCOME_MARKDOWN)
+        return
     if invite:
         _connect_via_invite(token=invite, endpoint=endpoint, scope_flag=scope)
         return
@@ -1383,6 +1391,43 @@ STASH_LOGO = r"""
  ╚════██║   ██║   ██╔══██║╚════██║██╔══██║
  ███████║   ██║   ██║  ██║███████║██║  ██║
  ╚══════╝   ╚═╝   ╚═╝  ╚═╝╚══════╝╚═╝  ╚═╝
+"""
+
+
+_WELCOME_MARKDOWN = """# You're all set up.
+
+## What just happened
+
+Your coding agent now has the `stash` CLI on its PATH. It can read the transcripts your teammates' coding agents push to this workspace — so it knows what the rest of your team is working on.
+
+## Examples of questions your agent might want answered
+
+- "Why did Sam bump the rate limit from 100 to 500?"
+- "Has anyone already tried fixing the memory leak in our backend?"
+- "Is anyone else currently working on our api gateway?"
+
+You can read a blog post about it here: [Agent velocity for coding teams](https://henrydowling.com/agent-velocity.html)
+
+## Commands your agent can now use
+
+- `stash history search "<query>"` — full-text search across transcripts
+- `stash history query --agent <name>` — pull a specific agent's events
+
+Run `stash --help` to see everything.
+
+## Q&A
+
+**Q:** Do you inject anything into my coding agent's context automatically?
+**A:** No.
+
+**Q:** What gets pushed to the shared store?
+**A:** Event streams from your session — your prompts, each assistant reply, summarized tool activity, and a short session summary. Long fields are truncated; it is not a full byte-for-byte transcript.
+
+**Q:** How do I see my transcripts?
+**A:** With the CLI: `stash history query` and `stash history search` (use your default workspace or `--ws`). You can also open the Memory / History views in the Stash web app.
+
+**Q:** How do I share my workspace with my team?
+**A:** Share the invite code (`stash workspaces info <id>` prints it). Teammates run `stash connect` if needed, then `stash workspaces join <invite_code>`.
 """
 
 
