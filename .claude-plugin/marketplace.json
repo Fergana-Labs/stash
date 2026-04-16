@@ -1,5 +1,7 @@
 {
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
   "name": "stash-plugins",
+  "description": "Shared memory for AI coding agents — Claude Code plugin for Stash workspaces, history streaming, and wiki curation.",
   "owner": {
     "name": "Fergana Labs",
     "email": "support@ferganalabs.com"
@@ -10,6 +12,8 @@
       "source": "./plugins/claude-plugin",
       "description": "Connect Claude Code to Stash — stream activity to history, inject agent memory, collaborate in workspaces.",
       "version": "0.1.0",
+      "category": "productivity",
+      "homepage": "https://stash.ac",
       "author": {
         "name": "Fergana Labs"
       }

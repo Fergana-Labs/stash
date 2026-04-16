@@ -225,17 +225,10 @@ def _format_invite_share_block(
     """The prose the sender copies into Slack/DMs to share a workspace."""
     uses_blurb = "single-use" if max_uses == 1 else f"up to {max_uses} uses"
     return (
-        f"Hey — I'm inviting you to my Stash workspace (\"{workspace_name}\").\n"
-        "Stash is a shared memory layer for our coding agents, so we can see\n"
-        "what each other is working on.\n"
-        "\n"
-        "To join, paste this into your coding agent (or run it yourself):\n"
         "\n"
         f"  pipx install stash-cli && \\\n"
         f"    stash connect --invite {token} --endpoint {base_url.rstrip('/')}\n"
         "\n"
-        "You'll be prompted for a display name. No browser sign-in needed.\n"
-        f"({uses_blurb}, expires {expires_at})\n"
     )
 
 
@@ -274,7 +267,7 @@ def invite_default(
     console.print(
         Panel(
             share_block,
-            title="[bold]Copy this and send it to a teammate[/bold]",
+            title="[bold]Have your teammate paste this into claude code[/bold]",
             border_style="green",
             padding=(1, 2),
         )
@@ -1101,8 +1094,8 @@ def _self_host_walkthrough(cfg: dict) -> str:
 
 
 
-def _git_or_env_username_default() -> str:
-    """Best-effort default for the display name prompt on magic-link redeem."""
+def _derive_display_name() -> str:
+    """Pick a display name with zero interaction: git config → $USER → fallback."""
     import os
     import subprocess
 
@@ -1119,11 +1112,18 @@ def _git_or_env_username_default() -> str:
     return os.environ.get("USER") or os.environ.get("USERNAME") or "teammate"
 
 
-def _connect_via_invite(token: str, endpoint: str | None, scope_flag: str | None) -> None:
+def _connect_via_invite(
+    token: str,
+    endpoint: str | None,
+    scope_flag: str | None,
+    display_name_override: str | None,
+) -> None:
     """Non-interactive connect path: redeem a magic-link token, save config, show splash.
 
     Auto-detects whether the user already has a stash account on this machine and
-    picks the authenticated or unauthenticated redeem endpoint accordingly.
+    picks the authenticated or unauthenticated redeem endpoint accordingly. Display
+    name is derived from git/$USER so the recipient's coding agent never blocks on
+    a prompt.
     """
     cfg = load_config()
     base_url = (endpoint or cfg.get("base_url") or "").rstrip("/")
@@ -1150,15 +1150,7 @@ def _connect_via_invite(token: str, endpoint: str | None, scope_flag: str | None
         return
 
     # No existing auth — unauthenticated redeem creates a fresh user.
-    default_name = _git_or_env_username_default()
-    _reserve_bottom_padding(4)
-    display_name = typer.prompt(
-        "What display name should your teammates see?", default=default_name
-    ).strip()
-    if not display_name:
-        console.print("[red]Display name is required.[/red]")
-        raise typer.Exit(1)
-
+    display_name = (display_name_override or _derive_display_name()).strip()
     try:
         result = StashClient.redeem_invite_unauthenticated(
             base_url=base_url, token=token, display_name=display_name
@@ -1174,8 +1166,10 @@ def _connect_via_invite(token: str, endpoint: str | None, scope_flag: str | None
         default_workspace=str(result["workspace_id"]),
         scope=scope,
     )
+    chosen = result.get("display_name") or result["username"]
     console.print(
-        f"  [green]✓[/green] Signed in as [bold]{result.get('display_name') or result['username']}[/bold]"
+        f"  [green]✓[/green] Signed in as [bold]{chosen}[/bold] "
+        f"[dim](change with `stash whoami` / profile edit)[/dim]"
     )
     _show_setup_complete_splash(
         workspace_name=result["workspace_name"], joined_via_invite=True
@@ -1193,10 +1187,19 @@ def connect(
     scope: str = typer.Option(
         None, "--scope", help="Where to write config (user | project). Only used with --invite."
     ),
+    display_name: str = typer.Option(
+        None, "--display-name",
+        help="Override the auto-detected display name (default: git config user.name).",
+    ),
 ):
     """Interactive first-time setup. Sets base URL, authenticates, and configures defaults."""
     if invite:
-        _connect_via_invite(token=invite, endpoint=endpoint, scope_flag=scope)
+        _connect_via_invite(
+            token=invite,
+            endpoint=endpoint,
+            scope_flag=scope,
+            display_name_override=display_name,
+        )
         return
 
     console.print("\n[bold]Stash connect[/bold]  (press Enter to accept defaults)\n")
