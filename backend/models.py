@@ -433,3 +433,15 @@ class FileResponse(BaseModel):
 
 class FileListResponse(BaseModel):
     files: list[FileResponse]
+
+
+class SessionTranscriptResponse(BaseModel):
+    id: UUID
+    workspace_id: UUID
+    session_id: str
+    agent_name: str
+    size_bytes: int
+    cwd: str | None
+    download_url: str | None
+    uploaded_by: UUID
+    uploaded_at: datetime

@@ -97,6 +97,7 @@ _TRUNCATE_TABLES = [
     "object_shares",
     "object_permissions",
     "history_events",
+    "session_transcripts",
     "page_links",
     "notebook_pages",
     "notebook_folders",

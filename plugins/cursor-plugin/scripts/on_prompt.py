@@ -22,7 +22,7 @@ def main():
 
     try:
         with get_client() as client:
-            stream_user_message(client, cfg, state, event.prompt_text)
+            stream_user_message(client, cfg, state, event.prompt_text, event)
     except Exception:
         pass
 
