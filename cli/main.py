@@ -1132,7 +1132,7 @@ def connect():
 
         _reserve_bottom_padding(4)
         ws_name = typer.prompt(
-            "\nPress Enter to accept the default workspace name, or type a new name",
+            "\nPress ENTER to accept default workspace name, otherwise type a workspace name",
             default=default_name,
         ).strip()
 
@@ -1184,17 +1184,38 @@ def _show_setup_complete_splash() -> None:
         "It can read the transcripts your teammates' coding agents push to this\n"
         "workspace — so it knows what the rest of your team is working on.\n"
         "\n"
-        "[bold]Try asking your agent[/bold]\n"
-        '  [dim]"What has my team been working on this week?"[/dim]\n'
-        '  [dim]"Has anyone touched the auth module recently?"[/dim]\n'
-        '  [dim]"Summarize yesterday\'s sessions from my teammates."[/dim]\n'
+        "[bold]Examples of questions your agent might want answered [/bold] \n"
+        '  [dim]"Why did Sam bump the rate limit from 100 to 500?"[/dim]\n'
+        '  [dim]"Has anyone already tried fixing the memory leak in our backend?"[/dim]\n'
+        '  [dim]"Is anyone else currently working on our api gateway"[/dim]\n'
         "\n"
-        "[bold]Commands your agent will reach for[/bold]\n"
-        "  [cyan]stash history agents[/cyan]           who's been active in this workspace\n"
+        "  You can read a blog post about it here: "
+        "[link=https://henrydowling.com/agent-velocity.html]Agent velocity for coding teams[/link]\n"
+        "\n"
+        "[bold]Commands your agent can now use[/bold]\n"
         '  [cyan]stash history search "<query>"[/cyan]   full-text search across transcripts\n'
         "  [cyan]stash history query --agent <name>[/cyan]   pull a specific agent's events\n"
         "\n"
-        "Run [bold]stash --help[/bold] to see everything."
+        "Run [bold]stash --help[/bold] to see everything.\n"
+        "\n"
+        "[bold]Q&A[/bold]\n"
+        "  [bold]Q[/bold] Do you inject anything into my coding agent's context automatically?\n"
+        "  [bold]A[/bold] No.\n"
+        "\n"
+        "  [bold]Q[/bold] What gets pushed to the shared store?\n"
+        "  [bold]A[/bold] Event streams from your session — your prompts, each assistant\n"
+        "     reply, summarized tool activity, and a short session summary. Long fields\n"
+        "     are truncated; it is not a full byte-for-byte transcript.\n"
+        "\n"
+        "  [bold]Q[/bold] How do I see my transcripts?\n"
+        "  [bold]A[/bold] With the CLI: [cyan]stash history query[/cyan] and\n"
+        "     [cyan]stash history search[/cyan] (use your default workspace or [cyan]--ws[/cyan]).\n"
+        "     You can also open the Memory / History views in the Stash web app.\n"
+        "\n"
+        "  [bold]Q[/bold] How do I share my workspace with my team?\n"
+        "  [bold]A[/bold] Share the invite code ([cyan]stash workspaces info <id>[/cyan] prints it).\n"
+        "     Teammates run [cyan]stash connect[/cyan] if needed, then\n"
+        "     [cyan]stash workspaces join <invite_code>[/cyan].\n"
     )
     console.print(
         Panel(
