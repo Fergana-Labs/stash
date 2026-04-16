@@ -16,15 +16,26 @@ from __future__ import annotations
 from pathlib import Path
 
 from event import HookEvent
+from scope import cwd_in_scope
 from stash_client import StashClient
-from state import read_stats, record_tool_use
+from state import get_scope_config, read_stats, record_tool_use
 from summarize import summarize_tool_use
+
+
+def _short_circuit(cfg: dict, event: HookEvent | None) -> bool:
+    if not cfg.get("workspace_id"):
+        return True
+    cwd = getattr(event, "cwd", None) if event is not None else None
+    return not cwd_in_scope(cwd, get_scope_config())
 
 
 # --- Prompt streaming ---
 
-def stream_user_message(client: StashClient, cfg: dict, state: dict, prompt_text: str) -> None:
-    if not cfg.get("workspace_id"):
+def stream_user_message(
+    client: StashClient, cfg: dict, state: dict, prompt_text: str,
+    event: HookEvent | None = None,
+) -> None:
+    if _short_circuit(cfg, event):
         return
     if not prompt_text or not prompt_text.strip():
         return
@@ -47,7 +58,7 @@ def stream_tool_use(
     client: StashClient, cfg: dict, state: dict, event: HookEvent,
     data_dir: Path | None = None,
 ) -> None:
-    if not cfg.get("workspace_id"):
+    if _short_circuit(cfg, event):
         return
     if not event.tool_name:
         return
@@ -83,7 +94,7 @@ def stream_assistant_message(
     """Push the final assistant text for a turn. Call from per-turn Stop /
     afterAgentResponse / AfterAgent hooks. Never emits session_end — the
     session is still live."""
-    if not cfg.get("workspace_id"):
+    if _short_circuit(cfg, event):
         return
     if not event.last_assistant_message:
         return
@@ -105,10 +116,13 @@ def stream_assistant_message(
 def stream_session_end(
     client: StashClient, cfg: dict, state: dict, event: HookEvent,
 ) -> None:
-    """Push the final session_end summary. Call ONCE per conversation from
-    SessionEnd / session.deleted hooks. Stats come from the running counter
-    maintained by stream_tool_use — no transcript reads, no timeout risk."""
-    if not cfg.get("workspace_id"):
+    """Push the session_end summary AND upload the full transcript (.jsonl)
+    if the agent exposed one. Call ONCE per conversation from SessionEnd /
+    session.deleted hooks. The upload uses a 60s per-request timeout (the
+    default StashClient timeout is 2s, fine for small events but way too
+    short for a 50MB transcript).
+    """
+    if _short_circuit(cfg, event):
         return
 
     stats = read_stats(state)
@@ -136,6 +150,24 @@ def stream_session_end(
                 "tools_used": tools_used,
             },
             client=cfg.get("client") or None,
+        )
+    except Exception:
+        pass
+
+    tp = getattr(event, "transcript_path", "") or ""
+    sid = state.get("session_id", "") or ""
+    if not tp or not sid.strip():
+        return
+    path = Path(tp)
+    if not path.is_file():
+        return
+    try:
+        client.upload_transcript(
+            workspace_id=cfg["workspace_id"],
+            session_id=sid,
+            transcript_path=path,
+            agent_name=cfg["agent_name"],
+            cwd=event.cwd,
         )
     except Exception:
         pass

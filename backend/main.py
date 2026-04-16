@@ -18,6 +18,7 @@ from .routers import (
     notebooks,
     skill,
     tables,
+    transcripts,
     users,
     workspaces,
 )
@@ -66,6 +67,7 @@ app.include_router(tables.ws_router)
 app.include_router(tables.personal_router)
 app.include_router(files.ws_router)
 app.include_router(files.personal_router)
+app.include_router(transcripts.router)
 app.include_router(aggregate.router)
 app.include_router(skill.router)
 

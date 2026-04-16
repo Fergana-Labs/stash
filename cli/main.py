@@ -585,6 +585,31 @@ def hist_search(
             )
 
 
+@hist_app.command("transcript")
+def hist_transcript(
+    session_id: str = typer.Argument(...),
+    workspace_id: str = typer.Option(None, "--ws"),
+    save: str = typer.Option(None, "--save"),
+):
+    """Fetch a full session transcript (.jsonl) and print or save it."""
+    import httpx
+
+    ws = workspace_id or _default_workspace()
+    cfg = load_config()
+    url = f"{cfg['base_url'].rstrip('/')}/api/v1/workspaces/{ws}/transcripts/{session_id}"
+    headers = {"Authorization": f"Bearer {cfg.get('api_key', '')}"}
+    meta = httpx.get(url, headers=headers, timeout=30).json()
+    if "download_url" not in meta:
+        console.print(f"[red]{meta.get('detail', 'not found')}[/red]")
+        raise typer.Exit(1)
+    body = httpx.get(meta["download_url"], timeout=60).text
+    if save:
+        Path(save).write_text(body)
+        console.print(f"[green]Saved {len(body):,} chars to {save}[/green]")
+        return
+    sys.stdout.write(body)
+
+
 # ===========================================================================
 # Tables
 # ===========================================================================
@@ -1424,20 +1449,61 @@ Run `stash --help` to see everything.
 **A:** No.
 
 **Q:** What gets pushed to the shared store?
-**A:** Event streams from your session — your prompts, each assistant reply, summarized tool activity, and a short session summary. Long fields are truncated; it is not a full byte-for-byte transcript.
+**A:** For sessions in this repo (and its worktrees): prompts, assistant replies, summarized tool activity, and the full session transcript (.jsonl) at session end. Other repos push nothing unless you widen scope. Transcripts are stored verbatim — no secret scrubbing yet.
 
-**Q:** How do I see my transcripts?
-**A:** With the CLI: `stash history query` and `stash history search` (use your default workspace or `--ws`). You can also open the Memory / History views in the Stash web app.
+**Q:** How do I change scope or see a transcript?
+**A:** `stash config scope <repo|workspace|all>` (default: `repo`). `stash history transcript <session_id>` fetches a full transcript.
 
 **Q:** How do I share my workspace with my team?
 **A:** Share the invite code (`stash workspaces info <id>` prints it). Teammates run `stash connect` if needed, then `stash workspaces join <invite_code>`.
 """
 
 
+def _capture_install_repo() -> None:
+    """At connect time, remember the git common-dir of this repo so the
+    plugins can scope uploads to it (and its worktrees). If cwd isn't in a
+    git repo, prompt the user to pick scope=all or skip uploads entirely."""
+    import subprocess as _sp
+
+    common = ""
+    for args in (
+        ["git", "-C", str(Path.cwd()), "rev-parse", "--path-format=absolute", "--git-common-dir"],
+        ["git", "-C", str(Path.cwd()), "rev-parse", "--git-common-dir"],
+    ):
+        try:
+            out = _sp.run(args, capture_output=True, text=True, timeout=2)
+        except Exception:
+            continue
+        if out.returncode == 0 and out.stdout.strip():
+            common = out.stdout.strip()
+            if not Path(common).is_absolute():
+                common = str(Path.cwd() / common)
+            break
+
+    central = _read_central_config()
+    if common:
+        updates = {"install_repo_common_dir": common}
+        if "scope" not in central:
+            updates["scope"] = "repo"
+        _write_central_config(updates)
+        return
+    if central.get("install_repo_common_dir"):
+        return
+    console.print(
+        "\n[yellow]Not inside a git repo.[/yellow] Uploads are scoped to the install "
+        "repo by default; with none captured, nothing will upload."
+    )
+    if typer.confirm("Upload from everywhere? (scope=all)", default=False):
+        _write_central_config({"scope": "all"})
+    else:
+        _write_central_config({"scope": "repo"})
+
+
 def _show_setup_complete_splash(
     workspace_name: str = "", joined_via_invite: bool = False
 ) -> None:
     """Clear the onboarding transcript and show a clean success splash."""
+    _capture_install_repo()
     console.clear()
     console.print(f"[bold cyan]{STASH_LOGO}[/bold cyan]")
     if joined_via_invite and workspace_name:
@@ -1472,14 +1538,15 @@ def _show_setup_complete_splash(
         "  [bold]A[/bold] No.\n"
         "\n"
         "  [bold]Q[/bold] What gets pushed to the shared store?\n"
-        "  [bold]A[/bold] Event streams from your session — your prompts, each assistant\n"
-        "     reply, summarized tool activity, and a short session summary. Long fields\n"
-        "     are truncated; it is not a full byte-for-byte transcript.\n"
+        "  [bold]A[/bold] For sessions in this repo (and its worktrees): prompts, assistant\n"
+        "     replies, summarized tool activity, and the full session transcript (.jsonl)\n"
+        "     at session end. Other repos push nothing unless you widen scope.\n"
+        "     [yellow]Transcripts are stored verbatim[/yellow] — no secret scrubbing yet.\n"
         "\n"
-        "  [bold]Q[/bold] How do I see my transcripts?\n"
-        "  [bold]A[/bold] With the CLI: [cyan]stash history query[/cyan] and\n"
-        "     [cyan]stash history search[/cyan] (use your default workspace or [cyan]--ws[/cyan]).\n"
-        "     You can also open the Memory / History views in the Stash web app.\n"
+        "  [bold]Q[/bold] How do I change scope or see a transcript?\n"
+        "  [bold]A[/bold] [cyan]stash config scope <repo|workspace|all>[/cyan]  (default: repo)\n"
+        "     [cyan]stash history transcript <session_id>[/cyan]  view a full transcript\n"
+        "     [cyan]stash history search \"<query>\"[/cyan]         search event content\n"
         "\n"
         "  [bold]Q[/bold] How do I share my workspace with my team?\n"
         "  [bold]A[/bold] Share the invite code ([cyan]stash workspaces info <id>[/cyan] prints it).\n"
@@ -1633,7 +1700,14 @@ def config_cmd(
     from .config import USER_CONFIG_FILE, find_project_config
 
     if key and value:
-        scope = "project" if project else "user"
+        if key == "scope":
+            if value not in {"repo", "workspace", "all"}:
+                console.print("[red]Invalid scope. Must be: repo | workspace | all[/red]")
+                raise typer.Exit(1)
+            _write_central_config({"scope": value})
+            console.print(f"[green]scope = {value}[/green]")
+            return
+        write_scope = "project" if project else "user"
         allowed = {
             "base_url",
             "default_workspace",
@@ -1643,9 +1717,8 @@ def config_cmd(
         if key not in allowed and key not in {"api_key", "username"}:
             console.print(f"[red]Unknown config key: {key}[/red]")
             raise typer.Exit(1)
-        save_config(**{key: value, "scope": scope})
-        target = "project" if project else "user"
-        console.print(f"[green]{key} = {value}[/green]  [dim](scope: {target})[/dim]")
+        save_config(**{key: value, "scope": write_scope})
+        console.print(f"[green]{key} = {value}[/green]  [dim](scope: {write_scope})[/dim]")
         return
 
     cfg = load_config()
