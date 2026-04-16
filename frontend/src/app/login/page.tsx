@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import Header from "../../components/Header";
 import { useAuth } from "../../hooks/useAuth";
 import { setToken, listMyWorkspaces } from "../../lib/api";
@@ -10,14 +10,36 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3456";
 
 export default function LoginPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const cliSession = searchParams.get("cli");
   const { user, logout, refresh } = useAuth();
   const [name, setName] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [cliApproved, setCliApproved] = useState(false);
+  const [isRegister, setIsRegister] = useState(false);
 
+  // If already logged in and this is a CLI auth request, approve immediately
   useEffect(() => {
-    if (!user) return;
+    if (!user || !cliSession || cliApproved) return;
+    const token = localStorage.getItem("octopus_token");
+    if (!token) return;
+
+    fetch(`${API_URL}/api/v1/users/cli-auth/sessions/${cliSession}/approve`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ api_key: token, username: user.name }),
+    })
+      .then((res) => {
+        if (res.ok) setCliApproved(true);
+      })
+      .catch(() => {});
+  }, [user, cliSession, cliApproved]);
+
+  // Normal redirect for non-CLI logins
+  useEffect(() => {
+    if (!user || cliSession) return;
 
     listMyWorkspaces().then(({ workspaces }) => {
       if (workspaces.length === 1) {
@@ -28,31 +50,61 @@ export default function LoginPage() {
     }).catch(() => {
       router.push("/");
     });
-  }, [user, router]);
+  }, [user, cliSession, router]);
 
-  if (user) {
+  if (cliApproved) {
+    return (
+      <div className="min-h-screen flex flex-col">
+        <Header user={user} onLogout={logout} />
+        <main className="flex-1 flex items-center justify-center px-4 py-12">
+          <div className="w-full max-w-sm text-center space-y-3">
+            <div className="text-3xl">&#10003;</div>
+            <h2 className="text-base font-semibold text-foreground">CLI authenticated</h2>
+            <p className="text-sm text-muted">You can close this tab and return to your terminal.</p>
+          </div>
+        </main>
+      </div>
+    );
+  }
+
+  if (user && !cliSession) {
     return null;
   }
 
-  async function handlePasswordLogin(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError("");
     setSubmitting(true);
     try {
-      const res = await fetch(`${API_URL}/api/v1/users/login`, {
+      const endpoint = isRegister ? "/api/v1/users/register" : "/api/v1/users/login";
+      const body = isRegister
+        ? { name, display_name: name, description: "", password }
+        : { name, password };
+      const res = await fetch(`${API_URL}${endpoint}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, password }),
+        body: JSON.stringify(body),
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        throw new Error(data.detail || "Login failed");
+        throw new Error(data.detail || (isRegister ? "Registration failed" : "Login failed"));
       }
       const data = await res.json();
       setToken(data.api_key);
+
+      // If this is a CLI auth flow, approve the session
+      if (cliSession) {
+        await fetch(`${API_URL}/api/v1/users/cli-auth/sessions/${cliSession}/approve`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ api_key: data.api_key, username: data.name }),
+        });
+        setCliApproved(true);
+      }
+
       refresh();
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Login failed");
+      setError(err instanceof Error ? err.message : "Something went wrong");
     } finally {
       setSubmitting(false);
     }
@@ -64,8 +116,12 @@ export default function LoginPage() {
       <main className="flex-1 flex items-center justify-center px-4 py-12">
         <div className="w-full max-w-sm space-y-4">
           <div className="rounded-2xl border border-border bg-surface p-6">
-            <h2 className="text-base font-semibold text-foreground mb-4">Sign in</h2>
-            <form onSubmit={handlePasswordLogin} className="space-y-3">
+            <h2 className="text-base font-semibold text-foreground mb-4">
+              {cliSession
+                ? isRegister ? "Create an account to authorize the CLI" : "Sign in to authorize the CLI"
+                : isRegister ? "Create an account" : "Sign in"}
+            </h2>
+            <form onSubmit={handleSubmit} className="space-y-3">
               <input
                 type="text"
                 placeholder="Username"
@@ -88,9 +144,19 @@ export default function LoginPage() {
                 disabled={submitting}
                 className="w-full bg-surface-hover hover:bg-border text-foreground py-2.5 rounded-xl text-sm font-medium transition-colors disabled:opacity-50"
               >
-                {submitting ? "Signing in..." : "Sign in"}
+                {submitting ? (isRegister ? "Creating account..." : "Signing in...") : (isRegister ? "Create account" : "Sign in")}
               </button>
             </form>
+            <p className="mt-3 text-center text-xs text-muted">
+              {isRegister ? "Already have an account?" : "Don\u2019t have an account?"}{" "}
+              <button
+                type="button"
+                onClick={() => { setIsRegister(!isRegister); setError(""); }}
+                className="text-brand hover:underline"
+              >
+                {isRegister ? "Sign in" : "Create one"}
+              </button>
+            </p>
           </div>
         </div>
       </main>

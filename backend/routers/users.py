@@ -1,3 +1,6 @@
+import secrets
+import time
+
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 
 from ..auth import get_current_user
@@ -13,6 +16,20 @@ from ..models import (
 from ..services import user_service
 
 router = APIRouter(prefix="/api/v1/users", tags=["users"])
+
+# ---------------------------------------------------------------------------
+# CLI auth sessions — in-memory, short-lived (10 min TTL)
+# ---------------------------------------------------------------------------
+
+_CLI_AUTH_TTL = 600  # seconds
+_cli_sessions: dict[str, dict] = {}  # session_id → {created_at, api_key?, username?}
+
+
+def _prune_cli_sessions() -> None:
+    cutoff = time.time() - _CLI_AUTH_TTL
+    expired = [k for k, v in _cli_sessions.items() if v["created_at"] < cutoff]
+    for k in expired:
+        del _cli_sessions[k]
 
 
 @router.post("/register", response_model=UserRegisterResponse, status_code=201)
@@ -85,3 +102,49 @@ async def search_users(
         current_user["id"],
     )
     return [UserSearchResult(**dict(r)) for r in rows]
+
+
+# ---------------------------------------------------------------------------
+# CLI browser-based auth flow
+# ---------------------------------------------------------------------------
+
+@router.post("/cli-auth/sessions")
+@limiter.limit("10/minute")
+async def create_cli_auth_session(request: Request):
+    """Create a CLI auth session. Returns a session_id the CLI uses to poll."""
+    _prune_cli_sessions()
+    session_id = secrets.token_urlsafe(32)
+    _cli_sessions[session_id] = {"created_at": time.time()}
+    return {"session_id": session_id}
+
+
+@router.get("/cli-auth/sessions/{session_id}")
+@limiter.limit("60/minute")
+async def poll_cli_auth_session(request: Request, session_id: str):
+    """Poll for CLI auth result. Returns pending or complete with api_key."""
+    _prune_cli_sessions()
+    session = _cli_sessions.get(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found or expired")
+    if "api_key" in session:
+        del _cli_sessions[session_id]
+        return {"status": "complete", "api_key": session["api_key"], "username": session["username"]}
+    return {"status": "pending"}
+
+
+@router.post("/cli-auth/sessions/{session_id}/approve")
+@limiter.limit("10/minute")
+async def approve_cli_auth_session(request: Request, session_id: str):
+    """Called by the frontend after login to approve the CLI session."""
+    body = await request.json()
+    api_key = body.get("api_key")
+    username = body.get("username")
+    if not api_key or not username:
+        raise HTTPException(status_code=400, detail="api_key and username required")
+    _prune_cli_sessions()
+    session = _cli_sessions.get(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found or expired")
+    session["api_key"] = api_key
+    session["username"] = username
+    return {"status": "approved"}
