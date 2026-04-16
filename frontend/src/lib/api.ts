@@ -320,24 +320,6 @@ export async function deleteHistory(
   await apiFetch(`${scope(workspaceId)}/memory/${storeId}`, { method: "DELETE" });
 }
 
-export async function pushHistoryEvent(
-  workspaceId: string | null,
-  storeId: string,
-  event: {
-    agent_name: string;
-    event_type: string;
-    content: string;
-    session_id?: string;
-    tool_name?: string;
-    metadata?: Record<string, unknown>;
-  }
-): Promise<HistoryEvent> {
-  return apiFetch(`${scope(workspaceId)}/memory/${storeId}/events`, {
-    method: "POST",
-    body: JSON.stringify(event),
-  });
-}
-
 export async function queryHistoryEvents(
   workspaceId: string | null,
   storeId: string,
