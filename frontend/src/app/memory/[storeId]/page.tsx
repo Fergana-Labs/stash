@@ -7,11 +7,9 @@ import { useAuth } from "../../../hooks/useAuth";
 import {
   getHistory,
   listAllHistories,
-  queryPersonalHistoryEvents,
   queryHistoryEvents,
   searchHistoryEvents,
-  searchPersonalHistoryEvents,
-  deletePersonalHistory,
+  deleteHistory,
 } from "../../../lib/api";
 import { HistoryEvent, History, HistoryWithWorkspace } from "../../../lib/types";
 
@@ -157,15 +155,11 @@ export default function HistoryDetailPage() {
     setEventsLoading(true);
     try {
       if (searchQuery.trim()) {
-        const res = workspaceId
-          ? await searchHistoryEvents(workspaceId, storeId, searchQuery.trim())
-          : await searchPersonalHistoryEvents(storeId, searchQuery.trim());
+        const res = await searchHistoryEvents(workspaceId, storeId, searchQuery.trim());
         setEvents(res.events);
         setHasMore(res.has_more);
       } else {
-        const res = workspaceId
-          ? await queryHistoryEvents(workspaceId, storeId, { limit: 200 })
-          : await queryPersonalHistoryEvents(storeId, { limit: 200 });
+        const res = await queryHistoryEvents(workspaceId, storeId, { limit: 200 });
         setEvents(res.events);
         setHasMore(res.has_more);
       }
@@ -235,7 +229,7 @@ export default function HistoryDetailPage() {
               if (!confirm("Delete this history store? All events will be lost."))
                 return;
               try {
-                await deletePersonalHistory(storeId);
+                await deleteHistory(null, storeId);
                 router.push("/memory");
               } catch (err) {
                 setError(
