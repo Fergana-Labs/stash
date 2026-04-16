@@ -9,6 +9,8 @@ from pathlib import Path
 import questionary
 import typer
 
+from rich.panel import Panel
+
 from .client import StashClient, StashError
 from .config import load_config, save_config
 from .formatting import console, output_json, print_members, print_rooms, print_user
@@ -1175,7 +1177,34 @@ def _show_setup_complete_splash() -> None:
     console.clear()
     console.print(f"[bold cyan]{STASH_LOGO}[/bold cyan]")
     console.print("  [bold green]You're all set up.[/bold green]\n")
-    console.print("  Run [bold]stash --help[/bold] to see what's next.\n")
+
+    body = (
+        "[bold]What just happened[/bold]\n"
+        "Your coding agent now has the [bold cyan]stash[/bold cyan] CLI on its PATH.\n"
+        "It can read the transcripts your teammates' coding agents push to this\n"
+        "workspace — so it knows what the rest of your team is working on.\n"
+        "\n"
+        "[bold]Try asking your agent[/bold]\n"
+        '  [dim]"What has my team been working on this week?"[/dim]\n'
+        '  [dim]"Has anyone touched the auth module recently?"[/dim]\n'
+        '  [dim]"Summarize yesterday\'s sessions from my teammates."[/dim]\n'
+        "\n"
+        "[bold]Commands your agent will reach for[/bold]\n"
+        "  [cyan]stash history agents[/cyan]           who's been active in this workspace\n"
+        '  [cyan]stash history search "<query>"[/cyan]   full-text search across transcripts\n'
+        "  [cyan]stash history query --agent <name>[/cyan]   pull a specific agent's events\n"
+        "\n"
+        "Run [bold]stash --help[/bold] to see everything."
+    )
+    console.print(
+        Panel(
+            body,
+            title="[bold]Your team's shared agent memory[/bold]",
+            border_style="cyan",
+            padding=(1, 2),
+        )
+    )
+    console.print()
 
 
 # ===========================================================================
