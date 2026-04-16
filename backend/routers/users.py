@@ -8,13 +8,15 @@ from ..config import settings
 from ..middleware import limiter
 from ..models import (
     LoginRequest,
+    RedeemInviteRequest,
+    RedeemInviteResponse,
     UserProfile,
     UserRegisterRequest,
     UserRegisterResponse,
     UserSearchResult,
     UserUpdateRequest,
 )
-from ..services import user_service
+from ..services import invite_token_service, user_service
 
 router = APIRouter(prefix="/api/v1/users", tags=["users"])
 
@@ -141,6 +143,27 @@ async def poll_cli_auth_session(request: Request, session_id: str):
         del _cli_sessions[session_id]
         return {"status": "complete", "api_key": session["api_key"], "username": session["username"]}
     return {"status": "pending"}
+
+
+@router.post("/cli-auth/redeem-invite", response_model=RedeemInviteResponse)
+@limiter.limit("10/minute")
+async def redeem_invite_unauthenticated(request: Request, req: RedeemInviteRequest):
+    """Redeem a magic-link invite token with no prior auth.
+
+    Creates a brand-new user and joins them to the token's workspace. This is
+    the path used by `stash connect --invite` for people who don't yet have a
+    stash account.
+    """
+    result = await invite_token_service.redeem_as_new_user(
+        raw_token=req.token,
+        display_name=req.display_name,
+    )
+    if not result:
+        raise HTTPException(
+            status_code=404,
+            detail="Invite token is invalid, expired, or exhausted",
+        )
+    return RedeemInviteResponse(**result)
 
 
 @router.post("/cli-auth/sessions/{session_id}/approve")
