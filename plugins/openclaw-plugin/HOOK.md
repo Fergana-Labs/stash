@@ -47,7 +47,7 @@ transcription.
 - Openclaw `>= 0.9` (internal hooks API)
 - Python 3.10+ on PATH (this hook shells out to Python for the Stash API client)
 - `httpx` installed (`pip install httpx`)
-- `stash` CLI logged in (`pip install stash-cli && stash connect`)
+- `stash` CLI logged in (`pip install stashai && stash connect`)
 - `stash config default_workspace <id>` set
 
 ## Install
