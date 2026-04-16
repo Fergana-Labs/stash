@@ -1,4 +1,4 @@
-This is an internal tool. Write extremely easy to consume code, optimize for how easy the code is to read. make the code skimmable.  avoid cleverness. use early returns
+Write extremely easy to consume code. Optimize for readability: skimmable, no cleverness, early returns.
 
 ### Be self-sufficient
 If you are about to ask the user to do something for you, think about whether you can do it yourself.
@@ -12,7 +12,4 @@ If you are about to ask the user to do something for you, think about whether yo
 
 Previous Claude coding sessions are stored as `.jsonl` files in your ~/.claude file. Read these to understand prior decisions, debugging sessions, and context that isn't in git history.
 
-When you create or update a PR, share both the GitHub link and the Assert review link with the user at the end of your session:
-
-- GitHub: `https://github.com/Fergana-Labs/assert/pull/<number>`
-- Assert: `https://app.assert.dev/review/github/Fergana-Labs/assert/<number>`
+When you create or update a PR, share the GitHub link with the user at the end of your session.
