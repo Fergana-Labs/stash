@@ -20,8 +20,8 @@ import json
 import sys
 
 from config import DATA_DIR, get_client, get_config, is_configured
-from hooks import stream_assistant_message
-from state import codex_hooks_recently_active, load_state
+from stashai.plugin.hooks import stream_assistant_message
+from stashai.plugin.state import codex_hooks_recently_active, load_state
 
 from adapt import adapt_notify
 

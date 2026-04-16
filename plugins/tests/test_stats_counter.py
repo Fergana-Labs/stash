@@ -6,16 +6,10 @@ session_end; the new path amortizes counting across per-tool hooks.
 
 from __future__ import annotations
 
-import sys
-from pathlib import Path
-
-SHARED = Path(__file__).resolve().parent.parent / "shared"
-sys.path.insert(0, str(SHARED))
-
-from event import HookEvent  # noqa: E402
-from hooks import stream_session_end, stream_tool_use  # noqa: E402
-from stash_client import StashClient  # noqa: E402
-from state import load_state, record_tool_use, reset_stats  # noqa: E402
+from stashai.plugin.event import HookEvent
+from stashai.plugin.hooks import stream_session_end, stream_tool_use
+from stashai.plugin.stash_client import StashClient
+from stashai.plugin.state import load_state, record_tool_use, reset_stats
 
 
 class _FakeClient(StashClient):

@@ -4,7 +4,8 @@
  * Registered against Openclaw's `command` and `message` internal events.
  * Branches on event.type + event.action and pipes a flat JSON payload into
  * the matching Python hook script. All Stash API work happens in
- * plugins/shared/ (Python), reused from every other agent's plugin.
+ * the `stashai.plugin` package (shipped via pip install stashai), reused
+ * from every other agent's plugin.
  *
  * Upstream types: openclaw/openclaw src/hooks/internal-hook-types.ts
  * Event catalog:  openclaw/openclaw src/hooks/internal-hooks.ts

@@ -6,16 +6,12 @@ behavior if a user opts out)."""
 from __future__ import annotations
 
 import subprocess
-import sys
 from pathlib import Path
 
 import pytest
 
-SHARED = Path(__file__).resolve().parent.parent / "shared"
-sys.path.insert(0, str(SHARED))
-
-import scope as scope_mod  # noqa: E402
-from event import HookEvent  # noqa: E402
+from stashai.plugin import scope as scope_mod
+from stashai.plugin.event import HookEvent
 
 
 def _init_repo(path: Path) -> None:
@@ -74,8 +70,8 @@ class _RecordingClient:
 
 
 def test_scope_repo_blocks_live_events_out_of_scope(monkeypatch):
-    from hooks import stream_user_message
-    import hooks, scope as s
+    from stashai.plugin import hooks, scope as s
+    from stashai.plugin.hooks import stream_user_message
     monkeypatch.setattr(s, "cwd_in_scope", lambda cwd, cfg: False)
     monkeypatch.setattr(hooks, "cwd_in_scope", lambda cwd, cfg: False)
 
@@ -86,7 +82,7 @@ def test_scope_repo_blocks_live_events_out_of_scope(monkeypatch):
 
 
 def test_scope_all_preserves_old_behavior(monkeypatch):
-    from hooks import stream_user_message
+    from stashai.plugin.hooks import stream_user_message
     c = _RecordingClient()
     # Autouse fixture in conftest already patches cwd_in_scope → True.
     stream_user_message(c, {"workspace_id": "ws1", "agent_name": "a"}, {"session_id": "s"},

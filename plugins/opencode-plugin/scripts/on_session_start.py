@@ -9,12 +9,12 @@ the new one.
 """
 
 from config import DATA_DIR, get_client, get_config, get_stdin_data, is_configured
-from event import HookEvent
-from hooks import stream_session_end
-from state import load_state, reset_stats, save_state
+from stashai.plugin.event import HookEvent
+from stashai.plugin.hooks import stream_session_end
+from stashai.plugin.state import load_state, reset_stats, save_state
 
 from adapt import adapt_session_start
-from curate_spawn import spawn_curation
+from stashai.plugin.curate_spawn import spawn_curation
 
 
 def _flush_stale_session(prior_sid: str, state: dict) -> None:

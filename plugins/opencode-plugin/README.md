@@ -26,7 +26,7 @@ Restart opencode.
 
 ## How it works
 
-`plugin.ts` registers two keyed hooks (`chat.message`, `tool.execute.after`) plus a single `event` dispatcher for bus events. All real logic lives in `plugins/shared/` and is identical to the Claude/Cursor/Gemini/Codex plugins.
+`plugin.ts` registers two keyed hooks (`chat.message`, `tool.execute.after`) plus a single `event` dispatcher for bus events. All real logic lives in the `stashai.plugin` Python package (shipped via `pip install stashai`) and is identical to the Claude/Cursor/Gemini/Codex plugins.
 
 | opencode signal | Stash event |
 |---|---|

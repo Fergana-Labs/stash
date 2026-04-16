@@ -8,11 +8,11 @@ flag plus the shared 30-min cooldown.
 """
 
 from config import DATA_DIR, get_client, get_config, get_stdin_data, is_configured
-from hooks import stream_session_end
-from state import load_state, save_state
+from stashai.plugin.hooks import stream_session_end
+from stashai.plugin.state import load_state, save_state
 
 from adapt import adapt_session_end
-from curate_spawn import spawn_curation
+from stashai.plugin.curate_spawn import spawn_curation
 
 
 def main():
