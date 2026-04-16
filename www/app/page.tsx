@@ -14,11 +14,35 @@ export default function Page() {
   );
 }
 
+function Logo({ size = 28 }: { size?: number }) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 64 72"
+      width={size}
+      height={(size * 72) / 64}
+      aria-hidden="true"
+    >
+      <ellipse cx="32" cy="24" rx="22" ry="18" fill="#F97316" />
+      <circle cx="25" cy="22" r="4" fill="#fff" />
+      <circle cx="39" cy="22" r="4" fill="#fff" />
+      <circle cx="26" cy="22" r="2" fill="#0F172A" />
+      <circle cx="40" cy="22" r="2" fill="#0F172A" />
+      <path d="M12 38 Q8 52 4 60" stroke="#F97316" strokeWidth="4" strokeLinecap="round" fill="none" />
+      <path d="M20 40 Q18 54 14 62" stroke="#F97316" strokeWidth="4" strokeLinecap="round" fill="none" />
+      <path d="M32 42 Q32 56 32 64" stroke="#F97316" strokeWidth="4" strokeLinecap="round" fill="none" />
+      <path d="M44 40 Q46 54 50 62" stroke="#F97316" strokeWidth="4" strokeLinecap="round" fill="none" />
+      <path d="M52 38 Q56 52 60 60" stroke="#F97316" strokeWidth="4" strokeLinecap="round" fill="none" />
+    </svg>
+  );
+}
+
 function Nav() {
   return (
     <header className="border-b border-border-subtle">
       <div className="mx-auto flex h-16 max-w-[1120px] items-center justify-between px-6">
-        <Link href="/" className="font-display text-[22px] font-bold tracking-tight text-ink">
+        <Link href="/" className="flex items-center gap-2 font-display text-[22px] font-bold tracking-tight text-brand">
+          <Logo size={28} />
           stash
         </Link>
         <nav className="flex items-center gap-8 text-[14px] text-dim">
@@ -278,7 +302,10 @@ function Footer() {
     <footer>
       <div className="mx-auto flex max-w-[1120px] flex-col gap-8 px-6 py-16 md:flex-row md:items-end md:justify-between">
         <div>
-          <p className="font-display text-[28px] font-bold tracking-tight text-ink">stash</p>
+          <p className="flex items-center gap-2 font-display text-[28px] font-bold tracking-tight text-brand">
+            <Logo size={34} />
+            stash
+          </p>
           <p className="mt-2 max-w-[360px] text-[14px] leading-[1.6] text-dim">
             Shared memory for teams of AI coding agents. Open source, MIT
             licensed, self-hostable.
