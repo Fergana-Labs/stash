@@ -1,0 +1,12 @@
+agent:
+  model: claude-sonnet-4-6
+  max_turns: 80
+  permission_mode: acceptEdits
+
+judge:
+  model: claude-opus-4-7
+  temperature: 0
+  votes: 3
+
+extractor:
+  model: claude-haiku-4-5-20251001

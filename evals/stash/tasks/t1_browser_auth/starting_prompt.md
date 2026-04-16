@@ -1,0 +1,1 @@
+Update the `stash login` CLI command (in `cli/main.py`) so that instead of asking for a username and password on the terminal, it opens our login page in the browser. The login page is hosted at https://stash.ac/login and should pick up where the CLI left off.
