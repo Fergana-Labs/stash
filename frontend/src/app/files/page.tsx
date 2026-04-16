@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+
+export const dynamic = "force-dynamic";
 import AppShell from "../../components/AppShell";
 import { useAuth } from "../../hooks/useAuth";
 import { listFiles, deleteFile, uploadFile } from "../../lib/api";
