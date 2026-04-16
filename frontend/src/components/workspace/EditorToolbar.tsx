@@ -3,7 +3,7 @@
 import { useRef, useState } from "react";
 import { Editor } from "@tiptap/react";
 import { BubbleMenu } from "@tiptap/react/menus";
-import { uploadFile, uploadPersonalFile } from "../../lib/api";
+import { uploadFile } from "../../lib/api";
 
 interface EditorToolbarProps {
   editor: Editor | null;
@@ -52,9 +52,7 @@ export default function EditorToolbar({ editor, workspaceId }: EditorToolbarProp
     if (!file || !editor) return;
     setUploading(true);
     try {
-      const result = workspaceId
-        ? await uploadFile(workspaceId, file)
-        : await uploadPersonalFile(file);
+      const result = await uploadFile(workspaceId ?? null, file);
       if (result.content_type.startsWith("image/")) {
         editor.chain().focus().setImage({ src: result.url, alt: result.name }).run();
       } else {
