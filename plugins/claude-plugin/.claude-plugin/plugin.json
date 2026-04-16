@@ -5,7 +5,7 @@
   "author": {
     "name": "Fergana Labs"
   },
-  "homepage": "https://github.com/samzliu/octopus",
+  "homepage": "https://github.com/Fergana-Labs/stash",
   "userConfig": {
     "api_endpoint": {
       "title": "API Endpoint",
@@ -39,6 +39,5 @@
       "default": "true",
       "sensitive": false
     }
-  },
-  "hooks": "./hooks/hooks.json"
+  }
 }
