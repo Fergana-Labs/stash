@@ -1,6 +1,6 @@
 # Use Cases
 
-Real-world scenarios for Octopus, from solo developer to multi-agent team.
+Real-world scenarios for Stash, from solo developer to multi-agent team.
 
 ---
 
@@ -11,12 +11,12 @@ Real-world scenarios for Octopus, from solo developer to multi-agent team.
 **Setup:**
 1. Create a workspace ("Acme Engineering")
 2. Each developer installs the Claude Code plugin with their own agent name
-3. Run `octopus curate` to organize history into wiki pages
+3. Run `stash curate` to organize history into wiki pages
 
 **What happens:**
-- Every Claude Code session auto-streams to Octopus: tool calls, file edits, web searches, session summaries
+- Every Claude Code session auto-streams to Stash: tool calls, file edits, web searches, session summaries
 - Run the `curate` tool to organize events into wiki pages: "Authentication Patterns", "Database Migration Guide", "API Rate Limiting" — with [[backlinks]] and categories
-- A developer asks Claude: *"Check Octopus — what did we learn about connection pooling last week?"* — gets an AI-synthesized answer with source events
+- A developer asks Claude: *"Check Stash — what did we learn about connection pooling last week?"* — gets an AI-synthesized answer with source events
 
 **Value:** Institutional memory that builds itself. No manual documentation. When someone new joins, the wiki is already there.
 
@@ -31,10 +31,10 @@ Real-world scenarios for Octopus, from solo developer to multi-agent team.
 2. Connect via the CLI or REST API
 
 **What happens:**
-- The researcher prompts: *"Search the web for the latest papers on RAG architectures and save summaries to Octopus"*
+- The researcher prompts: *"Search the web for the latest papers on RAG architectures and save summaries to Stash"*
 - Each agent session pushes structured events: paper titles, key findings, URLs, methodology notes
 - The `curate` tool organizes these into a categorized wiki: "Retrieval Methods", "Chunking Strategies", "Evaluation Benchmarks"
-- Later: *"What do we know about hybrid search approaches?"* — Octopus's LLM search synthesizes across all stored events
+- Later: *"What do we know about hybrid search approaches?"* — Stash's LLM search synthesizes across all stored events
 
 **Value:** Turn a week of scattered research into a structured, searchable knowledge base without manually organizing anything.
 
@@ -68,7 +68,7 @@ Real-world scenarios for Octopus, from solo developer to multi-agent team.
 3. Share pages with clients via token-based links (optional passcode, email gate)
 
 **What happens:**
-- An agent generates a weekly status report as an HTML page: *"Create a Octopus page summarizing this week's progress on the auth migration"*
+- An agent generates a weekly status report as an HTML page: *"Create a Stash page summarizing this week's progress on the auth migration"*
 - The consultant creates a share link with `require_email: true` and sends it to the client
 - Viewer analytics show who accessed it, when, and for how long
 - All project knowledge stays in the workspace wiki for the team
@@ -86,7 +86,7 @@ Real-world scenarios for Octopus, from solo developer to multi-agent team.
 2. Import existing data via CSV
 
 **What happens:**
-- Agents add rows: *"Add a new experiment to the Octopus table: model=llama-3, metric=0.87, notes='better on long context'"*
+- Agents add rows: *"Add a new experiment to the Stash table: model=llama-3, metric=0.87, notes='better on long context'"*
 - The table supports views (filtered/sorted subsets), column summaries, and semantic search over row content
 - Export back to CSV anytime
 
@@ -110,13 +110,13 @@ docker compose up -d
 - Embeddings and curation work with self-hosted models (set `OPENAI_BASE_URL` and `ANTHROPIC_BASE_URL` to local endpoints)
 - No telemetry, no external calls unless you configure API keys
 
-**Value:** Full Octopus functionality behind your firewall, with MIT license and no vendor lock-in.
+**Value:** Full Stash functionality behind your firewall, with MIT license and no vendor lock-in.
 
 ---
 
-## Summary: What Octopus replaces
+## Summary: What Stash replaces
 
-| Before Octopus | With Octopus |
+| Before Stash | With Stash |
 |---------------|-------------|
 | Agent sessions are ephemeral — knowledge disappears | Every session persists in searchable history stores |
 | Manual documentation in Notion/Confluence | Curation tool generates a categorized wiki |

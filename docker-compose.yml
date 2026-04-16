@@ -7,13 +7,13 @@ services:
     ports:
       - "5432:5432"
     environment:
-      POSTGRES_USER: octopus
-      POSTGRES_PASSWORD: octopus
-      POSTGRES_DB: octopus
+      POSTGRES_USER: stash
+      POSTGRES_PASSWORD: stash
+      POSTGRES_DB: stash
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U octopus"]
+      test: ["CMD-SHELL", "pg_isready -U stash"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -29,7 +29,7 @@ services:
       postgres:
         condition: service_healthy
     environment:
-      DATABASE_URL: postgresql://octopus:octopus@postgres:5432/octopus
+      DATABASE_URL: postgresql://stash:stash@postgres:5432/stash
       PUBLIC_URL: http://localhost:3457
       CORS_ORIGINS: "http://localhost:3457,http://localhost:3456"
 

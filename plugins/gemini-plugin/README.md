@@ -1,18 +1,18 @@
-# Octopus Plugin for Gemini CLI
+# Stash Plugin for Gemini CLI
 
-Streams Gemini CLI sessions to an Octopus workspace.
+Streams Gemini CLI sessions to an Stash workspace.
 
 ## Prerequisites
 
-- `octopus` CLI installed and logged in
-- `octopus config default_workspace <id>` set
+- `stash` CLI installed and logged in
+- `stash config default_workspace <id>` set
 - Python 3.10+ and `httpx` (`pip install httpx`)
 - Gemini CLI ≥ the version that shipped `hooks` in `settings.json`
 
 ## Install
 
 ```bash
-cd path/to/octopus/plugins/gemini-plugin
+cd path/to/stash/plugins/gemini-plugin
 export PLUGIN_ROOT=$(pwd)
 
 # Merge the snippet into your settings.json.
@@ -28,7 +28,7 @@ Reload with `/hooks reload` inside Gemini CLI, or restart the session.
 
 ## What streams
 
-| Gemini event | Octopus event |
+| Gemini event | Stash event |
 |---|---|
 | `SessionStart` | — (warms cache) |
 | `BeforeAgent` | `user_message` |
@@ -38,16 +38,16 @@ Reload with `/hooks reload` inside Gemini CLI, or restart the session.
 
 ## Commands
 
-Everything is a plain `octopus` CLI subcommand — no Gemini-specific slash commands:
+Everything is a plain `stash` CLI subcommand — no Gemini-specific slash commands:
 
 | Command | Description |
 |---------|-------------|
-| `octopus connect` | Interactive setup (auth + workspace + store) |
-| `octopus status` | Central config, streaming state, last curate |
-| `octopus disconnect` | Pause event streaming across every installed plugin |
+| `stash connect` | Interactive setup (auth + workspace + store) |
+| `stash status` | Central config, streaming state, last curate |
+| `stash disconnect` | Pause event streaming across every installed plugin |
 
 At SessionEnd the plugin spawns `gemini -p …` headless with a shared curation
-prompt. Toggle with `auto_curate` in `~/.octopus/config.json`.
+prompt. Toggle with `auto_curate` in `~/.stash/config.json`.
 
 ## Known gaps
 
@@ -56,11 +56,11 @@ prompt. Toggle with `auto_curate` in `~/.octopus/config.json`.
 ## Retrieval
 
 Gemini CLI has shell access. For reads mid-conversation, let the agent
-shell out to the `octopus` CLI — all commands support `--json`:
+shell out to the `stash` CLI — all commands support `--json`:
 
 ```
-octopus history query --ws <id> --limit 20 --json
-octopus history search "<query>" --ws <id> --json
-octopus whoami --json
-octopus workspace list --mine --json
+stash history query --ws <id> --limit 20 --json
+stash history search "<query>" --ws <id> --json
+stash whoami --json
+stash workspace list --mine --json
 ```

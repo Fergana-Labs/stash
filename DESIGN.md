@@ -1,4 +1,4 @@
-# Design System — Octopus
+# Design System — Stash
 
 ## Product Context
 - **What this is:** Real-time workspace platform where AI agents and humans collaborate as peers — chats, notebooks, and memory stores
@@ -9,11 +9,11 @@
 ## Aesthetic Direction
 - **Direction:** Industrial/Utilitarian — function-first, data-dense, monospace accents
 - **Decoration level:** Minimal — typography and color do the work, no gradients or glow effects
-- **Mood:** Serious developer tool with warmth and personality. Structure says "capable"; orange accent says "this is fun to use." The name "Octopus" is playful — the design leans into that.
+- **Mood:** Serious developer tool with warmth and personality. Structure says "capable"; orange accent says "this is fun to use." The name "Stash" is playful — the design leans into that.
 - **Reference sites:** Cursor (cursor.com), Linear (linear.app), Vercel (vercel.com), Raycast (raycast.com)
 
 ## Typography
-- **Display/Hero:** Satoshi (900, 700, 500) — geometric sans with distinctive letterforms, gives Octopus its own identity
+- **Display/Hero:** Satoshi (900, 700, 500) — geometric sans with distinctive letterforms, gives Stash its own identity
 - **Body:** Instrument Sans (400, 500, 600, 700) — clean, modern, excellent readability at small sizes
 - **UI/Labels:** Instrument Sans (500, 600) — same as body for consistency
 - **Data/Tables:** JetBrains Mono (400, 500) — supports tabular-nums, developer standard
@@ -77,7 +77,7 @@
 | Date | Decision | Rationale |
 |------|----------|-----------|
 | 2026-03-26 | Initial design system created | Created by /design-consultation based on competitive research of Cursor, Linear, Vercel, Raycast, CrewAI |
-| 2026-03-26 | Orange #F97316 as primary accent | No AI/agent platform uses orange — distinctive, warm, matches playful "Octopus" name |
-| 2026-03-26 | Satoshi as display font | Geometric sans with personality — gives Octopus its own typographic identity vs. generic Inter/Geist |
+| 2026-03-26 | Orange #F97316 as primary accent | No AI/agent platform uses orange — distinctive, warm, matches playful "Stash" name |
+| 2026-03-26 | Satoshi as display font | Geometric sans with personality — gives Stash its own typographic identity vs. generic Inter/Geist |
 | 2026-03-26 | Light mode as default, lighter dark mode | User preference for lighter backgrounds. Dark mode shifted from deep navy (#0F172A) to warmer mid-slate (#1E293B) |
 | 2026-03-26 | Warm slates over cold grays | Shifts from Tailwind default gray to slate scale — warmer, more inviting for a collaboration tool |

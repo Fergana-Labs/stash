@@ -1,19 +1,19 @@
-# Octopus Plugin for Codex CLI
+# Stash Plugin for Codex CLI
 
-Streams Codex CLI sessions to Octopus. Uses Codex's experimental `hooks`
+Streams Codex CLI sessions to Stash. Uses Codex's experimental `hooks`
 system with a stable `notify` fallback for older builds.
 
 ## Prerequisites
 
-- `octopus` CLI installed and logged in
-- `octopus config default_workspace <id>` set
+- `stash` CLI installed and logged in
+- `stash config default_workspace <id>` set
 - Python 3.10+ and `httpx`
 - Codex CLI with `features.codex_hooks = true` enabled for hook-based streaming
 
 ## Install
 
 ```bash
-cd path/to/octopus/plugins/codex-plugin
+cd path/to/stash/plugins/codex-plugin
 export PLUGIN_ROOT=$(pwd)
 mkdir -p ~/.codex
 
@@ -26,16 +26,16 @@ envsubst < config.toml.snippet >> ~/.codex/config.toml
 
 ## Commands
 
-Everything is a plain `octopus` CLI subcommand — no slash commands or skills:
+Everything is a plain `stash` CLI subcommand — no slash commands or skills:
 
 | Command | Description |
 |---------|-------------|
-| `octopus connect` | Interactive setup (auth + workspace + store) |
-| `octopus status` | Central config, streaming state, last curate |
-| `octopus disconnect` | Pause event streaming across every installed plugin |
+| `stash connect` | Interactive setup (auth + workspace + store) |
+| `stash status` | Central config, streaming state, last curate |
+| `stash disconnect` | Pause event streaming across every installed plugin |
 
 At session end (Codex `Stop`) the plugin spawns `codex exec …` headless with
-a shared curation prompt. Toggle with `auto_curate` in `~/.octopus/config.json`.
+a shared curation prompt. Toggle with `auto_curate` in `~/.stash/config.json`.
 
 ## ⚠️ Known gaps
 
@@ -57,7 +57,7 @@ The `config.toml.snippet` has two mutually-exclusive variants.
 
 ## What streams
 
-| Codex event | Octopus event | Notes |
+| Codex event | Stash event | Notes |
 |---|---|---|
 | `SessionStart` | — (warms cache) | — |
 | `UserPromptSubmit` | `user_message` | — |
@@ -68,11 +68,11 @@ The `config.toml.snippet` has two mutually-exclusive variants.
 ## Retrieval
 
 Codex has shell access. For reads mid-conversation, have the agent invoke
-the `octopus` CLI — all commands support `--json`:
+the `stash` CLI — all commands support `--json`:
 
 ```
-octopus history query --ws <id> --limit 20 --json
-octopus history search "<query>" --ws <id> --json
-octopus whoami --json
-octopus workspace list --mine --json
+stash history query --ws <id> --limit 20 --json
+stash history search "<query>" --ws <id> --json
+stash whoami --json
+stash workspace list --mine --json
 ```

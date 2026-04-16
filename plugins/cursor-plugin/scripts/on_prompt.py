@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""beforeSubmitPrompt: stream user prompt to Octopus.
+"""beforeSubmitPrompt: stream user prompt to Stash.
 
 Cursor's beforeSubmitPrompt does not accept a context-injection key, so this
 hook is stream-only.

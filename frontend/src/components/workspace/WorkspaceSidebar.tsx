@@ -20,7 +20,7 @@ function AddMemberInput({ onAdd, existingMemberIds }: { onAdd: (username: string
     if (q.length < 1) { setResults([]); return; }
     setSearching(true);
     try {
-      const token = localStorage.getItem("octopus_token") || "";
+      const token = localStorage.getItem("stash_token") || "";
       const res = await fetch(`${API_BASE}/api/v1/users/search?q=${encodeURIComponent(q)}`, {
         headers: { Authorization: `Bearer ${token}` },
       });

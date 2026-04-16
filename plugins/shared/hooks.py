@@ -16,14 +16,14 @@ from __future__ import annotations
 from pathlib import Path
 
 from event import HookEvent
-from octopus_client import OctopusClient
+from stash_client import StashClient
 from state import read_stats, record_tool_use
 from summarize import summarize_tool_use
 
 
 # --- Prompt streaming ---
 
-def stream_user_message(client: OctopusClient, cfg: dict, state: dict, prompt_text: str) -> None:
+def stream_user_message(client: StashClient, cfg: dict, state: dict, prompt_text: str) -> None:
     if not cfg.get("workspace_id"):
         return
     if not prompt_text or not prompt_text.strip():
@@ -44,7 +44,7 @@ def stream_user_message(client: OctopusClient, cfg: dict, state: dict, prompt_te
 # --- Tool use streaming ---
 
 def stream_tool_use(
-    client: OctopusClient, cfg: dict, state: dict, event: HookEvent,
+    client: StashClient, cfg: dict, state: dict, event: HookEvent,
     data_dir: Path | None = None,
 ) -> None:
     if not cfg.get("workspace_id"):
@@ -78,7 +78,7 @@ def stream_tool_use(
 # --- Turn end (assistant finished responding; session still open) ---
 
 def stream_assistant_message(
-    client: OctopusClient, cfg: dict, state: dict, event: HookEvent,
+    client: StashClient, cfg: dict, state: dict, event: HookEvent,
 ) -> None:
     """Push the final assistant text for a turn. Call from per-turn Stop /
     afterAgentResponse / AfterAgent hooks. Never emits session_end — the
@@ -103,7 +103,7 @@ def stream_assistant_message(
 # --- Session end (conversation over) ---
 
 def stream_session_end(
-    client: OctopusClient, cfg: dict, state: dict, event: HookEvent,
+    client: StashClient, cfg: dict, state: dict, event: HookEvent,
 ) -> None:
     """Push the final session_end summary. Call ONCE per conversation from
     SessionEnd / session.deleted hooks. Stats come from the running counter

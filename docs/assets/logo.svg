@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 360 80" fill="none">
-  <!-- Octopus icon -->
+  <!-- Stash icon -->
   <g transform="translate(10, 8)">
     <!-- Head -->
     <ellipse cx="32" cy="24" rx="22" ry="18" fill="#F97316"/>
@@ -16,5 +16,5 @@
     <path d="M52 38 Q56 52 60 60" stroke="#F97316" stroke-width="4" stroke-linecap="round" fill="none"/>
   </g>
   <!-- Wordmark -->
-  <text x="82" y="52" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="42" font-weight="800" fill="#0F172A" letter-spacing="-1.5">Octopus</text>
+  <text x="82" y="52" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="42" font-weight="800" fill="#0F172A" letter-spacing="-1.5">Stash</text>
 </svg>

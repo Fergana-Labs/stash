@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # -------------------------------------------------------
-# start.sh — Start all Octopus services locally
+# start.sh — Start all Stash services locally
 # Assumes: PostgreSQL is already running and npm
 #          dependencies are installed.
 # -------------------------------------------------------
@@ -35,7 +35,7 @@ if [ -f "$PROJECT_ROOT/.env" ]; then
     echo "Loaded environment from .env"
 fi
 
-echo "Starting Octopus services..."
+echo "Starting Stash services..."
 echo "================================"
 
 # --- Backend (FastAPI) ---
