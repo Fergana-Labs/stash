@@ -1,4 +1,4 @@
-"""opencode plugin config. Reads from ~/.octopus/config.json (CLI config)."""
+"""opencode plugin config. Reads from ~/.stash/config.json (CLI config)."""
 
 from __future__ import annotations
 
@@ -11,11 +11,11 @@ SHARED = Path(__file__).resolve().parent.parent.parent / "shared"
 if str(SHARED) not in sys.path:
     sys.path.insert(0, str(SHARED))
 
-from octopus_client import OctopusClient  # noqa: E402
+from stash_client import StashClient  # noqa: E402
 
 DATA_DIR = Path(os.environ.get(
-    "OCTOPUS_OPENCODE_DATA",
-    Path.home() / ".octopus/plugins/opencode",
+    "STASH_OPENCODE_DATA",
+    Path.home() / ".stash/plugins/opencode",
 ))
 
 
@@ -39,24 +39,24 @@ def _project_config() -> Path | None:
     except Exception:
         return None
     for parent in [cur, *cur.parents]:
-        candidate = parent / ".octopus" / "config.json"
+        candidate = parent / ".stash" / "config.json"
         if candidate.exists():
             return candidate
     return None
 
 
-# base_url + api_key are user-only to prevent a .octopus/config.json in any
+# base_url + api_key are user-only to prevent a .stash/config.json in any
 # writable ancestor dir from hijacking the transport endpoint.
 _USER_ONLY_KEYS = {"base_url", "api_key"}
 
 
 def _cli_config() -> dict:
-    """User config (~/.octopus/config.json) overlaid with project config.
+    """User config (~/.stash/config.json) overlaid with project config.
 
     Project config may not override base_url / api_key.
     """
     merged: dict = {}
-    user_path = Path.home() / ".octopus" / "config.json"
+    user_path = Path.home() / ".stash" / "config.json"
     if user_path.exists():
         merged.update(_read_json(user_path))
     project_path = _project_config()
@@ -71,18 +71,18 @@ def _cli_config() -> dict:
 def get_config() -> dict:
     cli = _cli_config()
     return {
-        "api_endpoint": cli.get("base_url", "https://getoctopus.com"),
+        "api_endpoint": cli.get("base_url", "https://stash.ac"),
         "api_key": cli.get("api_key", ""),
         "agent_name": cli.get("username", ""),
         "workspace_id": cli.get("default_workspace", ""),
-        "auto_curate": os.environ.get("OCTOPUS_AUTO_CURATE", "false"),
+        "auto_curate": os.environ.get("STASH_AUTO_CURATE", "false"),
         "client": "opencode",
     }
 
 
-def get_client() -> OctopusClient:
+def get_client() -> StashClient:
     cfg = get_config()
-    return OctopusClient(base_url=cfg["api_endpoint"], api_key=cfg["api_key"], data_dir=DATA_DIR)
+    return StashClient(base_url=cfg["api_endpoint"], api_key=cfg["api_key"], data_dir=DATA_DIR)
 
 
 def is_configured() -> bool:

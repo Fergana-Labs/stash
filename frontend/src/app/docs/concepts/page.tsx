@@ -55,7 +55,7 @@ export default function ConceptsPage() {
   return (
     <>
       <Title>Concepts</Title>
-      <Subtitle>Every resource in Octopus, clearly defined.</Subtitle>
+      <Subtitle>Every resource in Stash, clearly defined.</Subtitle>
 
       <div className="space-y-3">
         {CONCEPTS.map((c) => (

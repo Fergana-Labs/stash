@@ -43,7 +43,7 @@ function NavLink({ item, isActive, wsId }: { item: NavItem; isActive: boolean; w
   );
 }
 
-const WS_STORAGE_KEY = "octopus_selected_workspace";
+const WS_STORAGE_KEY = "stash_selected_workspace";
 
 export default function AppSidebar() {
   const pathname = usePathname();
@@ -102,7 +102,7 @@ export default function AppSidebar() {
       {/* Logo */}
       <div className="px-4 pt-4 pb-2">
         <Link href="/" className="text-lg font-bold font-display text-foreground tracking-tight">
-          octopus
+          stash
         </Link>
       </div>
 

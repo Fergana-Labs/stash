@@ -2,7 +2,7 @@
 
 Per-plugin state (session_id) lives under each agent's `data_dir`.
 Auto-curate toggling, the cross-agent cooldown, and the streaming kill switch
-live in the central CLI config at `~/.octopus/config.json` so one toggle
+live in the central CLI config at `~/.stash/config.json` so one toggle
 controls every installed plugin.
 """
 
@@ -20,7 +20,7 @@ CURATE_COOLDOWN_SECONDS = 30 * 60
 # without leaving a long window where a downgraded Codex would get no events.
 CODEX_HOOKS_FRESHNESS_SECONDS = 60
 
-CENTRAL_CONFIG_PATH = Path.home() / ".octopus" / "config.json"
+CENTRAL_CONFIG_PATH = Path.home() / ".stash" / "config.json"
 
 _DEFAULT_STATS = {"tool_count": 0, "tools_used": [], "files_changed": []}
 
@@ -53,7 +53,7 @@ def _write_json(path: Path, data: dict) -> None:
 def load_state(data_dir: Path) -> dict:
     """Return per-plugin state merged with centralized toggles.
 
-    `streaming_enabled` lives in central config (~/.octopus/config.json) so one
+    `streaming_enabled` lives in central config (~/.stash/config.json) so one
     toggle controls every installed plugin. Per-plugin `session_id` still lives
     under `data_dir/state.json`.
     """

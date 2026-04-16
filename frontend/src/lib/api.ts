@@ -25,7 +25,7 @@ import {
   EmbeddingProjection,
 } from "./types";
 
-const TOKEN_KEY = "octopus_token";
+const TOKEN_KEY = "stash_token";
 
 // --- Token management (for CLI API key fallback) ---
 

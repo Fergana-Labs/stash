@@ -399,7 +399,7 @@ export default function WorkspacePage() {
                 onAddMember={async (username) => {
                   const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3456"}/api/v1/workspaces/${workspaceId}/members`, {
                     method: "POST",
-                    headers: { "Content-Type": "application/json", "Authorization": `Bearer ${localStorage.getItem("octopus_token") || ""}` },
+                    headers: { "Content-Type": "application/json", "Authorization": `Bearer ${localStorage.getItem("stash_token") || ""}` },
                     body: JSON.stringify({ username }),
                   });
                   if (!res.ok) {

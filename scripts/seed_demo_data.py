@@ -15,7 +15,7 @@ import asyncpg
 import numpy as np
 
 DATABASE_URL = os.environ.get(
-    "DATABASE_URL", "postgresql://octopus:octopus@localhost:5432/octopus"
+    "DATABASE_URL", "postgresql://stash:stash@localhost:5432/stash"
 )
 
 SAM_ID = UUID("fc4d8f89-8d5f-41d6-91b8-5a8c965bbac0")
@@ -446,7 +446,7 @@ Sam to implement all fixes this sprint.
 ## Environment Setup
 
 1. Clone repo, install Python 3.13 + Node 20
-2. Create Postgres database: `octopus`
+2. Create Postgres database: `stash`
 3. Copy `.env.example` to `.env`
 4. Run `python3.13 -m pip install -r backend/requirements.txt`
 5. Run `cd frontend && npm install`

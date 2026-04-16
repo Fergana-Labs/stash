@@ -1,7 +1,7 @@
 FROM python:3.12-slim
 
-RUN groupadd --gid 1000 octopus && \
-    useradd --uid 1000 --gid octopus --create-home octopus
+RUN groupadd --gid 1000 stash && \
+    useradd --uid 1000 --gid stash --create-home stash
 
 WORKDIR /app
 
@@ -11,8 +11,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY backend/ ./backend/
 COPY alembic.ini ./alembic.ini
 
-RUN chown -R octopus:octopus /app
-USER octopus
+RUN chown -R stash:stash /app
+USER stash
 
 EXPOSE 3456
 

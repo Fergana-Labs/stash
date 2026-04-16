@@ -5,7 +5,7 @@ export default function SelfHostingPage() {
     <>
       <Title>Self-Hosting</Title>
       <Subtitle>
-        Run the full Octopus stack on your own infrastructure in under ten minutes.
+        Run the full Stash stack on your own infrastructure in under ten minutes.
         One Docker Compose file covers everything.
       </Subtitle>
 
@@ -24,8 +24,8 @@ export default function SelfHostingPage() {
       </div>
 
       <H3>1. Clone and configure</H3>
-      <CodeBlock>{`git clone https://github.com/Fergana-Labs/octopus.git
-cd octopus
+      <CodeBlock>{`git clone https://github.com/Fergana-Labs/stash.git
+cd stash
 
 # Copy the env template and fill in your values
 cp .env.example .env`}</CodeBlock>
@@ -61,7 +61,7 @@ cp .env.example .env`}</CodeBlock>
 
       <H3>Environment variables</H3>
       <ParamTable params={[
-        { name: "POSTGRES_USER / POSTGRES_PASSWORD / POSTGRES_DB", type: "string", desc: "Postgres credentials. Defaults are octopus/octopus/octopus — change before going to production." },
+        { name: "POSTGRES_USER / POSTGRES_PASSWORD / POSTGRES_DB", type: "string", desc: "Postgres credentials. Defaults are stash/stash/stash — change before going to production." },
         { name: "DATABASE_URL", type: "string", desc: "Full PostgreSQL connection string. Defaults to postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@localhost:5432/${POSTGRES_DB}.", required: true },
         { name: "OPENAI_API_KEY", type: "string", desc: "Required for semantic search (text-embedding-3-small)." },
         { name: "PUBLIC_URL", type: "string", desc: "Frontend origin. Used in invite links and CORS config. Default: http://localhost:3457" },
@@ -75,7 +75,7 @@ cp .env.example .env`}</CodeBlock>
 
       <H3>Optional: file storage</H3>
       <P>
-        Octopus uses any S3-compatible store for file uploads (images, PDFs, attachments).
+        Stash uses any S3-compatible store for file uploads (images, PDFs, attachments).
         Set <Code>S3_ENDPOINT</Code>, <Code>S3_BUCKET</Code>, <Code>S3_ACCESS_KEY</Code>, and{" "}
         <Code>S3_SECRET_KEY</Code> in your <Code>.env</Code>. MinIO works well for fully
         local deployments:
@@ -87,16 +87,16 @@ minio:
     - "9000:9000"
     - "9001:9001"
   environment:
-    MINIO_ROOT_USER: octopus
-    MINIO_ROOT_PASSWORD: octopusdev
+    MINIO_ROOT_USER: stash
+    MINIO_ROOT_PASSWORD: stashdev
   command: server /data --console-address ":9001"
   volumes:
     - minio_data:/data`}</CodeBlock>
       <P>Then in <Code>.env</Code>:</P>
       <CodeBlock>{`S3_ENDPOINT=http://localhost:9000
-S3_BUCKET=octopus
-S3_ACCESS_KEY=octopus
-S3_SECRET_KEY=octopusdev
+S3_BUCKET=stash
+S3_ACCESS_KEY=stash
+S3_SECRET_KEY=stashdev
 S3_REGION=us-east-1`}</CodeBlock>
 
       <H3>Production checklist</H3>
@@ -132,11 +132,11 @@ docker compose up -d
       <H3>Running tests</H3>
       <CodeBlock>{`# Backend — requires a separate test database
 docker compose up -d postgres
-psql postgresql://octopus:octopus@localhost:5432/postgres -c "CREATE DATABASE octopus_test;"
-DATABASE_URL=postgresql://octopus:octopus@localhost:5432/octopus_test \\
+psql postgresql://stash:stash@localhost:5432/postgres -c "CREATE DATABASE stash_test;"
+DATABASE_URL=postgresql://stash:stash@localhost:5432/stash_test \\
   python -m alembic upgrade head
-DATABASE_URL=postgresql://octopus:octopus@localhost:5432/octopus_test \\
-TEST_DATABASE_URL=postgresql://octopus:octopus@localhost:5432/octopus_test \\
+DATABASE_URL=postgresql://stash:stash@localhost:5432/stash_test \\
+TEST_DATABASE_URL=postgresql://stash:stash@localhost:5432/stash_test \\
   python -m pytest backend/tests/ -v
 
 # Frontend

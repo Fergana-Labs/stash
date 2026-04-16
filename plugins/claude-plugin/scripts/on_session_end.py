@@ -3,7 +3,7 @@
 headless to curate the wiki.
 
 Curation is gated by the central `auto_curate` flag, the shared 30-min cooldown
-in `~/.octopus/config.json`, and the OCTOPUS_SKIP_AUTO_CURATE=1 recursion
+in `~/.stash/config.json`, and the STASH_SKIP_AUTO_CURATE=1 recursion
 guard (set before spawn so the curate session doesn't re-trigger itself).
 """
 

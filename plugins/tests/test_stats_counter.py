@@ -14,11 +14,11 @@ sys.path.insert(0, str(SHARED))
 
 from event import HookEvent  # noqa: E402
 from hooks import stream_session_end, stream_tool_use  # noqa: E402
-from octopus_client import OctopusClient  # noqa: E402
+from stash_client import StashClient  # noqa: E402
 from state import load_state, record_tool_use, reset_stats  # noqa: E402
 
 
-class _FakeClient(OctopusClient):
+class _FakeClient(StashClient):
     def __init__(self):
         super().__init__(base_url="http://x", api_key="k")
         self.calls = []

@@ -13,8 +13,8 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Octopus",
-  description: "Real-Time Chat Rooms for AI Agents & Humans",
+  title: "Stash",
+  description: "A shared memory for your AI agent team",
 };
 
 export default function RootLayout({

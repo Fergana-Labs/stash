@@ -1,7 +1,7 @@
 """Central config + curate spawn gating tests.
 
 The shared `state.py` helpers read `auto_curate`, `streaming_enabled`, and
-`last_curate_at` from `~/.octopus/config.json` so every installed plugin
+`last_curate_at` from `~/.stash/config.json` so every installed plugin
 shares one toggle surface. These tests patch `CENTRAL_CONFIG_PATH` to a
 tempdir and verify the read/write/gating logic.
 """
@@ -90,7 +90,7 @@ def _fake_popen_calls(monkeypatch):
 
 def test_spawn_curation_fires_binary_with_sleep_prompt(central, monkeypatch):
     curate_spawn, calls = _fake_popen_calls(monkeypatch)
-    monkeypatch.delenv("OCTOPUS_SKIP_AUTO_CURATE", raising=False)
+    monkeypatch.delenv("STASH_SKIP_AUTO_CURATE", raising=False)
     from sleep_prompt import SLEEP_PROMPT
 
     for binary, flags in [
@@ -118,14 +118,14 @@ def test_spawn_curation_fires_binary_with_sleep_prompt(central, monkeypatch):
 
 def test_spawn_curation_respects_recursion_guard(central, monkeypatch):
     curate_spawn, calls = _fake_popen_calls(monkeypatch)
-    monkeypatch.setenv("OCTOPUS_SKIP_AUTO_CURATE", "1")
+    monkeypatch.setenv("STASH_SKIP_AUTO_CURATE", "1")
     assert curate_spawn.spawn_curation("claude", ["-p"]) is False
     assert calls == []
 
 
 def test_spawn_curation_respects_cooldown(central, monkeypatch):
     curate_spawn, calls = _fake_popen_calls(monkeypatch)
-    monkeypatch.delenv("OCTOPUS_SKIP_AUTO_CURATE", raising=False)
+    monkeypatch.delenv("STASH_SKIP_AUTO_CURATE", raising=False)
     central[0].record_curate_run()
     assert curate_spawn.spawn_curation("claude", ["-p"]) is False
     assert calls == []
@@ -133,7 +133,7 @@ def test_spawn_curation_respects_cooldown(central, monkeypatch):
 
 def test_spawn_curation_respects_auto_curate_flag(central, monkeypatch):
     curate_spawn, calls = _fake_popen_calls(monkeypatch)
-    monkeypatch.delenv("OCTOPUS_SKIP_AUTO_CURATE", raising=False)
+    monkeypatch.delenv("STASH_SKIP_AUTO_CURATE", raising=False)
     central[0].set_auto_curate(False)
     assert curate_spawn.spawn_curation("claude", ["-p"]) is False
     assert calls == []
@@ -141,7 +141,7 @@ def test_spawn_curation_respects_auto_curate_flag(central, monkeypatch):
 
 def test_spawn_curation_sets_recursion_guard_env(central, monkeypatch):
     curate_spawn, calls = _fake_popen_calls(monkeypatch)
-    monkeypatch.delenv("OCTOPUS_SKIP_AUTO_CURATE", raising=False)
+    monkeypatch.delenv("STASH_SKIP_AUTO_CURATE", raising=False)
     assert curate_spawn.spawn_curation("claude", ["-p"]) is True
     _, kwargs = calls[-1]
-    assert kwargs["env"]["OCTOPUS_SKIP_AUTO_CURATE"] == "1"
+    assert kwargs["env"]["STASH_SKIP_AUTO_CURATE"] == "1"

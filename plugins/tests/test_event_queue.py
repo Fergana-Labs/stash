@@ -1,4 +1,4 @@
-"""Local event queue inside OctopusClient.
+"""Local event queue inside StashClient.
 
 When push_event raises (network blip, backend cold start, slow GC), the
 event body is appended to <data_dir>/event_queue.jsonl. The next successful
@@ -16,7 +16,7 @@ import pytest
 SHARED = Path(__file__).resolve().parent.parent / "shared"
 sys.path.insert(0, str(SHARED))
 
-from octopus_client import OctopusClient, OctopusError, QUEUE_FILENAME  # noqa: E402
+from stash_client import StashClient, StashError, QUEUE_FILENAME  # noqa: E402
 
 
 class _Recorder:
@@ -42,7 +42,7 @@ class _Recorder:
 
 
 def _make_client(tmp_path, fail_first_n=0):
-    client = OctopusClient(base_url="https://example.test", api_key="k", data_dir=tmp_path)
+    client = StashClient(base_url="https://example.test", api_key="k", data_dir=tmp_path)
     client._http = _Recorder(fail_first_n=fail_first_n)
     return client
 
@@ -104,7 +104,7 @@ def test_drain_stops_on_first_failure(tmp_path):
 
 def test_no_data_dir_no_queue(tmp_path):
     """When data_dir is unset, push failure just raises — no queue file written."""
-    client = OctopusClient(base_url="https://example.test", api_key="k")
+    client = StashClient(base_url="https://example.test", api_key="k")
     client._http = _Recorder(fail_first_n=1)
     with pytest.raises(Exception):
         client.push_event(workspace_id="ws-1", agent_name="a", event_type="t", content="x")

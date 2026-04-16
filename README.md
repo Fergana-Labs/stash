@@ -1,6 +1,6 @@
 
 <p align="center">
-  <img src="docs/assets/logo.svg" alt="Octopus" width="320" />
+  <img src="docs/assets/logo.svg" alt="Stash" width="320" />
 </p>
 
 <h3 align="center">Collaborative memory for teams of AI agents</h3>
@@ -13,7 +13,7 @@
 <p align="center">
   <a href="https://github.com/Fergana-Labs/octopus/actions/workflows/test.yml"><img src="https://github.com/Fergana-Labs/octopus/actions/workflows/test.yml/badge.svg" alt="CI" /></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="License: MIT" /></a>
-  <a href="https://getoctopus.com"><img src="https://img.shields.io/badge/Website-getoctopus.com-F97316" alt="Website" /></a>
+  <a href="https://stash.ac"><img src="https://img.shields.io/badge/Website-stash.ac-F97316" alt="Website" /></a>
 </p>
 
 <img width="1195" height="1055" alt="Screenshot 2026-04-14 at 7 11 31 PM" src="https://github.com/user-attachments/assets/265c638f-64eb-460e-91e8-e677740cf97b" />
@@ -32,11 +32,11 @@
 
 ## Features
 
-**Curation** — The Claude Code plugin's `/octopus:sleep` command reads history data and organizes it into a categorized wiki with folders, summaries, and [[backlinks]]. It also runs automatically on SessionEnd, so knowledge stays structured without manual maintenance.
+**Curation** — The Claude Code plugin's `/stash:sleep` command reads history data and organizes it into a categorized wiki with folders, summaries, and [[backlinks]]. It also runs automatically on SessionEnd, so knowledge stays structured without manual maintenance.
 
 **Wiki notebooks** — Rich collaborative pages with [[wiki links]], page graph visualization, backlink tracking, and semantic search powered by pgvector embeddings.
 
-**Universal search** — An agentic search loop (`/octopus:search` in the Claude Code plugin) that queries across files, history, notebooks, tables, and chats in a single request. Ask a question, get answers from everything.
+**Universal search** — An agentic search loop (`/stash:search` in the Claude Code plugin) that queries across files, history, notebooks, tables, and chats in a single request. Ask a question, get answers from everything.
 
 **Real-time collaboration** — Agents and humans chat side-by-side in workspace channels. Share findings, coordinate work, and keep everyone in sync.
 
@@ -46,51 +46,51 @@
 
 ### 1. Create an account
 
-Go to [getoctopus.com](https://getoctopus.com) and register. Save your API key.
+Go to [stash.ac](https://stash.ac) and register. Save your API key.
 
 ### 2. Install the CLI
 
 ```bash
-pip install octopus
-octopus connect               # Interactive: paste API key, pick a default workspace
+pip install stash
+stash connect               # Interactive: paste API key, pick a default workspace
 ```
 
 ### 3. Try it
 
 ```bash
-octopus history search "authentication patterns"      # Full-text search over events
-octopus history push "session notes here"             # Push an event
-octopus --help                                        # Full command list
+stash history search "authentication patterns"      # Full-text search over events
+stash history push "session notes here"             # Push an event
+stash --help                                        # Full command list
 ```
 
-For cross-resource agentic search, install the [Claude Code plugin](#integrations) and use `/octopus:search`.
+For cross-resource agentic search, install the [Claude Code plugin](#integrations) and use `/stash:search`.
 
 ## CLI
 
 ```bash
-pip install octopus
-octopus connect                          # Configure API key + default workspace
-octopus history push <content>         # Push an event
-octopus history search <query>         # Full-text search over history events
-octopus notebooks list --all           # List notebooks across your workspaces
-octopus --help                         # Full command list
+pip install stash
+stash connect                          # Configure API key + default workspace
+stash history push <content>         # Push an event
+stash history search <query>         # Full-text search over history events
+stash notebooks list --all           # List notebooks across your workspaces
+stash --help                         # Full command list
 ```
 
 ## Integrations
 
 ### Claude Code plugin
 
-The [`plugins/claude-plugin`](plugins/claude-plugin/README.md) directory ships a Claude Code plugin that turns any session into a persistent Octopus agent: activity streams to history, memory injects into every prompt, and context carries across sessions.
+The [`plugins/claude-plugin`](plugins/claude-plugin/README.md) directory ships a Claude Code plugin that turns any session into a persistent Stash agent: activity streams to history, memory injects into every prompt, and context carries across sessions.
 
 ```bash
 # From the octopus repo
 claude plugin add ./plugins/claude-plugin
 
 # Or from the marketplace
-claude plugin install octopus
+claude plugin install stash
 ```
 
-Slash commands include `/octopus:connect` (onboarding), `/octopus:sleep` (curate history into a wiki — also runs on SessionEnd), `/octopus:search` (agentic cross-resource search), and `/octopus:status`. See the [plugin README](plugins/claude-plugin/README.md) for full setup.
+Slash commands include `/stash:connect` (onboarding), `/stash:sleep` (curate history into a wiki — also runs on SessionEnd), `/stash:search` (agentic cross-resource search), and `/stash:status`. See the [plugin README](plugins/claude-plugin/README.md) for full setup.
 
 ## Self-Hosted
 
@@ -120,7 +120,7 @@ Includes Caddy for automatic HTTPS. Requires PostgreSQL with pgvector. Optional:
 
 ## FAQ
 
-**What LLMs does Octopus use?**
+**What LLMs does Stash use?**
 The curation tool and universal search use Anthropic Claude. Embeddings are pluggable — OpenAI, Hugging Face Inference API, local sentence-transformers, or bring your own. Set `EMBEDDING_PROVIDER` in `.env` (defaults to auto-detect). See `.env.example` for details.
 
 **Can I use this without Claude Code?**
@@ -139,7 +139,7 @@ Found a bug? [Open an issue](https://github.com/Fergana-Labs/octopus/issues).
 
 | Name | Role | Contact |
 |------|------|---------|
-| [@henry-dowling](https://github.com/henry-dowling) | Creator & Lead maintainer | GitHub issues or [security@getoctopus.com](mailto:security@getoctopus.com) for vulnerabilities |
+| [@henry-dowling](https://github.com/henry-dowling) | Creator & Lead maintainer | GitHub issues or [security@stash.ac](mailto:security@stash.ac) for vulnerabilities |
 | [@samzliu](https://github.com/samzliu) | Creator | GitHub issues |
 | [@triobaba](https://github.com/triobaba) | Creator | GitHub issues |
 
