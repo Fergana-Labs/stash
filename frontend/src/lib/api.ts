@@ -26,6 +26,7 @@ import {
 } from "./types";
 
 const TOKEN_KEY = "stash_token";
+const API_BASE = "";
 
 // --- Token management (for CLI API key fallback) ---
 
@@ -42,7 +43,12 @@ export function clearToken() {
   localStorage.removeItem(TOKEN_KEY);
 }
 
-const API_BASE = "";
+// Scope = workspace-scoped when workspaceId is set, personal otherwise.
+// Used everywhere a resource has both /api/v1/workspaces/{ws}/... and /api/v1/... variants.
+function scope(workspaceId: string | null): string {
+  if (workspaceId) return `/api/v1/workspaces/${workspaceId}`;
+  return "/api/v1";
+}
 
 export async function apiFetch<T>(
   path: string,
@@ -173,188 +179,149 @@ export async function kickWorkspaceMember(workspaceId: string, userId: string): 
   await apiFetch(`/api/v1/workspaces/${workspaceId}/kick/${userId}`, { method: "POST" });
 }
 
-// --- Notebooks (workspace-scoped) ---
+// --- Notebooks ---
+// workspaceId = string for workspace-scoped, null for personal.
 
-export async function listNotebooks(workspaceId: string): Promise<{ notebooks: Notebook[] }> {
-  return apiFetch(`/api/v1/workspaces/${workspaceId}/notebooks`);
+export async function listNotebooks(workspaceId: string | null): Promise<{ notebooks: Notebook[] }> {
+  return apiFetch(`${scope(workspaceId)}/notebooks`);
 }
 
 export async function createNotebook(
-  workspaceId: string,
+  workspaceId: string | null,
   name: string,
   description?: string
 ): Promise<Notebook> {
-  return apiFetch(`/api/v1/workspaces/${workspaceId}/notebooks`, {
+  return apiFetch(`${scope(workspaceId)}/notebooks`, {
     method: "POST",
     body: JSON.stringify({ name, description: description || "" }),
   });
 }
 
-export async function deleteNotebook(workspaceId: string, notebookId: string): Promise<void> {
-  await apiFetch(`/api/v1/workspaces/${workspaceId}/notebooks/${notebookId}`, { method: "DELETE" });
+export async function deleteNotebook(
+  workspaceId: string | null,
+  notebookId: string
+): Promise<void> {
+  await apiFetch(`${scope(workspaceId)}/notebooks/${notebookId}`, { method: "DELETE" });
 }
 
-// --- Notebook Pages (workspace-scoped) ---
+// --- Notebook Pages ---
 
-export async function listPageTree(workspaceId: string, notebookId: string): Promise<PageTree> {
-  return apiFetch(`/api/v1/workspaces/${workspaceId}/notebooks/${notebookId}/pages`);
+export async function listPageTree(
+  workspaceId: string | null,
+  notebookId: string
+): Promise<PageTree> {
+  return apiFetch(`${scope(workspaceId)}/notebooks/${notebookId}/pages`);
 }
 
 export async function createPage(
-  workspaceId: string,
+  workspaceId: string | null,
   notebookId: string,
   name: string,
   folderId?: string,
   content?: string
 ): Promise<NotebookPage> {
-  return apiFetch(`/api/v1/workspaces/${workspaceId}/notebooks/${notebookId}/pages`, {
+  return apiFetch(`${scope(workspaceId)}/notebooks/${notebookId}/pages`, {
     method: "POST",
     body: JSON.stringify({ name, folder_id: folderId || null, content: content || "" }),
   });
 }
 
 export async function getPage(
-  workspaceId: string, notebookId: string, pageId: string
+  workspaceId: string | null,
+  notebookId: string,
+  pageId: string
 ): Promise<NotebookPage> {
-  return apiFetch(`/api/v1/workspaces/${workspaceId}/notebooks/${notebookId}/pages/${pageId}`);
+  return apiFetch(`${scope(workspaceId)}/notebooks/${notebookId}/pages/${pageId}`);
 }
 
 export async function updatePage(
-  workspaceId: string, notebookId: string, pageId: string,
+  workspaceId: string | null,
+  notebookId: string,
+  pageId: string,
   data: { name?: string; folder_id?: string; content?: string; move_to_root?: boolean }
 ): Promise<NotebookPage> {
-  return apiFetch(`/api/v1/workspaces/${workspaceId}/notebooks/${notebookId}/pages/${pageId}`, {
+  return apiFetch(`${scope(workspaceId)}/notebooks/${notebookId}/pages/${pageId}`, {
     method: "PATCH",
     body: JSON.stringify(data),
   });
 }
 
 export async function deletePage(
-  workspaceId: string, notebookId: string, pageId: string
+  workspaceId: string | null,
+  notebookId: string,
+  pageId: string
 ): Promise<void> {
-  await apiFetch(`/api/v1/workspaces/${workspaceId}/notebooks/${notebookId}/pages/${pageId}`, { method: "DELETE" });
+  await apiFetch(`${scope(workspaceId)}/notebooks/${notebookId}/pages/${pageId}`, { method: "DELETE" });
 }
 
+// --- Page Folders ---
+
 export async function createPageFolder(
-  workspaceId: string, notebookId: string, name: string
+  workspaceId: string | null,
+  notebookId: string,
+  name: string
 ): Promise<NotebookFolder> {
-  return apiFetch(`/api/v1/workspaces/${workspaceId}/notebooks/${notebookId}/folders`, {
+  return apiFetch(`${scope(workspaceId)}/notebooks/${notebookId}/folders`, {
     method: "POST",
     body: JSON.stringify({ name }),
   });
 }
 
 export async function renamePageFolder(
-  workspaceId: string, notebookId: string, folderId: string, name: string
+  workspaceId: string | null,
+  notebookId: string,
+  folderId: string,
+  name: string
 ): Promise<NotebookFolder> {
-  return apiFetch(`/api/v1/workspaces/${workspaceId}/notebooks/${notebookId}/folders/${folderId}`, {
+  return apiFetch(`${scope(workspaceId)}/notebooks/${notebookId}/folders/${folderId}`, {
     method: "PATCH",
     body: JSON.stringify({ name }),
   });
 }
 
 export async function deletePageFolder(
-  workspaceId: string, notebookId: string, folderId: string
+  workspaceId: string | null,
+  notebookId: string,
+  folderId: string
 ): Promise<void> {
-  await apiFetch(`/api/v1/workspaces/${workspaceId}/notebooks/${notebookId}/folders/${folderId}`, { method: "DELETE" });
+  await apiFetch(`${scope(workspaceId)}/notebooks/${notebookId}/folders/${folderId}`, { method: "DELETE" });
 }
 
-// --- Personal Notebooks ---
-
-export async function listPersonalNotebooks(): Promise<{ notebooks: Notebook[] }> {
-  return apiFetch("/api/v1/notebooks");
-}
-
-export async function createPersonalNotebook(
-  name: string,
-  description?: string
-): Promise<Notebook> {
-  return apiFetch("/api/v1/notebooks", {
-    method: "POST",
-    body: JSON.stringify({ name, description: description || "" }),
-  });
-}
-
-export async function deletePersonalNotebook(notebookId: string): Promise<void> {
-  await apiFetch(`/api/v1/notebooks/${notebookId}`, { method: "DELETE" });
-}
-
-// --- Personal Notebook Pages ---
-
-export async function listPersonalPageTree(notebookId: string): Promise<PageTree> {
-  return apiFetch(`/api/v1/notebooks/${notebookId}/pages`);
-}
-
-export async function createPersonalPage(
-  notebookId: string, name: string, folderId?: string, content?: string
-): Promise<NotebookPage> {
-  return apiFetch(`/api/v1/notebooks/${notebookId}/pages`, {
-    method: "POST",
-    body: JSON.stringify({ name, folder_id: folderId || null, content: content || "" }),
-  });
-}
-
-export async function getPersonalPage(notebookId: string, pageId: string): Promise<NotebookPage> {
-  return apiFetch(`/api/v1/notebooks/${notebookId}/pages/${pageId}`);
-}
-
-export async function updatePersonalPage(
-  notebookId: string, pageId: string,
-  data: { name?: string; folder_id?: string; content?: string; move_to_root?: boolean }
-): Promise<NotebookPage> {
-  return apiFetch(`/api/v1/notebooks/${notebookId}/pages/${pageId}`, {
-    method: "PATCH",
-    body: JSON.stringify(data),
-  });
-}
-
-export async function deletePersonalPage(notebookId: string, pageId: string): Promise<void> {
-  await apiFetch(`/api/v1/notebooks/${notebookId}/pages/${pageId}`, { method: "DELETE" });
-}
-
-export async function createPersonalPageFolder(notebookId: string, name: string): Promise<NotebookFolder> {
-  return apiFetch(`/api/v1/notebooks/${notebookId}/folders`, {
-    method: "POST",
-    body: JSON.stringify({ name }),
-  });
-}
-
-export async function renamePersonalPageFolder(
-  notebookId: string, folderId: string, name: string
-): Promise<NotebookFolder> {
-  return apiFetch(`/api/v1/notebooks/${notebookId}/folders/${folderId}`, {
-    method: "PATCH",
-    body: JSON.stringify({ name }),
-  });
-}
-
-export async function deletePersonalPageFolder(notebookId: string, folderId: string): Promise<void> {
-  await apiFetch(`/api/v1/notebooks/${notebookId}/folders/${folderId}`, { method: "DELETE" });
-}
-
-// --- History (workspace-scoped) ---
+// --- History ---
 
 export async function createHistory(
-  workspaceId: string,
+  workspaceId: string | null,
   name: string,
   description?: string
 ): Promise<History> {
-  return apiFetch(`/api/v1/workspaces/${workspaceId}/memory`, {
+  return apiFetch(`${scope(workspaceId)}/memory`, {
     method: "POST",
     body: JSON.stringify({ name, description: description || "" }),
   });
 }
 
-export async function listHistories(workspaceId: string): Promise<{ stores: History[] }> {
-  return apiFetch(`/api/v1/workspaces/${workspaceId}/memory`);
+export async function listHistories(
+  workspaceId: string | null
+): Promise<{ stores: History[] }> {
+  return apiFetch(`${scope(workspaceId)}/memory`);
 }
 
-export async function getHistory(workspaceId: string, storeId: string): Promise<History> {
-  return apiFetch(`/api/v1/workspaces/${workspaceId}/memory/${storeId}`);
+export async function getHistory(
+  workspaceId: string | null,
+  storeId: string
+): Promise<History> {
+  return apiFetch(`${scope(workspaceId)}/memory/${storeId}`);
+}
+
+export async function deleteHistory(
+  workspaceId: string | null,
+  storeId: string
+): Promise<void> {
+  await apiFetch(`${scope(workspaceId)}/memory/${storeId}`, { method: "DELETE" });
 }
 
 export async function queryHistoryEvents(
-  workspaceId: string,
+  workspaceId: string | null,
   storeId: string,
   params?: {
     agent_name?: string;
@@ -373,95 +340,18 @@ export async function queryHistoryEvents(
   if (params?.before) searchParams.set("before", params.before);
   if (params?.limit) searchParams.set("limit", String(params.limit));
   const qs = searchParams.toString();
-  return apiFetch(`/api/v1/workspaces/${workspaceId}/memory/${storeId}/events${qs ? `?${qs}` : ""}`);
+  return apiFetch(`${scope(workspaceId)}/memory/${storeId}/events${qs ? `?${qs}` : ""}`);
 }
 
 export async function searchHistoryEvents(
-  workspaceId: string,
+  workspaceId: string | null,
   storeId: string,
   query: string,
   limit?: number
 ): Promise<{ events: HistoryEvent[]; has_more: boolean }> {
   const searchParams = new URLSearchParams({ q: query });
   if (limit) searchParams.set("limit", String(limit));
-  return apiFetch(
-    `/api/v1/workspaces/${workspaceId}/memory/${storeId}/events/search?${searchParams.toString()}`
-  );
-}
-
-// --- Personal History ---
-
-export async function createPersonalHistory(
-  name: string,
-  description?: string
-): Promise<History> {
-  return apiFetch("/api/v1/memory", {
-    method: "POST",
-    body: JSON.stringify({ name, description: description || "" }),
-  });
-}
-
-export async function listPersonalHistories(): Promise<{ stores: History[] }> {
-  return apiFetch("/api/v1/memory");
-}
-
-export async function getPersonalHistory(storeId: string): Promise<History> {
-  return apiFetch(`/api/v1/memory/${storeId}`);
-}
-
-export async function deletePersonalHistory(storeId: string): Promise<void> {
-  await apiFetch(`/api/v1/memory/${storeId}`, { method: "DELETE" });
-}
-
-export async function pushPersonalHistoryEvent(
-  storeId: string,
-  event: {
-    agent_name: string;
-    event_type: string;
-    content: string;
-    session_id?: string;
-    tool_name?: string;
-    metadata?: Record<string, unknown>;
-  }
-): Promise<HistoryEvent> {
-  return apiFetch(`/api/v1/memory/${storeId}/events`, {
-    method: "POST",
-    body: JSON.stringify(event),
-  });
-}
-
-export async function queryPersonalHistoryEvents(
-  storeId: string,
-  params?: {
-    agent_name?: string;
-    session_id?: string;
-    event_type?: string;
-    after?: string;
-    before?: string;
-    limit?: number;
-  }
-): Promise<{ events: HistoryEvent[]; has_more: boolean }> {
-  const searchParams = new URLSearchParams();
-  if (params?.agent_name) searchParams.set("agent_name", params.agent_name);
-  if (params?.session_id) searchParams.set("session_id", params.session_id);
-  if (params?.event_type) searchParams.set("event_type", params.event_type);
-  if (params?.after) searchParams.set("after", params.after);
-  if (params?.before) searchParams.set("before", params.before);
-  if (params?.limit) searchParams.set("limit", String(params.limit));
-  const qs = searchParams.toString();
-  return apiFetch(`/api/v1/memory/${storeId}/events${qs ? `?${qs}` : ""}`);
-}
-
-export async function searchPersonalHistoryEvents(
-  storeId: string,
-  query: string,
-  limit?: number
-): Promise<{ events: HistoryEvent[]; has_more: boolean }> {
-  const searchParams = new URLSearchParams({ q: query });
-  if (limit) searchParams.set("limit", String(limit));
-  return apiFetch(
-    `/api/v1/memory/${storeId}/events/search?${searchParams.toString()}`
-  );
+  return apiFetch(`${scope(workspaceId)}/memory/${storeId}/events/search?${searchParams.toString()}`);
 }
 
 // --- Aggregate (cross-workspace) ---
@@ -518,74 +408,87 @@ export async function getEmbeddingProjection(
   return apiFetch(`/api/v1/me/embedding-projection?max_points=${maxPoints}${qs}`);
 }
 
-// --- Tables (workspace-scoped) ---
+// --- Tables ---
 
 export async function createTable(
-  workspaceId: string, name: string, description?: string,
+  workspaceId: string | null,
+  name: string,
+  description?: string,
   columns?: { name: string; type: string; options?: string[] }[]
 ): Promise<Table> {
-  return apiFetch(`/api/v1/workspaces/${workspaceId}/tables`, {
+  return apiFetch(`${scope(workspaceId)}/tables`, {
     method: "POST",
     body: JSON.stringify({ name, description: description || "", columns: columns || [] }),
   });
 }
 
-export async function listTables(workspaceId: string): Promise<{ tables: Table[] }> {
-  return apiFetch(`/api/v1/workspaces/${workspaceId}/tables`);
+export async function listTables(
+  workspaceId: string | null
+): Promise<{ tables: Table[] }> {
+  return apiFetch(`${scope(workspaceId)}/tables`);
 }
 
-export async function getTable(workspaceId: string, tableId: string): Promise<Table> {
-  return apiFetch(`/api/v1/workspaces/${workspaceId}/tables/${tableId}`);
+export async function getTable(
+  workspaceId: string | null,
+  tableId: string
+): Promise<Table> {
+  return apiFetch(`${scope(workspaceId)}/tables/${tableId}`);
 }
 
 export async function updateTable(
-  workspaceId: string, tableId: string,
+  workspaceId: string | null,
+  tableId: string,
   data: { name?: string; description?: string }
 ): Promise<Table> {
-  return apiFetch(`/api/v1/workspaces/${workspaceId}/tables/${tableId}`, {
+  return apiFetch(`${scope(workspaceId)}/tables/${tableId}`, {
     method: "PATCH", body: JSON.stringify(data),
   });
 }
 
-export async function deleteTable(workspaceId: string, tableId: string): Promise<void> {
-  await apiFetch(`/api/v1/workspaces/${workspaceId}/tables/${tableId}`, { method: "DELETE" });
+export async function deleteTable(
+  workspaceId: string | null,
+  tableId: string
+): Promise<void> {
+  await apiFetch(`${scope(workspaceId)}/tables/${tableId}`, { method: "DELETE" });
 }
 
 // --- Table Columns ---
 
 export async function addTableColumn(
-  tableId: string, column: { name: string; type: string; required?: boolean; default?: unknown; options?: string[] },
-  workspaceId?: string
+  workspaceId: string | null,
+  tableId: string,
+  column: { name: string; type: string; required?: boolean; default?: unknown; options?: string[] }
 ): Promise<Table> {
-  const base = workspaceId ? `/api/v1/workspaces/${workspaceId}/tables` : "/api/v1/tables";
-  return apiFetch(`${base}/${tableId}/columns`, {
+  return apiFetch(`${scope(workspaceId)}/tables/${tableId}/columns`, {
     method: "POST", body: JSON.stringify(column),
   });
 }
 
 export async function updateTableColumn(
-  tableId: string, columnId: string,
-  updates: { name?: string; type?: string; required?: boolean; default?: unknown; options?: string[] },
-  workspaceId?: string
+  workspaceId: string | null,
+  tableId: string,
+  columnId: string,
+  updates: { name?: string; type?: string; required?: boolean; default?: unknown; options?: string[] }
 ): Promise<Table> {
-  const base = workspaceId ? `/api/v1/workspaces/${workspaceId}/tables` : "/api/v1/tables";
-  return apiFetch(`${base}/${tableId}/columns/${columnId}`, {
+  return apiFetch(`${scope(workspaceId)}/tables/${tableId}/columns/${columnId}`, {
     method: "PATCH", body: JSON.stringify(updates),
   });
 }
 
 export async function deleteTableColumn(
-  tableId: string, columnId: string, workspaceId?: string
+  workspaceId: string | null,
+  tableId: string,
+  columnId: string
 ): Promise<Table> {
-  const base = workspaceId ? `/api/v1/workspaces/${workspaceId}/tables` : "/api/v1/tables";
-  return apiFetch(`${base}/${tableId}/columns/${columnId}`, { method: "DELETE" });
+  return apiFetch(`${scope(workspaceId)}/tables/${tableId}/columns/${columnId}`, { method: "DELETE" });
 }
 
 export async function reorderTableColumns(
-  tableId: string, columnIds: string[], workspaceId?: string
+  workspaceId: string | null,
+  tableId: string,
+  columnIds: string[]
 ): Promise<Table> {
-  const base = workspaceId ? `/api/v1/workspaces/${workspaceId}/tables` : "/api/v1/tables";
-  return apiFetch(`${base}/${tableId}/columns/reorder`, {
+  return apiFetch(`${scope(workspaceId)}/tables/${tableId}/columns/reorder`, {
     method: "PUT", body: JSON.stringify({ column_ids: columnIds }),
   });
 }
@@ -593,11 +496,10 @@ export async function reorderTableColumns(
 // --- Table Rows ---
 
 export async function listTableRows(
+  workspaceId: string | null,
   tableId: string,
-  params?: { sort_by?: string; sort_order?: string; limit?: number; offset?: number; filters?: object[] },
-  workspaceId?: string
+  params?: { sort_by?: string; sort_order?: string; limit?: number; offset?: number; filters?: object[] }
 ): Promise<{ rows: TableRow[]; total_count: number; has_more: boolean }> {
-  const base = workspaceId ? `/api/v1/workspaces/${workspaceId}/tables` : "/api/v1/tables";
   const query = new URLSearchParams();
   if (params?.sort_by) query.set("sort_by", params.sort_by);
   if (params?.sort_order) query.set("sort_order", params.sort_order);
@@ -605,129 +507,112 @@ export async function listTableRows(
   if (params?.offset) query.set("offset", String(params.offset));
   if (params?.filters) query.set("filters", JSON.stringify(params.filters));
   const qs = query.toString();
-  return apiFetch(`${base}/${tableId}/rows${qs ? "?" + qs : ""}`);
+  return apiFetch(`${scope(workspaceId)}/tables/${tableId}/rows${qs ? "?" + qs : ""}`);
 }
 
 export async function createTableRow(
-  tableId: string, data: Record<string, unknown>, workspaceId?: string
+  workspaceId: string | null,
+  tableId: string,
+  data: Record<string, unknown>
 ): Promise<TableRow> {
-  const base = workspaceId ? `/api/v1/workspaces/${workspaceId}/tables` : "/api/v1/tables";
-  return apiFetch(`${base}/${tableId}/rows`, {
+  return apiFetch(`${scope(workspaceId)}/tables/${tableId}/rows`, {
     method: "POST", body: JSON.stringify({ data }),
   });
 }
 
 export async function createTableRowsBatch(
-  tableId: string, rows: { data: Record<string, unknown> }[], workspaceId?: string
+  workspaceId: string | null,
+  tableId: string,
+  rows: { data: Record<string, unknown> }[]
 ): Promise<{ rows: TableRow[] }> {
-  const base = workspaceId ? `/api/v1/workspaces/${workspaceId}/tables` : "/api/v1/tables";
-  return apiFetch(`${base}/${tableId}/rows/batch`, {
+  return apiFetch(`${scope(workspaceId)}/tables/${tableId}/rows/batch`, {
     method: "POST", body: JSON.stringify({ rows }),
   });
 }
 
 export async function updateTableRow(
-  tableId: string, rowId: string, data: Record<string, unknown>, workspaceId?: string
+  workspaceId: string | null,
+  tableId: string,
+  rowId: string,
+  data: Record<string, unknown>
 ): Promise<TableRow> {
-  const base = workspaceId ? `/api/v1/workspaces/${workspaceId}/tables` : "/api/v1/tables";
-  return apiFetch(`${base}/${tableId}/rows/${rowId}`, {
+  return apiFetch(`${scope(workspaceId)}/tables/${tableId}/rows/${rowId}`, {
     method: "PATCH", body: JSON.stringify({ data }),
   });
 }
 
 export async function deleteTableRow(
-  tableId: string, rowId: string, workspaceId?: string
+  workspaceId: string | null,
+  tableId: string,
+  rowId: string
 ): Promise<void> {
-  const base = workspaceId ? `/api/v1/workspaces/${workspaceId}/tables` : "/api/v1/tables";
-  await apiFetch(`${base}/${tableId}/rows/${rowId}`, { method: "DELETE" });
+  await apiFetch(`${scope(workspaceId)}/tables/${tableId}/rows/${rowId}`, { method: "DELETE" });
 }
 
 export async function deleteTableRowsBatch(
-  tableId: string, rowIds: string[], workspaceId?: string
+  workspaceId: string | null,
+  tableId: string,
+  rowIds: string[]
 ): Promise<{ deleted: number }> {
-  const base = workspaceId ? `/api/v1/workspaces/${workspaceId}/tables` : "/api/v1/tables";
-  return apiFetch(`${base}/${tableId}/rows/delete`, {
+  return apiFetch(`${scope(workspaceId)}/tables/${tableId}/rows/delete`, {
     method: "POST", body: JSON.stringify({ row_ids: rowIds }),
   });
-}
-
-// --- Personal Tables ---
-
-export async function createPersonalTable(
-  name: string, description?: string,
-  columns?: { name: string; type: string; options?: string[] }[]
-): Promise<Table> {
-  return apiFetch("/api/v1/tables", {
-    method: "POST",
-    body: JSON.stringify({ name, description: description || "", columns: columns || [] }),
-  });
-}
-
-export async function listPersonalTables(): Promise<{ tables: Table[] }> {
-  return apiFetch("/api/v1/tables");
-}
-
-export async function getPersonalTable(tableId: string): Promise<Table> {
-  return apiFetch(`/api/v1/tables/${tableId}`);
-}
-
-export async function updatePersonalTable(
-  tableId: string, data: { name?: string; description?: string }
-): Promise<Table> {
-  return apiFetch(`/api/v1/tables/${tableId}`, { method: "PATCH", body: JSON.stringify(data) });
-}
-
-export async function deletePersonalTable(tableId: string): Promise<void> {
-  await apiFetch(`/api/v1/tables/${tableId}`, { method: "DELETE" });
 }
 
 // --- Table Search, Summary, Duplicate ---
 
 export async function searchTableRows(
-  tableId: string, query: string, params?: { limit?: number; offset?: number }, workspaceId?: string
+  workspaceId: string | null,
+  tableId: string,
+  query: string,
+  params?: { limit?: number; offset?: number }
 ): Promise<{ rows: TableRow[]; total_count: number; has_more: boolean }> {
-  const base = workspaceId ? `/api/v1/workspaces/${workspaceId}/tables` : "/api/v1/tables";
   const qs = new URLSearchParams({ q: query });
   if (params?.limit) qs.set("limit", String(params.limit));
   if (params?.offset) qs.set("offset", String(params.offset));
-  return apiFetch(`${base}/${tableId}/rows/search?${qs}`);
+  return apiFetch(`${scope(workspaceId)}/tables/${tableId}/rows/search?${qs}`);
 }
 
 export async function summarizeTableRows(
-  tableId: string, filters?: object[], workspaceId?: string
+  workspaceId: string | null,
+  tableId: string,
+  filters?: object[]
 ): Promise<{ total_rows: number; columns: Record<string, { name: string; filled: number; sum?: number; avg?: number; min?: number; max?: number }> }> {
-  const base = workspaceId ? `/api/v1/workspaces/${workspaceId}/tables` : "/api/v1/tables";
   const qs = new URLSearchParams();
   if (filters && filters.length > 0) qs.set("filters", JSON.stringify(filters));
   const qsStr = qs.toString();
-  return apiFetch(`${base}/${tableId}/rows/summary${qsStr ? "?" + qsStr : ""}`);
+  return apiFetch(`${scope(workspaceId)}/tables/${tableId}/rows/summary${qsStr ? "?" + qsStr : ""}`);
 }
 
 export async function duplicateTableRow(
-  tableId: string, rowId: string, workspaceId?: string
+  workspaceId: string | null,
+  tableId: string,
+  rowId: string
 ): Promise<TableRow> {
-  const base = workspaceId ? `/api/v1/workspaces/${workspaceId}/tables` : "/api/v1/tables";
-  return apiFetch(`${base}/${tableId}/rows/${rowId}/duplicate`, { method: "POST" });
+  return apiFetch(`${scope(workspaceId)}/tables/${tableId}/rows/${rowId}/duplicate`, { method: "POST" });
 }
 
 // --- Table Views ---
 
 export async function saveTableView(
-  tableId: string, view: { id?: string; name: string; filters?: object[]; sort_by?: string; sort_order?: string; visible_columns?: string[] },
-  workspaceId?: string
+  workspaceId: string | null,
+  tableId: string,
+  view: { id?: string; name: string; filters?: object[]; sort_by?: string; sort_order?: string; visible_columns?: string[] }
 ): Promise<Table> {
-  const base = workspaceId ? `/api/v1/workspaces/${workspaceId}/tables` : "/api/v1/tables";
-  return apiFetch(`${base}/${tableId}/views`, { method: "POST", body: JSON.stringify(view) });
+  return apiFetch(`${scope(workspaceId)}/tables/${tableId}/views`, {
+    method: "POST", body: JSON.stringify(view),
+  });
 }
 
 export async function deleteTableView(
-  tableId: string, viewId: string, workspaceId?: string
+  workspaceId: string | null,
+  tableId: string,
+  viewId: string
 ): Promise<Table> {
-  const base = workspaceId ? `/api/v1/workspaces/${workspaceId}/tables` : "/api/v1/tables";
-  return apiFetch(`${base}/${tableId}/views/${viewId}`, { method: "DELETE" });
+  return apiFetch(`${scope(workspaceId)}/tables/${tableId}/views/${viewId}`, { method: "DELETE" });
 }
 
-// --- Permissions ---
+// --- Permissions (workspace-only) ---
 
 export async function getPermissions(
   workspaceId: string,
@@ -776,27 +661,14 @@ export async function removeShare(
 
 // --- Files ---
 
-export async function uploadFile(workspaceId: string, file: File): Promise<FileInfo> {
+export async function uploadFile(
+  workspaceId: string | null,
+  file: File
+): Promise<FileInfo> {
   const token = getToken();
   const formData = new FormData();
   formData.append("file", file);
-  const resp = await fetch(`${API_BASE}/api/v1/workspaces/${workspaceId}/files`, {
-    method: "POST",
-    headers: token ? { Authorization: `Bearer ${token}` } : {},
-    body: formData,
-  });
-  if (!resp.ok) {
-    const detail = await resp.json().then((d) => d.detail).catch(() => resp.statusText);
-    throw new Error(detail);
-  }
-  return resp.json();
-}
-
-export async function uploadPersonalFile(file: File): Promise<FileInfo> {
-  const token = getToken();
-  const formData = new FormData();
-  formData.append("file", file);
-  const resp = await fetch(`${API_BASE}/api/v1/files`, {
+  const resp = await fetch(`${API_BASE}${scope(workspaceId)}/files`, {
     method: "POST",
     headers: token ? { Authorization: `Bearer ${token}` } : {},
     body: formData,
@@ -817,89 +689,51 @@ export async function deleteFile(workspaceId: string, fileId: string): Promise<v
   await apiFetch(`/api/v1/workspaces/${workspaceId}/files/${fileId}`, { method: "DELETE" });
 }
 
-// --- Wiki: Backlinks, Page Graph, Semantic Search ---
+// --- Wiki: Backlinks, Outlinks, Page Graph, Semantic Search ---
 
 export async function getBacklinks(
-  workspaceId: string,
+  workspaceId: string | null,
   notebookId: string,
   pageId: string
 ): Promise<PageLink[]> {
   const data = await apiFetch<{ backlinks: PageLink[] }>(
-    `/api/v1/workspaces/${workspaceId}/notebooks/${notebookId}/pages/${pageId}/backlinks`
-  );
-  return data.backlinks;
-}
-
-export async function getPersonalBacklinks(
-  notebookId: string,
-  pageId: string
-): Promise<PageLink[]> {
-  const data = await apiFetch<{ backlinks: PageLink[] }>(
-    `/api/v1/notebooks/${notebookId}/pages/${pageId}/backlinks`
+    `${scope(workspaceId)}/notebooks/${notebookId}/pages/${pageId}/backlinks`
   );
   return data.backlinks;
 }
 
 export async function getOutlinks(
-  workspaceId: string,
+  workspaceId: string | null,
   notebookId: string,
   pageId: string
 ): Promise<PageLink[]> {
   const data = await apiFetch<{ outlinks: PageLink[] }>(
-    `/api/v1/workspaces/${workspaceId}/notebooks/${notebookId}/pages/${pageId}/outlinks`
+    `${scope(workspaceId)}/notebooks/${notebookId}/pages/${pageId}/outlinks`
   );
   return data.outlinks;
 }
 
 export async function getPageGraph(
-  workspaceId: string,
+  workspaceId: string | null,
   notebookId: string
 ): Promise<PageGraph> {
-  return apiFetch<PageGraph>(
-    `/api/v1/workspaces/${workspaceId}/notebooks/${notebookId}/graph`
-  );
-}
-
-export async function getPersonalOutlinks(
-  notebookId: string,
-  pageId: string
-): Promise<PageLink[]> {
-  const data = await apiFetch<{ outlinks: PageLink[] }>(
-    `/api/v1/notebooks/${notebookId}/pages/${pageId}/outlinks`
-  );
-  return data.outlinks;
-}
-
-export async function getPersonalPageGraph(notebookId: string): Promise<PageGraph> {
-  return apiFetch<PageGraph>(`/api/v1/notebooks/${notebookId}/graph`);
-}
-
-export async function semanticSearchPersonalPages(
-  notebookId: string,
-  query: string,
-  limit = 20
-): Promise<NotebookPage[]> {
-  const params = new URLSearchParams({ q: query, limit: String(limit) });
-  const data = await apiFetch<{ pages: NotebookPage[] }>(
-    `/api/v1/notebooks/${notebookId}/pages/semantic-search?${params}`
-  );
-  return data.pages;
+  return apiFetch<PageGraph>(`${scope(workspaceId)}/notebooks/${notebookId}/graph`);
 }
 
 export async function semanticSearchPages(
-  workspaceId: string,
+  workspaceId: string | null,
   notebookId: string,
   query: string,
   limit = 20
 ): Promise<NotebookPage[]> {
   const params = new URLSearchParams({ q: query, limit: String(limit) });
   const data = await apiFetch<{ pages: NotebookPage[] }>(
-    `/api/v1/workspaces/${workspaceId}/notebooks/${notebookId}/pages/semantic-search?${params}`
+    `${scope(workspaceId)}/notebooks/${notebookId}/pages/semantic-search?${params}`
   );
   return data.pages;
 }
 
-// --- Table Embeddings ---
+// --- Table Embeddings (workspace-only) ---
 
 export async function setTableEmbeddingConfig(
   workspaceId: string,

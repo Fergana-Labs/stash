@@ -10,31 +10,22 @@ import { useAuth } from "../../hooks/useAuth";
 import {
   listAllNotebooks,
   listNotebooks,
-  createPersonalNotebook,
-  deletePersonalNotebook,
-  listPersonalPageTree,
+  createNotebook,
+  deleteNotebook,
   listPageTree,
-  createPersonalPage,
   createPage,
-  getPersonalPage,
   getPage,
-  updatePersonalPage,
   updatePage,
-  deletePersonalPage,
   deletePage,
-  createPersonalPageFolder,
   createPageFolder,
-  renamePersonalPageFolder,
   renamePageFolder,
-  deletePersonalPageFolder,
   deletePageFolder,
   getBacklinks,
-  getPersonalBacklinks,
   semanticSearchPages,
   listAllTables,
   listTables,
-  createPersonalTable,
-  deletePersonalTable,
+  createTable,
+  deleteTable,
 } from "../../lib/api";
 import { Notebook, NotebookPage, NotebookWithWorkspace, PageLink, PageTree, TableWithWorkspace } from "../../lib/types";
 
@@ -146,9 +137,7 @@ export default function WikiPage() {
   // Load page tree when notebook is selected
   const loadTree = useCallback(async (nb: NotebookWithWorkspace) => {
     try {
-      const t = nb.workspace_id
-        ? await listPageTree(nb.workspace_id, nb.id)
-        : await listPersonalPageTree(nb.id);
+      const t = await listPageTree(nb.workspace_id, nb.id);
       setTree(t);
     } catch { /* ignore */ }
   }, []);
@@ -165,15 +154,11 @@ export default function WikiPage() {
     setSelectedPageId(pageId);
     setBacklinks([]);
     try {
-      const p = selectedNotebook.workspace_id
-        ? await getPage(selectedNotebook.workspace_id, selectedNotebook.id, pageId)
-        : await getPersonalPage(selectedNotebook.id, pageId);
+      const p = await getPage(selectedNotebook.workspace_id, selectedNotebook.id, pageId);
       setSelectedPage(p);
       // Load backlinks
       try {
-        const bl = selectedNotebook.workspace_id
-          ? await getBacklinks(selectedNotebook.workspace_id, selectedNotebook.id, pageId)
-          : await getPersonalBacklinks(selectedNotebook.id, pageId);
+        const bl = await getBacklinks(selectedNotebook.workspace_id, selectedNotebook.id, pageId);
         setBacklinks(bl);
       } catch { /* backlinks are optional */ }
     } catch { setError("Failed to load page"); }
@@ -264,7 +249,7 @@ export default function WikiPage() {
     const name = prompt("Notebook name:");
     if (!name) return;
     try {
-      const nb = await createPersonalNotebook(name);
+      const nb = await createNotebook(null, name);
       await loadNotebooks();
       handleSelectNotebook({ ...nb, workspace_name: null } as NotebookWithWorkspace);
     } catch (err) { setError(err instanceof Error ? err.message : "Failed to create notebook"); }
@@ -275,9 +260,7 @@ export default function WikiPage() {
     const name = prompt("Page name:");
     if (!name) return;
     try {
-      const p = selectedNotebook.workspace_id
-        ? await createPage(selectedNotebook.workspace_id, selectedNotebook.id, name, folderId || undefined)
-        : await createPersonalPage(selectedNotebook.id, name, folderId || undefined);
+      const p = await createPage(selectedNotebook.workspace_id, selectedNotebook.id, name, folderId || undefined);
       await loadTree(selectedNotebook);
       setSelectedPageId(p.id);
       setSelectedPage(p);
@@ -289,9 +272,7 @@ export default function WikiPage() {
     const name = prompt("Folder name:");
     if (!name) return;
     try {
-      selectedNotebook.workspace_id
-        ? await createPageFolder(selectedNotebook.workspace_id, selectedNotebook.id, name)
-        : await createPersonalPageFolder(selectedNotebook.id, name);
+      await createPageFolder(selectedNotebook.workspace_id, selectedNotebook.id, name);
       await loadTree(selectedNotebook);
     } catch (err) { setError(err instanceof Error ? err.message : "Failed to create folder"); }
   }, [selectedNotebook, loadTree]);
@@ -299,9 +280,7 @@ export default function WikiPage() {
   const handleDeletePage = useCallback(async (pageId: string) => {
     if (!selectedNotebook || !confirm("Delete this page?")) return;
     try {
-      selectedNotebook.workspace_id
-        ? await deletePage(selectedNotebook.workspace_id, selectedNotebook.id, pageId)
-        : await deletePersonalPage(selectedNotebook.id, pageId);
+      await deletePage(selectedNotebook.workspace_id, selectedNotebook.id, pageId);
       if (selectedPageId === pageId) { setSelectedPageId(null); setSelectedPage(null); }
       await loadTree(selectedNotebook);
     } catch (err) { setError(err instanceof Error ? err.message : "Failed to delete"); }
@@ -310,9 +289,7 @@ export default function WikiPage() {
   const handleDeleteFolder = useCallback(async (folderId: string) => {
     if (!selectedNotebook || !confirm("Delete this folder?")) return;
     try {
-      selectedNotebook.workspace_id
-        ? await deletePageFolder(selectedNotebook.workspace_id, selectedNotebook.id, folderId)
-        : await deletePersonalPageFolder(selectedNotebook.id, folderId);
+      await deletePageFolder(selectedNotebook.workspace_id, selectedNotebook.id, folderId);
       setSelectedPageId(null); setSelectedPage(null);
       await loadTree(selectedNotebook);
     } catch (err) { setError(err instanceof Error ? err.message : "Failed to delete folder"); }
@@ -323,9 +300,7 @@ export default function WikiPage() {
     const name = prompt("New name:", currentName);
     if (!name || name === currentName) return;
     try {
-      const updated = selectedNotebook.workspace_id
-        ? await updatePage(selectedNotebook.workspace_id, selectedNotebook.id, pageId, { name })
-        : await updatePersonalPage(selectedNotebook.id, pageId, { name });
+      const updated = await updatePage(selectedNotebook.workspace_id, selectedNotebook.id, pageId, { name });
       if (selectedPageId === pageId) setSelectedPage(updated);
       await loadTree(selectedNotebook);
     } catch (err) { setError(err instanceof Error ? err.message : "Failed to rename"); }
@@ -334,9 +309,7 @@ export default function WikiPage() {
   const handleInlineRename = useCallback(async (name: string) => {
     if (!selectedNotebook || !selectedPageId) return;
     try {
-      const updated = selectedNotebook.workspace_id
-        ? await updatePage(selectedNotebook.workspace_id, selectedNotebook.id, selectedPageId, { name })
-        : await updatePersonalPage(selectedNotebook.id, selectedPageId, { name });
+      const updated = await updatePage(selectedNotebook.workspace_id, selectedNotebook.id, selectedPageId, { name });
       setSelectedPage(updated);
       await loadTree(selectedNotebook);
     } catch { /* silent — title updates are best-effort */ }
@@ -347,9 +320,7 @@ export default function WikiPage() {
     const name = prompt("New name:", currentName);
     if (!name || name === currentName) return;
     try {
-      selectedNotebook.workspace_id
-        ? await renamePageFolder(selectedNotebook.workspace_id, selectedNotebook.id, folderId, name)
-        : await renamePersonalPageFolder(selectedNotebook.id, folderId, name);
+      await renamePageFolder(selectedNotebook.workspace_id, selectedNotebook.id, folderId, name);
       await loadTree(selectedNotebook);
     } catch (err) { setError(err instanceof Error ? err.message : "Failed to rename folder"); }
   }, [selectedNotebook, loadTree]);
@@ -358,9 +329,7 @@ export default function WikiPage() {
     if (!selectedNotebook) return;
     try {
       const data = folderId ? { folder_id: folderId } : { move_to_root: true };
-      const updated = selectedNotebook.workspace_id
-        ? await updatePage(selectedNotebook.workspace_id, selectedNotebook.id, pageId, data)
-        : await updatePersonalPage(selectedNotebook.id, pageId, data);
+      const updated = await updatePage(selectedNotebook.workspace_id, selectedNotebook.id, pageId, data);
       if (selectedPageId === pageId) setSelectedPage(updated);
       await loadTree(selectedNotebook);
     } catch (err) { setError(err instanceof Error ? err.message : "Failed to move"); }
@@ -369,9 +338,7 @@ export default function WikiPage() {
   const handleSavePage = useCallback(async (content: string) => {
     if (!selectedNotebook || !selectedPageId) return;
     try {
-      selectedNotebook.workspace_id
-        ? await updatePage(selectedNotebook.workspace_id, selectedNotebook.id, selectedPageId, { content })
-        : await updatePersonalPage(selectedNotebook.id, selectedPageId, { content });
+      await updatePage(selectedNotebook.workspace_id, selectedNotebook.id, selectedPageId, { content });
     } catch (err) { setError(err instanceof Error ? err.message : "Failed to save"); }
   }, [selectedNotebook, selectedPageId]);
 
@@ -379,7 +346,7 @@ export default function WikiPage() {
     const name = prompt("Table name:");
     if (!name) return;
     try {
-      const table = await createPersonalTable(name);
+      const table = await createTable(null, name);
       router.push(`/tables/${table.id}`);
     } catch (err) { setTablesError(err instanceof Error ? err.message : "Failed to create table"); }
   };
@@ -654,7 +621,7 @@ export default function WikiPage() {
                                 e.stopPropagation();
                                 if (!confirm("Delete this table?")) return;
                                 try {
-                                  await deletePersonalTable(table.id);
+                                  await deleteTable(null, table.id);
                                   loadTables();
                                 } catch (err) { setTablesError(err instanceof Error ? err.message : "Failed to delete"); }
                               }}
