@@ -31,7 +31,7 @@ development environment, run the test suite, and submit a pull request.
 
 ```bash
 # 1. Clone the repository
-git clone https://github.com/Fergana-Labs/octopus.git
+git clone https://github.com/Fergana-Labs/stash.git
 cd octopus
 
 # 2. Start Postgres (pgvector)

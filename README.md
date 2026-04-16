@@ -11,7 +11,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/Fergana-Labs/octopus/actions/workflows/test.yml"><img src="https://github.com/Fergana-Labs/octopus/actions/workflows/test.yml/badge.svg" alt="CI" /></a>
+  <a href="https://github.com/Fergana-Labs/stash/actions/workflows/test.yml"><img src="https://github.com/Fergana-Labs/stash/actions/workflows/test.yml/badge.svg" alt="CI" /></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="License: MIT" /></a>
   <a href="https://stash.ac"><img src="https://img.shields.io/badge/Website-stash.ac-F97316" alt="Website" /></a>
 </p>
@@ -95,7 +95,7 @@ Slash commands include `/stash:connect` (onboarding), `/stash:sleep` (curate his
 ## Self-Hosted
 
 ```bash
-git clone https://github.com/Fergana-Labs/octopus.git
+git clone https://github.com/Fergana-Labs/stash.git
 cd octopus
 cp .env.example .env          # fill in credentials + API keys
 # edit Caddyfile → replace app.example.com with your domain
@@ -133,7 +133,7 @@ On the hosted version, workspaces are permissioned — only invited members can 
 
 Contributions are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) to get started.
 
-Found a bug? [Open an issue](https://github.com/Fergana-Labs/octopus/issues).
+Found a bug? [Open an issue](https://github.com/Fergana-Labs/stash/issues).
 
 ## Maintainers
 

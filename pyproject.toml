@@ -1,14 +1,31 @@
 [project]
-name = "stash"
+name = "stash-cli"
 version = "0.1.0"
-description = "CLI for Stash — shared memory for AI agents"
+description = "CLI for Stash — shared memory for AI coding agents"
+readme = "README.md"
 requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "Fergana Labs" }]
+keywords = ["stash", "ai", "agents", "coding", "memory", "cli"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
 dependencies = [
     "typer>=0.12.0",
     "httpx>=0.27.0",
     "rich>=13.0.0",
     "questionary>=2.0.0",
 ]
+
+[project.urls]
+Homepage = "https://stash.ac"
+Repository = "https://github.com/Fergana-Labs/stash"
 
 [project.scripts]
 stash = "cli.main:app"
