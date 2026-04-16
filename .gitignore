@@ -27,3 +27,4 @@ htmlcov/
 *.cert
 .turbo/
 coverage/
+.vercel
