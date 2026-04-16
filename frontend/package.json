@@ -13,7 +13,7 @@
   "dependencies": {
     "@tiptap/extension-image": "^3.22.2",
     "@tiptap/extension-link": "3.6.6",
-    "@tiptap/extension-placeholder": "3.6.6",
+    "@tiptap/extension-placeholder": "3.22.3",
     "@tiptap/extension-subscript": "3.6.6",
     "@tiptap/extension-superscript": "3.6.6",
     "@tiptap/extension-typography": "3.6.6",
