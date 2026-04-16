@@ -70,7 +70,7 @@ app.include_router(aggregate.router)
 app.include_router(skill.router)
 
 if settings.AUTH0_ENABLED:
-    from managed.backend.auth0 import router as auth0_router
+    from backend.managed.auth0 import router as auth0_router
 
     app.include_router(auth0_router)
 
