@@ -29,7 +29,7 @@ export default function FileTreeComponent({
   onMoveFile,
 }: NotebookTreeProps) {
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(
-    new Set(tree.folders.map((f: any) => f.id))
+    new Set(tree.folders.map((f: PageTreeFolder) => f.id))
   );
   const [contextMenu, setContextMenu] = useState<{
     x: number;
@@ -197,8 +197,8 @@ export default function FileTreeComponent({
                 </button>
               )}
               {tree.folders
-                .filter((f: any) => f.id !== contextMenu.folderId)
-                .map((folder: any) => (
+                .filter((f: PageTreeFolder) => f.id !== contextMenu.folderId)
+                .map((folder: PageTreeFolder) => (
                   <button
                     key={folder.id}
                     onClick={() => {

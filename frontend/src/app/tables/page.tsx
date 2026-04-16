@@ -6,7 +6,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import AppShell from "../../components/AppShell";
 import { useAuth } from "../../hooks/useAuth";
 import { listAllTables, listTables, createTable, deleteTable } from "../../lib/api";
-import { TableWithWorkspace } from "../../lib/types";
+import { Table, TableWithWorkspace } from "../../lib/types";
 
 export default function TablesPage() {
   const router = useRouter();
@@ -19,7 +19,7 @@ export default function TablesPage() {
     try {
       if (wsId) {
         const res = await listTables(wsId);
-        const tbls = (res?.tables ?? []).map((t: any) => ({ ...t, workspace_id: wsId, workspace_name: "" }));
+        const tbls = (res?.tables ?? []).map((t: Table) => ({ ...t, workspace_id: wsId, workspace_name: "" }));
         setTables(tbls);
       } else {
         const res = await listAllTables();

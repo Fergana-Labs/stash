@@ -17,9 +17,7 @@ class Settings:
     PORT: int = int(os.getenv("PORT", "3456"))
 
     # --- Database ---
-    DATABASE_URL: str = os.getenv(
-        "DATABASE_URL", "postgresql://stash:stash@localhost:5432/stash"
-    )
+    DATABASE_URL: str = os.getenv("DATABASE_URL", "postgresql://stash:stash@localhost:5432/stash")
     DB_POOL_MIN: int = int(os.getenv("DB_POOL_MIN", "2"))
     DB_POOL_MAX: int = int(os.getenv("DB_POOL_MAX", "20"))
 

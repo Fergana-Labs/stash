@@ -15,16 +15,19 @@ BODY = b'{"type":"user"}\n{"type":"assistant"}\n'
 
 
 async def _register(client):
-    r = await client.post("/api/v1/users/register",
-                          json={"name": unique_name(), "password": "securepassword1"})
+    r = await client.post(
+        "/api/v1/users/register", json={"name": unique_name(), "password": "securepassword1"}
+    )
     assert r.status_code == 201
     return r.json()["api_key"]
 
 
 async def _workspace(client, key):
-    r = await client.post("/api/v1/workspaces",
-                          json={"name": "ws-" + unique_name()},
-                          headers={"Authorization": f"Bearer {key}"})
+    r = await client.post(
+        "/api/v1/workspaces",
+        json={"name": "ws-" + unique_name()},
+        headers={"Authorization": f"Bearer {key}"},
+    )
     assert r.status_code == 201
     return r.json()["id"]
 

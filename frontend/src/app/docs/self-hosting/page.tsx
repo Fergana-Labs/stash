@@ -35,7 +35,7 @@ cp .env.example .env`}</CodeBlock>
       </P>
       <P>
         Edit <Code>Caddyfile</Code> and replace <Code>app.example.com</Code> with your actual domain.
-        Caddy handles TLS automatically via Let's Encrypt — no certificate management needed.
+        Caddy handles TLS automatically via Let&apos;s Encrypt — no certificate management needed.
       </P>
 
       <H3>2. Start everything</H3>

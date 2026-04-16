@@ -105,7 +105,11 @@ interface WorkspaceSidebarProps {
   onAddMember: (username: string) => Promise<void>;
   onAddToAccessList?: (userName: string, listType: "allow" | "block") => Promise<void>;
   onRemoveFromAccessList?: (userName: string, listType: "allow" | "block") => Promise<void>;
-  onGetAccessList?: (listType: "allow" | "block") => Promise<any[]>;
+  onGetAccessList?: (listType: "allow" | "block") => Promise<AccessListEntry[]>;
+}
+
+interface AccessListEntry {
+  user_name: string;
 }
 
 export default function WorkspaceSidebar({
@@ -129,7 +133,7 @@ export default function WorkspaceSidebar({
 
   const [showAccessList, setShowAccessList] = useState(false);
   const [activeListTab, setActiveListTab] = useState<"allow" | "block">("allow");
-  const [accessEntries, setAccessEntries] = useState<any[]>([]);
+  const [accessEntries, setAccessEntries] = useState<AccessListEntry[]>([]);
   const [accessLoading, setAccessLoading] = useState(false);
   const [newAccessName, setNewAccessName] = useState("");
 

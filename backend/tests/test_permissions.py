@@ -13,7 +13,7 @@ async def _make_user(pool, name=None):
     name = name or unique_name()
     api_key_hash = "hash_" + uuid.uuid4().hex
     row = await pool.fetchrow(
-        "INSERT INTO users (name, type, api_key_hash) VALUES ($1, 'human', $2) RETURNING id",
+        "INSERT INTO users (name, api_key_hash) VALUES ($1, $2) RETURNING id",
         name,
         api_key_hash,
     )

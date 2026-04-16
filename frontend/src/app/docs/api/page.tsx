@@ -61,7 +61,7 @@ POST   /workspaces/{ws}/memory/{store}/query                LLM synthesis over e
 POST   /me/search                   Personal search (outside any workspace)`}</CodeBlock>
       <P>
         Both accept a <Code>{"{ query, types, limit }"}</Code> body. Set{" "}
-        <Code>types</Code> to filter by resource (e.g. <Code>"history,notebook,table"</Code>).
+        <Code>types</Code> to filter by resource (e.g. <Code>{`"history,notebook,table"`}</Code>).
       </P>
 
       <H3>Files</H3>

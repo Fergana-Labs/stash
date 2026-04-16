@@ -14,7 +14,9 @@ depends_on = None
 
 def upgrade() -> None:
     op.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS auth0_sub VARCHAR(128) UNIQUE")
-    op.execute("CREATE INDEX IF NOT EXISTS idx_users_auth0_sub ON users(auth0_sub) WHERE auth0_sub IS NOT NULL")
+    op.execute(
+        "CREATE INDEX IF NOT EXISTS idx_users_auth0_sub ON users(auth0_sub) WHERE auth0_sub IS NOT NULL"
+    )
 
 
 def downgrade() -> None:

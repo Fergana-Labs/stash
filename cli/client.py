@@ -109,9 +109,7 @@ class StashClient:
 
     # --- Magic-link invite tokens ---
 
-    def create_invite_token(
-        self, workspace_id: str, max_uses: int = 1, ttl_days: int = 7
-    ) -> dict:
+    def create_invite_token(self, workspace_id: str, max_uses: int = 1, ttl_days: int = 7) -> dict:
         return self._post(
             f"/api/v1/workspaces/{workspace_id}/invite-tokens",
             json={"max_uses": max_uses, "ttl_days": ttl_days},

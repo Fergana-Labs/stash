@@ -8,7 +8,6 @@ from pathlib import Path
 
 import questionary
 import typer
-
 from rich.panel import Panel
 
 from .client import StashClient, StashError
@@ -223,7 +222,6 @@ def _format_invite_share_block(
     token: str, base_url: str, workspace_name: str, max_uses: int, expires_at: str
 ) -> str:
     """The prose the sender copies into Slack/DMs to share a workspace."""
-    uses_blurb = "single-use" if max_uses == 1 else f"up to {max_uses} uses"
     return (
         "\n"
         f"  pipx install stashai && \\\n"
@@ -273,8 +271,7 @@ def invite_default(
         )
     )
     console.print(
-        "\n[dim]Revoke anytime with:[/dim] "
-        f"[cyan]stash invite revoke {data['id']}[/cyan]\n"
+        "\n[dim]Revoke anytime with:[/dim] " f"[cyan]stash invite revoke {data['id']}[/cyan]\n"
     )
 
 
@@ -300,8 +297,7 @@ def invite_list(
     for t in tokens:
         status = "revoked" if t.get("revoked_at") else f"{t['uses_count']}/{t['max_uses']} used"
         console.print(
-            f"  [dim]{str(t['id'])[:8]}…[/dim]  {status}  "
-            f"expires {str(t['expires_at'])[:10]}"
+            f"  [dim]{str(t['id'])[:8]}…[/dim]  {status}  " f"expires {str(t['expires_at'])[:10]}"
         )
 
 
@@ -597,6 +593,7 @@ def hist_transcript(
     `--save` writes plain .jsonl and stdout is readable.
     """
     import gzip
+
     import httpx
 
     ws = workspace_id or _default_workspace()
@@ -1099,6 +1096,7 @@ def tables_delete(
 # Connect wizard
 # ===========================================================================
 
+
 def _reserve_bottom_padding(lines: int = 4) -> None:
     """Scroll the terminal up `lines` rows so prompts don't render flush against the bottom."""
     sys.stdout.write("\n" * lines + f"\033[{lines}A")
@@ -1110,7 +1108,9 @@ def _self_host_walkthrough(cfg: dict) -> str:
     console.print("\n[bold cyan]Self-hosting Stash[/bold cyan]\n")
     console.print("You'll need [bold]Docker[/bold] installed.  https://docker.com/get-started\n")
     console.print("Run these commands in a separate terminal:\n")
-    console.print("  [dim]1.[/dim] [cyan]git clone https://github.com/Fergana-Labs/stash.git[/cyan]")
+    console.print(
+        "  [dim]1.[/dim] [cyan]git clone https://github.com/Fergana-Labs/stash.git[/cyan]"
+    )
     console.print("  [dim]2.[/dim] [cyan]cd octopus[/cyan]")
     console.print("  [dim]3.[/dim] [cyan]docker compose up -d[/cyan]")
     console.print("\n  [dim]Already running? Skip to the URL prompt below.[/dim]\n")
@@ -1118,14 +1118,15 @@ def _self_host_walkthrough(cfg: dict) -> str:
     _reserve_bottom_padding(6)
     ready = questionary.confirm("Is your instance running?", default=True).ask()
     if ready is None or not ready:
-        console.print("\n[yellow]No problem — run [bold]stash connect[/bold] again when ready.[/yellow]")
+        console.print(
+            "\n[yellow]No problem — run [bold]stash connect[/bold] again when ready.[/yellow]"
+        )
         raise typer.Exit(0)
 
     current_url = cfg.get("base_url", "http://localhost:3456")
     managed_hosts = ("https://stash.ac", "https://www.stash.ac", "https://moltchat.onrender.com")
     default_url = "http://localhost:3456" if current_url in managed_hosts else current_url
     return typer.prompt("URL of your instance", default=default_url).rstrip("/")
-
 
 
 def _derive_display_name() -> str:
@@ -1136,7 +1137,9 @@ def _derive_display_name() -> str:
     try:
         out = subprocess.run(
             ["git", "config", "--get", "user.name"],
-            capture_output=True, text=True, timeout=2,
+            capture_output=True,
+            text=True,
+            timeout=2,
         )
         candidate = out.stdout.strip()
         if candidate:
@@ -1178,9 +1181,7 @@ def _connect_via_invite(
             console.print(f"[red]Could not redeem invite: {e.detail}[/red]")
             raise typer.Exit(1)
         save_config(base_url=base_url, default_workspace=str(ws["id"]), scope=scope)
-        _show_setup_complete_splash(
-            workspace_name=ws["name"], joined_via_invite=True
-        )
+        _show_setup_complete_splash(workspace_name=ws["name"], joined_via_invite=True)
         return
 
     # No existing auth — unauthenticated redeem creates a fresh user.
@@ -1205,9 +1206,7 @@ def _connect_via_invite(
         f"  [green]✓[/green] Signed in as [bold]{chosen}[/bold] "
         f"[dim](change with `stash whoami` / profile edit)[/dim]"
     )
-    _show_setup_complete_splash(
-        workspace_name=result["workspace_name"], joined_via_invite=True
-    )
+    _show_setup_complete_splash(workspace_name=result["workspace_name"], joined_via_invite=True)
 
 
 @app.command("connect")
@@ -1227,7 +1226,8 @@ def connect(
         None, "--scope", help="Where to write config (user | project). Only used with --invite."
     ),
     display_name: str = typer.Option(
-        None, "--display-name",
+        None,
+        "--display-name",
         help="Override the auto-detected display name (default: git config user.name).",
     ),
 ):
@@ -1331,7 +1331,7 @@ def connect(
             frontend_url = base_url
         login_url = f"{frontend_url}/login?cli={session_id}"
 
-        console.print(f"\n  Opening browser to sign in...")
+        console.print("\n  Opening browser to sign in...")
         console.print(f"  [dim]{login_url}[/dim]\n")
         webbrowser.open(login_url)
 
@@ -1352,7 +1352,9 @@ def connect(
                         result = poll.json()
                         if result["status"] == "complete":
                             save_config(api_key=result["api_key"], username=result["username"])
-                            console.print(f"  [green]✓[/green] Logged in as [bold]{result['username']}[/bold]")
+                            console.print(
+                                f"  [green]✓[/green] Logged in as [bold]{result['username']}[/bold]"
+                            )
                             break
                 except httpx.HTTPError:
                     pass
@@ -1403,9 +1405,7 @@ def connect(
             if matched:
                 workspace_id = str(matched["id"])
                 save_config(default_workspace=workspace_id, scope=scope)
-                console.print(
-                    f"  [green]✓[/green] Using workspace [bold]{matched['name']}[/bold]"
-                )
+                console.print(f"  [green]✓[/green] Using workspace [bold]{matched['name']}[/bold]")
             else:
                 try:
                     ws_data = c.create_workspace(ws_name)
@@ -1508,17 +1508,13 @@ def _capture_install_repo() -> None:
         _write_central_config({"scope": "repo"})
 
 
-def _show_setup_complete_splash(
-    workspace_name: str = "", joined_via_invite: bool = False
-) -> None:
+def _show_setup_complete_splash(workspace_name: str = "", joined_via_invite: bool = False) -> None:
     """Clear the onboarding transcript and show a clean success splash."""
     _capture_install_repo()
     console.clear()
     console.print(f"[bold cyan]{STASH_LOGO}[/bold cyan]")
     if joined_via_invite and workspace_name:
-        console.print(
-            f"  [bold green]You joined[/bold green] [bold]{workspace_name}[/bold].\n"
-        )
+        console.print(f"  [bold green]You joined[/bold green] [bold]{workspace_name}[/bold].\n")
     else:
         console.print("  [bold green]You're all set up.[/bold green]\n")
 
@@ -1555,7 +1551,7 @@ def _show_setup_complete_splash(
         "  [bold]Q[/bold] How do I change scope or see a transcript?\n"
         "  [bold]A[/bold] [cyan]stash config scope <repo|workspace|all>[/cyan]  (default: repo)\n"
         "     [cyan]stash history transcript <session_id>[/cyan]  view a full transcript\n"
-        "     [cyan]stash history search \"<query>\"[/cyan]         search event content\n"
+        '     [cyan]stash history search "<query>"[/cyan]         search event content\n'
         "\n"
         "  [bold]Q[/bold] How do I share my workspace with my team?\n"
         "  [bold]A[/bold] Share the invite code ([cyan]stash workspaces info <id>[/cyan] prints it).\n"

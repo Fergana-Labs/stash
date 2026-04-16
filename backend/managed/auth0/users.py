@@ -6,7 +6,6 @@ from backend.auth import generate_api_key, hash_api_key
 from backend.database import get_pool
 from backend.services import workspace_service
 
-
 _NAME_CHARS = re.compile(r"[^a-zA-Z0-9_-]")
 
 

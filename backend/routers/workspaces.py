@@ -72,7 +72,9 @@ async def redeem_invite_authed(
     """Authenticated redeem: join the signed-in user to the workspace."""
     ws = await invite_token_service.redeem_as_existing_user(req.token, current_user["id"])
     if not ws:
-        raise HTTPException(status_code=404, detail="Invite token is invalid, expired, or exhausted")
+        raise HTTPException(
+            status_code=404, detail="Invite token is invalid, expired, or exhausted"
+        )
     return WorkspaceResponse(**ws)
 
 
@@ -190,7 +192,9 @@ async def kick_member(
 # ---------------------------------------------------------------------------
 
 
-@router.post("/{workspace_id}/invite-tokens", response_model=InviteTokenCreateResponse, status_code=201)
+@router.post(
+    "/{workspace_id}/invite-tokens", response_model=InviteTokenCreateResponse, status_code=201
+)
 async def create_invite_token(
     workspace_id: UUID,
     req: InviteTokenCreateRequest,
@@ -240,5 +244,3 @@ async def revoke_invite_token(
     ok = await invite_token_service.revoke_token(token_id, workspace_id)
     if not ok:
         raise HTTPException(status_code=404, detail="Token not found or already revoked")
-
-

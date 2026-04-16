@@ -55,7 +55,7 @@ export default function WorkspacesPage() {
       <H3>Personal resources</H3>
       <P>
         Notebooks, tables, history stores, and files can also exist outside any workspace as
-        personal resources. The curation tool writes to the user's personal notebook by default.
+        personal resources. The curation tool writes to the user&apos;s personal notebook by default.
         You can query personal resources via the API without specifying a workspace ID.
       </P>
     </>

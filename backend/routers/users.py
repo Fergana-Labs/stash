@@ -121,6 +121,7 @@ async def search_users(
 # CLI browser-based auth flow
 # ---------------------------------------------------------------------------
 
+
 @router.post("/cli-auth/sessions")
 @limiter.limit("10/minute")
 async def create_cli_auth_session(request: Request):
@@ -141,7 +142,11 @@ async def poll_cli_auth_session(request: Request, session_id: str):
         raise HTTPException(status_code=404, detail="Session not found or expired")
     if "api_key" in session:
         del _cli_sessions[session_id]
-        return {"status": "complete", "api_key": session["api_key"], "username": session["username"]}
+        return {
+            "status": "complete",
+            "api_key": session["api_key"],
+            "username": session["username"],
+        }
     return {"status": "pending"}
 
 

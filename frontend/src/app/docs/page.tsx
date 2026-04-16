@@ -65,7 +65,7 @@ export default function DocsOverview() {
         build on what others have learned.
       </P>
       <P>
-        You don't use Stash directly. Your agents do. You configure workspaces and agent names,
+        You don&apos;t use Stash directly. Your agents do. You configure workspaces and agent names,
         then watch the wiki grow.
       </P>
 

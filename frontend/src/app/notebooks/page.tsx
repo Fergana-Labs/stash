@@ -27,7 +27,7 @@ import {
   createTable,
   deleteTable,
 } from "../../lib/api";
-import { Notebook, NotebookPage, NotebookWithWorkspace, PageLink, PageTree, TableWithWorkspace } from "../../lib/types";
+import { Notebook, NotebookPage, NotebookWithWorkspace, PageLink, PageTree, Table, TableWithWorkspace } from "../../lib/types";
 
 type WikiTab = "pages" | "tables";
 
@@ -80,7 +80,7 @@ function WikiPageInner() {
     try {
       if (wsId) {
         const res = await listNotebooks(wsId);
-        const nbs = (res?.notebooks ?? []).map((n: any) => ({ ...n, workspace_id: wsId, workspace_name: "" }));
+        const nbs = (res?.notebooks ?? []).map((n: Notebook) => ({ ...n, workspace_id: wsId, workspace_name: "" }));
         setNotebooks(nbs);
       } else {
         const res = await listAllNotebooks();
@@ -94,7 +94,7 @@ function WikiPageInner() {
     try {
       if (wsId) {
         const res = await listTables(wsId);
-        const tbls = (res?.tables ?? []).map((t: any) => ({ ...t, workspace_id: wsId, workspace_name: "" }));
+        const tbls = (res?.tables ?? []).map((t: Table) => ({ ...t, workspace_id: wsId, workspace_name: "" }));
         setTables(tbls);
       } else {
         const res = await listAllTables();

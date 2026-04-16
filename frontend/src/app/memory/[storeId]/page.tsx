@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import AppShell from "../../../components/AppShell";
@@ -212,12 +213,12 @@ function HistoryDetailPageInner() {
     <AppShell user={user} onLogout={logout}>
       {/* Top bar */}
       <div className="bg-surface border-b border-border px-4 py-2 flex items-center gap-3">
-        <a
+        <Link
           href="/memory"
           className="text-dim hover:text-foreground text-sm transition-colors duration-[150ms]"
         >
           &larr; History
-        </a>
+        </Link>
         <h1 className="text-foreground font-medium font-display">
           {store?.name || "Loading..."}
         </h1>

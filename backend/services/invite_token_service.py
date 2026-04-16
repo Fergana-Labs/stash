@@ -7,7 +7,7 @@ the forever-secret workspaces.invite_code used by `stash workspaces join`.
 
 import hashlib
 import secrets
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
 from ..auth import generate_api_key, hash_api_key
@@ -34,7 +34,7 @@ async def create_token(
     """Mint a new invite token. Returns (row, raw_token). Raw is only seen once."""
     pool = get_pool()
     raw = _generate_token()
-    expires_at = datetime.now(timezone.utc) + timedelta(days=ttl_days)
+    expires_at = datetime.now(UTC) + timedelta(days=ttl_days)
     row = await pool.fetchrow(
         "INSERT INTO workspace_invite_tokens "
         "  (workspace_id, token_hash, max_uses, expires_at, created_by) "
@@ -87,7 +87,7 @@ async def _lookup_valid_token(raw: str) -> dict | None:
         return None
     if row["uses_count"] >= row["max_uses"]:
         return None
-    if row["expires_at"] <= datetime.now(timezone.utc):
+    if row["expires_at"] <= datetime.now(UTC):
         return None
     return dict(row)
 
