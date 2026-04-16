@@ -1119,30 +1119,35 @@ def connect():
                 marker = " [dim](current default)[/dim]" if str(ws["id"]) == workspace_id else ""
                 console.print(f"    [dim]{str(ws['id'])[:8]}…[/dim]  {ws['name']}{marker}")
 
+        # Pick a default workspace: prefer the configured one, else the first in the list.
+        default_ws = None
+        if workspace_id:
+            default_ws = next((ws for ws in my_workspaces if str(ws["id"]) == workspace_id), None)
+        if not default_ws and my_workspaces:
+            default_ws = my_workspaces[0]
+
+        default_name = default_ws["name"] if default_ws else ""
+
         _reserve_bottom_padding(4)
-        ws_action = typer.prompt(
-            "\nUse existing workspace ID, or type a name to create new one",
-            default=workspace_id or "",
+        ws_name = typer.prompt(
+            "\nPress Enter to accept the default workspace name, or type a new name",
+            default=default_name,
         ).strip()
 
-        if not ws_action:
-            console.print(
-                "[yellow]Skipping workspace setup. Run: stash config default_workspace <id>[/yellow]"
-            )
+        if not ws_name:
+            console.print("[yellow]Skipping workspace setup.[/yellow]")
         else:
-            # Check if it looks like a UUID (existing) or a name (create new)
-            import re
-
-            is_uuid = bool(re.match(r"^[0-9a-f-]{32,36}$", ws_action, re.I))
-            if is_uuid:
-                workspace_id = ws_action
+            # If the name matches an existing workspace, reuse it. Otherwise, create a new one.
+            matched = next((ws for ws in my_workspaces if ws["name"] == ws_name), None)
+            if matched:
+                workspace_id = str(matched["id"])
                 save_config(default_workspace=workspace_id, scope=scope)
                 console.print(
-                    f"  [green]✓[/green] Default workspace set to [bold]{workspace_id[:8]}…[/bold]"
+                    f"  [green]✓[/green] Using workspace [bold]{matched['name']}[/bold]"
                 )
             else:
                 try:
-                    ws_data = c.create_workspace(ws_action)
+                    ws_data = c.create_workspace(ws_name)
                     workspace_id = str(ws_data["id"])
                     save_config(default_workspace=workspace_id, scope=scope)
                     console.print(
