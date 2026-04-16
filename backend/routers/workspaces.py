@@ -6,13 +6,18 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from ..auth import get_current_user, get_current_user_optional
 from ..models import (
+    InviteTokenCreateRequest,
+    InviteTokenCreateResponse,
+    InviteTokenListResponse,
+    InviteTokenSummary,
+    RedeemInviteAuthedRequest,
     WorkspaceCreateRequest,
     WorkspaceListResponse,
     WorkspaceMember,
     WorkspaceResponse,
     WorkspaceUpdateRequest,
 )
-from ..services import workspace_service
+from ..services import invite_token_service, workspace_service
 
 router = APIRouter(prefix="/api/v1/workspaces", tags=["workspaces"])
 
@@ -57,6 +62,18 @@ async def list_workspaces(current_user: dict | None = Depends(get_current_user_o
 async def list_my_workspaces(current_user: dict = Depends(get_current_user)):
     workspaces = await workspace_service.list_user_workspaces(current_user["id"])
     return WorkspaceListResponse(workspaces=[WorkspaceResponse(**w) for w in workspaces])
+
+
+@router.post("/redeem-invite", response_model=WorkspaceResponse)
+async def redeem_invite_authed(
+    req: RedeemInviteAuthedRequest,
+    current_user: dict = Depends(get_current_user),
+):
+    """Authenticated redeem: join the signed-in user to the workspace."""
+    ws = await invite_token_service.redeem_as_existing_user(req.token, current_user["id"])
+    if not ws:
+        raise HTTPException(status_code=404, detail="Invite token is invalid, expired, or exhausted")
+    return WorkspaceResponse(**ws)
 
 
 @router.get("/{workspace_id}", response_model=WorkspaceResponse)
@@ -166,3 +183,62 @@ async def kick_member(
     kicked = await workspace_service.kick_member(workspace_id, user_id, current_user["id"])
     if not kicked:
         raise HTTPException(status_code=403, detail="Cannot kick this member")
+
+
+# ---------------------------------------------------------------------------
+# Magic-link invite tokens (distinct from the workspace.invite_code shared secret)
+# ---------------------------------------------------------------------------
+
+
+@router.post("/{workspace_id}/invite-tokens", response_model=InviteTokenCreateResponse, status_code=201)
+async def create_invite_token(
+    workspace_id: UUID,
+    req: InviteTokenCreateRequest,
+    current_user: dict = Depends(get_current_user),
+):
+    if not await workspace_service.is_member(workspace_id, current_user["id"]):
+        raise HTTPException(status_code=403, detail="Not a workspace member")
+    ws = await workspace_service.get_workspace(workspace_id)
+    if not ws:
+        raise HTTPException(status_code=404, detail="Workspace not found")
+    row, raw = await invite_token_service.create_token(
+        workspace_id=workspace_id,
+        creator_id=current_user["id"],
+        max_uses=req.max_uses,
+        ttl_days=req.ttl_days,
+    )
+    return InviteTokenCreateResponse(
+        id=row["id"],
+        token=raw,
+        workspace_id=row["workspace_id"],
+        workspace_name=ws["name"],
+        max_uses=row["max_uses"],
+        expires_at=row["expires_at"],
+    )
+
+
+@router.get("/{workspace_id}/invite-tokens", response_model=InviteTokenListResponse)
+async def list_invite_tokens(
+    workspace_id: UUID,
+    current_user: dict = Depends(get_current_user),
+):
+    if not await workspace_service.is_member(workspace_id, current_user["id"]):
+        raise HTTPException(status_code=403, detail="Not a workspace member")
+    tokens = await invite_token_service.list_tokens(workspace_id)
+    return InviteTokenListResponse(tokens=[InviteTokenSummary(**t) for t in tokens])
+
+
+@router.delete("/{workspace_id}/invite-tokens/{token_id}", status_code=204)
+async def revoke_invite_token(
+    workspace_id: UUID,
+    token_id: UUID,
+    current_user: dict = Depends(get_current_user),
+):
+    role = await workspace_service.get_member_role(workspace_id, current_user["id"])
+    if role not in ("owner", "admin"):
+        raise HTTPException(status_code=403, detail="Only owner/admin can revoke invite tokens")
+    ok = await invite_token_service.revoke_token(token_id, workspace_id)
+    if not ok:
+        raise HTTPException(status_code=404, detail="Token not found or already revoked")
+
+
