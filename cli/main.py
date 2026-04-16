@@ -974,7 +974,8 @@ def _self_host_walkthrough(cfg: dict) -> str:
         raise typer.Exit(0)
 
     current_url = cfg.get("base_url", "http://localhost:3456")
-    default_url = current_url if "localhost" in current_url or current_url != "https://stash.ac" else "http://localhost:3456"
+    managed_hosts = ("https://stash.ac", "https://www.stash.ac", "https://moltchat.onrender.com")
+    default_url = "http://localhost:3456" if current_url in managed_hosts else current_url
     return typer.prompt("URL of your instance", default=default_url).rstrip("/")
 
 
@@ -1005,7 +1006,7 @@ def connect():
     # --- Step 1: API endpoint ---
     cfg = load_config()
     mode_options = [
-        ("Managed", "hosted at stash.ac", "managed"),
+        ("Managed", "hosted by Stash", "managed"),
         ("Self-host", "run on your own machine", "self"),
     ]
     mode_label_w = max(len(label) for label, _, _ in mode_options)
@@ -1022,7 +1023,7 @@ def connect():
         raise typer.Exit(1)
 
     if mode == "managed":
-        base_url = "https://stash.ac"
+        base_url = "https://moltchat.onrender.com"
     else:
         base_url = _self_host_walkthrough(cfg)
     save_config(base_url=base_url, scope=scope)
@@ -1047,7 +1048,11 @@ def connect():
 
         # Create a CLI auth session
         try:
-            resp = httpx.post(f"{base_url}/api/v1/users/cli-auth/sessions", timeout=10)
+            resp = httpx.post(
+                f"{base_url}/api/v1/users/cli-auth/sessions",
+                timeout=10,
+                follow_redirects=True,
+            )
             resp.raise_for_status()
             session_id = resp.json()["session_id"]
         except Exception as e:
@@ -1073,7 +1078,11 @@ def connect():
             for _ in range(120):  # 2 minutes max
                 _time.sleep(1)
                 try:
-                    poll = httpx.get(f"{base_url}/api/v1/users/cli-auth/sessions/{session_id}", timeout=5)
+                    poll = httpx.get(
+                        f"{base_url}/api/v1/users/cli-auth/sessions/{session_id}",
+                        timeout=5,
+                        follow_redirects=True,
+                    )
                     if poll.status_code == 200:
                         result = poll.json()
                         if result["status"] == "complete":
