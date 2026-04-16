@@ -1076,7 +1076,7 @@ def _self_host_walkthrough(cfg: dict) -> str:
     console.print("\n[bold cyan]Self-hosting Stash[/bold cyan]\n")
     console.print("You'll need [bold]Docker[/bold] installed.  https://docker.com/get-started\n")
     console.print("Run these commands in a separate terminal:\n")
-    console.print("  [dim]1.[/dim] [cyan]git clone https://github.com/Fergana-Labs/octopus.git[/cyan]")
+    console.print("  [dim]1.[/dim] [cyan]git clone https://github.com/Fergana-Labs/stash.git[/cyan]")
     console.print("  [dim]2.[/dim] [cyan]cd octopus[/cyan]")
     console.print("  [dim]3.[/dim] [cyan]docker compose up -d[/cyan]")
     console.print("\n  [dim]Already running? Skip to the URL prompt below.[/dim]\n")

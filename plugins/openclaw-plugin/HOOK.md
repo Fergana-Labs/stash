@@ -1,7 +1,7 @@
 ---
 name: stash
 description: "Stream Openclaw gateway sessions to a Stash workspace"
-homepage: https://github.com/Fergana-Labs/octopus/tree/main/plugins/openclaw-plugin
+homepage: https://github.com/Fergana-Labs/stash/tree/main/plugins/openclaw-plugin
 metadata:
   {
     "openclaw":
@@ -53,7 +53,7 @@ transcription.
 ## Install
 
 ```bash
-openclaw plugins install github:Fergana-Labs/octopus#plugins/openclaw-plugin
+openclaw plugins install github:Fergana-Labs/stash#plugins/openclaw-plugin
 openclaw hooks enable stash
 # restart the gateway
 ```

@@ -25,7 +25,7 @@ dependencies = [
 
 [project.urls]
 Homepage = "https://stash.ac"
-Repository = "https://github.com/Fergana-Labs/octopus"
+Repository = "https://github.com/Fergana-Labs/stash"
 
 [project.scripts]
 stash = "cli.main:app"

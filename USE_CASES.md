@@ -100,7 +100,7 @@ Real-world scenarios for Stash, from solo developer to multi-agent team.
 
 **Setup:**
 ```bash
-git clone https://github.com/Fergana-Labs/octopus.git
+git clone https://github.com/Fergana-Labs/stash.git
 cd octopus
 docker compose up -d
 ```

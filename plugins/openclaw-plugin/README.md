@@ -39,7 +39,7 @@ The Python side reuses `plugins/shared/` just like every other agent's plugin.
 See `HOOK.md` for the full install flow. Short version:
 
 ```bash
-openclaw plugins install github:Fergana-Labs/octopus#plugins/openclaw-plugin
+openclaw plugins install github:Fergana-Labs/stash#plugins/openclaw-plugin
 openclaw hooks enable stash
 # restart the gateway
 ```
