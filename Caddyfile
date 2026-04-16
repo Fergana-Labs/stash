@@ -1,4 +1,4 @@
-# Octopus — Caddy reverse proxy
+# Stash — Caddy reverse proxy
 #
 # Replace app.example.com with your actual domain.
 # Caddy automatically provisions and renews TLS certificates via Let's Encrypt.

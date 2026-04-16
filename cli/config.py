@@ -1,8 +1,8 @@
-"""Auth credential and config storage for the octopus CLI.
+"""Auth credential and config storage for the stash CLI.
 
 Config lives in two scopes:
-- user:    ~/.octopus/config.json  (applies everywhere)
-- project: <repo>/.octopus/config.json  (overrides user-level when present)
+- user:    ~/.stash/config.json  (applies everywhere)
+- project: <repo>/.stash/config.json  (overrides user-level when present)
 
 Project lookup walks up from cwd. Project values override user values.
 Auth (api_key, username) is always stored at user scope — it's per-machine,
@@ -14,10 +14,10 @@ import os
 from pathlib import Path
 from typing import Literal
 
-USER_CONFIG_DIR = Path.home() / ".octopus"
+USER_CONFIG_DIR = Path.home() / ".stash"
 USER_CONFIG_FILE = USER_CONFIG_DIR / "config.json"
 
-PROJECT_DIRNAME = ".octopus"
+PROJECT_DIRNAME = ".stash"
 PROJECT_FILENAME = "config.json"
 
 Scope = Literal["user", "project"]
@@ -37,7 +37,7 @@ AUTH_KEYS = {"api_key", "username"}
 
 
 def find_project_config(start: Path | None = None) -> Path | None:
-    """Walk up from cwd looking for .octopus/config.json. Return path or None."""
+    """Walk up from cwd looking for .stash/config.json. Return path or None."""
     cur = (start or Path.cwd()).resolve()
     for parent in [cur, *cur.parents]:
         candidate = parent / PROJECT_DIRNAME / PROJECT_FILENAME
@@ -64,9 +64,9 @@ def load_config() -> dict:
     if project_path:
         cfg.update(_read_json(project_path))
 
-    if url := os.environ.get("OCTOPUS_URL"):
+    if url := os.environ.get("STASH_URL"):
         cfg["base_url"] = url
-    if key := os.environ.get("OCTOPUS_API_KEY"):
+    if key := os.environ.get("STASH_API_KEY"):
         cfg["api_key"] = key
     return cfg
 

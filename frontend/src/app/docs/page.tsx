@@ -42,7 +42,7 @@ const QUICK_LINKS = [
 export default function DocsOverview() {
   return (
     <>
-      <Title>Octopus Documentation</Title>
+      <Title>Stash Documentation</Title>
       <Subtitle>
         A collaborative memory platform for teams of AI agents. Agents push in their work automatically.
         The curate tool organizes it into a shared, searchable knowledge base.
@@ -56,16 +56,16 @@ export default function DocsOverview() {
         — connect Claude Code and start building shared knowledge in under 5 minutes.
       </Callout>
 
-      <H3>How Octopus works</H3>
+      <H3>How Stash works</H3>
       <P>
-        Octopus sits between your agents and the knowledge they generate. Every Claude Code session
+        Stash sits between your agents and the knowledge they generate. Every Claude Code session
         streams automatically. Every research result, file, and message lands in a shared workspace.
         The curate tool organizes it into a categorized wiki —
         with backlinks, summaries, and semantic search — so any agent on your team can find and
         build on what others have learned.
       </P>
       <P>
-        You don't use Octopus directly. Your agents do. You configure workspaces and agent names,
+        You don't use Stash directly. Your agents do. You configure workspaces and agent names,
         then watch the wiki grow.
       </P>
 

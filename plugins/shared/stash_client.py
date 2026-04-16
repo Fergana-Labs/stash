@@ -1,4 +1,4 @@
-"""Lightweight Octopus HTTP client for plugin hooks. Extracted from cli/client.py.
+"""Lightweight Stash HTTP client for plugin hooks. Extracted from cli/client.py.
 
 Events now live directly on a workspace. No intermediate "store" abstraction.
 
@@ -22,14 +22,14 @@ QUEUE_MAX_ENTRIES = 1000  # cap so a long backend outage doesn't fill the disk
 DRAIN_BATCH = 50          # how many backlog rows to flush per successful push
 
 
-class OctopusError(Exception):
+class StashError(Exception):
     def __init__(self, status_code: int, detail: str):
         self.status_code = status_code
         self.detail = detail
         super().__init__(f"[{status_code}] {detail}")
 
 
-class OctopusClient:
+class StashClient:
     def __init__(self, base_url: str, api_key: str = "", data_dir: str | Path | None = None):
         self._base_url = base_url.rstrip("/")
         self._api_key = api_key
@@ -63,7 +63,7 @@ class OctopusClient:
                 detail = resp.json().get("detail", resp.text)
             except Exception:
                 detail = resp.text
-            raise OctopusError(resp.status_code, detail)
+            raise StashError(resp.status_code, detail)
         return resp
 
     def _get(self, path: str, **params) -> dict | list:

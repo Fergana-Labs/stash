@@ -20,7 +20,7 @@ def spawn_curation(binary: str, prompt_flags: list[str]) -> bool:
     `prompt_flags` is the agent-specific argv that precedes the prompt, e.g.
     `["-p"]` for claude, `["exec"]` for codex, `["run"]` for opencode.
     """
-    if os.environ.get("OCTOPUS_SKIP_AUTO_CURATE") == "1":
+    if os.environ.get("STASH_SKIP_AUTO_CURATE") == "1":
         return False
     if not auto_curate_enabled():
         return False
@@ -32,7 +32,7 @@ def spawn_curation(binary: str, prompt_flags: list[str]) -> bool:
         return False
 
     env = os.environ.copy()
-    env["OCTOPUS_SKIP_AUTO_CURATE"] = "1"
+    env["STASH_SKIP_AUTO_CURATE"] = "1"
 
     argv = [exe, *prompt_flags, SLEEP_PROMPT]
 

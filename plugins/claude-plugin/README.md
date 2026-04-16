@@ -1,21 +1,21 @@
-# Octopus Plugin for Claude Code
+# Stash Plugin for Claude Code
 
-Turn any Claude Code session into an Octopus agent. Every prompt, tool use, and session summary streams to your workspace's shared history.
+Turn any Claude Code session into an Stash agent. Every prompt, tool use, and session summary streams to your workspace's shared history.
 
 ## Quick Start (5 minutes)
 
 ### Step 1: Create an account
 
-Go to [getoctopus.com/login](https://getoctopus.com/login) and register a human account. Save your API key — it's shown only once.
+Go to [stash.ac/login](https://stash.ac/login) and register a human account. Save your API key — it's shown only once.
 
 ### Step 2: Install the plugin
 
 ```bash
-# From the octopus repo
+# From the stash repo
 claude plugin add ./claude-plugin
 
 # Or from the marketplace
-claude plugin install octopus
+claude plugin install stash
 ```
 
 Claude Code will prompt you for three config values:
@@ -24,20 +24,20 @@ Claude Code will prompt you for three config values:
 |--------|-------|
 | `api_key` | Your API key (from step 1) |
 | `agent_name` | A name for this agent (any string) |
-| `api_endpoint` | `https://getoctopus.com` (default, usually skip) |
+| `api_endpoint` | `https://stash.ac` (default, usually skip) |
 
 ### Step 3: Connect to a workspace
 
 From any shell, run:
 
 ```
-octopus connect
+stash connect
 ```
 
 This interactive wizard will:
 1. Verify your auth
 2. Let you pick or create a workspace
-3. Save defaults to `~/.octopus/config.json`
+3. Save defaults to `~/.stash/config.json`
 
 After this, every session streams directly to that workspace's memory.
 
@@ -57,13 +57,13 @@ Every Claude Code session now automatically:
 To collaborate with teammates in a shared workspace:
 
 1. Each person follows Steps 1-2 above (own account, plugin installed)
-2. One person creates a workspace at [getoctopus.com/rooms](https://getoctopus.com/rooms)
+2. One person creates a workspace at [stash.ac/rooms](https://stash.ac/rooms)
 3. Share the **invite code** (shown on the workspace page) with teammates
-4. Each person runs `octopus connect` and joins the workspace
+4. Each person runs `stash connect` and joins the workspace
 
 Now everyone's activity streams to the same workspace. You can:
 - Collaborate on shared notebooks
-- Query each other's activity (`octopus history query --ws <workspace_id>`)
+- Query each other's activity (`stash history query --ws <workspace_id>`)
 
 ---
 
@@ -71,11 +71,11 @@ Now everyone's activity streams to the same workspace. You can:
 
 | Key | Default | Description |
 |-----|---------|-------------|
-| `api_endpoint` | `https://getoctopus.com` | Octopus backend URL |
+| `api_endpoint` | `https://stash.ac` | Stash backend URL |
 | `api_key` | *(required)* | Your API key |
 | `agent_name` | *(required)* | Agent name (any string) |
-| `workspace_id` | *(optional)* | Set via `octopus connect` |
-| `auto_curate` | `true` | Spawn `claude -p` headless at session end to curate history into wiki pages. Stored in `~/.octopus/config.json`. |
+| `workspace_id` | *(optional)* | Set via `stash connect` |
+| `auto_curate` | `true` | Spawn `claude -p` headless at session end to curate history into wiki pages. Stored in `~/.stash/config.json`. |
 
 ---
 
@@ -93,7 +93,7 @@ Stop ───────────→ Push session_end summary (tool count, 
 
 SessionEnd ─────→ Spawn `claude -p` headless with the shared sleep prompt to
                   curate recent history into wiki pages. Gated by `auto_curate`
-                  + a 30-min cooldown stored in ~/.octopus/config.json.
+                  + a 30-min cooldown stored in ~/.stash/config.json.
 ```
 
 ### Curation (sleep time compute)
@@ -108,27 +108,27 @@ curation, and so on.
 
 ## Commands
 
-Everything is an `octopus` CLI subcommand — there are no slash commands.
+Everything is a `stash` CLI subcommand — there are no slash commands.
 
 | Command | Description |
 |---------|-------------|
-| `octopus connect` | Onboarding wizard — pick workspace, create history store |
-| `octopus status` | Show central config, streaming state, last curate run |
-| `octopus disconnect` | Pause activity streaming across every installed plugin |
+| `stash connect` | Onboarding wizard — pick workspace, create history store |
+| `stash status` | Show central config, streaming state, last curate run |
+| `stash disconnect` | Pause activity streaming across every installed plugin |
 
-The plugin also gives Claude access to the rest of the `octopus` CLI. Key commands:
+The plugin also gives Claude access to the rest of the `stash` CLI. Key commands:
 
 ```bash
-octopus history search "database migration" --ws <workspace_id>   # Full-text search events
-octopus history query --ws <workspace_id> --limit 20              # Recent events
-octopus history query --all --limit 20                             # Cross-workspace events
-octopus notebooks list --all                                       # List all notebooks
-octopus workspaces list --mine                                     # List your workspaces
+stash history search "database migration" --ws <workspace_id>   # Full-text search events
+stash history query --ws <workspace_id> --limit 20              # Recent events
+stash history query --all --limit 20                             # Cross-workspace events
+stash notebooks list --all                                       # List all notebooks
+stash workspaces list --mine                                     # List your workspaces
 ```
 
 Set a default workspace to avoid repeating it:
 ```bash
-octopus config default_workspace <id>
+stash config default_workspace <id>
 ```
 
 ---

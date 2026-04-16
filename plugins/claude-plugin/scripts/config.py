@@ -16,11 +16,11 @@ SHARED = Path(__file__).resolve().parent.parent.parent / "shared"
 if str(SHARED) not in sys.path:
     sys.path.insert(0, str(SHARED))
 
-from octopus_client import OctopusClient  # noqa: E402
+from stash_client import StashClient  # noqa: E402
 
 DATA_DIR = Path(os.environ.get(
     "CLAUDE_PLUGIN_DATA",
-    Path.home() / ".claude/plugins/data/octopus",
+    Path.home() / ".claude/plugins/data/stash",
 ))
 
 
@@ -39,20 +39,20 @@ def _read_json(path: Path) -> dict:
 
 
 def _project_config() -> Path | None:
-    """Walk up from cwd looking for .octopus/config.json."""
+    """Walk up from cwd looking for .stash/config.json."""
     try:
         cur = Path.cwd().resolve()
     except Exception:
         return None
     for parent in [cur, *cur.parents]:
-        candidate = parent / ".octopus" / "config.json"
+        candidate = parent / ".stash" / "config.json"
         if candidate.exists():
             return candidate
     return None
 
 
-# Keys that ONLY the user-scoped ~/.octopus/config.json is allowed to set.
-# A project-scoped .octopus/config.json (walked up from cwd) must not be able
+# Keys that ONLY the user-scoped ~/.stash/config.json is allowed to set.
+# A project-scoped .stash/config.json (walked up from cwd) must not be able
 # to override these — otherwise any writable ancestor dir becomes an exfil
 # vector (attacker points base_url at their own server, captures every
 # prompt + tool output).
@@ -60,13 +60,13 @@ _USER_ONLY_KEYS = {"base_url", "api_key"}
 
 
 def _load_cli_config() -> dict:
-    """User config (~/.octopus/config.json) overlaid with project config.
+    """User config (~/.stash/config.json) overlaid with project config.
 
     Project config may override workspace/username scoping, but NOT the
     transport credentials (base_url, api_key).
     """
     merged: dict = {}
-    user_path = Path.home() / ".octopus" / "config.json"
+    user_path = Path.home() / ".stash" / "config.json"
     if user_path.exists():
         merged.update(_read_json(user_path))
     project_path = _project_config()
@@ -85,7 +85,7 @@ def get_config() -> dict:
     if not api_key:
         cli = _load_cli_config()
         return {
-            "api_endpoint": cli.get("base_url", "https://getoctopus.com"),
+            "api_endpoint": cli.get("base_url", "https://stash.ac"),
             "api_key": cli.get("api_key", ""),
             "agent_name": cli.get("username", ""),
             "workspace_id": cli.get("default_workspace", ""),
@@ -94,7 +94,7 @@ def get_config() -> dict:
         }
 
     return {
-        "api_endpoint": os.environ.get("CLAUDE_PLUGIN_USER_CONFIG_api_endpoint", "https://getoctopus.com"),
+        "api_endpoint": os.environ.get("CLAUDE_PLUGIN_USER_CONFIG_api_endpoint", "https://stash.ac"),
         "api_key": api_key,
         "agent_name": agent_name,
         "workspace_id": os.environ.get("CLAUDE_PLUGIN_USER_CONFIG_workspace_id", ""),
@@ -103,9 +103,9 @@ def get_config() -> dict:
     }
 
 
-def get_client() -> OctopusClient:
+def get_client() -> StashClient:
     cfg = get_config()
-    return OctopusClient(base_url=cfg["api_endpoint"], api_key=cfg["api_key"], data_dir=DATA_DIR)
+    return StashClient(base_url=cfg["api_endpoint"], api_key=cfg["api_key"], data_dir=DATA_DIR)
 
 
 def is_configured() -> bool:

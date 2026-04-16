@@ -126,12 +126,12 @@ def test_codex_notify_fallback():
 
 
 def test_push_event_stamps_client_into_metadata():
-    """OctopusClient.push_event should merge the `client` facet into metadata."""
-    from octopus_client import OctopusClient
+    """StashClient.push_event should merge the `client` facet into metadata."""
+    from stash_client import StashClient
 
     calls = []
 
-    class FakeClient(OctopusClient):
+    class FakeClient(StashClient):
         def _post(self, path, **kwargs):
             calls.append((path, kwargs))
             return {}
@@ -196,11 +196,11 @@ def test_client_facet_flows_through_stream_paths():
         stream_assistant_message, stream_session_end, stream_tool_use,
         stream_user_message,
     )
-    from octopus_client import OctopusClient
+    from stash_client import StashClient
 
     calls = []
 
-    class FakeClient(OctopusClient):
+    class FakeClient(StashClient):
         def _post(self, path, **kwargs):
             calls.append(kwargs.get("json", {}))
             return {}
@@ -236,11 +236,11 @@ def test_stream_session_end_not_emitted_on_assistant_message():
     the whole point of splitting it from stream_session_end."""
     from event import HookEvent
     from hooks import stream_assistant_message
-    from octopus_client import OctopusClient
+    from stash_client import StashClient
 
     calls = []
 
-    class FakeClient(OctopusClient):
+    class FakeClient(StashClient):
         def _post(self, path, **kwargs):
             calls.append(kwargs.get("json", {}))
             return {}

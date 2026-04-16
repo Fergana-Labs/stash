@@ -1,18 +1,18 @@
-"""Synchronous httpx client wrapping the Octopus REST API."""
+"""Synchronous httpx client wrapping the Stash REST API."""
 
 from __future__ import annotations
 
 import httpx
 
 
-class OctopusError(Exception):
+class StashError(Exception):
     def __init__(self, status_code: int, detail: str):
         self.status_code = status_code
         self.detail = detail
         super().__init__(f"[{status_code}] {detail}")
 
 
-class OctopusClient:
+class StashClient:
     def __init__(self, base_url: str, api_key: str = ""):
         self._base_url = base_url.rstrip("/")
         self._api_key = api_key
@@ -42,7 +42,7 @@ class OctopusClient:
                 detail = resp.json().get("detail", resp.text)
             except Exception:
                 detail = resp.text
-            raise OctopusError(resp.status_code, detail)
+            raise StashError(resp.status_code, detail)
         return resp
 
     def _get(self, path: str, **params) -> dict | list:

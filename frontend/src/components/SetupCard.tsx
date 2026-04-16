@@ -7,7 +7,7 @@ interface SetupCardProps {
   apiKey?: string | null;
 }
 
-const DISMISS_KEY_PREFIX = "octopus_setup_dismissed_";
+const DISMISS_KEY_PREFIX = "stash_setup_dismissed_";
 
 export default function SetupCard({ workspaceId, apiKey }: SetupCardProps) {
   const storageKey = `${DISMISS_KEY_PREFIX}${workspaceId}`;
@@ -34,7 +34,7 @@ export default function SetupCard({ workspaceId, apiKey }: SetupCardProps) {
     setTimeout(() => setCopied(null), 2000);
   };
 
-  const cliCmd = "pip install octopus && octopus login";
+  const cliCmd = "pip install stash && stash login";
 
   return (
     <div className="bg-[#1a2332] border border-white/10 rounded-lg overflow-hidden mb-8">

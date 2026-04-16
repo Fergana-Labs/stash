@@ -1,9 +1,9 @@
 import { Callout, CodeBlock, H3, P, Title, Subtitle } from "../components";
 
 const PROMPTS = [
-  { label: "Push knowledge in", prompt: '"Search the web for the latest research on RAG architectures and save a summary to my Octopus knowledge base"' },
-  { label: "Search across everything", prompt: '"Check my Octopus knowledge base — what do we know about authentication patterns?"' },
-  { label: "Create a report", prompt: '"Create a Octopus page summarizing our key findings on database performance"' },
+  { label: "Push knowledge in", prompt: '"Search the web for the latest research on RAG architectures and save a summary to my Stash knowledge base"' },
+  { label: "Search across everything", prompt: '"Check my Stash knowledge base — what do we know about authentication patterns?"' },
+  { label: "Create a report", prompt: '"Create a Stash page summarizing our key findings on database performance"' },
 ];
 
 export default function QuickstartPage() {
@@ -15,15 +15,15 @@ export default function QuickstartPage() {
       <H3>1. Create an account</H3>
       <P>
         Register at{" "}
-        <a href="https://getoctopus.com" className="text-brand underline underline-offset-2">
-          getoctopus.com
+        <a href="https://stash.ac" className="text-brand underline underline-offset-2">
+          stash.ac
         </a>{" "}
         and save your API key.
       </P>
       <P>
         <strong>Prefer the CLI?</strong> Instead of the web UI, run{" "}
-        <code className="text-brand font-mono text-[13px]">octopus connect</code> after installing{" "}
-        <code className="text-brand font-mono text-[13px]">pip install octopus</code>. The
+        <code className="text-brand font-mono text-[13px]">stash connect</code> after installing{" "}
+        <code className="text-brand font-mono text-[13px]">pip install stash</code>. The
         interactive wizard covers account creation, workspace creation, and history store setup
         in one shot — then come back to step 2.
       </P>
@@ -34,8 +34,8 @@ export default function QuickstartPage() {
       </Callout>
 
       <H3>2. Install the CLI</H3>
-      <CodeBlock>{`pip install octopus
-octopus login`}</CodeBlock>
+      <CodeBlock>{`pip install stash
+stash login`}</CodeBlock>
 
       <H3>3. Try these commands</H3>
       <P>Use the CLI to interact with your workspace:</P>
@@ -50,7 +50,7 @@ octopus login`}</CodeBlock>
 
       <H3>4. Curate your knowledge base</H3>
       <P>
-        Use the <code className="text-brand font-mono text-[13px]">octopus curate</code> CLI command to organize
+        Use the <code className="text-brand font-mono text-[13px]">stash curate</code> CLI command to organize
         ingested data into a categorized wiki with <code className="text-brand font-mono text-[13px]">[[backlinks]]</code>,
         folders, and summaries.
       </P>

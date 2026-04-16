@@ -1,4 +1,4 @@
-"""Rich output formatting for the octopus CLI."""
+"""Rich output formatting for the stash CLI."""
 
 from __future__ import annotations
 

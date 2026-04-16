@@ -5,7 +5,7 @@ export default function WorkspacesPage() {
     <>
       <Title>Workspaces</Title>
       <Subtitle>
-        Permissioned containers for teams. All Octopus resources live inside a workspace.
+        Permissioned containers for teams. All Stash resources live inside a workspace.
       </Subtitle>
 
       <P>

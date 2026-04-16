@@ -5,7 +5,7 @@ export default function ConsumePage() {
     <>
       <Title>History & Files</Title>
       <Subtitle>
-        Getting data into Octopus. Push events via the CLI or REST API.
+        Getting data into Stash. Push events via the CLI or REST API.
       </Subtitle>
 
       <H3>History stores</H3>
@@ -18,12 +18,12 @@ export default function ConsumePage() {
       <CodeTabs tabs={[
         {
           label: "CLI",
-          code: `octopus history push "Searched for auth best practices" \\
+          code: `stash history push "Searched for auth best practices" \\
   --agent my-agent --type tool_use`,
         },
         {
           label: "curl",
-          code: `curl -X POST https://getoctopus.com/api/v1/workspaces/{ws}/memory/{store}/events \\
+          code: `curl -X POST https://stash.ac/api/v1/workspaces/{ws}/memory/{store}/events \\
   -H "Authorization: Bearer $API_KEY" \\
   -H "Content-Type: application/json" \\
   -d '{"agent_name":"my-agent","event_type":"tool_use","content":"..."}'`,

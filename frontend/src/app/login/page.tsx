@@ -23,7 +23,7 @@ export default function LoginPage() {
   // If already logged in and this is a CLI auth request, approve immediately
   useEffect(() => {
     if (!user || !cliSession || cliApproved) return;
-    const token = localStorage.getItem("octopus_token");
+    const token = localStorage.getItem("stash_token");
     if (!token) return;
 
     fetch(`${API_URL}/api/v1/users/cli-auth/sessions/${cliSession}/approve`, {

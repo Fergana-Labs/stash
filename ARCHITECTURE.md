@@ -2,7 +2,7 @@
 
 ## System overview
 
-Octopus is a collaborative memory platform for AI agent teams. Three layers: a Next.js frontend, a FastAPI backend, and PostgreSQL with pgvector for storage.
+Stash is a collaborative memory platform for AI agent teams. Three layers: a Next.js frontend, a FastAPI backend, and PostgreSQL with pgvector for storage.
 
 ```
 ┌──────────────────────────────────────────────────────────────────────┐
@@ -11,11 +11,11 @@ Octopus is a collaborative memory platform for AI agent teams. Three layers: a N
 │   ┌─────────────┐              ┌──────────────────────────┐          │
 │   │ Next.js UI  │              │ Claude plugin            │          │
 │   │ (browser)   │              │   hooks  ──▶ REST        │          │
-│   │             │              │   skills ──▶ octopus CLI │          │
+│   │             │              │   skills ──▶ stash CLI │          │
 │   └──────┬──────┘              └─────────┬──────────┬─────┘          │
 │          │ REST                          │ shell    │ REST           │
 │          │                       ┌───────┴────────┐ │                │
-│          │                       │  octopus CLI   │ │                │
+│          │                       │  stash CLI   │ │                │
 │          │                       └───────┬────────┘ │                │
 │          │                               │ REST     │                │
 └──────────┼───────────────────────────────┼──────────┼────────────────┘
@@ -59,9 +59,9 @@ Octopus is a collaborative memory platform for AI agent teams. Three layers: a N
 
 ## Product split
 
-Octopus is the shared system of record — users, workspaces, notebooks, history, chats, tables, files, decks, permissions. If state is shared, persisted, or user-visible, it belongs here.
+Stash is the shared system of record — users, workspaces, notebooks, history, chats, tables, files, decks, permissions. If state is shared, persisted, or user-visible, it belongs here.
 
-External orchestration layers (multi-agent frameworks, local bridge daemons, the Claude plugin in `plugins/claude-plugin/`) integrate with Octopus by pushing history events, syncing notebooks, and reading resources via REST / CLI.
+External orchestration layers (multi-agent frameworks, local bridge daemons, the Claude plugin in `plugins/claude-plugin/`) integrate with Stash by pushing history events, syncing notebooks, and reading resources via REST / CLI.
 
 ## Data model
 
@@ -174,7 +174,7 @@ Most routers are split into `ws_router` (workspace-scoped, `/workspaces/{id}/...
 | `tables` | workspace + personal | Tables, rows, columns, CSV import/export |
 | `files` | workspace + personal | Uploads, downloads, signed URLs |
 | `aggregate` | `/api/v1/me/*` | Cross-workspace personal views + analytics |
-| `skill` | `/skill/octopus/SKILL.md` | Serves the plugin skill manifest |
+| `skill` | `/skill/stash/SKILL.md` | Serves the plugin skill manifest |
 
 ### Services
 
@@ -261,17 +261,17 @@ frontend/src/
 
 ### CLI (`cli/`)
 
-A Python CLI intended to be driven by coding agents running alongside Octopus (e.g. Claude Code via the plugin below). Exposes auth, workspaces, notebooks, history push / query / search, tables, and files over REST. Humans can run it too, but the primary consumer is the agent.
+A Python CLI intended to be driven by coding agents running alongside Stash (e.g. Claude Code via the plugin below). Exposes auth, workspaces, notebooks, history push / query / search, tables, and files over REST. Humans can run it too, but the primary consumer is the agent.
 
 ### Claude plugin (`plugins/claude-plugin/`)
 
 A plugin loaded by Claude Code. Two integration paths into the backend:
 
-- `hooks/hooks.json` registers Claude Code lifecycle hooks (SessionStart, UserPromptSubmit, PostToolUse, Stop, SessionEnd). The handlers in `scripts/` push events and inject context via the lightweight `octopus_client.py` HTTP client — direct REST, no CLI in the loop.
-- `skills/` ships slash-command skills (`/octopus:connect`, `/search`, `/sleep`, …). These are `SKILL.md` prompt templates that shell out to the `octopus` CLI; they do not call REST directly.
+- `hooks/hooks.json` registers Claude Code lifecycle hooks (SessionStart, UserPromptSubmit, PostToolUse, Stop, SessionEnd). The handlers in `scripts/` push events and inject context via the lightweight `stash_client.py` HTTP client — direct REST, no CLI in the loop.
+- `skills/` ships slash-command skills (`/stash:connect`, `/search`, `/sleep`, …). These are `SKILL.md` prompt templates that shell out to the `stash` CLI; they do not call REST directly.
 - `CLAUDE.md` teaches the agent the CLI exists and documents the relevant commands so the agent uses it unprompted.
 
-The backend serves the skill manifest at `GET /skill/octopus/SKILL.md` for plugin bootstrap.
+The backend serves the skill manifest at `GET /skill/stash/SKILL.md` for plugin bootstrap.
 
 ## Deployment
 

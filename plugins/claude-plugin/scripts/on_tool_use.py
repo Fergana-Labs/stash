@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""PostToolUse (async): stream tool call + result to Octopus history."""
+"""PostToolUse (async): stream tool call + result to Stash history."""
 
 from config import DATA_DIR, get_client, get_config, get_stdin_data, is_configured
 from hooks import stream_tool_use

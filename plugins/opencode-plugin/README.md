@@ -1,11 +1,11 @@
-# Octopus Plugin for opencode
+# Stash Plugin for opencode
 
-Streams opencode sessions to an Octopus workspace.
+Streams opencode sessions to an Stash workspace.
 
 ## Prerequisites
 
-- `octopus` CLI installed and logged in
-- `octopus config default_workspace <id>` set
+- `stash` CLI installed and logged in
+- `stash config default_workspace <id>` set
 - Python 3.10+ and `httpx`
 - opencode installed (Bun-based runtime — opencode transpiles TS directly, no build step needed)
 
@@ -16,7 +16,7 @@ Point your opencode config at `plugin.ts`. The config key is `plugin` (singular)
 ```jsonc
 // ~/.config/opencode/opencode.json (or <project>/opencode.json)
 {
-  "plugin": ["/absolute/path/to/octopus/plugins/opencode-plugin/plugin.ts"]
+  "plugin": ["/absolute/path/to/stash/plugins/opencode-plugin/plugin.ts"]
 }
 ```
 
@@ -28,7 +28,7 @@ Restart opencode.
 
 `plugin.ts` registers two keyed hooks (`chat.message`, `tool.execute.after`) plus a single `event` dispatcher for bus events. All real logic lives in `plugins/shared/` and is identical to the Claude/Cursor/Gemini/Codex plugins.
 
-| opencode signal | Octopus event |
+| opencode signal | Stash event |
 |---|---|
 | `chat.message` (keyed hook) | `user_message` |
 | `tool.execute.after` (keyed hook) | `tool_use` |
@@ -39,17 +39,17 @@ Ignored on purpose: `session.idle` fires on every turn completion (not session e
 
 ## Commands
 
-Everything is a plain `octopus` CLI subcommand — no opencode-specific slash commands:
+Everything is a plain `stash` CLI subcommand — no opencode-specific slash commands:
 
 | Command | Description |
 |---------|-------------|
-| `octopus connect` | Interactive setup (auth + workspace + store) |
-| `octopus status` | Central config, streaming state, last curate |
-| `octopus disconnect` | Pause event streaming across every installed plugin |
+| `stash connect` | Interactive setup (auth + workspace + store) |
+| `stash status` | Central config, streaming state, last curate |
+| `stash disconnect` | Pause event streaming across every installed plugin |
 
 When the opencode bus emits `session.deleted` the plugin spawns `opencode run …`
 headless with a shared curation prompt. Toggle with `auto_curate` in
-`~/.octopus/config.json`.
+`~/.stash/config.json`.
 
 ## Known gaps
 
@@ -57,11 +57,11 @@ headless with a shared curation prompt. Toggle with `auto_curate` in
 
 ## Retrieval
 
-opencode agents have shell access. Point the agent at the `octopus` CLI for reads mid-conversation — all commands support `--json`:
+opencode agents have shell access. Point the agent at the `stash` CLI for reads mid-conversation — all commands support `--json`:
 
 ```
-octopus history query --ws <id> --limit 20 --json
-octopus history search "<query>" --ws <id> --json
-octopus whoami --json
-octopus workspace list --mine --json
+stash history query --ws <id> --limit 20 --json
+stash history search "<query>" --ws <id> --json
+stash whoami --json
+stash workspace list --mine --json
 ```

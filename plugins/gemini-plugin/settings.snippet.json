@@ -7,10 +7,10 @@
         "hooks": [
           {
             "type": "command",
-            "name": "octopus-session-start",
+            "name": "stash-session-start",
             "command": "python3 ${PLUGIN_ROOT}/scripts/on_session_start.py",
             "timeout": 5000,
-            "description": "Record Octopus session id"
+            "description": "Record Stash session id"
           }
         ]
       }
@@ -21,10 +21,10 @@
         "hooks": [
           {
             "type": "command",
-            "name": "octopus-prompt",
+            "name": "stash-prompt",
             "command": "python3 ${PLUGIN_ROOT}/scripts/on_prompt.py",
             "timeout": 3000,
-            "description": "Stream user prompt to Octopus"
+            "description": "Stream user prompt to Stash"
           }
         ]
       }
@@ -35,10 +35,10 @@
         "hooks": [
           {
             "type": "command",
-            "name": "octopus-tool-use",
+            "name": "stash-tool-use",
             "command": "python3 ${PLUGIN_ROOT}/scripts/on_tool_use.py",
             "timeout": 5000,
-            "description": "Stream tool use to Octopus history"
+            "description": "Stream tool use to Stash history"
           }
         ]
       }
@@ -49,10 +49,10 @@
         "hooks": [
           {
             "type": "command",
-            "name": "octopus-stop",
+            "name": "stash-stop",
             "command": "python3 ${PLUGIN_ROOT}/scripts/on_stop.py",
             "timeout": 10000,
-            "description": "Stream session summary to Octopus"
+            "description": "Stream session summary to Stash"
           }
         ]
       }
@@ -63,10 +63,10 @@
         "hooks": [
           {
             "type": "command",
-            "name": "octopus-session-end",
+            "name": "stash-session-end",
             "command": "python3 ${PLUGIN_ROOT}/scripts/on_session_end.py",
             "timeout": 5000,
-            "description": "Clear Octopus session state"
+            "description": "Clear Stash session state"
           }
         ]
       }
