@@ -5,8 +5,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import AppShell from "../../../components/AppShell";
 import { useAuth } from "../../../hooks/useAuth";
 import {
-  getTable, getPersonalTable, updateTable, updatePersonalTable,
-  deleteTable, deletePersonalTable, addTableColumn, updateTableColumn,
+  getTable, updateTable,
+  deleteTable, addTableColumn, updateTableColumn,
   deleteTableColumn, reorderTableColumns, listTableRows, searchTableRows,
   createTableRow, createTableRowsBatch, updateTableRow, deleteTableRow,
   deleteTableRowsBatch, duplicateTableRow, summarizeTableRows,
@@ -104,7 +104,7 @@ export default function TableEditorPage() {
   // CSV import
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const wsId = resolvedWorkspaceId || undefined;
+  const wsId = resolvedWorkspaceId;
   const sortedColumns = table?.columns ? [...table.columns].sort((a, b) => a.order - b.order) : [];
   const visibleColumns = sortedColumns.filter((c) => !hiddenCols.has(c.id));
   const hasMore = offset < totalCount;
@@ -114,15 +114,18 @@ export default function TableEditorPage() {
     try {
       if (resolvedWorkspaceId) {
         setTable(await getTable(resolvedWorkspaceId, tableId));
-      } else {
-        try { setTable(await getPersonalTable(tableId)); }
-        catch {
-          const all = await listAllTables();
-          const match = all?.tables?.find((t) => t.id === tableId);
-          if (match?.workspace_id) {
-            setResolvedWorkspaceId(match.workspace_id);
-            setTable(await getTable(match.workspace_id, tableId));
-          } else { setError("Table not found"); }
+        return;
+      }
+      try {
+        setTable(await getTable(null, tableId));
+      } catch {
+        const all = await listAllTables();
+        const match = all?.tables?.find((t) => t.id === tableId);
+        if (match?.workspace_id) {
+          setResolvedWorkspaceId(match.workspace_id);
+          setTable(await getTable(match.workspace_id, tableId));
+        } else {
+          setError("Table not found");
         }
       }
     } catch { setError("Table not found"); }
@@ -140,10 +143,10 @@ export default function TableEditorPage() {
   const loadRows = useCallback(async () => {
     try {
       if (searchQuery) {
-        const res = await searchTableRows(tableId, searchQuery, { limit: PAGE_SIZE, offset: 0 }, wsId);
+        const res = await searchTableRows(wsId, tableId, searchQuery, { limit: PAGE_SIZE, offset: 0 });
         setRows(res?.rows ?? []); setTotalCount(res?.total_count ?? 0); setOffset(res?.rows?.length ?? 0);
       } else {
-        const res = await listTableRows(tableId, buildRowParams(0), wsId);
+        const res = await listTableRows(wsId, tableId, buildRowParams(0));
         setRows(res?.rows ?? []); setTotalCount(res?.total_count ?? 0); setOffset(res?.rows?.length ?? 0);
       }
     } catch (err) { setError(err instanceof Error ? err.message : "Failed to load rows"); }
@@ -154,8 +157,8 @@ export default function TableEditorPage() {
     setLoadingMore(true);
     try {
       const res = searchQuery
-        ? await searchTableRows(tableId, searchQuery, { limit: PAGE_SIZE, offset }, wsId)
-        : await listTableRows(tableId, buildRowParams(offset), wsId);
+        ? await searchTableRows(wsId, tableId, searchQuery, { limit: PAGE_SIZE, offset })
+        : await listTableRows(wsId, tableId, buildRowParams(offset));
       const newRows = res?.rows ?? [];
       setRows((prev) => [...prev, ...newRows]);
       setOffset((prev) => prev + newRows.length);
@@ -166,7 +169,7 @@ export default function TableEditorPage() {
   const loadSummary = useCallback(async () => {
     if (!showSummary) return;
     try {
-      const s = await summarizeTableRows(tableId, filters.length > 0 ? filters : undefined, wsId);
+      const s = await summarizeTableRows(wsId, tableId, filters.length > 0 ? filters : undefined);
       setSummary(s);
     } catch { /* ignore */ }
   }, [tableId, wsId, filters, showSummary]);
@@ -230,15 +233,14 @@ export default function TableEditorPage() {
   const handleRename = async () => {
     if (!table || !nameInput.trim()) return;
     try {
-      const updated = resolvedWorkspaceId ? await updateTable(resolvedWorkspaceId, tableId, { name: nameInput.trim() }) : await updatePersonalTable(tableId, { name: nameInput.trim() });
+      const updated = await updateTable(resolvedWorkspaceId, tableId, { name: nameInput.trim() });
       setTable(updated); setEditingName(false);
     } catch (err) { setError(err instanceof Error ? err.message : "Failed to rename"); }
   };
   const handleDelete = async () => {
     if (!confirm("Delete this table and all its data?")) return;
     try {
-      if (resolvedWorkspaceId) await deleteTable(resolvedWorkspaceId, tableId);
-      else await deletePersonalTable(tableId);
+      await deleteTable(resolvedWorkspaceId, tableId);
       router.push("/tables");
     } catch (err) { setError(err instanceof Error ? err.message : "Failed to delete"); }
   };
@@ -249,20 +251,20 @@ export default function TableEditorPage() {
     try {
       const col: { name: string; type: string; options?: string[] } = { name: newColName.trim(), type: newColType };
       if ((newColType === "select" || newColType === "multiselect") && newColOptions.trim()) col.options = newColOptions.split(",").map((o) => o.trim()).filter(Boolean);
-      setTable(await addTableColumn(tableId, col, wsId));
+      setTable(await addTableColumn(wsId, tableId, col));
       setShowAddCol(false); setNewColName(""); setNewColType("text"); setNewColOptions("");
     } catch (err) { setError(err instanceof Error ? err.message : "Failed to add column"); }
   };
   const handleDeleteColumn = async (colId: string) => {
     if (!confirm("Delete this column?")) return;
-    try { setTable(await deleteTableColumn(tableId, colId, wsId)); setColMenu(null); } catch (err) { setError(err instanceof Error ? err.message : "Failed"); }
+    try { setTable(await deleteTableColumn(wsId, tableId, colId)); setColMenu(null); } catch (err) { setError(err instanceof Error ? err.message : "Failed"); }
   };
   const handleRenameColumn = async (colId: string) => {
     const col = sortedColumns.find((c) => c.id === colId);
     if (!col) return;
     const name = prompt("Column name:", col.name);
     if (!name || name === col.name) return;
-    try { setTable(await updateTableColumn(tableId, colId, { name }, wsId)); setColMenu(null); } catch (err) { setError(err instanceof Error ? err.message : "Failed"); }
+    try { setTable(await updateTableColumn(wsId, tableId, colId, { name })); setColMenu(null); } catch (err) { setError(err instanceof Error ? err.message : "Failed"); }
   };
   const handleColumnDrop = async (targetColId: string) => {
     if (!dragCol || dragCol === targetColId) { setDragCol(null); return; }
@@ -271,25 +273,25 @@ export default function TableEditorPage() {
     const toIdx = ids.indexOf(targetColId);
     if (fromIdx === -1 || toIdx === -1) { setDragCol(null); return; }
     ids.splice(fromIdx, 1); ids.splice(toIdx, 0, dragCol); setDragCol(null);
-    try { setTable(await reorderTableColumns(tableId, ids, wsId)); } catch (err) { setError(err instanceof Error ? err.message : "Failed"); }
+    try { setTable(await reorderTableColumns(wsId, tableId, ids)); } catch (err) { setError(err instanceof Error ? err.message : "Failed"); }
   };
 
   // --- Row ops ---
   const handleAddRow = async () => {
-    try { const row = await createTableRow(tableId, {}, wsId); setRows((prev) => [...prev, row]); setTotalCount((c) => c + 1); }
+    try { const row = await createTableRow(wsId, tableId, {}); setRows((prev) => [...prev, row]); setTotalCount((c) => c + 1); }
     catch (err) { setError(err instanceof Error ? err.message : "Failed to add row"); }
   };
   const handleDeleteRow = async (rowId: string) => {
-    try { await deleteTableRow(tableId, rowId, wsId); setRows((prev) => prev.filter((r) => r.id !== rowId)); setTotalCount((c) => c - 1); setSelectedRows((prev) => { const n = new Set(prev); n.delete(rowId); return n; }); }
+    try { await deleteTableRow(wsId, tableId, rowId); setRows((prev) => prev.filter((r) => r.id !== rowId)); setTotalCount((c) => c - 1); setSelectedRows((prev) => { const n = new Set(prev); n.delete(rowId); return n; }); }
     catch (err) { setError(err instanceof Error ? err.message : "Failed"); }
   };
   const handleDuplicateRow = async (rowId: string) => {
-    try { const row = await duplicateTableRow(tableId, rowId, wsId); setRows((prev) => [...prev, row]); setTotalCount((c) => c + 1); }
+    try { const row = await duplicateTableRow(wsId, tableId, rowId); setRows((prev) => [...prev, row]); setTotalCount((c) => c + 1); }
     catch (err) { setError(err instanceof Error ? err.message : "Failed to duplicate"); }
   };
   const handleBulkDelete = async () => {
     if (selectedRows.size === 0 || !confirm(`Delete ${selectedRows.size} rows?`)) return;
-    try { await deleteTableRowsBatch(tableId, Array.from(selectedRows), wsId); setRows((prev) => prev.filter((r) => !selectedRows.has(r.id))); setTotalCount((c) => c - selectedRows.size); setSelectedRows(new Set()); }
+    try { await deleteTableRowsBatch(wsId, tableId, Array.from(selectedRows)); setRows((prev) => prev.filter((r) => !selectedRows.has(r.id))); setTotalCount((c) => c - selectedRows.size); setSelectedRows(new Set()); }
     catch (err) { setError(err instanceof Error ? err.message : "Failed"); }
   };
 
@@ -306,7 +308,7 @@ export default function TableEditorPage() {
       if (col.type === "number") typedValue = cellValue === "" ? null : Number(cellValue);
       else if (col.type === "boolean") typedValue = cellValue === "true" || cellValue === "1";
     }
-    try { const updated = await updateTableRow(tableId, rowId, { [colId]: typedValue }, wsId); setRows((prev) => prev.map((r) => (r.id === rowId ? updated : r))); }
+    try { const updated = await updateTableRow(wsId, tableId, rowId, { [colId]: typedValue }); setRows((prev) => prev.map((r) => (r.id === rowId ? updated : r))); }
     catch (err) { setError(err instanceof Error ? err.message : "Failed"); }
     setEditingCell(null);
   };
@@ -328,7 +330,7 @@ export default function TableEditorPage() {
       else if (c.type === "boolean") data[c.id] = v === "true" || v === "1";
       else data[c.id] = v;
     });
-    try { const updated = await updateTableRow(tableId, detailRow.id, data, wsId); setRows((prev) => prev.map((r) => (r.id === detailRow.id ? updated : r))); setDetailRow(null); }
+    try { const updated = await updateTableRow(wsId, tableId, detailRow.id, data); setRows((prev) => prev.map((r) => (r.id === detailRow.id ? updated : r))); setDetailRow(null); }
     catch (err) { setError(err instanceof Error ? err.message : "Failed"); }
   };
 
@@ -338,7 +340,7 @@ export default function TableEditorPage() {
     if (!name) return;
     try {
       const view = { name, filters: filters.length > 0 ? filters : undefined, sort_by: sortBy || undefined, sort_order: sortBy ? sortOrder : undefined, visible_columns: hiddenCols.size > 0 ? visibleColumns.map((c) => c.id) : undefined };
-      const updated = await saveTableView(tableId, view, wsId);
+      const updated = await saveTableView(wsId, tableId, view);
       setTable(updated);
       const saved = updated.views?.find((v: TableView) => v.name === name);
       if (saved) setActiveViewId(saved.id);
@@ -352,7 +354,7 @@ export default function TableEditorPage() {
     if (view.filters && view.filters.length > 0) setShowFilterBar(true); else setShowFilterBar(false);
   };
   const handleDeleteView = async (viewId: string) => {
-    try { const updated = await deleteTableView(tableId, viewId, wsId); setTable(updated); if (activeViewId === viewId) { setActiveViewId(null); setFilters([]); setSortBy(""); setSortOrder("asc"); setShowFilterBar(false); setHiddenCols(new Set()); } }
+    try { const updated = await deleteTableView(wsId, tableId, viewId); setTable(updated); if (activeViewId === viewId) { setActiveViewId(null); setFilters([]); setSortBy(""); setSortOrder("asc"); setShowFilterBar(false); setHiddenCols(new Set()); } }
     catch (err) { setError(err instanceof Error ? err.message : "Failed"); }
   };
 
@@ -365,7 +367,7 @@ export default function TableEditorPage() {
       const headers = lines[0].split(",").map((h) => h.trim().replace(/^"|"$/g, ""));
       const existingNames = new Set(sortedColumns.map((c) => c.name));
       let currentTable = table!;
-      for (const h of headers) { if (!existingNames.has(h)) currentTable = await addTableColumn(tableId, { name: h, type: "text" }, wsId); }
+      for (const h of headers) { if (!existingNames.has(h)) currentTable = await addTableColumn(wsId, tableId, { name: h, type: "text" }); }
       setTable(currentTable);
       const colMap: Record<string, string> = {}; for (const col of currentTable.columns) colMap[col.name] = col.id;
       const rowsData: Record<string, unknown>[] = [];
@@ -375,7 +377,7 @@ export default function TableEditorPage() {
         headers.forEach((h, idx) => { if (colMap[h] && idx < values.length) data[colMap[h]] = values[idx]; });
         rowsData.push(data);
       }
-      for (let i = 0; i < rowsData.length; i += 5000) { await createTableRowsBatch(tableId, rowsData.slice(i, i + 5000).map((d) => ({ data: d })), wsId); }
+      for (let i = 0; i < rowsData.length; i += 5000) { await createTableRowsBatch(wsId, tableId, rowsData.slice(i, i + 5000).map((d) => ({ data: d }))); }
       await loadRows(); await loadTable();
     } catch (err) { setError(err instanceof Error ? err.message : "Failed to import"); }
   };

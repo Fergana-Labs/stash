@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import AppShell from "../../components/AppShell";
 import { useAuth } from "../../hooks/useAuth";
-import { listAllTables, listTables, createPersonalTable, deletePersonalTable } from "../../lib/api";
+import { listAllTables, listTables, createTable, deleteTable } from "../../lib/api";
 import { TableWithWorkspace } from "../../lib/types";
 
 export default function TablesPage() {
@@ -44,7 +44,7 @@ export default function TablesPage() {
     const name = prompt("Table name:");
     if (!name) return;
     try {
-      const table = await createPersonalTable(name);
+      const table = await createTable(null, name);
       router.push(`/tables/${table.id}`);
     } catch (err) { setError(err instanceof Error ? err.message : "Failed to create table"); }
   };
@@ -99,7 +99,7 @@ export default function TablesPage() {
                           e.stopPropagation();
                           if (!confirm("Delete this table?")) return;
                           try {
-                            await deletePersonalTable(table.id);
+                            await deleteTable(null, table.id);
                             loadTables();
                           } catch (err) { setError(err instanceof Error ? err.message : "Failed to delete"); }
                         }}
