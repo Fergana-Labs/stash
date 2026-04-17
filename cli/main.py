@@ -1489,7 +1489,7 @@ def _self_host_walkthrough(cfg: dict) -> str:
     console.print(
         "  [dim]1.[/dim] [cyan]git clone https://github.com/Fergana-Labs/stash.git[/cyan]"
     )
-    console.print("  [dim]2.[/dim] [cyan]cd octopus[/cyan]")
+    console.print("  [dim]2.[/dim] [cyan]cd stash[/cyan]")
     console.print("  [dim]3.[/dim] [cyan]docker compose up -d[/cyan]")
     console.print("\n  [dim]Already running? Skip to the URL prompt below.[/dim]\n")
 
