@@ -1,5 +1,10 @@
 import Link from "next/link";
 
+import CopyButton from "./_components/CopyButton";
+
+const INSTALL_COMMAND =
+  "curl -fsSL https://raw.githubusercontent.com/Fergana-Labs/stash/main/install.sh | bash";
+
 export default function Page() {
   return (
     <main className="min-h-screen bg-background text-foreground">
@@ -101,31 +106,55 @@ function Hero() {
 
         <div>
           <p className="mb-3 font-mono text-[11px] uppercase tracking-[0.14em] text-muted">
-            Install — paste into Claude Code
+            Install
           </p>
           <div className="overflow-hidden rounded-xl bg-inverted shadow-[0_24px_60px_-30px_rgba(15,23,42,0.4)]">
             <div className="flex items-center justify-between border-b border-white/5 px-5 py-2.5">
               <span className="font-mono text-[11px] uppercase tracking-[0.14em] text-on-inverted-dim">
-                claude code
+                shell
               </span>
-              <span className="font-mono text-[11px] text-on-inverted-dim">
-                prompt
-              </span>
+              <CopyButton value={INSTALL_COMMAND} />
             </div>
-            <div className="px-5 py-4 font-mono text-[13px] leading-[1.7] text-on-inverted">
+            <div className="overflow-x-auto px-5 py-4 font-mono text-[13px] leading-[1.7] text-on-inverted">
               <div className="flex gap-3">
-                <span className="shrink-0 text-brand">&gt;</span>
-                <PromptBody text={prompt} />
+                <span className="shrink-0 text-brand">$</span>
+                <span className="whitespace-nowrap">{INSTALL_COMMAND}</span>
               </div>
             </div>
           </div>
           <p className="mt-3 text-[13px] leading-[1.5] text-dim">
-            One paste to sign in — Claude grabs a token from{" "}
-            <code className="rounded bg-raised px-1.5 py-0.5 font-mono text-[12px] text-ink">
-              stash.ac/connect-token
-            </code>{" "}
-            and handles the rest.
+            Installs the CLI, walks you through scope · sign-in · workspace ·
+            agent plugin. Re-run safe.
           </p>
+
+          <details className="group mt-6">
+            <summary className="cursor-pointer list-none text-[13px] text-dim hover:text-brand">
+              <span className="inline-block transition-transform group-open:rotate-90">
+                ›
+              </span>{" "}
+              Or have your AI coding agent set it up
+            </summary>
+            <div className="mt-3 overflow-hidden rounded-xl bg-inverted shadow-[0_24px_60px_-30px_rgba(15,23,42,0.4)]">
+              <div className="flex items-center justify-between border-b border-white/5 px-5 py-2.5">
+                <span className="font-mono text-[11px] uppercase tracking-[0.14em] text-on-inverted-dim">
+                  claude code
+                </span>
+                <span className="font-mono text-[11px] text-on-inverted-dim">
+                  prompt
+                </span>
+              </div>
+              <div className="px-5 py-4 font-mono text-[13px] leading-[1.7] text-on-inverted">
+                <div className="flex gap-3">
+                  <span className="shrink-0 text-brand">&gt;</span>
+                  <PromptBody text={prompt} />
+                </div>
+              </div>
+            </div>
+            <p className="mt-3 text-[13px] leading-[1.5] text-dim">
+              Paste into Claude Code (or any other coding agent with shell
+              access). Same end state as the one-liner.
+            </p>
+          </details>
         </div>
       </div>
     </section>
