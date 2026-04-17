@@ -13,7 +13,7 @@ Everything is a plain `stash` CLI subcommand — no slash commands. Always use `
 ### Plugin control
 ```bash
 stash connect                      # Interactive setup (auth + workspace + store)
-stash status                       # Central config, streaming state, last curate
+stash settings                     # Interactive settings page (streaming, scope, endpoint, …)
 stash disconnect                   # Pause event streaming across every plugin
 ```
 

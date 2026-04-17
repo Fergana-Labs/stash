@@ -113,7 +113,7 @@ Everything is a `stash` CLI subcommand — there are no slash commands.
 | Command | Description |
 |---------|-------------|
 | `stash connect` | Onboarding wizard — pick workspace, create history store |
-| `stash status` | Show central config, streaming state, last curate run |
+| `stash settings` | Interactive settings page (streaming, scope, endpoint, …) |
 | `stash disconnect` | Pause activity streaming across every installed plugin |
 
 The plugin also gives Claude access to the rest of the `stash` CLI. Key commands:

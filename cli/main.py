@@ -1633,7 +1633,7 @@ def _already_fully_connected(manifest: Manifest | None) -> bool:
             f"    [dim]Plugins:[/dim]   {', '.join(agent_label[a] for a in detected)}"
         )
     console.print(
-        "\n  Run [cyan]stash status[/cyan] for detail, or [cyan]stash disconnect[/cyan] to reset.\n"
+        "\n  Run [cyan]stash settings[/cyan] to tweak, or [cyan]stash disconnect[/cyan] to reset.\n"
     )
     return True
 
@@ -2528,9 +2528,61 @@ PLUGIN_DATA_DIRS = {
 }
 
 
-@app.command("status")
-def status(as_json: bool = typer.Option(False, "--json")):
-    """Show central Stash config, streaming state, and last curate run."""
+SCOPE_CHOICES = [
+    ("repo", "only sessions in the install repo"),
+    ("workspace", "any session tagged with this workspace"),
+    ("all", "every session on this machine"),
+]
+
+OUTPUT_FORMAT_CHOICES = [
+    ("human", "colored, human-readable"),
+    ("json", "machine-readable JSON"),
+]
+
+
+def _render_settings_header(cfg: dict, central: dict) -> None:
+    """Print the read-only portion of the settings page."""
+    console.clear()
+    console.print("[bold]Stash settings[/bold]\n")
+
+    manifest = load_manifest()
+    workspace_id = cfg.get("default_workspace") or ""
+    if manifest and manifest.get("workspace_id") == workspace_id and manifest.get("workspace_name"):
+        workspace_label = f"{manifest['workspace_name']}  ({workspace_id[:8]}…)"
+    elif workspace_id:
+        workspace_label = workspace_id
+    else:
+        workspace_label = "(none)"
+
+    def row(label: str, value: str, *, highlight: bool = True) -> None:
+        console.print(f"  [dim]{label}[/dim]{value}", highlight=highlight)
+
+    row(f"{'User:':<14}", cfg.get("username") or "(not logged in)")
+    # Workspace UUID would otherwise auto-highlight yellow — force neutral.
+    row(f"{'Workspace:':<14}", workspace_label, highlight=False)
+    row(f"{'Store:':<14}", cfg.get("default_store") or "(none)")
+
+    last_curate_at = central.get("last_curate_at")
+    if last_curate_at:
+        import datetime as _dt
+
+        ts = _dt.datetime.fromtimestamp(float(last_curate_at)).isoformat(timespec="seconds")
+        row(f"{'Last curate:':<14}", ts)
+    else:
+        row(f"{'Last curate:':<14}", "(never)")
+
+    plugins_seen = [name for name, d in PLUGIN_DATA_DIRS.items() if d.exists()]
+    row(f"{'Plugins:':<14}", ", ".join(plugins_seen) or "(none detected)")
+
+    install_repo = central.get("install_repo_common_dir") or ""
+    if install_repo:
+        row(f"{'Install repo:':<14}", install_repo)
+    console.print()
+
+
+@app.command("settings")
+def settings_cmd(as_json: bool = typer.Option(False, "--json")):
+    """Interactive settings page. Pass --json for a read-only snapshot."""
     cfg = load_config()
     central = _read_central_config()
 
@@ -2538,48 +2590,92 @@ def status(as_json: bool = typer.Option(False, "--json")):
     if display_cfg.get("api_key"):
         display_cfg["api_key"] = display_cfg["api_key"][:10] + "..."
 
-    streaming_enabled = bool(central.get("streaming_enabled", True))
-    auto_curate = bool(central.get("auto_curate", True))
-    last_curate_at = central.get("last_curate_at")
-    scope = (central.get("scope") or "repo").strip().lower()
-    install_repo = central.get("install_repo_common_dir") or ""
-
-    plugins_seen = [name for name, d in PLUGIN_DATA_DIRS.items() if d.exists()]
-
     if as_json or cfg.get("output_format") == "json":
         output_json(
             {
                 "config": display_cfg,
-                "streaming_enabled": streaming_enabled,
-                "auto_curate": auto_curate,
-                "last_curate_at": last_curate_at,
-                "plugins_installed": plugins_seen,
-                "scope": scope,
-                "install_repo_common_dir": install_repo,
+                "streaming_enabled": bool(central.get("streaming_enabled", True)),
+                "auto_curate": bool(central.get("auto_curate", True)),
+                "last_curate_at": central.get("last_curate_at"),
+                "plugins_installed": [
+                    name for name, d in PLUGIN_DATA_DIRS.items() if d.exists()
+                ],
+                "scope": (central.get("scope") or "repo").strip().lower(),
+                "install_repo_common_dir": central.get("install_repo_common_dir") or "",
             }
         )
         return
 
-    console.print("[bold]Stash status[/bold]")
-    console.print(f"  User:       {cfg.get('username') or '(not logged in)'}")
-    console.print(f"  Endpoint:   {cfg.get('base_url')}")
-    console.print(f"  Workspace:  {cfg.get('default_workspace') or '(none)'}")
-    console.print(f"  Store:      {cfg.get('default_store') or '(none)'}")
-    console.print(
-        f"  Streaming:  {'enabled' if streaming_enabled else '[yellow]disabled[/yellow]'}"
-    )
-    console.print(f"  Auto-curate: {'on' if auto_curate else 'off'}")
-    if last_curate_at:
-        import datetime as _dt
+    while True:
+        cfg = load_config()
+        central = _read_central_config()
+        _render_settings_header(cfg, central)
 
-        ts = _dt.datetime.fromtimestamp(float(last_curate_at)).isoformat(timespec="seconds")
-        console.print(f"  Last curate: {ts}")
-    else:
-        console.print("  Last curate: (never)")
-    console.print(f"  Plugins installed: {', '.join(plugins_seen) or '(none detected)'}")
-    console.print(f"  Scope:      {scope}")
-    if scope == "repo":
-        console.print(f"  Install repo: {install_repo or '(none)'}")
+        streaming_enabled = bool(central.get("streaming_enabled", True))
+        auto_curate = bool(central.get("auto_curate", True))
+        scope = (central.get("scope") or "repo").strip().lower()
+        output_format = cfg.get("output_format", "human")
+        base_url = cfg.get("base_url", "")
+
+        rows = [
+            ("Streaming", "on" if streaming_enabled else "off", "streaming"),
+            ("Auto-curate", "on" if auto_curate else "off", "auto_curate"),
+            ("Scope", scope, "scope"),
+            ("Output format", output_format, "output_format"),
+            ("Endpoint", base_url, "base_url"),
+        ]
+        label_w = max(len(label) for label, _, _ in rows)
+        choices = [
+            questionary.Choice(f"{label:<{label_w}}   {value}", value=key)
+            for label, value, key in rows
+        ]
+        choices.append(questionary.Choice("Exit", value="exit"))
+
+        picked = questionary.select(
+            "Pick a setting to change (enter to edit, q to exit)",
+            choices=choices,
+            use_shortcuts=True,
+        ).ask()
+
+        if picked in (None, "exit"):
+            return
+
+        if picked == "streaming":
+            _write_central_config({"streaming_enabled": not streaming_enabled})
+        elif picked == "auto_curate":
+            _write_central_config({"auto_curate": not auto_curate})
+        elif picked == "scope":
+            label_w2 = max(len(v) for v, _ in SCOPE_CHOICES)
+            scope_choices = [
+                questionary.Choice(f"{v:<{label_w2}}   {desc}", value=v)
+                for v, desc in SCOPE_CHOICES
+            ]
+            new_scope = questionary.select(
+                "Upload scope — which sessions push to the shared store?",
+                choices=scope_choices,
+                default=next((ch for ch in scope_choices if ch.value == scope), None),
+                use_shortcuts=True,
+            ).ask()
+            if new_scope:
+                _write_central_config({"scope": new_scope})
+        elif picked == "output_format":
+            label_w2 = max(len(v) for v, _ in OUTPUT_FORMAT_CHOICES)
+            fmt_choices = [
+                questionary.Choice(f"{v:<{label_w2}}   {desc}", value=v)
+                for v, desc in OUTPUT_FORMAT_CHOICES
+            ]
+            new_fmt = questionary.select(
+                "Output format for CLI commands",
+                choices=fmt_choices,
+                default=next((ch for ch in fmt_choices if ch.value == output_format), None),
+                use_shortcuts=True,
+            ).ask()
+            if new_fmt:
+                save_config(output_format=new_fmt)
+        elif picked == "base_url":
+            new_url = questionary.text("Endpoint base URL", default=base_url).ask()
+            if new_url:
+                save_config(base_url=new_url.strip().rstrip("/"))
 
 
 @app.command("disconnect")

@@ -31,7 +31,7 @@ Everything is a plain `stash` CLI subcommand — no slash commands or skills:
 | Command | Description |
 |---------|-------------|
 | `stash connect` | Interactive setup (auth + workspace + store) |
-| `stash status` | Central config, streaming state, last curate |
+| `stash settings` | Interactive settings page (streaming, scope, endpoint, …) |
 | `stash disconnect` | Pause event streaming across every installed plugin |
 
 At session end (Codex `Stop`) the plugin spawns `codex exec …` headless with
