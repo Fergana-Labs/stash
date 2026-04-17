@@ -103,8 +103,13 @@ would waste the user's time if they're signed in to the wrong instance.
 1. Walk up from cwd looking for `.stash/stash.json` (mirror the existing
    `find_project_config` helper).
 2. If found, read it. The manifest is the source of truth for this repo:
-   - Bypass the "Where do you want to install stash?" prompt — implied
-     `scope=project`.
+   - Still show the "Where do you want to install stash?" prompt, but flip
+     the default from `user` (machine-wide) to `project` (this repo only).
+     Users who prefer machine-level install can still pick it — we're just
+     steering new contributors toward the repo-scoped default that matches
+     the manifest's intent. If they pick `user`, we still honor the
+     manifest's `workspace_id` / `base_url`; the choice only affects where
+     the resulting `default_workspace` config is written.
    - Bypass the "How do you want to use Stash?" prompt — `base_url` comes
      from the manifest.
    - Bypass the "which workspace?" prompt — `workspace_id` comes from the
@@ -119,9 +124,11 @@ would waste the user's time if they're signed in to the wrong instance.
    Join and start sharing agent transcripts with the team? [Y/n]
    ```
 6. On yes: call `c.join_workspace(invite_code)`. On success, write
-   `default_workspace=<workspace_id>` to `.stash/config.json` (project scope)
-   so hooks in *this repo* push to this workspace without disturbing the user's
-   global default.
+   `default_workspace=<workspace_id>` to the scope chosen in step 2 — project
+   scope by default (`.stash/config.json`, so hooks in *this repo* push to the
+   manifest workspace without disturbing the user's global default), or user
+   scope (`~/.stash/config.json`) if the contributor explicitly opted into
+   machine-wide install.
 7. On no: write `stash_disabled_here=true` to `.stash/config.json` and skip.
    Hooks in this repo become inert.
 8. If the user is already a member: skip the prompt, just write the project
