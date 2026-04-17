@@ -64,7 +64,7 @@ function Nav() {
 }
 
 function Hero() {
-  const prompt = `Set up stash in this repo so our Claude Code sessions share memory with the team. (1) Install or upgrade the CLI: \`stash signin --help >/dev/null 2>&1 || pipx install stashai --force 2>/dev/null || uv tool install stashai --force\`. (2) Add the Claude Code plugin: \`claude plugin marketplace add Fergana-Labs/stash\` then \`claude plugin install stash@stash-plugins\`. (3) Run \`stash signin\` to open the sign-in page in my browser, then ask me to paste the token back. Run \`stash auth https://moltchat.onrender.com --api-key <token>\`. (4) Run \`stash workspaces list --mine --json\` — if I have multiple, ask which one and run \`stash workspaces use <id>\`. (5) Run \`stash connect --welcome\` to show me the onboarding.`;
+  const prompt = `Set up stash in this repo so our Claude Code sessions share memory with the team. (1) Install or upgrade the CLI: \`stash signin --help >/dev/null 2>&1 || pipx install stashai --force 2>/dev/null || uv tool install stashai --force\`. (2) Add the Claude Code plugin: \`claude plugin marketplace add Fergana-Labs/stash\` then \`claude plugin install stash@stash-plugins\`. (3) Run \`stash signin\` to open the sign-in page in my browser, then ask me to paste the token back. Run \`stash auth https://moltchat.onrender.com --api-key <token>\`. (4) Run \`stash workspaces list --mine --json\` — if I have multiple, ask which one and run \`stash workspaces use <id>\`. (5) Tell me to run \`/stash:welcome\` to see the onboarding.`;
   return (
     <section id="install" className="border-b border-border-subtle">
       <div className="mx-auto grid max-w-[1120px] gap-12 px-6 pb-16 pt-20 lg:grid-cols-[1.1fr_1fr] lg:items-center lg:gap-16">
