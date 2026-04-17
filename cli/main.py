@@ -101,28 +101,97 @@ def signin(
     page: str = typer.Option(
         "https://stash.ac/connect-token",
         "--page",
-        help="Sign-in page to open. Override for self-hosted deployments.",
+        help="Sign-in page URL. Override for self-hosted deployments.",
     ),
+    api: str = typer.Option(
+        "https://moltchat.onrender.com",
+        "--api",
+        help="Stash API base URL. Override for self-hosted deployments.",
+    ),
+    no_browser: bool = typer.Option(
+        False,
+        "--no-browser",
+        help="Skip auto-opening the browser; just print the URL. Use when on SSH or without a display.",
+    ),
+    timeout: int = typer.Option(120, "--timeout", help="Seconds to wait for sign-in."),
 ):
-    """Open the sign-in page in your default browser to grab a token.
+    """Sign in through the browser — blocks until the user authorizes.
 
-    The page returns a single-use token; paste it back into your shell with
-    `stash auth <endpoint> --api-key <token>`. Designed to be agent-driven:
-    opens the browser non-interactively and exits, so a coding agent can
-    show the user where to sign in, then collect the pasted token via its
-    own UI (e.g. AskUserQuestion) and call `stash auth` to persist it.
+    Creates a short-lived session on the backend, opens the sign-in page with the
+    session id, then polls until the browser posts the minted API key back. On
+    success, writes credentials to `~/.stash/config.json` and auto-selects the
+    default workspace if the user has exactly one.
     """
+    import os
+    import time
     import webbrowser
 
-    opened = webbrowser.open(page)
+    import httpx
+
+    # Create the CLI auth session.
+    with httpx.Client(base_url=api, timeout=10) as c:
+        try:
+            r = c.post("/api/v1/users/cli-auth/sessions")
+            r.raise_for_status()
+            session_id = r.json()["session_id"]
+        except (httpx.HTTPError, KeyError) as e:
+            console.print(f"[red]Could not reach {api}: {e}[/red]")
+            raise typer.Exit(1)
+
+    sep = "&" if "?" in page else "?"
+    url = f"{page}{sep}session={session_id}"
+
+    ssh = any(os.environ.get(v) for v in ("SSH_CONNECTION", "SSH_CLIENT", "SSH_TTY"))
+    opened = False if (no_browser or ssh) else webbrowser.open(url)
+
     if opened:
-        console.print(f"  [green]✓[/green] Opened [bold]{page}[/bold] in your default browser.")
+        console.print(f"  [green]✓[/green] Opened [bold]{page}[/bold] in your browser.")
     else:
-        console.print(f"  [yellow]Could not auto-open a browser.[/yellow] Visit: [bold]{page}[/bold]")
-    console.print(
-        f"  Copy the token from the page, then run: "
-        f"[cyan]stash auth <endpoint> --api-key <token>[/cyan]"
-    )
+        console.print(f"  Open this URL on your local machine:\n    [bold]{url}[/bold]")
+
+    console.print(f"  Waiting for sign-in (timeout {timeout}s)…")
+
+    # Poll until the page approves the session.
+    deadline = time.monotonic() + timeout
+    api_key = ""
+    username = ""
+    with httpx.Client(base_url=api, timeout=10) as c:
+        while time.monotonic() < deadline:
+            try:
+                r = c.get(f"/api/v1/users/cli-auth/sessions/{session_id}")
+                r.raise_for_status()
+                data = r.json()
+            except httpx.HTTPError as e:
+                console.print(f"[red]Polling failed: {e}[/red]")
+                raise typer.Exit(1)
+            if data.get("status") == "complete":
+                api_key = data["api_key"]
+                username = data["username"]
+                break
+            time.sleep(1)
+
+    if not api_key:
+        console.print(
+            f"[red]Timed out waiting for sign-in.[/red] "
+            f"Run [cyan]stash auth {api} --api-key <token>[/cyan] by hand if needed."
+        )
+        raise typer.Exit(1)
+
+    save_config(base_url=api, api_key=api_key, username=username)
+    console.print(f"[green]✓ Signed in as {username}[/green]")
+
+    # Auto-select default workspace if the user has exactly one.
+    if load_config().get("default_workspace"):
+        return
+    try:
+        with StashClient(base_url=api, api_key=api_key) as client:
+            workspaces = client.list_workspaces(mine=True)
+    except StashError:
+        return
+    if len(workspaces) == 1:
+        ws = workspaces[0]
+        save_config(default_workspace=str(ws["id"]))
+        console.print(f"  Default workspace set to [bold]{ws['name']}[/bold]")
 
 
 @app.command()
@@ -153,6 +222,184 @@ def auth(base_url: str = typer.Argument(...), api_key: str = typer.Option(..., "
             ws = workspaces[0]
             save_config(default_workspace=str(ws["id"]))
             console.print(f"  Default workspace set to [bold]{ws['name']}[/bold]")
+
+
+# ===========================================================================
+# Install — wire up hook plugins for every coding agent on PATH
+# ===========================================================================
+
+_SUPPORTED_AGENTS = ("claude", "cursor", "codex", "opencode")
+
+_AGENT_BINARY = {
+    "claude": "claude",
+    "cursor": "cursor-agent",
+    "codex": "codex",
+    "opencode": "opencode",
+}
+
+
+def _detected_agents() -> list[str]:
+    import shutil
+
+    return [a for a in _SUPPORTED_AGENTS if shutil.which(_AGENT_BINARY[a])]
+
+
+def _write_hook_file(dest: Path, template: str, plugin_root: Path, force: bool) -> str:
+    """Render and write a hook file. Returns 'installed', 'skipped', or 'failed'."""
+    from string import Template
+
+    rendered = Template(template).safe_substitute(PLUGIN_ROOT=str(plugin_root))
+    if dest.exists():
+        existing = dest.read_text()
+        if existing == rendered:
+            return "skipped"
+        if not force:
+            overwrite = typer.confirm(
+                f"  {dest} differs from the shipped template. Overwrite?", default=False
+            )
+            if not overwrite:
+                return "skipped"
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    dest.write_text(rendered)
+    return "installed"
+
+
+def _install_claude(force: bool) -> tuple[str, str]:
+    # Delegates to the canonical helper used by `stash connect`. Both
+    # `claude plugin marketplace add` and `claude plugin install` are idempotent
+    # so --force doesn't need to change behavior.
+    ok = _install_claude_plugin()
+    if ok:
+        return ("installed", "claude plugin installed via marketplace")
+    return ("failed", "claude plugin install; see inline output")
+
+
+def _install_cursor(force: bool) -> tuple[str, str]:
+    from stashai.plugin.assets import assets_dir
+
+    root = assets_dir("cursor")
+    dest = Path.home() / ".cursor" / "hooks.json"
+    template = (root / "hooks.json").read_text()
+    status_ = _write_hook_file(dest, template, root, force)
+    return (status_, f"{dest}")
+
+
+_CODEX_MARKER = "# stash-plugin"
+
+
+def _install_codex(force: bool) -> tuple[str, str]:
+    from stashai.plugin.assets import assets_dir
+
+    root = assets_dir("codex")
+    hooks_dest = Path.home() / ".codex" / "hooks.json"
+    template = (root / "hooks.json").read_text()
+    status_ = _write_hook_file(hooks_dest, template, root, force)
+
+    # Append config.toml snippet idempotently via marker line.
+    from string import Template
+
+    cfg_path = Path.home() / ".codex" / "config.toml"
+    snippet = Template((root / "config.toml.snippet").read_text()).safe_substitute(
+        PLUGIN_ROOT=str(root)
+    )
+    existing = cfg_path.read_text() if cfg_path.exists() else ""
+    if _CODEX_MARKER not in existing:
+        cfg_path.parent.mkdir(parents=True, exist_ok=True)
+        with cfg_path.open("a") as f:
+            if existing and not existing.endswith("\n"):
+                f.write("\n")
+            f.write(f"\n{_CODEX_MARKER}\n{snippet}\n")
+    return (status_, f"{hooks_dest} + merged {cfg_path}")
+
+
+def _install_opencode(force: bool) -> tuple[str, str]:
+    from stashai.plugin.assets import assets_dir
+
+    root = assets_dir("opencode")
+    plugin_path = str(root / "plugin.ts")
+    cfg_path = Path.home() / ".config" / "opencode" / "opencode.json"
+    cfg_path.parent.mkdir(parents=True, exist_ok=True)
+
+    cfg = {}
+    if cfg_path.exists():
+        try:
+            cfg = json.loads(cfg_path.read_text())
+        except json.JSONDecodeError:
+            return ("failed", f"{cfg_path} is not valid JSON; fix by hand")
+
+    plugins = cfg.get("plugin", [])
+    if plugin_path in plugins and not force:
+        return ("skipped", f"{cfg_path} already references plugin.ts")
+    plugins = [p for p in plugins if p != plugin_path]
+    plugins.append(plugin_path)
+    cfg["plugin"] = plugins
+    cfg_path.write_text(json.dumps(cfg, indent=2) + "\n")
+    return ("installed", f"{cfg_path} (plugin entry added)")
+
+
+_INSTALLERS = {
+    "claude": _install_claude,
+    "cursor": _install_cursor,
+    "codex": _install_codex,
+    "opencode": _install_opencode,
+}
+
+
+@app.command("install")
+def install_cmd(
+    agents: list[str] = typer.Argument(
+        None,
+        help="Agent(s) to install for. Defaults to every supported agent on $PATH.",
+    ),
+    skip: str = typer.Option(
+        "", "--skip", help="Comma-separated agents to exclude (e.g. --skip codex,opencode)."
+    ),
+    force: bool = typer.Option(False, "--force", help="Overwrite existing hook files."),
+    as_json: bool = typer.Option(False, "--json"),
+):
+    """Install Stash hook plugins for every supported coding agent on `$PATH`.
+
+    Idempotent — re-running is a no-op unless `--force`.
+    """
+    skip_set = {s.strip() for s in skip.split(",") if s.strip()}
+
+    if agents:
+        unknown = [a for a in agents if a not in _SUPPORTED_AGENTS]
+        if unknown:
+            console.print(f"[red]Unknown agents: {', '.join(unknown)}[/red]")
+            raise typer.Exit(1)
+        targets = agents
+    else:
+        targets = _detected_agents()
+
+    targets = [a for a in targets if a not in skip_set]
+
+    if not targets:
+        console.print(
+            "[yellow]No supported coding agents detected on PATH.[/yellow] "
+            "Install claude / cursor-agent / codex / opencode, then re-run."
+        )
+        raise typer.Exit(1)
+
+    results: dict[str, dict] = {}
+    for agent in targets:
+        try:
+            status_, detail = _INSTALLERS[agent](force)
+        except Exception as e:
+            status_, detail = ("failed", f"{type(e).__name__}: {e}")
+        results[agent] = {"status": status_, "detail": detail}
+
+    if _use_json(as_json):
+        output_json(results)
+        return
+
+    for agent, r in results.items():
+        color = {"installed": "green", "skipped": "yellow", "failed": "red"}[r["status"]]
+        console.print(f"  [{color}]{r['status']:9}[/{color}] {agent:8} {r['detail']}")
+
+    any_failed = any(r["status"] == "failed" for r in results.values())
+    if any_failed:
+        raise typer.Exit(1)
 
 
 @app.command()
