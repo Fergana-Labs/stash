@@ -2,8 +2,7 @@ import Link from "next/link";
 
 import CopyButton from "./_components/CopyButton";
 
-const INSTALL_COMMAND =
-  "curl -fsSL https://raw.githubusercontent.com/Fergana-Labs/stash/main/install.sh | bash";
+const INSTALL_COMMAND = `bash -c "$(curl -fsSL https://raw.githubusercontent.com/Fergana-Labs/stash/main/install.sh)"`;
 
 export default function Page() {
   return (

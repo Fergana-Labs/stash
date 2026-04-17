@@ -3,8 +3,15 @@
 # `stash connect` questionnaire (scope, managed-vs-self-host, browser auth,
 # workspace, agent plugin).
 #
-# Usage:
-#   curl -fsSL https://stash.ac/install | bash
+# Recommended invocation (keeps stdin attached to your terminal so the
+# questionnaire's interactive picker works):
+#
+#   bash -c "$(curl -fsSL https://raw.githubusercontent.com/Fergana-Labs/stash/main/install.sh)"
+#
+# `curl … | bash` works for the install part but the interactive picker
+# needs a real terminal on stdin — bash's `| bash` makes the script body
+# stdin instead. We try to detect that case and surface an actionable
+# message rather than crashing inside questionary.
 #
 # Re-run safe (idempotent): if stashai is already installed, the picked
 # package manager will upgrade it to the latest version.
@@ -51,18 +58,28 @@ MSG
   exit 1
 fi
 
-# Hand off to the questionnaire. `stash connect` asks scope, managed-vs-
-# self-host, browser sign-in, workspace, and Claude Code plugin install
-# (when detected).
-#
-# When the script runs via `curl … | bash`, our stdin is the script body,
-# so questionary aborts with "Input is not a terminal". Re-attach stdin
-# to the controlling terminal before exec'ing if /dev/tty is available
-# (interactive shells); fall back to plain exec otherwise (CI, Docker
-# without -it — those will just hit the same questionary error, which is
-# the right signal that this isn't an interactive context).
-if [ -r /dev/tty ] && [ -w /dev/tty ]; then
-  exec </dev/tty stash connect
-else
-  exec stash connect
+# If stdin isn't a terminal, the user piped us via `curl … | bash`. The
+# /dev/tty redirect trick to recover interactivity hits a Python 3.14 +
+# macOS asyncio kqueue bug (OSError EINVAL on add_reader for the
+# redirected fd). The reliable fix is the `bash -c "$(curl ...)"` form
+# which keeps stdin as the natural terminal — surface the right command
+# instead of crashing inside questionary.
+if [ ! -t 0 ]; then
+  cat >&2 <<'MSG'
+stash is installed, but the setup wizard needs an interactive terminal.
+Re-run with this form (it keeps stdin attached to your shell):
+
+  bash -c "$(curl -fsSL https://raw.githubusercontent.com/Fergana-Labs/stash/main/install.sh)"
+
+Or just run it now:
+
+  stash connect
+
+MSG
+  exit 0
 fi
+
+# Stdin is a real terminal — hand off to the questionnaire. `stash connect`
+# asks scope, managed-vs-self-host, browser sign-in, workspace, and the
+# Claude Code plugin install (when detected).
+exec stash connect
