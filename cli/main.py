@@ -2312,7 +2312,51 @@ def _pushed_scope_phrase() -> str:
     return "All coding agent transcripts from this machine."
 
 
+def _current_invite() -> tuple[str, str]:
+    """Return (invite_code, workspace_name) for the current default workspace,
+    or ("", "") if unavailable. Best-effort — any auth/network failure falls
+    back to the generic `stash workspaces info` guidance."""
+    ws_id = load_config().get("default_workspace") or ""
+    if not ws_id:
+        return "", ""
+    try:
+        with _client() as c:
+            data = c.get_workspace(ws_id)
+    except Exception:
+        return "", ""
+    return str(data.get("invite_code") or ""), str(data.get("name") or "")
+
+
+def _invite_url(invite_code: str) -> str:
+    """Build the user-facing join URL for an invite code, mirroring the
+    frontend-host logic used for login (see `stash connect` managed flow):
+    managed backend → stash.ac; localhost backend → :3457; any other
+    self-host → whatever the configured base_url is."""
+    base_url = (load_config().get("base_url") or "").rstrip("/")
+    managed_hosts = ("https://stash.ac", "https://www.stash.ac", "https://moltchat.onrender.com")
+    if base_url in managed_hosts:
+        frontend = "https://stash.ac"
+    elif "localhost" in base_url or "127.0.0.1" in base_url:
+        frontend = base_url.replace(":3456", ":3457")
+    else:
+        frontend = base_url
+    return f"{frontend}/join/{invite_code}"
+
+
 def _welcome_markdown() -> str:
+    invite_code, ws_name = _current_invite()
+    if invite_code:
+        ws_suffix = f" (workspace: {ws_name})" if ws_name else ""
+        share_answer = (
+            f"Send teammates this link{ws_suffix}: {_invite_url(invite_code)} — "
+            "they'll sign in and be joined automatically."
+        )
+    else:
+        share_answer = (
+            "Share the invite code (`stash workspaces info <id>` prints it). "
+            "Teammates run `stash connect` if needed, then "
+            "`stash workspaces join <invite_code>`."
+        )
     return f"""# You're all set up.
 
 ## What just happened
@@ -2346,7 +2390,7 @@ Run `stash --help` to see everything.
 **A:** `stash config scope <repo|workspace|all>` (default: `repo`). `stash history transcript <session_id>` fetches a full transcript.
 
 **Q:** How do I share my workspace with my team?
-**A:** Share the invite code (`stash workspaces info <id>` prints it). Teammates run `stash connect` if needed, then `stash workspaces join <invite_code>`.
+**A:** {share_answer}
 """
 
 
@@ -2439,6 +2483,21 @@ def _show_setup_complete_splash(
     else:
         console.print("  [bold green]You're all set up.[/bold green]\n")
 
+    invite_code, ws_name = _current_invite()
+    if invite_code:
+        ws_suffix = f" (workspace [bold]{ws_name}[/bold])" if ws_name else ""
+        share_answer = (
+            f"Send teammates this link{ws_suffix}:\n"
+            f"[bold #1e3a8a]{_invite_url(invite_code)}[/bold #1e3a8a]\n"
+            "They'll sign in and be joined automatically."
+        )
+    else:
+        share_answer = (
+            "Share the invite code ([#1e3a8a]stash workspaces info <id>[/#1e3a8a] prints it). "
+            "Teammates run [#1e3a8a]stash connect[/#1e3a8a] if needed, then "
+            "[#1e3a8a]stash workspaces join <invite_code>[/#1e3a8a]."
+        )
+
     intro = (
         "[bold]What just happened[/bold]\n"
         "Your coding agent now has the [bold #1e3a8a]stash[/bold #1e3a8a] CLI on its PATH. "
@@ -2479,9 +2538,7 @@ def _show_setup_complete_splash(
         ),
         (
             "How do I share my workspace with my team?",
-            "Share the invite code ([#1e3a8a]stash workspaces info <id>[/#1e3a8a] prints it). "
-            "Teammates run [#1e3a8a]stash connect[/#1e3a8a] if needed, then "
-            "[#1e3a8a]stash workspaces join <invite_code>[/#1e3a8a].",
+            share_answer,
         ),
     ]
 

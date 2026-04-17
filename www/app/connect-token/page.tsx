@@ -1,8 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
-import CopyButton from "../_components/CopyButton";
-
 export const dynamic = "force-dynamic";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "https://moltchat.onrender.com";
@@ -10,10 +8,9 @@ const AUTH0_ENABLED = process.env.NEXT_PUBLIC_AUTH0_ENABLED === "true";
 
 type Search = { session?: string };
 
-// Server component. Two modes:
-//   - With ?session=<id>: mint token, POST to /cli-auth/sessions/<id>/approve,
-//     render "signed in, go back to your terminal". CLI is polling.
-//   - Without: render the token + paste-back UI (self-host / manual flow).
+// Server component. Expects `?session=<id>` from `stash signin`: mints a token
+// and POSTs it to /cli-auth/sessions/<id>/approve so the CLI (which is polling)
+// can pick it up. Missing session id is a bug, not a user flow.
 export default async function ConnectTokenPage({
   searchParams,
 }: {
@@ -34,12 +31,23 @@ export default async function ConnectTokenPage({
     );
   }
 
+  if (!sessionId) {
+    return (
+      <Shell>
+        <Heading>Open this page from the CLI</Heading>
+        <Body>
+          This page completes sign-in for <code>stash signin</code> and has to be opened
+          with a session id. Run <code>stash signin</code> in your terminal and it&apos;ll
+          open the right URL for you.
+        </Body>
+      </Shell>
+    );
+  }
+
   const { auth0 } = await import("@managed/auth0/client");
   const session = await auth0.getSession();
   if (!session) {
-    const returnTo = sessionId
-      ? `/connect-token?session=${encodeURIComponent(sessionId)}`
-      : "/connect-token";
+    const returnTo = `/connect-token?session=${encodeURIComponent(sessionId)}`;
     redirect(`/auth/login?returnTo=${encodeURIComponent(returnTo)}`);
   }
 
@@ -68,91 +76,44 @@ export default async function ConnectTokenPage({
 
   const data = (await res.json()) as { api_key: string; name: string; display_name?: string };
   const userName = data.display_name || data.name;
-  const endpoint = API_URL;
 
-  // Session-driven flow: hand the minted key to the waiting CLI and show a
-  // minimal "you can close this tab" UI.
-  if (sessionId) {
-    const approveRes = await fetch(
-      `${API_URL}/api/v1/users/cli-auth/sessions/${encodeURIComponent(sessionId)}/approve`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ api_key: data.api_key, username: data.name }),
-        cache: "no-store",
-      },
-    );
+  const approveRes = await fetch(
+    `${API_URL}/api/v1/users/cli-auth/sessions/${encodeURIComponent(sessionId)}/approve`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ api_key: data.api_key, username: data.name }),
+      cache: "no-store",
+    },
+  );
 
-    if (!approveRes.ok) {
-      const detail = await approveRes.text().catch(() => "");
-      return (
-        <Shell>
-          <p className="font-mono text-[11px] uppercase tracking-[0.14em] text-muted">
-            Signed in as {userName}
-          </p>
-          <Heading>Could not hand the token to your CLI</Heading>
-          <Body>
-            Your CLI session may have expired. Re-run <code>stash signin</code> and try again.
-          </Body>
-          {detail ? <Pre>{detail.slice(0, 500)}</Pre> : null}
-        </Shell>
-      );
-    }
-
+  if (!approveRes.ok) {
+    const detail = await approveRes.text().catch(() => "");
     return (
       <Shell>
         <p className="font-mono text-[11px] uppercase tracking-[0.14em] text-muted">
           Signed in as {userName}
         </p>
-        <Heading>You&apos;re signed in.</Heading>
+        <Heading>Could not hand the token to your CLI</Heading>
         <Body>
-          Head back to your terminal — <code>stash signin</code> has the token and will finish
-          wiring up your workspace.
+          Your CLI session may have expired. Re-run <code>stash signin</code> and try again.
         </Body>
-        <Body>You can close this tab.</Body>
+        {detail ? <Pre>{detail.slice(0, 500)}</Pre> : null}
       </Shell>
     );
   }
 
-  // Legacy paste-back UI — kept for self-host or users who land here manually.
   return (
     <Shell>
       <p className="font-mono text-[11px] uppercase tracking-[0.14em] text-muted">
         Signed in as {userName}
       </p>
-      <Heading>Your CLI sign-in token</Heading>
+      <Heading>You&apos;re signed in.</Heading>
       <Body>
-        Paste this into the terminal that&apos;s installing Stash. It&apos;s single-use —
-        opening this page again will rotate it.
+        Head back to your terminal — <code>stash signin</code> has the token and will finish
+        wiring up your workspace.
       </Body>
-
-      <div className="mt-8 overflow-hidden rounded-xl border border-border-subtle bg-inverted">
-        <div className="flex items-center justify-between border-b border-white/5 px-5 py-3">
-          <span className="font-mono text-[11px] uppercase tracking-[0.14em] text-on-inverted-dim">
-            sign-in token
-          </span>
-          <CopyButton value={data.api_key} label="Copy token" copiedLabel="Copied" />
-        </div>
-        <div className="break-all px-5 py-4 font-mono text-[13px] leading-[1.5] text-on-inverted">
-          {data.api_key}
-        </div>
-      </div>
-
-      <p className="mt-6 text-[14px] leading-[1.6] text-dim">
-        Run:
-      </p>
-      <Pre>
-        {`stash auth ${endpoint} --api-key <paste>`}
-      </Pre>
-
-      <div className="mt-10 flex items-center gap-5 text-[14px]">
-        <Link href="/" className="text-dim hover:text-brand">
-          ← Back to stash.ac
-        </Link>
-        <Link href="/auth/logout" className="text-dim hover:text-brand">
-          Sign out
-        </Link>
-      </div>
+      <Body>You can close this tab.</Body>
     </Shell>
   );
 }
