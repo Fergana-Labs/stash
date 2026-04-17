@@ -1860,19 +1860,32 @@ def connect(
 
     # --- Step 4: Coding-agent plugin ---
     # Detect installed coding agents on PATH and offer to install the matching
-    # stash plugin. Currently handles Claude Code only — Codex/Cursor/Gemini
-    # plugins require bundled hooks files served from the source repo, which
-    # is tracked separately in plans/installer-one-liner.md. Silently skipped
-    # when no supported agent is detected.
-    if _detect_claude_code():
+    # stash plugins. Silently skipped when no supported agent is detected.
+    detected = _detected_agents()
+    if detected:
         _reserve_bottom_padding(4)
+        agent_label = {
+            "claude": "Claude Code",
+            "cursor": "Cursor",
+            "codex": "Codex",
+            "opencode": "opencode",
+        }
+        pretty = ", ".join(agent_label[a] for a in detected)
         install_plugin = questionary.confirm(
-            "Detected Claude Code on this machine. Install the stash plugin?\n"
-            "  (Streams every Claude Code session here to your shared history.)",
+            f"Detected {pretty} on this machine. Install the stash plugin?\n"
+            "  (Streams every session here to your shared history.)",
             default=True,
         ).ask()
         if install_plugin:
-            _install_claude_plugin()
+            for agent in detected:
+                try:
+                    status_, detail = _INSTALLERS[agent](False)
+                except Exception as e:
+                    status_, detail = ("failed", f"{type(e).__name__}: {e}")
+                color = {"installed": "green", "skipped": "yellow", "failed": "red"}[status_]
+                console.print(
+                    f"  [{color}]{status_:9}[/{color}] {agent:8} {detail}"
+                )
 
     # --- Done ---
     _show_setup_complete_splash(
@@ -2237,13 +2250,6 @@ def _capture_install_repo() -> None:
         _write_central_config({"scope": "all"})
     else:
         _write_central_config({"scope": "repo"})
-
-
-def _detect_claude_code() -> bool:
-    """Return True if the Claude Code CLI is on PATH."""
-    import shutil
-
-    return shutil.which("claude") is not None
 
 
 def _install_claude_plugin() -> bool:
