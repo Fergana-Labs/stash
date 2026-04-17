@@ -8,9 +8,19 @@ export const dynamic = "force-dynamic";
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "https://moltchat.onrender.com";
 const AUTH0_ENABLED = process.env.NEXT_PUBLIC_AUTH0_ENABLED === "true";
 
-// Server component. Renders the user's CLI sign-in token after Auth0 sign-in,
-// for paste-back into a Claude Code session driving `stash auth ... --api-key`.
-export default async function ConnectTokenPage() {
+type Search = { session?: string };
+
+// Server component. Two modes:
+//   - With ?session=<id>: mint token, POST to /cli-auth/sessions/<id>/approve,
+//     render "signed in, go back to your terminal". CLI is polling.
+//   - Without: render the token + paste-back UI (self-host / manual flow).
+export default async function ConnectTokenPage({
+  searchParams,
+}: {
+  searchParams: Promise<Search>;
+}) {
+  const { session: sessionId } = await searchParams;
+
   if (!AUTH0_ENABLED) {
     return (
       <Shell>
@@ -27,7 +37,10 @@ export default async function ConnectTokenPage() {
   const { auth0 } = await import("@managed/auth0/client");
   const session = await auth0.getSession();
   if (!session) {
-    redirect("/auth/login?returnTo=/connect-token");
+    const returnTo = sessionId
+      ? `/connect-token?session=${encodeURIComponent(sessionId)}`
+      : "/connect-token";
+    redirect(`/auth/login?returnTo=${encodeURIComponent(returnTo)}`);
   }
 
   const accessToken = session.tokenSet.accessToken;
@@ -57,6 +70,51 @@ export default async function ConnectTokenPage() {
   const userName = data.display_name || data.name;
   const endpoint = API_URL;
 
+  // Session-driven flow: hand the minted key to the waiting CLI and show a
+  // minimal "you can close this tab" UI.
+  if (sessionId) {
+    const approveRes = await fetch(
+      `${API_URL}/api/v1/users/cli-auth/sessions/${encodeURIComponent(sessionId)}/approve`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ api_key: data.api_key, username: data.name }),
+        cache: "no-store",
+      },
+    );
+
+    if (!approveRes.ok) {
+      const detail = await approveRes.text().catch(() => "");
+      return (
+        <Shell>
+          <p className="font-mono text-[11px] uppercase tracking-[0.14em] text-muted">
+            Signed in as {userName}
+          </p>
+          <Heading>Could not hand the token to your CLI</Heading>
+          <Body>
+            Your CLI session may have expired. Re-run <code>stash signin</code> and try again.
+          </Body>
+          {detail ? <Pre>{detail.slice(0, 500)}</Pre> : null}
+        </Shell>
+      );
+    }
+
+    return (
+      <Shell>
+        <p className="font-mono text-[11px] uppercase tracking-[0.14em] text-muted">
+          Signed in as {userName}
+        </p>
+        <Heading>You&apos;re signed in.</Heading>
+        <Body>
+          Head back to your terminal — <code>stash signin</code> has the token and will finish
+          wiring up your workspace.
+        </Body>
+        <Body>You can close this tab.</Body>
+      </Shell>
+    );
+  }
+
+  // Legacy paste-back UI — kept for self-host or users who land here manually.
   return (
     <Shell>
       <p className="font-mono text-[11px] uppercase tracking-[0.14em] text-muted">
@@ -64,8 +122,8 @@ export default async function ConnectTokenPage() {
       </p>
       <Heading>Your CLI sign-in token</Heading>
       <Body>
-        Paste this into the Claude Code session that&apos;s installing Stash. It&apos;s
-        single-use — opening this page again will rotate it.
+        Paste this into the terminal that&apos;s installing Stash. It&apos;s single-use —
+        opening this page again will rotate it.
       </Body>
 
       <div className="mt-8 overflow-hidden rounded-xl border border-border-subtle bg-inverted">
@@ -81,7 +139,7 @@ export default async function ConnectTokenPage() {
       </div>
 
       <p className="mt-6 text-[14px] leading-[1.6] text-dim">
-        Claude will run something like:
+        Run:
       </p>
       <Pre>
         {`stash auth ${endpoint} --api-key <paste>`}

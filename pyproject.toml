@@ -33,6 +33,9 @@ stash = "cli.main:app"
 [tool.setuptools.packages.find]
 include = ["cli*", "stashai*"]
 
+[tool.setuptools.package-data]
+stashai = ["plugin/assets/**/*"]
+
 [build-system]
 requires = ["setuptools>=68.0"]
 build-backend = "setuptools.build_meta"
