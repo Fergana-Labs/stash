@@ -5,7 +5,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 ${CLAUDE_PLUGIN_ROOT}/scripts/on_session_start.py",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/scripts/_run.sh on_session_start",
             "timeout": 5000
           }
         ]
@@ -16,7 +16,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 ${CLAUDE_PLUGIN_ROOT}/scripts/on_prompt.py",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/scripts/_run.sh on_prompt",
             "timeout": 3000
           }
         ]
@@ -27,7 +27,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 ${CLAUDE_PLUGIN_ROOT}/scripts/on_tool_use.py",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/scripts/_run.sh on_tool_use",
             "async": true
           }
         ]
@@ -38,7 +38,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 ${CLAUDE_PLUGIN_ROOT}/scripts/on_stop.py",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/scripts/_run.sh on_stop",
             "timeout": 10000
           }
         ]
@@ -49,7 +49,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 ${CLAUDE_PLUGIN_ROOT}/scripts/on_session_end.py",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/scripts/_run.sh on_session_end",
             "timeout": 5000
           }
         ]
