@@ -97,6 +97,35 @@ def login(
 
 
 @app.command()
+def signin(
+    page: str = typer.Option(
+        "https://stash.ac/connect-token",
+        "--page",
+        help="Sign-in page to open. Override for self-hosted deployments.",
+    ),
+):
+    """Open the sign-in page in your default browser to grab a token.
+
+    The page returns a single-use token; paste it back into your shell with
+    `stash auth <endpoint> --api-key <token>`. Designed to be agent-driven:
+    opens the browser non-interactively and exits, so a coding agent can
+    show the user where to sign in, then collect the pasted token via its
+    own UI (e.g. AskUserQuestion) and call `stash auth` to persist it.
+    """
+    import webbrowser
+
+    opened = webbrowser.open(page)
+    if opened:
+        console.print(f"  [green]✓[/green] Opened [bold]{page}[/bold] in your default browser.")
+    else:
+        console.print(f"  [yellow]Could not auto-open a browser.[/yellow] Visit: [bold]{page}[/bold]")
+    console.print(
+        f"  Copy the token from the page, then run: "
+        f"[cyan]stash auth <endpoint> --api-key <token>[/cyan]"
+    )
+
+
+@app.command()
 def auth(base_url: str = typer.Argument(...), api_key: str = typer.Option(..., "--api-key")):
     """Store existing credentials."""
     save_config(base_url=base_url, api_key=api_key)
