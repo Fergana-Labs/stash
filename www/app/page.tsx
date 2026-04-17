@@ -64,13 +64,7 @@ function Nav() {
 }
 
 function Hero() {
-  const lines = [
-    "pipx install stashai",
-    "stash connect",
-    "claude plugin marketplace add Fergana-Labs/stash",
-    "claude plugin install stash@stash-plugins",
-    "stash connect --welcome",
-  ];
+  const prompt = `Set up stash in this repo so our Claude Code sessions share memory with the team. Install the CLI with \`pipx install stashai\`, run \`stash connect\` (it opens a browser for sign-in), then add the plugin marketplace \`Fergana-Labs/stash\` and install \`stash@stash-plugins\`. Finish by running \`stash connect --welcome\`.`;
   return (
     <section id="install" className="border-b border-border-subtle">
       <div className="mx-auto grid max-w-[1120px] gap-12 px-6 pb-16 pt-20 lg:grid-cols-[1.1fr_1fr] lg:items-center lg:gap-16">
@@ -112,20 +106,18 @@ function Hero() {
           <div className="overflow-hidden rounded-xl bg-inverted shadow-[0_24px_60px_-30px_rgba(15,23,42,0.4)]">
             <div className="flex items-center justify-between border-b border-white/5 px-5 py-2.5">
               <span className="font-mono text-[11px] uppercase tracking-[0.14em] text-on-inverted-dim">
-                terminal
+                claude code
               </span>
               <span className="font-mono text-[11px] text-on-inverted-dim">
-                ~
+                prompt
               </span>
             </div>
-            <pre className="overflow-x-auto px-5 py-4 font-mono text-[13px] leading-[1.9] text-on-inverted">
-              {lines.map((cmd) => (
-                <div key={cmd}>
-                  <span className="mr-3 text-brand">$</span>
-                  <span>{cmd}</span>
-                </div>
-              ))}
-            </pre>
+            <div className="px-5 py-4 font-mono text-[13px] leading-[1.7] text-on-inverted">
+              <div className="flex gap-3">
+                <span className="shrink-0 text-brand">&gt;</span>
+                <PromptBody text={prompt} />
+              </div>
+            </div>
           </div>
           <p className="mt-3 text-[13px] leading-[1.5] text-dim">
             <code className="rounded bg-raised px-1.5 py-0.5 font-mono text-[12px] text-ink">
@@ -136,6 +128,23 @@ function Hero() {
         </div>
       </div>
     </section>
+  );
+}
+
+function PromptBody({ text }: { text: string }) {
+  const parts = text.split(/(`[^`]+`)/g);
+  return (
+    <p className="whitespace-pre-wrap break-words">
+      {parts.map((part, i) =>
+        part.startsWith("`") && part.endsWith("`") ? (
+          <code key={i} className="rounded bg-white/10 px-1.5 py-0.5 text-on-inverted">
+            {part.slice(1, -1)}
+          </code>
+        ) : (
+          <span key={i}>{part}</span>
+        ),
+      )}
+    </p>
   );
 }
 
