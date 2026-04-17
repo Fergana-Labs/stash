@@ -55,6 +55,9 @@ function Nav() {
           <Link href="/docs" className="hover:text-ink">
             Docs
           </Link>
+          <Link href="/connect-token" className="hover:text-ink">
+            Sign in
+          </Link>
           <Link
             href="#install"
             className="inline-flex h-9 items-center rounded-md bg-brand px-4 font-medium text-white shadow-sm transition hover:bg-brand-hover"
