@@ -44,7 +44,7 @@ Everything is a plain `stash` CLI subcommand — no opencode-specific slash comm
 | Command | Description |
 |---------|-------------|
 | `stash connect` | Interactive setup (auth + workspace + store) |
-| `stash status` | Central config, streaming state, last curate |
+| `stash settings` | Interactive settings page (streaming, scope, endpoint, …) |
 | `stash disconnect` | Pause event streaming across every installed plugin |
 
 When the opencode bus emits `session.deleted` the plugin spawns `opencode run …`

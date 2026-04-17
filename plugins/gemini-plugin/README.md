@@ -43,7 +43,7 @@ Everything is a plain `stash` CLI subcommand — no Gemini-specific slash comman
 | Command | Description |
 |---------|-------------|
 | `stash connect` | Interactive setup (auth + workspace + store) |
-| `stash status` | Central config, streaming state, last curate |
+| `stash settings` | Interactive settings page (streaming, scope, endpoint, …) |
 | `stash disconnect` | Pause event streaming across every installed plugin |
 
 At SessionEnd the plugin spawns `gemini -p …` headless with a shared curation
