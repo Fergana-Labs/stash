@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
-import CopyButton from "./CopyButton";
+import CopyButton from "../_components/CopyButton";
 
 export const dynamic = "force-dynamic";
 
@@ -73,7 +73,7 @@ export default async function ConnectTokenPage() {
           <span className="font-mono text-[11px] uppercase tracking-[0.14em] text-on-inverted-dim">
             sign-in token
           </span>
-          <CopyButton value={data.api_key} />
+          <CopyButton value={data.api_key} label="Copy token" copiedLabel="Copied" />
         </div>
         <div className="break-all px-5 py-4 font-mono text-[13px] leading-[1.5] text-on-inverted">
           {data.api_key}

@@ -2,7 +2,17 @@
 
 import { useState } from "react";
 
-export default function CopyButton({ value }: { value: string }) {
+type Props = {
+  value: string;
+  label?: string;
+  copiedLabel?: string;
+};
+
+export default function CopyButton({
+  value,
+  label = "Copy",
+  copiedLabel = "Copied",
+}: Props) {
   const [copied, setCopied] = useState(false);
 
   async function handleCopy() {
@@ -21,7 +31,7 @@ export default function CopyButton({ value }: { value: string }) {
       onClick={handleCopy}
       className="inline-flex h-10 items-center rounded-md bg-brand px-4 text-[14px] font-medium text-white transition hover:bg-brand-hover"
     >
-      {copied ? "Copied" : "Copy token"}
+      {copied ? copiedLabel : label}
     </button>
   );
 }
