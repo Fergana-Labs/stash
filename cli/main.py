@@ -14,11 +14,13 @@ from .client import StashClient, StashError
 from .config import (
     PROJECT_FILENAME,
     Manifest,
+    detect_previous_scope,
     find_project_config,
     find_project_manifest,
     load_config,
     load_manifest,
     save_config,
+    stored_base_url,
 )
 from .formatting import console, output_json, print_members, print_rooms, print_user
 
@@ -343,6 +345,42 @@ _INSTALLERS = {
     "codex": _install_codex,
     "opencode": _install_opencode,
 }
+
+
+def _plugin_installed(agent: str) -> bool:
+    """Best-effort check: did the stash plugin installer already run for this agent?"""
+    if agent == "claude":
+        registry = Path.home() / ".claude" / "plugins" / "installed_plugins.json"
+        if not registry.exists():
+            return False
+        try:
+            data = json.loads(registry.read_text())
+        except (OSError, json.JSONDecodeError):
+            return False
+        return "stash@stash-plugins" in (data.get("plugins") or {})
+    if agent == "cursor":
+        return (Path.home() / ".cursor" / "hooks.json").exists()
+    if agent == "codex":
+        toml_path = Path.home() / ".codex" / "config.toml"
+        if not toml_path.exists():
+            return False
+        try:
+            return _CODEX_MARKER in toml_path.read_text()
+        except OSError:
+            return False
+    if agent == "opencode":
+        cfg_path = Path.home() / ".config" / "opencode" / "opencode.json"
+        if not cfg_path.exists():
+            return False
+        try:
+            cfg = json.loads(cfg_path.read_text())
+        except (OSError, json.JSONDecodeError):
+            return False
+        from stashai.plugin.assets import assets_dir
+
+        expected = str(assets_dir("opencode") / "plugin.ts")
+        return expected in (cfg.get("plugin") or [])
+    return False
 
 
 @app.command("install")
@@ -1549,6 +1587,57 @@ def _connect_via_invite(
     _show_setup_complete_splash(workspace_name=result["workspace_name"], joined_via_invite=True)
 
 
+def _already_fully_connected(manifest: Manifest | None) -> bool:
+    """If every setting `stash connect` touches is already configured and valid,
+    print a short summary and return True so the caller can short-circuit.
+    Otherwise return False and fall through to the interactive flow.
+    """
+    prev_scope = detect_previous_scope()
+    prev_base = stored_base_url()
+    cfg = load_config()
+    api_key = cfg.get("api_key", "")
+    default_ws = cfg.get("default_workspace", "")
+    if not (prev_scope and prev_base and api_key and default_ws):
+        return False
+    # In a manifest repo, short-circuit only if the configured default workspace
+    # matches the manifest's workspace — otherwise we still need to join.
+    if manifest and str(manifest.get("workspace_id") or "") not in ("", default_ws):
+        return False
+
+    try:
+        with StashClient(base_url=prev_base, api_key=api_key) as c:
+            user = c.whoami()
+            ws = c.get_workspace(default_ws)
+    except StashError:
+        return False
+
+    detected = _detected_agents()
+    if not all(_plugin_installed(a) for a in detected):
+        return False
+
+    agent_label = {
+        "claude": "Claude Code",
+        "cursor": "Cursor",
+        "codex": "Codex",
+        "opencode": "opencode",
+    }
+    managed_hosts = ("https://stash.ac", "https://www.stash.ac", "https://moltchat.onrender.com")
+    endpoint_label = "Managed" if prev_base in managed_hosts else prev_base
+    console.print(
+        f"  [green]✓[/green] Already connected to [bold]{ws['name']}[/bold] as "
+        f"[bold]{user['name']}[/bold]."
+    )
+    console.print(f"    [dim]Endpoint:[/dim]  {endpoint_label}")
+    if detected:
+        console.print(
+            f"    [dim]Plugins:[/dim]   {', '.join(agent_label[a] for a in detected)}"
+        )
+    console.print(
+        "\n  Run [cyan]stash status[/cyan] for detail, or [cyan]stash disconnect[/cyan] to reset.\n"
+    )
+    return True
+
+
 @app.command("connect")
 def connect(
     welcome: bool = typer.Option(
@@ -1594,36 +1683,58 @@ def connect(
             f"[bold]{manifest.get('workspace_name') or 'a stash workspace'}[/bold].\n"
         )
 
+    if _already_fully_connected(manifest):
+        return
+
     # --- Step 0: Scope ---
-    # With a manifest, we still offer machine-level install; we just flip the
-    # default so new contributors land on project scope.
-    scope_options = [
-        ("Everywhere on this machine", "~/.stash/config.json", "user"),
-        ("Only this directory", "./.stash/config.json", "project"),
-    ]
-    label_width = max(len(label) for label, _, _ in scope_options)
-    scope_default_value = "project" if manifest else "user"
-    scope_choices = [
-        questionary.Choice(f"{label:<{label_width}}   {path}", value=value)
-        for label, path, value in scope_options
-    ]
-    scope_default_choice = next(ch for ch in scope_choices if ch.value == scope_default_value)
-    _reserve_bottom_padding(8)
-    scope = questionary.select(
-        "Where do you want to install stash?",
-        choices=scope_choices,
-        default=scope_default_choice,
-        use_shortcuts=True,
-    ).ask()
-    if scope is None:
-        raise typer.Exit(1)
+    # Preserve the previous choice on re-runs so `stash connect` doesn't
+    # overwrite a directory-scoped install with a machine-wide one (or vice
+    # versa). With a manifest, we still offer machine-level install; we just
+    # flip the default so new contributors land on project scope.
+    prev_scope = detect_previous_scope()
+    if prev_scope:
+        scope = prev_scope
+        scope_label = (
+            "everywhere on this machine" if scope == "user" else "only this directory"
+        )
+        console.print(
+            f"  [green]✓[/green] Using existing scope: [bold]{scope_label}[/bold]"
+        )
+    else:
+        scope_options = [
+            ("Everywhere on this machine", "~/.stash/config.json", "user"),
+            ("Only this directory", "./.stash/config.json", "project"),
+        ]
+        label_width = max(len(label) for label, _, _ in scope_options)
+        scope_default_value = "project" if manifest else "user"
+        scope_choices = [
+            questionary.Choice(f"{label:<{label_width}}   {path}", value=value)
+            for label, path, value in scope_options
+        ]
+        scope_default_choice = next(ch for ch in scope_choices if ch.value == scope_default_value)
+        _reserve_bottom_padding(8)
+        scope = questionary.select(
+            "Where do you want to install stash?",
+            choices=scope_choices,
+            default=scope_default_choice,
+            use_shortcuts=True,
+        ).ask()
+        if scope is None:
+            raise typer.Exit(1)
 
     # --- Step 1: API endpoint ---
     cfg = load_config()
+    prev_base = stored_base_url()
     if manifest and manifest.get("base_url"):
         base_url = str(manifest["base_url"]).rstrip("/")
         console.print(
             f"  [green]✓[/green] Using endpoint from manifest: [bold]{base_url}[/bold]"
+        )
+        save_config(base_url=base_url, scope=scope)
+    elif prev_base:
+        base_url = prev_base
+        console.print(
+            f"  [green]✓[/green] Using existing endpoint: [bold]{base_url}[/bold]"
         )
     else:
         mode_options = [
@@ -1647,7 +1758,7 @@ def connect(
             base_url = "https://moltchat.onrender.com"
         else:
             base_url = _self_host_walkthrough(cfg)
-    save_config(base_url=base_url, scope=scope)
+        save_config(base_url=base_url, scope=scope)
 
     # --- Step 2: Auth (browser-based) ---
     has_key = bool(cfg.get("api_key"))
@@ -1817,51 +1928,56 @@ def connect(
                 my_workspaces = []
 
             workspace_id = cfg.get("default_workspace", "")
-            if my_workspaces:
-                console.print("\n  Your workspaces:")
-                for ws in my_workspaces[:5]:
-                    marker = " [dim](current default)[/dim]" if str(ws["id"]) == workspace_id else ""
-                    console.print(f"    [dim]{str(ws['id'])[:8]}…[/dim]  {ws['name']}{marker}")
-
-            # Pick a default workspace: prefer the configured one, else the first in the list.
-            default_ws = None
+            existing_ws = None
             if workspace_id:
-                default_ws = next((ws for ws in my_workspaces if str(ws["id"]) == workspace_id), None)
-            if not default_ws and my_workspaces:
-                default_ws = my_workspaces[0]
+                existing_ws = next(
+                    (ws for ws in my_workspaces if str(ws["id"]) == workspace_id), None
+                )
 
-            default_name = default_ws["name"] if default_ws else ""
-
-            _reserve_bottom_padding(4)
-            ws_name = typer.prompt(
-                "\nPress ENTER to accept default workspace name, otherwise type a workspace name",
-                default=default_name,
-            ).strip()
-
-            if not ws_name:
-                console.print("[yellow]Skipping workspace setup.[/yellow]")
+            if existing_ws:
+                # Preserve the previously configured workspace on re-runs.
+                console.print(
+                    f"  [green]✓[/green] Using existing workspace: [bold]{existing_ws['name']}[/bold]"
+                )
             else:
-                # If the name matches an existing workspace, reuse it. Otherwise, create a new one.
-                matched = next((ws for ws in my_workspaces if ws["name"] == ws_name), None)
-                if matched:
-                    workspace_id = str(matched["id"])
-                    save_config(default_workspace=workspace_id, scope=scope)
-                    console.print(f"  [green]✓[/green] Using workspace [bold]{matched['name']}[/bold]")
+                if my_workspaces:
+                    console.print("\n  Your workspaces:")
+                    for ws in my_workspaces[:5]:
+                        console.print(f"    [dim]{str(ws['id'])[:8]}…[/dim]  {ws['name']}")
+
+                default_ws = my_workspaces[0] if my_workspaces else None
+                default_name = default_ws["name"] if default_ws else ""
+
+                _reserve_bottom_padding(4)
+                ws_name = typer.prompt(
+                    "\nPress ENTER to accept default workspace name, otherwise type a workspace name",
+                    default=default_name,
+                ).strip()
+
+                if not ws_name:
+                    console.print("[yellow]Skipping workspace setup.[/yellow]")
                 else:
-                    try:
-                        ws_data = c.create_workspace(ws_name)
-                        workspace_id = str(ws_data["id"])
-                        save_config(default_workspace=workspace_id, scope=scope)
+                    # If the name matches an existing workspace, reuse it. Otherwise, create a new one.
+                    matched = next((ws for ws in my_workspaces if ws["name"] == ws_name), None)
+                    if matched:
+                        save_config(default_workspace=str(matched["id"]), scope=scope)
                         console.print(
-                            f"  [green]✓[/green] Created workspace [bold]{ws_data['name']}[/bold]  invite: {ws_data['invite_code']}"
+                            f"  [green]✓[/green] Using workspace [bold]{matched['name']}[/bold]"
                         )
-                    except StashError as e:
-                        console.print(f"[red]Could not create workspace: {e.detail}[/red]")
+                    else:
+                        try:
+                            ws_data = c.create_workspace(ws_name)
+                            save_config(default_workspace=str(ws_data["id"]), scope=scope)
+                            console.print(
+                                f"  [green]✓[/green] Created workspace [bold]{ws_data['name']}[/bold]  invite: {ws_data['invite_code']}"
+                            )
+                        except StashError as e:
+                            console.print(f"[red]Could not create workspace: {e.detail}[/red]")
 
     # --- Step 4: Coding-agent plugin ---
-    # Detect installed coding agents on PATH and ask about each individually —
-    # users often have granular preferences (e.g. stream Claude but skip Codex).
-    # Silently skipped when no supported agent is detected.
+    # Detect coding agents on PATH and prompt per-agent for the ones that
+    # don't already have the stash plugin installed. Agents that do have it
+    # get a single confirmation line so re-runs don't nag.
     detected = _detected_agents()
     if detected:
         agent_label = {
@@ -1870,7 +1986,14 @@ def connect(
             "codex": "Codex",
             "opencode": "opencode",
         }
-        for agent in detected:
+        missing = [a for a in detected if not _plugin_installed(a)]
+        already = [a for a in detected if a not in missing]
+        if already:
+            console.print(
+                f"  [green]✓[/green] Stash plugin already installed for "
+                f"[bold]{', '.join(agent_label[a] for a in already)}[/bold]"
+            )
+        for agent in missing:
             _reserve_bottom_padding(4)
             install_plugin = questionary.confirm(
                 f"Detected {agent_label[agent]} on this machine. Install the stash plugin?\n"
@@ -2453,15 +2576,21 @@ def status(as_json: bool = typer.Option(False, "--json")):
 
 @app.command("disconnect")
 def disconnect(as_json: bool = typer.Option(False, "--json")):
-    """Pause activity streaming across every installed plugin."""
-    _write_central_config({"streaming_enabled": False})
-    if as_json or load_config().get("output_format") == "json":
-        output_json({"streaming_enabled": False})
+    """Sign out and clear stash config so the next `stash connect` re-onboards.
+
+    Deletes the user and project config files (auth, workspace, endpoint).
+    Plugin hooks stay installed but go inert with no api_key to push to.
+    """
+    from .config import clear_config
+
+    json_mode = as_json or load_config().get("output_format") == "json"
+    clear_config("user")
+    clear_config("project")
+    if json_mode:
+        output_json({"disconnected": True})
         return
-    console.print("[yellow]Streaming disabled.[/yellow] Hooks will stop pushing events.")
-    console.print(
-        "  Re-enable with [bold]stash connect[/bold] or edit [cyan]~/.stash/config.json[/cyan]."
-    )
+    console.print("[yellow]Disconnected.[/yellow] Cleared auth, workspace, and endpoint.")
+    console.print("  Run [bold]stash connect[/bold] to set up again.")
 
 
 def _read_central_config() -> dict:
