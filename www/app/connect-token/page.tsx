@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 
 export const dynamic = "force-dynamic";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "https://moltchat.onrender.com";
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "https://api.stash.ac";
 const AUTH0_ENABLED = process.env.NEXT_PUBLIC_AUTH0_ENABLED === "true";
 
 type Search = { session?: string };

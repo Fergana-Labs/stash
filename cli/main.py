@@ -106,7 +106,7 @@ def signin(
         help="Sign-in page URL. Override for self-hosted deployments.",
     ),
     api: str = typer.Option(
-        "https://moltchat.onrender.com",
+        "https://api.stash.ac",
         "--api",
         help="Stash API base URL. Override for self-hosted deployments.",
     ),
@@ -1502,7 +1502,7 @@ def _self_host_walkthrough(cfg: dict) -> str:
         raise typer.Exit(0)
 
     current_url = cfg.get("base_url", "http://localhost:3456")
-    managed_hosts = ("https://stash.ac", "https://www.stash.ac", "https://moltchat.onrender.com")
+    managed_hosts = ("https://stash.ac", "https://www.stash.ac", "https://api.stash.ac")
     default_url = "http://localhost:3456" if current_url in managed_hosts else current_url
     return typer.prompt("URL of your instance", default=default_url).rstrip("/")
 
@@ -1621,7 +1621,7 @@ def _already_fully_connected(manifest: Manifest | None) -> bool:
         "codex": "Codex",
         "opencode": "opencode",
     }
-    managed_hosts = ("https://stash.ac", "https://www.stash.ac", "https://moltchat.onrender.com")
+    managed_hosts = ("https://stash.ac", "https://www.stash.ac", "https://api.stash.ac")
     endpoint_label = "Managed" if prev_base in managed_hosts else prev_base
     console.print(
         f"  [green]✓[/green] Already connected to [bold]{ws['name']}[/bold] as "
@@ -1755,7 +1755,7 @@ def connect(
             raise typer.Exit(1)
 
         if mode == "managed":
-            base_url = "https://moltchat.onrender.com"
+            base_url = "https://api.stash.ac"
         else:
             base_url = _self_host_walkthrough(cfg)
         save_config(base_url=base_url, scope=scope)
@@ -1796,7 +1796,7 @@ def connect(
         # - Managed: frontend lives at stash-web-dr40.onrender.com.
         if "localhost" in base_url or "127.0.0.1" in base_url:
             frontend_url = base_url.replace(":3456", ":3457")
-        elif base_url == "https://moltchat.onrender.com":
+        elif base_url == "https://api.stash.ac":
             frontend_url = "https://stash-web-dr40.onrender.com"
         else:
             frontend_url = base_url
@@ -2330,7 +2330,7 @@ def _invite_url(invite_code: str) -> str:
     managed backend → stash.ac; localhost backend → :3457; any other
     self-host → whatever the configured base_url is."""
     base_url = (load_config().get("base_url") or "").rstrip("/")
-    managed_hosts = ("https://stash.ac", "https://www.stash.ac", "https://moltchat.onrender.com")
+    managed_hosts = ("https://stash.ac", "https://www.stash.ac", "https://api.stash.ac")
     if base_url in managed_hosts:
         frontend = "https://stash.ac"
     elif "localhost" in base_url or "127.0.0.1" in base_url:
