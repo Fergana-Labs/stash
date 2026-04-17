@@ -249,23 +249,62 @@ def _detected_agents() -> list[str]:
     return [a for a in _SUPPORTED_AGENTS if shutil.which(_AGENT_BINARY[a])]
 
 
-def _write_hook_file(dest: Path, template: str, plugin_root: Path, force: bool) -> str:
-    """Render and write a hook file. Returns 'installed', 'skipped', or 'failed'."""
+def _entry_references(obj: object, needle: str) -> bool:
+    """True if any string anywhere in `obj` contains `needle`."""
+    if isinstance(obj, dict):
+        return any(_entry_references(v, needle) for v in obj.values())
+    if isinstance(obj, list):
+        return any(_entry_references(v, needle) for v in obj)
+    if isinstance(obj, str):
+        return needle in obj
+    return False
+
+
+def _merge_json_hooks(dest: Path, template: str, plugin_root: Path) -> str:
+    """Merge stash hook entries into a JSON hooks file under each event array.
+
+    Stash-owned entries are identified by the PLUGIN_ROOT path embedded in their
+    command strings — so re-runs replace our entries in place and never touch
+    user-added entries. Returns 'installed', 'skipped', or 'failed'.
+    """
     from string import Template
 
-    rendered = Template(template).safe_substitute(PLUGIN_ROOT=str(plugin_root))
-    if dest.exists():
-        existing = dest.read_text()
-        if existing == rendered:
-            return "skipped"
-        if not force:
-            overwrite = typer.confirm(
-                f"  {dest} differs from the shipped template. Overwrite?", default=False
-            )
-            if not overwrite:
-                return "skipped"
-    dest.parent.mkdir(parents=True, exist_ok=True)
-    dest.write_text(rendered)
+    root_str = str(plugin_root)
+    rendered = Template(template).safe_substitute(PLUGIN_ROOT=root_str)
+    try:
+        tmpl_data = json.loads(rendered)
+    except json.JSONDecodeError:
+        return "failed"
+
+    if not dest.exists():
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_text(json.dumps(tmpl_data, indent=2) + "\n")
+        return "installed"
+
+    try:
+        existing = json.loads(dest.read_text())
+    except json.JSONDecodeError:
+        return "failed"
+
+    tmpl_hooks = tmpl_data.get("hooks", {})
+    existing_hooks = existing.setdefault("hooks", {})
+    changed = False
+    for event, tmpl_entries in tmpl_hooks.items():
+        if not isinstance(tmpl_entries, list):
+            continue
+        cur = existing_hooks.get(event) or []
+        if not isinstance(cur, list):
+            cur = []
+        user_entries = [e for e in cur if not _entry_references(e, root_str)]
+        merged = user_entries + tmpl_entries
+        if merged != cur:
+            changed = True
+        existing_hooks[event] = merged
+
+    if not changed:
+        return "skipped"
+
+    dest.write_text(json.dumps(existing, indent=2) + "\n")
     return "installed"
 
 
@@ -285,7 +324,7 @@ def _install_cursor(force: bool) -> tuple[str, str]:
     root = assets_dir("cursor")
     dest = Path.home() / ".cursor" / "hooks.json"
     template = (root / "hooks.json").read_text()
-    status_ = _write_hook_file(dest, template, root, force)
+    status_ = _merge_json_hooks(dest, template, root)
     return (status_, f"{dest}")
 
 
@@ -298,7 +337,7 @@ def _install_codex(force: bool) -> tuple[str, str]:
     root = assets_dir("codex")
     hooks_dest = Path.home() / ".codex" / "hooks.json"
     template = (root / "hooks.json").read_text()
-    status_ = _write_hook_file(hooks_dest, template, root, force)
+    status_ = _merge_json_hooks(hooks_dest, template, root)
 
     # Append config.toml snippet idempotently via marker line.
     from string import Template
