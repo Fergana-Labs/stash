@@ -1611,6 +1611,22 @@ def connect(
                     except StashError as e:
                         console.print(f"[red]Could not create workspace: {e.detail}[/red]")
 
+    # --- Step 4: Coding-agent plugin ---
+    # Detect installed coding agents on PATH and offer to install the matching
+    # stash plugin. Currently handles Claude Code only — Codex/Cursor/Gemini
+    # plugins require bundled hooks files served from the source repo, which
+    # is tracked separately in plans/installer-one-liner.md. Silently skipped
+    # when no supported agent is detected.
+    if _detect_claude_code():
+        _reserve_bottom_padding(4)
+        install_plugin = questionary.confirm(
+            "Detected Claude Code on this machine. Install the stash plugin?\n"
+            "  (Streams every Claude Code session here to your shared history.)",
+            default=True,
+        ).ask()
+        if install_plugin:
+            _install_claude_plugin()
+
     # --- Done ---
     _show_setup_complete_splash(
         workspace_name=manifest_joined_ws,
@@ -1974,6 +1990,48 @@ def _capture_install_repo() -> None:
         _write_central_config({"scope": "all"})
     else:
         _write_central_config({"scope": "repo"})
+
+
+def _detect_claude_code() -> bool:
+    """Return True if the Claude Code CLI is on PATH."""
+    import shutil
+
+    return shutil.which("claude") is not None
+
+
+def _install_claude_plugin() -> bool:
+    """Install the stash plugin for Claude Code via the official marketplace.
+
+    Both subcommands are idempotent — re-running prints a "already added /
+    installed" notice rather than failing — so we don't pre-check state.
+    Returns True on success, False if either subprocess call errors (errors
+    are surfaced to the user inline).
+    """
+    import subprocess as _sp
+
+    for cmd in (
+        ["claude", "plugin", "marketplace", "add", "Fergana-Labs/stash"],
+        ["claude", "plugin", "install", "stash@stash-plugins"],
+    ):
+        try:
+            result = _sp.run(cmd, check=True, capture_output=True, text=True, timeout=60)
+        except _sp.CalledProcessError as e:
+            console.print(
+                f"  [yellow]`{' '.join(cmd)}` exited {e.returncode}.[/yellow]"
+            )
+            if e.stderr:
+                console.print(f"  [dim]{e.stderr.strip().splitlines()[-1]}[/dim]")
+            return False
+        except (FileNotFoundError, _sp.TimeoutExpired) as e:
+            console.print(f"  [yellow]Could not run `{' '.join(cmd)}`: {e}[/yellow]")
+            return False
+        # Surface the success line (last line of stdout, e.g. "Successfully
+        # installed plugin: stash@stash-plugins (scope: user)") so the user
+        # sees what happened.
+        last = (result.stdout or "").strip().splitlines()
+        if last:
+            console.print(f"  [green]✓[/green] {last[-1]}")
+    return True
 
 
 def _show_setup_complete_splash(
