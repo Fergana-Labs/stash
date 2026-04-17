@@ -136,6 +136,23 @@ def auth(base_url: str = typer.Argument(...), api_key: str = typer.Option(..., "
             console.print(f"[green]Authenticated as {user['name']}[/green]")
         except StashError:
             console.print("[yellow]Saved but could not verify.[/yellow]")
+            return
+        # Auto-set default workspace when the user has exactly one and none is
+        # configured yet — otherwise a fresh `stash auth` leaves new users in a
+        # state where every command needing workspace context (`stash history`,
+        # plugin SessionEnd hooks) errors with "no default workspace". Don't
+        # touch an existing default; multi-workspace users still need to pick
+        # explicitly via `stash workspaces use`.
+        if load_config().get("default_workspace"):
+            return
+        try:
+            workspaces = c.list_workspaces(mine=True)
+        except StashError:
+            return
+        if len(workspaces) == 1:
+            ws = workspaces[0]
+            save_config(default_workspace=str(ws["id"]))
+            console.print(f"  Default workspace set to [bold]{ws['name']}[/bold]")
 
 
 @app.command()
