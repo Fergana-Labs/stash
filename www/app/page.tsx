@@ -64,7 +64,7 @@ function Nav() {
 }
 
 function Hero() {
-  const prompt = `Set up stash in this repo so our Claude Code sessions share memory with the team. Install the CLI with \`pipx install stashai\`, run \`stash connect\` (it opens a browser for sign-in), then add the plugin marketplace \`Fergana-Labs/stash\` and install \`stash@stash-plugins\`. Finish by running \`stash connect --welcome\`.`;
+  const prompt = `Set up stash in this repo so our Claude Code sessions share memory with the team. (1) Install the CLI if it isn't already: \`command -v stash || pipx install stashai\`. (2) Add the Claude Code plugin: \`claude plugin marketplace add Fergana-Labs/stash\` then \`claude plugin install stash@stash-plugins\`. (3) Send me to https://stash.ac/connect-token to copy a sign-in token, then ask me to paste it back. Run \`stash auth https://moltchat.onrender.com --api-key <token>\`. (4) Run \`stash workspaces list --mine --json\` — if I have multiple, ask which one and run \`stash workspaces use <id>\`. (5) Run \`stash connect --welcome\` to show me the onboarding.`;
   return (
     <section id="install" className="border-b border-border-subtle">
       <div className="mx-auto grid max-w-[1120px] gap-12 px-6 pb-16 pt-20 lg:grid-cols-[1.1fr_1fr] lg:items-center lg:gap-16">
@@ -120,10 +120,11 @@ function Hero() {
             </div>
           </div>
           <p className="mt-3 text-[13px] leading-[1.5] text-dim">
+            One paste to sign in — Claude grabs a token from{" "}
             <code className="rounded bg-raised px-1.5 py-0.5 font-mono text-[12px] text-ink">
-              stash connect
+              stash.ac/connect-token
             </code>{" "}
-            opens a browser to sign in. Everything else is non-interactive.
+            and handles the rest.
           </p>
         </div>
       </div>
