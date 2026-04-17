@@ -2340,6 +2340,15 @@ STASH_LOGO = r"""
  ╚══════╝   ╚═╝   ╚═╝  ╚═╝╚══════╝╚═╝  ╚═╝
 """
 
+# Matches the orange octopus on stash.ac — round body, two eyes, five tentacles.
+STASH_OCTOPUS = r'''
+              .-~~~~~~-.
+             /  o    o  \
+             '.________.'
+              / / | \ \ \
+             ( ( (|)  ) )
+'''
+
 
 def _pushed_scope_phrase() -> str:
     """Human phrase for 'what gets pushed', varying by the user's scope choice
@@ -2515,6 +2524,7 @@ def _show_setup_complete_splash(
     """Clear the onboarding transcript and show a clean success splash."""
     _capture_install_repo()
     console.clear()
+    console.print(f"[bold #F97316]{STASH_OCTOPUS}[/bold #F97316]")
     console.print(f"[bold #1e3a8a]{STASH_LOGO}[/bold #1e3a8a]")
     if (joined_via_invite or joined_via_manifest) and workspace_name:
         console.print(f"  [bold green]You joined[/bold green] [bold]{workspace_name}[/bold].\n")
