@@ -1662,7 +1662,7 @@ def connect(
 ):
     """Interactive first-time setup. Sets base URL, authenticates, and configures defaults."""
     if welcome:
-        print(_WELCOME_MARKDOWN)
+        print(_welcome_markdown())
         return
     if invite:
         _connect_via_invite(
@@ -2299,7 +2299,18 @@ STASH_LOGO = r"""
 """
 
 
-_WELCOME_MARKDOWN = """# You're all set up.
+def _pushed_scope_phrase() -> str:
+    """Human phrase for 'what gets pushed', varying by the user's scope choice
+    at setup. `repo` (default) pushes only from the install repo; `workspace`
+    and `all` both push from anywhere on this machine."""
+    scope = (_read_central_config().get("scope") or "repo").strip().lower()
+    if scope == "repo":
+        return "Coding agent transcripts from this repo."
+    return "All coding agent transcripts from this machine."
+
+
+def _welcome_markdown() -> str:
+    return f"""# You're all set up.
 
 ## What just happened
 
@@ -2326,7 +2337,7 @@ Run `stash --help` to see everything.
 **A:** No.
 
 **Q:** What gets pushed to the shared store?
-**A:** For sessions in this repo (and its worktrees): prompts, assistant replies, summarized tool activity, and the full session transcript (.jsonl) at session end. Other repos push nothing unless you widen scope. Transcripts are stored verbatim — no secret scrubbing yet.
+**A:** {_pushed_scope_phrase()}
 
 **Q:** How do I change scope or see a transcript?
 **A:** `stash config scope <repo|workspace|all>` (default: `repo`). `stash history transcript <session_id>` fetches a full transcript.
@@ -2450,10 +2461,7 @@ def _show_setup_complete_splash(
         "  [bold]A[/bold] No.\n"
         "\n"
         "  [bold]Q[/bold] What gets pushed to the shared store?\n"
-        "  [bold]A[/bold] For sessions in this repo (and its worktrees): prompts, assistant\n"
-        "     replies, summarized tool activity, and the full session transcript (.jsonl)\n"
-        "     at session end. Other repos push nothing unless you widen scope.\n"
-        "     [yellow]Transcripts are stored verbatim[/yellow] — no secret scrubbing yet.\n"
+        f"  [bold]A[/bold] {_pushed_scope_phrase()}\n"
         "\n"
         "  [bold]Q[/bold] How do I change scope or see a transcript?\n"
         "  [bold]A[/bold] [#1e3a8a]stash config scope <repo|workspace|all>[/#1e3a8a]  (default: repo)\n"
