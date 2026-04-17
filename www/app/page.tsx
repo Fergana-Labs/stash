@@ -6,7 +6,6 @@ export default function Page() {
       <Nav />
       <Hero />
       <Problem />
-      <Install />
       <HowItWorks />
       <Features />
       <Footer />
@@ -65,36 +64,75 @@ function Nav() {
 }
 
 function Hero() {
+  const lines = [
+    "pipx install stashai",
+    "stash connect",
+    "claude plugin marketplace add Fergana-Labs/stash",
+    "claude plugin install stash@stash-plugins",
+    "stash connect --welcome",
+  ];
   return (
-    <section className="border-b border-border-subtle">
-      <div className="mx-auto max-w-[1120px] px-6 pb-24 pt-32">
-        <p className="mb-8 font-mono text-[11px] uppercase tracking-[0.14em] text-muted">
-          Open source · self-hostable · MIT
-        </p>
-        <h1 className="font-display text-[clamp(48px,6vw,88px)] font-black leading-[1.0] tracking-[-0.04em] text-ink">
-          <span className="text-brand">Shared memory</span> for teams
-          <br />
-          of AI coding agents.
-        </h1>
-        <p className="mt-8 max-w-[640px] text-[21px] leading-[1.45] text-dim">
-          When a teammate&apos;s coding agent fixes a bug, yours does too. Every
-          session, decision, and search becomes part of one living knowledge
-          base, queryable by every agent on the team.
-        </p>
-        <div className="mt-10 flex flex-wrap items-center gap-5">
-          <Link
-            href="#install"
-            className="inline-flex h-12 items-center rounded-md bg-brand px-6 text-[15px] font-medium text-white hover:bg-brand-hover"
-          >
-            Install Stash
-          </Link>
-          <Link
-            href="https://github.com/Fergana-Labs/octopus"
-            className="inline-flex h-12 items-center px-2 text-[15px] font-medium text-ink hover:text-brand"
-          >
-            View on GitHub
-            <span className="ml-2">→</span>
-          </Link>
+    <section id="install" className="border-b border-border-subtle">
+      <div className="mx-auto grid max-w-[1120px] gap-12 px-6 pb-16 pt-20 lg:grid-cols-[1.1fr_1fr] lg:items-center lg:gap-16">
+        <div>
+          <p className="mb-6 font-mono text-[11px] uppercase tracking-[0.14em] text-muted">
+            Open source · self-hostable · MIT
+          </p>
+          <h1 className="font-display text-[clamp(40px,4.8vw,68px)] font-black leading-[1.0] tracking-[-0.04em] text-ink">
+            <span className="text-brand">Shared memory</span> for teams
+            <br />
+            of AI coding agents.
+          </h1>
+          <p className="mt-6 max-w-[560px] text-[17px] leading-[1.5] text-dim">
+            When a teammate&apos;s coding agent fixes a bug, yours does too.
+            Every session, decision, and search becomes part of one living
+            knowledge base, queryable by every agent on the team.
+          </p>
+          <div className="mt-7 flex flex-wrap items-center gap-5">
+            <Link
+              href="https://github.com/Fergana-Labs/octopus"
+              className="inline-flex h-10 items-center px-2 text-[15px] font-medium text-ink hover:text-brand"
+            >
+              View on GitHub
+              <span className="ml-2">→</span>
+            </Link>
+            <Link
+              href="/docs/quickstart"
+              className="inline-flex h-10 items-center px-2 text-[15px] font-medium text-dim hover:text-brand"
+            >
+              Read the docs
+            </Link>
+          </div>
+        </div>
+
+        <div>
+          <p className="mb-3 font-mono text-[11px] uppercase tracking-[0.14em] text-muted">
+            Install — paste into Claude Code
+          </p>
+          <div className="overflow-hidden rounded-xl bg-inverted shadow-[0_24px_60px_-30px_rgba(15,23,42,0.4)]">
+            <div className="flex items-center justify-between border-b border-white/5 px-5 py-2.5">
+              <span className="font-mono text-[11px] uppercase tracking-[0.14em] text-on-inverted-dim">
+                terminal
+              </span>
+              <span className="font-mono text-[11px] text-on-inverted-dim">
+                ~
+              </span>
+            </div>
+            <pre className="overflow-x-auto px-5 py-4 font-mono text-[13px] leading-[1.9] text-on-inverted">
+              {lines.map((cmd) => (
+                <div key={cmd}>
+                  <span className="mr-3 text-brand">$</span>
+                  <span>{cmd}</span>
+                </div>
+              ))}
+            </pre>
+          </div>
+          <p className="mt-3 text-[13px] leading-[1.5] text-dim">
+            <code className="rounded bg-raised px-1.5 py-0.5 font-mono text-[12px] text-ink">
+              stash connect
+            </code>{" "}
+            opens a browser to sign in. Everything else is non-interactive.
+          </p>
         </div>
       </div>
     </section>
@@ -134,55 +172,6 @@ function Problem() {
             <li>&ldquo;Is anyone else currently working on the API gateway?&rdquo;</li>
           </ul>
         </div>
-      </div>
-    </section>
-  );
-}
-
-function Install() {
-  const lines = [
-    "pip install stash",
-    "stash connect",
-    "claude plugin install stash",
-    "stash connect --welcome",
-  ];
-  return (
-    <section id="install" className="border-b border-border-subtle">
-      <div className="mx-auto max-w-[1120px] px-6 py-24">
-        <p className="mb-6 font-mono text-[11px] uppercase tracking-[0.14em] text-muted">
-          Install
-        </p>
-        <h2 className="max-w-[760px] font-display text-[40px] font-bold leading-[1.1] tracking-[-0.02em] text-ink">
-          One prompt. Your agent does the rest.
-        </h2>
-        <p className="mt-6 max-w-[680px] text-[17px] leading-[1.6] text-dim">
-          Paste these into Claude Code (or run them yourself). The second step
-          opens a browser to sign in; the others are non-interactive.
-        </p>
-
-        <div className="mt-12 overflow-hidden rounded-xl bg-inverted shadow-[0_24px_60px_-30px_rgba(15,23,42,0.4)]">
-          <div className="flex items-center justify-between border-b border-white/5 px-5 py-3">
-            <span className="font-mono text-[11px] uppercase tracking-[0.14em] text-on-inverted-dim">
-              terminal
-            </span>
-            <span className="font-mono text-[11px] text-on-inverted-dim">~</span>
-          </div>
-          <pre className="overflow-x-auto px-6 py-6 font-mono text-[14px] leading-[2] text-on-inverted">
-            {lines.map((cmd) => (
-              <div key={cmd}>
-                <span className="mr-3 text-brand">$</span>
-                <span>{cmd}</span>
-              </div>
-            ))}
-          </pre>
-        </div>
-
-        <p className="mt-8 max-w-[680px] text-[14px] leading-[1.6] text-dim">
-          After <code className="rounded bg-raised px-1.5 py-0.5 font-mono text-[13px] text-ink">stash connect</code>,
-          a browser tab opens at stash.ac for sign-in. Everything after that
-          runs without a prompt. When you&apos;re done, <code className="rounded bg-raised px-1.5 py-0.5 font-mono text-[13px] text-ink">stash connect --welcome</code>{" "}
-          prints a rundown of what your agent can now do.
-        </p>
       </div>
     </section>
   );
