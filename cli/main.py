@@ -2296,7 +2296,7 @@ def _show_setup_complete_splash(
     """Clear the onboarding transcript and show a clean success splash."""
     _capture_install_repo()
     console.clear()
-    console.print(f"[bold cyan]{STASH_LOGO}[/bold cyan]")
+    console.print(f"[bold #1e3a8a]{STASH_LOGO}[/bold #1e3a8a]")
     if (joined_via_invite or joined_via_manifest) and workspace_name:
         console.print(f"  [bold green]You joined[/bold green] [bold]{workspace_name}[/bold].\n")
     else:
@@ -2304,7 +2304,7 @@ def _show_setup_complete_splash(
 
     body = (
         "[bold]What just happened[/bold]\n"
-        "Your coding agent now has the [bold cyan]stash[/bold cyan] CLI on its PATH.\n"
+        "Your coding agent now has the [bold #1e3a8a]stash[/bold #1e3a8a] CLI on its PATH.\n"
         "It can read the transcripts your teammates' coding agents push to this\n"
         "workspace — so it knows what the rest of your team is working on.\n"
         "\n"
@@ -2317,8 +2317,8 @@ def _show_setup_complete_splash(
         "[link=https://henrydowling.com/agent-velocity.html]Agent velocity for coding teams[/link]\n"
         "\n"
         "[bold]Commands your agent can now use[/bold]\n"
-        '  [cyan]stash history search "<query>"[/cyan]   full-text search across transcripts\n'
-        "  [cyan]stash history query --agent <name>[/cyan]   pull a specific agent's events\n"
+        '  [#1e3a8a]stash history search "<query>"[/#1e3a8a]   full-text search across transcripts\n'
+        "  [#1e3a8a]stash history query --agent <name>[/#1e3a8a]   pull a specific agent's events\n"
         "\n"
         "Run [bold]stash --help[/bold] to see everything.\n"
         "\n"
@@ -2333,14 +2333,14 @@ def _show_setup_complete_splash(
         "     [yellow]Transcripts are stored verbatim[/yellow] — no secret scrubbing yet.\n"
         "\n"
         "  [bold]Q[/bold] How do I change scope or see a transcript?\n"
-        "  [bold]A[/bold] [cyan]stash config scope <repo|workspace|all>[/cyan]  (default: repo)\n"
-        "     [cyan]stash history transcript <session_id>[/cyan]  view a full transcript\n"
-        '     [cyan]stash history search "<query>"[/cyan]         search event content\n'
+        "  [bold]A[/bold] [#1e3a8a]stash config scope <repo|workspace|all>[/#1e3a8a]  (default: repo)\n"
+        "     [#1e3a8a]stash history transcript <session_id>[/#1e3a8a]  view a full transcript\n"
+        '     [#1e3a8a]stash history search "<query>"[/#1e3a8a]         search event content\n'
         "\n"
         "  [bold]Q[/bold] How do I share my workspace with my team?\n"
-        "  [bold]A[/bold] Share the invite code ([cyan]stash workspaces info <id>[/cyan] prints it).\n"
-        "     Teammates run [cyan]stash connect[/cyan] if needed, then\n"
-        "     [cyan]stash workspaces join <invite_code>[/cyan].\n"
+        "  [bold]A[/bold] Share the invite code ([#1e3a8a]stash workspaces info <id>[/#1e3a8a] prints it).\n"
+        "     Teammates run [#1e3a8a]stash connect[/#1e3a8a] if needed, then\n"
+        "     [#1e3a8a]stash workspaces join <invite_code>[/#1e3a8a].\n"
     )
     console.print(
         Panel(
