@@ -1859,33 +1859,34 @@ def connect(
                         console.print(f"[red]Could not create workspace: {e.detail}[/red]")
 
     # --- Step 4: Coding-agent plugin ---
-    # Detect installed coding agents on PATH and offer to install the matching
-    # stash plugins. Silently skipped when no supported agent is detected.
+    # Detect installed coding agents on PATH and ask about each individually —
+    # users often have granular preferences (e.g. stream Claude but skip Codex).
+    # Silently skipped when no supported agent is detected.
     detected = _detected_agents()
     if detected:
-        _reserve_bottom_padding(4)
         agent_label = {
             "claude": "Claude Code",
             "cursor": "Cursor",
             "codex": "Codex",
             "opencode": "opencode",
         }
-        pretty = ", ".join(agent_label[a] for a in detected)
-        install_plugin = questionary.confirm(
-            f"Detected {pretty} on this machine. Install the stash plugin?\n"
-            "  (Streams every session here to your shared history.)",
-            default=True,
-        ).ask()
-        if install_plugin:
-            for agent in detected:
-                try:
-                    status_, detail = _INSTALLERS[agent](False)
-                except Exception as e:
-                    status_, detail = ("failed", f"{type(e).__name__}: {e}")
-                color = {"installed": "green", "skipped": "yellow", "failed": "red"}[status_]
-                console.print(
-                    f"  [{color}]{status_:9}[/{color}] {agent:8} {detail}"
-                )
+        for agent in detected:
+            _reserve_bottom_padding(4)
+            install_plugin = questionary.confirm(
+                f"Detected {agent_label[agent]} on this machine. Install the stash plugin?\n"
+                "  (Streams every session here to your shared history.)",
+                default=True,
+            ).ask()
+            if not install_plugin:
+                continue
+            try:
+                status_, detail = _INSTALLERS[agent](False)
+            except Exception as e:
+                status_, detail = ("failed", f"{type(e).__name__}: {e}")
+            color = {"installed": "green", "skipped": "yellow", "failed": "red"}[status_]
+            console.print(
+                f"  [{color}]{status_:9}[/{color}] {agent:8} {detail}"
+            )
 
     # --- Done ---
     _show_setup_complete_splash(
