@@ -2477,7 +2477,7 @@ def _show_setup_complete_splash(
         Panel(
             body,
             title="[bold]Your team's shared agent memory[/bold]",
-            border_style="cyan",
+            border_style="#1e3a8a",
             padding=(1, 2),
         )
     )
