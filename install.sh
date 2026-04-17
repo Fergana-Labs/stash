@@ -53,5 +53,16 @@ fi
 
 # Hand off to the questionnaire. `stash connect` asks scope, managed-vs-
 # self-host, browser sign-in, workspace, and Claude Code plugin install
-# (when detected). `exec` so the script's stdin/stdout pass through cleanly.
-exec stash connect
+# (when detected).
+#
+# When the script runs via `curl … | bash`, our stdin is the script body,
+# so questionary aborts with "Input is not a terminal". Re-attach stdin
+# to the controlling terminal before exec'ing if /dev/tty is available
+# (interactive shells); fall back to plain exec otherwise (CI, Docker
+# without -it — those will just hit the same questionary error, which is
+# the right signal that this isn't an interactive context).
+if [ -r /dev/tty ] && [ -w /dev/tty ]; then
+  exec </dev/tty stash connect
+else
+  exec stash connect
+fi
