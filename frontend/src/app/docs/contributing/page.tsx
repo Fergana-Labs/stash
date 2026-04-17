@@ -73,7 +73,6 @@ cd frontend && npm test`}</CodeBlock>
           { rule: "One change per PR", detail: "Keep pull requests focused on a single logical change." },
           { rule: "Tests required", detail: "Add or update tests for any behaviour you change. The minimum coverage threshold is enforced by CI." },
           { rule: "Schema changes", detail: "Create an Alembic migration (python -m alembic revision -m \"description\"). Write both upgrade() and downgrade() using op.execute() with raw SQL." },
-          { rule: "Naming", detail: "Use Stash for the product. The name moltchat is deprecated — do not introduce it in new code or comments." },
           { rule: "SQL safety", detail: "All queries must use parameterised placeholders ($1, $2, …). No string interpolation in SQL." },
           { rule: "Python style", detail: "PEP 8, type annotations on all public functions." },
           { rule: "TypeScript style", detail: "ESLint with eslint-config-next. Run npm run lint before pushing." },
