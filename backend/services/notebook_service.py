@@ -306,28 +306,58 @@ async def get_always_inject_pages(notebook_id: UUID) -> list[dict]:
 
 
 async def search_pages_fts(notebook_id: UUID, query: str, limit: int = 10) -> list[dict]:
-    """FTS search on notebook page content + keywords (keywords weighted A, content weighted B)."""
+    """FTS search using OR-based matching with ranked scoring.
+
+    Uses an OR-connected tsquery so pages that match *most* query terms still
+    appear (ranked lower).  The old AND-based ``websearch_to_tsquery`` silently
+    returned 0 results whenever a single query word was absent from a page.
+
+    Candidate sources (unioned, deduplicated):
+      1. OR-based FTS on content (weight B) + keywords (weight A)
+      2. Page-name similarity via pg_trgm (catches stemming mismatches)
+    """
     pool = get_pool()
-    # metadata->'keywords' is a JSONB array; convert to space-separated text
-    # via jsonb_array_elements_text + string_agg for proper tsvector parsing.
+
     kw_text_expr = (
         "COALESCE((SELECT string_agg(kw, ' ') "
         "FROM jsonb_array_elements_text(COALESCE(metadata->'keywords', '[]'::jsonb)) AS kw), '')"
     )
     vec_expr = (
-        f"setweight(to_tsvector('english', content_markdown), 'B') || "
-        f"setweight(to_tsvector('english', {kw_text_expr}), 'A')"
+        f"setweight(to_tsvector('english', COALESCE(name, '')), 'A') || "
+        f"setweight(to_tsvector('english', {kw_text_expr}), 'A') || "
+        f"setweight(to_tsvector('english', content_markdown), 'B')"
     )
+
+    # Build an OR-connected tsquery from the plain query text.
+    # plainto_tsquery produces 'word1' & 'word2'; we replace & with | .
+    or_query_expr = (
+        "to_tsquery('english', "
+        "  replace(plainto_tsquery('english', $2)::text, ' & ', ' | ')"
+        ")"
+    )
+
     rows = await pool.fetch(
-        f"SELECT id, notebook_id, name, content_markdown, metadata, "
-        f"ts_rank({vec_expr}, websearch_to_tsquery('english', $2)) AS rank "
-        f"FROM notebook_pages "
-        f"WHERE notebook_id = $1 "
-        f"AND ({vec_expr}) @@ websearch_to_tsquery('english', $2) "
-        f"ORDER BY rank DESC LIMIT $3",
-        notebook_id, query, limit,
+        f"SELECT DISTINCT ON (id) id, notebook_id, name, content_markdown, metadata, rank "
+        f"FROM ("
+        f"  SELECT id, notebook_id, name, content_markdown, metadata, "
+        f"    ts_rank_cd({vec_expr}, {or_query_expr}, 1) AS rank "
+        f"  FROM notebook_pages "
+        f"  WHERE notebook_id = $1 "
+        f"    AND ({vec_expr}) @@ {or_query_expr} "
+        f"  UNION ALL "
+        f"  SELECT id, notebook_id, name, content_markdown, metadata, "
+        f"    0.1 * greatest(word_similarity($2, name), word_similarity($2, left(content_markdown, 500))) AS rank "
+        f"  FROM notebook_pages "
+        f"  WHERE notebook_id = $1 "
+        f"    AND (word_similarity($2, name) > 0.15 "
+        f"         OR word_similarity($2, left(content_markdown, 500)) > 0.20) "
+        f") sub "
+        f"ORDER BY id, rank DESC",
+        notebook_id, query,
     )
-    return [dict(r) for r in rows]
+
+    results = sorted([dict(r) for r in rows], key=lambda r: r["rank"], reverse=True)
+    return results[:limit]
 
 
 async def update_page_injection_metadata(

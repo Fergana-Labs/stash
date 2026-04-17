@@ -1,14 +1,17 @@
-"""Injection scoring service: four-factor scoring with greedy knapsack budget filling.
+"""Injection scoring service: weighted additive scoring with greedy knapsack budget filling.
 
 Scores candidates on:
-  injection_score = relevance x recency x staleness x confidence
+  injection_score = w_rel * relevance + w_rec * recency + w_stale * staleness + w_conf * confidence
+
+The additive model prevents any single low factor from zeroing out the
+score.  A highly relevant page that was recently injected still ranks above
+a mediocre page that merely hasn't been seen in a while.
 
 Candidate sources: always-inject notes, keyword-matched notes/patterns,
 1-hop graph neighbours via typed page_relations, vector-similar events,
 FTS-matched events.
 """
 
-import json
 import math
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -16,6 +19,16 @@ from uuid import UUID
 
 from ..database import get_pool
 from . import embedding_service, memory_service, notebook_service
+
+
+# --- Scoring weights (additive model) ---
+
+DEFAULT_SCORING_WEIGHTS: dict[str, float] = {
+    "w_relevance": 0.50,
+    "w_recency": 0.15,
+    "w_staleness": 0.15,
+    "w_confidence": 0.20,
+}
 
 
 # --- Dataclasses ---
@@ -36,8 +49,14 @@ class InjectionCandidate:
     injection_score: float = 0.0
     source_type: str = "note"  # note, pattern, episode
 
-    def compute_score(self) -> float:
-        self.injection_score = self.relevance * self.recency * self.staleness * self.confidence
+    def compute_score(self, weights: dict[str, float] | None = None) -> float:
+        w = weights or DEFAULT_SCORING_WEIGHTS
+        self.injection_score = (
+            w["w_relevance"] * self.relevance
+            + w["w_recency"] * self.recency
+            + w["w_staleness"] * self.staleness
+            + w["w_confidence"] * self.confidence
+        )
         return self.injection_score
 
 
@@ -116,12 +135,13 @@ def select_injections(
     candidates: list[InjectionCandidate],
     budget_tokens: int,
     min_score: float = 0.01,
+    weights: dict[str, float] | None = None,
 ) -> list[InjectionCandidate]:
     """Greedy knapsack: sort by score, fill token budget."""
     for c in candidates:
         if c.token_cost == 0:
             c.token_cost = _estimate_tokens(c.content)
-        c.compute_score()
+        c.compute_score(weights)
 
     viable = [c for c in candidates if c.injection_score >= min_score]
     viable.sort(key=lambda c: c.injection_score, reverse=True)
@@ -182,15 +202,18 @@ async def _load_injection_config(agent_id: UUID) -> dict:
         agent_id,
     )
     if row:
-        return dict(row)
-    return {
-        "budget_tokens": 4000,
-        "min_score": 0.01,
-        "recency_intervals": [1.0, 4.0, 24.0, 72.0, 168.0, 720.0],
-        "staleness_decay_fast": 0.15,
-        "staleness_decay_slow": 0.40,
-        "staleness_fast_threshold_seconds": 60.0,
-    }
+        cfg = dict(row)
+    else:
+        cfg = {
+            "budget_tokens": 4000,
+            "min_score": 0.05,
+            "recency_intervals": [1.0, 4.0, 24.0, 72.0, 168.0, 720.0],
+            "staleness_decay_fast": 0.15,
+            "staleness_decay_slow": 0.40,
+            "staleness_fast_threshold_seconds": 60.0,
+        }
+    cfg.setdefault("scoring_weights", dict(DEFAULT_SCORING_WEIGHTS))
+    return cfg
 
 
 # --- Main injection computation ---
@@ -237,6 +260,7 @@ async def compute_injection(
     decay_fast = cfg["staleness_decay_fast"]
     decay_slow = cfg["staleness_decay_slow"]
     fast_threshold = cfg["staleness_fast_threshold_seconds"]
+    scoring_weights = cfg.get("scoring_weights", DEFAULT_SCORING_WEIGHTS)
 
     candidates: list[InjectionCandidate] = []
 
@@ -390,7 +414,7 @@ async def compute_injection(
             ))
 
     # --- Greedy knapsack selection ---
-    selected = select_injections(candidates, budget, min_score)
+    selected = select_injections(candidates, budget, min_score, scoring_weights)
 
     # --- Build context string ---
     sections: list[str] = []

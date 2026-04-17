@@ -1,0 +1,1010 @@
+{
+  "timestamp": "20260417T130818Z",
+  "passed": false,
+  "suites": [
+    {
+      "name": "retrieval",
+      "passed": true,
+      "pass_rate": 0.8666666666666667,
+      "duration_s": 3.475,
+      "aggregate": {
+        "P@1": 0.8,
+        "P@3": 0.3333,
+        "P@5": 0.2,
+        "R@5": 0.8,
+        "NDCG@5": 0.774,
+        "RR": 0.8,
+        "pass_rate": 0.8667
+      },
+      "scenarios": [
+        {
+          "id": "ret_001",
+          "description": "Exact keyword match \u2014 page name matches query term",
+          "passed": true,
+          "metrics": {
+            "P@1": 1.0,
+            "R@1": 1.0,
+            "NDCG@1": 1.0,
+            "P@3": 0.3333,
+            "R@3": 1.0,
+            "NDCG@3": 1.0,
+            "P@5": 0.2,
+            "R@5": 1.0,
+            "NDCG@5": 1.0,
+            "RR": 1.0,
+            "num_retrieved": 2.0,
+            "num_relevant": 1.0
+          },
+          "error": null
+        },
+        {
+          "id": "ret_002",
+          "description": "Semantic similarity \u2014 query uses different words than the page",
+          "passed": true,
+          "metrics": {
+            "P@1": 1.0,
+            "R@1": 0.5,
+            "NDCG@1": 1.0,
+            "P@3": 0.6667,
+            "R@3": 1.0,
+            "NDCG@3": 1.0,
+            "P@5": 0.4,
+            "R@5": 1.0,
+            "NDCG@5": 1.0,
+            "RR": 1.0,
+            "num_retrieved": 2.0,
+            "num_relevant": 2.0
+          },
+          "error": null
+        },
+        {
+          "id": "ret_003",
+          "description": "Content buried in long page \u2014 relevant keyword deep in body",
+          "passed": true,
+          "metrics": {
+            "P@1": 1.0,
+            "R@1": 1.0,
+            "NDCG@1": 1.0,
+            "P@3": 0.3333,
+            "R@3": 1.0,
+            "NDCG@3": 1.0,
+            "P@5": 0.2,
+            "R@5": 1.0,
+            "NDCG@5": 1.0,
+            "RR": 1.0,
+            "num_retrieved": 1.0,
+            "num_relevant": 1.0
+          },
+          "error": null
+        },
+        {
+          "id": "ret_004",
+          "description": "No relevant pages \u2014 graceful empty result",
+          "passed": true,
+          "metrics": {
+            "P@1": 0.0,
+            "R@1": 1.0,
+            "NDCG@1": 0.0,
+            "P@3": 0.0,
+            "R@3": 1.0,
+            "NDCG@3": 0.0,
+            "P@5": 0.0,
+            "R@5": 1.0,
+            "NDCG@5": 0.0,
+            "RR": 0.0,
+            "num_retrieved": 0.0,
+            "num_relevant": 0.0
+          },
+          "error": null
+        },
+        {
+          "id": "ret_005",
+          "description": "Multi-page relevance \u2014 answer spans two pages",
+          "passed": true,
+          "metrics": {
+            "P@1": 1.0,
+            "R@1": 0.5,
+            "NDCG@1": 1.0,
+            "P@3": 0.6667,
+            "R@3": 1.0,
+            "NDCG@3": 1.0,
+            "P@5": 0.4,
+            "R@5": 1.0,
+            "NDCG@5": 1.0,
+            "RR": 1.0,
+            "num_retrieved": 2.0,
+            "num_relevant": 2.0
+          },
+          "error": null
+        },
+        {
+          "id": "ret_006",
+          "description": "Precision test \u2014 only one relevant page among many distractors",
+          "passed": true,
+          "metrics": {
+            "P@1": 1.0,
+            "R@1": 1.0,
+            "NDCG@1": 1.0,
+            "P@3": 0.3333,
+            "R@3": 1.0,
+            "NDCG@3": 1.0,
+            "P@5": 0.2,
+            "R@5": 1.0,
+            "NDCG@5": 1.0,
+            "RR": 1.0,
+            "num_retrieved": 3.0,
+            "num_relevant": 1.0
+          },
+          "error": null
+        },
+        {
+          "id": "ret_007",
+          "description": "Synonym matching \u2014 'database' vs 'DB storage persistence'",
+          "passed": false,
+          "metrics": {
+            "P@1": 0.0,
+            "R@1": 0.0,
+            "NDCG@1": 0.3333,
+            "P@3": 0.0,
+            "R@3": 0.0,
+            "NDCG@3": 0.2754,
+            "P@5": 0.0,
+            "R@5": 0.0,
+            "NDCG@5": 0.2754,
+            "RR": 0.0,
+            "num_retrieved": 1.0,
+            "num_relevant": 1.0
+          },
+          "error": null
+        },
+        {
+          "id": "ret_008",
+          "description": "Always-inject page \u2014 critical page appears regardless of query",
+          "passed": true,
+          "metrics": {
+            "P@1": 1.0,
+            "R@1": 0.5,
+            "NDCG@1": 1.0,
+            "P@3": 0.6667,
+            "R@3": 1.0,
+            "NDCG@3": 1.0,
+            "P@5": 0.4,
+            "R@5": 1.0,
+            "NDCG@5": 1.0,
+            "RR": 1.0,
+            "num_retrieved": 2.0,
+            "num_relevant": 2.0
+          },
+          "error": null
+        },
+        {
+          "id": "ret_009",
+          "description": "Grade distribution test \u2014 3/2/1 mix across results",
+          "passed": true,
+          "metrics": {
+            "P@1": 1.0,
+            "R@1": 0.5,
+            "NDCG@1": 1.0,
+            "P@3": 0.3333,
+            "R@3": 0.5,
+            "NDCG@3": 0.63,
+            "P@5": 0.2,
+            "R@5": 0.5,
+            "NDCG@5": 0.63,
+            "RR": 1.0,
+            "num_retrieved": 1.0,
+            "num_relevant": 2.0
+          },
+          "error": null
+        },
+        {
+          "id": "ret_010",
+          "description": "Code snippet retrieval \u2014 query about a specific function",
+          "passed": true,
+          "metrics": {
+            "P@1": 1.0,
+            "R@1": 1.0,
+            "NDCG@1": 1.0,
+            "P@3": 0.3333,
+            "R@3": 1.0,
+            "NDCG@3": 1.0,
+            "P@5": 0.2,
+            "R@5": 1.0,
+            "NDCG@5": 1.0,
+            "RR": 1.0,
+            "num_retrieved": 1.0,
+            "num_relevant": 1.0
+          },
+          "error": null
+        },
+        {
+          "id": "ret_011",
+          "description": "Recency signal \u2014 two pages on same topic, prefer newer concept",
+          "passed": false,
+          "metrics": {
+            "P@1": 0.0,
+            "R@1": 0.0,
+            "NDCG@1": 0.0,
+            "P@3": 0.0,
+            "R@3": 0.0,
+            "NDCG@3": 0.0,
+            "P@5": 0.0,
+            "R@5": 0.0,
+            "NDCG@5": 0.0,
+            "RR": 0.0,
+            "num_retrieved": 0.0,
+            "num_relevant": 1.0
+          },
+          "error": null
+        },
+        {
+          "id": "ret_012",
+          "description": "Technical decision record retrieval",
+          "passed": true,
+          "metrics": {
+            "P@1": 1.0,
+            "R@1": 1.0,
+            "NDCG@1": 1.0,
+            "P@3": 0.3333,
+            "R@3": 1.0,
+            "NDCG@3": 1.0,
+            "P@5": 0.2,
+            "R@5": 1.0,
+            "NDCG@5": 1.0,
+            "RR": 1.0,
+            "num_retrieved": 1.0,
+            "num_relevant": 1.0
+          },
+          "error": null
+        },
+        {
+          "id": "ret_013",
+          "description": "Agent tool documentation lookup",
+          "passed": true,
+          "metrics": {
+            "P@1": 1.0,
+            "R@1": 1.0,
+            "NDCG@1": 1.0,
+            "P@3": 0.3333,
+            "R@3": 1.0,
+            "NDCG@3": 1.0,
+            "P@5": 0.2,
+            "R@5": 1.0,
+            "NDCG@5": 1.0,
+            "RR": 1.0,
+            "num_retrieved": 3.0,
+            "num_relevant": 1.0
+          },
+          "error": null
+        },
+        {
+          "id": "ret_014",
+          "description": "Security policy retrieval \u2014 multiple related pages",
+          "passed": true,
+          "metrics": {
+            "P@1": 1.0,
+            "R@1": 0.5,
+            "NDCG@1": 1.0,
+            "P@3": 0.3333,
+            "R@3": 0.5,
+            "NDCG@3": 0.7039,
+            "P@5": 0.2,
+            "R@5": 0.5,
+            "NDCG@5": 0.7039,
+            "RR": 1.0,
+            "num_retrieved": 1.0,
+            "num_relevant": 2.0
+          },
+          "error": null
+        },
+        {
+          "id": "ret_015",
+          "description": "Troubleshooting guide \u2014 finding the right diagnostic page",
+          "passed": true,
+          "metrics": {
+            "P@1": 1.0,
+            "R@1": 1.0,
+            "NDCG@1": 1.0,
+            "P@3": 0.3333,
+            "R@3": 1.0,
+            "NDCG@3": 1.0,
+            "P@5": 0.2,
+            "R@5": 1.0,
+            "NDCG@5": 1.0,
+            "RR": 1.0,
+            "num_retrieved": 2.0,
+            "num_relevant": 1.0
+          },
+          "error": null
+        }
+      ]
+    },
+    {
+      "name": "kg_relations",
+      "passed": false,
+      "pass_rate": 0.125,
+      "duration_s": 1.518,
+      "aggregate": {
+        "precision": 1.0,
+        "recall": 0.0833,
+        "pass_rate": 0.125
+      },
+      "scenarios": [
+        {
+          "id": "kg_001",
+          "description": "Simple built_with relation \u2014 framework depends on language",
+          "passed": false,
+          "metrics": {
+            "precision": 1.0,
+            "recall": 0.0,
+            "bidirectional_ok": 1.0
+          },
+          "error": null
+        },
+        {
+          "id": "kg_002",
+          "description": "depends_on chain \u2014 service dependencies",
+          "passed": false,
+          "metrics": {
+            "precision": 1.0,
+            "recall": 0.0,
+            "bidirectional_ok": 1.0
+          },
+          "error": null
+        },
+        {
+          "id": "kg_003",
+          "description": "part_of hierarchical relation",
+          "passed": false,
+          "metrics": {
+            "precision": 1.0,
+            "recall": 0.0,
+            "bidirectional_ok": 1.0
+          },
+          "error": null
+        },
+        {
+          "id": "kg_004",
+          "description": "supersedes temporal relation \u2014 new version replaces old",
+          "passed": false,
+          "metrics": {
+            "precision": 1.0,
+            "recall": 0.0,
+            "bidirectional_ok": 1.0
+          },
+          "error": null
+        },
+        {
+          "id": "kg_005",
+          "description": "Multiple outgoing relations from one page",
+          "passed": false,
+          "metrics": {
+            "precision": 1.0,
+            "recall": 0.5,
+            "bidirectional_ok": 1.0
+          },
+          "error": null
+        },
+        {
+          "id": "kg_006",
+          "description": "Bidirectional neighbour lookup \u2014 both incoming and outgoing",
+          "passed": false,
+          "metrics": {
+            "precision": 1.0,
+            "recall": 0.0,
+            "bidirectional_ok": 1.0
+          },
+          "error": null
+        },
+        {
+          "id": "kg_007",
+          "description": "Confidence threshold \u2014 low-confidence relation should not be retrieved at threshold 0.6",
+          "passed": true,
+          "metrics": {
+            "confidence_filter_correct": 1.0
+          },
+          "error": null
+        },
+        {
+          "id": "kg_008",
+          "description": "Relation invalidation \u2014 upsert same triple updates valid_until on old relation",
+          "passed": false,
+          "metrics": {},
+          "error": "invalidate_conflicting_relations() got an unexpected keyword argument 'new_target_page_id'"
+        }
+      ]
+    },
+    {
+      "name": "sleep_agent",
+      "passed": false,
+      "pass_rate": 0.6,
+      "duration_s": 2.486,
+      "aggregate": {
+        "pass_rate": 0.6
+      },
+      "scenarios": [
+        {
+          "id": "sa_exec_001",
+          "description": "create_notes action creates a page",
+          "passed": false,
+          "metrics": {
+            "page_created": 0.0
+          },
+          "error": null
+        },
+        {
+          "id": "sa_exec_002",
+          "description": "update_notes action appends content",
+          "passed": false,
+          "metrics": {
+            "page_updated": 0.0
+          },
+          "error": null
+        },
+        {
+          "id": "sa_exec_003",
+          "description": "extract_relations action upserts a relation",
+          "passed": true,
+          "metrics": {
+            "relation_created": 1.0
+          },
+          "error": null
+        },
+        {
+          "id": "sa_exec_004",
+          "description": "delete_notes action removes page",
+          "passed": true,
+          "metrics": {
+            "page_deleted": 1.0
+          },
+          "error": null
+        },
+        {
+          "id": "sa_exec_005",
+          "description": "watermark advances after events are processed",
+          "passed": true,
+          "metrics": {
+            "watermark_advanced": 1.0
+          },
+          "error": null
+        }
+      ]
+    },
+    {
+      "name": "end_to_end",
+      "passed": true,
+      "pass_rate": 1.0,
+      "duration_s": 1.602,
+      "aggregate": {
+        "avg_hit_rate": 1.0,
+        "pass_rate": 1.0
+      },
+      "scenarios": [
+        {
+          "id": "task_001",
+          "description": "Direct factual lookup \u2014 single page answers the question",
+          "passed": true,
+          "metrics": {
+            "hit_rate": 1.0,
+            "num_injected": 1.0,
+            "tokens_used": 50.0
+          },
+          "error": null
+        },
+        {
+          "id": "task_002",
+          "description": "Procedure lookup \u2014 step-by-step instructions",
+          "passed": true,
+          "metrics": {
+            "hit_rate": 1.0,
+            "num_injected": 2.0,
+            "tokens_used": 124.0
+          },
+          "error": null
+        },
+        {
+          "id": "task_003",
+          "description": "Multi-source synthesis \u2014 answer requires two pages",
+          "passed": true,
+          "metrics": {
+            "hit_rate": 1.0,
+            "num_injected": 2.0,
+            "tokens_used": 111.0
+          },
+          "error": null
+        },
+        {
+          "id": "task_004",
+          "description": "Decision rationale \u2014 find the ADR",
+          "passed": true,
+          "metrics": {
+            "hit_rate": 1.0,
+            "num_injected": 2.0,
+            "tokens_used": 136.0
+          },
+          "error": null
+        },
+        {
+          "id": "task_005",
+          "description": "Status check \u2014 find current state of a feature",
+          "passed": true,
+          "metrics": {
+            "hit_rate": 1.0,
+            "num_injected": 2.0,
+            "tokens_used": 94.0
+          },
+          "error": null
+        },
+        {
+          "id": "task_006",
+          "description": "No relevant context \u2014 should return empty injection gracefully",
+          "passed": true,
+          "metrics": {
+            "hit_rate": 1.0,
+            "num_injected": 0.0,
+            "tokens_used": 0.0
+          },
+          "error": null
+        },
+        {
+          "id": "task_007",
+          "description": "Graph-expanded context \u2014 answer is one hop away",
+          "passed": true,
+          "metrics": {
+            "hit_rate": 1.0,
+            "num_injected": 2.0,
+            "tokens_used": 117.0
+          },
+          "error": null
+        },
+        {
+          "id": "task_008",
+          "description": "Always-inject critical context appears with any query",
+          "passed": true,
+          "metrics": {
+            "hit_rate": 1.0,
+            "num_injected": 2.0,
+            "tokens_used": 95.0
+          },
+          "error": null
+        }
+      ]
+    },
+    {
+      "name": "degradation",
+      "passed": true,
+      "pass_rate": 0.9047619047619048,
+      "duration_s": 6.948,
+      "aggregate": {
+        "pass_rate": 0.9048,
+        "avg_scale_ndcg5": 1.0,
+        "temporal_pass_rate": 1.0,
+        "avg_current_rank": 3.0,
+        "dup_pass_rate": 0.6667,
+        "max_degradation_pct": 0.0
+      },
+      "scenarios": [
+        {
+          "id": "deg_scale_001_n10",
+          "description": "API rate limiting retrieval under notebook bloat (n=10)",
+          "passed": true,
+          "metrics": {
+            "P@1": 1.0,
+            "R@1": 1.0,
+            "NDCG@1": 1.0,
+            "P@3": 0.3333,
+            "R@3": 1.0,
+            "NDCG@3": 1.0,
+            "P@5": 0.2,
+            "R@5": 1.0,
+            "NDCG@5": 1.0,
+            "RR": 1.0,
+            "num_retrieved": 1.0,
+            "num_relevant": 1.0,
+            "n_distractors": 10.0
+          },
+          "error": null
+        },
+        {
+          "id": "deg_scale_001_n100",
+          "description": "API rate limiting retrieval under notebook bloat (n=100)",
+          "passed": true,
+          "metrics": {
+            "P@1": 1.0,
+            "R@1": 1.0,
+            "NDCG@1": 1.0,
+            "P@3": 0.3333,
+            "R@3": 1.0,
+            "NDCG@3": 1.0,
+            "P@5": 0.2,
+            "R@5": 1.0,
+            "NDCG@5": 1.0,
+            "RR": 1.0,
+            "num_retrieved": 1.0,
+            "num_relevant": 1.0,
+            "n_distractors": 100.0
+          },
+          "error": null
+        },
+        {
+          "id": "deg_scale_001_n500",
+          "description": "API rate limiting retrieval under notebook bloat (n=500)",
+          "passed": true,
+          "metrics": {
+            "P@1": 1.0,
+            "R@1": 1.0,
+            "NDCG@1": 1.0,
+            "P@3": 0.3333,
+            "R@3": 1.0,
+            "NDCG@3": 1.0,
+            "P@5": 0.2,
+            "R@5": 1.0,
+            "NDCG@5": 1.0,
+            "RR": 1.0,
+            "num_retrieved": 1.0,
+            "num_relevant": 1.0,
+            "n_distractors": 500.0
+          },
+          "error": null
+        },
+        {
+          "id": "deg_scale_001_n1000",
+          "description": "API rate limiting retrieval under notebook bloat (n=1000)",
+          "passed": true,
+          "metrics": {
+            "P@1": 1.0,
+            "R@1": 1.0,
+            "NDCG@1": 1.0,
+            "P@3": 0.3333,
+            "R@3": 1.0,
+            "NDCG@3": 1.0,
+            "P@5": 0.2,
+            "R@5": 1.0,
+            "NDCG@5": 1.0,
+            "RR": 1.0,
+            "num_retrieved": 1.0,
+            "num_relevant": 1.0,
+            "n_distractors": 1000.0
+          },
+          "error": null
+        },
+        {
+          "id": "deg_scale_001_curve",
+          "description": "API rate limiting retrieval under notebook bloat \u2014 degradation curve",
+          "passed": true,
+          "metrics": {
+            "ndcg5_first": 1.0,
+            "ndcg5_last": 1.0,
+            "degradation_pct": 0.0
+          },
+          "error": null
+        },
+        {
+          "id": "deg_scale_002_n10",
+          "description": "Database query patterns retrieval under notebook bloat (n=10)",
+          "passed": true,
+          "metrics": {
+            "P@1": 1.0,
+            "R@1": 1.0,
+            "NDCG@1": 1.0,
+            "P@3": 0.3333,
+            "R@3": 1.0,
+            "NDCG@3": 1.0,
+            "P@5": 0.2,
+            "R@5": 1.0,
+            "NDCG@5": 1.0,
+            "RR": 1.0,
+            "num_retrieved": 1.0,
+            "num_relevant": 1.0,
+            "n_distractors": 10.0
+          },
+          "error": null
+        },
+        {
+          "id": "deg_scale_002_n100",
+          "description": "Database query patterns retrieval under notebook bloat (n=100)",
+          "passed": true,
+          "metrics": {
+            "P@1": 1.0,
+            "R@1": 1.0,
+            "NDCG@1": 1.0,
+            "P@3": 0.3333,
+            "R@3": 1.0,
+            "NDCG@3": 1.0,
+            "P@5": 0.2,
+            "R@5": 1.0,
+            "NDCG@5": 1.0,
+            "RR": 1.0,
+            "num_retrieved": 1.0,
+            "num_relevant": 1.0,
+            "n_distractors": 100.0
+          },
+          "error": null
+        },
+        {
+          "id": "deg_scale_002_n500",
+          "description": "Database query patterns retrieval under notebook bloat (n=500)",
+          "passed": true,
+          "metrics": {
+            "P@1": 1.0,
+            "R@1": 1.0,
+            "NDCG@1": 1.0,
+            "P@3": 0.3333,
+            "R@3": 1.0,
+            "NDCG@3": 1.0,
+            "P@5": 0.2,
+            "R@5": 1.0,
+            "NDCG@5": 1.0,
+            "RR": 1.0,
+            "num_retrieved": 1.0,
+            "num_relevant": 1.0,
+            "n_distractors": 500.0
+          },
+          "error": null
+        },
+        {
+          "id": "deg_scale_002_n1000",
+          "description": "Database query patterns retrieval under notebook bloat (n=1000)",
+          "passed": true,
+          "metrics": {
+            "P@1": 1.0,
+            "R@1": 1.0,
+            "NDCG@1": 1.0,
+            "P@3": 0.3333,
+            "R@3": 1.0,
+            "NDCG@3": 1.0,
+            "P@5": 0.2,
+            "R@5": 1.0,
+            "NDCG@5": 1.0,
+            "RR": 1.0,
+            "num_retrieved": 1.0,
+            "num_relevant": 1.0,
+            "n_distractors": 1000.0
+          },
+          "error": null
+        },
+        {
+          "id": "deg_scale_002_curve",
+          "description": "Database query patterns retrieval under notebook bloat \u2014 degradation curve",
+          "passed": true,
+          "metrics": {
+            "ndcg5_first": 1.0,
+            "ndcg5_last": 1.0,
+            "degradation_pct": 0.0
+          },
+          "error": null
+        },
+        {
+          "id": "deg_scale_003_n10",
+          "description": "WebSocket debugging retrieval under notebook bloat (n=10)",
+          "passed": true,
+          "metrics": {
+            "P@1": 1.0,
+            "R@1": 1.0,
+            "NDCG@1": 1.0,
+            "P@3": 0.3333,
+            "R@3": 1.0,
+            "NDCG@3": 1.0,
+            "P@5": 0.2,
+            "R@5": 1.0,
+            "NDCG@5": 1.0,
+            "RR": 1.0,
+            "num_retrieved": 1.0,
+            "num_relevant": 1.0,
+            "n_distractors": 10.0
+          },
+          "error": null
+        },
+        {
+          "id": "deg_scale_003_n100",
+          "description": "WebSocket debugging retrieval under notebook bloat (n=100)",
+          "passed": true,
+          "metrics": {
+            "P@1": 1.0,
+            "R@1": 1.0,
+            "NDCG@1": 1.0,
+            "P@3": 0.3333,
+            "R@3": 1.0,
+            "NDCG@3": 1.0,
+            "P@5": 0.2,
+            "R@5": 1.0,
+            "NDCG@5": 1.0,
+            "RR": 1.0,
+            "num_retrieved": 1.0,
+            "num_relevant": 1.0,
+            "n_distractors": 100.0
+          },
+          "error": null
+        },
+        {
+          "id": "deg_scale_003_n500",
+          "description": "WebSocket debugging retrieval under notebook bloat (n=500)",
+          "passed": true,
+          "metrics": {
+            "P@1": 1.0,
+            "R@1": 1.0,
+            "NDCG@1": 1.0,
+            "P@3": 0.3333,
+            "R@3": 1.0,
+            "NDCG@3": 1.0,
+            "P@5": 0.2,
+            "R@5": 1.0,
+            "NDCG@5": 1.0,
+            "RR": 1.0,
+            "num_retrieved": 1.0,
+            "num_relevant": 1.0,
+            "n_distractors": 500.0
+          },
+          "error": null
+        },
+        {
+          "id": "deg_scale_003_n1000",
+          "description": "WebSocket debugging retrieval under notebook bloat (n=1000)",
+          "passed": true,
+          "metrics": {
+            "P@1": 1.0,
+            "R@1": 1.0,
+            "NDCG@1": 1.0,
+            "P@3": 0.3333,
+            "R@3": 1.0,
+            "NDCG@3": 1.0,
+            "P@5": 0.2,
+            "R@5": 1.0,
+            "NDCG@5": 1.0,
+            "RR": 1.0,
+            "num_retrieved": 1.0,
+            "num_relevant": 1.0,
+            "n_distractors": 1000.0
+          },
+          "error": null
+        },
+        {
+          "id": "deg_scale_003_curve",
+          "description": "WebSocket debugging retrieval under notebook bloat \u2014 degradation curve",
+          "passed": true,
+          "metrics": {
+            "ndcg5_first": 1.0,
+            "ndcg5_last": 1.0,
+            "degradation_pct": 0.0
+          },
+          "error": null
+        },
+        {
+          "id": "deg_temporal_001",
+          "description": "Always-inject page survives 25 injection rounds",
+          "passed": true,
+          "metrics": {
+            "survival_rate": 1.0,
+            "appearances": 25.0,
+            "rounds": 25.0
+          },
+          "error": null
+        },
+        {
+          "id": "deg_temporal_002",
+          "description": "High-relevance page reappears after spaced repetition window",
+          "passed": true,
+          "metrics": {
+            "ever_appeared": 1.0,
+            "reappeared_final": 1.0,
+            "rounds": 15.0
+          },
+          "error": null
+        },
+        {
+          "id": "deg_temporal_003",
+          "description": "Irrelevant page correctly fades after initial injection",
+          "passed": false,
+          "metrics": {
+            "first_half_appearances": 5.0,
+            "second_half_appearances": 5.0
+          },
+          "error": null
+        },
+        {
+          "id": "deg_dup_001",
+          "description": "Newest rate limiting page wins over 4 stale versions",
+          "passed": false,
+          "metrics": {
+            "current_retrieved": 1.0,
+            "current_rank": 5.0,
+            "versions_retrieved": 5.0,
+            "total_versions": 5.0
+          },
+          "error": null
+        },
+        {
+          "id": "deg_dup_002",
+          "description": "Latest deployment runbook wins over deprecated versions",
+          "passed": true,
+          "metrics": {
+            "current_retrieved": 1.0,
+            "current_rank": 2.0,
+            "versions_retrieved": 3.0,
+            "total_versions": 3.0
+          },
+          "error": null
+        },
+        {
+          "id": "deg_dup_003",
+          "description": "Contradiction \u2014 user location updated across pages",
+          "passed": true,
+          "metrics": {
+            "current_retrieved": 1.0,
+            "current_rank": 2.0,
+            "versions_retrieved": 3.0,
+            "total_versions": 3.0
+          },
+          "error": null
+        }
+      ]
+    },
+    {
+      "name": "curation_quality",
+      "passed": true,
+      "pass_rate": 0.8,
+      "duration_s": 0.886,
+      "aggregate": {
+        "avg_retrieval_hit_rate": 0.9,
+        "pass_rate": 0.8
+      },
+      "scenarios": [
+        {
+          "id": "cq_001",
+          "description": "Redis caching session \u2192 retrieval of cache config",
+          "passed": true,
+          "metrics": {
+            "retrieval_hit_rate": 1.0,
+            "queries_passed": 2.0,
+            "queries_total": 2.0
+          },
+          "error": null
+        },
+        {
+          "id": "cq_002",
+          "description": "Auth migration session \u2192 retrieval of auth architecture",
+          "passed": false,
+          "metrics": {
+            "retrieval_hit_rate": 0.5,
+            "queries_passed": 1.0,
+            "queries_total": 2.0
+          },
+          "error": null
+        },
+        {
+          "id": "cq_003",
+          "description": "Database performance tuning \u2192 retrieval of optimization notes",
+          "passed": true,
+          "metrics": {
+            "retrieval_hit_rate": 1.0,
+            "queries_passed": 2.0,
+            "queries_total": 2.0
+          },
+          "error": null
+        },
+        {
+          "id": "cq_004",
+          "description": "Deployment pipeline changes \u2192 retrieval of deploy process",
+          "passed": true,
+          "metrics": {
+            "retrieval_hit_rate": 1.0,
+            "queries_passed": 2.0,
+            "queries_total": 2.0
+          },
+          "error": null
+        },
+        {
+          "id": "cq_005",
+          "description": "Multi-topic session \u2014 deduplication and coverage test",
+          "passed": true,
+          "metrics": {
+            "retrieval_hit_rate": 1.0,
+            "queries_passed": 3.0,
+            "queries_total": 3.0
+          },
+          "error": null
+        }
+      ]
+    }
+  ]
+}

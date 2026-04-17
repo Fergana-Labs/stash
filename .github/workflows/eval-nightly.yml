@@ -1,0 +1,72 @@
+name: Nightly Eval — Degradation & Curation Quality
+
+on:
+  schedule:
+    - cron: "0 2 * * *"  # 2 AM UTC daily
+  workflow_dispatch:       # manual trigger
+
+jobs:
+  degradation-eval:
+    name: Degradation + Curation quality
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: octopus
+          POSTGRES_PASSWORD: octopus
+          POSTGRES_DB: octopus_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U octopus"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements-dev.txt
+
+      - name: Install dependencies
+        run: pip install -r backend/requirements-dev.txt
+
+      - name: Run Alembic migrations
+        env:
+          DATABASE_URL: postgresql://octopus:octopus@localhost:5432/octopus_test
+          TEST_DATABASE_URL: postgresql://octopus:octopus@localhost:5432/octopus_test
+        run: python -m alembic upgrade head
+
+      - name: Run degradation + curation quality suites
+        env:
+          TEST_DATABASE_URL: postgresql://octopus:octopus@localhost:5432/octopus_test
+          DATABASE_URL: postgresql://octopus:octopus@localhost:5432/octopus_test
+          EVAL_RUN_LLM_SUITES: "false"
+        run: python -m evals --suite degradation curation_quality --out evals/reports/output/nightly.json
+
+      - name: Compare against baseline (if exists)
+        env:
+          TEST_DATABASE_URL: postgresql://octopus:octopus@localhost:5432/octopus_test
+          DATABASE_URL: postgresql://octopus:octopus@localhost:5432/octopus_test
+        run: |
+          if [ -f evals/reports/output/baseline.json ]; then
+            python -m evals --suite degradation curation_quality --compare evals/reports/output/baseline.json
+          else
+            echo "No baseline.json found — skipping comparison"
+          fi
+        continue-on-error: true
+
+      - name: Upload eval results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nightly-eval-${{ github.run_id }}
+          path: evals/reports/output/
+          retention-days: 90
