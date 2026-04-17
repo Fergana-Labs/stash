@@ -1760,7 +1760,10 @@ def enable_cmd():
         )
         raise typer.Exit(1)
 
-    project_path = find_project_config() or (manifest_path.parent / PROJECT_FILENAME)
+    # Pin the config to the manifest's directory. find_project_config() walks up
+    # and could resolve to a parent repo's .stash/config.json in nested setups,
+    # which would enable/disable the wrong repo.
+    project_path = manifest_path.parent / PROJECT_FILENAME
     existing = {}
     if project_path.exists():
         try:
@@ -1784,7 +1787,8 @@ def disable_cmd():
         )
         raise typer.Exit(1)
 
-    project_path = find_project_config() or (manifest_path.parent / PROJECT_FILENAME)
+    # See enable_cmd: pin to manifest dir so we don't disable a parent repo.
+    project_path = manifest_path.parent / PROJECT_FILENAME
     existing = {}
     if project_path.exists():
         try:
