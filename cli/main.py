@@ -8,7 +8,10 @@ from pathlib import Path
 
 import questionary
 import typer
+from rich.console import Group
 from rich.panel import Panel
+from rich.table import Table
+from rich.text import Text
 
 from .client import StashClient, StashError
 from .config import (
@@ -2483,27 +2486,25 @@ def _show_setup_complete_splash(
     invite_code, ws_name = _current_invite()
     if invite_code:
         ws_suffix = f" (workspace [bold]{ws_name}[/bold])" if ws_name else ""
-        share_block = (
-            "  [bold]Q[/bold] How do I share my workspace with my team?\n"
-            f"  [bold]A[/bold] Send teammates this link{ws_suffix}:\n"
-            f"     [bold #1e3a8a]{_invite_url(invite_code)}[/bold #1e3a8a]\n"
-            "     They'll sign in and be joined automatically.\n"
+        share_answer = (
+            f"Send teammates this link{ws_suffix}:\n"
+            f"[bold #1e3a8a]{_invite_url(invite_code)}[/bold #1e3a8a]\n"
+            "They'll sign in and be joined automatically."
         )
     else:
-        share_block = (
-            "  [bold]Q[/bold] How do I share my workspace with my team?\n"
-            "  [bold]A[/bold] Share the invite code ([#1e3a8a]stash workspaces info <id>[/#1e3a8a] prints it).\n"
-            "     Teammates run [#1e3a8a]stash connect[/#1e3a8a] if needed, then\n"
-            "     [#1e3a8a]stash workspaces join <invite_code>[/#1e3a8a].\n"
+        share_answer = (
+            "Share the invite code ([#1e3a8a]stash workspaces info <id>[/#1e3a8a] prints it). "
+            "Teammates run [#1e3a8a]stash connect[/#1e3a8a] if needed, then "
+            "[#1e3a8a]stash workspaces join <invite_code>[/#1e3a8a]."
         )
 
-    body = (
+    intro = (
         "[bold]What just happened[/bold]\n"
-        "Your coding agent now has the [bold #1e3a8a]stash[/bold #1e3a8a] CLI on its PATH.\n"
-        "It can read the transcripts your teammates' coding agents push to this\n"
+        "Your coding agent now has the [bold #1e3a8a]stash[/bold #1e3a8a] CLI on its PATH. "
+        "It can read the transcripts your teammates' coding agents push to this "
         "workspace — so it knows what the rest of your team is working on.\n"
         "\n"
-        "[bold]Examples of questions your agent might want answered [/bold] \n"
+        "[bold]Examples of questions your agent might want answered[/bold]\n"
         '  [dim]"Why did Sam bump the rate limit from 100 to 500?"[/dim]\n'
         '  [dim]"Has anyone already tried fixing the memory leak in our backend?"[/dim]\n'
         '  [dim]"Is anyone else currently working on our api gateway"[/dim]\n'
@@ -2517,23 +2518,48 @@ def _show_setup_complete_splash(
         "\n"
         "Run [bold]stash --help[/bold] to see everything.\n"
         "\n"
-        "[bold]Q&A[/bold]\n"
-        "  [bold]Q[/bold] Do you inject anything into my coding agent's context automatically?\n"
-        "  [bold]A[/bold] No.\n"
-        "\n"
-        "  [bold]Q[/bold] What gets pushed to the shared store?\n"
-        f"  [bold]A[/bold] {_pushed_scope_phrase()}\n"
-        "\n"
-        "  [bold]Q[/bold] How do I change scope or see a transcript?\n"
-        "  [bold]A[/bold] [#1e3a8a]stash config scope <repo|workspace|all>[/#1e3a8a]  (default: repo)\n"
-        "     [#1e3a8a]stash history transcript <session_id>[/#1e3a8a]  view a full transcript\n"
-        '     [#1e3a8a]stash history search "<query>"[/#1e3a8a]         search event content\n'
-        "\n"
-        + share_block
+        "[bold]Q&A[/bold]"
     )
+
+    qa_pairs = [
+        (
+            "Do you inject anything into my coding agent's context automatically?",
+            "No.",
+        ),
+        (
+            "What gets pushed to the shared store?",
+            _pushed_scope_phrase(),
+        ),
+        (
+            "How do I change scope or see a transcript?",
+            "[#1e3a8a]stash config scope <repo|workspace|all>[/#1e3a8a]  (default: repo)\n"
+            "[#1e3a8a]stash history transcript <session_id>[/#1e3a8a]  view a full transcript\n"
+            '[#1e3a8a]stash history search "<query>"[/#1e3a8a]         search event content',
+        ),
+        (
+            "How do I share my workspace with my team?",
+            share_answer,
+        ),
+    ]
+
+    qa_table = Table(
+        show_header=False,
+        show_edge=False,
+        box=None,
+        pad_edge=False,
+        padding=(0, 1),
+    )
+    qa_table.add_column(style="bold", no_wrap=True)
+    qa_table.add_column(overflow="fold")
+    for i, (question, answer) in enumerate(qa_pairs):
+        if i > 0:
+            qa_table.add_row("", "")
+        qa_table.add_row("Q", question)
+        qa_table.add_row("A", answer)
+
     console.print(
         Panel(
-            body,
+            Group(Text.from_markup(intro), qa_table),
             title="[bold]Your team's shared agent memory[/bold]",
             border_style="#1e3a8a",
             padding=(1, 2),
