@@ -42,14 +42,14 @@ function Logo({ size = 28 }: { size?: number }) {
 
 function Nav() {
   return (
-    <header className="border-b border-border-subtle">
+    <header className="sticky top-0 z-30 border-b border-border-subtle bg-background/80 backdrop-blur">
       <div className="mx-auto flex h-16 max-w-[1120px] items-center justify-between px-6">
         <Link href="/" className="flex items-center gap-2 font-display text-[22px] font-bold tracking-tight text-brand">
           <Logo size={28} />
           stash
         </Link>
-        <nav className="flex items-center gap-8 text-[14px] text-dim">
-          <Link href="https://github.com/Fergana-Labs/octopus" className="hover:text-ink">
+        <nav className="flex items-center gap-6 text-[14px] text-dim sm:gap-8">
+          <Link href="https://github.com/Fergana-Labs/octopus" className="hidden items-center gap-1.5 hover:text-ink sm:inline-flex">
             GitHub
           </Link>
           <Link href="/docs" className="hover:text-ink">
@@ -57,7 +57,7 @@ function Nav() {
           </Link>
           <Link
             href="#install"
-            className="inline-flex h-9 items-center rounded-md bg-brand px-4 font-medium text-white hover:bg-brand-hover"
+            className="inline-flex h-9 items-center rounded-md bg-brand px-4 font-medium text-white shadow-sm transition hover:bg-brand-hover"
           >
             Install
           </Link>
@@ -70,91 +70,104 @@ function Nav() {
 function Hero() {
   const prompt = `Set up stash in this repo so our Claude Code sessions share memory with the team. (1) Install or upgrade the CLI: \`stash signin --help >/dev/null 2>&1 || pipx install stashai --force 2>/dev/null || uv tool install stashai --force\`. (2) Add the Claude Code plugin: \`claude plugin marketplace add Fergana-Labs/stash\` then \`claude plugin install stash@stash-plugins\`. (3) Run \`stash signin\` to open the sign-in page in my browser, then ask me to paste the token back. Run \`stash auth https://moltchat.onrender.com --api-key <token>\`. (4) Run \`stash workspaces list --mine --json\` — if I have multiple, ask which one and run \`stash workspaces use <id>\`. (5) Run \`stash connect --welcome\` and render its full output back to me as a markdown block in your reply, verbatim — don't summarize, don't add commentary, don't truncate. (Future sessions can re-read it via the \`/stash:welcome\` slash command, but you can't invoke that yourself.)`;
   return (
-    <section id="install" className="border-b border-border-subtle">
-      <div className="mx-auto grid max-w-[1120px] gap-12 px-6 pb-16 pt-20 lg:grid-cols-[1.1fr_1fr] lg:items-center lg:gap-16">
-        <div>
-          <p className="mb-6 font-mono text-[11px] uppercase tracking-[0.14em] text-muted">
-            Open source · self-hostable · MIT
-          </p>
-          <h1 className="font-display text-[clamp(40px,4.8vw,68px)] font-black leading-[1.0] tracking-[-0.04em] text-ink">
-            <span className="text-brand">Shared memory</span> for teams
-            <br />
-            of AI coding agents.
-          </h1>
-          <p className="mt-6 max-w-[560px] text-[17px] leading-[1.5] text-dim">
-            When a teammate&apos;s coding agent fixes a bug, yours does too.
-            Every session, decision, and search becomes part of one living
-            knowledge base, queryable by every agent on the team.
-          </p>
-          <div className="mt-7 flex flex-wrap items-center gap-5">
-            <Link
-              href="https://github.com/Fergana-Labs/octopus"
-              className="inline-flex h-10 items-center px-2 text-[15px] font-medium text-ink hover:text-brand"
-            >
-              View on GitHub
-              <span className="ml-2">→</span>
-            </Link>
-            <Link
-              href="/docs/quickstart"
-              className="inline-flex h-10 items-center px-2 text-[15px] font-medium text-dim hover:text-brand"
-            >
-              Read the docs
-            </Link>
-          </div>
-        </div>
+    <section id="install" className="relative overflow-hidden border-b border-border-subtle">
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-x-0 top-0 -z-10 h-[520px] bg-[radial-gradient(ellipse_at_top,rgba(249,115,22,0.10),transparent_60%)]"
+      />
+      <div className="mx-auto max-w-[960px] px-6 pb-20 pt-16 text-center sm:pt-24">
+        <Link
+          href="https://github.com/Fergana-Labs/octopus"
+          className="inline-flex items-center gap-3 rounded-full border border-border bg-surface/80 py-1.5 pl-1.5 pr-4 text-[12px] text-dim shadow-sm backdrop-blur transition hover:border-brand/40 hover:text-ink"
+        >
+          <span className="rounded-full bg-brand px-2 py-0.5 font-mono text-[10px] font-bold uppercase tracking-[0.12em] text-white">
+            New
+          </span>
+          <span>Plugin marketplace live for Claude Code</span>
+          <span className="text-muted">→</span>
+        </Link>
 
-        <div>
-          <p className="mb-3 font-mono text-[11px] uppercase tracking-[0.14em] text-muted">
-            Install
-          </p>
-          <div className="overflow-hidden rounded-xl bg-inverted shadow-[0_24px_60px_-30px_rgba(15,23,42,0.4)]">
-            <div className="flex items-center justify-between border-b border-white/5 px-5 py-2.5">
-              <span className="font-mono text-[11px] uppercase tracking-[0.14em] text-on-inverted-dim">
-                shell
-              </span>
+        <h1 className="mt-8 text-balance font-display text-[clamp(40px,5.6vw,72px)] font-black leading-[0.98] tracking-[-0.04em] text-ink">
+          <span className="text-brand">Shared memory</span> for teams of AI coding agents.
+        </h1>
+
+        <p className="mx-auto mt-7 max-w-[640px] text-[18px] leading-[1.55] text-dim">
+          When a teammate&apos;s coding agent fixes a bug, yours does too. Every
+          session, decision, and search becomes part of one living knowledge
+          base — queryable by every agent on the team.
+        </p>
+
+        <div className="mx-auto mt-12 max-w-[760px] text-left">
+          <div className="overflow-hidden rounded-xl border border-border-subtle bg-inverted shadow-[0_30px_80px_-40px_rgba(15,23,42,0.45)]">
+            <div className="flex items-center justify-between border-b border-white/5 px-4 py-2">
+              <div className="flex items-center gap-1.5">
+                <span className="h-2.5 w-2.5 rounded-full bg-white/10" />
+                <span className="h-2.5 w-2.5 rounded-full bg-white/10" />
+                <span className="h-2.5 w-2.5 rounded-full bg-white/10" />
+                <span className="ml-3 font-mono text-[11px] uppercase tracking-[0.14em] text-on-inverted-dim">
+                  install
+                </span>
+              </div>
               <CopyButton value={INSTALL_COMMAND} />
             </div>
-            <div className="overflow-x-auto px-5 py-4 font-mono text-[13px] leading-[1.7] text-on-inverted">
+            <div className="overflow-x-auto px-5 py-5 font-mono text-[13px] leading-[1.7] text-on-inverted sm:text-[14px]">
               <div className="flex gap-3">
-                <span className="shrink-0 text-brand">$</span>
+                <span className="shrink-0 select-none text-brand">$</span>
                 <span className="whitespace-nowrap">{INSTALL_COMMAND}</span>
               </div>
             </div>
           </div>
-          <p className="mt-3 text-[13px] leading-[1.5] text-dim">
+          <p className="mt-3 text-center text-[13px] leading-[1.5] text-dim">
             Installs the CLI, walks you through scope · sign-in · workspace ·
             agent plugin. Re-run safe.
           </p>
+        </div>
 
-          <details className="group mt-6">
-            <summary className="cursor-pointer list-none text-[13px] text-dim hover:text-brand">
-              <span className="inline-block transition-transform group-open:rotate-90">
-                ›
-              </span>{" "}
-              Or have your AI coding agent set it up
-            </summary>
-            <div className="mt-3 overflow-hidden rounded-xl bg-inverted shadow-[0_24px_60px_-30px_rgba(15,23,42,0.4)]">
-              <div className="flex items-center justify-between border-b border-white/5 px-5 py-2.5">
-                <span className="font-mono text-[11px] uppercase tracking-[0.14em] text-on-inverted-dim">
-                  claude code
-                </span>
-                <span className="font-mono text-[11px] text-on-inverted-dim">
-                  prompt
-                </span>
-              </div>
-              <div className="px-5 py-4 font-mono text-[13px] leading-[1.7] text-on-inverted">
-                <div className="flex gap-3">
-                  <span className="shrink-0 text-brand">&gt;</span>
-                  <PromptBody text={prompt} />
-                </div>
+        <div className="mt-8 flex flex-wrap items-center justify-center gap-x-6 gap-y-3 text-[14px]">
+          <Link
+            href="https://github.com/Fergana-Labs/octopus"
+            className="inline-flex items-center font-medium text-ink hover:text-brand"
+          >
+            View on GitHub
+            <span className="ml-2">→</span>
+          </Link>
+          <span className="text-muted">·</span>
+          <Link
+            href="/docs/quickstart"
+            className="font-medium text-dim hover:text-brand"
+          >
+            Read the docs
+          </Link>
+        </div>
+
+        <details className="group mx-auto mt-12 max-w-[760px] text-left">
+          <summary className="cursor-pointer list-none text-center text-[13px] text-dim hover:text-brand">
+            <span className="inline-block transition-transform group-open:rotate-90">
+              ›
+            </span>{" "}
+            Or have your AI coding agent set it up
+          </summary>
+          <div className="mt-4 overflow-hidden rounded-xl border border-border-subtle bg-inverted shadow-[0_30px_80px_-40px_rgba(15,23,42,0.45)]">
+            <div className="flex items-center justify-between border-b border-white/5 px-5 py-2.5">
+              <span className="font-mono text-[11px] uppercase tracking-[0.14em] text-on-inverted-dim">
+                claude code
+              </span>
+              <span className="font-mono text-[11px] text-on-inverted-dim">
+                prompt
+              </span>
+            </div>
+            <div className="px-5 py-4 font-mono text-[13px] leading-[1.7] text-on-inverted">
+              <div className="flex gap-3">
+                <span className="shrink-0 text-brand">&gt;</span>
+                <PromptBody text={prompt} />
               </div>
             </div>
-            <p className="mt-3 text-[13px] leading-[1.5] text-dim">
-              Paste into Claude Code (or any other coding agent with shell
-              access). Same end state as the one-liner.
-            </p>
-          </details>
-        </div>
+          </div>
+          <p className="mt-3 text-[13px] leading-[1.5] text-dim">
+            Paste into Claude Code (or any other coding agent with shell
+            access). Same end state as the one-liner.
+          </p>
+        </details>
       </div>
     </section>
   );
