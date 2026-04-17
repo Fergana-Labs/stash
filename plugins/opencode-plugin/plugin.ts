@@ -20,7 +20,7 @@ import { fileURLToPath } from "node:url";
 
 const PLUGIN_ROOT = dirname(fileURLToPath(import.meta.url));
 const SCRIPTS = join(PLUGIN_ROOT, "scripts");
-const PYTHON = process.env.STASH_PYTHON ?? "python3";
+const RUN_SH = join(SCRIPTS, "_run.sh");
 
 // opencode never emits a clean session-end signal. After this much idle time
 // inside a live opencode process, treat the session as ended and fire
@@ -51,12 +51,14 @@ function runHook(script: string, payload: unknown): void {
   // Fire-and-forget. We never want a flaky Stash backend to stall opencode.
   // detached + unref so the child belongs to its own process group and gets
   // reaped independently — otherwise zombies accumulate over long sessions.
+  // _run.sh resolves the stashai venv's python so hooks work under pipx/uv.
+  const hookName = script.replace(/\.py$/, "");
   try {
-    const child = spawn(PYTHON, [join(SCRIPTS, script)], {
+    const child = spawn("bash", [RUN_SH, hookName], {
       stdio: ["pipe", "ignore", "ignore"],
       detached: true,
     });
-    child.on("error", () => { /* python missing / crash — swallow */ });
+    child.on("error", () => { /* bash missing / crash — swallow */ });
     child.stdin?.write(JSON.stringify(payload));
     child.stdin?.end();
     child.unref();
