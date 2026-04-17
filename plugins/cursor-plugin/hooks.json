@@ -3,19 +3,19 @@
   "version": 1,
   "hooks": {
     "sessionStart": [
-      { "command": "python3 ${PLUGIN_ROOT}/scripts/on_session_start.py", "timeout": 5 }
+      { "command": "bash ${PLUGIN_ROOT}/scripts/_run.sh on_session_start", "timeout": 5 }
     ],
     "beforeSubmitPrompt": [
-      { "command": "python3 ${PLUGIN_ROOT}/scripts/on_prompt.py", "timeout": 3 }
+      { "command": "bash ${PLUGIN_ROOT}/scripts/_run.sh on_prompt", "timeout": 3 }
     ],
     "postToolUse": [
-      { "command": "python3 ${PLUGIN_ROOT}/scripts/on_tool_use.py", "timeout": 5 }
+      { "command": "bash ${PLUGIN_ROOT}/scripts/_run.sh on_tool_use", "timeout": 5 }
     ],
     "afterAgentResponse": [
-      { "command": "python3 ${PLUGIN_ROOT}/scripts/on_agent_response.py", "timeout": 10 }
+      { "command": "bash ${PLUGIN_ROOT}/scripts/_run.sh on_agent_response", "timeout": 10 }
     ],
     "sessionEnd": [
-      { "command": "python3 ${PLUGIN_ROOT}/scripts/on_session_end.py", "timeout": 5 }
+      { "command": "bash ${PLUGIN_ROOT}/scripts/_run.sh on_session_end", "timeout": 5 }
     ]
   }
 }

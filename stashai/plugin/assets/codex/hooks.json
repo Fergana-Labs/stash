@@ -4,14 +4,14 @@
     "SessionStart": [
       {
         "hooks": [
-          { "type": "command", "command": "python3 ${PLUGIN_ROOT}/scripts/on_session_start.py", "timeout": 5 }
+          { "type": "command", "command": "bash ${PLUGIN_ROOT}/scripts/_run.sh on_session_start", "timeout": 5 }
         ]
       }
     ],
     "UserPromptSubmit": [
       {
         "hooks": [
-          { "type": "command", "command": "python3 ${PLUGIN_ROOT}/scripts/on_prompt.py", "timeout": 3 }
+          { "type": "command", "command": "bash ${PLUGIN_ROOT}/scripts/_run.sh on_prompt", "timeout": 3 }
         ]
       }
     ],
@@ -19,14 +19,14 @@
       {
         "matcher": "^Bash$",
         "hooks": [
-          { "type": "command", "command": "python3 ${PLUGIN_ROOT}/scripts/on_tool_use.py", "timeout": 5 }
+          { "type": "command", "command": "bash ${PLUGIN_ROOT}/scripts/_run.sh on_tool_use", "timeout": 5 }
         ]
       }
     ],
     "Stop": [
       {
         "hooks": [
-          { "type": "command", "command": "python3 ${PLUGIN_ROOT}/scripts/on_stop.py", "timeout": 10 }
+          { "type": "command", "command": "bash ${PLUGIN_ROOT}/scripts/_run.sh on_stop", "timeout": 10 }
         ]
       }
     ]
