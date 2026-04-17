@@ -59,6 +59,21 @@ cd frontend && npm ci && cd ..
 
 ---
 
+## CLI development
+
+ To develop on it the cli, you need to run
+ ```
+pipx install . --force
+```
+
+Then iterate:
+
+1. Edit code under `cli/` or `stashai/`.
+2. Re-run `pipx install . --force`.
+3. Run `stash <args>` and verify your changes worked.
+
+---
+
 ## Running tests
 
 Both suites must pass before a PR can be merged.
