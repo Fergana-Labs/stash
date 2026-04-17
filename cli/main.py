@@ -174,6 +174,45 @@ def ws_join(invite_code: str = typer.Argument(...), as_json: bool = typer.Option
         console.print(f"[green]Joined '{data.get('name')}'[/green]")
 
 
+@ws_app.command("use")
+def ws_use(
+    workspace: str = typer.Argument(..., help="Workspace ID or name to set as default."),
+    scope: str = typer.Option(
+        "user", "--scope", help="Where to write config (user | project)."
+    ),
+    as_json: bool = typer.Option(False, "--json"),
+):
+    """Set the default workspace for future commands.
+
+    Resolves `workspace` against the caller's memberships — accepts either a
+    workspace ID (UUID) or a name. Non-interactive: designed for agents that
+    collect the choice via their own prompting and need a single command to
+    persist it.
+    """
+    with _client() as c:
+        try:
+            mine = c.list_workspaces(mine=True)
+        except StashError as e:
+            _err(e)
+    match = next(
+        (w for w in mine if str(w["id"]) == workspace or w.get("name") == workspace),
+        None,
+    )
+    if not match:
+        console.print(
+            f"[red]No workspace matches '{workspace}'.[/red] "
+            f"Run [cyan]stash workspaces list --mine[/cyan] to see yours."
+        )
+        raise typer.Exit(1)
+    save_config(default_workspace=str(match["id"]), scope=scope)  # type: ignore[arg-type]
+    if _use_json(as_json):
+        output_json({"default_workspace": str(match["id"]), "name": match["name"]})
+    else:
+        console.print(
+            f"[green]Default workspace set to '{match['name']}'[/green]  (ID: {match['id']})"
+        )
+
+
 @ws_app.command("info")
 def ws_info(workspace_id: str = typer.Argument(...), as_json: bool = typer.Option(False, "--json")):
     """Show workspace details."""
