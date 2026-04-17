@@ -36,12 +36,21 @@ async def init_db() -> None:
 
     def _run_alembic():
         # alembic.ini lives next to pyproject.toml at the repo root
-        ini_path = os.path.join(os.path.dirname(__file__), "..", "alembic.ini")
         from alembic import command as alembic_cmd
         from alembic.config import Config
 
-        cfg = Config(ini_path)
+        repo_root = os.path.join(os.path.dirname(__file__), "..")
+        cfg = Config(os.path.join(repo_root, "alembic.ini"))
         alembic_cmd.upgrade(cfg, "head")
+
+        # Managed env tracks its own revision chain in `alembic_version_managed`
+        # — only relevant when Auth0 is wired up. Run it here so deploys don't
+        # need a separate migration step (start.sh handles this for local dev).
+        if settings.AUTH0_ENABLED:
+            managed_ini = os.path.join(repo_root, "backend", "managed", "alembic.ini")
+            if os.path.exists(managed_ini):
+                managed_cfg = Config(managed_ini)
+                alembic_cmd.upgrade(managed_cfg, "head")
 
     loop = asyncio.get_running_loop()
     await loop.run_in_executor(None, functools.partial(_run_alembic))
