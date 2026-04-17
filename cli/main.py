@@ -2348,8 +2348,7 @@ def _welcome_markdown() -> str:
     if invite_code:
         ws_suffix = f" (workspace: {ws_name})" if ws_name else ""
         share_answer = (
-            f"Send teammates this link{ws_suffix}: {_invite_url(invite_code)} — "
-            "they'll sign in and be joined automatically."
+            f"Send this link: {_invite_url(invite_code)} — "
         )
     else:
         share_answer = (
@@ -2386,8 +2385,8 @@ Run `stash --help` to see everything.
 **Q:** What gets pushed to the shared store?
 **A:** {_pushed_scope_phrase()}
 
-**Q:** How do I change scope or see a transcript?
-**A:** `stash config scope <repo|workspace|all>` (default: `repo`). `stash history transcript <session_id>` fetches a full transcript.
+**Q:** How do I do settings?
+**A:** `stash sessings`
 
 **Q:** How do I share my workspace with my team?
 **A:** {share_answer}
@@ -2500,8 +2499,8 @@ def _show_setup_complete_splash(
 
     intro = (
         "[bold]What just happened[/bold]\n"
-        "Your coding agent now has the [bold #1e3a8a]stash[/bold #1e3a8a] CLI on its PATH. "
-        "It can read the transcripts your teammates' coding agents push to this "
+        "Your coding agent now has the [bold #1e3a8a]stash[/bold #1e3a8a] CLI on its PATH.\n"
+        "It can read the transcripts your teammates' coding agents push to this\n"
         "workspace — so it knows what the rest of your team is working on.\n"
         "\n"
         "[bold]Examples of questions your agent might want answered[/bold]\n"
@@ -2560,7 +2559,7 @@ def _show_setup_complete_splash(
     console.print(
         Panel(
             Group(Text.from_markup(intro), qa_table),
-            title="[bold]Your team's shared agent memory[/bold]",
+            title="[bold #1e3a8a]Your team's shared agent memory[/bold #1e3a8a]",
             border_style="#1e3a8a",
             padding=(1, 2),
         )
