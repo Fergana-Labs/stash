@@ -163,6 +163,43 @@ def save_config(
         _write_to(_path_for_scope(scope), other_updates)
 
 
+def detect_previous_scope() -> Scope | None:
+    """Return the scope the user previously picked, or None if no prior config.
+
+    A project-level config with any non-auth data means scope was `project`.
+    Otherwise, a user-level config with any non-auth data means scope was `user`.
+    Auth-only files don't count because api_key/username always live at user
+    scope regardless of the requested scope.
+    """
+    project_path = find_project_config()
+    if project_path:
+        data = _read_json(project_path)
+        if any(k not in AUTH_KEYS and v for k, v in data.items()):
+            return "project"
+    if USER_CONFIG_FILE.exists():
+        data = _read_json(USER_CONFIG_FILE)
+        if any(k not in AUTH_KEYS and v for k, v in data.items()):
+            return "user"
+    return None
+
+
+def stored_base_url() -> str | None:
+    """Return the base_url the user has written to disk in either scope, or None.
+
+    Project scope wins over user scope, matching `load_config` precedence.
+    """
+    project_path = find_project_config()
+    if project_path:
+        url = _read_json(project_path).get("base_url")
+        if url:
+            return url
+    if USER_CONFIG_FILE.exists():
+        url = _read_json(USER_CONFIG_FILE).get("base_url")
+        if url:
+            return url
+    return None
+
+
 def clear_config(scope: Scope = "user") -> None:
     """Remove stored config for the given scope."""
     if scope == "user":
