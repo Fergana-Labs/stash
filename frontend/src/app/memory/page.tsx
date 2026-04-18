@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter, useSearchParams } from "next/navigation";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import AppShell from "../../components/AppShell";
 import { useAuth } from "../../hooks/useAuth";
 import {
@@ -107,6 +107,14 @@ function buildGroups(events: HistoryEventWithContext[]): AgentGroup[] {
 /* ── component ── */
 
 export default function MemoryPage() {
+  return (
+    <Suspense fallback={null}>
+      <MemoryPageInner />
+    </Suspense>
+  );
+}
+
+function MemoryPageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const wsId = searchParams.get("ws");
