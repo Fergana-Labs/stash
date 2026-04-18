@@ -10,6 +10,10 @@ Render the markdown block below to the user verbatim. Do not summarize, paraphra
 
 Your coding agent now has the `stash` CLI on its PATH. It can read the transcripts your teammates' coding agents push to this workspace — so it knows what the rest of your team is working on.
 
+## See your workspace
+
+Open [app.stash.ac](https://app.stash.ac) to browse your workspace's transcripts and team activity.
+
 ## Examples of questions your agent might want answered
 
 - "Why did Sam bump the rate limit from 100 to 500?"
