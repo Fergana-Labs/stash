@@ -1845,11 +1845,11 @@ def connect(
 
         # Build the login URL. The backend and frontend are separate deployments.
         # - Local self-host: backend on :3456, frontend on :3457.
-        # - Managed: frontend lives at stash-web-dr40.onrender.com.
+        # - Managed: frontend lives at app.stash.ac.
         if "localhost" in base_url or "127.0.0.1" in base_url:
             frontend_url = base_url.replace(":3456", ":3457")
         elif base_url == "https://api.stash.ac":
-            frontend_url = "https://stash-web-dr40.onrender.com"
+            frontend_url = "https://app.stash.ac"
         else:
             frontend_url = base_url
         login_url = f"{frontend_url}/login?cli={session_id}"
