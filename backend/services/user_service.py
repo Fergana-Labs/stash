@@ -1,6 +1,6 @@
 from uuid import UUID
 
-from ..auth import generate_api_key, hash_api_key, hash_password, verify_password
+from ..auth import create_api_key, hash_password, verify_password
 from ..database import get_pool
 
 
@@ -12,17 +12,14 @@ async def register_user(
 ) -> tuple[dict, str]:
     """Register a new user. Returns (user_row, raw_api_key)."""
     pool = get_pool()
-    api_key = generate_api_key()
-    key_hash = hash_api_key(api_key)
     pw_hash = hash_password(password) if password else None
     try:
         row = await pool.fetchrow(
-            "INSERT INTO users (name, display_name, api_key_hash, password_hash, description) "
-            "VALUES ($1, $2, $3, $4, $5) "
+            "INSERT INTO users (name, display_name, password_hash, description) "
+            "VALUES ($1, $2, $3, $4) "
             "RETURNING id, name, display_name, description, created_at, last_seen",
             name,
             display_name or name,
-            key_hash,
             pw_hash,
             description,
         )
@@ -31,6 +28,7 @@ async def register_user(
             raise ValueError(f"Username '{name}' is already taken")
         raise
     user = dict(row)
+    api_key = await create_api_key(user["id"], name="password register")
 
     # Auto-provision a default workspace for new users.
     # workspaces.name is VARCHAR(128); trim the display so the suffix always fits.
@@ -107,13 +105,9 @@ async def authenticate_by_password(name: str, password: str) -> tuple[dict, str]
         raise ValueError("Invalid username or password")
     if not verify_password(password, row["password_hash"]):
         raise ValueError("Invalid username or password")
-    # Generate new API key on login
-    api_key = generate_api_key()
-    key_hash = hash_api_key(api_key)
-    await pool.execute(
-        "UPDATE users SET api_key_hash = $1, last_seen = now() WHERE id = $2",
-        key_hash,
-        row["id"],
-    )
+    # Each login mints a fresh key — prior keys keep working so other devices
+    # don't get logged out.
+    api_key = await create_api_key(row["id"], name="password login")
+    await pool.execute("UPDATE users SET last_seen = now() WHERE id = $1", row["id"])
     user = {k: v for k, v in dict(row).items() if k != "password_hash"}
     return user, api_key

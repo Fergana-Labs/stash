@@ -2,7 +2,7 @@
 
 import re
 
-from backend.auth import generate_api_key, hash_api_key
+from backend.auth import create_api_key
 from backend.database import get_pool
 from backend.services import workspace_service
 
@@ -28,11 +28,10 @@ async def get_or_create_user_from_auth0(
     auth0_sub: str,
     email: str | None,
     name: str | None,
+    key_name: str = "Auth0 login",
 ) -> tuple[dict, str]:
-    """Return (user_row, new_api_key). Rotates api_key on every login."""
+    """Return (user_row, new_api_key). Mints a fresh key per exchange; prior keys stay valid."""
     pool = get_pool()
-    api_key = generate_api_key()
-    key_hash = hash_api_key(api_key)
 
     row = await pool.fetchrow(
         "SELECT id, name, display_name, description, created_at, last_seen "
@@ -40,11 +39,8 @@ async def get_or_create_user_from_auth0(
         auth0_sub,
     )
     if row:
-        await pool.execute(
-            "UPDATE users SET api_key_hash = $1, last_seen = now() WHERE id = $2",
-            key_hash,
-            row["id"],
-        )
+        await pool.execute("UPDATE users SET last_seen = now() WHERE id = $1", row["id"])
+        api_key = await create_api_key(row["id"], name=key_name)
         return dict(row), api_key
 
     base = _slugify_name((email or "").split("@")[0] or name or "user")
@@ -52,15 +48,15 @@ async def get_or_create_user_from_auth0(
     display_name = name or username
 
     row = await pool.fetchrow(
-        "INSERT INTO users (name, display_name, api_key_hash, auth0_sub, description) "
-        "VALUES ($1, $2, $3, $4, '') "
+        "INSERT INTO users (name, display_name, auth0_sub, description) "
+        "VALUES ($1, $2, $3, '') "
         "RETURNING id, name, display_name, description, created_at, last_seen",
         username,
         display_name,
-        key_hash,
         auth0_sub,
     )
     user = dict(row)
+    api_key = await create_api_key(user["id"], name=key_name)
 
     suffix = "'s Workspace"
     ws_name = f"{user['display_name'][: 128 - len(suffix)]}{suffix}"

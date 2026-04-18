@@ -46,6 +46,13 @@ class UserSearchResult(BaseModel):
     display_name: str | None
 
 
+class ApiKeyInfo(BaseModel):
+    id: UUID
+    name: str
+    created_at: datetime
+    last_used_at: datetime | None
+
+
 # --- Workspaces ---
 
 

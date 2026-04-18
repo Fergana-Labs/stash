@@ -130,15 +130,21 @@ def signin(
     default workspace if the user has exactly one.
     """
     import os
+    import socket
     import time
     import webbrowser
+    from urllib.parse import quote
 
     import httpx
+
+    device_name = socket.gethostname() or ""
 
     # Create the CLI auth session.
     with httpx.Client(base_url=api, timeout=10) as c:
         try:
-            r = c.post("/api/v1/users/cli-auth/sessions")
+            r = c.post(
+                "/api/v1/users/cli-auth/sessions", json={"device_name": device_name}
+            )
             r.raise_for_status()
             session_id = r.json()["session_id"]
         except (httpx.HTTPError, KeyError) as e:
@@ -147,6 +153,8 @@ def signin(
 
     sep = "&" if "?" in page else "?"
     url = f"{page}{sep}session={session_id}"
+    if device_name:
+        url += f"&device={quote(device_name)}"
 
     ssh = any(os.environ.get(v) for v in ("SSH_CONNECTION", "SSH_CLIENT", "SSH_TTY"))
     opened = False if (no_browser or ssh) else webbrowser.open(url)
@@ -2813,6 +2821,44 @@ def settings_cmd(as_json: bool = typer.Option(False, "--json")):
             new_url = questionary.text("Endpoint base URL", default=base_url).ask()
             if new_url:
                 save_config(base_url=new_url.strip().rstrip("/"))
+
+
+keys_app = typer.Typer(help="Manage your API keys across devices.")
+app.add_typer(keys_app, name="keys")
+
+
+@keys_app.command("list")
+def keys_list(as_json: bool = typer.Option(False, "--json")):
+    """List your active API keys (one per device / login)."""
+    with _client() as c:
+        try:
+            keys = c.list_api_keys()
+        except StashError as e:
+            _err(e)
+    if _use_json(as_json):
+        output_json(keys)
+        return
+    if not keys:
+        console.print("[dim]No active API keys.[/dim]")
+        return
+    for k in keys:
+        last = k.get("last_used_at") or "never"
+        console.print(
+            f"  [bold]{k['name']}[/bold]  "
+            f"[dim]id: {k['id']}  created: {str(k['created_at'])[:10]}  "
+            f"last used: {str(last)[:10]}[/dim]"
+        )
+
+
+@keys_app.command("revoke")
+def keys_revoke(key_id: str = typer.Argument(..., help="Key id to revoke.")):
+    """Revoke an API key by id. Any device using it will 401 on next call."""
+    with _client() as c:
+        try:
+            c.revoke_api_key(key_id)
+        except StashError as e:
+            _err(e)
+    console.print(f"[green]Revoked key {key_id}.[/green]")
 
 
 @app.command("disconnect")

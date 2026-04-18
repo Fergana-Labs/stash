@@ -7,6 +7,7 @@ from ..auth import get_current_user
 from ..config import settings
 from ..middleware import limiter
 from ..models import (
+    ApiKeyInfo,
     LoginRequest,
     RedeemInviteRequest,
     RedeemInviteResponse,
@@ -118,6 +119,42 @@ async def search_users(
 
 
 # ---------------------------------------------------------------------------
+# API keys — list and revoke
+# ---------------------------------------------------------------------------
+
+
+@router.get("/me/keys", response_model=list[ApiKeyInfo])
+async def list_my_keys(current_user: dict = Depends(get_current_user)):
+    from ..database import get_pool
+
+    pool = get_pool()
+    rows = await pool.fetch(
+        "SELECT id, name, created_at, last_used_at "
+        "FROM user_api_keys "
+        "WHERE user_id = $1 AND revoked_at IS NULL "
+        "ORDER BY created_at DESC",
+        current_user["id"],
+    )
+    return [ApiKeyInfo(**dict(r)) for r in rows]
+
+
+@router.delete("/me/keys/{key_id}", status_code=204)
+async def revoke_my_key(key_id: str, current_user: dict = Depends(get_current_user)):
+    from ..database import get_pool
+
+    pool = get_pool()
+    result = await pool.execute(
+        "UPDATE user_api_keys SET revoked_at = now() "
+        "WHERE id = $1 AND user_id = $2 AND revoked_at IS NULL",
+        key_id,
+        current_user["id"],
+    )
+    if not result.endswith(" 1"):
+        raise HTTPException(status_code=404, detail="Key not found")
+    return None
+
+
+# ---------------------------------------------------------------------------
 # CLI browser-based auth flow
 # ---------------------------------------------------------------------------
 
@@ -125,11 +162,21 @@ async def search_users(
 @router.post("/cli-auth/sessions")
 @limiter.limit("10/minute")
 async def create_cli_auth_session(request: Request):
-    """Create a CLI auth session. Returns a session_id the CLI uses to poll."""
+    """Create a CLI auth session. Returns a session_id the CLI uses to poll.
+
+    Optional body `{"device_name": "..."}` names the key that'll be minted,
+    so users can tell devices apart in `stash keys list`.
+    """
     _prune_cli_sessions()
     session_id = secrets.token_urlsafe(32)
-    _cli_sessions[session_id] = {"created_at": time.time()}
-    return {"session_id": session_id}
+    device_name = ""
+    try:
+        body = await request.json()
+        device_name = str(body.get("device_name") or "")[:128]
+    except Exception:
+        pass
+    _cli_sessions[session_id] = {"created_at": time.time(), "device_name": device_name}
+    return {"session_id": session_id, "device_name": device_name}
 
 
 @router.get("/cli-auth/sessions/{session_id}")

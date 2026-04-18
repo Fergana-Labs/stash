@@ -33,10 +33,13 @@ async def exchange(
 ):
     claims = await validate_auth0_token(credentials.credentials)
     profile = await _fetch_userinfo(credentials.credentials)
+    device = request.query_params.get("device", "").strip()[:96]
+    key_name = f"CLI ({device})" if device else "Auth0 login"
     user, api_key = await get_or_create_user_from_auth0(
         auth0_sub=claims["sub"],
         email=profile.get("email"),
         name=profile.get("name"),
+        key_name=key_name,
     )
     return UserRegisterResponse(
         id=user["id"],

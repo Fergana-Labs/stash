@@ -6,7 +6,7 @@ export const dynamic = "force-dynamic";
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "https://api.stash.ac";
 const AUTH0_ENABLED = process.env.NEXT_PUBLIC_AUTH0_ENABLED === "true";
 
-type Search = { session?: string };
+type Search = { session?: string; device?: string };
 
 // Server component. Expects `?session=<id>` from `stash signin`: mints a token
 // and POSTs it to /cli-auth/sessions/<id>/approve so the CLI (which is polling)
@@ -16,7 +16,7 @@ export default async function ConnectTokenPage({
 }: {
   searchParams: Promise<Search>;
 }) {
-  const { session: sessionId } = await searchParams;
+  const { session: sessionId, device } = await searchParams;
 
   if (!AUTH0_ENABLED) {
     return (
@@ -47,12 +47,16 @@ export default async function ConnectTokenPage({
   const { auth0 } = await import("@managed/auth0/client");
   const session = await auth0.getSession();
   if (!session) {
-    const returnTo = `/connect-token?session=${encodeURIComponent(sessionId)}`;
+    const qs = new URLSearchParams({ session: sessionId });
+    if (device) qs.set("device", device);
+    const returnTo = `/connect-token?${qs.toString()}`;
     redirect(`/auth/login?returnTo=${encodeURIComponent(returnTo)}`);
   }
 
   const accessToken = session.tokenSet.accessToken;
-  const res = await fetch(`${API_URL}/api/v1/auth0/exchange`, {
+  const exchangeUrl = new URL(`${API_URL}/api/v1/auth0/exchange`);
+  if (device) exchangeUrl.searchParams.set("device", device);
+  const res = await fetch(exchangeUrl.toString(), {
     method: "POST",
     headers: { Authorization: `Bearer ${accessToken}` },
     cache: "no-store",
