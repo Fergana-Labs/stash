@@ -1,9 +1,13 @@
 name: Publish stashai to PyPI
 
+# Fires on every push to main. If pyproject.toml carries a version whose
+# `v<version>` tag doesn't exist yet, the job tags the commit and publishes
+# the sdist + wheel to PyPI. Existing versions are a no-op, so the workflow
+# is safe to re-run (including via workflow_dispatch).
+
 on:
   push:
-    tags:
-      - "v*.*.*"
+    branches: [main]
   workflow_dispatch:
 
 jobs:
@@ -12,27 +16,49 @@ jobs:
     environment: pypi
     permissions:
       id-token: write    # required for PyPI trusted publishing (OIDC)
-      contents: read
+      contents: write    # required to push the release tag
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
 
+      - name: Detect version bump
+        id: check
+        run: |
+          VER=$(python -c "import tomllib; print(tomllib.loads(open('pyproject.toml','rb').read().decode())['project']['version'])")
+          TAG="v$VER"
+          echo "pyproject version: $VER"
+          if git rev-parse "$TAG" >/dev/null 2>&1; then
+            echo "Tag $TAG already exists — nothing to release."
+            echo "release=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "New version $VER — will tag and publish."
+            echo "release=true" >> "$GITHUB_OUTPUT"
+            echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Tag release
+        if: steps.check.outputs.release == 'true'
+        env:
+          TAG: ${{ steps.check.outputs.tag }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag "$TAG"
+          git push origin "$TAG"
+
       - name: Install build tooling
+        if: steps.check.outputs.release == 'true'
         run: python -m pip install --upgrade build
 
-      - name: Verify tag matches pyproject version
-        run: |
-          TAG="${GITHUB_REF##*/v}"
-          PYVER=$(python -c "import tomllib,sys; print(tomllib.loads(open('pyproject.toml','rb').read().decode())['project']['version'])")
-          echo "git tag version: $TAG"
-          echo "pyproject version: $PYVER"
-          test "$TAG" = "$PYVER" || (echo "tag must match pyproject version" && exit 1)
-
       - name: Build sdist + wheel
+        if: steps.check.outputs.release == 'true'
         run: python -m build
 
       - name: Publish to PyPI
+        if: steps.check.outputs.release == 'true'
         uses: pypa/gh-action-pypi-publish@release/v1
