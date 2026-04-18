@@ -383,6 +383,28 @@ export async function queryAllHistoryEvents(
   return apiFetch(`/api/v1/me/history-events${qs ? `?${qs}` : ""}`);
 }
 
+export async function queryWorkspaceHistoryEvents(
+  workspaceId: string,
+  params?: {
+    agent_name?: string;
+    session_id?: string;
+    event_type?: string;
+    after?: string;
+    before?: string;
+    limit?: number;
+  }
+): Promise<{ events: HistoryEvent[]; has_more: boolean }> {
+  const searchParams = new URLSearchParams();
+  if (params?.agent_name) searchParams.set("agent_name", params.agent_name);
+  if (params?.session_id) searchParams.set("session_id", params.session_id);
+  if (params?.event_type) searchParams.set("event_type", params.event_type);
+  if (params?.after) searchParams.set("after", params.after);
+  if (params?.before) searchParams.set("before", params.before);
+  if (params?.limit) searchParams.set("limit", String(params.limit));
+  const qs = searchParams.toString();
+  return apiFetch(`/api/v1/workspaces/${workspaceId}/memory/events${qs ? `?${qs}` : ""}`);
+}
+
 export async function listAllTables(): Promise<{ tables: TableWithWorkspace[] }> {
   return apiFetch("/api/v1/me/tables");
 }

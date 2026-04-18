@@ -1,11 +1,12 @@
 "use client";
 
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import AppShell from "../../components/AppShell";
 import { useAuth } from "../../hooks/useAuth";
 import {
   queryAllHistoryEvents,
+  queryWorkspaceHistoryEvents,
 } from "../../lib/api";
 import { HistoryEventWithContext } from "../../lib/types";
 
@@ -107,10 +108,8 @@ function buildGroups(events: HistoryEventWithContext[]): AgentGroup[] {
 
 export default function MemoryPage() {
   const router = useRouter();
-  const wsId =
-    typeof window !== "undefined"
-      ? new URLSearchParams(window.location.search).get("ws")
-      : null;
+  const searchParams = useSearchParams();
+  const wsId = searchParams.get("ws");
   const { user, loading, logout } = useAuth();
   const [events, setEvents] = useState<HistoryEventWithContext[]>([]);
   const [eventsLoading, setEventsLoading] = useState(false);
@@ -120,32 +119,54 @@ export default function MemoryPage() {
   const [selectedAgent, setSelectedAgent] = useState<string | null>(null);
   const [selectedSession, setSelectedSession] = useState<string | null>(null);
 
+  const fetchEvents = useCallback(
+    async (before?: string) => {
+      if (wsId) {
+        const res = await queryWorkspaceHistoryEvents(wsId, { limit: 200, before });
+        // Workspace-scoped events don't carry store/workspace labels; fill
+        // workspace_id so the event list still has it available.
+        const events: HistoryEventWithContext[] = (res?.events ?? []).map((e) => ({
+          ...e,
+          store_id: "",
+          store_name: "",
+          workspace_id: wsId,
+          workspace_name: null,
+        }));
+        return { events, has_more: res?.has_more ?? false };
+      }
+      const res = await queryAllHistoryEvents({ limit: 200, before });
+      return { events: res?.events ?? [], has_more: res?.has_more ?? false };
+    },
+    [wsId]
+  );
+
   const loadEvents = useCallback(async () => {
     setEventsLoading(true);
+    setSelectedAgent(null);
+    setSelectedSession(null);
     try {
-      const res = await queryAllHistoryEvents({ limit: 200 });
-      setEvents(res?.events ?? []);
-      setHasMore(res?.has_more ?? false);
+      const { events, has_more } = await fetchEvents();
+      setEvents(events);
+      setHasMore(has_more);
     } catch {
       /* ignore */
     }
     setEventsLoading(false);
-  }, []);
+  }, [fetchEvents]);
 
   const loadMore = useCallback(async () => {
     if (!events.length || loadingMore) return;
     setLoadingMore(true);
     try {
       const oldest = events[events.length - 1];
-      const res = await queryAllHistoryEvents({ limit: 200, before: oldest.created_at });
-      const newEvents = res?.events ?? [];
+      const { events: newEvents, has_more } = await fetchEvents(oldest.created_at);
       setEvents((prev) => [...prev, ...newEvents]);
-      setHasMore(res?.has_more ?? false);
+      setHasMore(has_more);
     } catch {
       /* ignore */
     }
     setLoadingMore(false);
-  }, [events, loadingMore]);
+  }, [events, loadingMore, fetchEvents]);
 
   useEffect(() => {
     if (user) loadEvents();

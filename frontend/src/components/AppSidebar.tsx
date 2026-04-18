@@ -90,6 +90,20 @@ export default function AppSidebar() {
     setSelectedWsId(wsId);
     localStorage.setItem(WS_STORAGE_KEY, wsId);
     setShowWsSwitcher(false);
+
+    // If we're already inside a /workspaces/[id] route, swap the id. Otherwise
+    // update the ?ws= query param on the current pathname so the page
+    // re-fetches with the new workspace scope.
+    const wsMatch = pathname.match(/^\/workspaces\/([^/]+)(.*)$/);
+    if (wsMatch) {
+      router.push(`/workspaces/${wsId}${wsMatch[2] ?? ""}`);
+      return;
+    }
+    const params = new URLSearchParams(
+      typeof window !== "undefined" ? window.location.search : ""
+    );
+    params.set("ws", wsId);
+    router.push(`${pathname}?${params.toString()}`);
   };
 
   const selectedWs = workspaces.find((w) => w.id === selectedWsId);
@@ -109,8 +123,8 @@ export default function AppSidebar() {
       {/* Workspace switcher */}
       <div className="px-2 pb-2 relative">
         <div
-          className={`w-full flex items-center gap-2 px-3 py-2 rounded-md text-sm transition-colors ${
-            selectedWs ? "text-foreground bg-raised" : "text-dim hover:text-foreground hover:bg-raised"
+          className={`w-full flex items-center gap-2 px-3 py-2 rounded-md text-sm transition-colors cursor-pointer hover:text-foreground hover:bg-raised ${
+            selectedWs ? "text-foreground bg-raised" : "text-dim"
           }`}
         >
           <span className="w-5 h-5 rounded bg-brand/15 text-brand flex items-center justify-center text-[10px] font-bold flex-shrink-0">
@@ -118,13 +132,13 @@ export default function AppSidebar() {
           </span>
           <button
             onClick={() => selectedWsId && router.push(`/workspaces/${selectedWsId}`)}
-            className="flex-1 text-left truncate font-medium hover:text-brand transition-colors"
+            className="flex-1 text-left truncate font-medium cursor-pointer hover:text-brand transition-colors"
           >
             {selectedWs?.name || "Select workspace"}
           </button>
           <button
             onClick={() => setShowWsSwitcher(!showWsSwitcher)}
-            className="text-muted text-xs hover:text-foreground px-1"
+            className="text-muted text-xs hover:text-foreground px-1 cursor-pointer"
           >
             {showWsSwitcher ? "\u25B4" : "\u25BE"}
           </button>
