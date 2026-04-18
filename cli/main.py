@@ -103,31 +103,29 @@ def login(
         console.print(f"[green]Logged in as {data['name']}[/green]")
 
 
-@app.command()
-def signin(
-    page: str = typer.Option(
-        "https://stash.ac/connect-token",
-        "--page",
-        help="Sign-in page URL. Override for self-hosted deployments.",
-    ),
-    api: str = typer.Option(
-        "https://api.stash.ac",
-        "--api",
-        help="Stash API base URL. Override for self-hosted deployments.",
-    ),
-    no_browser: bool = typer.Option(
-        False,
-        "--no-browser",
-        help="Skip auto-opening the browser; just print the URL. Use when on SSH or without a display.",
-    ),
-    timeout: int = typer.Option(120, "--timeout", help="Seconds to wait for sign-in."),
-):
-    """Sign in through the browser — blocks until the user authorizes.
+def _default_signin_page(api: str) -> str:
+    """Map a backend URL to its matching /connect-token page."""
+    api = api.rstrip("/")
+    if api in ("https://api.stash.ac",):
+        return "https://stash.ac/connect-token"
+    if "localhost" in api or "127.0.0.1" in api:
+        # Local self-host: backend on :3456, frontend on :3457.
+        return api.replace(":3456", ":3457") + "/connect-token"
+    return api + "/connect-token"
 
-    Creates a short-lived session on the backend, opens the sign-in page with the
-    session id, then polls until the browser posts the minted API key back. On
-    success, writes credentials to `~/.stash/config.json` and auto-selects the
-    default workspace if the user has exactly one.
+
+def _browser_auth_flow(
+    api: str,
+    page: str | None = None,
+    timeout: int = 120,
+    no_browser: bool = False,
+) -> tuple[str, str]:
+    """Browser-based CLI sign-in. Returns (api_key, username).
+
+    Creates a short-lived session on the backend, opens the /connect-token
+    page with the session id, then polls until the browser posts the minted
+    API key back. Raises typer.Exit on failure or timeout. Caller is
+    responsible for persisting the returned credentials.
     """
     import os
     import socket
@@ -137,9 +135,9 @@ def signin(
 
     import httpx
 
+    page = page or _default_signin_page(api)
     device_name = socket.gethostname() or ""
 
-    # Create the CLI auth session.
     with httpx.Client(base_url=api, timeout=10) as c:
         try:
             r = c.post(
@@ -166,10 +164,7 @@ def signin(
 
     console.print(f"  Waiting for sign-in (timeout {timeout}s)…")
 
-    # Poll until the page approves the session.
     deadline = time.monotonic() + timeout
-    api_key = ""
-    username = ""
     with httpx.Client(base_url=api, timeout=10) as c:
         while time.monotonic() < deadline:
             try:
@@ -180,18 +175,41 @@ def signin(
                 console.print(f"[red]Polling failed: {e}[/red]")
                 raise typer.Exit(1)
             if data.get("status") == "complete":
-                api_key = data["api_key"]
-                username = data["username"]
-                break
+                return data["api_key"], data["username"]
             time.sleep(1)
 
-    if not api_key:
-        console.print(
-            f"[red]Timed out waiting for sign-in.[/red] "
-            f"Run [cyan]stash auth {api} --api-key <token>[/cyan] by hand if needed."
-        )
-        raise typer.Exit(1)
+    console.print(
+        f"[red]Timed out waiting for sign-in.[/red] "
+        f"Run [cyan]stash auth {api} --api-key <token>[/cyan] by hand if needed."
+    )
+    raise typer.Exit(1)
 
+
+@app.command()
+def signin(
+    page: str = typer.Option(
+        None,
+        "--page",
+        help="Sign-in page URL. Defaults to the /connect-token page matching --api.",
+    ),
+    api: str = typer.Option(
+        "https://api.stash.ac",
+        "--api",
+        help="Stash API base URL. Override for self-hosted deployments.",
+    ),
+    no_browser: bool = typer.Option(
+        False,
+        "--no-browser",
+        help="Skip auto-opening the browser; just print the URL. Use when on SSH or without a display.",
+    ),
+    timeout: int = typer.Option(120, "--timeout", help="Seconds to wait for sign-in."),
+):
+    """Sign in through the browser — blocks until the user authorizes.
+
+    Writes credentials to `~/.stash/config.json` on success and auto-selects
+    the default workspace if the user has exactly one.
+    """
+    api_key, username = _browser_auth_flow(api, page, timeout, no_browser)
     save_config(base_url=api, api_key=api_key, username=username)
     console.print(f"[green]✓ Signed in as {username}[/green]")
 
@@ -1825,68 +1843,14 @@ def connect(
             has_key = False
 
     if not has_key:
-        import time as _time
-        import webbrowser
-
-        import httpx
-
-        # Create a CLI auth session
-        try:
-            resp = httpx.post(
-                f"{base_url}/api/v1/users/cli-auth/sessions",
-                timeout=10,
-                follow_redirects=True,
-            )
-            resp.raise_for_status()
-            session_id = resp.json()["session_id"]
-        except Exception as e:
-            console.print(f"[red]Could not reach {base_url}: {e}[/red]")
-            raise typer.Exit(1)
-
-        # Build the login URL. The backend and frontend are separate deployments.
-        # - Local self-host: backend on :3456, frontend on :3457.
-        # - Managed: frontend lives at app.stash.ac.
-        if "localhost" in base_url or "127.0.0.1" in base_url:
-            frontend_url = base_url.replace(":3456", ":3457")
-        elif base_url == "https://api.stash.ac":
-            frontend_url = "https://app.stash.ac"
-        else:
-            frontend_url = base_url
-        login_url = f"{frontend_url}/login?cli={session_id}"
-
-        console.print("\n  Opening browser to sign in...")
-        console.print(f"  [dim]{login_url}[/dim]\n")
-        webbrowser.open(login_url)
-
         _reserve_bottom_padding(4)
-        console.print("  Waiting for authentication... [dim](press Ctrl+C to cancel)[/dim]")
-
-        # Poll for the result
         try:
-            for _ in range(120):  # 2 minutes max
-                _time.sleep(1)
-                try:
-                    poll = httpx.get(
-                        f"{base_url}/api/v1/users/cli-auth/sessions/{session_id}",
-                        timeout=5,
-                        follow_redirects=True,
-                    )
-                    if poll.status_code == 200:
-                        result = poll.json()
-                        if result["status"] == "complete":
-                            save_config(api_key=result["api_key"], username=result["username"])
-                            console.print(
-                                f"  [green]✓[/green] Logged in as [bold]{result['username']}[/bold]"
-                            )
-                            break
-                except httpx.HTTPError:
-                    pass
-            else:
-                console.print("[red]Timed out waiting for authentication.[/red]")
-                raise typer.Exit(1)
+            api_key, username = _browser_auth_flow(base_url)
         except KeyboardInterrupt:
             console.print("\n[yellow]Cancelled.[/yellow]")
             raise typer.Exit(1)
+        save_config(api_key=api_key, username=username)
+        console.print(f"  [green]✓[/green] Logged in as [bold]{username}[/bold]")
 
     # Reload config after auth
     cfg = load_config()
