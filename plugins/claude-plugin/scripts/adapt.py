@@ -2,7 +2,7 @@
 
 Claude Code hook stdin shapes (as of 2026-04):
   SessionStart     {session_id, cwd}
-  UserPromptSubmit {prompt | userPrompt, session_id}
+  UserPromptSubmit {prompt | userPrompt, cwd, session_id}
   PostToolUse      {tool_name, tool_input, tool_response, cwd, session_id}
   Stop             {last_assistant_message, transcript_path, cwd, session_id}
   SessionEnd       {session_id}
@@ -38,6 +38,7 @@ def adapt_prompt(data: dict) -> HookEvent:
     return HookEvent(
         kind="prompt",
         session_id=data.get("session_id", ""),
+        cwd=data.get("cwd", ""),
         prompt_text=data.get("prompt", data.get("userPrompt", "")),
     )
 

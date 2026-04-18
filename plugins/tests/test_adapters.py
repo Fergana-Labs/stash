@@ -60,6 +60,9 @@ def test_prompt(plugin):
     if plugin in _PLUGINS_WITH_PROMPT_SID:
         assert event.session_id
     assert event.prompt_text  # non-empty
+    # cwd must be populated — the repo-scope gate in stashai.plugin.scope
+    # drops events with empty cwd under the default scope="repo".
+    assert event.cwd
 
 
 @pytest.mark.parametrize("plugin", _PLUGINS_WITH_TOOL_USE)

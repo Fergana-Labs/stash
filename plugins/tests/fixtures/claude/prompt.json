@@ -1,4 +1,5 @@
 {
   "session_id": "abc-123",
+  "cwd": "/Users/alice/repo",
   "prompt": "refactor this function"
 }
