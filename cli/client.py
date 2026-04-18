@@ -79,6 +79,12 @@ class StashClient:
     def whoami(self) -> dict:
         return self._get("/api/v1/users/me")
 
+    def list_api_keys(self) -> list:
+        return self._get("/api/v1/users/me/keys")
+
+    def revoke_api_key(self, key_id: str) -> None:
+        self._delete(f"/api/v1/users/me/keys/{key_id}")
+
     # --- Workspaces ---
 
     def create_workspace(self, name: str, description: str = "", is_public: bool = False) -> dict:

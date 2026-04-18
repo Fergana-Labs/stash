@@ -11,13 +11,17 @@ from .conftest import unique_name
 
 async def _make_user(pool, name=None):
     name = name or unique_name()
-    api_key_hash = "hash_" + uuid.uuid4().hex
     row = await pool.fetchrow(
-        "INSERT INTO users (name, api_key_hash) VALUES ($1, $2) RETURNING id",
+        "INSERT INTO users (name) VALUES ($1) RETURNING id",
         name,
-        api_key_hash,
     )
-    return row["id"]
+    user_id = row["id"]
+    await pool.execute(
+        "INSERT INTO user_api_keys (user_id, key_hash, name) VALUES ($1, $2, 'test')",
+        user_id,
+        "hash_" + uuid.uuid4().hex,
+    )
+    return user_id
 
 
 async def _make_workspace(pool, creator_id):

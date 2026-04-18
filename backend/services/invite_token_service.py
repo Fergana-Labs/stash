@@ -10,7 +10,7 @@ import secrets
 from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
-from ..auth import generate_api_key, hash_api_key
+from ..auth import create_api_key
 from ..database import get_pool
 from . import workspace_service
 
@@ -120,19 +120,16 @@ async def redeem_as_new_user(raw_token: str, display_name: str) -> dict | None:
         return None
 
     pool = get_pool()
-    api_key = generate_api_key()
-    key_hash = hash_api_key(api_key)
     username = await _pick_unique_username(display_name)
 
     async with pool.acquire() as conn:
         async with conn.transaction():
             user_row = await conn.fetchrow(
-                "INSERT INTO users (name, display_name, api_key_hash, description) "
-                "VALUES ($1, $2, $3, '') "
+                "INSERT INTO users (name, display_name, description) "
+                "VALUES ($1, $2, '') "
                 "RETURNING id, name, display_name",
                 username,
                 display_name[:128],
-                key_hash,
             )
             # Mark token as consumed first — if the join/member insert somehow fails
             # we don't want the token to stay usable.
@@ -150,6 +147,7 @@ async def redeem_as_new_user(raw_token: str, display_name: str) -> dict | None:
                 token_row["workspace_id"],
                 user_row["id"],
             )
+    api_key = await create_api_key(user_row["id"], name="invite redeem")
 
     ws = await workspace_service.get_workspace(token_row["workspace_id"])
     return {

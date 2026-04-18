@@ -194,7 +194,7 @@ Most routers are split into `ws_router` (workspace-scoped, `/workspaces/{id}/...
 
 Two credential types accepted on the same endpoints:
 
-- **API key** — issued at registration; sent as `Authorization: Bearer <key>`. Stored as a SHA-256 hash in `users.api_key_hash`.
+- **API key** — sent as `Authorization: Bearer <key>`. Each login mints a new row in `user_api_keys` (sha256 of the key, plus a device name); prior keys stay valid so multiple devices coexist. Users can list/revoke via `stash keys` or `GET|DELETE /api/v1/users/me/keys`.
 - **JWT** — issued by `/users/login`; used by the web UI.
 
 `get_current_user` resolves either.
