@@ -17,6 +17,11 @@ const nextConfig: NextConfig = {
         destination: `${MANAGED_APP_URL}/join/:code`,
         permanent: false,
       },
+      {
+        source: "/login",
+        destination: `${MANAGED_APP_URL}/login`,
+        permanent: false,
+      },
     ];
   },
 };

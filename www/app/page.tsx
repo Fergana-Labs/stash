@@ -55,7 +55,7 @@ function Nav() {
           <Link href="/docs" className="hover:text-ink">
             Docs
           </Link>
-          <Link href="/connect-token" className="hover:text-ink">
+          <Link href="/login" className="hover:text-ink">
             Sign in
           </Link>
           <Link
