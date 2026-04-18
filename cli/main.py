@@ -2365,6 +2365,27 @@ def _invite_url(invite_code: str) -> str:
     return f"{frontend}/join/{invite_code}"
 
 
+def _workspace_url(ws_id: str) -> str:
+    """Build the user-facing URL for a workspace's page on the configured
+    frontend. Managed backend → app.stash.ac (the marketing site at stash.ac
+    has no /workspaces redirect); localhost backend → :3457; any other
+    self-host → whatever the configured base_url is."""
+    base_url = (load_config().get("base_url") or "").rstrip("/")
+    if "localhost" in base_url or "127.0.0.1" in base_url:
+        frontend = base_url.replace(":3456", ":3457")
+    elif base_url == "https://api.stash.ac":
+        frontend = "https://app.stash.ac"
+    else:
+        frontend = base_url
+    return f"{frontend}/workspaces/{ws_id}"
+
+
+def _current_workspace_url() -> str:
+    """Return the link to the user's default workspace, or "" if none configured."""
+    ws_id = load_config().get("default_workspace") or ""
+    return _workspace_url(ws_id) if ws_id else ""
+
+
 def _welcome_markdown() -> str:
     invite_code, ws_name = _current_invite()
     if invite_code:
@@ -2378,13 +2399,20 @@ def _welcome_markdown() -> str:
             "Teammates run `stash connect` if needed, then "
             "`stash workspaces join <invite_code>`."
         )
+    ws_url = _current_workspace_url()
+    workspace_link_section = (
+        f"## See your workspace\n\n"
+        f"Open it in the browser to browse transcripts and activity: {ws_url}\n\n"
+        if ws_url
+        else ""
+    )
     return f"""# You're all set up.
 
 ## What just happened
 
 Your coding agent now has the `stash` CLI on its PATH. It can read the transcripts your teammates' coding agents push to this workspace — so it knows what the rest of your team is working on.
 
-## Examples of questions your agent might want answered
+{workspace_link_section}## Examples of questions your agent might want answered
 
 - "Why did Sam bump the rate limit from 100 to 500?"
 - "Has anyone already tried fixing the memory leak in our backend?"
@@ -2523,12 +2551,21 @@ def _show_setup_complete_splash(
             "[#1e3a8a]stash workspaces join <invite_code>[/#1e3a8a]."
         )
 
+    ws_url = _current_workspace_url()
+    workspace_link_section = (
+        "[bold]See your workspace[/bold]   [dim](transcripts and team activity)[/dim]\n"
+        f"  [link={ws_url}][bold #1e3a8a]{ws_url}[/bold #1e3a8a][/link]\n"
+        "\n"
+        if ws_url
+        else ""
+    )
     intro = (
         "[bold]What just happened[/bold]\n"
         "Your coding agent now has the [bold #1e3a8a]stash[/bold #1e3a8a] CLI on its PATH.\n"
         "It can read the transcripts your teammates' coding agents push to this\n"
         "workspace — so it knows what the rest of your team is working on.\n"
         "\n"
+        f"{workspace_link_section}"
         "[bold]Examples of questions your agent might want answered[/bold]\n"
         '  [dim]"Why did Sam bump the rate limit from 100 to 500?"[/dim]\n'
         '  [dim]"Has anyone already tried fixing the memory leak in our backend?"[/dim]\n'
