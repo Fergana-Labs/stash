@@ -1,11 +1,14 @@
 {
   "name": "@stash/openclaw-plugin",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "type": "module",
-  "main": "handler.ts",
-  "description": "Stream Openclaw gateway sessions to a Stash workspace.",
+  "main": "index.ts",
+  "description": "Stream Openclaw sessions to a Stash workspace.",
+  "openclaw": {
+    "extensions": ["./index.ts"]
+  },
   "peerDependencies": {
-    "@openclaw/sdk": ">=0.9.0"
+    "openclaw": ">=2026.4.0"
   },
   "dependencies": {}
 }
