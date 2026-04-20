@@ -409,6 +409,38 @@ def _upsert_agents_md(path: Path, body: str) -> None:
     path.write_text(new)
 
 
+def _ask_codex_network_access() -> bool:
+    """Prompt the user to enable top-level `network_access` for codex's
+    workspace-write sandbox."""
+    console.print(
+        "For stash to work on codex specifically, we need to let bash ",
+        "commands make network requests so that we can upload chat ",
+        "transcripts to the remote server."
+        )
+    answer = questionary.confirm(
+        "Allow codex bash commands to make outbound network requests?",
+        default=True,
+    ).ask()
+    return True if answer is None else bool(answer)
+
+
+def _strip_top_level_sandbox(snippet: str) -> str:
+    """Call this when the user opts not to grant outbound network
+    request access. It removes the toml that grants codex outbound
+    network request access."""
+    start = snippet.find("[sandbox_workspace_write]")
+    if start == -1:
+        return snippet
+    prev_blank = snippet.rfind("\n\n", 0, start)
+    block_start = prev_blank + 2 if prev_blank != -1 else start
+    end = snippet.find("[profiles.stash]", start)
+    if end == -1:
+        return snippet[:block_start].rstrip() + "\n"
+    prev_blank_end = snippet.rfind("\n\n", start, end)
+    block_end = prev_blank_end + 2 if prev_blank_end != -1 else end
+    return snippet[:block_start] + snippet[block_end:]
+
+
 def _install_codex(force: bool) -> tuple[str, str]:
     from stashai.plugin.assets import assets_dir
 
@@ -421,26 +453,21 @@ def _install_codex(force: bool) -> tuple[str, str]:
     from string import Template
 
     cfg_path = Path.home() / ".codex" / "config.toml"
+    existing = cfg_path.read_text() if cfg_path.exists() else ""
     snippet = Template((root / "config.toml.snippet").read_text()).safe_substitute(
         PLUGIN_ROOT=str(root)
     )
-    existing = cfg_path.read_text() if cfg_path.exists() else ""
+
+    if _CODEX_MARKER not in existing:
+        if not _ask_codex_network_access():
+            snippet = _strip_top_level_sandbox(snippet)
+
     cfg_path.parent.mkdir(parents=True, exist_ok=True)
     if _CODEX_MARKER not in existing:
         with cfg_path.open("a") as f:
             if existing and not existing.endswith("\n"):
                 f.write("\n")
             f.write(f"\n{_CODEX_MARKER}\n{snippet}\n")
-    elif "[profiles.stash]" not in existing:
-        # Upgrade path: features block is already there from an older install,
-        # but the stash profile was added later. Append just the profile
-        # portion so `codex --profile stash` works without a full reinstall.
-        profile_start = snippet.find("[profiles.stash]")
-        if profile_start != -1:
-            with cfg_path.open("a") as f:
-                if not existing.endswith("\n"):
-                    f.write("\n")
-                f.write(f"\n{_CODEX_MARKER}:profile\n{snippet[profile_start:]}")
 
     agents_src = root / "AGENTS.md"
     agents_dest = Path.home() / ".codex" / "AGENTS.md"
