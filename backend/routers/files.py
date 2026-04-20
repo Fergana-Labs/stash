@@ -10,6 +10,7 @@ import logging
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile
+from fastapi.responses import RedirectResponse
 
 from ..auth import get_current_user
 from ..database import get_pool
@@ -117,6 +118,31 @@ async def get_ws_file(
     if not row:
         raise HTTPException(status_code=404, detail="File not found")
     return await _file_to_response(dict(row))
+
+
+@ws_router.get("/{file_id}/download")
+async def download_ws_file(
+    workspace_id: UUID,
+    file_id: UUID,
+    current_user: dict = Depends(get_current_user),
+):
+    """Permanent, shareable URL → 302s to a freshly-signed S3 GET.
+
+    Signed S3 URLs expire after an hour, so we can't embed them in page
+    markdown. This endpoint's URL is stable, and wiki pages can link to
+    it; each click re-signs and redirects.
+    """
+    await _check_member(workspace_id, current_user["id"])
+    pool = get_pool()
+    row = await pool.fetchrow(
+        "SELECT storage_key FROM files WHERE id = $1 AND workspace_id = $2",
+        file_id,
+        workspace_id,
+    )
+    if not row:
+        raise HTTPException(status_code=404, detail="File not found")
+    url = await storage_service.get_file_url(row["storage_key"])
+    return RedirectResponse(url=url, status_code=302)
 
 
 @ws_router.get("/{file_id}/text")
