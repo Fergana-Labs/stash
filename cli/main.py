@@ -276,10 +276,19 @@ _AGENT_BINARY = {
 }
 
 
-def _detected_agents() -> list[str]:
+def _agent_present(agent: str) -> bool:
+    """True if the agent is usable on this machine (binary on PATH or config dir exists)."""
     import shutil
 
-    return [a for a in _SUPPORTED_AGENTS if shutil.which(_AGENT_BINARY[a])]
+    if shutil.which(_AGENT_BINARY[agent]):
+        return True
+    if agent == "cursor":
+        return (Path.home() / ".cursor").is_dir()
+    return False
+
+
+def _detected_agents() -> list[str]:
+    return [a for a in _SUPPORTED_AGENTS if _agent_present(a)]
 
 
 def _entry_references(obj: object, needle: str) -> bool:
@@ -368,11 +377,9 @@ def _drop_cursor_project_rule(repo_root: Path) -> Path | None:
     """Drop a stash.mdc into <repo>/.cursor/rules/ so Cursor agents in this
     repo know the stash CLI is available. Cursor only auto-loads .mdc rules
     from project-level .cursor/rules/ — there's no global file location.
-    Returns the destination path on success, None if cursor isn't on PATH.
+    Returns the destination path on success, None if cursor isn't detected.
     """
-    import shutil
-
-    if not shutil.which(_AGENT_BINARY["cursor"]):
+    if not _agent_present("cursor"):
         return None
 
     from stashai.plugin.assets import assets_dir
