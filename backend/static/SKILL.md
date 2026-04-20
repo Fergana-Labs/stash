@@ -65,10 +65,10 @@ curl -X POST {{BASE_URL}}/api/v1/workspaces/$WS/files \
   -H "Authorization: Bearer $API_KEY" \
   -F "file=@./report.pdf"
 ```
-Response includes the file `id`, a signed `url`, and basic metadata. If the
-upload is a PDF, text-based document, or image (with `tesseract` installed
-server-side), extracted text is available at
-`GET /api/v1/workspaces/$WS/files/{id}/text`.
+Response includes the file `id`, a signed `url`, and basic metadata. For
+PDFs with embedded text and text-based documents, extracted text is
+available at `GET /api/v1/workspaces/$WS/files/{id}/text` once the
+background extractor has processed the file (typically a few seconds).
 
 ## Route Surfaces
 
@@ -125,10 +125,12 @@ Query/search:
 - `POST /files` — multipart upload (field `file`), 50 MB cap.
 - `GET  /files` — list.
 - `GET  /files/{id}` — metadata (with signed URL).
-- `GET  /files/{id}/text` — extracted text (PDF via `pypdf`; scanned PDFs and
-  images via `pytesseract` + `pypdfium2` when `tesseract` binary is present).
-  Returns `{"text": null}` for non-extractable types or when extraction is
-  unavailable. Never blocks the upload.
+- `GET  /files/{id}/text` — extracted text (PDFs with embedded text via
+  `pypdf`; plain-text / JSON / XML via UTF-8 decode). Response shape:
+  `{"text": ..., "status": "pending|processing|done|failed", "error": ...}`.
+  Image OCR and scanned-PDF OCR are not currently supported. Extraction
+  runs asynchronously after upload — poll this endpoint until `status`
+  is `done` or `failed`.
 - `DELETE /files/{id}` — best-effort S3 cleanup plus DB row delete.
 
 ## Rate Limits
@@ -140,7 +142,8 @@ Query/search:
 - Use the personal route variants for user-private resources; workspace
   variants for shared ones. Membership is enforced.
 - For extracted text on an uploaded file, poll `GET /files/{id}/text` — it
-  returns `{"text": null}` until extraction completes (currently synchronous,
-  but that is an implementation detail).
+  returns `status` alongside the text so you can distinguish "still
+  extracting" (`pending`/`processing`) from "done, no text available"
+  (`done` with `text: null`).
 - Attach files to history events rather than embedding base64 — keeps event
   payloads small and allows reuse across events.

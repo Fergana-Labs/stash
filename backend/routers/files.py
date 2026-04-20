@@ -2,8 +2,8 @@
 
 Text extraction runs out-of-band: uploads insert the file row with
 `extraction_status='pending'` and the dispatcher in backend/workers spawns a
-child process per file to run pypdf / tesseract under RLIMIT, keeping heavy
-extraction off the request path.
+short-lived child per file to run pypdf under RLIMIT, keeping extraction
+off the request path.
 """
 
 import logging

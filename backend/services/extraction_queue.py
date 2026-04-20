@@ -96,13 +96,3 @@ async def mark_failed(file_id: UUID, error: str) -> None:
         file_id,
         error[:2000],
     )
-
-
-async def pending_backlog() -> int:
-    """For observability — how many jobs are queued."""
-    pool = get_pool()
-    return await pool.fetchval(
-        "SELECT count(*) FROM files "
-        "WHERE extraction_status IN ('pending', 'processing') "
-        f"OR (extraction_status = 'failed' AND extraction_attempts < {MAX_ATTEMPTS})"
-    )

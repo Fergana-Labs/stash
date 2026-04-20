@@ -71,8 +71,3 @@ def extract_text(content: bytes, content_type: str) -> str | None:
     except Exception:
         logger.exception("file_extraction: extract_text failed for %s", content_type)
         return None
-
-
-def ocr_available() -> bool:
-    """Kept for API compatibility — OCR is currently disabled at this layer."""
-    return False
