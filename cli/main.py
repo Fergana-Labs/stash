@@ -877,17 +877,13 @@ def nb_create(
     name: str = typer.Argument(...),
     workspace_id: str = typer.Option(None, "--ws"),
     description: str = typer.Option(""),
-    personal: bool = typer.Option(False, "--personal"),
     as_json: bool = typer.Option(False, "--json"),
 ):
     """Create a notebook collection."""
     with _client() as c:
         try:
-            if personal:
-                data = c.create_personal_notebook(name, description=description)
-            else:
-                ws = workspace_id or _default_workspace()
-                data = c.create_notebook(ws, name, description=description)
+            ws = workspace_id or _default_workspace()
+            data = c.create_notebook(ws, name, description=description)
         except StashError as e:
             _err(e)
     if _use_json(as_json):
@@ -1253,16 +1249,13 @@ def _resolve_sort_name(table: dict, sort_by: str) -> str:
 def tables_list(
     workspace_id: str = typer.Option(None, "--ws"),
     all_: bool = typer.Option(False, "--all"),
-    personal: bool = typer.Option(False, "--personal"),
     as_json: bool = typer.Option(False, "--json"),
 ):
-    """List tables. --all for cross-workspace, --personal for personal tables."""
+    """List tables. --all for cross-workspace."""
     with _client() as c:
         try:
             if all_:
                 data = c.all_tables()
-            elif personal:
-                data = c.list_personal_tables()
             else:
                 data = c.list_tables(workspace_id or _default_workspace())
         except StashError as e:
@@ -1288,18 +1281,14 @@ def tables_create(
     workspace_id: str = typer.Option(None, "--ws"),
     description: str = typer.Option(""),
     columns: str = typer.Option(None, "--columns", help='JSON: [{"name":"Col","type":"text"}]'),
-    personal: bool = typer.Option(False, "--personal"),
     as_json: bool = typer.Option(False, "--json"),
 ):
     """Create a table. --columns accepts JSON array of {name, type, options?}."""
     cols = json.loads(columns) if columns else []
     with _client() as c:
         try:
-            if personal:
-                data = c.create_personal_table(name, description=description, columns=cols)
-            else:
-                ws = workspace_id or _default_workspace()
-                data = c.create_table(ws, name, description=description, columns=cols)
+            ws = workspace_id or _default_workspace()
+            data = c.create_table(ws, name, description=description, columns=cols)
         except StashError as e:
             _err(e)
     if _use_json(as_json):
@@ -1728,36 +1717,33 @@ def tables_delete(
 # Files
 # ===========================================================================
 
-files_app = typer.Typer(help="Files — upload, list, and remove workspace or personal files.")
+files_app = typer.Typer(help="Files — upload, list, and remove workspace files.")
 app.add_typer(files_app, name="files")
 
 
-def _upload_path(c: StashClient, workspace_id: str | None, path: str) -> dict:
-    """Upload `path` to workspace (if given) or personal files. Returns FileResponse dict."""
+def _upload_path(c: StashClient, workspace_id: str, path: str) -> dict:
+    """Upload `path` to the given workspace. Returns FileResponse dict."""
     if not Path(path).is_file():
         console.print(f"[red]Not a file: {path}[/red]")
         raise typer.Exit(1)
-    if workspace_id:
-        return c.upload_ws_file(workspace_id, path)
-    return c.upload_personal_file(path)
+    return c.upload_ws_file(workspace_id, path)
 
 
-def _get_file_meta(c: StashClient, workspace_id: str | None, file_id: str) -> dict:
-    if workspace_id:
-        return c.get_ws_file(workspace_id, file_id)
-    return c.get_personal_file(file_id)
+def _get_file_meta(c: StashClient, workspace_id: str, file_id: str) -> dict:
+    return c.get_ws_file(workspace_id, file_id)
 
 
 @files_app.command("upload")
 def files_upload(
     path: str = typer.Argument(..., help="Local file path to upload."),
-    workspace_id: str = typer.Option(None, "--ws", help="Workspace id; omit for personal."),
+    workspace_id: str = typer.Option(None, "--ws"),
     as_json: bool = typer.Option(False, "--json"),
 ):
-    """Upload a file to a workspace (with --ws) or to your personal files."""
+    """Upload a file to a workspace."""
+    ws = workspace_id or _default_workspace()
     with _client() as c:
         try:
-            data = _upload_path(c, workspace_id, path)
+            data = _upload_path(c, ws, path)
         except StashError as e:
             _err(e)
     if _use_json(as_json):
@@ -1772,10 +1758,11 @@ def files_list(
     workspace_id: str = typer.Option(None, "--ws"),
     as_json: bool = typer.Option(False, "--json"),
 ):
-    """List files in a workspace (with --ws) or your personal files."""
+    """List files in a workspace."""
+    ws = workspace_id or _default_workspace()
     with _client() as c:
         try:
-            data = c.list_ws_files(workspace_id) if workspace_id else c.list_personal_files()
+            data = c.list_ws_files(ws)
         except StashError as e:
             _err(e)
     if _use_json(as_json):
@@ -1798,12 +1785,10 @@ def files_rm(
     workspace_id: str = typer.Option(None, "--ws"),
 ):
     """Delete a file."""
+    ws = workspace_id or _default_workspace()
     with _client() as c:
         try:
-            if workspace_id:
-                c.delete_ws_file(workspace_id, file_id)
-            else:
-                c.delete_personal_file(file_id)
+            c.delete_ws_file(ws, file_id)
         except StashError as e:
             _err(e)
     console.print("[green]File deleted.[/green]")
@@ -1815,13 +1800,10 @@ def files_text(
     workspace_id: str = typer.Option(None, "--ws"),
 ):
     """Print extracted text for a file (PDFs with embedded text, or plain text)."""
+    ws = workspace_id or _default_workspace()
     with _client() as c:
         try:
-            data = (
-                c.get_ws_file_text(workspace_id, file_id)
-                if workspace_id
-                else c.get_personal_file_text(file_id)
-            )
+            data = c.get_ws_file_text(ws, file_id)
         except StashError as e:
             _err(e)
     text = data.get("text") if isinstance(data, dict) else None

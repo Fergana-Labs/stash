@@ -188,12 +188,6 @@ class StashClient:
     def delete_notebook(self, workspace_id: str, notebook_id: str) -> None:
         self._delete(f"/api/v1/workspaces/{workspace_id}/notebooks/{notebook_id}")
 
-    def create_personal_notebook(self, name: str, description: str = "") -> dict:
-        return self._post("/api/v1/notebooks", json={"name": name, "description": description})
-
-    def list_personal_notebooks(self) -> list:
-        return self._list("/api/v1/notebooks", "notebooks")
-
     # --- Notebook Pages ---
 
     def create_page(
@@ -228,20 +222,6 @@ class StashClient:
     def delete_page(self, workspace_id: str, notebook_id: str, page_id: str) -> None:
         self._delete(f"/api/v1/workspaces/{workspace_id}/notebooks/{notebook_id}/pages/{page_id}")
 
-    def create_personal_page(self, notebook_id: str, name: str, content: str = "") -> dict:
-        return self._post(
-            f"/api/v1/notebooks/{notebook_id}/pages", json={"name": name, "content": content}
-        )
-
-    def list_personal_page_tree(self, notebook_id: str) -> dict:
-        return self._get(f"/api/v1/notebooks/{notebook_id}/pages")
-
-    def get_personal_page(self, notebook_id: str, page_id: str) -> dict:
-        return self._get(f"/api/v1/notebooks/{notebook_id}/pages/{page_id}")
-
-    def update_personal_page(self, notebook_id: str, page_id: str, **kwargs) -> dict:
-        return self._patch(f"/api/v1/notebooks/{notebook_id}/pages/{page_id}", json=kwargs)
-
     # --- Notebook Folders ---
 
     def create_folder(self, workspace_id: str, notebook_id: str, name: str) -> dict:
@@ -249,9 +229,6 @@ class StashClient:
             f"/api/v1/workspaces/{workspace_id}/notebooks/{notebook_id}/folders",
             json={"name": name},
         )
-
-    def create_personal_folder(self, notebook_id: str, name: str) -> dict:
-        return self._post(f"/api/v1/notebooks/{notebook_id}/folders", json={"name": name})
 
     # --- History (workspace events) ---
 
@@ -321,32 +298,17 @@ class StashClient:
     def upload_ws_file(self, workspace_id: str, file_path: str) -> dict:
         return self._upload(f"/api/v1/workspaces/{workspace_id}/files", file_path)
 
-    def upload_personal_file(self, file_path: str) -> dict:
-        return self._upload("/api/v1/files", file_path)
-
     def list_ws_files(self, workspace_id: str) -> list:
         return self._list(f"/api/v1/workspaces/{workspace_id}/files", "files")
-
-    def list_personal_files(self) -> list:
-        return self._list("/api/v1/files", "files")
 
     def get_ws_file(self, workspace_id: str, file_id: str) -> dict:
         return self._get(f"/api/v1/workspaces/{workspace_id}/files/{file_id}")
 
-    def get_personal_file(self, file_id: str) -> dict:
-        return self._get(f"/api/v1/files/{file_id}")
-
     def delete_ws_file(self, workspace_id: str, file_id: str) -> None:
         self._delete(f"/api/v1/workspaces/{workspace_id}/files/{file_id}")
 
-    def delete_personal_file(self, file_id: str) -> None:
-        self._delete(f"/api/v1/files/{file_id}")
-
     def get_ws_file_text(self, workspace_id: str, file_id: str) -> dict:
         return self._get(f"/api/v1/workspaces/{workspace_id}/files/{file_id}/text")
-
-    def get_personal_file_text(self, file_id: str) -> dict:
-        return self._get(f"/api/v1/files/{file_id}/text")
 
     # --- Decks ---
 
@@ -380,49 +342,32 @@ class StashClient:
     def delete_deck(self, workspace_id: str, deck_id: str) -> None:
         self._delete(f"/api/v1/workspaces/{workspace_id}/decks/{deck_id}")
 
-    def create_personal_deck(
-        self, name: str, description: str = "", html_content: str = "", deck_type: str = "freeform"
-    ) -> dict:
-        return self._post(
-            "/api/v1/decks",
-            json={
-                "name": name,
-                "description": description,
-                "html_content": html_content,
-                "deck_type": deck_type,
-            },
-        )
-
-    def list_personal_decks(self) -> list:
-        return self._list("/api/v1/decks", "decks")
-
-    def get_personal_deck(self, deck_id: str) -> dict:
-        return self._get(f"/api/v1/decks/{deck_id}")
-
-    def update_personal_deck(self, deck_id: str, **kwargs) -> dict:
-        return self._patch(f"/api/v1/decks/{deck_id}", json=kwargs)
-
     # --- Deck Share Links ---
 
-    def create_deck_share(self, deck_id: str, workspace_id: str | None = None, **kwargs) -> dict:
-        base = f"/api/v1/workspaces/{workspace_id}/decks" if workspace_id else "/api/v1/decks"
-        return self._post(f"{base}/{deck_id}/shares", json=kwargs)
+    def create_deck_share(self, workspace_id: str, deck_id: str, **kwargs) -> dict:
+        return self._post(
+            f"/api/v1/workspaces/{workspace_id}/decks/{deck_id}/shares", json=kwargs
+        )
 
-    def list_deck_shares(self, deck_id: str, workspace_id: str | None = None) -> list:
-        base = f"/api/v1/workspaces/{workspace_id}/decks" if workspace_id else "/api/v1/decks"
-        return self._list(f"{base}/{deck_id}/shares", "shares")
+    def list_deck_shares(self, workspace_id: str, deck_id: str) -> list:
+        return self._list(
+            f"/api/v1/workspaces/{workspace_id}/decks/{deck_id}/shares", "shares"
+        )
 
     def update_deck_share(
-        self, deck_id: str, share_id: str, workspace_id: str | None = None, **kwargs
+        self, workspace_id: str, deck_id: str, share_id: str, **kwargs
     ) -> dict:
-        base = f"/api/v1/workspaces/{workspace_id}/decks" if workspace_id else "/api/v1/decks"
-        return self._put(f"{base}/{deck_id}/shares/{share_id}", json=kwargs)
+        return self._put(
+            f"/api/v1/workspaces/{workspace_id}/decks/{deck_id}/shares/{share_id}",
+            json=kwargs,
+        )
 
     def get_share_analytics(
-        self, deck_id: str, share_id: str, workspace_id: str | None = None
+        self, workspace_id: str, deck_id: str, share_id: str
     ) -> dict:
-        base = f"/api/v1/workspaces/{workspace_id}/decks" if workspace_id else "/api/v1/decks"
-        return self._get(f"{base}/{deck_id}/shares/{share_id}/analytics")
+        return self._get(
+            f"/api/v1/workspaces/{workspace_id}/decks/{deck_id}/shares/{share_id}/analytics"
+        )
 
     # --- Webhooks ---
 
@@ -451,15 +396,6 @@ class StashClient:
 
     def delete_table(self, workspace_id: str, table_id: str) -> None:
         self._delete(f"/api/v1/workspaces/{workspace_id}/tables/{table_id}")
-
-    def create_personal_table(
-        self, name: str, description: str = "", columns: list | None = None
-    ) -> dict:
-        body: dict = {"name": name, "description": description, "columns": columns or []}
-        return self._post("/api/v1/tables", json=body)
-
-    def list_personal_tables(self) -> list:
-        return self._list("/api/v1/tables", "tables")
 
     def all_tables(self) -> list:
         return self._list("/api/v1/me/tables", "tables")

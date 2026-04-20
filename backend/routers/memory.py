@@ -18,7 +18,6 @@ from ..models import (
 from ..services import memory_service, workspace_service
 
 ws_router = APIRouter(prefix="/api/v1/workspaces/{workspace_id}/memory", tags=["memory"])
-personal_router = APIRouter(prefix="/api/v1/memory", tags=["personal_memory"])
 
 
 # --- Shared auth helpers ---
@@ -151,97 +150,3 @@ async def list_ws_agent_names(
     return {"agent_names": [r["agent_name"] for r in rows]}
 
 
-# ===== Personal event endpoints =====
-
-
-@personal_router.delete("/agents/{agent_name}", status_code=204)
-async def delete_personal_agent(
-    agent_name: str,
-    current_user: dict = Depends(get_current_user),
-):
-    """Delete all personal events for an agent."""
-    await memory_service.delete_personal_agent_events(agent_name, current_user["id"])
-
-
-@personal_router.post("/events", response_model=HistoryEventResponse, status_code=201)
-async def push_personal_event(
-    req: HistoryEventCreateRequest,
-    current_user: dict = Depends(get_current_user),
-):
-    attachments = [a.model_dump(mode="json") for a in req.attachments] if req.attachments else None
-    event = await memory_service.push_event(
-        None,
-        agent_name=req.agent_name,
-        event_type=req.event_type,
-        content=req.content,
-        created_by=current_user["id"],
-        session_id=req.session_id,
-        tool_name=req.tool_name,
-        metadata=req.metadata,
-        attachments=attachments,
-        created_at=req.created_at,
-    )
-    return HistoryEventResponse(**event)
-
-
-@personal_router.post("/events/batch", response_model=list[HistoryEventResponse], status_code=201)
-async def push_personal_events_batch(
-    req: HistoryEventBatchRequest,
-    current_user: dict = Depends(get_current_user),
-):
-    events_data = [e.model_dump() for e in req.events]
-    events = await memory_service.push_events_batch(None, current_user["id"], events_data)
-    return [HistoryEventResponse(**e) for e in events]
-
-
-@personal_router.get("/events", response_model=HistoryEventListResponse)
-async def query_personal_events(
-    agent_name: str | None = Query(None),
-    session_id: str | None = Query(None),
-    event_type: str | None = Query(None),
-    after: str | None = Query(None),
-    before: str | None = Query(None),
-    limit: int = Query(50, ge=1, le=200),
-    current_user: dict = Depends(get_current_user),
-):
-    events, has_more = await memory_service.query_personal_events(
-        current_user["id"],
-        agent_name=agent_name,
-        session_id=session_id,
-        event_type=event_type,
-        after=after,
-        before=before,
-        limit=limit,
-    )
-    return HistoryEventListResponse(
-        events=[HistoryEventResponse(**e) for e in events],
-        has_more=has_more,
-    )
-
-
-@personal_router.get("/events/search", response_model=HistoryEventListResponse)
-async def search_personal_events(
-    q: str = Query(..., min_length=1),
-    limit: int = Query(50, ge=1, le=200),
-    current_user: dict = Depends(get_current_user),
-):
-    events = await memory_service.search_personal_events(
-        current_user["id"],
-        q,
-        limit=limit,
-    )
-    return HistoryEventListResponse(
-        events=[HistoryEventResponse(**e) for e in events],
-        has_more=False,
-    )
-
-
-@personal_router.get("/events/{event_id}", response_model=HistoryEventResponse)
-async def get_personal_event(
-    event_id: UUID,
-    current_user: dict = Depends(get_current_user),
-):
-    event = await memory_service.get_personal_event(event_id, current_user["id"])
-    if not event:
-        raise HTTPException(status_code=404, detail="Event not found")
-    return HistoryEventResponse(**event)

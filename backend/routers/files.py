@@ -1,4 +1,4 @@
-"""Files router: workspace and personal file upload/serve/delete.
+"""Files router: workspace file upload/serve/delete.
 
 Text extraction runs out-of-band: uploads insert the file row with
 `extraction_status='pending'` and the dispatcher in backend/workers spawns a
@@ -19,7 +19,6 @@ from ..services import storage_service, workspace_service
 logger = logging.getLogger(__name__)
 
 ws_router = APIRouter(prefix="/api/v1/workspaces/{workspace_id}/files", tags=["files"])
-personal_router = APIRouter(prefix="/api/v1/files", tags=["personal_files"])
 
 MAX_FILE_SIZE = 50 * 1024 * 1024  # 50 MB
 
@@ -167,112 +166,3 @@ async def delete_ws_file(
     )
 
 
-# ===== Personal file endpoints =====
-
-
-@personal_router.post("", response_model=FileResponse, status_code=201)
-async def upload_personal_file(
-    file: UploadFile,
-    current_user: dict = Depends(get_current_user),
-):
-    if not storage_service.is_configured():
-        raise HTTPException(status_code=503, detail="File storage is not configured")
-
-    content = await file.read()
-    if len(content) > MAX_FILE_SIZE:
-        raise HTTPException(status_code=413, detail="File too large (max 50 MB)")
-
-    content_type = file.content_type or "application/octet-stream"
-    filename = file.filename or "upload"
-
-    storage_key = await storage_service.upload_file(
-        None,
-        filename,
-        content,
-        content_type,
-    )
-
-    pool = get_pool()
-    row = await pool.fetchrow(
-        "INSERT INTO files (name, content_type, size_bytes, storage_key, uploaded_by) "
-        "VALUES ($1, $2, $3, $4, $5) "
-        "RETURNING id, workspace_id, name, content_type, size_bytes, storage_key, uploaded_by, created_at",
-        filename,
-        content_type,
-        len(content),
-        storage_key,
-        current_user["id"],
-    )
-    return await _file_to_response(dict(row))
-
-
-@personal_router.get("", response_model=FileListResponse)
-async def list_personal_files(
-    current_user: dict = Depends(get_current_user),
-):
-    pool = get_pool()
-    rows = await pool.fetch(
-        "SELECT id, workspace_id, name, content_type, size_bytes, storage_key, uploaded_by, created_at "
-        "FROM files WHERE workspace_id IS NULL AND uploaded_by = $1 ORDER BY created_at DESC",
-        current_user["id"],
-    )
-    files = [await _file_to_response(dict(r)) for r in rows]
-    return FileListResponse(files=files)
-
-
-@personal_router.get("/{file_id}", response_model=FileResponse)
-async def get_personal_file(
-    file_id: UUID,
-    current_user: dict = Depends(get_current_user),
-):
-    pool = get_pool()
-    row = await pool.fetchrow(
-        "SELECT id, workspace_id, name, content_type, size_bytes, storage_key, uploaded_by, created_at "
-        "FROM files WHERE id = $1 AND workspace_id IS NULL AND uploaded_by = $2",
-        file_id,
-        current_user["id"],
-    )
-    if not row:
-        raise HTTPException(status_code=404, detail="File not found")
-    return await _file_to_response(dict(row))
-
-
-@personal_router.get("/{file_id}/text")
-async def get_personal_file_text(
-    file_id: UUID,
-    current_user: dict = Depends(get_current_user),
-):
-    pool = get_pool()
-    row = await pool.fetchrow(
-        "SELECT extracted_text, extraction_status, extraction_error FROM files "
-        "WHERE id = $1 AND workspace_id IS NULL AND uploaded_by = $2",
-        file_id,
-        current_user["id"],
-    )
-    if not row:
-        raise HTTPException(status_code=404, detail="File not found")
-    return {
-        "text": row["extracted_text"],
-        "status": row["extraction_status"],
-        "error": row["extraction_error"],
-    }
-
-
-@personal_router.delete("/{file_id}", status_code=204)
-async def delete_personal_file(
-    file_id: UUID,
-    current_user: dict = Depends(get_current_user),
-):
-    pool = get_pool()
-    row = await pool.fetchrow(
-        "SELECT storage_key FROM files WHERE id = $1 AND workspace_id IS NULL AND uploaded_by = $2",
-        file_id,
-        current_user["id"],
-    )
-    if not row:
-        raise HTTPException(status_code=404, detail="File not found")
-    try:
-        await storage_service.delete_file(row["storage_key"])
-    except Exception:
-        pass
-    await pool.execute("DELETE FROM files WHERE id = $1", file_id)

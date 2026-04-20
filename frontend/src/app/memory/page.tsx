@@ -289,13 +289,10 @@ function MemoryPageInner() {
                   wsId={wsId}
                   onSelectSession={(sid) => setSelectedSession(sid)}
                   onDelete={async () => {
+                    if (!wsId) return;
                     try {
                       const { apiFetch } = await import("../../lib/api");
-                      if (wsId) {
-                        await apiFetch(`/api/v1/workspaces/${wsId}/memory/agents/${encodeURIComponent(selectedAgent)}`, { method: "DELETE" });
-                      } else {
-                        await apiFetch(`/api/v1/memory/agents/${encodeURIComponent(selectedAgent)}`, { method: "DELETE" });
-                      }
+                      await apiFetch(`/api/v1/workspaces/${wsId}/memory/agents/${encodeURIComponent(selectedAgent)}`, { method: "DELETE" });
                       setSelectedAgent(null);
                       loadEvents();
                     } catch { /* ignore */ }

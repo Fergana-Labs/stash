@@ -27,12 +27,10 @@ from ..services import notebook_service, permission_service, workspace_service
 from ..services.notebook_service import DuplicatePageName
 
 ws_router = APIRouter(prefix="/api/v1/workspaces/{workspace_id}/notebooks", tags=["notebooks"])
-personal_router = APIRouter(prefix="/api/v1/notebooks", tags=["personal_notebooks"])
 
 # Flat cross-notebook page listings for wiki-link resolution. Registered
 # separately because the URL sits next to /notebooks, not under it.
 ws_pages_router = APIRouter(prefix="/api/v1/workspaces/{workspace_id}", tags=["notebooks"])
-personal_pages_router = APIRouter(prefix="/api/v1", tags=["personal_notebooks"])
 
 
 @ws_pages_router.get("/pages", response_model=WorkspacePageListResponse)
@@ -44,15 +42,6 @@ async def list_ws_workspace_pages(
     if not await workspace_service.is_member(workspace_id, current_user["id"]):
         raise HTTPException(status_code=403, detail="Not a workspace member")
     rows = await notebook_service.list_workspace_pages(workspace_id)
-    return WorkspacePageListResponse(pages=[WorkspacePageEntry(**r) for r in rows])
-
-
-@personal_pages_router.get("/pages", response_model=WorkspacePageListResponse)
-async def list_personal_pages_route(
-    current_user: dict = Depends(get_current_user),
-):
-    """Every page across every personal notebook owned by the user."""
-    rows = await notebook_service.list_personal_pages(current_user["id"])
     return WorkspacePageListResponse(pages=[WorkspacePageEntry(**r) for r in rows])
 
 
@@ -68,13 +57,6 @@ async def _check_ws_notebook(workspace_id: UUID, notebook_id: UUID) -> dict:
     """Verify notebook exists and belongs to the given workspace."""
     nb = await notebook_service.get_notebook(notebook_id)
     if not nb or nb.get("workspace_id") != workspace_id:
-        raise HTTPException(status_code=404, detail="Notebook not found")
-    return nb
-
-
-async def _check_notebook_owner(notebook_id: UUID, user_id: UUID) -> dict:
-    nb = await notebook_service.get_notebook(notebook_id)
-    if not nb or nb.get("workspace_id") is not None or nb.get("created_by") != user_id:
         raise HTTPException(status_code=404, detail="Notebook not found")
     return nb
 
@@ -417,226 +399,3 @@ async def remove_share(
     await permission_service.remove_share("notebook", notebook_id, user_id)
 
 
-# ===== Personal notebook endpoints =====
-
-
-@personal_router.post("", response_model=NotebookResponse, status_code=201)
-async def create_personal_notebook(
-    req: NotebookCreateRequest,
-    current_user: dict = Depends(get_current_user),
-):
-    try:
-        nb = await notebook_service.create_notebook(
-            None,
-            req.name,
-            req.description,
-            current_user["id"],
-        )
-    except Exception as e:
-        if "unique" in str(e).lower():
-            raise HTTPException(status_code=409, detail="Notebook name already exists")
-        raise
-    return NotebookResponse(**nb)
-
-
-@personal_router.get("", response_model=NotebookListResponse)
-async def list_personal_notebooks(current_user: dict = Depends(get_current_user)):
-    nbs = await notebook_service.list_notebooks(None, user_id=current_user["id"])
-    return NotebookListResponse(notebooks=[NotebookResponse(**n) for n in nbs])
-
-
-@personal_router.get("/{notebook_id}", response_model=NotebookResponse)
-async def get_personal_notebook(
-    notebook_id: UUID,
-    current_user: dict = Depends(get_current_user),
-):
-    nb = await _check_notebook_owner(notebook_id, current_user["id"])
-    return NotebookResponse(**nb)
-
-
-@personal_router.delete("/{notebook_id}", status_code=204)
-async def delete_personal_notebook(
-    notebook_id: UUID,
-    current_user: dict = Depends(get_current_user),
-):
-    await _check_notebook_owner(notebook_id, current_user["id"])
-    await notebook_service.delete_notebook(notebook_id)
-
-
-@personal_router.get("/{notebook_id}/pages", response_model=PageTreeResponse)
-async def list_personal_pages(
-    notebook_id: UUID,
-    current_user: dict = Depends(get_current_user),
-):
-    await _check_notebook_owner(notebook_id, current_user["id"])
-    tree = await notebook_service.list_page_tree(notebook_id)
-    return PageTreeResponse(**tree)
-
-
-@personal_router.post("/{notebook_id}/pages", response_model=PageResponse, status_code=201)
-async def create_personal_page(
-    notebook_id: UUID,
-    req: PageCreateRequest,
-    current_user: dict = Depends(get_current_user),
-):
-    await _check_notebook_owner(notebook_id, current_user["id"])
-    try:
-        page = await notebook_service.create_page(
-            notebook_id,
-            req.name,
-            current_user["id"],
-            folder_id=req.folder_id,
-            content=req.content,
-        )
-    except DuplicatePageName as e:
-        raise HTTPException(status_code=409, detail=str(e))
-    return PageResponse(**page)
-
-
-@personal_router.get("/{notebook_id}/pages/semantic-search")
-async def semantic_search_personal_pages(
-    notebook_id: UUID,
-    q: str,
-    limit: int = 20,
-    current_user: dict = Depends(get_current_user),
-):
-    await _check_notebook_owner(notebook_id, current_user["id"])
-    from ..services import embeddings as embedding_service
-
-    if not embedding_service.is_configured():
-        raise HTTPException(status_code=503, detail="Embedding service not configured")
-    query_embedding = await embedding_service.embed_text(q)
-    if query_embedding is None:
-        raise HTTPException(status_code=500, detail="Failed to embed query")
-    pages = await notebook_service.search_pages_vector(notebook_id, query_embedding, limit)
-    return {"pages": pages}
-
-
-@personal_router.get("/{notebook_id}/pages/{page_id}", response_model=PageResponse)
-async def get_personal_page(
-    notebook_id: UUID,
-    page_id: UUID,
-    current_user: dict = Depends(get_current_user),
-):
-    await _check_notebook_owner(notebook_id, current_user["id"])
-    page = await notebook_service.get_page(page_id, notebook_id)
-    if not page:
-        raise HTTPException(status_code=404, detail="Page not found")
-    return PageResponse(**page)
-
-
-@personal_router.patch("/{notebook_id}/pages/{page_id}", response_model=PageResponse)
-async def update_personal_page(
-    notebook_id: UUID,
-    page_id: UUID,
-    req: PageUpdateRequest,
-    current_user: dict = Depends(get_current_user),
-):
-    await _check_notebook_owner(notebook_id, current_user["id"])
-    try:
-        page = await notebook_service.update_page(
-            page_id,
-            notebook_id,
-            current_user["id"],
-            name=req.name,
-            folder_id=req.folder_id,
-            content=req.content,
-            move_to_root=req.move_to_root,
-        )
-    except DuplicatePageName as e:
-        raise HTTPException(status_code=409, detail=str(e))
-    if not page:
-        raise HTTPException(status_code=404, detail="Page not found")
-    return PageResponse(**page)
-
-
-@personal_router.delete("/{notebook_id}/pages/{page_id}", status_code=204)
-async def delete_personal_page(
-    notebook_id: UUID,
-    page_id: UUID,
-    current_user: dict = Depends(get_current_user),
-):
-    await _check_notebook_owner(notebook_id, current_user["id"])
-    deleted = await notebook_service.delete_page(page_id, notebook_id)
-    if not deleted:
-        raise HTTPException(status_code=404, detail="Page not found")
-
-
-# --- Personal wiki features ---
-
-
-@personal_router.get("/{notebook_id}/pages/{page_id}/backlinks")
-async def get_personal_backlinks(
-    notebook_id: UUID,
-    page_id: UUID,
-    current_user: dict = Depends(get_current_user),
-):
-    await _check_notebook_owner(notebook_id, current_user["id"])
-    links = await notebook_service.get_backlinks(page_id)
-    return {"backlinks": links}
-
-
-@personal_router.get("/{notebook_id}/pages/{page_id}/outlinks")
-async def get_personal_outlinks(
-    notebook_id: UUID,
-    page_id: UUID,
-    current_user: dict = Depends(get_current_user),
-):
-    await _check_notebook_owner(notebook_id, current_user["id"])
-    links = await notebook_service.get_outlinks(page_id)
-    return {"outlinks": links}
-
-
-@personal_router.get("/{notebook_id}/graph")
-async def get_personal_page_graph(
-    notebook_id: UUID,
-    current_user: dict = Depends(get_current_user),
-):
-    await _check_notebook_owner(notebook_id, current_user["id"])
-    return await notebook_service.get_page_graph(notebook_id)
-
-
-@personal_router.post("/{notebook_id}/folders", response_model=FolderResponse, status_code=201)
-async def create_personal_folder(
-    notebook_id: UUID,
-    req: FolderCreateRequest,
-    current_user: dict = Depends(get_current_user),
-):
-    await _check_notebook_owner(notebook_id, current_user["id"])
-    try:
-        folder = await notebook_service.create_folder(
-            notebook_id,
-            req.name,
-            current_user["id"],
-        )
-    except Exception as e:
-        if "unique" in str(e).lower():
-            raise HTTPException(status_code=409, detail="Folder name already exists")
-        raise
-    return FolderResponse(**folder)
-
-
-@personal_router.patch("/{notebook_id}/folders/{folder_id}", response_model=FolderResponse)
-async def rename_personal_folder(
-    notebook_id: UUID,
-    folder_id: UUID,
-    req: FolderUpdateRequest,
-    current_user: dict = Depends(get_current_user),
-):
-    await _check_notebook_owner(notebook_id, current_user["id"])
-    folder = await notebook_service.rename_folder(folder_id, notebook_id, req.name)
-    if not folder:
-        raise HTTPException(status_code=404, detail="Folder not found")
-    return FolderResponse(**folder)
-
-
-@personal_router.delete("/{notebook_id}/folders/{folder_id}", status_code=204)
-async def delete_personal_folder(
-    notebook_id: UUID,
-    folder_id: UUID,
-    current_user: dict = Depends(get_current_user),
-):
-    await _check_notebook_owner(notebook_id, current_user["id"])
-    deleted = await notebook_service.delete_folder(folder_id, notebook_id)
-    if not deleted:
-        raise HTTPException(status_code=404, detail="Folder not found")

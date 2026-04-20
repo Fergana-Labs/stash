@@ -684,17 +684,20 @@ export async function removeShare(
 // --- Files ---
 
 export async function uploadFile(
-  workspaceId: string | null,
+  workspaceId: string,
   file: File
 ): Promise<FileInfo> {
   const token = getToken();
   const formData = new FormData();
   formData.append("file", file);
-  const resp = await fetch(`${API_BASE}${scope(workspaceId)}/files`, {
-    method: "POST",
-    headers: token ? { Authorization: `Bearer ${token}` } : {},
-    body: formData,
-  });
+  const resp = await fetch(
+    `${API_BASE}/api/v1/workspaces/${workspaceId}/files`,
+    {
+      method: "POST",
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      body: formData,
+    }
+  );
   if (!resp.ok) {
     const detail = await resp.json().then((d) => d.detail).catch(() => resp.statusText);
     throw new Error(detail);

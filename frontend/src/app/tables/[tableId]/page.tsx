@@ -390,8 +390,8 @@ function TableEditorPageInner() {
     } catch (err) { setError(err instanceof Error ? err.message : "Failed to import"); }
   };
   const handleCsvExport = () => {
-    if (!table) return;
-    const base = wsId ? `/api/v1/workspaces/${wsId}/tables` : "/api/v1/tables";
+    if (!table || !wsId) return;
+    const base = `/api/v1/workspaces/${wsId}/tables`;
     const p = new URLSearchParams();
     if (sortBy) { p.set("sort_by", sortBy); p.set("sort_order", sortOrder); }
     if (filters.length > 0) p.set("filters", JSON.stringify(filters));

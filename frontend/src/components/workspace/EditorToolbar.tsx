@@ -49,10 +49,10 @@ export default function EditorToolbar({ editor, workspaceId }: EditorToolbarProp
 
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (!file || !editor) return;
+    if (!file || !editor || !workspaceId) return;
     setUploading(true);
     try {
-      const result = await uploadFile(workspaceId ?? null, file);
+      const result = await uploadFile(workspaceId, file);
       if (result.content_type.startsWith("image/")) {
         editor.chain().focus().setImage({ src: result.url, alt: result.name }).run();
       } else {
