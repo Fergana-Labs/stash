@@ -419,20 +419,17 @@ def _ask_codex_network_access() -> bool:
         "For stash to work, we need to let bash commands make network requests",
         "So that we can upload chat transcripts to the remote server."
         )
-    try:
-        answer = questionary.confirm(
-            "Allow codex bash commands to make outbound network requests?",
-            default=True,
-        ).ask()
-    except Exception:
-        return True
+    answer = questionary.confirm(
+        "Allow codex bash commands to make outbound network requests?",
+        default=True,
+    ).ask()
     return True if answer is None else bool(answer)
 
 
 def _strip_top_level_sandbox(snippet: str) -> str:
-    """Remove the `[sandbox_workspace_write]` top-level block (and its
-    explanatory comment) from the snippet, leaving `[profiles.stash]`
-    and everything else intact."""
+    """Call this when the user opts not to grant outbound network
+    request access. It removes the toml that grants codex outbound
+    network request access."""
     start = snippet.find("[sandbox_workspace_write]")
     if start == -1:
         return snippet
@@ -476,33 +473,6 @@ def _install_codex(force: bool) -> tuple[str, str]:
             if existing and not existing.endswith("\n"):
                 f.write("\n")
             f.write(f"\n{_CODEX_MARKER}\n{snippet}\n")
-    else:
-        # Upgrade paths: append any later-added sub-blocks the user is missing.
-        # Each block is matched on its TOML header so a user who manually
-        # edited one in doesn't get a duplicate.
-        appended = ""
-
-        if "[sandbox_workspace_write]" not in existing and "[sandbox_workspace_write]" in snippet:
-            # Slice out the top-level sandbox block from the snippet: from its
-            # preceding comment to just before the `[profiles.stash]` header.
-            sb_header = snippet.find("[sandbox_workspace_write]")
-            profile_header = snippet.find("[profiles.stash]")
-            if sb_header != -1 and profile_header != -1:
-                prev_blank = snippet.rfind("\n\n", 0, sb_header)
-                block_start = prev_blank + 2 if prev_blank != -1 else sb_header
-                block = snippet[block_start:profile_header].rstrip() + "\n"
-                appended += f"\n{_CODEX_MARKER}:sandbox\n{block}"
-
-        if "[profiles.stash]" not in existing:
-            profile_start = snippet.find("[profiles.stash]")
-            if profile_start != -1:
-                appended += f"\n{_CODEX_MARKER}:profile\n{snippet[profile_start:]}"
-
-        if appended:
-            with cfg_path.open("a") as f:
-                if not existing.endswith("\n"):
-                    f.write("\n")
-                f.write(appended)
 
     agents_src = root / "AGENTS.md"
     agents_dest = Path.home() / ".codex" / "AGENTS.md"
