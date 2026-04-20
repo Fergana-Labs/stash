@@ -296,9 +296,11 @@ def _entry_references(obj: object, needle: str) -> bool:
 def _merge_json_hooks(dest: Path, template: str, plugin_root: Path) -> str:
     """Merge stash hook entries into a JSON hooks file under each event array.
 
-    Stash-owned entries are identified by the PLUGIN_ROOT path embedded in their
-    command strings — so re-runs replace our entries in place and never touch
-    user-added entries. Returns 'installed', 'skipped', or 'failed'.
+    Stash-owned entries are identified by the shared `stashai/plugin/assets/<agent>`
+    suffix embedded in their command strings — so re-runs sweep out every
+    stash-owned entry (including stale ones left by old dev checkouts or prior
+    pipx versions) and leave user-added entries untouched. Returns 'installed',
+    'skipped', or 'failed'.
     """
     from string import Template
 
@@ -319,6 +321,7 @@ def _merge_json_hooks(dest: Path, template: str, plugin_root: Path) -> str:
     except json.JSONDecodeError:
         return "failed"
 
+    stash_marker = f"stashai/plugin/assets/{plugin_root.name}"
     tmpl_hooks = tmpl_data.get("hooks", {})
     existing_hooks = existing.setdefault("hooks", {})
     changed = False
@@ -328,7 +331,7 @@ def _merge_json_hooks(dest: Path, template: str, plugin_root: Path) -> str:
         cur = existing_hooks.get(event) or []
         if not isinstance(cur, list):
             cur = []
-        user_entries = [e for e in cur if not _entry_references(e, root_str)]
+        user_entries = [e for e in cur if not _entry_references(e, stash_marker)]
         merged = user_entries + tmpl_entries
         if merged != cur:
             changed = True
