@@ -1,5 +1,20 @@
 "use client";
 
+import {
+  forceCenter,
+  forceCollide,
+  forceLink,
+  forceManyBody,
+  forceSimulation,
+  forceX,
+  forceY,
+  type Simulation,
+  type SimulationLinkDatum,
+  type SimulationNodeDatum,
+} from "d3-force";
+import { drag as d3drag, type D3DragEvent } from "d3-drag";
+import { select } from "d3-selection";
+import { zoom as d3zoom, zoomIdentity, type D3ZoomEvent, type ZoomTransform } from "d3-zoom";
 import { useEffect, useRef, useState } from "react";
 import type { PageGraph } from "../../lib/types";
 
@@ -10,13 +25,15 @@ interface PageGraphViewProps {
   inline?: boolean;
 }
 
-interface SimNode {
+interface SimNode extends SimulationNodeDatum {
   id: string;
   name: string;
-  x: number;
-  y: number;
-  vx: number;
-  vy: number;
+  degree: number;
+}
+
+interface SimLink extends SimulationLinkDatum<SimNode> {
+  source: string | SimNode;
+  target: string | SimNode;
 }
 
 interface TooltipInfo {
@@ -25,260 +42,305 @@ interface TooltipInfo {
   name: string;
 }
 
+const nodeRadius = (d: SimNode) => Math.min(12, 4 + d.degree);
+
 export default function PageGraphView({ graph, onClose, onSelectPage, inline }: PageGraphViewProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [tooltip, setTooltip] = useState<TooltipInfo | null>(null);
   const [overNode, setOverNode] = useState(false);
-  const hoveredRef = useRef<string | null>(null);
-  const nodesRef = useRef<SimNode[]>([]);
-  const animRef = useRef<number>(0);
-  const tickRef = useRef(0);
   const clickable = Boolean(onSelectPage);
 
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
-    const w = canvas.width = canvas.offsetWidth * 2;
-    const h = canvas.height = canvas.offsetHeight * 2;
-    ctx.scale(2, 2);
-    const dw = w / 2;
-    const dh = h / 2;
+    const dpr = window.devicePixelRatio || 1;
+    const dw = canvas.offsetWidth;
+    const dh = canvas.offsetHeight;
+    canvas.width = dw * dpr;
+    canvas.height = dh * dpr;
 
-    // Initialize nodes with random positions
+    const degrees = new Map<string, number>();
+    for (const e of graph.edges) {
+      degrees.set(e.source, (degrees.get(e.source) || 0) + 1);
+      degrees.set(e.target, (degrees.get(e.target) || 0) + 1);
+    }
+
     const nodes: SimNode[] = graph.nodes.map((n) => ({
       id: n.id,
       name: n.name,
-      x: dw / 2 + (Math.random() - 0.5) * dw * 0.6,
-      y: dh / 2 + (Math.random() - 0.5) * dh * 0.6,
-      vx: 0,
-      vy: 0,
+      degree: degrees.get(n.id) || 0,
+      x: dw / 2 + (Math.random() - 0.5) * 30,
+      y: dh / 2 + (Math.random() - 0.5) * 30,
     }));
-    nodesRef.current = nodes;
-    tickRef.current = 0;
+    const nodeById = new Map(nodes.map((n) => [n.id, n]));
 
-    const nodeMap = new Map(nodes.map((n) => [n.id, n]));
-    const edges = graph.edges.map((e) => ({
-      source: nodeMap.get(e.source)!,
-      target: nodeMap.get(e.target)!,
-      label: e.label,
-    })).filter((e) => e.source && e.target);
+    const links: SimLink[] = graph.edges
+      .filter((e) => nodeById.has(e.source) && nodeById.has(e.target))
+      .map((e) => ({ source: e.source, target: e.target }));
 
-    const tick = () => {
-      tickRef.current++;
+    let hoveredId: string | null = null;
+    let transform: ZoomTransform = zoomIdentity;
 
-      // Decay simulation energy over time — settle after ~200 ticks
-      const cooling = Math.max(0.01, 1 - tickRef.current / 200);
-      const k = 0.01 * cooling;
-      const repulsion = 8000 * cooling;
-      const damping = 0.85;
-      const centerPull = 0.005 * cooling;
+    const simulation: Simulation<SimNode, SimLink> = forceSimulation(nodes)
+      .force(
+        "link",
+        forceLink<SimNode, SimLink>(links)
+          .id((d) => d.id)
+          .distance(80)
+          .strength(0.4),
+      )
+      .force("charge", forceManyBody<SimNode>().strength(-400))
+      .force("center", forceCenter(dw / 2, dh / 2))
+      .force("x", forceX<SimNode>(dw / 2).strength(0.05))
+      .force("y", forceY<SimNode>(dh / 2).strength(0.05))
+      .force(
+        "collide",
+        forceCollide<SimNode>().radius((d) => nodeRadius(d) + 4),
+      )
+      .alpha(1)
+      .alphaDecay(0.0228)
+      .velocityDecay(0.4);
 
-      // Repulsion between all nodes
-      for (let i = 0; i < nodes.length; i++) {
-        for (let j = i + 1; j < nodes.length; j++) {
-          const dx = nodes[i].x - nodes[j].x;
-          const dy = nodes[i].y - nodes[j].y;
-          const dist = Math.sqrt(dx * dx + dy * dy) || 1;
-          const force = repulsion / (dist * dist);
-          const fx = (dx / dist) * force;
-          const fy = (dy / dist) * force;
-          nodes[i].vx += fx;
-          nodes[i].vy += fy;
-          nodes[j].vx -= fx;
-          nodes[j].vy -= fy;
-        }
+    const findNode = (px: number, py: number): SimNode | null => {
+      const [x, y] = transform.invert([px, py]);
+      for (let i = nodes.length - 1; i >= 0; i--) {
+        const n = nodes[i];
+        const dx = (n.x ?? 0) - x;
+        const dy = (n.y ?? 0) - y;
+        const r = nodeRadius(n) + 4;
+        if (dx * dx + dy * dy < r * r) return n;
       }
+      return null;
+    };
 
-      // Spring force along edges
-      for (const edge of edges) {
-        const dx = edge.target.x - edge.source.x;
-        const dy = edge.target.y - edge.source.y;
-        const dist = Math.sqrt(dx * dx + dy * dy) || 1;
-        const idealDist = 120;
-        const force = k * (dist - idealDist);
-        const fx = (dx / dist) * force;
-        const fy = (dy / dist) * force;
-        edge.source.vx += fx;
-        edge.source.vy += fy;
-        edge.target.vx -= fx;
-        edge.target.vy -= fy;
+    const drawArrow = (tipX: number, tipY: number, angle: number, alpha: number) => {
+      ctx.globalAlpha = alpha;
+      const len = 6;
+      ctx.beginPath();
+      ctx.moveTo(tipX, tipY);
+      ctx.lineTo(tipX - len * Math.cos(angle - 0.4), tipY - len * Math.sin(angle - 0.4));
+      ctx.moveTo(tipX, tipY);
+      ctx.lineTo(tipX - len * Math.cos(angle + 0.4), tipY - len * Math.sin(angle + 0.4));
+      ctx.stroke();
+    };
+
+    const connectedIds = (id: string): Set<string> => {
+      const set = new Set<string>([id]);
+      for (const l of links) {
+        const s = (l.source as SimNode).id;
+        const t = (l.target as SimNode).id;
+        if (s === id) set.add(t);
+        else if (t === id) set.add(s);
       }
+      return set;
+    };
 
-      // Center pull + damping + update positions
-      for (const node of nodes) {
-        node.vx += (dw / 2 - node.x) * centerPull;
-        node.vy += (dh / 2 - node.y) * centerPull;
-        node.vx *= damping;
-        node.vy *= damping;
-        node.x += node.vx;
-        node.y += node.vy;
-        node.x = Math.max(40, Math.min(dw - 40, node.x));
-        node.y = Math.max(40, Math.min(dh - 40, node.y));
-      }
+    const draw = () => {
+      ctx.save();
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.scale(dpr, dpr);
+      ctx.translate(transform.x, transform.y);
+      ctx.scale(transform.k, transform.k);
 
-      // Draw
-      const hovered = hoveredRef.current;
-      ctx.clearRect(0, 0, dw, dh);
+      const lit = hoveredId ? connectedIds(hoveredId) : null;
 
-      // Build a set of bidirectional edge pairs so we only draw each line once
+      // Edges — detect bidirectional pairs once
       const bidir = new Set<string>();
       const drawn = new Set<string>();
-      for (const e of edges) {
-        const rev = edges.find((o) => o.source.id === e.target.id && o.target.id === e.source.id);
+      for (const l of links) {
+        const s = (l.source as SimNode).id;
+        const t = (l.target as SimNode).id;
+        const rev = links.find(
+          (o) => (o.source as SimNode).id === t && (o.target as SimNode).id === s,
+        );
         if (rev) {
-          bidir.add(e.source.id + ":" + e.target.id);
-          bidir.add(e.target.id + ":" + e.source.id);
+          bidir.add(s + ":" + t);
+          bidir.add(t + ":" + s);
         }
       }
 
-      const drawArrow = (tipX: number, tipY: number, angle: number) => {
-        const len = 8;
-        ctx.beginPath();
-        ctx.moveTo(tipX, tipY);
-        ctx.lineTo(tipX - len * Math.cos(angle - 0.4), tipY - len * Math.sin(angle - 0.4));
-        ctx.moveTo(tipX, tipY);
-        ctx.lineTo(tipX - len * Math.cos(angle + 0.4), tipY - len * Math.sin(angle + 0.4));
-        ctx.stroke();
-      };
-
-      // Edges
       ctx.strokeStyle = "#3E4E63";
-      ctx.lineWidth = 1.5;
-      for (const edge of edges) {
-        const key = edge.source.id + ":" + edge.target.id;
+      ctx.lineWidth = 1.2;
+      for (const l of links) {
+        const s = l.source as SimNode;
+        const t = l.target as SimNode;
+        const key = s.id + ":" + t.id;
         const isBidir = bidir.has(key);
-
-        // For bidirectional edges, only draw once (skip the reverse)
         if (isBidir) {
-          const canonKey = [edge.source.id, edge.target.id].sort().join(":");
+          const canonKey = [s.id, t.id].sort().join(":");
           if (drawn.has(canonKey)) continue;
           drawn.add(canonKey);
         }
-
-        // Line
+        const connected = !lit || (lit.has(s.id) && lit.has(t.id));
+        const alpha = connected ? 1 : 0.08;
+        ctx.globalAlpha = alpha;
         ctx.beginPath();
-        ctx.moveTo(edge.source.x, edge.source.y);
-        ctx.lineTo(edge.target.x, edge.target.y);
+        ctx.moveTo(s.x ?? 0, s.y ?? 0);
+        ctx.lineTo(t.x ?? 0, t.y ?? 0);
         ctx.stroke();
 
-        const angle = Math.atan2(edge.target.y - edge.source.y, edge.target.x - edge.source.x);
-        const nodeRadius = 10;
-
+        const angle = Math.atan2((t.y ?? 0) - (s.y ?? 0), (t.x ?? 0) - (s.x ?? 0));
         if (isBidir) {
-          // Arrows at both ends, just outside each node
-          const tipTargetX = edge.target.x - Math.cos(angle) * nodeRadius;
-          const tipTargetY = edge.target.y - Math.sin(angle) * nodeRadius;
-          drawArrow(tipTargetX, tipTargetY, angle);
-
-          const tipSourceX = edge.source.x + Math.cos(angle) * nodeRadius;
-          const tipSourceY = edge.source.y + Math.sin(angle) * nodeRadius;
-          drawArrow(tipSourceX, tipSourceY, angle + Math.PI);
+          const rt = nodeRadius(t);
+          const rs = nodeRadius(s);
+          const tipTX = (t.x ?? 0) - Math.cos(angle) * rt;
+          const tipTY = (t.y ?? 0) - Math.sin(angle) * rt;
+          drawArrow(tipTX, tipTY, angle, alpha);
+          const tipSX = (s.x ?? 0) + Math.cos(angle) * rs;
+          const tipSY = (s.y ?? 0) + Math.sin(angle) * rs;
+          drawArrow(tipSX, tipSY, angle + Math.PI, alpha);
         } else {
-          // Single arrow near the target node
-          const tipX = edge.target.x - Math.cos(angle) * nodeRadius;
-          const tipY = edge.target.y - Math.sin(angle) * nodeRadius;
-          drawArrow(tipX, tipY, angle);
+          const rt = nodeRadius(t);
+          const tipX = (t.x ?? 0) - Math.cos(angle) * rt;
+          const tipY = (t.y ?? 0) - Math.sin(angle) * rt;
+          drawArrow(tipX, tipY, angle, alpha);
         }
       }
 
       // Nodes
-      for (const node of nodes) {
-        const isHovered = node.id === hovered;
-        const hasEdge = edges.some((e) => e.source.id === node.id || e.target.id === node.id);
-
+      for (const n of nodes) {
+        const isHovered = n.id === hoveredId;
+        const connected = !lit || lit.has(n.id);
+        ctx.globalAlpha = connected ? 1 : 0.15;
         ctx.beginPath();
-        ctx.arc(node.x, node.y, isHovered ? 10 : 7, 0, Math.PI * 2);
-        ctx.fillStyle = isHovered ? "#EA580C" : hasEdge ? "#F97316" : "#8B5CF6";
+        const r = isHovered ? nodeRadius(n) + 2 : nodeRadius(n);
+        ctx.arc(n.x ?? 0, n.y ?? 0, r, 0, Math.PI * 2);
+        ctx.fillStyle = isHovered ? "#EA580C" : n.degree > 0 ? "#F97316" : "#8B5CF6";
         ctx.fill();
-
       }
 
-      animRef.current = requestAnimationFrame(tick);
+      // Labels — only when zoomed in enough, or always for the hovered set
+      if (transform.k > 1.2 || lit) {
+        ctx.fillStyle = "#9CA3AF";
+        ctx.font = "11px ui-sans-serif, system-ui, sans-serif";
+        ctx.textAlign = "left";
+        ctx.textBaseline = "middle";
+        for (const n of nodes) {
+          if (lit && !lit.has(n.id)) continue;
+          if (!lit && transform.k <= 1.2) continue;
+          ctx.globalAlpha = 1;
+          ctx.fillText(n.name, (n.x ?? 0) + nodeRadius(n) + 4, n.y ?? 0);
+        }
+      }
+
+      ctx.globalAlpha = 1;
+      ctx.restore();
     };
 
-    animRef.current = requestAnimationFrame(tick);
+    simulation.on("tick", draw);
 
-    return () => cancelAnimationFrame(animRef.current);
-  }, [graph]);
+    const sel = select(canvas);
 
-  const handleCanvasClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    const canvas = canvasRef.current;
-    if (!canvas || !onSelectPage) return;
-    const rect = canvas.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
+    const zoomBehavior = d3zoom<HTMLCanvasElement, unknown>()
+      .scaleExtent([0.2, 4])
+      .filter((event) => {
+        if (event.type === "wheel") return !event.ctrlKey;
+        if (event.type === "mousedown") {
+          const rect = canvas.getBoundingClientRect();
+          return !findNode(event.clientX - rect.left, event.clientY - rect.top);
+        }
+        return !event.ctrlKey && !event.button;
+      })
+      .on("zoom", (event: D3ZoomEvent<HTMLCanvasElement, unknown>) => {
+        transform = event.transform;
+        draw();
+      });
 
-    for (const node of nodesRef.current) {
-      const dx = node.x - x;
-      const dy = node.y - y;
-      if (dx * dx + dy * dy < 15 * 15) {
-        onSelectPage(node.id);
-        return;
-      }
-    }
-  };
+    sel.call(zoomBehavior);
 
-  const handleCanvasMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const rect = canvas.getBoundingClientRect();
-    const mx = e.clientX - rect.left;
-    const my = e.clientY - rect.top;
+    const dragBehavior = d3drag<HTMLCanvasElement, unknown>()
+      .subject((event) => {
+        const rect = canvas.getBoundingClientRect();
+        return findNode(event.sourceEvent.clientX - rect.left, event.sourceEvent.clientY - rect.top);
+      })
+      .on("start", (event: D3DragEvent<HTMLCanvasElement, unknown, SimNode>) => {
+        if (!event.active) simulation.alphaTarget(0.3).restart();
+        const [x, y] = transform.invert([event.x, event.y]);
+        event.subject.fx = x;
+        event.subject.fy = y;
+      })
+      .on("drag", (event: D3DragEvent<HTMLCanvasElement, unknown, SimNode>) => {
+        const [x, y] = transform.invert([event.x, event.y]);
+        event.subject.fx = x;
+        event.subject.fy = y;
+      })
+      .on("end", (event: D3DragEvent<HTMLCanvasElement, unknown, SimNode>) => {
+        if (!event.active) simulation.alphaTarget(0);
+        event.subject.fx = null;
+        event.subject.fy = null;
+      });
 
-    let found: SimNode | null = null;
-    for (const node of nodesRef.current) {
-      const dx = node.x - mx;
-      const dy = node.y - my;
-      if (dx * dx + dy * dy < 15 * 15) {
-        found = node;
-        break;
-      }
-    }
-    hoveredRef.current = found?.id ?? null;
-    setOverNode(!!found);
-    if (found) {
-      setTooltip({ x: mx, y: my, name: found.name });
-    } else {
+    sel.call(dragBehavior);
+
+    const onMove = (e: MouseEvent) => {
+      const rect = canvas.getBoundingClientRect();
+      const mx = e.clientX - rect.left;
+      const my = e.clientY - rect.top;
+      const found = findNode(mx, my);
+      hoveredId = found?.id ?? null;
+      setOverNode(!!found);
+      if (found) setTooltip({ x: mx, y: my, name: found.name });
+      else setTooltip(null);
+      draw();
+    };
+
+    const onLeave = () => {
+      hoveredId = null;
+      setOverNode(false);
       setTooltip(null);
-    }
-  };
+      draw();
+    };
+
+    const onClick = (e: MouseEvent) => {
+      if (!onSelectPage) return;
+      const rect = canvas.getBoundingClientRect();
+      const found = findNode(e.clientX - rect.left, e.clientY - rect.top);
+      if (found) onSelectPage(found.id);
+    };
+
+    canvas.addEventListener("mousemove", onMove);
+    canvas.addEventListener("mouseleave", onLeave);
+    canvas.addEventListener("click", onClick);
+
+    return () => {
+      simulation.stop();
+      canvas.removeEventListener("mousemove", onMove);
+      canvas.removeEventListener("mouseleave", onLeave);
+      canvas.removeEventListener("click", onClick);
+      sel.on(".zoom", null).on(".drag", null);
+    };
+  }, [graph, onSelectPage]);
 
   const tooltipEl = tooltip && (
     <div
       className="absolute z-10 bg-base border border-border rounded-md px-3 py-1.5 pointer-events-none shadow-lg"
       style={{ left: tooltip.x + 12, top: tooltip.y - 8 }}
     >
-      <div className="text-xs font-medium text-brand underline underline-offset-2">
-        {tooltip.name}
-      </div>
-      {clickable && (
-        <div className="text-[10px] text-muted mt-0.5">Click to open ↗</div>
-      )}
+      <div className="text-xs font-medium text-brand underline underline-offset-2">{tooltip.name}</div>
+      {clickable && <div className="text-[10px] text-muted mt-0.5">Click to open &#x2197;</div>}
     </div>
   );
 
-  const cursorClass = clickable && overNode ? "cursor-pointer" : "cursor-default";
+  const cursorClass = clickable && overNode ? "cursor-pointer" : "cursor-grab";
 
   if (inline) {
     return (
       <div ref={containerRef} className="relative">
-        <div className="mb-2">
+        <div className="mb-2 flex items-center justify-between">
           <span className="text-xs text-muted">
             {graph.nodes.length} pages, {graph.edges.length} links
           </span>
+          <span className="text-[10px] text-muted">drag to pan &middot; scroll to zoom</span>
         </div>
         <canvas
           ref={canvasRef}
           className={`w-full ${cursorClass} rounded`}
           style={{ height: 320 }}
-          onClick={handleCanvasClick}
-          onMouseMove={handleCanvasMove}
-          onMouseLeave={() => { hoveredRef.current = null; setOverNode(false); setTooltip(null); }}
         />
         {tooltipEl}
         {graph.edges.length === 0 && (
@@ -307,9 +369,6 @@ export default function PageGraphView({ graph, onClose, onSelectPage, inline }: 
             ref={canvasRef}
             className={`w-full ${cursorClass}`}
             style={{ height: 400 }}
-            onClick={handleCanvasClick}
-            onMouseMove={handleCanvasMove}
-            onMouseLeave={() => { hoveredRef.current = null; setOverNode(false); setTooltip(null); }}
           />
           {tooltipEl}
         </div>
