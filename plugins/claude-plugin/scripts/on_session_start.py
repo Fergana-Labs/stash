@@ -10,7 +10,7 @@ from stashai.plugin.state import load_state, reset_stats, save_state
 
 from adapt import adapt_session_start
 
-CONTEXT_CONFIGURED = (
+CONTEXT = (
     "You have the `stash` CLI on your PATH. Run `stash --help` to see commands. "
     "Use it to read transcripts, notebooks, and history from your team's shared "
     "Stash workspace. Your activity in this repo is streamed to that workspace, "
@@ -22,29 +22,9 @@ CONTEXT_CONFIGURED = (
     "`stash notebooks list --all`."
 )
 
-CONTEXT_UNCONFIGURED = (
-    "You have the `stash` CLI on your PATH but it isn't connected to a "
-    "workspace yet. The user can run `stash connect` to set it up, then "
-    "team transcripts and notebooks become readable via `stash history` "
-    "and `stash notebooks`."
-)
-
-
-def emit_context(text: str) -> None:
-    json.dump(
-        {
-            "hookSpecificOutput": {
-                "hookEventName": "SessionStart",
-                "additionalContext": text,
-            }
-        },
-        sys.stdout,
-    )
-
 
 def main():
     if not is_configured():
-        emit_context(CONTEXT_UNCONFIGURED)
         return
 
     event = adapt_session_start(get_stdin_data())
@@ -54,7 +34,15 @@ def main():
     save_state(DATA_DIR, state)
     reset_stats(DATA_DIR)
 
-    emit_context(CONTEXT_CONFIGURED)
+    json.dump(
+        {
+            "hookSpecificOutput": {
+                "hookEventName": "SessionStart",
+                "additionalContext": CONTEXT,
+            }
+        },
+        sys.stdout,
+    )
 
 
 if __name__ == "__main__":
