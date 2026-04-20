@@ -1,7 +1,7 @@
 """Plugin asset templates shipped with stashai.
 
 Each agent directory mirrors `plugins/<agent>-plugin/` in the source repo.
-`stash install` reads these to install hook configs into `~/.<agent>/` without
+`stash connect` reads these to install hook configs into `~/.<agent>/` without
 requiring the user to clone the stash repo.
 
 The source-of-truth is `plugins/<agent>-plugin/`; a drift test in
