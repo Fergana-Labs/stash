@@ -4,7 +4,6 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { ReactNode, useCallback, useEffect, useState } from "react";
 import AppShell from "../../../components/AppShell";
-import SetupCard from "../../../components/SetupCard";
 import WorkspaceSidebar from "../../../components/workspace/WorkspaceSidebar";
 import { useAuth } from "../../../hooks/useAuth";
 import {
@@ -89,7 +88,6 @@ export default function WorkspacePage() {
   const [members, setMembers] = useState<WorkspaceMember[]>([]);
   const [isMember, setIsMember] = useState(false);
   const [error, setError] = useState("");
-  const [dataLoaded, setDataLoaded] = useState(false);
   const [showManageSidebar, setShowManageSidebar] = useState(false);
 
   // Visualization state
@@ -121,8 +119,7 @@ export default function WorkspacePage() {
       setTables(tblRes);
       setRecentFiles(filesRes.slice(0, 5));
       if (user) setIsMember(m.some(mem => mem.user_id === user.id));
-      setDataLoaded(true);
-    } catch { setIsMember(false); setDataLoaded(true); }
+    } catch { setIsMember(false); }
   }, [workspaceId, user]);
 
   useEffect(() => { loadWorkspace(); }, [loadWorkspace]);
@@ -229,10 +226,6 @@ export default function WorkspacePage() {
           <div className="flex-1 flex overflow-hidden">
             <div className="flex-1 overflow-y-auto">
               <div className="max-w-4xl mx-auto w-full px-6 py-8 space-y-5">
-              {dataLoaded && notebooks.length === 0 && (
-                <SetupCard workspaceId={workspaceId} />
-              )}
-
               {/* Visualizations */}
               {(vizLoading || timeline?.buckets.length || density?.clusters.length || projection?.points.length) ? (
                 <div className="space-y-4">
