@@ -18,12 +18,15 @@ cd path/to/stash/plugins/cursor-plugin
 
 # Symlink hooks.json into Cursor with PLUGIN_ROOT baked in.
 export PLUGIN_ROOT=$(pwd)
-mkdir -p ~/.cursor ~/.cursor/rules
+mkdir -p ~/.cursor
 envsubst < hooks.json > ~/.cursor/hooks.json
-
-# Agent context — tells Cursor it has the stash CLI available
-cp stash.mdc ~/.cursor/rules/stash.mdc
 ```
+
+For agent context (so Cursor knows the `stash` CLI is available), Cursor
+only auto-loads `.mdc` rules from project-level `.cursor/rules/` — there
+is no global file location for user rules. Run `stash init` inside a repo
+and the installer will drop a `.cursor/rules/stash.mdc` into that repo.
+Commit it so teammates' Cursor agents pick it up too.
 
 Or, for per-project use, drop `hooks.json` into `<project>/.cursor/hooks.json`
 with `${PLUGIN_ROOT}` replaced by the absolute path.

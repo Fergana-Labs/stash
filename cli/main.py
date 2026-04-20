@@ -353,14 +353,30 @@ def _install_cursor(force: bool) -> tuple[str, str]:
     dest = Path.home() / ".cursor" / "hooks.json"
     template = (root / "hooks.json").read_text()
     status_ = _merge_json_hooks(dest, template, root)
+    return (status_, f"{dest}")
 
-    rule_src = root / "stash.mdc"
-    rule_dest = Path.home() / ".cursor" / "rules" / "stash.mdc"
-    if rule_src.exists():
-        rule_dest.parent.mkdir(parents=True, exist_ok=True)
-        rule_dest.write_text(rule_src.read_text())
 
-    return (status_, f"{dest} + {rule_dest}")
+def _drop_cursor_project_rule(repo_root: Path) -> Path | None:
+    """Drop a stash.mdc into <repo>/.cursor/rules/ so Cursor agents in this
+    repo know the stash CLI is available. Cursor only auto-loads .mdc rules
+    from project-level .cursor/rules/ — there's no global file location.
+    Returns the destination path on success, None if cursor isn't on PATH.
+    """
+    import shutil
+
+    if not shutil.which(_AGENT_BINARY["cursor"]):
+        return None
+
+    from stashai.plugin.assets import assets_dir
+
+    src = assets_dir("cursor") / "stash.mdc"
+    if not src.exists():
+        return None
+
+    dest = repo_root / ".cursor" / "rules" / "stash.mdc"
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    dest.write_text(src.read_text())
+    return dest
 
 
 _CODEX_MARKER = "# stash-plugin"
@@ -2287,6 +2303,14 @@ def init_cmd():
     manifest_path.write_text(json.dumps(manifest, indent=2) + "\n")
     gi_status = _update_gitignore_for_manifest(repo_root)
 
+    cursor_rule_path = _drop_cursor_project_rule(repo_root)
+    cursor_rule_line = (
+        f"  Wrote [cyan]{cursor_rule_path.relative_to(repo_root)}[/cyan]   "
+        f"[green]✓[/green]\n"
+        if cursor_rule_path
+        else ""
+    )
+
     console.print(
         Panel(
             f"  [bold]Workspace:[/bold]   {chosen_ws['name']}  "
@@ -2295,6 +2319,7 @@ def init_cmd():
             f"\n"
             f"  Wrote [cyan]{manifest_path.relative_to(repo_root)}[/cyan]           "
             f"[green]✓[/green]\n"
+            f"{cursor_rule_line}"
             f"  .gitignore (.stash/config.json)   [green]{gi_status}[/green]\n"
             f"\n"
             f"  Commit [cyan].stash/stash.json[/cyan] and push. Teammates running "
