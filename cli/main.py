@@ -1743,18 +1743,19 @@ def connect(
         )
         return
 
-    console.print("\n[bold]Stash connect[/bold]  (press Enter to accept defaults)\n")
-
     # --- Manifest detection: runs first so it can steer the later prompts. ---
     manifest = load_manifest()
+
+    if _already_fully_connected(manifest):
+        return
+
+    console.print("\n[bold]Stash connect[/bold]  (press Enter to accept defaults)\n")
+
     if manifest:
         console.print(
             f"  [cyan]Detected .stash/stash.json[/cyan] — this repo is set up for "
             f"[bold]{manifest.get('workspace_name') or 'a stash workspace'}[/bold].\n"
         )
-
-    if _already_fully_connected(manifest):
-        return
 
     # --- Step 0: Scope ---
     # Preserve the previous choice on re-runs so `stash connect` doesn't
