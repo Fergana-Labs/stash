@@ -131,6 +131,31 @@ async def join_workspace(workspace_id: UUID, user_id: UUID) -> dict | None:
     return await get_workspace(workspace_id)
 
 
+async def rotate_invite_code(workspace_id: UUID, user_id: UUID) -> dict | None:
+    """Generate a new invite_code, invalidating the previous one. Owner/admin only."""
+    role = await get_member_role(workspace_id, user_id)
+    if role not in ("owner", "admin"):
+        return None
+    pool = get_pool()
+    new_code = ""
+    for _ in range(5):
+        new_code = secrets.token_urlsafe(6)[:8]
+        exists = await pool.fetchval(
+            "SELECT 1 FROM workspaces WHERE invite_code = $1",
+            new_code,
+        )
+        if not exists:
+            break
+    row = await pool.fetchrow(
+        "UPDATE workspaces SET invite_code = $1, updated_at = now() WHERE id = $2 "
+        "RETURNING id, name, description, creator_id, invite_code, is_public, created_at, updated_at, "
+        "(SELECT COUNT(*) FROM workspace_members wm WHERE wm.workspace_id = id) AS member_count",
+        new_code,
+        workspace_id,
+    )
+    return dict(row) if row else None
+
+
 async def join_by_invite(invite_code: str, user_id: UUID) -> dict | None:
     pool = get_pool()
     ws = await pool.fetchrow(

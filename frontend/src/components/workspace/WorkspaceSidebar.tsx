@@ -3,6 +3,7 @@
 import { useCallback, useRef, useState } from "react";
 
 import { Workspace, WorkspaceMember } from "../../lib/types";
+import { rotateWorkspaceInvite } from "../../lib/api";
 
 interface UserResult { id: string; name: string; display_name: string }
 
@@ -106,6 +107,7 @@ interface WorkspaceSidebarProps {
   onAddToAccessList?: (userName: string, listType: "allow" | "block") => Promise<void>;
   onRemoveFromAccessList?: (userName: string, listType: "allow" | "block") => Promise<void>;
   onGetAccessList?: (listType: "allow" | "block") => Promise<AccessListEntry[]>;
+  onInviteRotated?: (ws: Workspace) => void;
 }
 
 interface AccessListEntry {
@@ -125,6 +127,7 @@ export default function WorkspaceSidebar({
   onAddToAccessList,
   onRemoveFromAccessList,
   onGetAccessList,
+  onInviteRotated,
 }: WorkspaceSidebarProps) {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [editing, setEditing] = useState(false);
@@ -137,9 +140,26 @@ export default function WorkspaceSidebar({
   const [accessLoading, setAccessLoading] = useState(false);
   const [newAccessName, setNewAccessName] = useState("");
 
-  const copyInvite = () => {
+  const [copied, setCopied] = useState(false);
+  const [rotating, setRotating] = useState(false);
+
+  const copyInvite = async () => {
     const url = `${window.location.origin}/join/${workspace.invite_code}`;
-    navigator.clipboard.writeText(url);
+    await navigator.clipboard.writeText(url);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  };
+
+  const rotateInvite = async () => {
+    if (rotating) return;
+    if (!window.confirm("Rotate invite code? The old link will stop working.")) return;
+    setRotating(true);
+    try {
+      const updated = await rotateWorkspaceInvite(workspace.id);
+      onInviteRotated?.(updated);
+    } finally {
+      setRotating(false);
+    }
   };
 
   const loadAccessList = useCallback(
@@ -266,13 +286,27 @@ export default function WorkspaceSidebar({
         <div className="mt-3 flex flex-col gap-2">
           <button
             onClick={copyInvite}
-            className="w-full text-xs bg-raised hover:bg-raised text-dim px-3 py-1.5 rounded border border-border"
+            className={`w-full text-xs px-3 py-1.5 rounded border transition-colors ${
+              copied
+                ? "bg-brand/15 border-brand/40 text-brand"
+                : "bg-raised hover:bg-raised text-dim border-border"
+            }`}
           >
-            Copy Invite Link
+            {copied ? "Copied!" : "Copy Invite Link"}
           </button>
-          <div className="text-xs text-muted text-center">
-            Code:{" "}
-            <span className="font-mono text-dim">{workspace.invite_code}</span>
+          <div className="text-xs text-muted text-center flex items-center justify-center gap-2">
+            <span>
+              Code: <span className="font-mono text-dim">{workspace.invite_code}</span>
+            </span>
+            {isOwner && (
+              <button
+                onClick={rotateInvite}
+                disabled={rotating}
+                className="text-[10px] text-muted hover:text-foreground underline underline-offset-2 disabled:opacity-50"
+              >
+                {rotating ? "rotating..." : "rotate"}
+              </button>
+            )}
           </div>
         </div>
       </div>

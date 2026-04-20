@@ -153,6 +153,10 @@ export async function joinWorkspace(inviteCode: string): Promise<Workspace> {
   return apiFetch(`/api/v1/workspaces/join/${inviteCode}`, { method: "POST" });
 }
 
+export async function rotateWorkspaceInvite(workspaceId: string): Promise<Workspace> {
+  return apiFetch(`/api/v1/workspaces/${workspaceId}/invite-code/rotate`, { method: "POST" });
+}
+
 export async function leaveWorkspace(workspaceId: string): Promise<void> {
   await apiFetch(`/api/v1/workspaces/${workspaceId}/leave`, { method: "POST" });
 }

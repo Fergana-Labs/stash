@@ -130,6 +130,17 @@ async def join_workspace(
     return WorkspaceResponse(**ws)
 
 
+@router.post("/{workspace_id}/invite-code/rotate", response_model=WorkspaceResponse)
+async def rotate_invite_code(
+    workspace_id: UUID,
+    current_user: dict = Depends(get_current_user),
+):
+    ws = await workspace_service.rotate_invite_code(workspace_id, current_user["id"])
+    if not ws:
+        raise HTTPException(status_code=403, detail="Only owner/admin can rotate invite code")
+    return WorkspaceResponse(**ws)
+
+
 @router.post("/{workspace_id}/leave", status_code=204)
 async def leave_workspace(
     workspace_id: UUID,

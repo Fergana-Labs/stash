@@ -394,6 +394,7 @@ export default function WorkspacePage() {
                 onDelete={async () => { await deleteWorkspace(workspaceId); router.push("/rooms"); }}
                 onKickMember={async (uid) => { await kickWorkspaceMember(workspaceId, uid); await loadData(); }}
                 onUpdateWorkspace={async (data) => { setWorkspace(await updateWorkspace(workspaceId, data)); }}
+                onInviteRotated={(ws) => setWorkspace(ws)}
                 onAddMember={async (username) => {
                   const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3456"}/api/v1/workspaces/${workspaceId}/members`, {
                     method: "POST",

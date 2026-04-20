@@ -116,6 +116,48 @@ async def test_invalid_invite_code_404(client: AsyncClient):
     assert resp.status_code == 404
 
 
+@pytest.mark.asyncio
+async def test_rotate_invite_code_owner(client: AsyncClient):
+    owner_key, _ = await _register(client)
+    ws = (
+        await client.post("/api/v1/workspaces", json={"name": "Team"}, headers=_auth(owner_key))
+    ).json()
+    old_code = ws["invite_code"]
+
+    resp = await client.post(
+        f"/api/v1/workspaces/{ws['id']}/invite-code/rotate",
+        headers=_auth(owner_key),
+    )
+    assert resp.status_code == 200
+    new_code = resp.json()["invite_code"]
+    assert new_code and new_code != old_code
+
+    # Old code no longer works
+    other_key, _ = await _register(client)
+    bad = await client.post(f"/api/v1/workspaces/join/{old_code}", headers=_auth(other_key))
+    assert bad.status_code == 404
+
+    # New code works
+    good = await client.post(f"/api/v1/workspaces/join/{new_code}", headers=_auth(other_key))
+    assert good.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_rotate_invite_code_member_forbidden(client: AsyncClient):
+    owner_key, _ = await _register(client)
+    member_key, _ = await _register(client)
+    ws = (
+        await client.post("/api/v1/workspaces", json={"name": "Team"}, headers=_auth(owner_key))
+    ).json()
+    await client.post(f"/api/v1/workspaces/join/{ws['invite_code']}", headers=_auth(member_key))
+
+    resp = await client.post(
+        f"/api/v1/workspaces/{ws['id']}/invite-code/rotate",
+        headers=_auth(member_key),
+    )
+    assert resp.status_code == 403
+
+
 # --- Update / Delete ---
 
 
