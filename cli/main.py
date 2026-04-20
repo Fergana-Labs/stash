@@ -458,10 +458,7 @@ def _install_codex(force: bool) -> tuple[str, str]:
         PLUGIN_ROOT=str(root)
     )
 
-    # Ask about network_access only if the block isn't already in the config.
-    # User's "no" strips the top-level block from what we write; the profile
-    # block stays so `codex --profile stash` still works as an escape hatch.
-    if "[sandbox_workspace_write]" not in existing:
+    if _CODEX_MARKER not in existing:
         if not _ask_codex_network_access():
             snippet = _strip_top_level_sandbox(snippet)
 
