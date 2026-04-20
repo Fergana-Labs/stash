@@ -1825,13 +1825,21 @@ def files_text(
         except StashError as e:
             _err(e)
     text = data.get("text") if isinstance(data, dict) else None
-    if text is None:
-        console.print("[dim]No extracted text available for this file.[/dim]")
+    status = data.get("status") if isinstance(data, dict) else None
+    error = data.get("error") if isinstance(data, dict) else None
+    if text:
+        sys.stdout.write(text)
+        if not text.endswith("\n"):
+            sys.stdout.write("\n")
+        return
+    if status in ("pending", "processing"):
+        console.print("[yellow]Extraction in progress. Try again in a moment.[/yellow]")
+        raise typer.Exit(2)
+    if status == "failed":
+        console.print(f"[red]Extraction failed:[/red] {error or 'unknown error'}")
         raise typer.Exit(1)
-    # Write raw text to stdout so it pipes cleanly.
-    sys.stdout.write(text)
-    if not text.endswith("\n"):
-        sys.stdout.write("\n")
+    console.print("[dim]No extracted text available for this file.[/dim]")
+    raise typer.Exit(1)
 
 
 # ===========================================================================

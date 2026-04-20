@@ -178,6 +178,16 @@ async def get_file_url(key: str, expires_in: int = 3600) -> str:
     return f"{scheme}://{host}{uri}?{query_params}&X-Amz-Signature={signature}"
 
 
+async def download_file(key: str) -> bytes:
+    """Fetch a file's bytes from S3. Uses a presigned GET internally so we
+    don't have to re-sign the request path here."""
+    url = await get_file_url(key, expires_in=300)
+    client = _get_client()
+    resp = await client.get(url)
+    resp.raise_for_status()
+    return resp.content
+
+
 async def delete_file(key: str) -> None:
     """Delete a file from S3."""
     if not is_configured():

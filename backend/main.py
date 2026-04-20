@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from contextlib import asynccontextmanager
 
@@ -23,6 +24,7 @@ from .routers import (
     workspaces,
 )
 from .services.row_validation import RowValidationError
+from .workers import dispatcher as extraction_dispatcher
 
 logger = logging.getLogger("stash")
 
@@ -30,8 +32,16 @@ logger = logging.getLogger("stash")
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await init_db()
-    yield
-    await close_db()
+    dispatcher_task = asyncio.create_task(extraction_dispatcher.run())
+    try:
+        yield
+    finally:
+        dispatcher_task.cancel()
+        try:
+            await dispatcher_task
+        except (asyncio.CancelledError, Exception):
+            pass
+        await close_db()
 
 
 def _rate_limit_exceeded_handler(request: Request, exc: RateLimitExceeded) -> JSONResponse:
