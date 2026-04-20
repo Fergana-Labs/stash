@@ -272,7 +272,12 @@ export default function WorkspacePage() {
                       <PageGraphView
                         graph={pageGraph}
                         onClose={() => setShowGraph(false)}
-                        onSelectPage={() => router.push("/notebooks")}
+                        onSelectPage={(pageId) => {
+                          if (!graphNotebookId) return;
+                          router.push(
+                            `/notebooks?ws=${workspaceId}&nb=${graphNotebookId}&page=${pageId}`
+                          );
+                        }}
                         inline
                       />
                     </div>
