@@ -7,6 +7,7 @@ import secrets
 from uuid import UUID
 
 from ..database import get_pool
+from .row_validation import RowValidationError, validate_row_data
 
 logger = logging.getLogger(__name__)
 
@@ -259,8 +260,38 @@ async def reorder_columns(table_id: UUID, column_ids: list[str], updated_by: UUI
 # --- Row CRUD ---
 
 
+async def _get_columns(table_id: UUID) -> list[dict]:
+    pool = get_pool()
+    columns = await pool.fetchval("SELECT columns FROM tables WHERE id = $1", table_id)
+    if columns is None:
+        raise ValueError(f"table {table_id} not found")
+    return columns
+
+
+async def _get_row_table_id(row_id: UUID) -> UUID | None:
+    pool = get_pool()
+    return await pool.fetchval("SELECT table_id FROM table_rows WHERE id = $1", row_id)
+
+
+def _validate_batch(columns: list[dict], rows: list[dict], *, partial: bool) -> list[dict]:
+    """Validate every row before we write any. Collects errors per-row."""
+    errors: list[str] = []
+    validated: list[dict] = []
+    for i, row in enumerate(rows):
+        try:
+            validated.append(validate_row_data(columns, row, partial=partial))
+        except RowValidationError as exc:
+            for err in exc.errors:
+                errors.append(f"row {i}: {err}")
+    if errors:
+        raise RowValidationError(errors)
+    return validated
+
+
 async def create_row(table_id: UUID, data: dict, created_by: UUID) -> dict:
     pool = get_pool()
+    columns = await _get_columns(table_id)
+    validated = validate_row_data(columns, data)
     row = await pool.fetchrow(
         "INSERT INTO table_rows (table_id, data, row_order, created_by, updated_by) "
         "VALUES ($1, $2, "
@@ -268,15 +299,17 @@ async def create_row(table_id: UUID, data: dict, created_by: UUID) -> dict:
         "  $3, $3) "
         "RETURNING id, table_id, data, row_order, created_by, updated_by, created_at, updated_at",
         table_id,
-        data,
+        validated,
         created_by,
     )
     result = dict(row)
-    asyncio.create_task(maybe_embed_row(table_id, result["id"], data))
+    asyncio.create_task(maybe_embed_row(table_id, result["id"], validated))
     return result
 
 
 async def create_rows_batch(table_id: UUID, rows_data: list[dict], created_by: UUID) -> list[dict]:
+    columns = await _get_columns(table_id)
+    validated_rows = _validate_batch(columns, rows_data, partial=False)
     pool = get_pool()
     results = []
     async with pool.acquire() as conn:
@@ -290,7 +323,7 @@ async def create_rows_batch(table_id: UUID, rows_data: list[dict], created_by: U
                 "SELECT COALESCE(MAX(row_order), -1) FROM table_rows WHERE table_id = $1",
                 table_id,
             )
-            for i, data in enumerate(rows_data):
+            for i, data in enumerate(validated_rows):
                 row = await conn.fetchrow(
                     "INSERT INTO table_rows (table_id, data, row_order, created_by, updated_by) "
                     "VALUES ($1, $2, $3, $4, $4) "
@@ -319,12 +352,17 @@ async def update_row(
 ) -> dict | None:
     """Partial merge update — only specified keys are changed."""
     pool = get_pool()
+    effective_table_id = table_id or await _get_row_table_id(row_id)
+    if effective_table_id is None:
+        return None
+    columns = await _get_columns(effective_table_id)
+    validated = validate_row_data(columns, data, partial=True)
     if table_id is not None:
         row = await pool.fetchrow(
             "UPDATE table_rows SET data = data || $1, updated_by = $2, updated_at = now() "
             "WHERE id = $3 AND table_id = $4 "
             "RETURNING id, table_id, data, row_order, created_by, updated_by, created_at, updated_at",
-            data,
+            validated,
             updated_by,
             row_id,
             table_id,
@@ -334,7 +372,7 @@ async def update_row(
             "UPDATE table_rows SET data = data || $1, updated_by = $2, updated_at = now() "
             "WHERE id = $3 "
             "RETURNING id, table_id, data, row_order, created_by, updated_by, created_at, updated_at",
-            data,
+            validated,
             updated_by,
             row_id,
         )
@@ -362,16 +400,18 @@ async def update_rows_batch(table_id: UUID, updates: list[dict], updated_by: UUI
     """Batch partial merge update. Each item: {row_id: UUID, data: dict}."""
     if not updates:
         return []
+    columns = await _get_columns(table_id)
+    validated_payloads = _validate_batch(columns, [u["data"] for u in updates], partial=True)
     pool = get_pool()
     results = []
     async with pool.acquire() as conn:
         async with conn.transaction():
-            for item in updates:
+            for item, validated in zip(updates, validated_payloads):
                 row = await conn.fetchrow(
                     "UPDATE table_rows SET data = data || $1, updated_by = $2, updated_at = now() "
                     "WHERE id = $3 AND table_id = $4 "
                     "RETURNING id, table_id, data, row_order, created_by, updated_by, created_at, updated_at",
-                    item["data"],
+                    validated,
                     updated_by,
                     item["row_id"],
                     table_id,

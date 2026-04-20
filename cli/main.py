@@ -52,7 +52,12 @@ def _default_workspace() -> str:
 
 
 def _err(e: StashError) -> None:
-    console.print(f"[red]Error [{e.status_code}]: {e.detail}[/red]")
+    if isinstance(e.detail, list):
+        console.print(f"[red]Error [{e.status_code}]:[/red]")
+        for item in e.detail:
+            console.print(f"  [red]• {item}[/red]")
+    else:
+        console.print(f"[red]Error [{e.status_code}]: {e.detail}[/red]")
     raise typer.Exit(1)
 
 
@@ -1186,16 +1191,25 @@ app.add_typer(tables_app, name="tables")
 
 
 def _resolve_col_names(table: dict, data: dict) -> dict:
-    """Translate column names to IDs in a data dict."""
+    """Translate column names to IDs in a data dict. Raises on unknown keys."""
     cols = table.get("columns", [])
     name_to_id = {col["name"]: col["id"] for col in cols}
     id_set = {col["id"] for col in cols}
     resolved = {}
+    unknown = []
     for k, v in data.items():
         if k in id_set:
             resolved[k] = v
         elif k in name_to_id:
             resolved[name_to_id[k]] = v
+        else:
+            unknown.append(k)
+    if unknown:
+        valid = ", ".join(col["name"] for col in cols) or "(none)"
+        raise StashError(
+            422,
+            [f"unknown column '{k}'. Valid columns: {valid}" for k in unknown],
+        )
     return resolved
 
 

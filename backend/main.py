@@ -22,6 +22,7 @@ from .routers import (
     users,
     workspaces,
 )
+from .services.row_validation import RowValidationError
 
 logger = logging.getLogger("stash")
 
@@ -40,6 +41,10 @@ def _rate_limit_exceeded_handler(request: Request, exc: RateLimitExceeded) -> JS
     )
 
 
+def _row_validation_handler(request: Request, exc: RowValidationError) -> JSONResponse:
+    return JSONResponse(status_code=422, content={"detail": exc.errors})
+
+
 app = FastAPI(
     title="Stash",
     description="Shared memory for AI agents",
@@ -49,6 +54,7 @@ app = FastAPI(
 
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+app.add_exception_handler(RowValidationError, _row_validation_handler)
 app.add_middleware(SlowAPIMiddleware)
 app.add_middleware(
     CORSMiddleware,
