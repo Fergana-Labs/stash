@@ -163,7 +163,7 @@ function MemoryPageInner() {
   }, [fetchEvents]);
 
   const loadMore = useCallback(async () => {
-    if (!events.length || loadingMore) return;
+    if (!events.length || loadingMore || !hasMore) return;
     setLoadingMore(true);
     try {
       const oldest = events[events.length - 1];
@@ -174,7 +174,7 @@ function MemoryPageInner() {
       /* ignore */
     }
     setLoadingMore(false);
-  }, [events, loadingMore, fetchEvents]);
+  }, [events, loadingMore, hasMore, fetchEvents]);
 
   useEffect(() => {
     if (user) loadEvents();
@@ -564,15 +564,24 @@ function RecentActivityView({
   const visible = allSessions.slice(0, visibleCount);
   const hasMoreSessions = visibleCount < allSessions.length;
 
-  // Infinite scroll — show more sessions, or fetch more events if we've shown them all
+  // Infinite scroll — show more sessions, or fetch more events if we've shown them all.
+  // The `firing` ref prevents re-entry while the sentinel is still intersecting and
+  // React hasn't re-rendered the updated state yet.
+  const firingRef = useRef(false);
   useEffect(() => {
     if (!sentinelRef.current) return;
     const observer = new IntersectionObserver(
       ([entry]) => {
-        if (!entry.isIntersecting) return;
+        if (!entry.isIntersecting) {
+          firingRef.current = false;
+          return;
+        }
+        if (firingRef.current) return;
         if (hasMoreSessions) {
+          firingRef.current = true;
           setVisibleCount((c) => c + SESSIONS_PAGE_SIZE);
         } else if (hasMoreEvents && !loadingMoreEvents) {
+          firingRef.current = true;
           onLoadMoreEvents();
         }
       },
