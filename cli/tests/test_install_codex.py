@@ -8,9 +8,10 @@ from pathlib import Path
 from cli.main import _install_codex
 
 
-def _run_install(monkeypatch, tmp_path: Path) -> Path:
+def _run_install(monkeypatch, tmp_path: Path, allow_network: bool = True) -> Path:
     monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.setattr(Path, "home", classmethod(lambda cls: tmp_path))
+    monkeypatch.setattr("cli.main._ask_codex_network_access", lambda: allow_network)
     _install_codex(False)
     return tmp_path / ".codex" / "config.toml"
 

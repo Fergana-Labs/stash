@@ -411,10 +411,7 @@ def _upsert_agents_md(path: Path, body: str) -> None:
 
 def _ask_codex_network_access() -> bool:
     """Prompt the user to enable top-level `network_access` for codex's
-    workspace-write sandbox. Defaults to yes on non-TTY so batch installs
-    don't hang."""
-    if not sys.stdin.isatty():
-        return True
+    workspace-write sandbox."""
     console.print(
         "For stash to work on codex specifically, we need to let bash ",
         "commands make network requests so that we can upload chat ",
