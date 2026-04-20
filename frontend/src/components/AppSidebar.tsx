@@ -122,23 +122,24 @@ export default function AppSidebar() {
 
       {/* Workspace switcher */}
       <div className="px-2 pb-2 relative">
-        <div
-          className={`w-full flex items-center gap-2 px-3 py-2 rounded-md text-sm transition-colors cursor-pointer hover:text-foreground hover:bg-raised ${
-            selectedWs ? "text-foreground bg-raised" : "text-dim"
-          }`}
-        >
-          <span className="w-5 h-5 rounded bg-brand/15 text-brand flex items-center justify-center text-[10px] font-bold flex-shrink-0">
-            W
-          </span>
+        <div className="w-full flex items-center gap-1 text-sm">
           <button
             onClick={() => selectedWsId && router.push(`/workspaces/${selectedWsId}`)}
-            className="flex-1 text-left truncate font-medium cursor-pointer hover:text-brand transition-colors"
+            className={`flex-1 min-w-0 flex items-center gap-2 px-3 py-2 rounded-md transition-colors cursor-pointer hover:text-brand hover:bg-raised ${
+              selectedWs ? "text-foreground bg-raised" : "text-dim"
+            }`}
           >
-            {selectedWs?.name || "Select workspace"}
+            <span className="w-5 h-5 rounded bg-brand/15 text-brand flex items-center justify-center text-[10px] font-bold flex-shrink-0">
+              W
+            </span>
+            <span className="flex-1 text-left truncate font-medium">
+              {selectedWs?.name || "Select workspace"}
+            </span>
           </button>
           <button
             onClick={() => setShowWsSwitcher(!showWsSwitcher)}
-            className="text-muted text-xs hover:text-foreground px-1 cursor-pointer"
+            className="flex-shrink-0 w-7 h-8 rounded-md text-muted text-xs hover:text-foreground hover:bg-raised cursor-pointer transition-colors flex items-center justify-center"
+            aria-label="Switch workspace"
           >
             {showWsSwitcher ? "\u25B4" : "\u25BE"}
           </button>
