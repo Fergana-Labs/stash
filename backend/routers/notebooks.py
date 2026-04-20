@@ -24,6 +24,7 @@ from ..models import (
     WorkspacePageListResponse,
 )
 from ..services import notebook_service, permission_service, workspace_service
+from ..services.notebook_service import DuplicatePageName
 
 ws_router = APIRouter(prefix="/api/v1/workspaces/{workspace_id}/notebooks", tags=["notebooks"])
 personal_router = APIRouter(prefix="/api/v1/notebooks", tags=["personal_notebooks"])
@@ -163,10 +164,8 @@ async def create_ws_page(
             folder_id=req.folder_id,
             content=req.content,
         )
-    except Exception as e:
-        if "unique" in str(e).lower():
-            raise HTTPException(status_code=409, detail="Page name already exists")
-        raise
+    except DuplicatePageName as e:
+        raise HTTPException(status_code=409, detail=str(e))
     return PageResponse(**page)
 
 
@@ -217,15 +216,18 @@ async def update_ws_page(
 ):
     await _check_ws_access(workspace_id, current_user["id"])
     await _check_ws_notebook(workspace_id, notebook_id)
-    page = await notebook_service.update_page(
-        page_id,
-        notebook_id,
-        current_user["id"],
-        name=req.name,
-        folder_id=req.folder_id,
-        content=req.content,
-        move_to_root=req.move_to_root,
-    )
+    try:
+        page = await notebook_service.update_page(
+            page_id,
+            notebook_id,
+            current_user["id"],
+            name=req.name,
+            folder_id=req.folder_id,
+            content=req.content,
+            move_to_root=req.move_to_root,
+        )
+    except DuplicatePageName as e:
+        raise HTTPException(status_code=409, detail=str(e))
     if not page:
         raise HTTPException(status_code=404, detail="Page not found")
     return PageResponse(**page)
@@ -486,10 +488,8 @@ async def create_personal_page(
             folder_id=req.folder_id,
             content=req.content,
         )
-    except Exception as e:
-        if "unique" in str(e).lower():
-            raise HTTPException(status_code=409, detail="Page name already exists")
-        raise
+    except DuplicatePageName as e:
+        raise HTTPException(status_code=409, detail=str(e))
     return PageResponse(**page)
 
 
@@ -533,15 +533,18 @@ async def update_personal_page(
     current_user: dict = Depends(get_current_user),
 ):
     await _check_notebook_owner(notebook_id, current_user["id"])
-    page = await notebook_service.update_page(
-        page_id,
-        notebook_id,
-        current_user["id"],
-        name=req.name,
-        folder_id=req.folder_id,
-        content=req.content,
-        move_to_root=req.move_to_root,
-    )
+    try:
+        page = await notebook_service.update_page(
+            page_id,
+            notebook_id,
+            current_user["id"],
+            name=req.name,
+            folder_id=req.folder_id,
+            content=req.content,
+            move_to_root=req.move_to_root,
+        )
+    except DuplicatePageName as e:
+        raise HTTPException(status_code=409, detail=str(e))
     if not page:
         raise HTTPException(status_code=404, detail="Page not found")
     return PageResponse(**page)

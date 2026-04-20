@@ -7,9 +7,22 @@ import re
 from collections.abc import Awaitable, Callable
 from uuid import UUID
 
+import asyncpg
+
 from ..database import get_pool
 
 logger = logging.getLogger(__name__)
+
+
+class DuplicatePageName(Exception):
+    """A page with this name already exists in the target folder."""
+
+    def __init__(self, notebook_id: UUID, folder_id: UUID | None, name: str):
+        self.notebook_id = notebook_id
+        self.folder_id = folder_id
+        self.name = name
+        where = f"folder {folder_id}" if folder_id else "the root of the notebook"
+        super().__init__(f"Page '{name}' already exists in {where}.")
 
 
 def _content_hash(content: str) -> str:
@@ -144,20 +157,23 @@ async def create_page(
     pool = get_pool()
     ch = _content_hash(content)
     meta = metadata or {}
-    row = await pool.fetchrow(
-        "INSERT INTO notebook_pages "
-        "(notebook_id, folder_id, name, content_markdown, content_hash, metadata, created_by, updated_by) "
-        "VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $7) "
-        "RETURNING id, notebook_id, folder_id, name, content_markdown, content_hash, metadata, "
-        "created_by, updated_by, created_at, updated_at",
-        notebook_id,
-        folder_id,
-        name,
-        content,
-        ch,
-        meta,
-        created_by,
-    )
+    try:
+        row = await pool.fetchrow(
+            "INSERT INTO notebook_pages "
+            "(notebook_id, folder_id, name, content_markdown, content_hash, metadata, created_by, updated_by) "
+            "VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $7) "
+            "RETURNING id, notebook_id, folder_id, name, content_markdown, content_hash, metadata, "
+            "created_by, updated_by, created_at, updated_at",
+            notebook_id,
+            folder_id,
+            name,
+            content,
+            ch,
+            meta,
+            created_by,
+        )
+    except asyncpg.UniqueViolationError as e:
+        raise DuplicatePageName(notebook_id, folder_id, name) from e
     page = dict(row)
     # Fire-and-forget: embed page + extract wiki links
     if content:
@@ -274,12 +290,17 @@ async def update_page(
             args.append(expected_hash)
             where += f" AND content_hash = ${idx + 2}"
 
-        row = await pool.fetchrow(
-            f"UPDATE notebook_pages SET {', '.join(sets)} WHERE {where} "
-            "RETURNING id, notebook_id, folder_id, name, content_markdown, content_hash, metadata, "
-            "created_by, updated_by, created_at, updated_at",
-            *args,
-        )
+        try:
+            row = await pool.fetchrow(
+                f"UPDATE notebook_pages SET {', '.join(sets)} WHERE {where} "
+                "RETURNING id, notebook_id, folder_id, name, content_markdown, content_hash, metadata, "
+                "created_by, updated_by, created_at, updated_at",
+                *args,
+            )
+        except asyncpg.UniqueViolationError as e:
+            # Rename or folder move hit the (notebook, folder, name) unique
+            # index. Surface as DuplicatePageName so the router can return 409.
+            raise DuplicatePageName(notebook_id, folder_id, name or "") from e
         if row:
             page = dict(row)
             if content is not None:
