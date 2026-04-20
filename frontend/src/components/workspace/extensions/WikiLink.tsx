@@ -160,7 +160,10 @@ function WikiLinkNodeView({
   extension: { options: WikiLinkOptions };
 }) {
   const linkText = (node.attrs.pageName as string) || "";
-  const { pageIndex, context } = extension.options;
+  // addOptions() on the node guarantees these are present, but guard
+  // defensively so a legacy cached bundle can't crash the whole editor.
+  const pageIndex = extension.options?.pageIndex ?? [];
+  const context = extension.options?.context ?? { notebookId: null, folderId: null };
   const resolution = resolveWikiLink(linkText, pageIndex, context);
   const isResolved = resolution.status === "resolved";
   const isAmbiguous = resolution.status === "ambiguous";
@@ -213,11 +216,22 @@ function WikiLinkNodeView({
   );
 }
 
-export const WikiLinkNode = Node.create({
+export const WikiLinkNode = Node.create<WikiLinkOptions>({
   name: "wikiLinkNode",
   group: "inline",
   inline: true,
   atom: true,
+
+  // The node needs pageIndex + context at render time to show resolved
+  // vs dangling vs ambiguous styling. We duplicate the options with the
+  // sibling WikiLink (suggestion) extension so the editor can configure
+  // both in one place and the node's view can access them directly.
+  addOptions() {
+    return {
+      pageIndex: [],
+      context: { notebookId: null, folderId: null },
+    };
+  },
 
   addAttributes() {
     return {

@@ -95,6 +95,11 @@ export default function MarkdownEditor({
         heading: false,
         bold: false,
         italic: false,
+        // StarterKit 3.x ships link + underline by default; we configure
+        // those separately below, so disable the StarterKit copies to
+        // avoid the "Duplicate extension names" warning + drift.
+        link: false,
+        underline: false,
       }),
       Heading.configure({ levels: [1, 2, 3] }),
       Bold,
@@ -117,7 +122,13 @@ export default function MarkdownEditor({
       TableRow,
       TableHeader,
       TableCell,
-      WikiLinkNode,
+      WikiLinkNode.configure({
+        pageIndex,
+        context: {
+          notebookId: notebookId ?? null,
+          folderId: file.folder_id ?? null,
+        },
+      }),
       WikiLink.configure({
         pageIndex,
         context: {
