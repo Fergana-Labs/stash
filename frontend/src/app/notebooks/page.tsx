@@ -209,28 +209,30 @@ function WikiPageInner() {
   // Resolve a wiki-link's raw text (e.g. "page", "folder/page",
   // "notebook/folder/page") against the workspace-wide page index,
   // scoped by the current editing context (current notebook + folder),
-  // then navigate to whatever it points at.
+  // then navigate to the resolved page.
   const handleNavigateToLink = useCallback(async (linkText: string) => {
     const resolution = resolveWikiLink(linkText, workspacePages, {
       notebookId: selectedNotebook?.id ?? null,
       folderId: selectedPage?.folder_id ?? null,
     });
-    // Pick something navigable for every non-dead case so clicks are
-    // never silent. Ambiguous → take the most-recently-updated match.
-    let hit: typeof workspacePages[number] | null = null;
-    if (resolution.status === "resolved") {
-      hit = resolution.page;
-    } else if (resolution.status === "ambiguous") {
-      hit = [...resolution.candidates].sort((a, b) =>
-        b.updated_at.localeCompare(a.updated_at)
-      )[0];
+    if (resolution.status === "ambiguous") {
+      // Should not happen given the (notebook, folder, name) unique
+      // index — every strict-syntax path is by construction unique.
+      // Log defensively in case a future schema change or bug breaks
+      // that invariant.
+      console.warn(
+        `[wiki-link] unexpectedly ambiguous: [[${linkText}]]`,
+        resolution.candidates
+      );
+      return;
     }
-    if (!hit) {
-      // Unresolved — surface in the console so the author can see which
-      // link is dead without having to open the inspector every time.
+    if (resolution.status === "unresolved") {
+      // Dead link — surface in the console so the author can find it
+      // without opening devtools. The UI already renders these red.
       console.warn(`[wiki-link] unresolved: [[${linkText}]]`);
       return;
     }
+    const hit = resolution.page;
 
     // Same-notebook: just select the page, no tree reload needed.
     if (selectedNotebook && hit.notebook_id === selectedNotebook.id) {
