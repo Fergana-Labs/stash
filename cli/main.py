@@ -416,13 +416,9 @@ def _ask_codex_network_access() -> bool:
     if not sys.stdin.isatty():
         return True
     console.print(
-        "\n[bold]Codex sandbox network access[/bold]\n"
-        "Codex's default sandbox blocks outbound network from bash commands.\n"
-        "Stash hooks use bash to POST session events to api.stash.ac, so they\n"
-        "need network to upload. Enabling this lets plain `codex` stream.\n"
-        "You can opt out now and use `codex --profile stash` when streaming,\n"
-        "or edit ~/.codex/config.toml later to change your mind."
-    )
+        "For stash to work, we need to let bash commands make network requests",
+        "So that we can upload chat transcripts to the remote server."
+        )
     try:
         answer = questionary.confirm(
             "Allow codex bash commands to make outbound network requests?",
