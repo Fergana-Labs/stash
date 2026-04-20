@@ -83,11 +83,8 @@ stash --help                         # Full command list
 The [`plugins/claude-plugin`](plugins/claude-plugin/README.md) directory ships a Claude Code plugin that turns any session into a persistent Stash agent: activity streams to history, memory injects into every prompt, and context carries across sessions.
 
 ```bash
-# From the octopus repo
-claude plugin add ./plugins/claude-plugin
-
-# Or from the marketplace
-claude plugin install stash
+claude plugin marketplace add Fergana-Labs/stash
+claude plugin install stash@stash-plugins
 ```
 
 Slash commands include `/stash:connect` (onboarding), `/stash:sleep` (curate history into a wiki — also runs on SessionEnd), `/stash:search` (agentic cross-resource search), and `/stash:status`. See the [plugin README](plugins/claude-plugin/README.md) for full setup.

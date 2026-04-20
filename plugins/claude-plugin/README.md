@@ -11,11 +11,8 @@ Go to [stash.ac/login](https://stash.ac/login) and register a human account. Sav
 ### Step 2: Install the plugin
 
 ```bash
-# From the stash repo
-claude plugin add ./claude-plugin
-
-# Or from the marketplace
-claude plugin install stash
+claude plugin marketplace add Fergana-Labs/stash
+claude plugin install stash@stash-plugins
 ```
 
 Claude Code will prompt you for three config values:
