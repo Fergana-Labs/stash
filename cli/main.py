@@ -2366,25 +2366,35 @@ def _invite_url(invite_code: str) -> str:
     return f"{frontend}/join/{invite_code}"
 
 
-def _workspace_url(ws_id: str) -> str:
-    """Build the user-facing URL for a workspace's page on the configured
-    frontend. Managed backend → app.stash.ac (the marketing site at stash.ac
-    has no /workspaces redirect); localhost backend → :3457; any other
-    self-host → whatever the configured base_url is."""
+def _frontend_base_url() -> str:
+    """Return the frontend root for the currently configured backend. Managed
+    backend → app.stash.ac (the marketing site at stash.ac has no /workspaces
+    redirect); localhost backend → :3457; any other self-host → whatever the
+    configured base_url is."""
     base_url = (load_config().get("base_url") or "").rstrip("/")
     if "localhost" in base_url or "127.0.0.1" in base_url:
-        frontend = base_url.replace(":3456", ":3457")
-    elif base_url == "https://api.stash.ac":
-        frontend = "https://app.stash.ac"
-    else:
-        frontend = base_url
-    return f"{frontend}/workspaces/{ws_id}"
+        return base_url.replace(":3456", ":3457")
+    if base_url == "https://api.stash.ac":
+        return "https://app.stash.ac"
+    return base_url
+
+
+def _workspace_url(ws_id: str) -> str:
+    """Build the user-facing URL for a workspace's page on the configured frontend."""
+    return f"{_frontend_base_url()}/workspaces/{ws_id}"
 
 
 def _current_workspace_url() -> str:
     """Return the link to the user's default workspace, or "" if none configured."""
     ws_id = load_config().get("default_workspace") or ""
     return _workspace_url(ws_id) if ws_id else ""
+
+
+def _transcripts_url() -> str:
+    """Best-effort link to where the user can see their transcripts in the web
+    UI. Prefers the workspace-specific URL when default_workspace is set; falls
+    back to the frontend root so we still hand the user a usable link."""
+    return _current_workspace_url() or _frontend_base_url()
 
 
 def _welcome_markdown() -> str:
@@ -2594,10 +2604,8 @@ def _show_setup_complete_splash(
             _pushed_scope_phrase(),
         ),
         (
-            "How do I change scope or see a transcript?",
-            "[#1e3a8a]stash config scope <repo|workspace|all>[/#1e3a8a]  (default: repo)\n"
-            "[#1e3a8a]stash history transcript <session_id>[/#1e3a8a]  view a full transcript\n"
-            '[#1e3a8a]stash history search "<query>"[/#1e3a8a]         search event content',
+            "Where can I see my conversation transcripts?",
+            f"[link={_transcripts_url()}][bold #1e3a8a]{_transcripts_url()}[/bold #1e3a8a][/link]",
         ),
         (
             "How do I share my workspace with my team?",

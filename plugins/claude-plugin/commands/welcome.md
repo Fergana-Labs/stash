@@ -37,8 +37,8 @@ Run `stash --help` to see everything.
 **Q:** What gets pushed to the shared store?
 **A:** For sessions in this repo (and its worktrees): prompts, assistant replies, summarized tool activity, and the full session transcript (.jsonl) at session end. Other repos push nothing unless you widen scope. Transcripts are stored verbatim — no secret scrubbing yet.
 
-**Q:** How do I change scope or see a transcript?
-**A:** `stash config scope <repo|workspace|all>` (default: `repo`). `stash history transcript <session_id>` fetches a full transcript.
+**Q:** Where can I see my conversation transcripts?
+**A:** Open your workspace in the browser: [app.stash.ac](https://app.stash.ac). (If you self-host, browse to your own frontend instead.)
 
 **Q:** How do I share my workspace with my team?
 **A:** Share the invite code (`stash workspaces info <id>` prints it). Teammates run `stash connect` if needed, then `stash workspaces join <invite_code>`.
