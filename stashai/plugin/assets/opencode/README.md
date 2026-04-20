@@ -22,6 +22,13 @@ Point your opencode config at `plugin.ts`. The config key is `plugin` (singular)
 
 Or drop the plugin into your project's `.opencode/plugin/` directory (note: singular `plugin/`, not `plugins/`).
 
+Also drop `AGENTS.md` beside your opencode config so the agent knows the
+`stash` CLI is available:
+
+```bash
+cat AGENTS.md >> ~/.config/opencode/AGENTS.md
+```
+
 Restart opencode.
 
 ## How it works

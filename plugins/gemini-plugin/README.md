@@ -19,6 +19,9 @@ export PLUGIN_ROOT=$(pwd)
 # If ~/.gemini/settings.json doesn't exist yet:
 mkdir -p ~/.gemini
 envsubst < settings.snippet.json > ~/.gemini/settings.json
+
+# Agent context — tells Gemini it has the stash CLI available
+cat GEMINI.md >> ~/.gemini/GEMINI.md
 ```
 
 If you already have a `~/.gemini/settings.json`, merge the `hooks` block by
