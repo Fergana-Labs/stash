@@ -1,117 +1,20 @@
-/** Wiki-link path resolution.
+/** Wiki-link autocomplete helpers.
  *
- * Link syntax (filesystem-like — no implicit fallback to other folders):
- *   [[page]]                     → current notebook, current folder
- *   [[folder/page]]              → current notebook, named folder
- *   [[notebook/page]]            → named notebook, root (if no folder matches)
- *   [[notebook/folder/page]]     → named notebook, named folder
- *
- * 2-segment links are ambiguous between `folder/page` in the current
- * notebook and `notebook/page` (at that notebook's root). We prefer
- * the folder interpretation first (locality beats cross-notebook);
- * only fall through to the notebook interpretation if no folder match.
- *
- * The `name` portion is always the file part of the page (the value of
- * notebook_pages.name in the DB). We never strip extensions — you
- * literally link `[[README.md]]`.
+ * Links are stored in content_markdown as ordinary markdown links with
+ * stable id URLs — `[name](/notebooks?ws=...&nb=...&page=<uuid>)`. This
+ * module only handles the authoring-side UX: ranking and labeling
+ * suggestions when the user types `[[`.
  */
 
 import type { WorkspacePageEntry } from "./api";
 
 export interface WikiLinkContext {
-  /** notebook_id of the page the link lives on; null when the editor
-   *  hasn't settled on a page yet (e.g. empty new page). */
+  /** notebook_id of the page doing the linking, null if unsettled. */
   notebookId: string | null;
-  /** folder_id of the page the link lives on; null for root-level pages. */
+  /** folder_id of the page doing the linking, null for root-level. */
   folderId: string | null;
 }
 
-export type WikiLinkResolution =
-  | { status: "resolved"; page: WorkspacePageEntry }
-  | { status: "ambiguous"; candidates: WorkspacePageEntry[] }
-  | { status: "unresolved" };
-
-/** Parse a link's raw text (everything between `[[` and `]]`) into path
- *  parts. Whitespace around each segment is trimmed. */
-export function parseLinkText(raw: string): string[] {
-  return raw
-    .split("/")
-    .map((p) => p.trim())
-    .filter((p) => p.length > 0);
-}
-
-/** Resolve a link against the workspace page index and the current
- *  editing context. Returns the matched page, an ambiguity list, or an
- *  unresolved marker so the UI can render accordingly. */
-export function resolveWikiLink(
-  rawLinkText: string,
-  index: WorkspacePageEntry[],
-  ctx: WikiLinkContext
-): WikiLinkResolution {
-  const parts = parseLinkText(rawLinkText);
-  if (parts.length === 0) return { status: "unresolved" };
-
-  // 3 parts → notebook / folder / page (fully qualified).
-  if (parts.length >= 3) {
-    const [notebook, folder, ...rest] = parts;
-    const name = rest.join("/");
-    return finalize(
-      index.filter(
-        (p) =>
-          p.notebook_name === notebook &&
-          (p.folder_name ?? "") === folder &&
-          p.name === name
-      )
-    );
-  }
-
-  // 2 parts → try folder-in-current-notebook first, then notebook-root.
-  if (parts.length === 2) {
-    const [first, second] = parts;
-    if (ctx.notebookId) {
-      const folderHits = index.filter(
-        (p) =>
-          p.notebook_id === ctx.notebookId &&
-          p.folder_name === first &&
-          p.name === second
-      );
-      if (folderHits.length > 0) return finalize(folderHits);
-    }
-    const notebookHits = index.filter(
-      (p) =>
-        p.notebook_name === first &&
-        p.folder_id === null &&
-        p.name === second
-    );
-    return finalize(notebookHits);
-  }
-
-  // 1 part → current folder of current notebook only. Filesystem-like;
-  // no fallback to other folders or notebooks. Given the
-  // (notebook_id, folder_id, name) unique index, this matches at most
-  // one page. If it misses, the link is dead until it's qualified.
-  const [name] = parts;
-  if (!ctx.notebookId) return { status: "unresolved" };
-  const hits = index.filter(
-    (p) =>
-      p.notebook_id === ctx.notebookId &&
-      p.folder_id === ctx.folderId &&
-      p.name === name
-  );
-  return finalize(hits);
-}
-
-function finalize(hits: WorkspacePageEntry[]): WikiLinkResolution {
-  if (hits.length === 0) return { status: "unresolved" };
-  if (hits.length === 1) return { status: "resolved", page: hits[0] };
-  return { status: "ambiguous", candidates: hits };
-}
-
-/** Format a page as the canonical shortest-unique path string to display
- *  in autocomplete: `page` if same folder as ctx, `folder/page` if same
- *  notebook but different folder, `notebook/folder/page` or
- *  `notebook/page` otherwise. Folder-less root pages drop the folder
- *  segment entirely. */
 export function formatPagePath(
   page: WorkspacePageEntry,
   ctx: WikiLinkContext
@@ -128,8 +31,6 @@ export function formatPagePath(
   return `${page.notebook_name}/${page.name}`;
 }
 
-/** Rank candidate pages for autocomplete: same folder > same notebook >
- *  anything else. Ties broken by last-updated (most recent first). */
 export function rankForAutocomplete(
   pages: WorkspacePageEntry[],
   ctx: WikiLinkContext
@@ -144,4 +45,8 @@ export function rankForAutocomplete(
     if (s !== 0) return s;
     return b.updated_at.localeCompare(a.updated_at);
   });
+}
+
+export function pageHref(page: WorkspacePageEntry, workspaceId: string): string {
+  return `/notebooks?ws=${workspaceId}&nb=${page.notebook_id}&page=${page.id}`;
 }

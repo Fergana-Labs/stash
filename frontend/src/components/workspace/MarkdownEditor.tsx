@@ -15,7 +15,7 @@ import Image from "@tiptap/extension-image";
 import Placeholder from "@tiptap/extension-placeholder";
 import { Table, TableCell, TableHeader, TableRow } from "@tiptap/extension-table";
 import EditorToolbar from "./EditorToolbar";
-import WikiLink, { WikiLinkNode } from "./extensions/WikiLink";
+import WikiLink from "./extensions/WikiLink";
 import { NotebookPage, FileInfo } from "../../lib/types";
 import { listFiles, WorkspacePageEntry } from "../../lib/api";
 
@@ -30,12 +30,11 @@ interface MarkdownEditorProps {
   onSave: (content: string) => void;
   onSaveStatusChange?: (status: SaveStatus) => void;
   onRename?: (name: string) => void;
-  /** Workspace-wide page index (every notebook, every folder). Drives
-   *  wiki-link autocomplete + click resolution. */
+  /** Every page in the workspace, used to seed `[[` autocomplete. */
   pageIndex?: WorkspacePageEntry[];
-  /** Raw link text from a clicked [[...]] — may be a bare name or a
-   *  folder/notebook-qualified path. */
-  onNavigateToLink?: (linkText: string) => void;
+  /** Called on clicks to same-origin stash routes so the notebooks
+   *  page can SPA-select the target instead of reloading. */
+  onNavigateInternal?: (href: string) => void;
 }
 
 export default function MarkdownEditor({
@@ -46,7 +45,7 @@ export default function MarkdownEditor({
   onSaveStatusChange,
   onRename,
   pageIndex = [],
-  onNavigateToLink,
+  onNavigateInternal,
 }: MarkdownEditorProps) {
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -132,15 +131,9 @@ export default function MarkdownEditor({
       TableRow,
       TableHeader,
       TableCell,
-      WikiLinkNode.configure({
-        pageIndex,
-        context: {
-          notebookId: notebookId ?? null,
-          folderId: file.folder_id ?? null,
-        },
-      }),
       WikiLink.configure({
         pageIndex,
+        workspaceId: workspaceId ?? "",
         context: {
           notebookId: notebookId ?? null,
           folderId: file.folder_id ?? null,
@@ -152,9 +145,6 @@ export default function MarkdownEditor({
       attributes: {
         class: "max-w-none min-h-[200px] focus:outline-none wiki-body",
       },
-      // Single place that decides what happens on a link click. Wiki
-      // nodes dispatch their own event from the node view — this
-      // handler only needs to catch clicks on markdown-link anchors.
       handleDOMEvents: {
         click: (_view, event) => {
           const target = event.target as HTMLElement | null;
@@ -163,24 +153,13 @@ export default function MarkdownEditor({
           const href = anchor.getAttribute("href");
           if (!href) return false;
 
-          // Internal: stash routes (absolute or relative) → SPA.
-          // Dead: relative paths that aren't our routes (e.g. old
-          // import artifacts like "README.md") → no-op so they don't
-          // dump the user onto a 404 inside the app.
-          // External: anything with a scheme, different host → new tab.
-          const isStashAbsolute =
-            /^https?:\/\/(app\.)?stash\.ac\//i.test(href);
+          const isStashAbsolute = /^https?:\/\/(app\.)?stash\.ac\//i.test(href);
           const isRouteRelative = href.startsWith("/");
           const hasScheme = /^[a-z][a-z0-9+.-]*:/i.test(href);
 
           if (isStashAbsolute || isRouteRelative) {
             event.preventDefault();
-            // Stash internal URLs are human-readable and page-id based;
-            // not worth reverse-engineering into onNavigateToLink right
-            // now. Just route via the standard anchor → Next router
-            // would require a ref we don't have here; fall through to
-            // same-tab navigation which at least keeps the user in-app.
-            window.location.assign(href);
+            onNavigateInternal?.(href);
             return true;
           }
 
@@ -190,8 +169,9 @@ export default function MarkdownEditor({
             return true;
           }
 
-          // Dead ref — preventDefault so the browser doesn't try
-          // to resolve "README.md" against the current URL.
+          // Relative href with no scheme and no leading slash — a stale
+          // import artifact. Block it so the browser doesn't try to
+          // resolve e.g. "README.md" against the current URL.
           event.preventDefault();
           return true;
         },
@@ -247,20 +227,6 @@ export default function MarkdownEditor({
       }
     };
   }, [editor, onSave]);
-
-  // Wiki link click handler. NodeView dispatches { linkText } — the raw
-  // path between the [[ ]] — and the parent page component runs the
-  // resolver to navigate.
-  useEffect(() => {
-    const handleWikiLinkClick = (e: Event) => {
-      const detail = (e as CustomEvent).detail;
-      if (detail?.linkText && onNavigateToLink) {
-        onNavigateToLink(detail.linkText);
-      }
-    };
-    document.addEventListener("wiki-link-click", handleWikiLinkClick);
-    return () => document.removeEventListener("wiki-link-click", handleWikiLinkClick);
-  }, [onNavigateToLink]);
 
   // Ctrl/Cmd+S → flush immediately
   useEffect(() => {
@@ -351,8 +317,9 @@ function parseInlineMarkdown(text: string): JSONNode[] {
     }
 
     if (match[2] !== undefined) {
-      // [[wiki link]]
-      nodes.push({ type: "wikiLinkNode", attrs: { pageName: match[2] } });
+      // Legacy `[[...]]` from old imports — pass through as plain text.
+      // New content uses markdown links with id URLs instead.
+      nodes.push({ type: "text", text: match[0] });
     } else if (match[3] !== undefined) {
       // [![alt](src)](href) — linked image. Render as the image (TipTap's
       // inline nodes can't nest a link around an image cleanly without the
@@ -586,10 +553,6 @@ function renderNode(node: JSONNode, depth: number): string {
       return `${children.trim().split("\n").map((line) => `> ${line}`).join("\n")}\n\n`;
     case "hardBreak":
       return "\n";
-    case "wikiLinkNode": {
-      const pageName = node.attrs?.pageName || "";
-      return `[[${pageName}]]`;
-    }
     case "image": {
       const src = String(node.attrs?.src || "");
       const alt = String(node.attrs?.alt || "");

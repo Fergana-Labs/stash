@@ -30,7 +30,6 @@ import {
   WorkspacePageEntry,
 } from "../../lib/api";
 import { Notebook, NotebookPage, NotebookWithWorkspace, PageLink, PageTree, Table, TableWithWorkspace } from "../../lib/types";
-import { resolveWikiLink } from "../../lib/wikiLink";
 
 type WikiTab = "pages" | "tables";
 
@@ -292,63 +291,37 @@ function WikiPageInner() {
 
   // Navigate to a page by name (for wiki link clicks)
   // Resolve a wiki-link's raw text (e.g. "page", "folder/page",
-  // "notebook/folder/page") against the workspace-wide page index,
-  // scoped by the current editing context (current notebook + folder),
-  // then navigate to the resolved page.
-  const handleNavigateToLink = useCallback(async (linkText: string) => {
-    const resolution = resolveWikiLink(linkText, workspacePages, {
-      notebookId: selectedNotebook?.id ?? null,
-      folderId: selectedPage?.folder_id ?? null,
-    });
-    if (resolution.status === "ambiguous") {
-      // Should not happen given the (notebook, folder, name) unique
-      // index — every strict-syntax path is by construction unique.
-      // Log defensively in case a future schema change or bug breaks
-      // that invariant.
-      console.warn(
-        `[wiki-link] unexpectedly ambiguous: [[${linkText}]]`,
-        resolution.candidates
-      );
+  // Editor clicks on `/notebooks?ws=...&nb=...&page=...` links come
+  // through here so we can SPA-select the target without a full reload.
+  const handleNavigateInternal = useCallback(async (href: string) => {
+    const url = new URL(href, window.location.origin);
+    if (url.pathname !== "/notebooks") {
+      router.push(`${url.pathname}${url.search}`);
       return;
     }
-    if (resolution.status === "unresolved") {
-      // Dead link — surface in the console so the author can find it
-      // without opening devtools. The UI already renders these red.
-      console.warn(`[wiki-link] unresolved: [[${linkText}]]`);
-      return;
-    }
-    const hit = resolution.page;
+    const nbId = url.searchParams.get("nb");
+    const pageId = url.searchParams.get("page");
+    if (!nbId || !pageId) return;
 
-    // Same-notebook: just select the page, no tree reload needed.
-    if (selectedNotebook && hit.notebook_id === selectedNotebook.id) {
-      handleSelectPage(hit.id);
+    if (selectedNotebook && nbId === selectedNotebook.id) {
+      handleSelectPage(pageId);
       return;
     }
-
-    // Cross-notebook: switch notebook, load tree + page in parallel.
-    const target = notebooks.find((n) => n.id === hit.notebook_id);
+    const target = notebooks.find((n) => n.id === nbId);
     if (!target) return;
     setSelectedNotebook(target);
-    setSelectedPageId(hit.id);
+    setSelectedPageId(pageId);
     setBacklinks([]);
     setSelectedPage(null);
-    try {
-      const [p, t] = await Promise.all([
-        getPage(target.workspace_id, target.id, hit.id),
-        listPageTree(target.workspace_id, target.id),
-      ]);
-      setTree(t);
-      setSelectedPage(p);
-      try {
-        const bl = await getBacklinks(target.workspace_id, target.id, hit.id);
-        setBacklinks(bl);
-      } catch {
-        /* backlinks optional */
-      }
-    } catch {
-      setError("Failed to load page");
-    }
-  }, [workspacePages, selectedNotebook, selectedPage, handleSelectPage, notebooks]);
+    const [p, t] = await Promise.all([
+      getPage(target.workspace_id, target.id, pageId),
+      listPageTree(target.workspace_id, target.id),
+    ]);
+    setTree(t);
+    setSelectedPage(p);
+    const bl = await getBacklinks(target.workspace_id, target.id, pageId);
+    setBacklinks(bl);
+  }, [router, selectedNotebook, handleSelectPage, notebooks]);
 
   // Compute breadcrumb path for current page
   const breadcrumbs = useMemo(() => {
@@ -687,7 +660,7 @@ function WikiPageInner() {
                       onSaveStatusChange={setSaveStatus}
                       onRename={handleInlineRename}
                       pageIndex={workspacePages}
-                      onNavigateToLink={handleNavigateToLink}
+                      onNavigateInternal={handleNavigateInternal}
                     />
 
                     {/* Backlinks */}
