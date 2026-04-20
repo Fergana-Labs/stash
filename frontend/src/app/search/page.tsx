@@ -37,18 +37,21 @@ const EMPTY_RESULTS: SearchResults = {
 
 export default function SearchPage() {
   const router = useRouter();
-  const urlWs =
+  const urlParams =
     typeof window !== "undefined"
-      ? new URLSearchParams(window.location.search).get("ws")
+      ? new URLSearchParams(window.location.search)
       : null;
+  const urlWs = urlParams?.get("ws") ?? null;
+  const urlQ = urlParams?.get("q") ?? "";
   const { user, loading, logout } = useAuth();
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [selectedWs, setSelectedWs] = useState<string>(urlWs || "");
-  const [query, setQuery] = useState("");
+  const [query, setQuery] = useState(urlQ);
   const [results, setResults] = useState<SearchResults>(EMPTY_RESULTS);
   const [searching, setSearching] = useState(false);
   const [error, setError] = useState("");
   const [searchedQuery, setSearchedQuery] = useState("");
+  const [autoSearchDone, setAutoSearchDone] = useState(false);
 
   const loadWorkspaces = useCallback(async () => {
     try {
@@ -62,7 +65,7 @@ export default function SearchPage() {
     if (user) loadWorkspaces();
   }, [user, loadWorkspaces]);
 
-  const handleSearch = async () => {
+  const handleSearch = useCallback(async () => {
     const q = query.trim();
     if (!q || !selectedWs) return;
     setSearching(true);
@@ -126,7 +129,16 @@ export default function SearchPage() {
       setError(err instanceof Error ? err.message : "Search failed");
     }
     setSearching(false);
-  };
+  }, [query, selectedWs]);
+
+  // Auto-run the search once when the page is opened with ?q= and a workspace is ready.
+  useEffect(() => {
+    if (autoSearchDone) return;
+    if (!urlQ) return;
+    if (!selectedWs) return;
+    setAutoSearchDone(true);
+    handleSearch();
+  }, [autoSearchDone, urlQ, selectedWs, handleSearch]);
 
   const totalResults =
     results.historyEvents.length +

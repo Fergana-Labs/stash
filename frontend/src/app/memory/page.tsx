@@ -118,6 +118,7 @@ function MemoryPageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const wsId = searchParams.get("ws");
+  const urlAgent = searchParams.get("agent");
   const { user, loading, logout } = useAuth();
   const [events, setEvents] = useState<HistoryEventWithContext[]>([]);
   const [eventsLoading, setEventsLoading] = useState(false);
@@ -150,7 +151,7 @@ function MemoryPageInner() {
 
   const loadEvents = useCallback(async () => {
     setEventsLoading(true);
-    setSelectedAgent(null);
+    setSelectedAgent(urlAgent);
     setSelectedSession(null);
     try {
       const { events, has_more } = await fetchEvents();
@@ -160,7 +161,7 @@ function MemoryPageInner() {
       /* ignore */
     }
     setEventsLoading(false);
-  }, [fetchEvents]);
+  }, [fetchEvents, urlAgent]);
 
   const loadMore = useCallback(async () => {
     if (!events.length || loadingMore || !hasMore) return;

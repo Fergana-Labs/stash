@@ -230,14 +230,32 @@ export default function WorkspacePage() {
               {(vizLoading || timeline?.buckets.length || density?.clusters.length || projection?.points.length) ? (
                 <div className="space-y-4">
                   <DashboardSection title="Agent Activity" loading={vizLoading} empty={!timeline?.buckets.length} emptyMessage="No agent activity yet.">
-                    {timeline && <AgentActivityTimeline data={timeline} />}
+                    {timeline && (
+                      <AgentActivityTimeline
+                        data={timeline}
+                        onAgentClick={(agent) =>
+                          router.push(`/memory?ws=${workspaceId}&agent=${encodeURIComponent(agent)}`)
+                        }
+                      />
+                    )}
                   </DashboardSection>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <DashboardSection title="Key Topics" loading={vizLoading} empty={!density?.clusters.length} emptyMessage="No content yet.">
                       {density && <KnowledgeDensityMap data={density} onTopicClick={(topic) => router.push(`/search?q=${encodeURIComponent(topic)}`)} />}
                     </DashboardSection>
                     <DashboardSection title="Embedding Space" loading={vizLoading} empty={!projection?.points.length} emptyMessage="No embeddings yet.">
-                      {projection && <EmbeddingSpaceExplorer data={projection} />}
+                      {projection && (
+                        <EmbeddingSpaceExplorer
+                          data={projection}
+                          onPointClick={(p) => {
+                            if (p.source === "history_events") {
+                              router.push(`/memory?ws=${workspaceId}`);
+                            } else {
+                              router.push(`/search?ws=${workspaceId}&q=${encodeURIComponent(p.label)}`);
+                            }
+                          }}
+                        />
+                      )}
                     </DashboardSection>
                   </div>
                 </div>

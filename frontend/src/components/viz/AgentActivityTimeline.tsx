@@ -5,6 +5,7 @@ import type { ActivityTimeline } from "../../lib/types";
 
 interface Props {
   data: ActivityTimeline;
+  onAgentClick?: (agent: string) => void;
 }
 
 const CELL_SIZE = 14;
@@ -42,10 +43,11 @@ interface TooltipInfo {
   byType: Record<string, number>;
 }
 
-export default function AgentActivityTimeline({ data }: Props) {
+export default function AgentActivityTimeline({ data, onAgentClick }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [tooltip, setTooltip] = useState<TooltipInfo | null>(null);
+  const [hoverAgent, setHoverAgent] = useState<string | null>(null);
 
   // Compute max count for intensity scaling
   const maxCount = data.buckets.reduce((max, b) => {
@@ -116,25 +118,34 @@ export default function AgentActivityTimeline({ data }: Props) {
     }
   }, [data, maxCount]);
 
-  const handleMouseMove = (e: React.MouseEvent) => {
+  const pointToCell = (e: React.MouseEvent) => {
     const canvas = canvasRef.current;
-    if (!canvas) return;
+    if (!canvas) return null;
     const rect = canvas.getBoundingClientRect();
     const scaleX = canvas.clientWidth / (LABEL_WIDTH + PADDING + data.buckets.length * (CELL_SIZE + CELL_GAP));
     const mx = (e.clientX - rect.left) / scaleX;
     const my = (e.clientY - rect.top) / scaleX;
-
     const bi = Math.floor((mx - LABEL_WIDTH - PADDING) / (CELL_SIZE + CELL_GAP));
     const ai = Math.floor((my - PADDING) / (CELL_SIZE + CELL_GAP));
+    return { mx, my, bi, ai, clientX: e.clientX - rect.left, clientY: e.clientY - rect.top };
+  };
 
-    if (bi >= 0 && bi < data.buckets.length && ai >= 0 && ai < data.agents.length) {
+  const handleMouseMove = (e: React.MouseEvent) => {
+    const p = pointToCell(e);
+    if (!p) return;
+    const { bi, ai, clientX, clientY } = p;
+
+    // Any hover over a valid row — the whole row is a click target for the agent filter
+    const agent = ai >= 0 && ai < data.agents.length ? data.agents[ai] : null;
+    setHoverAgent(agent);
+
+    if (bi >= 0 && bi < data.buckets.length && agent) {
       const bucket = data.buckets[bi];
-      const agent = data.agents[ai];
       const agentData = bucket.agents[agent];
       if (agentData && agentData.total > 0) {
         setTooltip({
-          x: e.clientX - rect.left,
-          y: e.clientY - rect.top,
+          x: clientX,
+          y: clientY,
           agent,
           date: bucket.date.split("T")[0],
           total: agentData.total,
@@ -146,13 +157,23 @@ export default function AgentActivityTimeline({ data }: Props) {
     setTooltip(null);
   };
 
+  const handleClick = (e: React.MouseEvent) => {
+    if (!onAgentClick) return;
+    const p = pointToCell(e);
+    if (!p) return;
+    if (p.ai >= 0 && p.ai < data.agents.length) onAgentClick(data.agents[p.ai]);
+  };
+
+  const cursor = onAgentClick && hoverAgent ? "cursor-pointer" : "cursor-crosshair";
+
   return (
     <div ref={containerRef} className="relative overflow-x-auto">
       <canvas
         ref={canvasRef}
-        className="cursor-crosshair"
+        className={cursor}
         onMouseMove={handleMouseMove}
-        onMouseLeave={() => setTooltip(null)}
+        onMouseLeave={() => { setTooltip(null); setHoverAgent(null); }}
+        onClick={handleClick}
       />
       {tooltip && (
         <div
