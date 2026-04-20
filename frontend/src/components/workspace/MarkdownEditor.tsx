@@ -183,16 +183,29 @@ type JSONNode = {
   content?: JSONNode[];
 };
 
+function isAbsoluteUrl(url: string): boolean {
+  // Only resolve remote images; relative paths like `a69cb715b010.jpg`
+  // point at files we never uploaded into the page's storage and would 404.
+  return /^https?:\/\//i.test(url);
+}
+
 function parseInlineMarkdown(text: string): JSONNode[] {
-  // Parse inline markdown (bold, italic, wiki links) into TipTap nodes/marks.
-  // Regex matches: [[wiki links]], **bold**, *italic*
-  const inlinePattern = /(\[\[([^\]]+)\]\]|\*\*(.+?)\*\*|\*(.+?)\*)/g;
+  // Inline grammar, ordered by priority:
+  //   [[wiki link]]            — wiki node
+  //   [![alt](src)](href)      — image inside a link (matched before plain image
+  //                              so the outer brackets don't swallow the image)
+  //   ![alt](src)              — image node (absolute URLs only)
+  //   [text](url)              — link mark
+  //   **bold**                 — bold mark
+  //   *italic*                 — italic mark
+  //   `code`                   — code mark
+  const inlinePattern =
+    /(\[\[([^\]]+)\]\]|\[!\[([^\]]*)\]\(([^)]+)\)\]\(([^)]+)\)|!\[([^\]]*)\]\(([^)]+)\)|\[([^\]]+)\]\(([^)]+)\)|\*\*(.+?)\*\*|\*(.+?)\*|`([^`]+)`)/g;
   const nodes: JSONNode[] = [];
   let lastIndex = 0;
   let match: RegExpExecArray | null;
 
   while ((match = inlinePattern.exec(text)) !== null) {
-    // Push plain text before this match
     if (match.index > lastIndex) {
       nodes.push({ type: "text", text: text.slice(lastIndex, match.index) });
     }
@@ -201,17 +214,49 @@ function parseInlineMarkdown(text: string): JSONNode[] {
       // [[wiki link]]
       nodes.push({ type: "wikiLinkNode", attrs: { pageName: match[2] } });
     } else if (match[3] !== undefined) {
+      // [![alt](src)](href) — linked image. Render as the image (TipTap's
+      // inline nodes can't nest a link around an image cleanly without the
+      // ProseMirror schema also allowing it). The href is preserved as the
+      // image's alt/title so it isn't silently dropped.
+      const alt = match[3];
+      const src = match[4];
+      const href = match[5];
+      if (isAbsoluteUrl(src)) {
+        nodes.push({ type: "image", attrs: { src, alt, title: href } });
+      } else {
+        nodes.push({ type: "text", text: match[0] });
+      }
+    } else if (match[6] !== undefined) {
+      // ![alt](src)
+      const alt = match[6];
+      const src = match[7];
+      if (isAbsoluteUrl(src)) {
+        nodes.push({ type: "image", attrs: { src, alt } });
+      } else {
+        // Keep the raw markdown visible so it isn't silently lost.
+        nodes.push({ type: "text", text: match[0] });
+      }
+    } else if (match[8] !== undefined) {
+      // [text](url)
+      nodes.push({
+        type: "text",
+        text: match[8],
+        marks: [{ type: "link", attrs: { href: match[9] } }],
+      });
+    } else if (match[10] !== undefined) {
       // **bold**
-      nodes.push({ type: "text", text: match[3], marks: [{ type: "bold" }] });
-    } else if (match[4] !== undefined) {
+      nodes.push({ type: "text", text: match[10], marks: [{ type: "bold" }] });
+    } else if (match[11] !== undefined) {
       // *italic*
-      nodes.push({ type: "text", text: match[4], marks: [{ type: "italic" }] });
+      nodes.push({ type: "text", text: match[11], marks: [{ type: "italic" }] });
+    } else if (match[12] !== undefined) {
+      // `code`
+      nodes.push({ type: "text", text: match[12], marks: [{ type: "code" }] });
     }
 
     lastIndex = match.index + match[0].length;
   }
 
-  // Push remaining plain text
   if (lastIndex < text.length) {
     nodes.push({ type: "text", text: text.slice(lastIndex) });
   }
@@ -270,6 +315,12 @@ function renderNode(node: JSONNode, depth: number): string {
       const pageName = node.attrs?.pageName || "";
       return `[[${pageName}]]`;
     }
+    case "image": {
+      const src = String(node.attrs?.src || "");
+      const alt = String(node.attrs?.alt || "");
+      const title = node.attrs?.title ? String(node.attrs.title) : "";
+      return title ? `[![${alt}](${src})](${title})` : `![${alt}](${src})`;
+    }
     case "text":
       return applyMarks(node.text || "", node.marks || []);
     default:
@@ -299,6 +350,8 @@ function applyMarks(text: string, marks: Array<{ type: string; attrs?: Record<st
         return `<sup>${value}</sup>`;
       case "link":
         return `[${value}](${mark.attrs?.href || ""})`;
+      case "code":
+        return `\`${value}\``;
       default:
         return value;
     }
