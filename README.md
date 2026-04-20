@@ -32,11 +32,11 @@
 
 ## Features
 
-**Curation** — The Claude Code plugin's `/stash:sleep` command reads history data and organizes it into a categorized wiki with folders, summaries, and [[backlinks]]. It also runs automatically on SessionEnd, so knowledge stays structured without manual maintenance.
+**Curation** — On SessionEnd the Claude Code plugin spawns a headless agent that reads recent history and organizes it into a categorized wiki with folders, summaries, and [[backlinks]] — so knowledge stays structured without manual maintenance.
 
 **Wiki notebooks** — Rich collaborative pages with [[wiki links]], page graph visualization, backlink tracking, and semantic search powered by pgvector embeddings.
 
-**Universal search** — An agentic search loop (`/stash:search` in the Claude Code plugin) that queries across files, history, notebooks, tables, and chats in a single request. Ask a question, get answers from everything.
+**Universal search** — An agentic search loop that queries across files, history, notebooks, tables, and chats in a single request. Ask a question, get answers from everything.
 
 **Real-time collaboration** — Agents and humans chat side-by-side in workspace channels. Share findings, coordinate work, and keep everyone in sync.
 
@@ -51,7 +51,7 @@ Go to [stash.ac](https://stash.ac) and register. Save your API key.
 ### 2. Install the CLI
 
 ```bash
-pip install stashai         # installs the `stash` CLI
+pipx install stashai        # or: uv tool install stashai
 stash connect               # Interactive: paste API key, pick a default workspace
 ```
 
@@ -63,13 +63,13 @@ stash history push "session notes here"             # Push an event
 stash --help                                        # Full command list
 ```
 
-For cross-resource agentic search, install the [Claude Code plugin](#integrations) and use `/stash:search`.
+For cross-resource agentic search inside Claude Code, install the [Claude Code plugin](#integrations) — your agent gets the full `stash` CLI and can search across history, notebooks, and tables in one loop.
 
 ## CLI
 
 ```bash
-pip install stashai                    # installs the `stash` CLI
-stash connect                          # Configure API key + default workspace
+pipx install stashai                 # or: uv tool install stashai
+stash connect                        # Configure API key + default workspace
 stash history push <content>         # Push an event
 stash history search <query>         # Full-text search over history events
 stash notebooks list --all           # List notebooks across your workspaces
@@ -83,17 +83,19 @@ stash --help                         # Full command list
 The [`plugins/claude-plugin`](plugins/claude-plugin/README.md) directory ships a Claude Code plugin that turns any session into a persistent Stash agent: activity streams to history, memory injects into every prompt, and context carries across sessions.
 
 ```bash
+pipx install stashai                                    # or: uv tool install stashai
 claude plugin marketplace add Fergana-Labs/stash
 claude plugin install stash@stash-plugins
+stash connect                                           # Sign in + pick a workspace
 ```
 
-Slash commands include `/stash:connect` (onboarding), `/stash:sleep` (curate history into a wiki — also runs on SessionEnd), `/stash:search` (agentic cross-resource search), and `/stash:status`. See the [plugin README](plugins/claude-plugin/README.md) for full setup.
+Everything is a `stash` CLI subcommand — there are no slash commands. The plugin ships one helper, `/stash:welcome`, that re-prints the post-install message. See the [plugin README](plugins/claude-plugin/README.md) for full setup.
 
 ## Self-Hosted
 
 ```bash
 git clone https://github.com/Fergana-Labs/stash.git
-cd octopus
+cd stash
 cp .env.example .env          # fill in credentials + API keys
 # edit Caddyfile → replace app.example.com with your domain
 docker compose -f docker-compose.prod.yml up -d
