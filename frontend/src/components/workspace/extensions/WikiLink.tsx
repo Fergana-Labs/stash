@@ -12,11 +12,27 @@ import {
   useImperativeHandle,
   useState,
 } from "react";
+import type { WorkspacePageEntry } from "../../../lib/api";
+import {
+  formatPagePath,
+  rankForAutocomplete,
+  resolveWikiLink,
+  type WikiLinkContext,
+} from "../../../lib/wikiLink";
 
 // --- Suggestion dropdown component ---
 
+interface SuggestionItem {
+  /** What we insert into the document (the full path as seen in markdown). */
+  path: string;
+  /** Primary label in the dropdown. */
+  label: string;
+  /** Hint text (e.g. the notebook/folder location). */
+  hint: string;
+}
+
 interface SuggestionListProps {
-  items: string[];
+  items: SuggestionItem[];
   command: (item: { id: string }) => void;
 }
 
@@ -42,7 +58,7 @@ const SuggestionList = forwardRef<SuggestionListRef, SuggestionListProps>(
         }
         if (event.key === "Enter" || event.key === "Tab") {
           if (items[selectedIndex]) {
-            command({ id: items[selectedIndex] });
+            command({ id: items[selectedIndex].path });
           }
           return true;
         }
@@ -56,18 +72,21 @@ const SuggestionList = forwardRef<SuggestionListRef, SuggestionListProps>(
     if (items.length === 0) return null;
 
     return (
-      <div className="bg-base border border-border rounded-lg shadow-lg overflow-hidden py-1 min-w-[180px] z-50">
+      <div className="bg-base border border-border rounded-lg shadow-lg overflow-hidden py-1 min-w-[220px] z-50">
         {items.map((item, i) => (
           <button
-            key={item}
-            onClick={() => command({ id: item })}
+            key={item.path}
+            onClick={() => command({ id: item.path })}
             className={`block w-full text-left px-3 py-1.5 text-sm transition-colors ${
               i === selectedIndex
                 ? "bg-brand/10 text-brand"
                 : "text-foreground hover:bg-raised"
             }`}
           >
-            {item}
+            <div className="truncate">{item.label}</div>
+            {item.hint ? (
+              <div className="text-xs text-muted truncate">{item.hint}</div>
+            ) : null}
           </button>
         ))}
       </div>
@@ -126,22 +145,54 @@ function suggestionRenderer() {
   };
 }
 
-// --- WikiLinkNode: renders [[Page Name]] as a clickable styled element ---
+// --- WikiLinkNode: renders [[path]] as a clickable styled element ---
+// The node's `pageName` attribute stores the link's raw path text (e.g.
+// "page" or "folder/page" or "notebook/folder/page"). Whether the link
+// actually resolves depends on the surrounding editor's configured
+// page index + context, checked on each render via a shared cache on
+// the node's DOM data attributes.
 
-function WikiLinkNodeView({ node }: { node: { attrs: Record<string, unknown> } }) {
-  const pageName = (node.attrs.pageName as string) || "";
+function WikiLinkNodeView({
+  node,
+  extension,
+}: {
+  node: { attrs: Record<string, unknown> };
+  extension: { options: WikiLinkOptions };
+}) {
+  const linkText = (node.attrs.pageName as string) || "";
+  const { pageIndex, context } = extension.options;
+  const resolution = resolveWikiLink(linkText, pageIndex, context);
+  const isResolved = resolution.status === "resolved";
+  const isAmbiguous = resolution.status === "ambiguous";
+
+  // Dangling (unresolved) links should feel broken — muted red underline.
+  // Ambiguous links get a warning dot hinting at the problem.
+  const className = isResolved
+    ? "text-[#F97316] hover:text-[#EA580C] cursor-pointer hover:underline font-medium transition-colors duration-150"
+    : isAmbiguous
+      ? "text-amber-500 cursor-pointer hover:underline italic"
+      : "text-red-500/70 cursor-help underline decoration-dotted decoration-red-500/50";
+  const title = isResolved
+    ? undefined
+    : isAmbiguous
+      ? `Ambiguous — matches ${
+          resolution.candidates.length
+        } pages. Qualify with notebook or folder.`
+      : "Page not found. Check the path.";
+
   return (
     <NodeViewWrapper as="span" className="wiki-link-wrapper">
       <span
-        className="text-[#F97316] hover:text-[#EA580C] cursor-pointer hover:underline font-medium transition-colors duration-150"
-        data-wiki-link={pageName}
+        className={className}
+        title={title}
+        data-wiki-link={linkText}
+        data-wiki-resolved={isResolved ? "true" : "false"}
         role="link"
         tabIndex={0}
         onClick={(e) => {
           e.preventDefault();
-          // Dispatch a custom event that the page component can listen to
           const event = new CustomEvent("wiki-link-click", {
-            detail: { pageName },
+            detail: { linkText },
             bubbles: true,
           });
           e.currentTarget.dispatchEvent(event);
@@ -149,14 +200,14 @@ function WikiLinkNodeView({ node }: { node: { attrs: Record<string, unknown> } }
         onKeyDown={(e) => {
           if (e.key === "Enter") {
             const event = new CustomEvent("wiki-link-click", {
-              detail: { pageName },
+              detail: { linkText },
               bubbles: true,
             });
             e.currentTarget.dispatchEvent(event);
           }
         }}
       >
-        [[{pageName}]]
+        [[{linkText}]]
       </span>
     </NodeViewWrapper>
   );
@@ -207,7 +258,37 @@ export const WikiLinkNode = Node.create({
 // --- WikiLink Suggestion Extension (autocomplete with [[ trigger) ---
 
 export interface WikiLinkOptions {
-  pageNames: string[];
+  /** Every page available for linking — same index used for resolution
+   *  and autocomplete. */
+  pageIndex: WorkspacePageEntry[];
+  /** Where the link lives, so bare [[name]] lookups scope to the
+   *  surrounding folder. */
+  context: WikiLinkContext;
+}
+
+function buildSuggestions(
+  query: string,
+  pages: WorkspacePageEntry[],
+  ctx: WikiLinkContext
+): SuggestionItem[] {
+  const ranked = rankForAutocomplete(pages, ctx);
+  const q = query.toLowerCase();
+  const matches = q
+    ? ranked.filter((p) => {
+        const path = formatPagePath(p, ctx).toLowerCase();
+        return path.includes(q) || p.name.toLowerCase().includes(q);
+      })
+    : ranked;
+  return matches.slice(0, 8).map((p) => {
+    const path = formatPagePath(p, ctx);
+    const hint =
+      p.notebook_id === ctx.notebookId && p.folder_id === ctx.folderId
+        ? ""
+        : p.notebook_id === ctx.notebookId
+          ? `in ${p.folder_name ?? "notebook root"}`
+          : `in ${p.notebook_name}${p.folder_name ? ` / ${p.folder_name}` : ""}`;
+    return { path, label: p.name, hint };
+  });
 }
 
 export const WikiLink = Extension.create<WikiLinkOptions>({
@@ -215,7 +296,8 @@ export const WikiLink = Extension.create<WikiLinkOptions>({
 
   addOptions() {
     return {
-      pageNames: [],
+      pageIndex: [],
+      context: { notebookId: null, folderId: null },
     };
   },
 
@@ -224,14 +306,8 @@ export const WikiLink = Extension.create<WikiLinkOptions>({
       Suggestion({
         editor: this.editor,
         char: "[[",
-        items: ({ query }: { query: string }) => {
-          const names = this.options.pageNames;
-          if (!query) return names.slice(0, 8);
-          const lower = query.toLowerCase();
-          return names
-            .filter((n: string) => n.toLowerCase().includes(lower))
-            .slice(0, 8);
-        },
+        items: ({ query }: { query: string }) =>
+          buildSuggestions(query, this.options.pageIndex, this.options.context),
         render: suggestionRenderer,
         command: ({ editor, range, props }: Record<string, unknown>) => {
           const ed = editor as import("@tiptap/react").Editor;

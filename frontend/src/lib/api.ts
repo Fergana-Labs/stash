@@ -719,6 +719,7 @@ export interface WorkspacePageEntry {
   notebook_id: string;
   notebook_name: string;
   folder_id: string | null;
+  folder_name: string | null;
   updated_at: string;
 }
 

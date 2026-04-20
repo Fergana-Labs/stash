@@ -17,7 +17,7 @@ import { Table, TableCell, TableHeader, TableRow } from "@tiptap/extension-table
 import EditorToolbar from "./EditorToolbar";
 import WikiLink, { WikiLinkNode } from "./extensions/WikiLink";
 import { NotebookPage, FileInfo } from "../../lib/types";
-import { listFiles } from "../../lib/api";
+import { listFiles, WorkspacePageEntry } from "../../lib/api";
 
 const AUTOSAVE_DEBOUNCE_MS = 1500;
 
@@ -30,11 +30,24 @@ interface MarkdownEditorProps {
   onSave: (content: string) => void;
   onSaveStatusChange?: (status: SaveStatus) => void;
   onRename?: (name: string) => void;
-  pageNames?: string[];
-  onNavigateToPage?: (pageName: string) => void;
+  /** Workspace-wide page index (every notebook, every folder). Drives
+   *  wiki-link autocomplete + click resolution. */
+  pageIndex?: WorkspacePageEntry[];
+  /** Raw link text from a clicked [[...]] — may be a bare name or a
+   *  folder/notebook-qualified path. */
+  onNavigateToLink?: (linkText: string) => void;
 }
 
-export default function MarkdownEditor({ workspaceId, file, onSave, onSaveStatusChange, onRename, pageNames = [], onNavigateToPage }: MarkdownEditorProps) {
+export default function MarkdownEditor({
+  workspaceId,
+  notebookId,
+  file,
+  onSave,
+  onSaveStatusChange,
+  onRename,
+  pageIndex = [],
+  onNavigateToLink,
+}: MarkdownEditorProps) {
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -105,7 +118,13 @@ export default function MarkdownEditor({ workspaceId, file, onSave, onSaveStatus
       TableHeader,
       TableCell,
       WikiLinkNode,
-      WikiLink.configure({ pageNames }),
+      WikiLink.configure({
+        pageIndex,
+        context: {
+          notebookId: notebookId ?? null,
+          folderId: file.folder_id ?? null,
+        },
+      }),
       Placeholder.configure({ placeholder: "Start typing..." }),
     ],
     editorProps: {
@@ -164,17 +183,19 @@ export default function MarkdownEditor({ workspaceId, file, onSave, onSaveStatus
     };
   }, [editor, onSave]);
 
-  // Wiki link click handler
+  // Wiki link click handler. NodeView dispatches { linkText } — the raw
+  // path between the [[ ]] — and the parent page component runs the
+  // resolver to navigate.
   useEffect(() => {
     const handleWikiLinkClick = (e: Event) => {
       const detail = (e as CustomEvent).detail;
-      if (detail?.pageName && onNavigateToPage) {
-        onNavigateToPage(detail.pageName);
+      if (detail?.linkText && onNavigateToLink) {
+        onNavigateToLink(detail.linkText);
       }
     };
     document.addEventListener("wiki-link-click", handleWikiLinkClick);
     return () => document.removeEventListener("wiki-link-click", handleWikiLinkClick);
-  }, [onNavigateToPage]);
+  }, [onNavigateToLink]);
 
   // Ctrl/Cmd+S → flush immediately
   useEffect(() => {

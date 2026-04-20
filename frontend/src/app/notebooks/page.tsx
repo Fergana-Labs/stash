@@ -30,6 +30,7 @@ import {
   WorkspacePageEntry,
 } from "../../lib/api";
 import { Notebook, NotebookPage, NotebookWithWorkspace, PageLink, PageTree, Table, TableWithWorkspace } from "../../lib/types";
+import { resolveWikiLink } from "../../lib/wikiLink";
 
 type WikiTab = "pages" | "tables";
 
@@ -131,18 +132,6 @@ function WikiPageInner() {
     if (user) loadWorkspacePages();
   }, [user, loadWorkspacePages]);
 
-  // Autocomplete suggestions: union of cross-notebook pages and the current
-  // notebook's tree (in case the workspace index is still loading).
-  const pageNames = useMemo(() => {
-    const names = new Set<string>();
-    for (const p of workspacePages) names.add(p.name);
-    for (const f of tree.root_files) names.add(f.name);
-    for (const folder of tree.folders) {
-      for (const f of folder.files) names.add(f.name);
-    }
-    return Array.from(names);
-  }, [workspacePages, tree]);
-
   // Group notebooks by workspace
   const grouped = useMemo(() => {
     const groups: Record<string, { name: string; notebooks: NotebookWithWorkspace[] }> = {};
@@ -217,29 +206,25 @@ function WikiPageInner() {
   }, [pageParam, selectedNotebook, selectedPageId, handleSelectPage]);
 
   // Navigate to a page by name (for wiki link clicks)
-  const handleNavigateToPage = useCallback(async (pageName: string) => {
-    // 1. Same-notebook hit: fast path, no notebook switch needed.
-    for (const f of tree.root_files) {
-      if (f.name === pageName) {
-        handleSelectPage(f.id);
-        return;
-      }
-    }
-    for (const folder of tree.folders) {
-      for (const f of folder.files) {
-        if (f.name === pageName) {
-          handleSelectPage(f.id);
-          return;
-        }
-      }
+  // Resolve a wiki-link's raw text (e.g. "page", "folder/page",
+  // "notebook/folder/page") against the workspace-wide page index,
+  // scoped by the current editing context (current notebook + folder),
+  // then navigate to whatever it points at.
+  const handleNavigateToLink = useCallback(async (linkText: string) => {
+    const resolution = resolveWikiLink(linkText, workspacePages, {
+      notebookId: selectedNotebook?.id ?? null,
+      folderId: selectedPage?.folder_id ?? null,
+    });
+    if (resolution.status !== "resolved") return;
+    const hit = resolution.page;
+
+    // Same-notebook: just select the page, no tree reload needed.
+    if (selectedNotebook && hit.notebook_id === selectedNotebook.id) {
+      handleSelectPage(hit.id);
+      return;
     }
 
-    // 2. Cross-notebook hit: switch the selected notebook, then load the
-    //    page directly against its ids. Can't reuse handleSelectPage
-    //    because that closes over selectedNotebook, which hasn't updated
-    //    yet in this render.
-    const hit = workspacePages.find((p) => p.name === pageName);
-    if (!hit) return;
+    // Cross-notebook: switch notebook, load tree + page in parallel.
     const target = notebooks.find((n) => n.id === hit.notebook_id);
     if (!target) return;
     setSelectedNotebook(target);
@@ -262,7 +247,7 @@ function WikiPageInner() {
     } catch {
       setError("Failed to load page");
     }
-  }, [tree, handleSelectPage, workspacePages, notebooks]);
+  }, [workspacePages, selectedNotebook, selectedPage, handleSelectPage, notebooks]);
 
   // Compute breadcrumb path for current page
   const breadcrumbs = useMemo(() => {
@@ -600,8 +585,8 @@ function WikiPageInner() {
                       onSave={handleSavePage}
                       onSaveStatusChange={setSaveStatus}
                       onRename={handleInlineRename}
-                      pageNames={pageNames}
-                      onNavigateToPage={handleNavigateToPage}
+                      pageIndex={workspacePages}
+                      onNavigateToLink={handleNavigateToLink}
                     />
 
                     {/* Backlinks */}

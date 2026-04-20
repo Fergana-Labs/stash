@@ -234,13 +234,18 @@ class PageTreeResponse(BaseModel):
 
 
 class WorkspacePageEntry(BaseModel):
-    """Flattened reference to a page for cross-notebook lookups (wiki links)."""
+    """Flattened reference to a page for cross-notebook lookups (wiki links).
+
+    folder_name is the text used in path-style links like
+    `[[folder/page]]`; null when the page lives at the notebook root.
+    """
 
     id: UUID
     name: str
     notebook_id: UUID
     notebook_name: str
     folder_id: UUID | None = None
+    folder_name: str | None = None
     updated_at: datetime
 
 

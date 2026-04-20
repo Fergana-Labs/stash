@@ -360,13 +360,15 @@ async def list_workspace_pages(workspace_id: UUID) -> list[dict]:
 
     Used by the wiki-link autocomplete + click-to-navigate logic so links
     resolve across notebooks, not just within the currently selected one.
+    folder_name is null for root-level pages.
     """
     pool = get_pool()
     rows = await pool.fetch(
         "SELECT p.id, p.name, p.notebook_id, p.folder_id, "
-        "n.name AS notebook_name, p.updated_at "
+        "n.name AS notebook_name, f.name AS folder_name, p.updated_at "
         "FROM notebook_pages p "
         "JOIN notebooks n ON n.id = p.notebook_id "
+        "LEFT JOIN notebook_folders f ON f.id = p.folder_id "
         "WHERE n.workspace_id = $1 "
         "ORDER BY n.name, p.name",
         workspace_id,
@@ -379,9 +381,10 @@ async def list_personal_pages(user_id: UUID) -> list[dict]:
     pool = get_pool()
     rows = await pool.fetch(
         "SELECT p.id, p.name, p.notebook_id, p.folder_id, "
-        "n.name AS notebook_name, p.updated_at "
+        "n.name AS notebook_name, f.name AS folder_name, p.updated_at "
         "FROM notebook_pages p "
         "JOIN notebooks n ON n.id = p.notebook_id "
+        "LEFT JOIN notebook_folders f ON f.id = p.folder_id "
         "WHERE n.workspace_id IS NULL AND n.created_by = $1 "
         "ORDER BY n.name, p.name",
         user_id,
