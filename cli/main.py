@@ -526,6 +526,31 @@ def _plugin_installed(agent: str) -> bool:
     return False
 
 
+def _install_global_manifest(force: bool) -> tuple[str, str]:
+    """Write `~/.stash/stash.json` so every cwd under `$HOME` without a
+    closer manifest still streams. This is the 'global install' — the
+    opt-in for system-wide streaming."""
+    dest = Path.home() / ".stash" / "stash.json"
+    if dest.exists() and not force:
+        return ("skipped", f"{dest} already exists")
+
+    cfg = load_config()
+    workspace_id = cfg.get("default_workspace") or ""
+    if not workspace_id:
+        return ("failed", "no default workspace — run `stash connect` first")
+    base_url = (cfg.get("base_url") or "").rstrip("/")
+
+    manifest = {
+        "version": 1,
+        "workspace_id": str(workspace_id),
+        "base_url": base_url,
+        "streaming_default": True,
+    }
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    dest.write_text(json.dumps(manifest, indent=2) + "\n")
+    return ("installed", str(dest))
+
+
 @app.command("install")
 def install_cmd(
     agents: list[str] = typer.Argument(
@@ -536,11 +561,20 @@ def install_cmd(
         "", "--skip", help="Comma-separated agents to exclude (e.g. --skip codex,opencode)."
     ),
     force: bool = typer.Option(False, "--force", help="Overwrite existing hook files."),
+    global_install: bool = typer.Option(
+        False, "--global",
+        help="Also write ~/.stash/stash.json so sessions in any repo under $HOME "
+             "stream (per-repo manifests still override for routing).",
+    ),
     as_json: bool = typer.Option(False, "--json"),
 ):
     """Install Stash hook plugins for every supported coding agent on `$PATH`.
 
     Idempotent — re-running is a no-op unless `--force`.
+
+    By default, streaming is gated per-repo: only sessions in a repo with a
+    committed `.stash/stash.json` manifest push events. Pass `--global` to
+    also stream from repos without a manifest (under `$HOME`).
     """
     skip_set = {s.strip() for s in skip.split(",") if s.strip()}
 
@@ -555,7 +589,7 @@ def install_cmd(
 
     targets = [a for a in targets if a not in skip_set]
 
-    if not targets:
+    if not targets and not global_install:
         console.print(
             "[yellow]No supported coding agents detected on PATH.[/yellow] "
             "Install claude / cursor-agent / codex / opencode, then re-run."
@@ -569,6 +603,13 @@ def install_cmd(
         except Exception as e:
             status_, detail = ("failed", f"{type(e).__name__}: {e}")
         results[agent] = {"status": status_, "detail": detail}
+
+    if global_install:
+        try:
+            status_, detail = _install_global_manifest(force)
+        except Exception as e:
+            status_, detail = ("failed", f"{type(e).__name__}: {e}")
+        results["global"] = {"status": status_, "detail": detail}
 
     if _use_json(as_json):
         output_json(results)
@@ -2663,13 +2704,9 @@ STASH_OCTOPUS = r'''
 
 
 def _pushed_scope_phrase() -> str:
-    """Human phrase for 'what gets pushed', varying by the user's scope choice
-    at setup. `repo` (default) pushes only from the install repo; `workspace`
-    and `all` both push from anywhere on this machine."""
-    scope = (_read_central_config().get("scope") or "repo").strip().lower()
-    if scope == "repo":
-        return "Coding agent transcripts from this repo."
-    return "All coding agent transcripts from this machine."
+    """Streaming is gated on `.stash/stash.json` presence — repo manifest
+    for a single repo, or `~/.stash/stash.json` for a global install."""
+    return "Coding agent sessions from any repo where stash is installed."
 
 
 def _current_invite() -> tuple[str, str]:
@@ -2791,46 +2828,6 @@ Run `stash --help` to see everything.
 """
 
 
-def _capture_install_repo() -> None:
-    """At connect time, remember the git common-dir of this repo so the
-    plugins can scope uploads to it (and its worktrees). If cwd isn't in a
-    git repo, prompt the user to pick scope=all or skip uploads entirely."""
-    import subprocess as _sp
-
-    common = ""
-    for args in (
-        ["git", "-C", str(Path.cwd()), "rev-parse", "--path-format=absolute", "--git-common-dir"],
-        ["git", "-C", str(Path.cwd()), "rev-parse", "--git-common-dir"],
-    ):
-        try:
-            out = _sp.run(args, capture_output=True, text=True, timeout=2)
-        except Exception:
-            continue
-        if out.returncode == 0 and out.stdout.strip():
-            common = out.stdout.strip()
-            if not Path(common).is_absolute():
-                common = str(Path.cwd() / common)
-            break
-
-    central = _read_central_config()
-    if common:
-        updates = {"install_repo_common_dir": common}
-        if "scope" not in central:
-            updates["scope"] = "repo"
-        _write_central_config(updates)
-        return
-    if central.get("install_repo_common_dir"):
-        return
-    console.print(
-        "\n[yellow]Not inside a git repo.[/yellow] Uploads are scoped to the install "
-        "repo by default; with none captured, nothing will upload."
-    )
-    if typer.confirm("Upload from everywhere? (scope=all)", default=False):
-        _write_central_config({"scope": "all"})
-    else:
-        _write_central_config({"scope": "repo"})
-
-
 def _install_claude_plugin() -> bool:
     """Install the stash plugin for Claude Code via the official marketplace.
 
@@ -2872,7 +2869,6 @@ def _show_setup_complete_splash(
     joined_via_manifest: bool = False,
 ) -> None:
     """Clear the onboarding transcript and show a clean success splash."""
-    _capture_install_repo()
     console.clear()
     octopus = textwrap.dedent(STASH_OCTOPUS.strip("\n"))
     logo = textwrap.dedent(STASH_LOGO.strip("\n"))
@@ -3020,12 +3016,6 @@ PLUGIN_DATA_DIRS = {
 }
 
 
-SCOPE_CHOICES = [
-    ("repo", "only sessions in the install repo"),
-    ("workspace", "any session tagged with this workspace"),
-    ("all", "every session on this machine"),
-]
-
 OUTPUT_FORMAT_CHOICES = [
     ("human", "colored, human-readable"),
     ("json", "machine-readable JSON"),
@@ -3066,9 +3056,11 @@ def _render_settings_header(cfg: dict, central: dict) -> None:
     plugins_seen = [name for name, d in PLUGIN_DATA_DIRS.items() if d.exists()]
     row(f"{'Plugins:':<14}", ", ".join(plugins_seen) or "(none detected)")
 
-    install_repo = central.get("install_repo_common_dir") or ""
-    if install_repo:
-        row(f"{'Install repo:':<14}", install_repo)
+    global_manifest = Path.home() / ".stash" / "stash.json"
+    if global_manifest.exists():
+        row(f"{'Install:':<14}", "global (~/.stash/stash.json)")
+    else:
+        row(f"{'Install:':<14}", "per-repo (via .stash/stash.json manifests)")
     console.print()
 
 
@@ -3083,6 +3075,7 @@ def settings_cmd(as_json: bool = typer.Option(False, "--json")):
         display_cfg["api_key"] = display_cfg["api_key"][:10] + "..."
 
     if as_json or cfg.get("output_format") == "json":
+        global_manifest = Path.home() / ".stash" / "stash.json"
         output_json(
             {
                 "config": display_cfg,
@@ -3092,8 +3085,7 @@ def settings_cmd(as_json: bool = typer.Option(False, "--json")):
                 "plugins_installed": [
                     name for name, d in PLUGIN_DATA_DIRS.items() if d.exists()
                 ],
-                "scope": (central.get("scope") or "repo").strip().lower(),
-                "install_repo_common_dir": central.get("install_repo_common_dir") or "",
+                "global_install": global_manifest.exists(),
             }
         )
         return
@@ -3105,14 +3097,12 @@ def settings_cmd(as_json: bool = typer.Option(False, "--json")):
 
         streaming_enabled = bool(central.get("streaming_enabled", True))
         auto_curate = bool(central.get("auto_curate", True))
-        scope = (central.get("scope") or "repo").strip().lower()
         output_format = cfg.get("output_format", "human")
         base_url = cfg.get("base_url", "")
 
         rows = [
             ("Streaming", "on" if streaming_enabled else "off", "streaming"),
             ("Auto-curate", "on" if auto_curate else "off", "auto_curate"),
-            ("Scope", scope, "scope"),
             ("Output format", output_format, "output_format"),
             ("Endpoint", base_url, "base_url"),
         ]
@@ -3136,20 +3126,6 @@ def settings_cmd(as_json: bool = typer.Option(False, "--json")):
             _write_central_config({"streaming_enabled": not streaming_enabled})
         elif picked == "auto_curate":
             _write_central_config({"auto_curate": not auto_curate})
-        elif picked == "scope":
-            label_w2 = max(len(v) for v, _ in SCOPE_CHOICES)
-            scope_choices = [
-                questionary.Choice(f"{v:<{label_w2}}   {desc}", value=v)
-                for v, desc in SCOPE_CHOICES
-            ]
-            new_scope = questionary.select(
-                "Upload scope — which sessions push to the shared store?",
-                choices=scope_choices,
-                default=next((ch for ch in scope_choices if ch.value == scope), None),
-                use_shortcuts=True,
-            ).ask()
-            if new_scope:
-                _write_central_config({"scope": new_scope})
         elif picked == "output_format":
             label_w2 = max(len(v) for v, _ in OUTPUT_FORMAT_CHOICES)
             fmt_choices = [
@@ -3271,13 +3247,6 @@ def config_cmd(
     from .config import USER_CONFIG_FILE, find_project_config
 
     if key and value:
-        if key == "scope":
-            if value not in {"repo", "workspace", "all"}:
-                console.print("[red]Invalid scope. Must be: repo | workspace | all[/red]")
-                raise typer.Exit(1)
-            _write_central_config({"scope": value})
-            console.print(f"[green]scope = {value}[/green]")
-            return
         write_scope = "project" if project else "user"
         allowed = {
             "base_url",
