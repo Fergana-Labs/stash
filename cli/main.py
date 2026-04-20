@@ -2044,11 +2044,34 @@ def connect(
         }
         missing = [a for a in detected if not _plugin_installed(a)]
         already = [a for a in detected if a not in missing]
-        if already:
+
+        # Re-apply already-installed agents so plugin upgrades (new hook
+        # entries, new instructions files, …) reach existing users on
+        # `stash connect` re-runs. Each installer is idempotent and
+        # returns 'skipped' when nothing changed.
+        upgraded: list[str] = []
+        for agent in already:
+            try:
+                status_, detail = _INSTALLERS[agent](False)
+            except Exception as e:
+                status_, detail = ("failed", f"{type(e).__name__}: {e}")
+            if status_ == "installed":
+                upgraded.append(agent)
+                console.print(
+                    f"  [green]upgraded[/green] {agent:8} {detail}"
+                )
+            elif status_ == "failed":
+                console.print(
+                    f"  [red]failed[/red] {agent:8} {detail}"
+                )
+
+        unchanged = [a for a in already if a not in upgraded]
+        if unchanged:
             console.print(
                 f"  [green]✓[/green] Stash plugin already installed for "
-                f"[bold]{', '.join(agent_label[a] for a in already)}[/bold]"
+                f"[bold]{', '.join(agent_label[a] for a in unchanged)}[/bold]"
             )
+
         for agent in missing:
             _reserve_bottom_padding(4)
             install_plugin = questionary.confirm(
