@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { EditorContent, useEditor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import Heading from "@tiptap/extension-heading";
@@ -13,9 +13,11 @@ import Superscript from "@tiptap/extension-superscript";
 import Typography from "@tiptap/extension-typography";
 import Image from "@tiptap/extension-image";
 import Placeholder from "@tiptap/extension-placeholder";
+import { Table, TableCell, TableHeader, TableRow } from "@tiptap/extension-table";
 import EditorToolbar from "./EditorToolbar";
 import WikiLink, { WikiLinkNode } from "./extensions/WikiLink";
-import { NotebookPage } from "../../lib/types";
+import { NotebookPage, FileInfo } from "../../lib/types";
+import { listFiles } from "../../lib/api";
 
 const AUTOSAVE_DEBOUNCE_MS = 1500;
 
@@ -38,9 +40,41 @@ export default function MarkdownEditor({ workspaceId, file, onSave, onSaveStatus
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastSaved = useRef<string>(file.content_markdown);
 
+  // Resolved markdown — relative image refs like ![](a69cb715b010.jpg) get
+  // rewritten to absolute signed URLs if a matching workspace file exists.
+  // While the lookup is in-flight, show the raw markdown so the page never
+  // flashes empty.
+  const [resolvedMarkdown, setResolvedMarkdown] = useState<string>(file.content_markdown);
+
+  useEffect(() => {
+    let cancelled = false;
+    setResolvedMarkdown(file.content_markdown);
+    if (!workspaceId) return;
+    const relativeNames = extractRelativeImageNames(file.content_markdown);
+    if (relativeNames.size === 0) return;
+    listFiles(workspaceId)
+      .then((files) => {
+        if (cancelled) return;
+        const map = buildFileNameMap(files, relativeNames);
+        if (map.size === 0) return;
+        setResolvedMarkdown(rewriteRelativeImages(file.content_markdown, map));
+      })
+      .catch(() => {
+        // Network flake is non-fatal — the raw markdown is still visible.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [workspaceId, file.content_markdown]);
+
+  const initialContent = useMemo(
+    () => markdownToInitialJSON(resolvedMarkdown),
+    [resolvedMarkdown]
+  );
+
   const editor = useEditor({
     immediatelyRender: false,
-    content: markdownToInitialJSON(file.content_markdown),
+    content: initialContent,
     extensions: [
       StarterKit.configure({
         blockquote: false,
@@ -63,6 +97,13 @@ export default function MarkdownEditor({ workspaceId, file, onSave, onSaveStatus
       Image.configure({
         HTMLAttributes: { class: "max-w-full rounded-md my-2" },
       }),
+      Table.configure({
+        resizable: false,
+        HTMLAttributes: { class: "wiki-table" },
+      }),
+      TableRow,
+      TableHeader,
+      TableCell,
       WikiLinkNode,
       WikiLink.configure({ pageNames }),
       Placeholder.configure({ placeholder: "Start typing..." }),
@@ -86,6 +127,19 @@ export default function MarkdownEditor({ workspaceId, file, onSave, onSaveStatus
       }, AUTOSAVE_DEBOUNCE_MS);
     },
   });
+
+  // When the resolved markdown changes (e.g. after file lookup completes),
+  // replace the editor's content. We guard against unsaved user edits by
+  // only replacing when the editor is still showing the original content.
+  useEffect(() => {
+    if (!editor) return;
+    const currentMd = serializeMarkdown(editor.getJSON(), lastSaved.current);
+    // Only reset if the editor's content still matches what we last loaded
+    // (i.e. user hasn't typed anything since).
+    if (currentMd !== lastSaved.current) return;
+    editor.commands.setContent(initialContent);
+    lastSaved.current = resolvedMarkdown;
+  }, [editor, initialContent, resolvedMarkdown]);
 
   // Bubble save status to parent
   useEffect(() => {
@@ -279,12 +333,147 @@ function markdownToInitialJSON(markdown: string): JSONNode {
         content: parseInlineMarkdown(headingMatch[2]),
       };
     }
+
+    const tableNode = parseTableBlock(block);
+    if (tableNode) return tableNode;
+
+    const listNode = parseListBlock(block);
+    if (listNode) return listNode;
+
     return {
       type: "paragraph",
       content: parseInlineMarkdown(block),
     };
   });
   return { type: "doc", content: nodes };
+}
+
+// --- Lists ---
+
+const BULLET_RE = /^([-*+])\s+(.*)$/;
+const ORDERED_RE = /^\d+\.\s+(.*)$/;
+
+function parseListBlock(block: string): JSONNode | null {
+  const lines = block.split("\n");
+  const first = lines[0];
+  const isBullet = BULLET_RE.test(first);
+  const isOrdered = ORDERED_RE.test(first);
+  if (!isBullet && !isOrdered) return null;
+
+  const items: JSONNode[] = [];
+  for (const line of lines) {
+    const m = isBullet ? line.match(BULLET_RE) : line.match(ORDERED_RE);
+    if (!m) {
+      // Not a list line — fold into the previous item's text if one exists.
+      if (items.length > 0) {
+        const last = items[items.length - 1];
+        const para = last.content?.[0];
+        if (para && para.type === "paragraph") {
+          para.content = [
+            ...(para.content || []),
+            { type: "text", text: " " + line.trim() },
+          ];
+        }
+      }
+      continue;
+    }
+    const body = isBullet ? m[2] : m[1];
+    items.push({
+      type: "listItem",
+      content: [
+        {
+          type: "paragraph",
+          content: parseInlineMarkdown(body),
+        },
+      ],
+    });
+  }
+  return {
+    type: isBullet ? "bulletList" : "orderedList",
+    content: items,
+  };
+}
+
+// --- Tables (GitHub-flavored pipe tables) ---
+
+const TABLE_SEPARATOR_RE = /^\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)+\|?$/;
+
+function splitPipeRow(line: string): string[] {
+  // Trim leading/trailing pipe and split on unescaped |.
+  const trimmed = line.replace(/^\s*\|/, "").replace(/\|\s*$/, "");
+  return trimmed.split(/(?<!\\)\|/).map((c) => c.trim().replace(/\\\|/g, "|"));
+}
+
+function parseTableBlock(block: string): JSONNode | null {
+  const lines = block.split("\n");
+  if (lines.length < 2) return null;
+  if (!lines[0].includes("|")) return null;
+  if (!TABLE_SEPARATOR_RE.test(lines[1].trim())) return null;
+
+  const headerCells = splitPipeRow(lines[0]);
+  const bodyLines = lines.slice(2);
+
+  const headerRow: JSONNode = {
+    type: "tableRow",
+    content: headerCells.map((cell) => ({
+      type: "tableHeader",
+      content: [{ type: "paragraph", content: parseInlineMarkdown(cell) }],
+    })),
+  };
+
+  const bodyRows: JSONNode[] = bodyLines
+    .filter((l) => l.trim())
+    .map((line) => {
+      const cells = splitPipeRow(line);
+      // Normalise cell count to header width.
+      while (cells.length < headerCells.length) cells.push("");
+      cells.length = headerCells.length;
+      return {
+        type: "tableRow",
+        content: cells.map((cell) => ({
+          type: "tableCell",
+          content: [{ type: "paragraph", content: parseInlineMarkdown(cell) }],
+        })),
+      };
+    });
+
+  return { type: "table", content: [headerRow, ...bodyRows] };
+}
+
+// --- Relative image resolution ---
+
+function extractRelativeImageNames(markdown: string): Set<string> {
+  const names = new Set<string>();
+  const re = /!\[[^\]]*\]\(([^)]+)\)/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(markdown)) !== null) {
+    const src = m[1].trim();
+    if (/^https?:\/\//i.test(src) || src.startsWith("/") || src.startsWith("data:")) continue;
+    // Strip any fragment / querystring — storage keys are filename-only.
+    const cleaned = src.split(/[?#]/)[0];
+    if (cleaned) names.add(cleaned);
+  }
+  return names;
+}
+
+function buildFileNameMap(files: FileInfo[], wanted: Set<string>): Map<string, string> {
+  const map = new Map<string, string>();
+  const byName = new Map<string, string>();
+  for (const f of files) byName.set(f.name, f.url);
+  for (const want of wanted) {
+    const url = byName.get(want) ?? byName.get(want.split("/").pop() || want);
+    if (url) map.set(want, url);
+  }
+  return map;
+}
+
+function rewriteRelativeImages(markdown: string, urls: Map<string, string>): string {
+  return markdown.replace(/(!\[[^\]]*\]\()([^)]+)(\))/g, (full, pre, src, post) => {
+    const trimmed = src.trim();
+    const cleaned = trimmed.split(/[?#]/)[0];
+    const url = urls.get(cleaned);
+    return url ? `${pre}${url}${post}` : full;
+  });
 }
 
 function serializeMarkdown(doc: JSONNode | null | undefined, fallback: string): string {
@@ -321,11 +510,40 @@ function renderNode(node: JSONNode, depth: number): string {
       const title = node.attrs?.title ? String(node.attrs.title) : "";
       return title ? `[![${alt}](${src})](${title})` : `![${alt}](${src})`;
     }
+    case "table":
+      return renderTable(node);
     case "text":
       return applyMarks(node.text || "", node.marks || []);
     default:
       return children;
   }
+}
+
+function renderTable(node: JSONNode): string {
+  const rows = node.content || [];
+  if (rows.length === 0) return "";
+  // Each row has tableHeader/tableCell children, each of which contains a
+  // paragraph whose text is what we want to serialize.
+  const cellsFor = (row: JSONNode): string[] =>
+    (row.content || []).map((cell) => {
+      const para = (cell.content || [])[0];
+      const inline = (para?.content || [])
+        .map((child) => renderNode(child, 0))
+        .join("")
+        .trim();
+      return inline.replace(/\|/g, "\\|");
+    });
+
+  const headerCells = cellsFor(rows[0]);
+  const colCount = headerCells.length;
+  const separator = new Array(colCount).fill("---");
+  const bodyRows = rows.slice(1).map(cellsFor);
+  const toLine = (cells: string[]) => `| ${cells.join(" | ")} |`;
+  return [
+    toLine(headerCells),
+    toLine(separator),
+    ...bodyRows.map(toLine),
+  ].join("\n") + "\n\n";
 }
 
 function renderListItem(node: JSONNode, depth: number, index: number | null): string {

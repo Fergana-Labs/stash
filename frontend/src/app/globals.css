@@ -410,3 +410,26 @@ body {
   margin-right: 0.4em;
   accent-color: #F97316;
 }
+
+/* Tables in notebook pages (GitHub-flavored pipe tables). */
+.ProseMirror table.wiki-table,
+.ProseMirror table {
+  border-collapse: collapse;
+  margin: 1em 0;
+  width: 100%;
+  font-size: 0.95em;
+}
+
+.ProseMirror table th,
+.ProseMirror table td {
+  border: 1px solid var(--border, #e5e7eb);
+  padding: 0.5rem 0.75rem;
+  text-align: left;
+  vertical-align: top;
+}
+
+.ProseMirror table th {
+  background: var(--bg-muted, #f8f8f7);
+  font-weight: 600;
+  color: var(--text-primary);
+}
