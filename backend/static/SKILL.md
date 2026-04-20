@@ -94,28 +94,70 @@ CRUD verbs are standard: `POST` to create, `GET` list/detail, `PATCH` update,
 `DELETE` remove. Semantic-search endpoints hang off their parent resource
 (e.g. `GET /notebooks/{nb}/pages/semantic-search?q=...`).
 
-## Wiki Links (intra-notebook page references)
+## Page Content (`content_markdown`)
 
-Page `content_markdown` can embed symbolic references to other pages in the
-same workspace using filesystem-like path syntax. These resolve at render
-time and survive page renames.
+Pages store markdown. The editor implements a **deliberately small
+subset** — agents writing content should stick to what's listed below,
+since anything else silently passes through as plain text on render.
 
-| Syntax | Scope |
+### Links
+
+Use ordinary markdown links for everything:
+
+| Target | Shape |
 |---|---|
-| `[[page]]` | current notebook, **current folder only** |
-| `[[folder/page]]` | current notebook, named folder |
-| `[[notebook/page]]` | named notebook, root |
-| `[[notebook/folder/page]]` | fully qualified |
+| Another page in the same workspace | `[text](/notebooks?ws=<ws>&nb=<nb>&page=<uuid>)` |
+| A file uploaded to the workspace | `[text](/api/v1/workspaces/<ws>/files/<uuid>/download)` |
+| External URL | `[text](https://…)` |
 
-`(notebook_id, folder_id, name)` is unique per migration 0014, so any
-well-formed path resolves to at most one page. Unqualified `[[page]]`
-does **not** fall back to other folders — if the target lives elsewhere,
-qualify it.
+The viewer renders all three with the same style; an `↗` glyph marks
+off-origin URLs. Internal `/notebooks?…` and stash absolute URLs are
+SPA-routed (same tab, no reload); externals open in a new tab.
 
-Plain markdown links (`[text](https://…)` for external, `[text](/notebooks?ws=…&nb=…&page=…)` for in-app
-navigation) are also supported. The viewer renders them with matching
-visual treatment — a small `↗` glyph is the only distinction for
-off-origin URLs.
+There is no `[[wiki-link]]` syntax. The TipTap editor offers an
+autocomplete triggered by typing `[[`, but what it inserts is a
+markdown link with the page's id URL — the `[[…]]` brackets never
+reach storage.
+
+### Block elements
+
+| Markdown | Rendered as |
+|---|---|
+| `# Heading` to `### Heading` (H1–H3) | heading |
+| blank line | paragraph break |
+| `- item` / `* item` / `+ item` | bullet list |
+| `1. item` / `2. item` | ordered list |
+| `\| col1 \| col2 \|` followed by `\|---\|---\|` | GitHub-flavored pipe table |
+
+Anything starting with `####` (H4+), `>` (blockquote), triple-backtick
+code fences, or `---` (hr) is **not parsed** — the markdown renders
+literally. Treat it as unsupported.
+
+### Inline
+
+| Markdown | Rendered as |
+|---|---|
+| `**bold**` | bold |
+| `*italic*` | italic |
+| `` `code` `` | inline code |
+| `![alt](url)` | image (absolute URLs only) |
+| `[![alt](src)](href)` | linked image |
+| `[text](url)` | link (see above table) |
+
+Strikethrough (`~~`), underline markup, LaTeX, footnotes, and raw HTML
+tags are not supported.
+
+### Authoring from agents
+
+When generating page content programmatically, follow these rules and
+you'll round-trip cleanly through edit mode:
+
+1. Never emit `[[…]]` — use the id-URL link form.
+2. Never emit relative paths like `[text](foo.md)` or `![](foo.jpg)` —
+   the renderer treats them as dead and the editor strips them if a
+   user saves the page.
+3. Don't rely on H4 or deeper headings. Restructure with H3 + bold.
+4. Images need an absolute URL (external or `/files/<id>/download`).
 
 ## History / Memory Events
 

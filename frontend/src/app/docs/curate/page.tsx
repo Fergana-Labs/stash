@@ -51,29 +51,42 @@ export default function CuratePage() {
         new data since the last run and writes organized wiki pages into the target notebook.
       </Callout>
 
-      <H3>Wiki features</H3>
+      <H3>Linking between pages</H3>
       <P>
-        Notebook pages support filesystem-style wiki links that resolve against
-        the workspace page index. Type <Code>{"[["}</Code> in the editor for
-        autocomplete.
+        Type <Code>{"[["}</Code> in the editor to open the page
+        autocomplete. Pick a target and stash inserts an ordinary
+        markdown link whose URL is the target page&apos;s id — no
+        <Code>{"[[…]]"}</Code> brackets end up in the stored content.
+        These links survive renames (the url is id-based) and open
+        in-app on click (no new tab, no reload).
+      </P>
+      <P>
+        For files uploaded to the workspace, link to{" "}
+        <Code>/api/v1/workspaces/&lt;ws&gt;/files/&lt;id&gt;/download</Code>.
+        External URLs work like any other markdown link — the renderer
+        shows a small <Code>↗</Code> glyph on off-origin links.
+        Backlinks appear at the bottom of each page; the page graph
+        visualizes connections.
+      </P>
+
+      <H3>Supported markdown</H3>
+      <P>
+        The editor parses a deliberately small subset. Anything outside
+        this list renders as plain text, so prefer restructuring over
+        reaching for more exotic syntax.
       </P>
       <ul className="text-[14px] text-dim leading-7 list-disc ml-5 mb-3">
-        <li>
-          <Code>{"[[page]]"}</Code> — current notebook, current folder
-        </li>
-        <li>
-          <Code>{"[[folder/page]]"}</Code> — current notebook, named folder
-        </li>
-        <li>
-          <Code>{"[[notebook/folder/page]]"}</Code> — fully qualified, any
-          workspace notebook
-        </li>
+        <li>Headings <Code>{"#"}</Code>, <Code>{"##"}</Code>, <Code>{"###"}</Code> (H4+ is not parsed)</li>
+        <li>Bullet and numbered lists</li>
+        <li>Pipe tables (GitHub flavor: header + <Code>{"|---|---|"}</Code> separator)</li>
+        <li>Inline <Code>**bold**</Code>, <Code>*italic*</Code>, <Code>`code`</Code></li>
+        <li>Images <Code>![alt](url)</Code> — absolute URLs only</li>
+        <li>Markdown links <Code>[text](url)</Code></li>
       </ul>
       <P>
-        Unqualified <Code>{"[[page]]"}</Code> does <strong>not</strong> search
-        other folders — qualify the path if the target lives elsewhere.
-        Backlinks appear at the bottom of each page showing which pages
-        reference it. The page graph visualizes connections.
+        Not parsed: H4–H6, blockquotes (<Code>&gt;</Code>), fenced code
+        blocks (<Code>```</Code>), horizontal rules, strikethrough,
+        footnotes, raw HTML tags.
       </P>
 
       <H3>Semantic search</H3>
