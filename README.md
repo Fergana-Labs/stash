@@ -44,18 +44,13 @@
 
 ## Quick Start
 
-### 1. Create an account
-
-Go to [stash.ac](https://stash.ac) and register. Save your API key.
-
-### 2. Install the CLI
+One line installs the CLI, signs you in, picks a workspace, and installs the Claude Code plugin (if detected):
 
 ```bash
-pipx install stashai        # or: uv tool install stashai
-stash connect               # Interactive: paste API key, pick a default workspace
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/Fergana-Labs/stash/main/install.sh)"
 ```
 
-### 3. Try it
+Then try it:
 
 ```bash
 stash history search "authentication patterns"      # Full-text search over events
@@ -63,12 +58,19 @@ stash history push "session notes here"             # Push an event
 stash --help                                        # Full command list
 ```
 
-For cross-resource agentic search inside Claude Code, install the [Claude Code plugin](#integrations) — your agent gets the full `stash` CLI and can search across history, notebooks, and tables in one loop.
+<details>
+<summary>Manual install</summary>
+
+```bash
+pipx install stashai        # or: uv tool install stashai
+stash connect               # Interactive: sign in, pick a workspace, install plugin
+```
+
+</details>
 
 ## CLI
 
 ```bash
-pipx install stashai                 # or: uv tool install stashai
 stash connect                        # Configure API key + default workspace
 stash history push <content>         # Push an event
 stash history search <query>         # Full-text search over history events
@@ -81,6 +83,8 @@ stash --help                         # Full command list
 ### Claude Code plugin
 
 The [`plugins/claude-plugin`](plugins/claude-plugin/README.md) directory ships a Claude Code plugin that turns any session into a persistent Stash agent: activity streams to history, memory injects into every prompt, and context carries across sessions.
+
+The [Quick Start](#quick-start) one-liner installs the plugin automatically when it detects Claude Code. To do it manually:
 
 ```bash
 pipx install stashai                                    # or: uv tool install stashai
