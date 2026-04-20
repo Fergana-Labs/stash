@@ -1,15 +1,5 @@
-"""Stream gate — plugin hooks only push events when a `.stash/stash.json`
+"""Plugin hooks only push events when a `.stash/stash.json`
 manifest is discoverable from cwd (in the current directory or any ancestor).
-
-The manifest's location encodes scope:
-- `<repo>/.stash/stash.json` — per-repo install. Events stream when cwd is
-  anywhere inside that tree, routed to that manifest's `workspace_id`.
-- `~/.stash/stash.json` — global install. Acts as a catch-all: anything
-  under `$HOME` without a closer manifest still streams.
-
-Closest-ancestor wins, so a repo-level manifest always overrides the global
-one for routing. There is no separate "scope" config — the manifest's
-presence is the opt-in, and its location encodes the breadth.
 """
 
 from __future__ import annotations
