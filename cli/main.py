@@ -416,8 +416,9 @@ def _ask_codex_network_access() -> bool:
     if not sys.stdin.isatty():
         return True
     console.print(
-        "For stash to work, we need to let bash commands make network requests",
-        "So that we can upload chat transcripts to the remote server."
+        "For stash to work on codex specifically, we need to let bash ",
+        "commands make network requests so that we can upload chat ",
+        "transcripts to the remote server."
         )
     answer = questionary.confirm(
         "Allow codex bash commands to make outbound network requests?",
