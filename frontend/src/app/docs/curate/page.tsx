@@ -53,10 +53,27 @@ export default function CuratePage() {
 
       <H3>Wiki features</H3>
       <P>
-        Notebook pages support <Code>{"[[Page Name]]"}</Code> wiki links. Type{" "}
-        <Code>{"[["}</Code> in the editor for autocomplete. Backlinks appear at the bottom
-        of each page showing which pages reference it. The page graph visualizes connections.
-        Auto-index generates a table of contents with backlink counts for the whole notebook.
+        Notebook pages support filesystem-style wiki links that resolve against
+        the workspace page index. Type <Code>{"[["}</Code> in the editor for
+        autocomplete.
+      </P>
+      <ul className="text-[14px] text-dim leading-7 list-disc ml-5 mb-3">
+        <li>
+          <Code>{"[[page]]"}</Code> — current notebook, current folder
+        </li>
+        <li>
+          <Code>{"[[folder/page]]"}</Code> — current notebook, named folder
+        </li>
+        <li>
+          <Code>{"[[notebook/folder/page]]"}</Code> — fully qualified, any
+          workspace notebook
+        </li>
+      </ul>
+      <P>
+        Unqualified <Code>{"[[page]]"}</Code> does <strong>not</strong> search
+        other folders — qualify the path if the target lives elsewhere.
+        Backlinks appear at the bottom of each page showing which pages
+        reference it. The page graph visualizes connections.
       </P>
 
       <H3>Semantic search</H3>

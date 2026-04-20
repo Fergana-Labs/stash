@@ -72,26 +72,50 @@ background extractor has processed the file (typically a few seconds).
 
 ## Route Surfaces
 
-Each surface is exposed twice: `workspace-scoped` and `personal` (no workspace
-membership required, owned by the authenticated user).
+Every resource lives inside a workspace. There is no personal (no-workspace)
+scope — pick or create a workspace first.
 
-| Surface | Workspace prefix | Personal prefix |
-|---------|------------------|-----------------|
-| Users | `/api/v1/users` (register, login, `/me`, `/search`) | — |
-| Workspaces | `/api/v1/workspaces` (CRUD, members, invite tokens) | — |
-| Notebooks | `/api/v1/workspaces/{ws}/notebooks` | `/api/v1/notebooks` |
-| Pages | `/api/v1/workspaces/{ws}/notebooks/{nb}/pages` | `/api/v1/notebooks/{nb}/pages` |
-| Folders | `/api/v1/workspaces/{ws}/notebooks/{nb}/folders` | `/api/v1/notebooks/{nb}/folders` |
-| Tables | `/api/v1/workspaces/{ws}/tables` | `/api/v1/tables` |
-| Rows | `/api/v1/workspaces/{ws}/tables/{t}/rows` | `/api/v1/tables/{t}/rows` |
-| Files | `/api/v1/workspaces/{ws}/files` | `/api/v1/files` |
-| Memory / History | `/api/v1/workspaces/{ws}/memory/events` | `/api/v1/memory/events` |
-| Transcripts | `/api/v1/workspaces/{ws}/transcripts` | — |
-| Aggregate (across workspaces) | `/api/v1/me/{notebooks,tables,history-events,decks}` | — |
+| Surface | Prefix |
+|---------|--------|
+| Users | `/api/v1/users` (register, login, `/me`, `/search`) |
+| Workspaces | `/api/v1/workspaces` (CRUD, members, invite tokens) |
+| Notebooks | `/api/v1/workspaces/{ws}/notebooks` |
+| Pages | `/api/v1/workspaces/{ws}/notebooks/{nb}/pages` |
+| Page index (flat, for wiki-link resolution) | `/api/v1/workspaces/{ws}/pages` |
+| Folders | `/api/v1/workspaces/{ws}/notebooks/{nb}/folders` |
+| Tables | `/api/v1/workspaces/{ws}/tables` |
+| Rows | `/api/v1/workspaces/{ws}/tables/{t}/rows` |
+| Files | `/api/v1/workspaces/{ws}/files` |
+| Memory / History | `/api/v1/workspaces/{ws}/memory/events` |
+| Transcripts | `/api/v1/workspaces/{ws}/transcripts` |
+| Aggregate (across the user's workspaces) | `/api/v1/me/{notebooks,tables,history-events,decks}` |
 
 CRUD verbs are standard: `POST` to create, `GET` list/detail, `PATCH` update,
 `DELETE` remove. Semantic-search endpoints hang off their parent resource
 (e.g. `GET /notebooks/{nb}/pages/semantic-search?q=...`).
+
+## Wiki Links (intra-notebook page references)
+
+Page `content_markdown` can embed symbolic references to other pages in the
+same workspace using filesystem-like path syntax. These resolve at render
+time and survive page renames.
+
+| Syntax | Scope |
+|---|---|
+| `[[page]]` | current notebook, **current folder only** |
+| `[[folder/page]]` | current notebook, named folder |
+| `[[notebook/page]]` | named notebook, root |
+| `[[notebook/folder/page]]` | fully qualified |
+
+`(notebook_id, folder_id, name)` is unique per migration 0014, so any
+well-formed path resolves to at most one page. Unqualified `[[page]]`
+does **not** fall back to other folders — if the target lives elsewhere,
+qualify it.
+
+Plain markdown links (`[text](https://…)` for external, `[text](/notebooks?ws=…&nb=…&page=…)` for in-app
+navigation) are also supported. The viewer renders them with matching
+visual treatment — a small `↗` glyph is the only distinction for
+off-origin URLs.
 
 ## History / Memory Events
 
@@ -138,11 +162,14 @@ Query/search:
 - CLI auth session polling: 60/min
 
 ## Tips for Agents
-- Use the personal route variants for user-private resources; workspace
-  variants for shared ones. Membership is enforced.
+- Every resource requires a workspace — there is no no-workspace scope.
 - For extracted text on an uploaded file, poll `GET /files/{id}/text` — it
   returns `status` alongside the text so you can distinguish "still
   extracting" (`pending`/`processing`) from "done, no text available"
   (`done` with `text: null`).
 - Attach files to history events rather than embedding base64 — keeps event
   payloads small and allows reuse across events.
+- When authoring page content that links to other pages in the same
+  workspace, use `[[folder/page]]` / `[[notebook/folder/page]]` wiki
+  syntax. Unqualified `[[page]]` only resolves to a sibling in the same
+  folder.

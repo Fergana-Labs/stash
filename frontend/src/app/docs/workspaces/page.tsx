@@ -47,17 +47,10 @@ export default function WorkspacesPage() {
       </div>
 
       <Callout type="tip">
-        The curation tool uses <strong>object-level permissions</strong> — it writes
-        to a <em>personal</em> notebook (private by default) and only publishes summaries
-        to shared workspace notebooks when configured to do so.
+        Object-level <strong>visibility</strong> settings live on each
+        notebook/table. Default is workspace-private (only members see it);
+        set to public to expose via a read-only share link.
       </Callout>
-
-      <H3>Personal resources</H3>
-      <P>
-        Notebooks, tables, history stores, and files can also exist outside any workspace as
-        personal resources. The curation tool writes to the user&apos;s personal notebook by default.
-        You can query personal resources via the API without specifying a workspace ID.
-      </P>
     </>
   );
 }

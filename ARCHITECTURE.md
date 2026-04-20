@@ -102,12 +102,15 @@ workspaces ─┬── workspace_members ──── users
 
 ### Workspace scoping
 
-Every content resource (notebooks, history_events, chats, tables, decks, files) has an optional `workspace_id` foreign key:
+Every content resource (notebooks, history_events, tables, decks, files)
+has a **non-null** `workspace_id` foreign key. Access is governed by
+workspace membership plus optional object-level permissions (see below).
+The `/api/v1/me/*` aggregate router exposes cross-workspace views for the
+current user — e.g. "every notebook in every workspace I'm a member of."
 
-- **`workspace_id IS NOT NULL`** — workspace resource, governed by membership and permissions
-- **`workspace_id IS NULL`** — personal resource, owned by `created_by` / `uploaded_by`
-
-This dual-mode design lets users keep private resources alongside shared workspace content using the same tables and API structure. The `/api/v1/me/*` aggregate router exposes cross-workspace views of a user's personal + accessible resources.
+There is no personal (no-workspace) scope. Migration `0015` promoted
+`workspace_id` to `NOT NULL` on every content table after the older
+personal endpoints were removed.
 
 ### Permission model
 
@@ -161,7 +164,10 @@ Database (database.py)
        • Raw SQL with parameterized queries ($1, $2, ...)
 ```
 
-Most routers are split into `ws_router` (workspace-scoped, `/workspaces/{id}/...`) and `personal_router` (personal resources, `/me/...`).
+Routers mount under `/api/v1/workspaces/{workspace_id}/...`. The
+`aggregate` router (`/api/v1/me/*`) is the only surface that crosses
+workspace boundaries, returning resources from every workspace the
+current user can see.
 
 ### Routers
 
@@ -169,11 +175,11 @@ Most routers are split into `ws_router` (workspace-scoped, `/workspaces/{id}/...
 |--------|-------|---------------|
 | `users` | `/users` | Register, login, API key issuance, profile |
 | `workspaces` | `/workspaces` | Workspace CRUD, membership, invites |
-| `notebooks` | workspace + personal | Notebook, folder, page, wiki-link CRUD |
-| `memory` | workspace + personal | History event push, query, FTS, vector search |
-| `tables` | workspace + personal | Tables, rows, columns, CSV import/export |
-| `files` | workspace + personal | Uploads, downloads, signed URLs |
-| `aggregate` | `/api/v1/me/*` | Cross-workspace personal views + analytics |
+| `notebooks` | `/workspaces/{ws}/notebooks` + `/workspaces/{ws}/pages` | Notebook, folder, page, wiki-link CRUD; flat page index for link resolution |
+| `memory` | `/workspaces/{ws}/memory` | History event push, query, FTS, vector search |
+| `tables` | `/workspaces/{ws}/tables` | Tables, rows, columns, CSV import/export |
+| `files` | `/workspaces/{ws}/files` | Uploads, downloads, signed URLs, text extraction |
+| `aggregate` | `/api/v1/me/*` | Cross-workspace views (notebooks, tables, history, analytics) for the current user |
 | `skill` | `/skill/stash/SKILL.md` | Serves the plugin skill manifest |
 
 ### Services

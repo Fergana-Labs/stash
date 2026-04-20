@@ -45,11 +45,11 @@ stash search <query>
 
       <H3>Notebooks</H3>
       <CodeBlock>{`stash notebooks list [--ws ID] [--all]
-stash notebooks create <name> [--ws ID] [--personal]
+stash notebooks create <name> [--ws ID]
 stash notebooks pages <notebook_id> [--ws ID]
-stash notebooks add-page <nb_id> <name> [--content "..."]
+stash notebooks add-page <nb_id> <name> [--content "..."] [--attach path]
 stash notebooks read-page <nb_id> <page_id>
-stash notebooks edit-page <nb_id> <page_id> --content "..."`}</CodeBlock>
+stash notebooks edit-page <nb_id> <page_id> --content "..." [--attach path]`}</CodeBlock>
 
       <H3>History stores</H3>
       <CodeBlock>{`stash history list [--ws ID] [--all]

@@ -117,11 +117,13 @@ body: { "visibility": "inherit" | "private" | "public" }`}</CodeBlock>
         ))}
       </div>
 
-      <H3>Personal endpoints</H3>
+      <H3>Aggregate endpoints</H3>
       <P>
-        Most workspace-scoped endpoints have a personal variant. For notebooks, for example:{" "}
-        <Code>/me/notebooks</Code>. Personal endpoints return resources not tied to any workspace.
-        Full list available in the{" "}
+        <Code>/api/v1/me/notebooks</Code>, <Code>/me/tables</Code>, and{" "}
+        <Code>/me/history-events</Code> return resources from every workspace
+        the current user has access to, useful for cross-workspace views. Every
+        resource itself still belongs to exactly one workspace — there is no
+        personal (no-workspace) scope. Full schema in the{" "}
         <a href="https://stash.ac/docs" className="text-brand underline underline-offset-2">
           OpenAPI spec
         </a>
