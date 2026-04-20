@@ -166,33 +166,33 @@ function WikiLinkNodeView({
   const context = extension.options?.context ?? { notebookId: null, folderId: null };
   const resolution = resolveWikiLink(linkText, pageIndex, context);
   const isResolved = resolution.status === "resolved";
-  const isAmbiguous = resolution.status === "ambiguous";
 
-  // Dangling (unresolved) links should feel broken — muted red underline.
-  // Ambiguous links get a warning dot hinting at the problem.
-  const className = isResolved
-    ? "text-[#F97316] hover:text-[#EA580C] cursor-pointer hover:underline font-medium transition-colors duration-150"
-    : isAmbiguous
-      ? "text-amber-500 cursor-pointer hover:underline italic"
-      : "text-red-500/70 cursor-help underline decoration-dotted decoration-red-500/50";
-  const title = isResolved
-    ? undefined
-    : isAmbiguous
-      ? `Ambiguous — matches ${
-          resolution.candidates.length
-        } pages. Qualify with notebook or folder.`
-      : "Page not found. Check the path.";
+  // Display-friendly text: drop the bracket chrome entirely and show
+  // only the final name segment so the link reads like a normal inline
+  // reference, indistinguishable from a markdown link. Use the full
+  // path on hover so authors can still see how they qualified it.
+  const displayText = isResolved
+    ? resolution.page.name
+    : linkText.split("/").pop() || linkText;
+  const tooltip = isResolved ? linkText : "Page not found — qualify the path.";
+
+  // One class for working internal links, one for dead. Matches the
+  // .ProseMirror a styling applied to markdown links so both feel
+  // like the same thing when they work, and both fail the same way
+  // when they don't.
+  const className = isResolved ? "wiki-link-internal" : "wiki-link-dead";
 
   return (
     <NodeViewWrapper as="span" className="wiki-link-wrapper">
       <span
         className={className}
-        title={title}
+        title={tooltip}
         data-wiki-link={linkText}
         data-wiki-resolved={isResolved ? "true" : "false"}
-        role="link"
-        tabIndex={0}
+        role={isResolved ? "link" : undefined}
+        tabIndex={isResolved ? 0 : -1}
         onClick={(e) => {
+          if (!isResolved) return;
           e.preventDefault();
           const event = new CustomEvent("wiki-link-click", {
             detail: { linkText },
@@ -201,6 +201,7 @@ function WikiLinkNodeView({
           e.currentTarget.dispatchEvent(event);
         }}
         onKeyDown={(e) => {
+          if (!isResolved) return;
           if (e.key === "Enter") {
             const event = new CustomEvent("wiki-link-click", {
               detail: { linkText },
@@ -210,7 +211,7 @@ function WikiLinkNodeView({
           }
         }}
       >
-        [[{linkText}]]
+        {displayText}
       </span>
     </NodeViewWrapper>
   );
@@ -254,13 +255,18 @@ export const WikiLinkNode = Node.create<WikiLinkOptions>({
   },
 
   renderHTML({ HTMLAttributes }) {
+    // Static fallback used when the node view isn't mounted (tests,
+    // SSR, copy-to-HTML). Show the final path segment as the display
+    // text so the output still looks like an ordinary link.
+    const path = String(HTMLAttributes.pageName || "");
+    const display = path.split("/").pop() || path;
     return [
       "span",
       mergeAttributes(HTMLAttributes, {
-        "data-wiki-link": HTMLAttributes.pageName,
-        class: "text-brand cursor-pointer hover:underline font-medium",
+        "data-wiki-link": path,
+        class: "wiki-link-internal",
       }),
-      `[[${HTMLAttributes.pageName}]]`,
+      display,
     ];
   },
 

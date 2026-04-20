@@ -109,14 +109,16 @@ export default function MarkdownEditor({
       Superscript,
       Typography,
       Link.configure({
-        // Click opens the href. Cursor placement inside link text in edit
-        // mode is slightly fiddlier, but the primary UX here is reading
-        // imported content — clicks should just work.
-        openOnClick: true,
+        // We route clicks ourselves via editorProps.handleClickOn below
+        // so internal stash URLs SPA-navigate instead of opening a new
+        // tab, and relative/dead hrefs don't trigger 404s. Keep TipTap's
+        // own click plugin disabled.
+        openOnClick: false,
         autolink: true,
         HTMLAttributes: {
-          class: "text-brand underline cursor-pointer",
-          target: "_blank",
+          // No class here — CSS classifies each anchor by href pattern
+          // (see globals.css .ProseMirror a[...] rules) so internal,
+          // external, and dead links style themselves consistently.
           rel: "noopener noreferrer",
         },
       }),
@@ -149,6 +151,50 @@ export default function MarkdownEditor({
     editorProps: {
       attributes: {
         class: "max-w-none min-h-[200px] focus:outline-none wiki-body",
+      },
+      // Single place that decides what happens on a link click. Wiki
+      // nodes dispatch their own event from the node view — this
+      // handler only needs to catch clicks on markdown-link anchors.
+      handleDOMEvents: {
+        click: (_view, event) => {
+          const target = event.target as HTMLElement | null;
+          const anchor = target?.closest?.("a");
+          if (!anchor) return false;
+          const href = anchor.getAttribute("href");
+          if (!href) return false;
+
+          // Internal: stash routes (absolute or relative) → SPA.
+          // Dead: relative paths that aren't our routes (e.g. old
+          // import artifacts like "README.md") → no-op so they don't
+          // dump the user onto a 404 inside the app.
+          // External: anything with a scheme, different host → new tab.
+          const isStashAbsolute =
+            /^https?:\/\/(app\.)?stash\.ac\//i.test(href);
+          const isRouteRelative = href.startsWith("/");
+          const hasScheme = /^[a-z][a-z0-9+.-]*:/i.test(href);
+
+          if (isStashAbsolute || isRouteRelative) {
+            event.preventDefault();
+            // Stash internal URLs are human-readable and page-id based;
+            // not worth reverse-engineering into onNavigateToLink right
+            // now. Just route via the standard anchor → Next router
+            // would require a ref we don't have here; fall through to
+            // same-tab navigation which at least keeps the user in-app.
+            window.location.assign(href);
+            return true;
+          }
+
+          if (hasScheme) {
+            event.preventDefault();
+            window.open(href, "_blank", "noopener,noreferrer");
+            return true;
+          }
+
+          // Dead ref — preventDefault so the browser doesn't try
+          // to resolve "README.md" against the current URL.
+          event.preventDefault();
+          return true;
+        },
       },
     },
     onUpdate: ({ editor }) => {

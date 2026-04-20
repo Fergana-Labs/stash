@@ -433,3 +433,56 @@ body {
   font-weight: 600;
   color: var(--text-primary);
 }
+
+/* =============================================================
+ * Links — one visual language for wiki refs and markdown links.
+ *
+ * Classification is purely by href pattern. CSS doesn't need to
+ * know about edit vs view mode; both render the same.
+ *
+ *   internal  = stash route (absolute or relative) + resolved
+ *               wiki nodes (.wiki-link-internal)
+ *   external  = any other scheme, off-origin URL (↗ trailing)
+ *   dead      = relative ref that doesn't match a stash route
+ *               (import artifacts like "README.md"); also
+ *               unresolved wiki nodes (.wiki-link-dead)
+ * ============================================================= */
+
+/* Base link style — shared by internal + external */
+.ProseMirror a,
+.ProseMirror span.wiki-link-internal {
+  color: var(--link, #F97316);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+  transition: color 150ms ease;
+}
+.ProseMirror a:hover,
+.ProseMirror span.wiki-link-internal:hover {
+  color: var(--link-hover, #EA580C);
+}
+
+/* External URLs — anything with a scheme that isn't stash itself.
+   The :not() chain keeps stash absolute URLs styled as internal. */
+.ProseMirror a[href^="http://"]:not([href*="://stash.ac/"]):not([href*="://app.stash.ac/"])::after,
+.ProseMirror a[href^="https://"]:not([href*="://stash.ac/"]):not([href*="://app.stash.ac/"])::after {
+  content: "\a0↗";
+  font-size: 0.8em;
+  opacity: 0.7;
+  margin-left: 0.1em;
+}
+
+/* Dead refs — hrefs that are neither a scheme nor an absolute path.
+   This catches the import-artifact relative paths like "README.md" or
+   "../../raw/arxiv_papers/X.pdf" that can't possibly navigate. */
+.ProseMirror a:not([href^="/"]):not([href*="://"]):not([href^="mailto:"]):not([href^="tel:"]),
+.ProseMirror span.wiki-link-dead {
+  color: var(--text-muted, #8a8a87);
+  text-decoration: underline dotted var(--danger, #ef4444);
+  text-decoration-skip-ink: none;
+  cursor: default;
+}
+.ProseMirror a:not([href^="/"]):not([href*="://"]):not([href^="mailto:"]):not([href^="tel:"]):hover,
+.ProseMirror span.wiki-link-dead:hover {
+  color: var(--text-muted, #8a8a87);
+}
