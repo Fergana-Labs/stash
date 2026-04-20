@@ -17,10 +17,7 @@ def _has_manifest(cwd: str | None) -> bool:
     """True if `.stash/stash.json` exists in cwd or any ancestor."""
     if not cwd:
         return False
-    try:
-        cur = Path(cwd).resolve()
-    except Exception:
-        return False
+    cur = Path(cwd).resolve()
     for parent in [cur, *cur.parents]:
         if (parent / ".stash" / _MANIFEST_FILENAME).exists():
             return True
@@ -44,10 +41,7 @@ def repo_stash_disabled(cwd: str | None) -> bool:
     treated as 'not disabled'."""
     if not cwd:
         return False
-    try:
-        cur = Path(cwd).resolve()
-    except Exception:
-        return False
+    cur = Path(cwd).resolve()
     for parent in [cur, *cur.parents]:
         candidate = parent / ".stash" / _CONFIG_FILENAME
         if not candidate.exists():
