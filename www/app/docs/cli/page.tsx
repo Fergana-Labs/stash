@@ -10,7 +10,7 @@ export default function CLIPage() {
       </Subtitle>
 
       <H3>Install</H3>
-      <CodeBlock>{`pip install stash`}</CodeBlock>
+      <CodeBlock>{`pip install stashai`}</CodeBlock>
 
       <H3>First-time setup</H3>
       <P>

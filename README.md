@@ -51,7 +51,7 @@ Go to [stash.ac](https://stash.ac) and register. Save your API key.
 ### 2. Install the CLI
 
 ```bash
-pip install stash
+pip install stashai         # installs the `stash` CLI
 stash connect               # Interactive: paste API key, pick a default workspace
 ```
 
@@ -68,7 +68,7 @@ For cross-resource agentic search, install the [Claude Code plugin](#integration
 ## CLI
 
 ```bash
-pip install stash
+pip install stashai                    # installs the `stash` CLI
 stash connect                          # Configure API key + default workspace
 stash history push <content>         # Push an event
 stash history search <query>         # Full-text search over history events

@@ -34,7 +34,7 @@ export default function SetupCard({ workspaceId, apiKey }: SetupCardProps) {
     setTimeout(() => setCopied(null), 2000);
   };
 
-  const cliCmd = "pip install stash && stash login";
+  const cliCmd = "pip install stashai && stash login";
 
   return (
     <div className="bg-[#1a2332] border border-white/10 rounded-lg overflow-hidden mb-8">
