@@ -1,5 +1,15 @@
 Write extremely easy to consume code. Optimize for readability: skimmable, no cleverness, early returns.
 
+### Write simple code
+We are a startup. Therefore, code simplicity is our most important concern. Please NEVER
+ - Attempt to preserve backwards compatibility when making an edit.
+ - Use fallbacks when to save the UX when a primary path doesn't work (we'd rather fail fast, and this helps us to maintain as few codepaths as possible)
+ 
+Here are some common code patterns that we need you to avoid:
+ - Excessive try/catch: only use try/catch when there's a reasonable expectation that the code within might fail during normal usage. Every try/catch that we add adds another codepath that we need to maintain (the catch) and balloons complexity. In general, we follow the concept of "parse, don't validate" from TDD whenever possible. That is, we validate inputs at module boundaries, and within a module, we don't randomly add try/catch everywhere.
+ 
+ - Unhelpful comments that reiterate what the code does: The point of a comment is to explain information that is not obvious from reading the code. A good rule of thumb: if your comment is an action (eg: sets the diff viewer open state), it is probably a bad comment. If it is a description (eg: the diff viewer state must be synced to our ui interaction server) it is likely a good comment.
+
 ### Be self-sufficient
 If you are about to ask the user to do something for you, think about whether you can do it yourself.
 
