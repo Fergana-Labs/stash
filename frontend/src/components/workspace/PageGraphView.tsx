@@ -29,10 +29,12 @@ export default function PageGraphView({ graph, onClose, onSelectPage, inline }: 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [tooltip, setTooltip] = useState<TooltipInfo | null>(null);
+  const [overNode, setOverNode] = useState(false);
   const hoveredRef = useRef<string | null>(null);
   const nodesRef = useRef<SimNode[]>([]);
   const animRef = useRef<number>(0);
   const tickRef = useRef(0);
+  const clickable = Boolean(onSelectPage);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -238,6 +240,7 @@ export default function PageGraphView({ graph, onClose, onSelectPage, inline }: 
       }
     }
     hoveredRef.current = found?.id ?? null;
+    setOverNode(!!found);
     if (found) {
       setTooltip({ x: mx, y: my, name: found.name });
     } else {
@@ -250,9 +253,16 @@ export default function PageGraphView({ graph, onClose, onSelectPage, inline }: 
       className="absolute z-10 bg-base border border-border rounded-md px-3 py-1.5 pointer-events-none shadow-lg"
       style={{ left: tooltip.x + 12, top: tooltip.y - 8 }}
     >
-      <div className="text-xs font-medium text-foreground">{tooltip.name}</div>
+      <div className="text-xs font-medium text-brand underline underline-offset-2">
+        {tooltip.name}
+      </div>
+      {clickable && (
+        <div className="text-[10px] text-muted mt-0.5">Click to open ↗</div>
+      )}
     </div>
   );
+
+  const cursorClass = clickable && overNode ? "cursor-pointer" : "cursor-default";
 
   if (inline) {
     return (
@@ -264,16 +274,16 @@ export default function PageGraphView({ graph, onClose, onSelectPage, inline }: 
         </div>
         <canvas
           ref={canvasRef}
-          className="w-full cursor-crosshair rounded"
+          className={`w-full ${cursorClass} rounded`}
           style={{ height: 320 }}
           onClick={handleCanvasClick}
           onMouseMove={handleCanvasMove}
-          onMouseLeave={() => { hoveredRef.current = null; setTooltip(null); }}
+          onMouseLeave={() => { hoveredRef.current = null; setOverNode(false); setTooltip(null); }}
         />
         {tooltipEl}
         {graph.edges.length === 0 && (
           <p className="text-xs text-muted mt-2">
-            No links yet. Use <code className="text-brand">[[Page Name]]</code> syntax to create wiki links.
+            No links yet. Type <code className="text-brand">[[</code> in a page to link to another one.
           </p>
         )}
       </div>
@@ -295,18 +305,18 @@ export default function PageGraphView({ graph, onClose, onSelectPage, inline }: 
         <div className="relative">
           <canvas
             ref={canvasRef}
-            className="w-full cursor-crosshair"
+            className={`w-full ${cursorClass}`}
             style={{ height: 400 }}
             onClick={handleCanvasClick}
             onMouseMove={handleCanvasMove}
-            onMouseLeave={() => { hoveredRef.current = null; setTooltip(null); }}
+            onMouseLeave={() => { hoveredRef.current = null; setOverNode(false); setTooltip(null); }}
           />
           {tooltipEl}
         </div>
         {graph.edges.length === 0 && (
           <div className="px-4 py-3 border-t border-border">
             <p className="text-xs text-muted">
-              No links yet. Use <code className="text-brand">[[Page Name]]</code> syntax in your pages to create wiki links.
+              No links yet. Type <code className="text-brand">[[</code> in a page to link to another one.
             </p>
           </div>
         )}
