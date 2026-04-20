@@ -2704,9 +2704,11 @@ STASH_OCTOPUS = r'''
 
 
 def _pushed_scope_phrase() -> str:
-    """Streaming is gated on `.stash/stash.json` presence — repo manifest
-    for a single repo, or `~/.stash/stash.json` for a global install."""
-    return "Coding agent sessions from any repo where stash is installed."
+    """Human phrase for what gets pushed, based on manifest location."""
+    global_manifest = Path.home() / ".stash" / "stash.json"
+    if global_manifest.exists():
+        return "All coding agent transcripts from this machine."
+    return "Coding agent transcripts from this repo."
 
 
 def _current_invite() -> tuple[str, str]:
