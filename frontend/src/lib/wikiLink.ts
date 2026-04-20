@@ -86,16 +86,22 @@ export function resolveWikiLink(
     return finalize(notebookHits);
   }
 
-  // 1 part → name only, current folder of current notebook.
+  // 1 part → name only. Prefer the current folder (filesystem-local);
+  // fall back to a workspace-wide unique match so old-style
+  // `[[Page]]` links from imports still resolve when they're
+  // unambiguous. Multiple matches → ambiguous (caller can decide).
   const [name] = parts;
-  if (!ctx.notebookId) return { status: "unresolved" };
-  const hits = index.filter(
-    (p) =>
-      p.notebook_id === ctx.notebookId &&
-      p.folder_id === ctx.folderId &&
-      p.name === name
-  );
-  return finalize(hits);
+  if (ctx.notebookId) {
+    const local = index.filter(
+      (p) =>
+        p.notebook_id === ctx.notebookId &&
+        p.folder_id === ctx.folderId &&
+        p.name === name
+    );
+    if (local.length > 0) return finalize(local);
+  }
+  const anywhere = index.filter((p) => p.name === name);
+  return finalize(anywhere);
 }
 
 function finalize(hits: WorkspacePageEntry[]): WikiLinkResolution {

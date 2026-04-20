@@ -215,8 +215,22 @@ function WikiPageInner() {
       notebookId: selectedNotebook?.id ?? null,
       folderId: selectedPage?.folder_id ?? null,
     });
-    if (resolution.status !== "resolved") return;
-    const hit = resolution.page;
+    // Pick something navigable for every non-dead case so clicks are
+    // never silent. Ambiguous → take the most-recently-updated match.
+    let hit: typeof workspacePages[number] | null = null;
+    if (resolution.status === "resolved") {
+      hit = resolution.page;
+    } else if (resolution.status === "ambiguous") {
+      hit = [...resolution.candidates].sort((a, b) =>
+        b.updated_at.localeCompare(a.updated_at)
+      )[0];
+    }
+    if (!hit) {
+      // Unresolved — surface in the console so the author can see which
+      // link is dead without having to open the inspector every time.
+      console.warn(`[wiki-link] unresolved: [[${linkText}]]`);
+      return;
+    }
 
     // Same-notebook: just select the page, no tree reload needed.
     if (selectedNotebook && hit.notebook_id === selectedNotebook.id) {
