@@ -233,6 +233,21 @@ class PageTreeResponse(BaseModel):
     root_files: list[PageTreeFile]
 
 
+class WorkspacePageEntry(BaseModel):
+    """Flattened reference to a page for cross-notebook lookups (wiki links)."""
+
+    id: UUID
+    name: str
+    notebook_id: UUID
+    notebook_name: str
+    folder_id: UUID | None = None
+    updated_at: datetime
+
+
+class WorkspacePageListResponse(BaseModel):
+    pages: list[WorkspacePageEntry]
+
+
 # --- Tables ---
 
 

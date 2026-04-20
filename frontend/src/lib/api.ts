@@ -711,6 +711,27 @@ export async function deleteFile(workspaceId: string, fileId: string): Promise<v
   await apiFetch(`/api/v1/workspaces/${workspaceId}/files/${fileId}`, { method: "DELETE" });
 }
 
+// --- Cross-notebook page index ---
+
+export interface WorkspacePageEntry {
+  id: string;
+  name: string;
+  notebook_id: string;
+  notebook_name: string;
+  folder_id: string | null;
+  updated_at: string;
+}
+
+export async function listWorkspacePages(
+  workspaceId: string | null
+): Promise<WorkspacePageEntry[]> {
+  const data = await apiFetch<{ pages: WorkspacePageEntry[] }>(
+    `${scope(workspaceId)}/pages`
+  );
+  return data.pages;
+}
+
+
 // --- Wiki: Backlinks, Outlinks, Page Graph, Semantic Search ---
 
 export async function getBacklinks(

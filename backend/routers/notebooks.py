@@ -20,11 +20,39 @@ from ..models import (
     SetVisibilityRequest,
     ShareRequest,
     ShareResponse,
+    WorkspacePageEntry,
+    WorkspacePageListResponse,
 )
 from ..services import notebook_service, permission_service, workspace_service
 
 ws_router = APIRouter(prefix="/api/v1/workspaces/{workspace_id}/notebooks", tags=["notebooks"])
 personal_router = APIRouter(prefix="/api/v1/notebooks", tags=["personal_notebooks"])
+
+# Flat cross-notebook page listings for wiki-link resolution. Registered
+# separately because the URL sits next to /notebooks, not under it.
+ws_pages_router = APIRouter(prefix="/api/v1/workspaces/{workspace_id}", tags=["notebooks"])
+personal_pages_router = APIRouter(prefix="/api/v1", tags=["personal_notebooks"])
+
+
+@ws_pages_router.get("/pages", response_model=WorkspacePageListResponse)
+async def list_ws_workspace_pages(
+    workspace_id: UUID,
+    current_user: dict = Depends(get_current_user),
+):
+    """Every page across every notebook in the workspace (id, name, notebook)."""
+    if not await workspace_service.is_member(workspace_id, current_user["id"]):
+        raise HTTPException(status_code=403, detail="Not a workspace member")
+    rows = await notebook_service.list_workspace_pages(workspace_id)
+    return WorkspacePageListResponse(pages=[WorkspacePageEntry(**r) for r in rows])
+
+
+@personal_pages_router.get("/pages", response_model=WorkspacePageListResponse)
+async def list_personal_pages_route(
+    current_user: dict = Depends(get_current_user),
+):
+    """Every page across every personal notebook owned by the user."""
+    rows = await notebook_service.list_personal_pages(current_user["id"])
+    return WorkspacePageListResponse(pages=[WorkspacePageEntry(**r) for r in rows])
 
 
 # --- Shared auth helpers ---

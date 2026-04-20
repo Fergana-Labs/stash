@@ -13,6 +13,7 @@ import {
   createNotebook,
   deleteNotebook,
   listPageTree,
+  listWorkspacePages,
   createPage,
   getPage,
   updatePage,
@@ -26,6 +27,7 @@ import {
   listTables,
   createTable,
   deleteTable,
+  WorkspacePageEntry,
 } from "../../lib/api";
 import { Notebook, NotebookPage, NotebookWithWorkspace, PageLink, PageTree, Table, TableWithWorkspace } from "../../lib/types";
 
@@ -63,6 +65,10 @@ function WikiPageInner() {
   const [selectedPageId, setSelectedPageId] = useState<string | null>(null);
   const [selectedPage, setSelectedPage] = useState<NotebookPage | null>(null);
   const [backlinks, setBacklinks] = useState<PageLink[]>([]);
+  // Flat cross-notebook page index. Drives wiki-link autocomplete + lets
+  // clicks on [[Some Page]] resolve to pages in other notebooks, not just
+  // the currently selected one.
+  const [workspacePages, setWorkspacePages] = useState<WorkspacePageEntry[]>([]);
 
 
   const [saveStatus, setSaveStatus] = useState<SaveStatus>("saved");
@@ -110,15 +116,32 @@ function WikiPageInner() {
     }
   }, [user, loadNotebooks, loadTables]);
 
-  // Extract page names from tree for wiki link autocomplete
-  const pageNames = useMemo(() => {
-    const names: string[] = [];
-    for (const f of tree.root_files) names.push(f.name);
-    for (const folder of tree.folders) {
-      for (const f of folder.files) names.push(f.name);
+  // Cross-notebook page index for wiki links. Refreshed when the workspace
+  // changes or when a page is created/deleted below.
+  const loadWorkspacePages = useCallback(async () => {
+    try {
+      const pages = await listWorkspacePages(wsId);
+      setWorkspacePages(pages);
+    } catch {
+      /* ignore — autocomplete just falls back to local tree */
     }
-    return names;
-  }, [tree]);
+  }, [wsId]);
+
+  useEffect(() => {
+    if (user) loadWorkspacePages();
+  }, [user, loadWorkspacePages]);
+
+  // Autocomplete suggestions: union of cross-notebook pages and the current
+  // notebook's tree (in case the workspace index is still loading).
+  const pageNames = useMemo(() => {
+    const names = new Set<string>();
+    for (const p of workspacePages) names.add(p.name);
+    for (const f of tree.root_files) names.add(f.name);
+    for (const folder of tree.folders) {
+      for (const f of folder.files) names.add(f.name);
+    }
+    return Array.from(names);
+  }, [workspacePages, tree]);
 
   // Group notebooks by workspace
   const grouped = useMemo(() => {
@@ -194,8 +217,8 @@ function WikiPageInner() {
   }, [pageParam, selectedNotebook, selectedPageId, handleSelectPage]);
 
   // Navigate to a page by name (for wiki link clicks)
-  const handleNavigateToPage = useCallback((pageName: string) => {
-    // Find page in tree by name
+  const handleNavigateToPage = useCallback(async (pageName: string) => {
+    // 1. Same-notebook hit: fast path, no notebook switch needed.
     for (const f of tree.root_files) {
       if (f.name === pageName) {
         handleSelectPage(f.id);
@@ -210,7 +233,36 @@ function WikiPageInner() {
         }
       }
     }
-  }, [tree, handleSelectPage]);
+
+    // 2. Cross-notebook hit: switch the selected notebook, then load the
+    //    page directly against its ids. Can't reuse handleSelectPage
+    //    because that closes over selectedNotebook, which hasn't updated
+    //    yet in this render.
+    const hit = workspacePages.find((p) => p.name === pageName);
+    if (!hit) return;
+    const target = notebooks.find((n) => n.id === hit.notebook_id);
+    if (!target) return;
+    setSelectedNotebook(target);
+    setSelectedPageId(hit.id);
+    setBacklinks([]);
+    setSelectedPage(null);
+    try {
+      const [p, t] = await Promise.all([
+        getPage(target.workspace_id, target.id, hit.id),
+        listPageTree(target.workspace_id, target.id),
+      ]);
+      setTree(t);
+      setSelectedPage(p);
+      try {
+        const bl = await getBacklinks(target.workspace_id, target.id, hit.id);
+        setBacklinks(bl);
+      } catch {
+        /* backlinks optional */
+      }
+    } catch {
+      setError("Failed to load page");
+    }
+  }, [tree, handleSelectPage, workspacePages, notebooks]);
 
   // Compute breadcrumb path for current page
   const breadcrumbs = useMemo(() => {
@@ -270,10 +322,11 @@ function WikiPageInner() {
     try {
       const p = await createPage(selectedNotebook.workspace_id, selectedNotebook.id, name, folderId || undefined);
       await loadTree(selectedNotebook);
+      await loadWorkspacePages();
       setSelectedPageId(p.id);
       setSelectedPage(p);
     } catch (err) { setError(err instanceof Error ? err.message : "Failed to create page"); }
-  }, [selectedNotebook, loadTree]);
+  }, [selectedNotebook, loadTree, loadWorkspacePages]);
 
   const handleCreateFolder = useCallback(async () => {
     if (!selectedNotebook) return;
@@ -291,8 +344,9 @@ function WikiPageInner() {
       await deletePage(selectedNotebook.workspace_id, selectedNotebook.id, pageId);
       if (selectedPageId === pageId) { setSelectedPageId(null); setSelectedPage(null); }
       await loadTree(selectedNotebook);
+      await loadWorkspacePages();
     } catch (err) { setError(err instanceof Error ? err.message : "Failed to delete"); }
-  }, [selectedNotebook, selectedPageId, loadTree]);
+  }, [selectedNotebook, selectedPageId, loadTree, loadWorkspacePages]);
 
   const handleDeleteFolder = useCallback(async (folderId: string) => {
     if (!selectedNotebook || !confirm("Delete this folder?")) return;

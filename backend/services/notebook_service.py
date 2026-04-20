@@ -334,6 +334,40 @@ async def delete_page(page_id: UUID, notebook_id: UUID) -> bool:
     return result == "DELETE 1"
 
 
+async def list_workspace_pages(workspace_id: UUID) -> list[dict]:
+    """Flat list of every page across every notebook in a workspace.
+
+    Used by the wiki-link autocomplete + click-to-navigate logic so links
+    resolve across notebooks, not just within the currently selected one.
+    """
+    pool = get_pool()
+    rows = await pool.fetch(
+        "SELECT p.id, p.name, p.notebook_id, p.folder_id, "
+        "n.name AS notebook_name, p.updated_at "
+        "FROM notebook_pages p "
+        "JOIN notebooks n ON n.id = p.notebook_id "
+        "WHERE n.workspace_id = $1 "
+        "ORDER BY n.name, p.name",
+        workspace_id,
+    )
+    return [dict(r) for r in rows]
+
+
+async def list_personal_pages(user_id: UUID) -> list[dict]:
+    """Flat list of every page across every personal notebook owned by user."""
+    pool = get_pool()
+    rows = await pool.fetch(
+        "SELECT p.id, p.name, p.notebook_id, p.folder_id, "
+        "n.name AS notebook_name, p.updated_at "
+        "FROM notebook_pages p "
+        "JOIN notebooks n ON n.id = p.notebook_id "
+        "WHERE n.workspace_id IS NULL AND n.created_by = $1 "
+        "ORDER BY n.name, p.name",
+        user_id,
+    )
+    return [dict(r) for r in rows]
+
+
 async def list_page_tree(notebook_id: UUID) -> dict:
     """List all pages and folders in a notebook as a tree."""
     pool = get_pool()
