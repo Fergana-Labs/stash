@@ -40,6 +40,22 @@ Everything is a plain `stash` CLI subcommand — no slash commands or skills:
 At session end (Codex `Stop`) the plugin spawns `codex exec …` headless with
 a shared curation prompt. Toggle with `auto_curate` in `~/.stash/config.json`.
 
+## Launching: use the `stash` profile
+
+`config.toml.snippet` registers a `[profiles.stash]` block. Launch Codex with
+it so stash CLI reads don't hit the sandbox's network block or per-command
+approval prompts:
+
+```bash
+codex --profile stash
+```
+
+The profile sets `sandbox_mode = "workspace-write"` with `network_access =
+true` (so `stash history …` can reach `api.stash.ac`) and
+`approval_policy = "on-failure"` (so successful reads don't prompt; failures
+still do). Run plain `codex` — without the flag — if you want Codex's default
+approval behavior.
+
 ## ⚠️ Known gaps
 
 1. **Bash-only tool hooks.** Codex's `PostToolUse` today only fires for Bash.
