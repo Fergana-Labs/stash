@@ -22,6 +22,9 @@ envsubst < hooks.json > ~/.codex/hooks.json
 
 # Merge the config.toml snippet (enables hooks + registers notify fallback)
 envsubst < config.toml.snippet >> ~/.codex/config.toml
+
+# Agent context — tells Codex it has the stash CLI available
+cat AGENTS.md >> ~/.codex/AGENTS.md
 ```
 
 ## Commands

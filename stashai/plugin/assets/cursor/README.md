@@ -18,8 +18,11 @@ cd path/to/stash/plugins/cursor-plugin
 
 # Symlink hooks.json into Cursor with PLUGIN_ROOT baked in.
 export PLUGIN_ROOT=$(pwd)
-mkdir -p ~/.cursor
+mkdir -p ~/.cursor ~/.cursor/rules
 envsubst < hooks.json > ~/.cursor/hooks.json
+
+# Agent context — tells Cursor it has the stash CLI available
+cp stash.mdc ~/.cursor/rules/stash.mdc
 ```
 
 Or, for per-project use, drop `hooks.json` into `<project>/.cursor/hooks.json`

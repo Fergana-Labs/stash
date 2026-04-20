@@ -353,10 +353,36 @@ def _install_cursor(force: bool) -> tuple[str, str]:
     dest = Path.home() / ".cursor" / "hooks.json"
     template = (root / "hooks.json").read_text()
     status_ = _merge_json_hooks(dest, template, root)
-    return (status_, f"{dest}")
+
+    rule_src = root / "stash.mdc"
+    rule_dest = Path.home() / ".cursor" / "rules" / "stash.mdc"
+    if rule_src.exists():
+        rule_dest.parent.mkdir(parents=True, exist_ok=True)
+        rule_dest.write_text(rule_src.read_text())
+
+    return (status_, f"{dest} + {rule_dest}")
 
 
 _CODEX_MARKER = "# stash-plugin"
+_AGENTS_MD_BEGIN = "<!-- stash-plugin:begin -->"
+_AGENTS_MD_END = "<!-- stash-plugin:end -->"
+
+
+def _upsert_agents_md(path: Path, body: str) -> None:
+    """Idempotently write a stash-owned block into an AGENTS.md-style file."""
+    block = f"{_AGENTS_MD_BEGIN}\n{body.rstrip()}\n{_AGENTS_MD_END}"
+    existing = path.read_text() if path.exists() else ""
+
+    if _AGENTS_MD_BEGIN in existing and _AGENTS_MD_END in existing:
+        pre, rest = existing.split(_AGENTS_MD_BEGIN, 1)
+        _, post = rest.split(_AGENTS_MD_END, 1)
+        new = f"{pre}{block}{post}"
+    else:
+        sep = "" if not existing or existing.endswith("\n") else "\n"
+        new = f"{existing}{sep}{block}\n"
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(new)
 
 
 def _install_codex(force: bool) -> tuple[str, str]:
@@ -381,7 +407,13 @@ def _install_codex(force: bool) -> tuple[str, str]:
             if existing and not existing.endswith("\n"):
                 f.write("\n")
             f.write(f"\n{_CODEX_MARKER}\n{snippet}\n")
-    return (status_, f"{hooks_dest} + merged {cfg_path}")
+
+    agents_src = root / "AGENTS.md"
+    agents_dest = Path.home() / ".codex" / "AGENTS.md"
+    if agents_src.exists():
+        _upsert_agents_md(agents_dest, agents_src.read_text())
+
+    return (status_, f"{hooks_dest} + merged {cfg_path} + {agents_dest}")
 
 
 def _install_opencode(force: bool) -> tuple[str, str]:
@@ -400,13 +432,20 @@ def _install_opencode(force: bool) -> tuple[str, str]:
             return ("failed", f"{cfg_path} is not valid JSON; fix by hand")
 
     plugins = cfg.get("plugin", [])
-    if plugin_path in plugins and not force:
-        return ("skipped", f"{cfg_path} already references plugin.ts")
+    already = plugin_path in plugins
     plugins = [p for p in plugins if p != plugin_path]
     plugins.append(plugin_path)
     cfg["plugin"] = plugins
     cfg_path.write_text(json.dumps(cfg, indent=2) + "\n")
-    return ("installed", f"{cfg_path} (plugin entry added)")
+
+    agents_src = root / "AGENTS.md"
+    agents_dest = cfg_path.parent / "AGENTS.md"
+    if agents_src.exists():
+        _upsert_agents_md(agents_dest, agents_src.read_text())
+
+    if already and not force:
+        return ("skipped", f"{cfg_path} already references plugin.ts + {agents_dest}")
+    return ("installed", f"{cfg_path} (plugin entry added) + {agents_dest}")
 
 
 _INSTALLERS = {

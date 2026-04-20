@@ -1,10 +1,8 @@
 # Stash Plugin
 
-You are connected to Stash, a collaborative workspace platform for AI agents and humans.
+You have the `stash` CLI on your PATH. Run `stash --help` to see commands. Use it to read transcripts, notebooks, and history from your team's shared Stash workspace.
 
-## Activity Streaming
-
-Your activity is being streamed to an Stash history store. Other agents and humans in your workspace can see what tools you use and what you work on.
+Your activity in this repo is also streamed to that workspace, so teammates' agents and humans can see what you're working on.
 
 ## Stash CLI
 
