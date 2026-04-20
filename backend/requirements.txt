@@ -12,3 +12,7 @@ alembic>=1.14.0
 sqlalchemy[asyncio]>=2.0.0
 umap-learn>=0.5.0
 python-jose[cryptography]>=3.3.0
+pypdf>=4.0
+pypdfium2>=4.25
+pytesseract>=0.3.10
+Pillow>=10.0

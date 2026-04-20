@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import mimetypes
+import os
+
 import httpx
 
 
@@ -64,6 +67,18 @@ class StashClient:
     def _list(self, path: str, key: str, **params) -> list:
         data = self._get(path, **params)
         return data.get(key, data) if isinstance(data, dict) else data
+
+    def _upload(self, path: str, file_path: str) -> dict:
+        filename = os.path.basename(file_path)
+        content_type = mimetypes.guess_type(filename)[0] or "application/octet-stream"
+        with open(file_path, "rb") as f:
+            resp = self._request(
+                "POST",
+                path,
+                files={"file": (filename, f, content_type)},
+                timeout=300,
+            )
+        return resp.json()
 
     # --- Auth ---
 
@@ -148,86 +163,7 @@ class StashClient:
             raise StashError(resp.status_code, detail)
         return resp.json()
 
-    # --- Chats (workspace-scoped) ---
-
-    def create_chat(self, workspace_id: str, name: str, description: str = "") -> dict:
-        return self._post(
-            f"/api/v1/workspaces/{workspace_id}/chats",
-            json={
-                "name": name,
-                "description": description,
-            },
-        )
-
-    def list_chats(self, workspace_id: str) -> list:
-        return self._list(f"/api/v1/workspaces/{workspace_id}/chats", "chats")
-
-    def send_message(self, workspace_id: str, chat_id: str, content: str) -> dict:
-        return self._post(
-            f"/api/v1/workspaces/{workspace_id}/chats/{chat_id}/messages",
-            json={"content": content},
-        )
-
-    def read_messages(
-        self, workspace_id: str, chat_id: str, limit: int = 50, after: str | None = None
-    ) -> list:
-        params: dict = {"limit": limit}
-        if after:
-            params["after"] = after
-        return self._list(
-            f"/api/v1/workspaces/{workspace_id}/chats/{chat_id}/messages", "messages", **params
-        )
-
-    def search_messages(self, workspace_id: str, chat_id: str, query: str, limit: int = 20) -> list:
-        return self._list(
-            f"/api/v1/workspaces/{workspace_id}/chats/{chat_id}/messages/search",
-            "messages",
-            q=query,
-            limit=limit,
-        )
-
-    # --- Personal Rooms ---
-
-    def create_room(self, name: str, description: str = "") -> dict:
-        return self._post("/api/v1/rooms", json={"name": name, "description": description})
-
-    def list_rooms(self) -> list:
-        return self._list("/api/v1/rooms", "chats")
-
-    def send_room_message(self, room_id: str, content: str) -> dict:
-        return self._post(f"/api/v1/rooms/{room_id}/messages", json={"content": content})
-
-    def read_room_messages(self, room_id: str, limit: int = 50, after: str | None = None) -> list:
-        params: dict = {"limit": limit}
-        if after:
-            params["after"] = after
-        return self._list(f"/api/v1/rooms/{room_id}/messages", "messages", **params)
-
-    def delete_room(self, room_id: str) -> None:
-        self._delete(f"/api/v1/rooms/{room_id}")
-
-    # --- DMs ---
-
-    def start_dm(self, username: str) -> dict:
-        return self._post("/api/v1/dms", json={"username": username})
-
-    def list_dms(self) -> list:
-        return self._list("/api/v1/dms", "dms")
-
-    def send_dm(self, username: str, content: str) -> dict:
-        dm = self.start_dm(username)
-        return self._post(f"/api/v1/dms/{dm['id']}/messages", json={"content": content})
-
-    def read_dm_messages(self, chat_id: str, limit: int = 50, after: str | None = None) -> list:
-        params: dict = {"limit": limit}
-        if after:
-            params["after"] = after
-        return self._list(f"/api/v1/dms/{chat_id}/messages", "messages", **params)
-
     # --- Aggregate ---
-
-    def all_chats(self) -> dict:
-        return self._get("/api/v1/me/chats")
 
     def all_notebooks(self) -> list:
         return self._list("/api/v1/me/notebooks", "notebooks")
@@ -332,6 +268,7 @@ class StashClient:
         session_id: str | None = None,
         tool_name: str | None = None,
         metadata: dict | None = None,
+        attachments: list[dict] | None = None,
     ) -> dict:
         body: dict = {"agent_name": agent_name, "event_type": event_type, "content": content}
         if session_id:
@@ -340,6 +277,8 @@ class StashClient:
             body["tool_name"] = tool_name
         if metadata:
             body["metadata"] = metadata
+        if attachments:
+            body["attachments"] = attachments
         return self._post(f"/api/v1/workspaces/{workspace_id}/memory/events", json=body)
 
     def query_events(
@@ -376,6 +315,38 @@ class StashClient:
         if event_type:
             params["event_type"] = event_type
         return self._list("/api/v1/me/history-events", "events", **params)
+
+    # --- Files ---
+
+    def upload_ws_file(self, workspace_id: str, file_path: str) -> dict:
+        return self._upload(f"/api/v1/workspaces/{workspace_id}/files", file_path)
+
+    def upload_personal_file(self, file_path: str) -> dict:
+        return self._upload("/api/v1/files", file_path)
+
+    def list_ws_files(self, workspace_id: str) -> list:
+        return self._list(f"/api/v1/workspaces/{workspace_id}/files", "files")
+
+    def list_personal_files(self) -> list:
+        return self._list("/api/v1/files", "files")
+
+    def get_ws_file(self, workspace_id: str, file_id: str) -> dict:
+        return self._get(f"/api/v1/workspaces/{workspace_id}/files/{file_id}")
+
+    def get_personal_file(self, file_id: str) -> dict:
+        return self._get(f"/api/v1/files/{file_id}")
+
+    def delete_ws_file(self, workspace_id: str, file_id: str) -> None:
+        self._delete(f"/api/v1/workspaces/{workspace_id}/files/{file_id}")
+
+    def delete_personal_file(self, file_id: str) -> None:
+        self._delete(f"/api/v1/files/{file_id}")
+
+    def get_ws_file_text(self, workspace_id: str, file_id: str) -> dict:
+        return self._get(f"/api/v1/workspaces/{workspace_id}/files/{file_id}/text")
+
+    def get_personal_file_text(self, file_id: str) -> dict:
+        return self._get(f"/api/v1/files/{file_id}/text")
 
     # --- Decks ---
 
@@ -460,9 +431,6 @@ class StashClient:
         if secret:
             body["secret"] = secret
         return self._post(f"/api/v1/workspaces/{workspace_id}/webhooks", json=body)
-
-    def search_users(self, query: str) -> list:
-        return self._get("/api/v1/dms/users/search", q=query)
 
     # --- Tables ---
 

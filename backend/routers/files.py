@@ -1,5 +1,6 @@
 """Files router: workspace and personal file upload/serve/delete."""
 
+import logging
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile
@@ -8,11 +9,29 @@ from ..auth import get_current_user
 from ..database import get_pool
 from ..models import FileListResponse, FileResponse
 from ..services import storage_service, workspace_service
+from ..services.file_extraction import extract_text
+
+logger = logging.getLogger(__name__)
 
 ws_router = APIRouter(prefix="/api/v1/workspaces/{workspace_id}/files", tags=["files"])
 personal_router = APIRouter(prefix="/api/v1/files", tags=["personal_files"])
 
 MAX_FILE_SIZE = 50 * 1024 * 1024  # 50 MB
+MAX_EXTRACTED_TEXT = 1 * 1024 * 1024  # 1 MB of extracted text per file
+
+
+def _safe_extract(content: bytes, content_type: str) -> str | None:
+    """Extract text and cap length; swallow all errors."""
+    try:
+        text = extract_text(content, content_type)
+    except Exception:
+        logger.exception("file_extraction: unexpected error")
+        return None
+    if not text:
+        return None
+    if len(text) > MAX_EXTRACTED_TEXT:
+        return text[:MAX_EXTRACTED_TEXT] + "\n\n[truncated]"
+    return text
 
 
 async def _check_member(workspace_id: UUID, user_id: UUID) -> None:
@@ -61,10 +80,12 @@ async def upload_ws_file(
         content_type,
     )
 
+    extracted = _safe_extract(content, content_type)
+
     pool = get_pool()
     row = await pool.fetchrow(
-        "INSERT INTO files (workspace_id, name, content_type, size_bytes, storage_key, uploaded_by) "
-        "VALUES ($1, $2, $3, $4, $5, $6) "
+        "INSERT INTO files (workspace_id, name, content_type, size_bytes, storage_key, uploaded_by, extracted_text) "
+        "VALUES ($1, $2, $3, $4, $5, $6, $7) "
         "RETURNING id, workspace_id, name, content_type, size_bytes, storage_key, uploaded_by, created_at",
         workspace_id,
         filename,
@@ -72,6 +93,7 @@ async def upload_ws_file(
         len(content),
         storage_key,
         current_user["id"],
+        extracted,
     )
     return await _file_to_response(dict(row))
 
@@ -109,6 +131,24 @@ async def get_ws_file(
     if not row:
         raise HTTPException(status_code=404, detail="File not found")
     return await _file_to_response(dict(row))
+
+
+@ws_router.get("/{file_id}/text")
+async def get_ws_file_text(
+    workspace_id: UUID,
+    file_id: UUID,
+    current_user: dict = Depends(get_current_user),
+):
+    await _check_member(workspace_id, current_user["id"])
+    pool = get_pool()
+    row = await pool.fetchrow(
+        "SELECT extracted_text FROM files WHERE id = $1 AND workspace_id = $2",
+        file_id,
+        workspace_id,
+    )
+    if not row:
+        raise HTTPException(status_code=404, detail="File not found")
+    return {"text": row["extracted_text"]}
 
 
 @ws_router.delete("/{file_id}", status_code=204)
@@ -160,16 +200,19 @@ async def upload_personal_file(
         content_type,
     )
 
+    extracted = _safe_extract(content, content_type)
+
     pool = get_pool()
     row = await pool.fetchrow(
-        "INSERT INTO files (name, content_type, size_bytes, storage_key, uploaded_by) "
-        "VALUES ($1, $2, $3, $4, $5) "
+        "INSERT INTO files (name, content_type, size_bytes, storage_key, uploaded_by, extracted_text) "
+        "VALUES ($1, $2, $3, $4, $5, $6) "
         "RETURNING id, workspace_id, name, content_type, size_bytes, storage_key, uploaded_by, created_at",
         filename,
         content_type,
         len(content),
         storage_key,
         current_user["id"],
+        extracted,
     )
     return await _file_to_response(dict(row))
 
@@ -203,6 +246,23 @@ async def get_personal_file(
     if not row:
         raise HTTPException(status_code=404, detail="File not found")
     return await _file_to_response(dict(row))
+
+
+@personal_router.get("/{file_id}/text")
+async def get_personal_file_text(
+    file_id: UUID,
+    current_user: dict = Depends(get_current_user),
+):
+    pool = get_pool()
+    row = await pool.fetchrow(
+        "SELECT extracted_text FROM files "
+        "WHERE id = $1 AND workspace_id IS NULL AND uploaded_by = $2",
+        file_id,
+        current_user["id"],
+    )
+    if not row:
+        raise HTTPException(status_code=404, detail="File not found")
+    return {"text": row["extracted_text"]}
 
 
 @personal_router.delete("/{file_id}", status_code=204)

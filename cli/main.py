@@ -902,19 +902,47 @@ def nb_pages(
             console.print(f"  {f['name']}  (id: {str(f['id'])[:8]})")
 
 
+def _markdown_snippet(file_resp: dict) -> str:
+    """Build an image or link markdown snippet from an uploaded FileResponse."""
+    name = file_resp["name"]
+    url = file_resp["url"]
+    ct = file_resp.get("content_type", "") or ""
+    if ct.startswith("image/"):
+        return f"![{name}]({url})"
+    return f"[{name}]({url})"
+
+
+def _prepend_attachments(
+    c: StashClient, workspace_id: str, content: str, attach: list[str] | None
+) -> str:
+    if not attach:
+        return content
+    snippets = [_markdown_snippet(c.upload_ws_file(workspace_id, p)) for p in attach]
+    block = "\n\n".join(snippets)
+    return f"{block}\n\n{content}" if content else block
+
+
 @nb_app.command("add-page")
 def nb_add_page(
     notebook_id: str = typer.Argument(...),
     name: str = typer.Argument(...),
     workspace_id: str = typer.Option(None, "--ws"),
     content: str = typer.Option(""),
+    attach: list[str] = typer.Option(
+        None, "--attach", help="Local file path to upload and embed (repeatable)."
+    ),
     as_json: bool = typer.Option(False, "--json"),
 ):
     """Add a page to a notebook."""
     with _client() as c:
         try:
             ws = workspace_id or _default_workspace()
-            data = c.create_page(ws, notebook_id, name, content=content)
+            for p in attach or []:
+                if not Path(p).is_file():
+                    console.print(f"[red]Not a file: {p}[/red]")
+                    raise typer.Exit(1)
+            body = _prepend_attachments(c, ws, content, attach)
+            data = c.create_page(ws, notebook_id, name, content=body)
         except StashError as e:
             _err(e)
     if _use_json(as_json):
@@ -951,6 +979,9 @@ def nb_edit_page(
     content: str = typer.Option(None, "--content"),
     name: str = typer.Option(None, "--name"),
     workspace_id: str = typer.Option(None, "--ws"),
+    attach: list[str] = typer.Option(
+        None, "--attach", help="Local file path to upload and prepend (repeatable)."
+    ),
     as_json: bool = typer.Option(False, "--json"),
 ):
     """Update a page. Reads from stdin if --content not given."""
@@ -959,6 +990,15 @@ def nb_edit_page(
     with _client() as c:
         try:
             ws = workspace_id or _default_workspace()
+            for p in attach or []:
+                if not Path(p).is_file():
+                    console.print(f"[red]Not a file: {p}[/red]")
+                    raise typer.Exit(1)
+            if attach:
+                base = content if content is not None else c.get_page(ws, notebook_id, page_id).get(
+                    "content_markdown", ""
+                )
+                content = _prepend_attachments(c, ws, base, attach)
             kwargs = {}
             if content is not None:
                 kwargs["content"] = content
@@ -1010,12 +1050,29 @@ def hist_push(
     event_type: str = typer.Option("message", "--type"),
     session_id: str = typer.Option(None, "--session"),
     tool_name: str = typer.Option(None, "--tool"),
+    attach: list[str] = typer.Option(
+        None, "--attach", help="Local file path to upload and attach (repeatable)."
+    ),
+    attach_id: list[str] = typer.Option(
+        None, "--attach-id", help="Pre-uploaded file id to attach (repeatable)."
+    ),
     as_json: bool = typer.Option(False, "--json"),
 ):
     """Push an event to the workspace history."""
     ws = workspace_id or _default_workspace()
     with _client() as c:
         try:
+            attachments: list[dict] = []
+            for path in attach or []:
+                f = _upload_path(c, ws, path)
+                attachments.append(
+                    {"file_id": f["id"], "name": f["name"], "content_type": f["content_type"]}
+                )
+            for fid in attach_id or []:
+                f = _get_file_meta(c, ws, fid)
+                attachments.append(
+                    {"file_id": f["id"], "name": f["name"], "content_type": f["content_type"]}
+                )
             data = c.push_event(
                 ws,
                 agent_name=agent_name,
@@ -1023,6 +1080,7 @@ def hist_push(
                 content=content,
                 session_id=session_id,
                 tool_name=tool_name,
+                attachments=attachments or None,
             )
         except StashError as e:
             _err(e)
@@ -1325,18 +1383,57 @@ def tables_rows(
             console.print(f"  [{str(row['id'])[:8]}] {named}")
 
 
+def _parse_uploads(upload: list[str] | None) -> dict[str, str]:
+    """Parse repeated --upload col=path into {col: path}. Last one wins on collision."""
+    if not upload:
+        return {}
+    out: dict[str, str] = {}
+    for spec in upload:
+        if "=" not in spec:
+            console.print(f"[red]--upload expects col=path, got: {spec}[/red]")
+            raise typer.Exit(1)
+        col, path = spec.split("=", 1)
+        col, path = col.strip(), path.strip()
+        if not col or not path:
+            console.print(f"[red]--upload expects col=path, got: {spec}[/red]")
+            raise typer.Exit(1)
+        if not Path(path).is_file():
+            console.print(f"[red]Not a file: {path}[/red]")
+            raise typer.Exit(1)
+        out[col] = path
+    return out
+
+
+def _apply_uploads(
+    c: StashClient, workspace_id: str, row_data: dict, uploads: dict[str, str]
+) -> dict:
+    """Upload each file and set the file URL as the value for the named column.
+    Explicit values already in row_data for the same column take precedence."""
+    for col, path in uploads.items():
+        if col in row_data:
+            continue
+        f = c.upload_ws_file(workspace_id, path)
+        row_data[col] = f["url"]
+    return row_data
+
+
 @tables_app.command("insert")
 def tables_insert(
     table_id: str = typer.Argument(...),
     data: str = typer.Argument(..., help='JSON: {"Name":"Alice","Status":"active"}'),
     workspace_id: str = typer.Option(None, "--ws"),
+    upload: list[str] = typer.Option(
+        None, "--upload", help="col=path — upload file and set URL as cell (repeatable)."
+    ),
     as_json: bool = typer.Option(False, "--json"),
 ):
     """Insert a row. Data is a JSON object with column names as keys."""
     row_data = json.loads(data)
+    uploads = _parse_uploads(upload)
     with _client() as c:
         try:
             ws = workspace_id or _default_workspace()
+            row_data = _apply_uploads(c, ws, row_data, uploads)
             table = c.get_table(ws, table_id)
             resolved = _resolve_col_names(table, row_data)
             result = c.insert_table_row(ws, table_id, resolved)
@@ -1431,13 +1528,18 @@ def tables_update_row(
     row_id: str = typer.Argument(...),
     data: str = typer.Argument(..., help='JSON: {"Status":"done"}'),
     workspace_id: str = typer.Option(None, "--ws"),
+    upload: list[str] = typer.Option(
+        None, "--upload", help="col=path — upload file and set URL as cell (repeatable)."
+    ),
     as_json: bool = typer.Option(False, "--json"),
 ):
     """Update a row (partial merge). Data is JSON with column names as keys."""
     row_data = json.loads(data)
+    uploads = _parse_uploads(upload)
     with _client() as c:
         try:
             ws = workspace_id or _default_workspace()
+            row_data = _apply_uploads(c, ws, row_data, uploads)
             table = c.get_table(ws, table_id)
             resolved = _resolve_col_names(table, row_data)
             result = c.update_table_row(ws, table_id, row_id, resolved)
@@ -1593,6 +1695,116 @@ def tables_delete(
         except StashError as e:
             _err(e)
     console.print("[green]Table deleted.[/green]")
+
+
+# ===========================================================================
+# Files
+# ===========================================================================
+
+files_app = typer.Typer(help="Files — upload, list, and remove workspace or personal files.")
+app.add_typer(files_app, name="files")
+
+
+def _upload_path(c: StashClient, workspace_id: str | None, path: str) -> dict:
+    """Upload `path` to workspace (if given) or personal files. Returns FileResponse dict."""
+    if not Path(path).is_file():
+        console.print(f"[red]Not a file: {path}[/red]")
+        raise typer.Exit(1)
+    if workspace_id:
+        return c.upload_ws_file(workspace_id, path)
+    return c.upload_personal_file(path)
+
+
+def _get_file_meta(c: StashClient, workspace_id: str | None, file_id: str) -> dict:
+    if workspace_id:
+        return c.get_ws_file(workspace_id, file_id)
+    return c.get_personal_file(file_id)
+
+
+@files_app.command("upload")
+def files_upload(
+    path: str = typer.Argument(..., help="Local file path to upload."),
+    workspace_id: str = typer.Option(None, "--ws", help="Workspace id; omit for personal."),
+    as_json: bool = typer.Option(False, "--json"),
+):
+    """Upload a file to a workspace (with --ws) or to your personal files."""
+    with _client() as c:
+        try:
+            data = _upload_path(c, workspace_id, path)
+        except StashError as e:
+            _err(e)
+    if _use_json(as_json):
+        output_json(data)
+    else:
+        console.print(f"[green]Uploaded[/green] {data['name']}  [dim]{data['id']}[/dim]")
+        console.print(data["url"])
+
+
+@files_app.command("list")
+def files_list(
+    workspace_id: str = typer.Option(None, "--ws"),
+    as_json: bool = typer.Option(False, "--json"),
+):
+    """List files in a workspace (with --ws) or your personal files."""
+    with _client() as c:
+        try:
+            data = c.list_ws_files(workspace_id) if workspace_id else c.list_personal_files()
+        except StashError as e:
+            _err(e)
+    if _use_json(as_json):
+        output_json(data)
+        return
+    if not data:
+        console.print("[dim]No files.[/dim]")
+        return
+    for f in data:
+        size_kb = (f.get("size_bytes") or 0) / 1024
+        console.print(
+            f"  {f['id']}  [bold]{f['name']}[/bold]  "
+            f"[dim]{f.get('content_type', '')}  {size_kb:.1f} KB[/dim]"
+        )
+
+
+@files_app.command("rm")
+def files_rm(
+    file_id: str = typer.Argument(...),
+    workspace_id: str = typer.Option(None, "--ws"),
+):
+    """Delete a file."""
+    with _client() as c:
+        try:
+            if workspace_id:
+                c.delete_ws_file(workspace_id, file_id)
+            else:
+                c.delete_personal_file(file_id)
+        except StashError as e:
+            _err(e)
+    console.print("[green]File deleted.[/green]")
+
+
+@files_app.command("text")
+def files_text(
+    file_id: str = typer.Argument(...),
+    workspace_id: str = typer.Option(None, "--ws"),
+):
+    """Print extracted text for a file (PDF, image OCR, or plain text)."""
+    with _client() as c:
+        try:
+            data = (
+                c.get_ws_file_text(workspace_id, file_id)
+                if workspace_id
+                else c.get_personal_file_text(file_id)
+            )
+        except StashError as e:
+            _err(e)
+    text = data.get("text") if isinstance(data, dict) else None
+    if text is None:
+        console.print("[dim]No extracted text available for this file.[/dim]")
+        raise typer.Exit(1)
+    # Write raw text to stdout so it pipes cleanly.
+    sys.stdout.write(text)
+    if not text.endswith("\n"):
+        sys.stdout.write("\n")
 
 
 # ===========================================================================

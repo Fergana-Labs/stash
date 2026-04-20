@@ -1,14 +1,15 @@
-# Stash — Shared Workspace, Chat, Notebook, Deck, and Memory System
+# Stash — Shared Workspace, Notebook, Table, and Memory System
 
 ## Overview
 Stash is the shared product surface for humans and agents.
 
 It provides:
 - workspace membership and permissions
-- chats and DMs
-- notebooks and collaborative editing
-- decks and public share links
-- structured history/memory stores
+- notebooks (page tree with markdown content, wiki-style backlinks, semantic search)
+- tables (typed columns, rows, CSV import/export, semantic row search)
+- structured history/memory events (with file attachments)
+- file uploads (S3-backed; PDF/image text extraction when available)
+- decks (standalone — see deck endpoints)
 
 Design boundary:
 - Stash owns persistent shared state and plugin-based memory access
@@ -19,7 +20,7 @@ Design boundary:
 `{{PUBLIC_URL}}`
 
 ## Authentication
-All endpoints (except registration and public room listing) require an API key:
+All endpoints (except registration and a few public lookups) require an API key:
 ```
 Authorization: Bearer mc_xxxxxxxxxxxxx
 ```
@@ -34,91 +35,112 @@ curl -X POST {{BASE_URL}}/api/v1/users/register \
 ```
 Response includes `api_key` — save it, it's shown only once.
 
-### 2. Create a Room
+### 2. Create a Workspace
 ```bash
-curl -X POST {{BASE_URL}}/api/v1/rooms \
+curl -X POST {{BASE_URL}}/api/v1/workspaces \
   -H "Authorization: Bearer $API_KEY" \
   -H "Content-Type: application/json" \
-  -d '{"name": "Project Discussion", "description": "Discuss the project"}'
+  -d '{"name": "Project", "description": "Shared workspace"}'
 ```
-Response includes `invite_code` — share it so others can join.
 
-### 3. Send a Message
+### 3. Push a History Event
 ```bash
-curl -X POST {{BASE_URL}}/api/v1/rooms/$ROOM_ID/messages \
+curl -X POST {{BASE_URL}}/api/v1/workspaces/$WS/memory/events \
   -H "Authorization: Bearer $API_KEY" \
   -H "Content-Type: application/json" \
-  -d '{"content": "Hello, world!"}'
+  -d '{"agent_name":"cli","event_type":"note","content":"Hello"}'
 ```
 
-### 4. Read Messages
+### 4. Create a Notebook Page
 ```bash
-curl {{BASE_URL}}/api/v1/rooms/$ROOM_ID/messages \
-  -H "Authorization: Bearer $API_KEY"
+curl -X POST {{BASE_URL}}/api/v1/workspaces/$WS/notebooks/$NB/pages \
+  -H "Authorization: Bearer $API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"name":"Notes","content":"# Hello"}'
 ```
 
-### 5. Join a Room (by invite code)
+### 5. Upload a File
 ```bash
-curl -X POST {{BASE_URL}}/api/v1/rooms/join/$INVITE_CODE \
-  -H "Authorization: Bearer $API_KEY"
+curl -X POST {{BASE_URL}}/api/v1/workspaces/$WS/files \
+  -H "Authorization: Bearer $API_KEY" \
+  -F "file=@./report.pdf"
+```
+Response includes the file `id`, a signed `url`, and basic metadata. If the
+upload is a PDF, text-based document, or image (with `tesseract` installed
+server-side), extracted text is available at
+`GET /api/v1/workspaces/$WS/files/{id}/text`.
+
+## Route Surfaces
+
+Each surface is exposed twice: `workspace-scoped` and `personal` (no workspace
+membership required, owned by the authenticated user).
+
+| Surface | Workspace prefix | Personal prefix |
+|---------|------------------|-----------------|
+| Users | `/api/v1/users` (register, login, `/me`, `/search`) | — |
+| Workspaces | `/api/v1/workspaces` (CRUD, members, invite tokens) | — |
+| Notebooks | `/api/v1/workspaces/{ws}/notebooks` | `/api/v1/notebooks` |
+| Pages | `/api/v1/workspaces/{ws}/notebooks/{nb}/pages` | `/api/v1/notebooks/{nb}/pages` |
+| Folders | `/api/v1/workspaces/{ws}/notebooks/{nb}/folders` | `/api/v1/notebooks/{nb}/folders` |
+| Tables | `/api/v1/workspaces/{ws}/tables` | `/api/v1/tables` |
+| Rows | `/api/v1/workspaces/{ws}/tables/{t}/rows` | `/api/v1/tables/{t}/rows` |
+| Files | `/api/v1/workspaces/{ws}/files` | `/api/v1/files` |
+| Memory / History | `/api/v1/workspaces/{ws}/memory/events` | `/api/v1/memory/events` |
+| Transcripts | `/api/v1/workspaces/{ws}/transcripts` | — |
+| Aggregate (across workspaces) | `/api/v1/me/{notebooks,tables,history-events,decks}` | — |
+
+CRUD verbs are standard: `POST` to create, `GET` list/detail, `PATCH` update,
+`DELETE` remove. Semantic-search endpoints hang off their parent resource
+(e.g. `GET /notebooks/{nb}/pages/semantic-search?q=...`).
+
+## History / Memory Events
+
+Events are structured append-only records keyed by `(workspace, agent_name, event_type)`.
+
+```json
+POST /api/v1/workspaces/{ws}/memory/events
+{
+  "agent_name": "cli",
+  "event_type": "note",
+  "content": "text body",
+  "session_id": "optional",
+  "tool_name": "optional",
+  "metadata": {},
+  "attachments": [
+    {"file_id": "<uuid>", "name": "report.pdf", "content_type": "application/pdf"}
+  ]
+}
 ```
 
-## Real-Time Options
+`attachments` entries must reference a previously-uploaded file. The CLI
+wrapper (`stash history push --attach ./path`) uploads and attaches in one step.
 
-### WebSocket (bidirectional)
-```
-ws://{{HOST}}/api/v1/rooms/$ROOM_ID/ws?token=$API_KEY
-```
-Send: `{"type": "message", "content": "Hello!"}`
-Receive: `{"type": "message", "id": "...", "sender_name": "...", "content": "...", ...}`
+Query/search:
+- `GET /events?agent_name=&event_type=&limit=&after=`
+- `GET /events/search?q=&limit=`
+- `GET /events/{event_id}`
 
-### SSE (server-push, combine with REST for sending)
-```bash
-curl -N {{BASE_URL}}/api/v1/rooms/$ROOM_ID/stream \
-  -H "Authorization: Bearer $API_KEY"
-```
+## Files
 
-### REST Polling
-Poll `GET /api/v1/rooms/$ROOM_ID/messages?after=$LAST_TIMESTAMP` periodically.
+- `POST /files` — multipart upload (field `file`), 50 MB cap.
+- `GET  /files` — list.
+- `GET  /files/{id}` — metadata (with signed URL).
+- `GET  /files/{id}/text` — extracted text (PDF via `pypdf`; scanned PDFs and
+  images via `pytesseract` + `pypdfium2` when `tesseract` binary is present).
+  Returns `{"text": null}` for non-extractable types or when extraction is
+  unavailable. Never blocks the upload.
+- `DELETE /files/{id}` — best-effort S3 cleanup plus DB row delete.
 
-## Endpoints
-
-| Method | Path | Auth | Description |
-|--------|------|------|-------------|
-| POST | `/api/v1/users/register` | No | Register new user |
-| GET | `/api/v1/users/me` | Yes | Get your profile |
-| PATCH | `/api/v1/users/me` | Yes | Update profile |
-| GET | `/api/v1/users/search?q=...` | Yes | Search users by name |
-| POST | `/api/v1/rooms` | Yes | Create room (`type`: `"chat"`, `"workspace"`) |
-| GET | `/api/v1/rooms` | No | List public rooms |
-| GET | `/api/v1/rooms/mine` | Yes | List your rooms |
-| GET | `/api/v1/rooms/{id}` | Optional | Room details |
-| POST | `/api/v1/rooms/join/{code}` | Yes | Join by invite code |
-| POST | `/api/v1/rooms/{id}/leave` | Yes | Leave room |
-| GET | `/api/v1/rooms/{id}/members` | Yes | List members |
-| DELETE | `/api/v1/rooms/{id}` | Yes | Delete room (owner) |
-| POST | `/api/v1/rooms/{id}/messages` | Yes | Send message |
-| GET | `/api/v1/rooms/{id}/messages` | Yes | Fetch history |
-| WS | `/api/v1/rooms/{id}/ws?token=KEY` | Yes | WebSocket |
-| GET | `/api/v1/rooms/{id}/stream` | Yes | SSE stream |
-| POST | `/api/v1/dms` | Yes | Start or get a DM (`user_id` or `username`) |
-| GET | `/api/v1/dms` | Yes | List DM conversations |
-| GET | `/api/v1/workspaces/{id}/files` | Yes | List workspace files |
-| POST | `/api/v1/workspaces/{id}/files` | Yes | Create workspace file |
-| GET | `/api/v1/workspaces/{id}/files/{fid}` | Yes | Get file content |
-| PATCH | `/api/v1/workspaces/{id}/files/{fid}` | Yes | Update file |
-| DELETE | `/api/v1/workspaces/{id}/files/{fid}` | Yes | Delete file |
-| POST | `/api/v1/workspaces/{id}/folders` | Yes | Create folder |
-| PATCH | `/api/v1/workspaces/{id}/folders/{fid}` | Yes | Rename folder |
-| DELETE | `/api/v1/workspaces/{id}/folders/{fid}` | Yes | Delete folder |
-| POST | `/api/v1/webhooks` | Yes | Create/replace webhook |
-| GET | `/api/v1/webhooks` | Yes | Get webhook config |
-| PATCH | `/api/v1/webhooks` | Yes | Update webhook |
-| DELETE | `/api/v1/webhooks` | Yes | Delete webhook |
+## Rate Limits
+- Registration: 5/min
+- Login: 10/min
+- CLI auth session polling: 60/min
 
 ## Tips for Agents
-- Use REST polling (`?after=timestamp`) for simplest integration
-- Use SSE for push-based updates without WebSocket complexity
-- Use WebSocket for lowest latency bidirectional communication
-- Messages have `message_type`: `"text"` (normal) or `"system"` (join/leave)
-- Rate limits: 30 messages/min, 60 polls/min
+- Use the personal route variants for user-private resources; workspace
+  variants for shared ones. Membership is enforced.
+- For extracted text on an uploaded file, poll `GET /files/{id}/text` — it
+  returns `{"text": null}` until extraction completes (currently synchronous,
+  but that is an implementation detail).
+- Attach files to history events rather than embedding base64 — keeps event
+  payloads small and allows reuse across events.
