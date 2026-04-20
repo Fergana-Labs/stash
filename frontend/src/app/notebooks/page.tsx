@@ -206,19 +206,89 @@ function WikiPageInner() {
     if (!nbParam) deepLinked.current = true;
   }, [nbParam]);
 
-  // Keep the URL in sync with the current notebook/page selection so that
-  // (a) refreshing the tab restores context, and (b) copying the URL gives
-  // a shareable deep link. Uses history.replaceState rather than
-  // router.replace to avoid a Next.js re-render cascade.
+  // Keep the URL in sync with the current notebook/page selection and
+  // make browser back/forward walk the reading trail. Every time state
+  // changes to something the URL doesn't already reflect we pushState a
+  // new entry; identity-match bails so deep-link consume + popstate
+  // round-trips don't create duplicate history entries or infinite loops.
   useEffect(() => {
     if (!deepLinked.current) return;
+
+    const current = new URL(window.location.href);
+    const currentNb = current.searchParams.get("nb");
+    const currentPage = current.searchParams.get("page");
+    const desiredNb = selectedNotebook?.id ?? null;
+    const desiredPage = selectedPageId ?? null;
+
+    if (currentNb === desiredNb && currentPage === desiredPage) {
+      // URL already matches — either this is the initial deep-link
+      // reflecting back, or we just handled a popstate. No-op.
+      return;
+    }
+
     const url = new URL(window.location.href);
-    if (selectedNotebook) url.searchParams.set("nb", selectedNotebook.id);
+    if (desiredNb) url.searchParams.set("nb", desiredNb);
     else url.searchParams.delete("nb");
-    if (selectedPageId) url.searchParams.set("page", selectedPageId);
+    if (desiredPage) url.searchParams.set("page", desiredPage);
     else url.searchParams.delete("page");
-    window.history.replaceState({}, "", url.toString());
+    window.history.pushState({}, "", url.toString());
   }, [selectedNotebook, selectedPageId]);
+
+  // Browser back / forward → re-read URL params and sync state. Next's
+  // useSearchParams doesn't observe pushState/popstate, so we listen
+  // directly. The sync effect above short-circuits when URL already
+  // matches, so setting state from here doesn't recursively push.
+  useEffect(() => {
+    const onPop = () => {
+      const p = new URL(window.location.href).searchParams;
+      const nbId = p.get("nb");
+      const pageId = p.get("page");
+
+      // Notebook changed.
+      if (nbId !== (selectedNotebook?.id ?? null)) {
+        if (nbId) {
+          const target = notebooks.find((n) => n.id === nbId);
+          if (target) {
+            setSelectedNotebook(target);
+            setSelectedPageId(null);
+            setSelectedPage(null);
+            loadTree(target);
+          }
+        } else {
+          setSelectedNotebook(null);
+          setSelectedPageId(null);
+          setSelectedPage(null);
+          setTree({ folders: [], root_files: [] });
+        }
+      }
+
+      // Page changed (within the same notebook, or after above switch).
+      if (pageId !== (selectedPageId ?? null)) {
+        if (pageId) {
+          setSelectedPageId(pageId);
+          // Use a microtask to let the notebook switch settle first.
+          void (async () => {
+            const nb = nbId
+              ? notebooks.find((n) => n.id === nbId) ?? selectedNotebook
+              : selectedNotebook;
+            if (!nb) return;
+            try {
+              const pg = await getPage(nb.workspace_id, nb.id, pageId);
+              setSelectedPage(pg);
+            } catch {
+              /* leave previous content */
+            }
+          })();
+        } else {
+          setSelectedPageId(null);
+          setSelectedPage(null);
+        }
+      }
+    };
+
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, [notebooks, selectedNotebook, selectedPageId, loadTree]);
 
   // Navigate to a page by name (for wiki link clicks)
   // Resolve a wiki-link's raw text (e.g. "page", "folder/page",
