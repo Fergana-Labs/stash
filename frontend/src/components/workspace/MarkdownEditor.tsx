@@ -109,8 +109,16 @@ export default function MarkdownEditor({
       Superscript,
       Typography,
       Link.configure({
-        openOnClick: false,
-        HTMLAttributes: { class: "text-brand underline cursor-pointer" },
+        // Click opens the href. Cursor placement inside link text in edit
+        // mode is slightly fiddlier, but the primary UX here is reading
+        // imported content — clicks should just work.
+        openOnClick: true,
+        autolink: true,
+        HTMLAttributes: {
+          class: "text-brand underline cursor-pointer",
+          target: "_blank",
+          rel: "noopener noreferrer",
+        },
       }),
       Image.configure({
         HTMLAttributes: { class: "max-w-full rounded-md my-2" },
