@@ -425,12 +425,22 @@ def _install_codex(force: bool) -> tuple[str, str]:
         PLUGIN_ROOT=str(root)
     )
     existing = cfg_path.read_text() if cfg_path.exists() else ""
+    cfg_path.parent.mkdir(parents=True, exist_ok=True)
     if _CODEX_MARKER not in existing:
-        cfg_path.parent.mkdir(parents=True, exist_ok=True)
         with cfg_path.open("a") as f:
             if existing and not existing.endswith("\n"):
                 f.write("\n")
             f.write(f"\n{_CODEX_MARKER}\n{snippet}\n")
+    elif "[profiles.stash]" not in existing:
+        # Upgrade path: features block is already there from an older install,
+        # but the stash profile was added later. Append just the profile
+        # portion so `codex --profile stash` works without a full reinstall.
+        profile_start = snippet.find("[profiles.stash]")
+        if profile_start != -1:
+            with cfg_path.open("a") as f:
+                if not existing.endswith("\n"):
+                    f.write("\n")
+                f.write(f"\n{_CODEX_MARKER}:profile\n{snippet[profile_start:]}")
 
     agents_src = root / "AGENTS.md"
     agents_dest = Path.home() / ".codex" / "AGENTS.md"

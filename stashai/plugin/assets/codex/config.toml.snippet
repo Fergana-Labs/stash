@@ -11,3 +11,14 @@ suppress_unstable_features_warning = true
 # Variant B (fallback) — only if your Codex build lacks features.codex_hooks.
 # Comment out Variant A above, then uncomment this line:
 # notify = ["bash", "${PLUGIN_ROOT}/scripts/_run.sh", "on_notify"]
+
+# Stash profile — launch with `codex --profile stash` so the stash CLI can
+# reach api.stash.ac through the sandbox and doesn't prompt for approval on
+# every read. approval_policy = "on-failure" still asks if a command errors,
+# so this is scoped-loosening, not a blanket allow-everything.
+[profiles.stash]
+approval_policy = "on-failure"
+sandbox_mode = "workspace-write"
+
+[profiles.stash.sandbox_workspace_write]
+network_access = true
