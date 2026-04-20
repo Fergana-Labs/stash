@@ -409,6 +409,47 @@ def _upsert_agents_md(path: Path, body: str) -> None:
     path.write_text(new)
 
 
+def _ask_codex_network_access() -> bool:
+    """Prompt the user to enable top-level `network_access` for codex's
+    workspace-write sandbox. Defaults to yes on non-TTY so batch installs
+    don't hang."""
+    if not sys.stdin.isatty():
+        return True
+    console.print(
+        "\n[bold]Codex sandbox network access[/bold]\n"
+        "Codex's default sandbox blocks outbound network from bash commands.\n"
+        "Stash hooks use bash to POST session events to api.stash.ac, so they\n"
+        "need network to upload. Enabling this lets plain `codex` stream.\n"
+        "You can opt out now and use `codex --profile stash` when streaming,\n"
+        "or edit ~/.codex/config.toml later to change your mind."
+    )
+    try:
+        answer = questionary.confirm(
+            "Allow codex bash commands to make outbound network requests?",
+            default=True,
+        ).ask()
+    except Exception:
+        return True
+    return True if answer is None else bool(answer)
+
+
+def _strip_top_level_sandbox(snippet: str) -> str:
+    """Remove the `[sandbox_workspace_write]` top-level block (and its
+    explanatory comment) from the snippet, leaving `[profiles.stash]`
+    and everything else intact."""
+    start = snippet.find("[sandbox_workspace_write]")
+    if start == -1:
+        return snippet
+    prev_blank = snippet.rfind("\n\n", 0, start)
+    block_start = prev_blank + 2 if prev_blank != -1 else start
+    end = snippet.find("[profiles.stash]", start)
+    if end == -1:
+        return snippet[:block_start].rstrip() + "\n"
+    prev_blank_end = snippet.rfind("\n\n", start, end)
+    block_end = prev_blank_end + 2 if prev_blank_end != -1 else end
+    return snippet[:block_start] + snippet[block_end:]
+
+
 def _install_codex(force: bool) -> tuple[str, str]:
     from stashai.plugin.assets import assets_dir
 
@@ -421,26 +462,51 @@ def _install_codex(force: bool) -> tuple[str, str]:
     from string import Template
 
     cfg_path = Path.home() / ".codex" / "config.toml"
+    existing = cfg_path.read_text() if cfg_path.exists() else ""
     snippet = Template((root / "config.toml.snippet").read_text()).safe_substitute(
         PLUGIN_ROOT=str(root)
     )
-    existing = cfg_path.read_text() if cfg_path.exists() else ""
+
+    # Ask about network_access only if the block isn't already in the config.
+    # User's "no" strips the top-level block from what we write; the profile
+    # block stays so `codex --profile stash` still works as an escape hatch.
+    if "[sandbox_workspace_write]" not in existing:
+        if not _ask_codex_network_access():
+            snippet = _strip_top_level_sandbox(snippet)
+
     cfg_path.parent.mkdir(parents=True, exist_ok=True)
     if _CODEX_MARKER not in existing:
         with cfg_path.open("a") as f:
             if existing and not existing.endswith("\n"):
                 f.write("\n")
             f.write(f"\n{_CODEX_MARKER}\n{snippet}\n")
-    elif "[profiles.stash]" not in existing:
-        # Upgrade path: features block is already there from an older install,
-        # but the stash profile was added later. Append just the profile
-        # portion so `codex --profile stash` works without a full reinstall.
-        profile_start = snippet.find("[profiles.stash]")
-        if profile_start != -1:
+    else:
+        # Upgrade paths: append any later-added sub-blocks the user is missing.
+        # Each block is matched on its TOML header so a user who manually
+        # edited one in doesn't get a duplicate.
+        appended = ""
+
+        if "[sandbox_workspace_write]" not in existing and "[sandbox_workspace_write]" in snippet:
+            # Slice out the top-level sandbox block from the snippet: from its
+            # preceding comment to just before the `[profiles.stash]` header.
+            sb_header = snippet.find("[sandbox_workspace_write]")
+            profile_header = snippet.find("[profiles.stash]")
+            if sb_header != -1 and profile_header != -1:
+                prev_blank = snippet.rfind("\n\n", 0, sb_header)
+                block_start = prev_blank + 2 if prev_blank != -1 else sb_header
+                block = snippet[block_start:profile_header].rstrip() + "\n"
+                appended += f"\n{_CODEX_MARKER}:sandbox\n{block}"
+
+        if "[profiles.stash]" not in existing:
+            profile_start = snippet.find("[profiles.stash]")
+            if profile_start != -1:
+                appended += f"\n{_CODEX_MARKER}:profile\n{snippet[profile_start:]}"
+
+        if appended:
             with cfg_path.open("a") as f:
                 if not existing.endswith("\n"):
                     f.write("\n")
-                f.write(f"\n{_CODEX_MARKER}:profile\n{snippet[profile_start:]}")
+                f.write(appended)
 
     agents_src = root / "AGENTS.md"
     agents_dest = Path.home() / ".codex" / "AGENTS.md"
