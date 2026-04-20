@@ -2028,6 +2028,7 @@ def connect(
     manifest = load_manifest()
 
     if _already_fully_connected(manifest):
+        _offer_repo_init()
         return
 
     console.print("\n[bold]Stash connect[/bold]  (press Enter to accept defaults)\n")
@@ -2147,7 +2148,8 @@ def connect(
             invite_code = str(manifest.get("invite_code") or "")
             if not manifest_ws_id:
                 console.print(
-                    "[red]Manifest is missing workspace_id — ask the maintainer to re-run `stash init`.[/red]"
+                    "[red]Manifest is missing workspace_id — ask the maintainer to re-share the repo "
+                    "(`rm .stash/stash.json && stash connect`).[/red]"
                 )
                 raise typer.Exit(1)
 
@@ -2201,7 +2203,7 @@ def connect(
                     if not invite_code:
                         console.print(
                             "[red]Manifest has no invite_code — can't join. Ask the maintainer "
-                            "to re-run `stash init`.[/red]"
+                            "to re-share the repo (`rm .stash/stash.json && stash connect`).[/red]"
                         )
                         raise typer.Exit(1)
                     try:
@@ -2209,7 +2211,8 @@ def connect(
                     except StashError as e:
                         console.print(
                             f"[red]Could not join {manifest_ws_name}: {e.detail}[/red]  "
-                            "(invite code may be stale — ask the maintainer to re-run `stash init`.)"
+                            "(invite code may be stale — ask the maintainer to re-share the repo "
+                            "via `rm .stash/stash.json && stash connect`.)"
                         )
                         raise typer.Exit(1)
                     joined_name = ws.get("name") or manifest_ws_name
@@ -2271,6 +2274,10 @@ def connect(
                             )
                         except StashError as e:
                             console.print(f"[red]Could not create workspace: {e.detail}[/red]")
+
+    # --- Step 3.5: Offer to enable this repo so teammates auto-join ---
+    if not manifest:
+        _offer_repo_init()
 
     # --- Step 4: Coding-agent plugin ---
     # Detect coding agents on PATH and prompt per-agent for the ones that
@@ -2340,7 +2347,7 @@ def connect(
 
 
 # ===========================================================================
-# Repo-level enablement: stash init / enable / disable
+# Repo-level enablement: invoked from `stash connect`; toggled via enable/disable
 # ===========================================================================
 
 
@@ -2365,7 +2372,7 @@ def _git_toplevel(cwd: Path | None = None) -> Path | None:
 
 def _looks_public_remote() -> bool:
     """Heuristic for 'this repo's default remote looks public' — used to warn
-    on `stash init`. We check GitHub public visibility via `gh` if available;
+    when offering to enable a repo. We check GitHub public visibility via `gh` if available;
     otherwise fall back to inspecting `git remote -v` for github.com URLs
     that aren't enterprise hosts. False negatives are OK — the manifest is
     inert until someone runs the CLI, and this is only an advisory warning."""
@@ -2431,57 +2438,69 @@ def _update_gitignore_for_manifest(repo_root: Path) -> str:
     return "updated"
 
 
-@app.command("init")
-def init_cmd():
-    """Enable Stash for this repo by writing a committed .stash/stash.json manifest.
+def _offer_repo_init(client: "StashClient | None" = None) -> None:
+    """If cwd is a git repo without a manifest, offer to write one so teammates
+    running `stash connect` here auto-join the workspace.
 
-    Every teammate who runs `stash connect` in this repo will auto-join the
-    workspace pointed to by the manifest.
+    Idempotent on a per-repo basis: a 'no' is remembered in
+    .stash/config.json's `init_declined` so we don't re-ask. Silently skips
+    when conditions aren't met (no git repo, manifest exists, no workspaces).
     """
     repo_root = _git_toplevel()
     if repo_root is None:
-        console.print("[red]`stash init` must be run inside a git repo.[/red]")
-        raise typer.Exit(1)
-
+        return
     manifest_path = repo_root / ".stash" / "stash.json"
     if manifest_path.exists():
-        console.print(
-            f"[yellow]This repo already has a manifest at {manifest_path}.[/yellow]  "
-            "Edit it directly or `rm` it and re-run `stash init`."
-        )
-        raise typer.Exit(1)
+        return
+
+    project_cfg_path = repo_root / ".stash" / PROJECT_FILENAME
+    project_cfg = {}
+    if project_cfg_path.exists():
+        try:
+            project_cfg = json.loads(project_cfg_path.read_text())
+        except Exception:
+            project_cfg = {}
+    if project_cfg.get("init_declined"):
+        return
 
     cfg = load_config()
     if not cfg.get("api_key"):
-        console.print(
-            "[red]You need to be signed in first.[/red]  Run [bold]stash connect[/bold] and try again."
-        )
-        raise typer.Exit(1)
-
+        return
     base_url = (cfg.get("base_url") or "").rstrip("/")
     if not base_url:
-        console.print("[red]No base_url configured. Run `stash connect` first.[/red]")
-        raise typer.Exit(1)
+        return
 
-    with StashClient(base_url=base_url, api_key=cfg["api_key"]) as c:
+    owns_client = client is None
+    if owns_client:
+        client = StashClient(base_url=base_url, api_key=cfg["api_key"])
+    try:
         try:
-            my_workspaces = c.list_workspaces(mine=True)
-        except StashError as e:
-            _err(e)
-
+            my_workspaces = client.list_workspaces(mine=True)
+        except StashError:
+            return
         if not my_workspaces:
-            console.print(
-                "[yellow]You don't own any workspaces yet.[/yellow]  "
-                "Create one first: [cyan]stash ws create <name>[/cyan]"
-            )
-            raise typer.Exit(1)
+            return
+
+        repo_name = repo_root.name
+        _reserve_bottom_padding(4)
+        go = questionary.confirm(
+            f"Make [bold]{repo_name}[/bold] a Stash repo so teammates running "
+            f"`stash connect` here auto-join? (writes .stash/stash.json)",
+            default=False,
+        ).ask()
+        if go is None:
+            return
+        if not go:
+            project_cfg["init_declined"] = True
+            project_cfg_path.parent.mkdir(parents=True, exist_ok=True)
+            project_cfg_path.write_text(json.dumps(project_cfg, indent=2) + "\n")
+            return
 
         default_ws_id = str(cfg.get("default_workspace") or "")
         default_choice = next(
             (ws for ws in my_workspaces if str(ws["id"]) == default_ws_id),
             my_workspaces[0],
         )
-
         choices = [
             questionary.Choice(
                 f"{ws['name']}  [dim]({str(ws['id'])[:8]}…)[/dim]",
@@ -2499,15 +2518,13 @@ def init_cmd():
             use_shortcuts=True,
         ).ask()
         if chosen_id is None:
-            raise typer.Exit(1)
+            return
 
         chosen_ws = next(ws for ws in my_workspaces if str(ws["id"]) == chosen_id)
         invite_code = chosen_ws.get("invite_code") or ""
         if not invite_code:
-            # invite_code blanked out by serializer only for non-members; we're the
-            # owner so it should always be present. Defensive read otherwise:
             try:
-                full = c.get_workspace(chosen_id)
+                full = client.get_workspace(chosen_id)
                 invite_code = full.get("invite_code") or ""
             except StashError:
                 invite_code = ""
@@ -2515,7 +2532,10 @@ def init_cmd():
             console.print(
                 "[red]That workspace has no invite code — can't enable repo-level stash without one.[/red]"
             )
-            raise typer.Exit(1)
+            return
+    finally:
+        if owns_client:
+            client.close()
 
     manifest: Manifest = {
         "version": 1,
@@ -2550,7 +2570,7 @@ def init_cmd():
             f"\n"
             f"  Commit [cyan].stash/stash.json[/cyan] and push. Teammates running "
             f"[cyan]stash connect[/cyan] in this repo will auto-join.",
-            title="[bold]Stash init — repo-level enablement[/bold]",
+            title="[bold]Repo enabled for Stash[/bold]",
             border_style="cyan",
             padding=(1, 2),
         )
@@ -2560,7 +2580,7 @@ def init_cmd():
         console.print(
             "\n[yellow]Heads up:[/yellow] this repo's remote looks public. Anyone who "
             "can clone it can join the workspace via the committed invite code. Only "
-            "run [bold]stash init[/bold] on public repos if you want that."
+            "enable Stash on public repos if you want that."
         )
 
 
@@ -2571,7 +2591,8 @@ def enable_cmd():
     if manifest_path is None:
         console.print(
             "[yellow]No .stash/stash.json found in this repo.[/yellow]  "
-            "Ask a maintainer to run [cyan]stash init[/cyan]."
+            "Ask a maintainer to run [cyan]stash connect[/cyan] here and accept the "
+            "'Make this a Stash repo?' prompt."
         )
         raise typer.Exit(1)
 
