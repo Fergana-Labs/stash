@@ -12,10 +12,18 @@ suppress_unstable_features_warning = true
 # Comment out Variant A above, then uncomment this line:
 # notify = ["bash", "${PLUGIN_ROOT}/scripts/_run.sh", "on_notify"]
 
-# Stash profile — launch with `codex --profile stash` so the stash CLI can
-# reach api.stash.ac through the sandbox and doesn't prompt for approval on
-# every read. approval_policy = "on-failure" still asks if a command errors,
-# so this is scoped-loosening, not a blanket allow-everything.
+# Codex's default workspace-write sandbox blocks outbound network, which
+# silently kills stash hook POSTs to api.stash.ac. Lifting the block at the
+# top level lets plain `codex` stream. The plugin still gates streaming
+# per-repo on `.stash/stash.json` presence, so this is a capability grant,
+# not a trust grant. Remove this block if you want network only under
+# `codex --profile stash`.
+[sandbox_workspace_write]
+network_access = true
+
+# Stash profile — equivalent for users who prefer keeping the default
+# sandbox tight and only lifting it with `codex --profile stash`.
+# approval_policy = "on-failure" still asks when a command errors.
 [profiles.stash]
 approval_policy = "on-failure"
 sandbox_mode = "workspace-write"

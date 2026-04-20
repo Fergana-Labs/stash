@@ -132,14 +132,6 @@ def set_streaming_enabled(enabled: bool) -> None:
     _write_central({"streaming_enabled": bool(enabled)})
 
 
-def get_scope_config() -> dict:
-    central = _read_central()
-    return {
-        "scope": central.get("scope", "repo"),
-        "install_repo_common_dir": central.get("install_repo_common_dir", ""),
-    }
-
-
 def auto_curate_enabled() -> bool:
     """Read the central `auto_curate` flag. Defaults to True when unset."""
     raw = _read_central().get("auto_curate", True)

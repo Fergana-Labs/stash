@@ -1,51 +1,49 @@
-"""Repo-scope gate. With `scope=repo` (default), plugins only push events
-and transcripts for sessions run in the repo captured at `stash connect`
-time — or any of its worktrees (they share the git common-dir).
+"""Stream gate — plugin hooks only push events when a `.stash/stash.json`
+manifest is discoverable from cwd (in the current directory or any ancestor).
+
+The manifest's location encodes scope:
+- `<repo>/.stash/stash.json` — per-repo install. Events stream when cwd is
+  anywhere inside that tree, routed to that manifest's `workspace_id`.
+- `~/.stash/stash.json` — global install. Acts as a catch-all: anything
+  under `$HOME` without a closer manifest still streams.
+
+Closest-ancestor wins, so a repo-level manifest always overrides the global
+one for routing. There is no separate "scope" config — the manifest's
+presence is the opt-in, and its location encodes the breadth.
 """
 
 from __future__ import annotations
 
 import json
-import os
-import subprocess
 from functools import lru_cache
 from pathlib import Path
 
+_MANIFEST_FILENAME = "stash.json"
+_CONFIG_FILENAME = "config.json"
+
 
 @lru_cache(maxsize=64)
-def _common_dir(cwd: str) -> str | None:
+def _has_manifest(cwd: str | None) -> bool:
+    """True if `.stash/stash.json` exists in cwd or any ancestor."""
     if not cwd:
-        return None
-    try:
-        proc = subprocess.run(
-            ["git", "-C", cwd, "rev-parse", "--path-format=absolute", "--git-common-dir"],
-            capture_output=True, text=True, timeout=2,
-        )
-        if proc.returncode == 0 and proc.stdout.strip():
-            return proc.stdout.strip()
-    except Exception:
-        pass
-    try:
-        proc = subprocess.run(
-            ["git", "-C", cwd, "rev-parse", "--git-common-dir"],
-            capture_output=True, text=True, timeout=2,
-        )
-        if proc.returncode == 0 and proc.stdout.strip():
-            return os.path.abspath(os.path.join(cwd, proc.stdout.strip()))
-    except Exception:
-        pass
-    return None
-
-
-def cwd_in_scope(cwd: str | None, cfg: dict) -> bool:
-    scope = (cfg.get("scope") or "repo").strip().lower()
-    if scope in ("all", "workspace"):
-        return True
-    install = cfg.get("install_repo_common_dir") or ""
-    if not install or not cwd:
         return False
-    current = _common_dir(cwd)
-    return bool(current) and os.path.normpath(current) == os.path.normpath(install)
+    try:
+        cur = Path(cwd).resolve()
+    except Exception:
+        return False
+    for parent in [cur, *cur.parents]:
+        if (parent / ".stash" / _MANIFEST_FILENAME).exists():
+            return True
+    return False
+
+
+def cwd_in_scope(cwd: str | None) -> bool:
+    """True when cwd is within a stash-installed tree.
+
+    Callers used to pass a scope config dict here; the concept has been
+    folded into the manifest's location so that's no longer needed.
+    """
+    return _has_manifest(cwd)
 
 
 @lru_cache(maxsize=64)
@@ -61,7 +59,7 @@ def repo_stash_disabled(cwd: str | None) -> bool:
     except Exception:
         return False
     for parent in [cur, *cur.parents]:
-        candidate = parent / ".stash" / "config.json"
+        candidate = parent / ".stash" / _CONFIG_FILENAME
         if not candidate.exists():
             continue
         try:
