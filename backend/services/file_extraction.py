@@ -44,6 +44,14 @@ def _extract_pdf_embedded(content: bytes) -> str:
     return "\n\n".join(p for p in parts if p).strip()
 
 
+def _sanitize_for_postgres(text: str) -> str:
+    """Postgres TEXT columns reject null bytes (0x00). Some PDFs emit them
+    from odd CMap entries; strip so the UPDATE doesn't fail."""
+    if "\x00" in text:
+        return text.replace("\x00", "")
+    return text
+
+
 def extract_text(content: bytes, content_type: str) -> str | None:
     """Return extracted text, or None when extraction is not possible/failed.
 
@@ -54,10 +62,10 @@ def extract_text(content: bytes, content_type: str) -> str | None:
 
         if ct == "application/pdf" or ct.endswith("/pdf"):
             text = _extract_pdf_embedded(content)
-            return text or None
+            return _sanitize_for_postgres(text) if text else None
 
         if ct.startswith("text/") or ct in ("application/json", "application/xml"):
-            return content.decode("utf-8", errors="replace")
+            return _sanitize_for_postgres(content.decode("utf-8", errors="replace"))
 
         return None
     except Exception:
