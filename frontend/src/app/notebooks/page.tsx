@@ -192,11 +192,6 @@ function WikiPageInner() {
     if (!nb) return;
     deepLinked.current = true;
     handleSelectNotebook(nb);
-    // Clear URL params so they don't interfere with future navigation
-    const url = new URL(window.location.href);
-    url.searchParams.delete("nb");
-    url.searchParams.delete("page");
-    window.history.replaceState({}, "", url.toString());
   }, [nbParam, notebooks, handleSelectNotebook]);
 
   useEffect(() => {
@@ -204,6 +199,26 @@ function WikiPageInner() {
     if (!selectedNotebook || selectedPageId !== null) return;
     handleSelectPage(pageParam);
   }, [pageParam, selectedNotebook, selectedPageId, handleSelectPage]);
+
+  // If there's nothing to deep-link, still mark us "ready" so the URL-sync
+  // effect below knows to start mirroring state → URL.
+  useEffect(() => {
+    if (!nbParam) deepLinked.current = true;
+  }, [nbParam]);
+
+  // Keep the URL in sync with the current notebook/page selection so that
+  // (a) refreshing the tab restores context, and (b) copying the URL gives
+  // a shareable deep link. Uses history.replaceState rather than
+  // router.replace to avoid a Next.js re-render cascade.
+  useEffect(() => {
+    if (!deepLinked.current) return;
+    const url = new URL(window.location.href);
+    if (selectedNotebook) url.searchParams.set("nb", selectedNotebook.id);
+    else url.searchParams.delete("nb");
+    if (selectedPageId) url.searchParams.set("page", selectedPageId);
+    else url.searchParams.delete("page");
+    window.history.replaceState({}, "", url.toString());
+  }, [selectedNotebook, selectedPageId]);
 
   // Navigate to a page by name (for wiki link clicks)
   // Resolve a wiki-link's raw text (e.g. "page", "folder/page",
