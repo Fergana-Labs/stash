@@ -4,13 +4,13 @@ Invoked by the dispatcher as:
 
     python -m backend.workers.extract_one <file_id>
 
-Isolated in its own OS process so a tesseract / pypdfium2 explosion OOMs
-this child, not the web parent. RLIMIT_AS bounds virtual memory before we
-load any heavy libraries.
+Isolated in its own OS process so an extraction blowup OOMs this child,
+not the web parent. RLIMIT_AS bounds virtual memory before we load any
+heavy libraries.
 
 Exit codes:
-    0  success (row already updated via mark_done)
-    1  failure (error logged; row updated via mark_failed)
+    0  success (row already updated by the child)
+    1  failure (error logged; row updated by the child)
     137 SIGKILL — typically OOM killer. Parent observes the non-zero exit
          and records a failure on its end.
 
@@ -28,9 +28,9 @@ import sys
 import traceback
 from uuid import UUID
 
-# Cap address space BEFORE importing heavy extraction libs.
-# 350 MB leaves headroom on Render Starter's 512 MB dyno while letting
-# tesseract handle most real-world pages.
+# Cap address space BEFORE importing any extraction libs. 350 MB leaves
+# headroom on Render Starter's 512 MB dyno while giving pypdf room for
+# large arxiv-style documents.
 _MEM_LIMIT_BYTES = int(os.getenv("EXTRACTION_MEMORY_LIMIT_MB", "350")) * 1024 * 1024
 try:
     resource.setrlimit(resource.RLIMIT_AS, (_MEM_LIMIT_BYTES, _MEM_LIMIT_BYTES))

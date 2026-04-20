@@ -125,12 +125,11 @@ Query/search:
 - `POST /files` — multipart upload (field `file`), 50 MB cap.
 - `GET  /files` — list.
 - `GET  /files/{id}` — metadata (with signed URL).
-- `GET  /files/{id}/text` — extracted text (PDFs with embedded text via
-  `pypdf`; plain-text / JSON / XML via UTF-8 decode). Response shape:
+- `GET  /files/{id}/text` — extracted text. Response shape:
   `{"text": ..., "status": "pending|processing|done|failed", "error": ...}`.
-  Image OCR and scanned-PDF OCR are not currently supported. Extraction
-  runs asynchronously after upload — poll this endpoint until `status`
-  is `done` or `failed`.
+  Works for PDFs with embedded text and for plain-text / JSON / XML
+  uploads. Extraction runs asynchronously after upload — poll this
+  endpoint until `status` is `done` or `failed`.
 - `DELETE /files/{id}` — best-effort S3 cleanup plus DB row delete.
 
 ## Rate Limits

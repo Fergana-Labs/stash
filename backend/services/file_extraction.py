@@ -1,16 +1,9 @@
 """Best-effort text extraction for uploaded files.
 
-Lightweight by design — **no OCR, no image rasterization**. We keep:
-
-- PDFs with embedded text → pypdf (pure Python, no numpy/BLAS).
+Supported:
+- PDFs with embedded text → pypdf (pure Python).
 - Plain-text / JSON / XML → UTF-8 decode.
-- Everything else (images, scanned PDFs, binary formats) → None.
-
-OCR was dropped after scanned-PDF/image paths OOM'd the Render Starter
-dyno (numpy/OpenBLAS reserves ~200 MB at import time, before any work,
-pushing the extraction child past RLIMIT_AS before pypdf could run). If
-we bring OCR back, it belongs in a dedicated worker service with more
-RAM — not in the same process as pypdf.
+- Everything else → None.
 
 `extract_text` never raises. Every failure returns None so uploads
 always succeed even if the file is corrupt or the libs aren't present.

@@ -2,8 +2,8 @@
 
 A single dispatcher task in the web process claims pending rows from `files`
 (FOR UPDATE SKIP LOCKED) and spawns a short-lived child process per job. The
-child does the actual extraction under RLIMIT_AS, so if tesseract or pypdfium2
-blows memory it kills the child, not the web parent.
+child does the actual extraction under RLIMIT_AS, so if an extraction blows
+memory it kills the child, not the web parent.
 
 Three terminal states:
 - done     — extracted_text is populated (may be NULL if file type isn't

@@ -1,8 +1,7 @@
 """Add files.extracted_text + FTS index.
 
-PDF/text/image uploads get best-effort text extraction (pypdf,
-pytesseract when tesseract is installed). The extracted text lives
-on the files row so search and retrieval don't re-open the blob.
+Stores best-effort extracted text on the file row so search and
+retrieval don't have to re-open the blob.
 
 Revision ID: 0012
 Revises: 0011

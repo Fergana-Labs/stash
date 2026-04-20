@@ -1,11 +1,8 @@
-"""Add extraction status columns to files; move text extraction off the upload
-request path.
+"""Add extraction status columns to files.
 
-Why: synchronous extraction inside the upload handler caused OOM kills on
-Render's Starter plan when scanned PDFs triggered tesseract / pypdfium2. This
-migration introduces a per-file job state so a background dispatcher in the
-same process can pick up pending files and run extraction in a child process
-with its own RLIMIT_AS, keeping web responsive.
+Per-file job state so a background dispatcher can pick up pending files
+and run extraction in a short-lived child process, keeping the upload
+request path fast.
 
 Revision ID: 0013
 Revises: 0012

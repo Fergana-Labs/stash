@@ -1814,7 +1814,7 @@ def files_text(
     file_id: str = typer.Argument(...),
     workspace_id: str = typer.Option(None, "--ws"),
 ):
-    """Print extracted text for a file (PDF, image OCR, or plain text)."""
+    """Print extracted text for a file (PDFs with embedded text, or plain text)."""
     with _client() as c:
         try:
             data = (
