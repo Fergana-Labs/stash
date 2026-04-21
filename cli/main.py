@@ -42,13 +42,32 @@ def _use_json(flag: bool) -> bool:
 
 
 def _default_workspace() -> str:
+    manifest = load_manifest()
+    if manifest and manifest.get("workspace_id"):
+        return manifest["workspace_id"]
+
     ws = load_config().get("default_workspace", "")
-    if not ws:
-        console.print(
-            "[red]No default workspace. Run [bold]stash connect[/bold] or set manually: stash config default_workspace <id>[/red]"
-        )
+    if ws:
+        return ws
+
+    with _client() as c:
+        mine = c.list_workspaces(mine=True)
+    if not mine:
+        console.print("[red]No workspaces found. Run [bold]stash connect[/bold] first.[/red]")
         raise typer.Exit(1)
-    return ws
+    if len(mine) == 1:
+        return str(mine[0]["id"])
+
+    choice = questionary.select(
+        "Which workspace?",
+        choices=[
+            questionary.Choice(w.get("name", str(w["id"])), value=str(w["id"]))
+            for w in mine
+        ],
+    ).ask()
+    if choice is None:
+        raise typer.Exit(1)
+    return choice
 
 
 def _err(e: StashError) -> None:
