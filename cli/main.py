@@ -1984,26 +1984,39 @@ def connect(
         )
 
     # --- Step 0: Scope ---
-    scope_options = [
-        ("Everywhere on this machine", "~/.stash/config.json", "user"),
-        ("Only this directory", "./.stash/config.json", "project"),
-    ]
-    label_width = max(len(label) for label, _, _ in scope_options)
-    scope_default_value = "project" if manifest else "user"
-    scope_choices = [
-        questionary.Choice(f"{label:<{label_width}}   {path}", value=value)
-        for label, path, value in scope_options
-    ]
-    scope_default_choice = next(ch for ch in scope_choices if ch.value == scope_default_value)
-    _reserve_bottom_padding(8)
-    scope = questionary.select(
-        "Where do you want to install stash?",
-        choices=scope_choices,
-        default=scope_default_choice,
-        use_shortcuts=True,
-    ).ask()
-    if scope is None:
-        raise typer.Exit(1)
+    # If a manifest already exists, respect the user's previous choice.
+    global_manifest = Path.home() / ".stash" / "stash.json"
+    if global_manifest.exists():
+        scope = "user"
+        console.print(
+            "  [green]✓[/green] Using existing scope: [bold]everywhere on this machine[/bold]"
+        )
+    elif manifest:
+        scope = "project"
+        console.print(
+            "  [green]✓[/green] Using existing scope: [bold]only this directory[/bold]"
+        )
+    else:
+        scope_options = [
+            ("Everywhere on this machine", "~/.stash/config.json", "user"),
+            ("Only this directory", "./.stash/config.json", "project"),
+        ]
+        label_width = max(len(label) for label, _, _ in scope_options)
+        scope_default_value = "user"
+        scope_choices = [
+            questionary.Choice(f"{label:<{label_width}}   {path}", value=value)
+            for label, path, value in scope_options
+        ]
+        scope_default_choice = next(ch for ch in scope_choices if ch.value == scope_default_value)
+        _reserve_bottom_padding(8)
+        scope = questionary.select(
+            "Where do you want to install stash?",
+            choices=scope_choices,
+            default=scope_default_choice,
+            use_shortcuts=True,
+        ).ask()
+        if scope is None:
+            raise typer.Exit(1)
 
     if scope == "user":
         try:
