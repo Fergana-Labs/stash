@@ -27,7 +27,7 @@ export default function DocsOverview() {
         and then makes those transcripts accessible to every other coding agent using the repo.
 
         Every research result, file, and message lands in a shared workspace. Stash
-        organizes this information into a categorized wiki — with backlinks, summaries, and semantic search
+        organizes this information into a categorized wiki, with backlinks, summaries, and semantic search
         so contributor to your repo can find and build on what others have learned.
       </P>
 
