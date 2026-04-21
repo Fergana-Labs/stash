@@ -23,7 +23,10 @@ type StashConfig = {
   base_url?: string;
   api_key?: string;
   username?: string;
-  default_workspace?: string;
+};
+
+type StashManifest = {
+  workspace_id?: string;
 };
 
 type EventBody = {
@@ -46,6 +49,21 @@ function readConfig(): StashConfig {
   } catch {
     return {};
   }
+}
+
+function findManifest(): StashManifest | null {
+  let dir = process.cwd();
+  while (true) {
+    const candidate = join(dir, ".stash", "stash.json");
+    if (existsSync(candidate)) {
+      try { return JSON.parse(readFileSync(candidate, "utf8")) as StashManifest; }
+      catch { return null; }
+    }
+    const parent = join(dir, "..");
+    if (parent === dir) break;
+    dir = parent;
+  }
+  return null;
 }
 
 function eventsPath(workspaceId: string): string {
@@ -138,9 +156,10 @@ async function drainQueue(base: string, apiKey: string): Promise<void> {
 
 async function pushEvent(body: EventBody): Promise<void> {
   const cfg = readConfig();
+  const manifest = findManifest();
   const base = cfg.base_url ?? "https://stash.ac";
   const apiKey = cfg.api_key ?? "";
-  const workspaceId = cfg.default_workspace ?? "";
+  const workspaceId = manifest?.workspace_id ?? "";
   if (!apiKey) return;
 
   const fullBody: EventBody = {

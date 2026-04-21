@@ -7,6 +7,7 @@ import os
 import sys
 from pathlib import Path
 
+from stashai.plugin.scope import find_manifest
 from stashai.plugin.stash_client import StashClient
 
 DATA_DIR = Path(os.environ.get(
@@ -66,11 +67,12 @@ def _cli_config() -> dict:
 
 def get_config() -> dict:
     cli = _cli_config()
+    manifest = find_manifest(os.getcwd())
     return {
         "api_endpoint": cli.get("base_url", "https://stash.ac"),
         "api_key": cli.get("api_key", ""),
         "agent_name": cli.get("username", ""),
-        "workspace_id": cli.get("default_workspace", ""),
+        "workspace_id": (manifest or {}).get("workspace_id", ""),
         "auto_curate": os.environ.get("STASH_AUTO_CURATE", "false"),
         "client": "openclaw",
     }

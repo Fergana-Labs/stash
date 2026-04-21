@@ -7,7 +7,7 @@ point).
 ## Prerequisites
 
 - `stash` CLI installed and logged in (`pip install stashai && stash login`)
-- `stash config default_workspace <id>` set
+- `.stash/stash.json` manifest present in repo (or ancestor)
 - Python 3.10+ on PATH
 - `httpx` installed (`pip install httpx`)
 

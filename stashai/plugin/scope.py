@@ -11,15 +11,24 @@ _MANIFEST_FILENAME = "stash.json"
 _CONFIG_FILENAME = "config.json"
 
 
-def cwd_in_scope(cwd: str | None) -> bool:
-    """True if `.stash/stash.json` exists in cwd or any ancestor."""
+def find_manifest(cwd: str | None) -> dict | None:
+    """Walk up from cwd and return the first `.stash/stash.json` as a dict, or None."""
     if not cwd:
-        return False
+        return None
     cur = Path(cwd).resolve()
     for parent in [cur, *cur.parents]:
-        if (parent / ".stash" / _MANIFEST_FILENAME).exists():
-            return True
-    return False
+        path = parent / ".stash" / _MANIFEST_FILENAME
+        if path.exists():
+            try:
+                return json.loads(path.read_text())
+            except Exception:
+                return None
+    return None
+
+
+def cwd_in_scope(cwd: str | None) -> bool:
+    """True if `.stash/stash.json` exists in cwd or any ancestor."""
+    return find_manifest(cwd) is not None
 
 
 def repo_stash_disabled(cwd: str | None) -> bool:

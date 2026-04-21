@@ -16,8 +16,9 @@ Use the `stash` CLI for everything — every subcommand supports `--json`.
 
 ## Steps
 
-1. **Load config.** Run `stash config --json` to get `default_workspace`. If
-   it is missing, stop and report that the user needs to run `stash connect`.
+1. **Determine workspace.** The workspace ID comes from the `.stash/stash.json`
+   manifest in the repo (or an ancestor). If no manifest exists, run
+   `stash workspaces list --mine --json` and pick the appropriate workspace.
 
 2. **List notebooks.** Run `stash notebooks list --ws <workspace_id> --json`.
    Look for an existing curation notebook (named "Wiki", "Knowledge Base", or

@@ -123,10 +123,7 @@ stash notebooks list --all                                       # List all note
 stash workspaces list --mine                                     # List your workspaces
 ```
 
-Set a default workspace to avoid repeating it:
-```bash
-stash config default_workspace <id>
-```
+Workspace is determined from the `.stash/stash.json` manifest in the repo.
 
 ---
 

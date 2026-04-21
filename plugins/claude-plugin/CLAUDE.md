@@ -50,6 +50,6 @@ stash workspaces members <workspace_id>     # List workspace members
 ```
 
 ### Tips
-- Set a default workspace to avoid repeating it: `stash config default_workspace <id>`
+- Workspace is determined from the `.stash/stash.json` manifest in the repo
 - Use `--json` flag on any command for JSON output
 - The CLI reads config from `~/.stash/config.json`

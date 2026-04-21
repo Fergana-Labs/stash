@@ -41,14 +41,29 @@ def _use_json(flag: bool) -> bool:
     return flag or load_config().get("output_format") == "json"
 
 
-def _default_workspace() -> str:
-    ws = load_config().get("default_workspace", "")
-    if not ws:
-        console.print(
-            "[red]No default workspace. Run [bold]stash connect[/bold] or set manually: stash config default_workspace <id>[/red]"
-        )
+def _resolve_workspace() -> str:
+    manifest = load_manifest()
+    if manifest and manifest.get("workspace_id"):
+        return manifest["workspace_id"]
+
+    with _client() as c:
+        mine = c.list_workspaces(mine=True)
+    if not mine:
+        console.print("[red]No workspaces found. Run [bold]stash connect[/bold] first.[/red]")
         raise typer.Exit(1)
-    return ws
+    if len(mine) == 1:
+        return str(mine[0]["id"])
+
+    choice = questionary.select(
+        "Which workspace?",
+        choices=[
+            questionary.Choice(w.get("name", str(w["id"])), value=str(w["id"]))
+            for w in mine
+        ],
+    ).ask()
+    if choice is None:
+        raise typer.Exit(1)
+    return choice
 
 
 def _err(e: StashError) -> None:
@@ -218,19 +233,6 @@ def signin(
     save_config(base_url=api, api_key=api_key, username=username)
     console.print(f"[green]✓ Signed in as {username}[/green]")
 
-    # Auto-select default workspace if the user has exactly one.
-    if load_config().get("default_workspace"):
-        return
-    try:
-        with StashClient(base_url=api, api_key=api_key) as client:
-            workspaces = client.list_workspaces(mine=True)
-    except StashError:
-        return
-    if len(workspaces) == 1:
-        ws = workspaces[0]
-        save_config(default_workspace=str(ws["id"]))
-        console.print(f"  Default workspace set to [bold]{ws['name']}[/bold]")
-
 
 @app.command()
 def auth(base_url: str = typer.Argument(...), api_key: str = typer.Option(..., "--api-key")):
@@ -243,23 +245,6 @@ def auth(base_url: str = typer.Argument(...), api_key: str = typer.Option(..., "
             console.print(f"[green]Authenticated as {user['name']}[/green]")
         except StashError:
             console.print("[yellow]Saved but could not verify.[/yellow]")
-            return
-        # Auto-set default workspace when the user has exactly one and none is
-        # configured yet — otherwise a fresh `stash auth` leaves new users in a
-        # state where every command needing workspace context (`stash history`,
-        # plugin SessionEnd hooks) errors with "no default workspace". Don't
-        # touch an existing default; multi-workspace users still need to pick
-        # explicitly via `stash workspaces use`.
-        if load_config().get("default_workspace"):
-            return
-        try:
-            workspaces = c.list_workspaces(mine=True)
-        except StashError:
-            return
-        if len(workspaces) == 1:
-            ws = workspaces[0]
-            save_config(default_workspace=str(ws["id"]))
-            console.print(f"  Default workspace set to [bold]{ws['name']}[/bold]")
 
 
 # ===========================================================================
@@ -560,7 +545,7 @@ def _plugin_installed(agent: str) -> bool:
     return False
 
 
-def _install_global_manifest(force: bool) -> tuple[str, str]:
+def _install_global_manifest(workspace_id: str, force: bool = False) -> tuple[str, str]:
     """Write `~/.stash/stash.json` so every cwd under `$HOME` without a
     closer manifest still streams. This is the 'global install' — the
     opt-in for system-wide streaming."""
@@ -568,11 +553,7 @@ def _install_global_manifest(force: bool) -> tuple[str, str]:
     if dest.exists() and not force:
         return ("skipped", f"{dest} already exists")
 
-    cfg = load_config()
-    workspace_id = cfg.get("default_workspace") or ""
-    if not workspace_id:
-        return ("failed", "no default workspace — run `stash connect` first")
-    base_url = (cfg.get("base_url") or "").rstrip("/")
+    base_url = (load_config().get("base_url") or "").rstrip("/")
 
     manifest = {
         "version": 1,
@@ -658,43 +639,6 @@ def ws_join(invite_code: str = typer.Argument(...), as_json: bool = typer.Option
         console.print(f"[green]Joined '{data.get('name')}'[/green]")
 
 
-@ws_app.command("use")
-def ws_use(
-    workspace: str = typer.Argument(..., help="Workspace ID or name to set as default."),
-    scope: str = typer.Option(
-        "user", "--scope", help="Where to write config (user | project)."
-    ),
-    as_json: bool = typer.Option(False, "--json"),
-):
-    """Set the default workspace for future commands.
-
-    Resolves `workspace` against the caller's memberships — accepts either a
-    workspace ID (UUID) or a name. Non-interactive: designed for agents that
-    collect the choice via their own prompting and need a single command to
-    persist it.
-    """
-    with _client() as c:
-        try:
-            mine = c.list_workspaces(mine=True)
-        except StashError as e:
-            _err(e)
-    match = next(
-        (w for w in mine if str(w["id"]) == workspace or w.get("name") == workspace),
-        None,
-    )
-    if not match:
-        console.print(
-            f"[red]No workspace matches '{workspace}'.[/red] "
-            f"Run [cyan]stash workspaces list --mine[/cyan] to see yours."
-        )
-        raise typer.Exit(1)
-    save_config(default_workspace=str(match["id"]), scope=scope)  # type: ignore[arg-type]
-    if _use_json(as_json):
-        output_json({"default_workspace": str(match["id"]), "name": match["name"]})
-    else:
-        console.print(
-            f"[green]Default workspace set to '{match['name']}'[/green]  (ID: {match['id']})"
-        )
 
 
 @ws_app.command("info")
@@ -764,7 +708,7 @@ def invite_default(
     """Mint a shareable invite link for a workspace (default: your default workspace)."""
     if ctx.invoked_subcommand is not None:
         return
-    ws = workspace_id or _default_workspace()
+    ws = workspace_id or _resolve_workspace()
     cfg = load_config()
     with _client() as c:
         try:
@@ -804,7 +748,7 @@ def invite_list(
     as_json: bool = typer.Option(False, "--json"),
 ):
     """List active invite tokens for a workspace."""
-    ws = workspace_id or _default_workspace()
+    ws = workspace_id or _resolve_workspace()
     with _client() as c:
         try:
             tokens = c.list_invite_tokens(ws)
@@ -830,7 +774,7 @@ def invite_revoke(
     workspace_id: str = typer.Option(None, "--ws"),
 ):
     """Revoke an invite token so it can no longer be redeemed."""
-    ws = workspace_id or _default_workspace()
+    ws = workspace_id or _resolve_workspace()
     with _client() as c:
         try:
             c.revoke_invite_token(ws, token_id)
@@ -859,7 +803,7 @@ def nb_list(
             data = (
                 c.all_notebooks()
                 if all_
-                else c.list_notebooks(workspace_id or _default_workspace())
+                else c.list_notebooks(workspace_id or _resolve_workspace())
             )
         except StashError as e:
             _err(e)
@@ -884,7 +828,7 @@ def nb_create(
     """Create a notebook collection."""
     with _client() as c:
         try:
-            ws = workspace_id or _default_workspace()
+            ws = workspace_id or _resolve_workspace()
             data = c.create_notebook(ws, name, description=description)
         except StashError as e:
             _err(e)
@@ -903,7 +847,7 @@ def nb_pages(
     """List pages in a notebook."""
     with _client() as c:
         try:
-            ws = workspace_id or _default_workspace()
+            ws = workspace_id or _resolve_workspace()
             data = c.list_page_tree(ws, notebook_id)
         except StashError as e:
             _err(e)
@@ -952,7 +896,7 @@ def nb_add_page(
     """Add a page to a notebook."""
     with _client() as c:
         try:
-            ws = workspace_id or _default_workspace()
+            ws = workspace_id or _resolve_workspace()
             for p in attach or []:
                 if not Path(p).is_file():
                     console.print(f"[red]Not a file: {p}[/red]")
@@ -977,7 +921,7 @@ def nb_read_page(
     """Read a page's content."""
     with _client() as c:
         try:
-            ws = workspace_id or _default_workspace()
+            ws = workspace_id or _resolve_workspace()
             data = c.get_page(ws, notebook_id, page_id)
         except StashError as e:
             _err(e)
@@ -1005,7 +949,7 @@ def nb_edit_page(
         content = sys.stdin.read()
     with _client() as c:
         try:
-            ws = workspace_id or _default_workspace()
+            ws = workspace_id or _resolve_workspace()
             for p in attach or []:
                 if not Path(p).is_file():
                     console.print(f"[red]Not a file: {p}[/red]")
@@ -1042,7 +986,7 @@ def hist_agents(
     workspace_id: str = typer.Option(None, "--ws"), as_json: bool = typer.Option(False, "--json")
 ):
     """List distinct agent names that have logged events in this workspace."""
-    ws = workspace_id or _default_workspace()
+    ws = workspace_id or _resolve_workspace()
     with _client() as c:
         try:
             data = c.list_agent_names(ws)
@@ -1075,7 +1019,7 @@ def hist_push(
     as_json: bool = typer.Option(False, "--json"),
 ):
     """Push an event to the workspace history."""
-    ws = workspace_id or _default_workspace()
+    ws = workspace_id or _resolve_workspace()
     with _client() as c:
         try:
             attachments: list[dict] = []
@@ -1121,7 +1065,7 @@ def hist_query(
             if all_:
                 data = c.all_events(agent_name=agent_name, event_type=event_type, limit=limit)
             else:
-                ws = workspace_id or _default_workspace()
+                ws = workspace_id or _resolve_workspace()
                 data = c.query_events(ws, agent_name=agent_name, event_type=event_type, limit=limit)
         except StashError as e:
             _err(e)
@@ -1143,7 +1087,7 @@ def hist_search(
     as_json: bool = typer.Option(False, "--json"),
 ):
     """Full-text search on events in a workspace."""
-    ws = workspace_id or _default_workspace()
+    ws = workspace_id or _resolve_workspace()
     with _client() as c:
         try:
             data = c.search_events(ws, query, limit=limit)
@@ -1173,7 +1117,7 @@ def hist_transcript(
 
     import httpx
 
-    ws = workspace_id or _default_workspace()
+    ws = workspace_id or _resolve_workspace()
     cfg = load_config()
     url = f"{cfg['base_url'].rstrip('/')}/api/v1/workspaces/{ws}/transcripts/{session_id}"
     headers = {"Authorization": f"Bearer {cfg.get('api_key', '')}"}
@@ -1259,7 +1203,7 @@ def tables_list(
             if all_:
                 data = c.all_tables()
             else:
-                data = c.list_tables(workspace_id or _default_workspace())
+                data = c.list_tables(workspace_id or _resolve_workspace())
         except StashError as e:
             _err(e)
     if _use_json(as_json):
@@ -1289,7 +1233,7 @@ def tables_create(
     cols = json.loads(columns) if columns else []
     with _client() as c:
         try:
-            ws = workspace_id or _default_workspace()
+            ws = workspace_id or _resolve_workspace()
             data = c.create_table(ws, name, description=description, columns=cols)
         except StashError as e:
             _err(e)
@@ -1318,7 +1262,7 @@ def tables_update(
         raise typer.Exit(1)
     with _client() as c:
         try:
-            ws = workspace_id or _default_workspace()
+            ws = workspace_id or _resolve_workspace()
             data = c.update_table(ws, table_id, **kwargs)
         except StashError as e:
             _err(e)
@@ -1337,7 +1281,7 @@ def tables_schema(
     """Show a table's column schema."""
     with _client() as c:
         try:
-            ws = workspace_id or _default_workspace()
+            ws = workspace_id or _resolve_workspace()
             data = c.get_table(ws, table_id)
         except StashError as e:
             _err(e)
@@ -1374,7 +1318,7 @@ def tables_rows(
     """Read rows. --sort and --filter accept column names (auto-resolved)."""
     with _client() as c:
         try:
-            ws = workspace_id or _default_workspace()
+            ws = workspace_id or _resolve_workspace()
             table = c.get_table(ws, table_id)
             id_to_name = {col["id"]: col["name"] for col in table.get("columns", [])}
             resolved_sort = _resolve_sort_name(table, sort_by)
@@ -1450,7 +1394,7 @@ def tables_insert(
     uploads = _parse_uploads(upload)
     with _client() as c:
         try:
-            ws = workspace_id or _default_workspace()
+            ws = workspace_id or _resolve_workspace()
             row_data = _apply_uploads(c, ws, row_data, uploads)
             table = c.get_table(ws, table_id)
             resolved = _resolve_col_names(table, row_data)
@@ -1514,7 +1458,7 @@ def tables_import(
 
     with _client() as c:
         try:
-            ws = workspace_id or _default_workspace()
+            ws = workspace_id or _resolve_workspace()
             table = c.get_table(ws, table_id)
 
             # Resolve column names to IDs
@@ -1556,7 +1500,7 @@ def tables_update_row(
     uploads = _parse_uploads(upload)
     with _client() as c:
         try:
-            ws = workspace_id or _default_workspace()
+            ws = workspace_id or _resolve_workspace()
             row_data = _apply_uploads(c, ws, row_data, uploads)
             table = c.get_table(ws, table_id)
             resolved = _resolve_col_names(table, row_data)
@@ -1578,7 +1522,7 @@ def tables_delete_row(
     """Delete a row from a table."""
     with _client() as c:
         try:
-            ws = workspace_id or _default_workspace()
+            ws = workspace_id or _resolve_workspace()
             c.delete_table_row(ws, table_id, row_id)
         except StashError as e:
             _err(e)
@@ -1600,7 +1544,7 @@ def tables_add_column(
     opts = [o.strip() for o in options.split(",") if o.strip()] if options else None
     with _client() as c:
         try:
-            ws = workspace_id or _default_workspace()
+            ws = workspace_id or _resolve_workspace()
             result = c.add_table_column(ws, table_id, name, col_type=col_type, options=opts)
         except StashError as e:
             _err(e)
@@ -1620,7 +1564,7 @@ def tables_delete_column(
     """Delete a column from a table."""
     with _client() as c:
         try:
-            ws = workspace_id or _default_workspace()
+            ws = workspace_id or _resolve_workspace()
             # Resolve column name to ID if needed
             if not column_id.startswith("col_"):
                 table = c.get_table(ws, table_id)
@@ -1646,7 +1590,7 @@ def tables_count(
     """Count rows, optionally with filters."""
     with _client() as c:
         try:
-            ws = workspace_id or _default_workspace()
+            ws = workspace_id or _resolve_workspace()
             if filters:
                 table = c.get_table(ws, table_id)
                 filters = _resolve_filter_names(table, filters)
@@ -1674,7 +1618,7 @@ def tables_export(
     """Export table as CSV."""
     with _client() as c:
         try:
-            ws = workspace_id or _default_workspace()
+            ws = workspace_id or _resolve_workspace()
             params: dict = {"sort_order": sort_order}
             if sort_by:
                 table = c.get_table(ws, table_id)
@@ -1708,7 +1652,7 @@ def tables_delete(
         typer.confirm("Delete this table and all its data?", abort=True)
     with _client() as c:
         try:
-            ws = workspace_id or _default_workspace()
+            ws = workspace_id or _resolve_workspace()
             c.delete_table(ws, table_id)
         except StashError as e:
             _err(e)
@@ -1742,7 +1686,7 @@ def files_upload(
     as_json: bool = typer.Option(False, "--json"),
 ):
     """Upload a file to a workspace."""
-    ws = workspace_id or _default_workspace()
+    ws = workspace_id or _resolve_workspace()
     with _client() as c:
         try:
             data = _upload_path(c, ws, path)
@@ -1761,7 +1705,7 @@ def files_list(
     as_json: bool = typer.Option(False, "--json"),
 ):
     """List files in a workspace."""
-    ws = workspace_id or _default_workspace()
+    ws = workspace_id or _resolve_workspace()
     with _client() as c:
         try:
             data = c.list_ws_files(ws)
@@ -1787,7 +1731,7 @@ def files_rm(
     workspace_id: str = typer.Option(None, "--ws"),
 ):
     """Delete a file."""
-    ws = workspace_id or _default_workspace()
+    ws = workspace_id or _resolve_workspace()
     with _client() as c:
         try:
             c.delete_ws_file(ws, file_id)
@@ -1802,7 +1746,7 @@ def files_text(
     workspace_id: str = typer.Option(None, "--ws"),
 ):
     """Print extracted text for a file (PDFs with embedded text, or plain text)."""
-    ws = workspace_id or _default_workspace()
+    ws = workspace_id or _resolve_workspace()
     with _client() as c:
         try:
             data = c.get_ws_file_text(ws, file_id)
@@ -1914,7 +1858,7 @@ def _connect_via_invite(
         except StashError as e:
             console.print(f"[red]Could not redeem invite: {e.detail}[/red]")
             raise typer.Exit(1)
-        save_config(base_url=base_url, default_workspace=str(ws["id"]), scope=scope)
+        save_config(base_url=base_url)
         _show_setup_complete_splash(workspace_name=ws["name"], joined_via_invite=True)
         return
 
@@ -1932,8 +1876,6 @@ def _connect_via_invite(
         base_url=base_url,
         api_key=result["api_key"],
         username=result["username"],
-        default_workspace=str(result["workspace_id"]),
-        scope=scope,
     )
     chosen = result.get("display_name") or result["username"]
     console.print(
@@ -1948,22 +1890,20 @@ def _already_fully_connected(manifest: Manifest | None) -> bool:
     print a short summary and return True so the caller can short-circuit.
     Otherwise return False and fall through to the interactive flow.
     """
-    prev_scope = detect_previous_scope()
     prev_base = stored_base_url()
     cfg = load_config()
     api_key = cfg.get("api_key", "")
-    default_ws = cfg.get("default_workspace", "")
-    if not (prev_scope and prev_base and api_key and default_ws):
+    if not (prev_base and api_key):
         return False
-    # In a manifest repo, short-circuit only if the configured default workspace
-    # matches the manifest's workspace — otherwise we still need to join.
-    if manifest and str(manifest.get("workspace_id") or "") not in ("", default_ws):
+
+    ws_id = (manifest or {}).get("workspace_id") or ""
+    if not ws_id:
         return False
 
     try:
         with StashClient(base_url=prev_base, api_key=api_key) as c:
             user = c.whoami()
-            ws = c.get_workspace(default_ws)
+            ws = c.get_workspace(ws_id)
     except StashError:
         return False
 
@@ -2175,11 +2115,10 @@ def connect(
                     _err(e)
 
             if already_member:
-                save_config(default_workspace=manifest_ws_id, scope=scope)
                 manifest_joined_ws = manifest_ws_name
                 console.print(
                     f"  [green]✓[/green] You're already a member of "
-                    f"[bold]{manifest_ws_name}[/bold]. Set as default for this repo."
+                    f"[bold]{manifest_ws_name}[/bold]."
                 )
             else:
                 _reserve_bottom_padding(4)
@@ -2229,10 +2168,9 @@ def connect(
                         )
                         raise typer.Exit(1)
                     joined_name = ws.get("name") or manifest_ws_name
-                    save_config(default_workspace=str(ws["id"]), scope=scope)
                     manifest_joined_ws = joined_name
                     console.print(
-                        f"  [green]✓[/green] Joined [bold]{joined_name}[/bold]. Set as default for this repo."
+                        f"  [green]✓[/green] Joined [bold]{joined_name}[/bold]."
                     )
         else:
             # --- Step 3: Workspace (no manifest) ---
@@ -2241,52 +2179,36 @@ def connect(
             except StashError:
                 my_workspaces = []
 
-            workspace_id = cfg.get("default_workspace", "")
-            existing_ws = None
-            if workspace_id:
-                existing_ws = next(
-                    (ws for ws in my_workspaces if str(ws["id"]) == workspace_id), None
-                )
+            if my_workspaces:
+                console.print("\n  Your workspaces:")
+                for ws in my_workspaces[:5]:
+                    console.print(f"    [dim]{str(ws['id'])[:8]}…[/dim]  {ws['name']}")
 
-            if existing_ws:
-                # Preserve the previously configured workspace on re-runs.
-                console.print(
-                    f"  [green]✓[/green] Using existing workspace: [bold]{existing_ws['name']}[/bold]"
-                )
+            default_ws = my_workspaces[0] if my_workspaces else None
+            default_name = default_ws["name"] if default_ws else ""
+
+            _reserve_bottom_padding(4)
+            ws_name = typer.prompt(
+                "\nPress ENTER to accept default workspace name, otherwise type a workspace name",
+                default=default_name,
+            ).strip()
+
+            if not ws_name:
+                console.print("[yellow]Skipping workspace setup.[/yellow]")
             else:
-                if my_workspaces:
-                    console.print("\n  Your workspaces:")
-                    for ws in my_workspaces[:5]:
-                        console.print(f"    [dim]{str(ws['id'])[:8]}…[/dim]  {ws['name']}")
-
-                default_ws = my_workspaces[0] if my_workspaces else None
-                default_name = default_ws["name"] if default_ws else ""
-
-                _reserve_bottom_padding(4)
-                ws_name = typer.prompt(
-                    "\nPress ENTER to accept default workspace name, otherwise type a workspace name",
-                    default=default_name,
-                ).strip()
-
-                if not ws_name:
-                    console.print("[yellow]Skipping workspace setup.[/yellow]")
+                matched = next((ws for ws in my_workspaces if ws["name"] == ws_name), None)
+                if matched:
+                    console.print(
+                        f"  [green]✓[/green] Using workspace [bold]{matched['name']}[/bold]"
+                    )
                 else:
-                    # If the name matches an existing workspace, reuse it. Otherwise, create a new one.
-                    matched = next((ws for ws in my_workspaces if ws["name"] == ws_name), None)
-                    if matched:
-                        save_config(default_workspace=str(matched["id"]), scope=scope)
+                    try:
+                        matched = c.create_workspace(ws_name)
                         console.print(
-                            f"  [green]✓[/green] Using workspace [bold]{matched['name']}[/bold]"
+                            f"  [green]✓[/green] Created workspace [bold]{matched['name']}[/bold]  invite: {matched['invite_code']}"
                         )
-                    else:
-                        try:
-                            ws_data = c.create_workspace(ws_name)
-                            save_config(default_workspace=str(ws_data["id"]), scope=scope)
-                            console.print(
-                                f"  [green]✓[/green] Created workspace [bold]{ws_data['name']}[/bold]  invite: {ws_data['invite_code']}"
-                            )
-                        except StashError as e:
-                            console.print(f"[red]Could not create workspace: {e.detail}[/red]")
+                    except StashError as e:
+                        console.print(f"[red]Could not create workspace: {e.detail}[/red]")
 
     # --- Step 3.5: Offer to enable this repo so teammates auto-join ---
     if not manifest:
@@ -2509,11 +2431,7 @@ def _offer_repo_init(client: "StashClient | None" = None) -> None:
             project_cfg_path.write_text(json.dumps(project_cfg, indent=2) + "\n")
             return
 
-        default_ws_id = str(cfg.get("default_workspace") or "")
-        default_choice = next(
-            (ws for ws in my_workspaces if str(ws["id"]) == default_ws_id),
-            my_workspaces[0],
-        )
+        default_choice = my_workspaces[0]
         choices = [
             questionary.Choice(
                 f"{ws['name']}  [dim]({str(ws['id'])[:8]}…)[/dim]",
@@ -2681,10 +2599,11 @@ def _pushed_scope_phrase() -> str:
 
 
 def _current_invite() -> tuple[str, str]:
-    """Return (invite_code, workspace_name) for the current default workspace,
+    """Return (invite_code, workspace_name) for the manifest's workspace,
     or ("", "") if unavailable. Best-effort — any auth/network failure falls
     back to the generic `stash workspaces info` guidance."""
-    ws_id = load_config().get("default_workspace") or ""
+    m = load_manifest()
+    ws_id = (m.get("workspace_id") if m else None) or ""
     if not ws_id:
         return "", ""
     try:
@@ -2730,15 +2649,16 @@ def _workspace_url(ws_id: str) -> str:
 
 
 def _current_workspace_url() -> str:
-    """Return the link to the user's default workspace, or "" if none configured."""
-    ws_id = load_config().get("default_workspace") or ""
+    """Return the link to the manifest's workspace, or "" if no manifest."""
+    m = load_manifest()
+    ws_id = (m.get("workspace_id") if m else None) or ""
     return _workspace_url(ws_id) if ws_id else ""
 
 
 def _transcripts_url() -> str:
     """Best-effort link to where the user can see their transcripts in the web
-    UI. Prefers the workspace-specific URL when default_workspace is set; falls
-    back to the frontend root so we still hand the user a usable link."""
+    UI. Uses the manifest's workspace if available; falls back to the frontend
+    root so we still hand the user a usable link."""
     return _current_workspace_url() or _frontend_base_url()
 
 
@@ -2999,13 +2919,13 @@ def _render_settings_header(cfg: dict, central: dict) -> None:
     console.print("[bold]Stash settings[/bold]\n")
 
     manifest = load_manifest()
-    workspace_id = cfg.get("default_workspace") or ""
-    if manifest and manifest.get("workspace_id") == workspace_id and manifest.get("workspace_name"):
+    workspace_id = (manifest.get("workspace_id") if manifest else None) or ""
+    if manifest and manifest.get("workspace_name"):
         workspace_label = f"{manifest['workspace_name']}  ({workspace_id[:8]}…)"
     elif workspace_id:
         workspace_label = workspace_id
     else:
-        workspace_label = "(none)"
+        workspace_label = "(none — no manifest)"
 
     def row(label: str, value: str, *, highlight: bool = True) -> None:
         console.print(f"  [dim]{label}[/dim]{value}", highlight=highlight)
@@ -3209,11 +3129,9 @@ def config_cmd(
         False, "--project", help="Write to project-level config (.stash/config.json in the repo)."
     ),
 ):
-    """Show or set config. Keys: base_url, default_workspace, output_format.
+    """Show or set config. Keys: base_url, output_format.
 
-    By default writes to ~/.stash/config.json. Pass --project to write to
-    .stash/config.json in the current project (created if missing). Project
-    config overrides user config when both exist.
+    Writes to ~/.stash/config.json.
     """
     from .config import USER_CONFIG_FILE, find_project_config
 
@@ -3221,7 +3139,6 @@ def config_cmd(
         write_scope = "project" if project else "user"
         allowed = {
             "base_url",
-            "default_workspace",
             "default_chat",
             "output_format",
         }
