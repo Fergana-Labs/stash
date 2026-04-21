@@ -19,6 +19,15 @@
   --brand: #F97316;
   --brand-hover: #EA580C;
   --brand-ink: #7C2D12;
+  --brand-soft: rgba(249, 115, 22, 0.12);
+
+  --agent: #8B5CF6;
+  --agent-soft: rgba(139, 92, 246, 0.14);
+  --human: #3B82F6;
+  --human-soft: rgba(59, 130, 246, 0.14);
+
+  --shadow-card: 0 1px 2px rgba(15, 23, 42, 0.04), 0 12px 28px -18px rgba(15, 23, 42, 0.18);
+  --shadow-terminal: 0 30px 80px -40px rgba(15, 23, 42, 0.55);
 }
 
 @theme inline {
@@ -56,4 +65,13 @@ html, body {
 ::selection {
   background: var(--brand);
   color: #FFFFFF;
+}
+
+@keyframes live-pulse {
+  0%, 100% { box-shadow: 0 0 0 4px rgba(34, 197, 94, 0.15); }
+  50%      { box-shadow: 0 0 0 8px rgba(34, 197, 94, 0.04); }
+}
+
+@keyframes cursor-blink {
+  50% { opacity: 0; }
 }
