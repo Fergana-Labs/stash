@@ -89,14 +89,35 @@ async def get_me(current_user: dict = Depends(get_current_user)):
     return UserProfile(**current_user)
 
 
+@router.post("/logout", status_code=204)
+async def logout(current_user: dict = Depends(get_current_user)):
+    """Revoke the API key that authenticated this request. The caller must
+    also drop the key client-side — this just ensures the key can't be reused
+    if it was captured elsewhere."""
+    from ..database import get_pool
+
+    pool = get_pool()
+    await pool.execute(
+        "UPDATE user_api_keys SET revoked_at = now() "
+        "WHERE id = $1 AND revoked_at IS NULL",
+        current_user["key_id"],
+    )
+    return None
+
+
 @router.patch("/me", response_model=UserProfile)
 async def update_me(req: UserUpdateRequest, current_user: dict = Depends(get_current_user)):
-    updated = await user_service.update_user(
-        user_id=current_user["id"],
-        display_name=req.display_name,
-        description=req.description,
-        password=req.password,
-    )
+    try:
+        updated = await user_service.update_user(
+            user_id=current_user["id"],
+            display_name=req.display_name,
+            description=req.description,
+            password=req.password,
+            current_password=req.current_password,
+            current_key_id=current_user["key_id"],
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
     return UserProfile(**updated)
 
 

@@ -50,7 +50,8 @@ fi
 
 # --- Backend (FastAPI) ---
 echo "[backend]  Starting on port ${BACKEND_PORT}..."
-uvicorn backend.main:app --host 0.0.0.0 --port "$BACKEND_PORT" &
+uvicorn backend.main:app --host 0.0.0.0 --port "$BACKEND_PORT" \
+    --proxy-headers --forwarded-allow-ips '*' &
 PIDS+=($!)
 
 # --- Frontend (Next.js) ---

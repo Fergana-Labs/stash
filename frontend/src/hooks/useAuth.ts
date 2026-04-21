@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { ApiError, clearToken, getMe, getToken } from "../lib/api";
+import { ApiError, clearToken, getMe, getToken, logoutServer } from "../lib/api";
 import { User } from "../lib/types";
 
 const AUTH0_ENABLED = process.env.NEXT_PUBLIC_AUTH0_ENABLED === "true";
@@ -52,7 +52,14 @@ export function useAuth() {
     return () => window.removeEventListener("storage", onStorage);
   }, [loadUser]);
 
-  const logout = useCallback(() => {
+  const logout = useCallback(async () => {
+    // Revoke server-side first so a captured token can't outlive the click.
+    // Best-effort: if the network drops, we still clear the local token.
+    try {
+      await logoutServer();
+    } catch {
+      // swallow — server may already be down, key may already be revoked
+    }
     clearToken();
     setUser(null);
     if (AUTH0_ENABLED) {

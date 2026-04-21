@@ -96,8 +96,7 @@ async def get_current_user(
     )
     if not row:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid API key")
-    user = {k: v for k, v in dict(row).items() if k != "key_id"}
-    key_id = row["key_id"]
+    user = dict(row)
 
     uid = str(user["id"])
     now = time.monotonic()
@@ -105,7 +104,7 @@ async def get_current_user(
         _last_seen_written.set(uid, now)
         await pool.execute("UPDATE users SET last_seen = now() WHERE id = $1", user["id"])
         await pool.execute(
-            "UPDATE user_api_keys SET last_used_at = now() WHERE id = $1", key_id
+            "UPDATE user_api_keys SET last_used_at = now() WHERE id = $1", user["key_id"]
         )
     return user
 

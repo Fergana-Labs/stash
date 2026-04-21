@@ -125,11 +125,31 @@ export async function updateMe(data: {
   display_name?: string;
   description?: string;
   password?: string;
+  current_password?: string;
 }): Promise<User> {
   return apiFetch("/api/v1/users/me", {
     method: "PATCH",
     body: JSON.stringify(data),
   });
+}
+
+export async function logoutServer(): Promise<void> {
+  await apiFetch("/api/v1/users/logout", { method: "POST" });
+}
+
+export interface ApiKeyInfo {
+  id: string;
+  name: string;
+  created_at: string;
+  last_used_at: string | null;
+}
+
+export async function listMyKeys(): Promise<ApiKeyInfo[]> {
+  return apiFetch("/api/v1/users/me/keys");
+}
+
+export async function revokeMyKey(keyId: string): Promise<void> {
+  await apiFetch(`/api/v1/users/me/keys/${keyId}`, { method: "DELETE" });
 }
 
 export async function searchUsers(query: string): Promise<UserSearchResult[]> {

@@ -33,6 +33,9 @@ class UserUpdateRequest(BaseModel):
     display_name: str | None = Field(None, max_length=128)
     description: str | None = Field(None, max_length=500)
     password: str | None = Field(None, min_length=8, max_length=128)
+    # Required whenever `password` is set — stops a stolen session key from
+    # being enough to permanently take over the account.
+    current_password: str | None = Field(None, max_length=128)
 
 
 class LoginRequest(BaseModel):

@@ -16,4 +16,4 @@ USER stash
 
 EXPOSE 3456
 
-CMD ["uvicorn", "backend.main:app", "--host", "0.0.0.0", "--port", "3456"]
+CMD ["uvicorn", "backend.main:app", "--host", "0.0.0.0", "--port", "3456", "--proxy-headers", "--forwarded-allow-ips", "*"]
