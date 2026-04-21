@@ -7,6 +7,8 @@ from ..auth import get_current_user
 from ..config import settings
 from ..middleware import limiter
 from ..models import (
+    ApiKeyCreateRequest,
+    ApiKeyCreateResponse,
     ApiKeyInfo,
     LoginRequest,
     RedeemInviteRequest,
@@ -158,6 +160,33 @@ async def list_my_keys(current_user: dict = Depends(get_current_user)):
         current_user["id"],
     )
     return [ApiKeyInfo(**dict(r)) for r in rows]
+
+
+@router.post("/me/keys", response_model=ApiKeyCreateResponse, status_code=201)
+@limiter.limit("10/minute")
+async def create_my_key(
+    request: Request,
+    req: ApiKeyCreateRequest,
+    current_user: dict = Depends(get_current_user),
+):
+    """Mint a new API key for the current user. The raw key is returned once
+    and never shown again; only its hash is stored."""
+    from ..database import get_pool
+
+    api_key = await create_api_key(current_user["id"], name=req.name)
+    pool = get_pool()
+    from ..auth import hash_api_key
+
+    row = await pool.fetchrow(
+        "SELECT id, name, created_at FROM user_api_keys WHERE key_hash = $1",
+        hash_api_key(api_key),
+    )
+    return ApiKeyCreateResponse(
+        id=row["id"],
+        name=row["name"],
+        api_key=api_key,
+        created_at=row["created_at"],
+    )
 
 
 @router.delete("/me/keys/{key_id}", status_code=204)

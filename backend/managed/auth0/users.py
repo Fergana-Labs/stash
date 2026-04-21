@@ -30,7 +30,13 @@ async def get_or_create_user_from_auth0(
     name: str | None,
     key_name: str = "Auth0 login",
 ) -> tuple[dict, str]:
-    """Return (user_row, new_api_key). Mints a fresh key per exchange; prior keys stay valid."""
+    """Return (user_row, new_api_key).
+
+    Browser exchanges (key_name == "Auth0 login") are singletons per user:
+    the prior browser key is revoked before minting a new one, so reloading
+    /login doesn't pile up orphaned sessions. CLI keys (named "CLI (...)")
+    and user-minted keys are untouched.
+    """
     pool = get_pool()
 
     row = await pool.fetchrow(
@@ -40,6 +46,12 @@ async def get_or_create_user_from_auth0(
     )
     if row:
         await pool.execute("UPDATE users SET last_seen = now() WHERE id = $1", row["id"])
+        if key_name == "Auth0 login":
+            await pool.execute(
+                "UPDATE user_api_keys SET revoked_at = now() "
+                "WHERE user_id = $1 AND name = 'Auth0 login' AND revoked_at IS NULL",
+                row["id"],
+            )
         api_key = await create_api_key(row["id"], name=key_name)
         return dict(row), api_key
 

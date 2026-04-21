@@ -152,6 +152,20 @@ export async function revokeMyKey(keyId: string): Promise<void> {
   await apiFetch(`/api/v1/users/me/keys/${keyId}`, { method: "DELETE" });
 }
 
+export interface ApiKeyCreated {
+  id: string;
+  name: string;
+  api_key: string; // raw key — shown exactly once
+  created_at: string;
+}
+
+export async function createMyKey(name: string): Promise<ApiKeyCreated> {
+  return apiFetch("/api/v1/users/me/keys", {
+    method: "POST",
+    body: JSON.stringify({ name }),
+  });
+}
+
 export async function searchUsers(query: string): Promise<UserSearchResult[]> {
   return apiFetch(`/api/v1/users/search?q=${encodeURIComponent(query)}`);
 }

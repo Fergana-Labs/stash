@@ -6,7 +6,9 @@ import Header from "../../components/Header";
 import { useAuth } from "../../hooks/useAuth";
 import {
   ApiError,
+  ApiKeyCreated,
   ApiKeyInfo,
+  createMyKey,
   listMyKeys,
   revokeMyKey,
   updateMe,
@@ -139,6 +141,9 @@ function ActiveSessions() {
   const [keys, setKeys] = useState<ApiKeyInfo[] | null>(null);
   const [error, setError] = useState("");
   const [revoking, setRevoking] = useState<string | null>(null);
+  const [newKeyName, setNewKeyName] = useState("");
+  const [creating, setCreating] = useState(false);
+  const [minted, setMinted] = useState<ApiKeyCreated | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -167,13 +172,31 @@ function ActiveSessions() {
     }
   }
 
+  async function handleCreate(e: React.FormEvent) {
+    e.preventDefault();
+    setCreating(true);
+    setError("");
+    try {
+      const k = await createMyKey(newKeyName.trim() || "Personal token");
+      setMinted(k);
+      setNewKeyName("");
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not create key");
+    } finally {
+      setCreating(false);
+    }
+  }
+
   return (
     <section className="rounded-2xl border border-border bg-surface p-6 space-y-4">
       <div className="flex items-baseline justify-between">
         <div>
-          <h2 className="text-base font-semibold text-foreground">Active sessions</h2>
+          <h2 className="text-base font-semibold text-foreground">API keys & sessions</h2>
           <p className="text-xs text-muted mt-0.5">
-            Each browser tab and CLI install holds its own API key. Revoke anything you don&apos;t recognize.
+            Each browser tab and CLI install holds its own key. Create a personal
+            key to use the Stash API or CLI directly, and revoke anything you
+            don&apos;t recognize.
           </p>
         </div>
         <button
@@ -184,6 +207,27 @@ function ActiveSessions() {
           Refresh
         </button>
       </div>
+
+      {minted && <MintedKey minted={minted} onDismiss={() => setMinted(null)} />}
+
+      <form onSubmit={handleCreate} className="flex gap-2">
+        <input
+          type="text"
+          value={newKeyName}
+          onChange={(e) => setNewKeyName(e.target.value)}
+          placeholder="Key name (e.g. laptop, ci-runner)"
+          maxLength={128}
+          className="flex-1 px-3 py-2 rounded-lg border border-border bg-background text-foreground text-sm placeholder:text-muted focus:outline-none focus:border-brand focus:ring-2 focus:ring-brand/20 transition-all"
+        />
+        <button
+          type="submit"
+          disabled={creating}
+          className="bg-brand hover:bg-brand-hover disabled:opacity-60 text-white text-sm font-semibold px-4 py-2 rounded-lg transition-colors whitespace-nowrap"
+        >
+          {creating ? "Creating…" : "Create key"}
+        </button>
+      </form>
+
       {error && <p className="text-xs text-error">{error}</p>}
       {keys === null ? (
         <p className="text-sm text-muted">Loading…</p>
@@ -213,6 +257,52 @@ function ActiveSessions() {
         </ul>
       )}
     </section>
+  );
+}
+
+function MintedKey({
+  minted,
+  onDismiss,
+}: {
+  minted: ApiKeyCreated;
+  onDismiss: () => void;
+}) {
+  const [copied, setCopied] = useState(false);
+
+  async function copy() {
+    await navigator.clipboard.writeText(minted.api_key);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  }
+
+  return (
+    <div className="rounded-lg border border-brand/40 bg-brand/10 p-3 space-y-2">
+      <div className="text-xs text-foreground font-semibold">
+        New key “{minted.name}” created
+      </div>
+      <div className="text-[11px] text-muted">
+        Copy it now — this is the only time the full key will be shown.
+      </div>
+      <div className="flex items-center gap-2">
+        <code className="flex-1 font-mono text-xs text-foreground bg-background border border-border rounded px-2 py-1.5 overflow-x-auto whitespace-nowrap">
+          {minted.api_key}
+        </code>
+        <button
+          onClick={copy}
+          type="button"
+          className="text-xs px-3 py-1.5 rounded-md border border-border hover:border-brand hover:text-brand transition-colors"
+        >
+          {copied ? "Copied" : "Copy"}
+        </button>
+        <button
+          onClick={onDismiss}
+          type="button"
+          className="text-xs text-muted hover:text-foreground px-2"
+        >
+          Dismiss
+        </button>
+      </div>
+    </div>
   );
 }
 

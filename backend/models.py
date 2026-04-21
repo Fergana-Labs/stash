@@ -56,6 +56,17 @@ class ApiKeyInfo(BaseModel):
     last_used_at: datetime | None
 
 
+class ApiKeyCreateRequest(BaseModel):
+    name: str = Field("Personal token", min_length=1, max_length=128)
+
+
+class ApiKeyCreateResponse(BaseModel):
+    id: UUID
+    name: str
+    api_key: str  # raw token — shown exactly once
+    created_at: datetime
+
+
 # --- Workspaces ---
 
 
