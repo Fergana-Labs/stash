@@ -551,8 +551,6 @@ def _install_global_manifest(force: bool) -> tuple[str, str]:
     return ("installed", str(dest))
 
 
-
-
 @app.command()
 def whoami(as_json: bool = typer.Option(False, "--json")):
     """Show profile."""
@@ -2053,8 +2051,8 @@ def connect(
             gm_status, gm_detail = _install_global_manifest(force=False)
             if gm_status == "installed":
                 console.print(f"  [green]✓[/green] Global manifest written: {gm_detail}")
-        except Exception:
-            pass
+        except Exception as e:
+            console.print(f"  [yellow]⚠[/yellow] Could not write global manifest: {e}")
 
     # --- Step 1: API endpoint ---
     cfg = load_config()
