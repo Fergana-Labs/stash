@@ -10,7 +10,7 @@ export default function QuickstartPage() {
   return (
     <>
       <Title>Quickstart</Title>
-      <Subtitle>Install the CLI and start building shared knowledge in 5 minutes.</Subtitle>
+      <Subtitle>Install the CLI, connect your coding agent, and start building shared knowledge in 5 minutes.</Subtitle>
 
       <H3>1. Create an account</H3>
       <P>
@@ -53,7 +53,7 @@ stash login`}</CodeBlock>
         Curation runs automatically after agent sessions (with a 24-hour cooldown), organizing
         ingested data into a categorized wiki with <code className="text-brand font-mono text-[13px]">[[backlinks]]</code>,
         folders, and summaries. You can also trigger it manually with
-        the <code className="text-brand font-mono text-[13px]">/curate</code> slash command in Claude Code.
+        the <code className="text-brand font-mono text-[13px]">/curate</code> slash command in supported agents.
       </P>
       <Callout type="tip">
         The more data you push, the richer the wiki gets. The curation tool merges

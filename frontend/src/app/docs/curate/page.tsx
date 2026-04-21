@@ -26,7 +26,7 @@ export default function CuratePage() {
       <H3>Curation tool</H3>
       <P>
         Curation runs automatically after agent sessions end (with a 24-hour cooldown), or on
-        demand via the <Code>/curate</Code> slash command in Claude Code.
+        demand via the <Code>/curate</Code> slash command in supported agents.
         It reads history, notebooks, and tables, then calls Claude to create structured content:
       </P>
       <div className="rounded-2xl border border-border bg-surface divide-y divide-border my-6">

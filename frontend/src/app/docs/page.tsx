@@ -32,7 +32,7 @@ const PILLARS = [
 ];
 
 const QUICK_LINKS = [
-  { href: "/docs/quickstart", label: "Quickstart", desc: "Connect Claude Code and start in 5 minutes." },
+  { href: "/docs/quickstart", label: "Quickstart", desc: "Connect your coding agent and start in 5 minutes." },
   { href: "/docs/concepts", label: "Concepts", desc: "What workspaces, agent names, and history are." },
   { href: "/docs/cli", label: "CLI", desc: "Push events and manage resources from the terminal." },
   { href: "/docs/webhooks", label: "Webhooks", desc: "Subscribe to workspace events with HMAC delivery." },
@@ -52,12 +52,12 @@ export default function DocsOverview() {
         <Link href="/docs/quickstart" className="text-brand underline underline-offset-2">
           Quickstart
         </Link>{" "}
-        — connect Claude Code and start building shared knowledge in under 5 minutes.
+        — connect your coding agent and start building shared knowledge in under 5 minutes.
       </Callout>
 
       <H3>How Stash works</H3>
       <P>
-        Stash sits between your agents and the knowledge they generate. Every Claude Code session
+        Stash sits between your coding agents and the knowledge they generate. Every agent session
         streams automatically. Every research result, file, and message lands in a shared workspace.
         The curate tool organizes it into a categorized wiki —
         with backlinks, summaries, and semantic search — so any agent on your team can find and
