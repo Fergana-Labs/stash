@@ -42,8 +42,6 @@ def main():
     if codex_hooks_recently_active():
         return
     state = load_state(DATA_DIR)
-    if not state.get("streaming_enabled", True):
-        return
 
     data = _parse_argv()
     if data.get("type") != "agent-turn-complete":

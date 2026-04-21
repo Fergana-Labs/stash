@@ -21,7 +21,7 @@ def main():
     state = load_state(DATA_DIR)
     cfg = get_config()
 
-    if state.get("streaming_enabled", True) and cfg.get("workspace_id"):
+    if cfg.get("workspace_id"):
         event = adapt_session_end(get_stdin_data())
         try:
             with get_client() as client:

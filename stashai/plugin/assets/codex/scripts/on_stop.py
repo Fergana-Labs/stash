@@ -24,8 +24,6 @@ def main():
     # codex_hooks and notify are wired up.
     mark_codex_hooks_active()
     state = load_state(DATA_DIR)
-    if not state.get("streaming_enabled", True):
-        return
     event = adapt_stop(get_stdin_data())
     cfg = get_config()
     try:

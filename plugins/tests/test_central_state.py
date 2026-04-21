@@ -1,7 +1,7 @@
 """Central config + curate spawn gating tests.
 
-The shared `state.py` helpers read `auto_curate`, `streaming_enabled`, and
-`last_curate_at` from `~/.stash/config.json` so every installed plugin
+The shared `state.py` helpers read `auto_curate` and `last_curate_at`
+from `~/.stash/config.json` so every installed plugin
 shares one toggle surface. These tests patch `CENTRAL_CONFIG_PATH` to a
 tempdir and verify the read/write/gating logic.
 """
@@ -37,17 +37,6 @@ def test_auto_curate_toggle_round_trip(central):
     assert '"auto_curate": false' in path.read_text()
     state_mod.set_auto_curate(True)
     assert state_mod.auto_curate_enabled() is True
-
-
-def test_streaming_enabled_overlayed_into_load_state(central, tmp_path):
-    state_mod, _ = central
-    data_dir = tmp_path / "plugin-data"
-    state_mod.save_state(data_dir, {"streaming_enabled": True, "session_id": "x"})
-
-    state_mod.set_streaming_enabled(False)
-    loaded = state_mod.load_state(data_dir)
-    assert loaded["streaming_enabled"] is False
-    assert loaded["session_id"] == "x"
 
 
 def test_curate_cooldown_blocks_within_window(central):

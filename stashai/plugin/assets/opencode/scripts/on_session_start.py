@@ -19,7 +19,7 @@ from stashai.plugin.curate_spawn import spawn_curation
 
 def _flush_stale_session(prior_sid: str, state: dict) -> None:
     cfg = get_config()
-    if not (state.get("streaming_enabled", True) and cfg.get("workspace_id")):
+    if not cfg.get("workspace_id"):
         return
     stale_state = {**state, "session_id": prior_sid}
     stale_event = HookEvent(kind="session_end", session_id=prior_sid, cwd="")

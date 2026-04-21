@@ -10,8 +10,6 @@ def main():
     if not is_configured():
         return
     state = load_state(DATA_DIR)
-    if not state.get("streaming_enabled", True):
-        return
     event = adapt_tool_use(get_stdin_data())
     if not event.tool_name:
         return
