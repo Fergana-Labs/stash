@@ -25,8 +25,9 @@ export default function CuratePage() {
 
       <H3>Curation tool</H3>
       <P>
-        Run <Code>stash curate</Code> to organize your workspace data into wiki pages.
-        It reads history stores, notebooks, and tables, then calls Claude to create structured content:
+        Curation runs automatically after agent sessions end (with a 24-hour cooldown), or on
+        demand via the <Code>/curate</Code> slash command in Claude Code.
+        It reads history, notebooks, and tables, then calls Claude to create structured content:
       </P>
       <div className="rounded-2xl border border-border bg-surface divide-y divide-border my-6">
         {[
@@ -47,8 +48,8 @@ export default function CuratePage() {
       </div>
 
       <Callout type="tip">
-        Run curation whenever you want your knowledge base tidied up. The tool processes
-        new data since the last run and writes organized wiki pages into the target notebook.
+        Curation processes new data since the last run and writes organized wiki pages into
+        the target notebook. Toggle auto-curation on or off in <Code>stash settings</Code>.
       </Callout>
 
       <H3>Wiki features</H3>

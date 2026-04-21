@@ -24,7 +24,7 @@ export default function QuickstartPage() {
         <strong>Prefer the CLI?</strong> Instead of the web UI, run{" "}
         <code className="text-brand font-mono text-[13px]">stash connect</code> after installing{" "}
         <code className="text-brand font-mono text-[13px]">pip install stashai</code>. The
-        interactive wizard covers account creation, workspace creation, and history store setup
+        interactive wizard covers account creation and workspace creation
         in one shot — then come back to step 2.
       </P>
 
@@ -50,13 +50,15 @@ stash login`}</CodeBlock>
 
       <H3>4. Curate your knowledge base</H3>
       <P>
-        Use the <code className="text-brand font-mono text-[13px]">stash curate</code> CLI command to organize
+        Curation runs automatically after agent sessions (with a 24-hour cooldown), organizing
         ingested data into a categorized wiki with <code className="text-brand font-mono text-[13px]">[[backlinks]]</code>,
-        folders, and summaries.
+        folders, and summaries. You can also trigger it manually with
+        the <code className="text-brand font-mono text-[13px]">/curate</code> slash command in Claude Code.
       </P>
       <Callout type="tip">
         The more data you push, the richer the wiki gets. The curation tool merges
         duplicates, creates category pages, and links related content automatically.
+        Toggle auto-curation in <code className="text-brand font-mono text-[13px]">stash settings</code>.
       </Callout>
     </>
   );

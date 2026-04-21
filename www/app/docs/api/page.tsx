@@ -12,12 +12,11 @@ export default function APIPage() {
       <Callout type="info">
         <strong>Authentication</strong> — include{" "}
         <code className="font-mono text-[13px]">Authorization: Bearer {"<api_key>"}</code> on every request.
-        Get your API key from the settings page or via <Code>POST /auth/login</Code>.
+        Get your API key from the settings page or via <Code>POST /users/login</Code>.
         <br /><br />
         <strong>OpenAPI spec</strong> — the full interactive spec is available at{" "}
-        <Code>/docs</Code> on your backend instance (or{" "}
-        <a href="https://stash.ac/docs" className="text-brand underline underline-offset-2">stash.ac/docs</a>
-        ).
+        <Code>/docs</Code> on your backend instance (e.g.{" "}
+        <Code>http://localhost:3456/docs</Code>).
       </Callout>
 
       <H3>Auth</H3>
@@ -27,12 +26,16 @@ GET    /users/me            Current user profile
 PATCH  /users/me            Update profile (name, avatar, etc.)`}</CodeBlock>
 
       <H3>Workspaces</H3>
-      <CodeBlock>{`POST   /workspaces              Create a new workspace
-GET    /workspaces              List all public workspaces
-GET    /workspaces/mine         List workspaces you're a member of
-POST   /workspaces/{ws}/join    Join by invite code
-GET    /workspaces/{ws}         Workspace details and metadata
-GET    /workspaces/{ws}/members List workspace members with roles`}</CodeBlock>
+      <CodeBlock>{`POST   /workspaces                          Create a new workspace
+GET    /workspaces                          List all public workspaces
+GET    /workspaces/mine                     List workspaces you're a member of
+POST   /workspaces/join/{invite_code}       Join by invite code
+GET    /workspaces/{ws}                     Workspace details and metadata
+PATCH  /workspaces/{ws}                     Update workspace
+DELETE /workspaces/{ws}                     Delete workspace
+GET    /workspaces/{ws}/members             List workspace members with roles
+POST   /workspaces/{ws}/members             Add a member
+POST   /workspaces/{ws}/leave               Leave workspace`}</CodeBlock>
 
       <H3>Notebooks & pages</H3>
       <CodeBlock>{`POST   /workspaces/{ws}/notebooks                          Create notebook
@@ -48,27 +51,26 @@ GET    /workspaces/{ws}/notebooks/{nb}/graph               Page link graph (node
 
 GET    /workspaces/{ws}/notebooks/{nb}/pages/semantic-search?q=   Semantic search`}</CodeBlock>
 
-      <H3>History stores</H3>
-      <CodeBlock>{`POST   /workspaces/{ws}/memory                              Create store
-POST   /workspaces/{ws}/memory/{store}/events               Push a single event
-POST   /workspaces/{ws}/memory/{store}/events/batch         Push a batch of events
-GET    /workspaces/{ws}/memory/{store}/events               Query events (filter, paginate)
-GET    /workspaces/{ws}/memory/{store}/events/search?q=     Full-text search
-POST   /workspaces/{ws}/memory/{store}/query                LLM synthesis over events`}</CodeBlock>
-
-      <H3>Universal search</H3>
-      <CodeBlock>{`POST   /workspaces/{ws}/search      Workspace-scoped search across all resources
-POST   /me/search                   Personal search (outside any workspace)`}</CodeBlock>
-      <P>
-        Both accept a <Code>{"{ query, types, limit }"}</Code> body. Set{" "}
-        <Code>types</Code> to filter by resource (e.g. <Code>{`"history,notebook,table"`}</Code>).
-      </P>
+      <H3>History</H3>
+      <CodeBlock>{`POST   /workspaces/{ws}/memory/events               Push a single event
+POST   /workspaces/{ws}/memory/events/batch         Push a batch of events
+GET    /workspaces/{ws}/memory/events               Query events (filter, paginate)
+GET    /workspaces/{ws}/memory/events/search?q=     Full-text search
+GET    /workspaces/{ws}/memory/events/{id}          Get a specific event
+GET    /workspaces/{ws}/memory/agent-names           List distinct agent names
+DELETE /workspaces/{ws}/memory/agents/{agent_name}  Delete all events for an agent`}</CodeBlock>
 
       <H3>Files</H3>
-      <CodeBlock>{`POST   /workspaces/{ws}/files          Upload a file (multipart/form-data)
-GET    /workspaces/{ws}/files          List files
-GET    /workspaces/{ws}/files/{id}     Get file metadata + presigned download URL
-DELETE /workspaces/{ws}/files/{id}     Delete a file`}</CodeBlock>
+      <CodeBlock>{`POST   /workspaces/{ws}/files                Upload a file (multipart/form-data)
+GET    /workspaces/{ws}/files                List files
+GET    /workspaces/{ws}/files/{id}           Get file metadata
+GET    /workspaces/{ws}/files/{id}/download  Download file (redirects to signed URL)
+GET    /workspaces/{ws}/files/{id}/text      Get extracted text (PDF, OCR, plain text)
+DELETE /workspaces/{ws}/files/{id}           Delete a file`}</CodeBlock>
+
+      <H3>Transcripts</H3>
+      <CodeBlock>{`POST   /workspaces/{ws}/transcripts                Upload a session transcript
+GET    /workspaces/{ws}/transcripts/{session_id}   Get transcript`}</CodeBlock>
 
       <H3>Tables & rows</H3>
       <CodeBlock>{`POST   /workspaces/{ws}/tables                               Create table
@@ -85,11 +87,18 @@ POST   /workspaces/{ws}/tables/{tbl}/embedding/backfill      Backfill embeddings
 
       <H3>Permissions</H3>
       <P>
-        Every workspace resource has a visibility setting. Set it with a{" "}
-        <Code>PATCH</Code> on the resource or via the dedicated visibility endpoint:
+        Notebooks and tables have per-resource visibility and sharing. Use the
+        permissions endpoints on each resource type:
       </P>
-      <CodeBlock>{`PUT /workspaces/{ws}/{resource_type}/{id}/visibility
-body: { "visibility": "inherit" | "private" | "public" }`}</CodeBlock>
+      <CodeBlock>{`GET    /workspaces/{ws}/notebooks/{id}/permissions            Get visibility + shares
+PATCH  /workspaces/{ws}/notebooks/{id}/permissions            Set visibility
+POST   /workspaces/{ws}/notebooks/{id}/permissions/share      Share with a user
+DELETE /workspaces/{ws}/notebooks/{id}/permissions/share/{uid} Remove share
+
+GET    /workspaces/{ws}/tables/{id}/permissions               Get visibility + shares
+PATCH  /workspaces/{ws}/tables/{id}/permissions               Set visibility
+POST   /workspaces/{ws}/tables/{id}/permissions/share         Share with a user
+DELETE /workspaces/{ws}/tables/{id}/permissions/share/{uid}   Remove share`}</CodeBlock>
       <div className="rounded-2xl border border-border bg-surface divide-y divide-border my-6">
         {[
           { v: "inherit", desc: "Default. All workspace members have access (read + write based on role)." },
@@ -106,9 +115,11 @@ body: { "visibility": "inherit" | "private" | "public" }`}</CodeBlock>
       <H3>Rate limits</H3>
       <div className="rounded-2xl border border-border bg-surface divide-y divide-border my-6">
         {[
-          { endpoint: "REST reads", limit: "60 requests / minute" },
-          { endpoint: "File upload", limit: "10 requests / minute" },
-          { endpoint: "Auth endpoints", limit: "20 requests / minute" },
+          { endpoint: "Register", limit: "5 requests / minute" },
+          { endpoint: "Login", limit: "10 requests / minute" },
+          { endpoint: "Create API key", limit: "10 requests / minute" },
+          { endpoint: "CLI auth sessions", limit: "10 requests / minute" },
+          { endpoint: "CLI auth poll", limit: "60 requests / minute" },
         ].map((r) => (
           <div key={r.endpoint} className="flex gap-5 px-5 py-4">
             <span className="text-[13px] font-semibold text-foreground w-56 flex-shrink-0">{r.endpoint}</span>
@@ -117,16 +128,13 @@ body: { "visibility": "inherit" | "private" | "public" }`}</CodeBlock>
         ))}
       </div>
 
-      <H3>Personal endpoints</H3>
-      <P>
-        Most workspace-scoped endpoints have a personal variant. For notebooks, for example:{" "}
-        <Code>/me/notebooks</Code>. Personal endpoints return resources not tied to any workspace.
-        Full list available in the{" "}
-        <a href="https://stash.ac/docs" className="text-brand underline underline-offset-2">
-          OpenAPI spec
-        </a>
-        .
-      </P>
+      <H3>Personal / aggregate endpoints</H3>
+      <CodeBlock>{`GET    /me/notebooks              List all your notebooks (cross-workspace)
+GET    /me/history-events          List all your history events (cross-workspace)
+GET    /me/tables                  List all your tables (cross-workspace)
+GET    /me/activity-timeline       Activity timeline for dashboard
+GET    /me/knowledge-density       Knowledge density heatmap data
+GET    /me/embedding-projection    2D embedding projection for space explorer`}</CodeBlock>
     </>
   );
 }

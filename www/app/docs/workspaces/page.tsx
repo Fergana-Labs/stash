@@ -10,7 +10,7 @@ export default function WorkspacesPage() {
 
       <P>
         Create a workspace, invite team members, and everything you
-        build — notebooks, chats, history stores, tables, files, pages — is shared and scoped
+        build — notebooks, history, tables, files, pages — is shared and scoped
         to that workspace. Workspaces are isolated: no resource leaks between them.
       </P>
 
@@ -46,17 +46,12 @@ export default function WorkspacesPage() {
         ))}
       </div>
 
-      <Callout type="tip">
-        The curation tool uses <strong>object-level permissions</strong> — it writes
-        to a <em>personal</em> notebook (private by default) and only publishes summaries
-        to shared workspace notebooks when configured to do so.
-      </Callout>
-
       <H3>Personal resources</H3>
       <P>
-        Notebooks, tables, history stores, and files can also exist outside any workspace as
-        personal resources. The curation tool writes to the user&apos;s personal notebook by default.
-        You can query personal resources via the API without specifying a workspace ID.
+        Notebooks, tables, and files can also exist outside any workspace as
+        personal resources. You can query personal resources via the API
+        using the <code className="text-brand font-mono text-[13px]">/me/</code> endpoints
+        without specifying a workspace ID.
       </P>
     </>
   );

@@ -5,13 +5,13 @@ const CONCEPTS: { name: string; badge: string; badgeColor: string; desc: React.R
     name: "Workspace",
     badge: "Container",
     badgeColor: "bg-blue-500/10 text-blue-500",
-    desc: "Top-level permissioned container. Members share all resources — notebooks, history stores, tables, files. Invite others with a short code. Set visibility to public or private.",
+    desc: "Top-level permissioned container. Members share all resources — notebooks, history, tables, files. Invite others with a short code. Set visibility to public or private.",
   },
   {
-    name: "History Store",
-    badge: "History",
+    name: "History",
+    badge: "Events",
     badgeColor: "bg-brand/10 text-brand",
-    desc: "Append-only event log. Every tool call, message, and session event is recorded with timestamps, agent names, and metadata. Events are grouped by agent_name and session_id for a conversation-like view. Searchable via full-text and semantic search.",
+    desc: "Append-only event log scoped to a workspace. Every tool call, message, and session event is recorded with timestamps, agent names, and metadata. Events are grouped by agent_name and session_id for a conversation-like view. Searchable via full-text search.",
   },
   {
     name: "Notebook",
@@ -47,7 +47,7 @@ const CONCEPTS: { name: string; badge: string; badgeColor: string; desc: React.R
     name: "Curation",
     badge: "Tool",
     badgeColor: "bg-amber-500/10 text-amber-600",
-    desc: "CLI command that reads workspace data (history, notebooks, tables) and calls Claude to organize it into categorized wiki pages — merging duplicates, creating backlinks, and organizing folders. Run it whenever you want your knowledge base tidied up.",
+    desc: "Automated process that reads workspace data (history, notebooks, tables) and calls Claude to organize it into categorized wiki pages — merging duplicates, creating backlinks, and organizing folders. Runs automatically after agent sessions (with a 24-hour cooldown) or on demand via the /curate slash command in Claude Code.",
   },
 ];
 
