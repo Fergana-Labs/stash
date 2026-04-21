@@ -43,6 +43,15 @@ export function clearToken() {
   localStorage.removeItem(TOKEN_KEY);
 }
 
+export class ApiError extends Error {
+  status: number;
+  constructor(status: number, message: string) {
+    super(message);
+    this.status = status;
+    this.name = "ApiError";
+  }
+}
+
 // Scope = workspace-scoped when workspaceId is set, personal otherwise.
 // Used everywhere a resource has both /api/v1/workspaces/{ws}/... and /api/v1/... variants.
 function scope(workspaceId: string | null): string {
@@ -66,7 +75,14 @@ export async function apiFetch<T>(
   const res = await fetch(`${API_BASE}${path}`, { ...options, headers });
   if (!res.ok) {
     const body = await res.json().catch(() => ({ detail: res.statusText }));
-    throw new Error(body.detail || `API error ${res.status}`);
+    const detail = body.detail;
+    const msg =
+      typeof detail === "string"
+        ? detail
+        : Array.isArray(detail) && detail[0]?.msg
+        ? String(detail[0].msg)
+        : `API error ${res.status}`;
+    throw new ApiError(res.status, msg);
   }
   if (res.status === 204) return undefined as T;
   return res.json();

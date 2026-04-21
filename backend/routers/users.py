@@ -17,6 +17,7 @@ from ..models import (
     UserSearchResult,
     UserUpdateRequest,
 )
+from ..auth import create_api_key
 from ..services import invite_token_service, user_service
 
 router = APIRouter(prefix="/api/v1/users", tags=["users"])
@@ -220,17 +221,24 @@ async def redeem_invite_unauthenticated(request: Request, req: RedeemInviteReque
 
 @router.post("/cli-auth/sessions/{session_id}/approve")
 @limiter.limit("10/minute")
-async def approve_cli_auth_session(request: Request, session_id: str):
-    """Called by the frontend after login to approve the CLI session."""
-    body = await request.json()
-    api_key = body.get("api_key")
-    username = body.get("username")
-    if not api_key or not username:
-        raise HTTPException(status_code=400, detail="api_key and username required")
+async def approve_cli_auth_session(
+    request: Request,
+    session_id: str,
+    current_user: dict = Depends(get_current_user),
+):
+    """Approve a CLI session with a freshly-minted key for the current user.
+
+    The browser must be authenticated — we don't trust an `api_key` from the
+    request body, because that would let any logged-in tab hand the CLI the
+    browser's own session key. Instead we mint a new named key scoped to this
+    device, so each CLI install has its own revocable identity.
+    """
     _prune_cli_sessions()
     session = _cli_sessions.get(session_id)
     if not session:
         raise HTTPException(status_code=404, detail="Session not found or expired")
+    device_name = session.get("device_name") or "CLI"
+    api_key = await create_api_key(current_user["id"], name=f"CLI ({device_name})")
     session["api_key"] = api_key
-    session["username"] = username
+    session["username"] = current_user["name"]
     return {"status": "approved"}

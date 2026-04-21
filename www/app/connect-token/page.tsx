@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
+import ConnectTokenClient from "./ConnectTokenClient";
+
 export const dynamic = "force-dynamic";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "https://api.stash.ac";
@@ -8,9 +10,11 @@ const AUTH0_ENABLED = process.env.NEXT_PUBLIC_AUTH0_ENABLED === "true";
 
 type Search = { session?: string; device?: string };
 
-// Server component. Expects `?session=<id>` from `stash signin`: mints a token
-// and POSTs it to /cli-auth/sessions/<id>/approve so the CLI (which is polling)
-// can pick it up. Missing session id is a bug, not a user flow.
+// Server-side gate: confirm Auth0 session, then hand off to the client
+// component which shows an explicit "Authorize CLI" confirmation before
+// minting any token. We used to do the whole exchange+approve dance during
+// SSR, which silently handed the CLI a token just because a browser session
+// happened to exist — no confirmation, no chance to switch accounts.
 export default async function ConnectTokenPage({
   searchParams,
 }: {
@@ -53,71 +57,30 @@ export default async function ConnectTokenPage({
     redirect(`/auth/login?returnTo=${encodeURIComponent(returnTo)}`);
   }
 
-  const accessToken = session.tokenSet.accessToken;
-  const exchangeUrl = new URL(`${API_URL}/api/v1/auth0/exchange`);
-  if (device) exchangeUrl.searchParams.set("device", device);
-  const res = await fetch(exchangeUrl.toString(), {
-    method: "POST",
-    headers: { Authorization: `Bearer ${accessToken}` },
-    cache: "no-store",
-  });
-
-  if (!res.ok) {
-    const detail = await res.text().catch(() => "");
-    return (
-      <Shell>
-        <Heading>Sign-in worked, but the token exchange failed</Heading>
-        <Body>
-          The Stash backend rejected your Auth0 token. Try signing out and back in.
-        </Body>
-        {detail ? <Pre>{detail.slice(0, 500)}</Pre> : null}
-        <Link href="/auth/logout" className="text-[14px] text-brand hover:underline">
-          Sign out
-        </Link>
-      </Shell>
-    );
-  }
-
-  const data = (await res.json()) as { api_key: string; name: string; display_name?: string };
-  const userName = data.display_name || data.name;
-
-  const approveRes = await fetch(
-    `${API_URL}/api/v1/users/cli-auth/sessions/${encodeURIComponent(sessionId)}/approve`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ api_key: data.api_key, username: data.name }),
-      cache: "no-store",
-    },
-  );
-
-  if (!approveRes.ok) {
-    const detail = await approveRes.text().catch(() => "");
-    return (
-      <Shell>
-        <p className="font-mono text-[11px] uppercase tracking-[0.14em] text-muted">
-          Signed in as {userName}
-        </p>
-        <Heading>Could not hand the token to your CLI</Heading>
-        <Body>
-          Your CLI session may have expired. Re-run <code>stash signin</code> and try again.
-        </Body>
-        {detail ? <Pre>{detail.slice(0, 500)}</Pre> : null}
-      </Shell>
-    );
-  }
+  const userName =
+    (session.user?.name as string | undefined) ||
+    (session.user?.email as string | undefined) ||
+    "your account";
 
   return (
     <Shell>
       <p className="font-mono text-[11px] uppercase tracking-[0.14em] text-muted">
         Signed in as {userName}
       </p>
-      <Heading>You&apos;re signed in.</Heading>
+      <Heading>Authorize the Stash CLI?</Heading>
       <Body>
-        Head back to your terminal — <code>stash signin</code> has the token and will finish
-        wiring up your workspace.
+        A new API key scoped to this terminal will be minted and handed to your CLI.
+        You can revoke it anytime from account settings.
       </Body>
-      <Body>You can close this tab.</Body>
+      <ConnectTokenClient
+        apiUrl={API_URL}
+        sessionId={sessionId}
+        device={device}
+        userName={userName}
+      />
+      <Link href="/auth/logout" className="mt-6 inline-block text-[14px] text-brand hover:underline">
+        Use a different account
+      </Link>
     </Shell>
   );
 }
@@ -141,13 +104,5 @@ function Heading({ children }: { children: React.ReactNode }) {
 function Body({ children }: { children: React.ReactNode }) {
   return (
     <p className="mt-4 max-w-[560px] text-[16px] leading-[1.6] text-dim">{children}</p>
-  );
-}
-
-function Pre({ children }: { children: React.ReactNode }) {
-  return (
-    <pre className="mt-3 overflow-x-auto rounded-lg bg-raised px-4 py-3 font-mono text-[13px] leading-[1.5] text-ink">
-      {children}
-    </pre>
   );
 }

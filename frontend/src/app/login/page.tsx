@@ -4,7 +4,7 @@ import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Header from "../../components/Header";
 import { useAuth } from "../../hooks/useAuth";
-import { setToken, listMyWorkspaces } from "../../lib/api";
+import { getToken, setToken, listMyWorkspaces } from "../../lib/api";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3456";
 const AUTH0_ENABLED = process.env.NEXT_PUBLIC_AUTH0_ENABLED === "true";
@@ -34,33 +34,17 @@ function LoginPageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const cliSession = searchParams.get("cli");
-  const { user, logout, refresh } = useAuth();
+  const { user, loading, logout, refresh } = useAuth();
+  const [mode, setMode] = useState<"login" | "register">("login");
   const [name, setName] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [cliApproved, setCliApproved] = useState(false);
 
-  // If already logged in and this is a CLI auth request, approve immediately
-  useEffect(() => {
-    if (!user || !cliSession || cliApproved) return;
-    const token = localStorage.getItem("stash_token");
-    if (!token) return;
-
-    fetch(`${API_URL}/api/v1/users/cli-auth/sessions/${cliSession}/approve`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ api_key: token, username: user.name }),
-    })
-      .then((res) => {
-        if (res.ok) setCliApproved(true);
-      })
-      .catch(() => {});
-  }, [user, cliSession, cliApproved]);
-
   // Normal redirect for non-CLI logins
   useEffect(() => {
-    if (!user || cliSession) return;
+    if (loading || !user || cliSession) return;
 
     listMyWorkspaces().then(({ workspaces }) => {
       if (workspaces.length === 1) {
@@ -71,7 +55,13 @@ function LoginPageInner() {
     }).catch(() => {
       router.push("/");
     });
-  }, [user, cliSession, router]);
+  }, [user, loading, cliSession, router]);
+
+  // Wait for useAuth to load before rendering — otherwise the signed-out form
+  // flashes on every /login hit even for already-signed-in users.
+  if (loading) {
+    return <div className="min-h-screen flex items-center justify-center text-muted">Loading...</div>;
+  }
 
   if (cliApproved) {
     return <CliSuccess user={user} logout={logout} cliSession={cliSession} />;
@@ -92,29 +82,20 @@ function LoginPageInner() {
     );
   }
 
-  // Single CTA: try login, fall back to register if the user doesn't exist.
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError("");
     setSubmitting(true);
     try {
-      let res = await fetch(`${API_URL}/api/v1/users/login`, {
+      const endpoint = mode === "login" ? "login" : "register";
+      const body = mode === "login"
+        ? { name, password }
+        : { name, display_name: name, description: "", password };
+      const res = await fetch(`${API_URL}/api/v1/users/${endpoint}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, password }),
+        body: JSON.stringify(body),
       });
-
-      if (res.status === 401) {
-        const reg = await fetch(`${API_URL}/api/v1/users/register`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ name, display_name: name, description: "", password }),
-        });
-        if (reg.status === 409) {
-          throw new Error("Wrong password for this username");
-        }
-        res = reg;
-      }
 
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
@@ -125,11 +106,16 @@ function LoginPageInner() {
       setToken(data.api_key);
 
       if (cliSession) {
-        await fetch(`${API_URL}/api/v1/users/cli-auth/sessions/${cliSession}/approve`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ api_key: data.api_key, username: data.name }),
-        });
+        const approveRes = await fetch(
+          `${API_URL}/api/v1/users/cli-auth/sessions/${cliSession}/approve`,
+          {
+            method: "POST",
+            headers: { Authorization: `Bearer ${data.api_key}` },
+          },
+        );
+        if (!approveRes.ok) {
+          throw new Error("CLI session expired. Re-run `stash signin` and try again.");
+        }
         setCliApproved(true);
       }
 
@@ -141,24 +127,60 @@ function LoginPageInner() {
     }
   }
 
+  // Already-signed-in + CLI session: show a dedicated authorize button instead
+  // of silently approving. This way the user confirms which account the CLI
+  // gets, and a fresh named key is minted rather than leaking the browser's.
+  if (user && cliSession) {
+    return (
+      <CliShell user={user} logout={logout} cliSession={cliSession}>
+        <AuthorizeCliPanel
+          username={user.name}
+          cliSession={cliSession}
+          onApproved={() => setCliApproved(true)}
+          onUseDifferentAccount={logout}
+        />
+      </CliShell>
+    );
+  }
+
   const ctaLabel = submitting
-    ? (cliSession ? "Authorizing..." : "Continuing...")
-    : (cliSession ? "Authorize CLI" : "Continue");
+    ? (mode === "login" ? "Signing in..." : "Creating account...")
+    : cliSession
+    ? (mode === "login" ? "Sign in & authorize CLI" : "Create account & authorize CLI")
+    : (mode === "login" ? "Sign in" : "Create account");
+
+  const formBody = (
+    <>
+      <form onSubmit={handleSubmit} className="space-y-3">
+        <FormField type="text" placeholder="Username" value={name} onChange={setName} autoFocus />
+        <FormField type="password" placeholder="Password" value={password} onChange={setPassword} />
+        {error && <ErrorLine message={error} />}
+        <BrandButton submitting={submitting} label={ctaLabel} />
+      </form>
+      <p className="text-[11px] text-muted text-center pt-1">
+        {mode === "login" ? (
+          <>
+            New here?{" "}
+            <button type="button" onClick={() => { setMode("register"); setError(""); }} className="text-brand hover:underline">
+              Create an account
+            </button>
+          </>
+        ) : (
+          <>
+            Already have an account?{" "}
+            <button type="button" onClick={() => { setMode("login"); setError(""); }} className="text-brand hover:underline">
+              Sign in
+            </button>
+          </>
+        )}
+      </p>
+    </>
+  );
 
   if (cliSession) {
     return (
       <CliShell user={user} logout={logout} cliSession={cliSession}>
-        <FormCard>
-          <form onSubmit={handleSubmit} className="space-y-3">
-            <FormField type="text" placeholder="Username" value={name} onChange={setName} autoFocus />
-            <FormField type="password" placeholder="Password" value={password} onChange={setPassword} />
-            {error && <ErrorLine message={error} />}
-            <BrandButton submitting={submitting} label={ctaLabel} />
-          </form>
-          <p className="text-[11px] text-muted text-center pt-1">
-            New here? Just pick a username and password — we&rsquo;ll create your account automatically.
-          </p>
-        </FormCard>
+        <FormCard>{formBody}</FormCard>
         <p className="text-center text-[11px] text-muted leading-relaxed max-w-[340px] mx-auto">
           By authorizing, you grant this terminal session a personal API key on your behalf.
           You can revoke it any time from your account settings.
@@ -173,20 +195,85 @@ function LoginPageInner() {
       <main className="flex-1 flex items-center justify-center px-4 py-12">
         <div className="w-full max-w-sm space-y-4">
           <div className="rounded-2xl border border-border bg-surface p-6 space-y-4">
-            <h2 className="text-base font-semibold text-foreground">Sign in or create an account</h2>
-            <form onSubmit={handleSubmit} className="space-y-3">
-              <FormField type="text" placeholder="Username" value={name} onChange={setName} />
-              <FormField type="password" placeholder="Password" value={password} onChange={setPassword} />
-              {error && <ErrorLine message={error} />}
-              <BrandButton submitting={submitting} label={ctaLabel} />
-            </form>
-            <p className="text-[11px] text-muted text-center">
-              New here? Pick a username and password and we&rsquo;ll create your account automatically.
-            </p>
+            <h2 className="text-base font-semibold text-foreground">
+              {mode === "login" ? "Sign in" : "Create an account"}
+            </h2>
+            {formBody}
           </div>
         </div>
       </main>
     </div>
+  );
+}
+
+// --- Authorize CLI (already signed-in) ---------------------------------------
+
+function AuthorizeCliPanel({
+  username,
+  cliSession,
+  onApproved,
+  onUseDifferentAccount,
+}: {
+  username: string;
+  cliSession: string;
+  onApproved: () => void;
+  onUseDifferentAccount: () => void;
+}) {
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState("");
+
+  async function handleAuthorize() {
+    setError("");
+    setSubmitting(true);
+    try {
+      const token = getToken();
+      if (!token) throw new Error("Not signed in");
+      const res = await fetch(
+        `${API_URL}/api/v1/users/cli-auth/sessions/${cliSession}/approve`,
+        {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}` },
+        },
+      );
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(formatApiError(data.detail, "Could not authorize CLI"));
+      }
+      onApproved();
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Something went wrong");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <FormCard>
+      <div className="space-y-3 text-center">
+        <p className="text-sm text-foreground">
+          Authorize CLI as <span className="font-semibold">{username}</span>?
+        </p>
+        <p className="text-[11px] text-muted">
+          A new API key scoped to this terminal will be created. You can revoke it anytime from account settings.
+        </p>
+        {error && <ErrorLine message={error} />}
+        <button
+          type="button"
+          onClick={handleAuthorize}
+          disabled={submitting}
+          className="w-full bg-brand hover:bg-brand-hover text-white py-2.5 rounded-xl text-sm font-semibold transition-all disabled:opacity-60"
+        >
+          {submitting ? "Authorizing..." : "Authorize CLI"}
+        </button>
+        <button
+          type="button"
+          onClick={onUseDifferentAccount}
+          className="text-[11px] text-muted hover:text-foreground"
+        >
+          Use a different account
+        </button>
+      </div>
+    </FormCard>
   );
 }
 
