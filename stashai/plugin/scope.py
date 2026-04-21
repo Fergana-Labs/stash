@@ -34,7 +34,7 @@ def _git_repo_info(cwd: Path) -> tuple[Path | None, Path | None]:
         toplevel = Path(lines[0]).resolve()
         common_dir = Path(lines[1])
         if not common_dir.is_absolute():
-            common_dir = (cwd / common_dir).resolve()
+            common_dir = (toplevel / common_dir).resolve()
         main_root = common_dir.parent
         return toplevel, main_root
     except Exception:
@@ -42,24 +42,24 @@ def _git_repo_info(cwd: Path) -> tuple[Path | None, Path | None]:
 
 
 def find_manifest(cwd: str | None) -> dict | None:
-    """Walk up from cwd and return the most relevant `.stash/stash.json`.
+    """Return the `.stash/stash.json` for cwd.
 
-    Priority (highest first):
-    1. Main repo's manifest (if cwd is in a linked worktree)
-    2. Manifest in cwd or ancestors (walk-up)
+    If inside a git repo, checks the main worktree root (works for both
+    regular checkouts and linked worktrees). Falls back to walking up
+    from cwd for non-git directories.
     """
     if not cwd:
         return None
     cur = Path(cwd).resolve()
 
-    toplevel, main_root = _git_repo_info(cur)
-    if main_root and main_root != toplevel:
+    _toplevel, main_root = _git_repo_info(cur)
+    if main_root:
         main_path = main_root / ".stash" / _MANIFEST_FILENAME
         if main_path.exists():
             try:
                 return json.loads(main_path.read_text())
             except Exception:
-                pass
+                return None
 
     for parent in [cur, *cur.parents]:
         path = parent / ".stash" / _MANIFEST_FILENAME
@@ -86,8 +86,8 @@ def repo_stash_disabled(cwd: str | None) -> bool:
         return False
     cur = Path(cwd).resolve()
 
-    toplevel, main_root = _git_repo_info(cur)
-    if main_root and main_root != toplevel:
+    _toplevel, main_root = _git_repo_info(cur)
+    if main_root:
         candidate = main_root / ".stash" / _CONFIG_FILENAME
         if candidate.exists():
             try:
