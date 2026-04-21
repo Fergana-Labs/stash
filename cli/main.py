@@ -46,10 +46,6 @@ def _default_workspace() -> str:
     if manifest and manifest.get("workspace_id"):
         return manifest["workspace_id"]
 
-    ws = load_config().get("default_workspace", "")
-    if ws:
-        return ws
-
     with _client() as c:
         mine = c.list_workspaces(mine=True)
     if not mine:
