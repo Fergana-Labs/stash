@@ -534,7 +534,9 @@ function WikiPageInner() {
                           onClick={() => handleSelectNotebook(nb)}
                           className="w-full text-left flex items-center gap-3 px-4 py-3 rounded-lg border border-border bg-surface hover:bg-raised transition-colors mb-2"
                         >
-                          <div className="w-8 h-8 rounded-md bg-green-500/15 text-green-500 flex items-center justify-center text-xs font-bold flex-shrink-0">N</div>
+                          <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-md bg-raised font-mono text-[12px] font-bold text-muted">
+                            W
+                          </div>
                           <div className="min-w-0 flex-1">
                             <div className="text-sm font-medium text-foreground">{nb.name}</div>
                             {nb.description && <div className="text-xs text-muted truncate">{nb.description}</div>}
@@ -665,19 +667,24 @@ function WikiPageInner() {
 
                     {/* Backlinks */}
                     {backlinks.length > 0 && (
-                      <div className="max-w-[720px] mx-auto w-full px-8 pb-10">
-                        <div className="border-t border-border/50 pt-6 mt-2">
-                          <h4 className="text-[11px] font-medium text-muted uppercase tracking-wider mb-3">
-                            Linked from
-                          </h4>
-                          <div className="flex flex-wrap gap-x-4 gap-y-1">
+                      <div className="mx-auto w-full max-w-[720px] px-8 pb-10">
+                        <div className="mt-2 border-t border-border-subtle pt-6">
+                          <p className="mb-3 font-mono text-[11px] font-medium uppercase tracking-[0.12em] text-muted">
+                            Backlinks
+                          </p>
+                          <div className="flex flex-col gap-2">
                             {backlinks.map((bl) => (
                               <button
                                 key={bl.id}
                                 onClick={() => handleSelectPage(bl.id)}
-                                className="text-sm text-muted hover:text-brand transition-colors"
+                                className="flex items-center justify-between rounded-md border border-border-subtle px-3 py-2.5 text-left transition-colors hover:border-brand"
                               >
-                                {bl.name}
+                                <span className="text-[13px] font-medium text-foreground">
+                                  {bl.name}
+                                </span>
+                                <span className="font-mono text-[11px] text-muted">
+                                  linked
+                                </span>
                               </button>
                             ))}
                           </div>
@@ -719,7 +726,7 @@ function WikiPageInner() {
                           href={`/tables/${table.id}${table.workspace_id ? `?workspaceId=${table.workspace_id}` : ""}`}
                           className="group flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-raised transition-colors"
                         >
-                          <div className="w-7 h-7 rounded-md bg-cyan-500/15 text-cyan-500 flex items-center justify-center text-xs font-bold flex-shrink-0">
+                          <div className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md bg-raised font-mono text-[11px] font-bold text-muted">
                             T
                           </div>
                           <div className="min-w-0 flex-1">

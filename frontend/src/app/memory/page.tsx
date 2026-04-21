@@ -104,6 +104,38 @@ function buildGroups(events: HistoryEventWithContext[]): AgentGroup[] {
   return groups;
 }
 
+/* ── role primitives ── */
+
+function AgentAvatar({ name, size = 24 }: { name: string; size?: number }) {
+  return (
+    <span
+      className="inline-flex flex-shrink-0 items-center justify-center rounded-full font-display font-bold text-white"
+      style={{
+        width: size,
+        height: size,
+        fontSize: Math.round(size * 0.4),
+        background: "var(--color-agent)",
+      }}
+    >
+      {(name?.[0] || "?").toUpperCase()}
+    </span>
+  );
+}
+
+function RoleAgentTag() {
+  return (
+    <span
+      className="inline-flex items-center rounded px-1.5 py-0.5 font-mono text-[10px] font-medium uppercase leading-none tracking-[0.08em]"
+      style={{
+        background: "var(--color-agent-muted)",
+        color: "var(--color-agent)",
+      }}
+    >
+      agent
+    </span>
+  );
+}
+
 /* ── component ── */
 
 export default function MemoryPage() {
@@ -132,8 +164,6 @@ function MemoryPageInner() {
     async (before?: string) => {
       if (wsId) {
         const res = await queryWorkspaceHistoryEvents(wsId, { limit: 200, before });
-        // Workspace-scoped events don't carry store/workspace labels; fill
-        // workspace_id so the event list still has it available.
         const events: HistoryEventWithContext[] = (res?.events ?? []).map((e) => ({
           ...e,
           store_id: "",
@@ -157,9 +187,7 @@ function MemoryPageInner() {
       const { events, has_more } = await fetchEvents();
       setEvents(events);
       setHasMore(has_more);
-    } catch {
-      /* ignore */
-    }
+    } catch {}
     setEventsLoading(false);
   }, [fetchEvents, urlAgent]);
 
@@ -171,9 +199,7 @@ function MemoryPageInner() {
       const { events: newEvents, has_more } = await fetchEvents(oldest.created_at);
       setEvents((prev) => [...prev, ...newEvents]);
       setHasMore(has_more);
-    } catch {
-      /* ignore */
-    }
+    } catch {}
     setLoadingMore(false);
   }, [events, loadingMore, hasMore, fetchEvents]);
 
@@ -183,7 +209,6 @@ function MemoryPageInner() {
 
   const groups = useMemo(() => buildGroups(events), [events]);
 
-  // All sessions across all agents, sorted by recency
   const allSessions = useMemo(() => {
     const sessions: SessionGroup[] = [];
     for (const ag of groups) {
@@ -216,19 +241,19 @@ function MemoryPageInner() {
   return (
     <AppShell user={user} onLogout={logout}>
       <div className="flex h-full overflow-hidden">
-        {/* ── Sidebar: flat agent list ── */}
-        <aside className="w-[250px] flex-shrink-0 border-r border-border bg-surface overflow-y-auto">
-          <div className="px-3 py-3 border-b border-border">
-            <h2 className="text-sm font-semibold text-foreground font-display">
-              History
-            </h2>
-            <p className="text-[11px] text-muted mt-1">
-              {events.length} events
+        {/* Sidebar: agent list */}
+        <aside className="w-[250px] flex-shrink-0 overflow-y-auto border-r border-border bg-surface">
+          <div className="border-b border-border-subtle px-4 py-4">
+            <p className="font-mono text-[10px] font-medium uppercase tracking-[0.12em] text-muted">
+              Agents
+            </p>
+            <p className="mt-1 font-display text-[15px] font-semibold text-foreground">
+              {groups.length} agent{groups.length === 1 ? "" : "s"} · {events.length} events
             </p>
           </div>
 
           {eventsLoading ? (
-            <p className="px-3 py-2 text-[11px] text-muted">Loading...</p>
+            <p className="px-4 py-3 text-[11px] text-muted">Loading…</p>
           ) : (
             <div className="px-2 py-2">
               {groups.map((ag) => (
@@ -238,36 +263,51 @@ function MemoryPageInner() {
                     setSelectedAgent(ag.agentName);
                     setSelectedSession(null);
                   }}
-                  className={`w-full text-left flex items-center gap-1.5 px-2 py-1.5 rounded transition-colors duration-[150ms] mb-0.5 ${
-                    selectedAgent === ag.agentName
+                  className={
+                    "mb-0.5 flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left transition-colors " +
+                    (selectedAgent === ag.agentName
                       ? "bg-agent-muted"
-                      : "hover:bg-raised"
-                  }`}
+                      : "hover:bg-raised")
+                  }
                 >
-                  <span className="w-1.5 h-1.5 rounded-full bg-agent flex-shrink-0" />
-                  <span className="text-[13px] font-medium text-foreground truncate">
+                  <span
+                    className="h-1.5 w-1.5 flex-shrink-0 rounded-full"
+                    style={{ background: "var(--color-agent)" }}
+                  />
+                  <span className="truncate text-[13px] font-medium text-foreground">
                     {ag.agentName}
                   </span>
-                  <span className="text-[10px] text-muted ml-auto font-mono">
+                  <span className="ml-auto font-mono text-[10px] text-muted">
                     {ag.eventCount}
                   </span>
                 </button>
               ))}
+              {groups.length === 0 && !eventsLoading && (
+                <p className="px-2 py-2 text-[11px] text-muted">No agents yet.</p>
+              )}
             </div>
           )}
         </aside>
 
-        {/* ── Main panel ── */}
+        {/* Main */}
         <div className="flex-1 overflow-y-auto">
-          <div className="max-w-3xl mx-auto px-6 py-6">
+          <div className="mx-auto w-full max-w-[900px] px-8 py-8">
+            <div className="mb-8">
+              <p className="font-mono text-[11px] font-medium uppercase tracking-[0.12em] text-muted">
+                Workspace history{wsId ? "" : " · all workspaces"}
+              </p>
+              <h1 className="mt-2 font-display text-[32px] font-bold tracking-[-0.02em] text-foreground">
+                History
+              </h1>
+            </div>
+
             {selectedSession && selectedEvents ? (
-              /* Session → back to agent */
               <div>
                 <button
                   onClick={() => setSelectedSession(null)}
-                  className="text-sm text-muted hover:text-foreground transition-colors mb-4"
+                  className="mb-5 text-[13px] text-muted transition-colors hover:text-foreground"
                 >
-                  &larr; {selectedAgent}
+                  ← {selectedAgent}
                 </button>
                 <SessionView
                   events={selectedEvents}
@@ -276,13 +316,15 @@ function MemoryPageInner() {
                 />
               </div>
             ) : selectedAgent ? (
-              /* Agent → back to recent activity */
               <div>
                 <button
-                  onClick={() => { setSelectedAgent(null); setSelectedSession(null); }}
-                  className="text-sm text-muted hover:text-foreground transition-colors mb-4"
+                  onClick={() => {
+                    setSelectedAgent(null);
+                    setSelectedSession(null);
+                  }}
+                  className="mb-5 text-[13px] text-muted transition-colors hover:text-foreground"
                 >
-                  &larr; Recent Activity
+                  ← Recent activity
                 </button>
                 <AgentOverview
                   groups={groups}
@@ -293,23 +335,33 @@ function MemoryPageInner() {
                     if (!wsId) return;
                     try {
                       const { apiFetch } = await import("../../lib/api");
-                      await apiFetch(`/api/v1/workspaces/${wsId}/memory/agents/${encodeURIComponent(selectedAgent)}`, { method: "DELETE" });
+                      await apiFetch(
+                        `/api/v1/workspaces/${wsId}/memory/agents/${encodeURIComponent(
+                          selectedAgent
+                        )}`,
+                        { method: "DELETE" }
+                      );
                       setSelectedAgent(null);
                       loadEvents();
-                    } catch { /* ignore */ }
+                    } catch {}
                   }}
                 />
               </div>
             ) : (
-              /* Recent activity: all sessions by recency */
               <RecentActivityView
                 allSessions={allSessions}
                 eventsLoading={eventsLoading}
                 hasMore={hasMore}
                 loadingMore={loadingMore}
                 onLoadMore={loadMore}
-                onSelectAgent={(agent) => { setSelectedAgent(agent); setSelectedSession(null); }}
-                onSelectSession={(agent, sid) => { setSelectedAgent(agent); setSelectedSession(sid); }}
+                onSelectAgent={(agent) => {
+                  setSelectedAgent(agent);
+                  setSelectedSession(null);
+                }}
+                onSelectSession={(agent, sid) => {
+                  setSelectedAgent(agent);
+                  setSelectedSession(sid);
+                }}
               />
             )}
           </div>
@@ -340,8 +392,15 @@ function SessionView({
   const [visibleCount, setVisibleCount] = useState(SESSION_PAGE_SIZE);
   const sentinelRef = useRef<HTMLDivElement>(null);
 
-  const eventTypes = useMemo(() => [...new Set(events.map((e) => e.event_type))].sort(), [events]);
-  const toolNames = useMemo(() => [...new Set(events.map((e) => e.tool_name).filter(Boolean))].sort() as string[], [events]);
+  const eventTypes = useMemo(
+    () => [...new Set(events.map((e) => e.event_type))].sort(),
+    [events]
+  );
+  const toolNames = useMemo(
+    () =>
+      [...new Set(events.map((e) => e.tool_name).filter(Boolean))].sort() as string[],
+    [events]
+  );
 
   const filtered = useMemo(() => {
     let result = events;
@@ -349,122 +408,137 @@ function SessionView({
     if (toolFilter !== "all") result = result.filter((e) => e.tool_name === toolFilter);
     if (search.trim()) {
       const q = search.toLowerCase();
-      result = result.filter((e) =>
-        e.content.toLowerCase().includes(q) ||
-        e.agent_name.toLowerCase().includes(q) ||
-        (e.tool_name && e.tool_name.toLowerCase().includes(q))
+      result = result.filter(
+        (e) =>
+          e.content.toLowerCase().includes(q) ||
+          e.agent_name.toLowerCase().includes(q) ||
+          (e.tool_name && e.tool_name.toLowerCase().includes(q))
       );
     }
     if (sort === "newest") result = [...result].reverse();
     return result;
   }, [events, typeFilter, toolFilter, search, sort]);
 
-  // Reset visible count when filters change
-  useEffect(() => { setVisibleCount(SESSION_PAGE_SIZE); }, [typeFilter, toolFilter, search, sort]);
+  useEffect(() => {
+    setVisibleCount(SESSION_PAGE_SIZE);
+  }, [typeFilter, toolFilter, search, sort]);
 
   const visible = filtered.slice(0, visibleCount);
   const hasMoreEvents = visibleCount < filtered.length;
 
-  // Infinite scroll via IntersectionObserver
   useEffect(() => {
     if (!hasMoreEvents || !sentinelRef.current) return;
     const observer = new IntersectionObserver(
-      ([entry]) => { if (entry.isIntersecting) setVisibleCount((c) => c + SESSION_PAGE_SIZE); },
+      ([entry]) => {
+        if (entry.isIntersecting) setVisibleCount((c) => c + SESSION_PAGE_SIZE);
+      },
       { rootMargin: "200px" }
     );
     observer.observe(sentinelRef.current);
     return () => observer.disconnect();
   }, [hasMoreEvents, filtered]);
 
-  const hasFilters = typeFilter !== "all" || toolFilter !== "all" || search.trim() !== "";
+  const hasFilters =
+    typeFilter !== "all" || toolFilter !== "all" || search.trim() !== "";
 
   return (
     <div>
-      <div className="mb-4">
-        <h1 className="text-xl font-bold text-foreground font-display">{agentName}</h1>
-        <p className="text-[11px] text-muted font-mono mt-1">
-          session: {sessionId} &middot; {events.length} event
-          {events.length !== 1 ? "s" : ""}
-          {hasFilters && ` (showing ${filtered.length})`}
-        </p>
-      </div>
+      <header className="mb-5 flex items-center gap-3 border-b border-border-subtle pb-4">
+        <AgentAvatar name={agentName} size={32} />
+        <div>
+          <div className="font-display text-[16px] font-bold text-foreground">
+            {agentName}
+          </div>
+          <div className="mt-0.5 flex items-center gap-2 font-mono text-[11px] text-muted">
+            <RoleAgentTag />
+            <span>
+              session · {sessionId} · {events.length} event
+              {events.length !== 1 ? "s" : ""}
+              {hasFilters && ` (showing ${filtered.length})`}
+            </span>
+          </div>
+        </div>
+      </header>
 
-      {/* Search + filters + sort */}
-      <div className="flex items-center gap-2 mb-4 flex-wrap">
+      <div className="mb-5 flex flex-wrap items-center gap-2">
         <input
           type="text"
-          placeholder="Search events..."
+          placeholder="Search events…"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          className="text-[11px] bg-surface border border-border rounded px-2 py-1 text-foreground placeholder:text-muted w-40"
+          className="w-48 rounded border border-border bg-surface px-2.5 py-1.5 text-[12px] text-foreground placeholder:text-muted focus:border-brand focus:outline-none"
         />
-
         <select
           value={typeFilter}
           onChange={(e) => setTypeFilter(e.target.value)}
-          className="text-[11px] bg-surface border border-border rounded px-2 py-1 text-foreground"
+          className="rounded border border-border bg-surface px-2.5 py-1.5 text-[12px] text-foreground"
         >
           <option value="all">All types</option>
           {eventTypes.map((t) => (
-            <option key={t} value={t}>{t}</option>
+            <option key={t} value={t}>
+              {t}
+            </option>
           ))}
         </select>
-
         {toolNames.length > 0 && (
           <select
             value={toolFilter}
             onChange={(e) => setToolFilter(e.target.value)}
-            className="text-[11px] bg-surface border border-border rounded px-2 py-1 text-foreground"
+            className="rounded border border-border bg-surface px-2.5 py-1.5 text-[12px] text-foreground"
           >
             <option value="all">All tools</option>
             {toolNames.map((t) => (
-              <option key={t} value={t}>{t}</option>
+              <option key={t} value={t}>
+                {t}
+              </option>
             ))}
           </select>
         )}
-
         <select
           value={sort}
           onChange={(e) => setSort(e.target.value as SortOrder)}
-          className="text-[11px] bg-surface border border-border rounded px-2 py-1 text-foreground"
+          className="rounded border border-border bg-surface px-2.5 py-1.5 text-[12px] text-foreground"
         >
           <option value="oldest">Oldest first</option>
           <option value="newest">Newest first</option>
         </select>
-
         {hasFilters && (
           <button
-            onClick={() => { setTypeFilter("all"); setToolFilter("all"); setSearch(""); }}
-            className="text-[11px] text-muted hover:text-foreground transition-colors"
+            onClick={() => {
+              setTypeFilter("all");
+              setToolFilter("all");
+              setSearch("");
+            }}
+            className="font-mono text-[11px] text-muted transition-colors hover:text-foreground"
           >
             Clear
           </button>
         )}
       </div>
 
-      <div className="space-y-1">
+      <div className="flex flex-col gap-3.5">
         {visible.map((evt, i) => {
           const showTime =
-            i === 0 ||
-            shouldShowTimestamp(visible[i - 1].created_at, evt.created_at);
-
+            i === 0 || shouldShowTimestamp(visible[i - 1].created_at, evt.created_at);
           return (
             <div key={evt.id}>
               {showTime && (
-                <div className="flex items-center gap-3 my-4">
-                  <div className="flex-1 h-px bg-border" />
-                  <span className="text-[10px] text-muted font-mono">
+                <div className="my-3 flex items-center gap-3">
+                  <div className="h-px flex-1 bg-border-subtle" />
+                  <span className="font-mono text-[10px] text-muted">
                     {formatTime(evt.created_at)}
                   </span>
-                  <div className="flex-1 h-px bg-border" />
+                  <div className="h-px flex-1 bg-border-subtle" />
                 </div>
               )}
-              <EventCard event={evt} />
+              <EventRow event={evt} />
             </div>
           );
         })}
         {filtered.length === 0 && (
-          <p className="text-sm text-muted py-4">No events match the current filters.</p>
+          <p className="py-4 text-[13px] text-muted">
+            No events match the current filters.
+          </p>
         )}
         {hasMoreEvents && <div ref={sentinelRef} className="h-8" />}
       </div>
@@ -477,7 +551,6 @@ function SessionView({
 function AgentOverview({
   groups,
   agentName,
-  wsId,
   onSelectSession,
   onDelete,
 }: {
@@ -488,20 +561,25 @@ function AgentOverview({
   onDelete: () => void;
 }) {
   const ag = groups.find((g) => g.agentName === agentName);
-  if (!ag) return <p className="text-muted text-sm">No data for this agent.</p>;
+  if (!ag) return <p className="text-[13px] text-muted">No data for this agent.</p>;
 
   return (
     <div>
-      <div className="mb-6 flex items-start justify-between">
-        <div>
-          <h1 className="text-xl font-bold text-foreground font-display flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-agent" />
-            {agentName}
-          </h1>
-          <p className="text-[11px] text-muted mt-1">
-            {ag.sessions.length} session{ag.sessions.length !== 1 ? "s" : ""} &middot;{" "}
-            {ag.eventCount} events
-          </p>
+      <header className="mb-6 flex items-start justify-between gap-3 border-b border-border-subtle pb-4">
+        <div className="flex items-center gap-3">
+          <AgentAvatar name={agentName} size={32} />
+          <div>
+            <div className="font-display text-[16px] font-bold text-foreground">
+              {agentName}
+            </div>
+            <div className="mt-0.5 flex items-center gap-2 font-mono text-[11px] text-muted">
+              <RoleAgentTag />
+              <span>
+                {ag.sessions.length} session{ag.sessions.length !== 1 ? "s" : ""} ·{" "}
+                {ag.eventCount} events
+              </span>
+            </div>
+          </div>
         </div>
         <button
           onClick={() => {
@@ -509,28 +587,28 @@ function AgentOverview({
               onDelete();
             }
           }}
-          className="text-xs text-red-400 hover:text-red-300 px-2 py-1 rounded hover:bg-red-400/10 transition-colors"
+          className="rounded px-2 py-1 text-[12px] text-red-500 transition-colors hover:bg-red-500/10"
         >
           Delete agent
         </button>
-      </div>
+      </header>
 
-      <div className="space-y-2">
+      <div className="flex flex-col gap-2">
         {ag.sessions.map((sess) => (
           <button
             key={sess.sessionId}
             onClick={() => onSelectSession(sess.sessionId)}
-            className="w-full text-left bg-surface border border-border rounded-lg p-3 hover:bg-raised transition-colors duration-[150ms]"
+            className="w-full cursor-pointer rounded-lg border border-border-subtle bg-base px-4 py-3 text-left transition-colors hover:border-brand"
           >
             <div className="flex items-center gap-2">
-              <span className="text-[13px] text-foreground font-medium truncate">
+              <span className="truncate text-[14px] font-medium text-foreground">
                 {sess.firstContent}
               </span>
-              <span className="text-[10px] text-muted font-mono ml-auto flex-shrink-0">
+              <span className="ml-auto flex-shrink-0 font-mono text-[11px] text-muted">
                 {sess.events.length} event{sess.events.length !== 1 ? "s" : ""}
               </span>
             </div>
-            <p className="text-[11px] text-muted mt-1">{sess.timeRange}</p>
+            <p className="mt-1 font-mono text-[11px] text-muted">{sess.timeRange}</p>
           </button>
         ))}
       </div>
@@ -538,7 +616,7 @@ function AgentOverview({
   );
 }
 
-/* ── Recent activity: all sessions sorted by recency ── */
+/* ── Recent activity ── */
 
 const SESSIONS_PAGE_SIZE = 20;
 
@@ -565,9 +643,6 @@ function RecentActivityView({
   const visible = allSessions.slice(0, visibleCount);
   const hasMoreSessions = visibleCount < allSessions.length;
 
-  // Infinite scroll — show more sessions, or fetch more events if we've shown them all.
-  // The `firing` ref prevents re-entry while the sentinel is still intersecting and
-  // React hasn't re-rendered the updated state yet.
   const firingRef = useRef(false);
   useEffect(() => {
     if (!sentinelRef.current) return;
@@ -592,13 +667,11 @@ function RecentActivityView({
     return () => observer.disconnect();
   }, [hasMoreSessions, hasMoreEvents, loadingMoreEvents, onLoadMoreEvents]);
 
-  if (eventsLoading) {
-    return <p className="text-muted text-sm">Loading events...</p>;
-  }
+  if (eventsLoading) return <p className="text-[13px] text-muted">Loading events…</p>;
 
   if (allSessions.length === 0) {
     return (
-      <p className="text-muted text-sm">
+      <p className="text-[13px] text-muted">
         No events found. Agent activity will appear here as events are logged.
       </p>
     );
@@ -606,92 +679,99 @@ function RecentActivityView({
 
   return (
     <div>
-      <h1 className="text-xl font-bold text-foreground font-display mb-6">
-        Recent Activity
-      </h1>
-
-      <div className="space-y-2">
+      <p className="mb-4 font-mono text-[11px] font-medium uppercase tracking-[0.12em] text-muted">
+        Recent activity
+      </p>
+      <div className="flex flex-col gap-2">
         {visible.map((sess) => (
           <div
             key={`${sess.agentName}-${sess.sessionId}`}
             onClick={() => onSelectSession(sess.agentName, sess.sessionId)}
-            className="w-full text-left bg-surface border border-border rounded-lg p-3 hover:bg-raised transition-colors duration-[150ms] cursor-pointer"
+            className="w-full cursor-pointer rounded-lg border border-border-subtle bg-base px-4 py-3 text-left transition-colors hover:border-brand"
           >
             <div className="flex items-center gap-2">
+              <AgentAvatar name={sess.agentName} size={22} />
               <button
-                onClick={(e) => { e.stopPropagation(); onSelectAgent(sess.agentName); }}
-                className="text-[11px] font-medium text-agent bg-agent-muted px-1.5 py-0.5 rounded font-mono uppercase tracking-[0.05em] hover:bg-agent/20 transition-colors flex-shrink-0"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onSelectAgent(sess.agentName);
+                }}
+                className="rounded font-mono text-[11px] font-medium tracking-[0.05em] text-foreground underline-offset-2 hover:underline"
               >
                 {sess.agentName}
               </button>
-              <span className="text-[13px] text-foreground truncate">
+              <RoleAgentTag />
+              <span className="truncate text-[13px] text-dim">
                 {sess.firstContent}
               </span>
-              <span className="text-[10px] text-muted font-mono ml-auto flex-shrink-0">
+              <span className="ml-auto flex-shrink-0 font-mono text-[11px] text-muted">
                 {sess.events.length}
               </span>
             </div>
-            <p className="text-[11px] text-muted mt-1">{sess.timeRange}</p>
+            <p className="mt-1.5 pl-[30px] font-mono text-[11px] text-muted">
+              {sess.timeRange}
+            </p>
           </div>
         ))}
       </div>
 
       {(hasMoreSessions || hasMoreEvents) && (
-        <div ref={sentinelRef} className="h-8 flex items-center justify-center">
-          {loadingMoreEvents && <span className="text-[11px] text-muted">Loading...</span>}
+        <div
+          ref={sentinelRef}
+          className="flex h-8 items-center justify-center"
+        >
+          {loadingMoreEvents && (
+            <span className="font-mono text-[11px] text-muted">Loading…</span>
+          )}
         </div>
       )}
     </div>
   );
 }
 
-/* ── Event card (chat-like message) ── */
+/* ── Event row (chat-like message, design-styled) ── */
 
-function EventCard({ event }: { event: HistoryEventWithContext }) {
+function EventRow({ event }: { event: HistoryEventWithContext }) {
   return (
-    <div className="flex gap-3 py-1.5">
-      {/* Left border accent */}
-      <div className="w-0.5 rounded-full bg-agent/40 flex-shrink-0 mt-1" />
-
-      <div className="flex-1 min-w-0">
-        {/* Header row */}
-        <div className="flex items-center gap-1.5 mb-1 flex-wrap">
-          <span className="text-[11px] font-medium text-agent bg-agent-muted px-1.5 py-0.5 rounded font-mono uppercase tracking-[0.05em]">
+    <div className="flex gap-3">
+      <AgentAvatar name={event.agent_name} size={24} />
+      <div className="min-w-0 flex-1">
+        <div className="mb-1 flex flex-wrap items-center gap-2">
+          <span className="text-[12px] font-semibold text-foreground">
             {event.agent_name}
           </span>
-          <span className="text-[11px] bg-raised text-muted px-1.5 py-0.5 rounded">
-            {event.event_type}
-          </span>
-          {event.tool_name && (
-            <span className="text-[10px] text-dim font-mono bg-raised px-1.5 py-0.5 rounded">
-              {event.tool_name}
-            </span>
-          )}
+          <RoleAgentTag />
+          <span className="text-[11px] text-muted">·</span>
+          <span className="font-mono text-[11px] text-dim">{event.event_type}</span>
           {event.store_name && (
-            <span className="text-[10px] text-muted">in {event.store_name}</span>
+            <span className="text-[11px] text-muted">in {event.store_name}</span>
           )}
           {event.workspace_name && (
-            <span className="text-[10px] text-muted bg-raised px-1 py-0.5 rounded">
+            <span className="rounded bg-raised px-1.5 py-0.5 font-mono text-[10px] text-dim">
               {event.workspace_name}
             </span>
           )}
-          <span className="text-[10px] text-muted ml-auto flex-shrink-0 font-mono">
+          <span className="ml-auto flex-shrink-0 font-mono text-[10px] text-muted">
             {formatTimeShort(event.created_at)}
           </span>
         </div>
-
-        {/* Content */}
-        <div className="text-[14px] text-foreground whitespace-pre-wrap leading-relaxed">
+        <div className="whitespace-pre-wrap text-[14px] leading-[1.55] text-foreground">
           {event.content}
         </div>
-
-        {/* Metadata */}
+        {event.tool_name && (
+          <div className="mt-1.5 flex items-center gap-2 rounded border border-border-subtle bg-surface px-2.5 py-1 font-mono text-[12px] text-dim">
+            <span className="text-[10px] uppercase tracking-[0.08em] text-muted">
+              tool
+            </span>
+            {event.tool_name}
+          </div>
+        )}
         {Object.keys(event.metadata).length > 0 && (
           <details className="mt-1.5">
-            <summary className="text-[10px] text-muted cursor-pointer hover:text-dim transition-colors duration-[150ms]">
+            <summary className="cursor-pointer text-[10px] text-muted transition-colors hover:text-dim">
               Metadata
             </summary>
-            <pre className="text-[11px] text-dim mt-1 bg-raised p-2 rounded overflow-x-auto font-mono">
+            <pre className="mt-1 overflow-x-auto rounded bg-raised p-2 font-mono text-[11px] text-dim">
               {JSON.stringify(event.metadata, null, 2)}
             </pre>
           </details>

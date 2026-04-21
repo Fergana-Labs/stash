@@ -35,6 +35,22 @@ const EMPTY_RESULTS: SearchResults = {
   tableRows: [],
 };
 
+type Tab = "all" | "history" | "wiki" | "tables";
+
+const TABS: { id: Tab; label: string }[] = [
+  { id: "all", label: "All" },
+  { id: "history", label: "History" },
+  { id: "wiki", label: "Wiki" },
+  { id: "tables", label: "Tables" },
+];
+
+function formatDate(iso: string): string {
+  return new Date(iso).toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+  });
+}
+
 export default function SearchPage() {
   const router = useRouter();
   const urlParams =
@@ -47,6 +63,7 @@ export default function SearchPage() {
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [selectedWs, setSelectedWs] = useState<string>(urlWs || "");
   const [query, setQuery] = useState(urlQ);
+  const [tab, setTab] = useState<Tab>("all");
   const [results, setResults] = useState<SearchResults>(EMPTY_RESULTS);
   const [searching, setSearching] = useState(false);
   const [error, setError] = useState("");
@@ -58,8 +75,19 @@ export default function SearchPage() {
       const res = await listMyWorkspaces();
       const ws = res?.workspaces ?? [];
       setWorkspaces(ws);
+      if (!urlWs && ws.length > 0 && !selectedWs) {
+        const saved =
+          typeof window !== "undefined"
+            ? localStorage.getItem("stash_selected_workspace")
+            : null;
+        if (saved && ws.some((w) => w.id === saved)) {
+          setSelectedWs(saved);
+        } else {
+          setSelectedWs(ws[0].id);
+        }
+      }
     } catch {}
-  }, []);
+  }, [urlWs, selectedWs]);
 
   useEffect(() => {
     if (user) loadWorkspaces();
@@ -78,7 +106,6 @@ export default function SearchPage() {
     const tableRows: SearchResults["tableRows"] = [];
 
     try {
-      // Discover resources in the workspace
       const [historiesRes, notebooksRes, tablesRes] = await Promise.all([
         listHistories(selectedWs).catch(() => ({ stores: [] as History[] })),
         listNotebooks(selectedWs).catch(() => ({ notebooks: [] as Notebook[] })),
@@ -89,39 +116,34 @@ export default function SearchPage() {
       const notebooks = notebooksRes.notebooks ?? [];
       const tables = tablesRes.tables ?? [];
 
-      // Search all resource types in parallel
       const searches = await Promise.allSettled([
-        // History full-text search across all stores
         ...stores.map(async (store) => {
           const res = await searchHistoryEvents(selectedWs, store.id, q, 10);
           for (const event of res.events ?? []) {
             historyEvents.push({ event, storeName: store.name });
           }
         }),
-        // Notebook semantic search across all notebooks
         ...notebooks.map(async (nb) => {
           const pages = await semanticSearchPages(selectedWs, nb.id, q, 10);
           for (const page of pages ?? []) {
             wikiPages.push({ page, notebookName: nb.name });
           }
         }),
-        // Table semantic search across all tables
         ...tables.map(async (table) => {
           try {
             const rows = await semanticSearchTableRows(selectedWs, table.id, q, 10);
             for (const row of rows ?? []) {
               tableRows.push({ row, tableName: table.name, tableId: table.id });
             }
-          } catch {
-            // Table may not have embeddings enabled -- skip silently
-          }
+          } catch {}
         }),
       ]);
 
-      // Check if all searches failed
       const allFailed = searches.every((s) => s.status === "rejected");
       if (allFailed && searches.length > 0) {
-        setError("All searches failed. Check that the workspace has accessible resources.");
+        setError(
+          "All searches failed. Check that the workspace has accessible resources."
+        );
       }
 
       setResults({ historyEvents, wikiPages, tableRows });
@@ -131,7 +153,6 @@ export default function SearchPage() {
     setSearching(false);
   }, [query, selectedWs]);
 
-  // Auto-run the search once when the page is opened with ?q= and a workspace is ready.
   useEffect(() => {
     if (autoSearchDone) return;
     if (!urlQ) return;
@@ -144,6 +165,12 @@ export default function SearchPage() {
     results.historyEvents.length +
     results.wikiPages.length +
     results.tableRows.length;
+
+  const show = {
+    history: tab === "all" || tab === "history",
+    wiki: tab === "all" || tab === "wiki",
+    tables: tab === "all" || tab === "tables",
+  };
 
   if (loading)
     return (
@@ -158,103 +185,133 @@ export default function SearchPage() {
 
   return (
     <AppShell user={user} onLogout={logout}>
-      <div className="max-w-3xl mx-auto w-full px-4 py-8">
-        <h1 className="text-2xl font-bold text-foreground font-display mb-6">
-          Search
-        </h1>
-
-        {/* Search Controls */}
-        <div className="bg-surface border border-border rounded-lg p-4 mb-6">
-          <div className="flex gap-2 mb-3">
-            <input
-              type="text"
-              placeholder="Search across history, notebooks, and tables..."
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              onKeyDown={(e) =>
-                e.key === "Enter" && !e.shiftKey && handleSearch()
-              }
-              className="flex-1 text-sm bg-base border border-border rounded px-3 py-2.5 text-foreground placeholder:text-muted"
-            />
-            <button
-              onClick={handleSearch}
-              disabled={searching || !query.trim() || !selectedWs}
-              className="text-sm bg-brand hover:bg-brand-hover text-foreground px-4 py-2.5 rounded disabled:opacity-50 whitespace-nowrap"
-            >
-              {searching ? "Searching..." : "Search"}
-            </button>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-muted">Workspace:</span>
-            <select
-              value={selectedWs}
-              onChange={(e) => setSelectedWs(e.target.value)}
-              className="text-xs bg-base border border-border rounded px-2 py-1 text-foreground"
-            >
-              <option value="">Select a workspace</option>
-              {workspaces.map((ws) => (
-                <option key={ws.id} value={ws.id}>
-                  {ws.name}
-                </option>
-              ))}
-            </select>
-            {!selectedWs && (
-              <span className="text-xs text-muted">
-                Select a workspace to search
-              </span>
-            )}
-          </div>
+      <div className="mx-auto w-full max-w-[1120px] px-6 pt-8 pb-16">
+        {/* Page header */}
+        <div className="mb-6">
+          <p className="font-mono text-[11px] font-medium uppercase tracking-[0.12em] text-muted">
+            Cross-resource · {workspaces.find((w) => w.id === selectedWs)?.name || "workspace"}
+          </p>
+          <h1 className="mt-2 font-display text-[32px] font-bold tracking-[-0.02em] text-foreground">
+            Search
+          </h1>
         </div>
 
-        {error && <p className="text-red-400 text-sm mb-4">{error}</p>}
+        {/* Search bar */}
+        <div className="mb-4 flex items-center gap-3 rounded-lg border border-border bg-surface px-3 py-2 transition-[border-color,box-shadow] focus-within:border-brand focus-within:shadow-[0_0_0_3px_rgba(249,115,22,0.25)]">
+          <span className="font-mono text-[12px] text-muted">/</span>
+          <input
+            type="text"
+            placeholder="Ask the workspace anything…"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && handleSearch()}
+            autoFocus
+            className="flex-1 bg-transparent text-[15px] text-foreground placeholder:text-muted focus:outline-none"
+          />
+          <button
+            onClick={handleSearch}
+            disabled={searching || !query.trim() || !selectedWs}
+            className="inline-flex h-8 items-center justify-center rounded-md bg-brand px-3 text-[13px] font-medium text-white transition hover:bg-brand-hover disabled:opacity-50"
+          >
+            {searching ? "Searching…" : "Search"}
+          </button>
+        </div>
 
-        {/* Loading */}
+        {/* Workspace selector (small) */}
+        <div className="mb-6 flex items-center gap-2 font-mono text-[11px] text-muted">
+          <span>workspace</span>
+          <select
+            value={selectedWs}
+            onChange={(e) => setSelectedWs(e.target.value)}
+            className="rounded border border-border bg-base px-2 py-1 font-mono text-[11px] text-foreground"
+          >
+            <option value="">Select a workspace</option>
+            {workspaces.map((ws) => (
+              <option key={ws.id} value={ws.id}>
+                {ws.name}
+              </option>
+            ))}
+          </select>
+          {!selectedWs && <span>· select a workspace to search</span>}
+        </div>
+
+        {/* Tabs */}
+        <div className="mb-6 flex gap-1 border-b border-border-subtle">
+          {TABS.map((t) => (
+            <button
+              key={t.id}
+              onClick={() => setTab(t.id)}
+              className={
+                "-mb-px border-b-2 px-3.5 py-2.5 text-[13px] transition-colors " +
+                (tab === t.id
+                  ? "border-brand font-medium text-brand"
+                  : "border-transparent text-dim hover:text-foreground")
+              }
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+
+        {error && <p className="mb-4 text-[13px] text-red-400">{error}</p>}
+
         {searching && (
-          <div className="text-center py-8">
-            <div className="text-muted text-sm">
-              Searching across history, notebooks, and tables...
-            </div>
-          </div>
+          <p className="py-8 text-center text-[13px] text-muted">
+            Searching across history, notebooks, and tables…
+          </p>
         )}
 
-        {/* Results */}
-        {!searching && searchedQuery && (
-          <div className="space-y-6">
-            {totalResults === 0 && (
-              <p className="text-sm text-muted text-center py-8">
-                No results found for &ldquo;{searchedQuery}&rdquo;
-              </p>
-            )}
+        {!searching && searchedQuery && totalResults === 0 && (
+          <p className="py-8 text-center text-[13px] text-muted">
+            No results found for &ldquo;{searchedQuery}&rdquo;
+          </p>
+        )}
 
-            {/* History Events */}
-            {results.historyEvents.length > 0 && (
+        {!searching && (
+          <div className="space-y-8">
+            {show.history && results.historyEvents.length > 0 && (
               <section>
-                <h2 className="text-xs font-medium text-muted uppercase tracking-wider mb-3 font-mono">
-                  History Events ({results.historyEvents.length})
-                </h2>
+                <p className="mb-3 font-mono text-[11px] font-medium uppercase tracking-[0.12em] text-muted">
+                  History · {results.historyEvents.length}
+                </p>
                 <div className="space-y-2">
                   {results.historyEvents.map(({ event, storeName }) => (
                     <div
                       key={event.id}
-                      className="bg-surface border border-border rounded-lg px-4 py-3"
+                      className="cursor-pointer rounded-lg border border-border-subtle bg-base px-4 py-3.5 transition-colors hover:border-brand"
                     >
-                      <div className="flex items-center gap-2 mb-1">
-                        <span className="text-xs font-mono px-1.5 py-0.5 rounded bg-violet-500/15 text-violet-400">
+                      <div className="mb-1.5 flex items-center gap-2">
+                        <span
+                          className="inline-flex h-[22px] w-[22px] flex-shrink-0 items-center justify-center rounded-full font-display text-[10px] font-bold text-white"
+                          style={{ background: "var(--color-agent)" }}
+                        >
+                          {event.agent_name[0]?.toUpperCase() || "A"}
+                        </span>
+                        <span className="text-[14px] font-semibold text-foreground">
                           {event.agent_name}
                         </span>
-                        <span className="text-xs text-muted font-mono">
+                        <span
+                          className="inline-flex items-center rounded px-1.5 py-0.5 font-mono text-[10px] font-medium uppercase tracking-[0.08em]"
+                          style={{
+                            background: "var(--color-agent-muted)",
+                            color: "var(--color-agent)",
+                          }}
+                        >
+                          agent
+                        </span>
+                        <span className="text-[12px] text-dim">·</span>
+                        <span className="text-[12px] text-dim">
                           {event.event_type}
                         </span>
-                        <span className="text-xs text-muted ml-auto">
-                          {new Date(event.created_at).toLocaleDateString()}
+                        <span className="ml-auto font-mono text-[11px] text-muted">
+                          {formatDate(event.created_at)}
                         </span>
                       </div>
-                      <p className="text-sm text-foreground line-clamp-3">
+                      <p className="line-clamp-3 text-[13px] leading-[1.55] text-dim">
                         {event.content}
                       </p>
-                      <p className="text-xs text-muted mt-1">
-                        Store: {storeName}
+                      <p className="mt-2 font-mono text-[10px] text-muted">
+                        in {storeName}
                       </p>
                     </div>
                   ))}
@@ -262,32 +319,33 @@ export default function SearchPage() {
               </section>
             )}
 
-            {/* Wiki Pages */}
-            {results.wikiPages.length > 0 && (
+            {show.wiki && results.wikiPages.length > 0 && (
               <section>
-                <h2 className="text-xs font-medium text-muted uppercase tracking-wider mb-3 font-mono">
-                  Wiki Pages ({results.wikiPages.length})
-                </h2>
+                <p className="mb-3 font-mono text-[11px] font-medium uppercase tracking-[0.12em] text-muted">
+                  Wiki · {results.wikiPages.length}
+                </p>
                 <div className="space-y-2">
                   {results.wikiPages.map(({ page, notebookName }) => (
                     <a
                       key={page.id}
                       href={`/notebooks?ws=${selectedWs}&nb=${page.notebook_id}&page=${page.id}`}
-                      className="block bg-surface border border-border rounded-lg px-4 py-3 hover:border-brand/40 transition-colors"
+                      className="block rounded-lg border border-border-subtle bg-base px-4 py-3.5 transition-colors hover:border-brand"
                     >
-                      <div className="flex items-center gap-2 mb-1">
-                        <span className="text-sm font-medium text-foreground">
+                      <div className="mb-1.5 flex items-center gap-2">
+                        <span className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded bg-raised font-mono text-[10px] font-bold text-muted">
+                          W
+                        </span>
+                        <span className="text-[14px] font-semibold text-foreground">
                           {page.name}
                         </span>
-                        <span className="text-xs text-muted ml-auto">
-                          {new Date(page.updated_at).toLocaleDateString()}
+                        <span className="text-[12px] text-dim">·</span>
+                        <span className="text-[12px] text-dim">{notebookName}</span>
+                        <span className="ml-auto font-mono text-[11px] text-muted">
+                          {formatDate(page.updated_at)}
                         </span>
                       </div>
-                      <p className="text-sm text-muted line-clamp-2">
-                        {page.content_markdown?.slice(0, 200)}
-                      </p>
-                      <p className="text-xs text-muted mt-1">
-                        Notebook: {notebookName}
+                      <p className="line-clamp-2 text-[13px] leading-[1.55] text-dim">
+                        {page.content_markdown?.slice(0, 240)}
                       </p>
                     </a>
                   ))}
@@ -295,33 +353,37 @@ export default function SearchPage() {
               </section>
             )}
 
-            {/* Table Rows */}
-            {results.tableRows.length > 0 && (
+            {show.tables && results.tableRows.length > 0 && (
               <section>
-                <h2 className="text-xs font-medium text-muted uppercase tracking-wider mb-3 font-mono">
-                  Table Rows ({results.tableRows.length})
-                </h2>
+                <p className="mb-3 font-mono text-[11px] font-medium uppercase tracking-[0.12em] text-muted">
+                  Tables · {results.tableRows.length}
+                </p>
                 <div className="space-y-2">
                   {results.tableRows.map(({ row, tableName, tableId }) => (
                     <a
                       key={row.id}
                       href={`/tables/${tableId}?ws=${selectedWs}`}
-                      className="block bg-surface border border-border rounded-lg px-4 py-3 hover:border-brand/40 transition-colors"
+                      className="block rounded-lg border border-border-subtle bg-base px-4 py-3.5 transition-colors hover:border-brand"
                     >
-                      <div className="flex items-center gap-2 mb-1">
-                        <span className="text-sm font-medium text-foreground">
+                      <div className="mb-2 flex items-center gap-2">
+                        <span className="inline-flex items-center rounded bg-raised px-1.5 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-[0.08em] text-dim">
+                          tbl
+                        </span>
+                        <span className="text-[14px] font-semibold text-foreground">
                           {tableName}
                         </span>
-                        <span className="text-xs text-muted ml-auto">
-                          {new Date(row.updated_at).toLocaleDateString()}
+                        <span className="ml-auto font-mono text-[11px] text-muted">
+                          {formatDate(row.updated_at)}
                         </span>
                       </div>
-                      <p className="text-sm text-muted line-clamp-2 font-mono">
-                        {Object.entries(row.data)
-                          .slice(0, 4)
-                          .map(([k, v]) => `${k}: ${String(v)}`)
-                          .join(" | ")}
-                      </p>
+                      <div className="flex items-center justify-between rounded bg-surface px-2.5 py-2 font-mono text-[12px] text-dim">
+                        <span className="truncate text-foreground">
+                          {Object.entries(row.data)
+                            .slice(0, 4)
+                            .map(([k, v]) => `${k}: ${String(v)}`)
+                            .join(" · ")}
+                        </span>
+                      </div>
                     </a>
                   ))}
                 </div>
