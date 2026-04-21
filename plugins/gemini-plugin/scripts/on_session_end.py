@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """SessionEnd: push session_end, then spawn `gemini -p <SLEEP_PROMPT>` to curate.
 
-Gated by the central `auto_curate` flag plus the shared 30-min cooldown.
+Gated by the central `auto_curate` flag plus the shared 24h cooldown.
 """
 
 from config import DATA_DIR, get_client, get_config, get_stdin_data, is_configured

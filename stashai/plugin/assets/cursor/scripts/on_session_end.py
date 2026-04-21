@@ -4,7 +4,7 @@ headless to curate.
 
 `cursor-agent -p` has open reports of hanging — the shared spawn helper
 applies a 10-minute kill-on-overrun. Gated by the central `auto_curate`
-flag plus the shared 30-min cooldown.
+flag plus the shared 24h cooldown.
 """
 
 from config import DATA_DIR, get_client, get_config, get_stdin_data, is_configured

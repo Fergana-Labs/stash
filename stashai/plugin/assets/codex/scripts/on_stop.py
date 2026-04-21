@@ -4,8 +4,8 @@
 Codex's Stop hook fires per-turn. We push assistant_message (not session_end)
 and deliberately do NOT clear session_id — subsequent turns in the same
 session need it for correlation. Curation is attempted on every Stop but
-`spawn_curation` enforces the central 30-min cooldown, so it only actually
-fires once per half-hour. Codex has no SessionEnd hook today, so this is the
+`spawn_curation` enforces the central 24h cooldown, so it only actually
+fires once per day. Codex has no SessionEnd hook today, so this is the
 only curation trigger.
 """
 

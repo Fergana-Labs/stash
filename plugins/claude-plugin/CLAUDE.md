@@ -6,13 +6,19 @@ Your activity in this repo is also streamed to that workspace, so teammates' age
 
 ## Stash CLI
 
-Everything is a plain `stash` CLI subcommand — no slash commands. Always use `--json` for machine-readable output when parsing results.
+Most things are plain `stash` CLI subcommands. Always use `--json` for machine-readable output when parsing results.
+
+### Slash commands
+```
+/curate                            # Run the sleep-time wiki curation workflow in this session.
+```
 
 ### Plugin control
 ```bash
 stash connect                      # Interactive setup (auth + workspace + store)
 stash settings                     # Interactive settings page (streaming, scope, endpoint, …)
 stash disconnect                   # Pause event streaming across every plugin
+stash prompts curate               # Print the sleep-time curation prompt to stdout
 ```
 
 ### Workspaces, notebooks, history, tables

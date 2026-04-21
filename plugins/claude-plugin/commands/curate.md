@@ -1,15 +1,9 @@
-"""Shared curation prompt fed to each agent's headless CLI at session end.
+---
+description: Curate workspace history into the Stash wiki (sleep-time compute, on demand)
+---
 
-Every plugin's `on_session_end.py` spawns its own agent binary (claude, codex,
-cursor-agent, gemini, opencode) with this prompt. Each agent does the curation
-using its own auth.
+<!-- Body kept in sync with SLEEP_PROMPT in stashai/plugin/sleep_prompt.py. -->
 
-The body of SLEEP_PROMPT is also inlined in
-plugins/claude-plugin/commands/curate.md so `/curate` works as a Claude Code
-slash command. Keep the two in sync when editing.
-"""
-
-SLEEP_PROMPT = """\
 # Sleep Time Compute — Stash Wiki Curation
 
 Curate workspace history into an organized, categorized wiki. Read recent
@@ -145,4 +139,3 @@ Use the `stash` CLI for everything — every subcommand supports `--json`.
   agent Y".
 
 Begin now.
-"""

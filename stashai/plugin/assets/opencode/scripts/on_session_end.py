@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """opencode session.deleted: push session_end, then spawn `opencode run <SLEEP_PROMPT>`.
 
-Gated by the central `auto_curate` flag plus the shared 30-min cooldown.
+Gated by the central `auto_curate` flag plus the shared 24h cooldown.
 """
 
 from config import DATA_DIR, get_client, get_config, get_stdin_data, is_configured

@@ -90,7 +90,7 @@ Stop ───────────→ Push session_end summary (tool count, 
 
 SessionEnd ─────→ Spawn `claude -p` headless with the shared sleep prompt to
                   curate recent history into wiki pages. Gated by `auto_curate`
-                  + a 30-min cooldown stored in ~/.stash/config.json.
+                  + a 24h cooldown stored in ~/.stash/config.json.
 ```
 
 ### Curation (sleep time compute)

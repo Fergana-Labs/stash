@@ -1782,6 +1782,21 @@ def files_text(
 
 
 # ===========================================================================
+# Prompts — reusable stash agent prompts, printed to stdout
+# ===========================================================================
+
+prompts_app = typer.Typer(help="Print reusable stash agent prompts.")
+app.add_typer(prompts_app, name="prompts")
+
+
+@prompts_app.command("curate")
+def prompts_curate():
+    """Print the sleep-time wiki curation prompt to stdout."""
+    from stashai.plugin.sleep_prompt import SLEEP_PROMPT
+    print(SLEEP_PROMPT)
+
+
+# ===========================================================================
 # Connect wizard
 # ===========================================================================
 

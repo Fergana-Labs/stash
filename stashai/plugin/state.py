@@ -12,7 +12,7 @@ import os
 import time
 from pathlib import Path
 
-CURATE_COOLDOWN_SECONDS = 30 * 60
+CURATE_COOLDOWN_SECONDS = 24 * 60 * 60
 
 # How recently codex_hooks Stop must have fired for the `notify` fallback to
 # self-suppress. One turn is usually well under a minute; 60s is generous

@@ -1,7 +1,7 @@
 """Spawn the user's own agent CLI in headless mode with SLEEP_PROMPT.
 
 Every plugin's `on_session_end.py` calls `spawn_curation("<binary>", [<argv...>])`
-— the shared gating (central auto_curate flag, 30-min cooldown, recursion
+— the shared gating (central auto_curate flag, 24h cooldown, recursion
 guard, Cursor hang timeout) lives here so all five plugins behave the same.
 """
 

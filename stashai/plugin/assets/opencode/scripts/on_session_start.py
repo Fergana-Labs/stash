@@ -28,7 +28,7 @@ def _flush_stale_session(prior_sid: str, state: dict) -> None:
             stream_session_end(client, cfg, stale_state, stale_event)
     except Exception:
         pass
-    # 30-min cooldown still gates this; safe to call.
+    # 24h cooldown still gates this; safe to call.
     spawn_curation("opencode", ["run"])
 
 
