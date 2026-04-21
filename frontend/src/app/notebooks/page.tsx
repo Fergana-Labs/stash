@@ -513,37 +513,67 @@ function WikiPageInner() {
         {activeTab === "pages" && !selectedNotebook && (
           /* ── Notebook list (landing) ── */
           <div className="flex-1 overflow-y-auto">
-            <div className="max-w-3xl mx-auto w-full px-4 py-8">
-              <div className="flex items-center justify-between mb-6">
-                <h2 className="text-xl font-bold text-foreground font-display">Notebooks</h2>
-                <button onClick={handleCreateNotebook} className="text-sm bg-brand hover:bg-brand-hover text-foreground px-3 py-1.5 rounded transition-colors">
-                  New Notebook
+            <div className="mx-auto w-full max-w-[1120px] px-8 pb-16 pt-8">
+              <div className="mb-8 flex items-end justify-between gap-4">
+                <div>
+                  <p className="font-mono text-[11px] font-medium uppercase tracking-[0.12em] text-muted">
+                    Notebook · architecture · runbooks · decisions
+                  </p>
+                  <h1 className="mt-2 font-display text-[32px] font-bold tracking-[-0.02em] text-foreground">
+                    Wiki
+                  </h1>
+                </div>
+                <button
+                  onClick={handleCreateNotebook}
+                  className="inline-flex h-9 items-center rounded-md bg-brand px-3.5 text-[13px] font-medium text-white shadow-sm transition hover:bg-brand-hover"
+                >
+                  + Page
                 </button>
               </div>
-              {error && <p className="text-red-400 text-sm mb-4">{error}<button onClick={() => setError("")} className="ml-2 text-red-500">&times;</button></p>}
+              {error && (
+                <p className="mb-4 text-[13px] text-red-500">
+                  {error}
+                  <button onClick={() => setError("")} className="ml-2 text-red-500">
+                    &times;
+                  </button>
+                </p>
+              )}
               {notebooks.length === 0 ? (
-                <p className="text-muted text-sm">No notebooks yet. Create one to start writing wiki pages.</p>
+                <p className="text-[13px] text-muted">
+                  No notebooks yet. Create one to start writing wiki pages.
+                </p>
               ) : (
-                <div className="space-y-2">
+                <div className="space-y-8">
                   {Object.entries(grouped).map(([key, group]) => (
-                    <div key={key}>
-                      <p className="text-[10px] font-medium text-muted uppercase tracking-wider mb-2">{group.name}</p>
-                      {group.notebooks.map((nb) => (
-                        <button
-                          key={nb.id}
-                          onClick={() => handleSelectNotebook(nb)}
-                          className="w-full text-left flex items-center gap-3 px-4 py-3 rounded-lg border border-border bg-surface hover:bg-raised transition-colors mb-2"
-                        >
-                          <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-md bg-raised font-mono text-[12px] font-bold text-muted">
-                            W
-                          </div>
-                          <div className="min-w-0 flex-1">
-                            <div className="text-sm font-medium text-foreground">{nb.name}</div>
-                            {nb.description && <div className="text-xs text-muted truncate">{nb.description}</div>}
-                          </div>
-                        </button>
-                      ))}
-                    </div>
+                    <section key={key}>
+                      <p className="mb-3 font-mono text-[10px] font-medium uppercase tracking-[0.12em] text-muted">
+                        {group.name}
+                      </p>
+                      <div className="flex flex-col gap-2">
+                        {group.notebooks.map((nb) => (
+                          <button
+                            key={nb.id}
+                            onClick={() => handleSelectNotebook(nb)}
+                            className="flex w-full items-center gap-3 rounded-lg border border-border-subtle bg-base px-4 py-3.5 text-left transition-colors hover:border-brand"
+                          >
+                            <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-md bg-raised font-mono text-[12px] font-bold text-muted">
+                              W
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <div className="text-[14px] font-semibold text-foreground">
+                                {nb.name}
+                              </div>
+                              {nb.description && (
+                                <div className="truncate text-[12px] text-dim">
+                                  {nb.description}
+                                </div>
+                              )}
+                            </div>
+                            <span className="font-mono text-[11px] text-muted">→</span>
+                          </button>
+                        ))}
+                      </div>
+                    </section>
                   ))}
                 </div>
               )}
@@ -555,42 +585,59 @@ function WikiPageInner() {
           /* ── Notebook open: sidebar + editor ── */
           <div className="flex flex-1 overflow-hidden">
             {/* Sidebar: file tree */}
-            <div className="w-[240px] flex-shrink-0 bg-surface border-r border-border overflow-hidden flex flex-col">
-
-              {/* Semantic search */}
-              {selectedNotebook.workspace_id && (
-                <div className="px-2 pt-2 pb-1 border-b border-border">
-                  <div className="flex gap-1">
+            <div className="flex w-[260px] flex-shrink-0 flex-col overflow-hidden border-r border-border bg-surface">
+              {/* Tree header with notebook name + semantic search */}
+              <div className="border-b border-border-subtle px-4 py-4">
+                <p className="font-mono text-[10px] font-medium uppercase tracking-[0.12em] text-muted">
+                  Notebook
+                </p>
+                <div className="mt-1 truncate font-display text-[14px] font-semibold tracking-[-0.01em] text-foreground">
+                  {selectedNotebook.name}
+                </div>
+                {selectedNotebook.workspace_id && (
+                  <div className="mt-3">
                     <input
                       type="text"
-                      placeholder="Search pages..."
+                      placeholder="Search pages…"
                       value={semanticQuery}
-                      onChange={(e) => { setSemanticQuery(e.target.value); if (!e.target.value) setSemanticResults([]); }}
+                      onChange={(e) => {
+                        setSemanticQuery(e.target.value);
+                        if (!e.target.value) setSemanticResults([]);
+                      }}
                       onKeyDown={(e) => e.key === "Enter" && handleSemanticSearch()}
-                      className="flex-1 text-[11px] bg-raised border border-border rounded px-2 py-1 text-foreground placeholder:text-muted min-w-0"
+                      className="w-full rounded-md border border-border bg-base px-2.5 py-1.5 text-[12px] text-foreground placeholder:text-muted focus:border-brand focus:outline-none focus:shadow-[0_0_0_3px_rgba(249,115,22,0.2)]"
                     />
+                    {semanticSearching && (
+                      <div className="mt-1 px-1 text-[10px] text-muted">Searching…</div>
+                    )}
+                    {semanticResults.length > 0 && (
+                      <div className="mt-1.5 max-h-[160px] space-y-0.5 overflow-y-auto">
+                        {semanticResults.map((p) => (
+                          <button
+                            key={p.id}
+                            onClick={() => {
+                              handleSelectPage(p.id);
+                              setSemanticResults([]);
+                              setSemanticQuery("");
+                            }}
+                            className="flex w-full items-center justify-between gap-2 truncate rounded px-2 py-1 text-left text-[12px] text-foreground transition-colors hover:bg-raised"
+                          >
+                            <span className="truncate">{p.name}</span>
+                            {"similarity" in p && (
+                              <span className="font-mono text-[10px] text-brand">
+                                {Math.round(
+                                  ((p as unknown as Record<string, number>).similarity ?? 0) * 100
+                                )}
+                                %
+                              </span>
+                            )}
+                          </button>
+                        ))}
+                      </div>
+                    )}
                   </div>
-                  {semanticSearching && <div className="text-[10px] text-muted px-1 py-1">Searching...</div>}
-                  {semanticResults.length > 0 && (
-                    <div className="mt-1 space-y-0.5 max-h-[150px] overflow-y-auto">
-                      {semanticResults.map((p) => (
-                        <button
-                          key={p.id}
-                          onClick={() => { handleSelectPage(p.id); setSemanticResults([]); setSemanticQuery(""); }}
-                          className="w-full text-left text-[11px] text-foreground hover:bg-raised px-2 py-1 rounded truncate"
-                        >
-                          {p.name}
-                          {"similarity" in p && (
-                            <span className="text-muted ml-1">
-                              {Math.round(((p as unknown as Record<string, number>).similarity ?? 0) * 100)}%
-                            </span>
-                          )}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
+                )}
+              </div>
 
               {/* File tree */}
               <div className="flex-1 overflow-hidden">
@@ -610,43 +657,77 @@ function WikiPageInner() {
             </div>
 
             {/* Editor + Wiki Panel */}
-            <div className="flex-1 flex flex-col overflow-hidden">
+            <div className="flex flex-1 flex-col overflow-hidden">
               {error && (
-                <div className="bg-red-900/30 border-b border-red-800 text-red-400 text-sm px-4 py-2">
-                  {error}<button onClick={() => setError("")} className="ml-2 text-red-500 hover:text-red-300">&times;</button>
+                <div className="border-b border-red-500/30 bg-red-500/10 px-4 py-2 text-[13px] text-red-500">
+                  {error}
+                  <button
+                    onClick={() => setError("")}
+                    className="ml-2 text-red-500 hover:text-red-400"
+                  >
+                    &times;
+                  </button>
                 </div>
               )}
 
-              {/* Breadcrumbs */}
-              <div className="flex items-center justify-between px-4 py-1.5 border-b border-border bg-surface">
-                <nav className="flex items-center gap-1 text-[12px] text-muted min-w-0">
+              {/* Context bar: drill-down crumbs + save status */}
+              <div className="flex items-center justify-between gap-3 border-b border-border-subtle bg-surface px-6 py-2">
+                <nav className="flex min-w-0 items-center gap-1.5 font-mono text-[11px] text-muted">
                   <button
-                    onClick={() => { setSelectedNotebook(null); setSelectedPage(null); setSelectedPageId(null); setTree({ folders: [], root_files: [] }); }}
-                    className="hover:text-foreground transition-colors"
+                    onClick={() => {
+                      setSelectedNotebook(null);
+                      setSelectedPage(null);
+                      setSelectedPageId(null);
+                      setTree({ folders: [], root_files: [] });
+                    }}
+                    className="transition-colors hover:text-foreground"
                   >
                     Wiki
                   </button>
-                  <span className="text-border">/</span>
+                  <span className="text-muted">/</span>
                   <button
-                    onClick={() => { setSelectedPage(null); setSelectedPageId(null); }}
-                    className="hover:text-foreground transition-colors truncate"
+                    onClick={() => {
+                      setSelectedPage(null);
+                      setSelectedPageId(null);
+                    }}
+                    className="truncate transition-colors hover:text-foreground"
                   >
                     {selectedNotebook.name}
                   </button>
                   {selectedPage && (
                     <>
-                      <span className="text-border">/</span>
-                      <span className="text-foreground font-medium truncate">{selectedPage.name}</span>
+                      <span className="text-muted">/</span>
+                      <span className="truncate font-medium text-foreground">
+                        {selectedPage.name}
+                      </span>
                     </>
                   )}
                 </nav>
                 {selectedPage && (
                   <span
-                    className={`w-2 h-2 rounded-full flex-shrink-0 ${
-                      saveStatus === "saved" ? "bg-green-400" : "bg-yellow-400"
-                    }`}
-                    title={saveStatus === "saving" ? "Saving..." : saveStatus === "dirty" ? "Unsaved changes" : "Saved"}
-                  />
+                    className="flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.08em] text-muted"
+                    title={
+                      saveStatus === "saving"
+                        ? "Saving…"
+                        : saveStatus === "dirty"
+                        ? "Unsaved changes"
+                        : "Saved"
+                    }
+                  >
+                    <span
+                      className={
+                        "h-1.5 w-1.5 rounded-full " +
+                        (saveStatus === "saved"
+                          ? "bg-[#22C55E]"
+                          : "bg-[#EAB308]")
+                      }
+                    />
+                    {saveStatus === "saving"
+                      ? "saving"
+                      : saveStatus === "dirty"
+                      ? "unsaved"
+                      : "saved"}
+                  </span>
                 )}
               </div>
 
@@ -667,8 +748,8 @@ function WikiPageInner() {
 
                     {/* Backlinks */}
                     {backlinks.length > 0 && (
-                      <div className="mx-auto w-full max-w-[720px] px-8 pb-10">
-                        <div className="mt-2 border-t border-border-subtle pt-6">
+                      <div className="mx-auto w-full max-w-[820px] px-12 pb-12">
+                        <div className="mt-4 border-t border-border-subtle pt-6">
                           <p className="mb-3 font-mono text-[11px] font-medium uppercase tracking-[0.12em] text-muted">
                             Backlinks
                           </p>

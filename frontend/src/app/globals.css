@@ -448,18 +448,31 @@ body {
  *               unresolved wiki nodes (.wiki-link-dead)
  * ============================================================= */
 
-/* Base link style — shared by internal + external */
-.ProseMirror a,
-.ProseMirror span.wiki-link-internal {
+/* Base link style — regular markdown links, orange (brand) */
+.ProseMirror a {
   color: var(--link, #F97316);
   text-decoration: underline;
   text-underline-offset: 2px;
   cursor: pointer;
   transition: color 150ms ease;
 }
-.ProseMirror a:hover,
-.ProseMirror span.wiki-link-internal:hover {
+.ProseMirror a:hover {
   color: var(--link-hover, #EA580C);
+}
+
+/* Wiki internal links — agent-curated memory refs, violet dashed.
+   Orange is reserved for CTAs/nav/external links; violet signals a
+   pointer into the agent/notebook memory graph. */
+.ProseMirror span.wiki-link-internal {
+  color: #8B5CF6;
+  text-decoration: underline dashed rgba(139, 92, 246, 0.45);
+  text-underline-offset: 3px;
+  cursor: pointer;
+  transition: color 150ms ease, text-decoration-color 150ms ease;
+}
+.ProseMirror span.wiki-link-internal:hover {
+  color: #8B5CF6;
+  text-decoration-color: #8B5CF6;
 }
 
 /* External URLs — anything with a scheme that isn't stash itself.

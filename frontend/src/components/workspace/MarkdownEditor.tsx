@@ -259,21 +259,33 @@ export default function MarkdownEditor({
     titleTimer.current = setTimeout(() => onRename(newTitle.trim()), AUTOSAVE_DEBOUNCE_MS);
   };
 
+  const updatedLabel = file.updated_at
+    ? `Updated ${new Date(file.updated_at).toLocaleDateString(undefined, {
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+      })}`
+    : "";
+
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex h-full flex-col">
       <EditorToolbar editor={editor} workspaceId={workspaceId} />
       <div className="flex-1 overflow-y-auto bg-background">
-        <div className="max-w-[720px] mx-auto w-full px-8 py-10">
-          <input
-            type="text"
-            value={title}
-            onChange={handleTitleChange}
-            placeholder="Untitled"
-            className="w-full text-3xl font-bold text-foreground bg-transparent border-none outline-none placeholder:text-muted/40 mb-1 font-display"
-          />
-          <div className="text-[11px] text-muted mb-6">
-            {file.updated_at ? `Last edited ${new Date(file.updated_at).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}` : ""}
-          </div>
+        <div className="mx-auto w-full max-w-[820px] px-12 py-10">
+          <header className="mb-8">
+            {updatedLabel && (
+              <p className="mb-2 font-mono text-[11px] font-medium uppercase tracking-[0.12em] text-muted">
+                {updatedLabel}
+              </p>
+            )}
+            <input
+              type="text"
+              value={title}
+              onChange={handleTitleChange}
+              placeholder="Untitled"
+              className="w-full border-none bg-transparent font-display text-[40px] font-bold leading-[1.05] tracking-[-0.02em] text-foreground outline-none placeholder:text-muted/40"
+            />
+          </header>
           <EditorContent editor={editor} className="wiki-content" />
         </div>
       </div>
