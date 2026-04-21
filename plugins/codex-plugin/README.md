@@ -81,8 +81,8 @@ The `config.toml.snippet` has two mutually-exclusive variants.
 | `SessionStart` | — (warms cache) | — |
 | `UserPromptSubmit` | `user_message` | — |
 | `PostToolUse` | `tool_use` | **Bash only today** — Codex hardcodes `tool_name="Bash"` for every shell call |
-| `Stop` | `assistant_message` + `session_end` | — |
-| `notify` (fallback) | `assistant_message` + `session_end` | Dedups with Stop — pick one |
+| `Stop` | `assistant_message` + transcript upload | Transcript uploaded in background with 60s cooldown |
+| `notify` (fallback) | `assistant_message` | Dedups with Stop — pick one |
 
 ## Retrieval
 
