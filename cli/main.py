@@ -19,7 +19,6 @@ from .client import StashClient, StashError
 from .config import (
     PROJECT_FILENAME,
     Manifest,
-    detect_previous_scope,
     find_project_config,
     find_project_manifest,
     load_config,
@@ -1984,18 +1983,17 @@ def connect(
         )
 
     # --- Step 0: Scope ---
-    # Preserve the previous choice on re-runs so `stash connect` doesn't
-    # overwrite a directory-scoped install with a machine-wide one (or vice
-    # versa). With a manifest, we still offer machine-level install; we just
-    # flip the default so new contributors land on project scope.
-    prev_scope = detect_previous_scope()
-    if prev_scope:
-        scope = prev_scope
-        scope_label = (
-            "everywhere on this machine" if scope == "user" else "only this directory"
-        )
+    # If a manifest already exists, respect the user's previous choice.
+    global_manifest = Path.home() / ".stash" / "stash.json"
+    if global_manifest.exists():
+        scope = "user"
         console.print(
-            f"  [green]✓[/green] Using existing scope: [bold]{scope_label}[/bold]"
+            "  [green]✓[/green] Using existing scope: [bold]everywhere on this machine[/bold]"
+        )
+    elif manifest:
+        scope = "project"
+        console.print(
+            "  [green]✓[/green] Using existing scope: [bold]only this directory[/bold]"
         )
     else:
         scope_options = [
@@ -2003,7 +2001,7 @@ def connect(
             ("Only this directory", "./.stash/config.json", "project"),
         ]
         label_width = max(len(label) for label, _, _ in scope_options)
-        scope_default_value = "project" if manifest else "user"
+        scope_default_value = "user"
         scope_choices = [
             questionary.Choice(f"{label:<{label_width}}   {path}", value=value)
             for label, path, value in scope_options
@@ -2019,14 +2017,6 @@ def connect(
         if scope is None:
             raise typer.Exit(1)
 
-    if scope == "user":
-        try:
-            gm_status, gm_detail = _install_global_manifest(force=False)
-            if gm_status == "installed":
-                console.print(f"  [green]✓[/green] Global manifest written: {gm_detail}")
-        except Exception as e:
-            console.print(f"  [yellow]⚠[/yellow] Could not write global manifest: {e}")
-
     # --- Step 1: API endpoint ---
     cfg = load_config()
     prev_base = stored_base_url()
@@ -2035,7 +2025,7 @@ def connect(
         console.print(
             f"  [green]✓[/green] Using endpoint from manifest: [bold]{base_url}[/bold]"
         )
-        save_config(base_url=base_url, scope=scope)
+        save_config(base_url=base_url)
     elif prev_base:
         base_url = prev_base
         console.print(
@@ -2063,7 +2053,7 @@ def connect(
             base_url = "https://api.stash.ac"
         else:
             base_url = _self_host_walkthrough(cfg)
-        save_config(base_url=base_url, scope=scope)
+        save_config(base_url=base_url)
 
     # --- Step 2: Auth (browser-based) ---
     has_key = bool(cfg.get("api_key"))
@@ -2091,6 +2081,8 @@ def connect(
     cfg = load_config()
 
     manifest_joined_ws: str = ""
+    manifest_ws_id: str = ""
+    matched: dict | None = None
 
     with StashClient(base_url=base_url, api_key=cfg["api_key"]) as c:
         if manifest:
@@ -2208,6 +2200,17 @@ def connect(
                         )
                     except StashError as e:
                         console.print(f"[red]Could not create workspace: {e.detail}[/red]")
+
+    # Install global manifest for user-scope installs now that we have a workspace_id.
+    if scope == "user":
+        ws_id = manifest_ws_id if manifest else (matched["id"] if matched else None)
+        if ws_id:
+            try:
+                gm_status, gm_detail = _install_global_manifest(ws_id, force=False)
+                if gm_status == "installed":
+                    console.print(f"  [green]✓[/green] Global manifest written: {gm_detail}")
+            except Exception as e:
+                console.print(f"  [yellow]⚠[/yellow] Could not write global manifest: {e}")
 
     # --- Step 3.5: Offer to enable this repo so teammates auto-join ---
     if not manifest:
@@ -3062,8 +3065,7 @@ def disconnect(as_json: bool = typer.Option(False, "--json")):
     from .config import clear_config
 
     json_mode = as_json
-    clear_config("user")
-    clear_config("project")
+    clear_config()
     if json_mode:
         output_json({"disconnected": True})
         return
@@ -3102,26 +3104,20 @@ def _write_central_config(updates: dict) -> None:
 def config_cmd(
     key: str | None = typer.Argument(None),
     value: str | None = typer.Argument(None),
-    project: bool = typer.Option(
-        False, "--project", help="Write to project-level config (.stash/config.json in the repo)."
-    ),
 ):
     """Show or set config. Keys: base_url.
 
     Writes to ~/.stash/config.json.
     """
-    from .config import USER_CONFIG_FILE, find_project_config
+    from .config import USER_CONFIG_FILE
 
     if key and value:
-        write_scope = "project" if project else "user"
-        allowed = {
-            "base_url",
-        }
-        if key not in allowed and key not in {"api_key", "username"}:
+        allowed = {"base_url", "api_key", "username"}
+        if key not in allowed:
             console.print(f"[red]Unknown config key: {key}[/red]")
             raise typer.Exit(1)
-        save_config(**{key: value, "scope": write_scope})
-        console.print(f"[green]{key} = {value}[/green]  [dim](scope: {write_scope})[/dim]")
+        save_config(**{key: value})
+        console.print(f"[green]{key} = {value}[/green]")
         return
 
     cfg = load_config()
@@ -3129,9 +3125,7 @@ def config_cmd(
     if display.get("api_key"):
         display["api_key"] = display["api_key"][:10] + "..."
 
-    project_path = find_project_config()
-    console.print(f"[dim]user:    {USER_CONFIG_FILE}[/dim]")
-    console.print(f"[dim]project: {project_path or '(none — project config not set)'}[/dim]\n")
+    console.print(f"[dim]config:  {USER_CONFIG_FILE}[/dim]\n")
     console.print(json.dumps(display, indent=2, default=str))
 
 
