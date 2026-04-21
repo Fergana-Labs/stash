@@ -45,32 +45,15 @@ def find_manifest(cwd: str | None) -> dict | None:
     """Walk up from cwd and return the most relevant `.stash/stash.json`.
 
     Priority (highest first):
-    1. Manifest in cwd or ancestors within this worktree
-    2. Manifest in the main worktree's root (the repo this worktree belongs to)
-    3. Manifest in ancestors above the worktree (e.g. global ~/.stash/)
+    1. Main repo's manifest (if cwd is in a linked worktree)
+    2. Manifest in cwd or ancestors (walk-up)
     """
     if not cwd:
         return None
     cur = Path(cwd).resolve()
 
-    found_manifest = None
-    found_at: Path | None = None
-    for parent in [cur, *cur.parents]:
-        path = parent / ".stash" / _MANIFEST_FILENAME
-        if path.exists():
-            try:
-                found_manifest = json.loads(path.read_text())
-                found_at = parent
-            except Exception:
-                pass
-            break
-
     toplevel, main_root = _git_repo_info(cur)
     if main_root and main_root != toplevel:
-        # We're in a linked worktree — main repo manifest takes precedence
-        # over a distant ancestor, but not over a manifest local to this worktree.
-        if found_at and toplevel and found_at.is_relative_to(toplevel):
-            return found_manifest
         main_path = main_root / ".stash" / _MANIFEST_FILENAME
         if main_path.exists():
             try:
@@ -78,7 +61,14 @@ def find_manifest(cwd: str | None) -> dict | None:
             except Exception:
                 pass
 
-    return found_manifest
+    for parent in [cur, *cur.parents]:
+        path = parent / ".stash" / _MANIFEST_FILENAME
+        if path.exists():
+            try:
+                return json.loads(path.read_text())
+            except Exception:
+                return None
+    return None
 
 
 def cwd_in_scope(cwd: str | None) -> bool:
@@ -90,31 +80,14 @@ def repo_stash_disabled(cwd: str | None) -> bool:
     """True if the repo containing `cwd` has opted out of stash streaming
     via `stash_disabled_here=true` in .stash/config.json.
 
-    Uses the same precedence as find_manifest: local worktree config wins,
-    then main repo config, then ancestor config.
+    Same precedence as find_manifest: main repo wins over worktree-local.
     Never raises — a missing / malformed file is treated as 'not disabled'."""
     if not cwd:
         return False
     cur = Path(cwd).resolve()
 
-    found_disabled: bool | None = None
-    found_at: Path | None = None
-    for parent in [cur, *cur.parents]:
-        candidate = parent / ".stash" / _CONFIG_FILENAME
-        if not candidate.exists():
-            continue
-        try:
-            data = json.loads(candidate.read_text())
-        except Exception:
-            break
-        found_disabled = bool(data.get("stash_disabled_here", False))
-        found_at = parent
-        break
-
     toplevel, main_root = _git_repo_info(cur)
     if main_root and main_root != toplevel:
-        if found_at and toplevel and found_at.is_relative_to(toplevel):
-            return found_disabled or False
         candidate = main_root / ".stash" / _CONFIG_FILENAME
         if candidate.exists():
             try:
@@ -123,4 +96,13 @@ def repo_stash_disabled(cwd: str | None) -> bool:
                 return False
             return bool(data.get("stash_disabled_here", False))
 
-    return found_disabled or False
+    for parent in [cur, *cur.parents]:
+        candidate = parent / ".stash" / _CONFIG_FILENAME
+        if not candidate.exists():
+            continue
+        try:
+            data = json.loads(candidate.read_text())
+        except Exception:
+            return False
+        return bool(data.get("stash_disabled_here", False))
+    return False

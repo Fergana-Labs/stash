@@ -102,8 +102,8 @@ def test_worktree_manifest_beats_global(tmp_path, monkeypatch):
     assert manifest["workspace_id"] == "company"
 
 
-def test_worktree_local_manifest_beats_main_repo(tmp_path, monkeypatch):
-    """A manifest inside the worktree itself is more specific than the main repo's."""
+def test_main_repo_manifest_beats_worktree_local(tmp_path, monkeypatch):
+    """Main repo manifest wins even if the worktree has its own."""
     main_repo = tmp_path / "main-repo"
     main_repo.mkdir()
     (main_repo / ".stash").mkdir()
@@ -120,7 +120,7 @@ def test_worktree_local_manifest_beats_main_repo(tmp_path, monkeypatch):
 
     manifest = scope_mod.find_manifest(str(worktree))
     assert manifest is not None
-    assert manifest["workspace_id"] == "local"
+    assert manifest["workspace_id"] == "main"
 
 
 def test_worktree_disabled_checks_main_repo(tmp_path, monkeypatch):
