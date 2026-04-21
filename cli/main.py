@@ -3067,8 +3067,7 @@ def disconnect(as_json: bool = typer.Option(False, "--json")):
     from .config import clear_config
 
     json_mode = as_json
-    clear_config("user")
-    clear_config("project")
+    clear_config()
     if json_mode:
         output_json({"disconnected": True})
         return

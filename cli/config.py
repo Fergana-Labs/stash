@@ -7,7 +7,7 @@ Per-repo workspace info lives in .stash/stash.json (the manifest).
 import json
 import os
 from pathlib import Path
-from typing import Literal, TypedDict
+from typing import TypedDict
 
 USER_CONFIG_DIR = Path.home() / ".stash"
 USER_CONFIG_FILE = USER_CONFIG_DIR / "config.json"
@@ -119,14 +119,9 @@ def stored_base_url() -> str | None:
     return None
 
 
-def clear_config(scope: Literal["user", "project"] = "user") -> None:
-    """Remove stored config for the given scope."""
-    if scope == "user":
-        if USER_CONFIG_FILE.exists():
-            USER_CONFIG_FILE.unlink()
-        return
-    project_path = find_project_config()
-    if project_path and project_path.exists():
-        project_path.unlink()
+def clear_config() -> None:
+    """Remove stored config."""
+    if USER_CONFIG_FILE.exists():
+        USER_CONFIG_FILE.unlink()
 
 
