@@ -2018,14 +2018,6 @@ def connect(
         if scope is None:
             raise typer.Exit(1)
 
-    if scope == "user":
-        try:
-            gm_status, gm_detail = _install_global_manifest(force=False)
-            if gm_status == "installed":
-                console.print(f"  [green]✓[/green] Global manifest written: {gm_detail}")
-        except Exception as e:
-            console.print(f"  [yellow]⚠[/yellow] Could not write global manifest: {e}")
-
     # --- Step 1: API endpoint ---
     cfg = load_config()
     prev_base = stored_base_url()
@@ -2090,6 +2082,8 @@ def connect(
     cfg = load_config()
 
     manifest_joined_ws: str = ""
+    manifest_ws_id: str = ""
+    matched: dict | None = None
 
     with StashClient(base_url=base_url, api_key=cfg["api_key"]) as c:
         if manifest:
@@ -2207,6 +2201,17 @@ def connect(
                         )
                     except StashError as e:
                         console.print(f"[red]Could not create workspace: {e.detail}[/red]")
+
+    # Install global manifest for user-scope installs now that we have a workspace_id.
+    if scope == "user":
+        ws_id = manifest_ws_id if manifest else (matched["id"] if matched else None)
+        if ws_id:
+            try:
+                gm_status, gm_detail = _install_global_manifest(ws_id, force=False)
+                if gm_status == "installed":
+                    console.print(f"  [green]✓[/green] Global manifest written: {gm_detail}")
+            except Exception as e:
+                console.print(f"  [yellow]⚠[/yellow] Could not write global manifest: {e}")
 
     # --- Step 3.5: Offer to enable this repo so teammates auto-join ---
     if not manifest:
