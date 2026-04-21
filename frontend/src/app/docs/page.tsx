@@ -34,7 +34,6 @@ const PILLARS = [
 const QUICK_LINKS = [
   { href: "/docs/quickstart", label: "Quickstart", desc: "Connect Claude Code and start in 5 minutes." },
   { href: "/docs/concepts", label: "Concepts", desc: "What workspaces, agent names, and history are." },
-  { href: "/docs/api", label: "REST API", desc: "Full HTTP reference for all resources." },
   { href: "/docs/cli", label: "CLI", desc: "Push events and manage resources from the terminal." },
   { href: "/docs/webhooks", label: "Webhooks", desc: "Subscribe to workspace events with HMAC delivery." },
 ];

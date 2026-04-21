@@ -48,7 +48,7 @@ cp .env.example .env`}</CodeBlock>
       <div className="rounded-2xl border border-border bg-surface divide-y divide-border my-6">
         {[
           { svc: "postgres", port: "5432", desc: "PostgreSQL 16 with pgvector — stores all workspace data" },
-          { svc: "backend", port: "3456", desc: "FastAPI — REST API" },
+          { svc: "backend", port: "3456", desc: "FastAPI backend" },
           { svc: "frontend", port: "3457", desc: "Next.js UI — dashboard, docs" },
           { svc: "caddy", port: "80/443", desc: "Reverse proxy with automatic HTTPS via Let's Encrypt" },
         ].map((s) => (
@@ -123,12 +123,6 @@ S3_REGION=us-east-1`}</CodeBlock>
           </div>
         ))}
       </div>
-
-      <Callout type="info">
-        The backend exposes an interactive OpenAPI spec at <Code>/docs</Code> (e.g.{" "}
-        <Code>http://localhost:3456/docs</Code>). For production, block the path at your
-        reverse proxy (Caddy) rather than exposing the schema publicly.
-      </Callout>
 
       <H3>Upgrading</H3>
       <CodeBlock>{`git pull
