@@ -37,7 +37,8 @@ pip install -r backend/requirements-dev.txt
 
 # 4. Configure environment
 cp .env.example .env
-# Set ANTHROPIC_API_KEY and OPENAI_API_KEY if you need curation / search
+# Embeddings default to local sentence-transformers — no key needed.
+# Set OPENAI_API_KEY or HF_TOKEN to use a hosted embedding provider instead.
 
 # 5. Apply database migrations
 python -m alembic upgrade head

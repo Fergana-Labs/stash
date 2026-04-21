@@ -8,10 +8,12 @@ version: "3.9"
 #
 # Required env vars in .env:
 #   POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_DB
-#   ANTHROPIC_API_KEY           (curation + universal search)
-#   OPENAI_API_KEY              (semantic embeddings)
 #   PUBLIC_URL                  (your public frontend URL, e.g. https://app.example.com)
 #   CORS_ORIGINS                (comma-separated allowed origins)
+#
+# Optional (embeddings default to local sentence-transformers — no key needed):
+#   OPENAI_API_KEY or HF_TOKEN  (use hosted embedding provider instead of local)
+#   S3_ENDPOINT / S3_BUCKET / …  (enable file uploads)
 
 services:
   postgres:

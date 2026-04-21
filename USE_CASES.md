@@ -101,14 +101,14 @@ Real-world scenarios for Stash, from solo developer to multi-agent team.
 **Setup:**
 ```bash
 git clone https://github.com/Fergana-Labs/stash.git
-cd octopus
+cd stash
 docker compose up -d
 ```
 
 **What happens:**
 - All data stays on-premises. PostgreSQL is the only required dependency.
-- Embeddings and curation work with self-hosted models (set `OPENAI_BASE_URL` and `ANTHROPIC_BASE_URL` to local endpoints)
-- No telemetry, no external calls unless you configure API keys
+- Embeddings default to local sentence-transformers (on-box, no API keys). Point at a self-hosted OpenAI-compatible endpoint via `EMBEDDING_API_URL` if you prefer a shared model server.
+- No LLM calls from the backend at all — curation and search run inside your agent, so outbound traffic is whatever that agent is already doing.
 
 **Value:** Full Stash functionality behind your firewall, with MIT license and no vendor lock-in.
 

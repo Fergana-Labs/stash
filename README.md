@@ -105,7 +105,7 @@ cp .env.example .env          # fill in credentials + API keys
 docker compose -f docker-compose.prod.yml up -d
 ```
 
-Includes Caddy for automatic HTTPS. Requires PostgreSQL with pgvector. Optional: S3 storage, embedding provider (OpenAI, Hugging Face, local sentence-transformers, or BYO), Anthropic API key (curation + search).
+Includes Caddy for automatic HTTPS. Requires PostgreSQL with pgvector. Embeddings default to local sentence-transformers — no API keys required to run. Optional: hosted embedding provider (OpenAI, Hugging Face, or BYO OpenAI-compatible endpoint), S3-compatible object storage for file uploads.
 
 > Local development? Use `docker compose up -d` (no `-f` flag) — simple setup with hardcoded dev credentials.
 
@@ -124,7 +124,7 @@ Includes Caddy for automatic HTTPS. Requires PostgreSQL with pgvector. Optional:
 ## FAQ
 
 **What LLMs does Stash use?**
-The curation tool and universal search use Anthropic Claude. Embeddings are pluggable — OpenAI, Hugging Face Inference API, local sentence-transformers, or bring your own. Set `EMBEDDING_PROVIDER` in `.env` (defaults to auto-detect). See `.env.example` for details.
+None on the server. Curation and universal search run inside your agent (Claude Code, Cursor, etc.) as plugin skills, so they use whatever model and keys that agent is already configured with — the Stash backend itself makes no LLM calls. Embeddings are pluggable and default to local sentence-transformers (no key). Set `EMBEDDING_PROVIDER` in `.env` to switch to OpenAI, Hugging Face, or any OpenAI-compatible endpoint. See `.env.example` for details.
 
 **Can I use this without Claude Code?**
 Yes. The CLI and REST API work standalone with any client.

@@ -32,7 +32,7 @@ development environment, run the test suite, and submit a pull request.
 ```bash
 # 1. Clone the repository
 git clone https://github.com/Fergana-Labs/stash.git
-cd octopus
+cd stash
 
 # 2. Start Postgres (pgvector)
 docker compose up -d postgres
@@ -42,8 +42,8 @@ pip install -r backend/requirements-dev.txt
 
 # 4. Copy and edit environment variables
 cp .env.example .env
-# — Set ANTHROPIC_API_KEY for curation features
-# — For embeddings: set OPENAI_API_KEY, HF_TOKEN, or EMBEDDING_PROVIDER=local (see .env.example)
+# — Embeddings default to local sentence-transformers (no key needed).
+#   To use a hosted provider: set OPENAI_API_KEY or HF_TOKEN (see .env.example)
 
 # 5. Run Alembic migrations
 python -m alembic upgrade head
