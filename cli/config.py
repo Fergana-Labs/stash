@@ -5,8 +5,9 @@ Config lives in two scopes:
 - project: <repo>/.stash/config.json  (overrides user-level when present)
 
 Project lookup walks up from cwd. Project values override user values.
-Auth (api_key, username) is always stored at user scope — it's per-machine,
-not per-repo.
+Auth (api_key, username) and base_url are always stored at user scope —
+they're per-machine, not per-repo. This ensures `stash history` works
+from any directory.
 """
 
 import json
@@ -44,7 +45,8 @@ DEFAULT_CONFIG = {
 }
 
 # Keys that are always user-scoped regardless of requested scope.
-AUTH_KEYS = {"api_key", "username"}
+# base_url lives here so `stash history` works from any directory.
+USER_SCOPED_KEYS = {"api_key", "username", "base_url"}
 
 
 def find_project_config(start: Path | None = None) -> Path | None:
@@ -140,8 +142,8 @@ def save_config(
 ) -> None:
     """Save config to the chosen scope.
 
-    Auth keys (api_key, username) are always written to the user scope even if
-    scope='project' — auth is per-machine, not per-repo.
+    base_url, api_key, and username are always written to user scope so
+    `stash history` works from any directory.
     """
     all_updates = {
         "base_url": base_url,
@@ -153,8 +155,8 @@ def save_config(
         "notify_rooms": notify_rooms,
     }
 
-    auth_updates = {k: v for k, v in all_updates.items() if k in AUTH_KEYS}
-    other_updates = {k: v for k, v in all_updates.items() if k not in AUTH_KEYS}
+    auth_updates = {k: v for k, v in all_updates.items() if k in USER_SCOPED_KEYS}
+    other_updates = {k: v for k, v in all_updates.items() if k not in USER_SCOPED_KEYS}
 
     if any(v is not None for v in auth_updates.values()):
         _write_to(USER_CONFIG_FILE, auth_updates)
@@ -174,11 +176,11 @@ def detect_previous_scope() -> Scope | None:
     project_path = find_project_config()
     if project_path:
         data = _read_json(project_path)
-        if any(k not in AUTH_KEYS and v for k, v in data.items()):
+        if any(k not in USER_SCOPED_KEYS and v for k, v in data.items()):
             return "project"
     if USER_CONFIG_FILE.exists():
         data = _read_json(USER_CONFIG_FILE)
-        if any(k not in AUTH_KEYS and v for k, v in data.items()):
+        if any(k not in USER_SCOPED_KEYS and v for k, v in data.items()):
             return "user"
     return None
 
