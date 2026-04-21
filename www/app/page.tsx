@@ -71,7 +71,7 @@ function Nav() {
 }
 
 function Hero() {
-  const prompt = `Set up stash in this repo so our Claude Code sessions share memory with the team. (1) Install or upgrade the CLI: \`stash signin --help >/dev/null 2>&1 || pipx install stashai --force 2>/dev/null || uv tool install stashai --force\`. (2) Add the Claude Code plugin: \`claude plugin marketplace add Fergana-Labs/stash\` then \`claude plugin install stash@stash-plugins\`. (3) Run \`stash signin\` to open the sign-in page in my browser, then ask me to paste the token back. Run \`stash auth https://api.stash.ac --api-key <token>\`. (4) Run \`stash workspaces list --mine --json\` — if I have multiple, ask which one and run \`stash workspaces use <id>\`. (5) Run \`stash connect --welcome\` and render its full output back to me as a markdown block in your reply, verbatim — don't summarize, don't add commentary, don't truncate. (Future sessions can re-read it via the \`/stash:welcome\` slash command, but you can't invoke that yourself.)`;
+  const prompt = `Set up stash in this repo so our coding agent sessions share memory with the team. (1) Install or upgrade the CLI: \`stash signin --help >/dev/null 2>&1 || pipx install stashai --force 2>/dev/null || uv tool install stashai --force\`. (2) Install the agent hooks: \`stash install\` (auto-detects supported agents on $PATH — Claude Code, Cursor, Codex, OpenCode). (3) Run \`stash signin\` to open the sign-in page in my browser, then ask me to paste the token back. Run \`stash auth https://api.stash.ac --api-key <token>\`. (4) Run \`stash workspaces list --mine --json\` — if I have multiple, ask which one and run \`stash workspaces use <id>\`. (5) Run \`stash connect --welcome\` and render its full output back to me as a markdown block in your reply, verbatim — don't summarize, don't add commentary, don't truncate.`;
   return (
     <section id="install" className="relative overflow-hidden border-b border-border-subtle">
       <div
@@ -86,7 +86,7 @@ function Hero() {
           <span className="rounded-full bg-brand px-2 py-0.5 font-mono text-[10px] font-bold uppercase tracking-[0.12em] text-white">
             New
           </span>
-          <span>Plugin marketplace live for Claude Code</span>
+          <span>Works with Claude Code, Cursor, Codex, and more</span>
           <span className="text-muted">→</span>
         </Link>
 
@@ -153,7 +153,7 @@ function Hero() {
           <div className="mt-4 overflow-hidden rounded-xl border border-border-subtle bg-inverted shadow-[0_30px_80px_-40px_rgba(15,23,42,0.45)]">
             <div className="flex items-center justify-between border-b border-white/5 px-5 py-2.5">
               <span className="font-mono text-[11px] uppercase tracking-[0.14em] text-on-inverted-dim">
-                claude code
+                coding agent
               </span>
               <span className="font-mono text-[11px] text-on-inverted-dim">
                 prompt
@@ -167,8 +167,8 @@ function Hero() {
             </div>
           </div>
           <p className="mt-3 text-[13px] leading-[1.5] text-dim">
-            Paste into Claude Code (or any other coding agent with shell
-            access). Same end state as the one-liner.
+            Paste into any AI coding agent with shell access (Claude Code, Cursor, Codex, etc.).
+            Same end state as the one-liner.
           </p>
         </details>
       </div>
