@@ -464,8 +464,8 @@ body {
 
 /* External URLs — anything with a scheme that isn't stash itself.
    The :not() chain keeps stash absolute URLs styled as internal. */
-.ProseMirror a[href^="http://"]:not([href*="://stash.ac/"]):not([href*="://app.stash.ac/"])::after,
-.ProseMirror a[href^="https://"]:not([href*="://stash.ac/"]):not([href*="://app.stash.ac/"])::after {
+.ProseMirror a[href^="http://"]:not([href*="://joinstash.ai/"]):not([href*="://app.joinstash.ai/"])::after,
+.ProseMirror a[href^="https://"]:not([href*="://joinstash.ai/"]):not([href*="://app.joinstash.ai/"])::after {
   content: "\a0↗";
   font-size: 0.8em;
   opacity: 0.7;

@@ -24,7 +24,7 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://stash.ac"
+Homepage = "https://joinstash.ai"
 Repository = "https://github.com/Fergana-Labs/stash"
 
 [project.scripts]

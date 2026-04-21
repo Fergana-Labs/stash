@@ -30,7 +30,7 @@ AUTH0_AUDIENCE=<your API identifier>
 AUTH0_SECRET=<64-hex random bytes>
 AUTH0_CLIENT_ID=<from Auth0 dashboard>
 AUTH0_CLIENT_SECRET=<from Auth0 dashboard>
-APP_BASE_URL=https://www.stash.ac
+APP_BASE_URL=https://www.joinstash.ai
 
 NEXT_PUBLIC_AUTH0_ENABLED=true
 ```

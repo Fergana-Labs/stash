@@ -49,7 +49,7 @@ function Nav() {
           stash
         </Link>
         <nav className="flex items-center gap-6 text-[14px] text-dim sm:gap-8">
-          <Link href="https://github.com/Fergana-Labs/octopus" className="hidden items-center gap-1.5 hover:text-ink sm:inline-flex">
+          <Link href="https://github.com/Fergana-Labs/stash" className="hidden items-center gap-1.5 hover:text-ink sm:inline-flex">
             GitHub
           </Link>
           <Link href="/docs" className="hover:text-ink">
@@ -71,7 +71,7 @@ function Nav() {
 }
 
 function Hero() {
-  const prompt = `Set up stash in this repo so our coding agent sessions share memory with the team. (1) Install or upgrade the CLI: \`stash signin --help >/dev/null 2>&1 || pipx install stashai --force 2>/dev/null || uv tool install stashai --force\`. (2) Install the agent hooks: \`stash install\` (auto-detects supported agents on $PATH — Claude Code, Cursor, Codex, OpenCode). (3) Run \`stash signin\` to open the sign-in page in my browser, then ask me to paste the token back. Run \`stash auth https://api.stash.ac --api-key <token>\`. (4) Run \`stash workspaces list --mine --json\` — if I have multiple, ask which one and run \`stash workspaces use <id>\`. (5) Run \`stash connect --welcome\` and render its full output back to me as a markdown block in your reply, verbatim — don't summarize, don't add commentary, don't truncate.`;
+  const prompt = `Set up stash in this repo so our coding agent sessions share memory with the team. (1) Install or upgrade the CLI: \`stash signin --help >/dev/null 2>&1 || pipx install stashai --force 2>/dev/null || uv tool install stashai --force\`. (2) Install the agent hooks: \`stash install\` (auto-detects supported agents on $PATH — Claude Code, Cursor, Codex, OpenCode). (3) Run \`stash signin\` to open the sign-in page in my browser, then ask me to paste the token back. Run \`stash auth https://api.joinstash.ai --api-key <token>\`. (4) Run \`stash workspaces list --mine --json\` — if I have multiple, ask which one and run \`stash workspaces use <id>\`. (5) Run \`stash connect --welcome\` and render its full output back to me as a markdown block in your reply, verbatim — don't summarize, don't add commentary, don't truncate.`;
   return (
     <section id="install" className="relative overflow-hidden border-b border-border-subtle">
       <div
@@ -80,7 +80,7 @@ function Hero() {
       />
       <div className="mx-auto max-w-[960px] px-6 pb-20 pt-16 text-center sm:pt-24">
         <Link
-          href="https://github.com/Fergana-Labs/octopus"
+          href="https://github.com/Fergana-Labs/stash"
           className="inline-flex items-center gap-3 rounded-full border border-border bg-surface/80 py-1.5 pl-1.5 pr-4 text-[12px] text-dim shadow-sm backdrop-blur transition hover:border-brand/40 hover:text-ink"
         >
           <span className="rounded-full bg-brand px-2 py-0.5 font-mono text-[10px] font-bold uppercase tracking-[0.12em] text-white">
@@ -128,7 +128,7 @@ function Hero() {
 
         <div className="mt-8 flex flex-wrap items-center justify-center gap-x-6 gap-y-3 text-[14px]">
           <Link
-            href="https://github.com/Fergana-Labs/octopus"
+            href="https://github.com/Fergana-Labs/stash"
             className="inline-flex items-center font-medium text-ink hover:text-brand"
           >
             View on GitHub
@@ -355,7 +355,7 @@ function Footer() {
           </p>
         </div>
         <div className="flex flex-wrap gap-8 text-[14px] text-dim">
-          <Link href="https://github.com/Fergana-Labs/octopus" className="hover:text-ink">
+          <Link href="https://github.com/Fergana-Labs/stash" className="hover:text-ink">
             GitHub
           </Link>
           <Link href="/docs" className="hover:text-ink">
@@ -364,8 +364,8 @@ function Footer() {
           <Link href="/docs/quickstart" className="hover:text-ink">
             Quickstart
           </Link>
-          <Link href="https://stash.ac" className="hover:text-ink">
-            stash.ac
+          <Link href="https://joinstash.ai" className="hover:text-ink">
+            joinstash.ai
           </Link>
         </div>
       </div>

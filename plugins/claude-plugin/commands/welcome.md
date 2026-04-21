@@ -12,7 +12,7 @@ Your coding agent now has the `stash` CLI on its PATH. It can read the transcrip
 
 ## See your workspace
 
-Open [app.stash.ac](https://app.stash.ac) to browse your workspace's transcripts and team activity.
+Open [app.joinstash.ai](https://app.joinstash.ai) to browse your workspace's transcripts and team activity.
 
 ## Examples of questions your agent might want answered
 
@@ -38,7 +38,7 @@ Run `stash --help` to see everything.
 **A:** For sessions in this repo (and its worktrees): prompts, assistant replies, summarized tool activity, and the full session transcript (.jsonl) at session end. Other repos push nothing unless you widen scope. Transcripts are stored verbatim — no secret scrubbing yet.
 
 **Q:** Where can I see my conversation transcripts?
-**A:** Open your workspace in the browser: [app.stash.ac](https://app.stash.ac). (If you self-host, browse to your own frontend instead.)
+**A:** Open your workspace in the browser: [app.joinstash.ai](https://app.joinstash.ai). (If you self-host, browse to your own frontend instead.)
 
 **Q:** How do I share my workspace with my team?
 **A:** Share the invite code (`stash workspaces info <id>` prints it). Teammates run `stash connect` if needed, then `stash workspaces join <invite_code>`.

@@ -1,6 +1,6 @@
 # www — Stash landing page
 
-Standalone Next.js app for stash.ac. Lives alongside `frontend/`, `backend/`, `cli/`, `plugins/`, mirroring how Supabase keeps `apps/www` in its public monorepo.
+Standalone Next.js app for joinstash.ai. Lives alongside `frontend/`, `backend/`, `cli/`, `plugins/`, mirroring how Supabase keeps `apps/www` in its public monorepo.
 
 ## Dev
 
@@ -29,12 +29,12 @@ page (CLI sign-in handoff for Claude Code-driven setup) needs Auth0:
 | Var                          | Purpose                                                |
 | ---------------------------- | ------------------------------------------------------ |
 | `NEXT_PUBLIC_AUTH0_ENABLED`  | `"true"` to mount Auth0 middleware + enable the page   |
-| `NEXT_PUBLIC_API_URL`        | Stash backend (defaults to `https://api.stash.ac`) |
+| `NEXT_PUBLIC_API_URL`        | Stash backend (defaults to `https://api.joinstash.ai`) |
 | `AUTH0_DOMAIN`               | e.g. `stash-prod.us.auth0.com`                         |
 | `AUTH0_CLIENT_ID`            | Auth0 application client id                            |
 | `AUTH0_CLIENT_SECRET`        | Auth0 application client secret                        |
 | `AUTH0_SECRET`               | Cookie-encryption secret (`openssl rand -hex 32`)      |
-| `APP_BASE_URL`               | Public URL of this app (`https://stash.ac` in prod)    |
+| `APP_BASE_URL`               | Public URL of this app (`https://joinstash.ai` in prod)    |
 
 When `NEXT_PUBLIC_AUTH0_ENABLED` is unset, `/connect-token` renders a
 "sign-in is not configured" message and the auth middleware no-ops.

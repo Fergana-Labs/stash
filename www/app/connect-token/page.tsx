@@ -5,7 +5,7 @@ import ConnectTokenClient from "./ConnectTokenClient";
 
 export const dynamic = "force-dynamic";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "https://api.stash.ac";
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "https://api.joinstash.ai";
 const AUTH0_ENABLED = process.env.NEXT_PUBLIC_AUTH0_ENABLED === "true";
 
 type Search = { session?: string; device?: string };
@@ -27,7 +27,7 @@ export default async function ConnectTokenPage({
       <Shell>
         <Heading>Sign-in is not configured</Heading>
         <Body>
-          This deployment of stash.ac doesn&apos;t have <code>NEXT_PUBLIC_AUTH0_ENABLED</code>{" "}
+          This deployment of joinstash.ai doesn&apos;t have <code>NEXT_PUBLIC_AUTH0_ENABLED</code>{" "}
           turned on. Set it on the Vercel project (along with the standard{" "}
           <code>AUTH0_*</code> env vars) and redeploy.
         </Body>

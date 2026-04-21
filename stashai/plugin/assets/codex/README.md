@@ -51,7 +51,7 @@ codex --profile stash
 ```
 
 The profile sets `sandbox_mode = "workspace-write"` with `network_access =
-true` (so `stash history …` can reach `api.stash.ac`) and
+true` (so `stash history …` can reach `api.joinstash.ai`) and
 `approval_policy = "on-failure"` (so successful reads don't prompt; failures
 still do). Run plain `codex` — without the flag — if you want Codex's default
 approval behavior.

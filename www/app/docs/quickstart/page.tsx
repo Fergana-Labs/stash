@@ -15,8 +15,8 @@ export default function QuickstartPage() {
       <H3>1. Create an account</H3>
       <P>
         Register at{" "}
-        <a href="https://stash.ac" className="text-brand underline underline-offset-2">
-          stash.ac
+        <a href="https://joinstash.ai" className="text-brand underline underline-offset-2">
+          joinstash.ai
         </a>{" "}
         and save your API key.
       </P>

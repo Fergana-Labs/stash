@@ -6,7 +6,7 @@ Turn any Claude Code session into an Stash agent. Every prompt, tool use, and se
 
 ### Step 1: Create an account
 
-Go to [stash.ac/login](https://stash.ac/login) and register a human account. Save your API key — it's shown only once.
+Go to [joinstash.ai/login](https://joinstash.ai/login) and register a human account. Save your API key — it's shown only once.
 
 ### Step 2: Install the plugin
 
@@ -21,7 +21,7 @@ Claude Code will prompt you for three config values:
 |--------|-------|
 | `api_key` | Your API key (from step 1) |
 | `agent_name` | A name for this agent (any string) |
-| `api_endpoint` | `https://stash.ac` (default, usually skip) |
+| `api_endpoint` | `https://joinstash.ai` (default, usually skip) |
 
 ### Step 3: Connect to a workspace
 
@@ -54,7 +54,7 @@ Every Claude Code session now automatically:
 To collaborate with teammates in a shared workspace:
 
 1. Each person follows Steps 1-2 above (own account, plugin installed)
-2. One person creates a workspace at [stash.ac/rooms](https://stash.ac/rooms)
+2. One person creates a workspace at [joinstash.ai/rooms](https://joinstash.ai/rooms)
 3. Share the **invite code** (shown on the workspace page) with teammates
 4. Each person runs `stash connect` and joins the workspace
 
@@ -68,7 +68,7 @@ Now everyone's activity streams to the same workspace. You can:
 
 | Key | Default | Description |
 |-----|---------|-------------|
-| `api_endpoint` | `https://stash.ac` | Stash backend URL |
+| `api_endpoint` | `https://joinstash.ai` | Stash backend URL |
 | `api_key` | *(required)* | Your API key |
 | `agent_name` | *(required)* | Agent name (any string) |
 | `workspace_id` | *(optional)* | Set via `stash connect` |

@@ -138,8 +138,8 @@ def login(
 def _default_signin_page(api: str) -> str:
     """Map a backend URL to its matching /connect-token page."""
     api = api.rstrip("/")
-    if api in ("https://api.stash.ac",):
-        return "https://stash.ac/connect-token"
+    if api in ("https://api.joinstash.ai",):
+        return "https://joinstash.ai/connect-token"
     if "localhost" in api or "127.0.0.1" in api:
         # Local self-host: backend on :3456, frontend on :3457.
         return api.replace(":3456", ":3457") + "/connect-token"
@@ -225,7 +225,7 @@ def signin(
         help="Sign-in page URL. Defaults to the /connect-token page matching --api.",
     ),
     api: str = typer.Option(
-        "https://api.stash.ac",
+        "https://api.joinstash.ai",
         "--api",
         help="Stash API base URL. Override for self-hosted deployments.",
     ),
@@ -1828,7 +1828,7 @@ def _self_host_walkthrough(cfg: dict) -> str:
         raise typer.Exit(0)
 
     current_url = cfg.get("base_url", "http://localhost:3456")
-    managed_hosts = ("https://stash.ac", "https://www.stash.ac", "https://api.stash.ac")
+    managed_hosts = ("https://joinstash.ai", "https://www.joinstash.ai", "https://api.joinstash.ai")
     default_url = "http://localhost:3456" if current_url in managed_hosts else current_url
     return typer.prompt("URL of your instance", default=default_url).rstrip("/")
 
@@ -1943,7 +1943,7 @@ def _already_fully_connected(manifest: Manifest | None) -> bool:
         "codex": "Codex",
         "opencode": "opencode",
     }
-    managed_hosts = ("https://stash.ac", "https://www.stash.ac", "https://api.stash.ac")
+    managed_hosts = ("https://joinstash.ai", "https://www.joinstash.ai", "https://api.joinstash.ai")
     endpoint_label = "Managed" if prev_base in managed_hosts else prev_base
     console.print(
         f"  [green]✓[/green] Already connected to [bold]{ws['name']}[/bold] as "
@@ -2078,7 +2078,7 @@ def connect(
             raise typer.Exit(1)
 
         if mode == "managed":
-            base_url = "https://api.stash.ac"
+            base_url = "https://api.joinstash.ai"
         else:
             base_url = _self_host_walkthrough(cfg)
         save_config(base_url=base_url)
@@ -2585,7 +2585,7 @@ STASH_LOGO = r"""
  ╚══════╝   ╚═╝   ╚═╝  ╚═╝╚══════╝╚═╝  ╚═╝
 """
 
-# Matches the orange octopus on stash.ac — round body, two eyes, five tentacles.
+# Matches the orange octopus on joinstash.ai — round body, two eyes, five tentacles.
 STASH_OCTOPUS = r'''
               .-~~~~~~-.
              /  o    o  \
@@ -2622,12 +2622,12 @@ def _current_invite() -> tuple[str, str]:
 def _invite_url(invite_code: str) -> str:
     """Build the user-facing join URL for an invite code, mirroring the
     frontend-host logic used for login (see `stash connect` managed flow):
-    managed backend → stash.ac; localhost backend → :3457; any other
+    managed backend → joinstash.ai; localhost backend → :3457; any other
     self-host → whatever the configured base_url is."""
     base_url = (load_config().get("base_url") or "").rstrip("/")
-    managed_hosts = ("https://stash.ac", "https://www.stash.ac", "https://api.stash.ac")
+    managed_hosts = ("https://joinstash.ai", "https://www.joinstash.ai", "https://api.joinstash.ai")
     if base_url in managed_hosts:
-        frontend = "https://stash.ac"
+        frontend = "https://joinstash.ai"
     elif "localhost" in base_url or "127.0.0.1" in base_url:
         frontend = base_url.replace(":3456", ":3457")
     else:
@@ -2637,14 +2637,14 @@ def _invite_url(invite_code: str) -> str:
 
 def _frontend_base_url() -> str:
     """Return the frontend root for the currently configured backend. Managed
-    backend → app.stash.ac (the marketing site at stash.ac has no /workspaces
+    backend → app.joinstash.ai (the marketing site at joinstash.ai has no /workspaces
     redirect); localhost backend → :3457; any other self-host → whatever the
     configured base_url is."""
     base_url = (load_config().get("base_url") or "").rstrip("/")
     if "localhost" in base_url or "127.0.0.1" in base_url:
         return base_url.replace(":3456", ":3457")
-    if base_url == "https://api.stash.ac":
-        return "https://app.stash.ac"
+    if base_url == "https://api.joinstash.ai":
+        return "https://app.joinstash.ai"
     return base_url
 
 

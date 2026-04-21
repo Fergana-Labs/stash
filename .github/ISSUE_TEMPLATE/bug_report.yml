@@ -56,7 +56,7 @@ body:
         - OS: macOS 14 / Ubuntu 22.04
         - Python: 3.12
         - Node.js: 20
-        - Self-hosted or stash.ac?
+        - Self-hosted or joinstash.ai?
     validations:
       required: false
 

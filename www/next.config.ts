@@ -3,7 +3,7 @@ import { fileURLToPath } from "node:url";
 import path from "node:path";
 
 const MANAGED_APP_URL =
-  process.env.MANAGED_APP_URL || "https://app.stash.ac";
+  process.env.MANAGED_APP_URL || "https://app.joinstash.ai";
 
 const nextConfig: NextConfig = {
   output: "standalone",

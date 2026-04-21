@@ -13,7 +13,7 @@
 <p align="center">
   <a href="https://github.com/Fergana-Labs/stash/actions/workflows/test.yml"><img src="https://github.com/Fergana-Labs/stash/actions/workflows/test.yml/badge.svg" alt="CI" /></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="License: MIT" /></a>
-  <a href="https://stash.ac"><img src="https://img.shields.io/badge/Website-stash.ac-F97316" alt="Website" /></a>
+  <a href="https://joinstash.ai"><img src="https://img.shields.io/badge/Website-joinstash.ai-F97316" alt="Website" /></a>
 </p>
 
 <img width="1195" height="1055" alt="Screenshot 2026-04-14 at 7 11 31 PM" src="https://github.com/user-attachments/assets/265c638f-64eb-460e-91e8-e677740cf97b" />
@@ -142,10 +142,16 @@ Found a bug? [Open an issue](https://github.com/Fergana-Labs/stash/issues).
 
 | Name | Role | Contact |
 |------|------|---------|
-| [@henry-dowling](https://github.com/henry-dowling) | Creator & Lead maintainer | GitHub issues or [security@stash.ac](mailto:security@stash.ac) for vulnerabilities |
+| [@henry-dowling](https://github.com/henry-dowling) | Creator & Lead maintainer | GitHub issues or [support@ferganalabs.com](mailto:support@ferganalabs.com) for vulnerabilities |
 | [@samzliu](https://github.com/samzliu) | Creator | GitHub issues |
 | [@triobaba](https://github.com/triobaba) | Creator | GitHub issues |
 
 ## License
 
 [MIT](LICENSE) — Copyright (c) 2026 Fergana Labs
+
+---
+
+<p align="center">
+  Built by <a href="https://ferganalabs.com">Fergana Labs</a>.
+</p>

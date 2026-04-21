@@ -1,6 +1,6 @@
-# stash.ac/install — one-line bash installer
+# joinstash.ai/install — one-line bash installer
 
-Replace the agent-prompt-paste install with `curl -fsSL https://stash.ac/install | bash`.
+Replace the agent-prompt-paste install with `curl -fsSL https://joinstash.ai/install | bash`.
 Most of the work is already done — `stash connect` ships the questionnaire we
 want to keep (scope → managed-vs-self-host → browser auth → workspace pick).
 Plan is: build a thin bash wrapper that installs the CLI and hands off to
@@ -9,7 +9,7 @@ detects installed coding agents and installs the matching plugin.
 
 ## Shape
 
-- `www/public/install.sh` — the installer script. Served at `https://stash.ac/install` via a Vercel rewrite or a Next.js route handler returning `text/x-shellscript`. Single file, < 100 lines bash. Detects package manager (pipx > uv > pip --user), installs `stashai`, runs `stash connect`. Accepts `--self-host=URL` flag to skip the managed/self-host prompt.
+- `www/public/install.sh` — the installer script. Served at `https://joinstash.ai/install` via a Vercel rewrite or a Next.js route handler returning `text/x-shellscript`. Single file, < 100 lines bash. Detects package manager (pipx > uv > pip --user), installs `stashai`, runs `stash connect`. Accepts `--self-host=URL` flag to skip the managed/self-host prompt.
 - `cli/main.py` — extend `connect()` with **Step 4: Coding-agent plugin install** after the workspace step. Detects Claude Code / Codex / Cursor / Gemini / opencode / openclaw on PATH or in well-known config dirs; for each found, prompts and runs the agent's native plugin command. Uses the existing `questionary.select` style.
 - `www/app/page.tsx` — primary CTA becomes the one-liner (rendered as a copyable code block with a Copy button). The current agent-prompt-paste install moves to a secondary "Have your AI agent set this up" expander.
 - `README.md`, `docs/quickstart` — lead with the one-liner. The agent-prompt path stays documented as an alternate.
@@ -100,7 +100,7 @@ wrap them.
 - Hero install block becomes a **bash one-liner** rendered like the other
   CLI sites (`fly.io`, `bun.sh`, `opencode.ai`):
   ```
-  curl -fsSL https://stash.ac/install | bash
+  curl -fsSL https://joinstash.ai/install | bash
   ```
 - One-line copy button. Below: "Self-hosting? Append `-s -- --self-host=https://your.host`."
 - The current Claude-Code-prompt-paste block moves down to a secondary
@@ -144,7 +144,7 @@ wrap them.
 - **Two install paths to keep in sync** — the bash one-liner and the agent
   prompt. The agent prompt currently does steps 1-5 inline; if we change
   the questionnaire, we have to update the prompt too. The fix is to make
-  the prompt itself just `curl -fsSL https://stash.ac/install | bash` — at
+  the prompt itself just `curl -fsSL https://joinstash.ai/install | bash` — at
   which point there's only one path.
 
 ## Rollout

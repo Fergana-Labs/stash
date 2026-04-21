@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# stash.ac/install — install the stashai CLI and run the interactive
+# joinstash.ai/install — install the stashai CLI and run the interactive
 # `stash connect` questionnaire (scope, managed-vs-self-host, browser auth,
 # workspace, agent plugin).
 #
@@ -53,7 +53,7 @@ re-open the terminal (or `source` your rc):
 
   export PATH="$HOME/.local/bin:$PATH"
 
-Then re-run: curl -fsSL https://stash.ac/install | bash
+Then re-run: curl -fsSL https://joinstash.ai/install | bash
 MSG
   exit 1
 fi

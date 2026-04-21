@@ -35,7 +35,7 @@ stash config [key] [value]              # View or update any config value`}</Cod
 
       <Callout>
         After <Code>stash connect</Code>, your defaults are stored. You can still override
-        any value: e.g. <Code>stash config base_url https://stash.ac</Code> or set{" "}
+        any value: e.g. <Code>stash config base_url https://joinstash.ai</Code> or set{" "}
         <Code>STASH_API_KEY</Code> / <Code>STASH_URL</Code> as environment variables for
         CI and scripts.
       </Callout>

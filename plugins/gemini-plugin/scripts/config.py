@@ -69,7 +69,7 @@ def get_config() -> dict:
     cli = _cli_config()
     manifest = find_manifest(os.getcwd())
     return {
-        "api_endpoint": cli.get("base_url", "https://stash.ac"),
+        "api_endpoint": cli.get("base_url", "https://joinstash.ai"),
         "api_key": cli.get("api_key", ""),
         "agent_name": cli.get("username", ""),
         "workspace_id": (manifest or {}).get("workspace_id", ""),

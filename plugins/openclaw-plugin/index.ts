@@ -157,7 +157,7 @@ async function drainQueue(base: string, apiKey: string): Promise<void> {
 async function pushEvent(body: EventBody): Promise<void> {
   const cfg = readConfig();
   const manifest = findManifest();
-  const base = cfg.base_url ?? "https://stash.ac";
+  const base = cfg.base_url ?? "https://joinstash.ai";
   const apiKey = cfg.api_key ?? "";
   const workspaceId = manifest?.workspace_id ?? "";
   if (!apiKey) return;
