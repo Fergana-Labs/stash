@@ -2955,7 +2955,6 @@ def settings_cmd(as_json: bool = typer.Option(False, "--json")):
         output_json(
             {
                 "config": display_cfg,
-                "streaming_enabled": bool(central.get("streaming_enabled", True)),
                 "auto_curate": bool(central.get("auto_curate", True)),
                 "last_curate_at": central.get("last_curate_at"),
                 "plugins_installed": [
@@ -2971,12 +2970,10 @@ def settings_cmd(as_json: bool = typer.Option(False, "--json")):
         central = _read_central_config()
         _render_settings_header(cfg, central)
 
-        streaming_enabled = bool(central.get("streaming_enabled", True))
         auto_curate = bool(central.get("auto_curate", True))
         base_url = cfg.get("base_url", "")
 
         rows = [
-            ("Streaming", "on" if streaming_enabled else "off", "streaming"),
             ("Auto-curate", "on" if auto_curate else "off", "auto_curate"),
             ("Endpoint", base_url, "base_url"),
         ]
@@ -2996,9 +2993,7 @@ def settings_cmd(as_json: bool = typer.Option(False, "--json")):
         if picked in (None, "exit"):
             return
 
-        if picked == "streaming":
-            _write_central_config({"streaming_enabled": not streaming_enabled})
-        elif picked == "auto_curate":
+        if picked == "auto_curate":
             _write_central_config({"auto_curate": not auto_curate})
         elif picked == "base_url":
             new_url = questionary.text("Endpoint base URL", default=base_url).ask()

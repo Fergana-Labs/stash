@@ -21,8 +21,6 @@ def main():
     cfg = get_config()
     state = load_state(DATA_DIR)
 
-    if not state.get("streaming_enabled", True):
-        return
 
     try:
         with get_client() as client:

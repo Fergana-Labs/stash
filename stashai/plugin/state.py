@@ -1,9 +1,8 @@
 """Per-plugin persistent state plus shared curate-gating helpers.
 
 Per-plugin state (session_id) lives under each agent's `data_dir`.
-Auto-curate toggling, the cross-agent cooldown, and the streaming kill switch
-live in the central CLI config at `~/.stash/config.json` so one toggle
-controls every installed plugin.
+Auto-curate toggling and the cross-agent cooldown live in the central CLI
+config at `~/.stash/config.json` so one toggle controls every installed plugin.
 """
 
 from __future__ import annotations
@@ -25,7 +24,6 @@ CENTRAL_CONFIG_PATH = Path.home() / ".stash" / "config.json"
 _DEFAULT_STATS = {"tool_count": 0, "tools_used": [], "files_changed": []}
 
 DEFAULT_STATE = {
-    "streaming_enabled": True,
     "session_id": "",
     "last_sync": None,
     "stats": dict(_DEFAULT_STATS),
@@ -51,16 +49,8 @@ def _write_json(path: Path, data: dict) -> None:
 
 
 def load_state(data_dir: Path) -> dict:
-    """Return per-plugin state merged with centralized toggles.
-
-    `streaming_enabled` lives in central config (~/.stash/config.json) so one
-    toggle controls every installed plugin. Per-plugin `session_id` still lives
-    under `data_dir/state.json`.
-    """
+    """Return per-plugin state with centralized toggles overlaid."""
     state = _read_json(data_dir / "state.json", dict(DEFAULT_STATE))
-    central = _read_central()
-    if "streaming_enabled" in central:
-        state["streaming_enabled"] = bool(central["streaming_enabled"])
     return state
 
 
@@ -126,10 +116,6 @@ def _write_central(updates: dict) -> None:
     existing = _read_central()
     existing.update(updates)
     _write_json(CENTRAL_CONFIG_PATH, existing)
-
-
-def set_streaming_enabled(enabled: bool) -> None:
-    _write_central({"streaming_enabled": bool(enabled)})
 
 
 def auto_curate_enabled() -> bool:

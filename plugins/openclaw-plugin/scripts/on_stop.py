@@ -18,8 +18,6 @@ def main():
         return
 
     state = load_state(DATA_DIR)
-    if not state.get("streaming_enabled", True):
-        return
 
     event = adapt_stop(get_stdin_data())
     cfg = get_config()
