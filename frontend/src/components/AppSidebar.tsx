@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { listMyWorkspaces } from "../lib/api";
-import type { Workspace } from "../lib/types";
+import type { User, Workspace } from "../lib/types";
 
 interface NavItem {
   href: string;
@@ -18,26 +18,40 @@ const NAV_ITEMS: NavItem[] = [
   { href: "/notebooks", label: "Wiki", icon: "W" },
 ];
 
-function NavLink({ item, isActive, wsId }: { item: NavItem; isActive: boolean; wsId?: string | null }) {
+function IconTile({ letter, active }: { letter: string; active?: boolean }) {
+  return (
+    <span
+      className={
+        "flex h-5 w-5 flex-shrink-0 items-center justify-center rounded font-mono text-[10px] font-bold " +
+        (active ? "bg-brand text-white" : "bg-raised text-muted")
+      }
+    >
+      {letter}
+    </span>
+  );
+}
+
+function NavLink({
+  item,
+  isActive,
+  wsId,
+}: {
+  item: NavItem;
+  isActive: boolean;
+  wsId?: string | null;
+}) {
   const href = wsId ? `${item.href}?ws=${wsId}` : item.href;
   return (
     <Link
       href={href}
-      className={`flex items-center gap-3 px-3 py-2 rounded-md text-sm transition-colors ${
-        isActive
-          ? "bg-brand/10 text-brand font-medium"
-          : "text-dim hover:text-foreground hover:bg-raised"
-      }`}
+      className={
+        "flex items-center gap-3 rounded-md px-[10px] py-2 text-[13px] transition-colors " +
+        (isActive
+          ? "bg-brand-muted font-medium text-brand"
+          : "text-dim hover:bg-raised hover:text-foreground")
+      }
     >
-      <span
-        className={`w-5 h-5 rounded flex items-center justify-center text-[10px] font-bold flex-shrink-0 ${
-          isActive
-            ? "bg-brand text-white"
-            : "bg-raised text-muted"
-        }`}
-      >
-        {item.icon}
-      </span>
+      <IconTile letter={item.icon} active={isActive} />
       {item.label}
     </Link>
   );
@@ -45,20 +59,24 @@ function NavLink({ item, isActive, wsId }: { item: NavItem; isActive: boolean; w
 
 const WS_STORAGE_KEY = "stash_selected_workspace";
 
-export default function AppSidebar() {
+interface AppSidebarProps {
+  user?: User;
+}
+
+export default function AppSidebar({ user }: AppSidebarProps) {
   const pathname = usePathname();
   const router = useRouter();
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [selectedWsId, setSelectedWsId] = useState<string | null>(null);
   const [showWsSwitcher, setShowWsSwitcher] = useState(false);
 
-  // Load workspaces + restore selection
   useEffect(() => {
     listMyWorkspaces()
       .then((res) => {
         const ws = res?.workspaces ?? [];
         setWorkspaces(ws);
-        const saved = typeof window !== "undefined" ? localStorage.getItem(WS_STORAGE_KEY) : null;
+        const saved =
+          typeof window !== "undefined" ? localStorage.getItem(WS_STORAGE_KEY) : null;
         if (saved && ws.some((w) => w.id === saved)) {
           setSelectedWsId(saved);
         } else if (ws.length > 0) {
@@ -68,7 +86,6 @@ export default function AppSidebar() {
       .catch(() => {});
   }, []);
 
-  // Detect workspace from URL path or query param
   useEffect(() => {
     const wsMatch = pathname.match(/^\/workspaces\/([^/]+)/);
     if (wsMatch?.[1]) {
@@ -91,9 +108,6 @@ export default function AppSidebar() {
     localStorage.setItem(WS_STORAGE_KEY, wsId);
     setShowWsSwitcher(false);
 
-    // If we're already inside a /workspaces/[id] route, swap the id. Otherwise
-    // update the ?ws= query param on the current pathname so the page
-    // re-fetches with the new workspace scope.
     const wsMatch = pathname.match(/^\/workspaces\/([^/]+)(.*)$/);
     if (wsMatch) {
       router.push(`/workspaces/${wsId}${wsMatch[2] ?? ""}`);
@@ -111,70 +125,88 @@ export default function AppSidebar() {
   const isActive = (href: string) =>
     pathname === href || pathname.startsWith(href + "/");
 
+  const displayName = user?.display_name || user?.name;
+  const handle = user?.display_name ? user?.name : null;
+  const avatarInitial = (displayName || "?")[0].toUpperCase();
+
   return (
-    <aside className="w-[220px] flex-shrink-0 bg-surface border-r border-border flex flex-col">
-      {/* Logo */}
-      <div className="px-4 pt-4 pb-2">
-        <Link href="/" className="text-lg font-bold font-display text-foreground tracking-tight">
+    <aside className="flex w-[220px] flex-shrink-0 flex-col border-r border-border bg-surface">
+      {/* Wordmark */}
+      <div className="px-4 pb-2 pt-4">
+        <Link
+          href="/"
+          className="font-display text-[20px] font-black tracking-[-0.03em] text-foreground"
+        >
           stash
         </Link>
       </div>
 
       {/* Workspace switcher */}
-      <div className="px-2 pb-2 relative">
-        <div className="w-full flex items-center gap-1 text-sm">
+      <div className="relative px-2 pb-2">
+        <div className="flex w-full items-center gap-1 text-sm">
           <button
-            onClick={() => selectedWsId && router.push(`/workspaces/${selectedWsId}`)}
-            className={`flex-1 min-w-0 flex items-center gap-2 px-3 py-2 rounded-md transition-colors cursor-pointer hover:text-brand hover:bg-raised ${
-              selectedWs ? "text-foreground bg-raised" : "text-dim"
-            }`}
+            onClick={() =>
+              selectedWsId && router.push(`/workspaces/${selectedWsId}`)
+            }
+            className={
+              "flex min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-md border-0 px-[10px] py-2 text-[13px] font-medium transition-colors " +
+              (selectedWs
+                ? "bg-raised text-foreground hover:text-brand"
+                : "text-dim hover:bg-raised hover:text-foreground")
+            }
           >
-            <span className="w-5 h-5 rounded bg-brand/15 text-brand flex items-center justify-center text-[10px] font-bold flex-shrink-0">
-              W
-            </span>
-            <span className="flex-1 text-left truncate font-medium">
+            <IconTile letter="W" />
+            <span className="flex-1 truncate text-left">
               {selectedWs?.name || "Select workspace"}
             </span>
           </button>
           <button
-            onClick={() => setShowWsSwitcher(!showWsSwitcher)}
-            className="flex-shrink-0 w-7 h-8 rounded-md text-muted text-xs hover:text-foreground hover:bg-raised cursor-pointer transition-colors flex items-center justify-center"
+            onClick={() => setShowWsSwitcher((o) => !o)}
+            className="flex h-8 w-7 flex-shrink-0 cursor-pointer items-center justify-center rounded-md text-[11px] text-muted transition-colors hover:bg-raised hover:text-foreground"
             aria-label="Switch workspace"
           >
-            {showWsSwitcher ? "\u25B4" : "\u25BE"}
+            {showWsSwitcher ? "▴" : "▾"}
           </button>
         </div>
 
         {showWsSwitcher && (
           <>
-            <div className="fixed inset-0 z-40" onClick={() => setShowWsSwitcher(false)} />
-            <div className="absolute left-2 right-2 top-full z-50 bg-surface border border-border rounded-lg shadow-xl py-1 mt-1">
+            <div
+              className="fixed inset-0 z-40"
+              onClick={() => setShowWsSwitcher(false)}
+            />
+            <div className="absolute left-2 right-2 top-full z-50 mt-1 rounded-lg border border-border bg-surface py-1 shadow-[0_12px_30px_rgba(15,23,42,0.08),0_2px_4px_rgba(15,23,42,0.04)]">
               {workspaces.map((ws) => (
                 <button
                   key={ws.id}
                   onClick={() => selectWorkspace(ws.id)}
-                  className={`block w-full text-left px-3 py-2 text-sm transition-colors ${
-                    ws.id === selectedWsId
-                      ? "text-brand bg-brand/5 font-medium"
-                      : "text-foreground hover:bg-raised"
-                  }`}
+                  className="block w-full cursor-pointer px-3 py-2 text-left text-[13px] transition-colors hover:bg-raised"
                 >
-                  <div className="truncate">{ws.name}</div>
+                  <div
+                    className={
+                      "truncate font-medium " +
+                      (ws.id === selectedWsId ? "text-brand" : "text-foreground")
+                    }
+                  >
+                    {ws.name}
+                  </div>
                   {ws.description && (
-                    <div className="text-[10px] text-muted truncate">{ws.description}</div>
+                    <div className="mt-[1px] truncate text-[10px] text-muted">
+                      {ws.description}
+                    </div>
                   )}
                 </button>
               ))}
               {workspaces.length === 0 && (
                 <div className="px-3 py-2 text-xs text-muted">No workspaces yet</div>
               )}
-              <div className="border-t border-border mt-1 pt-1">
+              <div className="mt-1 border-t border-border-subtle pt-1">
                 <Link
                   href="/rooms"
                   onClick={() => setShowWsSwitcher(false)}
-                  className="block px-3 py-1.5 text-xs text-muted hover:text-foreground transition-colors"
+                  className="block px-3 py-1.5 text-[11px] text-muted transition-colors hover:text-foreground"
                 >
-                  Manage workspaces...
+                  Manage workspaces…
                 </Link>
               </div>
             </div>
@@ -183,30 +215,57 @@ export default function AppSidebar() {
       </div>
 
       {/* Navigation */}
-      <nav className="flex-1 px-2 overflow-y-auto">
-        <div className="space-y-0.5">
-          {NAV_ITEMS.map((item) => (
-            <NavLink key={item.href} item={item} isActive={isActive(item.href)} wsId={selectedWsId} />
-          ))}
-        </div>
+      <nav className="flex-1 space-y-0.5 overflow-y-auto px-2">
+        {NAV_ITEMS.map((item) => (
+          <NavLink
+            key={item.href}
+            item={item}
+            isActive={isActive(item.href)}
+            wsId={selectedWsId}
+          />
+        ))}
       </nav>
 
       {/* Docs */}
-      <div className="px-2 pb-3">
+      <div className="px-2 pb-2">
         <Link
           href="/docs"
-          className={`flex items-center gap-3 px-3 py-2 rounded-md text-sm transition-colors ${
-            isActive("/docs")
-              ? "bg-brand/10 text-brand font-medium"
-              : "text-dim hover:text-foreground hover:bg-raised"
-          }`}
+          className={
+            "flex items-center gap-3 rounded-md px-[10px] py-2 text-[13px] transition-colors " +
+            (isActive("/docs")
+              ? "bg-brand-muted font-medium text-brand"
+              : "text-dim hover:bg-raised hover:text-foreground")
+          }
         >
-          <span className={`w-5 h-5 rounded flex items-center justify-center text-[10px] font-bold flex-shrink-0 ${
-            isActive("/docs") ? "bg-brand text-white" : "bg-raised text-muted"
-          }`}>?</span>
+          <IconTile letter="?" active={isActive("/docs")} />
           Docs
         </Link>
       </div>
+
+      {/* User block */}
+      {user && (
+        <div className="border-t border-border-subtle px-2 py-3">
+          <Link
+            href="/settings"
+            className="flex items-center gap-2 rounded-md px-2 py-1.5 transition-colors hover:bg-raised"
+          >
+            <span
+              className="inline-flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full font-display text-[10px] font-bold text-white"
+              style={{ background: "var(--color-human)" }}
+            >
+              {avatarInitial}
+            </span>
+            <div className="flex min-w-0 flex-col">
+              <div className="truncate text-[12px] font-medium text-foreground">
+                {displayName}
+              </div>
+              {handle && (
+                <div className="truncate text-[10px] text-muted">@{handle}</div>
+              )}
+            </div>
+          </Link>
+        </div>
+      )}
     </aside>
   );
 }
