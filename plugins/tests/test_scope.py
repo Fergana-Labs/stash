@@ -22,7 +22,7 @@ from stashai.plugin.event import HookEvent
 
 @pytest.fixture(autouse=True)
 def _clear_cache():
-    scope_mod._has_manifest.cache_clear()
+    scope_mod.cwd_in_scope.cache_clear()
     scope_mod.repo_stash_disabled.cache_clear()
 
 

@@ -13,7 +13,7 @@ _CONFIG_FILENAME = "config.json"
 
 
 @lru_cache(maxsize=64)
-def _has_manifest(cwd: str | None) -> bool:
+def cwd_in_scope(cwd: str | None) -> bool:
     """True if `.stash/stash.json` exists in cwd or any ancestor."""
     if not cwd:
         return False
@@ -22,15 +22,6 @@ def _has_manifest(cwd: str | None) -> bool:
         if (parent / ".stash" / _MANIFEST_FILENAME).exists():
             return True
     return False
-
-
-def cwd_in_scope(cwd: str | None) -> bool:
-    """True when cwd is within a stash-installed tree.
-
-    Callers used to pass a scope config dict here; the concept has been
-    folded into the manifest's location so that's no longer needed.
-    """
-    return _has_manifest(cwd)
 
 
 @lru_cache(maxsize=64)
