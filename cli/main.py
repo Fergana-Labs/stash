@@ -19,7 +19,6 @@ from .client import StashClient, StashError
 from .config import (
     PROJECT_FILENAME,
     Manifest,
-    detect_previous_scope,
     find_project_config,
     find_project_manifest,
     load_config,
@@ -1985,40 +1984,26 @@ def connect(
         )
 
     # --- Step 0: Scope ---
-    # Preserve the previous choice on re-runs so `stash connect` doesn't
-    # overwrite a directory-scoped install with a machine-wide one (or vice
-    # versa). With a manifest, we still offer machine-level install; we just
-    # flip the default so new contributors land on project scope.
-    prev_scope = detect_previous_scope()
-    if prev_scope:
-        scope = prev_scope
-        scope_label = (
-            "everywhere on this machine" if scope == "user" else "only this directory"
-        )
-        console.print(
-            f"  [green]✓[/green] Using existing scope: [bold]{scope_label}[/bold]"
-        )
-    else:
-        scope_options = [
-            ("Everywhere on this machine", "~/.stash/config.json", "user"),
-            ("Only this directory", "./.stash/config.json", "project"),
-        ]
-        label_width = max(len(label) for label, _, _ in scope_options)
-        scope_default_value = "project" if manifest else "user"
-        scope_choices = [
-            questionary.Choice(f"{label:<{label_width}}   {path}", value=value)
-            for label, path, value in scope_options
-        ]
-        scope_default_choice = next(ch for ch in scope_choices if ch.value == scope_default_value)
-        _reserve_bottom_padding(8)
-        scope = questionary.select(
-            "Where do you want to install stash?",
-            choices=scope_choices,
-            default=scope_default_choice,
-            use_shortcuts=True,
-        ).ask()
-        if scope is None:
-            raise typer.Exit(1)
+    scope_options = [
+        ("Everywhere on this machine", "~/.stash/config.json", "user"),
+        ("Only this directory", "./.stash/config.json", "project"),
+    ]
+    label_width = max(len(label) for label, _, _ in scope_options)
+    scope_default_value = "project" if manifest else "user"
+    scope_choices = [
+        questionary.Choice(f"{label:<{label_width}}   {path}", value=value)
+        for label, path, value in scope_options
+    ]
+    scope_default_choice = next(ch for ch in scope_choices if ch.value == scope_default_value)
+    _reserve_bottom_padding(8)
+    scope = questionary.select(
+        "Where do you want to install stash?",
+        choices=scope_choices,
+        default=scope_default_choice,
+        use_shortcuts=True,
+    ).ask()
+    if scope is None:
+        raise typer.Exit(1)
 
     if scope == "user":
         try:
@@ -2036,7 +2021,7 @@ def connect(
         console.print(
             f"  [green]✓[/green] Using endpoint from manifest: [bold]{base_url}[/bold]"
         )
-        save_config(base_url=base_url, scope=scope)
+        save_config(base_url=base_url)
     elif prev_base:
         base_url = prev_base
         console.print(
@@ -2064,7 +2049,7 @@ def connect(
             base_url = "https://api.stash.ac"
         else:
             base_url = _self_host_walkthrough(cfg)
-        save_config(base_url=base_url, scope=scope)
+        save_config(base_url=base_url)
 
     # --- Step 2: Auth (browser-based) ---
     has_key = bool(cfg.get("api_key"))
@@ -3104,26 +3089,20 @@ def _write_central_config(updates: dict) -> None:
 def config_cmd(
     key: str | None = typer.Argument(None),
     value: str | None = typer.Argument(None),
-    project: bool = typer.Option(
-        False, "--project", help="Write to project-level config (.stash/config.json in the repo)."
-    ),
 ):
     """Show or set config. Keys: base_url.
 
     Writes to ~/.stash/config.json.
     """
-    from .config import USER_CONFIG_FILE, find_project_config
+    from .config import USER_CONFIG_FILE
 
     if key and value:
-        write_scope = "project" if project else "user"
-        allowed = {
-            "base_url",
-        }
-        if key not in allowed and key not in {"api_key", "username"}:
+        allowed = {"base_url", "api_key", "username"}
+        if key not in allowed:
             console.print(f"[red]Unknown config key: {key}[/red]")
             raise typer.Exit(1)
-        save_config(**{key: value, "scope": write_scope})
-        console.print(f"[green]{key} = {value}[/green]  [dim](scope: {write_scope})[/dim]")
+        save_config(**{key: value})
+        console.print(f"[green]{key} = {value}[/green]")
         return
 
     cfg = load_config()
@@ -3131,9 +3110,7 @@ def config_cmd(
     if display.get("api_key"):
         display["api_key"] = display["api_key"][:10] + "..."
 
-    project_path = find_project_config()
-    console.print(f"[dim]user:    {USER_CONFIG_FILE}[/dim]")
-    console.print(f"[dim]project: {project_path or '(none — project config not set)'}[/dim]\n")
+    console.print(f"[dim]config:  {USER_CONFIG_FILE}[/dim]\n")
     console.print(json.dumps(display, indent=2, default=str))
 
 
