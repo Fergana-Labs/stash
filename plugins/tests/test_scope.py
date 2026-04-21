@@ -59,6 +59,87 @@ def test_repo_manifest_wins_over_shallower_one(tmp_path):
     assert scope_mod.cwd_in_scope(str(tmp_path))
 
 
+def test_worktree_resolves_to_main_repo_manifest(tmp_path, monkeypatch):
+    """A git worktree without its own manifest should find the main repo's manifest."""
+    main_repo = tmp_path / "main-repo"
+    main_repo.mkdir()
+    (main_repo / ".stash").mkdir()
+    (main_repo / ".stash" / "stash.json").write_text('{"version": 1, "workspace_id": "W"}')
+
+    worktree = tmp_path / "worktree-checkout"
+    worktree.mkdir()
+
+    monkeypatch.setattr(
+        scope_mod, "_git_repo_info", lambda cwd: (worktree, main_repo)
+    )
+
+    manifest = scope_mod.find_manifest(str(worktree))
+    assert manifest is not None
+    assert manifest["workspace_id"] == "W"
+
+
+def test_worktree_manifest_beats_global(tmp_path, monkeypatch):
+    """Main repo manifest takes precedence over a global ~/.stash/ manifest."""
+    main_repo = tmp_path / "main-repo"
+    main_repo.mkdir()
+    (main_repo / ".stash").mkdir()
+    (main_repo / ".stash" / "stash.json").write_text('{"version": 1, "workspace_id": "company"}')
+
+    # Simulate a global manifest in an ancestor of the worktree
+    global_stash = tmp_path / ".stash"
+    global_stash.mkdir()
+    (global_stash / "stash.json").write_text('{"version": 1, "workspace_id": "personal"}')
+
+    worktree = tmp_path / "worktrees" / "feature"
+    worktree.mkdir(parents=True)
+
+    monkeypatch.setattr(
+        scope_mod, "_git_repo_info", lambda cwd: (worktree, main_repo)
+    )
+
+    manifest = scope_mod.find_manifest(str(worktree))
+    assert manifest is not None
+    assert manifest["workspace_id"] == "company"
+
+
+def test_worktree_local_manifest_beats_main_repo(tmp_path, monkeypatch):
+    """A manifest inside the worktree itself is more specific than the main repo's."""
+    main_repo = tmp_path / "main-repo"
+    main_repo.mkdir()
+    (main_repo / ".stash").mkdir()
+    (main_repo / ".stash" / "stash.json").write_text('{"version": 1, "workspace_id": "main"}')
+
+    worktree = tmp_path / "worktree-checkout"
+    worktree.mkdir()
+    (worktree / ".stash").mkdir()
+    (worktree / ".stash" / "stash.json").write_text('{"version": 1, "workspace_id": "local"}')
+
+    monkeypatch.setattr(
+        scope_mod, "_git_repo_info", lambda cwd: (worktree, main_repo)
+    )
+
+    manifest = scope_mod.find_manifest(str(worktree))
+    assert manifest is not None
+    assert manifest["workspace_id"] == "local"
+
+
+def test_worktree_disabled_checks_main_repo(tmp_path, monkeypatch):
+    """repo_stash_disabled should check the main worktree root."""
+    main_repo = tmp_path / "main-repo"
+    main_repo.mkdir()
+    (main_repo / ".stash").mkdir()
+    (main_repo / ".stash" / "config.json").write_text('{"stash_disabled_here": true}')
+
+    worktree = tmp_path / "worktree-checkout"
+    worktree.mkdir()
+
+    monkeypatch.setattr(
+        scope_mod, "_git_repo_info", lambda cwd: (worktree, main_repo)
+    )
+
+    assert scope_mod.repo_stash_disabled(str(worktree))
+
+
 def test_repo_stash_disabled_marker(tmp_path):
     (tmp_path / ".stash").mkdir()
     (tmp_path / ".stash" / "config.json").write_text('{"stash_disabled_here": true}')
