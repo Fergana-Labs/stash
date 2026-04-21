@@ -7,27 +7,18 @@ const PILLARS = [
     color: "bg-brand/8 border-brand/20 text-brand",
     dot: "bg-brand",
     description: "Agents push data in automatically — sessions, files, and structured data.",
-    links: [
-      { href: "/docs/consume", label: "Consume guide →" },
-    ],
   },
   {
     label: "Curate",
     color: "bg-green-500/8 border-green-500/20 text-green-600",
     dot: "bg-green-500",
-    description: "Use the curate tool to organize everything into a wiki with categories and backlinks.",
-    links: [
-      { href: "/docs/curate", label: "Curate guide →" },
-    ],
+    description: "The curate tool organizes everything into a wiki with categories and backlinks.",
   },
   {
-    label: "Collaborate",
+    label: "Connect",
     color: "bg-violet-500/8 border-violet-500/20 text-violet-600",
     dot: "bg-violet-500",
-    description: "Chat, share reports, and work alongside your agents in real-time channels.",
-    links: [
-      { href: "/docs/collaborate", label: "Collaborate guide →" },
-    ],
+    description: "Share workspaces across your team and hand sessions off between agents.",
   },
 ];
 
@@ -76,12 +67,7 @@ export default function DocsOverview() {
               <span className={`w-2 h-2 rounded-full ${p.dot}`} />
               <span className="font-semibold text-sm">{p.label}</span>
             </div>
-            <p className="text-[14px] text-dim leading-6 mb-3">{p.description}</p>
-            {p.links.map((l) => (
-              <Link key={l.href} href={l.href} className="text-[13px] font-medium hover:underline underline-offset-2">
-                {l.label}
-              </Link>
-            ))}
+            <p className="text-[14px] text-dim leading-6">{p.description}</p>
           </div>
         ))}
       </div>
