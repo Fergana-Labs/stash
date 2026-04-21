@@ -551,79 +551,6 @@ def _install_global_manifest(force: bool) -> tuple[str, str]:
     return ("installed", str(dest))
 
 
-@app.command("install")
-def install_cmd(
-    agents: list[str] = typer.Argument(
-        None,
-        help="Agent(s) to install for. Defaults to every supported agent on $PATH.",
-    ),
-    skip: str = typer.Option(
-        "", "--skip", help="Comma-separated agents to exclude (e.g. --skip codex,opencode)."
-    ),
-    force: bool = typer.Option(False, "--force", help="Overwrite existing hook files."),
-    global_install: bool = typer.Option(
-        False, "--global",
-        help="Also write ~/.stash/stash.json so sessions in any repo under $HOME "
-             "stream (per-repo manifests still override for routing).",
-    ),
-    as_json: bool = typer.Option(False, "--json"),
-):
-    """Install Stash hook plugins for every supported coding agent on `$PATH`.
-
-    Idempotent — re-running is a no-op unless `--force`.
-
-    By default, streaming is gated per-repo: only sessions in a repo with a
-    committed `.stash/stash.json` manifest push events. Pass `--global` to
-    also stream from repos without a manifest (under `$HOME`).
-    """
-    skip_set = {s.strip() for s in skip.split(",") if s.strip()}
-
-    if agents:
-        unknown = [a for a in agents if a not in _SUPPORTED_AGENTS]
-        if unknown:
-            console.print(f"[red]Unknown agents: {', '.join(unknown)}[/red]")
-            raise typer.Exit(1)
-        targets = agents
-    else:
-        targets = _detected_agents()
-
-    targets = [a for a in targets if a not in skip_set]
-
-    if not targets and not global_install:
-        console.print(
-            "[yellow]No supported coding agents detected on PATH.[/yellow] "
-            "Install claude / cursor-agent / codex / opencode, then re-run."
-        )
-        raise typer.Exit(1)
-
-    results: dict[str, dict] = {}
-    for agent in targets:
-        try:
-            status_, detail = _INSTALLERS[agent](force)
-        except Exception as e:
-            status_, detail = ("failed", f"{type(e).__name__}: {e}")
-        results[agent] = {"status": status_, "detail": detail}
-
-    if global_install:
-        try:
-            status_, detail = _install_global_manifest(force)
-        except Exception as e:
-            status_, detail = ("failed", f"{type(e).__name__}: {e}")
-        results["global"] = {"status": status_, "detail": detail}
-
-    if _use_json(as_json):
-        output_json(results)
-        return
-
-    for agent, r in results.items():
-        color = {"installed": "green", "skipped": "yellow", "failed": "red"}[r["status"]]
-        console.print(f"  [{color}]{r['status']:9}[/{color}] {agent:8} {r['detail']}")
-
-    any_failed = any(r["status"] == "failed" for r in results.values())
-    if any_failed:
-        raise typer.Exit(1)
-
-
 @app.command()
 def whoami(as_json: bool = typer.Option(False, "--json")):
     """Show profile."""
@@ -2118,6 +2045,14 @@ def connect(
         ).ask()
         if scope is None:
             raise typer.Exit(1)
+
+    if scope == "user":
+        try:
+            gm_status, gm_detail = _install_global_manifest(force=False)
+            if gm_status == "installed":
+                console.print(f"  [green]✓[/green] Global manifest written: {gm_detail}")
+        except Exception as e:
+            console.print(f"  [yellow]⚠[/yellow] Could not write global manifest: {e}")
 
     # --- Step 1: API endpoint ---
     cfg = load_config()

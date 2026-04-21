@@ -1,7 +1,7 @@
 """Tests for `_merge_json_hooks` — the idempotent hooks.json merger used by
-`stash install` / `stash connect` to wire agent hook files.
+`stash connect` to wire agent hook files.
 
-Covers the multi-root stale-entry case: a user who has run `stash install`
+Covers the multi-root stale-entry case: a user who has run `stash connect`
 from several different PLUGIN_ROOTs (old dev checkouts, prior pipx versions)
 should end up with a single stash-owned entry per event after the next install,
 regardless of which root they install from.
