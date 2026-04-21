@@ -38,7 +38,7 @@ def _client() -> StashClient:
 
 
 def _use_json(flag: bool) -> bool:
-    return flag or load_config().get("output_format") == "json"
+    return flag
 
 
 def _resolve_workspace() -> str:
@@ -2907,11 +2907,6 @@ PLUGIN_DATA_DIRS = {
 }
 
 
-OUTPUT_FORMAT_CHOICES = [
-    ("human", "colored, human-readable"),
-    ("json", "machine-readable JSON"),
-]
-
 
 def _render_settings_header(cfg: dict, central: dict) -> None:
     """Print the read-only portion of the settings page."""
@@ -2965,7 +2960,7 @@ def settings_cmd(as_json: bool = typer.Option(False, "--json")):
     if display_cfg.get("api_key"):
         display_cfg["api_key"] = display_cfg["api_key"][:10] + "..."
 
-    if as_json or cfg.get("output_format") == "json":
+    if as_json:
         global_manifest = Path.home() / ".stash" / "stash.json"
         output_json(
             {
@@ -2988,13 +2983,11 @@ def settings_cmd(as_json: bool = typer.Option(False, "--json")):
 
         streaming_enabled = bool(central.get("streaming_enabled", True))
         auto_curate = bool(central.get("auto_curate", True))
-        output_format = cfg.get("output_format", "human")
         base_url = cfg.get("base_url", "")
 
         rows = [
             ("Streaming", "on" if streaming_enabled else "off", "streaming"),
             ("Auto-curate", "on" if auto_curate else "off", "auto_curate"),
-            ("Output format", output_format, "output_format"),
             ("Endpoint", base_url, "base_url"),
         ]
         label_w = max(len(label) for label, _, _ in rows)
@@ -3017,20 +3010,6 @@ def settings_cmd(as_json: bool = typer.Option(False, "--json")):
             _write_central_config({"streaming_enabled": not streaming_enabled})
         elif picked == "auto_curate":
             _write_central_config({"auto_curate": not auto_curate})
-        elif picked == "output_format":
-            label_w2 = max(len(v) for v, _ in OUTPUT_FORMAT_CHOICES)
-            fmt_choices = [
-                questionary.Choice(f"{v:<{label_w2}}   {desc}", value=v)
-                for v, desc in OUTPUT_FORMAT_CHOICES
-            ]
-            new_fmt = questionary.select(
-                "Output format for CLI commands",
-                choices=fmt_choices,
-                default=next((ch for ch in fmt_choices if ch.value == output_format), None),
-                use_shortcuts=True,
-            ).ask()
-            if new_fmt:
-                save_config(output_format=new_fmt)
         elif picked == "base_url":
             new_url = questionary.text("Endpoint base URL", default=base_url).ask()
             if new_url:
@@ -3084,7 +3063,7 @@ def disconnect(as_json: bool = typer.Option(False, "--json")):
     """
     from .config import clear_config
 
-    json_mode = as_json or load_config().get("output_format") == "json"
+    json_mode = as_json
     clear_config("user")
     clear_config("project")
     if json_mode:
@@ -3129,7 +3108,7 @@ def config_cmd(
         False, "--project", help="Write to project-level config (.stash/config.json in the repo)."
     ),
 ):
-    """Show or set config. Keys: base_url, output_format.
+    """Show or set config. Keys: base_url.
 
     Writes to ~/.stash/config.json.
     """
@@ -3139,8 +3118,6 @@ def config_cmd(
         write_scope = "project" if project else "user"
         allowed = {
             "base_url",
-            "default_chat",
-            "output_format",
         }
         if key not in allowed and key not in {"api_key", "username"}:
             console.print(f"[red]Unknown config key: {key}[/red]")
