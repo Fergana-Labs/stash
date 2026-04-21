@@ -17,6 +17,8 @@ from rich.text import Text
 
 from .client import StashClient, StashError
 from .config import (
+    MANIFEST_FILENAME,
+    PROJECT_DIRNAME,
     PROJECT_FILENAME,
     Manifest,
     find_project_config,
@@ -29,6 +31,17 @@ from .config import (
 from .formatting import console, output_json, print_members, print_rooms, print_user
 
 app = typer.Typer(name="stash", help="Stash CLI — workspaces, notebooks, tables, history.")
+
+_DISABLED_MANIFEST = "stash.json.disabled"
+
+
+def _find_disabled_manifest(start: Path | None = None) -> Path | None:
+    cur = (start or Path.cwd()).resolve()
+    for parent in [cur, *cur.parents]:
+        candidate = parent / PROJECT_DIRNAME / _DISABLED_MANIFEST
+        if candidate.exists():
+            return candidate
+    return None
 
 
 def _client() -> StashClient:
@@ -2122,22 +2135,9 @@ def connect(
                     raise typer.Exit(1)
 
                 if not go:
-                    # Record an opt-out for this repo (next to the manifest).
                     manifest_path = find_project_manifest()
-                    project_path = (
-                        manifest_path.parent / PROJECT_FILENAME
-                        if manifest_path
-                        else find_project_config() or (Path.cwd() / ".stash" / PROJECT_FILENAME)
-                    )
-                    existing = {}
-                    if project_path.exists():
-                        try:
-                            existing = json.loads(project_path.read_text())
-                        except Exception:
-                            existing = {}
-                    existing["transcript_upload_hook"] = False
-                    project_path.parent.mkdir(parents=True, exist_ok=True)
-                    project_path.write_text(json.dumps(existing, indent=2) + "\n")
+                    if manifest_path:
+                        manifest_path.rename(manifest_path.with_name(_DISABLED_MANIFEST))
                     console.print(
                         "[yellow]Skipped.[/yellow] Hooks in this repo will stay inert. "
                         "Run [cyan]stash enable[/cyan] later to change your mind."
@@ -2350,10 +2350,11 @@ def _update_gitignore_for_manifest(repo_root: Path) -> str:
     Returns a short status string for display ('created', 'updated', 'already-set')."""
     gi = repo_root / ".gitignore"
     config_entry = ".stash/config.json"
+    disabled_entry = ".stash/stash.json.disabled"
     manifest_entry = "!.stash/stash.json"
 
     if not gi.exists():
-        gi.write_text(f"{config_entry}\n")
+        gi.write_text(f"{config_entry}\n{disabled_entry}\n")
         return "created"
 
     lines = gi.read_text().splitlines()
@@ -2361,9 +2362,10 @@ def _update_gitignore_for_manifest(repo_root: Path) -> str:
 
     has_wholesale = any(s in (".stash/", ".stash") for s in stripped)
     has_config_entry = any(s == config_entry for s in stripped)
+    has_disabled_entry = any(s == disabled_entry for s in stripped)
     has_manifest_negation = any(s == manifest_entry for s in stripped)
 
-    if has_config_entry and (not has_wholesale or has_manifest_negation):
+    if has_config_entry and has_disabled_entry and (not has_wholesale or has_manifest_negation):
         return "already-set"
 
     new_lines = list(lines)
@@ -2371,6 +2373,8 @@ def _update_gitignore_for_manifest(repo_root: Path) -> str:
         new_lines.append(manifest_entry)
     if not has_config_entry:
         new_lines.append(config_entry)
+    if not has_disabled_entry:
+        new_lines.append(disabled_entry)
     gi.write_text("\n".join(new_lines) + "\n")
     return "updated"
 
@@ -2520,7 +2524,12 @@ def _offer_repo_init(client: "StashClient | None" = None) -> None:
 def enable_cmd():
     """Re-enable Stash streaming for this repo (undoes `stash disable`)."""
     manifest_path = find_project_manifest()
-    if manifest_path is None:
+    if manifest_path is not None:
+        console.print("[green]Stash streaming is already enabled.[/green]")
+        return
+
+    disabled_path = _find_disabled_manifest()
+    if disabled_path is None:
         console.print(
             "[yellow]No .stash/stash.json found in this repo.[/yellow]  "
             "Ask a maintainer to run [cyan]stash connect[/cyan] here and accept the "
@@ -2528,25 +2537,14 @@ def enable_cmd():
         )
         raise typer.Exit(1)
 
-    # Pin the config to the manifest's directory. find_project_config() walks up
-    # and could resolve to a parent repo's .stash/config.json in nested setups,
-    # which would enable/disable the wrong repo.
-    project_path = manifest_path.parent / PROJECT_FILENAME
-    existing = {}
-    if project_path.exists():
-        try:
-            existing = json.loads(project_path.read_text())
-        except Exception:
-            existing = {}
-    existing.pop("transcript_upload_hook", None)
-    project_path.parent.mkdir(parents=True, exist_ok=True)
-    project_path.write_text(json.dumps(existing, indent=2) + "\n")
-    console.print(f"[green]Stash streaming enabled for this repo.[/green]  ({project_path})")
+    enabled_path = disabled_path.with_name(MANIFEST_FILENAME)
+    disabled_path.rename(enabled_path)
+    console.print(f"[green]Stash streaming enabled for this repo.[/green]  ({enabled_path})")
 
 
 @app.command("disable")
 def disable_cmd():
-    """Stop streaming for this repo without touching the committed manifest."""
+    """Stop streaming for this repo by renaming the manifest."""
     manifest_path = find_project_manifest()
     if manifest_path is None:
         console.print(
@@ -2555,19 +2553,10 @@ def disable_cmd():
         )
         raise typer.Exit(1)
 
-    # See enable_cmd: pin to manifest dir so we don't disable a parent repo.
-    project_path = manifest_path.parent / PROJECT_FILENAME
-    existing = {}
-    if project_path.exists():
-        try:
-            existing = json.loads(project_path.read_text())
-        except Exception:
-            existing = {}
-    existing["transcript_upload_hook"] = False
-    project_path.parent.mkdir(parents=True, exist_ok=True)
-    project_path.write_text(json.dumps(existing, indent=2) + "\n")
+    disabled_path = manifest_path.with_name(_DISABLED_MANIFEST)
+    manifest_path.rename(disabled_path)
     console.print(
-        f"[yellow]Stash streaming disabled for this repo.[/yellow]  ({project_path})\n"
+        f"[yellow]Stash streaming disabled for this repo.[/yellow]  ({disabled_path})\n"
         "Run [cyan]stash enable[/cyan] to turn it back on."
     )
 

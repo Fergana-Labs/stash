@@ -10,7 +10,6 @@ import subprocess
 from pathlib import Path
 
 _MANIFEST_FILENAME = "stash.json"
-_CONFIG_FILENAME = "config.json"
 
 
 def _git_repo_info(cwd: Path) -> tuple[Path | None, Path | None]:
@@ -76,33 +75,3 @@ def cwd_in_scope(cwd: str | None) -> bool:
     return find_manifest(cwd) is not None
 
 
-def repo_transcript_hook_enabled(cwd: str | None) -> bool:
-    """True unless the repo has opted out via `transcript_upload_hook: false`
-    in .stash/config.json.
-
-    Same precedence as find_manifest: main repo wins over worktree-local.
-    Never raises — a missing / malformed file is treated as enabled."""
-    if not cwd:
-        return True
-    cur = Path(cwd).resolve()
-
-    _toplevel, main_root = _git_repo_info(cur)
-    if main_root:
-        candidate = main_root / ".stash" / _CONFIG_FILENAME
-        if candidate.exists():
-            try:
-                data = json.loads(candidate.read_text())
-            except Exception:
-                return True
-            return bool(data.get("transcript_upload_hook", True))
-
-    for parent in [cur, *cur.parents]:
-        candidate = parent / ".stash" / _CONFIG_FILENAME
-        if not candidate.exists():
-            continue
-        try:
-            data = json.loads(candidate.read_text())
-        except Exception:
-            return True
-        return bool(data.get("transcript_upload_hook", True))
-    return True
