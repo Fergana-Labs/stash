@@ -31,28 +31,87 @@ export default function DocsOverview() {
         so contributor to your repo can find and build on what others have learned.
       </P>
 
-      <H3>Example: Don&apos;t Duplicate Development Efforts</H3>
+      <H3>Example: Don&apos;t Duplicate Work</H3>
       <P>
-        I&apos;m debugging a tricky memory leak with our API gateway.
+        Henry asks his coding agent to investigate a memory leak. His teammate Sam
+        already spent hours debugging the same issue the night before. Without Stash,
+        the agent starts from scratch. With Stash, it picks up where Sam left off.
       </P>
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 my-6">
-        <div className="rounded-2xl border border-border bg-surface px-5 py-4">
-          <div className="text-xs font-medium text-muted uppercase tracking-wider mb-3">Without Stash</div>
-          <ol className="list-decimal pl-5 space-y-1.5 text-[14px] text-dim">
-            <li>Try approach A</li>
-            <li>Try approach B</li>
-            <li>Try approach C</li>
-          </ol>
-          <div className="mt-3 text-xs text-muted">~10 minutes</div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 my-6">
+        {/* Without Stash */}
+        <div className="rounded-2xl border border-border overflow-hidden flex flex-col">
+          <div className="bg-surface px-4 py-2.5 border-b border-border">
+            <span className="text-xs font-medium text-muted uppercase tracking-wider">Without Stash</span>
+          </div>
+          <div className="bg-[#1a1a1a] px-4 py-4 font-mono text-[12px] leading-[1.7] space-y-3 flex-1 flex flex-col">
+            <div>
+              <span className="text-zinc-500">&gt;</span>{" "}
+              <span className="text-zinc-200">Investigate the memory leak with our calendar service</span>
+            </div>
+            <div className="text-zinc-400">
+              <span className="text-zinc-500">●</span> Reading server logs and source code...
+            </div>
+            <div className="text-zinc-400">
+              <span className="text-zinc-500">●</span> Found 11 CalendarClient creation sites, only 1 has cleanup
+            </div>
+            <div className="text-zinc-400">
+              <span className="text-zinc-500">●</span> Found 10 GmailClient creation sites, only 3 have close()
+            </div>
+            <div className="text-zinc-400">
+              <span className="text-zinc-500">●</span> Hypothesis: unclosed httplib2 connections from build() calls
+            </div>
+            <div className="text-zinc-400">
+              <span className="text-zinc-500">●</span> Testing whether webhooks or draft_refresh_loop is the source...
+            </div>
+            <div className="text-zinc-400">
+              <span className="text-zinc-500">●</span> Confirmed: draft_refresh_loop creates 10 build() calls/min
+            </div>
+            <div className="text-zinc-300 mt-1">
+              The root cause is unclosed httplib2+SSL connections. Each build() call
+              leaks ~100KB. At 2-3/sec over 2 hours = ~1.15GB.
+            </div>
+            <div className="text-zinc-600 text-[12px] pb-3 mb-3 border-b border-zinc-700 mt-auto">
+              <span className="text-zinc-500">✱</span> Sautéed for 12m 42s
+            </div>
+          </div>
         </div>
-        <div className="rounded-2xl border border-brand/30 bg-brand/5 px-5 py-4">
-          <div className="text-xs font-medium text-brand uppercase tracking-wider mb-3">With Stash</div>
-          <ol className="list-decimal pl-5 space-y-1.5 text-[14px] text-dim">
-            <li>Check if someone else has worked on this</li>
-            <li>Sam tried A, B, and C — none worked. He also learned (1) and (2)</li>
-            <li>Proceed with debugging, informed</li>
-          </ol>
-          <div className="mt-3 text-xs text-muted">~2 minutes</div>
+
+        {/* With Stash */}
+        <div className="rounded-2xl border border-brand/30 overflow-hidden flex flex-col">
+          <div className="bg-brand/10 px-4 py-2.5 border-b border-brand/20">
+            <span className="text-xs font-medium text-brand uppercase tracking-wider">With Stash</span>
+          </div>
+          <div className="bg-[#1a1a1a] px-4 py-4 font-mono text-[12px] leading-[1.7] space-y-3 flex-1 flex flex-col">
+            <div>
+              <span className="text-zinc-500">&gt;</span>{" "}
+              <span className="text-zinc-200">Investigate the memory leak with our calendar service</span>
+            </div>
+            <div className="text-zinc-400">
+              <span className="text-zinc-500">●</span>{" "}
+              <span className="text-zinc-500">stash history search</span>{" "}
+              <span className="text-zinc-300">&quot;memory leak build gmail calendar&quot;</span>
+            </div>
+            <div className="pl-3 border-l border-zinc-700 text-zinc-400 space-y-1">
+              <div className="text-zinc-500 text-[11px]">Sam&apos;s session from last night (22 events):</div>
+              <div>Sam identified 10 build() calls/min from _draft_refresh_loop, not webhooks.</div>
+              <div>Sam fixed GmailClient with lazy init + context managers.</div>
+              <div>Leak is still active post-fix: CalendarClient has no close() in any path.</div>
+            </div>
+            <div className="text-zinc-400">
+              <span className="text-zinc-500">●</span> Checking Sam&apos;s commit 4bc908f...
+            </div>
+            <div className="text-zinc-400">
+              <span className="text-zinc-500">●</span> Adding __del__ and context managers to CalendarClient across 11 sites
+            </div>
+            <div className="text-zinc-300 mt-1">
+              Done. Sam&apos;s fix covered GmailClient. Applied the same pattern
+              to CalendarClient to close the remaining leak.
+            </div>
+            <div className="text-zinc-600 text-[12px] pb-3 mb-3 border-b border-zinc-700 mt-auto">
+              <span className="text-zinc-500">✱</span> Crunched for 2m 55s
+            </div>
+          </div>
         </div>
       </div>
 
