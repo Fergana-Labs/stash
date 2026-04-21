@@ -21,14 +21,6 @@ const NAV: NavSection[] = [
     ],
   },
   {
-    title: "Guides",
-    items: [
-      { href: "/docs/consume", label: "History & Files" },
-      { href: "/docs/curate", label: "Wiki & Curation" },
-      { href: "/docs/workspaces", label: "Workspaces" },
-    ],
-  },
-  {
     title: "Reference",
     items: [
       { href: "/docs/cli", label: "CLI" },
