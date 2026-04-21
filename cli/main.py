@@ -559,7 +559,6 @@ def _install_global_manifest(workspace_id: str, force: bool = False) -> tuple[st
         "version": 1,
         "workspace_id": str(workspace_id),
         "base_url": base_url,
-        "streaming_default": True,
     }
     dest.parent.mkdir(parents=True, exist_ok=True)
     dest.write_text(json.dumps(manifest, indent=2) + "\n")
@@ -2474,7 +2473,6 @@ def _offer_repo_init(client: "StashClient | None" = None) -> None:
         "workspace_name": chosen_ws["name"],
         "invite_code": invite_code,
         "base_url": base_url,
-        "streaming_default": True,
     }
     manifest_path.parent.mkdir(parents=True, exist_ok=True)
     manifest_path.write_text(json.dumps(manifest, indent=2) + "\n")

@@ -31,8 +31,6 @@ class Manifest(TypedDict, total=False):
     workspace_name: str
     invite_code: str
     base_url: str
-    streaming_default: bool
-    require_approval: bool
 
 DEFAULT_CONFIG = {
     "base_url": "http://localhost:3456",
