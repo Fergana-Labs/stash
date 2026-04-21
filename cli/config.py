@@ -38,8 +38,6 @@ DEFAULT_CONFIG = {
     "base_url": "http://localhost:3456",
     "api_key": "",
     "username": "",
-    "default_chat": "",
-    "output_format": "human",
 }
 
 # Keys that are always user-scoped regardless of requested scope.
@@ -133,8 +131,6 @@ def save_config(
     base_url: str | None = None,
     api_key: str | None = None,
     username: str | None = None,
-    default_chat: str | None = None,
-    output_format: str | None = None,
 ) -> None:
     """Save config to the chosen scope.
 
@@ -145,8 +141,6 @@ def save_config(
         "base_url": base_url,
         "api_key": api_key,
         "username": username,
-        "default_chat": default_chat,
-        "output_format": output_format,
     }
 
     auth_updates = {k: v for k, v in all_updates.items() if k in USER_SCOPED_KEYS}
