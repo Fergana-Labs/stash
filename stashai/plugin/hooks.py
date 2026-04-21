@@ -18,7 +18,7 @@ from pathlib import Path
 from stashai.plugin.event import HookEvent
 from stashai.plugin.scope import cwd_in_scope, repo_stash_disabled
 from stashai.plugin.stash_client import StashClient
-from stashai.plugin.state import get_scope_config, read_stats, record_tool_use
+from stashai.plugin.state import read_stats, record_tool_use
 from stashai.plugin.summarize import summarize_tool_use
 
 
@@ -28,7 +28,7 @@ def _short_circuit(cfg: dict, event: HookEvent | None) -> bool:
     cwd = getattr(event, "cwd", None) if event is not None else None
     if repo_stash_disabled(cwd):
         return True
-    return not cwd_in_scope(cwd, get_scope_config())
+    return not cwd_in_scope(cwd)
 
 
 # --- Prompt streaming ---
