@@ -124,11 +124,11 @@ def test_main_repo_manifest_beats_worktree_local(tmp_path, monkeypatch):
 
 
 def test_worktree_disabled_checks_main_repo(tmp_path, monkeypatch):
-    """repo_stash_disabled should check the main worktree root."""
+    """repo_transcript_hook_enabled should check the main worktree root."""
     main_repo = tmp_path / "main-repo"
     main_repo.mkdir()
     (main_repo / ".stash").mkdir()
-    (main_repo / ".stash" / "config.json").write_text('{"stash_disabled_here": true}')
+    (main_repo / ".stash" / "config.json").write_text('{"transcript_upload_hook": false}')
 
     worktree = tmp_path / "worktree-checkout"
     worktree.mkdir()
@@ -137,17 +137,17 @@ def test_worktree_disabled_checks_main_repo(tmp_path, monkeypatch):
         scope_mod, "_git_repo_info", lambda cwd: (worktree, main_repo)
     )
 
-    assert scope_mod.repo_stash_disabled(str(worktree))
+    assert not scope_mod.repo_transcript_hook_enabled(str(worktree))
 
 
-def test_repo_stash_disabled_marker(tmp_path):
+def test_repo_transcript_hook_disabled(tmp_path):
     (tmp_path / ".stash").mkdir()
-    (tmp_path / ".stash" / "config.json").write_text('{"stash_disabled_here": true}')
-    assert scope_mod.repo_stash_disabled(str(tmp_path))
+    (tmp_path / ".stash" / "config.json").write_text('{"transcript_upload_hook": false}')
+    assert not scope_mod.repo_transcript_hook_enabled(str(tmp_path))
 
 
-def test_repo_stash_disabled_missing_file(tmp_path):
-    assert not scope_mod.repo_stash_disabled(str(tmp_path))
+def test_repo_transcript_hook_enabled_missing_file(tmp_path):
+    assert scope_mod.repo_transcript_hook_enabled(str(tmp_path))
 
 
 # --- Regression: the gate must short-circuit live events -------------------

@@ -76,14 +76,14 @@ def cwd_in_scope(cwd: str | None) -> bool:
     return find_manifest(cwd) is not None
 
 
-def repo_stash_disabled(cwd: str | None) -> bool:
-    """True if the repo containing `cwd` has opted out of stash streaming
-    via `stash_disabled_here=true` in .stash/config.json.
+def repo_transcript_hook_enabled(cwd: str | None) -> bool:
+    """True unless the repo has opted out via `transcript_upload_hook: false`
+    in .stash/config.json.
 
     Same precedence as find_manifest: main repo wins over worktree-local.
-    Never raises — a missing / malformed file is treated as 'not disabled'."""
+    Never raises — a missing / malformed file is treated as enabled."""
     if not cwd:
-        return False
+        return True
     cur = Path(cwd).resolve()
 
     _toplevel, main_root = _git_repo_info(cur)
@@ -93,8 +93,8 @@ def repo_stash_disabled(cwd: str | None) -> bool:
             try:
                 data = json.loads(candidate.read_text())
             except Exception:
-                return False
-            return bool(data.get("stash_disabled_here", False))
+                return True
+            return bool(data.get("transcript_upload_hook", True))
 
     for parent in [cur, *cur.parents]:
         candidate = parent / ".stash" / _CONFIG_FILENAME
@@ -103,6 +103,6 @@ def repo_stash_disabled(cwd: str | None) -> bool:
         try:
             data = json.loads(candidate.read_text())
         except Exception:
-            return False
-        return bool(data.get("stash_disabled_here", False))
-    return False
+            return True
+        return bool(data.get("transcript_upload_hook", True))
+    return True

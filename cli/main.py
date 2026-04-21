@@ -2135,7 +2135,7 @@ def connect(
                             existing = json.loads(project_path.read_text())
                         except Exception:
                             existing = {}
-                    existing["stash_disabled_here"] = True
+                    existing["transcript_upload_hook"] = False
                     project_path.parent.mkdir(parents=True, exist_ok=True)
                     project_path.write_text(json.dumps(existing, indent=2) + "\n")
                     console.print(
@@ -2538,7 +2538,7 @@ def enable_cmd():
             existing = json.loads(project_path.read_text())
         except Exception:
             existing = {}
-    existing.pop("stash_disabled_here", None)
+    existing.pop("transcript_upload_hook", None)
     project_path.parent.mkdir(parents=True, exist_ok=True)
     project_path.write_text(json.dumps(existing, indent=2) + "\n")
     console.print(f"[green]Stash streaming enabled for this repo.[/green]  ({project_path})")
@@ -2563,7 +2563,7 @@ def disable_cmd():
             existing = json.loads(project_path.read_text())
         except Exception:
             existing = {}
-    existing["stash_disabled_here"] = True
+    existing["transcript_upload_hook"] = False
     project_path.parent.mkdir(parents=True, exist_ok=True)
     project_path.write_text(json.dumps(existing, indent=2) + "\n")
     console.print(
