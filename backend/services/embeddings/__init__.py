@@ -21,10 +21,15 @@ Bring your own::
     set_embedder(MyEmbedder())
 """
 
+import logging
+
 import numpy as np
 
+from ._retry import TransientEmbeddingError, with_retry
 from .auto import close_embedder, get_embedder, set_embedder
 from .base import BaseEmbedder
+
+logger = logging.getLogger(__name__)
 
 __all__ = [
     "BaseEmbedder",
@@ -37,21 +42,29 @@ __all__ = [
 ]
 
 
-# ---------------------------------------------------------------------------
-# Backward-compatible module-level functions.
-# Existing callers (memory_service, notebook_service, table_service, routers)
-# can keep using `embedding_service.embed_text(...)` unchanged.
-# ---------------------------------------------------------------------------
+# Public helpers wrap provider calls with a shared semaphore + retry on
+# transient (429 / 5xx / network) failures. Persistent failures become
+# `None` so callers can fall back to marking embed_stale.
 
 
 async def embed_text(text: str) -> np.ndarray | None:
     """Embed a single text string."""
-    return await get_embedder().embed_text(text)
+    embedder = get_embedder()
+    try:
+        return await with_retry(lambda: embedder.embed_text(text))
+    except TransientEmbeddingError:
+        logger.warning("Embedding provider failed after retries", exc_info=True)
+        return None
 
 
 async def embed_batch(texts: list[str]) -> list[np.ndarray] | None:
     """Embed multiple texts in one call."""
-    return await get_embedder().embed_batch(texts)
+    embedder = get_embedder()
+    try:
+        return await with_retry(lambda: embedder.embed_batch(texts))
+    except TransientEmbeddingError:
+        logger.warning("Embedding provider failed after retries", exc_info=True)
+        return None
 
 
 def is_configured() -> bool:

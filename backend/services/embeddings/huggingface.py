@@ -10,6 +10,7 @@ import os
 import httpx
 import numpy as np
 
+from ._retry import TransientEmbeddingError
 from .base import BaseEmbedder
 
 logger = logging.getLogger(__name__)
@@ -54,17 +55,35 @@ class HuggingFaceEmbedder(BaseEmbedder):
                 },
                 json={"inputs": texts},
             )
-            resp.raise_for_status()
-            data = resp.json()
-            # Single input returns a flat list of floats; batch returns list of lists.
-            if data and not isinstance(data[0], list):
-                return [np.array(data, dtype=np.float32)]
-            return [np.array(e, dtype=np.float32) for e in data]
-        except Exception:
-            logger.warning("HuggingFace embedding call failed", exc_info=True)
+        except (httpx.TimeoutException, httpx.NetworkError) as exc:
+            raise TransientEmbeddingError(f"network error: {exc}") from exc
+
+        if resp.status_code == 429 or 500 <= resp.status_code < 600:
+            retry_after = _parse_retry_after(resp.headers.get("Retry-After"))
+            raise TransientEmbeddingError(
+                f"{resp.status_code} from HF API",
+                retry_after=retry_after,
+            )
+        if resp.status_code >= 400:
+            logger.warning("HuggingFace embedding rejected: %s %s", resp.status_code, resp.text[:200])
             return None
+
+        data = resp.json()
+        # Single input returns a flat list of floats; batch returns list of lists.
+        if data and not isinstance(data[0], list):
+            return [np.array(data, dtype=np.float32)]
+        return [np.array(e, dtype=np.float32) for e in data]
 
     async def close(self) -> None:
         if self._client and not self._client.is_closed:
             await self._client.aclose()
             self._client = None
+
+
+def _parse_retry_after(header: str | None) -> float | None:
+    if not header:
+        return None
+    try:
+        return float(header)
+    except ValueError:
+        return None

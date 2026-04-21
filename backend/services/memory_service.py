@@ -5,6 +5,7 @@ Grouped by agent_name → session_id for display.
 """
 
 import asyncio
+import hashlib
 import logging
 from datetime import UTC, datetime
 from uuid import UUID
@@ -20,36 +21,60 @@ logger = logging.getLogger(__name__)
 # --- Embedding helpers ---
 
 
-async def _embed_event(event_id: UUID, content: str) -> None:
-    """Fire-and-forget: embed content and update the event row."""
-    try:
-        vec = await embedding_service.embed_text(content)
-        if vec is not None:
-            pool = get_pool()
-            await pool.execute(
-                "UPDATE history_events SET embedding = $1 WHERE id = $2",
-                vec,
-                event_id,
-            )
-    except Exception:
-        logger.debug("Failed to embed event %s", event_id, exc_info=True)
+def _text_hash(text: str) -> str:
+    return hashlib.sha256(text.encode()).hexdigest()
+
+
+# Dedup map for in-flight event embeds, keyed by event_id.
+_embed_tasks: dict[UUID, asyncio.Task] = {}
+
+
+def _schedule_event_embed(event_id: UUID, content: str, content_hash: str) -> None:
+    existing = _embed_tasks.get(event_id)
+    if existing is not None and not existing.done():
+        existing.cancel()
+    task = asyncio.create_task(_embed_event(event_id, content, content_hash))
+    _embed_tasks[event_id] = task
+    task.add_done_callback(lambda t, eid=event_id: _embed_tasks.pop(eid, None) if _embed_tasks.get(eid) is t else None)
+
+
+async def _embed_event(event_id: UUID, content: str, content_hash: str) -> None:
+    """Fire-and-forget: embed content and update the event row.
+
+    On failure, flips `embed_stale=true` so the reconciler retries later.
+    """
+    vec = await embedding_service.embed_text(content)
+    pool = get_pool()
+    if vec is None:
+        await pool.execute(
+            "UPDATE history_events SET content_hash = $1, embed_stale = TRUE WHERE id = $2",
+            content_hash,
+            event_id,
+        )
+        return
+    await pool.execute(
+        "UPDATE history_events SET embedding = $1, content_hash = $2, embed_stale = FALSE WHERE id = $3",
+        vec,
+        content_hash,
+        event_id,
+    )
 
 
 async def _embed_events_batch(event_ids: list[UUID], contents: list[str]) -> None:
     """Fire-and-forget: embed a batch of contents and update rows."""
-    try:
-        vecs = await embedding_service.embed_batch(contents)
-        if vecs:
-            pool = get_pool()
-            async with pool.acquire() as conn:
-                for eid, vec in zip(event_ids, vecs):
-                    await conn.execute(
-                        "UPDATE history_events SET embedding = $1 WHERE id = $2",
-                        vec,
-                        eid,
-                    )
-    except Exception:
-        logger.debug("Failed to batch-embed events", exc_info=True)
+    vecs = await embedding_service.embed_batch(contents)
+    pool = get_pool()
+    hashes = [_text_hash(c) for c in contents]
+    if not vecs:
+        await pool.executemany(
+            "UPDATE history_events SET content_hash = $1, embed_stale = TRUE WHERE id = $2",
+            list(zip(hashes, event_ids)),
+        )
+        return
+    await pool.executemany(
+        "UPDATE history_events SET embedding = $1, content_hash = $2, embed_stale = FALSE WHERE id = $3",
+        [(vec, h, eid) for eid, vec, h in zip(event_ids, vecs, hashes)],
+    )
 
 
 # --- Event CRUD ---
@@ -95,7 +120,7 @@ async def push_event(
     )
     event = dict(row)
     if embedding_service.is_configured():
-        asyncio.create_task(_embed_event(event["id"], content))
+        _schedule_event_embed(event["id"], content, _text_hash(content))
     return event
 
 

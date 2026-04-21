@@ -1,6 +1,7 @@
 """Table service: structured data CRUD with typed columns, JSONB rows, and optional embeddings."""
 
 import asyncio
+import hashlib
 import logging
 import re
 import secrets
@@ -10,6 +11,23 @@ from ..database import get_pool
 from .row_validation import RowValidationError, validate_row_data
 
 logger = logging.getLogger(__name__)
+
+
+def _text_hash(text: str) -> str:
+    return hashlib.sha256(text.encode()).hexdigest()
+
+
+# Dedup map for in-flight embed tasks, keyed by row_id.
+_embed_tasks: dict[UUID, asyncio.Task] = {}
+
+
+def _schedule_row_embed(row_id: UUID, text: str, text_hash: str) -> None:
+    existing = _embed_tasks.get(row_id)
+    if existing is not None and not existing.done():
+        existing.cancel()
+    task = asyncio.create_task(_embed_row(row_id, text, text_hash))
+    _embed_tasks[row_id] = task
+    task.add_done_callback(lambda t, rid=row_id: _embed_tasks.pop(rid, None) if _embed_tasks.get(rid) is t else None)
 
 
 # --- Table CRUD ---
@@ -775,50 +793,57 @@ def _build_embedding_text(row_data: dict, config: dict, columns: list[dict]) -> 
     return "\n".join(parts) if parts else str(row_data)
 
 
-async def _embed_row(row_id: UUID, text: str) -> None:
-    """Fire-and-forget: embed row text and store in database."""
-    try:
-        from . import embeddings as embedding_service
+async def _embed_row(row_id: UUID, text: str, text_hash: str) -> None:
+    """Fire-and-forget: embed row text and store in database.
 
-        if not embedding_service.is_configured():
-            return
-        embedding = await embedding_service.embed_text(text)
-        if embedding is None:
-            return
-        pool = get_pool()
+    On failure, flips `embed_stale=true` so the reconciler retries later.
+    """
+    from . import embeddings as embedding_service
+
+    if not embedding_service.is_configured():
+        return
+    embedding = await embedding_service.embed_text(text)
+    pool = get_pool()
+    if embedding is None:
         await pool.execute(
-            "UPDATE table_rows SET embedding = $1 WHERE id = $2",
-            embedding,
+            "UPDATE table_rows SET content_hash = $1, embed_stale = TRUE WHERE id = $2",
+            text_hash,
             row_id,
         )
-    except Exception:
-        logger.debug("Failed to embed row %s", row_id, exc_info=True)
+        return
+    await pool.execute(
+        "UPDATE table_rows SET embedding = $1, content_hash = $2, embed_stale = FALSE WHERE id = $3",
+        embedding,
+        text_hash,
+        row_id,
+    )
 
 
 async def _embed_rows_batch(row_ids: list[UUID], texts: list[str]) -> None:
     """Fire-and-forget: batch embed rows."""
-    try:
-        from . import embeddings as embedding_service
+    from . import embeddings as embedding_service
 
-        if not embedding_service.is_configured() or not texts:
-            return
-        embeddings = await embedding_service.embed_batch(texts)
-        if not embeddings:
-            return
-        pool = get_pool()
-        async with pool.acquire() as conn:
-            for row_id, emb in zip(row_ids, embeddings):
-                await conn.execute(
-                    "UPDATE table_rows SET embedding = $1 WHERE id = $2",
-                    emb,
-                    row_id,
-                )
-    except Exception:
-        logger.debug("Failed to batch embed rows", exc_info=True)
+    if not embedding_service.is_configured() or not texts:
+        return
+    embeddings = await embedding_service.embed_batch(texts)
+    pool = get_pool()
+    if not embeddings:
+        # Mark all stale so the reconciler will retry.
+        hashes = [_text_hash(t) for t in texts]
+        await pool.executemany(
+            "UPDATE table_rows SET content_hash = $1, embed_stale = TRUE WHERE id = $2",
+            list(zip(hashes, row_ids)),
+        )
+        return
+    hashes = [_text_hash(t) for t in texts]
+    await pool.executemany(
+        "UPDATE table_rows SET embedding = $1, content_hash = $2, embed_stale = FALSE WHERE id = $3",
+        [(emb, h, rid) for rid, emb, h in zip(row_ids, embeddings, hashes)],
+    )
 
 
 async def maybe_embed_row(table_id: UUID, row_id: UUID, row_data: dict) -> None:
-    """Check if table has embedding config and embed the row if so."""
+    """Check if table has embedding config and embed the row if content changed."""
     config = await get_embedding_config(table_id)
     if not config or not config.get("enabled"):
         return
@@ -827,7 +852,14 @@ async def maybe_embed_row(table_id: UUID, row_id: UUID, row_data: dict) -> None:
     if not tbl:
         return
     text = _build_embedding_text(row_data, config, tbl["columns"])
-    asyncio.create_task(_embed_row(row_id, text))
+    new_hash = _text_hash(text)
+    stored_hash = await pool.fetchval(
+        "SELECT content_hash FROM table_rows WHERE id = $1",
+        row_id,
+    )
+    if stored_hash == new_hash:
+        return
+    _schedule_row_embed(row_id, text, new_hash)
 
 
 async def search_rows_vector(table_id: UUID, query_embedding, limit: int = 20) -> list[dict]:

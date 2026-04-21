@@ -30,6 +30,21 @@ def _content_hash(content: str) -> str:
     return hashlib.sha256(content.encode()).hexdigest()
 
 
+# Dedup map for in-flight embed tasks: only one embed per page at a time.
+# Keyed by page_id; newer calls cancel the pending task.
+_embed_tasks: dict[UUID, asyncio.Task] = {}
+
+
+def _schedule_embed(page_id: UUID, content: str) -> None:
+    """Schedule fire-and-forget embed; cancels any pending embed for the same page."""
+    existing = _embed_tasks.get(page_id)
+    if existing is not None and not existing.done():
+        existing.cancel()
+    task = asyncio.create_task(_embed_page(page_id, content))
+    _embed_tasks[page_id] = task
+    task.add_done_callback(lambda t, pid=page_id: _embed_tasks.pop(pid, None) if _embed_tasks.get(pid) is t else None)
+
+
 # --- Notebook (collection) CRUD ---
 
 
@@ -177,7 +192,7 @@ async def create_page(
     page = dict(row)
     # Fire-and-forget: embed page + extract wiki links
     if content:
-        asyncio.create_task(_embed_page(page["id"], content))
+        _schedule_embed(page["id"], content)
         asyncio.create_task(_update_page_links(page["id"], notebook_id, content))
     # Re-resolve dangling links from other pages that might reference this new page
     asyncio.create_task(_resolve_dangling_links(notebook_id, name, page["id"]))
@@ -304,7 +319,10 @@ async def update_page(
         if row:
             page = dict(row)
             if content is not None:
-                asyncio.create_task(_embed_page(page["id"], content))
+                # Skip the embed if content hash didn't change — saves an OpenAI call
+                # on pure rename/folder-move/metadata updates that still pass content.
+                if page["content_hash"] != expected_hash:
+                    _schedule_embed(page["id"], content)
                 asyncio.create_task(_update_page_links(page["id"], notebook_id, content))
             return page
 
@@ -586,23 +604,27 @@ async def get_page_graph(notebook_id: UUID) -> dict:
 
 
 async def _embed_page(page_id: UUID, content: str) -> None:
-    """Fire-and-forget: embed page content and store in database."""
-    try:
-        from . import embeddings as embedding_service
+    """Fire-and-forget: embed page content and store in database.
 
-        if not embedding_service.is_configured():
-            return
-        embedding = await embedding_service.embed_text(content)
-        if embedding is None:
-            return
-        pool = get_pool()
+    On failure, flips `embed_stale=true` so the reconciler retries later.
+    """
+    from . import embeddings as embedding_service
+
+    if not embedding_service.is_configured():
+        return
+    embedding = await embedding_service.embed_text(content)
+    pool = get_pool()
+    if embedding is None:
         await pool.execute(
-            "UPDATE notebook_pages SET embedding = $1 WHERE id = $2",
-            embedding,
+            "UPDATE notebook_pages SET embed_stale = TRUE WHERE id = $1",
             page_id,
         )
-    except Exception:
-        logger.debug("Failed to embed page %s", page_id, exc_info=True)
+        return
+    await pool.execute(
+        "UPDATE notebook_pages SET embedding = $1, embed_stale = FALSE WHERE id = $2",
+        embedding,
+        page_id,
+    )
 
 
 async def search_pages_vector(
