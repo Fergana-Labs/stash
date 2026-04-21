@@ -41,7 +41,7 @@ def _use_json(flag: bool) -> bool:
     return flag or load_config().get("output_format") == "json"
 
 
-def _default_workspace() -> str:
+def _resolve_workspace() -> str:
     manifest = load_manifest()
     if manifest and manifest.get("workspace_id"):
         return manifest["workspace_id"]
@@ -708,7 +708,7 @@ def invite_default(
     """Mint a shareable invite link for a workspace (default: your default workspace)."""
     if ctx.invoked_subcommand is not None:
         return
-    ws = workspace_id or _default_workspace()
+    ws = workspace_id or _resolve_workspace()
     cfg = load_config()
     with _client() as c:
         try:
@@ -748,7 +748,7 @@ def invite_list(
     as_json: bool = typer.Option(False, "--json"),
 ):
     """List active invite tokens for a workspace."""
-    ws = workspace_id or _default_workspace()
+    ws = workspace_id or _resolve_workspace()
     with _client() as c:
         try:
             tokens = c.list_invite_tokens(ws)
@@ -774,7 +774,7 @@ def invite_revoke(
     workspace_id: str = typer.Option(None, "--ws"),
 ):
     """Revoke an invite token so it can no longer be redeemed."""
-    ws = workspace_id or _default_workspace()
+    ws = workspace_id or _resolve_workspace()
     with _client() as c:
         try:
             c.revoke_invite_token(ws, token_id)
@@ -803,7 +803,7 @@ def nb_list(
             data = (
                 c.all_notebooks()
                 if all_
-                else c.list_notebooks(workspace_id or _default_workspace())
+                else c.list_notebooks(workspace_id or _resolve_workspace())
             )
         except StashError as e:
             _err(e)
@@ -828,7 +828,7 @@ def nb_create(
     """Create a notebook collection."""
     with _client() as c:
         try:
-            ws = workspace_id or _default_workspace()
+            ws = workspace_id or _resolve_workspace()
             data = c.create_notebook(ws, name, description=description)
         except StashError as e:
             _err(e)
@@ -847,7 +847,7 @@ def nb_pages(
     """List pages in a notebook."""
     with _client() as c:
         try:
-            ws = workspace_id or _default_workspace()
+            ws = workspace_id or _resolve_workspace()
             data = c.list_page_tree(ws, notebook_id)
         except StashError as e:
             _err(e)
@@ -896,7 +896,7 @@ def nb_add_page(
     """Add a page to a notebook."""
     with _client() as c:
         try:
-            ws = workspace_id or _default_workspace()
+            ws = workspace_id or _resolve_workspace()
             for p in attach or []:
                 if not Path(p).is_file():
                     console.print(f"[red]Not a file: {p}[/red]")
@@ -921,7 +921,7 @@ def nb_read_page(
     """Read a page's content."""
     with _client() as c:
         try:
-            ws = workspace_id or _default_workspace()
+            ws = workspace_id or _resolve_workspace()
             data = c.get_page(ws, notebook_id, page_id)
         except StashError as e:
             _err(e)
@@ -949,7 +949,7 @@ def nb_edit_page(
         content = sys.stdin.read()
     with _client() as c:
         try:
-            ws = workspace_id or _default_workspace()
+            ws = workspace_id or _resolve_workspace()
             for p in attach or []:
                 if not Path(p).is_file():
                     console.print(f"[red]Not a file: {p}[/red]")
@@ -986,7 +986,7 @@ def hist_agents(
     workspace_id: str = typer.Option(None, "--ws"), as_json: bool = typer.Option(False, "--json")
 ):
     """List distinct agent names that have logged events in this workspace."""
-    ws = workspace_id or _default_workspace()
+    ws = workspace_id or _resolve_workspace()
     with _client() as c:
         try:
             data = c.list_agent_names(ws)
@@ -1019,7 +1019,7 @@ def hist_push(
     as_json: bool = typer.Option(False, "--json"),
 ):
     """Push an event to the workspace history."""
-    ws = workspace_id or _default_workspace()
+    ws = workspace_id or _resolve_workspace()
     with _client() as c:
         try:
             attachments: list[dict] = []
@@ -1065,7 +1065,7 @@ def hist_query(
             if all_:
                 data = c.all_events(agent_name=agent_name, event_type=event_type, limit=limit)
             else:
-                ws = workspace_id or _default_workspace()
+                ws = workspace_id or _resolve_workspace()
                 data = c.query_events(ws, agent_name=agent_name, event_type=event_type, limit=limit)
         except StashError as e:
             _err(e)
@@ -1087,7 +1087,7 @@ def hist_search(
     as_json: bool = typer.Option(False, "--json"),
 ):
     """Full-text search on events in a workspace."""
-    ws = workspace_id or _default_workspace()
+    ws = workspace_id or _resolve_workspace()
     with _client() as c:
         try:
             data = c.search_events(ws, query, limit=limit)
@@ -1117,7 +1117,7 @@ def hist_transcript(
 
     import httpx
 
-    ws = workspace_id or _default_workspace()
+    ws = workspace_id or _resolve_workspace()
     cfg = load_config()
     url = f"{cfg['base_url'].rstrip('/')}/api/v1/workspaces/{ws}/transcripts/{session_id}"
     headers = {"Authorization": f"Bearer {cfg.get('api_key', '')}"}
@@ -1203,7 +1203,7 @@ def tables_list(
             if all_:
                 data = c.all_tables()
             else:
-                data = c.list_tables(workspace_id or _default_workspace())
+                data = c.list_tables(workspace_id or _resolve_workspace())
         except StashError as e:
             _err(e)
     if _use_json(as_json):
@@ -1233,7 +1233,7 @@ def tables_create(
     cols = json.loads(columns) if columns else []
     with _client() as c:
         try:
-            ws = workspace_id or _default_workspace()
+            ws = workspace_id or _resolve_workspace()
             data = c.create_table(ws, name, description=description, columns=cols)
         except StashError as e:
             _err(e)
@@ -1262,7 +1262,7 @@ def tables_update(
         raise typer.Exit(1)
     with _client() as c:
         try:
-            ws = workspace_id or _default_workspace()
+            ws = workspace_id or _resolve_workspace()
             data = c.update_table(ws, table_id, **kwargs)
         except StashError as e:
             _err(e)
@@ -1281,7 +1281,7 @@ def tables_schema(
     """Show a table's column schema."""
     with _client() as c:
         try:
-            ws = workspace_id or _default_workspace()
+            ws = workspace_id or _resolve_workspace()
             data = c.get_table(ws, table_id)
         except StashError as e:
             _err(e)
@@ -1318,7 +1318,7 @@ def tables_rows(
     """Read rows. --sort and --filter accept column names (auto-resolved)."""
     with _client() as c:
         try:
-            ws = workspace_id or _default_workspace()
+            ws = workspace_id or _resolve_workspace()
             table = c.get_table(ws, table_id)
             id_to_name = {col["id"]: col["name"] for col in table.get("columns", [])}
             resolved_sort = _resolve_sort_name(table, sort_by)
@@ -1394,7 +1394,7 @@ def tables_insert(
     uploads = _parse_uploads(upload)
     with _client() as c:
         try:
-            ws = workspace_id or _default_workspace()
+            ws = workspace_id or _resolve_workspace()
             row_data = _apply_uploads(c, ws, row_data, uploads)
             table = c.get_table(ws, table_id)
             resolved = _resolve_col_names(table, row_data)
@@ -1458,7 +1458,7 @@ def tables_import(
 
     with _client() as c:
         try:
-            ws = workspace_id or _default_workspace()
+            ws = workspace_id or _resolve_workspace()
             table = c.get_table(ws, table_id)
 
             # Resolve column names to IDs
@@ -1500,7 +1500,7 @@ def tables_update_row(
     uploads = _parse_uploads(upload)
     with _client() as c:
         try:
-            ws = workspace_id or _default_workspace()
+            ws = workspace_id or _resolve_workspace()
             row_data = _apply_uploads(c, ws, row_data, uploads)
             table = c.get_table(ws, table_id)
             resolved = _resolve_col_names(table, row_data)
@@ -1522,7 +1522,7 @@ def tables_delete_row(
     """Delete a row from a table."""
     with _client() as c:
         try:
-            ws = workspace_id or _default_workspace()
+            ws = workspace_id or _resolve_workspace()
             c.delete_table_row(ws, table_id, row_id)
         except StashError as e:
             _err(e)
@@ -1544,7 +1544,7 @@ def tables_add_column(
     opts = [o.strip() for o in options.split(",") if o.strip()] if options else None
     with _client() as c:
         try:
-            ws = workspace_id or _default_workspace()
+            ws = workspace_id or _resolve_workspace()
             result = c.add_table_column(ws, table_id, name, col_type=col_type, options=opts)
         except StashError as e:
             _err(e)
@@ -1564,7 +1564,7 @@ def tables_delete_column(
     """Delete a column from a table."""
     with _client() as c:
         try:
-            ws = workspace_id or _default_workspace()
+            ws = workspace_id or _resolve_workspace()
             # Resolve column name to ID if needed
             if not column_id.startswith("col_"):
                 table = c.get_table(ws, table_id)
@@ -1590,7 +1590,7 @@ def tables_count(
     """Count rows, optionally with filters."""
     with _client() as c:
         try:
-            ws = workspace_id or _default_workspace()
+            ws = workspace_id or _resolve_workspace()
             if filters:
                 table = c.get_table(ws, table_id)
                 filters = _resolve_filter_names(table, filters)
@@ -1618,7 +1618,7 @@ def tables_export(
     """Export table as CSV."""
     with _client() as c:
         try:
-            ws = workspace_id or _default_workspace()
+            ws = workspace_id or _resolve_workspace()
             params: dict = {"sort_order": sort_order}
             if sort_by:
                 table = c.get_table(ws, table_id)
@@ -1652,7 +1652,7 @@ def tables_delete(
         typer.confirm("Delete this table and all its data?", abort=True)
     with _client() as c:
         try:
-            ws = workspace_id or _default_workspace()
+            ws = workspace_id or _resolve_workspace()
             c.delete_table(ws, table_id)
         except StashError as e:
             _err(e)
@@ -1686,7 +1686,7 @@ def files_upload(
     as_json: bool = typer.Option(False, "--json"),
 ):
     """Upload a file to a workspace."""
-    ws = workspace_id or _default_workspace()
+    ws = workspace_id or _resolve_workspace()
     with _client() as c:
         try:
             data = _upload_path(c, ws, path)
@@ -1705,7 +1705,7 @@ def files_list(
     as_json: bool = typer.Option(False, "--json"),
 ):
     """List files in a workspace."""
-    ws = workspace_id or _default_workspace()
+    ws = workspace_id or _resolve_workspace()
     with _client() as c:
         try:
             data = c.list_ws_files(ws)
@@ -1731,7 +1731,7 @@ def files_rm(
     workspace_id: str = typer.Option(None, "--ws"),
 ):
     """Delete a file."""
-    ws = workspace_id or _default_workspace()
+    ws = workspace_id or _resolve_workspace()
     with _client() as c:
         try:
             c.delete_ws_file(ws, file_id)
@@ -1746,7 +1746,7 @@ def files_text(
     workspace_id: str = typer.Option(None, "--ws"),
 ):
     """Print extracted text for a file (PDFs with embedded text, or plain text)."""
-    ws = workspace_id or _default_workspace()
+    ws = workspace_id or _resolve_workspace()
     with _client() as c:
         try:
             data = c.get_ws_file_text(ws, file_id)
