@@ -54,6 +54,8 @@ export default function EmbeddingSpaceExplorer({ data, onPointClick }: Props) {
   const rotYRef = useRef(0.4);
   const rotXRef = useRef(0.3);
   const draggingRef = useRef(false);
+  const downPosRef = useRef<{ x: number; y: number } | null>(null);
+  const movedRef = useRef(false);
   const lastMouseRef = useRef({ x: 0, y: 0 });
   const autoRotateRef = useRef(true);
   const animRef = useRef<number>(0);
@@ -228,6 +230,12 @@ export default function EmbeddingSpaceExplorer({ data, onPointClick }: Props) {
       if (draggingRef.current) {
         const dx = mx - lastMouseRef.current.x;
         const dy = my - lastMouseRef.current.y;
+        // Mark as a drag (not a click) once the cursor moves past a small threshold
+        if (downPosRef.current) {
+          const totalDx = mx - downPosRef.current.x;
+          const totalDy = my - downPosRef.current.y;
+          if (totalDx * totalDx + totalDy * totalDy > 16) movedRef.current = true;
+        }
         rotYRef.current -= dx * 0.008;
         rotXRef.current += dy * 0.008;
         // Clamp X rotation to avoid flipping
@@ -252,7 +260,10 @@ export default function EmbeddingSpaceExplorer({ data, onPointClick }: Props) {
     if (!rect) return;
     draggingRef.current = true;
     autoRotateRef.current = false;
-    lastMouseRef.current = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+    const pos = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+    lastMouseRef.current = pos;
+    downPosRef.current = pos;
+    movedRef.current = false;
   }, []);
 
   const handleMouseUp = useCallback(() => {
@@ -262,6 +273,7 @@ export default function EmbeddingSpaceExplorer({ data, onPointClick }: Props) {
   const handleClick = useCallback(
     (e: React.MouseEvent) => {
       if (!onPointClick) return;
+      if (movedRef.current) return; // it was a drag, not a click
       const canvas = canvasRef.current;
       if (!canvas) return;
       const rect = canvas.getBoundingClientRect();
