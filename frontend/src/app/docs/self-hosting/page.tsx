@@ -31,7 +31,11 @@ cd stash
 cp .env.example .env`}</CodeBlock>
       <P>
         At minimum set <Code>POSTGRES_USER</Code>, <Code>POSTGRES_PASSWORD</Code>,{" "}
-        <Code>OPENAI_API_KEY</Code> (semantic search), and <Code>PUBLIC_URL</Code> (your domain).
+        <Code>PUBLIC_URL</Code> (your domain), and <Code>CORS_ORIGINS</Code>.
+        Embeddings default to local sentence-transformers — no API key required.
+        Set <Code>OPENAI_API_KEY</Code> or <Code>HF_TOKEN</Code> to use a hosted
+        embedding provider instead. The backend itself makes no LLM calls, so
+        there are no other keys to configure.
       </P>
       <P>
         Edit <Code>Caddyfile</Code> and replace <Code>app.example.com</Code> with your actual domain.
@@ -40,12 +44,13 @@ cp .env.example .env`}</CodeBlock>
 
       <H3>2. Start everything</H3>
       <CodeBlock>{`docker compose -f docker-compose.prod.yml up -d`}</CodeBlock>
-      <P>This starts three containers:</P>
+      <P>This starts four containers:</P>
       <div className="rounded-2xl border border-border bg-surface divide-y divide-border my-6">
         {[
           { svc: "postgres", port: "5432", desc: "PostgreSQL 16 with pgvector — stores all workspace data" },
           { svc: "backend", port: "3456", desc: "FastAPI — REST API" },
           { svc: "frontend", port: "3457", desc: "Next.js UI — dashboard, docs" },
+          { svc: "caddy", port: "80/443", desc: "Reverse proxy with automatic HTTPS via Let's Encrypt" },
         ].map((s) => (
           <div key={s.svc} className="flex gap-5 px-5 py-4">
             <span className="text-[13px] font-semibold text-foreground font-mono w-24 flex-shrink-0">{s.svc}</span>
@@ -61,13 +66,16 @@ cp .env.example .env`}</CodeBlock>
 
       <H3>Environment variables</H3>
       <ParamTable params={[
-        { name: "POSTGRES_USER / POSTGRES_PASSWORD / POSTGRES_DB", type: "string", desc: "Postgres credentials. Defaults are stash/stash/stash — change before going to production." },
-        { name: "DATABASE_URL", type: "string", desc: "Full PostgreSQL connection string. Defaults to postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@localhost:5432/${POSTGRES_DB}.", required: true },
-        { name: "OPENAI_API_KEY", type: "string", desc: "Required for semantic search (text-embedding-3-small)." },
+        { name: "POSTGRES_USER / POSTGRES_PASSWORD / POSTGRES_DB", type: "string", desc: "Postgres credentials. Defaults are stash/stash/stash — change before going to production.", required: true },
+        { name: "DATABASE_URL", type: "string", desc: "Full PostgreSQL connection string. docker-compose.prod.yml auto-builds this from POSTGRES_* — only override if pointing at an external database." },
         { name: "PUBLIC_URL", type: "string", desc: "Frontend origin. Used in invite links and CORS config. Default: http://localhost:3457" },
         { name: "CORS_ORIGINS", type: "string", desc: "Comma-separated allowed origins. Default: http://localhost:3457,http://localhost:3456" },
         { name: "PORT", type: "number", desc: "Backend port. Default: 3456" },
         { name: "DB_POOL_MIN / DB_POOL_MAX", type: "number", desc: "Database connection pool size. Raise DB_POOL_MAX for high-traffic deployments." },
+        { name: "EMBEDDING_PROVIDER", type: "string", desc: "openai | huggingface | local | auto. Default: auto (detects from keys; falls back to local sentence-transformers if none set)." },
+        { name: "OPENAI_API_KEY", type: "string", desc: "Optional. Enables the OpenAI-compatible embedding provider (also works with any OpenAI-compatible endpoint via EMBEDDING_API_URL)." },
+        { name: "HF_TOKEN", type: "string", desc: "Optional. Enables the Hugging Face Inference API embedding provider." },
+        { name: "EMBEDDING_MODEL", type: "string", desc: "Override the embedding model name. Defaults depend on provider (text-embedding-3-small, BAAI/bge-small-en-v1.5, all-MiniLM-L6-v2)." },
         { name: "S3_ENDPOINT", type: "string", desc: "S3-compatible endpoint for file uploads (AWS, Cloudflare R2, MinIO). Leave blank to disable." },
         { name: "S3_BUCKET", type: "string", desc: "S3 bucket name." },
         { name: "S3_ACCESS_KEY / S3_SECRET_KEY", type: "string", desc: "S3 credentials." },
@@ -103,12 +111,11 @@ S3_REGION=us-east-1`}</CodeBlock>
       <div className="rounded-2xl border border-border bg-surface divide-y divide-border my-6">
         {[
           { item: "Change default Postgres credentials", detail: "Set POSTGRES_USER, POSTGRES_PASSWORD, and POSTGRES_DB in your .env before first run. Docker Compose and DATABASE_URL both pick them up automatically." },
-          { item: "Set a strong SECRET_KEY", detail: "Used for signing tokens. Generate with: python -c \"import secrets; print(secrets.token_hex(32))\"" },
           { item: "Configure CORS_ORIGINS", detail: "Set to your production frontend domain(s) only." },
           { item: "Set PUBLIC_URL", detail: "Set to your production frontend URL so invite links and share links resolve correctly." },
-          { item: "Enable TLS", detail: "Put Nginx or Caddy in front of both services." },
+          { item: "Point Caddy at your domain", detail: "Edit Caddyfile: replace app.example.com with your real domain. Caddy auto-provisions Let's Encrypt certificates on first start." },
           { item: "Tune DB_POOL_MAX", detail: "Raise to 50–100 for production load. Ensure your Postgres max_connections is higher." },
-          { item: "External Postgres", detail: "For production, use a managed database (RDS, Supabase) with pgvector enabled. Remove the postgres service from docker-compose.yml." },
+          { item: "External Postgres", detail: "For production, use a managed database (RDS, Supabase) with pgvector enabled. Remove the postgres service from docker-compose.prod.yml and set DATABASE_URL directly." },
         ].map((c) => (
           <div key={c.item} className="flex gap-5 px-5 py-4">
             <span className="text-[13px] font-semibold text-foreground w-60 flex-shrink-0">{c.item}</span>
@@ -119,8 +126,8 @@ S3_REGION=us-east-1`}</CodeBlock>
 
       <Callout type="info">
         The backend exposes an interactive OpenAPI spec at <Code>/docs</Code> (e.g.{" "}
-        <Code>http://localhost:3456/docs</Code>). Disable this in production by setting{" "}
-        <Code>{"DOCS_ENABLED=false"}</Code> or filtering it in your reverse proxy.
+        <Code>http://localhost:3456/docs</Code>). For production, block the path at your
+        reverse proxy (Caddy) rather than exposing the schema publicly.
       </Callout>
 
       <H3>Upgrading</H3>
