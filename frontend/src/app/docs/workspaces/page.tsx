@@ -10,7 +10,7 @@ export default function WorkspacesPage() {
 
       <P>
         Create a workspace, invite team members, and everything you
-        build — notebooks, chats, history stores, tables, files, pages — is shared and scoped
+        build — notebooks, history, tables, files, pages — is shared and scoped
         to that workspace. Workspaces are isolated: no resource leaks between them.
       </P>
 

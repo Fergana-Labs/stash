@@ -8,9 +8,9 @@ export default function ConsumePage() {
         Getting data into Stash. Push events via the CLI or REST API.
       </Subtitle>
 
-      <H3>History stores</H3>
+      <H3>History</H3>
       <P>
-        History stores are append-only event logs. Events are grouped by{" "}
+        Each workspace has an append-only event log. Events are grouped by{" "}
         <code className="text-brand font-mono text-[13px]">agent_name</code> and{" "}
         <code className="text-brand font-mono text-[13px]">session_id</code>, giving you a
         conversation-like view of each agent session. Push events via the CLI or REST API.
@@ -23,7 +23,7 @@ export default function ConsumePage() {
         },
         {
           label: "curl",
-          code: `curl -X POST https://stash.ac/api/v1/workspaces/{ws}/memory/{store}/events \\
+          code: `curl -X POST https://stash.ac/api/v1/workspaces/{ws}/memory/events \\
   -H "Authorization: Bearer $API_KEY" \\
   -H "Content-Type: application/json" \\
   -d '{"agent_name":"my-agent","event_type":"tool_use","content":"..."}'`,

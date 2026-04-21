@@ -15,8 +15,8 @@ export default function CLIPage() {
       <H3>First-time setup</H3>
       <P>
         Run the interactive setup wizard. It configures the API endpoint, authenticates you
-        (login or register), creates a workspace, and creates a default history store — all in
-        one shot. No manual config editing required.
+        (login or register), and creates a workspace — all in one shot. No manual config
+        editing required.
       </P>
       <CodeBlock>{`stash connect`}</CodeBlock>
       <P>
@@ -25,9 +25,12 @@ export default function CLIPage() {
       </P>
 
       <H3>Auth commands</H3>
-      <CodeBlock>{`stash login                             # Password login
-stash auth <url> --api-key <key>        # Authenticate using an existing API key
+      <CodeBlock>{`stash login <name> --password <pw>       # Password login
+stash signin                            # Sign in through the browser
+stash register <name>                   # Create a new account
+stash auth <url> --api-key <key>        # Store existing credentials
 stash whoami                            # Show the current logged-in user
+stash disconnect                        # Sign out and clear config
 stash config [key] [value]              # View or update any config value`}</CodeBlock>
 
       <Callout>
@@ -37,33 +40,47 @@ stash config [key] [value]              # View or update any config value`}</Cod
         CI and scripts.
       </Callout>
 
-      <H3>Search</H3>
-      <CodeBlock>{`# Universal search across all data types
-stash search <query>
-  --ws <workspace_id>          Scope to a workspace
-  --types history,notebook,table   Filter by resource type`}</CodeBlock>
-
       <H3>Notebooks</H3>
       <CodeBlock>{`stash notebooks list [--ws ID] [--all]
-stash notebooks create <name> [--ws ID]
+stash notebooks create <name> [--ws ID] [--personal]
 stash notebooks pages <notebook_id> [--ws ID]
-stash notebooks add-page <nb_id> <name> [--content "..."] [--attach path]
+stash notebooks add-page <nb_id> <name> [--content "..."]
 stash notebooks read-page <nb_id> <page_id>
-stash notebooks edit-page <nb_id> <page_id> --content "..." [--attach path]`}</CodeBlock>
+stash notebooks edit-page <nb_id> <page_id> --content "..."`}</CodeBlock>
 
-      <H3>History stores</H3>
-      <CodeBlock>{`stash history list [--ws ID] [--all]
-stash history create <name> [--ws ID]
-stash history push <content> [--store ID] [--agent cli] [--type message]
-stash history query [--store ID] [--agent X] [--type Y] [-n 50]
-stash history search <query> [--store ID]`}</CodeBlock>
+      <H3>History</H3>
+      <CodeBlock>{`stash history push <content> [--ws ID] [--agent cli] [--type message]
+stash history query [--ws ID] [--agent X] [--type Y] [-n 50] [--all]
+stash history search <query> [--ws ID] [-n 50]
+stash history agents [--ws ID]
+stash history transcript <session_id> [--ws ID]`}</CodeBlock>
 
       <H3>Tables</H3>
+      <CodeBlock>{`stash tables list [--ws ID] [--all] [--personal]
+stash tables create <name> [--ws ID] [--columns JSON]
+stash tables rows <table_id> [--sort COL] [--filter COL]
+stash tables insert <table_id> <data_json>
+stash tables import <table_id> <file> [--format csv|json]
+stash tables export <table_id>
+stash tables count <table_id>
+stash tables update-row <table_id> <row_id> <data_json>
+stash tables delete-row <table_id> <row_id>`}</CodeBlock>
+
+      <H3>Files</H3>
+      <CodeBlock>{`stash files upload <path> [--ws ID]
+stash files list [--ws ID]
+stash files rm <file_id>
+stash files text <file_id>`}</CodeBlock>
+
+      <H3>Streaming & hooks</H3>
       <P>
-        Full CRUD for tables is available. Run{" "}
-        <Code>stash --help</Code> for the complete command tree, or{" "}
-        <Code>stash &lt;command&gt; --help</Code> for options on any subcommand.
+        Install Stash hooks for all supported coding agents on your <Code>$PATH</Code>,
+        then enable or disable streaming per repo:
       </P>
+      <CodeBlock>{`stash install                           # Install hook plugins
+stash enable                            # Enable streaming for this repo
+stash disable                           # Disable streaming for this repo
+stash settings                          # Interactive settings page`}</CodeBlock>
     </>
   );
 }
