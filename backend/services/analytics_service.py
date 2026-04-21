@@ -1,6 +1,7 @@
 """Analytics service: aggregated views for dashboard visualizations."""
 
 import logging
+import math
 import re
 from datetime import UTC, datetime, timedelta
 from uuid import UUID
@@ -10,6 +11,13 @@ import numpy as np
 from ..database import get_pool
 
 logger = logging.getLogger(__name__)
+
+# Density cache lives in knowledge_density_cache (migration 0017). A precompute
+# worker keeps it warm for active users; the endpoint only recomputes inline if
+# the row is missing or the source signature drifted. Treat drift as "any source
+# count changed by at least SIGNATURE_TOLERANCE" so typo-level edits don't thrash.
+_DENSITY_CACHE_TTL = timedelta(hours=24)
+_DENSITY_SIGNATURE_TOLERANCE = 0.1
 
 # Shared CTE for workspace access filtering on history_events
 _ACCESSIBLE_EVENTS_CTE = """
@@ -98,9 +106,6 @@ async def get_activity_timeline(
         "buckets": list(buckets_map.values()),
     }
 
-
-_density_cache: dict[str, tuple[float, dict]] = {}
-_DENSITY_TTL = 300  # 5 minutes
 
 # Common words that survive Postgres stemming but aren't meaningful topics
 _STOP_STEMS = frozenset(
@@ -206,221 +211,240 @@ _STOP_STEMS = frozenset(
 _COLUMN_NAME_RE = re.compile(r"^col\d+$|^column\d+$|^field\d+$|^row\d+$|^val\d+$")
 
 
-async def get_knowledge_density(
-    user_id: UUID,
-    max_clusters: int = 20,
-) -> dict:
-    """Topic clusters from word frequency for the key topics treemap."""
+def _is_noise_stem(stem: str) -> bool:
+    if stem in _STOP_STEMS:
+        return True
+    if _COLUMN_NAME_RE.match(stem):
+        return True
+    if len(stem) <= 3:
+        return True
+    if stem.replace(".", "").replace("-", "").isdigit():
+        return True
+    return False
+
+
+async def _get_source_counts(user_id: UUID) -> dict:
+    """Page / row / event counts in one round-trip. Used as both TF-IDF
+    denominator and as a cheap fingerprint for cache invalidation."""
     pool = get_pool()
-    max_clusters = min(max_clusters, 50)
+    row = await pool.fetchrow(
+        """
+        SELECT
+            (SELECT COUNT(*) FROM notebook_pages np
+             WHERE np.notebook_id IN (
+                 SELECT n.id FROM notebooks n
+                 WHERE n.workspace_id IN (SELECT workspace_id FROM workspace_members WHERE user_id = $1)
+                    OR (n.workspace_id IS NULL AND n.created_by = $1))
+               AND np.content_markdown IS NOT NULL AND np.content_markdown != '') AS pages,
+            (SELECT COUNT(*) FROM table_rows tr
+             WHERE tr.table_id IN (
+                 SELECT t.id FROM tables t
+                 WHERE t.workspace_id IN (SELECT workspace_id FROM workspace_members WHERE user_id = $1)
+                    OR (t.workspace_id IS NULL AND t.created_by = $1))
+               AND tr.data IS NOT NULL) AS rows,
+            (SELECT COUNT(*) FROM history_events he
+             WHERE he.workspace_id IN (SELECT workspace_id FROM workspace_members WHERE user_id = $1)
+                OR (he.workspace_id IS NULL AND he.created_by = $1)) AS events
+        """,
+        user_id,
+    )
+    return {"pages": row["pages"], "rows": row["rows"], "events": row["events"]}
 
-    # Check in-memory cache
-    cache_key = f"{user_id}:{max_clusters}"
-    now = datetime.now(UTC).timestamp()
-    if cache_key in _density_cache:
-        cached_at, cached_result = _density_cache[cache_key]
-        if now - cached_at < _DENSITY_TTL:
-            return cached_result
 
-    # Extract top stems from notebook pages, plus the most common original
-    # word that produced each stem so we can display a readable label.
-    rows = await pool.fetch(
+def _signature(counts: dict) -> int:
+    """Pack (pages, rows, events) into a single BIGINT for cheap drift checks."""
+    p = min(counts["pages"], 2**20 - 1)
+    r = min(counts["rows"], 2**20 - 1)
+    e = min(counts["events"], 2**20 - 1)
+    return (p << 40) | (r << 20) | e
+
+
+def _signature_drifted(cached_sig: int, current_counts: dict) -> bool:
+    cached_p = (cached_sig >> 40) & (2**20 - 1)
+    cached_r = (cached_sig >> 20) & (2**20 - 1)
+    cached_e = cached_sig & (2**20 - 1)
+    for cached, current in (
+        (cached_p, current_counts["pages"]),
+        (cached_r, current_counts["rows"]),
+        (cached_e, current_counts["events"]),
+    ):
+        if max(cached, current) == 0:
+            continue
+        if abs(cached - current) / max(cached, 1) > _DENSITY_SIGNATURE_TOLERANCE:
+            return True
+    return False
+
+
+async def compute_knowledge_density(user_id: UUID) -> tuple[list[dict], int]:
+    """Compute the full top-50 cluster list for a user and return (clusters, signature).
+
+    Single-pass stem aggregation across notebook pages, table rows, and history
+    events. Label prettification is done in Python from one bulk word-frequency
+    query — no per-stem LATERAL subqueries."""
+    pool = get_pool()
+    counts = await _get_source_counts(user_id)
+    total_docs = counts["pages"] + counts["rows"] + counts["events"]
+    signature = _signature(counts)
+
+    if total_docs == 0:
+        return [], signature
+
+    # One scan per source: stem → doc_count + newest_at.
+    page_rows = await pool.fetch(
         _ACCESSIBLE_NOTEBOOKS_CTE + """
-        SELECT stem, original_word, ndoc
+        SELECT stem, COUNT(DISTINCT doc_id) AS ndoc, MAX(ts) AS newest_at
         FROM (
-            SELECT word AS stem,
-                   COUNT(DISTINCT np.id) AS ndoc
+            SELECT word AS stem, np.id AS doc_id, np.updated_at AS ts
             FROM notebook_pages np,
                  LATERAL unnest(to_tsvector('english', COALESCE(np.content_markdown, '')))
                      AS t(word, positions, weights)
             WHERE np.notebook_id IN (SELECT notebook_id FROM accessible_notebooks)
-              AND np.content_markdown IS NOT NULL
-              AND np.content_markdown != ''
+              AND np.content_markdown IS NOT NULL AND np.content_markdown != ''
               AND length(word) > 2
-            GROUP BY word
-            ORDER BY ndoc DESC
-            LIMIT $2
-        ) stems
-        CROSS JOIN LATERAL (
-            SELECT w AS original_word
-            FROM notebook_pages np2,
-                 LATERAL regexp_split_to_table(
-                     lower(COALESCE(np2.content_markdown, '')), '[^a-z]+'
-                 ) AS w
-            WHERE np2.notebook_id IN (SELECT notebook_id FROM accessible_notebooks)
-              AND to_tsvector('english', w) @@ plainto_tsquery('english', stems.stem)
-              AND length(w) > 2
-            GROUP BY w
-            ORDER BY COUNT(*) DESC
-            LIMIT 1
-        ) orig
-        """,
-        user_id,
-        max_clusters * 5,
-    )
-    page_terms = [(r["stem"], r["original_word"], r["ndoc"]) for r in rows]
-
-    # Same for table rows (stems only, no original-word resolution needed
-    # since table data tends to be structured)
-    tbl_rows = await pool.fetch(
-        _ACCESSIBLE_TABLES_CTE + """
-        SELECT word AS stem, COUNT(DISTINCT tr.id) AS ndoc
-        FROM table_rows tr,
-             LATERAL unnest(to_tsvector('english', COALESCE(tr.data::text, '')))
-                 AS t(word, positions, weights)
-        WHERE tr.table_id IN (SELECT table_id FROM accessible_tables)
-          AND tr.data IS NOT NULL
-          AND length(word) > 2
-        GROUP BY word
+        ) x
+        GROUP BY stem
         ORDER BY ndoc DESC
-        LIMIT $2
+        LIMIT 250
         """,
         user_id,
-        max_clusters * 5,
     )
-    table_terms = [(r["stem"], r["ndoc"]) for r in tbl_rows]
-
-    def _is_noise(stem: str) -> bool:
-        if stem in _STOP_STEMS:
-            return True
-        if _COLUMN_NAME_RE.match(stem):
-            return True
-        if len(stem) <= 3:
-            return True
-        # Skip pure numbers and numeric-like stems (years, counts)
-        if stem.replace(".", "").replace("-", "").isdigit():
-            return True
-        return False
-
-    # Count total documents for TF-IDF denominator
-    total_pages = (
-        await pool.fetchval(
-            _ACCESSIBLE_NOTEBOOKS_CTE + """
-        SELECT COUNT(*) FROM notebook_pages np
-        WHERE np.notebook_id IN (SELECT notebook_id FROM accessible_notebooks)
-          AND np.content_markdown IS NOT NULL AND np.content_markdown != ''
+    table_rows_res = await pool.fetch(
+        _ACCESSIBLE_TABLES_CTE + """
+        SELECT stem, COUNT(DISTINCT doc_id) AS ndoc, MAX(ts) AS newest_at
+        FROM (
+            SELECT word AS stem, tr.id AS doc_id, tr.updated_at AS ts
+            FROM table_rows tr,
+                 LATERAL unnest(to_tsvector('english', COALESCE(tr.data::text, '')))
+                     AS t(word, positions, weights)
+            WHERE tr.table_id IN (SELECT table_id FROM accessible_tables)
+              AND tr.data IS NOT NULL
+              AND length(word) > 2
+        ) x
+        GROUP BY stem
+        ORDER BY ndoc DESC
+        LIMIT 250
         """,
-            user_id,
-        )
-        or 1
+        user_id,
     )
-    total_tbl_rows = (
-        await pool.fetchval(
-            _ACCESSIBLE_TABLES_CTE + """
-        SELECT COUNT(*) FROM table_rows tr
-        WHERE tr.table_id IN (SELECT table_id FROM accessible_tables)
-          AND tr.data IS NOT NULL
+    event_rows = await pool.fetch(
+        _ACCESSIBLE_EVENTS_CTE + """
+        SELECT stem, COUNT(DISTINCT doc_id) AS ndoc, MAX(ts) AS newest_at
+        FROM (
+            SELECT word AS stem, he.id AS doc_id, he.created_at AS ts
+            FROM history_events he
+            JOIN accessible_events a ON a.event_id = he.id,
+                 LATERAL unnest(to_tsvector('english', COALESCE(he.content, '')))
+                     AS t(word, positions, weights)
+            WHERE he.content IS NOT NULL AND he.content != ''
+              AND length(word) > 2
+        ) x
+        GROUP BY stem
+        ORDER BY ndoc DESC
+        LIMIT 250
         """,
-            user_id,
-        )
-        or 1
+        user_id,
     )
-    total_docs = total_pages + total_tbl_rows
 
-    import math
-
-    # Merge term counts with TF-IDF scoring.
-    # IDF = log(total_docs / doc_freq) — down-weights terms that appear everywhere.
-    # We use raw doc_freq as the "count" for display sizing, but rank by TF-IDF.
     term_counts: dict[str, dict] = {}
-    for stem, original, ndoc in page_terms:
-        if _is_noise(stem):
-            continue
-        term_counts[stem] = {
-            "label": original.capitalize(),
-            "notebook_pages": ndoc,
-            "table_rows": 0,
-            "raw_total": ndoc,
-        }
-    for stem, ndoc in table_terms:
-        if _is_noise(stem):
-            continue
-        if stem in term_counts:
-            term_counts[stem]["table_rows"] = ndoc
-            term_counts[stem]["raw_total"] += ndoc
-        else:
-            term_counts[stem] = {
-                "label": stem.capitalize(),
-                "notebook_pages": 0,
-                "table_rows": ndoc,
-                "raw_total": ndoc,
-            }
+    for source_rows in (page_rows, table_rows_res, event_rows):
+        for r in source_rows:
+            stem = r["stem"]
+            if _is_noise_stem(stem):
+                continue
+            bucket = term_counts.setdefault(stem, {"ndoc": 0, "newest_at": None})
+            bucket["ndoc"] += r["ndoc"]
+            ts = r["newest_at"]
+            if ts and (bucket["newest_at"] is None or ts > bucket["newest_at"]):
+                bucket["newest_at"] = ts
 
-    # Compute TF-IDF score for ranking
-    for stem, counts in term_counts.items():
-        df = counts["raw_total"]
-        idf = math.log(total_docs / max(df, 1))
-        counts["tfidf"] = df * idf
+    if not term_counts:
+        return [], signature
 
-    # Rank by TF-IDF (surfaces distinctive terms), take top N
-    top_terms = sorted(
-        term_counts.items(),
-        key=lambda x: x[1]["tfidf"],
-        reverse=True,
-    )[:max_clusters]
+    for data in term_counts.values():
+        idf = math.log(total_docs / max(data["ndoc"], 1))
+        data["tfidf"] = data["ndoc"] * idf
 
-    if not top_terms:
-        result: dict = {"clusters": []}
-        _density_cache[cache_key] = (now, result)
-        return result
+    top_stems = sorted(term_counts.items(), key=lambda x: x[1]["tfidf"], reverse=True)[:50]
+    top_stem_set = {stem for stem, _ in top_stems}
 
-    # Batch enrichment: get sample titles + timestamps for ALL terms in one query
-    words = [w for w, _ in top_terms]
-    enrichment: dict[str, list[dict]] = {w: [] for w in words}
-
-    enrich_rows = await pool.fetch(
+    # Pretty labels: one bulk query over notebook pages (the most user-readable
+    # source) maps top stems → their most frequent original word. ts_lexize
+    # returns the same stems Postgres tsvector produced, so the join is exact.
+    word_rows = await pool.fetch(
         _ACCESSIBLE_NOTEBOOKS_CTE + """
-        SELECT term.word, np.name, np.created_at, np.updated_at
-        FROM unnest($2::text[]) AS term(word)
-        CROSS JOIN LATERAL (
-          SELECT np.name, np.created_at, np.updated_at
-          FROM notebook_pages np
-          WHERE np.notebook_id IN (SELECT notebook_id FROM accessible_notebooks)
-            AND np.content_markdown IS NOT NULL
-            AND to_tsvector('english', np.content_markdown) @@ plainto_tsquery('english', term.word)
-          ORDER BY np.updated_at DESC
-          LIMIT 3
-        ) np
+        SELECT w AS word, ts_lexize('english_stem', w) AS stems, COUNT(*) AS freq
+        FROM notebook_pages np,
+             LATERAL regexp_split_to_table(lower(COALESCE(np.content_markdown, '')), '[^a-z]+') AS w
+        WHERE np.notebook_id IN (SELECT notebook_id FROM accessible_notebooks)
+          AND length(w) > 3
+        GROUP BY w
+        ORDER BY freq DESC
+        LIMIT 5000
         """,
         user_id,
-        words,
     )
-    for r in enrich_rows:
-        enrichment[r["word"]].append(r)
+    stem_to_label: dict[str, str] = {}
+    stem_to_label_freq: dict[str, int] = {}
+    for r in word_rows:
+        stems = r["stems"] or []
+        if not stems:
+            continue
+        stem = stems[0]
+        if stem not in top_stem_set:
+            continue
+        if r["freq"] > stem_to_label_freq.get(stem, 0):
+            stem_to_label[stem] = r["word"]
+            stem_to_label_freq[stem] = r["freq"]
 
-    # Build clusters — use the resolved original word as label
     clusters = []
-    for word, counts in top_terms:
-        samples = enrichment.get(word, [])
-        newest_at = None
-        oldest_at = None
-        sample_titles = []
-        for s in samples:
-            sample_titles.append(s["name"])
-            ts = s["updated_at"] or s["created_at"]
-            if ts:
-                if newest_at is None or ts > newest_at:
-                    newest_at = ts
-                if oldest_at is None or ts < oldest_at:
-                    oldest_at = ts
+    for stem, data in top_stems:
+        label = stem_to_label.get(stem, stem).capitalize()
+        clusters.append({
+            "label": label,
+            "count": data["ndoc"],
+            "newest_at": data["newest_at"].isoformat() if data["newest_at"] else None,
+        })
+    return clusters, signature
 
-        clusters.append(
-            {
-                "label": counts.get("label", word.capitalize()),
-                "count": counts["raw_total"],
-                "sources": {
-                    "notebook_pages": counts["notebook_pages"],
-                    "table_rows": counts["table_rows"],
-                },
-                "newest_at": newest_at.isoformat() if newest_at else None,
-                "oldest_at": oldest_at.isoformat() if oldest_at else None,
-                "sample_titles": sample_titles,
-            }
-        )
 
-    result = {"clusters": clusters}
-    _density_cache[cache_key] = (now, result)
-    return result
+async def get_knowledge_density(
+    user_id: UUID,
+    max_clusters: int = 20,
+) -> dict:
+    """Topic clusters for the key topics treemap.
+
+    Reads from knowledge_density_cache. On miss or signature drift, computes
+    inline, persists, and returns. The precompute worker keeps the cache warm
+    for active users so inline compute is rare."""
+    pool = get_pool()
+    max_clusters = min(max_clusters, 50)
+
+    cached = await pool.fetchrow(
+        "SELECT clusters, source_signature, computed_at FROM knowledge_density_cache WHERE user_id = $1",
+        user_id,
+    )
+    now = datetime.now(UTC)
+
+    if cached and now - cached["computed_at"] < _DENSITY_CACHE_TTL:
+        current_counts = await _get_source_counts(user_id)
+        if not _signature_drifted(cached["source_signature"], current_counts):
+            return {"clusters": cached["clusters"][:max_clusters]}
+
+    clusters, signature = await compute_knowledge_density(user_id)
+    await pool.execute(
+        """
+        INSERT INTO knowledge_density_cache (user_id, clusters, source_signature, computed_at)
+        VALUES ($1, $2, $3, now())
+        ON CONFLICT (user_id)
+        DO UPDATE SET clusters = EXCLUDED.clusters,
+                      source_signature = EXCLUDED.source_signature,
+                      computed_at = EXCLUDED.computed_at
+        """,
+        user_id,
+        clusters,
+        signature,
+    )
+    return {"clusters": clusters[:max_clusters]}
 
 
 async def get_embedding_projection(

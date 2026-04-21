@@ -25,7 +25,7 @@ from .routers import (
 )
 from .services.row_validation import RowValidationError
 from .workers import dispatcher as extraction_dispatcher
-from .workers import embedding_reconciler
+from .workers import embedding_reconciler, viz_precompute
 
 logger = logging.getLogger("stash")
 
@@ -35,12 +35,13 @@ async def lifespan(app: FastAPI):
     await init_db()
     dispatcher_task = asyncio.create_task(extraction_dispatcher.run())
     reconciler_task = asyncio.create_task(embedding_reconciler.run())
+    viz_task = asyncio.create_task(viz_precompute.run())
     try:
         yield
     finally:
-        for task in (dispatcher_task, reconciler_task):
+        for task in (dispatcher_task, reconciler_task, viz_task):
             task.cancel()
-        for task in (dispatcher_task, reconciler_task):
+        for task in (dispatcher_task, reconciler_task, viz_task):
             try:
                 await task
             except (asyncio.CancelledError, Exception):

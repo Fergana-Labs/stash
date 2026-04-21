@@ -242,10 +242,7 @@ export interface KnowledgeDensity {
   clusters: {
     label: string;
     count: number;
-    sources: { notebook_pages: number; table_rows: number };
     newest_at: string | null;
-    oldest_at: string | null;
-    sample_titles: string[];
   }[];
 }
 
