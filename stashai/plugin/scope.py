@@ -5,14 +5,12 @@ manifest is discoverable from cwd (in the current directory or any ancestor).
 from __future__ import annotations
 
 import json
-from functools import lru_cache
 from pathlib import Path
 
 _MANIFEST_FILENAME = "stash.json"
 _CONFIG_FILENAME = "config.json"
 
 
-@lru_cache(maxsize=64)
 def cwd_in_scope(cwd: str | None) -> bool:
     """True if `.stash/stash.json` exists in cwd or any ancestor."""
     if not cwd:
@@ -24,7 +22,6 @@ def cwd_in_scope(cwd: str | None) -> bool:
     return False
 
 
-@lru_cache(maxsize=64)
 def repo_stash_disabled(cwd: str | None) -> bool:
     """True if the repo containing `cwd` has opted out of stash streaming
     via `stash_disabled_here=true` in .stash/config.json. Walks up from cwd

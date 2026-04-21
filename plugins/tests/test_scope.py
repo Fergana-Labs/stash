@@ -14,16 +14,10 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import pytest
-
 from stashai.plugin import scope as scope_mod
 from stashai.plugin.event import HookEvent
 
 
-@pytest.fixture(autouse=True)
-def _clear_cache():
-    scope_mod.cwd_in_scope.cache_clear()
-    scope_mod.repo_stash_disabled.cache_clear()
 
 
 def test_manifest_in_cwd_is_in_scope(tmp_path):
