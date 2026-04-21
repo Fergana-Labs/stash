@@ -40,7 +40,6 @@ DEFAULT_CONFIG = {
     "username": "",
     "default_chat": "",
     "output_format": "human",
-    "notify_rooms": [],
 }
 
 # Keys that are always user-scoped regardless of requested scope.
@@ -136,7 +135,6 @@ def save_config(
     username: str | None = None,
     default_chat: str | None = None,
     output_format: str | None = None,
-    notify_rooms: list[str] | None = None,
 ) -> None:
     """Save config to the chosen scope.
 
@@ -149,7 +147,6 @@ def save_config(
         "username": username,
         "default_chat": default_chat,
         "output_format": output_format,
-        "notify_rooms": notify_rooms,
     }
 
     auth_updates = {k: v for k, v in all_updates.items() if k in USER_SCOPED_KEYS}
@@ -210,21 +207,3 @@ def clear_config(scope: Scope = "user") -> None:
         project_path.unlink()
 
 
-def get_notify_rooms() -> list[str]:
-    return load_config().get("notify_rooms", [])
-
-
-def add_notify_room(room_id: str) -> None:
-    rooms = get_notify_rooms()
-    if room_id in rooms:
-        return
-    rooms.append(room_id)
-    save_config(notify_rooms=rooms)
-
-
-def remove_notify_room(room_id: str) -> None:
-    rooms = get_notify_rooms()
-    if room_id not in rooms:
-        return
-    rooms.remove(room_id)
-    save_config(notify_rooms=rooms)
