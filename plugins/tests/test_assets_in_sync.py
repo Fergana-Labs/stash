@@ -1,9 +1,9 @@
 """Assert that `stashai/plugin/assets/<agent>/` is a byte-identical copy of
 `plugins/<agent>-plugin/`.
 
-`stash install` reads from the shipped stashai assets so users don't need the
+`stash connect` reads from the shipped stashai assets so users don't need the
 repo. `plugins/<agent>-plugin/` is the canonical source contributors edit.
-Drift between the two means `stash install` would hand out stale hook files.
+Drift between the two means `stash connect` would hand out stale hook files.
 """
 
 from __future__ import annotations
