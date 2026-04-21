@@ -36,6 +36,13 @@ export default function SettingsPage() {
       <Header user={user} onLogout={logout} />
       <main className="flex-1 px-4 py-10">
         <div className="w-full max-w-2xl mx-auto space-y-8">
+          <button
+            type="button"
+            onClick={() => (window.history.length > 1 ? router.back() : router.push("/"))}
+            className="text-sm text-muted hover:text-foreground inline-flex items-center gap-1.5"
+          >
+            <span aria-hidden>←</span> Back
+          </button>
           <div>
             <h1 className="text-2xl font-semibold text-foreground">Account settings</h1>
             <p className="text-sm text-muted mt-1">
