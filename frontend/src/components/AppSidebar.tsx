@@ -16,6 +16,7 @@ const NAV_ITEMS: NavItem[] = [
   { href: "/search", label: "Search", icon: "S" },
   { href: "/memory", label: "History", icon: "H" },
   { href: "/notebooks", label: "Wiki", icon: "W" },
+  { href: "/tables", label: "Tables", icon: "T" },
 ];
 
 function IconTile({ letter, active }: { letter: string; active?: boolean }) {
@@ -162,10 +163,27 @@ export default function AppSidebar({ user }: AppSidebarProps) {
           </button>
           <button
             onClick={() => setShowWsSwitcher((o) => !o)}
-            className="flex h-8 w-7 flex-shrink-0 cursor-pointer items-center justify-center rounded-md text-[11px] text-muted transition-colors hover:bg-raised hover:text-foreground"
+            className="flex h-8 w-8 flex-shrink-0 cursor-pointer items-center justify-center rounded-md border border-border bg-base text-muted transition-colors hover:border-foreground hover:bg-raised hover:text-foreground"
             aria-label="Switch workspace"
+            aria-expanded={showWsSwitcher}
           >
-            {showWsSwitcher ? "▴" : "▾"}
+            <svg
+              width="12"
+              height="12"
+              viewBox="0 0 12 12"
+              className={
+                "transition-transform " + (showWsSwitcher ? "rotate-180" : "")
+              }
+            >
+              <path
+                d="M3 4.5 L6 7.5 L9 4.5"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                fill="none"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
           </button>
         </div>
 

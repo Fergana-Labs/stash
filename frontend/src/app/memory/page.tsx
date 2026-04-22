@@ -747,7 +747,7 @@ function RecentActivityView({
 function EventRow({ event }: { event: HistoryEventWithContext }) {
   const isUser = isUserEvent(event.event_type);
   const role: Role = isUser ? "human" : "agent";
-  const displayName = isUser ? "user" : event.agent_name;
+  const displayName = isUser ? (event.created_by_name || "user") : event.agent_name;
   return (
     <div className="flex gap-3">
       <RoleAvatar role={role} name={displayName} size={24} />

@@ -307,17 +307,14 @@ export default function WorkspacePage() {
 
               <WorkspaceSection
                 title="Wiki"
-                description="Notebooks and tables — wiki pages with backlinks, and structured data."
+                description="Notebooks and wiki pages with backlinks."
+                actionLabel="+ New"
+                onAction={handleCreateNotebook}
               >
-                {/* Notebooks */}
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-[10px] font-medium text-muted uppercase tracking-wider">Notebooks</span>
-                  <button onClick={handleCreateNotebook} className="text-xs text-brand hover:text-brand-hover">+ New</button>
-                </div>
                 {notebooks.length === 0 ? (
-                  <p className="text-sm text-muted mb-4">No notebooks yet.</p>
+                  <p className="text-sm text-muted">No notebooks yet.</p>
                 ) : (
-                  <div className="space-y-1 mb-4">
+                  <div className="space-y-1">
                     {notebooks.map(nb => (
                       <div key={nb.id} className="flex items-center justify-between px-3 py-2 rounded-lg hover:bg-raised transition-colors">
                         <Link href="/notebooks" className="flex items-center gap-3 flex-1 min-w-0">
@@ -332,12 +329,14 @@ export default function WorkspacePage() {
                     ))}
                   </div>
                 )}
+              </WorkspaceSection>
 
-                {/* Tables */}
-                <div className="flex items-center justify-between mb-2 pt-3 border-t border-border-subtle">
-                  <span className="text-[10px] font-medium text-muted uppercase tracking-wider">Tables</span>
-                  <button onClick={handleCreateTable} className="text-xs text-brand hover:text-brand-hover">+ New</button>
-                </div>
+              <WorkspaceSection
+                title="Tables"
+                description="Structured data that agents and humans can read and write."
+                actionLabel="+ New"
+                onAction={handleCreateTable}
+              >
                 {tables.length === 0 ? (
                   <p className="text-sm text-muted">No tables yet.</p>
                 ) : (

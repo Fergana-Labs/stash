@@ -430,9 +430,11 @@ async def query_all_user_events(
     rows = await pool.fetch(
         f"SELECT he.id, he.workspace_id, he.created_by, he.agent_name, he.event_type, "
         f"he.session_id, he.tool_name, he.content, he.metadata, he.created_at, "
-        f"w.name AS workspace_name "
+        f"w.name AS workspace_name, "
+        f"COALESCE(u.display_name, u.name) AS created_by_name "
         f"FROM history_events he "
         f"LEFT JOIN workspaces w ON w.id = he.workspace_id "
+        f"LEFT JOIN users u ON u.id = he.created_by "
         f"WHERE {where} "
         f"ORDER BY he.created_at DESC LIMIT ${idx}",
         *args,

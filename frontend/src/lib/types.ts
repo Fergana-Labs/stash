@@ -111,6 +111,8 @@ export interface HistoryEvent {
   content: string;
   metadata: Record<string, unknown>;
   created_at: string;
+  created_by: string | null;
+  created_by_name: string | null;
 }
 
 export interface HistoryWithWorkspace extends History {

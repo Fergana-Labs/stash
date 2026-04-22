@@ -405,6 +405,7 @@ class HistoryEventResponse(BaseModel):
     id: UUID
     workspace_id: UUID | None = None
     created_by: UUID | None = None
+    created_by_name: str | None = None
     agent_name: str
     event_type: str
     session_id: str | None

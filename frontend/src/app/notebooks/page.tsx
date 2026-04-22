@@ -24,15 +24,9 @@ import {
   deletePageFolder,
   getBacklinks,
   semanticSearchPages,
-  listAllTables,
-  listTables,
-  createTable,
-  deleteTable,
   WorkspacePageEntry,
 } from "../../lib/api";
-import { Notebook, NotebookPage, NotebookWithWorkspace, PageLink, PageTree, Table, TableWithWorkspace } from "../../lib/types";
-
-type WikiTab = "pages" | "tables";
+import { Notebook, NotebookPage, NotebookWithWorkspace, PageLink, PageTree } from "../../lib/types";
 
 export default function WikiPage() {
   return (
@@ -46,18 +40,9 @@ function WikiPageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const wsId = searchParams.get("ws");
-  const tabParam = searchParams.get("tab");
   const nbParam = searchParams.get("nb");
   const pageParam = searchParams.get("page");
   const { user, loading, logout } = useAuth();
-
-  // Tab state — sync with URL
-  const [activeTab, setActiveTab] = useState<WikiTab>((tabParam as WikiTab) || "pages");
-  useEffect(() => {
-    if (tabParam === "tables" || tabParam === "pages") {
-      setActiveTab(tabParam);
-    }
-  }, [tabParam]);
 
   // --- Pages tab state ---
   const [notebooks, setNotebooks] = useState<NotebookWithWorkspace[]>([]);
@@ -78,10 +63,6 @@ function WikiPageInner() {
   const [semanticSearching, setSemanticSearching] = useState(false);
   const [error, setError] = useState("");
 
-  // --- Tables tab state ---
-  const [tables, setTables] = useState<TableWithWorkspace[]>([]);
-  const [tablesError, setTablesError] = useState("");
-
   // --- Notebooks loading ---
   const loadNotebooks = useCallback(async () => {
     try {
@@ -96,26 +77,9 @@ function WikiPageInner() {
     } catch { /* ignore */ }
   }, [wsId]);
 
-  // --- Tables loading ---
-  const loadTables = useCallback(async () => {
-    try {
-      if (wsId) {
-        const res = await listTables(wsId);
-        const tbls = (res?.tables ?? []).map((t: Table) => ({ ...t, workspace_id: wsId, workspace_name: "" }));
-        setTables(tbls);
-      } else {
-        const res = await listAllTables();
-        setTables(res?.tables ?? []);
-      }
-    } catch { /* ignore */ }
-  }, [wsId]);
-
   useEffect(() => {
-    if (user) {
-      loadNotebooks();
-      loadTables();
-    }
-  }, [user, loadNotebooks, loadTables]);
+    if (user) loadNotebooks();
+  }, [user, loadNotebooks]);
 
   // Cross-notebook page index for wiki links. Refreshed when the workspace
   // changes or when a page is created/deleted below.
@@ -142,17 +106,6 @@ function WikiPageInner() {
     }
     return groups;
   }, [notebooks]);
-
-  // Group tables by workspace
-  const groupedTables = useMemo(() => {
-    const groups: Record<string, { name: string; tables: TableWithWorkspace[] }> = {};
-    for (const t of tables) {
-      const key = t.workspace_id || "personal";
-      if (!groups[key]) groups[key] = { name: t.workspace_name || "Personal", tables: [] };
-      groups[key].tables.push(t);
-    }
-    return groups;
-  }, [tables]);
 
   // Load page tree when notebook is selected
   const loadTree = useCallback(async (nb: NotebookWithWorkspace) => {
@@ -324,31 +277,15 @@ function WikiPageInner() {
     setBacklinks(bl);
   }, [router, selectedNotebook, handleSelectPage, notebooks]);
 
-  // Compute breadcrumb path for current page
-  const breadcrumbs = useMemo(() => {
-    const parts: { label: string; onClick?: () => void }[] = [];
-    if (selectedNotebook) {
-      const wsName = selectedNotebook.workspace_name || "Personal";
-      parts.push({ label: wsName });
-      parts.push({
-        label: selectedNotebook.name,
-        onClick: () => { setSelectedPageId(null); setSelectedPage(null); },
-      });
-      if (selectedPage) {
-        // Find which folder this page is in
-        for (const folder of tree.folders) {
-          for (const f of folder.files) {
-            if (f.id === selectedPage.id) {
-              parts.push({ label: folder.name });
-              break;
-            }
-          }
-        }
-        parts.push({ label: selectedPage.name });
-      }
+  // Folder the current page lives in, for header breadcrumbs. null if the
+  // page sits at the notebook root or nothing is selected.
+  const currentFolderName = useMemo(() => {
+    if (!selectedPage) return null;
+    for (const folder of tree.folders) {
+      if (folder.files.some((f) => f.id === selectedPage.id)) return folder.name;
     }
-    return parts;
-  }, [selectedNotebook, selectedPage, tree]);
+    return null;
+  }, [selectedPage, tree]);
 
 
 
@@ -464,23 +401,11 @@ function WikiPageInner() {
     } catch (err) { setError(err instanceof Error ? err.message : "Failed to save"); }
   }, [selectedNotebook, selectedPageId]);
 
-  const handleCreateTable = async () => {
-    const name = prompt("Table name:");
-    if (!name) return;
-    try {
-      const table = await createTable(null, name);
-      router.push(`/tables/${table.id}`);
-    } catch (err) { setTablesError(err instanceof Error ? err.message : "Failed to create table"); }
-  };
-
   useEffect(() => { if (!loading && !user) router.push("/login"); }, [user, loading, router]);
 
   // Register crumbs for the TopBar.
   const crumbs: Crumb[] = (() => {
     const base: Crumb[] = [{ label: "Wiki", href: "/notebooks" }];
-    if (activeTab === "tables") {
-      return [{ label: "Wiki", href: "/notebooks" }, { label: "Tables" }];
-    }
     if (selectedNotebook) {
       base.push({
         label: selectedNotebook.name,
@@ -495,7 +420,7 @@ function WikiPageInner() {
     }
     return base;
   })();
-  const depKey = `${activeTab}:${selectedNotebook?.id ?? ""}:${selectedNotebook?.name ?? ""}:${selectedPage?.id ?? ""}:${selectedPage?.name ?? ""}`;
+  const depKey = `${selectedNotebook?.id ?? ""}:${selectedNotebook?.name ?? ""}:${selectedPage?.id ?? ""}:${selectedPage?.name ?? ""}`;
   useBreadcrumbs(crumbs, depKey);
 
   if (loading) return <div className="min-h-screen flex items-center justify-center text-muted">Loading...</div>;
@@ -504,38 +429,7 @@ function WikiPageInner() {
   return (
     <AppShell user={user} onLogout={logout}>
       <div className="flex flex-col h-full overflow-hidden">
-        {/* Tab bar */}
-        <div className="flex items-center gap-0 px-4 border-b border-border bg-surface flex-shrink-0">
-          <button
-            onClick={() => setActiveTab("pages")}
-            className={`px-4 py-2.5 text-sm font-medium transition-colors relative ${
-              activeTab === "pages"
-                ? "text-brand"
-                : "text-dim hover:text-foreground"
-            }`}
-          >
-            Pages
-            {activeTab === "pages" && (
-              <span className="absolute bottom-0 left-0 right-0 h-[2px] bg-brand rounded-t" />
-            )}
-          </button>
-          <button
-            onClick={() => setActiveTab("tables")}
-            className={`px-4 py-2.5 text-sm font-medium transition-colors relative ${
-              activeTab === "tables"
-                ? "text-brand"
-                : "text-dim hover:text-foreground"
-            }`}
-          >
-            Tables
-            {activeTab === "tables" && (
-              <span className="absolute bottom-0 left-0 right-0 h-[2px] bg-brand rounded-t" />
-            )}
-          </button>
-        </div>
-
-        {/* Pages tab */}
-        {activeTab === "pages" && !selectedNotebook && (
+        {!selectedNotebook && (
           /* ── Notebook list (landing) ── */
           <div className="flex-1 overflow-y-auto">
             <div className="mx-auto w-full max-w-[1120px] px-8 pb-16 pt-8">
@@ -601,7 +495,7 @@ function WikiPageInner() {
           </div>
         )}
 
-        {activeTab === "pages" && selectedNotebook && (
+        {selectedNotebook && (
           /* ── Notebook open: sidebar + editor ── */
           <div className="flex flex-1 overflow-hidden">
             {/* Sidebar: file tree */}
@@ -710,6 +604,8 @@ function WikiPageInner() {
                       onRename={handleInlineRename}
                       pageIndex={workspacePages}
                       onNavigateInternal={handleNavigateInternal}
+                      notebookName={selectedNotebook.name}
+                      folderName={currentFolderName}
                     />
 
                     {/* Backlinks */}
@@ -749,71 +645,6 @@ function WikiPageInner() {
           </div>
         )}
 
-        {/* Tables tab */}
-        {activeTab === "tables" && (
-          <div className="flex-1 overflow-y-auto">
-            <div className="max-w-3xl mx-auto w-full px-4 py-8">
-              <div className="flex items-center justify-between mb-6">
-                <h2 className="text-xl font-bold text-foreground font-display">Tables</h2>
-                <button onClick={handleCreateTable} className="text-sm bg-brand hover:bg-brand-hover text-foreground px-3 py-1.5 rounded transition-colors">
-                  New Table
-                </button>
-              </div>
-              {tablesError && <p className="text-red-400 text-sm mb-4">{tablesError}</p>}
-              {tables.length === 0 ? (
-                <p className="text-muted text-sm">No tables yet. Create one to get started -- structured data that agents and humans can read and write.</p>
-              ) : (
-                Object.entries(groupedTables).map(([key, group]) => (
-                  <section key={key} className="mb-6">
-                    <h3 className="text-sm font-medium text-muted uppercase tracking-wider mb-2">{group.name}</h3>
-                    <div className="space-y-1">
-                      {group.tables.map((table) => (
-                        <Link
-                          key={table.id}
-                          href={`/tables/${table.id}${table.workspace_id ? `?workspaceId=${table.workspace_id}` : ""}`}
-                          className="group flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-raised transition-colors"
-                        >
-                          <div className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md bg-raised font-mono text-[11px] font-bold text-muted">
-                            T
-                          </div>
-                          <div className="min-w-0 flex-1">
-                            <div className="text-sm text-foreground truncate">{table.name}</div>
-                            {table.description && <div className="text-xs text-muted truncate">{table.description}</div>}
-                          </div>
-                          <span className="text-[10px] text-muted bg-raised px-1.5 py-0.5 rounded font-mono flex-shrink-0">
-                            {table.columns.length} cols
-                          </span>
-                          <span className="text-[10px] text-muted bg-raised px-1.5 py-0.5 rounded font-mono flex-shrink-0">
-                            {table.row_count ?? 0} rows
-                          </span>
-                          <span className="text-xs text-muted flex-shrink-0">
-                            {new Date(table.updated_at).toLocaleDateString()}
-                          </span>
-                          {!table.workspace_id && (
-                            <button
-                              onClick={async (e) => {
-                                e.preventDefault();
-                                e.stopPropagation();
-                                if (!confirm("Delete this table?")) return;
-                                try {
-                                  await deleteTable(null, table.id);
-                                  loadTables();
-                                } catch (err) { setTablesError(err instanceof Error ? err.message : "Failed to delete"); }
-                              }}
-                              className="text-xs text-red-400 hover:text-red-300 px-2 py-1 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0"
-                            >
-                              Delete
-                            </button>
-                          )}
-                        </Link>
-                      ))}
-                    </div>
-                  </section>
-                ))
-              )}
-            </div>
-          </div>
-        )}
       </div>
     </AppShell>
   );
