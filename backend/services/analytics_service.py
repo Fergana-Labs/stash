@@ -3,6 +3,7 @@
 import logging
 import math
 import re
+import time
 from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
@@ -18,6 +19,31 @@ logger = logging.getLogger(__name__)
 # count changed by at least SIGNATURE_TOLERANCE" so typo-level edits don't thrash.
 _DENSITY_CACHE_TTL = timedelta(hours=24)
 _DENSITY_SIGNATURE_TOLERANCE = 0.1
+
+# Workspace-scoped visualizations bypass the persistent caches (those are keyed
+# by user_id, and extending the schema for decorative viz isn't worth it). We
+# keep a tiny in-process TTL cache instead so repeated visits in the same
+# session don't rerun the full compute.
+_WS_VIZ_TTL_SECONDS = 300.0
+_ws_viz_cache: dict[tuple[str, UUID, UUID], tuple[float, dict]] = {}
+
+
+def _ws_viz_get(kind: str, user_id: UUID, workspace_id: UUID) -> dict | None:
+    entry = _ws_viz_cache.get((kind, user_id, workspace_id))
+    if entry is None:
+        return None
+    expires_at, value = entry
+    if time.monotonic() > expires_at:
+        _ws_viz_cache.pop((kind, user_id, workspace_id), None)
+        return None
+    return value
+
+
+def _ws_viz_put(kind: str, user_id: UUID, workspace_id: UUID, value: dict) -> None:
+    _ws_viz_cache[(kind, user_id, workspace_id)] = (
+        time.monotonic() + _WS_VIZ_TTL_SECONDS,
+        value,
+    )
 
 # Shared CTE for workspace access filtering on history_events.
 # When ws_idx is passed, the CTE narrows to a single workspace (the caller
@@ -96,14 +122,14 @@ async def get_activity_timeline(
 
     cutoff = datetime.now(UTC) - timedelta(days=days)
 
-    # $1 = user_id, $2 = bucket, $3 = cutoff, $4 = workspace_id (if scoped)
-    cte = _accessible_events_cte(ws_idx=4 if workspace_id is not None else None)
-    args: list = [user_id, bucket, cutoff]
-    if workspace_id is not None:
-        args.append(workspace_id)
+    # $1 = scope (workspace_id if scoped, else user_id), $2 = bucket, $3 = cutoff.
+    # Placeholders must be contiguous, so the scope arg always takes $1 and the
+    # CTE picks the right filter clause based on whether workspace_id is set.
+    scope_arg = workspace_id if workspace_id is not None else user_id
+    ws_idx = 1 if workspace_id is not None else None
 
     rows = await pool.fetch(
-        cte + """
+        _accessible_events_cte(ws_idx=ws_idx) + """
         SELECT
             DATE_TRUNC($2, me.created_at) AS bucket_date,
             me.agent_name,
@@ -115,7 +141,9 @@ async def get_activity_timeline(
         GROUP BY bucket_date, me.agent_name, me.event_type
         ORDER BY bucket_date
         """,
-        *args,
+        scope_arg,
+        bucket,
+        cutoff,
     )
 
     # Build response shape
@@ -485,7 +513,11 @@ async def get_knowledge_density(
     max_clusters = min(max_clusters, 50)
 
     if workspace_id is not None:
+        cached_ws = _ws_viz_get("density", user_id, workspace_id)
+        if cached_ws is not None:
+            return {"clusters": cached_ws["clusters"][:max_clusters]}
         clusters, _ = await compute_knowledge_density(user_id, workspace_id=workspace_id)
+        _ws_viz_put("density", user_id, workspace_id, {"clusters": clusters})
         return {"clusters": clusters[:max_clusters]}
 
     cached = await pool.fetchrow(
@@ -535,6 +567,13 @@ async def get_embedding_projection(
     # $1 = user_id (or workspace_id if scoped)
     scope_arg = workspace_id if workspace_id is not None else user_id
     ws_idx = 1 if workspace_id is not None else None
+
+    # Workspace-scoped: check the in-process TTL cache and return early on
+    # hit. Persistent cache is keyed (user_id, source_type) only.
+    if workspace_id is not None:
+        ws_cached = _ws_viz_get(f"projection:{source_key}", user_id, workspace_id)
+        if ws_cached is not None:
+            return ws_cached
 
     # Cache is user-scoped only; skip when filtering to a workspace.
     cache = None
@@ -593,7 +632,10 @@ async def get_embedding_projection(
             }
 
     if total_count == 0:
-        return {"points": [], "stats": {"total_embeddings": 0, "projected": 0}, "cached": False}
+        empty = {"points": [], "stats": {"total_embeddings": 0, "projected": 0}, "cached": False}
+        if workspace_id is not None:
+            _ws_viz_put(f"projection:{source_key}", user_id, workspace_id, empty)
+        return empty
 
     # Fetch embeddings from each source
     all_items: list[dict] = []
@@ -723,8 +765,11 @@ async def get_embedding_projection(
             total_count,
         )
 
-    return {
+    result = {
         "points": points,
         "stats": {"total_embeddings": total_count, "projected": len(points)},
         "cached": False,
     }
+    if workspace_id is not None:
+        _ws_viz_put(f"projection:{source_key}", user_id, workspace_id, result)
+    return result

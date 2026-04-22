@@ -10,6 +10,7 @@ import MarkdownEditor, { SaveStatus } from "../../components/workspace/MarkdownE
 import { useAuth } from "../../hooks/useAuth";
 import {
   listAllNotebooks,
+  listMyWorkspaces,
   listNotebooks,
   createNotebook,
   deleteNotebook,
@@ -26,7 +27,7 @@ import {
   semanticSearchPages,
   WorkspacePageEntry,
 } from "../../lib/api";
-import { Notebook, NotebookPage, NotebookWithWorkspace, PageLink, PageTree } from "../../lib/types";
+import { Notebook, NotebookPage, NotebookWithWorkspace, PageLink, PageTree, Workspace } from "../../lib/types";
 
 export default function WikiPage() {
   return (
@@ -62,6 +63,19 @@ function WikiPageInner() {
   const [semanticResults, setSemanticResults] = useState<NotebookPage[]>([]);
   const [semanticSearching, setSemanticSearching] = useState(false);
   const [error, setError] = useState("");
+  const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
+
+  // Load workspace list once so the page header breadcrumb can render
+  // the workspace name (the per-workspace notebooks API doesn't echo it).
+  useEffect(() => {
+    if (!user) return;
+    listMyWorkspaces().then((r) => setWorkspaces(r?.workspaces ?? [])).catch(() => {});
+  }, [user]);
+
+  const workspaceName = useMemo(
+    () => (wsId ? workspaces.find((w) => w.id === wsId)?.name ?? null : null),
+    [wsId, workspaces]
+  );
 
   // --- Notebooks loading ---
   const loadNotebooks = useCallback(async () => {
@@ -80,6 +94,19 @@ function WikiPageInner() {
   useEffect(() => {
     if (user) loadNotebooks();
   }, [user, loadNotebooks]);
+
+  // Workspace switch: drop any notebook/page selection from the previous
+  // workspace so we don't render stale content under the new scope.
+  const prevWsIdRef = useRef<string | null>(wsId);
+  useEffect(() => {
+    if (prevWsIdRef.current === wsId) return;
+    prevWsIdRef.current = wsId;
+    setSelectedNotebook(null);
+    setSelectedPageId(null);
+    setSelectedPage(null);
+    setTree({ folders: [], root_files: [] });
+    setBacklinks([]);
+  }, [wsId]);
 
   // Cross-notebook page index for wiki links. Refreshed when the workspace
   // changes or when a page is created/deleted below.
@@ -576,6 +603,48 @@ function WikiPageInner() {
 
               {selectedPage ? (
                 <div className="flex-1 flex flex-col overflow-hidden">
+                  {/* Page header breadcrumbs: workspace / wiki / folder / page.
+                      Everything but the current page is clickable. */}
+                  <nav className="flex flex-shrink-0 items-center gap-1.5 border-b border-border-subtle bg-surface px-12 py-2 text-[12px] text-muted">
+                    {workspaceName && wsId && (
+                      <>
+                        <Link
+                          href={`/workspaces/${wsId}`}
+                          className="truncate text-dim transition-colors hover:text-foreground"
+                        >
+                          {workspaceName}
+                        </Link>
+                        <span className="text-muted">/</span>
+                      </>
+                    )}
+                    <Link
+                      href={wsId ? `/notebooks?ws=${wsId}` : "/notebooks"}
+                      className="text-dim transition-colors hover:text-foreground"
+                    >
+                      Wiki
+                    </Link>
+                    <span className="text-muted">/</span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedPage(null);
+                        setSelectedPageId(null);
+                      }}
+                      className="truncate text-dim transition-colors hover:text-foreground"
+                    >
+                      {selectedNotebook.name}
+                    </button>
+                    {currentFolderName && (
+                      <>
+                        <span className="text-muted">/</span>
+                        <span className="truncate text-dim">{currentFolderName}</span>
+                      </>
+                    )}
+                    <span className="text-muted">/</span>
+                    <span className="truncate font-medium text-foreground">
+                      {selectedPage.name}
+                    </span>
+                  </nav>
                   <div className="flex-1 overflow-y-auto">
                     <MarkdownEditor
                       key={selectedPage.id}

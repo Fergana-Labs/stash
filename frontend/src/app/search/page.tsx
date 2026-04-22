@@ -1,7 +1,7 @@
 "use client";
 
-import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Suspense, useCallback, useEffect, useState } from "react";
 import AppShell from "../../components/AppShell";
 import { useAuth } from "../../hooks/useAuth";
 import {
@@ -54,13 +54,18 @@ function formatDate(iso: string): string {
 }
 
 export default function SearchPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen flex items-center justify-center text-muted">Loading...</div>}>
+      <SearchPageInner />
+    </Suspense>
+  );
+}
+
+function SearchPageInner() {
   const router = useRouter();
-  const urlParams =
-    typeof window !== "undefined"
-      ? new URLSearchParams(window.location.search)
-      : null;
-  const urlWs = urlParams?.get("ws") ?? null;
-  const urlQ = urlParams?.get("q") ?? "";
+  const searchParams = useSearchParams();
+  const urlWs = searchParams.get("ws");
+  const urlQ = searchParams.get("q") ?? "";
   const { user, loading, logout } = useAuth();
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [selectedWs, setSelectedWs] = useState<string>(urlWs || "");
@@ -94,6 +99,17 @@ export default function SearchPage() {
   useEffect(() => {
     if (user) loadWorkspaces();
   }, [user, loadWorkspaces]);
+
+  // When the workspace changes (sidebar dropdown), re-scope the search
+  // and drop stale results so we don't show matches from another workspace.
+  useEffect(() => {
+    if (urlWs && urlWs !== selectedWs) {
+      setSelectedWs(urlWs);
+      setResults(EMPTY_RESULTS);
+      setSearchedQuery("");
+      setError("");
+    }
+  }, [urlWs, selectedWs]);
 
   const handleSearch = useCallback(async () => {
     const q = query.trim();

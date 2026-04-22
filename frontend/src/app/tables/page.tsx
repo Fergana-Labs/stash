@@ -1,16 +1,25 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import { Suspense, useCallback, useEffect, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import AppShell from "../../components/AppShell";
 import { useAuth } from "../../hooks/useAuth";
-import { listAllTables, listTables, createTable, deleteTable } from "../../lib/api";
+import { listAllTables, listTables, createTable } from "../../lib/api";
 import { Table, TableWithWorkspace } from "../../lib/types";
 
 export default function TablesPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen flex items-center justify-center text-muted">Loading...</div>}>
+      <TablesPageInner />
+    </Suspense>
+  );
+}
+
+function TablesPageInner() {
   const router = useRouter();
-  const wsId = typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("ws") : null;
+  const searchParams = useSearchParams();
+  const wsId = searchParams.get("ws");
   const { user, loading, logout } = useAuth();
   const [tables, setTables] = useState<TableWithWorkspace[]>([]);
   const [error, setError] = useState("");

@@ -111,16 +111,17 @@ export default function AppSidebar({ user, onLogout }: AppSidebarProps) {
     localStorage.setItem(WS_STORAGE_KEY, wsId);
     setShowWsSwitcher(false);
 
-    const wsMatch = pathname.match(/^\/workspaces\/([^/]+)(.*)$/);
+    // Switching workspaces always drops page-specific deep-link params
+    // (nb, page, table, q, storeId, etc.) so we never show old-workspace
+    // content under a new-workspace URL. The scoped pages subscribe to
+    // ?ws= and refetch their data; their local "selection" state resets
+    // via a wsId-keyed remount (see AppShell).
+    const wsMatch = pathname.match(/^\/workspaces\/([^/]+)/);
     if (wsMatch) {
-      router.push(`/workspaces/${wsId}${wsMatch[2] ?? ""}`);
+      router.push(`/workspaces/${wsId}`);
       return;
     }
-    const params = new URLSearchParams(
-      typeof window !== "undefined" ? window.location.search : ""
-    );
-    params.set("ws", wsId);
-    router.push(`${pathname}?${params.toString()}`);
+    router.push(`${pathname}?ws=${wsId}`);
   };
 
   const selectedWs = workspaces.find((w) => w.id === selectedWsId);

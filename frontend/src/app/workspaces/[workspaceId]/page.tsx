@@ -128,7 +128,7 @@ export default function WorkspacePage() {
     if (!user) return;
     setVizLoading(true);
     Promise.all([
-      getActivityTimeline(30, "day", workspaceId).catch(() => null),
+      getActivityTimeline(90, "day", workspaceId).catch(() => null),
       getKnowledgeDensity(20, workspaceId).catch(() => null),
       getEmbeddingProjection(500, undefined, workspaceId).catch(() => null),
     ]).then(([t, d, p]) => {
