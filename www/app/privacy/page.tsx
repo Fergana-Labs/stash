@@ -131,9 +131,9 @@ export default function PrivacyPage() {
 
       <H2>Children</H2>
       <p>
-        The Service is not directed to anyone under 16. We do not knowingly
-        collect information from children. If you believe a child has provided
-        us information, please contact us and we will delete it.
+        The Service is not directed to anyone under 18. We do not knowingly
+        collect information from anyone under 18. If you believe a minor has
+        provided us information, please contact us and we will delete it.
       </p>
 
       <H2>Changes to this policy</H2>

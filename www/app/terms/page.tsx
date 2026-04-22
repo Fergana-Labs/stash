@@ -48,7 +48,7 @@ export default function TermsPage() {
         >
           hi@ferganalabs.com
         </a>{" "}
-        if you suspect unauthorized access. You must be at least 16 to use the
+        if you suspect unauthorized access. You must be at least 18 to use the
         Service.
       </p>
 
@@ -146,10 +146,96 @@ export default function TermsPage() {
         of these Terms or applicable law.
       </p>
 
+      <H2>Dispute resolution and binding arbitration</H2>
+      <p>
+        <strong className="text-ink">Please read this section carefully. It
+        affects your legal rights, including your right to file a lawsuit in
+        court.</strong>
+      </p>
+      <p>
+        <strong className="text-ink">Federal Arbitration Act.</strong> These
+        Terms affect interstate commerce and the enforceability of this
+        section is governed by the Federal Arbitration Act, 9 U.S.C. § 1 et
+        seq.
+      </p>
+      <p>
+        <strong className="text-ink">Informal resolution first.</strong> Before
+        starting an arbitration, you and Fergana Labs agree to try to resolve
+        any dispute informally for at least 30 days. You can start this process
+        by sending a written notice describing the dispute to{" "}
+        <a
+          href="mailto:hi@ferganalabs.com"
+          className="text-brand hover:underline"
+        >
+          hi@ferganalabs.com
+        </a>
+        .
+      </p>
+      <p>
+        <strong className="text-ink">Binding arbitration.</strong> Except for
+        the carve-outs below, you and Fergana Labs agree that any dispute,
+        claim, or controversy arising out of or relating to these Terms or the
+        Service will be resolved by binding individual arbitration
+        administered by the American Arbitration Association (AAA) under its
+        Consumer Arbitration Rules then in effect. The arbitration will be
+        conducted in English by a single arbitrator. You may choose to have the
+        arbitration conducted by telephone, by video, based on written
+        submissions, or in person in the county where you live or at another
+        mutually agreed location. The arbitrator&apos;s decision is final and
+        binding, and a judgment on the award may be entered in any court of
+        competent jurisdiction.
+      </p>
+      <p>
+        <strong className="text-ink">Arbitration fees.</strong> AAA&apos;s rules
+        govern arbitration fees. For claims of $10,000 or less, Fergana Labs
+        will pay all AAA filing, administrative, and arbitrator fees beyond any
+        initial filing fee that you would have paid to file the same claim in
+        court. For claims above $10,000, AAA&apos;s rules will determine how
+        fees are allocated.
+      </p>
+      <p>
+        <strong className="text-ink">Class-action and jury waiver.</strong> You
+        and Fergana Labs agree that each of us may bring claims against the
+        other only in our individual capacity, and not as a plaintiff or class
+        member in any purported class, collective, representative, or
+        consolidated action. The arbitrator may not consolidate claims or
+        preside over any form of representative proceeding. Both parties waive
+        the right to a jury trial.
+      </p>
+      <p>
+        <strong className="text-ink">Carve-outs.</strong> Either party may (a)
+        bring an individual claim in small-claims court so long as it qualifies
+        and remains there, and (b) seek injunctive or other equitable relief
+        in a court of competent jurisdiction to prevent actual or threatened
+        infringement, misappropriation, or violation of intellectual-property
+        or confidentiality rights.
+      </p>
+      <p>
+        <strong className="text-ink">30-day opt-out.</strong> You can opt out of
+        this arbitration agreement within 30 days of first accepting these
+        Terms by emailing{" "}
+        <a
+          href="mailto:hi@ferganalabs.com"
+          className="text-brand hover:underline"
+        >
+          hi@ferganalabs.com
+        </a>{" "}
+        with the subject line &ldquo;Arbitration Opt-Out&rdquo; and including
+        your name and the email on your account. Opting out will not affect any
+        other part of these Terms.
+      </p>
+      <p>
+        If any part of this section is held unenforceable, the remainder
+        remains in effect. If the class-action waiver is held unenforceable for
+        a particular claim, that claim (and only that claim) will be resolved
+        in court under the Governing law section below.
+      </p>
+
       <H2>Governing law</H2>
       <p>
         These Terms are governed by the laws of the State of Delaware, USA,
-        without regard to conflict-of-laws rules. Any dispute will be resolved
+        without regard to conflict-of-laws rules. Subject to the arbitration
+        agreement above, any dispute that proceeds in court will be resolved
         exclusively in the state or federal courts located in Delaware, and you
         consent to personal jurisdiction there.
       </p>
