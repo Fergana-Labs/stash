@@ -1,6 +1,6 @@
 
 <p align="center">
-  <img src="docs/assets/logo.svg" alt="Stash" width="320" />
+  <a href="https://joinstash.ai"><img src="docs/assets/logo.svg" alt="Stash" width="320" /></a>
 </p>
 
 <h3 align="center">Agent memory for your repos.</h3>
