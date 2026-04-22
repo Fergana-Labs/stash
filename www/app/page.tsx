@@ -323,10 +323,6 @@ function Hero() {
               <span className="h-[6px] w-[6px] rounded-full bg-current opacity-50" />
               Self-hostable
             </span>
-            <span className="inline-flex items-center gap-2">
-              <span className="h-[6px] w-[6px] rounded-full bg-current opacity-50" />
-              Postgres + pgvector
-            </span>
           </div>
         </div>
         <HeroFeed />
