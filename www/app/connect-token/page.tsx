@@ -49,11 +49,20 @@ export default async function ConnectTokenPage({
   }
 
   const { auth0 } = await import("@managed/auth0/client");
+  const qs = new URLSearchParams({ session: sessionId });
+  if (device) qs.set("device", device);
+  const returnTo = `/connect-token?${qs.toString()}`;
+
   const session = await auth0.getSession();
   if (!session) {
-    const qs = new URLSearchParams({ session: sessionId });
-    if (device) qs.set("device", device);
-    const returnTo = `/connect-token?${qs.toString()}`;
+    redirect(`/auth/login?returnTo=${encodeURIComponent(returnTo)}`);
+  }
+
+  let accessToken: string;
+  try {
+    const tokenResponse = await auth0.getAccessToken();
+    accessToken = tokenResponse.token;
+  } catch {
     redirect(`/auth/login?returnTo=${encodeURIComponent(returnTo)}`);
   }
 
@@ -77,6 +86,7 @@ export default async function ConnectTokenPage({
         sessionId={sessionId}
         device={device}
         userName={userName}
+        accessToken={accessToken}
       />
       <Link href="/auth/logout" className="mt-6 inline-block text-[14px] text-brand hover:underline">
         Use a different account
