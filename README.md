@@ -3,10 +3,10 @@
   <a href="https://joinstash.ai"><img src="docs/assets/logo.svg" alt="Stash" width="320" /></a>
 </p>
 
-<h3 align="center">Agent memory for your repos.</h3>
+<h3 align="center">Hive mind for your agents.</h3>
 
 <p align="center">
-  Stash is the hive mind for your team's coding agents. Every session, decision,<br/>
+  Stash is a shared memory your team's repos and coding agents. Every session, decision,<br/>
   and search flows into one shared brain. The next agent that touches your<br/>
   repo already knows what's been learned.
 </p>
