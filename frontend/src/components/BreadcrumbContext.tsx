@@ -3,9 +3,9 @@
 import {
   createContext,
   ReactNode,
-  useCallback,
   useContext,
   useEffect,
+  useRef,
   useState,
 } from "react";
 
@@ -39,16 +39,20 @@ export function useBreadcrumbsValue() {
 }
 
 /**
- * Register breadcrumbs for the current page. Pages pass the crumbs (the
- * workspace name is prepended automatically by the TopBar) and a dependency
- * key that changes when the crumbs should be re-registered.
+ * Register breadcrumbs for the current page. `depKey` drives when the
+ * context gets updated — change it whenever the crumb content changes.
+ *
+ * A ref holds the latest `crumbs` so the effect always reads the freshest
+ * array at fire time, avoiding the stale-closure hole that a direct
+ * [crumbs]-dep would introduce (new array every render = infinite loop).
  */
 export function useBreadcrumbs(crumbs: Crumb[], depKey: string) {
   const { setCrumbs } = useContext(BreadcrumbContext);
-  const stable = useCallback(() => setCrumbs(crumbs), [setCrumbs, crumbs]);
+  const crumbsRef = useRef(crumbs);
+  crumbsRef.current = crumbs;
+
   useEffect(() => {
-    stable();
+    setCrumbs(crumbsRef.current);
     return () => setCrumbs(null);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [depKey]);
+  }, [depKey, setCrumbs]);
 }
