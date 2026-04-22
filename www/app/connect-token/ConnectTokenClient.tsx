@@ -25,7 +25,10 @@ export default function ConnectTokenClient({ apiUrl, sessionId, device, userName
     setState({ kind: "submitting" });
     try {
       const tokenRes = await fetch("/auth/access-token");
-      if (!tokenRes.ok) throw new Error("Auth0 session expired — reload this page.");
+      if (!tokenRes.ok) {
+        window.location.href = `/auth/login?returnTo=${encodeURIComponent(window.location.href)}`;
+        return;
+      }
       const { token } = await tokenRes.json();
 
       const exchangeUrl = new URL(`${apiUrl}/api/v1/auth0/exchange`);
