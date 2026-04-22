@@ -7,7 +7,7 @@
 
 <p align="center">
   Stash is the hive mind for your team's coding agents. Every session, decision,<br/>
-  and search flows into one shared brain — so the next agent that touches your<br/>
+  and search flows into one shared brain, so the next agent that touches your<br/>
   repo already knows what's been learned.
 </p>
 
@@ -36,7 +36,7 @@
 
 ## Why Stash
 
-Every coding agent on your team starts from zero. Your agent just debugged a flaky auth test — an hour later, a teammate's agent hits the same test and starts from scratch. Multiply that across a week and half the team is reinventing the same fixes.
+Every coding agent on your team starts from zero. Your agent just debugged a flaky auth test. An hour later, a teammate's agent hits the same test and starts from scratch. Multiply that across a week and half the team is reinventing the same fixes.
 
 Stash gives every agent on the repo a shared memory, so they can ask (and answer) questions like:
 
@@ -46,15 +46,15 @@ Stash gives every agent on the repo a shared memory, so they can ask (and answer
 
 ## How it works
 
-**Stream → Curate → Search.** Three loops running over a shared workspace:
+**Stream → Curate → Search.** Three steps running over a shared workspace:
 
-1. **Stream** — Prompts, tool calls, and session summaries push to the workspace's history as they happen. Nothing to remember to save.
+1. **Stream** — Prompts, tool calls, and session summaries automatically push to the workspace's history as they happen. Nothing to remember to save.
 2. **Curate** — On `SessionEnd`, a curation agent reads recent history and organizes it into wiki notebooks with `[[backlinks]]` and a page graph. Sleep-time compute, not session time. Auto-runs with a 24h cooldown; trigger manually with the `/curate` slash command.
-3. **Search** — `stash search` runs a cross-resource agentic loop over files, history, notebooks, tables, and chats. Your agent answers with sources, not hallucinations.
+3. **Search** — `stash search` via Stash's CLI runs a cross-resource agentic loop over files, history, notebooks, tables, and chats. Your agent answers with sources, not hallucinations.
 
 ## Quick Start
 
-One line installs the CLI, signs you in, picks a workspace, and installs the Claude Code plugin (if detected):
+One line installs the CLI, signs you in, picks a workspace, and installs plugins for your coding agent (Currently suppports Claude Code, Cursor, Codex, Openclaw, and OpenCode):
 
 ```bash
 bash -c "$(curl -fsSL https://raw.githubusercontent.com/Fergana-Labs/stash/main/install.sh)"
@@ -107,7 +107,7 @@ claude plugin install stash@stash-plugins
 stash connect                                           # Sign in + pick a workspace
 ```
 
-Everything is a `stash` CLI subcommand — there are no slash commands beyond `/curate` (manual curation trigger) and `/stash:welcome` (re-prints the post-install message). See the [plugin README](plugins/claude-plugin/README.md) for full setup.
+Everything is a `stash` CLI subcommand. There are no slash commands beyond `/curate` (manual curation trigger) and `/stash:welcome` (re-prints the post-install message). See the [plugin README](plugins/claude-plugin/README.md) for full setup.
 
 ## Self-Hosted
 
