@@ -91,6 +91,8 @@ function WikiPageInner() {
     setSelectedPage(null);
     setTree({ folders: [], root_files: [] });
     setBacklinks([]);
+    deepLinked.current = false;
+    deepLinkedPage.current = false;
   }, [wsId]);
 
   // Cross-notebook page index for wiki links. Refreshed when the workspace
@@ -138,10 +140,19 @@ function WikiPageInner() {
     } catch { setError("Failed to load page"); }
   }, [selectedNotebook]);
 
-  // Deep-link: auto-select notebook and page from URL params (once on load)
+  // Deep-link: auto-select notebook (and optionally page) from URL params.
+  // Both latches fire exactly once per workspace — a ref-based latch stops
+  // the effect from re-firing when the user backs out via the crumb (state
+  // clears, pageParam still in URL, effect would otherwise re-select).
   const deepLinked = useRef(false);
+  const deepLinkedPage = useRef(false);
   useEffect(() => {
-    if (deepLinked.current || !nbParam || notebooks.length === 0) return;
+    if (deepLinked.current) return;
+    if (!nbParam) {
+      deepLinked.current = true;
+      return;
+    }
+    if (notebooks.length === 0) return;
     const nb = notebooks.find((n) => n.id === nbParam);
     if (!nb) return;
     deepLinked.current = true;
@@ -149,16 +160,15 @@ function WikiPageInner() {
   }, [nbParam, notebooks, handleSelectNotebook]);
 
   useEffect(() => {
-    if (!pageParam || !deepLinked.current) return;
-    if (!selectedNotebook || selectedPageId !== null) return;
+    if (deepLinkedPage.current) return;
+    if (!pageParam) {
+      deepLinkedPage.current = true;
+      return;
+    }
+    if (!selectedNotebook) return;
+    deepLinkedPage.current = true;
     handleSelectPage(pageParam);
-  }, [pageParam, selectedNotebook, selectedPageId, handleSelectPage]);
-
-  // If there's nothing to deep-link, still mark us "ready" so the URL-sync
-  // effect below knows to start mirroring state → URL.
-  useEffect(() => {
-    if (!nbParam) deepLinked.current = true;
-  }, [nbParam]);
+  }, [pageParam, selectedNotebook, handleSelectPage]);
 
   // Keep the URL in sync with the current notebook/page selection and
   // make browser back/forward walk the reading trail. Every time state
