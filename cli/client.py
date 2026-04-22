@@ -122,6 +122,9 @@ class StashClient:
     def join_workspace(self, invite_code: str) -> dict:
         return self._post(f"/api/v1/workspaces/join/{invite_code}")
 
+    def join_workspace_by_id(self, workspace_id: str) -> dict:
+        return self._post(f"/api/v1/workspaces/{workspace_id}/join")
+
     def leave_workspace(self, workspace_id: str) -> None:
         self._post(f"/api/v1/workspaces/{workspace_id}/leave")
 

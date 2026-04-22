@@ -1,6 +1,6 @@
-"""Plugin hooks only push events when a `.stash/stash.json`
-manifest is discoverable from cwd (in the current directory or any ancestor),
-or from the main worktree when cwd is inside a git worktree.
+"""Plugin hooks only push events when a `.stash` file is discoverable from cwd
+(in the current directory or any ancestor), or from the main worktree when cwd
+is inside a git worktree.
 """
 
 from __future__ import annotations
@@ -9,7 +9,7 @@ import json
 import subprocess
 from pathlib import Path
 
-_MANIFEST_FILENAME = "stash.json"
+_MANIFEST_FILE = ".stash"
 
 
 def _git_repo_info(cwd: Path) -> tuple[Path | None, Path | None]:
@@ -41,7 +41,7 @@ def _git_repo_info(cwd: Path) -> tuple[Path | None, Path | None]:
 
 
 def find_manifest(cwd: str | None) -> dict | None:
-    """Return the `.stash/stash.json` for cwd.
+    """Return the parsed `.stash` manifest for cwd.
 
     If inside a git repo, checks the main worktree root (works for both
     regular checkouts and linked worktrees). Falls back to walking up
@@ -53,16 +53,16 @@ def find_manifest(cwd: str | None) -> dict | None:
 
     _toplevel, main_root = _git_repo_info(cur)
     if main_root:
-        main_path = main_root / ".stash" / _MANIFEST_FILENAME
-        if main_path.exists():
+        main_path = main_root / _MANIFEST_FILE
+        if main_path.is_file():
             try:
                 return json.loads(main_path.read_text())
             except Exception:
                 return None
 
     for parent in [cur, *cur.parents]:
-        path = parent / ".stash" / _MANIFEST_FILENAME
-        if path.exists():
+        path = parent / _MANIFEST_FILE
+        if path.is_file():
             try:
                 return json.loads(path.read_text())
             except Exception:
@@ -71,7 +71,5 @@ def find_manifest(cwd: str | None) -> dict | None:
 
 
 def cwd_in_scope(cwd: str | None) -> bool:
-    """True if `.stash/stash.json` exists in cwd or any ancestor."""
+    """True if a `.stash` manifest file exists in cwd or any ancestor."""
     return find_manifest(cwd) is not None
-
-

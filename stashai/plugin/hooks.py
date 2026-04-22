@@ -13,20 +13,68 @@ Never call `stream_session_end` from a per-turn hook — you'll emit a bogus
 
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 
 from stashai.plugin.event import HookEvent
-from stashai.plugin.scope import cwd_in_scope
-from stashai.plugin.stash_client import StashClient
+from stashai.plugin.scope import cwd_in_scope, find_manifest
+from stashai.plugin.stash_client import StashClient, StashError
 from stashai.plugin.state import read_stats, record_tool_use
 from stashai.plugin.summarize import summarize_tool_use
 
+_CACHE_DIR = Path.home() / ".stash" / "cache"
 
-def _short_circuit(cfg: dict, event: HookEvent | None) -> bool:
-    if not cfg.get("workspace_id"):
-        return True
+
+def _is_dismissed(workspace_id: str) -> bool:
+    return (_CACHE_DIR / f"dismissed-{workspace_id}").exists()
+
+
+def _is_not_member(workspace_id: str) -> bool:
+    return (_CACHE_DIR / f"not-member-{workspace_id}").exists()
+
+
+def _mark_not_member(workspace_id: str) -> None:
+    _CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    (_CACHE_DIR / f"not-member-{workspace_id}").touch()
+
+
+def _print_join_hint(workspace_id: str) -> None:
+    print(
+        f"\nThis repo streams to Stash workspace {workspace_id}.\n"
+        f"Run `stash join` to start sharing, or `stash dismiss` to hide this.\n",
+        file=sys.stderr,
+    )
+
+
+def _resolve_workspace(cfg: dict, event: HookEvent | None) -> str | None:
+    """Return workspace_id if this session should attempt streaming, else None."""
     cwd = getattr(event, "cwd", None) if event is not None else None
-    return not cwd_in_scope(cwd)
+
+    if cfg.get("workspace_id"):
+        if not cwd_in_scope(cwd):
+            return None
+        return cfg["workspace_id"]
+
+    manifest = find_manifest(cwd) if cwd else None
+    if not manifest:
+        return None
+    return manifest.get("workspace_id") or None
+
+
+def _short_circuit(cfg: dict, event: HookEvent | None) -> tuple[bool, str | None]:
+    """Return (should_skip, workspace_id). Handles the cache-based membership checks."""
+    workspace_id = _resolve_workspace(cfg, event)
+    if not workspace_id:
+        return True, None
+
+    if _is_dismissed(workspace_id):
+        return True, None
+
+    if _is_not_member(workspace_id):
+        _print_join_hint(workspace_id)
+        return True, None
+
+    return False, workspace_id
 
 
 # --- Prompt streaming ---
@@ -35,19 +83,24 @@ def stream_user_message(
     client: StashClient, cfg: dict, state: dict, prompt_text: str,
     event: HookEvent | None = None,
 ) -> None:
-    if _short_circuit(cfg, event):
+    skip, workspace_id = _short_circuit(cfg, event)
+    if skip:
         return
     if not prompt_text or not prompt_text.strip():
         return
     try:
         client.push_event(
-            workspace_id=cfg["workspace_id"],
+            workspace_id=workspace_id,
             agent_name=cfg["agent_name"],
             event_type="user_message",
             content=prompt_text[:2000],
             session_id=state.get("session_id", ""),
             client=cfg.get("client") or None,
         )
+    except StashError as e:
+        if e.status_code == 403:
+            _mark_not_member(workspace_id)
+            _print_join_hint(workspace_id)
     except Exception:
         pass
 
@@ -58,7 +111,8 @@ def stream_tool_use(
     client: StashClient, cfg: dict, state: dict, event: HookEvent,
     data_dir: Path | None = None,
 ) -> None:
-    if _short_circuit(cfg, event):
+    skip, workspace_id = _short_circuit(cfg, event)
+    if skip:
         return
     if not event.tool_name:
         return
@@ -73,7 +127,7 @@ def stream_tool_use(
 
     try:
         client.push_event(
-            workspace_id=cfg["workspace_id"],
+            workspace_id=workspace_id,
             agent_name=cfg["agent_name"],
             event_type="tool_use",
             content=content,
@@ -82,6 +136,10 @@ def stream_tool_use(
             metadata=metadata,
             client=cfg.get("client") or None,
         )
+    except StashError as e:
+        if e.status_code == 403:
+            _mark_not_member(workspace_id)
+            _print_join_hint(workspace_id)
     except Exception:
         pass
 
@@ -94,19 +152,24 @@ def stream_assistant_message(
     """Push the final assistant text for a turn. Call from per-turn Stop /
     afterAgentResponse / AfterAgent hooks. Never emits session_end — the
     session is still live."""
-    if _short_circuit(cfg, event):
+    skip, workspace_id = _short_circuit(cfg, event)
+    if skip:
         return
     if not event.last_assistant_message:
         return
     try:
         client.push_event(
-            workspace_id=cfg["workspace_id"],
+            workspace_id=workspace_id,
             agent_name=cfg["agent_name"],
             event_type="assistant_message",
             content=event.last_assistant_message[:4000],
             session_id=state.get("session_id", ""),
             client=cfg.get("client") or None,
         )
+    except StashError as e:
+        if e.status_code == 403:
+            _mark_not_member(workspace_id)
+            _print_join_hint(workspace_id)
     except Exception:
         pass
 
@@ -122,7 +185,8 @@ def stream_session_end(
     default StashClient timeout is 2s, fine for small events but way too
     short for a 50MB transcript).
     """
-    if _short_circuit(cfg, event):
+    skip, workspace_id = _short_circuit(cfg, event)
+    if skip:
         return
 
     stats = read_stats(state)
@@ -138,7 +202,7 @@ def stream_session_end(
 
     try:
         client.push_event(
-            workspace_id=cfg["workspace_id"],
+            workspace_id=workspace_id,
             agent_name=cfg["agent_name"],
             event_type="session_end",
             content=" ".join(parts),
@@ -151,6 +215,11 @@ def stream_session_end(
             },
             client=cfg.get("client") or None,
         )
+    except StashError as e:
+        if e.status_code == 403:
+            _mark_not_member(workspace_id)
+            _print_join_hint(workspace_id)
+            return
     except Exception:
         pass
 
@@ -163,11 +232,15 @@ def stream_session_end(
         return
     try:
         client.upload_transcript(
-            workspace_id=cfg["workspace_id"],
+            workspace_id=workspace_id,
             session_id=sid,
             transcript_path=path,
             agent_name=cfg["agent_name"],
             cwd=event.cwd,
         )
+    except StashError as e:
+        if e.status_code == 403:
+            _mark_not_member(workspace_id)
+            _print_join_hint(workspace_id)
     except Exception:
         pass

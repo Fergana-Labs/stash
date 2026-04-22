@@ -1,7 +1,7 @@
 """Cursor plugin config: reads from ~/.stash/config.json (CLI config).
 
 Cursor has no plugin-level userConfig surface, so we piggyback on the CLI
-config the user already set up with `stash login`.
+config the user already set up with `stash onboard`.
 """
 
 from __future__ import annotations
@@ -19,6 +19,8 @@ DATA_DIR = Path(os.environ.get(
     Path.home() / ".stash/plugins/cursor",
 ))
 
+PRODUCTION_BASE_URL = "https://api.joinstash.ai"
+
 
 def get_stdin_data() -> dict:
     try:
@@ -34,51 +36,23 @@ def _read_json(path: Path) -> dict:
         return {}
 
 
-def _project_config() -> Path | None:
-    """Walk up from cwd looking for .stash/config.json."""
-    try:
-        cur = Path.cwd().resolve()
-    except Exception:
-        return None
-    for parent in [cur, *cur.parents]:
-        candidate = parent / ".stash" / "config.json"
-        if candidate.exists():
-            return candidate
-    return None
-
-
-# base_url + api_key are user-only to prevent a .stash/config.json in any
-# writable ancestor dir from hijacking the transport endpoint.
-_USER_ONLY_KEYS = {"base_url", "api_key"}
-
-
 def _cli_config() -> dict:
-    """User config (~/.stash/config.json) overlaid with project config.
-
-    Project config may not override base_url / api_key.
-    """
-    merged: dict = {}
     user_path = Path.home() / ".stash" / "config.json"
     if user_path.exists():
-        merged.update(_read_json(user_path))
-    project_path = _project_config()
-    if project_path:
-        project = _read_json(project_path)
-        for key in _USER_ONLY_KEYS:
-            project.pop(key, None)
-        merged.update(project)
-    return merged
+        return _read_json(user_path)
+    return {}
 
 
 def get_config() -> dict:
     cli = _cli_config()
     manifest = find_manifest(os.getcwd())
+    manifest_base = (manifest or {}).get("base_url")
     return {
-        "api_endpoint": cli.get("base_url", "https://joinstash.ai"),
+        "api_endpoint": manifest_base or cli.get("base_url", PRODUCTION_BASE_URL),
         "api_key": cli.get("api_key", ""),
         "agent_name": cli.get("username", ""),
         "workspace_id": (manifest or {}).get("workspace_id", ""),
-        "auto_curate": os.environ.get("STASH_AUTO_CURATE", "false"),  # off by default for Cursor
+        "auto_curate": os.environ.get("STASH_AUTO_CURATE", "false"),
         "client": "cursor",
     }
 

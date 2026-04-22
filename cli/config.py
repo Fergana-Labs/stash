@@ -1,7 +1,7 @@
 """Auth credential and config storage for the stash CLI.
 
 Config lives at user scope: ~/.stash/config.json (applies everywhere).
-Per-repo workspace info lives in .stash/stash.json (the manifest).
+Per-repo workspace info lives in .stash (a single file at the repo root, committed).
 """
 
 import json
@@ -11,42 +11,31 @@ from typing import TypedDict
 
 USER_CONFIG_DIR = Path.home() / ".stash"
 USER_CONFIG_FILE = USER_CONFIG_DIR / "config.json"
+CACHE_DIR = USER_CONFIG_DIR / "cache"
 
-PROJECT_DIRNAME = ".stash"
-PROJECT_FILENAME = "config.json"
-MANIFEST_FILENAME = "stash.json"
+MANIFEST_FILE = ".stash"
+
+PRODUCTION_BASE_URL = "https://api.joinstash.ai"
 
 
 class Manifest(TypedDict, total=False):
-    version: int
     workspace_id: str
-    workspace_name: str
-    invite_code: str
     base_url: str
 
+
 DEFAULT_CONFIG = {
-    "base_url": "http://localhost:3456",
+    "base_url": PRODUCTION_BASE_URL,
     "api_key": "",
     "username": "",
 }
 
 
-def find_project_config(start: Path | None = None) -> Path | None:
-    """Walk up from cwd looking for .stash/config.json. Return path or None."""
-    cur = (start or Path.cwd()).resolve()
-    for parent in [cur, *cur.parents]:
-        candidate = parent / PROJECT_DIRNAME / PROJECT_FILENAME
-        if candidate.exists():
-            return candidate
-    return None
-
-
 def find_project_manifest(start: Path | None = None) -> Path | None:
-    """Walk up from cwd looking for .stash/stash.json (the committed team manifest)."""
+    """Walk up from cwd looking for a .stash file (not directory) at a repo root."""
     cur = (start or Path.cwd()).resolve()
     for parent in [cur, *cur.parents]:
-        candidate = parent / PROJECT_DIRNAME / MANIFEST_FILENAME
-        if candidate.exists():
+        candidate = parent / MANIFEST_FILE
+        if candidate.is_file():
             return candidate
     return None
 
@@ -123,3 +112,27 @@ def clear_config() -> None:
         USER_CONFIG_FILE.unlink()
 
 
+# --- Membership cache ---
+
+def is_dismissed(workspace_id: str) -> bool:
+    return (CACHE_DIR / f"dismissed-{workspace_id}").exists()
+
+
+def mark_dismissed(workspace_id: str) -> None:
+    CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    (CACHE_DIR / f"dismissed-{workspace_id}").touch()
+
+
+def is_not_member(workspace_id: str) -> bool:
+    return (CACHE_DIR / f"not-member-{workspace_id}").exists()
+
+
+def mark_not_member(workspace_id: str) -> None:
+    CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    (CACHE_DIR / f"not-member-{workspace_id}").touch()
+
+
+def clear_not_member(workspace_id: str) -> None:
+    flag = CACHE_DIR / f"not-member-{workspace_id}"
+    if flag.exists():
+        flag.unlink()
