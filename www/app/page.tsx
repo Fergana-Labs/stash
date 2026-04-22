@@ -306,6 +306,9 @@ function Hero() {
           </p>
 
           <div className="mt-8 max-w-[520px]">
+            <p className="mb-2 font-mono text-[10.5px] font-medium uppercase tracking-[0.14em] text-muted">
+              One-command install
+            </p>
             <div className="flex items-center gap-2 rounded-lg border border-border bg-surface px-3 py-2.5 shadow-sm">
               <span className="select-none font-mono text-[13px] text-brand">$</span>
               <code className="flex-1 overflow-x-auto whitespace-nowrap font-mono text-[12.5px] text-ink">
