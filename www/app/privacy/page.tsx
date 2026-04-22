@@ -57,6 +57,10 @@ export default function PrivacyPage() {
         metadata like the last four digits of your card and your billing
         country.
       </p>
+      <p>
+        <strong className="text-ink">Cookies and device data.</strong> See the
+        Cookies and tracking technologies section below.
+      </p>
 
       <H2>How we use information</H2>
       <p>We use the information we collect to:</p>
@@ -120,13 +124,148 @@ export default function PrivacyPage() {
         promptly in the unlikely event of a breach that affects your data.
       </p>
 
+      <H2>Cookies and tracking technologies</H2>
+      <p>
+        We use cookies and similar technologies (such as local storage and
+        pixels) to operate, secure, and analyze the Service. The cookies we set
+        fall into three categories:
+      </p>
+      <ul className="ml-5 list-disc space-y-2">
+        <li>
+          <strong className="text-ink">Strictly necessary cookies</strong>{" "}
+          needed for you to sign in and use the Service. These cannot be turned
+          off.
+        </li>
+        <li>
+          <strong className="text-ink">Preference cookies</strong> that remember
+          choices such as your workspace or display settings.
+        </li>
+        <li>
+          <strong className="text-ink">Analytics cookies</strong> that help us
+          understand how the Service is used so we can improve it. We do not
+          use cookies for cross-site advertising.
+        </li>
+      </ul>
+      <p>
+        You can block or delete cookies through your browser settings. If you
+        block strictly necessary cookies, parts of the Service may not work.
+      </p>
+      <p>
+        <strong className="text-ink">Do Not Track and Global Privacy
+        Control.</strong> Because there is no industry consensus on how to
+        interpret Do Not Track signals, we do not respond to them. We do
+        recognize the Global Privacy Control (GPC) signal as a valid
+        opt-out-of-sale and opt-out-of-sharing request from California and
+        other jurisdictions that treat GPC as such.
+      </p>
+
+      <H2>Your privacy rights</H2>
+      <p>
+        Depending on where you live, you may have the following rights in
+        relation to your personal information:
+      </p>
+      <ul className="ml-5 list-disc space-y-2">
+        <li>
+          <strong className="text-ink">Access and portability.</strong> Request
+          a copy of the personal information we hold about you.
+        </li>
+        <li>
+          <strong className="text-ink">Correction.</strong> Ask us to correct
+          inaccurate or incomplete information.
+        </li>
+        <li>
+          <strong className="text-ink">Deletion.</strong> Ask us to delete your
+          personal information.
+        </li>
+        <li>
+          <strong className="text-ink">Objection or restriction.</strong>{" "}
+          Object to or restrict certain processing.
+        </li>
+        <li>
+          <strong className="text-ink">Withdraw consent</strong> where we rely
+          on it as a legal basis.
+        </li>
+        <li>
+          <strong className="text-ink">Appeal</strong> a denial of your rights
+          request, where an appeal right applies.
+        </li>
+      </ul>
+      <p>
+        To exercise any of these rights, email{" "}
+        <a
+          href="mailto:hi@ferganalabs.com"
+          className="text-brand hover:underline"
+        >
+          hi@ferganalabs.com
+        </a>
+        . We will respond within the timeframe required by applicable law. We
+        will not discriminate against you for exercising your rights.
+      </p>
+
+      <H2>California privacy rights (CCPA/CPRA)</H2>
+      <p>
+        If you are a California resident, the California Consumer Privacy Act,
+        as amended by the California Privacy Rights Act, gives you the rights
+        described above and additional rights, including the right to know what
+        personal information we collect, the right to opt out of the
+        &ldquo;sale&rdquo; or &ldquo;sharing&rdquo; of your personal
+        information, and the right to limit the use and disclosure of sensitive
+        personal information.
+      </p>
+      <p>
+        In the last 12 months, we have collected the categories of personal
+        information described in the &ldquo;Information we collect&rdquo;
+        section above, which map to the following CCPA categories: identifiers
+        (name, email, account ID, IP address), commercial information (billing
+        metadata), internet or network activity (usage logs), and electronic
+        information you provide (workspace content). We collect this
+        information from you directly and from your browser or device, and we
+        share it only with the categories of recipients listed in the
+        &ldquo;How we share information&rdquo; section.
+      </p>
+      <p>
+        <strong className="text-ink">
+          We do not sell your personal information, and we do not share it for
+          cross-context behavioral advertising.
+        </strong>{" "}
+        We honor Global Privacy Control as an opt-out signal.
+      </p>
+      <p>
+        You may designate an authorized agent to submit a rights request on
+        your behalf. We will need to verify your identity and the agent&apos;s
+        authority before acting.
+      </p>
+
+      <H2>EU, UK, and Swiss residents (GDPR)</H2>
+      <p>
+        If you are in the European Economic Area, the United Kingdom, or
+        Switzerland, Fergana Labs is the controller of your personal
+        information. We process your information on the following legal bases:
+        to perform our contract with you (providing the Service); to comply
+        with our legal obligations; for our legitimate interests in operating
+        and securing the Service; and with your consent, where we ask for it.
+      </p>
+      <p>
+        You have the rights listed in the &ldquo;Your privacy rights&rdquo;
+        section above, as well as the right to lodge a complaint with your
+        local data protection authority.
+      </p>
+
+      <H2>International data transfers</H2>
+      <p>
+        We are based in the United States, and our service providers may be
+        located in other countries. When we transfer personal information out
+        of the EEA, UK, or Switzerland, we rely on the European Commission&apos;s
+        Standard Contractual Clauses, the UK International Data Transfer
+        Addendum, or another lawful transfer mechanism.
+      </p>
+
       <H2>Your choices</H2>
       <p>
         You can access, export, correct, or delete your personal information at
         any time by using the app or by emailing us. If you are located in a
         jurisdiction that grants additional rights (such as the EEA, UK, or
-        California), you can also object to processing, restrict processing, or
-        lodge a complaint with your local data protection authority.
+        California), the sections above explain how to exercise them.
       </p>
 
       <H2>Children</H2>

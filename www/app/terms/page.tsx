@@ -52,6 +52,16 @@ export default function TermsPage() {
         Service.
       </p>
 
+      <H2>Electronic communications</H2>
+      <p>
+        By creating an account, you consent to receive communications from us
+        electronically, including transactional emails, service and security
+        notices, password resets, billing receipts, and changes to these Terms.
+        These electronic communications satisfy any legal requirement that a
+        communication be in writing. You are responsible for keeping the email
+        address on your account current so that you receive our notices.
+      </p>
+
       <H2>Your content</H2>
       <p>
         You retain ownership of the content you and your agents submit to the
@@ -94,6 +104,40 @@ export default function TermsPage() {
         </li>
       </ul>
 
+      <H2>Copyright complaints (DMCA)</H2>
+      <p>
+        We respond to notices of alleged copyright infringement under the
+        Digital Millennium Copyright Act. If you believe content on the Service
+        infringes a copyright you own, send a written notice to our designated
+        agent at{" "}
+        <a
+          href="mailto:hi@ferganalabs.com"
+          className="text-brand hover:underline"
+        >
+          hi@ferganalabs.com
+        </a>{" "}
+        that includes: (i) your physical or electronic signature; (ii)
+        identification of the copyrighted work you claim is infringed; (iii)
+        identification of the allegedly infringing material and its location on
+        the Service; (iv) your contact information; (v) a statement that you
+        have a good-faith belief the use is not authorized by the copyright
+        owner, its agent, or the law; and (vi) a statement, under penalty of
+        perjury, that the information is accurate and that you are authorized
+        to act on behalf of the owner.
+      </p>
+      <p>
+        We may terminate the accounts of users we determine to be repeat
+        infringers.
+      </p>
+
+      <H2>Feedback</H2>
+      <p>
+        If you send us suggestions, ideas, or other feedback about the Service,
+        you grant Fergana Labs a perpetual, irrevocable, worldwide, royalty-free
+        license to use that feedback for any purpose without obligation or
+        compensation to you.
+      </p>
+
       <H2>Third-party services</H2>
       <p>
         The Service integrates with third-party AI models, authentication
@@ -102,12 +146,67 @@ export default function TermsPage() {
         behavior.
       </p>
 
-      <H2>Fees</H2>
+      <H2>Subscriptions, billing, and cancellation</H2>
       <p>
-        Some features of the Service require a paid subscription. Fees, billing
-        cycles, and usage limits are described at checkout. Paid fees are
-        non-refundable except where required by law. We may change pricing with
-        30 days&apos; notice for your next billing period.
+        <strong className="text-ink">Paid plans.</strong> Some features of the
+        Service require a paid subscription. Current fees, billing cycles, and
+        usage limits are shown at checkout and in your account settings. All
+        fees are in US dollars and are exclusive of applicable taxes, which you
+        are responsible for.
+      </p>
+      <p>
+        <strong className="text-ink">Authorization to charge.</strong> By
+        starting a paid subscription, you authorize Fergana Labs and its
+        payment processor to charge the payment method on file for the
+        applicable fees, taxes, and any other amounts incurred in connection
+        with your use of the Service.
+      </p>
+      <p>
+        <strong className="text-ink">Automatic renewal.</strong> Paid
+        subscriptions automatically renew at the end of each billing period
+        (monthly or annually, as selected at checkout) at the then-current
+        price until you cancel. By subscribing, you agree to this automatic
+        renewal. We will send a reminder before annual renewals where required
+        by law.
+      </p>
+      <p>
+        <strong className="text-ink">Free trials.</strong> If we offer a free
+        trial, it will automatically convert to a paid subscription at the end
+        of the trial period and your payment method will be charged at the
+        then-current price unless you cancel before the trial ends.
+      </p>
+      <p>
+        <strong className="text-ink">Cancellation.</strong> You can cancel a
+        paid subscription at any time from your account settings. Cancellation
+        takes effect at the end of the current billing period, and you will
+        retain access through that date. We do not provide partial refunds for
+        unused time.
+      </p>
+      <p>
+        <strong className="text-ink">Refunds.</strong> Except as required by
+        applicable law, all fees are non-refundable. If you believe you were
+        charged in error, email{" "}
+        <a
+          href="mailto:hi@ferganalabs.com"
+          className="text-brand hover:underline"
+        >
+          hi@ferganalabs.com
+        </a>{" "}
+        within 30 days of the charge and we will review your request in good
+        faith.
+      </p>
+      <p>
+        <strong className="text-ink">Price changes.</strong> We may change
+        prices for the Service from time to time. We will give you at least 30
+        days&apos; advance notice by email or in-app before the change applies
+        to your next billing period. If you do not accept the new price, you
+        can cancel before it takes effect.
+      </p>
+      <p>
+        <strong className="text-ink">Failed payments.</strong> If a charge
+        fails, we may retry the charge, downgrade your plan, or suspend access
+        until the balance is resolved. You remain responsible for any unpaid
+        amounts.
       </p>
 
       <H2>Termination</H2>
@@ -120,23 +219,43 @@ export default function TermsPage() {
       </p>
 
       <H2>Warranty disclaimer</H2>
-      <p>
-        The Service is provided &ldquo;as is&rdquo; and &ldquo;as
-        available.&rdquo; To the fullest extent permitted by law, Fergana Labs
-        disclaims all warranties, express or implied, including merchantability,
-        fitness for a particular purpose, and non-infringement. We do not
-        warrant that the Service will be uninterrupted, error-free, or secure,
-        or that agent-generated output will be accurate.
+      <p className="uppercase">
+        THE SERVICE IS PROVIDED &ldquo;AS IS&rdquo; AND &ldquo;AS
+        AVAILABLE,&rdquo; WITHOUT WARRANTIES OF ANY KIND, EXPRESS OR IMPLIED.
+        TO THE FULLEST EXTENT PERMITTED BY LAW, FERGANA LABS DISCLAIMS ALL
+        WARRANTIES, INCLUDING IMPLIED WARRANTIES OF MERCHANTABILITY, FITNESS
+        FOR A PARTICULAR PURPOSE, TITLE, AND NON-INFRINGEMENT, AND ANY
+        WARRANTIES ARISING OUT OF COURSE OF DEALING OR USAGE OF TRADE.
+      </p>
+      <p className="uppercase">
+        WE DO NOT WARRANT THAT THE SERVICE WILL BE UNINTERRUPTED, ERROR-FREE,
+        OR SECURE, THAT DEFECTS WILL BE CORRECTED, OR THAT AGENT-GENERATED
+        OUTPUT WILL BE ACCURATE, COMPLETE, OR SUITABLE FOR YOUR PURPOSES. YOU
+        USE THE SERVICE AT YOUR OWN RISK.
       </p>
 
       <H2>Limitation of liability</H2>
+      <p className="uppercase">
+        TO THE FULLEST EXTENT PERMITTED BY LAW, IN NO EVENT WILL FERGANA LABS
+        OR ITS OFFICERS, DIRECTORS, EMPLOYEES, OR AGENTS BE LIABLE FOR ANY
+        INDIRECT, INCIDENTAL, SPECIAL, CONSEQUENTIAL, EXEMPLARY, OR PUNITIVE
+        DAMAGES, OR FOR ANY LOSS OF PROFITS, REVENUE, DATA, GOODWILL, OR OTHER
+        INTANGIBLE LOSSES, ARISING OUT OF OR RELATING TO THESE TERMS OR THE
+        SERVICE, WHETHER BASED ON CONTRACT, TORT, STRICT LIABILITY, OR ANY
+        OTHER LEGAL THEORY, AND WHETHER OR NOT FERGANA LABS HAS BEEN ADVISED
+        OF THE POSSIBILITY OF SUCH DAMAGES.
+      </p>
+      <p className="uppercase">
+        FERGANA LABS&rsquo; TOTAL AGGREGATE LIABILITY UNDER THESE TERMS WILL
+        NOT EXCEED THE GREATER OF (A) THE AMOUNT YOU PAID US FOR THE SERVICE
+        IN THE 12 MONTHS BEFORE THE EVENT GIVING RISE TO THE CLAIM, OR (B) ONE
+        HUNDRED US DOLLARS ($100).
+      </p>
       <p>
-        To the fullest extent permitted by law, Fergana Labs will not be liable
-        for any indirect, incidental, special, consequential, or punitive
-        damages, or for any loss of profits, revenue, data, or goodwill. Our
-        total liability under these Terms is limited to the greater of (a) the
-        amount you paid us in the 12 months before the claim, or (b) one
-        hundred US dollars.
+        Some jurisdictions do not allow the exclusion or limitation of certain
+        damages, so some of the above may not apply to you. In those
+        jurisdictions, our liability is limited to the smallest extent
+        permitted by law.
       </p>
 
       <H2>Indemnification</H2>
