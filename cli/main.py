@@ -2106,6 +2106,12 @@ def join_cmd():
         raise typer.Exit(1)
 
     base_url = manifest.get("base_url") or cfg["base_url"]
+    if base_url != cfg["base_url"]:
+        console.print(
+            f"  [yellow]This repo points to a different Stash server:[/yellow] {base_url}\n"
+            f"  Run [cyan]stash onboard --url {base_url}[/cyan] to authenticate first."
+        )
+        raise typer.Exit(1)
     with StashClient(base_url=base_url, api_key=cfg["api_key"]) as c:
         already_member = False
         try:

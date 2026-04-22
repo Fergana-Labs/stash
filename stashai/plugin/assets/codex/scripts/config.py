@@ -43,9 +43,12 @@ def get_config() -> dict:
     cli = _cli_config()
     manifest = find_manifest(os.getcwd())
     manifest_base = (manifest or {}).get("base_url")
+    user_base = cli.get("base_url", PRODUCTION_BASE_URL)
+    api_endpoint = manifest_base or user_base
+    api_key = cli.get("api_key", "") if api_endpoint == user_base else ""
     return {
-        "api_endpoint": manifest_base or cli.get("base_url", PRODUCTION_BASE_URL),
-        "api_key": cli.get("api_key", ""),
+        "api_endpoint": api_endpoint,
+        "api_key": api_key,
         "agent_name": cli.get("username", ""),
         "workspace_id": (manifest or {}).get("workspace_id", ""),
         "auto_curate": os.environ.get("STASH_AUTO_CURATE", "false"),
