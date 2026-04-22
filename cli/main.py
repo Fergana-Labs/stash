@@ -2081,14 +2081,13 @@ def join_cmd():
     with StashClient(base_url=base_url, api_key=cfg["api_key"]) as c:
         already_member = False
         try:
-            c.get_workspace(workspace_id)
+            ws = c.get_workspace(workspace_id)
             already_member = True
         except StashError as e:
             if e.status_code not in (403, 404):
                 _err(e)
 
         if already_member:
-            ws = c.get_workspace(workspace_id)
             ws_name = ws.get("name", workspace_id[:8])
             console.print(f"  [green]✓[/green] You're already streaming to [bold]{ws_name}[/bold].")
             clear_not_member(workspace_id)
