@@ -18,6 +18,7 @@ export default function ConnectTokenClient({ apiUrl, sessionId, device, userName
     | { kind: "idle" }
     | { kind: "submitting" }
     | { kind: "done" }
+    | { kind: "reauth"; loginUrl: string }
     | { kind: "error"; message: string; detail?: string }
   >({ kind: "idle" });
 
@@ -26,7 +27,10 @@ export default function ConnectTokenClient({ apiUrl, sessionId, device, userName
     try {
       const tokenRes = await fetch("/auth/access-token");
       if (!tokenRes.ok) {
-        window.location.href = `/auth/login?returnTo=${encodeURIComponent(window.location.href)}`;
+        setState({
+          kind: "reauth",
+          loginUrl: `/auth/login?returnTo=${encodeURIComponent(window.location.href)}`,
+        });
         return;
       }
       const { token } = await tokenRes.json();
@@ -66,6 +70,22 @@ export default function ConnectTokenClient({ apiUrl, sessionId, device, userName
       const detail = (err as { detail?: string })?.detail;
       setState({ kind: "error", message, detail });
     }
+  }
+
+  if (state.kind === "reauth") {
+    return (
+      <div className="mt-6">
+        <p className="text-[16px] leading-[1.6] text-dim">
+          Your session has expired. Sign in again to authorize the CLI.
+        </p>
+        <a
+          href={state.loginUrl}
+          className="mt-4 inline-flex rounded-xl bg-brand px-5 py-2.5 text-[14px] font-semibold text-white transition-all hover:bg-brand-hover"
+        >
+          Sign in
+        </a>
+      </div>
+    );
   }
 
   if (state.kind === "done") {
