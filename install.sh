@@ -26,14 +26,14 @@ elif command -v uv >/dev/null 2>&1; then
   INSTALL_CMD=(uv tool install "$PACKAGE" --force)
 else
   printf '→ Installing uv (manages Python for you)…\n'
-  curl -LsSf https://astral.sh/uv/install.sh | sh 2>/dev/null
+  curl -LsSf https://astral.sh/uv/install.sh | sh >/dev/null 2>&1
   export PATH="$HOME/.local/bin:$PATH"
   INSTALLER="uv"
   INSTALL_CMD=(uv tool install "$PACKAGE" --force)
 fi
 
 printf '→ Installing %s via %s…\n' "$PACKAGE" "$INSTALLER"
-"${INSTALL_CMD[@]}" >/dev/null
+"${INSTALL_CMD[@]}" >/dev/null 2>&1
 
 # pipx + uv put binaries in ~/.local/bin; pip --user puts them somewhere
 # similar. If the shell hasn't picked up PATH yet, surface the fix instead
