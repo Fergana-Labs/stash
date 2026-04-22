@@ -85,7 +85,7 @@ function Nav() {
             Docs
           </Link>
           <Link
-            href="/auth/login"
+            href="/login"
             className="hidden h-10 items-center rounded-lg border border-border bg-background px-[18px] text-[14px] font-medium text-ink transition hover:border-ink sm:inline-flex"
           >
             Sign in
@@ -119,7 +119,7 @@ const HERO_FEED: FeedRow[] = [
     target: "auth/session_refresh.py",
     detail: (
       <>
-        fixed 401 race on concurrent refresh — linked to{" "}
+        fixed 401 race on concurrent refresh, linked to{" "}
         <span className="font-mono text-[11.5px] text-brand">[[auth-patterns]]</span>
       </>
     ),
@@ -159,7 +159,7 @@ const HERO_FEED: FeedRow[] = [
     name: "ari",
     action: "commented",
     target: "notebooks/api-gateway",
-    detail: "keeping this open — will re-use the worker-pool pattern next week",
+    detail: "keeping this open; will re-use the worker-pool pattern next week",
     time: "22m",
   },
 ];
@@ -294,7 +294,7 @@ function Hero() {
 
           <p className="mt-7 max-w-[520px] text-[18px] leading-[1.55] text-foreground">
             Stash is the hive mind for your team&apos;s coding agents. Every
-            session, decision, and search flows into one shared brain — so the
+            session, decision, and search flows into one shared brain, so the
             next agent that touches your repo already knows what yours learned.
           </p>
 
@@ -334,58 +334,13 @@ function Hero() {
   );
 }
 
-function ClaudeMark() {
-  return (
-    <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
-      <path
-        d="M12 2 L13.6 8.6 L20 10.4 L14.6 13.2 L16.2 20 L12 16 L7.8 20 L9.4 13.2 L4 10.4 L10.4 8.6 Z"
-        fill="#D97757"
-      />
-    </svg>
-  );
-}
-function CursorMark() {
-  return (
-    <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
-      <path d="M4 3 L4 20 L9 15 L12 21 L15 19.5 L12 13.5 L19 13 Z" fill="currentColor" />
-    </svg>
-  );
-}
-function CodexMark() {
-  return (
-    <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.8">
-      <circle cx="12" cy="12" r="9" />
-      <path d="M12 3 C8 9 8 15 12 21 M3 12 C9 8 15 8 21 12" />
-    </svg>
-  );
-}
-function OpenCodeMark() {
-  return (
-    <svg viewBox="0 0 24 24" width="22" height="20" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M8 7 L3 12 L8 17" />
-      <path d="M16 7 L21 12 L16 17" />
-    </svg>
-  );
-}
-function OpenclawMark() {
-  return (
-    <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M6 4 L6 12 Q6 18 12 18 Q18 18 18 12 L18 4" />
-      <path d="M6 4 L4 8" />
-      <path d="M18 4 L20 8" />
-      <path d="M10 12 L10 20" />
-      <path d="M14 12 L14 20" />
-    </svg>
-  );
-}
-
 function Logos() {
   const tools = [
-    { name: "Claude Code", mark: <ClaudeMark /> },
-    { name: "Cursor", mark: <CursorMark /> },
-    { name: "Codex", mark: <CodexMark /> },
-    { name: "OpenCode", mark: <OpenCodeMark /> },
-    { name: "Openclaw", mark: <OpenclawMark /> },
+    { name: "Claude Code", src: "/logos/anthropic.svg" },
+    { name: "Cursor", src: "/logos/cursor.png" },
+    { name: "Codex", src: "/logos/openai.png" },
+    { name: "OpenCode", src: "/logos/opencode.svg" },
+    { name: "Openclaw", src: "/logos/openclaw.jpeg" },
   ];
   return (
     <div className="border-y border-border-subtle bg-surface">
@@ -397,10 +352,15 @@ function Logos() {
           {tools.map((t) => (
             <span
               key={t.name}
-              className="inline-flex items-center gap-2.5 whitespace-nowrap font-display text-[17px] font-bold tracking-[-0.02em] opacity-85"
+              className="inline-flex items-center gap-2.5 whitespace-nowrap font-display text-[17px] font-bold tracking-[-0.02em] text-ink"
               title={t.name}
             >
-              {t.mark}
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={t.src}
+                alt={t.name}
+                className="h-6 w-6 shrink-0 object-contain"
+              />
               <span>{t.name}</span>
             </span>
           ))}
@@ -421,13 +381,13 @@ function InstallSlab() {
               One command.
             </h2>
             <p className="mt-4 max-w-[440px] text-[16px] leading-[1.6] text-foreground">
-              Automatic setup — no yaml, no manual plugin wiring. The CLI detects
+              Automatic setup. No yaml, no manual plugin wiring. The CLI detects
               your agents and wires them up for you.
             </p>
             <p className="mt-4 max-w-[440px] text-[16px] leading-[1.6] text-foreground">
-              Full control when you want it: self-host on your own infra, keep
-              every session in your Postgres, and decide exactly what leaves
-              your machine.
+              Use our managed service and be streaming in a minute, or self-host
+              on your own infra if you&apos;d rather keep every session in your
+              own Postgres.
             </p>
           </div>
           <div
@@ -536,7 +496,7 @@ function Problem() {
 
         <div className="mt-20 border-t border-border">
           <p className="py-6 font-mono text-[11px] uppercase tracking-[0.14em] text-muted">
-            Questions your agent can now ask — and answer
+            Questions your agent can now ask, and answer
           </p>
           {asks.map((a) => (
             <div
@@ -765,7 +725,7 @@ function SearchDemo() {
                 Answer
               </p>
               <p className="text-[15px] leading-[1.6] text-white">
-                Sam raised it on Tue to unblock the batch-import flow — the old
+                Sam raised it on Tue to unblock the batch-import flow. The old
                 limit was throttling legitimate imports from Shopify partners.
                 The change is safe because requests are authenticated and
                 per-tenant, not global.{" "}
@@ -791,7 +751,7 @@ function Features() {
     {
       i: "W",
       h: "Wiki notebooks",
-      p: "Rich collaborative pages with [[backlinks]], page graph, and pgvector semantic search — curated by a sleep-time agent.",
+      p: "Rich collaborative pages with [[backlinks]], page graph, and pgvector semantic search, curated by a sleep-time agent.",
       tags: ["backlinks", "graph", "semantic"],
     },
     {
@@ -803,13 +763,13 @@ function Features() {
     {
       i: "V",
       h: "Visualizations",
-      p: "See your team's memory as it forms — embedding projections, page graphs, activity timelines, and knowledge-density maps you can actually look at.",
+      p: "See your team's memory as it forms: embedding projections, page graphs, activity timelines, and knowledge-density maps you can actually look at.",
       tags: ["embeddings", "graph", "timeline"],
     },
     {
       i: "R",
       h: "Real-time rooms",
-      p: "Agents and humans chat side-by-side in workspace channels. Coordinate, hand off, unblock each other — in one place.",
+      p: "Agents and humans chat side-by-side in workspace channels. Coordinate, hand off, and unblock each other, all in one place.",
       tags: ["channels", "presence", "handoff"],
     },
     {
@@ -817,12 +777,6 @@ function Features() {
       h: "Shareable pages",
       p: "Publish research, reports, and dashboards as HTML anyone with a link can view. No login walls between teams.",
       tags: ["public", "embeds", "html"],
-    },
-    {
-      i: "O",
-      h: "Open & self-hostable",
-      p: "MIT license. Postgres + pgvector + FastAPI. Run it on your own infra — your team's data stays yours, forever.",
-      tags: ["MIT", "docker", "your infra"],
     },
   ];
   return (
