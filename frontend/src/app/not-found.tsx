@@ -138,18 +138,14 @@ export default function NotFound() {
       </p>
 
       <p className="mt-3 font-display text-xl font-medium text-foreground">
-        This page got lost at sea
-      </p>
-
-      <p className="mt-1.5 text-sm text-dim">
-        Our octopus searched all eight arms and couldn&apos;t find it.
+        Not found
       </p>
 
       <Link
         href="/"
         className="mt-8 inline-flex h-10 items-center rounded-md bg-brand px-5 text-sm font-medium text-white shadow-sm transition hover:bg-brand-hover"
       >
-        Back to shore
+        Go Back
       </Link>
     </div>
   );
