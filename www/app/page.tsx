@@ -419,7 +419,7 @@ function InstallSlab() {
                 <span className="text-white">{INSTALL_COMMAND}</span>
               </div>
               <div className="whitespace-pre text-on-inverted-dim">
-                » installing stash cli  v0.9.2
+                » installing stash cli
               </div>
               <div className="whitespace-pre">
                 <span className="text-on-inverted-dim">» scope      </span>
@@ -874,7 +874,6 @@ function Footer() {
         ["Install", "#install"],
         ["How it works", "#how"],
         ["Features", "#features"],
-        ["Changelog", "/docs"],
       ],
     },
     {
@@ -882,23 +881,26 @@ function Footer() {
       links: [
         ["Docs", "/docs"],
         ["Quickstart", "/docs/quickstart"],
-        ["Use cases", "/docs"],
-        ["Architecture", "/docs"],
       ],
     },
     {
       h: "Company",
       links: [
         ["GitHub", "https://github.com/Fergana-Labs/stash"],
-        ["Discord", "#"],
-        ["Blog", "#"],
-        ["Contact", "#"],
+        ["Contact", "mailto:hi@ferganalabs.com"],
+      ],
+    },
+    {
+      h: "Legal",
+      links: [
+        ["Privacy", "/privacy"],
+        ["Terms", "/terms"],
       ],
     },
   ];
   return (
     <footer className="border-t border-border-subtle">
-      <div className="mx-auto grid max-w-[1200px] grid-cols-1 gap-10 px-7 pb-8 pt-14 sm:grid-cols-[1.2fr_1fr_1fr_1fr] sm:gap-12">
+      <div className="mx-auto grid max-w-[1200px] grid-cols-1 gap-10 px-7 pb-8 pt-14 sm:grid-cols-[1.3fr_1fr_1fr_1fr_1fr] sm:gap-10">
         <div>
           <div className="flex items-center gap-2.5 font-display text-[26px] font-black tracking-[-0.03em] text-ink">
             <Logo size={30} />
@@ -939,7 +941,7 @@ function Footer() {
       <div className="border-t border-border-subtle">
         <div className="mx-auto flex max-w-[1200px] flex-wrap items-center justify-between gap-3 px-7 py-5 font-mono text-[11px] uppercase tracking-[0.12em] text-muted">
           <span>© 2026 Fergana Labs</span>
-          <span>MIT · v0.9.2</span>
+          <span>MIT licensed</span>
         </div>
       </div>
     </footer>
