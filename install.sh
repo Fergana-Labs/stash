@@ -8,10 +8,10 @@
 #
 #   bash -c "$(curl -fsSL https://raw.githubusercontent.com/Fergana-Labs/stash/main/install.sh)"
 #
-# Zero prerequisites: if no Python toolchain is present, the script
+# If no Python toolchain is present, the script
 # bootstraps `uv` (a single Rust binary) which downloads the right Python
-# version automatically. The user never needs to install Python themselves.
-#
+# version automatically.
+
 # Re-run safe (idempotent): if stashai is already installed, the picked
 # package manager will upgrade it to the latest version.
 set -euo pipefail
