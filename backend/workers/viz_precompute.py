@@ -31,9 +31,9 @@ async def _recompute_one(user_id) -> None:
     pool = get_pool()
     await pool.execute(
         """
-        INSERT INTO knowledge_density_cache (user_id, clusters, source_signature, computed_at)
-        VALUES ($1, $2, $3, now())
-        ON CONFLICT (user_id)
+        INSERT INTO knowledge_density_cache (user_id, workspace_id, clusters, source_signature, computed_at)
+        VALUES ($1, NULL, $2, $3, now())
+        ON CONFLICT (user_id, workspace_id)
         DO UPDATE SET clusters = EXCLUDED.clusters,
                       source_signature = EXCLUDED.source_signature,
                       computed_at = EXCLUDED.computed_at
@@ -53,7 +53,8 @@ async def _tick() -> int:
         """
         SELECT u.id
         FROM users u
-        LEFT JOIN knowledge_density_cache kdc ON kdc.user_id = u.id
+        LEFT JOIN knowledge_density_cache kdc
+               ON kdc.user_id = u.id AND kdc.workspace_id IS NULL
         WHERE u.last_seen >= $1
           AND (kdc.computed_at IS NULL OR kdc.computed_at < $2)
         ORDER BY kdc.computed_at ASC NULLS FIRST

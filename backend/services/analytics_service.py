@@ -3,7 +3,6 @@
 import logging
 import math
 import re
-import time
 from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
@@ -13,37 +12,14 @@ from ..database import get_pool
 
 logger = logging.getLogger(__name__)
 
-# Density cache lives in knowledge_density_cache (migration 0017). A precompute
-# worker keeps it warm for active users; the endpoint only recomputes inline if
-# the row is missing or the source signature drifted. Treat drift as "any source
-# count changed by at least SIGNATURE_TOLERANCE" so typo-level edits don't thrash.
+# Density cache lives in knowledge_density_cache (migration 0017, extended in
+# 0018 to include an optional workspace_id so workspace-scoped density reuses
+# the same cache table). A precompute worker keeps it warm for active users;
+# the endpoint only recomputes inline if the row is missing or the source
+# signature drifted. Treat drift as "any source count changed by at least
+# SIGNATURE_TOLERANCE" so typo-level edits don't thrash.
 _DENSITY_CACHE_TTL = timedelta(hours=24)
 _DENSITY_SIGNATURE_TOLERANCE = 0.1
-
-# Workspace-scoped visualizations bypass the persistent caches (those are keyed
-# by user_id, and extending the schema for decorative viz isn't worth it). We
-# keep a tiny in-process TTL cache instead so repeated visits in the same
-# session don't rerun the full compute.
-_WS_VIZ_TTL_SECONDS = 300.0
-_ws_viz_cache: dict[tuple[str, UUID, UUID], tuple[float, dict]] = {}
-
-
-def _ws_viz_get(kind: str, user_id: UUID, workspace_id: UUID) -> dict | None:
-    entry = _ws_viz_cache.get((kind, user_id, workspace_id))
-    if entry is None:
-        return None
-    expires_at, value = entry
-    if time.monotonic() > expires_at:
-        _ws_viz_cache.pop((kind, user_id, workspace_id), None)
-        return None
-    return value
-
-
-def _ws_viz_put(kind: str, user_id: UUID, workspace_id: UUID, value: dict) -> None:
-    _ws_viz_cache[(kind, user_id, workspace_id)] = (
-        time.monotonic() + _WS_VIZ_TTL_SECONDS,
-        value,
-    )
 
 # Shared CTE for workspace access filtering on history_events.
 # When ws_idx is passed, the CTE narrows to a single workspace (the caller
@@ -505,43 +481,37 @@ async def get_knowledge_density(
 ) -> dict:
     """Topic clusters for the key topics treemap.
 
-    For user-wide requests, reads from knowledge_density_cache and computes
-    on miss/drift. Workspace-scoped requests bypass the cache — the cache
-    table is keyed by user_id and we don't want to extend the schema for
-    decorative visualizations."""
+    Reads from knowledge_density_cache (migration 0017/0018). Rows are keyed
+    by (user_id, workspace_id) with NULLS NOT DISTINCT, so user-wide and
+    per-workspace caches share the same table."""
     pool = get_pool()
     max_clusters = min(max_clusters, 50)
 
-    if workspace_id is not None:
-        cached_ws = _ws_viz_get("density", user_id, workspace_id)
-        if cached_ws is not None:
-            return {"clusters": cached_ws["clusters"][:max_clusters]}
-        clusters, _ = await compute_knowledge_density(user_id, workspace_id=workspace_id)
-        _ws_viz_put("density", user_id, workspace_id, {"clusters": clusters})
-        return {"clusters": clusters[:max_clusters]}
-
     cached = await pool.fetchrow(
-        "SELECT clusters, source_signature, computed_at FROM knowledge_density_cache WHERE user_id = $1",
+        "SELECT clusters, source_signature, computed_at FROM knowledge_density_cache "
+        "WHERE user_id = $1 AND workspace_id IS NOT DISTINCT FROM $2",
         user_id,
+        workspace_id,
     )
     now = datetime.now(UTC)
 
     if cached and now - cached["computed_at"] < _DENSITY_CACHE_TTL:
-        current_counts = await _get_source_counts(user_id)
+        current_counts = await _get_source_counts(user_id, workspace_id=workspace_id)
         if not _signature_drifted(cached["source_signature"], current_counts):
             return {"clusters": cached["clusters"][:max_clusters]}
 
-    clusters, signature = await compute_knowledge_density(user_id)
+    clusters, signature = await compute_knowledge_density(user_id, workspace_id=workspace_id)
     await pool.execute(
         """
-        INSERT INTO knowledge_density_cache (user_id, clusters, source_signature, computed_at)
-        VALUES ($1, $2, $3, now())
-        ON CONFLICT (user_id)
+        INSERT INTO knowledge_density_cache (user_id, workspace_id, clusters, source_signature, computed_at)
+        VALUES ($1, $2, $3, $4, now())
+        ON CONFLICT (user_id, workspace_id)
         DO UPDATE SET clusters = EXCLUDED.clusters,
                       source_signature = EXCLUDED.source_signature,
                       computed_at = EXCLUDED.computed_at
         """,
         user_id,
+        workspace_id,
         clusters,
         signature,
     )
@@ -568,22 +538,16 @@ async def get_embedding_projection(
     scope_arg = workspace_id if workspace_id is not None else user_id
     ws_idx = 1 if workspace_id is not None else None
 
-    # Workspace-scoped: check the in-process TTL cache and return early on
-    # hit. Persistent cache is keyed (user_id, source_type) only.
-    if workspace_id is not None:
-        ws_cached = _ws_viz_get(f"projection:{source_key}", user_id, workspace_id)
-        if ws_cached is not None:
-            return ws_cached
-
-    # Cache is user-scoped only; skip when filtering to a workspace.
-    cache = None
-    if workspace_id is None:
-        cache = await pool.fetchrow(
-            "SELECT points, embedding_count, computed_at FROM embedding_projections "
-            "WHERE user_id = $1 AND source_type = $2",
-            user_id,
-            source_key,
-        )
+    # Cache row keyed by (user_id, source_type, workspace_id) — NULL workspace
+    # is the user-wide row (migration 0018, NULLS NOT DISTINCT).
+    cache = await pool.fetchrow(
+        "SELECT points, embedding_count, computed_at FROM embedding_projections "
+        "WHERE user_id = $1 AND source_type = $2 "
+        "AND workspace_id IS NOT DISTINCT FROM $3",
+        user_id,
+        source_key,
+        workspace_id,
+    )
 
     # Count current embeddings
     total_count = 0
@@ -632,10 +596,7 @@ async def get_embedding_projection(
             }
 
     if total_count == 0:
-        empty = {"points": [], "stats": {"total_embeddings": 0, "projected": 0}, "cached": False}
-        if workspace_id is not None:
-            _ws_viz_put(f"projection:{source_key}", user_id, workspace_id, empty)
-        return empty
+        return {"points": [], "stats": {"total_embeddings": 0, "projected": 0}, "cached": False}
 
     # Fetch embeddings from each source
     all_items: list[dict] = []
@@ -752,24 +713,23 @@ async def get_embedding_projection(
             }
         )
 
-    # Update cache — only for user-wide requests (cache is keyed by user).
-    if workspace_id is None:
-        await pool.execute(
-            "INSERT INTO embedding_projections (user_id, source_type, points, embedding_count, computed_at) "
-            "VALUES ($1, $2, $3, $4, NOW()) "
-            "ON CONFLICT (user_id, source_type) "
-            "DO UPDATE SET points = $3, embedding_count = $4, computed_at = NOW()",
-            user_id,
-            source_key,
-            points,
-            total_count,
-        )
+    await pool.execute(
+        "INSERT INTO embedding_projections "
+        "(user_id, source_type, workspace_id, points, embedding_count, computed_at) "
+        "VALUES ($1, $2, $3, $4, $5, NOW()) "
+        "ON CONFLICT (user_id, source_type, workspace_id) "
+        "DO UPDATE SET points = EXCLUDED.points, "
+        "              embedding_count = EXCLUDED.embedding_count, "
+        "              computed_at = NOW()",
+        user_id,
+        source_key,
+        workspace_id,
+        points,
+        total_count,
+    )
 
-    result = {
+    return {
         "points": points,
         "stats": {"total_embeddings": total_count, "projected": len(points)},
         "cached": False,
     }
-    if workspace_id is not None:
-        _ws_viz_put(f"projection:{source_key}", user_id, workspace_id, result)
-    return result

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { listMyWorkspaces } from "../lib/api";
 import type { User, Workspace } from "../lib/types";
 
@@ -68,6 +68,7 @@ interface AppSidebarProps {
 export default function AppSidebar({ user, onLogout }: AppSidebarProps) {
   const pathname = usePathname();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [selectedWsId, setSelectedWsId] = useState<string | null>(null);
   const [showWsSwitcher, setShowWsSwitcher] = useState(false);
@@ -96,15 +97,12 @@ export default function AppSidebar({ user, onLogout }: AppSidebarProps) {
       localStorage.setItem(WS_STORAGE_KEY, wsMatch[1]);
       return;
     }
-    if (typeof window !== "undefined") {
-      const params = new URLSearchParams(window.location.search);
-      const wsParam = params.get("ws");
-      if (wsParam) {
-        setSelectedWsId(wsParam);
-        localStorage.setItem(WS_STORAGE_KEY, wsParam);
-      }
+    const wsParam = searchParams.get("ws");
+    if (wsParam) {
+      setSelectedWsId(wsParam);
+      localStorage.setItem(WS_STORAGE_KEY, wsParam);
     }
-  }, [pathname]);
+  }, [pathname, searchParams]);
 
   const selectWorkspace = (wsId: string) => {
     setSelectedWsId(wsId);
