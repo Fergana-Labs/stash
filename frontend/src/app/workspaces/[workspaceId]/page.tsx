@@ -86,7 +86,7 @@ export default function WorkspacePage() {
   const [tables, setTables] = useState<Table[]>([]);
   const [recentFiles, setRecentFiles] = useState<FileInfo[]>([]);
   const [members, setMembers] = useState<WorkspaceMember[]>([]);
-  const [isMember, setIsMember] = useState(false);
+  const [isMember, setIsMember] = useState<boolean | null>(null);
   const [error, setError] = useState("");
   const [showManageSidebar, setShowManageSidebar] = useState(false);
 
@@ -119,7 +119,7 @@ export default function WorkspacePage() {
       setTables(tblRes);
       setRecentFiles(filesRes.slice(0, 5));
       if (user) setIsMember(m.some(mem => mem.user_id === user.id));
-    } catch { setIsMember(false); }
+    } catch { /* leave isMember null so we don't flash the non-member screen on transient errors */ }
   }, [workspaceId, user]);
 
   useEffect(() => { loadWorkspace(); }, [loadWorkspace]);
@@ -215,7 +215,9 @@ export default function WorkspacePage() {
           </div>
         )}
 
-        {!isMember ? (
+        {isMember === null ? (
+          <div className="flex-1 flex items-center justify-center text-muted">Loading...</div>
+        ) : !isMember ? (
           <div className="flex-1 flex items-center justify-center">
             <div className="text-center">
               <p className="text-dim mb-4">You&apos;re not a member of this workspace.</p>
