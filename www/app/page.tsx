@@ -73,12 +73,6 @@ function Nav() {
             How it works
           </Link>
           <Link
-            href="#search"
-            className="hidden rounded-md px-3 py-2 transition hover:bg-raised hover:text-ink sm:inline-flex"
-          >
-            Search
-          </Link>
-          <Link
             href="#features"
             className="hidden rounded-md px-3 py-2 transition hover:bg-raised hover:text-ink sm:inline-flex"
           >
@@ -91,12 +85,10 @@ function Nav() {
             Docs
           </Link>
           <Link
-            href="https://github.com/Fergana-Labs/stash"
-            className="hidden h-8 items-center gap-2.5 rounded-lg border border-border bg-background px-3 font-mono text-[12px] text-ink transition hover:border-ink sm:inline-flex"
+            href="/auth/login"
+            className="hidden h-10 items-center rounded-lg border border-border bg-background px-[18px] text-[14px] font-medium text-ink transition hover:border-ink sm:inline-flex"
           >
-            <span className="text-brand">★</span>
-            <span>Star</span>
-            <span className="text-dim">4.2k</span>
+            Sign in
           </Link>
           <Link
             href="#install"
@@ -145,7 +137,7 @@ const HERO_FEED: FeedRow[] = [
     role: "agent",
     name: "scout",
     action: "queried",
-    target: "stash:search",
+    target: "stash search",
     detail: (
       <>
         &ldquo;why was the{" "}
@@ -290,22 +282,20 @@ function Hero() {
             <span className="rounded-full bg-brand px-2 py-0.5 font-mono text-[10px] font-bold uppercase tracking-[0.12em] text-white">
               New
             </span>
-            <span>stash:sleep now ships with Claude Code, Cursor, Codex</span>
+            <span>Now works with Openclaw</span>
             <span className="font-mono text-muted">→</span>
           </Link>
 
           <h1 className="mt-7 text-balance font-display text-[clamp(44px,6.2vw,80px)] font-black leading-[0.95] tracking-[-0.045em] text-ink">
-            <span className="text-brand">Shared memory</span>
+            <span className="text-brand">Agent memory</span>
             <br />
-            for teams of
-            <br />
-            AI coding agents.
+            for your repos.
           </h1>
 
           <p className="mt-7 max-w-[520px] text-[18px] leading-[1.55] text-foreground">
-            When a teammate&apos;s coding agent fixes a bug, yours does too.
-            Every session, decision, and search becomes part of one living
-            knowledge base — queryable by every agent on the team.
+            Stash is the hive mind for your team&apos;s coding agents. Every
+            session, decision, and search flows into one shared brain — so the
+            next agent that touches your repo already knows what yours learned.
           </p>
 
           <div className="mt-8 flex flex-wrap items-center gap-3">
@@ -313,13 +303,13 @@ function Hero() {
               href="#install"
               className="inline-flex h-10 items-center gap-2 rounded-lg bg-brand px-[18px] text-[14px] font-medium text-white shadow-sm transition hover:bg-brand-hover"
             >
-              Install stash <span className="font-mono">→</span>
+              Install Stash <span className="font-mono">→</span>
             </Link>
             <Link
               href="https://github.com/Fergana-Labs/stash"
               className="inline-flex h-10 items-center gap-2 rounded-lg border border-border bg-transparent px-[18px] text-[14px] font-medium text-ink transition hover:border-ink"
             >
-              <span className="text-brand">★</span> Star on GitHub
+              View on GitHub
             </Link>
           </div>
 
@@ -344,18 +334,74 @@ function Hero() {
   );
 }
 
+function ClaudeMark() {
+  return (
+    <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
+      <path
+        d="M12 2 L13.6 8.6 L20 10.4 L14.6 13.2 L16.2 20 L12 16 L7.8 20 L9.4 13.2 L4 10.4 L10.4 8.6 Z"
+        fill="#D97757"
+      />
+    </svg>
+  );
+}
+function CursorMark() {
+  return (
+    <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
+      <path d="M4 3 L4 20 L9 15 L12 21 L15 19.5 L12 13.5 L19 13 Z" fill="currentColor" />
+    </svg>
+  );
+}
+function CodexMark() {
+  return (
+    <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.8">
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 3 C8 9 8 15 12 21 M3 12 C9 8 15 8 21 12" />
+    </svg>
+  );
+}
+function OpenCodeMark() {
+  return (
+    <svg viewBox="0 0 24 24" width="22" height="20" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M8 7 L3 12 L8 17" />
+      <path d="M16 7 L21 12 L16 17" />
+    </svg>
+  );
+}
+function OpenclawMark() {
+  return (
+    <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M6 4 L6 12 Q6 18 12 18 Q18 18 18 12 L18 4" />
+      <path d="M6 4 L4 8" />
+      <path d="M18 4 L20 8" />
+      <path d="M10 12 L10 20" />
+      <path d="M14 12 L14 20" />
+    </svg>
+  );
+}
+
 function Logos() {
-  const tools = ["Claude Code", "Cursor", "Codex", "OpenCode", "Aider", "Continue"];
+  const tools = [
+    { name: "Claude Code", mark: <ClaudeMark /> },
+    { name: "Cursor", mark: <CursorMark /> },
+    { name: "Codex", mark: <CodexMark /> },
+    { name: "OpenCode", mark: <OpenCodeMark /> },
+    { name: "Openclaw", mark: <OpenclawMark /> },
+  ];
   return (
     <div className="border-y border-border-subtle bg-surface">
       <div className="mx-auto flex max-w-[1200px] flex-wrap items-center gap-8 px-7 py-6">
         <span className="shrink-0 font-mono text-[11px] uppercase tracking-[0.14em] text-muted">
           Works with
         </span>
-        <div className="flex flex-wrap items-center gap-x-10 gap-y-3 font-display text-[17px] font-bold tracking-[-0.02em] text-dim">
+        <div className="flex flex-wrap items-center gap-x-10 gap-y-4 text-dim">
           {tools.map((t) => (
-            <span key={t} className="opacity-85 whitespace-nowrap">
-              {t}
+            <span
+              key={t.name}
+              className="inline-flex items-center gap-2.5 whitespace-nowrap font-display text-[17px] font-bold tracking-[-0.02em] opacity-85"
+              title={t.name}
+            >
+              {t.mark}
+              <span>{t.name}</span>
             </span>
           ))}
         </div>
@@ -373,27 +419,16 @@ function InstallSlab() {
             <EyebrowDot>Install</EyebrowDot>
             <h2 className="mt-4 font-display text-[clamp(28px,3.2vw,40px)] font-bold leading-[1.1] tracking-[-0.02em] text-ink">
               One command.
-              <br />
-              Re-run safe.
             </h2>
             <p className="mt-4 max-w-[440px] text-[16px] leading-[1.6] text-foreground">
-              Installs the CLI and walks you through the four steps.
-              Ships plugins for Claude&nbsp;Code, Cursor, Codex, and more — your
-              agent starts streaming to the team history immediately.
+              Automatic setup — no yaml, no manual plugin wiring. The CLI detects
+              your agents and wires them up for you.
             </p>
-            <ul className="mt-6 flex flex-wrap gap-2 font-mono text-[12px] tracking-[0.04em] text-dim">
-              {[
-                ["01", "scope"],
-                ["02", "sign-in"],
-                ["03", "workspace"],
-                ["04", "agent plugin"],
-              ].map(([idx, label]) => (
-                <li key={idx} className="rounded bg-raised px-2.5 py-1">
-                  <span className="mr-1.5 text-brand">{idx}</span>
-                  {label}
-                </li>
-              ))}
-            </ul>
+            <p className="mt-4 max-w-[440px] text-[16px] leading-[1.6] text-foreground">
+              Full control when you want it: self-host on your own infra, keep
+              every session in your Postgres, and decide exactly what leaves
+              your machine.
+            </p>
           </div>
           <div
             className="overflow-hidden rounded-[14px] border border-white/5 bg-inverted"
@@ -623,7 +658,7 @@ function HowItWorks() {
       n: "03",
       pill: "Search",
       title: "Every agent queries the whole team's work.",
-      body: "stash:search runs a cross-resource agentic loop over files, history, notebooks, tables, and chats. Your agent answers with sources, not hallucinations.",
+      body: "stash search runs a cross-resource agentic loop over files, history, notebooks, tables, and chats. Your agent answers with sources, not hallucinations.",
       viz: <SearchViz />,
     },
   ];
@@ -686,7 +721,7 @@ function SearchDemo() {
             Stash answers with receipts.
           </h2>
           <p className="max-w-[620px] text-[18px] leading-[1.55] text-dim">
-            stash:search runs an agentic loop across files, history, notebooks,
+            stash search runs an agentic loop across files, history, notebooks,
             tables, and chats. Every answer arrives with sources attached.
           </p>
         </div>
@@ -697,7 +732,7 @@ function SearchDemo() {
           <div className="flex items-center gap-3.5 border-b border-white/5 px-5 py-3.5">
             <div className="flex items-center gap-2.5 font-mono text-[13px] text-white">
               <span className="text-brand">›</span>
-              <span>stash:search</span>
+              <span>stash search</span>
             </div>
             <span className="ml-auto font-mono text-[10px] uppercase tracking-[0.14em] text-on-inverted-dim">
               agentic loop · 5 resources
@@ -762,8 +797,14 @@ function Features() {
     {
       i: "S",
       h: "Agentic search",
-      p: "stash:search runs a cross-resource loop over every surface in the workspace. One query, every source, with receipts.",
+      p: "stash search runs a cross-resource loop over every surface in the workspace. One query, every source, with receipts.",
       tags: ["cross-source", "cited", "streaming"],
+    },
+    {
+      i: "V",
+      h: "Visualizations",
+      p: "See your team's memory as it forms — embedding projections, page graphs, activity timelines, and knowledge-density maps you can actually look at.",
+      tags: ["embeddings", "graph", "timeline"],
     },
     {
       i: "R",
@@ -853,7 +894,7 @@ function ClosingCTA() {
             href="#install"
             className="inline-flex h-10 items-center rounded-lg bg-brand px-[18px] text-[14px] font-medium text-white shadow-sm transition hover:bg-brand-hover"
           >
-            Install stash →
+            Install Stash →
           </Link>
           <Link
             href="/docs/quickstart"
@@ -863,7 +904,7 @@ function ClosingCTA() {
           </Link>
         </div>
         <p className="mx-auto mt-8 font-mono text-[11.5px] uppercase tracking-[0.1em] text-muted">
-          MIT · Self-hostable · Re-run safe
+          MIT · Self-hostable
         </p>
       </div>
     </section>
@@ -933,7 +974,7 @@ function Footer() {
       <div className="border-t border-border-subtle">
         <div className="mx-auto flex max-w-[1200px] flex-wrap items-center justify-between gap-3 px-7 py-5 font-mono text-[11px] uppercase tracking-[0.12em] text-muted">
           <span>© 2026 Fergana Labs</span>
-          <span>MIT · v0.9.2 · Re-run safe</span>
+          <span>MIT · v0.9.2</span>
         </div>
       </div>
     </footer>
