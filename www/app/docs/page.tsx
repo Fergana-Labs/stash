@@ -120,33 +120,82 @@ export default function DocsOverview() {
         After a long day of working with coding agents, I ask &ldquo;what did I get done
         today?&rdquo;
       </P>
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 my-6">
-        <div className="rounded-2xl border border-border bg-surface px-5 py-4">
-          <div className="text-xs font-medium text-muted uppercase tracking-wider mb-3">Without Stash &middot; 6 items</div>
-          <ul className="space-y-1.5 text-[14px] text-dim">
-            <li>Page graph: d3-force stabilization, pan/zoom/drag, hover links</li>
-            <li>Notebook navigation: browser back/forward, URL sync</li>
-            <li>ID-based page links with autocomplete</li>
-            <li>Fixed embedding space click/drag, loading blink</li>
-            <li>Workspace dropdown separated from workspace-home link</li>
-            <li>Invite code UX: copied feedback, owner-only rotate</li>
-          </ul>
-          <div className="mt-3 text-xs text-muted">Only shows work that landed in Git</div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 my-6">
+        {/* Without Stash */}
+        <div className="rounded-2xl border border-border overflow-hidden flex flex-col">
+          <div className="bg-surface px-4 py-2.5 border-b border-border">
+            <span className="text-xs font-medium text-muted uppercase tracking-wider">Without Stash</span>
+          </div>
+          <div className="bg-[#1a1a1a] px-4 py-4 font-mono text-[12px] leading-[1.7] space-y-3 flex-1 flex flex-col">
+            <div>
+              <span className="text-zinc-500">&gt;</span>{" "}
+              <span className="text-zinc-200">What did I get done today?</span>
+            </div>
+            <div className="text-zinc-400">
+              <span className="text-zinc-500">●</span> Reading git log for today&apos;s commits...
+            </div>
+            <div className="text-zinc-400">
+              <span className="text-zinc-500">●</span> Found 6 commits across 3 PRs
+            </div>
+            <div className="text-zinc-300 mt-1 space-y-1">
+              <div>Today you shipped:</div>
+              <div className="pl-2 text-zinc-400 space-y-0.5">
+                <div>• Page graph: d3-force stabilization, pan/zoom/drag, hover links</div>
+                <div>• Notebook navigation: browser back/forward, URL sync</div>
+                <div>• ID-based page links with autocomplete</div>
+                <div>• Fixed embedding space click/drag, loading blink</div>
+                <div>• Workspace dropdown separated from workspace-home link</div>
+                <div>• Invite code UX: copied feedback, owner-only rotate</div>
+              </div>
+            </div>
+            <div className="text-zinc-600 text-[12px] pb-3 mb-3 border-b border-zinc-700 mt-auto">
+              <span className="text-zinc-500">✱</span> Sautéed for 8s
+            </div>
+          </div>
         </div>
-        <div className="rounded-2xl border border-brand/30 bg-brand/5 px-5 py-4">
-          <div className="text-xs font-medium text-brand uppercase tracking-wider mb-3">With Stash &middot; 9 items</div>
-          <ul className="space-y-1.5 text-[14px] text-dim">
-            <li>Page graph: d3-force stabilization, pan/zoom/drag, hover links</li>
-            <li className="font-semibold text-foreground">Cleaned up old Render servers in production</li>
-            <li>Notebook navigation: browser back/forward, URL sync</li>
-            <li>ID-based page links with autocomplete</li>
-            <li>Fixed embedding space click/drag, loading blink</li>
-            <li className="font-semibold text-foreground">Wrote installation docs for new users</li>
-            <li>Workspace dropdown separated from workspace-home link</li>
-            <li className="font-semibold text-foreground">Helped sam@joinstash.ai onboard to enterprise</li>
-            <li>Invite code UX: copied feedback, owner-only rotate</li>
-          </ul>
-          <div className="mt-3 text-xs text-muted">Captures work that never touched Git</div>
+
+        {/* With Stash */}
+        <div className="rounded-2xl border border-brand/30 overflow-hidden flex flex-col">
+          <div className="bg-brand/10 px-4 py-2.5 border-b border-brand/20">
+            <span className="text-xs font-medium text-brand uppercase tracking-wider">With Stash</span>
+          </div>
+          <div className="bg-[#1a1a1a] px-4 py-4 font-mono text-[12px] leading-[1.7] space-y-3 flex-1 flex flex-col">
+            <div>
+              <span className="text-zinc-500">&gt;</span>{" "}
+              <span className="text-zinc-200">What did I get done today?</span>
+            </div>
+            <div className="text-zinc-400">
+              <span className="text-zinc-500">●</span>{" "}
+              <span className="text-zinc-500">stash history query</span>{" "}
+              <span className="text-zinc-300">--since today</span>
+            </div>
+            <div className="pl-3 border-l border-zinc-700 text-zinc-400 space-y-1">
+              <div className="text-zinc-500 text-[11px]">Found 14 sessions across git, ops, and collaboration</div>
+            </div>
+            <div className="text-zinc-400">
+              <span className="text-zinc-500">●</span> Cross-referencing with git log...
+            </div>
+            <div className="text-zinc-300 mt-1 space-y-1">
+              <div>Today you shipped:</div>
+              <div className="pl-2 space-y-0.5">
+                <div className="text-zinc-500 text-[11px] mt-1 mb-0.5">From git:</div>
+                <div className="text-zinc-400">• Page graph: d3-force stabilization, pan/zoom/drag, hover links</div>
+                <div className="text-zinc-400">• Notebook navigation: browser back/forward, URL sync</div>
+                <div className="text-zinc-400">• ID-based page links with autocomplete</div>
+                <div className="text-zinc-400">• Fixed embedding space click/drag, loading blink</div>
+                <div className="text-zinc-400">• Workspace dropdown separated from workspace-home link</div>
+                <div className="text-zinc-400">• Invite code UX: copied feedback, owner-only rotate</div>
+                <div className="text-zinc-500 text-[11px] mt-1 mb-0.5">From stash:</div>
+                <div className="text-zinc-400">• Cleaned up old Render servers in production</div>
+                <div className="text-zinc-400">• Wrote installation docs for new users</div>
+                <div className="text-zinc-400">• Helped sam@joinstash.ai onboard to enterprise</div>
+              </div>
+            </div>
+            <div className="text-zinc-600 text-[12px] pb-3 mb-3 border-b border-zinc-700 mt-auto">
+              <span className="text-zinc-500">✱</span> Crunched for 12s
+            </div>
+          </div>
         </div>
       </div>
 
