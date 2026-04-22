@@ -17,11 +17,6 @@
 set -euo pipefail
 
 PACKAGE="stashai"
-MIN_PYTHON="3.11"
-
-python_ge() {
-  python3 -c "import sys; exit(0 if sys.version_info >= (${1//./,}) else 1)" 2>/dev/null
-}
 
 if command -v pipx >/dev/null 2>&1; then
   INSTALLER="pipx"
@@ -29,9 +24,6 @@ if command -v pipx >/dev/null 2>&1; then
 elif command -v uv >/dev/null 2>&1; then
   INSTALLER="uv"
   INSTALL_CMD=(uv tool install "$PACKAGE" --force)
-elif command -v pip3 >/dev/null 2>&1 && python_ge "$MIN_PYTHON"; then
-  INSTALLER="pip3"
-  INSTALL_CMD=(pip3 install --user --upgrade "$PACKAGE")
 else
   printf '→ Installing uv (manages Python for you)…\n'
   curl -LsSf https://astral.sh/uv/install.sh | sh 2>/dev/null
