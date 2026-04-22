@@ -13,7 +13,7 @@
       "description": "Connect Claude Code to Stash — stream activity to history, inject agent memory, collaborate in workspaces.",
       "version": "0.1.4",
       "category": "productivity",
-      "homepage": "https://joinstash.ai",
+      "homepage": "https://stash.ac",
       "author": {
         "name": "Fergana Labs"
       }

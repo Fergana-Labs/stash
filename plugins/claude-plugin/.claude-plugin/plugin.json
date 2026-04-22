@@ -11,7 +11,7 @@
       "title": "API Endpoint",
       "description": "Stash API base URL",
       "type": "string",
-      "default": "https://joinstash.ai",
+      "default": "https://api.stash.ac",
       "sensitive": false
     },
     "api_key": {

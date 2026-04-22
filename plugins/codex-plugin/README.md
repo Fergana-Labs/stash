@@ -35,7 +35,7 @@ Everything is a plain `stash` CLI subcommand — no slash commands or skills:
 |---------|-------------|
 | `stash connect` | Interactive setup (auth + workspace + store) |
 | `stash settings` | Interactive settings page (streaming, scope, endpoint, …) |
-| `stash disconnect` | Pause event streaming across every installed plugin |
+| `stash disconnect` | Sign out and clear config (re-run `stash connect` to re-onboard) |
 
 At session end (Codex `Stop`) the plugin spawns `codex exec …` headless with
 a shared curation prompt. Toggle with `auto_curate` in `~/.stash/config.json`.
@@ -51,10 +51,11 @@ codex --profile stash
 ```
 
 The profile sets `sandbox_mode = "workspace-write"` with `network_access =
-true` (so `stash history …` can reach `api.joinstash.ai`) and
+true` (so `stash history …` can reach `api.stash.ac`) and
 `approval_policy = "on-failure"` (so successful reads don't prompt; failures
 still do). Run plain `codex` — without the flag — if you want Codex's default
 approval behavior.
+
 
 ## ⚠️ Known gaps
 
@@ -93,5 +94,5 @@ the `stash` CLI — all commands support `--json`:
 stash history query --ws <id> --limit 20 --json
 stash history search "<query>" --ws <id> --json
 stash whoami --json
-stash workspace list --mine --json
+stash workspaces list --mine --json
 ```

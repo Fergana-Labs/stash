@@ -13,7 +13,7 @@ suppress_unstable_features_warning = true
 # notify = ["bash", "${PLUGIN_ROOT}/scripts/_run.sh", "on_notify"]
 
 # Codex's default workspace-write sandbox blocks outbound network, which
-# silently kills stash hook POSTs to api.joinstash.ai. Lifting the block at the
+# silently kills stash hook POSTs to api.stash.ac. Lifting the block at the
 # top level lets plain `codex` stream. The plugin still gates streaming
 # per-repo on `.stash/stash.json` presence, so this is a capability grant,
 # not a trust grant. Remove this block if you want network only under

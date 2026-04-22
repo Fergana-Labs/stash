@@ -82,7 +82,7 @@ def get_config() -> dict:
         cli = _load_cli_config()
         manifest = find_manifest(os.getcwd())
         return {
-            "api_endpoint": cli.get("base_url", "https://joinstash.ai"),
+            "api_endpoint": cli.get("base_url", "https://api.stash.ac"),
             "api_key": cli.get("api_key", ""),
             "agent_name": cli.get("username", ""),
             "workspace_id": (manifest or {}).get("workspace_id", ""),
@@ -91,7 +91,7 @@ def get_config() -> dict:
         }
 
     return {
-        "api_endpoint": os.environ.get("CLAUDE_PLUGIN_USER_CONFIG_api_endpoint", "https://joinstash.ai"),
+        "api_endpoint": os.environ.get("CLAUDE_PLUGIN_USER_CONFIG_api_endpoint", "https://api.stash.ac"),
         "api_key": api_key,
         "agent_name": agent_name,
         "workspace_id": os.environ.get("CLAUDE_PLUGIN_USER_CONFIG_workspace_id", ""),

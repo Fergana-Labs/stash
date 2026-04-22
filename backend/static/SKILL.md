@@ -9,7 +9,6 @@ It provides:
 - tables (typed columns, rows, CSV import/export, semantic row search)
 - structured history/memory events (with file attachments)
 - file uploads (S3-backed; PDF/image text extraction when available)
-- decks (standalone — see deck endpoints)
 
 Design boundary:
 - Stash owns persistent shared state and plugin-based memory access
@@ -88,7 +87,7 @@ scope — pick or create a workspace first.
 | Files | `/api/v1/workspaces/{ws}/files` |
 | Memory / History | `/api/v1/workspaces/{ws}/memory/events` |
 | Transcripts | `/api/v1/workspaces/{ws}/transcripts` |
-| Aggregate (across the user's workspaces) | `/api/v1/me/{notebooks,tables,history-events,decks}` |
+| Aggregate (across the user's workspaces) | `/api/v1/me/{notebooks,tables,history-events}` |
 
 CRUD verbs are standard: `POST` to create, `GET` list/detail, `PATCH` update,
 `DELETE` remove. Semantic-search endpoints hang off their parent resource
@@ -114,10 +113,12 @@ The viewer renders all three with the same style; an `↗` glyph marks
 off-origin URLs. Internal `/notebooks?…` and stash absolute URLs are
 SPA-routed (same tab, no reload); externals open in a new tab.
 
-There is no `[[wiki-link]]` syntax. The TipTap editor offers an
-autocomplete triggered by typing `[[`, but what it inserts is a
-markdown link with the page's id URL — the `[[…]]` brackets never
-reach storage.
+`[[wiki-link]]` syntax is supported: `[[Page Name]]` resolves to
+another page by name within the same notebook. Use
+`[[Page Name|display text]]` for a custom label. The backend extracts
+these links for backlinking and link-graph resolution. The TipTap
+editor also offers a `[[` autocomplete that inserts standard markdown
+links — both forms work.
 
 ### Block elements
 
@@ -152,7 +153,8 @@ tags are not supported.
 When generating page content programmatically, follow these rules and
 you'll round-trip cleanly through edit mode:
 
-1. Never emit `[[…]]` — use the id-URL link form.
+1. Prefer `[[Page Name]]` for cross-page links within the same notebook —
+   the backend resolves them and builds the backlink graph automatically.
 2. Never emit relative paths like `[text](foo.md)` or `![](foo.jpg)` —
    the renderer treats them as dead and the editor strips them if a
    user saves the page.
@@ -198,6 +200,19 @@ Query/search:
   endpoint until `status` is `done` or `failed`.
 - `DELETE /files/{id}` — best-effort S3 cleanup plus DB row delete.
 
+## Transcripts
+
+Session transcripts are full `.jsonl` conversation logs uploaded at session end.
+
+- `POST /transcripts` — multipart upload. Fields: `file` (the .jsonl),
+  `session_id` (required), `agent_name` (required), `cwd` (optional).
+  50 MB cap.
+- `GET  /transcripts/{session_id}` — fetch metadata and a signed download URL
+  for a transcript by session ID.
+
+The CLI wraps this: `stash history transcript <session_id>` fetches and
+prints a transcript; `--save ./out.jsonl` writes it to a file instead.
+
 ## Rate Limits
 - Registration: 5/min
 - Login: 10/min
@@ -211,7 +226,6 @@ Query/search:
   (`done` with `text: null`).
 - Attach files to history events rather than embedding base64 — keeps event
   payloads small and allows reuse across events.
-- When authoring page content that links to other pages in the same
-  workspace, use `[[folder/page]]` / `[[notebook/folder/page]]` wiki
-  syntax. Unqualified `[[page]]` only resolves to a sibling in the same
-  folder.
+- When authoring page content that links to other pages, use
+  `[[Page Name]]` wiki syntax. Links resolve by page name within the
+  same notebook. Use `[[Page Name|display text]]` for a custom label.
