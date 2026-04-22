@@ -7,13 +7,14 @@ type Props = {
   sessionId: string;
   device?: string;
   userName: string;
+  accessToken: string;
 };
 
 // Client-side "Authorize CLI" confirmation. Explicit click triggers the Auth0
 // → backend token exchange + CLI approve. Without this gate, the CLI would
 // silently receive a token any time a user with an active Auth0 session loaded
 // this URL.
-export default function ConnectTokenClient({ apiUrl, sessionId, device, userName }: Props) {
+export default function ConnectTokenClient({ apiUrl, sessionId, device, userName, accessToken }: Props) {
   const [state, setState] = useState<
     | { kind: "idle" }
     | { kind: "submitting" }
@@ -24,19 +25,11 @@ export default function ConnectTokenClient({ apiUrl, sessionId, device, userName
   async function authorize() {
     setState({ kind: "submitting" });
     try {
-      const tokenRes = await fetch("/auth/access-token");
-      if (!tokenRes.ok) {
-        const returnTo = `${window.location.pathname}${window.location.search}`;
-        window.location.href = `/auth/login?returnTo=${encodeURIComponent(returnTo)}`;
-        return;
-      }
-      const { token } = await tokenRes.json();
-
       const exchangeUrl = new URL(`${apiUrl}/api/v1/auth0/exchange`);
       if (device) exchangeUrl.searchParams.set("device", device);
       const exchangeRes = await fetch(exchangeUrl.toString(), {
         method: "POST",
-        headers: { Authorization: `Bearer ${token}` },
+        headers: { Authorization: `Bearer ${accessToken}` },
       });
       if (!exchangeRes.ok) {
         const detail = await exchangeRes.text().catch(() => "");
