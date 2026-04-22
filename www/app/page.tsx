@@ -338,9 +338,9 @@ function Logos() {
   const tools = [
     { name: "Claude Code", src: "/logos/anthropic.svg" },
     { name: "Cursor", src: "/logos/cursor.png" },
-    { name: "Codex", src: "/logos/openai.png" },
+    { name: "Codex", src: "/logos/openai.svg" },
     { name: "OpenCode", src: "/logos/opencode.svg" },
-    { name: "Openclaw", src: "/logos/openclaw.jpeg" },
+    { name: "Openclaw", src: "/logos/openclaw.png" },
   ];
   return (
     <div className="border-y border-border-subtle bg-surface">
