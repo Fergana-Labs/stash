@@ -138,3 +138,45 @@ export function Title({ children }: { children: React.ReactNode }) {
 export function Subtitle({ children }: { children: React.ReactNode }) {
   return <p className="text-lg text-dim leading-8 max-w-2xl mb-10">{children}</p>;
 }
+
+export function CommandRef({
+  command,
+  args,
+  description,
+  params,
+}: {
+  command: string;
+  args?: string;
+  description: string;
+  params?: { name: string; type: string; desc: string; required?: boolean }[];
+}) {
+  return (
+    <div className="my-5 rounded-xl border border-border overflow-hidden">
+      <div className="px-5 py-3 bg-raised/50 border-b border-border">
+        <code className="text-[13px] font-mono">
+          <span className="font-semibold text-brand">{command}</span>
+          {args && <span className="text-muted ml-2">{args}</span>}
+        </code>
+      </div>
+      <div className="px-5 py-4">
+        <p className="text-[14px] text-dim leading-6">{description}</p>
+        {params && params.length > 0 && (
+          <div className="mt-4 pt-4 border-t border-border space-y-3">
+            {params.map((p) => (
+              <div key={p.name}>
+                <div className="flex items-center gap-2 mb-0.5">
+                  <code className="text-[12px] font-mono font-medium text-foreground">{p.name}</code>
+                  <span className="text-[11px] text-muted">{p.type}</span>
+                  {p.required && (
+                    <span className="text-[10px] font-bold text-brand uppercase tracking-wider">REQUIRED</span>
+                  )}
+                </div>
+                <p className="text-[12px] text-dim leading-5">{p.desc}</p>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}

@@ -4,9 +4,15 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 
+interface NavItem {
+  href: string;
+  label: string;
+  children?: { href: string; label: string }[];
+}
+
 interface NavSection {
   title: string;
-  items: { href: string; label: string }[];
+  items: NavItem[];
 }
 
 const NAV: NavSection[] = [
@@ -22,7 +28,20 @@ const NAV: NavSection[] = [
   {
     title: "Reference",
     items: [
-      { href: "/docs/cli", label: "CLI" },
+      {
+        href: "/docs/cli",
+        label: "CLI",
+        children: [
+          { href: "/docs/cli#install", label: "Install" },
+          { href: "/docs/cli#first-time-setup", label: "First-time setup" },
+          { href: "/docs/cli#authentication", label: "Authentication" },
+          { href: "/docs/cli#notebooks", label: "Notebooks" },
+          { href: "/docs/cli#history", label: "History" },
+          { href: "/docs/cli#tables", label: "Tables" },
+          { href: "/docs/cli#files", label: "Files" },
+          { href: "/docs/cli#streaming-hooks", label: "Streaming & hooks" },
+        ],
+      },
     ],
   },
   {
@@ -97,17 +116,31 @@ export default function DocsLayout({ children }: { children: React.ReactNode }) 
                     {section.items.map((item) => {
                       const isActive = pathname === item.href;
                       return (
-                        <Link
-                          key={item.href}
-                          href={item.href}
-                          className={`block rounded-lg px-3 py-2 text-[13px] transition-colors ${
-                            isActive
-                              ? "bg-brand/10 text-brand font-medium"
-                              : "text-dim hover:text-ink hover:bg-raised"
-                          }`}
-                        >
-                          {item.label}
-                        </Link>
+                        <div key={item.href}>
+                          <Link
+                            href={item.href}
+                            className={`block rounded-lg px-3 py-2 text-[13px] transition-colors ${
+                              isActive
+                                ? "bg-brand/10 text-brand font-medium"
+                                : "text-dim hover:text-ink hover:bg-raised"
+                            }`}
+                          >
+                            {item.label}
+                          </Link>
+                          {isActive && item.children && (
+                            <div className="ml-3 mt-1 space-y-0.5 border-l border-border pl-3">
+                              {item.children.map((child) => (
+                                <a
+                                  key={child.href}
+                                  href={child.href}
+                                  className="block rounded-md px-2 py-1.5 text-[12px] text-muted hover:text-ink hover:bg-raised transition-colors"
+                                >
+                                  {child.label}
+                                </a>
+                              ))}
+                            </div>
+                          )}
+                        </div>
                       );
                     })}
                   </div>
