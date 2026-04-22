@@ -20,14 +20,14 @@ from .config import (
     MANIFEST_FILE,
     PRODUCTION_BASE_URL,
     Manifest,
-    clear_not_member,
+    clear_streaming,
     find_project_manifest,
     load_config,
     load_enabled_agents,
     load_manifest,
-    mark_dismissed,
     save_config,
     save_enabled_agents,
+    set_streaming,
     stored_base_url,
 )
 from .formatting import console, output_json, print_members, print_rooms, print_user
@@ -1880,11 +1880,13 @@ def _connect_repo(repo_root: Path, client: StashClient) -> None:
     manifest_path.write_text(json.dumps(manifest, indent=2) + "\n")
     console.print(f"  Wrote [cyan]{MANIFEST_FILE}[/cyan]")
 
+    set_streaming(str(matched["id"]))
+
     _append_claude_md(repo_root)
 
     console.print(
         f"\n  Commit [cyan]{MANIFEST_FILE}[/cyan] and [cyan]CLAUDE.md[/cyan] and push. "
-        "Teammates will see a prompt to join."
+        "Teammates will see a prompt to run [cyan]stash start[/cyan]."
     )
 
 
@@ -2090,47 +2092,9 @@ def connect_cmd():
         _connect_repo(repo_root, c)
 
 
-@app.command("join")
-def join_cmd():
-    """Join the workspace this repo streams to. Run this after cloning a repo with a .stash file."""
-    cfg = _require_auth()
-
-    manifest = load_manifest()
-    if not manifest:
-        console.print("[yellow]No .stash file found in this repo.[/yellow]")
-        raise typer.Exit(1)
-
-    workspace_id = manifest.get("workspace_id", "")
-    if not workspace_id:
-        console.print("[red].stash file is missing workspace_id.[/red]")
-        raise typer.Exit(1)
-
-    base_url = manifest.get("base_url") or cfg["base_url"]
-    if base_url != cfg["base_url"]:
-        console.print(
-            f"  [yellow]This repo points to a different Stash server:[/yellow] {base_url}\n"
-            f"  Run [cyan]stash onboard --url {base_url}[/cyan] to authenticate first."
-        )
-        raise typer.Exit(1)
-    with StashClient(base_url=base_url, api_key=cfg["api_key"]) as c:
-        try:
-            members = c.workspace_members(workspace_id)
-        except StashError as e:
-            if e.status_code == 403:
-                console.print(
-                    f"  [yellow]You're not a member of this workspace.[/yellow]\n"
-                    f"  Ask the workspace owner to add you, or join via an invite link."
-                )
-                raise typer.Exit(1)
-            _err(e)
-
-    clear_not_member(workspace_id)
-    console.print(f"  [green]✓[/green] You're a member — hooks will stream to this workspace.")
-
-
-@app.command("dismiss")
-def dismiss_cmd():
-    """Stop showing the 'run stash join' hint for this repo's workspace."""
+@app.command("start")
+def start_cmd():
+    """Start streaming transcripts to this repo's workspace."""
     _require_auth()
 
     manifest = load_manifest()
@@ -2143,8 +2107,27 @@ def dismiss_cmd():
         console.print("[red].stash file is missing workspace_id.[/red]")
         raise typer.Exit(1)
 
-    mark_dismissed(workspace_id)
-    console.print("  [green]✓[/green] Dismissed. You won't see the join hint for this workspace.")
+    set_streaming(workspace_id)
+    console.print(f"  [green]✓[/green] Streaming enabled for workspace {workspace_id[:8]}…")
+
+
+@app.command("stop")
+def stop_cmd():
+    """Stop streaming transcripts for this repo's workspace."""
+    _require_auth()
+
+    manifest = load_manifest()
+    if not manifest:
+        console.print("[yellow]No .stash file found in this repo.[/yellow]")
+        raise typer.Exit(1)
+
+    workspace_id = manifest.get("workspace_id", "")
+    if not workspace_id:
+        console.print("[red].stash file is missing workspace_id.[/red]")
+        raise typer.Exit(1)
+
+    clear_streaming(workspace_id)
+    console.print(f"  [green]✓[/green] Streaming stopped for workspace {workspace_id[:8]}…")
 
 
 # ===========================================================================
@@ -2255,7 +2238,7 @@ Run `stash --help` to see everything.
 
 ## How do I share my workspace with my team?
 
-Commit the `.stash` file and push. Teammates who clone the repo will see a prompt to run `stash join`.
+Commit the `.stash` file and push. Teammates who clone the repo will see a prompt to run `stash start`.
 """
 
 
@@ -2327,7 +2310,7 @@ def _show_setup_complete_splash() -> None:
         "\n"
         "[bold]Share with your team[/bold]\n"
         "Commit the [cyan].stash[/cyan] file and push. Teammates who clone the repo\n"
-        "will see a prompt to run [cyan]stash join[/cyan]."
+        "will see a prompt to run [cyan]stash start[/cyan]."
     )
 
     console.print(

@@ -127,27 +127,27 @@ def clear_config() -> None:
         USER_CONFIG_FILE.unlink()
 
 
-# --- Membership cache ---
+# --- Streaming toggle ---
 
-def is_dismissed(workspace_id: str) -> bool:
-    return (CACHE_DIR / f"dismissed-{workspace_id}").exists()
+def is_streaming(workspace_id: str) -> bool:
+    return (CACHE_DIR / f"streaming-{workspace_id}").exists()
 
 
-def mark_dismissed(workspace_id: str) -> None:
+def set_streaming(workspace_id: str) -> None:
     CACHE_DIR.mkdir(parents=True, exist_ok=True)
-    (CACHE_DIR / f"dismissed-{workspace_id}").touch()
+    (CACHE_DIR / f"streaming-{workspace_id}").touch()
 
 
-def is_not_member(workspace_id: str) -> bool:
-    return (CACHE_DIR / f"not-member-{workspace_id}").exists()
-
-
-def mark_not_member(workspace_id: str) -> None:
-    CACHE_DIR.mkdir(parents=True, exist_ok=True)
-    (CACHE_DIR / f"not-member-{workspace_id}").touch()
-
-
-def clear_not_member(workspace_id: str) -> None:
-    flag = CACHE_DIR / f"not-member-{workspace_id}"
+def clear_streaming(workspace_id: str) -> None:
+    flag = CACHE_DIR / f"streaming-{workspace_id}"
     if flag.exists():
         flag.unlink()
+
+
+def is_hint_shown(workspace_id: str) -> bool:
+    return (CACHE_DIR / f"hint-shown-{workspace_id}").exists()
+
+
+def mark_hint_shown(workspace_id: str) -> None:
+    CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    (CACHE_DIR / f"hint-shown-{workspace_id}").touch()
