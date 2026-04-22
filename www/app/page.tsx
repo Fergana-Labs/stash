@@ -294,15 +294,15 @@ function Hero() {
           </ScrollLink>
 
           <h1 className="mt-7 text-balance font-display text-[clamp(44px,6.2vw,80px)] font-black leading-[0.95] tracking-[-0.045em] text-ink">
-            <span className="text-brand">Agent memory</span>
+            <span className="text-brand">Hive mind</span>
             <br />
-            for your repos.
+            for your agents.
           </h1>
 
           <p className="mt-7 max-w-[520px] text-[18px] leading-[1.55] text-foreground">
-            Stash is the hive mind for your team&apos;s coding agents. Every
-            session, decision, and search flows into one shared brain, so the
-            next agent that touches your repo already knows what has been learned.
+            Stash is shared memory for your team&apos;s repos and coding agents.
+            Every session, decision, and search flows into one shared brain.
+            The next agent that touches your repo already knows what&apos;s been learned.
           </p>
 
           <div className="mt-8 max-w-[520px]">
