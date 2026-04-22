@@ -17,10 +17,10 @@ export default function DocsOverview() {
 
       <H3>How Stash Works</H3>
       <P>
-        Stash makes it so that <strong>every contributor to your repo effectively uses the same coding agent</strong> 
-   
+        Stash makes it so that <strong>every contributor to your repo effectively uses the same coding agent</strong>
+
         , regardless of model, harness, or device.
-      </P> 
+      </P>
       <P>
         More concretely, Stash auto-uploads coding
         agent transcripts to a shared store, indexes them,
@@ -40,8 +40,8 @@ export default function DocsOverview() {
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 my-6">
         {/* Without Stash */}
-        <div className="rounded-xl border border-zinc-700/50 overflow-hidden flex flex-col">
-          <div className="bg-[#2a2a2a] px-4 py-2.5 border-b border-zinc-800 relative flex items-center">
+        <div className="rounded-xl border border-zinc-200 overflow-hidden flex flex-col shadow-sm">
+          <div className="bg-[#e4e4e4] px-4 py-2.5 border-b border-zinc-300 relative flex items-center">
             <div className="flex gap-1.5">
               <span className="w-[10px] h-[10px] rounded-full bg-[#ff5f57]" />
               <span className="w-[10px] h-[10px] rounded-full bg-[#febc2e]" />
@@ -49,46 +49,46 @@ export default function DocsOverview() {
             </div>
             <span className="absolute inset-0 flex items-center justify-center text-[11px] font-medium text-zinc-500">Without Stash</span>
           </div>
-          <div className="bg-[#1a1a1a] font-mono text-[12px] leading-[1.7] flex-1 flex flex-col max-h-[280px]">
-            <div className="px-4 pt-4 pb-3">
-              <span className="text-zinc-500">&gt;</span>{" "}
-              <span className="text-zinc-200">Investigate the memory leak with our calendar service</span>
+          <div className="bg-white font-mono text-[12px] leading-[1.7] flex-1 max-h-[280px] overflow-y-auto">
+            <div className="sticky top-0 bg-white z-10 px-4 pt-4 pb-3">
+              <span className="text-zinc-400">&gt;</span>{" "}
+              <span className="text-zinc-900">Investigate the memory leak with our calendar service</span>
             </div>
-            <div className="px-4 py-1 space-y-3 overflow-y-auto flex-1">
-              <div className="text-zinc-400">
-                <span className="text-zinc-500">●</span> Reading server logs and source code...
+            <div className="px-4 py-1 space-y-3">
+              <div className="text-zinc-600">
+                <span className="text-zinc-400">●</span> Reading server logs and source code...
               </div>
-              <div className="text-zinc-400">
-                <span className="text-zinc-500">●</span> Found 11 CalendarClient creation sites, only 1 has cleanup
+              <div className="text-zinc-600">
+                <span className="text-zinc-400">●</span> Found 11 <span className="text-blue-600">CalendarClient</span> creation sites, only 1 has cleanup
               </div>
-              <div className="text-zinc-400">
-                <span className="text-zinc-500">●</span> Found 10 GmailClient creation sites, only 3 have close()
+              <div className="text-zinc-600">
+                <span className="text-zinc-400">●</span> Found 10 <span className="text-blue-600">GmailClient</span> creation sites, only 3 have <span className="text-blue-600">close()</span>
               </div>
-              <div className="text-zinc-400">
-                <span className="text-zinc-500">●</span> Hypothesis: unclosed httplib2 connections from build() calls
+              <div className="text-zinc-600">
+                <span className="text-zinc-400">●</span> Hypothesis: unclosed <span className="text-blue-600">httplib2</span> connections from <span className="text-blue-600">build()</span> calls
               </div>
-              <div className="text-zinc-400">
-                <span className="text-zinc-500">●</span> Testing whether webhooks or draft_refresh_loop is the source...
+              <div className="text-zinc-600">
+                <span className="text-zinc-400">●</span> Testing whether webhooks or <span className="text-blue-600">_draft_refresh_loop</span> is the source...
               </div>
-              <div className="text-zinc-400">
-                <span className="text-zinc-500">●</span> Confirmed: draft_refresh_loop creates 10 build() calls/min
+              <div className="text-zinc-600">
+                <span className="text-zinc-400">●</span> Confirmed: <span className="text-blue-600">_draft_refresh_loop</span> creates 10 <span className="text-blue-600">build()</span> calls/min
               </div>
-              <div className="text-zinc-300 mt-1">
-                The root cause is unclosed httplib2+SSL connections. Each build() call
+              <div className="text-zinc-800 mt-1">
+                The root cause is unclosed <span className="text-blue-600">httplib2</span>+SSL connections. Each <span className="text-blue-600">build()</span> call
                 leaks ~100KB. At 2-3/sec over 2 hours = ~1.15GB.
               </div>
             </div>
-            <div className="px-4 pt-2 pb-4 border-t border-zinc-800">
-              <div className="text-zinc-600 text-[12px]">
-                <span className="text-zinc-500">✱</span> Sautéed for 12m 42s
+            <div className="sticky bottom-0 bg-white z-10 px-4 pt-2 pb-4 border-t border-zinc-200">
+              <div className="text-zinc-400 text-[12px]">
+                <span className="text-zinc-400">✱</span> Sautéed for 12m 42s
               </div>
             </div>
           </div>
         </div>
 
         {/* With Stash */}
-        <div className="rounded-xl border border-zinc-700/50 overflow-hidden flex flex-col">
-          <div className="bg-[#2a2a2a] px-4 py-2.5 border-b border-zinc-800 relative flex items-center">
+        <div className="rounded-xl border border-zinc-200 overflow-hidden flex flex-col shadow-sm">
+          <div className="bg-[#e4e4e4] px-4 py-2.5 border-b border-zinc-300 relative flex items-center">
             <div className="flex gap-1.5">
               <span className="w-[10px] h-[10px] rounded-full bg-[#ff5f57]" />
               <span className="w-[10px] h-[10px] rounded-full bg-[#febc2e]" />
@@ -96,37 +96,37 @@ export default function DocsOverview() {
             </div>
             <span className="absolute inset-0 flex items-center justify-center text-[11px] font-medium text-zinc-500">With Stash</span>
           </div>
-          <div className="bg-[#1a1a1a] font-mono text-[12px] leading-[1.7] flex-1 flex flex-col max-h-[280px]">
-            <div className="px-4 pt-4 pb-3">
-              <span className="text-zinc-500">&gt;</span>{" "}
-              <span className="text-zinc-200">Investigate the memory leak with our calendar service</span>
+          <div className="bg-white font-mono text-[12px] leading-[1.7] flex-1 max-h-[280px] overflow-y-auto">
+            <div className="sticky top-0 bg-white z-10 px-4 pt-4 pb-3">
+              <span className="text-zinc-400">&gt;</span>{" "}
+              <span className="text-zinc-900">Investigate the memory leak with our calendar service</span>
             </div>
-            <div className="px-4 py-1 space-y-3 overflow-y-auto flex-1">
-              <div className="text-zinc-400">
-                <span className="text-zinc-500">●</span>{" "}
+            <div className="px-4 py-1 space-y-3">
+              <div className="text-zinc-600">
+                <span className="text-zinc-400">●</span>{" "}
                 <span className="text-zinc-500">stash history search</span>{" "}
-                <span className="text-zinc-300">&quot;memory leak build gmail calendar&quot;</span>
+                <span className="text-blue-600">&quot;memory leak build gmail calendar&quot;</span>
               </div>
-              <div className="pl-3 border-l border-zinc-700 text-zinc-400 space-y-1">
-                <div className="text-zinc-500 text-[11px]">Sam&apos;s session from last night (22 events):</div>
-                <div>Sam identified 10 build() calls/min from _draft_refresh_loop, not webhooks.</div>
-                <div>Sam fixed GmailClient with lazy init + context managers.</div>
-                <div>Leak is still active post-fix: CalendarClient has no close() in any path.</div>
+              <div className="pl-3 border-l border-zinc-300 text-zinc-600 space-y-1">
+                <div className="text-zinc-400 text-[11px]">Sam&apos;s session from last night (22 events):</div>
+                <div>Sam identified 10 <span className="text-blue-600">build()</span> calls/min from <span className="text-blue-600">_draft_refresh_loop</span>, not webhooks.</div>
+                <div>Sam fixed <span className="text-blue-600">GmailClient</span> with lazy init + context managers.</div>
+                <div>Leak is still active post-fix: <span className="text-blue-600">CalendarClient</span> has no <span className="text-blue-600">close()</span> in any path.</div>
               </div>
-              <div className="text-zinc-400">
-                <span className="text-zinc-500">●</span> Checking Sam&apos;s commit 4bc908f...
+              <div className="text-zinc-600">
+                <span className="text-zinc-400">●</span> Checking Sam&apos;s commit <span className="text-blue-600">4bc908f</span>...
               </div>
-              <div className="text-zinc-400">
-                <span className="text-zinc-500">●</span> Adding __del__ and context managers to CalendarClient across 11 sites
+              <div className="text-zinc-600">
+                <span className="text-zinc-400">●</span> Adding <span className="text-blue-600">__del__</span> and context managers to <span className="text-blue-600">CalendarClient</span> across 11 sites
               </div>
-              <div className="text-zinc-300 mt-1">
-                Done. Sam&apos;s fix covered GmailClient. Applied the same pattern
-                to CalendarClient to close the remaining leak.
+              <div className="text-zinc-800 mt-1">
+                Done. Sam&apos;s fix covered <span className="text-blue-600">GmailClient</span>. Applied the same pattern
+                to <span className="text-blue-600">CalendarClient</span> to close the remaining leak.
               </div>
             </div>
-            <div className="px-4 pt-2 pb-4 border-t border-zinc-800">
-              <div className="text-zinc-600 text-[12px]">
-                <span className="text-zinc-500">✱</span> Crunched for 2m 55s
+            <div className="sticky bottom-0 bg-white z-10 px-4 pt-2 pb-4 border-t border-zinc-200">
+              <div className="text-zinc-400 text-[12px]">
+                <span className="text-zinc-400">✱</span> Crunched for 2m 55s
               </div>
             </div>
           </div>
@@ -141,8 +141,8 @@ export default function DocsOverview() {
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 my-6">
         {/* Without Stash */}
-        <div className="rounded-xl border border-zinc-700/50 overflow-hidden flex flex-col">
-          <div className="bg-[#2a2a2a] px-4 py-2.5 border-b border-zinc-800 relative flex items-center">
+        <div className="rounded-xl border border-zinc-200 overflow-hidden flex flex-col shadow-sm">
+          <div className="bg-[#e4e4e4] px-4 py-2.5 border-b border-zinc-300 relative flex items-center">
             <div className="flex gap-1.5">
               <span className="w-[10px] h-[10px] rounded-full bg-[#ff5f57]" />
               <span className="w-[10px] h-[10px] rounded-full bg-[#febc2e]" />
@@ -150,21 +150,21 @@ export default function DocsOverview() {
             </div>
             <span className="absolute inset-0 flex items-center justify-center text-[11px] font-medium text-zinc-500">Without Stash</span>
           </div>
-          <div className="bg-[#1a1a1a] font-mono text-[12px] leading-[1.7] flex-1 flex flex-col max-h-[280px]">
-            <div className="px-4 pt-4 pb-3">
-              <span className="text-zinc-500">&gt;</span>{" "}
-              <span className="text-zinc-200">What did I get done today?</span>
+          <div className="bg-white font-mono text-[12px] leading-[1.7] flex-1 max-h-[280px] overflow-y-auto">
+            <div className="sticky top-0 bg-white z-10 px-4 pt-4 pb-3">
+              <span className="text-zinc-400">&gt;</span>{" "}
+              <span className="text-zinc-900">What did I get done today?</span>
             </div>
-            <div className="px-4 py-1 space-y-3 overflow-y-auto flex-1">
-              <div className="text-zinc-400">
-                <span className="text-zinc-500">●</span> Reading git log for today&apos;s commits...
+            <div className="px-4 py-1 space-y-3">
+              <div className="text-zinc-600">
+                <span className="text-zinc-400">●</span> Reading git log for today&apos;s commits...
               </div>
-              <div className="text-zinc-400">
-                <span className="text-zinc-500">●</span> Found 6 commits across 3 PRs
+              <div className="text-zinc-600">
+                <span className="text-zinc-400">●</span> Found 6 commits across 3 PRs
               </div>
-              <div className="text-zinc-300 mt-1 space-y-1">
+              <div className="text-zinc-800 mt-1 space-y-1">
                 <div>Today you shipped:</div>
-                <div className="pl-2 text-zinc-400 space-y-0.5">
+                <div className="pl-2 text-zinc-600 space-y-0.5">
                   <div>• Page graph: d3-force stabilization, pan/zoom/drag, hover links</div>
                   <div>• Notebook navigation: browser back/forward, URL sync</div>
                   <div>• ID-based page links with autocomplete</div>
@@ -174,17 +174,17 @@ export default function DocsOverview() {
                 </div>
               </div>
             </div>
-            <div className="px-4 pt-2 pb-4 border-t border-zinc-800">
-              <div className="text-zinc-600 text-[12px]">
-                <span className="text-zinc-500">✱</span> Sautéed for 8s
+            <div className="sticky bottom-0 bg-white z-10 px-4 pt-2 pb-4 border-t border-zinc-200">
+              <div className="text-zinc-400 text-[12px]">
+                <span className="text-zinc-400">✱</span> Sautéed for 8s
               </div>
             </div>
           </div>
         </div>
 
         {/* With Stash */}
-        <div className="rounded-xl border border-zinc-700/50 overflow-hidden flex flex-col">
-          <div className="bg-[#2a2a2a] px-4 py-2.5 border-b border-zinc-800 relative flex items-center">
+        <div className="rounded-xl border border-zinc-200 overflow-hidden flex flex-col shadow-sm">
+          <div className="bg-[#e4e4e4] px-4 py-2.5 border-b border-zinc-300 relative flex items-center">
             <div className="flex gap-1.5">
               <span className="w-[10px] h-[10px] rounded-full bg-[#ff5f57]" />
               <span className="w-[10px] h-[10px] rounded-full bg-[#febc2e]" />
@@ -192,43 +192,43 @@ export default function DocsOverview() {
             </div>
             <span className="absolute inset-0 flex items-center justify-center text-[11px] font-medium text-zinc-500">With Stash</span>
           </div>
-          <div className="bg-[#1a1a1a] font-mono text-[12px] leading-[1.7] flex-1 flex flex-col max-h-[280px]">
-            <div className="px-4 pt-4 pb-3">
-              <span className="text-zinc-500">&gt;</span>{" "}
-              <span className="text-zinc-200">What did I get done today?</span>
+          <div className="bg-white font-mono text-[12px] leading-[1.7] flex-1 max-h-[280px] overflow-y-auto">
+            <div className="sticky top-0 bg-white z-10 px-4 pt-4 pb-3">
+              <span className="text-zinc-400">&gt;</span>{" "}
+              <span className="text-zinc-900">What did I get done today?</span>
             </div>
-            <div className="px-4 py-1 space-y-3 overflow-y-auto flex-1">
-              <div className="text-zinc-400">
-                <span className="text-zinc-500">●</span>{" "}
+            <div className="px-4 py-1 space-y-3">
+              <div className="text-zinc-600">
+                <span className="text-zinc-400">●</span>{" "}
                 <span className="text-zinc-500">stash history query</span>{" "}
-                <span className="text-zinc-300">--since today</span>
+                <span className="text-blue-600">--since today</span>
               </div>
-              <div className="pl-3 border-l border-zinc-700 text-zinc-400 space-y-1">
-                <div className="text-zinc-500 text-[11px]">Found 14 sessions across git, ops, and collaboration</div>
+              <div className="pl-3 border-l border-zinc-300 text-zinc-600 space-y-1">
+                <div className="text-zinc-400 text-[11px]">Found 14 sessions across git, ops, and collaboration</div>
               </div>
-              <div className="text-zinc-400">
-                <span className="text-zinc-500">●</span> Cross-referencing with git log...
+              <div className="text-zinc-600">
+                <span className="text-zinc-400">●</span> Cross-referencing with git log...
               </div>
-              <div className="text-zinc-300 mt-1 space-y-1">
+              <div className="text-zinc-800 mt-1 space-y-1">
                 <div>Today you shipped:</div>
                 <div className="pl-2 space-y-0.5">
-                  <div className="text-zinc-500 text-[11px] mt-1 mb-0.5">From git:</div>
-                  <div className="text-zinc-400">• Page graph: d3-force stabilization, pan/zoom/drag, hover links</div>
-                  <div className="text-zinc-400">• Notebook navigation: browser back/forward, URL sync</div>
-                  <div className="text-zinc-400">• ID-based page links with autocomplete</div>
-                  <div className="text-zinc-400">• Fixed embedding space click/drag, loading blink</div>
-                  <div className="text-zinc-400">• Workspace dropdown separated from workspace-home link</div>
-                  <div className="text-zinc-400">• Invite code UX: copied feedback, owner-only rotate</div>
-                  <div className="text-zinc-500 text-[11px] mt-1 mb-0.5">From stash:</div>
-                  <div className="text-zinc-400">• Cleaned up old Render servers in production</div>
-                  <div className="text-zinc-400">• Wrote installation docs for new users</div>
-                  <div className="text-zinc-400">• Helped sam@joinstash.ai onboard to enterprise</div>
+                  <div className="text-zinc-400 text-[11px] mt-1 mb-0.5">From git:</div>
+                  <div className="text-zinc-600">• Page graph: d3-force stabilization, pan/zoom/drag, hover links</div>
+                  <div className="text-zinc-600">• Notebook navigation: browser back/forward, URL sync</div>
+                  <div className="text-zinc-600">• ID-based page links with autocomplete</div>
+                  <div className="text-zinc-600">• Fixed embedding space click/drag, loading blink</div>
+                  <div className="text-zinc-600">• Workspace dropdown separated from workspace-home link</div>
+                  <div className="text-zinc-600">• Invite code UX: copied feedback, owner-only rotate</div>
+                  <div className="text-zinc-400 text-[11px] mt-1 mb-0.5">From stash:</div>
+                  <div className="text-zinc-600">• Cleaned up old Render servers in production</div>
+                  <div className="text-zinc-600">• Wrote installation docs for new users</div>
+                  <div className="text-zinc-600">• Helped sam@joinstash.ai onboard to enterprise</div>
                 </div>
               </div>
             </div>
-            <div className="px-4 pt-2 pb-4 border-t border-zinc-800">
-              <div className="text-zinc-600 text-[12px]">
-                <span className="text-zinc-500">✱</span> Crunched for 12s
+            <div className="sticky bottom-0 bg-white z-10 px-4 pt-2 pb-4 border-t border-zinc-200">
+              <div className="text-zinc-400 text-[12px]">
+                <span className="text-zinc-400">✱</span> Crunched for 12s
               </div>
             </div>
           </div>
