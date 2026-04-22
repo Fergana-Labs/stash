@@ -15,7 +15,7 @@ const jetbrainsMono = JetBrains_Mono({
 export const metadata: Metadata = {
   title: "Stash · Agent memory for your repos",
   description:
-    "Stash is the hive mind for your team's coding agents. Every session, decision, and search flows into one shared brain, so the next agent that touches your repo already knows what yours learned.",
+    "Stash is the hive mind for your team's coding agents. Every session, decision, and search flows into one shared brain, so the next agent that touches your repo already knows what has been learned.",
 };
 
 export default function RootLayout({

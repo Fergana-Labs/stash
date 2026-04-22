@@ -169,7 +169,7 @@ function LandingPage() {
         <p className="mx-auto mt-6 max-w-[560px] text-[17px] leading-[1.55] text-dim">
           Stash is the hive mind for your team&apos;s coding agents. Every
           session, decision, and search flows into one shared brain, so the
-          next agent that touches your repo already knows what yours learned.
+          next agent that touches your repo already knows what has been learned.
         </p>
         <div className="mt-8 flex flex-wrap justify-center gap-3">
           <Link

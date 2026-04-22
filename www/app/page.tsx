@@ -302,7 +302,7 @@ function Hero() {
           <p className="mt-7 max-w-[520px] text-[18px] leading-[1.55] text-foreground">
             Stash is the hive mind for your team&apos;s coding agents. Every
             session, decision, and search flows into one shared brain, so the
-            next agent that touches your repo already knows what yours learned.
+            next agent that touches your repo already knows what has been learned.
           </p>
 
           <div className="mt-8 max-w-[520px]">
