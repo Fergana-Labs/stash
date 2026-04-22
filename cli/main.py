@@ -2113,29 +2113,19 @@ def join_cmd():
         )
         raise typer.Exit(1)
     with StashClient(base_url=base_url, api_key=cfg["api_key"]) as c:
-        already_member = False
         try:
-            ws = c.get_workspace(workspace_id)
-            already_member = True
+            members = c.workspace_members(workspace_id)
         except StashError as e:
-            if e.status_code not in (403, 404):
-                _err(e)
-
-        if already_member:
-            ws_name = ws.get("name", workspace_id[:8])
-            console.print(f"  [green]✓[/green] You're already streaming to [bold]{ws_name}[/bold].")
-            clear_not_member(workspace_id)
-            return
-
-        try:
-            ws = c.join_workspace_by_id(workspace_id)
-        except StashError as e:
-            console.print(f"[red]Could not join workspace: {e.detail}[/red]")
-            raise typer.Exit(1)
+            if e.status_code == 403:
+                console.print(
+                    f"  [yellow]You're not a member of this workspace.[/yellow]\n"
+                    f"  Ask the workspace owner to add you, or join via an invite link."
+                )
+                raise typer.Exit(1)
+            _err(e)
 
     clear_not_member(workspace_id)
-    ws_name = ws.get("name", workspace_id[:8])
-    console.print(f"  [green]✓[/green] You're now streaming to [bold]{ws_name}[/bold].")
+    console.print(f"  [green]✓[/green] You're a member — hooks will stream to this workspace.")
 
 
 @app.command("dismiss")

@@ -130,17 +130,6 @@ async def join_workspace(
     return WorkspaceResponse(**ws)
 
 
-@router.post("/{workspace_id}/join", response_model=WorkspaceResponse)
-async def join_workspace_by_id(
-    workspace_id: UUID,
-    current_user: dict = Depends(get_current_user),
-):
-    ws = await workspace_service.join_workspace(workspace_id, current_user["id"])
-    if not ws:
-        raise HTTPException(status_code=404, detail="Workspace not found")
-    return WorkspaceResponse(**ws)
-
-
 @router.post("/{workspace_id}/invite-code/rotate", response_model=WorkspaceResponse)
 async def rotate_invite_code(
     workspace_id: UUID,
