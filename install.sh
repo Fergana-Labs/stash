@@ -8,16 +8,20 @@
 #
 #   bash -c "$(curl -fsSL https://raw.githubusercontent.com/Fergana-Labs/stash/main/install.sh)"
 #
-# `curl … | bash` works for the install part but the interactive picker
-# needs a real terminal on stdin — bash's `| bash` makes the script body
-# stdin instead. We try to detect that case and surface an actionable
-# message rather than crashing inside questionary.
-#
+# If no Python toolchain is present, the script
+# bootstraps `uv` (a single Rust binary) which downloads the right Python
+# version automatically.
+
 # Re-run safe (idempotent): if stashai is already installed, the picked
 # package manager will upgrade it to the latest version.
 set -euo pipefail
 
 PACKAGE="stashai"
+MIN_PYTHON="3.11"
+
+python_ge() {
+  python3 -c "import sys; exit(0 if sys.version_info >= (${1//./,}) else 1)" 2>/dev/null
+}
 
 if command -v pipx >/dev/null 2>&1; then
   INSTALLER="pipx"
@@ -25,19 +29,15 @@ if command -v pipx >/dev/null 2>&1; then
 elif command -v uv >/dev/null 2>&1; then
   INSTALLER="uv"
   INSTALL_CMD=(uv tool install "$PACKAGE" --force)
-elif command -v pip3 >/dev/null 2>&1; then
+elif command -v pip3 >/dev/null 2>&1 && python_ge "$MIN_PYTHON"; then
   INSTALLER="pip3"
   INSTALL_CMD=(pip3 install --user --upgrade "$PACKAGE")
 else
-  cat >&2 <<'MSG'
-stash needs a Python package manager to install. None found on PATH.
-
-Pick one and re-run:
-  brew install pipx          # macOS / Homebrew
-  python3 -m pip install pipx
-  curl -LsSf https://astral.sh/uv/install.sh | sh    # uv
-MSG
-  exit 1
+  printf '→ Installing uv (manages Python for you)…\n'
+  curl -LsSf https://astral.sh/uv/install.sh | sh 2>/dev/null
+  export PATH="$HOME/.local/bin:$PATH"
+  INSTALLER="uv"
+  INSTALL_CMD=(uv tool install "$PACKAGE" --force)
 fi
 
 printf '→ Installing %s via %s…\n' "$PACKAGE" "$INSTALLER"
