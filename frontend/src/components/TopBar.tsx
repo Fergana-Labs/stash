@@ -5,6 +5,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 import type { User, Workspace } from "../lib/types";
 import { listMyWorkspaces } from "../lib/api";
+import { useBreadcrumbsValue, type Crumb } from "./BreadcrumbContext";
 
 interface TopBarProps {
   user: User;
@@ -13,16 +14,16 @@ interface TopBarProps {
 
 const WS_STORAGE_KEY = "stash_selected_workspace";
 
-const SEGMENT_LABELS: Record<string, string> = {
-  memory: "History",
-  notebooks: "Wiki",
-  search: "Search",
-  files: "Files",
-  rooms: "Workspaces",
-  tables: "Tables",
-  settings: "Settings",
-  docs: "Docs",
-  workspaces: "Workspaces",
+const SEGMENT_LABELS: Record<string, { label: string; href: string }> = {
+  memory: { label: "History", href: "/memory" },
+  notebooks: { label: "Wiki", href: "/notebooks" },
+  search: { label: "Search", href: "/search" },
+  files: { label: "Files", href: "/files" },
+  rooms: { label: "Workspaces", href: "/rooms" },
+  tables: { label: "Tables", href: "/tables" },
+  settings: { label: "Settings", href: "/settings" },
+  docs: { label: "Docs", href: "/docs" },
+  workspaces: { label: "Workspaces", href: "/rooms" },
 };
 
 function titleCase(seg: string) {
@@ -31,6 +32,7 @@ function titleCase(seg: string) {
 
 export default function TopBar({ user, onLogout }: TopBarProps) {
   const pathname = usePathname();
+  const pageCrumbs = useBreadcrumbsValue();
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [selectedWsId, setSelectedWsId] = useState<string | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -69,24 +71,43 @@ export default function TopBar({ user, onLogout }: TopBarProps) {
     return () => document.removeEventListener("mousedown", onClick);
   }, [menuOpen]);
 
-  const crumbs = useMemo(() => {
+  const crumbs: Crumb[] = useMemo(() => {
     const selected = workspaces.find((w) => w.id === selectedWsId);
-    const wsLabel = selected?.name ?? "stash";
+    const wsName = selected?.name ?? "stash";
+    const wsHref = selectedWsId ? `/workspaces/${selectedWsId}` : "/";
+    const wsCrumb: Crumb = { label: wsName, href: wsHref };
 
-    const segs = pathname.split("/").filter(Boolean);
-
-    if (segs.length === 0) return [wsLabel];
-
-    if (segs[0] === "docs") return ["stash", "Docs", ...segs.slice(1).map(titleCase)];
-
-    if (segs[0] === "workspaces" && segs[1]) {
-      const rest = segs.slice(2).map((s) => SEGMENT_LABELS[s] ?? titleCase(s));
-      return [wsLabel, ...rest];
+    if (pageCrumbs && pageCrumbs.length > 0) {
+      return [wsCrumb, ...pageCrumbs];
     }
 
-    const mapped = segs.map((s) => SEGMENT_LABELS[s] ?? titleCase(s));
-    return [wsLabel, ...mapped];
-  }, [pathname, selectedWsId, workspaces]);
+    const segs = pathname.split("/").filter(Boolean);
+    if (segs.length === 0) return [wsCrumb];
+
+    if (segs[0] === "docs") {
+      const rest: Crumb[] = [{ label: "Docs", href: "/docs" }];
+      for (let i = 1; i < segs.length; i++) {
+        rest.push({ label: titleCase(segs[i]) });
+      }
+      return [{ label: "stash", href: "/" }, ...rest];
+    }
+
+    if (segs[0] === "workspaces" && segs[1]) {
+      return [wsCrumb];
+    }
+
+    const first = SEGMENT_LABELS[segs[0]];
+    if (first) {
+      return [
+        wsCrumb,
+        {
+          label: first.label,
+          href: selectedWsId ? `${first.href}?ws=${selectedWsId}` : first.href,
+        },
+      ];
+    }
+    return [wsCrumb, { label: titleCase(segs[0]) }];
+  }, [pageCrumbs, pathname, selectedWsId, workspaces]);
 
   const displayName = user.display_name || user.name;
   const handle = user.display_name ? user.name : null;
@@ -94,26 +115,33 @@ export default function TopBar({ user, onLogout }: TopBarProps) {
 
   return (
     <div className="sticky top-0 z-10 flex h-12 items-center justify-between border-b border-border bg-base px-6">
-      <nav className="flex items-center gap-2 text-[12px] text-muted">
-        {crumbs.map((c, i) => (
-          <span key={i} className="flex items-center gap-2">
-            {i > 0 && <span className="text-muted">/</span>}
-            <span
-              className={
-                i === crumbs.length - 1
-                  ? "font-medium text-foreground"
-                  : "text-muted"
-              }
-            >
-              {c}
-            </span>
-          </span>
-        ))}
+      <nav className="flex min-w-0 items-center gap-2 text-[12px] text-muted">
+        {crumbs.map((c, i) => {
+          const isLast = i === crumbs.length - 1;
+          const className =
+            "truncate transition-colors " +
+            (isLast
+              ? "font-medium text-foreground"
+              : "text-muted hover:text-foreground");
+          return (
+            <div key={i} className="flex items-center gap-2">
+              {i > 0 && <span className="text-muted">/</span>}
+              {!isLast && c.href ? (
+                <Link href={c.href} className={className}>
+                  {c.label}
+                </Link>
+              ) : !isLast && c.onClick ? (
+                <button type="button" onClick={c.onClick} className={className}>
+                  {c.label}
+                </button>
+              ) : (
+                <span className={className}>{c.label}</span>
+              )}
+            </div>
+          );
+        })}
       </nav>
       <div className="flex items-center gap-3">
-        <span className="hidden font-mono text-[10px] uppercase tracking-[0.08em] text-muted sm:inline">
-          ⌘K to search
-        </span>
         <div className="relative" ref={menuRef}>
           <button
             type="button"

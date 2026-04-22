@@ -35,14 +35,16 @@ const EMPTY_RESULTS: SearchResults = {
   tableRows: [],
 };
 
-type Tab = "all" | "history" | "wiki" | "tables";
+type Tab = "all" | "history" | "notebooks" | "tables";
 
 const TABS: { id: Tab; label: string }[] = [
   { id: "all", label: "All" },
   { id: "history", label: "History" },
-  { id: "wiki", label: "Wiki" },
+  { id: "notebooks", label: "Notebooks" },
   { id: "tables", label: "Tables" },
 ];
+
+const WS_STORAGE_KEY = "stash_selected_workspace";
 
 function formatDate(iso: string): string {
   return new Date(iso).toLocaleDateString(undefined, {
@@ -78,7 +80,7 @@ export default function SearchPage() {
       if (!urlWs && ws.length > 0 && !selectedWs) {
         const saved =
           typeof window !== "undefined"
-            ? localStorage.getItem("stash_selected_workspace")
+            ? localStorage.getItem(WS_STORAGE_KEY)
             : null;
         if (saved && ws.some((w) => w.id === saved)) {
           setSelectedWs(saved);
@@ -168,9 +170,12 @@ export default function SearchPage() {
 
   const show = {
     history: tab === "all" || tab === "history",
-    wiki: tab === "all" || tab === "wiki",
+    wiki: tab === "all" || tab === "notebooks",
     tables: tab === "all" || tab === "tables",
   };
+
+  const selectedWsName =
+    workspaces.find((w) => w.id === selectedWs)?.name ?? null;
 
   if (loading)
     return (
@@ -188,20 +193,20 @@ export default function SearchPage() {
       <div className="mx-auto w-full max-w-[1120px] px-6 pt-8 pb-16">
         {/* Page header */}
         <div className="mb-6">
-          <p className="font-mono text-[11px] font-medium uppercase tracking-[0.12em] text-muted">
-            Cross-resource · {workspaces.find((w) => w.id === selectedWs)?.name || "workspace"}
-          </p>
-          <h1 className="mt-2 font-display text-[32px] font-bold tracking-[-0.02em] text-foreground">
+          <h1 className="font-display text-[32px] font-bold tracking-[-0.02em] text-foreground">
             Search
           </h1>
         </div>
 
         {/* Search bar */}
-        <div className="mb-4 flex items-center gap-3 rounded-lg border border-border bg-surface px-3 py-2 transition-[border-color,box-shadow] focus-within:border-brand focus-within:shadow-[0_0_0_3px_rgba(249,115,22,0.25)]">
-          <span className="font-mono text-[12px] text-muted">/</span>
+        <div className="mb-6 flex items-center gap-3 rounded-lg border border-border bg-surface px-3 py-2 transition-[border-color,box-shadow] focus-within:border-brand focus-within:shadow-[0_0_0_3px_rgba(249,115,22,0.25)]">
           <input
             type="text"
-            placeholder="Ask the workspace anything…"
+            placeholder={
+              selectedWsName
+                ? `Ask ${selectedWsName} anything…`
+                : "Ask the workspace anything…"
+            }
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && handleSearch()}
@@ -215,24 +220,6 @@ export default function SearchPage() {
           >
             {searching ? "Searching…" : "Search"}
           </button>
-        </div>
-
-        {/* Workspace selector (small) */}
-        <div className="mb-6 flex items-center gap-2 font-mono text-[11px] text-muted">
-          <span>workspace</span>
-          <select
-            value={selectedWs}
-            onChange={(e) => setSelectedWs(e.target.value)}
-            className="rounded border border-border bg-base px-2 py-1 font-mono text-[11px] text-foreground"
-          >
-            <option value="">Select a workspace</option>
-            {workspaces.map((ws) => (
-              <option key={ws.id} value={ws.id}>
-                {ws.name}
-              </option>
-            ))}
-          </select>
-          {!selectedWs && <span>· select a workspace to search</span>}
         </div>
 
         {/* Tabs */}

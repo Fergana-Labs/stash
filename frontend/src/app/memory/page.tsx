@@ -106,7 +106,21 @@ function buildGroups(events: HistoryEventWithContext[]): AgentGroup[] {
 
 /* ── role primitives ── */
 
-function AgentAvatar({ name, size = 24 }: { name: string; size?: number }) {
+type Role = "agent" | "human";
+
+function isUserEvent(eventType: string): boolean {
+  return eventType === "user_message";
+}
+
+function RoleAvatar({
+  role,
+  name,
+  size = 24,
+}: {
+  role: Role;
+  name: string;
+  size?: number;
+}) {
   return (
     <span
       className="inline-flex flex-shrink-0 items-center justify-center rounded-full font-display font-bold text-white"
@@ -114,7 +128,8 @@ function AgentAvatar({ name, size = 24 }: { name: string; size?: number }) {
         width: size,
         height: size,
         fontSize: Math.round(size * 0.4),
-        background: "var(--color-agent)",
+        background:
+          role === "agent" ? "var(--color-agent)" : "var(--color-human)",
       }}
     >
       {(name?.[0] || "?").toUpperCase()}
@@ -122,16 +137,17 @@ function AgentAvatar({ name, size = 24 }: { name: string; size?: number }) {
   );
 }
 
-function RoleAgentTag() {
+function RoleTag({ role }: { role: Role }) {
+  const style =
+    role === "agent"
+      ? { background: "var(--color-agent-muted)", color: "var(--color-agent)" }
+      : { background: "var(--color-human-muted)", color: "var(--color-human)" };
   return (
     <span
       className="inline-flex items-center rounded px-1.5 py-0.5 font-mono text-[10px] font-medium uppercase leading-none tracking-[0.08em]"
-      style={{
-        background: "var(--color-agent-muted)",
-        color: "var(--color-agent)",
-      }}
+      style={style}
     >
-      agent
+      {role}
     </span>
   );
 }
@@ -293,10 +309,7 @@ function MemoryPageInner() {
         <div className="flex-1 overflow-y-auto">
           <div className="mx-auto w-full max-w-[900px] px-8 py-8">
             <div className="mb-8">
-              <p className="font-mono text-[11px] font-medium uppercase tracking-[0.12em] text-muted">
-                Workspace history{wsId ? "" : " · all workspaces"}
-              </p>
-              <h1 className="mt-2 font-display text-[32px] font-bold tracking-[-0.02em] text-foreground">
+              <h1 className="font-display text-[32px] font-bold tracking-[-0.02em] text-foreground">
                 History
               </h1>
             </div>
@@ -444,13 +457,13 @@ function SessionView({
   return (
     <div>
       <header className="mb-5 flex items-center gap-3 border-b border-border-subtle pb-4">
-        <AgentAvatar name={agentName} size={32} />
+        <RoleAvatar role="agent" name={agentName} size={32} />
         <div>
           <div className="font-display text-[16px] font-bold text-foreground">
             {agentName}
           </div>
           <div className="mt-0.5 flex items-center gap-2 font-mono text-[11px] text-muted">
-            <RoleAgentTag />
+            <RoleTag role="agent" />
             <span>
               session · {sessionId} · {events.length} event
               {events.length !== 1 ? "s" : ""}
@@ -567,13 +580,13 @@ function AgentOverview({
     <div>
       <header className="mb-6 flex items-start justify-between gap-3 border-b border-border-subtle pb-4">
         <div className="flex items-center gap-3">
-          <AgentAvatar name={agentName} size={32} />
+          <RoleAvatar role="agent" name={agentName} size={32} />
           <div>
             <div className="font-display text-[16px] font-bold text-foreground">
               {agentName}
             </div>
             <div className="mt-0.5 flex items-center gap-2 font-mono text-[11px] text-muted">
-              <RoleAgentTag />
+              <RoleTag role="agent" />
               <span>
                 {ag.sessions.length} session{ag.sessions.length !== 1 ? "s" : ""} ·{" "}
                 {ag.eventCount} events
@@ -690,7 +703,7 @@ function RecentActivityView({
             className="w-full cursor-pointer rounded-lg border border-border-subtle bg-base px-4 py-3 text-left transition-colors hover:border-brand"
           >
             <div className="flex items-center gap-2">
-              <AgentAvatar name={sess.agentName} size={22} />
+              <RoleAvatar role="agent" name={sess.agentName} size={22} />
               <button
                 onClick={(e) => {
                   e.stopPropagation();
@@ -700,7 +713,7 @@ function RecentActivityView({
               >
                 {sess.agentName}
               </button>
-              <RoleAgentTag />
+              <RoleTag role="agent" />
               <span className="truncate text-[13px] text-dim">
                 {sess.firstContent}
               </span>
@@ -732,17 +745,25 @@ function RecentActivityView({
 /* ── Event row (chat-like message, design-styled) ── */
 
 function EventRow({ event }: { event: HistoryEventWithContext }) {
+  const isUser = isUserEvent(event.event_type);
+  const role: Role = isUser ? "human" : "agent";
+  const displayName = isUser ? "user" : event.agent_name;
   return (
     <div className="flex gap-3">
-      <AgentAvatar name={event.agent_name} size={24} />
+      <RoleAvatar role={role} name={displayName} size={24} />
       <div className="min-w-0 flex-1">
         <div className="mb-1 flex flex-wrap items-center gap-2">
           <span className="text-[12px] font-semibold text-foreground">
-            {event.agent_name}
+            {displayName}
           </span>
-          <RoleAgentTag />
+          <RoleTag role={role} />
           <span className="text-[11px] text-muted">·</span>
           <span className="font-mono text-[11px] text-dim">{event.event_type}</span>
+          {isUser && (
+            <span className="text-[11px] text-muted">
+              → {event.agent_name}
+            </span>
+          )}
           {event.store_name && (
             <span className="text-[11px] text-muted">in {event.store_name}</span>
           )}

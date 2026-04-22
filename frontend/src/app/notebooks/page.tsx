@@ -4,6 +4,7 @@ import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "rea
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import AppShell from "../../components/AppShell";
+import { useBreadcrumbs, type Crumb } from "../../components/BreadcrumbContext";
 import NotebookTreeComponent from "../../components/workspace/FileTree";
 import MarkdownEditor, { SaveStatus } from "../../components/workspace/MarkdownEditor";
 import { useAuth } from "../../hooks/useAuth";
@@ -473,6 +474,30 @@ function WikiPageInner() {
   };
 
   useEffect(() => { if (!loading && !user) router.push("/login"); }, [user, loading, router]);
+
+  // Register crumbs for the TopBar.
+  const crumbs: Crumb[] = (() => {
+    const base: Crumb[] = [{ label: "Wiki", href: "/notebooks" }];
+    if (activeTab === "tables") {
+      return [{ label: "Wiki", href: "/notebooks" }, { label: "Tables" }];
+    }
+    if (selectedNotebook) {
+      base.push({
+        label: selectedNotebook.name,
+        onClick: () => {
+          setSelectedPage(null);
+          setSelectedPageId(null);
+        },
+      });
+      if (selectedPage) {
+        base.push({ label: selectedPage.name });
+      }
+    }
+    return base;
+  })();
+  const depKey = `${activeTab}:${selectedNotebook?.id ?? ""}:${selectedNotebook?.name ?? ""}:${selectedPage?.id ?? ""}:${selectedPage?.name ?? ""}`;
+  useBreadcrumbs(crumbs, depKey);
+
   if (loading) return <div className="min-h-screen flex items-center justify-center text-muted">Loading...</div>;
   if (!user) return null;
 
@@ -515,14 +540,9 @@ function WikiPageInner() {
           <div className="flex-1 overflow-y-auto">
             <div className="mx-auto w-full max-w-[1120px] px-8 pb-16 pt-8">
               <div className="mb-8 flex items-end justify-between gap-4">
-                <div>
-                  <p className="font-mono text-[11px] font-medium uppercase tracking-[0.12em] text-muted">
-                    Notebook · architecture · runbooks · decisions
-                  </p>
-                  <h1 className="mt-2 font-display text-[32px] font-bold tracking-[-0.02em] text-foreground">
-                    Wiki
-                  </h1>
-                </div>
+                <h1 className="font-display text-[32px] font-bold tracking-[-0.02em] text-foreground">
+                  Wiki
+                </h1>
                 <button
                   onClick={handleCreateNotebook}
                   className="inline-flex h-9 items-center rounded-md bg-brand px-3.5 text-[13px] font-medium text-white shadow-sm transition hover:bg-brand-hover"
@@ -586,58 +606,49 @@ function WikiPageInner() {
           <div className="flex flex-1 overflow-hidden">
             {/* Sidebar: file tree */}
             <div className="flex w-[260px] flex-shrink-0 flex-col overflow-hidden border-r border-border bg-surface">
-              {/* Tree header with notebook name + semantic search */}
-              <div className="border-b border-border-subtle px-4 py-4">
-                <p className="font-mono text-[10px] font-medium uppercase tracking-[0.12em] text-muted">
-                  Notebook
-                </p>
-                <div className="mt-1 truncate font-display text-[14px] font-semibold tracking-[-0.01em] text-foreground">
-                  {selectedNotebook.name}
+              {selectedNotebook.workspace_id && (
+                <div className="border-b border-border-subtle px-3 py-3">
+                  <input
+                    type="text"
+                    placeholder="Search pages…"
+                    value={semanticQuery}
+                    onChange={(e) => {
+                      setSemanticQuery(e.target.value);
+                      if (!e.target.value) setSemanticResults([]);
+                    }}
+                    onKeyDown={(e) => e.key === "Enter" && handleSemanticSearch()}
+                    className="w-full rounded-md border border-border bg-base px-2.5 py-1.5 text-[12px] text-foreground placeholder:text-muted focus:border-brand focus:outline-none focus:shadow-[0_0_0_3px_rgba(249,115,22,0.2)]"
+                  />
+                  {semanticSearching && (
+                    <div className="mt-1 px-1 text-[10px] text-muted">Searching…</div>
+                  )}
+                  {semanticResults.length > 0 && (
+                    <div className="mt-1.5 max-h-[160px] space-y-0.5 overflow-y-auto">
+                      {semanticResults.map((p) => (
+                        <button
+                          key={p.id}
+                          onClick={() => {
+                            handleSelectPage(p.id);
+                            setSemanticResults([]);
+                            setSemanticQuery("");
+                          }}
+                          className="flex w-full items-center justify-between gap-2 truncate rounded px-2 py-1 text-left text-[12px] text-foreground transition-colors hover:bg-raised"
+                        >
+                          <span className="truncate">{p.name}</span>
+                          {"similarity" in p && (
+                            <span className="font-mono text-[10px] text-brand">
+                              {Math.round(
+                                ((p as unknown as Record<string, number>).similarity ?? 0) * 100
+                              )}
+                              %
+                            </span>
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
-                {selectedNotebook.workspace_id && (
-                  <div className="mt-3">
-                    <input
-                      type="text"
-                      placeholder="Search pages…"
-                      value={semanticQuery}
-                      onChange={(e) => {
-                        setSemanticQuery(e.target.value);
-                        if (!e.target.value) setSemanticResults([]);
-                      }}
-                      onKeyDown={(e) => e.key === "Enter" && handleSemanticSearch()}
-                      className="w-full rounded-md border border-border bg-base px-2.5 py-1.5 text-[12px] text-foreground placeholder:text-muted focus:border-brand focus:outline-none focus:shadow-[0_0_0_3px_rgba(249,115,22,0.2)]"
-                    />
-                    {semanticSearching && (
-                      <div className="mt-1 px-1 text-[10px] text-muted">Searching…</div>
-                    )}
-                    {semanticResults.length > 0 && (
-                      <div className="mt-1.5 max-h-[160px] space-y-0.5 overflow-y-auto">
-                        {semanticResults.map((p) => (
-                          <button
-                            key={p.id}
-                            onClick={() => {
-                              handleSelectPage(p.id);
-                              setSemanticResults([]);
-                              setSemanticQuery("");
-                            }}
-                            className="flex w-full items-center justify-between gap-2 truncate rounded px-2 py-1 text-left text-[12px] text-foreground transition-colors hover:bg-raised"
-                          >
-                            <span className="truncate">{p.name}</span>
-                            {"similarity" in p && (
-                              <span className="font-mono text-[10px] text-brand">
-                                {Math.round(
-                                  ((p as unknown as Record<string, number>).similarity ?? 0) * 100
-                                )}
-                                %
-                              </span>
-                            )}
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
+              )}
 
               {/* File tree */}
               <div className="flex-1 overflow-hidden">
@@ -657,7 +668,7 @@ function WikiPageInner() {
             </div>
 
             {/* Editor + Wiki Panel */}
-            <div className="flex flex-1 flex-col overflow-hidden">
+            <div className="relative flex flex-1 flex-col overflow-hidden">
               {error && (
                 <div className="border-b border-red-500/30 bg-red-500/10 px-4 py-2 text-[13px] text-red-500">
                   {error}
@@ -670,66 +681,21 @@ function WikiPageInner() {
                 </div>
               )}
 
-              {/* Context bar: drill-down crumbs + save status */}
-              <div className="flex items-center justify-between gap-3 border-b border-border-subtle bg-surface px-6 py-2">
-                <nav className="flex min-w-0 items-center gap-1.5 font-mono text-[11px] text-muted">
-                  <button
-                    onClick={() => {
-                      setSelectedNotebook(null);
-                      setSelectedPage(null);
-                      setSelectedPageId(null);
-                      setTree({ folders: [], root_files: [] });
-                    }}
-                    className="transition-colors hover:text-foreground"
-                  >
-                    Wiki
-                  </button>
-                  <span className="text-muted">/</span>
-                  <button
-                    onClick={() => {
-                      setSelectedPage(null);
-                      setSelectedPageId(null);
-                    }}
-                    className="truncate transition-colors hover:text-foreground"
-                  >
-                    {selectedNotebook.name}
-                  </button>
-                  {selectedPage && (
-                    <>
-                      <span className="text-muted">/</span>
-                      <span className="truncate font-medium text-foreground">
-                        {selectedPage.name}
-                      </span>
-                    </>
-                  )}
-                </nav>
-                {selectedPage && (
+              {selectedPage && (
+                <div className="pointer-events-none absolute right-5 top-3 z-10 flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.08em] text-muted">
                   <span
-                    className="flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.08em] text-muted"
-                    title={
-                      saveStatus === "saving"
-                        ? "Saving…"
-                        : saveStatus === "dirty"
-                        ? "Unsaved changes"
-                        : "Saved"
+                    className={
+                      "h-1.5 w-1.5 rounded-full " +
+                      (saveStatus === "saved" ? "bg-[#22C55E]" : "bg-[#EAB308]")
                     }
-                  >
-                    <span
-                      className={
-                        "h-1.5 w-1.5 rounded-full " +
-                        (saveStatus === "saved"
-                          ? "bg-[#22C55E]"
-                          : "bg-[#EAB308]")
-                      }
-                    />
-                    {saveStatus === "saving"
-                      ? "saving"
-                      : saveStatus === "dirty"
-                      ? "unsaved"
-                      : "saved"}
-                  </span>
-                )}
-              </div>
+                  />
+                  {saveStatus === "saving"
+                    ? "saving"
+                    : saveStatus === "dirty"
+                    ? "unsaved"
+                    : "saved"}
+                </div>
+              )}
 
               {selectedPage ? (
                 <div className="flex-1 flex flex-col overflow-hidden">
