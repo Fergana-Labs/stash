@@ -163,7 +163,7 @@ export default function DocsOverview() {
                 <span className="text-zinc-400">●</span> Found 6 commits across 3 PRs
               </div>
               <div className="text-zinc-800 mt-1 space-y-1">
-                <div>Today you shipped:</div>
+                <div>6 Things:</div>
                 <div className="pl-2 text-zinc-600 space-y-0.5">
                   <div>• Page graph: d3-force stabilization, pan/zoom/drag, hover links</div>
                   <div>• Notebook navigation: browser back/forward, URL sync</div>
@@ -210,7 +210,7 @@ export default function DocsOverview() {
                 <span className="text-zinc-400">●</span> Cross-referencing with git log...
               </div>
               <div className="text-zinc-800 mt-1 space-y-1">
-                <div>Today you shipped:</div>
+                <div>9 Things:</div>
                 <div className="pl-2 space-y-0.5">
                   <div className="text-zinc-400 text-[11px] mt-1 mb-0.5">From git:</div>
                   <div className="text-zinc-600">• Page graph: d3-force stabilization, pan/zoom/drag, hover links</div>
