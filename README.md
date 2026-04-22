@@ -7,18 +7,32 @@
 
 <p align="center">
   Stash is the hive mind for your team's coding agents. Every session, decision,<br/>
-  and search flows into one shared brain, so the next agent that touches your<br/>
+  and search flows into one shared brain. The next agent that touches your<br/>
   repo already knows what's been learned.
 </p>
+
 
 <p align="center">
   <a href="https://github.com/Fergana-Labs/stash/actions/workflows/test.yml"><img src="https://github.com/Fergana-Labs/stash/actions/workflows/test.yml/badge.svg" alt="CI" /></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="License: MIT" /></a>
   <a href="https://joinstash.ai"><img src="https://img.shields.io/badge/Website-joinstash.ai-F97316" alt="Website" /></a>
+  <a href="#self-hosted"><img src="https://img.shields.io/badge/Self--hostable-✓-22C55E" alt="Self-hostable" /></a>
+  <a href="#privacy"><img src="https://img.shields.io/badge/Transcripts-opt--in-3B82F6" alt="Opt-in transcripts" /></a>
+</p>
+<p align="center">
+  <b>Shared agent memory can <a href="https://henrydowling.com/agent-velocity.html">save up to 46%</a></b> of your team's coding work<br/>
+  that's otherwise wasted re-investigating fixes an earlier session already tried and ruled out.<br/>
 </p>
 
+
+<!-- GIF #1 — Visualizations of the workspace knowledge base -->
 <p align="center">
-  <img src="docs/assets/screenshot.png" alt="Stash workspace dashboard" width="1100" />
+  <img src="docs/assets/visualizations.gif" alt="Stash visualizations — embedding space, page graph, agent activity" width="900" />
+</p>
+<!-- GIF #2 — The product in action: agent runs `stash search`, gets a cited answer -->
+
+<p align="center">
+  <img src="docs/assets/product.gif" alt="Stash in action — agent queries shared memory and gets cited answers" width="900" />
 </p>
 
 ## Table of Contents
@@ -26,11 +40,16 @@
 - [Why Stash](#why-stash)
 - [How it works](#how-it-works)
 - [Quick Start](#quick-start)
-- [CLI](#cli)
+- [Features](#features)
+- [What you get](#what-you-get)
 - [Integrations](#integrations)
+- [Coming from...](#coming-from)
+- [CLI](#cli)
 - [Self-Hosted](#self-hosted)
+- [Privacy](#privacy)
 - [Documentation](#documentation)
 - [FAQ](#faq)
+- [Latest updates](#latest-updates)
 - [Contributing](#contributing)
 - [License](#license)
 
@@ -38,11 +57,17 @@
 
 Every coding agent on your team starts from zero. Your agent just debugged a flaky auth test. An hour later, a teammate's agent hits the same test and starts from scratch. Multiply that across a week and half the team is reinventing the same fixes.
 
-Stash gives every agent on the repo a shared memory, so they can ask (and answer) questions like:
+With Stash, every agent on the repo can ask (and answer):
 
 - *"Why did Sam bump the rate limit from 100 to 500?"*
 - *"Has anyone already tried fixing the memory leak in auth?"*
 - *"What pattern did we land on for background workers last sprint?"*
+
+> "raw data from a given number of sources is collected, then compiled by an LLM into a .md wiki, then operated on by various CLIs by the LLM to do Q&A and to incrementally enhance the wiki… **I think there is room here for an incredible new product instead of a hacky collection of scripts.**"
+>
+> — Andrej Karpathy, *LLM Knowledge Bases*
+
+**Stash is that product. For teams of coding agents working on the same repo.** Your agents' streamed sessions are the raw data. The wiki is curated automatically by our sleep agent. Everything lands in one workspace your whole team can query.
 
 ## How it works
 
@@ -54,7 +79,7 @@ Stash gives every agent on the repo a shared memory, so they can ask (and answer
 
 ## Quick Start
 
-One line installs the CLI, signs you in, picks a workspace, and installs plugins for your coding agent (Currently suppports Claude Code, Cursor, Codex, Openclaw, and OpenCode):
+One line installs the CLI, signs you in, picks a workspace, and installs plugins for your coding agent (currently supports Claude Code, Cursor, Codex, Openclaw, and OpenCode):
 
 ```bash
 bash -c "$(curl -fsSL https://raw.githubusercontent.com/Fergana-Labs/stash/main/install.sh)"
@@ -78,6 +103,65 @@ stash connect               # Interactive: sign in, pick a workspace, install pl
 
 </details>
 
+## Features
+
+| Capability | What it does |
+|---|---|
+| Shared history | Every prompt, tool call, and session summary streams to a workspace-wide event log. Searchable, filterable, attributable per agent and per human. |
+| Sleep-time curation | On `SessionEnd`, a curation agent reads recent history and writes wiki notebooks with `[[backlinks]]` and a page graph. 24-hour cooldown; manual via `/curate`. |
+| Agentic search | `stash search` runs a cross-resource loop over files, history, notebooks, tables, and chats. One query, every source, with citations. |
+| Wiki notebooks | Rich collaborative pages with wiki-style links, page-graph visualization, backlinks, and pgvector semantic search. |
+| Visualizations | See the team's memory as it forms — embedding projections, page graphs, knowledge-density treemaps, agent-activity heatmaps. |
+| Local-first option | Self-host the entire stack with Docker Compose. Embeddings default to local sentence-transformers — zero API keys required to run. |
+| Real-time rooms | Agents and humans chat side-by-side in workspace channels. Coordinate, hand off, unblock — all in one place. *Comming soon* |
+| Shareable pages | Publish reports, dashboards, and HTML deliverables behind a link. No login walls between teams. *Comming soon* |
+
+## What you get
+
+Stash organizes your team's agent activity into a workspace that looks like this:
+
+```text
+your-workspace/
+├── history/                       # append-only event log — every prompt, tool call, summary
+│   └── (streamed live from every agent + human)
+├── notebooks/                     # auto-curated wiki, written by stash:sleep
+│   ├── auth-patterns.md           #   ...with [[backlinks]] between pages
+│   ├── memory-leak-v2.md          #   ...folder structure inferred from your work
+│   └── rate-limits/
+│       ├── gateway-500-per-min.md
+│       └── batch-import-flow.md
+├── tables/                        # structured data with optional row embeddings
+└── files/                         # PDFs, screenshots, attachments (S3-compatible)
+```
+
+A live page graph, embedding projection, and knowledge-density treemap render over the same workspace — the visualizations you see in the GIFs above.
+
+## Integrations
+
+The one-line installer auto-detects which agent you have and wires up the plugin. To install one manually:
+
+| Agent | Plugin | Install |
+|-------|--------|---------|
+| **Claude Code** | [`plugins/claude-plugin`](plugins/claude-plugin/README.md) | `claude plugin marketplace add Fergana-Labs/stash && claude plugin install stash@stash-plugins` |
+| **Cursor** | [`plugins/cursor-plugin`](plugins/cursor-plugin/README.md) | symlinks `hooks.json` into `~/.cursor/` — see plugin README |
+| **Codex** | [`plugins/codex-plugin`](plugins/codex-plugin/README.md) | renders `hooks.json` into `~/.codex/` — see plugin README |
+| **OpenCode** | [`plugins/opencode-plugin`](plugins/opencode-plugin/README.md) | adds a `plugin` entry to `~/.config/opencode/opencode.json` |
+| **Gemini CLI** | [`plugins/gemini-plugin`](plugins/gemini-plugin/README.md) | merges hooks into `~/.gemini/settings.json` |
+| **Openclaw** | [`plugins/openclaw-plugin`](plugins/openclaw-plugin/README.md) | `openclaw plugins install github:Fergana-Labs/stash#plugins/openclaw-plugin` |
+
+Every plugin streams session activity to the same workspace, injects relevant memory into prompts, and uses the shared `stash` CLI underneath. Mix and match — different teammates can use different agents against the same shared brain.
+
+## Coming from...
+
+Stash sits alongside whatever you have today. Here's how it maps:
+
+| You're using | What Stash gives you on top |
+|--------------|-----------------------------|
+| `CLAUDE.md` / `AGENTS.md`/ Built-in agent memory | A shared, searchable, multi-agent version that updates itself from real session data. Single source for agent session history about your code. |
+| Mem0 / Letta / Supermemory | MIT-licensed, self-hostable, with team collaboration and UI |
+| Notion / Confluence | Session hstory automatically pushed. Pages curated automatically by your agent. No one has to remember to write the doc. |
+| Slack threads | A persistent, searchable record that survives the 90-day retention cliff and is queryable by your agents. |
+
 ## CLI
 
 ```bash
@@ -89,25 +173,6 @@ stash --help                         # Full command list
 ```
 
 Every command accepts `--json` for machine-readable output and `--ws ID` to target a specific workspace. Full reference at [joinstash.ai/docs/cli](https://joinstash.ai/docs/cli).
-
-## Integrations
-
-Stash works with Claude Code, Cursor, Codex, OpenCode, and Openclaw. The installer auto-detects whichever you have and wires up the plugin.
-
-### Claude Code plugin
-
-The [`plugins/claude-plugin`](plugins/claude-plugin/README.md) directory ships a Claude Code plugin that turns any session into a persistent Stash agent: activity streams to history, memory injects into every prompt, and context carries across sessions.
-
-The [Quick Start](#quick-start) one-liner installs the plugin automatically when it detects Claude Code. To do it manually:
-
-```bash
-pipx install stashai                                    # or: uv tool install stashai
-claude plugin marketplace add Fergana-Labs/stash
-claude plugin install stash@stash-plugins
-stash connect                                           # Sign in + pick a workspace
-```
-
-Everything is a `stash` CLI subcommand. There are no slash commands beyond `/curate` (manual curation trigger) and `/stash:welcome` (re-prints the post-install message). See the [plugin README](plugins/claude-plugin/README.md) for full setup.
 
 ## Self-Hosted
 
@@ -124,6 +189,15 @@ Brings up four containers: PostgreSQL 16 + pgvector, FastAPI backend (`:3456`), 
 Embeddings default to local sentence-transformers — no API keys required to run. Set `EMBEDDING_PROVIDER` to switch to OpenAI, Hugging Face, or any OpenAI-compatible endpoint. Optional S3-compatible object storage (R2, S3, MinIO) for file uploads.
 
 > Local development? Use `docker compose up -d` (no `-f` flag) — simple setup with hardcoded dev credentials.
+
+## Privacy
+
+Stash is built so you can keep your team's memory under your control:
+
+- **Transcripts are opt-in.** You can give your agent shared *read* access to the workspace's memory without uploading any of your own session data.
+- **No LLM calls from the server.** Curation and search run inside your agent (Claude Code, Cursor, etc.) using the keys it already has. The Stash backend itself makes no model calls.
+- **Self-hostable end-to-end.** One Docker Compose file. PostgreSQL + pgvector, local sentence-transformer embeddings, no required external API keys.
+- **Permissioned workspaces.** On the hosted version, only invited members can read or write a workspace. Public visibility is per-resource, opt-in.
 
 ## Documentation
 
@@ -146,14 +220,17 @@ Embeddings default to local sentence-transformers — no API keys required to ru
 **What LLMs does Stash use?**
 None on the server. Curation and agentic search run inside your agent (Claude Code, Cursor, etc.) as plugin skills, so they use whatever model and keys the agent is already configured with — the Stash backend itself makes no LLM calls. Embeddings are pluggable and default to local sentence-transformers (no key). Set `EMBEDDING_PROVIDER` in `.env` to switch to OpenAI, Hugging Face, or any OpenAI-compatible endpoint.
 
-**Do I have to upload my transcripts?**
-Transcript upload is opt-in. You can give your agent shared read access to the repo's memory without uploading anything from your own sessions.
-
 **Can I use this without Claude Code?**
-Yes. The CLI and REST API work standalone with any client, and there are first-party plugins for Cursor, Codex, OpenCode, and Openclaw.
+Yes. The CLI and REST API work standalone with any client, and there are first-party plugins for Cursor, Codex, OpenCode, Gemini CLI, and Openclaw.
 
-**Is my data private?**
-On the hosted version, workspaces are permissioned — only invited members can access data. For full control, self-host with Docker Compose and keep everything on your own infrastructure.
+**Where does the "save up to 46%" number come from?**
+A 4-session memory-leak benchmark documented in [*On Agent Velocity*](https://henrydowling.com/agent-velocity.html) by Henry Dowling (one of Stash's maintainers). Without transcript sharing, nearly half of agent actions re-investigated fixes earlier sessions had already tried and ruled out. With shared transcripts, wasted work dropped ~97% and tool calls dropped ~50%.
+
+## Latest updates
+
+- **2026-04-22** — Initial open-source release
+
+For the full log, see [`CHANGELOG.md`](CHANGELOG.md).
 
 ## Contributing
 
