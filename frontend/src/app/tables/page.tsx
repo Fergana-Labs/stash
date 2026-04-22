@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import AppShell from "../../components/AppShell";
 import { useAuth } from "../../hooks/useAuth";
 import { listAllTables, listTables, createTable, deleteTable } from "../../lib/api";
@@ -30,16 +30,6 @@ export default function TablesPage() {
 
   useEffect(() => { if (user) loadTables(); }, [user, loadTables]);
 
-  const grouped = useMemo(() => {
-    const groups: Record<string, { name: string; tables: TableWithWorkspace[] }> = {};
-    for (const t of tables) {
-      const key = t.workspace_id || "personal";
-      if (!groups[key]) groups[key] = { name: t.workspace_name || "Personal", tables: [] };
-      groups[key].tables.push(t);
-    }
-    return groups;
-  }, [tables]);
-
   const handleCreate = async () => {
     const name = prompt("Table name:");
     if (!name) return;
@@ -66,53 +56,32 @@ export default function TablesPage() {
         {tables.length === 0 ? (
           <p className="text-muted text-sm">No tables yet. Create one to get started — structured data that agents and humans can read and write.</p>
         ) : (
-          Object.entries(grouped).map(([key, group]) => (
-            <section key={key} className="mb-6">
-              <h2 className="text-sm font-medium text-muted uppercase tracking-wider mb-2">{group.name}</h2>
-              <div className="space-y-1">
-                {group.tables.map((table) => (
-                  <Link
-                    key={table.id}
-                    href={`/tables/${table.id}${table.workspace_id ? `?workspaceId=${table.workspace_id}` : ""}`}
-                    className="group flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-raised transition-colors"
-                  >
-                    <div className="w-7 h-7 rounded-md bg-cyan-500/15 text-cyan-500 flex items-center justify-center text-xs font-bold flex-shrink-0">
-                      T
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <div className="text-sm text-foreground truncate">{table.name}</div>
-                      {table.description && <div className="text-xs text-muted truncate">{table.description}</div>}
-                    </div>
-                    <span className="text-[10px] text-muted bg-raised px-1.5 py-0.5 rounded font-mono flex-shrink-0">
-                      {table.columns.length} cols
-                    </span>
-                    <span className="text-[10px] text-muted bg-raised px-1.5 py-0.5 rounded font-mono flex-shrink-0">
-                      {table.row_count ?? 0} rows
-                    </span>
-                    <span className="text-xs text-muted flex-shrink-0">
-                      {new Date(table.updated_at).toLocaleDateString()}
-                    </span>
-                    {!table.workspace_id && (
-                      <button
-                        onClick={async (e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          if (!confirm("Delete this table?")) return;
-                          try {
-                            await deleteTable(null, table.id);
-                            loadTables();
-                          } catch (err) { setError(err instanceof Error ? err.message : "Failed to delete"); }
-                        }}
-                        className="text-xs text-red-400 hover:text-red-300 px-2 py-1 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0"
-                      >
-                        Delete
-                      </button>
-                    )}
-                  </Link>
-                ))}
-              </div>
-            </section>
-          ))
+          <div className="space-y-1">
+            {tables.map((table) => (
+              <Link
+                key={table.id}
+                href={`/tables/${table.id}${table.workspace_id ? `?workspaceId=${table.workspace_id}` : ""}`}
+                className="group flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-raised transition-colors"
+              >
+                <div className="w-7 h-7 rounded-md bg-cyan-500/15 text-cyan-500 flex items-center justify-center text-xs font-bold flex-shrink-0">
+                  T
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="text-sm text-foreground truncate">{table.name}</div>
+                  {table.description && <div className="text-xs text-muted truncate">{table.description}</div>}
+                </div>
+                <span className="text-[10px] text-muted bg-raised px-1.5 py-0.5 rounded font-mono flex-shrink-0">
+                  {table.columns.length} cols
+                </span>
+                <span className="text-[10px] text-muted bg-raised px-1.5 py-0.5 rounded font-mono flex-shrink-0">
+                  {table.row_count ?? 0} rows
+                </span>
+                <span className="text-xs text-muted flex-shrink-0">
+                  {new Date(table.updated_at).toLocaleDateString()}
+                </span>
+              </Link>
+            ))}
+          </div>
         )}
       </div>
     </AppShell>

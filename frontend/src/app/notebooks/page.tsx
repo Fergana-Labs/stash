@@ -96,17 +96,6 @@ function WikiPageInner() {
     if (user) loadWorkspacePages();
   }, [user, loadWorkspacePages]);
 
-  // Group notebooks by workspace
-  const grouped = useMemo(() => {
-    const groups: Record<string, { name: string; notebooks: NotebookWithWorkspace[] }> = {};
-    for (const nb of notebooks) {
-      const key = nb.workspace_id || "personal";
-      if (!groups[key]) groups[key] = { name: nb.workspace_name || "Personal", notebooks: [] };
-      groups[key].notebooks.push(nb);
-    }
-    return groups;
-  }, [notebooks]);
-
   // Load page tree when notebook is selected
   const loadTree = useCallback(async (nb: NotebookWithWorkspace) => {
     try {
@@ -457,37 +446,28 @@ function WikiPageInner() {
                   No notebooks yet. Create one to start writing wiki pages.
                 </p>
               ) : (
-                <div className="space-y-8">
-                  {Object.entries(grouped).map(([key, group]) => (
-                    <section key={key}>
-                      <p className="mb-3 font-mono text-[10px] font-medium uppercase tracking-[0.12em] text-muted">
-                        {group.name}
-                      </p>
-                      <div className="flex flex-col gap-2">
-                        {group.notebooks.map((nb) => (
-                          <button
-                            key={nb.id}
-                            onClick={() => handleSelectNotebook(nb)}
-                            className="flex w-full items-center gap-3 rounded-lg border border-border-subtle bg-base px-4 py-3.5 text-left transition-colors hover:border-brand"
-                          >
-                            <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-md bg-raised font-mono text-[12px] font-bold text-muted">
-                              W
-                            </div>
-                            <div className="min-w-0 flex-1">
-                              <div className="text-[14px] font-semibold text-foreground">
-                                {nb.name}
-                              </div>
-                              {nb.description && (
-                                <div className="truncate text-[12px] text-dim">
-                                  {nb.description}
-                                </div>
-                              )}
-                            </div>
-                            <span className="font-mono text-[11px] text-muted">→</span>
-                          </button>
-                        ))}
+                <div className="flex flex-col gap-2">
+                  {notebooks.map((nb) => (
+                    <button
+                      key={nb.id}
+                      onClick={() => handleSelectNotebook(nb)}
+                      className="flex w-full items-center gap-3 rounded-lg border border-border-subtle bg-base px-4 py-3.5 text-left transition-colors hover:border-brand"
+                    >
+                      <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-md bg-raised font-mono text-[12px] font-bold text-muted">
+                        W
                       </div>
-                    </section>
+                      <div className="min-w-0 flex-1">
+                        <div className="text-[14px] font-semibold text-foreground">
+                          {nb.name}
+                        </div>
+                        {nb.description && (
+                          <div className="truncate text-[12px] text-dim">
+                            {nb.description}
+                          </div>
+                        )}
+                      </div>
+                      <span className="font-mono text-[11px] text-muted">→</span>
+                    </button>
                   ))}
                 </div>
               )}
