@@ -35,11 +35,6 @@ interface MarkdownEditorProps {
   /** Called on clicks to same-origin stash routes so the notebooks
    *  page can SPA-select the target instead of reloading. */
   onNavigateInternal?: (href: string) => void;
-  /** Notebook name shown in the header breadcrumb. */
-  notebookName?: string | null;
-  /** Folder name shown between the notebook and the page title, if the
-   *  page lives inside a folder. */
-  folderName?: string | null;
 }
 
 export default function MarkdownEditor({
@@ -51,8 +46,6 @@ export default function MarkdownEditor({
   onRename,
   pageIndex = [],
   onNavigateInternal,
-  notebookName,
-  folderName,
 }: MarkdownEditorProps) {
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -280,13 +273,6 @@ export default function MarkdownEditor({
       <div className="flex-1 overflow-y-auto bg-background">
         <div className="mx-auto w-full max-w-[820px] px-12 py-10">
           <header className="mb-8">
-            {(notebookName || folderName) && (
-              <nav className="mb-2 flex flex-wrap items-center gap-1.5 text-[12px] text-dim">
-                {notebookName && <span>{notebookName}</span>}
-                {notebookName && folderName && <span className="text-muted">/</span>}
-                {folderName && <span>{folderName}</span>}
-              </nav>
-            )}
             {updatedLabel && (
               <p className="mb-2 font-mono text-[11px] font-medium uppercase tracking-[0.12em] text-muted">
                 {updatedLabel}

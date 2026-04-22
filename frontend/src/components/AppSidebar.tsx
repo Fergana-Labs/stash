@@ -62,14 +62,16 @@ const WS_STORAGE_KEY = "stash_selected_workspace";
 
 interface AppSidebarProps {
   user?: User;
+  onLogout?: () => void;
 }
 
-export default function AppSidebar({ user }: AppSidebarProps) {
+export default function AppSidebar({ user, onLogout }: AppSidebarProps) {
   const pathname = usePathname();
   const router = useRouter();
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [selectedWsId, setSelectedWsId] = useState<string | null>(null);
   const [showWsSwitcher, setShowWsSwitcher] = useState(false);
+  const [showUserMenu, setShowUserMenu] = useState(false);
 
   useEffect(() => {
     listMyWorkspaces()
@@ -262,10 +264,12 @@ export default function AppSidebar({ user }: AppSidebarProps) {
 
       {/* User block */}
       {user && (
-        <div className="border-t border-border-subtle px-2 py-3">
-          <Link
-            href="/settings"
-            className="flex items-center gap-2 rounded-md px-2 py-1.5 transition-colors hover:bg-raised"
+        <div className="relative border-t border-border-subtle px-2 py-3">
+          <button
+            type="button"
+            onClick={() => setShowUserMenu((o) => !o)}
+            className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left transition-colors hover:bg-raised"
+            aria-expanded={showUserMenu}
           >
             <span
               className="inline-flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full font-display text-[10px] font-bold text-white"
@@ -281,7 +285,36 @@ export default function AppSidebar({ user }: AppSidebarProps) {
                 <div className="truncate text-[10px] text-muted">@{handle}</div>
               )}
             </div>
-          </Link>
+          </button>
+          {showUserMenu && (
+            <>
+              <div
+                className="fixed inset-0 z-40"
+                onClick={() => setShowUserMenu(false)}
+              />
+              <div className="absolute bottom-full left-2 right-2 z-50 mb-1 overflow-hidden rounded-lg border border-border bg-surface py-1 shadow-[0_12px_30px_rgba(15,23,42,0.08),0_2px_4px_rgba(15,23,42,0.04)]">
+                <Link
+                  href="/settings"
+                  onClick={() => setShowUserMenu(false)}
+                  className="block px-3 py-2 text-[13px] text-foreground transition hover:bg-raised"
+                >
+                  Settings
+                </Link>
+                {onLogout && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowUserMenu(false);
+                      onLogout();
+                    }}
+                    className="block w-full cursor-pointer px-3 py-2 text-left text-[13px] text-foreground transition hover:bg-raised"
+                  >
+                    Log out
+                  </button>
+                )}
+              </div>
+            </>
+          )}
         </div>
       )}
     </aside>

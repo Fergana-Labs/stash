@@ -16,9 +16,9 @@ export default function AppShell({ user, onLogout, children }: AppShellProps) {
   return (
     <BreadcrumbProvider>
       <div className="flex h-screen overflow-hidden">
-        <AppSidebar user={user} />
+        <AppSidebar user={user} onLogout={onLogout} />
         <main className="flex flex-1 flex-col overflow-hidden">
-          <TopBar user={user} onLogout={onLogout} />
+          <TopBar />
           <div className="flex-1 overflow-y-auto">{children}</div>
         </main>
       </div>

@@ -404,12 +404,15 @@ function WikiPageInner() {
         },
       });
       if (selectedPage) {
+        if (currentFolderName) {
+          base.push({ label: currentFolderName });
+        }
         base.push({ label: selectedPage.name });
       }
     }
     return base;
   })();
-  const depKey = `${selectedNotebook?.id ?? ""}:${selectedNotebook?.name ?? ""}:${selectedPage?.id ?? ""}:${selectedPage?.name ?? ""}`;
+  const depKey = `${selectedNotebook?.id ?? ""}:${selectedNotebook?.name ?? ""}:${currentFolderName ?? ""}:${selectedPage?.id ?? ""}:${selectedPage?.name ?? ""}`;
   useBreadcrumbs(crumbs, depKey);
 
   if (loading) return <div className="min-h-screen flex items-center justify-center text-muted">Loading...</div>;
@@ -584,8 +587,6 @@ function WikiPageInner() {
                       onRename={handleInlineRename}
                       pageIndex={workspacePages}
                       onNavigateInternal={handleNavigateInternal}
-                      notebookName={selectedNotebook.name}
-                      folderName={currentFolderName}
                     />
 
                     {/* Backlinks */}

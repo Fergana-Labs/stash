@@ -128,15 +128,15 @@ export default function WorkspacePage() {
     if (!user) return;
     setVizLoading(true);
     Promise.all([
-      getActivityTimeline().catch(() => null),
-      getKnowledgeDensity().catch(() => null),
-      getEmbeddingProjection().catch(() => null),
+      getActivityTimeline(30, "day", workspaceId).catch(() => null),
+      getKnowledgeDensity(20, workspaceId).catch(() => null),
+      getEmbeddingProjection(500, undefined, workspaceId).catch(() => null),
     ]).then(([t, d, p]) => {
       setTimeline(t);
       setDensity(d);
       setProjection(p);
     }).finally(() => setVizLoading(false));
-  }, [user]);
+  }, [user, workspaceId]);
 
   // Auto-select first notebook for page graph
   useEffect(() => {

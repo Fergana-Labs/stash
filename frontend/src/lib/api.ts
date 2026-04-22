@@ -466,22 +466,25 @@ export async function listAllTables(): Promise<{ tables: TableWithWorkspace[] }>
 // --- Dashboard Visualizations ---
 
 export async function getActivityTimeline(
-  days = 30, bucket = "day"
+  days = 30, bucket = "day", workspaceId?: string | null
 ): Promise<ActivityTimeline> {
-  return apiFetch(`/api/v1/me/activity-timeline?days=${days}&bucket=${bucket}`);
+  const ws = workspaceId ? `&workspace_id=${workspaceId}` : "";
+  return apiFetch(`/api/v1/me/activity-timeline?days=${days}&bucket=${bucket}${ws}`);
 }
 
 export async function getKnowledgeDensity(
-  maxClusters = 20
+  maxClusters = 20, workspaceId?: string | null
 ): Promise<KnowledgeDensity> {
-  return apiFetch(`/api/v1/me/knowledge-density?max_clusters=${maxClusters}`);
+  const ws = workspaceId ? `&workspace_id=${workspaceId}` : "";
+  return apiFetch(`/api/v1/me/knowledge-density?max_clusters=${maxClusters}${ws}`);
 }
 
 export async function getEmbeddingProjection(
-  maxPoints = 500, source?: string
+  maxPoints = 500, source?: string, workspaceId?: string | null
 ): Promise<EmbeddingProjection> {
-  const qs = source ? `&source=${source}` : "";
-  return apiFetch(`/api/v1/me/embedding-projection?max_points=${maxPoints}${qs}`);
+  const src = source ? `&source=${source}` : "";
+  const ws = workspaceId ? `&workspace_id=${workspaceId}` : "";
+  return apiFetch(`/api/v1/me/embedding-projection?max_points=${maxPoints}${src}${ws}`);
 }
 
 // --- Tables ---
