@@ -102,7 +102,6 @@ def _short_circuit(cfg: dict, event: HookEvent | None) -> tuple[bool, str | None
         return True, None
 
     if _is_not_member(workspace_id):
-        _print_join_hint(workspace_id)
         return True, None
 
     return False, workspace_id
