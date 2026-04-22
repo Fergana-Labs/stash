@@ -2,6 +2,7 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 
 import CopyButton from "./_components/CopyButton";
+import ScrollLink from "./_components/ScrollLink";
 
 const INSTALL_COMMAND = `bash -c "$(curl -fsSL https://raw.githubusercontent.com/Fergana-Labs/stash/main/install.sh)"`;
 
@@ -66,18 +67,18 @@ function Nav() {
           stash
         </Link>
         <nav className="flex items-center gap-2 text-[14px] text-dim">
-          <Link
-            href="#how"
+          <ScrollLink
+            to="#how"
             className="hidden rounded-md px-3 py-2 transition hover:bg-raised hover:text-ink sm:inline-flex"
           >
             How it works
-          </Link>
-          <Link
-            href="#features"
+          </ScrollLink>
+          <ScrollLink
+            to="#features"
             className="hidden rounded-md px-3 py-2 transition hover:bg-raised hover:text-ink sm:inline-flex"
           >
             Features
-          </Link>
+          </ScrollLink>
           <Link
             href="/docs"
             className="rounded-md px-3 py-2 transition hover:bg-raised hover:text-ink"
@@ -90,12 +91,12 @@ function Nav() {
           >
             Sign in
           </Link>
-          <Link
-            href="#install"
+          <ScrollLink
+            to="#install"
             className="inline-flex h-10 items-center rounded-lg bg-brand px-[18px] text-[14px] font-medium text-white shadow-sm transition hover:bg-brand-hover"
           >
             Install
-          </Link>
+          </ScrollLink>
         </nav>
       </div>
     </header>
@@ -275,8 +276,8 @@ function Hero() {
       />
       <div className="relative z-10 mx-auto grid max-w-[1200px] grid-cols-1 gap-12 px-7 pb-8 pt-20 lg:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)] lg:items-center lg:gap-16 lg:pb-16 lg:pt-28">
         <div>
-          <Link
-            href="#install"
+          <ScrollLink
+            to="#install"
             className="inline-flex items-center gap-2.5 rounded-full border border-border bg-white/70 py-[5px] pl-[5px] pr-3.5 text-[12px] text-dim shadow-sm transition hover:border-brand/40 hover:text-ink"
           >
             <span className="rounded-full bg-brand px-2 py-0.5 font-mono text-[10px] font-bold uppercase tracking-[0.12em] text-white">
@@ -284,7 +285,7 @@ function Hero() {
             </span>
             <span>Now works with Openclaw</span>
             <span className="font-mono text-muted">→</span>
-          </Link>
+          </ScrollLink>
 
           <h1 className="mt-7 text-balance font-display text-[clamp(44px,6.2vw,80px)] font-black leading-[0.95] tracking-[-0.045em] text-ink">
             <span className="text-brand">Agent memory</span>
@@ -299,12 +300,12 @@ function Hero() {
           </p>
 
           <div className="mt-8 flex flex-wrap items-center gap-3">
-            <Link
-              href="#install"
+            <ScrollLink
+              to="#install"
               className="inline-flex h-10 items-center gap-2 rounded-lg bg-brand px-[18px] text-[14px] font-medium text-white shadow-sm transition hover:bg-brand-hover"
             >
               Install Stash <span className="font-mono">→</span>
-            </Link>
+            </ScrollLink>
             <Link
               href="https://github.com/Fergana-Labs/stash"
               className="inline-flex h-10 items-center gap-2 rounded-lg border border-border bg-transparent px-[18px] text-[14px] font-medium text-ink transition hover:border-ink"
@@ -844,12 +845,12 @@ function ClosingCTA() {
           to remember it.
         </p>
         <div className="mt-9 flex flex-wrap justify-center gap-3">
-          <Link
-            href="#install"
+          <ScrollLink
+            to="#install"
             className="inline-flex h-10 items-center rounded-lg bg-brand px-[18px] text-[14px] font-medium text-white shadow-sm transition hover:bg-brand-hover"
           >
             Install Stash →
-          </Link>
+          </ScrollLink>
           <Link
             href="/docs/quickstart"
             className="inline-flex h-10 items-center rounded-lg border border-border bg-transparent px-[18px] text-[14px] font-medium text-ink transition hover:border-ink"
@@ -913,15 +914,25 @@ function Footer() {
             <h4 className="mb-3.5 font-mono text-[11px] font-medium uppercase tracking-[0.14em] text-muted">
               {col.h}
             </h4>
-            {col.links.map(([label, href]) => (
-              <Link
-                key={label}
-                href={href}
-                className="block py-1 text-[13.5px] text-foreground transition hover:text-brand"
-              >
-                {label}
-              </Link>
-            ))}
+            {col.links.map(([label, href]) =>
+              href.startsWith("#") ? (
+                <ScrollLink
+                  key={label}
+                  to={href}
+                  className="block py-1 text-[13.5px] text-foreground transition hover:text-brand"
+                >
+                  {label}
+                </ScrollLink>
+              ) : (
+                <Link
+                  key={label}
+                  href={href}
+                  className="block py-1 text-[13.5px] text-foreground transition hover:text-brand"
+                >
+                  {label}
+                </Link>
+              ),
+            )}
           </div>
         ))}
       </div>
