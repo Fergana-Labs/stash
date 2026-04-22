@@ -23,9 +23,11 @@ from .config import (
     clear_not_member,
     find_project_manifest,
     load_config,
+    load_enabled_agents,
     load_manifest,
     mark_dismissed,
     save_config,
+    save_enabled_agents,
     stored_base_url,
 )
 from .formatting import console, output_json, print_members, print_rooms, print_user
@@ -1982,8 +1984,31 @@ def onboard_cmd(
 
     cfg = load_config()
 
-    # --- Step 3: Install hooks for detected agents ---
-    _install_all_hooks()
+    # --- Step 3: Choose and install hooks for detected agents ---
+    detected = _detected_agents()
+    if detected:
+        enabled = load_enabled_agents()
+        default_enabled = enabled if enabled is not None else detected
+
+        _reserve_bottom_padding(len(detected) + 4)
+        selected = questionary.checkbox(
+            "Which coding agents should stream to Stash?",
+            choices=[
+                questionary.Choice(
+                    _AGENT_LABEL.get(a, a),
+                    value=a,
+                    checked=a in default_enabled,
+                )
+                for a in detected
+            ],
+        ).ask()
+        if selected is None:
+            raise typer.Exit(1)
+
+        save_enabled_agents(selected)
+        _install_all_hooks(selected)
+    else:
+        save_enabled_agents([])
 
     # --- Step 4: Optionally connect the current repo ---
     repo_root = _git_toplevel()
@@ -2022,30 +2047,33 @@ def onboard_cmd(
     _show_setup_complete_splash()
 
 
-def _install_all_hooks() -> None:
-    """Detect coding agents and install/upgrade hooks for all of them."""
+_AGENT_LABEL = {
+    "claude": "Claude Code",
+    "cursor": "Cursor",
+    "codex": "Codex",
+    "opencode": "opencode",
+}
+
+
+def _install_all_hooks(agents: list[str] | None = None) -> None:
+    """Install/upgrade hooks for the given agents (defaults to all detected)."""
     detected = _detected_agents()
     if not detected:
         return
 
-    agent_label = {
-        "claude": "Claude Code",
-        "cursor": "Cursor",
-        "codex": "Codex",
-        "opencode": "opencode",
-    }
+    to_install = [a for a in detected if a in agents] if agents is not None else detected
 
-    for agent in detected:
+    for agent in to_install:
         try:
             status_, detail = _INSTALLERS[agent](False)
         except Exception as e:
             status_, detail = ("failed", f"{type(e).__name__}: {e}")
         if status_ == "installed":
-            console.print(f"  [green]✓[/green] {agent_label[agent]} hook installed  {detail}")
+            console.print(f"  [green]✓[/green] {_AGENT_LABEL[agent]} hook installed  {detail}")
         elif status_ == "skipped":
-            console.print(f"  [green]✓[/green] {agent_label[agent]} hook up to date")
+            console.print(f"  [green]✓[/green] {_AGENT_LABEL[agent]} hook up to date")
         elif status_ == "failed":
-            console.print(f"  [red]✗[/red] {agent_label[agent]} hook failed  {detail}")
+            console.print(f"  [red]✗[/red] {_AGENT_LABEL[agent]} hook failed  {detail}")
 
 
 @app.command("connect")
@@ -2356,6 +2384,14 @@ def _render_settings_header(cfg: dict, central: dict) -> None:
     else:
         row(f"{'Last curate:':<14}", "(never)")
 
+    enabled = load_enabled_agents()
+    detected = _detected_agents()
+    if enabled is None:
+        agents_label = ", ".join(_AGENT_LABEL.get(a, a) for a in detected) or "(none detected)"
+    else:
+        agents_label = ", ".join(_AGENT_LABEL.get(a, a) for a in enabled) or "(none)"
+    row(f"{'Streaming:':<14}", agents_label)
+
     plugins_seen = [name for name, d in PLUGIN_DATA_DIRS.items() if d.exists()]
     row(f"{'Plugins:':<14}", ", ".join(plugins_seen) or "(none detected)")
     console.print()
@@ -2377,6 +2413,7 @@ def settings_cmd(as_json: bool = typer.Option(False, "--json")):
                 "config": display_cfg,
                 "auto_curate": bool(central.get("auto_curate", True)),
                 "last_curate_at": central.get("last_curate_at"),
+                "enabled_agents": load_enabled_agents(),
                 "plugins_installed": [
                     name for name, d in PLUGIN_DATA_DIRS.items() if d.exists()
                 ],
@@ -2391,8 +2428,12 @@ def settings_cmd(as_json: bool = typer.Option(False, "--json")):
 
         auto_curate = bool(central.get("auto_curate", True))
         base_url = cfg.get("base_url", "")
+        enabled = load_enabled_agents()
+        detected = _detected_agents()
+        enabled_label = ", ".join(_AGENT_LABEL.get(a, a) for a in (enabled or detected)) or "(none)"
 
         rows = [
+            ("Streaming", enabled_label, "enabled_agents"),
             ("Auto-curate", "on" if auto_curate else "off", "auto_curate"),
             ("Endpoint", base_url, "base_url"),
         ]
@@ -2412,7 +2453,23 @@ def settings_cmd(as_json: bool = typer.Option(False, "--json")):
         if picked in (None, "exit"):
             return
 
-        if picked == "auto_curate":
+        if picked == "enabled_agents":
+            current_enabled = enabled if enabled is not None else detected
+            selected = questionary.checkbox(
+                "Which coding agents should stream to Stash?",
+                choices=[
+                    questionary.Choice(
+                        _AGENT_LABEL.get(a, a),
+                        value=a,
+                        checked=a in current_enabled,
+                    )
+                    for a in detected
+                ],
+            ).ask()
+            if selected is not None:
+                save_enabled_agents(selected)
+                _install_all_hooks(selected)
+        elif picked == "auto_curate":
             _write_central_config({"auto_curate": not auto_curate})
         elif picked == "base_url":
             new_url = questionary.text("Endpoint base URL", default=base_url).ask()

@@ -22,7 +22,35 @@ from stashai.plugin.stash_client import StashClient, StashError
 from stashai.plugin.state import read_stats, record_tool_use
 from stashai.plugin.summarize import summarize_tool_use
 
+_CONFIG_FILE = Path.home() / ".stash" / "config.json"
 _CACHE_DIR = Path.home() / ".stash" / "cache"
+
+_CLIENT_TO_AGENT = {
+    "claude_code": "claude",
+    "cursor": "cursor",
+    "codex_cli": "codex",
+    "opencode": "opencode",
+}
+
+
+def _is_agent_enabled(cfg: dict) -> bool:
+    """Check if this agent is enabled in ~/.stash/config.json.
+
+    Returns True if enabled_agents is unset (default: all enabled).
+    """
+    if not _CONFIG_FILE.exists():
+        return True
+    try:
+        import json
+        data = json.loads(_CONFIG_FILE.read_text())
+    except Exception:
+        return True
+    enabled = data.get("enabled_agents")
+    if not isinstance(enabled, list):
+        return True
+    client = cfg.get("client", "")
+    canonical = _CLIENT_TO_AGENT.get(client, client)
+    return canonical in enabled
 
 
 def _is_dismissed(workspace_id: str) -> bool:
@@ -63,6 +91,9 @@ def _resolve_workspace(cfg: dict, event: HookEvent | None) -> str | None:
 
 def _short_circuit(cfg: dict, event: HookEvent | None) -> tuple[bool, str | None]:
     """Return (should_skip, workspace_id). Handles the cache-based membership checks."""
+    if not _is_agent_enabled(cfg):
+        return True, None
+
     workspace_id = _resolve_workspace(cfg, event)
     if not workspace_id:
         return True, None

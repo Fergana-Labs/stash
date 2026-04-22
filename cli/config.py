@@ -106,6 +106,21 @@ def stored_base_url() -> str | None:
     return None
 
 
+def load_enabled_agents() -> list[str] | None:
+    """Return the enabled_agents list from config, or None if unset (all enabled)."""
+    if USER_CONFIG_FILE.exists():
+        data = _read_json(USER_CONFIG_FILE)
+        agents = data.get("enabled_agents")
+        if isinstance(agents, list):
+            return agents
+    return None
+
+
+def save_enabled_agents(agents: list[str]) -> None:
+    """Persist the enabled agents list to ~/.stash/config.json."""
+    _write_to(USER_CONFIG_FILE, {"enabled_agents": agents})
+
+
 def clear_config() -> None:
     """Remove stored config."""
     if USER_CONFIG_FILE.exists():
