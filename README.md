@@ -79,14 +79,14 @@ With Stash, every agent on the repo can ask (and answer):
 
 ## Quick Start
 
-One line installs the CLI, signs you in, picks a workspace, and installs plugins for your coding agent (currently supports Claude Code, Cursor, Codex, Openclaw, and OpenCode):
+One line installs the CLI, signs you in, picks a workspace, and installs plugins for your coding agent (auto-detects Claude Code, Cursor, Codex, and OpenCode):
 
 ```bash
 bash -c "$(curl -fsSL https://raw.githubusercontent.com/Fergana-Labs/stash/main/install.sh)"
 ```
 
 <p align="center">
-  <img src="docs/assets/setup-complete.png" alt="Stash setup complete — your agent now has the stash CLI on its PATH" width="900" />
+  <img src="docs/assets/welcome.png" alt="Stash welcome screen after install" width="900" />
 </p>
 
 Then try it:
@@ -113,7 +113,7 @@ stash connect               # Interactive: sign in, pick a workspace, install pl
 |---|---|
 | Shared history | Every prompt, tool call, and session summary streams to a workspace-wide event log. Searchable, filterable, attributable per agent and per human. |
 | Sleep-time curation | On `SessionEnd`, a curation agent reads recent history and writes wiki notebooks with `[[backlinks]]` and a page graph. 24-hour cooldown; manual via `/curate`. |
-| Agentic search | `stash search` runs a cross-resource loop over files, history, notebooks, tables, and chats. One query, every source, with citations. |
+| Search | `stash history search` for full-text search over events. Notebooks and tables support pgvector semantic search via the REST API. |
 | Wiki notebooks | Rich collaborative pages with wiki-style links, page-graph visualization, backlinks, and pgvector semantic search. |
 | Visualizations | See the team's memory as it forms — embedding projections, page graphs, knowledge-density treemaps, agent-activity heatmaps. |
 | Local-first option | Self-host the entire stack with Docker Compose. Embeddings default to local sentence-transformers — zero API keys required to run. |
