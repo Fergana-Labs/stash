@@ -154,7 +154,7 @@ The one-line installer auto-detects which agent you have and wires up the plugin
 | **Gemini CLI** | [`plugins/gemini-plugin`](plugins/gemini-plugin/README.md) | merges hooks into `~/.gemini/settings.json` |
 | **Openclaw** | [`plugins/openclaw-plugin`](plugins/openclaw-plugin/README.md) | `openclaw plugins install github:Fergana-Labs/stash#plugins/openclaw-plugin` |
 
-Every plugin streams session activity to the same workspace, injects relevant memory into prompts, and uses the shared `stash` CLI underneath. Mix and match — different teammates can use different agents against the same shared brain.
+Every plugin streams session activity to the same workspace and gives the agent access to the shared `stash` CLI. Mix and match — different teammates can use different agents against the same shared brain.
 
 ## Coming from...
 
