@@ -13,12 +13,6 @@ const nextConfig: NextConfig = {
   async redirects() {
     return [
       {
-        source: "/:path*",
-        has: [{ type: "host", value: "www.joinstash.ai" }],
-        destination: "https://joinstash.ai/:path*",
-        permanent: true,
-      },
-      {
         source: "/install",
         destination:
           "https://raw.githubusercontent.com/Fergana-Labs/stash/main/install.sh",
