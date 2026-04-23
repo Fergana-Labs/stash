@@ -2216,7 +2216,7 @@ def start_cmd():
                 req = c.get_my_join_request(workspace_id)
                 if req and req.get("status") == "approved":
                     console.print(
-                        f"  [green]✓[/green] Your request to join was approved!"
+                        "  [green]✓[/green] Your request to join was approved!"
                     )
                 elif req and req.get("status") == "pending":
                     console.print(
