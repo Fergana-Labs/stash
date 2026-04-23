@@ -129,43 +129,27 @@ def clear_config() -> None:
 # --- Streaming toggle ---
 
 
-def _streaming_set() -> set[str]:
+def _stopped_set() -> set[str]:
     if USER_CONFIG_FILE.exists():
-        val = _read_json(USER_CONFIG_FILE).get("streaming")
+        val = _read_json(USER_CONFIG_FILE).get("stopped_streaming")
         if isinstance(val, list):
             return set(val)
     return set()
 
 
 def is_streaming(workspace_id: str) -> bool:
-    return workspace_id in _streaming_set()
+    return workspace_id not in _stopped_set()
 
 
 def set_streaming(workspace_id: str) -> None:
-    ids = _streaming_set()
-    ids.add(workspace_id)
-    _write_to(USER_CONFIG_FILE, {"streaming": sorted(ids)})
+    ids = _stopped_set()
+    ids.discard(workspace_id)
+    _write_to(USER_CONFIG_FILE, {"stopped_streaming": sorted(ids)})
 
 
 def clear_streaming(workspace_id: str) -> None:
-    ids = _streaming_set()
-    ids.discard(workspace_id)
-    _write_to(USER_CONFIG_FILE, {"streaming": sorted(ids)})
-
-
-def _hints_shown_set() -> set[str]:
-    if USER_CONFIG_FILE.exists():
-        val = _read_json(USER_CONFIG_FILE).get("hints_shown")
-        if isinstance(val, list):
-            return set(val)
-    return set()
-
-
-def is_hint_shown(workspace_id: str) -> bool:
-    return workspace_id in _hints_shown_set()
-
-
-def mark_hint_shown(workspace_id: str) -> None:
-    ids = _hints_shown_set()
+    ids = _stopped_set()
     ids.add(workspace_id)
-    _write_to(USER_CONFIG_FILE, {"hints_shown": sorted(ids)})
+    _write_to(USER_CONFIG_FILE, {"stopped_streaming": sorted(ids)})
+
+

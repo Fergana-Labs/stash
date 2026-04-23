@@ -1852,7 +1852,7 @@ def _handle_not_member(ws_id: str, client: StashClient) -> None:
     if existing and existing.get("status") == "approved":
         console.print(
             "  [green]✓[/green] Your request was approved! "
-            "Run [cyan]stash start[/cyan] to begin streaming."
+            "Streaming is now active."
         )
         return
 
@@ -1914,7 +1914,7 @@ def _auto_connect_repo(repo_root: Path, cfg: dict) -> None:
 
     console.print(
         f"\n  Commit [cyan]{MANIFEST_FILE}[/cyan] and [cyan]CLAUDE.md[/cyan] and push. "
-        "Teammates will see a prompt to run [cyan]stash start[/cyan]."
+        "Teammates will start streaming automatically."
     )
 
 
@@ -2205,7 +2205,7 @@ def leave_cmd():
 
 @app.command("start")
 def start_cmd():
-    """Start streaming transcripts to this repo's workspace."""
+    """Resume streaming transcripts (undoes `stash stop`)."""
     cfg = _require_auth()
 
     manifest = load_manifest()
