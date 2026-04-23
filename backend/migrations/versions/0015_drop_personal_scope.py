@@ -22,13 +22,9 @@ def upgrade() -> None:
     # but a fresh dev DB might have legacy data; making the caller deal
     # with it is safer than silently dropping rows.
     for table in ("notebooks", "tables", "files", "history_events", "decks"):
-        op.execute(
-            f"ALTER TABLE {table} ALTER COLUMN workspace_id SET NOT NULL"
-        )
+        op.execute(f"ALTER TABLE {table} ALTER COLUMN workspace_id SET NOT NULL")
 
 
 def downgrade() -> None:
     for table in ("notebooks", "tables", "files", "history_events", "decks"):
-        op.execute(
-            f"ALTER TABLE {table} ALTER COLUMN workspace_id DROP NOT NULL"
-        )
+        op.execute(f"ALTER TABLE {table} ALTER COLUMN workspace_id DROP NOT NULL")

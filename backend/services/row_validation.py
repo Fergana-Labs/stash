@@ -161,4 +161,6 @@ def _coerce_date(value, *, with_time: bool):
         except ValueError:
             raise ValueError(f"expected ISO {'datetime' if with_time else 'date'}, got {value!r}")
         return parsed.isoformat() if with_time else parsed.date().isoformat()
-    raise ValueError(f"expected ISO {'datetime' if with_time else 'date'}, got {type(value).__name__}")
+    raise ValueError(
+        f"expected ISO {'datetime' if with_time else 'date'}, got {type(value).__name__}"
+    )

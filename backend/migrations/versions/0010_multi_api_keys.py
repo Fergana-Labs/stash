@@ -56,7 +56,5 @@ FROM (
 ) k
 WHERE u.id = k.user_id
 """)
-    op.execute(
-        "CREATE INDEX IF NOT EXISTS idx_users_api_key_hash ON users(api_key_hash)"
-    )
+    op.execute("CREATE INDEX IF NOT EXISTS idx_users_api_key_hash ON users(api_key_hash)")
     op.execute("DROP TABLE IF EXISTS user_api_keys CASCADE")

@@ -42,7 +42,9 @@ def _schedule_embed(page_id: UUID, content: str) -> None:
         existing.cancel()
     task = asyncio.create_task(_embed_page(page_id, content))
     _embed_tasks[page_id] = task
-    task.add_done_callback(lambda t, pid=page_id: _embed_tasks.pop(pid, None) if _embed_tasks.get(pid) is t else None)
+    task.add_done_callback(
+        lambda t, pid=page_id: _embed_tasks.pop(pid, None) if _embed_tasks.get(pid) is t else None
+    )
 
 
 # --- Notebook (collection) CRUD ---

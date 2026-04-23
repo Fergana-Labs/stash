@@ -597,5 +597,3 @@ async def remove_share(
         raise HTTPException(status_code=403, detail="Only owner/admin can remove shares")
     await _check_ws_table(workspace_id, table_id)
     await permission_service.remove_share("table", table_id, user_id)
-
-

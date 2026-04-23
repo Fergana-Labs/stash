@@ -27,7 +27,9 @@ def _schedule_row_embed(row_id: UUID, text: str, text_hash: str) -> None:
         existing.cancel()
     task = asyncio.create_task(_embed_row(row_id, text, text_hash))
     _embed_tasks[row_id] = task
-    task.add_done_callback(lambda t, rid=row_id: _embed_tasks.pop(rid, None) if _embed_tasks.get(rid) is t else None)
+    task.add_done_callback(
+        lambda t, rid=row_id: _embed_tasks.pop(rid, None) if _embed_tasks.get(rid) is t else None
+    )
 
 
 # --- Table CRUD ---

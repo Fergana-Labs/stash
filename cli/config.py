@@ -128,6 +128,7 @@ def clear_config() -> None:
 
 # --- Streaming toggle ---
 
+
 def _streaming_set() -> set[str]:
     if USER_CONFIG_FILE.exists():
         val = _read_json(USER_CONFIG_FILE).get("streaming")

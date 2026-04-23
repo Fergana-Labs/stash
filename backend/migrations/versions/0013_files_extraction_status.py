@@ -26,9 +26,7 @@ def upgrade() -> None:
     )
 
     # Files that already have extracted_text are done — don't re-run them.
-    op.execute(
-        "UPDATE files SET extraction_status = 'done' WHERE extracted_text IS NOT NULL"
-    )
+    op.execute("UPDATE files SET extraction_status = 'done' WHERE extracted_text IS NOT NULL")
 
     # Partial index so the dispatcher's claim query stays fast as the
     # backlog grows. Covers (pending | failed-with-retries-left) rows.

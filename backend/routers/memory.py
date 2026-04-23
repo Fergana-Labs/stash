@@ -148,5 +148,3 @@ async def list_ws_agent_names(
         workspace_id,
     )
     return {"agent_names": [r["agent_name"] for r in rows]}
-
-

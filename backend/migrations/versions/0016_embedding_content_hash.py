@@ -18,11 +18,17 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.execute("ALTER TABLE notebook_pages ADD COLUMN IF NOT EXISTS embed_stale BOOLEAN NOT NULL DEFAULT FALSE")
+    op.execute(
+        "ALTER TABLE notebook_pages ADD COLUMN IF NOT EXISTS embed_stale BOOLEAN NOT NULL DEFAULT FALSE"
+    )
     op.execute("ALTER TABLE table_rows ADD COLUMN IF NOT EXISTS content_hash TEXT")
-    op.execute("ALTER TABLE table_rows ADD COLUMN IF NOT EXISTS embed_stale BOOLEAN NOT NULL DEFAULT FALSE")
+    op.execute(
+        "ALTER TABLE table_rows ADD COLUMN IF NOT EXISTS embed_stale BOOLEAN NOT NULL DEFAULT FALSE"
+    )
     op.execute("ALTER TABLE history_events ADD COLUMN IF NOT EXISTS content_hash TEXT")
-    op.execute("ALTER TABLE history_events ADD COLUMN IF NOT EXISTS embed_stale BOOLEAN NOT NULL DEFAULT FALSE")
+    op.execute(
+        "ALTER TABLE history_events ADD COLUMN IF NOT EXISTS embed_stale BOOLEAN NOT NULL DEFAULT FALSE"
+    )
 
     # Partial indexes for the reconciler: find rows that need re-embedding.
     op.execute(

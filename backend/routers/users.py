@@ -99,8 +99,7 @@ async def logout(current_user: dict = Depends(get_current_user)):
 
     pool = get_pool()
     await pool.execute(
-        "UPDATE user_api_keys SET revoked_at = now() "
-        "WHERE id = $1 AND revoked_at IS NULL",
+        "UPDATE user_api_keys SET revoked_at = now() " "WHERE id = $1 AND revoked_at IS NULL",
         current_user["key_id"],
     )
     return None

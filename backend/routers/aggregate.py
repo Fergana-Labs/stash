@@ -50,6 +50,7 @@ async def _verify_workspace_access(workspace_id: UUID, user_id: UUID) -> None:
     from fastapi import HTTPException
 
     from ..services import permission_service
+
     role = await permission_service.get_workspace_role(workspace_id, user_id)
     if role is None:
         raise HTTPException(status_code=403, detail="Not a member of this workspace")

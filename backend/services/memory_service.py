@@ -35,7 +35,9 @@ def _schedule_event_embed(event_id: UUID, content: str, content_hash: str) -> No
         existing.cancel()
     task = asyncio.create_task(_embed_event(event_id, content, content_hash))
     _embed_tasks[event_id] = task
-    task.add_done_callback(lambda t, eid=event_id: _embed_tasks.pop(eid, None) if _embed_tasks.get(eid) is t else None)
+    task.add_done_callback(
+        lambda t, eid=event_id: _embed_tasks.pop(eid, None) if _embed_tasks.get(eid) is t else None
+    )
 
 
 async def _embed_event(event_id: UUID, content: str, content_hash: str) -> None:

@@ -21,6 +21,7 @@ logger = logging.getLogger(__name__)
 _DENSITY_CACHE_TTL = timedelta(hours=24)
 _DENSITY_SIGNATURE_TOLERANCE = 0.1
 
+
 # Shared CTE for workspace access filtering on history_events.
 # When ws_idx is passed, the CTE narrows to a single workspace (the caller
 # must have already authorized access to it). Otherwise it returns every
@@ -80,8 +81,6 @@ def _accessible_tables_cte(ws_idx: int | None = None) -> str:
            OR (t.workspace_id IS NULL AND t.created_by = $1)
     )
     """
-
-
 
 
 async def get_activity_timeline(
@@ -266,9 +265,7 @@ def _is_noise_stem(stem: str) -> bool:
     return False
 
 
-async def _get_source_counts(
-    user_id: UUID, workspace_id: UUID | None = None
-) -> dict:
+async def _get_source_counts(user_id: UUID, workspace_id: UUID | None = None) -> dict:
     """Page / row / event counts in one round-trip. Used as both TF-IDF
     denominator and as a cheap fingerprint for cache invalidation."""
     pool = get_pool()
@@ -466,11 +463,13 @@ async def compute_knowledge_density(
     clusters = []
     for stem, data in top_stems:
         label = stem_to_label.get(stem, stem).capitalize()
-        clusters.append({
-            "label": label,
-            "count": data["ndoc"],
-            "newest_at": data["newest_at"].isoformat() if data["newest_at"] else None,
-        })
+        clusters.append(
+            {
+                "label": label,
+                "count": data["ndoc"],
+                "newest_at": data["newest_at"].isoformat() if data["newest_at"] else None,
+            }
+        )
     return clusters, signature
 
 
