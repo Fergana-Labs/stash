@@ -45,7 +45,14 @@ async def get_or_create_user_from_auth0(
         auth0_sub,
     )
     if row:
-        await pool.execute("UPDATE users SET last_seen = now() WHERE id = $1", row["id"])
+        if email:
+            await pool.execute(
+                "UPDATE users SET last_seen = now(), email = $2 WHERE id = $1",
+                row["id"],
+                email,
+            )
+        else:
+            await pool.execute("UPDATE users SET last_seen = now() WHERE id = $1", row["id"])
         api_key = await create_api_key(row["id"], name=key_name)
         return dict(row), api_key
 
@@ -54,12 +61,13 @@ async def get_or_create_user_from_auth0(
     display_name = name or username
 
     row = await pool.fetchrow(
-        "INSERT INTO users (name, display_name, auth0_sub, description) "
-        "VALUES ($1, $2, $3, '') "
+        "INSERT INTO users (name, display_name, auth0_sub, description, email) "
+        "VALUES ($1, $2, $3, '', $4) "
         "RETURNING id, name, display_name, description, created_at, last_seen",
         username,
         display_name,
         auth0_sub,
+        email,
     )
     user = dict(row)
     api_key = await create_api_key(user["id"], name=key_name)

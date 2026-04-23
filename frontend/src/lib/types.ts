@@ -264,6 +264,26 @@ export interface EmbeddingProjection {
   cached: boolean;
 }
 
+// --- Join Requests ---
+
+export interface JoinRequest {
+  id: string;
+  workspace_id: string;
+  user_id: string;
+  status: "pending" | "approved" | "denied";
+  created_at: string;
+  resolved_at: string | null;
+  resolved_by: string | null;
+  user_name: string | null;
+  user_display_name: string | null;
+}
+
+export interface WorkspacePublicInfo {
+  id: string;
+  name: string;
+  member_count: number;
+}
+
 // --- Search ---
 
 export interface UserSearchResult {

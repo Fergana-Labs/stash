@@ -13,3 +13,4 @@ sqlalchemy[asyncio]>=2.0.0
 umap-learn>=0.5.0
 python-jose[cryptography]>=3.3.0
 pypdf>=4.0
+resend>=2.0.0
