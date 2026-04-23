@@ -10,9 +10,7 @@ from pathlib import Path
 import questionary
 import typer
 from rich.align import Align
-from rich.console import Group
 from rich.panel import Panel
-from rich.table import Table
 from rich.text import Text
 
 from .client import StashClient, StashError
@@ -21,7 +19,6 @@ from .config import (
     PRODUCTION_BASE_URL,
     Manifest,
     clear_streaming,
-    find_project_manifest,
     load_config,
     load_enabled_agents,
     load_manifest,
@@ -33,6 +30,7 @@ from .config import (
 from .formatting import console, output_json, print_members, print_rooms, print_user
 
 app = typer.Typer(name="stash", help="Stash CLI — workspaces, notebooks, tables, history.")
+
 
 def _client() -> StashClient:
     cfg = load_config()
@@ -58,10 +56,7 @@ def _resolve_workspace() -> str:
 
     choice = questionary.select(
         "Which workspace?",
-        choices=[
-            questionary.Choice(w.get("name", str(w["id"])), value=str(w["id"]))
-            for w in mine
-        ],
+        choices=[questionary.Choice(w.get("name", str(w["id"])), value=str(w["id"])) for w in mine],
     ).ask()
     if choice is None:
         raise typer.Exit(1)
@@ -162,9 +157,7 @@ def _browser_auth_flow(
 
     with httpx.Client(base_url=api, timeout=10) as c:
         try:
-            r = c.post(
-                "/api/v1/users/cli-auth/sessions", json={"device_name": device_name}
-            )
+            r = c.post("/api/v1/users/cli-auth/sessions", json={"device_name": device_name})
             r.raise_for_status()
             session_id = r.json()["session_id"]
         except (httpx.HTTPError, KeyError) as e:
@@ -409,8 +402,8 @@ def _ask_codex_network_access() -> bool:
     console.print(
         "For stash to work on codex specifically, we need to let bash ",
         "commands make network requests so that we can upload chat ",
-        "transcripts to the remote server."
-        )
+        "transcripts to the remote server.",
+    )
     answer = questionary.confirm(
         "Allow codex bash commands to make outbound network requests?",
         default=True,
@@ -618,8 +611,6 @@ def ws_join(invite_code: str = typer.Argument(...), as_json: bool = typer.Option
         output_json(data)
     else:
         console.print(f"[green]Joined '{data.get('name')}'[/green]")
-
-
 
 
 @ws_app.command("info")
@@ -936,8 +927,10 @@ def nb_edit_page(
                     console.print(f"[red]Not a file: {p}[/red]")
                     raise typer.Exit(1)
             if attach:
-                base = content if content is not None else c.get_page(ws, notebook_id, page_id).get(
-                    "content_markdown", ""
+                base = (
+                    content
+                    if content is not None
+                    else c.get_page(ws, notebook_id, page_id).get("content_markdown", "")
                 )
                 content = _prepend_attachments(c, ws, base, attach)
             kwargs = {}
@@ -1763,6 +1756,7 @@ app.add_typer(prompts_app, name="prompts")
 def prompts_curate():
     """Print the sleep-time wiki curation prompt to stdout."""
     from stashai.plugin.sleep_prompt import SLEEP_PROMPT
+
     print(SLEEP_PROMPT)
 
 
@@ -1970,7 +1964,9 @@ def login_cmd(
         try:
             with StashClient(base_url=base_url, api_key=cfg["api_key"]) as c:
                 user = c.whoami()
-            console.print(f"  [green]✓[/green] Already authenticated as [bold]{user['name']}[/bold]")
+            console.print(
+                f"  [green]✓[/green] Already authenticated as [bold]{user['name']}[/bold]"
+            )
         except StashError:
             has_key = False
 
@@ -1979,7 +1975,9 @@ def login_cmd(
         try:
             api_key, username = _browser_auth_flow(base_url)
         except KeyboardInterrupt:
-            console.print("\n[yellow]Authentication cancelled. Run `stash login` to try again.[/yellow]")
+            console.print(
+                "\n[yellow]Authentication cancelled. Run `stash login` to try again.[/yellow]"
+            )
             raise typer.Exit(1)
         save_config(api_key=api_key, username=username)
         console.print(f"  [green]✓[/green] Logged in as [bold]{username}[/bold]")
@@ -2036,7 +2034,9 @@ def login_cmd(
 
     if answer == "yes":
         if not repo_root:
-            console.print("[yellow]Not inside a git repo. Run `stash connect` from a repo.[/yellow]")
+            console.print(
+                "[yellow]Not inside a git repo. Run `stash connect` from a repo.[/yellow]"
+            )
         else:
             with StashClient(base_url=cfg["base_url"], api_key=cfg["api_key"]) as c:
                 _connect_repo(repo_root, c)
@@ -2159,8 +2159,6 @@ def _git_toplevel(cwd: Path | None = None) -> Path | None:
     return Path(top) if top else None
 
 
-
-
 STASH_LOGO = r"""
  ███████╗████████╗ █████╗ ███████╗██╗  ██╗
  ██╔════╝╚══██╔══╝██╔══██╗██╔════╝██║  ██║
@@ -2171,13 +2169,13 @@ STASH_LOGO = r"""
 """
 
 # Matches the orange octopus on joinstash.ai — round body, two eyes, five tentacles.
-STASH_OCTOPUS = r'''
+STASH_OCTOPUS = r"""
               .-~~~~~~-.
              /  o    o  \
              '.________.'
               / / | \ \ \
              ( ( (|)  ) )
-'''
+"""
 
 
 def _frontend_base_url() -> str:
@@ -2264,9 +2262,7 @@ def _install_claude_plugin() -> bool:
         try:
             result = _sp.run(cmd, check=True, capture_output=True, text=True, timeout=60)
         except _sp.CalledProcessError as e:
-            console.print(
-                f"  [yellow]`{' '.join(cmd)}` exited {e.returncode}.[/yellow]"
-            )
+            console.print(f"  [yellow]`{' '.join(cmd)}` exited {e.returncode}.[/yellow]")
             if e.stderr:
                 console.print(f"  [dim]{e.stderr.strip().splitlines()[-1]}[/dim]")
             return False
@@ -2342,7 +2338,6 @@ PLUGIN_DATA_DIRS = {
 }
 
 
-
 def _render_settings_header(cfg: dict, central: dict) -> None:
     """Print the read-only portion of the settings page."""
     console.clear()
@@ -2398,9 +2393,7 @@ def settings_cmd(as_json: bool = typer.Option(False, "--json")):
                 "auto_curate": bool(central.get("auto_curate", True)),
                 "last_curate_at": central.get("last_curate_at"),
                 "enabled_agents": load_enabled_agents(),
-                "plugins_installed": [
-                    name for name, d in PLUGIN_DATA_DIRS.items() if d.exists()
-                ],
+                "plugins_installed": [name for name, d in PLUGIN_DATA_DIRS.items() if d.exists()],
             }
         )
         return

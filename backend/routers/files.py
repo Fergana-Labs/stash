@@ -190,5 +190,3 @@ async def delete_ws_file(
     await pool.execute(
         "DELETE FROM files WHERE id = $1 AND workspace_id = $2", file_id, workspace_id
     )
-
-

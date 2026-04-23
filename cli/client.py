@@ -345,26 +345,18 @@ class StashClient:
     # --- Deck Share Links ---
 
     def create_deck_share(self, workspace_id: str, deck_id: str, **kwargs) -> dict:
-        return self._post(
-            f"/api/v1/workspaces/{workspace_id}/decks/{deck_id}/shares", json=kwargs
-        )
+        return self._post(f"/api/v1/workspaces/{workspace_id}/decks/{deck_id}/shares", json=kwargs)
 
     def list_deck_shares(self, workspace_id: str, deck_id: str) -> list:
-        return self._list(
-            f"/api/v1/workspaces/{workspace_id}/decks/{deck_id}/shares", "shares"
-        )
+        return self._list(f"/api/v1/workspaces/{workspace_id}/decks/{deck_id}/shares", "shares")
 
-    def update_deck_share(
-        self, workspace_id: str, deck_id: str, share_id: str, **kwargs
-    ) -> dict:
+    def update_deck_share(self, workspace_id: str, deck_id: str, share_id: str, **kwargs) -> dict:
         return self._put(
             f"/api/v1/workspaces/{workspace_id}/decks/{deck_id}/shares/{share_id}",
             json=kwargs,
         )
 
-    def get_share_analytics(
-        self, workspace_id: str, deck_id: str, share_id: str
-    ) -> dict:
+    def get_share_analytics(self, workspace_id: str, deck_id: str, share_id: str) -> dict:
         return self._get(
             f"/api/v1/workspaces/{workspace_id}/decks/{deck_id}/shares/{share_id}/analytics"
         )

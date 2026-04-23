@@ -54,7 +54,9 @@ async def with_retry(coro_factory):
                 last_exc = exc
                 if attempt == _MAX_ATTEMPTS - 1:
                     break
-                delay = exc.retry_after if exc.retry_after is not None else _BASE_DELAY * (2**attempt)
+                delay = (
+                    exc.retry_after if exc.retry_after is not None else _BASE_DELAY * (2**attempt)
+                )
                 delay = min(delay, _MAX_DELAY)
                 delay += random.uniform(0, delay * 0.25)
                 logger.info(
@@ -65,4 +67,8 @@ async def with_retry(coro_factory):
                     delay,
                 )
         await asyncio.sleep(delay)
-    raise last_exc if last_exc is not None else RuntimeError("with_retry exhausted with no exception captured")
+    raise (
+        last_exc
+        if last_exc is not None
+        else RuntimeError("with_retry exhausted with no exception captured")
+    )

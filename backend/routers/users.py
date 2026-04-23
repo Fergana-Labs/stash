@@ -3,7 +3,7 @@ import time
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 
-from ..auth import get_current_user
+from ..auth import create_api_key, get_current_user
 from ..config import settings
 from ..middleware import limiter
 from ..models import (
@@ -19,7 +19,6 @@ from ..models import (
     UserSearchResult,
     UserUpdateRequest,
 )
-from ..auth import create_api_key
 from ..services import invite_token_service, user_service
 
 router = APIRouter(prefix="/api/v1/users", tags=["users"])
@@ -100,8 +99,7 @@ async def logout(current_user: dict = Depends(get_current_user)):
 
     pool = get_pool()
     await pool.execute(
-        "UPDATE user_api_keys SET revoked_at = now() "
-        "WHERE id = $1 AND revoked_at IS NULL",
+        "UPDATE user_api_keys SET revoked_at = now() " "WHERE id = $1 AND revoked_at IS NULL",
         current_user["key_id"],
     )
     return None

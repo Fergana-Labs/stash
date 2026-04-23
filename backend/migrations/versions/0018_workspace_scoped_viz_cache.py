@@ -25,7 +25,9 @@ def upgrade() -> None:
         "ADD COLUMN IF NOT EXISTS workspace_id UUID "
         "REFERENCES workspaces(id) ON DELETE CASCADE"
     )
-    op.execute("ALTER TABLE knowledge_density_cache DROP CONSTRAINT IF EXISTS knowledge_density_cache_pkey")
+    op.execute(
+        "ALTER TABLE knowledge_density_cache DROP CONSTRAINT IF EXISTS knowledge_density_cache_pkey"
+    )
     op.execute(
         "CREATE UNIQUE INDEX IF NOT EXISTS knowledge_density_cache_scope_key "
         "ON knowledge_density_cache(user_id, workspace_id) NULLS NOT DISTINCT"
@@ -37,7 +39,9 @@ def upgrade() -> None:
         "ADD COLUMN IF NOT EXISTS workspace_id UUID "
         "REFERENCES workspaces(id) ON DELETE CASCADE"
     )
-    op.execute("ALTER TABLE embedding_projections DROP CONSTRAINT IF EXISTS embedding_projections_pkey")
+    op.execute(
+        "ALTER TABLE embedding_projections DROP CONSTRAINT IF EXISTS embedding_projections_pkey"
+    )
     op.execute(
         "CREATE UNIQUE INDEX IF NOT EXISTS embedding_projections_scope_key "
         "ON embedding_projections(user_id, source_type, workspace_id) NULLS NOT DISTINCT"

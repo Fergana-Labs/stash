@@ -65,7 +65,9 @@ class HuggingFaceEmbedder(BaseEmbedder):
                 retry_after=retry_after,
             )
         if resp.status_code >= 400:
-            logger.warning("HuggingFace embedding rejected: %s %s", resp.status_code, resp.text[:200])
+            logger.warning(
+                "HuggingFace embedding rejected: %s %s", resp.status_code, resp.text[:200]
+            )
             return None
 
         data = resp.json()

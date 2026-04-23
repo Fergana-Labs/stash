@@ -37,8 +37,7 @@ STALE_LOCK_SECONDS = 600
 async def claim_one() -> dict | None:
     """Atomically claim the next extraction job. Returns the row or None."""
     pool = get_pool()
-    row = await pool.fetchrow(
-        f"""
+    row = await pool.fetchrow(f"""
         WITH next AS (
             SELECT id FROM files
             WHERE (
@@ -60,8 +59,7 @@ async def claim_one() -> dict | None:
         FROM next
         WHERE f.id = next.id
         RETURNING f.id, f.storage_key, f.content_type, f.extraction_attempts
-        """
-    )
+        """)
     return dict(row) if row else None
 
 
