@@ -2310,15 +2310,19 @@ STASH_OCTOPUS = r"""
 
 
 def _frontend_base_url() -> str:
-    """Return the frontend root for the currently configured backend. Managed
-    backend → app.joinstash.ai (the marketing site at joinstash.ai has no /workspaces
-    redirect); localhost backend → :3457; any other self-host → whatever the
-    configured base_url is."""
+    """Return the frontend root for the currently configured backend.
+
+    api.stash.ac → stash.ac, api.joinstash.ai → joinstash.ai,
+    localhost backend → :3457."""
     base_url = (load_config().get("base_url") or "").rstrip("/")
     if "localhost" in base_url or "127.0.0.1" in base_url:
         return base_url.replace(":3456", ":3457")
-    if base_url == "https://api.joinstash.ai":
-        return "https://app.joinstash.ai"
+    from urllib.parse import urlparse as _urlparse
+
+    parsed = _urlparse(base_url)
+    host = parsed.hostname or ""
+    if host.startswith("api."):
+        return f"{parsed.scheme}://{host[4:]}"
     return base_url
 
 
