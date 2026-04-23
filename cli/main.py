@@ -1872,11 +1872,11 @@ def _handle_not_member(ws_id: str, client: StashClient) -> None:
 def _auto_connect_repo(repo_root: Path, cfg: dict) -> None:
     """Connect a repo to a workspace, auto-creating one named after the repo directory."""
     manifest_path = repo_root / MANIFEST_FILE
-    if manifest_path.is_file():
-        manifest = json.loads(manifest_path.read_text())
-        ws_id = manifest.get("workspace_id", "")
 
-        with StashClient(base_url=cfg["base_url"], api_key=cfg["api_key"]) as c:
+    with StashClient(base_url=cfg["base_url"], api_key=cfg["api_key"]) as c:
+        if manifest_path.is_file():
+            manifest = json.loads(manifest_path.read_text())
+            ws_id = manifest.get("workspace_id", "")
             try:
                 c.get_workspace(ws_id)
                 console.print(
@@ -1890,9 +1890,7 @@ def _auto_connect_repo(repo_root: Path, cfg: dict) -> None:
                     return
                 raise
 
-    repo_name = repo_root.name
-
-    with StashClient(base_url=cfg["base_url"], api_key=cfg["api_key"]) as c:
+        repo_name = repo_root.name
         my_workspaces = c.list_workspaces(mine=True)
         matched = next((ws for ws in my_workspaces if ws["name"] == repo_name), None)
         if matched:
