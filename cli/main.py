@@ -10,9 +10,7 @@ from pathlib import Path
 import questionary
 import typer
 from rich.align import Align
-from rich.console import Group
 from rich.panel import Panel
-from rich.table import Table
 from rich.text import Text
 
 from .client import StashClient, StashError
@@ -21,7 +19,6 @@ from .config import (
     PRODUCTION_BASE_URL,
     Manifest,
     clear_streaming,
-    find_project_manifest,
     load_config,
     load_enabled_agents,
     load_manifest,

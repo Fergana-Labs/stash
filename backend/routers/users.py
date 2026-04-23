@@ -3,7 +3,7 @@ import time
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 
-from ..auth import get_current_user
+from ..auth import create_api_key, get_current_user
 from ..config import settings
 from ..middleware import limiter
 from ..models import (
@@ -19,7 +19,6 @@ from ..models import (
     UserSearchResult,
     UserUpdateRequest,
 )
-from ..auth import create_api_key
 from ..services import invite_token_service, user_service
 
 router = APIRouter(prefix="/api/v1/users", tags=["users"])

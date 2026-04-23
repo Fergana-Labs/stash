@@ -48,6 +48,7 @@ async def list_all_tables(current_user: dict = Depends(get_current_user)):
 async def _verify_workspace_access(workspace_id: UUID, user_id: UUID) -> None:
     """Raise 403 if the user isn't a member of the workspace."""
     from fastapi import HTTPException
+
     from ..services import permission_service
     role = await permission_service.get_workspace_role(workspace_id, user_id)
     if role is None:

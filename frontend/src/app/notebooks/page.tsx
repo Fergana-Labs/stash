@@ -62,6 +62,8 @@ function WikiPageInner() {
   const [semanticResults, setSemanticResults] = useState<NotebookPage[]>([]);
   const [semanticSearching, setSemanticSearching] = useState(false);
   const [error, setError] = useState("");
+  const [deepLinked, setDeepLinked] = useState(false);
+  const [deepLinkedPage, setDeepLinkedPage] = useState(false);
   // --- Notebooks loading ---
   const loadNotebooks = useCallback(async () => {
     try {
@@ -91,8 +93,8 @@ function WikiPageInner() {
     setSelectedPage(null);
     setTree({ folders: [], root_files: [] });
     setBacklinks([]);
-    deepLinked.current = false;
-    deepLinkedPage.current = false;
+    setDeepLinked(false);
+    setDeepLinkedPage(false);
   }, [wsId]);
 
   // Cross-notebook page index for wiki links. Refreshed when the workspace
@@ -144,31 +146,29 @@ function WikiPageInner() {
   // Both latches fire exactly once per workspace — a ref-based latch stops
   // the effect from re-firing when the user backs out via the crumb (state
   // clears, pageParam still in URL, effect would otherwise re-select).
-  const deepLinked = useRef(false);
-  const deepLinkedPage = useRef(false);
   useEffect(() => {
-    if (deepLinked.current) return;
+    if (deepLinked) return;
     if (!nbParam) {
-      deepLinked.current = true;
+      setDeepLinked(true);
       return;
     }
     if (notebooks.length === 0) return;
     const nb = notebooks.find((n) => n.id === nbParam);
     if (!nb) return;
-    deepLinked.current = true;
+    setDeepLinked(true);
     handleSelectNotebook(nb);
-  }, [nbParam, notebooks, handleSelectNotebook]);
+  }, [deepLinked, nbParam, notebooks, handleSelectNotebook]);
 
   useEffect(() => {
-    if (deepLinkedPage.current) return;
+    if (deepLinkedPage) return;
     if (!pageParam) {
-      deepLinkedPage.current = true;
+      setDeepLinkedPage(true);
       return;
     }
     if (!selectedNotebook) return;
-    deepLinkedPage.current = true;
+    setDeepLinkedPage(true);
     handleSelectPage(pageParam);
-  }, [pageParam, selectedNotebook, handleSelectPage]);
+  }, [deepLinkedPage, pageParam, selectedNotebook, handleSelectPage]);
 
   // Keep the URL in sync with the current notebook/page selection and
   // make browser back/forward walk the reading trail. Every time state
@@ -176,7 +176,7 @@ function WikiPageInner() {
   // new entry; identity-match bails so deep-link consume + popstate
   // round-trips don't create duplicate history entries or infinite loops.
   useEffect(() => {
-    if (!deepLinked.current) return;
+    if (!deepLinked) return;
 
     const current = new URL(window.location.href);
     const currentNb = current.searchParams.get("nb");
@@ -184,11 +184,7 @@ function WikiPageInner() {
     const desiredNb = selectedNotebook?.id ?? null;
     const desiredPage = selectedPageId ?? null;
 
-    if (currentNb === desiredNb && currentPage === desiredPage) {
-      // URL already matches — either this is the initial deep-link
-      // reflecting back, or we just handled a popstate. No-op.
-      return;
-    }
+    if (currentNb === desiredNb && currentPage === desiredPage) return;
 
     const url = new URL(window.location.href);
     if (desiredNb) url.searchParams.set("nb", desiredNb);
@@ -196,7 +192,7 @@ function WikiPageInner() {
     if (desiredPage) url.searchParams.set("page", desiredPage);
     else url.searchParams.delete("page");
     window.history.pushState({}, "", url.toString());
-  }, [selectedNotebook, selectedPageId]);
+  }, [deepLinked, selectedNotebook, selectedPageId]);
 
   // Browser back / forward → re-read URL params and sync state. Next's
   // useSearchParams doesn't observe pushState/popstate, so we listen

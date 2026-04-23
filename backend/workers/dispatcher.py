@@ -47,7 +47,7 @@ async def _run_child(file_id) -> tuple[int, str]:
         stdout_b, _ = await asyncio.wait_for(
             proc.communicate(), timeout=CHILD_TIMEOUT_SECONDS
         )
-    except asyncio.TimeoutError:
+    except TimeoutError:
         proc.kill()
         await proc.wait()
         return -1, "timeout"
