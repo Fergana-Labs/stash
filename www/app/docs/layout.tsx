@@ -86,7 +86,7 @@ export default function DocsLayout({ children }: { children: React.ReactNode }) 
   return (
     <div className="min-h-screen bg-background">
       <header className="sticky top-0 z-30 border-b border-border-subtle bg-background/95 backdrop-blur">
-        <div className="h-16 max-w-[1440px] mx-auto px-6 lg:px-8 flex items-center justify-between">
+        <div className="h-16 max-w-[1440px] mx-auto px-6 md:px-8 flex items-center justify-between">
           <div className="flex items-center gap-4">
             <Link href="/" className="font-display text-[22px] font-bold tracking-tight text-brand">
               stash
@@ -106,9 +106,9 @@ export default function DocsLayout({ children }: { children: React.ReactNode }) 
         </div>
       </header>
 
-      <div className="max-w-[1440px] mx-auto px-6 lg:px-8 py-8">
-        <div className="grid grid-cols-1 lg:grid-cols-[240px_minmax(0,1fr)] xl:grid-cols-[240px_minmax(0,1fr)_220px] gap-8 lg:gap-10">
-          <aside className="hidden lg:block">
+      <div className="max-w-[1440px] mx-auto px-6 md:px-8 py-8">
+        <div className="grid grid-cols-1 md:grid-cols-[200px_minmax(0,1fr)] lg:grid-cols-[240px_minmax(0,1fr)] xl:grid-cols-[240px_minmax(0,1fr)_220px] gap-8 md:gap-8 lg:gap-10">
+          <aside className="hidden md:block">
             <div className="sticky top-24 rounded-2xl border border-border bg-surface p-4">
               {NAV.map((section) => (
                 <div key={section.title} className="mb-5 last:mb-0">
