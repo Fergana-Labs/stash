@@ -13,7 +13,6 @@ Never call `stream_session_end` from a per-turn hook — you'll emit a bogus
 
 from __future__ import annotations
 
-import sys
 from pathlib import Path
 
 from stashai.plugin.event import HookEvent
@@ -42,14 +41,6 @@ def _read_user_config() -> dict:
         return {}
 
 
-def _write_user_config(updates: dict) -> None:
-    import json
-    existing = _read_user_config()
-    existing.update(updates)
-    _CONFIG_FILE.parent.mkdir(parents=True, exist_ok=True)
-    _CONFIG_FILE.write_text(json.dumps(existing, indent=2) + "\n")
-
-
 def _is_agent_enabled(cfg: dict) -> bool:
     data = _read_user_config()
     enabled = data.get("enabled_agents")
@@ -60,21 +51,9 @@ def _is_agent_enabled(cfg: dict) -> bool:
     return canonical in enabled
 
 
-def _is_streaming(workspace_id: str) -> bool:
-    streaming = _read_user_config().get("streaming")
-    return isinstance(streaming, list) and workspace_id in streaming
-
-
-def _is_hint_shown(workspace_id: str) -> bool:
-    hints = _read_user_config().get("hints_shown")
-    return isinstance(hints, list) and workspace_id in hints
-
-
-def _mark_hint_shown(workspace_id: str) -> None:
-    data = _read_user_config()
-    hints = set(data.get("hints_shown") or [])
-    hints.add(workspace_id)
-    _write_user_config({"hints_shown": sorted(hints)})
+def _is_stopped(workspace_id: str) -> bool:
+    stopped = _read_user_config().get("stopped_streaming")
+    return isinstance(stopped, list) and workspace_id in stopped
 
 
 def _resolve_workspace(cfg: dict, event: HookEvent | None) -> str | None:
@@ -95,8 +74,8 @@ def _resolve_workspace(cfg: dict, event: HookEvent | None) -> str | None:
 def _short_circuit(cfg: dict, event: HookEvent | None) -> tuple[bool, str | None]:
     """Return (should_skip, workspace_id).
 
-    Streams only if the user has opted in via `stash start`.
-    Shows a one-time hint for workspaces the user hasn't opted into yet.
+    Streams by default to any workspace with a manifest. Only skips if the
+    user explicitly ran `stash stop`.
     """
     if not _is_agent_enabled(cfg):
         return True, None
@@ -105,18 +84,10 @@ def _short_circuit(cfg: dict, event: HookEvent | None) -> tuple[bool, str | None
     if not workspace_id:
         return True, None
 
-    if _is_streaming(workspace_id):
-        return False, workspace_id
+    if _is_stopped(workspace_id):
+        return True, None
 
-    if not _is_hint_shown(workspace_id):
-        print(
-            f"\nThis repo streams to Stash workspace {workspace_id[:8]}…\n"
-            f"Run `stash start` to begin sharing.\n",
-            file=sys.stderr,
-        )
-        _mark_hint_shown(workspace_id)
-
-    return True, None
+    return False, workspace_id
 
 
 # --- Prompt streaming ---
