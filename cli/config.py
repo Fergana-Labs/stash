@@ -11,7 +11,6 @@ from typing import TypedDict
 
 USER_CONFIG_DIR = Path.home() / ".stash"
 USER_CONFIG_FILE = USER_CONFIG_DIR / "config.json"
-CACHE_DIR = USER_CONFIG_DIR / "cache"
 
 MANIFEST_FILE = ".stash"
 
@@ -129,25 +128,43 @@ def clear_config() -> None:
 
 # --- Streaming toggle ---
 
+def _streaming_set() -> set[str]:
+    if USER_CONFIG_FILE.exists():
+        val = _read_json(USER_CONFIG_FILE).get("streaming")
+        if isinstance(val, list):
+            return set(val)
+    return set()
+
+
 def is_streaming(workspace_id: str) -> bool:
-    return (CACHE_DIR / f"streaming-{workspace_id}").exists()
+    return workspace_id in _streaming_set()
 
 
 def set_streaming(workspace_id: str) -> None:
-    CACHE_DIR.mkdir(parents=True, exist_ok=True)
-    (CACHE_DIR / f"streaming-{workspace_id}").touch()
+    ids = _streaming_set()
+    ids.add(workspace_id)
+    _write_to(USER_CONFIG_FILE, {"streaming": sorted(ids)})
 
 
 def clear_streaming(workspace_id: str) -> None:
-    flag = CACHE_DIR / f"streaming-{workspace_id}"
-    if flag.exists():
-        flag.unlink()
+    ids = _streaming_set()
+    ids.discard(workspace_id)
+    _write_to(USER_CONFIG_FILE, {"streaming": sorted(ids)})
+
+
+def _hints_shown_set() -> set[str]:
+    if USER_CONFIG_FILE.exists():
+        val = _read_json(USER_CONFIG_FILE).get("hints_shown")
+        if isinstance(val, list):
+            return set(val)
+    return set()
 
 
 def is_hint_shown(workspace_id: str) -> bool:
-    return (CACHE_DIR / f"hint-shown-{workspace_id}").exists()
+    return workspace_id in _hints_shown_set()
 
 
 def mark_hint_shown(workspace_id: str) -> None:
-    CACHE_DIR.mkdir(parents=True, exist_ok=True)
-    (CACHE_DIR / f"hint-shown-{workspace_id}").touch()
+    ids = _hints_shown_set()
+    ids.add(workspace_id)
+    _write_to(USER_CONFIG_FILE, {"hints_shown": sorted(ids)})

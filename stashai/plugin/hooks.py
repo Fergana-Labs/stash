@@ -23,7 +23,6 @@ from stashai.plugin.state import read_stats, record_tool_use
 from stashai.plugin.summarize import summarize_tool_use
 
 _CONFIG_FILE = Path.home() / ".stash" / "config.json"
-_CACHE_DIR = Path.home() / ".stash" / "cache"
 
 _CLIENT_TO_AGENT = {
     "claude_code": "claude",
@@ -33,18 +32,26 @@ _CLIENT_TO_AGENT = {
 }
 
 
-def _is_agent_enabled(cfg: dict) -> bool:
-    """Check if this agent is enabled in ~/.stash/config.json.
-
-    Returns True if enabled_agents is unset (default: all enabled).
-    """
+def _read_user_config() -> dict:
     if not _CONFIG_FILE.exists():
-        return True
+        return {}
     try:
         import json
-        data = json.loads(_CONFIG_FILE.read_text())
+        return json.loads(_CONFIG_FILE.read_text())
     except Exception:
-        return True
+        return {}
+
+
+def _write_user_config(updates: dict) -> None:
+    import json
+    existing = _read_user_config()
+    existing.update(updates)
+    _CONFIG_FILE.parent.mkdir(parents=True, exist_ok=True)
+    _CONFIG_FILE.write_text(json.dumps(existing, indent=2) + "\n")
+
+
+def _is_agent_enabled(cfg: dict) -> bool:
+    data = _read_user_config()
     enabled = data.get("enabled_agents")
     if not isinstance(enabled, list):
         return True
@@ -54,16 +61,20 @@ def _is_agent_enabled(cfg: dict) -> bool:
 
 
 def _is_streaming(workspace_id: str) -> bool:
-    return (_CACHE_DIR / f"streaming-{workspace_id}").exists()
+    streaming = _read_user_config().get("streaming")
+    return isinstance(streaming, list) and workspace_id in streaming
 
 
 def _is_hint_shown(workspace_id: str) -> bool:
-    return (_CACHE_DIR / f"hint-shown-{workspace_id}").exists()
+    hints = _read_user_config().get("hints_shown")
+    return isinstance(hints, list) and workspace_id in hints
 
 
 def _mark_hint_shown(workspace_id: str) -> None:
-    _CACHE_DIR.mkdir(parents=True, exist_ok=True)
-    (_CACHE_DIR / f"hint-shown-{workspace_id}").touch()
+    data = _read_user_config()
+    hints = set(data.get("hints_shown") or [])
+    hints.add(workspace_id)
+    _write_user_config({"hints_shown": sorted(hints)})
 
 
 def _resolve_workspace(cfg: dict, event: HookEvent | None) -> str | None:
