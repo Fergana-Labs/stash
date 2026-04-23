@@ -1850,10 +1850,7 @@ def _handle_not_member(ws_id: str, client: StashClient) -> None:
         )
         return
     if existing and existing.get("status") == "approved":
-        console.print(
-            "  [green]✓[/green] Your request was approved! "
-            "Streaming is now active."
-        )
+        console.print("  [green]✓[/green] Your request was approved! " "Streaming is now active.")
         return
 
     try:
@@ -2104,7 +2101,9 @@ def login_cmd():
 
     if answer == "this":
         if not repo_root:
-            console.print("[yellow]Not inside a git repo. Run `stash connect` from a repo.[/yellow]")
+            console.print(
+                "[yellow]Not inside a git repo. Run `stash connect` from a repo.[/yellow]"
+            )
         else:
             try:
                 _auto_connect_repo(repo_root, cfg)
@@ -2215,9 +2214,7 @@ def start_cmd():
             if e.status_code in (403, 404):
                 req = c.get_my_join_request(workspace_id)
                 if req and req.get("status") == "approved":
-                    console.print(
-                        "  [green]✓[/green] Your request to join was approved!"
-                    )
+                    console.print("  [green]✓[/green] Your request to join was approved!")
                 elif req and req.get("status") == "pending":
                     console.print(
                         "  [yellow]Your join request is still pending.[/yellow] "

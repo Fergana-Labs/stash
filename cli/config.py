@@ -151,5 +151,3 @@ def clear_streaming(workspace_id: str) -> None:
     ids = _stopped_set()
     ids.add(workspace_id)
     _write_to(USER_CONFIG_FILE, {"stopped_streaming": sorted(ids)})
-
-

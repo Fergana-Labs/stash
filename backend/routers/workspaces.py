@@ -249,7 +249,9 @@ async def list_join_requests(
     return JoinRequestListResponse(requests=[JoinRequestResponse(**r) for r in pending])
 
 
-@router.post("/{workspace_id}/join-requests/{request_id}/approve", response_model=JoinRequestResponse)
+@router.post(
+    "/{workspace_id}/join-requests/{request_id}/approve", response_model=JoinRequestResponse
+)
 async def approve_join_request(
     workspace_id: UUID,
     request_id: UUID,
