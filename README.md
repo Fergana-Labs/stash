@@ -3,12 +3,12 @@
   <a href="https://joinstash.ai"><img src="docs/assets/logo.svg" alt="Stash" width="320" /></a>
 </p>
 
-<h3 align="center">Hive mind for your agents.</h3>
+<h3 align="center">Your team's AI work, compounding.</h3>
 
 <p align="center">
-  Stash is a shared memory for your team's repos and coding agents. Every session, decision,<br/>
-  and search flows into one shared brain. The next agent that touches your<br/>
-  repo already knows what's been learned.
+  Most teams run AI individually. Every session starts from zero, and the learnings<br/>
+  never aggregate. Stash captures every coding-agent run across your team and turns<br/>
+  it into a shared, evolving asset every agent can build on.
 </p>
 
 
@@ -20,8 +20,9 @@
   <a href="#privacy"><img src="https://img.shields.io/badge/Transcripts-opt--in-3B82F6" alt="Opt-in transcripts" /></a>
 </p>
 <p align="center">
-  <b>Shared agent memory can <a href="https://henrydowling.com/agent-velocity.html">save up to 46%</a></b> of your team's coding work<br/>
-  that's otherwise wasted re-investigating fixes an earlier session already tried and ruled out.<br/>
+  When every agent run feeds the same shared asset, your team stops paying for the same investigation twice.<br/>
+  <a href="https://henrydowling.com/agent-velocity.html"><b>Up to 46% of coding work</b></a> today goes to re-investigating fixes earlier sessions already tried and ruled out.<br/>
+  Stash recovers it.<br/>
 </p>
 
 
@@ -37,7 +38,7 @@
 
 ## Table of Contents
 
-- [Why Stash](#why-stash)
+- [Why shared beats individual](#why-shared-beats-individual)
 - [How it works](#how-it-works)
 - [Quick Start](#quick-start)
 - [Features](#features)
@@ -53,9 +54,9 @@
 - [Contributing](#contributing)
 - [License](#license)
 
-## Why Stash
+## Why shared beats individual
 
-Every coding agent on your team starts from zero. Your agent just debugged a flaky auth test. An hour later, a teammate's agent hits the same test and starts from scratch. Multiply that across a week and half the team is reinventing the same fixes.
+When five engineers run Claude on the same repo, five different versions of "what we learned" live in five different terminals. Nothing compounds. The sixth question re-debugs the same flaky test someone already solved on Tuesday. Stash is the missing layer: every run becomes part of a shared, evolving asset the whole team, and every agent, can query.
 
 With Stash, every agent on the repo can ask (and answer):
 
@@ -67,7 +68,7 @@ With Stash, every agent on the repo can ask (and answer):
 >
 > — Andrej Karpathy, *LLM Knowledge Bases*
 
-**Stash is that product. For teams of coding agents working on the same repo.** Your agents' streamed sessions are the raw data. The wiki is curated automatically by our sleep agent. Everything lands in one workspace your whole team can query.
+**Stash is that product. For teams of coding agents working on the same repo.** Your agents' streamed sessions are the raw data. The wiki is curated automatically by our sleep agent. Everything lands in one workspace your whole team can query. AI usage becomes a shared, evolving asset, not individual effort.
 
 ## How it works
 

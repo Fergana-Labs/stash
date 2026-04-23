@@ -294,15 +294,15 @@ function Hero() {
           </ScrollLink>
 
           <h1 className="mt-7 text-balance font-display text-[clamp(44px,6.2vw,80px)] font-black leading-[0.95] tracking-[-0.045em] text-ink">
-            <span className="text-brand">Hive mind</span>
+            Your team&apos;s AI work,
             <br />
-            for your agents.
+            <span className="text-brand">compounding.</span>
           </h1>
 
           <p className="mt-7 max-w-[520px] text-[18px] leading-[1.55] text-foreground">
-            Stash is shared memory for your team&apos;s repos and coding agents.
-            Every session, decision, and search flows into one shared brain.
-            The next agent that touches your repo already knows what&apos;s been learned.
+            Most teams run AI individually, so the work resets every session.
+            Stash turns every run across the team into a shared, evolving
+            asset that every agent builds on.
           </p>
 
           <div className="mt-8 max-w-[520px]">
@@ -474,11 +474,11 @@ function Problem() {
   return (
     <section className="border-b border-border-subtle py-24 md:py-32">
       <div className="mx-auto max-w-[1200px] px-7">
-        <EyebrowDot>The problem</EyebrowDot>
+        <EyebrowDot>Why teams plateau on AI</EyebrowDot>
         <h2 className="mt-4 max-w-[980px] text-balance font-display text-[clamp(40px,5.2vw,68px)] font-black leading-[1.02] tracking-[-0.04em] text-ink">
-          Every coding agent on your team{" "}
+          Individual AI usage doesn&apos;t{" "}
           <span className="relative inline-block">
-            starts from zero.
+            compound.
             <span
               aria-hidden
               className="pointer-events-none absolute left-[-4px] right-[-4px] top-[54%] h-[0.16em] -skew-y-[2deg] bg-brand"
@@ -487,15 +487,17 @@ function Problem() {
         </h2>
         <div className="mt-12 grid grid-cols-1 gap-8 text-[17px] leading-[1.6] text-foreground md:grid-cols-2 md:gap-14">
           <p>
-            Your agent just debugged a flaky auth test. An hour later, a
-            teammate&apos;s agent hits the same test and starts from scratch.
-            Nobody told it what you learned.
+            Every engineer is running Claude, Cursor, or Codex on the same
+            repo. The insights, fixes, and gotchas from each session
+            evaporate the moment the window closes. Next week, someone
+            re-asks what was already answered.
           </p>
           <p>
-            Multiply that across a week of work: half the team is reinventing
-            the same fixes, rediscovering the same gotchas, and asking each
-            other&apos;s humans for context their agents could have read
-            themselves.
+            Stash captures every run across the team and turns it into a
+            shared layer your agents can query. The second time a question
+            comes up, an agent answers it from the team&apos;s own history
+            instead of starting from scratch. Call it a hive mind for your
+            agents.
           </p>
         </div>
 
@@ -635,7 +637,7 @@ function HowItWorks() {
           <h2 className="font-display text-[clamp(32px,4.2vw,52px)] font-bold leading-[1.05] tracking-[-0.03em] text-ink text-balance">
             Stream. Curate. Search.
             <br />
-            <span className="font-medium text-dim">Nobody starts from zero.</span>
+            <span className="font-medium text-dim">The asset builds itself.</span>
           </h2>
         </div>
         <div className="mt-16 grid grid-cols-1 gap-5 lg:grid-cols-3">
@@ -790,9 +792,9 @@ function Features() {
         <div className="flex max-w-[880px] flex-col gap-4">
           <EyebrowDot>What&apos;s inside</EyebrowDot>
           <h2 className="font-display text-[clamp(32px,4.2vw,52px)] font-bold leading-[1.05] tracking-[-0.03em] text-ink text-balance">
-            Everything one agent should know,
+            One team&apos;s work,
             <br />
-            <span className="font-medium text-dim">every agent does.</span>
+            <span className="font-medium text-dim">every agent&apos;s context.</span>
           </h2>
         </div>
         <div className="mt-16 grid grid-cols-1 border-t border-border sm:grid-cols-2 lg:grid-cols-3">
@@ -840,13 +842,13 @@ function ClosingCTA() {
     <section className="border-b border-border-subtle bg-surface py-32 text-center">
       <div className="mx-auto max-w-[1200px] px-7">
         <h2 className="text-balance font-display text-[clamp(44px,5.4vw,80px)] font-black leading-[0.98] tracking-[-0.045em] text-ink">
-          Stop starting
+          Compound your team&apos;s
           <br />
-          <span className="text-brand">from zero.</span>
+          <span className="text-brand">AI work.</span>
         </h2>
         <p className="mx-auto mt-6 max-w-[520px] text-[17px] text-dim">
-          Your team&apos;s agents are already writing code. Give them somewhere
-          to remember it.
+          Your team is already running agents. Stash turns those runs into a
+          shared advantage that grows every day.
         </p>
         <div className="mt-9 flex flex-wrap justify-center gap-3">
           <ScrollLink
@@ -911,8 +913,8 @@ function Footer() {
             stash
           </div>
           <p className="mt-3 max-w-[320px] text-[13.5px] leading-[1.55] text-dim">
-            Shared memory for teams of AI coding agents. Open source, MIT
-            licensed, self-hostable.
+            Turn your team&apos;s AI work into a compounding asset. Open
+            source, MIT licensed, self-hostable.
           </p>
         </div>
         {columns.map((col) => (
