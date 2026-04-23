@@ -13,6 +13,12 @@ const nextConfig: NextConfig = {
   async redirects() {
     return [
       {
+        source: "/install",
+        destination:
+          "https://raw.githubusercontent.com/Fergana-Labs/stash/main/install.sh",
+        permanent: false,
+      },
+      {
         source: "/join/:code",
         destination: `${MANAGED_APP_URL}/join/:code`,
         permanent: false,
