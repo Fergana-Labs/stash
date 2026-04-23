@@ -15,12 +15,12 @@ from adapt import adapt_session_start
 def _frontend_url(api_url: str) -> str:
     """Derive the web dashboard URL from the API base URL.
 
-    api.stash.ac → stash.ac, api.joinstash.ai → joinstash.ai, etc.
+    api.joinstash.ai → app.joinstash.ai, etc.
     """
     parsed = urlparse(api_url)
     host = parsed.hostname or ""
     if host.startswith("api."):
-        host = host[4:]
+        host = f"app.{host[4:]}"
     if "localhost" in host or "127.0.0.1" in host:
         port = parsed.port + 1 if parsed.port else 3457
         return f"{parsed.scheme}://{host}:{port}"
