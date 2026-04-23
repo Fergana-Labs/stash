@@ -25,6 +25,7 @@ import {
   getKnowledgeDensity,
   getEmbeddingProjection,
   getPageGraph,
+  listJoinRequests,
 } from "../../../lib/api";
 import {
   ActivityTimeline,
@@ -101,6 +102,7 @@ export default function WorkspacePage() {
   const [pageGraph, setPageGraph] = useState<PageGraph | null>(null);
   const [graphNotebookId, setGraphNotebookId] = useState<string | null>(null);
   const [graphAutoLoaded, setGraphAutoLoaded] = useState(false);
+  const [pendingRequestCount, setPendingRequestCount] = useState(0);
 
   const loadWorkspace = useCallback(async () => {
     try { setWorkspace(await getWorkspace(workspaceId)); } catch { setError("Workspace not found"); }
@@ -184,6 +186,14 @@ export default function WorkspacePage() {
   };
 
   const isOwner = members.some(m => m.user_id === user?.id && m.role === "owner");
+  const isAdmin = members.some(m => m.user_id === user?.id && (m.role === "owner" || m.role === "admin"));
+
+  useEffect(() => {
+    if (!isAdmin) return;
+    listJoinRequests(workspaceId)
+      .then((jr) => setPendingRequestCount(jr.requests.length))
+      .catch(() => {});
+  }, [isAdmin, workspaceId]);
 
   useEffect(() => { if (!loading && !user) router.push("/login"); }, [user, loading, router]);
   if (loading) return <div className="min-h-screen flex items-center justify-center text-muted">Loading...</div>;
@@ -409,6 +419,7 @@ export default function WorkspacePage() {
                 members={members}
                 currentUserId={user.id}
                 isOwner={isOwner}
+                pendingRequestCount={pendingRequestCount}
                 onLeave={async () => { await leaveWorkspace(workspaceId); router.push("/rooms"); }}
                 onDelete={async () => { await deleteWorkspace(workspaceId); router.push("/rooms"); }}
                 onKickMember={async (uid) => { await kickWorkspaceMember(workspaceId, uid); await loadData(); }}

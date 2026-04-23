@@ -10,14 +10,18 @@ from ..models import (
     InviteTokenCreateResponse,
     InviteTokenListResponse,
     InviteTokenSummary,
+    JoinRequestListResponse,
+    JoinRequestResponse,
     RedeemInviteAuthedRequest,
     WorkspaceCreateRequest,
     WorkspaceListResponse,
     WorkspaceMember,
+    WorkspacePublicInfo,
     WorkspaceResponse,
     WorkspaceUpdateRequest,
 )
-from ..services import invite_token_service, workspace_service
+from ..services import invite_token_service, join_request_service, workspace_service
+from ..services.email_service import send_join_approved_email, send_join_request_email
 
 router = APIRouter(prefix="/api/v1/workspaces", tags=["workspaces"])
 
@@ -196,6 +200,100 @@ async def kick_member(
     kicked = await workspace_service.kick_member(workspace_id, user_id, current_user["id"])
     if not kicked:
         raise HTTPException(status_code=403, detail="Cannot kick this member")
+
+
+# ---------------------------------------------------------------------------
+# Join requests
+# ---------------------------------------------------------------------------
+
+
+@router.get("/{workspace_id}/public-info", response_model=WorkspacePublicInfo)
+async def get_workspace_public_info(workspace_id: UUID):
+    info = await join_request_service.get_workspace_public_info(workspace_id)
+    if not info:
+        raise HTTPException(status_code=404, detail="Workspace not found")
+    return WorkspacePublicInfo(**info)
+
+
+@router.post("/{workspace_id}/join-requests", response_model=JoinRequestResponse, status_code=201)
+async def create_join_request(
+    workspace_id: UUID,
+    current_user: dict = Depends(get_current_user),
+):
+    ws = await workspace_service.get_workspace(workspace_id)
+    if not ws:
+        raise HTTPException(status_code=404, detail="Workspace not found")
+    try:
+        req = await join_request_service.create_request(workspace_id, current_user["id"])
+    except ValueError as e:
+        if str(e) == "already_member":
+            raise HTTPException(status_code=409, detail="Already a workspace member")
+        raise HTTPException(status_code=400, detail="Could not create join request")
+
+    requester_name = current_user.get("display_name") or current_user["name"]
+    admin_emails = await join_request_service.get_admin_emails(workspace_id)
+    send_join_request_email(admin_emails, requester_name, ws["name"], str(workspace_id))
+
+    return JoinRequestResponse(**req)
+
+
+@router.get("/{workspace_id}/join-requests", response_model=JoinRequestListResponse)
+async def list_join_requests(
+    workspace_id: UUID,
+    current_user: dict = Depends(get_current_user),
+):
+    role = await workspace_service.get_member_role(workspace_id, current_user["id"])
+    if role not in ("owner", "admin"):
+        raise HTTPException(status_code=403, detail="Only owner/admin can view join requests")
+    pending = await join_request_service.list_pending(workspace_id)
+    return JoinRequestListResponse(requests=[JoinRequestResponse(**r) for r in pending])
+
+
+@router.post("/{workspace_id}/join-requests/{request_id}/approve", response_model=JoinRequestResponse)
+async def approve_join_request(
+    workspace_id: UUID,
+    request_id: UUID,
+    current_user: dict = Depends(get_current_user),
+):
+    role = await workspace_service.get_member_role(workspace_id, current_user["id"])
+    if role not in ("owner", "admin"):
+        raise HTTPException(status_code=403, detail="Only owner/admin can approve join requests")
+    result = await join_request_service.approve_request(request_id, current_user["id"])
+    if not result:
+        raise HTTPException(status_code=404, detail="Join request not found or already resolved")
+
+    ws = await workspace_service.get_workspace(workspace_id)
+    user_email = await join_request_service.get_user_email(result["user_id"])
+    if user_email and ws:
+        send_join_approved_email(user_email, ws["name"])
+
+    return JoinRequestResponse(**result)
+
+
+@router.post("/{workspace_id}/join-requests/{request_id}/deny", response_model=JoinRequestResponse)
+async def deny_join_request(
+    workspace_id: UUID,
+    request_id: UUID,
+    current_user: dict = Depends(get_current_user),
+):
+    role = await workspace_service.get_member_role(workspace_id, current_user["id"])
+    if role not in ("owner", "admin"):
+        raise HTTPException(status_code=403, detail="Only owner/admin can deny join requests")
+    result = await join_request_service.deny_request(request_id, current_user["id"])
+    if not result:
+        raise HTTPException(status_code=404, detail="Join request not found or already resolved")
+    return JoinRequestResponse(**result)
+
+
+@router.get("/{workspace_id}/join-requests/mine", response_model=JoinRequestResponse)
+async def get_my_join_request(
+    workspace_id: UUID,
+    current_user: dict = Depends(get_current_user),
+):
+    req = await join_request_service.get_user_request_status(workspace_id, current_user["id"])
+    if not req:
+        raise HTTPException(status_code=404, detail="No join request found")
+    return JoinRequestResponse(**req)
 
 
 # ---------------------------------------------------------------------------

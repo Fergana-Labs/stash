@@ -487,3 +487,28 @@ class SessionTranscriptResponse(BaseModel):
     download_url: str | None
     uploaded_by: UUID
     uploaded_at: datetime
+
+
+# --- Join Requests ---
+
+
+class JoinRequestResponse(BaseModel):
+    id: UUID
+    workspace_id: UUID
+    user_id: UUID
+    status: str
+    created_at: datetime
+    resolved_at: datetime | None = None
+    resolved_by: UUID | None = None
+    user_name: str | None = None
+    user_display_name: str | None = None
+
+
+class JoinRequestListResponse(BaseModel):
+    requests: list[JoinRequestResponse]
+
+
+class WorkspacePublicInfo(BaseModel):
+    id: UUID
+    name: str
+    member_count: int

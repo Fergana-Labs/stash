@@ -1826,16 +1826,68 @@ def _require_auth() -> dict:
     return cfg
 
 
+def _handle_not_member(ws_id: str, client: StashClient) -> None:
+    """Handle the case where .stash exists but the user isn't a member."""
+    try:
+        info = client.workspace_public_info(ws_id)
+        ws_name = info["name"]
+        member_count = info["member_count"]
+    except StashError:
+        ws_name = ws_id[:8] + "…"
+        member_count = "?"
+
+    console.print(
+        f"\n  This repo belongs to workspace [bold]{ws_name}[/bold] "
+        f"({member_count} member{'s' if member_count != 1 else ''})."
+    )
+    console.print("  You're not a member yet.\n")
+
+    existing = client.get_my_join_request(ws_id)
+    if existing and existing.get("status") == "pending":
+        console.print(
+            "  [yellow]You already have a pending request.[/yellow] "
+            "The workspace owner has been notified."
+        )
+        return
+    if existing and existing.get("status") == "approved":
+        console.print(
+            "  [green]✓[/green] Your request was approved! "
+            "Run [cyan]stash start[/cyan] to begin streaming."
+        )
+        return
+
+    try:
+        client.create_join_request(ws_id)
+        console.print(
+            "  [green]✓[/green] Request sent! The workspace owner will be notified by email.\n"
+            "  You'll be able to stream once your request is approved."
+        )
+    except StashError as e:
+        if e.status_code == 409:
+            console.print("  [green]✓[/green] You're already a member of this workspace!")
+        else:
+            console.print(f"  [red]Could not send join request: {e.detail}[/red]")
+
+
 def _connect_repo(repo_root: Path, client: StashClient) -> None:
     """Shared logic for connecting a repo to a workspace. Creates .stash file and appends to CLAUDE.md."""
     manifest_path = repo_root / MANIFEST_FILE
     if manifest_path.is_file():
         manifest = json.loads(manifest_path.read_text())
-        console.print(
-            f"  [green]✓[/green] This repo is already connected to workspace "
-            f"[bold]{manifest.get('workspace_id', '?')[:8]}…[/bold]"
-        )
-        return
+        ws_id = manifest.get("workspace_id", "")
+
+        try:
+            client.get_workspace(ws_id)
+            console.print(
+                f"  [green]✓[/green] This repo is already connected to workspace "
+                f"[bold]{ws_id[:8]}…[/bold]"
+            )
+            return
+        except StashError as e:
+            if e.status_code in (403, 404):
+                _handle_not_member(ws_id, client)
+                return
+            raise
 
     my_workspaces = client.list_workspaces(mine=True)
 
@@ -2097,10 +2149,64 @@ def connect_cmd():
         _connect_repo(repo_root, c)
 
 
+@app.command("join")
+def join_cmd():
+    """Request to join this repo's workspace."""
+    cfg = _require_auth()
+
+    repo_root = _git_toplevel()
+    if not repo_root:
+        console.print("[red]Not inside a git repo.[/red]")
+        raise typer.Exit(1)
+
+    manifest_path = repo_root / MANIFEST_FILE
+    if not manifest_path.is_file():
+        console.print("[yellow]No .stash file found. Run `stash connect` first.[/yellow]")
+        raise typer.Exit(1)
+
+    manifest = json.loads(manifest_path.read_text())
+    ws_id = manifest.get("workspace_id", "")
+
+    with StashClient(base_url=cfg["base_url"], api_key=cfg["api_key"]) as c:
+        _handle_not_member(ws_id, c)
+
+
+@app.command("leave")
+def leave_cmd():
+    """Leave this repo's workspace."""
+    cfg = _require_auth()
+
+    repo_root = _git_toplevel()
+    if not repo_root:
+        console.print("[red]Not inside a git repo.[/red]")
+        raise typer.Exit(1)
+
+    manifest_path = repo_root / MANIFEST_FILE
+    if not manifest_path.is_file():
+        console.print("[yellow]No .stash file found. Nothing to leave.[/yellow]")
+        raise typer.Exit(1)
+
+    manifest = json.loads(manifest_path.read_text())
+    ws_id = manifest.get("workspace_id", "")
+
+    with StashClient(base_url=cfg["base_url"], api_key=cfg["api_key"]) as c:
+        try:
+            c.leave_workspace(ws_id)
+        except StashError as e:
+            if "owner" in str(e.detail).lower():
+                console.print("  [red]Owners cannot leave their own workspace.[/red]")
+                return
+            console.print(f"  [red]{e.detail}[/red]")
+            return
+
+    clear_streaming(ws_id)
+    console.print(f"  [green]✓[/green] Left workspace {ws_id[:8]}…")
+
+
 @app.command("start")
 def start_cmd():
     """Start streaming transcripts to this repo's workspace."""
-    _require_auth()
+    cfg = _require_auth()
 
     manifest = load_manifest()
     if not manifest:
@@ -2111,6 +2217,31 @@ def start_cmd():
     if not workspace_id:
         console.print("[red].stash file is missing workspace_id.[/red]")
         raise typer.Exit(1)
+
+    with StashClient(base_url=cfg["base_url"], api_key=cfg["api_key"]) as c:
+        try:
+            c.get_workspace(workspace_id)
+        except StashError as e:
+            if e.status_code in (403, 404):
+                req = c.get_my_join_request(workspace_id)
+                if req and req.get("status") == "approved":
+                    console.print(
+                        f"  [green]✓[/green] Your request to join was approved!"
+                    )
+                elif req and req.get("status") == "pending":
+                    console.print(
+                        "  [yellow]Your join request is still pending.[/yellow] "
+                        "You'll be able to stream once approved."
+                    )
+                    return
+                else:
+                    console.print(
+                        "  [yellow]You're not a member of this workspace.[/yellow] "
+                        "Run [cyan]stash join[/cyan] to request access."
+                    )
+                    return
+            else:
+                raise
 
     set_streaming(workspace_id)
     console.print(f"  [green]✓[/green] Streaming enabled for workspace {workspace_id[:8]}…")

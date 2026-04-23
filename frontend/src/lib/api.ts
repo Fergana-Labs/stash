@@ -4,6 +4,7 @@ import {
   HistoryEventWithContext,
   History,
   HistoryWithWorkspace,
+  JoinRequest,
   Notebook,
   NotebookFolder,
   NotebookPage,
@@ -20,6 +21,7 @@ import {
   TableWithWorkspace,
   Workspace,
   WorkspaceMember,
+  WorkspacePublicInfo,
   ActivityTimeline,
   KnowledgeDensity,
   EmbeddingProjection,
@@ -231,6 +233,32 @@ export async function deleteWorkspace(workspaceId: string): Promise<void> {
 
 export async function kickWorkspaceMember(workspaceId: string, userId: string): Promise<void> {
   await apiFetch(`/api/v1/workspaces/${workspaceId}/kick/${userId}`, { method: "POST" });
+}
+
+// --- Join Requests ---
+
+export async function getWorkspacePublicInfo(workspaceId: string): Promise<WorkspacePublicInfo> {
+  return apiFetch(`/api/v1/workspaces/${workspaceId}/public-info`);
+}
+
+export async function createJoinRequest(workspaceId: string): Promise<JoinRequest> {
+  return apiFetch(`/api/v1/workspaces/${workspaceId}/join-requests`, { method: "POST" });
+}
+
+export async function listJoinRequests(workspaceId: string): Promise<{ requests: JoinRequest[] }> {
+  return apiFetch(`/api/v1/workspaces/${workspaceId}/join-requests`);
+}
+
+export async function approveJoinRequest(workspaceId: string, requestId: string): Promise<JoinRequest> {
+  return apiFetch(`/api/v1/workspaces/${workspaceId}/join-requests/${requestId}/approve`, { method: "POST" });
+}
+
+export async function denyJoinRequest(workspaceId: string, requestId: string): Promise<JoinRequest> {
+  return apiFetch(`/api/v1/workspaces/${workspaceId}/join-requests/${requestId}/deny`, { method: "POST" });
+}
+
+export async function getMyJoinRequest(workspaceId: string): Promise<JoinRequest> {
+  return apiFetch(`/api/v1/workspaces/${workspaceId}/join-requests/mine`);
 }
 
 // --- Notebooks ---

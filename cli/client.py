@@ -128,6 +128,20 @@ class StashClient:
     def workspace_members(self, workspace_id: str) -> list:
         return self._get(f"/api/v1/workspaces/{workspace_id}/members")
 
+    def workspace_public_info(self, workspace_id: str) -> dict:
+        return self._get(f"/api/v1/workspaces/{workspace_id}/public-info")
+
+    def create_join_request(self, workspace_id: str) -> dict:
+        return self._post(f"/api/v1/workspaces/{workspace_id}/join-requests")
+
+    def get_my_join_request(self, workspace_id: str) -> dict | None:
+        try:
+            return self._get(f"/api/v1/workspaces/{workspace_id}/join-requests/mine")
+        except StashError as e:
+            if e.status_code == 404:
+                return None
+            raise
+
     # --- Magic-link invite tokens ---
 
     def create_invite_token(self, workspace_id: str, max_uses: int = 1, ttl_days: int = 7) -> dict:

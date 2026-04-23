@@ -99,6 +99,7 @@ interface WorkspaceSidebarProps {
   members: WorkspaceMember[];
   currentUserId: string;
   isOwner: boolean;
+  pendingRequestCount?: number;
   onLeave: () => void;
   onDelete: () => void;
   onKickMember: (userId: string) => void;
@@ -124,6 +125,7 @@ export default function WorkspaceSidebar({
   onKickMember,
   onUpdateWorkspace,
   onAddMember,
+  pendingRequestCount,
   onAddToAccessList,
   onRemoveFromAccessList,
   onGetAccessList,
@@ -312,6 +314,19 @@ export default function WorkspaceSidebar({
       </div>
 
       <div className="flex-1 overflow-y-auto p-4">
+        {isOwner && pendingRequestCount !== undefined && pendingRequestCount > 0 && (
+          <a
+            href={`/workspaces/${workspace.id}/requests`}
+            className="flex items-center justify-between px-3 py-2 mb-3 rounded-lg bg-brand/10 border border-brand/30 hover:bg-brand/15 transition-colors"
+          >
+            <span className="text-xs text-brand font-medium">
+              Pending join requests
+            </span>
+            <span className="text-xs bg-brand text-foreground rounded-full w-5 h-5 flex items-center justify-center font-bold">
+              {pendingRequestCount}
+            </span>
+          </a>
+        )}
         <h3 className="text-xs uppercase tracking-wider text-muted mb-2">
           Members ({members.length})
         </h3>
