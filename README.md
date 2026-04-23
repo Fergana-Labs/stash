@@ -6,7 +6,7 @@
 <h3 align="center">Hive mind for your agents.</h3>
 
 <p align="center">
-  Stash is a shared memory your team's repos and coding agents. Every session, decision,<br/>
+  Stash is a shared memory for your team's repos and coding agents. Every session, decision,<br/>
   and search flows into one shared brain. The next agent that touches your<br/>
   repo already knows what's been learned.
 </p>
@@ -29,7 +29,7 @@
 <p align="center">
   <img src="docs/assets/visualizations.gif" alt="Stash visualizations — embedding space, page graph, agent activity" width="900" />
 </p>
-<!-- GIF #2 — The product in action: agent runs `stash search`, gets a cited answer -->
+<!-- GIF #2 — The product in action: agent runs `stash history search`, gets a cited answer -->
 
 <p align="center">
   <img src="docs/assets/product.gif" alt="Stash in action — agent queries shared memory and gets cited answers" width="900" />
@@ -75,7 +75,7 @@ With Stash, every agent on the repo can ask (and answer):
 
 1. **Stream** — Prompts, tool calls, and session summaries automatically push to the workspace's history as they happen. Nothing to remember to save.
 2. **Curate** — On `SessionEnd`, a curation agent reads recent history and organizes it into wiki notebooks with `[[backlinks]]` and a page graph. Sleep-time compute, not session time. Auto-runs with a 24h cooldown; trigger manually with the `/curate` slash command.
-3. **Search** — `stash search` via Stash's CLI runs a cross-resource agentic loop over files, history, notebooks, tables, and chats. Your agent answers with sources, not hallucinations.
+3. **Search** — `stash history search` does full-text search across workspace events. Notebooks and tables support pgvector semantic search via the API. Your agent queries these through the CLI and REST endpoints.
 
 ## Quick Start
 
@@ -117,8 +117,8 @@ stash connect               # Interactive: sign in, pick a workspace, install pl
 | Wiki notebooks | Rich collaborative pages with wiki-style links, page-graph visualization, backlinks, and pgvector semantic search. |
 | Visualizations | See the team's memory as it forms — embedding projections, page graphs, knowledge-density treemaps, agent-activity heatmaps. |
 | Local-first option | Self-host the entire stack with Docker Compose. Embeddings default to local sentence-transformers — zero API keys required to run. |
-| Real-time rooms | Agents and humans chat side-by-side in workspace channels. Coordinate, hand off, unblock — all in one place. *Comming soon* |
-| Shareable pages | Publish reports, dashboards, and HTML deliverables behind a link. No login walls between teams. *Comming soon* |
+| Real-time rooms | Agents and humans chat side-by-side in workspace channels. Coordinate, hand off, unblock — all in one place. *Coming soon* |
+| Shareable pages | Publish reports, dashboards, and HTML deliverables behind a link. No login walls between teams. *Coming soon* |
 
 ## What you get
 
@@ -163,16 +163,19 @@ Stash sits alongside whatever you have today. Here's how it maps:
 |--------------|-----------------------------|
 | `CLAUDE.md` / `AGENTS.md`/ Built-in agent memory | A shared, searchable, multi-agent version that updates itself from real session data. Single source for agent session history about your code. |
 | Mem0 / Letta / Supermemory | MIT-licensed, self-hostable, with team collaboration and UI |
-| Notion / Confluence | Session hstory automatically pushed. Pages curated automatically by your agent. No one has to remember to write the doc. |
+| Notion / Confluence | Session history automatically pushed. Pages curated automatically by your agent. No one has to remember to write the doc. |
 | Slack threads | A persistent, searchable record that survives the 90-day retention cliff and is queryable by your agents. |
 
 ## CLI
 
 ```bash
-stash connect                        # Configure API key + default workspace
-stash history push <content>         # Push an event
+stash connect                        # Sign in, pick a workspace, install plugin
 stash history search <query>         # Full-text search over history events
+stash history push <content>         # Push an event
 stash notebooks list --all           # List notebooks across your workspaces
+stash tables list                    # List tables in the workspace
+stash files list                     # List uploaded files
+stash settings                      # Interactive settings page
 stash --help                         # Full command list
 ```
 
@@ -222,7 +225,7 @@ Stash is built so you can keep your team's memory under your control:
 ## FAQ
 
 **What LLMs does Stash use?**
-None on the server. Curation and agentic search run inside your agent (Claude Code, Cursor, etc.) as plugin skills, so they use whatever model and keys the agent is already configured with — the Stash backend itself makes no LLM calls. Embeddings are pluggable and default to local sentence-transformers (no key). Set `EMBEDDING_PROVIDER` in `.env` to switch to OpenAI, Hugging Face, or any OpenAI-compatible endpoint.
+None on the server. Curation runs inside your agent (Claude Code, Cursor, etc.) as a plugin skill, so it uses whatever model and keys the agent is already configured with — the Stash backend itself makes no LLM calls. Embeddings are pluggable and default to local sentence-transformers (no key). Set `EMBEDDING_PROVIDER` in `.env` to switch to OpenAI, Hugging Face, or any OpenAI-compatible endpoint.
 
 **Can I use this without Claude Code?**
 Yes. The CLI and REST API work standalone with any client, and there are first-party plugins for Cursor, Codex, OpenCode, Gemini CLI, and Openclaw.
