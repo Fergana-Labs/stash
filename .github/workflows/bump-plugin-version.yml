@@ -1,0 +1,46 @@
+name: Bump Claude plugin version
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  bump:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Bump patch version in plugin.json
+        run: |
+          FILE="plugins/claude-plugin/.claude-plugin/plugin.json"
+          CUR=$(python3 -c "import json; print(json.load(open('$FILE'))['version'])")
+          MAJOR=$(echo "$CUR" | cut -d. -f1)
+          MINOR=$(echo "$CUR" | cut -d. -f2)
+          PATCH=$(echo "$CUR" | cut -d. -f3)
+          NEW="$MAJOR.$MINOR.$((PATCH + 1))"
+          python3 -c "
+          import json, pathlib
+          p = pathlib.Path('$FILE')
+          d = json.loads(p.read_text())
+          d['version'] = '$NEW'
+          p.write_text(json.dumps(d, indent=2) + '\n')
+          "
+          echo "Bumped plugin version $CUR → $NEW"
+
+      - name: Commit and push
+        run: |
+          # Skip if the triggering commit was already a plugin bump (avoid infinite loop)
+          if git log -1 --pretty=%s | grep -q "^chore: bump claude plugin"; then
+            echo "Last commit was a plugin bump — skipping"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add plugins/claude-plugin/.claude-plugin/plugin.json
+          git diff --cached --quiet && echo "No change" && exit 0
+          git commit -m "chore: bump claude plugin to $(python3 -c "import json; print(json.load(open('plugins/claude-plugin/.claude-plugin/plugin.json'))['version'])")"
+          git push
