@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # joinstash.ai/install — install the stashai CLI and run the interactive
-# `stash connect` questionnaire (scope, managed-vs-self-host, browser auth,
-# workspace, agent plugin).
+# `stash connect` setup wizard (managed-vs-self-host, browser auth,
+# upload-vs-read, agent hooks, repo connection).
 #
 # Recommended invocation (keeps stdin attached to your terminal so the
 # questionnaire's interactive picker works):

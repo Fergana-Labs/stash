@@ -1869,54 +1869,38 @@ def _handle_not_member(ws_id: str, client: StashClient) -> None:
             console.print(f"  [red]Could not send join request: {e.detail}[/red]")
 
 
-def _connect_repo(repo_root: Path, client: StashClient) -> None:
-    """Shared logic for connecting a repo to a workspace. Creates .stash file and appends to CLAUDE.md."""
+def _auto_connect_repo(repo_root: Path, cfg: dict) -> None:
+    """Connect a repo to a workspace, auto-creating one named after the repo directory."""
     manifest_path = repo_root / MANIFEST_FILE
     if manifest_path.is_file():
         manifest = json.loads(manifest_path.read_text())
         ws_id = manifest.get("workspace_id", "")
 
-        try:
-            client.get_workspace(ws_id)
-            console.print(
-                f"  [green]✓[/green] This repo is already connected to workspace "
-                f"[bold]{ws_id[:8]}…[/bold]"
-            )
-            return
-        except StashError as e:
-            if e.status_code in (403, 404):
-                _handle_not_member(ws_id, client)
+        with StashClient(base_url=cfg["base_url"], api_key=cfg["api_key"]) as c:
+            try:
+                c.get_workspace(ws_id)
+                console.print(
+                    f"  [green]✓[/green] Already connected to workspace "
+                    f"[bold]{ws_id[:8]}…[/bold]"
+                )
                 return
-            raise
+            except StashError as e:
+                if e.status_code in (403, 404):
+                    _handle_not_member(ws_id, c)
+                    return
+                raise
 
-    my_workspaces = client.list_workspaces(mine=True)
+    repo_name = repo_root.name
 
-    if my_workspaces:
-        console.print("\n  Your workspaces:")
-        for ws in my_workspaces[:5]:
-            console.print(f"    [dim]{str(ws['id'])[:8]}…[/dim]  {ws['name']}")
+    with StashClient(base_url=cfg["base_url"], api_key=cfg["api_key"]) as c:
+        my_workspaces = c.list_workspaces(mine=True)
+        matched = next((ws for ws in my_workspaces if ws["name"] == repo_name), None)
+        if matched:
+            console.print(f"  [green]✓[/green] Using workspace [bold]{matched['name']}[/bold]")
+        else:
+            matched = c.create_workspace(repo_name)
+            console.print(f"  [green]✓[/green] Created workspace [bold]{matched['name']}[/bold]")
 
-    default_ws = my_workspaces[0] if my_workspaces else None
-    default_name = default_ws["name"] if default_ws else ""
-
-    _reserve_bottom_padding(4)
-    ws_name = typer.prompt(
-        "\nPress ENTER to accept default workspace name, otherwise type a workspace name",
-        default=default_name,
-    ).strip()
-
-    if not ws_name:
-        console.print("[yellow]Skipping workspace setup.[/yellow]")
-        return
-
-    matched = next((ws for ws in my_workspaces if ws["name"] == ws_name), None)
-    if matched:
-        console.print(f"  [green]✓[/green] Using workspace [bold]{matched['name']}[/bold]")
-    else:
-        matched = client.create_workspace(ws_name)
-        console.print(f"  [green]✓[/green] Created workspace [bold]{matched['name']}[/bold]")
-
-    cfg = load_config()
     base_url = cfg.get("base_url", PRODUCTION_BASE_URL)
 
     manifest: Manifest = {"workspace_id": str(matched["id"])}
@@ -1973,137 +1957,22 @@ def login_cmd(
         help="Print the post-install welcome as plain markdown and exit.",
     ),
 ):
-    """Authenticate with Stash. On first run, also configures hooks and offers to connect a repo."""
+    """Re-authenticate with Stash."""
     if welcome:
         print(_welcome_markdown())
         return
 
     console.print("\n[bold]Stash login[/bold]\n")
 
-    # --- Step 1: API endpoint ---
-    cfg = load_config()
-    prev_base = stored_base_url()
-    if prev_base:
-        base_url = prev_base
-        console.print(f"  [green]✓[/green] Using existing endpoint: [bold]{base_url}[/bold]")
-    else:
-        mode_options = [
-            ("Managed", "hosted by Stash", "managed"),
-            ("Self-host", "run on your own machine", "self"),
-        ]
-        mode_label_w = max(len(label) for label, _, _ in mode_options)
-        _reserve_bottom_padding(8)
-        mode = questionary.select(
-            "How do you want to use Stash?",
-            choices=[
-                questionary.Choice(f"{label:<{mode_label_w}}   ({desc})", value=value)
-                for label, desc, value in mode_options
-            ],
-            use_shortcuts=True,
-        ).ask()
-        if mode is None:
-            raise typer.Exit(1)
-
-        if mode == "managed":
-            base_url = PRODUCTION_BASE_URL
-        else:
-            base_url = _self_host_walkthrough(cfg)
-        save_config(base_url=base_url)
-
-    # --- Step 2: Auth ---
-    has_key = bool(cfg.get("api_key"))
-    if has_key:
-        try:
-            with StashClient(base_url=base_url, api_key=cfg["api_key"]) as c:
-                user = c.whoami()
-            console.print(
-                f"  [green]✓[/green] Already authenticated as [bold]{user['name']}[/bold]"
-            )
-        except StashError:
-            has_key = False
-
-    if not has_key:
-        _reserve_bottom_padding(4)
-        try:
-            api_key, username = _browser_auth_flow(base_url)
-        except KeyboardInterrupt:
-            console.print(
-                "\n[yellow]Authentication cancelled. Run `stash login` to try again.[/yellow]"
-            )
-            raise typer.Exit(1)
-        save_config(api_key=api_key, username=username)
-        console.print(f"  [green]✓[/green] Logged in as [bold]{username}[/bold]")
-
-    cfg = load_config()
-
-    first_run = not has_key
-    if not first_run:
-        console.print("\n  Run [cyan]stash settings[/cyan] to change agents or endpoint.")
-        return
-
-    # --- First-run: choose and install hooks for detected agents ---
-    detected = _detected_agents()
-    if detected:
-        enabled = load_enabled_agents()
-        default_enabled = enabled if enabled is not None else detected
-
-        _reserve_bottom_padding(len(detected) + 4)
-        selected = questionary.checkbox(
-            "Which coding agents should stream to Stash?",
-            choices=[
-                questionary.Choice(
-                    _AGENT_LABEL.get(a, a),
-                    value=a,
-                    checked=a in default_enabled,
-                )
-                for a in detected
-            ],
-        ).ask()
-        if selected is None:
-            raise typer.Exit(1)
-
-        save_enabled_agents(selected)
-        _install_all_hooks(selected)
-    else:
-        save_enabled_agents([])
-
-    # --- First-run: optionally connect the current repo ---
-    repo_root = _git_toplevel()
-    _reserve_bottom_padding(6)
-    choices = [
-        questionary.Choice("Yes — connect this repo", value="yes"),
-        questionary.Choice("No — I'll run `stash connect` later", value="no"),
-        questionary.Choice("Connect a different repo", value="other"),
-    ]
-    answer = questionary.select(
-        "Upload transcripts from this repo?",
-        choices=choices,
-        default=choices[0] if repo_root else choices[1],
-        use_shortcuts=True,
-    ).ask()
-    if answer is None:
+    base_url = stored_base_url() or PRODUCTION_BASE_URL
+    _reserve_bottom_padding(4)
+    try:
+        api_key, username = _browser_auth_flow(base_url)
+    except KeyboardInterrupt:
+        console.print("\n[yellow]Authentication cancelled.[/yellow]")
         raise typer.Exit(1)
-
-    if answer == "yes":
-        if not repo_root:
-            console.print(
-                "[yellow]Not inside a git repo. Run `stash connect` from a repo.[/yellow]"
-            )
-        else:
-            with StashClient(base_url=cfg["base_url"], api_key=cfg["api_key"]) as c:
-                _connect_repo(repo_root, c)
-    elif answer == "other":
-        _reserve_bottom_padding(4)
-        repo_path = typer.prompt("Path to repo").strip()
-        target = Path(repo_path).expanduser().resolve()
-        target_root = _git_toplevel(target)
-        if not target_root:
-            console.print(f"[red]{repo_path} is not a git repo.[/red]")
-        else:
-            with StashClient(base_url=cfg["base_url"], api_key=cfg["api_key"]) as c:
-                _connect_repo(target_root, c)
-
-    _show_setup_complete_splash()
+    save_config(api_key=api_key, username=username)
+    console.print(f"  [green]✓[/green] Logged in as [bold]{username}[/bold]")
 
 
 _AGENT_LABEL = {
@@ -2137,16 +2006,141 @@ def _install_all_hooks(agents: list[str] | None = None) -> None:
 
 @app.command("connect")
 def connect_cmd():
-    """Connect this repo to a Stash workspace. Creates the .stash file."""
-    cfg = _require_auth()
+    """Set up Stash: authenticate, configure agents, and connect a repo."""
+    console.print("\n[bold]Stash setup[/bold]\n")
 
-    repo_root = _git_toplevel()
-    if not repo_root:
-        console.print("[red]Not inside a git repo.[/red]")
+    cfg = load_config()
+
+    # --- Step 1: API endpoint ---
+    prev_base = stored_base_url()
+    if prev_base:
+        base_url = prev_base
+        console.print(f"  [green]✓[/green] Using endpoint: [bold]{base_url}[/bold]")
+    else:
+        mode_options = [
+            ("Managed", "hosted by Stash", "managed"),
+            ("Self-host", "run on your own machine", "self"),
+        ]
+        mode_label_w = max(len(label) for label, _, _ in mode_options)
+        _reserve_bottom_padding(8)
+        mode = questionary.select(
+            "Do you want to use managed Stash or self-host?",
+            choices=[
+                questionary.Choice(f"{label:<{mode_label_w}}   ({desc})", value=value)
+                for label, desc, value in mode_options
+            ],
+            use_shortcuts=True,
+        ).ask()
+        if mode is None:
+            raise typer.Exit(1)
+
+        if mode == "managed":
+            base_url = PRODUCTION_BASE_URL
+        else:
+            base_url = _self_host_walkthrough(cfg)
+        save_config(base_url=base_url)
+
+    # --- Step 2: Auth ---
+    has_key = bool(cfg.get("api_key"))
+    if has_key:
+        try:
+            with StashClient(base_url=base_url, api_key=cfg["api_key"]) as c:
+                user = c.whoami()
+            console.print(f"  [green]✓[/green] Authenticated as [bold]{user['name']}[/bold]")
+        except StashError:
+            has_key = False
+
+    if not has_key:
+        _reserve_bottom_padding(4)
+        try:
+            api_key, username = _browser_auth_flow(base_url)
+        except KeyboardInterrupt:
+            console.print("\n[yellow]Authentication cancelled.[/yellow]")
+            raise typer.Exit(1)
+        save_config(api_key=api_key, username=username)
+        console.print(f"  [green]✓[/green] Logged in as [bold]{username}[/bold]")
+
+    cfg = load_config()
+
+    # --- Step 3: Upload or just read? ---
+    _reserve_bottom_padding(6)
+    usage_mode = questionary.select(
+        "Do you want to upload transcripts, or just read?",
+        choices=[
+            questionary.Choice("Upload transcripts", value="upload"),
+            questionary.Choice("Just read", value="read"),
+        ],
+        use_shortcuts=True,
+    ).ask()
+    if usage_mode is None:
         raise typer.Exit(1)
 
-    with StashClient(base_url=cfg["base_url"], api_key=cfg["api_key"]) as c:
-        _connect_repo(repo_root, c)
+    if usage_mode == "read":
+        _show_setup_complete_splash()
+        return
+
+    # --- Step 4: Agent detection + hook installation ---
+    detected = _detected_agents()
+    if detected:
+        enabled = load_enabled_agents()
+        default_enabled = enabled if enabled is not None else detected
+
+        _reserve_bottom_padding(len(detected) + 4)
+        selected = questionary.checkbox(
+            "What coding agents do you want Stash to work on?",
+            choices=[
+                questionary.Choice(
+                    _AGENT_LABEL.get(a, a),
+                    value=a,
+                    checked=a in default_enabled,
+                )
+                for a in detected
+            ],
+        ).ask()
+        if selected is None:
+            raise typer.Exit(1)
+
+        save_enabled_agents(selected)
+        _install_all_hooks(selected)
+    else:
+        save_enabled_agents([])
+
+    # --- Step 5: Which repo? ---
+    repo_root = _git_toplevel()
+    repo_name = repo_root.name if repo_root else None
+
+    this_repo_label = f"This repo ({repo_name})" if repo_name else "This repo"
+    repo_choices = [
+        questionary.Choice(this_repo_label, value="this"),
+        questionary.Choice("Another repo", value="other"),
+        questionary.Choice("Done", value="done"),
+    ]
+    _reserve_bottom_padding(6)
+    answer = questionary.select(
+        "Which repo do you want to upload transcripts in?",
+        choices=repo_choices,
+        default=repo_choices[0] if repo_root else repo_choices[2],
+        use_shortcuts=True,
+    ).ask()
+    if answer is None:
+        raise typer.Exit(1)
+
+    if answer == "this":
+        if not repo_root:
+            console.print("[yellow]Not inside a git repo. Run `stash connect` from a repo.[/yellow]")
+        else:
+            _auto_connect_repo(repo_root, cfg)
+    elif answer == "other":
+        _reserve_bottom_padding(4)
+        repo_path = typer.prompt("Path to repo").strip()
+        target = Path(repo_path).expanduser().resolve()
+        target_root = _git_toplevel(target)
+        if not target_root:
+            console.print(f"[red]{repo_path} is not a git repo.[/red]")
+        else:
+            _auto_connect_repo(target_root, cfg)
+
+    _show_setup_complete_splash()
 
 
 @app.command("join")
