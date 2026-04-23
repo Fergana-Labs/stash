@@ -2149,9 +2149,9 @@ def connect_cmd():
         _connect_repo(repo_root, c)
 
 
-@app.command("request")
-def request_cmd():
-    """Request to join this repo's workspace (use after a previous denial)."""
+@app.command("join")
+def join_cmd():
+    """Request to join this repo's workspace."""
     cfg = _require_auth()
 
     repo_root = _git_toplevel()
@@ -2169,6 +2169,38 @@ def request_cmd():
 
     with StashClient(base_url=cfg["base_url"], api_key=cfg["api_key"]) as c:
         _handle_not_member(ws_id, c)
+
+
+@app.command("leave")
+def leave_cmd():
+    """Leave this repo's workspace."""
+    cfg = _require_auth()
+
+    repo_root = _git_toplevel()
+    if not repo_root:
+        console.print("[red]Not inside a git repo.[/red]")
+        raise typer.Exit(1)
+
+    manifest_path = repo_root / MANIFEST_FILE
+    if not manifest_path.is_file():
+        console.print("[yellow]No .stash file found. Nothing to leave.[/yellow]")
+        raise typer.Exit(1)
+
+    manifest = json.loads(manifest_path.read_text())
+    ws_id = manifest.get("workspace_id", "")
+
+    with StashClient(base_url=cfg["base_url"], api_key=cfg["api_key"]) as c:
+        try:
+            c.leave_workspace(ws_id)
+        except StashError as e:
+            if "owner" in str(e.detail).lower():
+                console.print("  [red]Owners cannot leave their own workspace.[/red]")
+                return
+            console.print(f"  [red]{e.detail}[/red]")
+            return
+
+    clear_streaming(ws_id)
+    console.print(f"  [green]✓[/green] Left workspace {ws_id[:8]}…")
 
 
 @app.command("start")
@@ -2205,7 +2237,7 @@ def start_cmd():
                 else:
                     console.print(
                         "  [yellow]You're not a member of this workspace.[/yellow] "
-                        "Run [cyan]stash request[/cyan] to request access."
+                        "Run [cyan]stash join[/cyan] to request access."
                     )
                     return
             else:
