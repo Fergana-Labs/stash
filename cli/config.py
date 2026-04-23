@@ -12,7 +12,8 @@ from typing import TypedDict
 USER_CONFIG_DIR = Path.home() / ".stash"
 USER_CONFIG_FILE = USER_CONFIG_DIR / "config.json"
 
-MANIFEST_FILE = ".stash"
+MANIFEST_DIR = ".stash"
+MANIFEST_FILE = ".stash/stash.json"
 
 PRODUCTION_BASE_URL = "https://api.joinstash.ai"
 
@@ -30,7 +31,7 @@ DEFAULT_CONFIG = {
 
 
 def find_project_manifest(start: Path | None = None) -> Path | None:
-    """Walk up from cwd looking for a .stash file (not directory) at a repo root."""
+    """Walk up from cwd looking for a .stash file at a repo root."""
     cur = (start or Path.cwd()).resolve()
     for parent in [cur, *cur.parents]:
         candidate = parent / MANIFEST_FILE
