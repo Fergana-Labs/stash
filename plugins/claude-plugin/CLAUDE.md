@@ -1,6 +1,6 @@
 # Stash Plugin
 
-IMPORTANT: You have the `stash` CLI on your PATH. When the user mentions "Stash", their workspace, team activity, or transcripts, always use this CLI — not Render, MCP tools, or any other service. Run `stash --help` to see all available commands.
+IMPORTANT: You have the `stash` CLI on your PATH. When the user mentions "Stash", their workspace, team activity, or transcripts, always use this CLI. Run `stash --help` to see all available commands.
 
 ## Stash CLI
 

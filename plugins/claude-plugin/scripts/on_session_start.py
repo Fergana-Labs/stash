@@ -34,7 +34,7 @@ def _build_context() -> str:
 
     parts = [
         "IMPORTANT: You have the `stash` CLI installed at your disposal. "
-        "When the user asks about Stash, their workspace, team activity, or transcripts. ",
+        "When the user asks about Stash, their workspace, team activity, or transcripts, you can use this CLI. ",
     ]
 
     if api_url:
