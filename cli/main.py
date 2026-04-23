@@ -1947,32 +1947,6 @@ Common reads (all support `--json`):
     console.print("  Appended Stash context to [cyan]CLAUDE.md[/cyan]")
 
 
-@app.command("login")
-def login_cmd(
-    welcome: bool = typer.Option(
-        False,
-        "--welcome",
-        help="Print the post-install welcome as plain markdown and exit.",
-    ),
-):
-    """Re-authenticate with Stash."""
-    if welcome:
-        print(_welcome_markdown())
-        return
-
-    console.print("\n[bold]Stash login[/bold]\n")
-
-    base_url = stored_base_url() or PRODUCTION_BASE_URL
-    _reserve_bottom_padding(4)
-    try:
-        api_key, username = _browser_auth_flow(base_url)
-    except KeyboardInterrupt:
-        console.print("\n[yellow]Authentication cancelled.[/yellow]")
-        raise typer.Exit(1)
-    save_config(api_key=api_key, username=username)
-    console.print(f"  [green]✓[/green] Logged in as [bold]{username}[/bold]")
-
-
 _AGENT_LABEL = {
     "claude": "Claude Code",
     "cursor": "Cursor",
@@ -2002,10 +1976,20 @@ def _install_all_hooks(agents: list[str] | None = None) -> None:
             console.print(f"  [red]✗[/red] {_AGENT_LABEL[agent]} hook failed  {detail}")
 
 
-@app.command("connect")
-def connect_cmd():
-    """Set up Stash: authenticate, configure agents, and connect a repo."""
-    console.print("\n[bold]Stash setup[/bold]\n")
+@app.command("login")
+def login_cmd(
+    welcome: bool = typer.Option(
+        False,
+        "--welcome",
+        help="Print the post-install welcome as plain markdown and exit.",
+    ),
+):
+    """Authenticate with Stash. On first run, walks through full onboarding."""
+    if welcome:
+        print(_welcome_markdown())
+        return
+
+    console.print("\n[bold]Stash login[/bold]\n")
 
     cfg = load_config()
 
@@ -2059,6 +2043,11 @@ def connect_cmd():
         console.print(f"  [green]✓[/green] Logged in as [bold]{username}[/bold]")
 
     cfg = load_config()
+
+    # Returning user — just re-auth, no wizard
+    if has_key:
+        console.print("\n  Run [cyan]stash settings[/cyan] to change agents or endpoint.")
+        return
 
     # --- Step 3: Upload or just read? ---
     _reserve_bottom_padding(6)
@@ -2127,7 +2116,10 @@ def connect_cmd():
         if not repo_root:
             console.print("[yellow]Not inside a git repo. Run `stash connect` from a repo.[/yellow]")
         else:
-            _auto_connect_repo(repo_root, cfg)
+            try:
+                _auto_connect_repo(repo_root, cfg)
+            except StashError as e:
+                console.print(f"[red]Could not connect repo: {e.detail}[/red]")
     elif answer == "other":
         _reserve_bottom_padding(4)
         repo_path = typer.prompt("Path to repo").strip()
@@ -2136,9 +2128,25 @@ def connect_cmd():
         if not target_root:
             console.print(f"[red]{repo_path} is not a git repo.[/red]")
         else:
-            _auto_connect_repo(target_root, cfg)
+            try:
+                _auto_connect_repo(target_root, cfg)
+            except StashError as e:
+                console.print(f"[red]Could not connect repo: {e.detail}[/red]")
 
     _show_setup_complete_splash()
+
+
+@app.command("connect")
+def connect_cmd():
+    """Connect this repo to a Stash workspace."""
+    cfg = _require_auth()
+
+    repo_root = _git_toplevel()
+    if not repo_root:
+        console.print("[red]Not inside a git repo.[/red]")
+        raise typer.Exit(1)
+
+    _auto_connect_repo(repo_root, cfg)
 
 
 @app.command("join")
