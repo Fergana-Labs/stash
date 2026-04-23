@@ -1977,18 +1977,8 @@ def _install_all_hooks(agents: list[str] | None = None) -> None:
 
 
 @app.command("login")
-def login_cmd(
-    welcome: bool = typer.Option(
-        False,
-        "--welcome",
-        help="Print the post-install welcome as plain markdown and exit.",
-    ),
-):
+def login_cmd():
     """Authenticate with Stash. On first run, walks through full onboarding."""
-    if welcome:
-        print(_welcome_markdown())
-        return
-
     console.print("\n[bold]Stash login[/bold]\n")
 
     cfg = load_config()
@@ -2344,41 +2334,6 @@ def _transcripts_url() -> str:
     return _current_workspace_url() or _frontend_base_url()
 
 
-def _welcome_markdown() -> str:
-    ws_url = _current_workspace_url()
-    workspace_link_section = (
-        f"## See your workspace\n\n"
-        f"Open it in the browser to browse transcripts and activity: {ws_url}\n\n"
-        if ws_url
-        else ""
-    )
-    return f"""# You're all set up.
-
-## What just happened
-
-Your coding agent now has the `stash` CLI on its PATH. It can read the transcripts your teammates' coding agents push to this workspace — so it knows what the rest of your team is working on.
-
-{workspace_link_section}## Examples of questions your agent might want answered
-
-- "Why did Sam bump the rate limit from 100 to 500?"
-- "Has anyone already tried fixing the memory leak in our backend?"
-- "Is anyone else currently working on our api gateway?"
-
-You can read a blog post about it here: [Agent velocity for coding teams](https://henrydowling.com/agent-velocity.html)
-
-## Commands your agent can now use
-
-- `stash history search "<query>"` — full-text search across transcripts
-- `stash history query --agent <name>` — pull a specific agent's events
-
-Run `stash --help` to see everything.
-
-## How do I share my workspace with my team?
-
-Commit the `.stash` file and push. Teammates who clone the repo will see a prompt to run `stash start`.
-"""
-
-
 def _install_claude_plugin() -> bool:
     """Install the stash plugin for Claude Code via the official marketplace.
 
@@ -2457,6 +2412,12 @@ def _show_setup_complete_splash() -> None:
         )
     )
     console.print()
+
+
+@app.command("welcome")
+def welcome_cmd():
+    """Show the post-install welcome splash."""
+    _show_setup_complete_splash()
 
 
 # ===========================================================================
