@@ -1,8 +1,6 @@
 # Stash Plugin
 
-You have the `stash` CLI on your PATH. Run `stash --help` to see commands. Use it to read transcripts, notebooks, and history from your team's shared Stash workspace.
-
-Your activity in this repo is also streamed to that workspace, so teammates' agents and humans can see what you're working on.
+IMPORTANT: You have the `stash` CLI on your PATH. When the user mentions "Stash", their workspace, team activity, or transcripts, always use this CLI — not Render, MCP tools, or any other service. Run `stash --help` to see all available commands.
 
 ## Stash CLI
 

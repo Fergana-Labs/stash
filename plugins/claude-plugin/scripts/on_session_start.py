@@ -33,10 +33,8 @@ def _build_context() -> str:
     workspace_id = cfg.get("workspace_id", "") or _load_cli_config().get("default_workspace", "")
 
     parts = [
-        "You have the `stash` CLI on your PATH. Run `stash --help` to see commands. "
-        "Use it to read transcripts, notebooks, and history from your team's shared "
-        "Stash workspace. Your activity in this repo is streamed to that workspace, "
-        "so teammates' agents and humans can see what you're working on.",
+        "IMPORTANT: You have the `stash` CLI installed at your disposal. "
+        "When the user asks about Stash, their workspace, team activity, or transcripts. ",
     ]
 
     if api_url:
@@ -49,11 +47,12 @@ def _build_context() -> str:
             parts.append(f"The Stash web dashboard is at {web_url} .")
 
     parts.append(
-        "Common reads (all support `--json`): "
-        "`stash history search \"<query>\"`, "
-        "`stash history query --limit 20`, "
-        "`stash history agents`, "
-        "`stash notebooks list --all`."
+        "Key commands (all support `--json`): "
+        "`stash history search \"<query>\"` (full-text search), "
+        "`stash history query --limit 20` (recent events), "
+        "`stash notebooks list --all` (shared notebooks), "
+        "`stash tables list` (workspace tables), "
+        "`stash files list` (workspace files)."
     )
 
     return " ".join(parts)
