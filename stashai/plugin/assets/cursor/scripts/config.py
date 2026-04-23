@@ -1,7 +1,7 @@
 """Cursor plugin config: reads from ~/.stash/config.json (CLI config).
 
 Cursor has no plugin-level userConfig surface, so we piggyback on the CLI
-config the user already set up with `stash onboard`.
+config the user already set up with `stash login`.
 """
 
 from __future__ import annotations

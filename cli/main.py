@@ -1827,7 +1827,7 @@ def _require_auth() -> dict:
     """Return loaded config if authenticated, otherwise print error and exit."""
     cfg = load_config()
     if not cfg.get("api_key"):
-        console.print("[red]Not authenticated. Run `stash onboard` first.[/red]")
+        console.print("[red]Not authenticated. Run `stash login` first.[/red]")
         raise typer.Exit(1)
     return cfg
 
@@ -1919,20 +1919,20 @@ Common reads (all support `--json`):
     console.print("  Appended Stash context to [cyan]CLAUDE.md[/cyan]")
 
 
-@app.command("onboard")
-def onboard_cmd(
+@app.command("login")
+def login_cmd(
     welcome: bool = typer.Option(
         False,
         "--welcome",
         help="Print the post-install welcome as plain markdown and exit.",
     ),
 ):
-    """First-time setup. Authenticates, installs hooks, and optionally connects a repo."""
+    """Authenticate with Stash. On first run, also configures hooks and offers to connect a repo."""
     if welcome:
         print(_welcome_markdown())
         return
 
-    console.print("\n[bold]Stash onboard[/bold]\n")
+    console.print("\n[bold]Stash login[/bold]\n")
 
     # --- Step 1: API endpoint ---
     cfg = load_config()
@@ -1979,14 +1979,19 @@ def onboard_cmd(
         try:
             api_key, username = _browser_auth_flow(base_url)
         except KeyboardInterrupt:
-            console.print("\n[yellow]Authentication cancelled. Run `stash onboard` to try again.[/yellow]")
+            console.print("\n[yellow]Authentication cancelled. Run `stash login` to try again.[/yellow]")
             raise typer.Exit(1)
         save_config(api_key=api_key, username=username)
         console.print(f"  [green]✓[/green] Logged in as [bold]{username}[/bold]")
 
     cfg = load_config()
 
-    # --- Step 3: Choose and install hooks for detected agents ---
+    first_run = not has_key
+    if not first_run:
+        console.print("\n  Run [cyan]stash settings[/cyan] to change agents or endpoint.")
+        return
+
+    # --- First-run: choose and install hooks for detected agents ---
     detected = _detected_agents()
     if detected:
         enabled = load_enabled_agents()
@@ -2012,7 +2017,7 @@ def onboard_cmd(
     else:
         save_enabled_agents([])
 
-    # --- Step 4: Optionally connect the current repo ---
+    # --- First-run: optionally connect the current repo ---
     repo_root = _git_toplevel()
     _reserve_bottom_padding(6)
     choices = [
@@ -2278,7 +2283,7 @@ def _install_claude_plugin() -> bool:
 
 
 def _show_setup_complete_splash() -> None:
-    """Show a clean success splash after onboarding."""
+    """Show a clean success splash after first-run login."""
     console.clear()
     octopus = textwrap.dedent(STASH_OCTOPUS.strip("\n"))
     logo = textwrap.dedent(STASH_LOGO.strip("\n"))
@@ -2494,22 +2499,39 @@ def keys_revoke(key_id: str = typer.Argument(..., help="Key id to revoke.")):
     console.print(f"[green]Revoked key {key_id}.[/green]")
 
 
-@app.command("disconnect")
-def disconnect(as_json: bool = typer.Option(False, "--json")):
-    """Sign out and clear stash config so the next `stash connect` re-onboards.
-
-    Deletes the user and project config files (auth, workspace, endpoint).
-    Plugin hooks stay installed but go inert with no api_key to push to.
-    """
+@app.command("logout")
+def logout_cmd(as_json: bool = typer.Option(False, "--json")):
+    """Sign out and clear credentials. Hooks go inert until you `stash login` again."""
     from .config import clear_config
 
     json_mode = as_json
     clear_config()
     if json_mode:
-        output_json({"disconnected": True})
+        output_json({"logged_out": True})
         return
-    console.print("[yellow]Disconnected.[/yellow] Cleared auth, workspace, and endpoint.")
-    console.print("  Run [bold]stash connect[/bold] to set up again.")
+    console.print("[yellow]Logged out.[/yellow] Cleared auth and preferences.")
+    console.print("  Run [bold]stash login[/bold] to sign in again.")
+
+
+@app.command("disconnect")
+def disconnect_cmd():
+    """Disconnect this repo from Stash. Removes the .stash file."""
+    repo_root = _git_toplevel()
+    if not repo_root:
+        console.print("[red]Not inside a git repo.[/red]")
+        raise typer.Exit(1)
+
+    manifest_path = repo_root / MANIFEST_FILE
+    if not manifest_path.is_file():
+        console.print("[yellow]No .stash file found — this repo isn't connected.[/yellow]")
+        return
+
+    manifest = load_manifest()
+    workspace_id = (manifest.get("workspace_id") or "") if manifest else ""
+    manifest_path.unlink()
+    if workspace_id:
+        clear_streaming(workspace_id)
+    console.print(f"  [green]✓[/green] Removed [cyan]{MANIFEST_FILE}[/cyan] — repo disconnected.")
 
 
 def _read_central_config() -> dict:
