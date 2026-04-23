@@ -17,32 +17,22 @@ from rich.text import Text
 
 from .client import StashClient, StashError
 from .config import (
-    MANIFEST_FILENAME,
-    PROJECT_DIRNAME,
-    PROJECT_FILENAME,
+    MANIFEST_FILE,
+    PRODUCTION_BASE_URL,
     Manifest,
-    find_project_config,
+    clear_streaming,
     find_project_manifest,
     load_config,
+    load_enabled_agents,
     load_manifest,
     save_config,
+    save_enabled_agents,
+    set_streaming,
     stored_base_url,
 )
 from .formatting import console, output_json, print_members, print_rooms, print_user
 
 app = typer.Typer(name="stash", help="Stash CLI — workspaces, notebooks, tables, history.")
-
-_DISABLED_MANIFEST = "stash.json.disabled"
-
-
-def _find_disabled_manifest(start: Path | None = None) -> Path | None:
-    cur = (start or Path.cwd()).resolve()
-    for parent in [cur, *cur.parents]:
-        candidate = parent / PROJECT_DIRNAME / _DISABLED_MANIFEST
-        if candidate.exists():
-            return candidate
-    return None
-
 
 def _client() -> StashClient:
     cfg = load_config()
@@ -555,26 +545,6 @@ def _plugin_installed(agent: str) -> bool:
         expected = str(assets_dir("opencode") / "plugin.ts")
         return expected in (cfg.get("plugin") or [])
     return False
-
-
-def _install_global_manifest(workspace_id: str, force: bool = False) -> tuple[str, str]:
-    """Write `~/.stash/stash.json` so every cwd under `$HOME` without a
-    closer manifest still streams. This is the 'global install' — the
-    opt-in for system-wide streaming."""
-    dest = Path.home() / ".stash" / "stash.json"
-    if dest.exists() and not force:
-        return ("skipped", f"{dest} already exists")
-
-    base_url = (load_config().get("base_url") or "").rstrip("/")
-
-    manifest = {
-        "version": 1,
-        "workspace_id": str(workspace_id),
-        "base_url": base_url,
-    }
-    dest.parent.mkdir(parents=True, exist_ok=True)
-    dest.write_text(json.dumps(manifest, indent=2) + "\n")
-    return ("installed", str(dest))
 
 
 @app.command()
@@ -1853,212 +1823,123 @@ def _derive_display_name() -> str:
     return os.environ.get("USER") or os.environ.get("USERNAME") or "teammate"
 
 
-def _connect_via_invite(
-    token: str,
-    endpoint: str | None,
-    scope_flag: str | None,
-    display_name_override: str | None,
-) -> None:
-    """Non-interactive connect path: redeem a magic-link token, save config, show splash.
-
-    Auto-detects whether the user already has a stash account on this machine and
-    picks the authenticated or unauthenticated redeem endpoint accordingly. Display
-    name is derived from git/$USER so the recipient's coding agent never blocks on
-    a prompt.
-    """
+def _require_auth() -> dict:
+    """Return loaded config if authenticated, otherwise print error and exit."""
     cfg = load_config()
-    base_url = (endpoint or cfg.get("base_url") or "").rstrip("/")
-    if not base_url:
-        console.print(
-            "[red]--endpoint is required (or run `stash connect` once without --invite first).[/red]"
-        )
+    if not cfg.get("api_key"):
+        console.print("[red]Not authenticated. Run `stash login` first.[/red]")
         raise typer.Exit(1)
-    scope = scope_flag or "user"
+    return cfg
 
-    existing_key = cfg.get("api_key", "")
-    if existing_key:
-        # Authenticated redeem — just join the workspace on top of existing identity.
-        try:
-            with StashClient(base_url=base_url, api_key=existing_key) as c:
-                ws = c.redeem_invite_authed(token)
-        except StashError as e:
-            console.print(f"[red]Could not redeem invite: {e.detail}[/red]")
-            raise typer.Exit(1)
-        save_config(base_url=base_url)
-        _show_setup_complete_splash(workspace_name=ws["name"], joined_via_invite=True)
+
+def _connect_repo(repo_root: Path, client: StashClient) -> None:
+    """Shared logic for connecting a repo to a workspace. Creates .stash file and appends to CLAUDE.md."""
+    manifest_path = repo_root / MANIFEST_FILE
+    if manifest_path.is_file():
+        manifest = json.loads(manifest_path.read_text())
+        console.print(
+            f"  [green]✓[/green] This repo is already connected to workspace "
+            f"[bold]{manifest.get('workspace_id', '?')[:8]}…[/bold]"
+        )
         return
 
-    # No existing auth — unauthenticated redeem creates a fresh user.
-    display_name = (display_name_override or _derive_display_name()).strip()
-    try:
-        result = StashClient.redeem_invite_unauthenticated(
-            base_url=base_url, token=token, display_name=display_name
-        )
-    except StashError as e:
-        console.print(f"[red]Could not redeem invite: {e.detail}[/red]")
-        raise typer.Exit(1)
+    my_workspaces = client.list_workspaces(mine=True)
 
-    save_config(
-        base_url=base_url,
-        api_key=result["api_key"],
-        username=result["username"],
-    )
-    chosen = result.get("display_name") or result["username"]
-    console.print(
-        f"  [green]✓[/green] Signed in as [bold]{chosen}[/bold] "
-        f"[dim](change with `stash whoami` / profile edit)[/dim]"
-    )
-    _show_setup_complete_splash(workspace_name=result["workspace_name"], joined_via_invite=True)
+    if my_workspaces:
+        console.print("\n  Your workspaces:")
+        for ws in my_workspaces[:5]:
+            console.print(f"    [dim]{str(ws['id'])[:8]}…[/dim]  {ws['name']}")
 
+    default_ws = my_workspaces[0] if my_workspaces else None
+    default_name = default_ws["name"] if default_ws else ""
 
-def _already_fully_connected(manifest: Manifest | None) -> bool:
-    """If every setting `stash connect` touches is already configured and valid,
-    print a short summary and return True so the caller can short-circuit.
-    Otherwise return False and fall through to the interactive flow.
-    """
-    prev_base = stored_base_url()
+    _reserve_bottom_padding(4)
+    ws_name = typer.prompt(
+        "\nPress ENTER to accept default workspace name, otherwise type a workspace name",
+        default=default_name,
+    ).strip()
+
+    if not ws_name:
+        console.print("[yellow]Skipping workspace setup.[/yellow]")
+        return
+
+    matched = next((ws for ws in my_workspaces if ws["name"] == ws_name), None)
+    if matched:
+        console.print(f"  [green]✓[/green] Using workspace [bold]{matched['name']}[/bold]")
+    else:
+        matched = client.create_workspace(ws_name)
+        console.print(f"  [green]✓[/green] Created workspace [bold]{matched['name']}[/bold]")
+
     cfg = load_config()
-    api_key = cfg.get("api_key", "")
-    if not (prev_base and api_key):
-        return False
+    base_url = cfg.get("base_url", PRODUCTION_BASE_URL)
 
-    ws_id = (manifest or {}).get("workspace_id") or ""
-    if not ws_id:
-        return False
+    manifest: Manifest = {"workspace_id": str(matched["id"])}
+    if base_url != PRODUCTION_BASE_URL:
+        manifest["base_url"] = base_url
 
-    try:
-        with StashClient(base_url=prev_base, api_key=api_key) as c:
-            user = c.whoami()
-            ws = c.get_workspace(ws_id)
-    except StashError:
-        return False
+    manifest_path.write_text(json.dumps(manifest, indent=2) + "\n")
+    console.print(f"  Wrote [cyan]{MANIFEST_FILE}[/cyan]")
 
-    detected = _detected_agents()
-    if not all(_plugin_installed(a) for a in detected):
-        return False
+    set_streaming(str(matched["id"]))
 
-    agent_label = {
-        "claude": "Claude Code",
-        "cursor": "Cursor",
-        "codex": "Codex",
-        "opencode": "opencode",
-    }
-    managed_hosts = ("https://joinstash.ai", "https://www.joinstash.ai", "https://api.joinstash.ai")
-    endpoint_label = "Managed" if prev_base in managed_hosts else prev_base
+    _append_claude_md(repo_root)
+
     console.print(
-        f"  [green]✓[/green] Already connected to [bold]{ws['name']}[/bold] as "
-        f"[bold]{user['name']}[/bold]."
+        f"\n  Commit [cyan]{MANIFEST_FILE}[/cyan] and [cyan]CLAUDE.md[/cyan] and push. "
+        "Teammates will see a prompt to run [cyan]stash start[/cyan]."
     )
-    console.print(f"    [dim]Endpoint:[/dim]  {endpoint_label}")
-    if detected:
-        console.print(
-            f"    [dim]Plugins:[/dim]   {', '.join(agent_label[a] for a in detected)}"
-        )
-    console.print(
-        "\n  Run [cyan]stash settings[/cyan] to tweak, or [cyan]stash disconnect[/cyan] to reset.\n"
-    )
-    return True
 
 
-@app.command("connect")
-def connect(
+def _append_claude_md(repo_root: Path) -> None:
+    """Append Stash context block to CLAUDE.md in the repo."""
+    claude_md = repo_root / "CLAUDE.md"
+    marker = "<!-- stash-context -->"
+
+    if claude_md.exists():
+        existing = claude_md.read_text()
+        if marker in existing:
+            return
+    else:
+        existing = ""
+
+    block = f"""
+{marker}
+## Stash
+
+This repo uses [Stash](https://joinstash.ai) for shared agent history.
+Your coding agent has the `stash` CLI on its PATH. Run `stash --help` to see commands.
+
+Common reads (all support `--json`):
+- `stash history search "<query>"` — full-text search across transcripts
+- `stash history query --limit 20` — latest events
+- `stash history agents` — who's been active
+- `stash notebooks list --all` — shared notebooks
+"""
+    claude_md.write_text(existing.rstrip() + "\n" + block)
+    console.print("  Appended Stash context to [cyan]CLAUDE.md[/cyan]")
+
+
+@app.command("login")
+def login_cmd(
     welcome: bool = typer.Option(
         False,
         "--welcome",
-        help="Print the post-install welcome as plain markdown and exit. For Claude Code / other agents that re-render stdout as markdown.",
-    ),
-    invite: str = typer.Option(
-        None, "--invite", help="Redeem a magic-link invite token (skips the interactive flow)."
-    ),
-    endpoint: str = typer.Option(
-        None, "--endpoint", help="Stash API URL (required with --invite if not already configured)."
-    ),
-    scope: str = typer.Option(
-        None, "--scope", help="Where to write config (user | project). Only used with --invite."
-    ),
-    display_name: str = typer.Option(
-        None,
-        "--display-name",
-        help="Override the auto-detected display name (default: git config user.name).",
+        help="Print the post-install welcome as plain markdown and exit.",
     ),
 ):
-    """Interactive first-time setup. Sets base URL, authenticates, and configures defaults."""
+    """Authenticate with Stash. On first run, also configures hooks and offers to connect a repo."""
     if welcome:
         print(_welcome_markdown())
         return
-    if invite:
-        _connect_via_invite(
-            token=invite,
-            endpoint=endpoint,
-            scope_flag=scope,
-            display_name_override=display_name,
-        )
-        return
 
-    # --- Manifest detection: runs first so it can steer the later prompts. ---
-    manifest = load_manifest()
-
-    if _already_fully_connected(manifest):
-        _offer_repo_init()
-        return
-
-    console.print("\n[bold]Stash connect[/bold]  (press Enter to accept defaults)\n")
-
-    if manifest:
-        console.print(
-            f"  [cyan]Detected .stash/stash.json[/cyan] — this repo is set up for "
-            f"[bold]{manifest.get('workspace_name') or 'a stash workspace'}[/bold].\n"
-        )
-
-    # --- Step 0: Scope ---
-    # If a manifest already exists, respect the user's previous choice.
-    global_manifest = Path.home() / ".stash" / "stash.json"
-    if global_manifest.exists():
-        scope = "user"
-        console.print(
-            "  [green]✓[/green] Using existing scope: [bold]everywhere on this machine[/bold]"
-        )
-    elif manifest:
-        scope = "project"
-        console.print(
-            "  [green]✓[/green] Using existing scope: [bold]only this directory[/bold]"
-        )
-    else:
-        scope_options = [
-            ("Everywhere on this machine", "~/.stash/config.json", "user"),
-            ("Only this directory", "./.stash/config.json", "project"),
-        ]
-        label_width = max(len(label) for label, _, _ in scope_options)
-        scope_default_value = "user"
-        scope_choices = [
-            questionary.Choice(f"{label:<{label_width}}   {path}", value=value)
-            for label, path, value in scope_options
-        ]
-        scope_default_choice = next(ch for ch in scope_choices if ch.value == scope_default_value)
-        _reserve_bottom_padding(8)
-        scope = questionary.select(
-            "Where do you want to install stash?",
-            choices=scope_choices,
-            default=scope_default_choice,
-            use_shortcuts=True,
-        ).ask()
-        if scope is None:
-            raise typer.Exit(1)
+    console.print("\n[bold]Stash login[/bold]\n")
 
     # --- Step 1: API endpoint ---
     cfg = load_config()
     prev_base = stored_base_url()
-    if manifest and manifest.get("base_url"):
-        base_url = str(manifest["base_url"]).rstrip("/")
-        console.print(
-            f"  [green]✓[/green] Using endpoint from manifest: [bold]{base_url}[/bold]"
-        )
-        save_config(base_url=base_url)
-    elif prev_base:
+    if prev_base:
         base_url = prev_base
-        console.print(
-            f"  [green]✓[/green] Using existing endpoint: [bold]{base_url}[/bold]"
-        )
+        console.print(f"  [green]✓[/green] Using existing endpoint: [bold]{base_url}[/bold]")
     else:
         mode_options = [
             ("Managed", "hosted by Stash", "managed"),
@@ -2078,20 +1959,18 @@ def connect(
             raise typer.Exit(1)
 
         if mode == "managed":
-            base_url = "https://api.joinstash.ai"
+            base_url = PRODUCTION_BASE_URL
         else:
             base_url = _self_host_walkthrough(cfg)
         save_config(base_url=base_url)
 
-    # --- Step 2: Auth (browser-based) ---
+    # --- Step 2: Auth ---
     has_key = bool(cfg.get("api_key"))
     if has_key:
         try:
             with StashClient(base_url=base_url, api_key=cfg["api_key"]) as c:
                 user = c.whoami()
-            console.print(
-                f"  [green]✓[/green] Already authenticated as [bold]{user['name']}[/bold]"
-            )
+            console.print(f"  [green]✓[/green] Already authenticated as [bold]{user['name']}[/bold]")
         except StashError:
             has_key = False
 
@@ -2100,202 +1979,160 @@ def connect(
         try:
             api_key, username = _browser_auth_flow(base_url)
         except KeyboardInterrupt:
-            console.print("\n[yellow]Cancelled.[/yellow]")
+            console.print("\n[yellow]Authentication cancelled. Run `stash login` to try again.[/yellow]")
             raise typer.Exit(1)
         save_config(api_key=api_key, username=username)
         console.print(f"  [green]✓[/green] Logged in as [bold]{username}[/bold]")
 
-    # Reload config after auth
     cfg = load_config()
 
-    manifest_joined_ws: str = ""
-    manifest_ws_id: str = ""
-    matched: dict | None = None
+    first_run = not has_key
+    if not first_run:
+        console.print("\n  Run [cyan]stash settings[/cyan] to change agents or endpoint.")
+        return
 
-    with StashClient(base_url=base_url, api_key=cfg["api_key"]) as c:
-        if manifest:
-            # --- Manifest auto-join path ---
-            manifest_ws_id = str(manifest.get("workspace_id") or "")
-            manifest_ws_name = str(manifest.get("workspace_name") or "this workspace")
-            invite_code = str(manifest.get("invite_code") or "")
-            if not manifest_ws_id:
-                console.print(
-                    "[red]Manifest is missing workspace_id — ask the maintainer to re-share the repo "
-                    "(`rm .stash/stash.json && stash connect`).[/red]"
-                )
-                raise typer.Exit(1)
-
-            already_member = False
-            try:
-                c.get_workspace(manifest_ws_id)
-                already_member = True
-            except StashError as e:
-                if e.status_code not in (403, 404):
-                    _err(e)
-
-            if already_member:
-                manifest_joined_ws = manifest_ws_name
-                console.print(
-                    f"  [green]✓[/green] You're already a member of "
-                    f"[bold]{manifest_ws_name}[/bold]."
-                )
-            else:
-                _reserve_bottom_padding(4)
-                go = questionary.confirm(
-                    f"This repo is set up for the \"{manifest_ws_name}\" workspace on Stash.\n"
-                    "  Join and start sharing agent transcripts with the team?",
-                    default=True,
-                ).ask()
-                if go is None:
-                    raise typer.Exit(1)
-
-                if not go:
-                    manifest_path = find_project_manifest()
-                    if manifest_path:
-                        manifest_path.rename(manifest_path.with_name(_DISABLED_MANIFEST))
-                    console.print(
-                        "[yellow]Skipped.[/yellow] Hooks in this repo will stay inert. "
-                        "Run [cyan]stash enable[/cyan] later to change your mind."
-                    )
-                else:
-                    if not invite_code:
-                        console.print(
-                            "[red]Manifest has no invite_code — can't join. Ask the maintainer "
-                            "to re-share the repo (`rm .stash/stash.json && stash connect`).[/red]"
-                        )
-                        raise typer.Exit(1)
-                    try:
-                        ws = c.join_workspace(invite_code)
-                    except StashError as e:
-                        console.print(
-                            f"[red]Could not join {manifest_ws_name}: {e.detail}[/red]  "
-                            "(invite code may be stale — ask the maintainer to re-share the repo "
-                            "via `rm .stash/stash.json && stash connect`.)"
-                        )
-                        raise typer.Exit(1)
-                    joined_name = ws.get("name") or manifest_ws_name
-                    manifest_joined_ws = joined_name
-                    console.print(
-                        f"  [green]✓[/green] Joined [bold]{joined_name}[/bold]."
-                    )
-        else:
-            # --- Step 3: Workspace (no manifest) ---
-            try:
-                my_workspaces = c.list_workspaces(mine=True)
-            except StashError:
-                my_workspaces = []
-
-            if my_workspaces:
-                console.print("\n  Your workspaces:")
-                for ws in my_workspaces[:5]:
-                    console.print(f"    [dim]{str(ws['id'])[:8]}…[/dim]  {ws['name']}")
-
-            default_ws = my_workspaces[0] if my_workspaces else None
-            default_name = default_ws["name"] if default_ws else ""
-
-            _reserve_bottom_padding(4)
-            ws_name = typer.prompt(
-                "\nPress ENTER to accept default workspace name, otherwise type a workspace name",
-                default=default_name,
-            ).strip()
-
-            if not ws_name:
-                console.print("[yellow]Skipping workspace setup.[/yellow]")
-            else:
-                matched = next((ws for ws in my_workspaces if ws["name"] == ws_name), None)
-                if matched:
-                    console.print(
-                        f"  [green]✓[/green] Using workspace [bold]{matched['name']}[/bold]"
-                    )
-                else:
-                    try:
-                        matched = c.create_workspace(ws_name)
-                        console.print(
-                            f"  [green]✓[/green] Created workspace [bold]{matched['name']}[/bold]  invite: {matched['invite_code']}"
-                        )
-                    except StashError as e:
-                        console.print(f"[red]Could not create workspace: {e.detail}[/red]")
-
-    # Install global manifest for user-scope installs now that we have a workspace_id.
-    if scope == "user":
-        ws_id = manifest_ws_id if manifest else (matched["id"] if matched else None)
-        if ws_id:
-            try:
-                gm_status, gm_detail = _install_global_manifest(ws_id, force=False)
-                if gm_status == "installed":
-                    console.print(f"  [green]✓[/green] Global manifest written: {gm_detail}")
-            except Exception as e:
-                console.print(f"  [yellow]⚠[/yellow] Could not write global manifest: {e}")
-
-    # --- Step 3.5: Offer to enable this repo so teammates auto-join ---
-    if not manifest:
-        _offer_repo_init()
-
-    # --- Step 4: Coding-agent plugin ---
-    # Detect coding agents on PATH and prompt per-agent for the ones that
-    # don't already have the stash plugin installed. Agents that do have it
-    # get a single confirmation line so re-runs don't nag.
+    # --- First-run: choose and install hooks for detected agents ---
     detected = _detected_agents()
     if detected:
-        agent_label = {
-            "claude": "Claude Code",
-            "cursor": "Cursor",
-            "codex": "Codex",
-            "opencode": "opencode",
-        }
-        missing = [a for a in detected if not _plugin_installed(a)]
-        already = [a for a in detected if a not in missing]
+        enabled = load_enabled_agents()
+        default_enabled = enabled if enabled is not None else detected
 
-        # Re-apply already-installed agents so plugin upgrades (new hook
-        # entries, new instructions files, …) reach existing users on
-        # `stash connect` re-runs. Each installer is idempotent and
-        # returns 'skipped' when nothing changed.
-        upgraded: list[str] = []
-        for agent in already:
-            try:
-                status_, detail = _INSTALLERS[agent](False)
-            except Exception as e:
-                status_, detail = ("failed", f"{type(e).__name__}: {e}")
-            if status_ == "installed":
-                upgraded.append(agent)
-                console.print(
-                    f"  [green]upgraded[/green] {agent:8} {detail}"
+        _reserve_bottom_padding(len(detected) + 4)
+        selected = questionary.checkbox(
+            "Which coding agents should stream to Stash?",
+            choices=[
+                questionary.Choice(
+                    _AGENT_LABEL.get(a, a),
+                    value=a,
+                    checked=a in default_enabled,
                 )
-            elif status_ == "failed":
-                console.print(
-                    f"  [red]failed[/red] {agent:8} {detail}"
-                )
+                for a in detected
+            ],
+        ).ask()
+        if selected is None:
+            raise typer.Exit(1)
 
-        unchanged = [a for a in already if a not in upgraded]
-        if unchanged:
-            console.print(
-                f"  [green]✓[/green] Stash plugin already installed for "
-                f"[bold]{', '.join(agent_label[a] for a in unchanged)}[/bold]"
-            )
+        save_enabled_agents(selected)
+        _install_all_hooks(selected)
+    else:
+        save_enabled_agents([])
 
-        for agent in missing:
-            _reserve_bottom_padding(4)
-            install_plugin = questionary.confirm(
-                f"Detected {agent_label[agent]} on this machine. Install the stash plugin?\n"
-                "  (Streams every session here to your shared history.)",
-                default=True,
-            ).ask()
-            if not install_plugin:
-                continue
-            try:
-                status_, detail = _INSTALLERS[agent](False)
-            except Exception as e:
-                status_, detail = ("failed", f"{type(e).__name__}: {e}")
-            color = {"installed": "green", "skipped": "yellow", "failed": "red"}[status_]
-            console.print(
-                f"  [{color}]{status_:9}[/{color}] {agent:8} {detail}"
-            )
+    # --- First-run: optionally connect the current repo ---
+    repo_root = _git_toplevel()
+    _reserve_bottom_padding(6)
+    choices = [
+        questionary.Choice("Yes — connect this repo", value="yes"),
+        questionary.Choice("No — I'll run `stash connect` later", value="no"),
+        questionary.Choice("Connect a different repo", value="other"),
+    ]
+    answer = questionary.select(
+        "Upload transcripts from this repo?",
+        choices=choices,
+        default=choices[0] if repo_root else choices[1],
+        use_shortcuts=True,
+    ).ask()
+    if answer is None:
+        raise typer.Exit(1)
 
-    # --- Done ---
-    _show_setup_complete_splash(
-        workspace_name=manifest_joined_ws,
-        joined_via_manifest=bool(manifest_joined_ws),
-    )
+    if answer == "yes":
+        if not repo_root:
+            console.print("[yellow]Not inside a git repo. Run `stash connect` from a repo.[/yellow]")
+        else:
+            with StashClient(base_url=cfg["base_url"], api_key=cfg["api_key"]) as c:
+                _connect_repo(repo_root, c)
+    elif answer == "other":
+        _reserve_bottom_padding(4)
+        repo_path = typer.prompt("Path to repo").strip()
+        target = Path(repo_path).expanduser().resolve()
+        target_root = _git_toplevel(target)
+        if not target_root:
+            console.print(f"[red]{repo_path} is not a git repo.[/red]")
+        else:
+            with StashClient(base_url=cfg["base_url"], api_key=cfg["api_key"]) as c:
+                _connect_repo(target_root, c)
+
+    _show_setup_complete_splash()
+
+
+_AGENT_LABEL = {
+    "claude": "Claude Code",
+    "cursor": "Cursor",
+    "codex": "Codex",
+    "opencode": "opencode",
+}
+
+
+def _install_all_hooks(agents: list[str] | None = None) -> None:
+    """Install/upgrade hooks for the given agents (defaults to all detected)."""
+    detected = _detected_agents()
+    if not detected:
+        return
+
+    to_install = [a for a in detected if a in agents] if agents is not None else detected
+
+    for agent in to_install:
+        try:
+            status_, detail = _INSTALLERS[agent](False)
+        except Exception as e:
+            status_, detail = ("failed", f"{type(e).__name__}: {e}")
+        if status_ == "installed":
+            console.print(f"  [green]✓[/green] {_AGENT_LABEL[agent]} hook installed  {detail}")
+        elif status_ == "skipped":
+            console.print(f"  [green]✓[/green] {_AGENT_LABEL[agent]} hook up to date")
+        elif status_ == "failed":
+            console.print(f"  [red]✗[/red] {_AGENT_LABEL[agent]} hook failed  {detail}")
+
+
+@app.command("connect")
+def connect_cmd():
+    """Connect this repo to a Stash workspace. Creates the .stash file."""
+    cfg = _require_auth()
+
+    repo_root = _git_toplevel()
+    if not repo_root:
+        console.print("[red]Not inside a git repo.[/red]")
+        raise typer.Exit(1)
+
+    with StashClient(base_url=cfg["base_url"], api_key=cfg["api_key"]) as c:
+        _connect_repo(repo_root, c)
+
+
+@app.command("start")
+def start_cmd():
+    """Start streaming transcripts to this repo's workspace."""
+    _require_auth()
+
+    manifest = load_manifest()
+    if not manifest:
+        console.print("[yellow]No .stash file found in this repo.[/yellow]")
+        raise typer.Exit(1)
+
+    workspace_id = manifest.get("workspace_id", "")
+    if not workspace_id:
+        console.print("[red].stash file is missing workspace_id.[/red]")
+        raise typer.Exit(1)
+
+    set_streaming(workspace_id)
+    console.print(f"  [green]✓[/green] Streaming enabled for workspace {workspace_id[:8]}…")
+
+
+@app.command("stop")
+def stop_cmd():
+    """Stop streaming transcripts for this repo's workspace."""
+    _require_auth()
+
+    manifest = load_manifest()
+    if not manifest:
+        console.print("[yellow]No .stash file found in this repo.[/yellow]")
+        raise typer.Exit(1)
+
+    workspace_id = manifest.get("workspace_id", "")
+    if not workspace_id:
+        console.print("[red].stash file is missing workspace_id.[/red]")
+        raise typer.Exit(1)
+
+    clear_streaming(workspace_id)
+    console.print(f"  [green]✓[/green] Streaming stopped for workspace {workspace_id[:8]}…")
 
 
 # ===========================================================================
@@ -2322,258 +2159,6 @@ def _git_toplevel(cwd: Path | None = None) -> Path | None:
     return Path(top) if top else None
 
 
-def _looks_public_remote() -> bool:
-    """Heuristic for 'this repo's default remote looks public' — used to warn
-    when offering to enable a repo. We check GitHub public visibility via `gh` if available;
-    otherwise fall back to inspecting `git remote -v` for github.com URLs
-    that aren't enterprise hosts. False negatives are OK — the manifest is
-    inert until someone runs the CLI, and this is only an advisory warning."""
-    import subprocess as _sp
-
-    try:
-        out = _sp.run(["git", "remote", "get-url", "origin"], capture_output=True, text=True, timeout=2)
-    except Exception:
-        return False
-    url = (out.stdout or "").strip()
-    if not url or "github.com" not in url:
-        return False
-    try:
-        # Convert git@github.com:owner/repo.git → owner/repo
-        owner_repo = url
-        if owner_repo.startswith("git@"):
-            owner_repo = owner_repo.split(":", 1)[-1]
-        elif owner_repo.startswith("https://github.com/"):
-            owner_repo = owner_repo[len("https://github.com/"):]
-        owner_repo = owner_repo.removesuffix(".git")
-        if owner_repo.count("/") != 1:
-            return False
-        gh = _sp.run(
-            ["gh", "api", f"repos/{owner_repo}", "--jq", ".visibility"],
-            capture_output=True,
-            text=True,
-            timeout=5,
-        )
-        if gh.returncode == 0:
-            return gh.stdout.strip().lower() == "public"
-    except Exception:
-        pass
-    return False
-
-
-def _update_gitignore_for_manifest(repo_root: Path) -> str:
-    """Ensure `.stash/config.json` is gitignored and `.stash/stash.json` is NOT.
-    Returns a short status string for display ('created', 'updated', 'already-set')."""
-    gi = repo_root / ".gitignore"
-    config_entry = ".stash/config.json"
-    disabled_entry = ".stash/stash.json.disabled"
-    manifest_entry = "!.stash/stash.json"
-
-    if not gi.exists():
-        gi.write_text(f"{config_entry}\n{disabled_entry}\n")
-        return "created"
-
-    lines = gi.read_text().splitlines()
-    stripped = [line.strip() for line in lines]
-
-    has_wholesale = any(s in (".stash/", ".stash") for s in stripped)
-    has_config_entry = any(s == config_entry for s in stripped)
-    has_disabled_entry = any(s == disabled_entry for s in stripped)
-    has_manifest_negation = any(s == manifest_entry for s in stripped)
-
-    if has_config_entry and has_disabled_entry and (not has_wholesale or has_manifest_negation):
-        return "already-set"
-
-    new_lines = list(lines)
-    if has_wholesale and not has_manifest_negation:
-        new_lines.append(manifest_entry)
-    if not has_config_entry:
-        new_lines.append(config_entry)
-    if not has_disabled_entry:
-        new_lines.append(disabled_entry)
-    gi.write_text("\n".join(new_lines) + "\n")
-    return "updated"
-
-
-def _offer_repo_init(client: "StashClient | None" = None) -> None:
-    """If cwd is a git repo without a manifest, offer to write one so teammates
-    running `stash connect` here auto-join the workspace.
-
-    Idempotent on a per-repo basis: a 'no' is remembered in
-    .stash/config.json's `init_declined` so we don't re-ask. Silently skips
-    when conditions aren't met (no git repo, manifest exists, no workspaces).
-    """
-    repo_root = _git_toplevel()
-    if repo_root is None:
-        return
-    manifest_path = repo_root / ".stash" / "stash.json"
-    if manifest_path.exists():
-        return
-
-    project_cfg_path = repo_root / ".stash" / PROJECT_FILENAME
-    project_cfg = {}
-    if project_cfg_path.exists():
-        try:
-            project_cfg = json.loads(project_cfg_path.read_text())
-        except Exception:
-            project_cfg = {}
-    if project_cfg.get("init_declined"):
-        return
-
-    cfg = load_config()
-    if not cfg.get("api_key"):
-        return
-    base_url = (cfg.get("base_url") or "").rstrip("/")
-    if not base_url:
-        return
-
-    owns_client = client is None
-    if owns_client:
-        client = StashClient(base_url=base_url, api_key=cfg["api_key"])
-    try:
-        try:
-            my_workspaces = client.list_workspaces(mine=True)
-        except StashError:
-            return
-        if not my_workspaces:
-            return
-
-        repo_name = repo_root.name
-        _reserve_bottom_padding(4)
-        go = questionary.confirm(
-            f"Make [bold]{repo_name}[/bold] a Stash repo so teammates running "
-            f"`stash connect` here auto-join? (writes .stash/stash.json)",
-            default=False,
-        ).ask()
-        if go is None:
-            return
-        if not go:
-            project_cfg["init_declined"] = True
-            project_cfg_path.parent.mkdir(parents=True, exist_ok=True)
-            project_cfg_path.write_text(json.dumps(project_cfg, indent=2) + "\n")
-            return
-
-        default_choice = my_workspaces[0]
-        choices = [
-            questionary.Choice(
-                f"{ws['name']}  [dim]({str(ws['id'])[:8]}…)[/dim]",
-                value=str(ws["id"]),
-            )
-            for ws in my_workspaces
-        ]
-        _reserve_bottom_padding(6)
-        chosen_id = questionary.select(
-            "Which workspace should this repo point at?",
-            choices=choices,
-            default=next(
-                (ch for ch in choices if ch.value == str(default_choice["id"])), choices[0]
-            ),
-            use_shortcuts=True,
-        ).ask()
-        if chosen_id is None:
-            return
-
-        chosen_ws = next(ws for ws in my_workspaces if str(ws["id"]) == chosen_id)
-        invite_code = chosen_ws.get("invite_code") or ""
-        if not invite_code:
-            try:
-                full = client.get_workspace(chosen_id)
-                invite_code = full.get("invite_code") or ""
-            except StashError:
-                invite_code = ""
-        if not invite_code:
-            console.print(
-                "[red]That workspace has no invite code — can't enable repo-level stash without one.[/red]"
-            )
-            return
-    finally:
-        if owns_client:
-            client.close()
-
-    manifest: Manifest = {
-        "version": 1,
-        "workspace_id": str(chosen_ws["id"]),
-        "workspace_name": chosen_ws["name"],
-        "invite_code": invite_code,
-        "base_url": base_url,
-    }
-    manifest_path.parent.mkdir(parents=True, exist_ok=True)
-    manifest_path.write_text(json.dumps(manifest, indent=2) + "\n")
-    gi_status = _update_gitignore_for_manifest(repo_root)
-
-    cursor_rule_path = _drop_cursor_project_rule(repo_root)
-    cursor_rule_line = (
-        f"  Wrote [cyan]{cursor_rule_path.relative_to(repo_root)}[/cyan]   "
-        f"[green]✓[/green]\n"
-        if cursor_rule_path
-        else ""
-    )
-
-    console.print(
-        Panel(
-            f"  [bold]Workspace:[/bold]   {chosen_ws['name']}  "
-            f"[dim]({str(chosen_ws['id'])[:8]}…)[/dim]\n"
-            f"  [bold]Invite code:[/bold] {invite_code}\n"
-            f"\n"
-            f"  Wrote [cyan]{manifest_path.relative_to(repo_root)}[/cyan]           "
-            f"[green]✓[/green]\n"
-            f"{cursor_rule_line}"
-            f"  .gitignore (.stash/config.json)   [green]{gi_status}[/green]\n"
-            f"\n"
-            f"  Commit [cyan].stash/stash.json[/cyan] and push. Teammates running "
-            f"[cyan]stash connect[/cyan] in this repo will auto-join.",
-            title="[bold]Repo enabled for Stash[/bold]",
-            border_style="cyan",
-            padding=(1, 2),
-        )
-    )
-
-    if _looks_public_remote():
-        console.print(
-            "\n[yellow]Heads up:[/yellow] this repo's remote looks public. Anyone who "
-            "can clone it can join the workspace via the committed invite code. Only "
-            "enable Stash on public repos if you want that."
-        )
-
-
-@app.command("enable")
-def enable_cmd():
-    """Re-enable Stash streaming for this repo (undoes `stash disable`)."""
-    manifest_path = find_project_manifest()
-    if manifest_path is not None:
-        console.print("[green]Stash streaming is already enabled.[/green]")
-        return
-
-    disabled_path = _find_disabled_manifest()
-    if disabled_path is None:
-        console.print(
-            "[yellow]No .stash/stash.json found in this repo.[/yellow]  "
-            "Ask a maintainer to run [cyan]stash connect[/cyan] here and accept the "
-            "'Make this a Stash repo?' prompt."
-        )
-        raise typer.Exit(1)
-
-    enabled_path = disabled_path.with_name(MANIFEST_FILENAME)
-    disabled_path.rename(enabled_path)
-    console.print(f"[green]Stash streaming enabled for this repo.[/green]  ({enabled_path})")
-
-
-@app.command("disable")
-def disable_cmd():
-    """Stop streaming for this repo by renaming the manifest."""
-    manifest_path = find_project_manifest()
-    if manifest_path is None:
-        console.print(
-            "[yellow]No .stash/stash.json found in this repo.[/yellow]  "
-            "Nothing to disable."
-        )
-        raise typer.Exit(1)
-
-    disabled_path = manifest_path.with_name(_DISABLED_MANIFEST)
-    manifest_path.rename(disabled_path)
-    console.print(
-        f"[yellow]Stash streaming disabled for this repo.[/yellow]  ({disabled_path})\n"
-        "Run [cyan]stash enable[/cyan] to turn it back on."
-    )
 
 
 STASH_LOGO = r"""
@@ -2593,46 +2178,6 @@ STASH_OCTOPUS = r'''
               / / | \ \ \
              ( ( (|)  ) )
 '''
-
-
-def _pushed_scope_phrase() -> str:
-    """Human phrase for what gets pushed, based on manifest location."""
-    global_manifest = Path.home() / ".stash" / "stash.json"
-    if global_manifest.exists():
-        return "All coding agent transcripts from this machine."
-    return "Coding agent transcripts from this repo."
-
-
-def _current_invite() -> tuple[str, str]:
-    """Return (invite_code, workspace_name) for the manifest's workspace,
-    or ("", "") if unavailable. Best-effort — any auth/network failure falls
-    back to the generic `stash workspaces info` guidance."""
-    m = load_manifest()
-    ws_id = (m.get("workspace_id") if m else None) or ""
-    if not ws_id:
-        return "", ""
-    try:
-        with _client() as c:
-            data = c.get_workspace(ws_id)
-    except Exception:
-        return "", ""
-    return str(data.get("invite_code") or ""), str(data.get("name") or "")
-
-
-def _invite_url(invite_code: str) -> str:
-    """Build the user-facing join URL for an invite code, mirroring the
-    frontend-host logic used for login (see `stash connect` managed flow):
-    managed backend → joinstash.ai; localhost backend → :3457; any other
-    self-host → whatever the configured base_url is."""
-    base_url = (load_config().get("base_url") or "").rstrip("/")
-    managed_hosts = ("https://joinstash.ai", "https://www.joinstash.ai", "https://api.joinstash.ai")
-    if base_url in managed_hosts:
-        frontend = "https://joinstash.ai"
-    elif "localhost" in base_url or "127.0.0.1" in base_url:
-        frontend = base_url.replace(":3456", ":3457")
-    else:
-        frontend = base_url
-    return f"{frontend}/join/{invite_code}"
 
 
 def _frontend_base_url() -> str:
@@ -2668,18 +2213,6 @@ def _transcripts_url() -> str:
 
 
 def _welcome_markdown() -> str:
-    invite_code, ws_name = _current_invite()
-    if invite_code:
-        ws_suffix = f" (workspace: {ws_name})" if ws_name else ""
-        share_answer = (
-            f"Send this link: {_invite_url(invite_code)} — "
-        )
-    else:
-        share_answer = (
-            "Share the invite code (`stash workspaces info <id>` prints it). "
-            "Teammates run `stash connect` if needed, then "
-            "`stash workspaces join <invite_code>`."
-        )
     ws_url = _current_workspace_url()
     workspace_link_section = (
         f"## See your workspace\n\n"
@@ -2708,19 +2241,9 @@ You can read a blog post about it here: [Agent velocity for coding teams](https:
 
 Run `stash --help` to see everything.
 
-## Q&A
+## How do I share my workspace with my team?
 
-**Q:** Do you inject anything into my coding agent's context automatically?
-**A:** No.
-
-**Q:** What gets pushed to the shared store?
-**A:** {_pushed_scope_phrase()}
-
-**Q:** How do I do settings?
-**A:** `stash sessings`
-
-**Q:** How do I share my workspace with my team?
-**A:** {share_answer}
+Commit the `.stash` file and push. Teammates who clone the repo will see a prompt to run `stash start`.
 """
 
 
@@ -2759,37 +2282,15 @@ def _install_claude_plugin() -> bool:
     return True
 
 
-def _show_setup_complete_splash(
-    workspace_name: str = "",
-    joined_via_invite: bool = False,
-    joined_via_manifest: bool = False,
-) -> None:
-    """Clear the onboarding transcript and show a clean success splash."""
+def _show_setup_complete_splash() -> None:
+    """Show a clean success splash after first-run login."""
     console.clear()
     octopus = textwrap.dedent(STASH_OCTOPUS.strip("\n"))
     logo = textwrap.dedent(STASH_LOGO.strip("\n"))
     console.print(Align.center(Text.from_markup(f"[bold #F97316]{octopus}[/bold #F97316]")))
     console.print()
     console.print(Align.center(Text.from_markup(f"[bold #1e3a8a]{logo}[/bold #1e3a8a]")))
-    if (joined_via_invite or joined_via_manifest) and workspace_name:
-        console.print(f"  [bold green]You joined[/bold green] [bold]{workspace_name}[/bold].\n")
-    else:
-        console.print("  [bold green]You're all set up.[/bold green]\n")
-
-    invite_code, ws_name = _current_invite()
-    if invite_code:
-        ws_suffix = f" (workspace [bold]{ws_name}[/bold])" if ws_name else ""
-        share_answer = (
-            f"Send teammates this link{ws_suffix}:\n"
-            f"[bold #1e3a8a]{_invite_url(invite_code)}[/bold #1e3a8a]\n"
-            "They'll sign in and be joined automatically."
-        )
-    else:
-        share_answer = (
-            "Share the invite code ([#1e3a8a]stash workspaces info <id>[/#1e3a8a] prints it). "
-            "Teammates run [#1e3a8a]stash connect[/#1e3a8a] if needed, then "
-            "[#1e3a8a]stash workspaces join <invite_code>[/#1e3a8a]."
-        )
+    console.print("  [bold green]You're all set up.[/bold green]\n")
 
     ws_url = _current_workspace_url()
     workspace_link_section = (
@@ -2806,96 +2307,25 @@ def _show_setup_complete_splash(
         "workspace — so it knows what the rest of your team is working on.\n"
         "\n"
         f"{workspace_link_section}"
-        "[bold]Examples of questions your agent might want answered[/bold]\n"
-        '  [dim]"Why did Sam bump the rate limit from 100 to 500?"[/dim]\n'
-        '  [dim]"Has anyone already tried fixing the memory leak in our backend?"[/dim]\n'
-        '  [dim]"Is anyone else currently working on our api gateway"[/dim]\n'
-        "\n"
-        "  You can read a blog post about it here: "
-        "[link=https://henrydowling.com/agent-velocity.html]Agent velocity for coding teams[/link]\n"
-        "\n"
         "[bold]Commands your agent can now use[/bold]\n"
         '  [#1e3a8a]stash history search "<query>"[/#1e3a8a]   full-text search across transcripts\n'
         "  [#1e3a8a]stash history query --agent <name>[/#1e3a8a]   pull a specific agent's events\n"
         "\n"
         "Run [bold]stash --help[/bold] to see everything.\n"
         "\n"
-        "[bold]Q&A[/bold]"
+        "[bold]Share with your team[/bold]\n"
+        "Commit the [cyan].stash[/cyan] file and push. Teammates who clone the repo\n"
+        "will see a prompt to run [cyan]stash start[/cyan]."
     )
-
-    qa_pairs = [
-        (
-            "Do you inject anything into my coding agent's context automatically?",
-            "No.",
-        ),
-        (
-            "What gets pushed to the shared store?",
-            _pushed_scope_phrase(),
-        ),
-        (
-            "Where can I see my conversation transcripts?",
-            f"[link={_transcripts_url()}][bold #1e3a8a]{_transcripts_url()}[/bold #1e3a8a][/link]",
-        ),
-        (
-            "How do I share my workspace with my team?",
-            share_answer,
-        ),
-    ]
-
-    qa_table = Table(
-        show_header=False,
-        show_edge=False,
-        box=None,
-        pad_edge=False,
-        padding=(0, 1),
-    )
-    qa_table.add_column(style="bold", no_wrap=True)
-    qa_table.add_column(overflow="fold")
-    for i, (question, answer) in enumerate(qa_pairs):
-        if i > 0:
-            qa_table.add_row("", "")
-        qa_table.add_row("Q", question)
-        qa_table.add_row("A", answer)
 
     console.print(
         Panel(
-            Group(Text.from_markup(intro), qa_table),
+            Text.from_markup(intro),
             title="[bold #1e3a8a]Your team's shared agent memory[/bold #1e3a8a]",
             border_style="#1e3a8a",
             padding=(1, 2),
         )
     )
-
-    if (joined_via_invite or joined_via_manifest) and workspace_name:
-        if joined_via_manifest:
-            joined_body = (
-                f"You joined [bold]{workspace_name}[/bold] via this repo's "
-                "[cyan].stash/stash.json[/cyan] manifest.\n"
-                "Your agent now pushes transcripts for work in this repo to the team's\n"
-                "shared memory. Try one of these:\n"
-                "\n"
-                "  [cyan]stash history agents[/cyan]           who's been active in this workspace\n"
-                '  [cyan]stash history search "<query>"[/cyan]   full-text search across transcripts\n'
-                "  [cyan]stash disable[/cyan]                  opt this repo out without touching the manifest"
-            )
-        else:
-            joined_body = (
-                f"You're now a member of [bold]{workspace_name}[/bold] and your default\n"
-                "workspace is set. Try one of these to see what your teammates are up to:\n"
-                "\n"
-                "  [cyan]stash history agents[/cyan]           who's been active in this workspace\n"
-                '  [cyan]stash history search "<query>"[/cyan]   full-text search across transcripts\n'
-                "  [cyan]stash history query --limit 20[/cyan]    latest events in your new workspace"
-            )
-        console.print(
-            Panel(
-                joined_body,
-                title=f"[bold]Welcome to {workspace_name}[/bold]",
-                border_style="green",
-                padding=(1, 2),
-            )
-        )
-
     console.print()
 
 
@@ -2920,18 +2350,12 @@ def _render_settings_header(cfg: dict, central: dict) -> None:
 
     manifest = load_manifest()
     workspace_id = (manifest.get("workspace_id") if manifest else None) or ""
-    if manifest and manifest.get("workspace_name"):
-        workspace_label = f"{manifest['workspace_name']}  ({workspace_id[:8]}…)"
-    elif workspace_id:
-        workspace_label = workspace_id
-    else:
-        workspace_label = "(none — no manifest)"
+    workspace_label = workspace_id[:12] + "…" if workspace_id else "(none — no .stash file)"
 
     def row(label: str, value: str, *, highlight: bool = True) -> None:
         console.print(f"  [dim]{label}[/dim]{value}", highlight=highlight)
 
     row(f"{'User:':<14}", cfg.get("username") or "(not logged in)")
-    # Workspace UUID would otherwise auto-highlight yellow — force neutral.
     row(f"{'Workspace:':<14}", workspace_label, highlight=False)
     row(f"{'Store:':<14}", cfg.get("default_store") or "(none)")
 
@@ -2944,14 +2368,16 @@ def _render_settings_header(cfg: dict, central: dict) -> None:
     else:
         row(f"{'Last curate:':<14}", "(never)")
 
+    enabled = load_enabled_agents()
+    detected = _detected_agents()
+    if enabled is None:
+        agents_label = ", ".join(_AGENT_LABEL.get(a, a) for a in detected) or "(none detected)"
+    else:
+        agents_label = ", ".join(_AGENT_LABEL.get(a, a) for a in enabled) or "(none)"
+    row(f"{'Streaming:':<14}", agents_label)
+
     plugins_seen = [name for name, d in PLUGIN_DATA_DIRS.items() if d.exists()]
     row(f"{'Plugins:':<14}", ", ".join(plugins_seen) or "(none detected)")
-
-    global_manifest = Path.home() / ".stash" / "stash.json"
-    if global_manifest.exists():
-        row(f"{'Install:':<14}", "global (~/.stash/stash.json)")
-    else:
-        row(f"{'Install:':<14}", "per-repo (via .stash/stash.json manifests)")
     console.print()
 
 
@@ -2966,16 +2392,15 @@ def settings_cmd(as_json: bool = typer.Option(False, "--json")):
         display_cfg["api_key"] = display_cfg["api_key"][:10] + "..."
 
     if as_json:
-        global_manifest = Path.home() / ".stash" / "stash.json"
         output_json(
             {
                 "config": display_cfg,
                 "auto_curate": bool(central.get("auto_curate", True)),
                 "last_curate_at": central.get("last_curate_at"),
+                "enabled_agents": load_enabled_agents(),
                 "plugins_installed": [
                     name for name, d in PLUGIN_DATA_DIRS.items() if d.exists()
                 ],
-                "global_install": global_manifest.exists(),
             }
         )
         return
@@ -2987,8 +2412,12 @@ def settings_cmd(as_json: bool = typer.Option(False, "--json")):
 
         auto_curate = bool(central.get("auto_curate", True))
         base_url = cfg.get("base_url", "")
+        enabled = load_enabled_agents()
+        detected = _detected_agents()
+        enabled_label = ", ".join(_AGENT_LABEL.get(a, a) for a in (enabled or detected)) or "(none)"
 
         rows = [
+            ("Streaming", enabled_label, "enabled_agents"),
             ("Auto-curate", "on" if auto_curate else "off", "auto_curate"),
             ("Endpoint", base_url, "base_url"),
         ]
@@ -3008,7 +2437,23 @@ def settings_cmd(as_json: bool = typer.Option(False, "--json")):
         if picked in (None, "exit"):
             return
 
-        if picked == "auto_curate":
+        if picked == "enabled_agents":
+            current_enabled = enabled if enabled is not None else detected
+            selected = questionary.checkbox(
+                "Which coding agents should stream to Stash?",
+                choices=[
+                    questionary.Choice(
+                        _AGENT_LABEL.get(a, a),
+                        value=a,
+                        checked=a in current_enabled,
+                    )
+                    for a in detected
+                ],
+            ).ask()
+            if selected is not None:
+                save_enabled_agents(selected)
+                _install_all_hooks(selected)
+        elif picked == "auto_curate":
             _write_central_config({"auto_curate": not auto_curate})
         elif picked == "base_url":
             new_url = questionary.text("Endpoint base URL", default=base_url).ask()
@@ -3054,22 +2499,39 @@ def keys_revoke(key_id: str = typer.Argument(..., help="Key id to revoke.")):
     console.print(f"[green]Revoked key {key_id}.[/green]")
 
 
-@app.command("disconnect")
-def disconnect(as_json: bool = typer.Option(False, "--json")):
-    """Sign out and clear stash config so the next `stash connect` re-onboards.
-
-    Deletes the user and project config files (auth, workspace, endpoint).
-    Plugin hooks stay installed but go inert with no api_key to push to.
-    """
+@app.command("logout")
+def logout_cmd(as_json: bool = typer.Option(False, "--json")):
+    """Sign out and clear credentials. Hooks go inert until you `stash login` again."""
     from .config import clear_config
 
     json_mode = as_json
     clear_config()
     if json_mode:
-        output_json({"disconnected": True})
+        output_json({"logged_out": True})
         return
-    console.print("[yellow]Disconnected.[/yellow] Cleared auth, workspace, and endpoint.")
-    console.print("  Run [bold]stash connect[/bold] to set up again.")
+    console.print("[yellow]Logged out.[/yellow] Cleared auth and preferences.")
+    console.print("  Run [bold]stash login[/bold] to sign in again.")
+
+
+@app.command("disconnect")
+def disconnect_cmd():
+    """Disconnect this repo from Stash. Removes the .stash file."""
+    repo_root = _git_toplevel()
+    if not repo_root:
+        console.print("[red]Not inside a git repo.[/red]")
+        raise typer.Exit(1)
+
+    manifest_path = repo_root / MANIFEST_FILE
+    if not manifest_path.is_file():
+        console.print("[yellow]No .stash file found — this repo isn't connected.[/yellow]")
+        return
+
+    manifest = load_manifest()
+    workspace_id = (manifest.get("workspace_id") or "") if manifest else ""
+    manifest_path.unlink()
+    if workspace_id:
+        clear_streaming(workspace_id)
+    console.print(f"  [green]✓[/green] Removed [cyan]{MANIFEST_FILE}[/cyan] — repo disconnected.")
 
 
 def _read_central_config() -> dict:

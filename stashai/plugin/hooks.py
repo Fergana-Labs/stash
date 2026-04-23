@@ -13,20 +13,110 @@ Never call `stream_session_end` from a per-turn hook — you'll emit a bogus
 
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 
 from stashai.plugin.event import HookEvent
-from stashai.plugin.scope import cwd_in_scope
+from stashai.plugin.scope import cwd_in_scope, find_manifest
 from stashai.plugin.stash_client import StashClient
 from stashai.plugin.state import read_stats, record_tool_use
 from stashai.plugin.summarize import summarize_tool_use
 
+_CONFIG_FILE = Path.home() / ".stash" / "config.json"
 
-def _short_circuit(cfg: dict, event: HookEvent | None) -> bool:
-    if not cfg.get("workspace_id"):
+_CLIENT_TO_AGENT = {
+    "claude_code": "claude",
+    "cursor": "cursor",
+    "codex_cli": "codex",
+    "opencode": "opencode",
+}
+
+
+def _read_user_config() -> dict:
+    if not _CONFIG_FILE.exists():
+        return {}
+    try:
+        import json
+        return json.loads(_CONFIG_FILE.read_text())
+    except Exception:
+        return {}
+
+
+def _write_user_config(updates: dict) -> None:
+    import json
+    existing = _read_user_config()
+    existing.update(updates)
+    _CONFIG_FILE.parent.mkdir(parents=True, exist_ok=True)
+    _CONFIG_FILE.write_text(json.dumps(existing, indent=2) + "\n")
+
+
+def _is_agent_enabled(cfg: dict) -> bool:
+    data = _read_user_config()
+    enabled = data.get("enabled_agents")
+    if not isinstance(enabled, list):
         return True
+    client = cfg.get("client", "")
+    canonical = _CLIENT_TO_AGENT.get(client, client)
+    return canonical in enabled
+
+
+def _is_streaming(workspace_id: str) -> bool:
+    streaming = _read_user_config().get("streaming")
+    return isinstance(streaming, list) and workspace_id in streaming
+
+
+def _is_hint_shown(workspace_id: str) -> bool:
+    hints = _read_user_config().get("hints_shown")
+    return isinstance(hints, list) and workspace_id in hints
+
+
+def _mark_hint_shown(workspace_id: str) -> None:
+    data = _read_user_config()
+    hints = set(data.get("hints_shown") or [])
+    hints.add(workspace_id)
+    _write_user_config({"hints_shown": sorted(hints)})
+
+
+def _resolve_workspace(cfg: dict, event: HookEvent | None) -> str | None:
+    """Return workspace_id if this session should attempt streaming, else None."""
     cwd = getattr(event, "cwd", None) if event is not None else None
-    return not cwd_in_scope(cwd)
+
+    if cfg.get("workspace_id"):
+        if not cwd_in_scope(cwd):
+            return None
+        return cfg["workspace_id"]
+
+    manifest = find_manifest(cwd) if cwd else None
+    if not manifest:
+        return None
+    return manifest.get("workspace_id") or None
+
+
+def _short_circuit(cfg: dict, event: HookEvent | None) -> tuple[bool, str | None]:
+    """Return (should_skip, workspace_id).
+
+    Streams only if the user has opted in via `stash start`.
+    Shows a one-time hint for workspaces the user hasn't opted into yet.
+    """
+    if not _is_agent_enabled(cfg):
+        return True, None
+
+    workspace_id = _resolve_workspace(cfg, event)
+    if not workspace_id:
+        return True, None
+
+    if _is_streaming(workspace_id):
+        return False, workspace_id
+
+    if not _is_hint_shown(workspace_id):
+        print(
+            f"\nThis repo streams to Stash workspace {workspace_id[:8]}…\n"
+            f"Run `stash start` to begin sharing.\n",
+            file=sys.stderr,
+        )
+        _mark_hint_shown(workspace_id)
+
+    return True, None
 
 
 # --- Prompt streaming ---
@@ -35,13 +125,14 @@ def stream_user_message(
     client: StashClient, cfg: dict, state: dict, prompt_text: str,
     event: HookEvent | None = None,
 ) -> None:
-    if _short_circuit(cfg, event):
+    skip, workspace_id = _short_circuit(cfg, event)
+    if skip:
         return
     if not prompt_text or not prompt_text.strip():
         return
     try:
         client.push_event(
-            workspace_id=cfg["workspace_id"],
+            workspace_id=workspace_id,
             agent_name=cfg["agent_name"],
             event_type="user_message",
             content=prompt_text[:2000],
@@ -58,7 +149,8 @@ def stream_tool_use(
     client: StashClient, cfg: dict, state: dict, event: HookEvent,
     data_dir: Path | None = None,
 ) -> None:
-    if _short_circuit(cfg, event):
+    skip, workspace_id = _short_circuit(cfg, event)
+    if skip:
         return
     if not event.tool_name:
         return
@@ -73,7 +165,7 @@ def stream_tool_use(
 
     try:
         client.push_event(
-            workspace_id=cfg["workspace_id"],
+            workspace_id=workspace_id,
             agent_name=cfg["agent_name"],
             event_type="tool_use",
             content=content,
@@ -94,13 +186,14 @@ def stream_assistant_message(
     """Push the final assistant text for a turn. Call from per-turn Stop /
     afterAgentResponse / AfterAgent hooks. Never emits session_end — the
     session is still live."""
-    if _short_circuit(cfg, event):
+    skip, workspace_id = _short_circuit(cfg, event)
+    if skip:
         return
     if not event.last_assistant_message:
         return
     try:
         client.push_event(
-            workspace_id=cfg["workspace_id"],
+            workspace_id=workspace_id,
             agent_name=cfg["agent_name"],
             event_type="assistant_message",
             content=event.last_assistant_message[:4000],
@@ -122,7 +215,8 @@ def stream_session_end(
     default StashClient timeout is 2s, fine for small events but way too
     short for a 50MB transcript).
     """
-    if _short_circuit(cfg, event):
+    skip, workspace_id = _short_circuit(cfg, event)
+    if skip:
         return
 
     stats = read_stats(state)
@@ -138,7 +232,7 @@ def stream_session_end(
 
     try:
         client.push_event(
-            workspace_id=cfg["workspace_id"],
+            workspace_id=workspace_id,
             agent_name=cfg["agent_name"],
             event_type="session_end",
             content=" ".join(parts),
@@ -163,7 +257,7 @@ def stream_session_end(
         return
     try:
         client.upload_transcript(
-            workspace_id=cfg["workspace_id"],
+            workspace_id=workspace_id,
             session_id=sid,
             transcript_path=path,
             agent_name=cfg["agent_name"],
