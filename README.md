@@ -85,6 +85,10 @@ One line installs the CLI, signs you in, picks a workspace, and installs plugins
 bash -c "$(curl -fsSL https://raw.githubusercontent.com/Fergana-Labs/stash/main/install.sh)"
 ```
 
+<p align="center">
+  <img src="docs/assets/setup-complete.png" alt="Stash setup complete — your agent now has the stash CLI on its PATH" width="900" />
+</p>
+
 Then try it:
 
 ```bash
