@@ -48,7 +48,9 @@
 
 ## How it works
 
-Stash installs a hook for your coding agents that automatically uploads session transcripts to a shared store. Then, it exposes a CLI that allows you and your teammates to query this shared store. Stash automatically builds a Karpathy-style wiki on top of the set of session transcripts to make it easier for your coding agents to query its contents.
+- Stash installs a hook for your coding agents that automatically uploads session transcripts to a shared store.
+- Then, it exposes a CLI that allows you and your teammates to query this shared store.
+- It automatically builds a (Karpathy-style wiki)[https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f] on top of the set of session transcripts to make it easier for your coding agents to query its contents.
 
 ## Why shared beats individual
 
