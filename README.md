@@ -34,8 +34,8 @@
 
 ## Table of Contents
 
-- [Why shared beats individual](#why-shared-beats-individual)
 - [How it works](#how-it-works)
+- [Why shared beats individual](#why-shared-beats-individual)
 - [Quick Start](#quick-start)
 - [Integrations](#integrations)
 - [CLI](#cli)
