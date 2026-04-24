@@ -69,6 +69,10 @@ bash -c "$(curl -fsSL https://raw.githubusercontent.com/Fergana-Labs/stash/main/
 
 Then try it: ask your coding agent if it has access to Stash.
 
+<p align="center">
+  <img src="docs/assets/agent-access.png" alt="Coding agent confirming access to the Stash CLI" width="900" />
+</p>
+
 ## Integrations
 
 Stash supports the following coding agents:
