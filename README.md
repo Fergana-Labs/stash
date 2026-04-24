@@ -115,7 +115,7 @@ Stash supports the following coding agents:
 
 Every plugin streams session activity to the same workspace and gives the agent access to the shared `stash` CLI. Mix and match — different teammates can use different agents against the same shared brain.
 
-## CLI
+## CLI Reference
 
 See here for a CLI reference: https://www.joinstash.ai/docs/cli
 
