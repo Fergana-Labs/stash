@@ -143,29 +143,15 @@ A live page graph, embedding projection, and knowledge-density treemap render ov
 
 ## Integrations
 
-The one-line installer auto-detects which agent you have and wires up the plugin. To install one manually:
-
-| Agent | Plugin | Install |
-|-------|--------|---------|
-| **Claude Code** | [`plugins/claude-plugin`](plugins/claude-plugin/README.md) | `claude plugin marketplace add Fergana-Labs/stash && claude plugin install stash@stash-plugins` |
-| **Cursor** | [`plugins/cursor-plugin`](plugins/cursor-plugin/README.md) | symlinks `hooks.json` into `~/.cursor/` — see plugin README |
-| **Codex** | [`plugins/codex-plugin`](plugins/codex-plugin/README.md) | renders `hooks.json` into `~/.codex/` — see plugin README |
-| **OpenCode** | [`plugins/opencode-plugin`](plugins/opencode-plugin/README.md) | adds a `plugin` entry to `~/.config/opencode/opencode.json` |
-| **Gemini CLI** | [`plugins/gemini-plugin`](plugins/gemini-plugin/README.md) | merges hooks into `~/.gemini/settings.json` |
-| **Openclaw** | [`plugins/openclaw-plugin`](plugins/openclaw-plugin/README.md) | `openclaw plugins install github:Fergana-Labs/stash#plugins/openclaw-plugin` |
+Stash supports the following coding agents:
+- **Claude Code** 
+- **Cursor** 
+- **Codex** 
+- **OpenCode**
+- **Gemini CLI**
+- **Openclaw** 
 
 Every plugin streams session activity to the same workspace and gives the agent access to the shared `stash` CLI. Mix and match — different teammates can use different agents against the same shared brain.
-
-## Coming from...
-
-Stash sits alongside whatever you have today. Here's how it maps:
-
-| You're using | What Stash gives you on top |
-|--------------|-----------------------------|
-| `CLAUDE.md` / `AGENTS.md`/ Built-in agent memory | A shared, searchable, multi-agent version that updates itself from real session data. Single source for agent session history about your code. |
-| Mem0 / Letta / Supermemory | MIT-licensed, self-hostable, with team collaboration and UI |
-| Notion / Confluence | Session history automatically pushed. Pages curated automatically by your agent. No one has to remember to write the doc. |
-| Slack threads | A persistent, searchable record that survives the 90-day retention cliff and is queryable by your agents. |
 
 ## CLI
 
@@ -206,23 +192,6 @@ Stash is built for engineering teams working in private repos.
 - **Permissioned workspaces.** Only invited members can access a workspace. Public visibility is per-resource.
 - **Transcripts are opt-in.** If you don't want to share your agent trasncripts, you can give your agent shared *read* access to the workspace's memory without uploading any of your own session data.
 - **Self-hostable end-to-end.** You can get the whole thing running on your infra with a single docker compose, and then optionally pass in an API key of your choice to power embeddings.
-
-
-## Documentation
-
-| Document | What it covers |
-|----------|---------------|
-| [Quickstart](https://joinstash.ai/docs/quickstart) | Install the CLI, connect your agent, push your first events |
-| [Concepts](https://joinstash.ai/docs/concepts) | Workspaces, history, notebooks, tables, files, search, curation |
-| [CLI](https://joinstash.ai/docs/cli) | Every command, every flag |
-| [Self-hosting](https://joinstash.ai/docs/self-hosting) | Full Docker Compose deploy with environment reference |
-| [Architecture](ARCHITECTURE.md) | System diagram, data model, backend/frontend structure |
-| [Use Cases](USE_CASES.md) | End-to-end scenarios — team KB, research, multi-agent |
-| [Contributing](CONTRIBUTING.md) | Local dev setup, running tests, submitting PRs |
-| [Design System](DESIGN.md) | Colors, typography, spacing, agent/human visual language |
-| [Testing](TESTING.md) | Test frameworks, suites, conventions |
-| [Security](SECURITY.md) | Vulnerability reporting policy |
-| [Changelog](CHANGELOG.md) | Release history |
 
 ## FAQ
 
