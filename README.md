@@ -42,10 +42,12 @@
 
 When five engineers run Claude on the same repo, they generate valuable session transcripts. However, their coding agent can only access transcripts generated on the same machine where the agent is running (and in many cases, it takes some prompting even to convince your coding agent to read its *own* transcripts!). As a result, engineering effort is duplicated and eng velocity is decreased. This is especially true as coding agents begin to run autonomously for significant periods of time. 
 
-With Stash, every agent on the repo can ask (and answer):
+With Stash, every agent on the repo has context about every session created from that repo. Here are some use cases:
 
-- *"Why did Sam bump the rate limit from 100 to 500?"*
-- *"Has anyone already tried fixing the memory leak in auth?"*
+- **Code Faster / Don't Duplicate Work**: "Has anyone else tried fixing the memory leak in our API gateway? What was attempted?"
+- **Look Organized During Standup**: "What did I get done this week? What other work did I do that isn't tracked in Git?"
+- **Don't Be Blocked on Collaborators**: "Why did Sam increase the timeout to 30s? The git history is unhelpful."
+- **Align With Your Team Faster**: "Please add a feedback endpoint to our API" -> Claude: "FYI, Sam decided not to add a feedback endpoint since we want to encourage churned users to hop on a call directly"
 
 > "raw data from a given number of sources is collected, then compiled by an LLM into a .md wiki, then operated on by various CLIs by the LLM to do Q&A and to incrementally enhance the wiki… **I think there is room here for an incredible new product instead of a hacky collection of scripts.**"
 >
