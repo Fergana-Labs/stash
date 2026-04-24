@@ -91,6 +91,8 @@ See [here](https://www.joinstash.ai/docs/cli) for a CLI reference.
 
 ## Self-Hosted
 
+To self host, just run docker compose on infrastructure of your choice.
+
 ```bash
 git clone https://github.com/Fergana-Labs/stash.git
 cd stash
@@ -98,10 +100,7 @@ cp .env.example .env          # fill in credentials + API keys
 # edit Caddyfile → replace app.example.com with your domain
 docker compose -f docker-compose.prod.yml up -d
 ```
-
-Brings up four containers: PostgreSQL 16 + pgvector, FastAPI backend (`:3456`), Next.js frontend (`:3457`), and Caddy for automatic HTTPS via Let's Encrypt. Alembic migrations run on backend startup.
-
-Embeddings default to local sentence-transformers — no API keys required to run. Set `EMBEDDING_PROVIDER` to switch to OpenAI, Hugging Face, or any OpenAI-compatible endpoint. Optional S3-compatible object storage (R2, S3, MinIO) for file uploads.
+Set `EMBEDDING_PROVIDER` to use a third--party embedding provider (otherwise we'll just use local `sentence-transformers`. Optional S3-compatible object storage (R2, S3, MinIO) for file uploads.
 
 > Local development? Use `docker compose up -d` (no `-f` flag) — simple setup with hardcoded dev credentials.
 
@@ -112,8 +111,7 @@ Stash is built for engineering teams working in private repos.
 - **No LLM calls from the server.** Curation and search run inside your agent (Claude Code, Cursor, etc.) using the keys it already has. The Stash backend itself makes no model calls.
 - **Permissioned workspaces.** Only invited members can access a workspace. Public visibility is per-resource.
 - **Transcripts are opt-in.** If you don't want to share your agent trasncripts, you can give your agent shared *read* access to the workspace's memory without uploading any of your own session data.
-- **Self-hostable end-to-end.** You can get the whole thing running on your infra with a single docker compose, and then optionally pass in an API key of your choice to power embeddings.
-
+  
 ## FAQ
 
 **What LLMs does Stash use?**
