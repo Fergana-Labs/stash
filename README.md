@@ -40,7 +40,7 @@
 
 ## Why shared beats individual
 
-When five engineers run Claude on the same repo, they generate valuable session transcripts. However, their coding agent can only access transcripts generated on the same machine where the agent is running (and in many cases, it takes some prompting even to convince your coding agent to read its *own* transcripts!). As a result, engineering effort is duplicated and eng velocity is decreased. This is especially true as coding agents begin to run autonomously for significant periods of time. 
+When five engineers run Claude on the same repo, they generate valuable session transcripts. However, their coding agent can only access transcripts generated on the machine where the agent is currently running (and in many cases, it takes some prompting even to convince your coding agent to read its *own* transcripts!). As a result, engineering effort is duplicated and eng velocity is decreased. This is especially true as coding agents begin to run autonomously for significant periods of time. 
 
 With Stash, every agent on the repo has context about every session created from that repo. Here are some use cases:
 
