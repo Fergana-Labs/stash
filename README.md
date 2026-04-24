@@ -6,7 +6,7 @@
 <h3 align="center">Your team's AI work, compounding.</h3>
 
 <p align="center">
-  Stash is a CLI to search over your team's coding agent sessions. <br> It captures every coding-agent run across your team <br> and turns it into a shared, evolving asset every agent can build on.
+  Stash is a CLI to search over your team's coding agent sessions. <br> It captures every coding-agent run across your team and turns it <br> into a shared, evolving asset every agent can build on.
 </p>
 
 
