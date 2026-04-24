@@ -32,19 +32,6 @@
   <img src="docs/assets/product.gif" alt="Stash in action — agent queries shared memory and gets cited answers" width="900" />
 </p>
 
-## Table of Contents
-
-- [How it works](#how-it-works)
-- [Why shared beats individual](#why-shared-beats-individual)
-- [Quick Start](#quick-start)
-- [Integrations](#integrations)
-- [CLI](#cli)
-- [Self-Hosted](#self-hosted)
-- [Privacy](#privacy)
-- [FAQ](#faq)
-- [Contributing](#contributing)
-- [License](#license)
-
 ## How it works
 
 - Stash installs a hook for your coding agents that automatically uploads session transcripts to a shared store.

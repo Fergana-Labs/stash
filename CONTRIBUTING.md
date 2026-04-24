@@ -5,17 +5,6 @@ development environment, run the test suite, and submit a pull request.
 
 ---
 
-## Table of Contents
-
-1. [Prerequisites](#prerequisites)
-2. [Local development setup](#local-development-setup)
-3. [Running tests](#running-tests)
-4. [Making changes](#making-changes)
-5. [Submitting a pull request](#submitting-a-pull-request)
-6. [Code style](#code-style)
-
----
-
 ## Prerequisites
 
 | Tool | Minimum version |
