@@ -6,8 +6,7 @@
 <h3 align="center">Your team's AI work, compounding.</h3>
 
 <p align="center">
-  Most teams run AI individually. Every session starts from zero, and the learnings<br/>
-  never aggregate. Stash captures every coding-agent run across your team and turns<br/>
+  Stash captures every coding-agent run across your team and turns<br/>
   it into a shared, evolving asset every agent can build on.
 </p>
 
@@ -49,6 +48,10 @@
 - [Contributing](#contributing)
 - [License](#license)
 
+## How it works
+
+Stash installs a hook for your coding agents that automatically uploads session transcripts to a shared store. Then, it exposes a CLI that allows you and your teammates to query this shared store. Stash automatically builds a Karpathy-style wiki on top of the set of session transcripts to make it easier for your coding agents to query its contents.
+
 ## Why shared beats individual
 
 When five engineers run Claude on the same repo, five different versions of "what we learned" live in five different machines. Nothing compounds. As a result, engineering effort is duplicated and eng velocity is decreased. This is especially true as coding agents begin to run autonomously for significant periods of time. Stash is the missing layer: every run becomes part of a shared, evolving asset the whole team, and every agent, can query.
@@ -64,10 +67,6 @@ With Stash, every agent on the repo can ask (and answer):
 > — Andrej Karpathy, *LLM Knowledge Bases*
 
 **Stash is that product. For teams of coding agents working on the same repo.** Your agents' streamed sessions are the raw data. The wiki is curated automatically by our sleep agent. Everything lands in one workspace your whole team can query. AI usage becomes a shared, evolving asset, not individual effort.
-
-## How it works
-
-Stash installs a hook for your coding agents that automatically uploads session transcripts to a shared store. Then, it exposes a CLI that allows you and your teammates to query this shared store. Stash automatically builds a Karpathy-style wiki on top of the set of session transcripts to make it easier for your coding agents to query its contents.
 
 ## Quick Start
 
