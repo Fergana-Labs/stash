@@ -18,7 +18,6 @@
   <a href="#privacy"><img src="https://img.shields.io/badge/Transcripts-opt--in-3B82F6" alt="Opt-in transcripts" /></a>
 </p>
 <p align="center">
-  When every agent run feeds the same shared asset, your team stops paying for the same investigation twice.<br/>
   When we tested this internally, we found that it sped up long-running instances of Claude Code by <a href="https://henrydowling.com/agent-velocity.html"><b>49%</b></a>.<br/>
 </p>
 
