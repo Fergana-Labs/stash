@@ -57,7 +57,7 @@ With Stash, every agent on the repo has context about every session created from
 
 ## Quick Start
 
-One line installs the CLI, signs you in, picks a workspace, and installs plugins for your coding agent (auto-detects Claude Code, Cursor, Codex, and OpenCode):
+Run this in a terminal:
 
 ```bash
 bash -c "$(curl -fsSL https://raw.githubusercontent.com/Fergana-Labs/stash/main/install.sh)"
