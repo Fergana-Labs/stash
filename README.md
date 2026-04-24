@@ -40,13 +40,12 @@
 
 ## Why shared beats individual
 
-When five engineers run Claude on the same repo, five different versions of "what we learned" live in five different machines. Nothing compounds. As a result, engineering effort is duplicated and eng velocity is decreased. This is especially true as coding agents begin to run autonomously for significant periods of time. Stash is the missing layer: every run becomes part of a shared, evolving asset the whole team, and every agent, can query.
+When five engineers run Claude on the same repo, they generate valuable session transcripts. However, their coding agent can only access transcripts generated on the same machine where the agent is running (and in many cases, it takes some prompting even to convince your coding agent to read its *own* transcripts!). As a result, engineering effort is duplicated and eng velocity is decreased. This is especially true as coding agents begin to run autonomously for significant periods of time. 
 
 With Stash, every agent on the repo can ask (and answer):
 
 - *"Why did Sam bump the rate limit from 100 to 500?"*
 - *"Has anyone already tried fixing the memory leak in auth?"*
-- *"What pattern did we land on for background workers last sprint?"*
 
 > "raw data from a given number of sources is collected, then compiled by an LLM into a .md wiki, then operated on by various CLIs by the LLM to do Q&A and to incrementally enhance the wiki… **I think there is room here for an incredible new product instead of a hacky collection of scripts.**"
 >
