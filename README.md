@@ -6,8 +6,8 @@
 <h3 align="center">Your team's AI work, compounding.</h3>
 
 <p align="center">
-  Stash <strong>captures every coding-agent run</strong> across your team and turns<br/>
-  it into a <strong>shared, evolving asset</strong> every agent can build on.
+  Stash captures every coding-agent run across your team and turns<br/>
+  it into a shared, evolving asset every agent can build on.
 </p>
 
 
