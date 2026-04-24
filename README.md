@@ -51,7 +51,7 @@
 
 ## Why shared beats individual
 
-When five engineers run Claude on the same repo, five different versions of "what we learned" live in five different terminals. Nothing compounds. The sixth question re-debugs the same flaky test someone already solved on Tuesday. Stash is the missing layer: every run becomes part of a shared, evolving asset the whole team, and every agent, can query.
+When five engineers run Claude on the same repo, five different versions of "what we learned" live in five different machines. Nothing compounds. As a result, engineering effort is duplicated and eng velocity is decreased. This is especially true as coding agents begin to run autonomously for significant periods of time. Stash is the missing layer: every run becomes part of a shared, evolving asset the whole team, and every agent, can query.
 
 With Stash, every agent on the repo can ask (and answer):
 
