@@ -87,7 +87,7 @@ Stash supports opt in per-coding agent. Mix and match — different teammates ca
 
 ## CLI Reference
 
-See here for a CLI reference: https://www.joinstash.ai/docs/cli
+See [here](https://www.joinstash.ai/docs/cli) for a CLI reference.
 
 ## Self-Hosted
 
