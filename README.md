@@ -67,11 +67,7 @@ With Stash, every agent on the repo can ask (and answer):
 
 ## How it works
 
-**Stream → Curate → Search.** Three steps running over a shared workspace:
-
-1. **Stream** — Prompts, tool calls, and session summaries automatically push to the workspace's history as they happen. Nothing to remember to save.
-2. **Curate** — On `SessionEnd`, a curation agent reads recent history and organizes it into wiki notebooks with `[[backlinks]]` and a page graph. Sleep-time compute, not session time. Auto-runs with a 24h cooldown; trigger manually with the `/curate` slash command.
-3. **Search** — `stash history search` does full-text search across workspace events. Notebooks and tables support pgvector semantic search via the API. Your agent queries these through the CLI and REST endpoints.
+Stash installs a hook for your coding agents that automatically uploads session transcripts to a shared store. Then, it exposes a CLI that allows you and your teammates to query this shared store. Stash automatically builds a Karpathy-style wiki on top of the set of session transcripts to make it easier for your coding agents to query its contents.
 
 ## Quick Start
 
@@ -85,23 +81,7 @@ bash -c "$(curl -fsSL https://raw.githubusercontent.com/Fergana-Labs/stash/main/
   <img src="docs/assets/welcome.png" alt="Stash welcome screen after install" width="900" />
 </p>
 
-Then try it:
-
-```bash
-stash history search "authentication patterns"      # Full-text search over events
-stash history push "session notes here"             # Push an event
-stash --help                                        # Full command list
-```
-
-<details>
-<summary>Manual install</summary>
-
-```bash
-pipx install stashai        # or: uv tool install stashai
-stash connect               # Interactive: sign in, pick a workspace, install plugin
-```
-
-</details>
+Then try it: ask your coding agent if it has access to Stash.
 
 ## Integrations
 
