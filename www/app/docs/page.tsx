@@ -17,12 +17,7 @@ export default function DocsOverview() {
 
       <H3>How Stash Works</H3>
       <P>
-        Stash makes it so that <strong>every contributor to your repo effectively uses the same coding agent</strong>
-
-        , regardless of model, harness, or device.
-      </P>
-      <P>
-        More concretely, Stash auto-uploads coding
+        Stash auto-uploads coding
         agent transcripts to a shared store, indexes them,
         and then makes those transcripts accessible to every other coding agent using the repo.
 
