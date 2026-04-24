@@ -113,7 +113,7 @@ Stash supports the following coding agents:
 - **Gemini CLI**
 - **Openclaw** 
 
-Every plugin streams session activity to the same workspace and gives the agent access to the shared `stash` CLI. Mix and match — different teammates can use different agents against the same shared brain.
+Stash supports opt in per-coding agent. Every plugin streams session activity to the same workspace and gives the agent access to the shared `stash` CLI. Mix and match — different teammates can use different agents against the same shared brain.
 
 ## CLI Reference
 
