@@ -20,8 +20,7 @@
 </p>
 <p align="center">
   When every agent run feeds the same shared asset, your team stops paying for the same investigation twice.<br/>
-  <a href="https://henrydowling.com/agent-velocity.html"><b>Up to 46% of coding work</b></a> today goes to re-investigating fixes earlier sessions already tried and ruled out.<br/>
-  Stash recovers it.<br/>
+  When we tested this internally, we found that it sped up Claude Code's root cause analysis by <a href="https://henrydowling.com/agent-velocity.html"><b>46%</b></a>.<br/>
 </p>
 
 
