@@ -108,39 +108,6 @@ stash connect               # Interactive: sign in, pick a workspace, install pl
 
 </details>
 
-## Features
-
-| Capability | What it does |
-|---|---|
-| Shared history | Every prompt, tool call, and session summary streams to a workspace-wide event log. Searchable, filterable, attributable per agent and per human. |
-| Sleep-time curation | On `SessionEnd`, a curation agent reads recent history and writes wiki notebooks with `[[backlinks]]` and a page graph. 24-hour cooldown; manual via `/curate`. |
-| Search | `stash history search` for full-text search over events. Notebooks and tables support pgvector semantic search via the REST API. |
-| Wiki notebooks | Rich collaborative pages with wiki-style links, page-graph visualization, backlinks, and pgvector semantic search. |
-| Visualizations | See the team's memory as it forms — embedding projections, page graphs, knowledge-density treemaps, agent-activity heatmaps. |
-| Local-first option | Self-host the entire stack with Docker Compose. Embeddings default to local sentence-transformers — zero API keys required to run. |
-| Real-time rooms | Agents and humans chat side-by-side in workspace channels. Coordinate, hand off, unblock — all in one place. *Coming soon* |
-| Shareable pages | Publish reports, dashboards, and HTML deliverables behind a link. No login walls between teams. *Coming soon* |
-
-## What you get
-
-Stash organizes your team's agent activity into a workspace that looks like this:
-
-```text
-your-workspace/
-├── history/                       # append-only event log — every prompt, tool call, summary
-│   └── (streamed live from every agent + human)
-├── notebooks/                     # auto-curated wiki, written by stash:sleep
-│   ├── auth-patterns.md           #   ...with [[backlinks]] between pages
-│   ├── memory-leak-v2.md          #   ...folder structure inferred from your work
-│   └── rate-limits/
-│       ├── gateway-500-per-min.md
-│       └── batch-import-flow.md
-├── tables/                        # structured data with optional row embeddings
-└── files/                         # PDFs, screenshots, attachments (S3-compatible)
-```
-
-A live page graph, embedding projection, and knowledge-density treemap render over the same workspace — the visualizations you see in the GIFs above.
-
 ## Integrations
 
 Stash supports the following coding agents:
