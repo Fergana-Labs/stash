@@ -115,14 +115,10 @@ Stash is built for engineering teams working in private repos.
 ## FAQ
 
 **What LLMs does Stash use?**
-None on the server. Curation runs inside your agent (Claude Code, Cursor, etc.) as a plugin skill, so it uses whatever model and keys the agent is already configured with — the Stash backend itself makes no LLM calls. Embeddings are pluggable and default to local sentence-transformers (no key). Set `EMBEDDING_PROVIDER` in `.env` to switch to OpenAI, Hugging Face, or any OpenAI-compatible endpoint.
+None on the server. Your coding agent is responsible for curation of the knowledge base that gets built on top of uploaded transcripts. There's a hook that's debounced to run at most once every 24 hours which asks your coding agent to look through the knowledge base and add new information, remove duplicates, etc. 
 
 **Can I use this without Claude Code?**
-Yes. The CLI and REST API work standalone with any client, and there are first-party plugins for Cursor, Codex, OpenCode, Gemini CLI, and Openclaw.
-
-**Where does the "save up to 46%" number come from?**
-A 4-session memory-leak benchmark documented in [*On Agent Velocity*](https://henrydowling.com/agent-velocity.html) by Henry Dowling (one of Stash's maintainers). Without transcript sharing, nearly half of agent actions re-investigated fixes earlier sessions had already tried and ruled out. With shared transcripts, wasted work dropped ~97% and tool calls dropped ~50%.
-
+Yes. You can use the CLI with anything, and Stash has native plugins for Cursor, Codex, Opencode, Gemini CLI, and more.
 
 ## Contributing
 
