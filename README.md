@@ -155,18 +155,7 @@ Every plugin streams session activity to the same workspace and gives the agent 
 
 ## CLI
 
-```bash
-stash connect                        # Sign in, pick a workspace, install plugin
-stash history search <query>         # Full-text search over history events
-stash history push <content>         # Push an event
-stash notebooks list --all           # List notebooks across your workspaces
-stash tables list                    # List tables in the workspace
-stash files list                     # List uploaded files
-stash settings                      # Interactive settings page
-stash --help                         # Full command list
-```
-
-Every command accepts `--json` for machine-readable output and `--ws ID` to target a specific workspace. Full reference at [joinstash.ai/docs/cli](https://joinstash.ai/docs/cli).
+See here for a CLI reference: https://www.joinstash.ai/docs/cli
 
 ## Self-Hosted
 
