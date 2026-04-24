@@ -200,12 +200,13 @@ Embeddings default to local sentence-transformers — no API keys required to ru
 
 ## Privacy
 
-Stash is built so you can keep your team's memory under your control:
+Stash is built for engineering teams working in private repos.
 
-- **Transcripts are opt-in.** You can give your agent shared *read* access to the workspace's memory without uploading any of your own session data.
 - **No LLM calls from the server.** Curation and search run inside your agent (Claude Code, Cursor, etc.) using the keys it already has. The Stash backend itself makes no model calls.
-- **Self-hostable end-to-end.** One Docker Compose file. PostgreSQL + pgvector, local sentence-transformer embeddings, no required external API keys.
-- **Permissioned workspaces.** On the hosted version, only invited members can read or write a workspace. Public visibility is per-resource, opt-in.
+- **Permissioned workspaces.** Only invited members can access a workspace. Public visibility is per-resource.
+- **Transcripts are opt-in.** If you don't want to share your agent trasncripts, you can give your agent shared *read* access to the workspace's memory without uploading any of your own session data.
+- **Self-hostable end-to-end.** You can get the whole thing running on your infra with a single docker compose, and then optionally pass in an API key of your choice to power embeddings.
+
 
 ## Documentation
 
@@ -234,25 +235,12 @@ Yes. The CLI and REST API work standalone with any client, and there are first-p
 **Where does the "save up to 46%" number come from?**
 A 4-session memory-leak benchmark documented in [*On Agent Velocity*](https://henrydowling.com/agent-velocity.html) by Henry Dowling (one of Stash's maintainers). Without transcript sharing, nearly half of agent actions re-investigated fixes earlier sessions had already tried and ruled out. With shared transcripts, wasted work dropped ~97% and tool calls dropped ~50%.
 
-## Latest updates
-
-- **2026-04-22** — Initial open-source release
-
-For the full log, see [`CHANGELOG.md`](CHANGELOG.md).
 
 ## Contributing
 
 Contributions are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) to get started.
 
 Found a bug? [Open an issue](https://github.com/Fergana-Labs/stash/issues).
-
-## Maintainers
-
-| Name | Role | Contact |
-|------|------|---------|
-| [@henry-dowling](https://github.com/henry-dowling) | Creator & Lead maintainer | GitHub issues or [support@ferganalabs.com](mailto:support@ferganalabs.com) for vulnerabilities |
-| [@samzliu](https://github.com/samzliu) | Creator | GitHub issues |
-| [@triobaba](https://github.com/triobaba) | Creator | GitHub issues |
 
 ## License
 
