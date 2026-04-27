@@ -9,7 +9,18 @@ import json
 import subprocess
 from pathlib import Path
 
-_MANIFEST_FILE = ".stash"
+_MANIFEST_NAME = ".stash"
+
+
+def _read_manifest(base: Path) -> dict | None:
+    """Read a manifest from base/.stash (file) or base/.stash/stash.json (dir)."""
+    candidate = base / _MANIFEST_NAME
+    if candidate.is_file():
+        return json.loads(candidate.read_text())
+    inner = candidate / "stash.json"
+    if inner.is_file():
+        return json.loads(inner.read_text())
+    return None
 
 
 def _git_repo_info(cwd: Path) -> tuple[Path | None, Path | None]:
@@ -53,20 +64,20 @@ def find_manifest(cwd: str | None) -> dict | None:
 
     _toplevel, main_root = _git_repo_info(cur)
     if main_root:
-        main_path = main_root / _MANIFEST_FILE
-        if main_path.is_file():
-            try:
-                return json.loads(main_path.read_text())
-            except Exception:
-                return None
+        try:
+            result = _read_manifest(main_root)
+            if result is not None:
+                return result
+        except Exception:
+            return None
 
     for parent in [cur, *cur.parents]:
-        path = parent / _MANIFEST_FILE
-        if path.is_file():
-            try:
-                return json.loads(path.read_text())
-            except Exception:
-                return None
+        try:
+            result = _read_manifest(parent)
+            if result is not None:
+                return result
+        except Exception:
+            return None
     return None
 
 
