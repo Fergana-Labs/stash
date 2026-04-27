@@ -271,6 +271,17 @@ def _detected_agents() -> list[str]:
     return [a for a in _SUPPORTED_AGENTS if _agent_present(a)]
 
 
+def _assets_dir(agent: str) -> Path:
+    # cli/ and stashai/ are sibling packages — resolve via filesystem layout
+    # instead of `from stashai.plugin.assets import assets_dir` which breaks
+    # under editable installs when stale namespace-package dirs in the venv
+    # shadow the real package (PathFinder runs before the editable finder).
+    path = Path(__file__).resolve().parent.parent / "stashai" / "plugin" / "assets" / agent
+    if not path.is_dir():
+        raise FileNotFoundError(f"No plugin assets for agent '{agent}' at {path}")
+    return path
+
+
 def _entry_references(obj: object, needle: str) -> bool:
     """True if any string anywhere in `obj` contains `needle`."""
     if isinstance(obj, dict):
@@ -344,9 +355,7 @@ def _install_claude(force: bool) -> tuple[str, str]:
 
 
 def _install_cursor(force: bool) -> tuple[str, str]:
-    from stashai.plugin.assets import assets_dir
-
-    root = assets_dir("cursor")
+    root = _assets_dir("cursor")
     dest = Path.home() / ".cursor" / "hooks.json"
     template = (root / "hooks.json").read_text()
     status_ = _merge_json_hooks(dest, template, root)
@@ -362,9 +371,7 @@ def _drop_cursor_project_rule(repo_root: Path) -> Path | None:
     if not _agent_present("cursor"):
         return None
 
-    from stashai.plugin.assets import assets_dir
-
-    src = assets_dir("cursor") / "stash.mdc"
+    src = _assets_dir("cursor") / "stash.mdc"
     if not src.exists():
         return None
 
@@ -429,9 +436,7 @@ def _strip_top_level_sandbox(snippet: str) -> str:
 
 
 def _install_codex(force: bool) -> tuple[str, str]:
-    from stashai.plugin.assets import assets_dir
-
-    root = assets_dir("codex")
+    root = _assets_dir("codex")
     hooks_dest = Path.home() / ".codex" / "hooks.json"
     template = (root / "hooks.json").read_text()
     status_ = _merge_json_hooks(hooks_dest, template, root)
@@ -465,9 +470,7 @@ def _install_codex(force: bool) -> tuple[str, str]:
 
 
 def _install_opencode(force: bool) -> tuple[str, str]:
-    from stashai.plugin.assets import assets_dir
-
-    root = assets_dir("opencode")
+    root = _assets_dir("opencode")
     plugin_path = str(root / "plugin.ts")
     cfg_path = Path.home() / ".config" / "opencode" / "opencode.json"
     cfg_path.parent.mkdir(parents=True, exist_ok=True)
@@ -533,9 +536,7 @@ def _plugin_installed(agent: str) -> bool:
             cfg = json.loads(cfg_path.read_text())
         except (OSError, json.JSONDecodeError):
             return False
-        from stashai.plugin.assets import assets_dir
-
-        expected = str(assets_dir("opencode") / "plugin.ts")
+        expected = str(_assets_dir("opencode") / "plugin.ts")
         return expected in (cfg.get("plugin") or [])
     return False
 
