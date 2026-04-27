@@ -2033,6 +2033,7 @@ def login_cmd():
 
     # Returning user — just re-auth, no wizard
     if has_key:
+        _install_all_hooks(load_enabled_agents())
         console.print("\n  Run [cyan]stash settings[/cyan] to change agents or endpoint.")
         return
 
