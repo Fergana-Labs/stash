@@ -2,9 +2,14 @@
 
 import re
 
+import logging
+
 from backend.auth import create_api_key
 from backend.database import get_pool
 from backend.services import workspace_service
+from backend.services.email_service import send_welcome_email
+
+logger = logging.getLogger(__name__)
 
 _NAME_CHARS = re.compile(r"[^a-zA-Z0-9_-]")
 
@@ -80,4 +85,12 @@ async def get_or_create_user_from_auth0(
         creator_id=user["id"],
         is_public=False,
     )
+
+    if email:
+        try:
+            first_name = (name or "").split()[0] if name else None
+            send_welcome_email(email, first_name=first_name)
+        except Exception:
+            logger.exception("Failed to send welcome email to %s", email)
+
     return user, api_key
