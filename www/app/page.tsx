@@ -88,6 +88,12 @@ function Nav() {
             Docs
           </Link>
           <Link
+            href="/contact-sales"
+            className="rounded-md px-3 py-2 transition hover:bg-raised hover:text-ink"
+          >
+            Contact sales
+          </Link>
+          <Link
             href="https://github.com/Fergana-Labs/stash"
             className="inline-flex items-center gap-1.5 rounded-md px-3 py-2 transition hover:bg-raised hover:text-ink"
             aria-label="Stash on GitHub"
