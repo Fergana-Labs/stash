@@ -1903,6 +1903,7 @@ def _auto_connect_repo(repo_root: Path, cfg: dict) -> None:
     if base_url != PRODUCTION_BASE_URL:
         manifest["base_url"] = base_url
 
+    manifest_path.parent.mkdir(parents=True, exist_ok=True)
     manifest_path.write_text(json.dumps(manifest, indent=2) + "\n")
     console.print(f"  Wrote [cyan]{MANIFEST_FILE}[/cyan]")
 
