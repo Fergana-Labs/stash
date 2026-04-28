@@ -89,7 +89,7 @@ function Card({ ws }: { ws: CatalogCard }) {
         {ws.summary || ws.description || "No description yet."}
       </p>
       <p className="mt-3 font-mono text-[11px] uppercase tracking-wider text-muted">
-        {ws.notebook_count} notebooks · {ws.table_count} tables · {ws.deck_count} decks
+        {ws.notebook_count} notebooks · {ws.table_count} tables · {ws.file_count} files
       </p>
       <div className="mt-auto flex items-center justify-between pt-4 text-[12px] text-dim">
         <span>by {owner}</span>

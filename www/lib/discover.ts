@@ -19,7 +19,6 @@ export type CatalogCard = {
   notebook_count: number;
   table_count: number;
   file_count: number;
-  deck_count: number;
   history_event_count: number;
   forked_from_workspace_id: string | null;
   created_at: string;

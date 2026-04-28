@@ -211,18 +211,6 @@ async def inline_items(view: dict) -> list[dict]:
                     "columns": t["columns"],
                     "rows": [{"data": r["data"], "row_order": r["row_order"]} for r in rows],
                 }
-        elif obj_type == "deck":
-            d = await pool.fetchrow(
-                "SELECT name, description, html_content, deck_type FROM decks WHERE id = $1",
-                obj_id,
-            )
-            if d:
-                label = label or d["name"]
-                inline = {
-                    "description": d["description"],
-                    "html_content": d["html_content"],
-                    "deck_type": d["deck_type"],
-                }
         elif obj_type == "file":
             f = await pool.fetchrow(
                 "SELECT name, content_type, size_bytes, created_at FROM files WHERE id = $1",
@@ -388,20 +376,6 @@ async def fork_view(slug: str, forker_id: UUID, name: str | None = None) -> dict
                             "VALUES ($1, $2, $3, $4)",
                             new_t_id, r["data"], r["row_order"], forker_id,
                         )
-
-                elif t == "deck":
-                    src = await conn.fetchrow(
-                        "SELECT name, description, html_content, deck_type FROM decks WHERE id = $1",
-                        src_id,
-                    )
-                    if not src:
-                        continue
-                    await conn.execute(
-                        "INSERT INTO decks (workspace_id, name, description, html_content, "
-                        "deck_type, created_by) VALUES ($1, $2, $3, $4, $5, $6)",
-                        new_ws_id, src["name"], src["description"] or "",
-                        src["html_content"], src["deck_type"], forker_id,
-                    )
 
                 elif t == "history":
                     src = await conn.fetchrow(

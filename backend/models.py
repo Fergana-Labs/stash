@@ -134,7 +134,6 @@ class WorkspaceCatalogCard(BaseModel):
     notebook_count: int = 0
     table_count: int = 0
     file_count: int = 0
-    deck_count: int = 0
     history_event_count: int = 0
     forked_from_workspace_id: UUID | None = None
     created_at: datetime
@@ -168,28 +167,20 @@ class WorkspacePublicFileSummary(BaseModel):
     created_at: datetime
 
 
-class WorkspacePublicDeckSummary(BaseModel):
-    id: UUID
-    name: str
-    description: str
-    updated_at: datetime
-
-
 class WorkspacePublicDetail(BaseModel):
     workspace: WorkspaceCatalogCard
     notebooks: list[WorkspacePublicNotebookSummary]
     tables: list[WorkspacePublicTableSummary]
     files: list[WorkspacePublicFileSummary]
-    decks: list[WorkspacePublicDeckSummary]
 
 
 # --- Views (curated subsets of a workspace) ---
 
-ViewObjectType = str  # 'notebook' | 'table' | 'file' | 'deck' | 'history'
+ViewObjectType = str  # 'notebook' | 'table' | 'file' | 'history'
 
 
 class ViewItem(BaseModel):
-    object_type: ViewObjectType = Field(..., pattern=r"^(notebook|table|file|deck|history)$")
+    object_type: ViewObjectType = Field(..., pattern=r"^(notebook|table|file|history)$")
     object_id: UUID
     position: int = 0
     label_override: str | None = Field(None, max_length=160)
@@ -231,10 +222,9 @@ class ViewListResponse(BaseModel):
 
 
 # Public renderer payload — items are inlined with their content where it
-# makes sense (notebook pages, table rows, deck html, file metadata,
-# history events). The shape is intentionally permissive: each entry has
-# the item type/id/label plus an `inline` blob whose contents depend on
-# the type.
+# makes sense (notebook pages, table rows, file metadata, history events).
+# The shape is intentionally permissive: each entry has the item
+# type/id/label plus an `inline` blob whose contents depend on the type.
 
 
 class ViewItemInlined(BaseModel):

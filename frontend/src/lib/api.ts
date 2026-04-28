@@ -291,7 +291,6 @@ export interface CatalogCard {
   notebook_count: number;
   table_count: number;
   file_count: number;
-  deck_count: number;
   history_event_count: number;
   forked_from_workspace_id: string | null;
   created_at: string;
@@ -303,7 +302,6 @@ export interface PublicWorkspaceDetail {
   notebooks: { id: string; name: string; description: string; page_count: number; updated_at: string }[];
   tables: { id: string; name: string; row_count: number; updated_at: string }[];
   files: { id: string; name: string; size_bytes: number; created_at: string }[];
-  decks: { id: string; name: string; description: string; updated_at: string }[];
 }
 
 export async function fetchPublicWorkspace(

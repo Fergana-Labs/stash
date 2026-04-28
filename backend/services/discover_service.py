@@ -16,7 +16,6 @@ SELECT
     (SELECT COUNT(*) FROM notebooks nb WHERE nb.workspace_id = w.id) AS notebook_count,
     (SELECT COUNT(*) FROM tables t WHERE t.workspace_id = w.id) AS table_count,
     (SELECT COUNT(*) FROM files f WHERE f.workspace_id = w.id) AS file_count,
-    (SELECT COUNT(*) FROM decks d WHERE d.workspace_id = w.id) AS deck_count,
     (SELECT COUNT(*) FROM history_events he WHERE he.workspace_id = w.id) AS history_event_count
 FROM workspaces w
 JOIN users u ON u.id = w.creator_id
@@ -116,17 +115,11 @@ async def get_public_detail(workspace_id: UUID) -> dict | None:
         "FROM files WHERE workspace_id = $1 ORDER BY created_at DESC LIMIT 200",
         workspace_id,
     )
-    decks = await pool.fetch(
-        "SELECT id, name, COALESCE(description, '') AS description, updated_at "
-        "FROM decks WHERE workspace_id = $1 ORDER BY updated_at DESC",
-        workspace_id,
-    )
     return {
         "workspace": dict(ws_row),
         "notebooks": [dict(r) for r in notebooks],
         "tables": [dict(r) for r in tables],
         "files": [dict(r) for r in files],
-        "decks": [dict(r) for r in decks],
     }
 
 

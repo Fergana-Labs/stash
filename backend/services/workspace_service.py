@@ -242,8 +242,8 @@ async def fork_workspace(
     """Fork a public workspace into a new private workspace owned by forker.
 
     Clones notebooks (with folders, pages, page_links), tables (schema + rows),
-    decks, and history_events. Skips files, session_transcripts, members,
-    webhooks, and invite tokens.
+    and history_events. Skips files, session_transcripts, members, webhooks,
+    and invite tokens.
     """
     pool = get_pool()
     source = await pool.fetchrow(
@@ -390,18 +390,6 @@ async def fork_workspace(
                         r["row_order"],
                         forker_id,
                     )
-
-            # Decks: html_content lives on the row, so a straight copy is enough.
-            # Share tokens (deck_shares) are intentionally NOT cloned.
-            await conn.execute(
-                "INSERT INTO decks (workspace_id, name, description, html_content, "
-                "deck_type, created_by) "
-                "SELECT $1, name, description, html_content, deck_type, $2 "
-                "FROM decks WHERE workspace_id = $3",
-                new_ws_id,
-                forker_id,
-                source_id,
-            )
 
             # History events: preserve original author, agent_name, content,
             # event_type, session_id, tool_name, metadata, attachments, created_at.

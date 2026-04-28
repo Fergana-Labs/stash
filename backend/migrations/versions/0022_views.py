@@ -1,8 +1,8 @@
 """Curated Views — published subsets of a workspace.
 
 A View is a hand-picked, ordered collection of resources (notebooks, tables,
-files, decks, history events) drawn from a single workspace. The source
-workspace can be private; the View is the only public surface.
+files, history events) drawn from a single workspace. The source workspace
+can be private; the View is the only public surface.
 
 Revision ID: 0022
 Revises: 0021
@@ -37,7 +37,7 @@ CREATE TABLE IF NOT EXISTS views (
 CREATE TABLE IF NOT EXISTS view_items (
     view_id UUID NOT NULL REFERENCES views(id) ON DELETE CASCADE,
     object_type VARCHAR(16) NOT NULL
-        CHECK(object_type IN ('notebook', 'table', 'file', 'deck', 'history')),
+        CHECK(object_type IN ('notebook', 'table', 'file', 'history')),
     object_id UUID NOT NULL,
     position INT NOT NULL DEFAULT 0,
     label_override VARCHAR(160),

@@ -7,7 +7,7 @@ const BACKEND_ORIGIN =
   process.env.NEXT_PUBLIC_API_URL || "http://localhost:3456";
 
 type ViewItemInlined = {
-  object_type: "notebook" | "table" | "file" | "deck" | "history";
+  object_type: "notebook" | "table" | "file" | "history";
   object_id: string;
   position: number;
   label: string;
@@ -185,21 +185,6 @@ function ItemBody({ item }: { item: ViewItemInlined }) {
             </tbody>
           </table>
         </div>
-      </div>
-    );
-  }
-
-  if (item.object_type === "deck") {
-    const inline = item.inline as { html_content?: string; description?: string };
-    return (
-      <div>
-        {inline.description ? (
-          <p className="mb-3 text-[14px] text-dim">{inline.description}</p>
-        ) : null}
-        <div
-          className="rounded bg-background p-3"
-          dangerouslySetInnerHTML={{ __html: inline.html_content || "" }}
-        />
       </div>
     );
   }

@@ -7,7 +7,6 @@ from fastapi import APIRouter, HTTPException, Query
 from ..models import (
     CatalogListResponse,
     WorkspaceCatalogCard,
-    WorkspacePublicDeckSummary,
     WorkspacePublicDetail,
     WorkspacePublicFileSummary,
     WorkspacePublicNotebookSummary,
@@ -51,5 +50,4 @@ async def public_workspace(workspace_id: UUID):
         notebooks=[WorkspacePublicNotebookSummary(**n) for n in detail["notebooks"]],
         tables=[WorkspacePublicTableSummary(**t) for t in detail["tables"]],
         files=[WorkspacePublicFileSummary(**f) for f in detail["files"]],
-        decks=[WorkspacePublicDeckSummary(**d) for d in detail["decks"]],
     )

@@ -26,7 +26,7 @@ export default async function PublicStashPage({
   const detail = await loadDetail(workspaceId);
   if (!detail) notFound();
 
-  const { workspace: ws, notebooks, tables, files, decks } = detail;
+  const { workspace: ws, notebooks, tables, files } = detail;
   const owner = ws.creator_display_name || ws.creator_name;
 
   return (
@@ -68,7 +68,6 @@ export default async function PublicStashPage({
           <span>{ws.member_count} members</span>
           <span>{ws.notebook_count} notebooks</span>
           <span>{ws.table_count} tables</span>
-          <span>{ws.deck_count} decks</span>
           <span>{ws.file_count} files</span>
           <span>{ws.history_event_count} events</span>
         </div>
@@ -121,17 +120,6 @@ export default async function PublicStashPage({
             href={`/s/${ws.id}/t/${t.id}`}
             title={t.name}
             meta={`${t.row_count} row${t.row_count === 1 ? "" : "s"} · updated ${relativeTime(t.updated_at)}`}
-          />
-        ))}
-      </Section>
-
-      <Section title="Decks" empty="No decks.">
-        {decks.map((d) => (
-          <Row
-            key={d.id}
-            title={d.name}
-            subtitle={d.description}
-            meta={relativeTime(d.updated_at)}
           />
         ))}
       </Section>

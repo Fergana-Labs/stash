@@ -694,7 +694,7 @@ def browse(
             owner = w.get("creator_display_name") or w.get("creator_name") or "unknown"
             shape = (
                 f"{w['notebook_count']}nb · {w['table_count']}t · "
-                f"{w['deck_count']}d · {w['file_count']}f"
+                f"{w['file_count']}f · {w['history_event_count']}h"
             )
             console.print(
                 f"[bold]{w['name']}[/bold]  [dim]by {owner}[/dim]  ★{w['fork_count']}  {shape}"
@@ -724,7 +724,7 @@ def browse(
                 (
                     f"★ {picked['fork_count']} forks · {picked['member_count']} members · "
                     f"{picked['notebook_count']} notebooks · {picked['table_count']} tables · "
-                    f"{picked['deck_count']} decks · {picked['file_count']} files",
+                    f"{picked['file_count']} files",
                     "dim",
                 ),
             ),

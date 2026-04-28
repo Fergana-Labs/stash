@@ -127,7 +127,6 @@ function Card({ ws }: { ws: CatalogCard }) {
   const shape = [
     ws.notebook_count && `${ws.notebook_count} notebook${ws.notebook_count === 1 ? "" : "s"}`,
     ws.table_count && `${ws.table_count} table${ws.table_count === 1 ? "" : "s"}`,
-    ws.deck_count && `${ws.deck_count} deck${ws.deck_count === 1 ? "" : "s"}`,
     ws.file_count && `${ws.file_count} file${ws.file_count === 1 ? "" : "s"}`,
   ]
     .filter(Boolean)
