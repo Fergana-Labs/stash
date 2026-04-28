@@ -93,10 +93,10 @@ export default function ContactSalesForm() {
       <p className="text-[12.5px] leading-[1.55] text-muted">
         Prefer email? Reach us at{" "}
         <a
-          href="mailto:hi@ferganalabs.com"
+          href="mailto:sam@joinstash.ai"
           className="text-brand transition hover:underline"
         >
-          hi@ferganalabs.com
+          sam@joinstash.ai
         </a>
         .
       </p>

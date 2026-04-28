@@ -4,7 +4,7 @@
   "description": "Shared memory for AI coding agents — Claude Code plugin for Stash workspaces, history streaming, and wiki curation.",
   "owner": {
     "name": "Fergana Labs",
-    "email": "support@ferganalabs.com"
+    "email": "sam@joinstash.ai"
   },
   "plugins": [
     {

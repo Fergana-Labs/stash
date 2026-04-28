@@ -43,10 +43,10 @@ export default function TermsPage() {
         your credentials secure and for all activity under your account. Notify
         us promptly at{" "}
         <a
-          href="mailto:hi@ferganalabs.com"
+          href="mailto:sam@joinstash.ai"
           className="text-brand hover:underline"
         >
-          hi@ferganalabs.com
+          sam@joinstash.ai
         </a>{" "}
         if you suspect unauthorized access. You must be at least 18 to use the
         Service.
@@ -111,10 +111,10 @@ export default function TermsPage() {
         infringes a copyright you own, send a written notice to our designated
         agent at{" "}
         <a
-          href="mailto:hi@ferganalabs.com"
+          href="mailto:sam@joinstash.ai"
           className="text-brand hover:underline"
         >
-          hi@ferganalabs.com
+          sam@joinstash.ai
         </a>{" "}
         that includes: (i) your physical or electronic signature; (ii)
         identification of the copyrighted work you claim is infringed; (iii)
@@ -187,10 +187,10 @@ export default function TermsPage() {
         applicable law, all fees are non-refundable. If you believe you were
         charged in error, email{" "}
         <a
-          href="mailto:hi@ferganalabs.com"
+          href="mailto:sam@joinstash.ai"
           className="text-brand hover:underline"
         >
-          hi@ferganalabs.com
+          sam@joinstash.ai
         </a>{" "}
         within 30 days of the charge and we will review your request in good
         faith.
@@ -283,10 +283,10 @@ export default function TermsPage() {
         any dispute informally for at least 30 days. You can start this process
         by sending a written notice describing the dispute to{" "}
         <a
-          href="mailto:hi@ferganalabs.com"
+          href="mailto:sam@joinstash.ai"
           className="text-brand hover:underline"
         >
-          hi@ferganalabs.com
+          sam@joinstash.ai
         </a>
         .
       </p>
@@ -334,10 +334,10 @@ export default function TermsPage() {
         this arbitration agreement within 30 days of first accepting these
         Terms by emailing{" "}
         <a
-          href="mailto:hi@ferganalabs.com"
+          href="mailto:sam@joinstash.ai"
           className="text-brand hover:underline"
         >
-          hi@ferganalabs.com
+          sam@joinstash.ai
         </a>{" "}
         with the subject line &ldquo;Arbitration Opt-Out&rdquo; and including
         your name and the email on your account. Opting out will not affect any
@@ -371,10 +371,10 @@ export default function TermsPage() {
       <p>
         Questions about these Terms? Email us at{" "}
         <a
-          href="mailto:hi@ferganalabs.com"
+          href="mailto:sam@joinstash.ai"
           className="text-brand hover:underline"
         >
-          hi@ferganalabs.com
+          sam@joinstash.ai
         </a>
         .
       </p>

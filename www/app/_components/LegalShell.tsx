@@ -42,10 +42,10 @@ export default function LegalShell({ title, updated, children }: Props) {
         <p className="mt-16 border-t border-border-subtle pt-6 text-[14px] text-dim">
           Questions? Email{" "}
           <a
-            href="mailto:hi@ferganalabs.com"
+            href="mailto:sam@joinstash.ai"
             className="text-brand transition hover:underline"
           >
-            hi@ferganalabs.com
+            sam@joinstash.ai
           </a>
           .
         </p>

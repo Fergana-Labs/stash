@@ -35,7 +35,7 @@ export async function submitContactSales(
     });
     return {
       status: "error",
-      message: "Sales inbox is not configured yet. Email hi@ferganalabs.com directly.",
+      message: "Sales inbox is not configured yet. Email sam@joinstash.ai directly.",
     };
   }
 
@@ -79,7 +79,7 @@ export async function submitContactSales(
     console.error("Postmark lead send failed", leadRes.status, await leadRes.text());
     return {
       status: "error",
-      message: "We couldn't send your request. Please email hi@ferganalabs.com.",
+      message: "We couldn't send your request. Please email sam@joinstash.ai.",
     };
   }
   if (!confirmRes.ok) {

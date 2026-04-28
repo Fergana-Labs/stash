@@ -899,7 +899,7 @@ function Footer() {
       h: "Company",
       links: [
         ["GitHub", "https://github.com/Fergana-Labs/stash"],
-        ["Contact", "mailto:hi@ferganalabs.com"],
+        ["Contact", "mailto:sam@joinstash.ai"],
       ],
     },
     {

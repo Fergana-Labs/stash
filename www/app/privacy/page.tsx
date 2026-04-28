@@ -193,10 +193,10 @@ export default function PrivacyPage() {
       <p>
         To exercise any of these rights, email{" "}
         <a
-          href="mailto:hi@ferganalabs.com"
+          href="mailto:sam@joinstash.ai"
           className="text-brand hover:underline"
         >
-          hi@ferganalabs.com
+          sam@joinstash.ai
         </a>
         . We will respond within the timeframe required by applicable law. We
         will not discriminate against you for exercising your rights.
@@ -287,10 +287,10 @@ export default function PrivacyPage() {
       <p>
         Questions or requests? Email us at{" "}
         <a
-          href="mailto:hi@ferganalabs.com"
+          href="mailto:sam@joinstash.ai"
           className="text-brand hover:underline"
         >
-          hi@ferganalabs.com
+          sam@joinstash.ai
         </a>
         .
       </p>
