@@ -231,6 +231,16 @@ export async function deleteWorkspace(workspaceId: string): Promise<void> {
   await apiFetch(`/api/v1/workspaces/${workspaceId}`, { method: "DELETE" });
 }
 
+export async function forkWorkspace(
+  workspaceId: string,
+  name?: string
+): Promise<Workspace> {
+  return apiFetch(`/api/v1/workspaces/${workspaceId}/fork`, {
+    method: "POST",
+    body: JSON.stringify(name ? { name } : {}),
+  });
+}
+
 export async function kickWorkspaceMember(workspaceId: string, userId: string): Promise<void> {
   await apiFetch(`/api/v1/workspaces/${workspaceId}/kick/${userId}`, { method: "POST" });
 }

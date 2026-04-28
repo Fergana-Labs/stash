@@ -109,6 +109,10 @@ class WorkspaceListResponse(BaseModel):
     workspaces: list[WorkspaceResponse]
 
 
+class WorkspaceForkRequest(BaseModel):
+    name: str | None = Field(None, min_length=1, max_length=128)
+
+
 # --- Discover catalog ---
 
 

@@ -14,6 +14,7 @@ from ..models import (
     JoinRequestResponse,
     RedeemInviteAuthedRequest,
     WorkspaceCreateRequest,
+    WorkspaceForkRequest,
     WorkspaceListResponse,
     WorkspaceMember,
     WorkspacePublicInfo,
@@ -128,6 +129,23 @@ async def delete_workspace(
     deleted = await workspace_service.delete_workspace(workspace_id, current_user["id"])
     if not deleted:
         raise HTTPException(status_code=403, detail="Only workspace owner can delete")
+
+
+@router.post("/{workspace_id}/fork", response_model=WorkspaceResponse, status_code=201)
+async def fork_workspace(
+    workspace_id: UUID,
+    req: WorkspaceForkRequest,
+    current_user: dict = Depends(get_current_user),
+):
+    """Fork a public workspace into a new private workspace owned by the caller."""
+    new_ws = await workspace_service.fork_workspace(
+        source_id=workspace_id,
+        forker_id=current_user["id"],
+        name=req.name,
+    )
+    if not new_ws:
+        raise HTTPException(status_code=404, detail="Workspace not found or not public")
+    return WorkspaceResponse(**new_ws)
 
 
 @router.post("/join/{invite_code}", response_model=WorkspaceResponse)

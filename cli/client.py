@@ -167,6 +167,12 @@ class StashClient:
     def get_public_workspace(self, workspace_id: str) -> dict:
         return self._get(f"/api/v1/discover/workspaces/{workspace_id}")
 
+    def fork_workspace(self, workspace_id: str, name: str = "") -> dict:
+        body: dict = {}
+        if name:
+            body["name"] = name
+        return self._post(f"/api/v1/workspaces/{workspace_id}/fork", json=body)
+
     # --- Magic-link invite tokens ---
 
     def create_invite_token(self, workspace_id: str, max_uses: int = 1, ttl_days: int = 7) -> dict:

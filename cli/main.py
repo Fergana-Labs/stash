@@ -737,6 +737,7 @@ def browse(
         "What now?",
         choices=[
             questionary.Choice("Open in browser", value="open"),
+            questionary.Choice("Fork into a new private Stash", value="fork"),
             questionary.Choice("Print share URL", value="url"),
             questionary.Choice("Cancel", value=None),
         ],
@@ -752,6 +753,45 @@ def browse(
         console.print(f"[green]Opened[/green] {url}")
     elif action == "url":
         console.print(url)
+    elif action == "fork":
+        _do_fork(picked["id"], suggested_name=f"{picked['name']} (fork)")
+
+
+def _do_fork(workspace_id: str, suggested_name: str = "") -> None:
+    name = questionary.text("Name for the fork:", default=suggested_name).ask()
+    if name is None:
+        return
+    with _client() as c:
+        try:
+            new_ws = c.fork_workspace(workspace_id, name=name.strip())
+        except StashError as e:
+            _err(e)
+    console.print(
+        f"[green]Forked into '{new_ws['name']}'[/green]  ID: {new_ws['id']}"
+    )
+    console.print(
+        f"  Open it: [cyan]{_web_app_url()}/workspaces/{new_ws['id']}[/cyan]"
+    )
+
+    bind = questionary.confirm(
+        "Bind this repo (.stash) to the new fork?", default=False
+    ).ask()
+    if bind:
+        repo_root = Path.cwd()
+        manifest_path = repo_root / MANIFEST_FILE
+        existing = json.loads(manifest_path.read_text()) if manifest_path.is_file() else {}
+        existing["workspace_id"] = str(new_ws["id"])
+        manifest_path.write_text(json.dumps(existing, indent=2) + "\n")
+        console.print(f"  Wrote [cyan]{MANIFEST_FILE}[/cyan] → {new_ws['id']}")
+
+
+@app.command("fork")
+def fork(
+    workspace_id: str = typer.Argument(..., help="ID of the public Stash to fork."),
+    name: str = typer.Option("", "--name", help="Name for the new private Stash."),
+):
+    """Fork a public Stash into a new private Stash you own."""
+    _do_fork(workspace_id, suggested_name=name)
 
 
 # ===========================================================================

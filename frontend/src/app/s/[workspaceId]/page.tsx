@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import type { PublicWorkspaceDetail } from "../../../lib/api";
+import ForkButton from "./ForkButton";
 
 const BACKEND_ORIGIN =
   process.env.NEXT_PUBLIC_API_URL || "http://localhost:3456";
@@ -47,13 +48,8 @@ export default async function PublicStashPage({
               by {owner} · updated {relativeTime(ws.updated_at)}
             </p>
           </div>
-          <div className="flex gap-2">
-            <Link
-              href={`/login?next=${encodeURIComponent(`/s/${ws.id}?action=fork`)}`}
-              className="rounded-lg border border-brand bg-brand px-4 py-2 text-[14px] font-medium text-white transition hover:opacity-90"
-            >
-              Fork this Stash
-            </Link>
+          <div className="flex items-start gap-2">
+            <ForkButton workspaceId={ws.id} defaultName={`${ws.name} (fork)`} />
             <Link
               href={`/login?next=${encodeURIComponent(`/workspaces/${ws.id}`)}`}
               className="rounded-lg border border-border px-4 py-2 text-[14px] font-medium text-ink transition hover:border-ink"
