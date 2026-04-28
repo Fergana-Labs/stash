@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import mimetypes
 import os
+from pathlib import Path
 
 import httpx
 
@@ -320,7 +321,7 @@ class StashClient:
         self,
         workspace_id: str,
         session_id: str,
-        transcript_path: str,
+        transcript_path: str | Path,
         agent_name: str,
         cwd: str = "",
     ) -> dict:

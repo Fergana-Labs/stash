@@ -2474,7 +2474,7 @@ def _onboarding_import_history(detected_agents: list[str]) -> None:
             try:
                 upload_conversation(c, ws, conv)
                 imported += 1
-            except Exception:
+            except StashError:
                 pass
             progress.advance(task)
 

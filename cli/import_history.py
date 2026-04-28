@@ -8,11 +8,9 @@ them as transcript blobs + summary events.
 
 from __future__ import annotations
 
-import gzip
 import json
-import os
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 CLAUDE_PROJECTS_DIR = Path.home() / ".claude" / "projects"
@@ -67,7 +65,10 @@ def _parse_claude_meta(path: Path) -> ConversationInfo | None:
         for i, raw in enumerate(f):
             if i > 50:
                 break
-            line = json.loads(raw)
+            try:
+                line = json.loads(raw)
+            except (json.JSONDecodeError, ValueError):
+                continue
             if not session_id:
                 session_id = line.get("sessionId", "")
             if not cwd and line.get("cwd"):
@@ -83,7 +84,7 @@ def _parse_claude_meta(path: Path) -> ConversationInfo | None:
         session_id = path.stem
 
     if not timestamp:
-        timestamp = datetime.fromtimestamp(path.stat().st_mtime, tz=timezone.utc)
+        timestamp = datetime.fromtimestamp(path.stat().st_mtime, tz=UTC)
 
     return ConversationInfo(
         agent="claude",
@@ -131,14 +132,17 @@ def _parse_cursor_meta(path: Path, project_dir_name: str) -> ConversationInfo | 
     cwd = project_dir_name.replace("-", "/")
     if not cwd.startswith("/"):
         cwd = "/" + cwd
-    timestamp = datetime.fromtimestamp(path.stat().st_mtime, tz=timezone.utc)
+    timestamp = datetime.fromtimestamp(path.stat().st_mtime, tz=UTC)
     user_count = 0
 
     with open(path) as f:
         for i, raw in enumerate(f):
             if i > 30:
                 break
-            line = json.loads(raw)
+            try:
+                line = json.loads(raw)
+            except (json.JSONDecodeError, ValueError):
+                continue
             if line.get("role") == "user":
                 user_count += 1
 
@@ -183,7 +187,10 @@ def _parse_codex_meta(path: Path) -> ConversationInfo | None:
         raw = f.readline()
         if not raw.strip():
             return None
-        line = json.loads(raw)
+        try:
+            line = json.loads(raw)
+        except (json.JSONDecodeError, ValueError):
+            return None
         if line.get("type") == "session_meta":
             payload = line.get("payload", {})
             session_id = payload.get("id", "")
@@ -196,7 +203,7 @@ def _parse_codex_meta(path: Path) -> ConversationInfo | None:
         session_id = path.stem
 
     if not timestamp:
-        timestamp = datetime.fromtimestamp(path.stat().st_mtime, tz=timezone.utc)
+        timestamp = datetime.fromtimestamp(path.stat().st_mtime, tz=UTC)
 
     return ConversationInfo(
         agent="codex",
