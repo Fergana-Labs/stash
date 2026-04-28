@@ -79,6 +79,10 @@ class WorkspaceCreateRequest(BaseModel):
 class WorkspaceUpdateRequest(BaseModel):
     name: str | None = Field(None, min_length=1, max_length=128)
     description: str | None = Field(None, max_length=1000)
+    summary: str | None = Field(None, max_length=280)
+    tags: list[str] | None = None
+    category: str | None = Field(None, max_length=32)
+    cover_image_url: str | None = None
 
 
 class WorkspaceResponse(BaseModel):
@@ -91,10 +95,87 @@ class WorkspaceResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
     member_count: int | None = None
+    summary: str | None = None
+    tags: list[str] = []
+    category: str | None = None
+    featured: bool = False
+    cover_image_url: str | None = None
+    fork_count: int = 0
+    forked_from_workspace_id: UUID | None = None
 
 
 class WorkspaceListResponse(BaseModel):
     workspaces: list[WorkspaceResponse]
+
+
+# --- Discover catalog ---
+
+
+class WorkspaceCatalogCard(BaseModel):
+    id: UUID
+    name: str
+    summary: str | None = None
+    description: str
+    is_public: bool
+    tags: list[str] = []
+    category: str | None = None
+    featured: bool = False
+    cover_image_url: str | None = None
+    creator_id: UUID
+    creator_name: str
+    creator_display_name: str | None = None
+    member_count: int = 0
+    fork_count: int = 0
+    notebook_count: int = 0
+    table_count: int = 0
+    file_count: int = 0
+    deck_count: int = 0
+    history_event_count: int = 0
+    forked_from_workspace_id: UUID | None = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class CatalogListResponse(BaseModel):
+    workspaces: list[WorkspaceCatalogCard]
+    next_cursor: str | None = None
+
+
+class WorkspacePublicNotebookSummary(BaseModel):
+    id: UUID
+    name: str
+    description: str
+    page_count: int
+    updated_at: datetime
+
+
+class WorkspacePublicTableSummary(BaseModel):
+    id: UUID
+    name: str
+    row_count: int
+    updated_at: datetime
+
+
+class WorkspacePublicFileSummary(BaseModel):
+    id: UUID
+    name: str
+    size_bytes: int
+    created_at: datetime
+
+
+class WorkspacePublicDeckSummary(BaseModel):
+    id: UUID
+    name: str
+    description: str
+    updated_at: datetime
+
+
+class WorkspacePublicDetail(BaseModel):
+    workspace: WorkspaceCatalogCard
+    notebooks: list[WorkspacePublicNotebookSummary]
+    tables: list[WorkspacePublicTableSummary]
+    files: list[WorkspacePublicFileSummary]
+    decks: list[WorkspacePublicDeckSummary]
 
 
 class WorkspaceMember(BaseModel):

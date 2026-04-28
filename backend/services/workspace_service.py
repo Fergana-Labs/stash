@@ -27,7 +27,9 @@ async def create_workspace(
     row = await pool.fetchrow(
         "INSERT INTO workspaces (name, description, creator_id, invite_code, is_public) "
         "VALUES ($1, $2, $3, $4, $5) "
-        "RETURNING id, name, description, creator_id, invite_code, is_public, created_at, updated_at",
+        "RETURNING id, name, description, creator_id, invite_code, is_public, "
+        "created_at, updated_at, summary, tags, category, featured, "
+        "cover_image_url, fork_count, forked_from_workspace_id",
         name,
         description,
         creator_id,
@@ -48,7 +50,10 @@ async def create_workspace(
 async def get_workspace(workspace_id: UUID) -> dict | None:
     pool = get_pool()
     row = await pool.fetchrow(
-        "SELECT w.*, (SELECT COUNT(*) FROM workspace_members wm WHERE wm.workspace_id = w.id) AS member_count "
+        "SELECT w.id, w.name, w.description, w.creator_id, w.invite_code, w.is_public, "
+        "w.created_at, w.updated_at, w.summary, w.tags, w.category, w.featured, "
+        "w.cover_image_url, w.fork_count, w.forked_from_workspace_id, "
+        "(SELECT COUNT(*) FROM workspace_members wm WHERE wm.workspace_id = w.id) AS member_count "
         "FROM workspaces w WHERE w.id = $1",
         workspace_id,
     )
@@ -58,7 +63,10 @@ async def get_workspace(workspace_id: UUID) -> dict | None:
 async def list_public_workspaces() -> list[dict]:
     pool = get_pool()
     rows = await pool.fetch(
-        "SELECT w.*, (SELECT COUNT(*) FROM workspace_members wm WHERE wm.workspace_id = w.id) AS member_count "
+        "SELECT w.id, w.name, w.description, w.creator_id, w.invite_code, w.is_public, "
+        "w.created_at, w.updated_at, w.summary, w.tags, w.category, w.featured, "
+        "w.cover_image_url, w.fork_count, w.forked_from_workspace_id, "
+        "(SELECT COUNT(*) FROM workspace_members wm WHERE wm.workspace_id = w.id) AS member_count "
         "FROM workspaces w WHERE w.is_public = true ORDER BY w.created_at DESC",
     )
     return [dict(r) for r in rows]
@@ -67,7 +75,10 @@ async def list_public_workspaces() -> list[dict]:
 async def list_user_workspaces(user_id: UUID) -> list[dict]:
     pool = get_pool()
     rows = await pool.fetch(
-        "SELECT w.*, (SELECT COUNT(*) FROM workspace_members wm WHERE wm.workspace_id = w.id) AS member_count "
+        "SELECT w.id, w.name, w.description, w.creator_id, w.invite_code, w.is_public, "
+        "w.created_at, w.updated_at, w.summary, w.tags, w.category, w.featured, "
+        "w.cover_image_url, w.fork_count, w.forked_from_workspace_id, "
+        "(SELECT COUNT(*) FROM workspace_members wm WHERE wm.workspace_id = w.id) AS member_count "
         "FROM workspaces w "
         "JOIN workspace_members wm ON wm.workspace_id = w.id "
         "WHERE wm.user_id = $1 ORDER BY w.created_at DESC",
@@ -80,24 +91,34 @@ async def update_workspace(
     workspace_id: UUID,
     name: str | None = None,
     description: str | None = None,
+    summary: str | None = None,
+    tags: list[str] | None = None,
+    category: str | None = None,
+    cover_image_url: str | None = None,
 ) -> dict | None:
     pool = get_pool()
     sets, args, idx = [], [], 1
-    if name is not None:
-        sets.append(f"name = ${idx}")
-        args.append(name)
-        idx += 1
-    if description is not None:
-        sets.append(f"description = ${idx}")
-        args.append(description)
-        idx += 1
+    for col, val in (
+        ("name", name),
+        ("description", description),
+        ("summary", summary),
+        ("tags", tags),
+        ("category", category),
+        ("cover_image_url", cover_image_url),
+    ):
+        if val is not None:
+            sets.append(f"{col} = ${idx}")
+            args.append(val)
+            idx += 1
     if not sets:
         return await get_workspace(workspace_id)
     sets.append("updated_at = now()")
     args.append(workspace_id)
     row = await pool.fetchrow(
         f"UPDATE workspaces SET {', '.join(sets)} WHERE id = ${idx} "
-        "RETURNING id, name, description, creator_id, invite_code, is_public, created_at, updated_at, "
+        "RETURNING id, name, description, creator_id, invite_code, is_public, "
+        "created_at, updated_at, summary, tags, category, featured, "
+        "cover_image_url, fork_count, forked_from_workspace_id, "
         "(SELECT COUNT(*) FROM workspace_members wm WHERE wm.workspace_id = id) AS member_count",
         *args,
     )
@@ -148,7 +169,9 @@ async def rotate_invite_code(workspace_id: UUID, user_id: UUID) -> dict | None:
             break
     row = await pool.fetchrow(
         "UPDATE workspaces SET invite_code = $1, updated_at = now() WHERE id = $2 "
-        "RETURNING id, name, description, creator_id, invite_code, is_public, created_at, updated_at, "
+        "RETURNING id, name, description, creator_id, invite_code, is_public, "
+        "created_at, updated_at, summary, tags, category, featured, "
+        "cover_image_url, fork_count, forked_from_workspace_id, "
         "(SELECT COUNT(*) FROM workspace_members wm WHERE wm.workspace_id = id) AS member_count",
         new_code,
         workspace_id,

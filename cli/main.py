@@ -648,6 +648,113 @@ def ws_members(
 
 
 # ===========================================================================
+# Discover (public catalog of Stashes)
+# ===========================================================================
+
+
+def _web_app_url() -> str:
+    """Map the configured API base_url to the matching web app URL."""
+    api = load_config().get("base_url", PRODUCTION_BASE_URL)
+    if api.startswith("https://api."):
+        return api.replace("https://api.", "https://app.", 1)
+    if "localhost" in api or "127.0.0.1" in api:
+        return "http://localhost:3000"
+    return api
+
+
+@app.command("browse")
+def browse(
+    query: str = typer.Argument("", help="Optional search query."),
+    sort: str = typer.Option("trending", "--sort", help="trending | newest | forks"),
+    category: str = typer.Option("", "--category"),
+    tag: str = typer.Option("", "--tag"),
+    pick: bool = typer.Option(
+        True, "--pick/--no-pick", help="Open an interactive picker (default) or print a flat list."
+    ),
+    as_json: bool = typer.Option(False, "--json"),
+):
+    """Browse the public Stash catalog. Works from any directory — no workspace binding required."""
+    with _client() as c:
+        try:
+            data = c.list_catalog(query=query, category=category, tag=tag, sort=sort)
+        except StashError as e:
+            _err(e)
+
+    workspaces = data.get("workspaces", [])
+    if as_json:
+        output_json(workspaces)
+        return
+
+    if not workspaces:
+        console.print("[yellow]No public Stashes match your filters.[/yellow]")
+        return
+
+    if not pick:
+        for w in workspaces:
+            owner = w.get("creator_display_name") or w.get("creator_name") or "unknown"
+            shape = (
+                f"{w['notebook_count']}nb · {w['table_count']}t · "
+                f"{w['deck_count']}d · {w['file_count']}f"
+            )
+            console.print(
+                f"[bold]{w['name']}[/bold]  [dim]by {owner}[/dim]  ★{w['fork_count']}  {shape}"
+            )
+            if w.get("summary"):
+                console.print(f"  [dim]{w['summary']}[/dim]")
+        return
+
+    choices = []
+    for w in workspaces:
+        owner = w.get("creator_display_name") or w.get("creator_name") or "unknown"
+        label = f"{w['name']:<32} by {owner:<14} ★{w['fork_count']:<4} ({w['notebook_count']}nb, {w['table_count']}t)"
+        choices.append(questionary.Choice(label, value=w))
+    choices.append(questionary.Choice("(quit)", value=None))
+
+    picked = questionary.select("Pick a Stash:", choices=choices).ask()
+    if not picked:
+        return
+
+    summary = picked.get("summary") or picked.get("description") or "(no description)"
+    console.print(
+        Panel(
+            Text.assemble(
+                (picked["name"] + "\n", "bold"),
+                (summary + "\n\n", ""),
+                (f"by {picked.get('creator_display_name') or picked['creator_name']}  ", "dim"),
+                (
+                    f"★ {picked['fork_count']} forks · {picked['member_count']} members · "
+                    f"{picked['notebook_count']} notebooks · {picked['table_count']} tables · "
+                    f"{picked['deck_count']} decks · {picked['file_count']} files",
+                    "dim",
+                ),
+            ),
+            title="Stash",
+            border_style="cyan",
+        )
+    )
+
+    action = questionary.select(
+        "What now?",
+        choices=[
+            questionary.Choice("Open in browser", value="open"),
+            questionary.Choice("Print share URL", value="url"),
+            questionary.Choice("Cancel", value=None),
+        ],
+    ).ask()
+    if not action:
+        return
+
+    url = f"{_web_app_url()}/s/{picked['id']}"
+    if action == "open":
+        import webbrowser
+
+        webbrowser.open(url)
+        console.print(f"[green]Opened[/green] {url}")
+    elif action == "url":
+        console.print(url)
+
+
+# ===========================================================================
 # Magic-link invites
 # ===========================================================================
 

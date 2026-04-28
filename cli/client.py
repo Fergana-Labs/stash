@@ -143,6 +143,30 @@ class StashClient:
                 return None
             raise
 
+    # --- Discover (public catalog, no auth required) ---
+
+    def list_catalog(
+        self,
+        query: str = "",
+        category: str = "",
+        tag: str = "",
+        sort: str = "trending",
+        cursor: str = "",
+    ) -> dict:
+        params: dict = {"sort": sort}
+        if query:
+            params["q"] = query
+        if category:
+            params["category"] = category
+        if tag:
+            params["tag"] = tag
+        if cursor:
+            params["cursor"] = cursor
+        return self._get("/api/v1/discover/workspaces", **params)
+
+    def get_public_workspace(self, workspace_id: str) -> dict:
+        return self._get(f"/api/v1/discover/workspaces/{workspace_id}")
+
     # --- Magic-link invite tokens ---
 
     def create_invite_token(self, workspace_id: str, max_uses: int = 1, ttl_days: int = 7) -> dict:

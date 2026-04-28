@@ -261,6 +261,54 @@ export async function getMyJoinRequest(workspaceId: string): Promise<JoinRequest
   return apiFetch(`/api/v1/workspaces/${workspaceId}/join-requests/mine`);
 }
 
+// --- Discover (public catalog, no auth required) ---
+
+export interface CatalogCard {
+  id: string;
+  name: string;
+  summary: string | null;
+  description: string;
+  is_public: boolean;
+  tags: string[];
+  category: string | null;
+  featured: boolean;
+  cover_image_url: string | null;
+  creator_id: string;
+  creator_name: string;
+  creator_display_name: string | null;
+  member_count: number;
+  fork_count: number;
+  notebook_count: number;
+  table_count: number;
+  file_count: number;
+  deck_count: number;
+  history_event_count: number;
+  forked_from_workspace_id: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PublicWorkspaceDetail {
+  workspace: CatalogCard;
+  notebooks: { id: string; name: string; description: string; page_count: number; updated_at: string }[];
+  tables: { id: string; name: string; row_count: number; updated_at: string }[];
+  files: { id: string; name: string; size_bytes: number; created_at: string }[];
+  decks: { id: string; name: string; description: string; updated_at: string }[];
+}
+
+export async function fetchPublicWorkspace(
+  workspaceId: string,
+  origin?: string
+): Promise<PublicWorkspaceDetail | null> {
+  const base = origin ?? "";
+  const res = await fetch(`${base}/api/v1/discover/workspaces/${workspaceId}`, {
+    next: { revalidate: 60 },
+  });
+  if (res.status === 404) return null;
+  if (!res.ok) throw new ApiError(res.status, `discover fetch failed: ${res.status}`);
+  return res.json();
+}
+
 // --- Notebooks ---
 // workspaceId = string for workspace-scoped, null for personal.
 

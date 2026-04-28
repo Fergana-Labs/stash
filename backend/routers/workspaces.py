@@ -107,6 +107,10 @@ async def update_workspace(
         workspace_id,
         name=req.name,
         description=req.description,
+        summary=req.summary,
+        tags=req.tags,
+        category=req.category,
+        cover_image_url=req.cover_image_url,
     )
     if not ws:
         raise HTTPException(status_code=404, detail="Workspace not found")
