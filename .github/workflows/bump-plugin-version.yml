@@ -3,6 +3,10 @@ name: Bump Claude plugin version
 on:
   push:
     branches: [main]
+    paths:
+      - 'plugins/**'
+      - 'src/stash_cli/**'
+      - 'pyproject.toml'
 
 jobs:
   bump:
