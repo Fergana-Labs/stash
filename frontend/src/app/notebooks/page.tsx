@@ -7,6 +7,7 @@ import AppShell from "../../components/AppShell";
 import { useBreadcrumbs, type Crumb } from "../../components/BreadcrumbContext";
 import NotebookTreeComponent from "../../components/workspace/FileTree";
 import MarkdownEditor, { SaveStatus } from "../../components/workspace/MarkdownEditor";
+import HtmlPageEditor from "../../components/workspace/HtmlPageEditor";
 import { useAuth } from "../../hooks/useAuth";
 import {
   listAllNotebooks,
@@ -323,8 +324,17 @@ function WikiPageInner() {
     if (!selectedNotebook) return;
     const name = prompt("Page name:");
     if (!name) return;
+    const typeRaw = (prompt("Page type — 'markdown' or 'html':", "markdown") || "markdown").trim().toLowerCase();
+    const content_type: "markdown" | "html" = typeRaw === "html" ? "html" : "markdown";
     try {
-      const p = await createPage(selectedNotebook.workspace_id, selectedNotebook.id, name, folderId || undefined);
+      const p = await createPage(
+        selectedNotebook.workspace_id,
+        selectedNotebook.id,
+        name,
+        folderId || undefined,
+        undefined,
+        { content_type },
+      );
       await loadTree(selectedNotebook);
       await loadWorkspacePages();
       setSelectedPageId(p.id);
@@ -405,6 +415,18 @@ function WikiPageInner() {
     if (!selectedNotebook || !selectedPageId) return;
     try {
       await updatePage(selectedNotebook.workspace_id, selectedNotebook.id, selectedPageId, { content });
+    } catch (err) { setError(err instanceof Error ? err.message : "Failed to save"); }
+  }, [selectedNotebook, selectedPageId]);
+
+  const handleSaveHtmlPage = useCallback(async (content_html: string) => {
+    if (!selectedNotebook || !selectedPageId) return;
+    try {
+      await updatePage(
+        selectedNotebook.workspace_id,
+        selectedNotebook.id,
+        selectedPageId,
+        { content_html, content_type: "html" },
+      );
     } catch (err) { setError(err instanceof Error ? err.message : "Failed to save"); }
   }, [selectedNotebook, selectedPageId]);
 
@@ -595,6 +617,16 @@ function WikiPageInner() {
               {selectedPage ? (
                 <div className="flex-1 flex flex-col overflow-hidden">
                   <div className="flex-1 overflow-y-auto">
+                    {selectedPage.content_type === "html" ? (
+                      <div className="mx-auto w-full max-w-[1200px] px-6 py-4">
+                        <HtmlPageEditor
+                          key={selectedPage.id}
+                          file={selectedPage}
+                          onSave={handleSaveHtmlPage}
+                          onSaveStatusChange={setSaveStatus}
+                        />
+                      </div>
+                    ) : (
                     <MarkdownEditor
                       key={selectedPage.id}
                       notebookId={selectedNotebook.id}
@@ -606,6 +638,7 @@ function WikiPageInner() {
                       pageIndex={workspacePages}
                       onNavigateInternal={handleNavigateInternal}
                     />
+                    )}
 
                     {/* Backlinks */}
                     {backlinks.length > 0 && (

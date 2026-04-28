@@ -179,7 +179,8 @@ async def inline_items(view: dict) -> list[dict]:
             if nb:
                 label = label or nb["name"]
                 pages = await pool.fetch(
-                    "SELECT id, name, content_markdown, updated_at FROM notebook_pages "
+                    "SELECT id, name, content_markdown, content_html, content_type, "
+                    "updated_at FROM notebook_pages "
                     "WHERE notebook_id = $1 ORDER BY name",
                     obj_id,
                 )
@@ -189,7 +190,9 @@ async def inline_items(view: dict) -> list[dict]:
                         {
                             "id": str(p["id"]),
                             "name": p["name"],
+                            "content_type": p["content_type"],
                             "content_markdown": p["content_markdown"],
+                            "content_html": p["content_html"],
                             "updated_at": p["updated_at"].isoformat(),
                         }
                         for p in pages
@@ -333,20 +336,23 @@ async def fork_view(slug: str, forker_id: UUID, name: str | None = None) -> dict
                         )
                         folder_id_map[f["id"]] = new_f
                     pages = await conn.fetch(
-                        "SELECT folder_id, name, content_markdown, content_hash, metadata "
+                        "SELECT folder_id, name, content_markdown, content_html, "
+                        "content_type, content_hash, metadata "
                         "FROM notebook_pages WHERE notebook_id = $1",
                         src_id,
                     )
                     for p in pages:
                         await conn.execute(
                             "INSERT INTO notebook_pages "
-                            "(notebook_id, folder_id, name, content_markdown, "
-                            "content_hash, metadata, created_by) "
-                            "VALUES ($1, $2, $3, $4, $5, $6, $7)",
+                            "(notebook_id, folder_id, name, content_markdown, content_html, "
+                            "content_type, content_hash, metadata, created_by) "
+                            "VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)",
                             new_nb_id,
                             folder_id_map.get(p["folder_id"]) if p["folder_id"] else None,
                             p["name"],
                             p["content_markdown"] or "",
+                            p["content_html"] or "",
+                            p["content_type"],
                             p["content_hash"],
                             p["metadata"] or {},
                             forker_id,
