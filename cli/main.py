@@ -795,6 +795,119 @@ def fork(
 
 
 # ===========================================================================
+# Views (curated subsets of a workspace, publishable as their own URL)
+# ===========================================================================
+
+views_app = typer.Typer(help="Views — publish a curated subset of a Stash as its own public URL.")
+app.add_typer(views_app, name="views")
+
+
+@views_app.command("list")
+def views_list(
+    workspace_id: str = typer.Argument(None, help="Workspace ID; falls back to .stash."),
+    as_json: bool = typer.Option(False, "--json"),
+):
+    """List Views in a workspace."""
+    ws_id = workspace_id or _resolve_workspace()
+    with _client() as c:
+        try:
+            data = c.list_views(ws_id)
+        except StashError as e:
+            _err(e)
+    if _use_json(as_json):
+        output_json(data)
+        return
+    if not data:
+        console.print("[dim]No Views in this workspace.[/dim]")
+        return
+    for v in data:
+        flag = "[green]public[/green]" if v["is_public"] else "[dim]private[/dim]"
+        console.print(
+            f"[bold]{v['title']}[/bold]  {flag}  /v/{v['slug']}  "
+            f"[dim]({len(v['items'])} items, viewed {v['view_count']}x)[/dim]"
+        )
+
+
+@views_app.command("create")
+def views_create(
+    title: str = typer.Argument(..., help="View title."),
+    workspace_id: str = typer.Option("", "--workspace", help="Workspace ID; falls back to .stash."),
+    description: str = typer.Option("", "--description"),
+    public: bool = typer.Option(False, "--public", help="Publish immediately."),
+    items_json: str = typer.Option(
+        "[]",
+        "--items",
+        help='JSON array of items: [{"object_type":"notebook","object_id":"..."}, ...]',
+    ),
+    as_json: bool = typer.Option(False, "--json"),
+):
+    """Create a View. Pass --items as JSON to attach resources up front."""
+    ws_id = workspace_id or _resolve_workspace()
+    items = json.loads(items_json)
+    with _client() as c:
+        try:
+            view = c.create_view(
+                ws_id, title=title, description=description, is_public=public, items=items
+            )
+        except StashError as e:
+            _err(e)
+    if _use_json(as_json):
+        output_json(view)
+        return
+    flag = "[green]published[/green]" if view["is_public"] else "[yellow]private[/yellow]"
+    console.print(f"[green]Created View[/green] '{view['title']}'  {flag}")
+    console.print(f"  ID: {view['id']}  Slug: {view['slug']}")
+    if view["is_public"]:
+        console.print(f"  Public URL: [cyan]{_web_app_url()}/v/{view['slug']}[/cyan]")
+
+
+@views_app.command("publish")
+def views_publish(
+    view_id: str = typer.Argument(...),
+    unpublish: bool = typer.Option(False, "--unpublish", help="Make the View private again."),
+):
+    """Toggle a View's public flag."""
+    with _client() as c:
+        try:
+            view = c.update_view(view_id, is_public=not unpublish)
+        except StashError as e:
+            _err(e)
+    if view["is_public"]:
+        console.print(
+            f"[green]Published[/green] '{view['title']}' → "
+            f"[cyan]{_web_app_url()}/v/{view['slug']}[/cyan]"
+        )
+    else:
+        console.print(f"[yellow]Unpublished[/yellow] '{view['title']}'")
+
+
+@views_app.command("delete")
+def views_delete(view_id: str = typer.Argument(...)):
+    """Delete a View. The underlying resources are not touched."""
+    with _client() as c:
+        try:
+            c.delete_view(view_id)
+        except StashError as e:
+            _err(e)
+    console.print(f"[green]Deleted View[/green] {view_id}")
+
+
+@views_app.command("fork")
+def views_fork(
+    slug: str = typer.Argument(..., help="Public slug of the View."),
+    name: str = typer.Option("", "--name"),
+):
+    """Fork a View's contents into a new private Stash you own."""
+    with _client() as c:
+        try:
+            new_ws = c.fork_view(slug, name=name)
+        except StashError as e:
+            _err(e)
+    console.print(f"[green]Forked into '{new_ws['name']}'[/green]  ID: {new_ws['id']}")
+    console.print(f"  Open it: [cyan]{_web_app_url()}/workspaces/{new_ws['id']}[/cyan]")
+
+
+# ===========================================================================
 # Magic-link invites
 # ===========================================================================
 

@@ -22,6 +22,7 @@ from .routers import (
     tables,
     transcripts,
     users,
+    views,
     workspaces,
 )
 from .services.row_validation import RowValidationError
@@ -82,6 +83,8 @@ app.add_middleware(
 app.include_router(users.router)
 app.include_router(workspaces.router)
 app.include_router(discover.router)
+app.include_router(views.ws_router)
+app.include_router(views.public_router)
 app.include_router(notebooks.ws_router)
 app.include_router(notebooks.ws_pages_router)
 app.include_router(memory.ws_router)

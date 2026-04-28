@@ -183,6 +183,79 @@ class WorkspacePublicDetail(BaseModel):
     decks: list[WorkspacePublicDeckSummary]
 
 
+# --- Views (curated subsets of a workspace) ---
+
+ViewObjectType = str  # 'notebook' | 'table' | 'file' | 'deck' | 'history'
+
+
+class ViewItem(BaseModel):
+    object_type: ViewObjectType = Field(..., pattern=r"^(notebook|table|file|deck|history)$")
+    object_id: UUID
+    position: int = 0
+    label_override: str | None = Field(None, max_length=160)
+
+
+class ViewCreateRequest(BaseModel):
+    title: str = Field(..., min_length=1, max_length=160)
+    description: str = Field("", max_length=2000)
+    is_public: bool = False
+    cover_image_url: str | None = None
+    items: list[ViewItem] = Field(default_factory=list)
+
+
+class ViewUpdateRequest(BaseModel):
+    title: str | None = Field(None, min_length=1, max_length=160)
+    description: str | None = Field(None, max_length=2000)
+    is_public: bool | None = None
+    cover_image_url: str | None = None
+    items: list[ViewItem] | None = None
+
+
+class ViewResponse(BaseModel):
+    id: UUID
+    workspace_id: UUID
+    slug: str
+    title: str
+    description: str
+    owner_id: UUID
+    is_public: bool
+    cover_image_url: str | None = None
+    view_count: int
+    items: list[ViewItem]
+    created_at: datetime
+    updated_at: datetime
+
+
+class ViewListResponse(BaseModel):
+    views: list[ViewResponse]
+
+
+# Public renderer payload — items are inlined with their content where it
+# makes sense (notebook pages, table rows, deck html, file metadata,
+# history events). The shape is intentionally permissive: each entry has
+# the item type/id/label plus an `inline` blob whose contents depend on
+# the type.
+
+
+class ViewItemInlined(BaseModel):
+    object_type: ViewObjectType
+    object_id: UUID
+    position: int
+    label: str
+    inline: dict
+
+
+class ViewPublicResponse(BaseModel):
+    view: ViewResponse
+    workspace_name: str
+    workspace_is_public: bool
+    items: list[ViewItemInlined]
+
+
+class ViewForkRequest(BaseModel):
+    name: str | None = Field(None, min_length=1, max_length=128)
+
+
 class WorkspaceMember(BaseModel):
     user_id: UUID
     name: str
