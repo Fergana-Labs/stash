@@ -95,6 +95,7 @@ async def update_workspace(
     tags: list[str] | None = None,
     category: str | None = None,
     cover_image_url: str | None = None,
+    is_public: bool | None = None,
 ) -> dict | None:
     pool = get_pool()
     sets, args, idx = [], [], 1
@@ -105,6 +106,7 @@ async def update_workspace(
         ("tags", tags),
         ("category", category),
         ("cover_image_url", cover_image_url),
+        ("is_public", is_public),
     ):
         if val is not None:
             sets.append(f"{col} = ${idx}")

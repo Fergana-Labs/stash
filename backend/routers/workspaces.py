@@ -103,6 +103,8 @@ async def update_workspace(
     role = await workspace_service.get_member_role(workspace_id, current_user["id"])
     if role not in ("owner", "admin"):
         raise HTTPException(status_code=403, detail="Only owner/admin can update workspace")
+    if req.is_public is not None and role != "owner":
+        raise HTTPException(status_code=403, detail="Only the workspace owner can change visibility")
     ws = await workspace_service.update_workspace(
         workspace_id,
         name=req.name,
@@ -111,6 +113,7 @@ async def update_workspace(
         tags=req.tags,
         category=req.category,
         cover_image_url=req.cover_image_url,
+        is_public=req.is_public,
     )
     if not ws:
         raise HTTPException(status_code=404, detail="Workspace not found")
