@@ -260,6 +260,7 @@ class StashClient:
         tool_name: str | None = None,
         metadata: dict | None = None,
         attachments: list[dict] | None = None,
+        created_at: str | None = None,
     ) -> dict:
         body: dict = {"agent_name": agent_name, "event_type": event_type, "content": content}
         if session_id:
@@ -270,6 +271,8 @@ class StashClient:
             body["metadata"] = metadata
         if attachments:
             body["attachments"] = attachments
+        if created_at:
+            body["created_at"] = created_at
         return self._post(f"/api/v1/workspaces/{workspace_id}/memory/events", json=body)
 
     def query_events(
@@ -306,6 +309,37 @@ class StashClient:
         if event_type:
             params["event_type"] = event_type
         return self._list("/api/v1/me/history-events", "events", **params)
+
+    def push_events_batch(self, workspace_id: str, events: list[dict]) -> list:
+        return self._post(
+            f"/api/v1/workspaces/{workspace_id}/memory/events/batch",
+            json={"events": events},
+        )
+
+    def upload_transcript(
+        self,
+        workspace_id: str,
+        session_id: str,
+        transcript_path: str,
+        agent_name: str,
+        cwd: str = "",
+    ) -> dict:
+        import gzip as _gzip
+
+        with open(transcript_path, "rb") as f:
+            raw = f.read()
+        body = _gzip.compress(raw)
+        name = os.path.basename(transcript_path)
+        if not name.endswith(".gz"):
+            name += ".gz"
+        resp = self._request(
+            "POST",
+            f"/api/v1/workspaces/{workspace_id}/transcripts",
+            data={"session_id": session_id, "agent_name": agent_name, "cwd": cwd},
+            files={"file": (name, body, "application/gzip")},
+            timeout=120,
+        )
+        return resp.json()
 
     # --- Files ---
 
