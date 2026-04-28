@@ -9,6 +9,18 @@ const INITIAL_STATE: ContactSalesState = { status: "idle" };
 
 const TEAM_SIZES = ["1–5", "6–20", "21–50", "51–200", "200+"];
 
+const REFERRAL_SOURCES = [
+  "Search engine",
+  "X / Twitter",
+  "LinkedIn",
+  "Hacker News",
+  "Reddit",
+  "GitHub",
+  "From a colleague",
+  "Podcast or newsletter",
+  "Other",
+];
+
 export default function ContactSalesForm() {
   const [state, formAction] = useActionState(submitContactSales, INITIAL_STATE);
 
@@ -62,6 +74,28 @@ export default function ContactSalesForm() {
           {TEAM_SIZES.map((size) => (
             <option key={size} value={size}>
               {size}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      <div className="flex flex-col gap-2">
+        <label
+          htmlFor="referralSource"
+          className="font-mono text-[11px] font-medium uppercase tracking-[0.14em] text-muted"
+        >
+          How did you hear about us?
+        </label>
+        <select
+          id="referralSource"
+          name="referralSource"
+          defaultValue=""
+          className="h-11 rounded-lg border border-border bg-surface px-3 text-[14px] text-ink outline-none transition focus:border-ink"
+        >
+          <option value="">Select…</option>
+          {REFERRAL_SOURCES.map((source) => (
+            <option key={source} value={source}>
+              {source}
             </option>
           ))}
         </select>

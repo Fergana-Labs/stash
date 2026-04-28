@@ -16,6 +16,7 @@ export async function submitContactSales(
   const email = String(formData.get("email") ?? "").trim();
   const company = String(formData.get("company") ?? "").trim();
   const teamSize = String(formData.get("teamSize") ?? "").trim();
+  const referralSource = String(formData.get("referralSource") ?? "").trim();
   const message = String(formData.get("message") ?? "").trim();
 
   if (!name || !email) {
@@ -32,6 +33,7 @@ export async function submitContactSales(
       email,
       company,
       teamSize,
+      referralSource,
     });
     return {
       status: "error",
@@ -45,6 +47,7 @@ export async function submitContactSales(
     <p><strong>Email:</strong> ${escapeHtml(email)}</p>
     <p><strong>Company:</strong> ${escapeHtml(company) || "—"}</p>
     <p><strong>Team size:</strong> ${escapeHtml(teamSize) || "—"}</p>
+    <p><strong>Heard about us via:</strong> ${escapeHtml(referralSource) || "—"}</p>
     <p><strong>Message:</strong></p>
     <p>${escapeHtml(message).replace(/\n/g, "<br/>") || "—"}</p>
   `;
