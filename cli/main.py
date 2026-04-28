@@ -1112,6 +1112,78 @@ def hist_transcript(
     sys.stdout.write(body)
 
 
+@hist_app.command("import")
+def hist_import(
+    workspace_id: str = typer.Option(None, "--ws"),
+    agent_name: str = typer.Option(None, "--agent", help="Only import from this agent."),
+    limit: int = typer.Option(0, "-n", "--limit", help="Max conversations to import (0 = all)."),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation prompt."),
+    as_json: bool = typer.Option(False, "--json"),
+):
+    """Import historical conversations from coding agents on this machine.
+
+    Discovers conversations from Claude Code, Cursor, and Codex, then uploads
+    them as transcripts to the workspace.
+    """
+    from .import_history import discover_conversations, summarize_discovery, upload_conversation
+
+    _require_auth()
+
+    agents = [agent_name] if agent_name else None
+    conversations = discover_conversations(agents)
+
+    if not conversations:
+        console.print("[dim]No historical conversations found.[/dim]")
+        raise typer.Exit(0)
+
+    summary = summarize_discovery(conversations)
+
+    if _use_json(as_json) and not yes:
+        output_json({"discovered": summary, "total": len(conversations)})
+        raise typer.Exit(0)
+
+    if not as_json:
+        console.print("\n[bold]Discovered conversations:[/bold]\n")
+        for ag, info in sorted(summary.items()):
+            sz = info["total_size_bytes"]
+            label = f"{sz // 1024 // 1024} MB" if sz > 1024 * 1024 else f"{sz // 1024} KB"
+            console.print(f"  {ag:<12} {info['count']:>4} conversations   ({label})")
+        console.print(f"\n  [bold]Total: {len(conversations)} conversations[/bold]")
+
+    if limit > 0:
+        conversations = conversations[:limit]
+
+    if not yes:
+        ok = questionary.confirm(
+            f"Import {len(conversations)} conversations into workspace?", default=True
+        ).ask()
+        if not ok:
+            raise typer.Exit(0)
+
+    ws = workspace_id or _resolve_workspace()
+
+    from rich.progress import Progress
+
+    imported = 0
+    errors = 0
+    with _client() as c, Progress(console=console) as progress:
+        task = progress.add_task("Importing…", total=len(conversations))
+        for conv in conversations:
+            try:
+                upload_conversation(c, ws, conv)
+                imported += 1
+            except StashError:
+                errors += 1
+            progress.advance(task)
+
+    if _use_json(as_json):
+        output_json({"imported": imported, "errors": errors})
+    else:
+        console.print(f"\n[green]Imported {imported} conversations.[/green]")
+        if errors:
+            console.print(f"[yellow]{errors} failed (likely already imported or too large).[/yellow]")
+
+
 # ===========================================================================
 # Tables
 # ===========================================================================
@@ -2124,6 +2196,9 @@ def login_cmd():
             except StashError as e:
                 console.print(f"[red]Could not connect repo: {e.detail}[/red]")
 
+    # --- Step 6: Import historical conversations ---
+    _onboarding_import_history(detected)
+
     _show_setup_complete_splash()
 
 
@@ -2364,6 +2439,46 @@ def _install_claude_plugin() -> bool:
         if last:
             console.print(f"  [green]✓[/green] {last[-1]}")
     return True
+
+
+def _onboarding_import_history(detected_agents: list[str]) -> None:
+    """Offer to import historical conversations during onboarding."""
+    from .import_history import discover_conversations, summarize_discovery, upload_conversation
+
+    agents = detected_agents or None
+    conversations = discover_conversations(agents)
+    if not conversations:
+        return
+
+    summary = summarize_discovery(conversations)
+    console.print("\n[bold]Historical conversations found:[/bold]\n")
+    for ag, info in sorted(summary.items()):
+        sz = info["total_size_bytes"]
+        label = f"{sz // 1024 // 1024} MB" if sz > 1024 * 1024 else f"{sz // 1024} KB"
+        console.print(f"  {ag:<12} {info['count']:>4} conversations   ({label})")
+
+    _reserve_bottom_padding(4)
+    ok = questionary.confirm(
+        f"Import {len(conversations)} historical conversations?", default=True
+    ).ask()
+    if not ok:
+        return
+
+    ws = _resolve_workspace()
+    from rich.progress import Progress
+
+    imported = 0
+    with _client() as c, Progress(console=console) as progress:
+        task = progress.add_task("Importing…", total=len(conversations))
+        for conv in conversations:
+            try:
+                upload_conversation(c, ws, conv)
+                imported += 1
+            except StashError:
+                pass
+            progress.advance(task)
+
+    console.print(f"  [green]��[/green] Imported {imported} conversations")
 
 
 def _show_setup_complete_splash() -> None:

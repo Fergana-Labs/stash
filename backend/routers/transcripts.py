@@ -50,6 +50,7 @@ async def upload_transcript(
         "INSERT INTO session_transcripts "
         "(workspace_id, session_id, agent_name, storage_key, size_bytes, cwd, uploaded_by) "
         "VALUES ($1, $2, $3, $4, $5, $6, $7) "
+        "ON CONFLICT (workspace_id, session_id) DO NOTHING "
         "RETURNING id, workspace_id, session_id, agent_name, size_bytes, cwd, uploaded_by, uploaded_at",
         workspace_id,
         session_id,
@@ -59,6 +60,8 @@ async def upload_transcript(
         cwd,
         current_user["id"],
     )
+    if not row:
+        raise HTTPException(status_code=409, detail="Transcript already exists for this session")
     return SessionTranscriptResponse(**dict(row), download_url=None)
 
 
