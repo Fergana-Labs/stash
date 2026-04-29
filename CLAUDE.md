@@ -23,3 +23,15 @@ If you are about to ask the user to do something for you, think about whether yo
 Previous Claude coding sessions are stored as `.jsonl` files in your ~/.claude file. Read these to understand prior decisions, debugging sessions, and context that isn't in git history.
 
 When you create or update a PR, share the GitHub link with the user at the end of your session.
+
+<!-- stash-context -->
+## Stash
+
+This repo uses [Stash](https://joinstash.ai) for shared agent history.
+Your coding agent has the `stash` CLI on its PATH. Run `stash --help` to see commands.
+
+Common reads (all support `--json`):
+- `stash history search "<query>"` — full-text search across transcripts
+- `stash history query --limit 20` — latest events
+- `stash history agents` — who's been active
+- `stash notebooks list --all` — shared notebooks
