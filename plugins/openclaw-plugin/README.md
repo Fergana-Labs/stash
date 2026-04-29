@@ -36,7 +36,7 @@ Python script. The Python side imports from `stashai.plugin` (shipped via
 # Prereqs (one-time)
 pip install stashai httpx
 stash connect
-# Ensure .stash/stash.json manifest exists in your repo
+# Ensure .stash manifest exists in your repo
 
 # Install the extension
 openclaw plugins install github:Fergana-Labs/stash#plugins/openclaw-plugin

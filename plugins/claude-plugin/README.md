@@ -123,7 +123,7 @@ stash notebooks list --all                                       # List all note
 stash workspaces list --mine                                     # List your workspaces
 ```
 
-Workspace is determined from the `.stash/stash.json` manifest in the repo.
+Workspace is determined from the `.stash` manifest in the repo.
 
 ---
 

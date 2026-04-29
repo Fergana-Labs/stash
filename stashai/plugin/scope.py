@@ -1,6 +1,6 @@
-"""Plugin hooks only push events when a `.stash` file is discoverable from cwd
-(in the current directory or any ancestor), or from the main worktree when cwd
-is inside a git worktree.
+"""Plugin hooks only push events when a `.stash` manifest file is discoverable
+from cwd (in the current directory or any ancestor), or from the main worktree
+when cwd is inside a git worktree.
 """
 
 from __future__ import annotations

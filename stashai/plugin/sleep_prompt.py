@@ -48,7 +48,7 @@ Use the `stash` CLI for everything — every subcommand supports `--json`.
 
 ## Steps
 
-1. **Determine workspace.** Workspace ID comes from the `.stash/stash.json`
+1. **Determine workspace.** Workspace ID comes from the `.stash`
    manifest in the repo (or an ancestor). If no manifest exists, run
    `stash workspaces list --mine --json` and pick the matching workspace.
 

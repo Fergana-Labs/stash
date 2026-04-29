@@ -1,9 +1,7 @@
 """Scope gate — manifest presence is the only opt-in signal.
 
-The gate checks for `.stash/stash.json` walking up from cwd:
-- Repo-level manifest in cwd or ancestor → in scope.
-- Global manifest at `~/.stash/stash.json` → in scope (implicitly covered
-  by the walk-up if `$HOME` is above cwd; the mechanism is the same).
+The gate checks for a flat `.stash` file walking up from cwd:
+- Repo-level `.stash` in cwd or ancestor → in scope.
 - Nothing → out of scope.
 
 Regression test: out-of-scope sessions must short-circuit before any event
@@ -21,14 +19,12 @@ from stashai.plugin.event import HookEvent
 
 
 def test_manifest_in_cwd_is_in_scope(tmp_path):
-    (tmp_path / ".stash").mkdir()
-    (tmp_path / ".stash" / "stash.json").write_text('{"version": 1}')
+    (tmp_path / ".stash").write_text('{"workspace_id": "test"}')
     assert scope_mod.cwd_in_scope(str(tmp_path))
 
 
 def test_manifest_in_ancestor_is_in_scope(tmp_path):
-    (tmp_path / ".stash").mkdir()
-    (tmp_path / ".stash" / "stash.json").write_text('{"version": 1}')
+    (tmp_path / ".stash").write_text('{"workspace_id": "test"}')
     sub = tmp_path / "packages" / "foo"
     sub.mkdir(parents=True)
     assert scope_mod.cwd_in_scope(str(sub))
@@ -44,17 +40,12 @@ def test_empty_cwd_rejected():
 
 
 def test_repo_manifest_wins_over_shallower_one(tmp_path):
-    # A repo-level manifest under an ancestor with its own manifest should
-    # still be in scope — the walk-up finds the nearest first.
-    (tmp_path / ".stash").mkdir()
-    (tmp_path / ".stash" / "stash.json").write_text('{"version": 1, "workspace_id": "A"}')
+    (tmp_path / ".stash").write_text('{"workspace_id": "A"}')
 
     repo = tmp_path / "projects" / "repo"
-    (repo / ".stash").mkdir(parents=True)
-    (repo / ".stash" / "stash.json").write_text('{"version": 1, "workspace_id": "B"}')
+    repo.mkdir(parents=True)
+    (repo / ".stash").write_text('{"workspace_id": "B"}')
 
-    # Both cwds resolve to in-scope; routing (which workspace) is read by the
-    # plugin separately via get_config(), not the scope gate.
     assert scope_mod.cwd_in_scope(str(repo))
     assert scope_mod.cwd_in_scope(str(tmp_path))
 
@@ -63,8 +54,7 @@ def test_worktree_resolves_to_main_repo_manifest(tmp_path, monkeypatch):
     """A git worktree without its own manifest should find the main repo's manifest."""
     main_repo = tmp_path / "main-repo"
     main_repo.mkdir()
-    (main_repo / ".stash").mkdir()
-    (main_repo / ".stash" / "stash.json").write_text('{"version": 1, "workspace_id": "W"}')
+    (main_repo / ".stash").write_text('{"workspace_id": "W"}')
 
     worktree = tmp_path / "worktree-checkout"
     worktree.mkdir()
@@ -79,16 +69,12 @@ def test_worktree_resolves_to_main_repo_manifest(tmp_path, monkeypatch):
 
 
 def test_worktree_manifest_beats_global(tmp_path, monkeypatch):
-    """Main repo manifest takes precedence over a global ~/.stash/ manifest."""
+    """Main repo manifest takes precedence over an ancestor's .stash file."""
     main_repo = tmp_path / "main-repo"
     main_repo.mkdir()
-    (main_repo / ".stash").mkdir()
-    (main_repo / ".stash" / "stash.json").write_text('{"version": 1, "workspace_id": "company"}')
+    (main_repo / ".stash").write_text('{"workspace_id": "company"}')
 
-    # Simulate a global manifest in an ancestor of the worktree
-    global_stash = tmp_path / ".stash"
-    global_stash.mkdir()
-    (global_stash / "stash.json").write_text('{"version": 1, "workspace_id": "personal"}')
+    (tmp_path / ".stash").write_text('{"workspace_id": "personal"}')
 
     worktree = tmp_path / "worktrees" / "feature"
     worktree.mkdir(parents=True)
@@ -106,13 +92,11 @@ def test_main_repo_manifest_beats_worktree_local(tmp_path, monkeypatch):
     """Main repo manifest wins even if the worktree has its own."""
     main_repo = tmp_path / "main-repo"
     main_repo.mkdir()
-    (main_repo / ".stash").mkdir()
-    (main_repo / ".stash" / "stash.json").write_text('{"version": 1, "workspace_id": "main"}')
+    (main_repo / ".stash").write_text('{"workspace_id": "main"}')
 
     worktree = tmp_path / "worktree-checkout"
     worktree.mkdir()
-    (worktree / ".stash").mkdir()
-    (worktree / ".stash" / "stash.json").write_text('{"version": 1, "workspace_id": "local"}')
+    (worktree / ".stash").write_text('{"workspace_id": "local"}')
 
     monkeypatch.setattr(
         scope_mod, "_git_repo_info", lambda cwd: (worktree, main_repo)

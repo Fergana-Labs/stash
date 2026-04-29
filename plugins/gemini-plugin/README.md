@@ -5,7 +5,7 @@ Streams Gemini CLI sessions to an Stash workspace.
 ## Prerequisites
 
 - `stash` CLI installed and logged in
-- `.stash/stash.json` manifest present in repo (or ancestor)
+- `.stash` manifest present in repo (or ancestor)
 - Python 3.10+ and `httpx` (`pip install httpx`)
 - Gemini CLI ≥ the version that shipped `hooks` in `settings.json`
 
