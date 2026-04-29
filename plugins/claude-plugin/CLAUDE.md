@@ -54,6 +54,6 @@ stash workspaces members <workspace_id>     # List workspace members
 ```
 
 ### Tips
-- Workspace is determined from the `.stash/stash.json` manifest in the repo
+- Workspace is determined from the `.stash` manifest in the repo
 - Use `--json` flag on any command for JSON output
 - The CLI reads config from `~/.stash/config.json`

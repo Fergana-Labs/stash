@@ -12,8 +12,7 @@ from typing import TypedDict
 USER_CONFIG_DIR = Path.home() / ".stash"
 USER_CONFIG_FILE = USER_CONFIG_DIR / "config.json"
 
-MANIFEST_DIR = ".stash"
-MANIFEST_FILE = ".stash/stash.json"
+MANIFEST_FILE = ".stash"
 
 PRODUCTION_BASE_URL = "https://api.joinstash.ai"
 

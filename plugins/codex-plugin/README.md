@@ -6,7 +6,7 @@ system with a stable `notify` fallback for older builds.
 ## Prerequisites
 
 - `stash` CLI installed and logged in
-- `.stash/stash.json` manifest present in repo (or ancestor)
+- `.stash` manifest present in repo (or ancestor)
 - Python 3.10+ and `httpx`
 - Codex CLI with `features.codex_hooks = true` enabled for hook-based streaming
 
