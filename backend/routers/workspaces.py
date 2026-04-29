@@ -14,6 +14,7 @@ from ..models import (
     JoinRequestResponse,
     RedeemInviteAuthedRequest,
     WorkspaceCreateRequest,
+    WorkspaceForkRequest,
     WorkspaceListResponse,
     WorkspaceMember,
     WorkspacePublicInfo,
@@ -103,10 +104,17 @@ async def update_workspace(
     role = await workspace_service.get_member_role(workspace_id, current_user["id"])
     if role not in ("owner", "admin"):
         raise HTTPException(status_code=403, detail="Only owner/admin can update workspace")
+    if req.is_public is not None and role != "owner":
+        raise HTTPException(status_code=403, detail="Only the workspace owner can change visibility")
     ws = await workspace_service.update_workspace(
         workspace_id,
         name=req.name,
         description=req.description,
+        summary=req.summary,
+        tags=req.tags,
+        category=req.category,
+        cover_image_url=req.cover_image_url,
+        is_public=req.is_public,
     )
     if not ws:
         raise HTTPException(status_code=404, detail="Workspace not found")
@@ -121,6 +129,23 @@ async def delete_workspace(
     deleted = await workspace_service.delete_workspace(workspace_id, current_user["id"])
     if not deleted:
         raise HTTPException(status_code=403, detail="Only workspace owner can delete")
+
+
+@router.post("/{workspace_id}/fork", response_model=WorkspaceResponse, status_code=201)
+async def fork_workspace(
+    workspace_id: UUID,
+    req: WorkspaceForkRequest,
+    current_user: dict = Depends(get_current_user),
+):
+    """Fork a public workspace into a new private workspace owned by the caller."""
+    new_ws = await workspace_service.fork_workspace(
+        source_id=workspace_id,
+        forker_id=current_user["id"],
+        name=req.name,
+    )
+    if not new_ws:
+        raise HTTPException(status_code=404, detail="Workspace not found or not public")
+    return WorkspaceResponse(**new_ws)
 
 
 @router.post("/join/{invite_code}", response_model=WorkspaceResponse)

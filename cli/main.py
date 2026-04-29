@@ -648,6 +648,266 @@ def ws_members(
 
 
 # ===========================================================================
+# Discover (public catalog of Stashes)
+# ===========================================================================
+
+
+def _web_app_url() -> str:
+    """Map the configured API base_url to the matching web app URL."""
+    api = load_config().get("base_url", PRODUCTION_BASE_URL)
+    if api.startswith("https://api."):
+        return api.replace("https://api.", "https://app.", 1)
+    if "localhost" in api or "127.0.0.1" in api:
+        return "http://localhost:3000"
+    return api
+
+
+@app.command("browse")
+def browse(
+    query: str = typer.Argument("", help="Optional search query."),
+    sort: str = typer.Option("trending", "--sort", help="trending | newest | forks"),
+    category: str = typer.Option("", "--category"),
+    tag: str = typer.Option("", "--tag"),
+    pick: bool = typer.Option(
+        True, "--pick/--no-pick", help="Open an interactive picker (default) or print a flat list."
+    ),
+    as_json: bool = typer.Option(False, "--json"),
+):
+    """Browse the public Stash catalog. Works from any directory — no workspace binding required."""
+    with _client() as c:
+        try:
+            data = c.list_catalog(query=query, category=category, tag=tag, sort=sort)
+        except StashError as e:
+            _err(e)
+
+    workspaces = data.get("workspaces", [])
+    if as_json:
+        output_json(workspaces)
+        return
+
+    if not workspaces:
+        console.print("[yellow]No public Stashes match your filters.[/yellow]")
+        return
+
+    if not pick:
+        for w in workspaces:
+            owner = w.get("creator_display_name") or w.get("creator_name") or "unknown"
+            shape = (
+                f"{w['notebook_count']}nb · {w['table_count']}t · "
+                f"{w['file_count']}f · {w['history_event_count']}h"
+            )
+            console.print(
+                f"[bold]{w['name']}[/bold]  [dim]by {owner}[/dim]  ★{w['fork_count']}  {shape}"
+            )
+            if w.get("summary"):
+                console.print(f"  [dim]{w['summary']}[/dim]")
+        return
+
+    choices = []
+    for w in workspaces:
+        owner = w.get("creator_display_name") or w.get("creator_name") or "unknown"
+        label = f"{w['name']:<32} by {owner:<14} ★{w['fork_count']:<4} ({w['notebook_count']}nb, {w['table_count']}t)"
+        choices.append(questionary.Choice(label, value=w))
+    choices.append(questionary.Choice("(quit)", value=None))
+
+    picked = questionary.select("Pick a Stash:", choices=choices).ask()
+    if not picked:
+        return
+
+    summary = picked.get("summary") or picked.get("description") or "(no description)"
+    console.print(
+        Panel(
+            Text.assemble(
+                (picked["name"] + "\n", "bold"),
+                (summary + "\n\n", ""),
+                (f"by {picked.get('creator_display_name') or picked['creator_name']}  ", "dim"),
+                (
+                    f"★ {picked['fork_count']} forks · {picked['member_count']} members · "
+                    f"{picked['notebook_count']} notebooks · {picked['table_count']} tables · "
+                    f"{picked['file_count']} files",
+                    "dim",
+                ),
+            ),
+            title="Stash",
+            border_style="cyan",
+        )
+    )
+
+    action = questionary.select(
+        "What now?",
+        choices=[
+            questionary.Choice("Open in browser", value="open"),
+            questionary.Choice("Fork into a new private Stash", value="fork"),
+            questionary.Choice("Print share URL", value="url"),
+            questionary.Choice("Cancel", value=None),
+        ],
+    ).ask()
+    if not action:
+        return
+
+    url = f"{_web_app_url()}/s/{picked['id']}"
+    if action == "open":
+        import webbrowser
+
+        webbrowser.open(url)
+        console.print(f"[green]Opened[/green] {url}")
+    elif action == "url":
+        console.print(url)
+    elif action == "fork":
+        _do_fork(picked["id"], suggested_name=f"{picked['name']} (fork)")
+
+
+def _do_fork(workspace_id: str, suggested_name: str = "") -> None:
+    name = questionary.text("Name for the fork:", default=suggested_name).ask()
+    if name is None:
+        return
+    with _client() as c:
+        try:
+            new_ws = c.fork_workspace(workspace_id, name=name.strip())
+        except StashError as e:
+            _err(e)
+    console.print(
+        f"[green]Forked into '{new_ws['name']}'[/green]  ID: {new_ws['id']}"
+    )
+    console.print(
+        f"  Open it: [cyan]{_web_app_url()}/workspaces/{new_ws['id']}[/cyan]"
+    )
+
+    bind = questionary.confirm(
+        "Bind this repo (.stash) to the new fork?", default=False
+    ).ask()
+    if bind:
+        repo_root = Path.cwd()
+        manifest_path = repo_root / MANIFEST_FILE
+        existing = json.loads(manifest_path.read_text()) if manifest_path.is_file() else {}
+        existing["workspace_id"] = str(new_ws["id"])
+        manifest_path.write_text(json.dumps(existing, indent=2) + "\n")
+        console.print(f"  Wrote [cyan]{MANIFEST_FILE}[/cyan] → {new_ws['id']}")
+
+
+@app.command("fork")
+def fork(
+    workspace_id: str = typer.Argument(..., help="ID of the public Stash to fork."),
+    name: str = typer.Option("", "--name", help="Name for the new private Stash."),
+):
+    """Fork a public Stash into a new private Stash you own."""
+    _do_fork(workspace_id, suggested_name=name)
+
+
+# ===========================================================================
+# Views (curated subsets of a workspace, publishable as their own URL)
+# ===========================================================================
+
+views_app = typer.Typer(help="Views — publish a curated subset of a Stash as its own public URL.")
+app.add_typer(views_app, name="views")
+
+
+@views_app.command("list")
+def views_list(
+    workspace_id: str = typer.Argument(None, help="Workspace ID; falls back to .stash."),
+    as_json: bool = typer.Option(False, "--json"),
+):
+    """List Views in a workspace."""
+    ws_id = workspace_id or _resolve_workspace()
+    with _client() as c:
+        try:
+            data = c.list_views(ws_id)
+        except StashError as e:
+            _err(e)
+    if _use_json(as_json):
+        output_json(data)
+        return
+    if not data:
+        console.print("[dim]No Views in this workspace.[/dim]")
+        return
+    for v in data:
+        flag = "[green]public[/green]" if v["is_public"] else "[dim]private[/dim]"
+        console.print(
+            f"[bold]{v['title']}[/bold]  {flag}  /v/{v['slug']}  "
+            f"[dim]({len(v['items'])} items, viewed {v['view_count']}x)[/dim]"
+        )
+
+
+@views_app.command("create")
+def views_create(
+    title: str = typer.Argument(..., help="View title."),
+    workspace_id: str = typer.Option("", "--workspace", help="Workspace ID; falls back to .stash."),
+    description: str = typer.Option("", "--description"),
+    public: bool = typer.Option(False, "--public", help="Publish immediately."),
+    items_json: str = typer.Option(
+        "[]",
+        "--items",
+        help='JSON array of items: [{"object_type":"notebook","object_id":"..."}, ...]',
+    ),
+    as_json: bool = typer.Option(False, "--json"),
+):
+    """Create a View. Pass --items as JSON to attach resources up front."""
+    ws_id = workspace_id or _resolve_workspace()
+    items = json.loads(items_json)
+    with _client() as c:
+        try:
+            view = c.create_view(
+                ws_id, title=title, description=description, is_public=public, items=items
+            )
+        except StashError as e:
+            _err(e)
+    if _use_json(as_json):
+        output_json(view)
+        return
+    flag = "[green]published[/green]" if view["is_public"] else "[yellow]private[/yellow]"
+    console.print(f"[green]Created View[/green] '{view['title']}'  {flag}")
+    console.print(f"  ID: {view['id']}  Slug: {view['slug']}")
+    if view["is_public"]:
+        console.print(f"  Public URL: [cyan]{_web_app_url()}/v/{view['slug']}[/cyan]")
+
+
+@views_app.command("publish")
+def views_publish(
+    view_id: str = typer.Argument(...),
+    unpublish: bool = typer.Option(False, "--unpublish", help="Make the View private again."),
+):
+    """Toggle a View's public flag."""
+    with _client() as c:
+        try:
+            view = c.update_view(view_id, is_public=not unpublish)
+        except StashError as e:
+            _err(e)
+    if view["is_public"]:
+        console.print(
+            f"[green]Published[/green] '{view['title']}' → "
+            f"[cyan]{_web_app_url()}/v/{view['slug']}[/cyan]"
+        )
+    else:
+        console.print(f"[yellow]Unpublished[/yellow] '{view['title']}'")
+
+
+@views_app.command("delete")
+def views_delete(view_id: str = typer.Argument(...)):
+    """Delete a View. The underlying resources are not touched."""
+    with _client() as c:
+        try:
+            c.delete_view(view_id)
+        except StashError as e:
+            _err(e)
+    console.print(f"[green]Deleted View[/green] {view_id}")
+
+
+@views_app.command("fork")
+def views_fork(
+    slug: str = typer.Argument(..., help="Public slug of the View."),
+    name: str = typer.Option("", "--name"),
+):
+    """Fork a View's contents into a new private Stash you own."""
+    with _client() as c:
+        try:
+            new_ws = c.fork_view(slug, name=name)
+        except StashError as e:
+            _err(e)
+    console.print(f"[green]Forked into '{new_ws['name']}'[/green]  ID: {new_ws['id']}")
+    console.print(f"  Open it: [cyan]{_web_app_url()}/workspaces/{new_ws['id']}[/cyan]")
+
+
+# ===========================================================================
 # Magic-link invites
 # ===========================================================================
 
@@ -861,12 +1121,33 @@ def nb_add_page(
     name: str = typer.Argument(...),
     workspace_id: str = typer.Option(None, "--ws"),
     content: str = typer.Option(""),
+    page_type: str = typer.Option(
+        "markdown", "--type", help="Page type: markdown (default) or html.", case_sensitive=False
+    ),
+    html_file: str = typer.Option(
+        None, "--html-file", help="Local HTML file to load as content for an html page."
+    ),
     attach: list[str] = typer.Option(
         None, "--attach", help="Local file path to upload and embed (repeatable)."
     ),
     as_json: bool = typer.Option(False, "--json"),
 ):
-    """Add a page to a notebook."""
+    """Add a page to a notebook. Use --type html and --html-file for AI-generated slides."""
+    page_type = page_type.lower()
+    if page_type not in ("markdown", "html"):
+        console.print(f"[red]--type must be 'markdown' or 'html', got: {page_type}[/red]")
+        raise typer.Exit(1)
+    if page_type == "html" and html_file:
+        if not Path(html_file).is_file():
+            console.print(f"[red]Not a file: {html_file}[/red]")
+            raise typer.Exit(1)
+        html_body = Path(html_file).read_text()
+    elif page_type == "html":
+        html_body = content  # caller can pass --content with raw HTML
+        content = ""
+    else:
+        html_body = ""
+
     with _client() as c:
         try:
             ws = workspace_id or _resolve_workspace()
@@ -874,14 +1155,29 @@ def nb_add_page(
                 if not Path(p).is_file():
                     console.print(f"[red]Not a file: {p}[/red]")
                     raise typer.Exit(1)
-            body = _prepend_attachments(c, ws, content, attach)
-            data = c.create_page(ws, notebook_id, name, content=body)
+            if page_type == "markdown":
+                body = _prepend_attachments(c, ws, content, attach)
+            else:
+                body = ""
+                if attach:
+                    console.print("[yellow]--attach is ignored for html pages[/yellow]")
+            data = c.create_page(
+                ws,
+                notebook_id,
+                name,
+                content=body,
+                content_type=page_type,
+                content_html=html_body,
+            )
         except StashError as e:
             _err(e)
     if _use_json(as_json):
         output_json(data)
     else:
-        console.print(f"[green]Page '{data['name']}' created.[/green]  ID: {data['id']}")
+        console.print(
+            f"[green]Page '{data['name']}' created.[/green]  ID: {data['id']}  "
+            f"Type: {data.get('content_type', 'markdown')}"
+        )
 
 
 @nb_app.command("read-page")
@@ -902,7 +1198,10 @@ def nb_read_page(
         output_json(data)
     else:
         console.print(f"[bold]{data['name']}[/bold]\n")
-        console.print(data.get("content_markdown", ""))
+        if data.get("content_type") == "html":
+            console.print(data.get("content_html", ""))
+        else:
+            console.print(data.get("content_markdown", ""))
 
 
 @nb_app.command("edit-page")
@@ -912,14 +1211,43 @@ def nb_edit_page(
     content: str = typer.Option(None, "--content"),
     name: str = typer.Option(None, "--name"),
     workspace_id: str = typer.Option(None, "--ws"),
+    page_type: str = typer.Option(
+        None, "--type", help="Switch the page to this type: markdown or html.", case_sensitive=False
+    ),
+    html_file: str = typer.Option(
+        None, "--html-file", help="Local HTML file to load as content_html."
+    ),
     attach: list[str] = typer.Option(
         None, "--attach", help="Local file path to upload and prepend (repeatable)."
     ),
     as_json: bool = typer.Option(False, "--json"),
 ):
-    """Update a page. Reads from stdin if --content not given."""
+    """Update a page. Reads from stdin if --content not given.
+
+    For html pages: pass --html-file to replace content_html, or pipe HTML on
+    stdin and pass --type html.
+    """
+    html_body: str | None = None
+    if html_file:
+        if not Path(html_file).is_file():
+            console.print(f"[red]Not a file: {html_file}[/red]")
+            raise typer.Exit(1)
+        html_body = Path(html_file).read_text()
     if content is None and not sys.stdin.isatty():
         content = sys.stdin.read()
+    if page_type:
+        page_type = page_type.lower()
+        if page_type not in ("markdown", "html"):
+            console.print(f"[red]--type must be 'markdown' or 'html', got: {page_type}[/red]")
+            raise typer.Exit(1)
+    # If --html-file is set without --type, infer html.
+    if html_body is not None and page_type is None:
+        page_type = "html"
+    # If --type html and only --content (no --html-file), treat content as HTML.
+    if page_type == "html" and html_body is None and content is not None:
+        html_body = content
+        content = None
+
     with _client() as c:
         try:
             ws = workspace_id or _resolve_workspace()
@@ -927,18 +1255,24 @@ def nb_edit_page(
                 if not Path(p).is_file():
                     console.print(f"[red]Not a file: {p}[/red]")
                     raise typer.Exit(1)
-            if attach:
+            if attach and page_type != "html":
                 base = (
                     content
                     if content is not None
                     else c.get_page(ws, notebook_id, page_id).get("content_markdown", "")
                 )
                 content = _prepend_attachments(c, ws, base, attach)
+            elif attach:
+                console.print("[yellow]--attach is ignored for html pages[/yellow]")
             kwargs = {}
             if content is not None:
                 kwargs["content"] = content
             if name is not None:
                 kwargs["name"] = name
+            if page_type is not None:
+                kwargs["content_type"] = page_type
+            if html_body is not None:
+                kwargs["content_html"] = html_body
             data = c.update_page(ws, notebook_id, page_id, **kwargs)
         except StashError as e:
             _err(e)

@@ -79,6 +79,11 @@ class WorkspaceCreateRequest(BaseModel):
 class WorkspaceUpdateRequest(BaseModel):
     name: str | None = Field(None, min_length=1, max_length=128)
     description: str | None = Field(None, max_length=1000)
+    summary: str | None = Field(None, max_length=280)
+    tags: list[str] | None = None
+    category: str | None = Field(None, max_length=32)
+    cover_image_url: str | None = None
+    is_public: bool | None = None
 
 
 class WorkspaceResponse(BaseModel):
@@ -91,10 +96,154 @@ class WorkspaceResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
     member_count: int | None = None
+    summary: str | None = None
+    tags: list[str] = []
+    category: str | None = None
+    featured: bool = False
+    cover_image_url: str | None = None
+    fork_count: int = 0
+    forked_from_workspace_id: UUID | None = None
 
 
 class WorkspaceListResponse(BaseModel):
     workspaces: list[WorkspaceResponse]
+
+
+class WorkspaceForkRequest(BaseModel):
+    name: str | None = Field(None, min_length=1, max_length=128)
+
+
+# --- Discover catalog ---
+
+
+class WorkspaceCatalogCard(BaseModel):
+    id: UUID
+    name: str
+    summary: str | None = None
+    description: str
+    is_public: bool
+    tags: list[str] = []
+    category: str | None = None
+    featured: bool = False
+    cover_image_url: str | None = None
+    creator_id: UUID
+    creator_name: str
+    creator_display_name: str | None = None
+    member_count: int = 0
+    fork_count: int = 0
+    notebook_count: int = 0
+    table_count: int = 0
+    file_count: int = 0
+    history_event_count: int = 0
+    forked_from_workspace_id: UUID | None = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class CatalogListResponse(BaseModel):
+    workspaces: list[WorkspaceCatalogCard]
+    next_cursor: str | None = None
+
+
+class WorkspacePublicNotebookSummary(BaseModel):
+    id: UUID
+    name: str
+    description: str
+    page_count: int
+    updated_at: datetime
+
+
+class WorkspacePublicTableSummary(BaseModel):
+    id: UUID
+    name: str
+    row_count: int
+    updated_at: datetime
+
+
+class WorkspacePublicFileSummary(BaseModel):
+    id: UUID
+    name: str
+    size_bytes: int
+    created_at: datetime
+
+
+class WorkspacePublicDetail(BaseModel):
+    workspace: WorkspaceCatalogCard
+    notebooks: list[WorkspacePublicNotebookSummary]
+    tables: list[WorkspacePublicTableSummary]
+    files: list[WorkspacePublicFileSummary]
+
+
+# --- Views (curated subsets of a workspace) ---
+
+ViewObjectType = str  # 'notebook' | 'table' | 'file' | 'history'
+
+
+class ViewItem(BaseModel):
+    object_type: ViewObjectType = Field(..., pattern=r"^(notebook|table|file|history)$")
+    object_id: UUID
+    position: int = 0
+    label_override: str | None = Field(None, max_length=160)
+
+
+class ViewCreateRequest(BaseModel):
+    title: str = Field(..., min_length=1, max_length=160)
+    description: str = Field("", max_length=2000)
+    is_public: bool = False
+    cover_image_url: str | None = None
+    items: list[ViewItem] = Field(default_factory=list)
+
+
+class ViewUpdateRequest(BaseModel):
+    title: str | None = Field(None, min_length=1, max_length=160)
+    description: str | None = Field(None, max_length=2000)
+    is_public: bool | None = None
+    cover_image_url: str | None = None
+    items: list[ViewItem] | None = None
+
+
+class ViewResponse(BaseModel):
+    id: UUID
+    workspace_id: UUID
+    slug: str
+    title: str
+    description: str
+    owner_id: UUID
+    is_public: bool
+    cover_image_url: str | None = None
+    view_count: int
+    items: list[ViewItem]
+    created_at: datetime
+    updated_at: datetime
+
+
+class ViewListResponse(BaseModel):
+    views: list[ViewResponse]
+
+
+# Public renderer payload — items are inlined with their content where it
+# makes sense (notebook pages, table rows, file metadata, history events).
+# The shape is intentionally permissive: each entry has the item
+# type/id/label plus an `inline` blob whose contents depend on the type.
+
+
+class ViewItemInlined(BaseModel):
+    object_type: ViewObjectType
+    object_id: UUID
+    position: int
+    label: str
+    inline: dict
+
+
+class ViewPublicResponse(BaseModel):
+    view: ViewResponse
+    workspace_name: str
+    workspace_is_public: bool
+    items: list[ViewItemInlined]
+
+
+class ViewForkRequest(BaseModel):
+    name: str | None = Field(None, min_length=1, max_length=128)
 
 
 class WorkspaceMember(BaseModel):
@@ -187,12 +336,16 @@ class PageCreateRequest(BaseModel):
     name: str = Field(..., min_length=1, max_length=255)
     folder_id: UUID | None = None
     content: str = ""
+    content_type: str = Field("markdown", pattern=r"^(markdown|html)$")
+    content_html: str = ""
 
 
 class PageUpdateRequest(BaseModel):
     name: str | None = Field(None, min_length=1, max_length=255)
     folder_id: UUID | None = None
     content: str | None = None
+    content_type: str | None = Field(None, pattern=r"^(markdown|html)$")
+    content_html: str | None = None
     move_to_root: bool = False
 
 
@@ -202,6 +355,8 @@ class PageResponse(BaseModel):
     folder_id: UUID | None
     name: str
     content_markdown: str
+    content_type: str = "markdown"
+    content_html: str = ""
     content_hash: str | None = None
     metadata: dict = {}
     created_by: UUID

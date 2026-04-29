@@ -143,6 +143,74 @@ class StashClient:
                 return None
             raise
 
+    # --- Discover (public catalog, no auth required) ---
+
+    def list_catalog(
+        self,
+        query: str = "",
+        category: str = "",
+        tag: str = "",
+        sort: str = "trending",
+        cursor: str = "",
+    ) -> dict:
+        params: dict = {"sort": sort}
+        if query:
+            params["q"] = query
+        if category:
+            params["category"] = category
+        if tag:
+            params["tag"] = tag
+        if cursor:
+            params["cursor"] = cursor
+        return self._get("/api/v1/discover/workspaces", **params)
+
+    def get_public_workspace(self, workspace_id: str) -> dict:
+        return self._get(f"/api/v1/discover/workspaces/{workspace_id}")
+
+    def fork_workspace(self, workspace_id: str, name: str = "") -> dict:
+        body: dict = {}
+        if name:
+            body["name"] = name
+        return self._post(f"/api/v1/workspaces/{workspace_id}/fork", json=body)
+
+    # --- Views (curated subsets) ---
+
+    def list_views(self, workspace_id: str) -> list:
+        return self._list(f"/api/v1/workspaces/{workspace_id}/views", "views")
+
+    def create_view(
+        self,
+        workspace_id: str,
+        title: str,
+        description: str = "",
+        is_public: bool = False,
+        items: list | None = None,
+    ) -> dict:
+        return self._post(
+            f"/api/v1/workspaces/{workspace_id}/views",
+            json={
+                "title": title,
+                "description": description,
+                "is_public": is_public,
+                "items": items or [],
+            },
+        )
+
+    def update_view(self, view_id: str, **fields) -> dict:
+        return self._patch(f"/api/v1/views/{view_id}", json=fields)
+
+    def delete_view(self, view_id: str) -> None:
+        self._delete(f"/api/v1/views/{view_id}")
+
+    def get_public_view(self, slug: str) -> dict:
+        return self._get(f"/api/v1/views/{slug}")
+
+    def fork_view(self, slug: str, name: str = "") -> dict:
+        body: dict = {}
+        if name:
+            body["name"] = name
+        return self._post(f"/api/v1/views/{slug}/fork", json=body)
+
     # --- Magic-link invite tokens ---
 
     def create_invite_token(self, workspace_id: str, max_uses: int = 1, ttl_days: int = 7) -> dict:
@@ -212,8 +280,15 @@ class StashClient:
         name: str,
         content: str = "",
         folder_id: str | None = None,
+        content_type: str = "markdown",
+        content_html: str = "",
     ) -> dict:
-        body: dict = {"name": name, "content": content}
+        body: dict = {
+            "name": name,
+            "content": content,
+            "content_type": content_type,
+            "content_html": content_html,
+        }
         if folder_id:
             body["folder_id"] = folder_id
         return self._post(

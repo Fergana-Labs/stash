@@ -145,6 +145,8 @@ async def create_ws_page(
             current_user["id"],
             folder_id=req.folder_id,
             content=req.content,
+            content_type=req.content_type,
+            content_html=req.content_html,
         )
     except DuplicatePageName as e:
         raise HTTPException(status_code=409, detail=str(e))
@@ -206,6 +208,8 @@ async def update_ws_page(
             name=req.name,
             folder_id=req.folder_id,
             content=req.content,
+            content_type=req.content_type,
+            content_html=req.content_html,
             move_to_root=req.move_to_root,
         )
     except DuplicatePageName as e:

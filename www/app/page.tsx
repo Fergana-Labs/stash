@@ -82,6 +82,12 @@ function Nav() {
             Features
           </ScrollLink>
           <Link
+            href="/discover"
+            className="rounded-md px-3 py-2 transition hover:bg-raised hover:text-ink"
+          >
+            Discover
+          </Link>
+          <Link
             href="/docs"
             className="rounded-md px-3 py-2 transition hover:bg-raised hover:text-ink"
           >

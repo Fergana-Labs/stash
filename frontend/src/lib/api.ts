@@ -231,6 +231,16 @@ export async function deleteWorkspace(workspaceId: string): Promise<void> {
   await apiFetch(`/api/v1/workspaces/${workspaceId}`, { method: "DELETE" });
 }
 
+export async function forkWorkspace(
+  workspaceId: string,
+  name?: string
+): Promise<Workspace> {
+  return apiFetch(`/api/v1/workspaces/${workspaceId}/fork`, {
+    method: "POST",
+    body: JSON.stringify(name ? { name } : {}),
+  });
+}
+
 export async function kickWorkspaceMember(workspaceId: string, userId: string): Promise<void> {
   await apiFetch(`/api/v1/workspaces/${workspaceId}/kick/${userId}`, { method: "POST" });
 }
@@ -259,6 +269,52 @@ export async function denyJoinRequest(workspaceId: string, requestId: string): P
 
 export async function getMyJoinRequest(workspaceId: string): Promise<JoinRequest> {
   return apiFetch(`/api/v1/workspaces/${workspaceId}/join-requests/mine`);
+}
+
+// --- Discover (public catalog, no auth required) ---
+
+export interface CatalogCard {
+  id: string;
+  name: string;
+  summary: string | null;
+  description: string;
+  is_public: boolean;
+  tags: string[];
+  category: string | null;
+  featured: boolean;
+  cover_image_url: string | null;
+  creator_id: string;
+  creator_name: string;
+  creator_display_name: string | null;
+  member_count: number;
+  fork_count: number;
+  notebook_count: number;
+  table_count: number;
+  file_count: number;
+  history_event_count: number;
+  forked_from_workspace_id: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PublicWorkspaceDetail {
+  workspace: CatalogCard;
+  notebooks: { id: string; name: string; description: string; page_count: number; updated_at: string }[];
+  tables: { id: string; name: string; row_count: number; updated_at: string }[];
+  files: { id: string; name: string; size_bytes: number; created_at: string }[];
+}
+
+export async function fetchPublicWorkspace(
+  workspaceId: string,
+  origin?: string
+): Promise<PublicWorkspaceDetail | null> {
+  const base = origin ?? "";
+  const res = await fetch(`${base}/api/v1/discover/workspaces/${workspaceId}`, {
+    next: { revalidate: 60 },
+  });
+  if (res.status === 404) return null;
+  if (!res.ok) throw new ApiError(res.status, `discover fetch failed: ${res.status}`);
+  return res.json();
 }
 
 // --- Notebooks ---
@@ -300,11 +356,18 @@ export async function createPage(
   notebookId: string,
   name: string,
   folderId?: string,
-  content?: string
+  content?: string,
+  options?: { content_type?: "markdown" | "html"; content_html?: string }
 ): Promise<NotebookPage> {
   return apiFetch(`${scope(workspaceId)}/notebooks/${notebookId}/pages`, {
     method: "POST",
-    body: JSON.stringify({ name, folder_id: folderId || null, content: content || "" }),
+    body: JSON.stringify({
+      name,
+      folder_id: folderId || null,
+      content: content || "",
+      content_type: options?.content_type ?? "markdown",
+      content_html: options?.content_html ?? "",
+    }),
   });
 }
 
@@ -320,7 +383,14 @@ export async function updatePage(
   workspaceId: string | null,
   notebookId: string,
   pageId: string,
-  data: { name?: string; folder_id?: string; content?: string; move_to_root?: boolean }
+  data: {
+    name?: string;
+    folder_id?: string;
+    content?: string;
+    content_type?: "markdown" | "html";
+    content_html?: string;
+    move_to_root?: boolean;
+  }
 ): Promise<NotebookPage> {
   return apiFetch(`${scope(workspaceId)}/notebooks/${notebookId}/pages/${pageId}`, {
     method: "PATCH",
