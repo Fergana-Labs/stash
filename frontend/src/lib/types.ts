@@ -48,12 +48,16 @@ export interface Notebook {
   updated_at: string;
 }
 
+export type PageContentType = "markdown" | "html";
+
 export interface NotebookPage {
   id: string;
   notebook_id: string;
   folder_id: string | null;
   name: string;
+  content_type: PageContentType;
   content_markdown: string;
+  content_html: string;
   created_by: string;
   updated_by: string | null;
   created_at: string;

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
+import HtmlPageView from "../../../components/workspace/HtmlPageView";
 import ViewForkButton from "./ViewForkButton";
 
 const BACKEND_ORIGIN =
@@ -130,7 +131,16 @@ function ItemBody({ item }: { item: ViewItemInlined }) {
   }
 
   if (item.object_type === "notebook") {
-    const inline = item.inline as { description?: string; pages?: { id: string; name: string; content_markdown: string }[] };
+    const inline = item.inline as {
+      description?: string;
+      pages?: {
+        id: string;
+        name: string;
+        content_type?: "markdown" | "html";
+        content_markdown: string;
+        content_html?: string;
+      }[];
+    };
     return (
       <div>
         {inline.description ? (
@@ -139,9 +149,15 @@ function ItemBody({ item }: { item: ViewItemInlined }) {
         {(inline.pages ?? []).map((p) => (
           <div key={p.id} className="mb-6 last:mb-0">
             <h3 className="font-display text-[16px] font-bold text-ink">{p.name}</h3>
-            <pre className="mt-2 whitespace-pre-wrap break-words rounded bg-background p-3 font-mono text-[12px] leading-[1.5] text-foreground">
-              {p.content_markdown || "(empty)"}
-            </pre>
+            {p.content_type === "html" ? (
+              <div className="mt-2">
+                <HtmlPageView html={p.content_html || ""} title={p.name} />
+              </div>
+            ) : (
+              <pre className="mt-2 whitespace-pre-wrap break-words rounded bg-background p-3 font-mono text-[12px] leading-[1.5] text-foreground">
+                {p.content_markdown || "(empty)"}
+              </pre>
+            )}
           </div>
         ))}
       </div>

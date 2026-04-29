@@ -30,6 +30,24 @@ def _content_hash(content: str) -> str:
     return hashlib.sha256(content.encode()).hexdigest()
 
 
+_HTML_TAG_RE = re.compile(r"<[^>]+>")
+
+
+def _strip_html(html: str) -> str:
+    """Strip tags so HTML pages can be embedded/searched as plain text."""
+    return _HTML_TAG_RE.sub(" ", html)
+
+
+def _active_content(content_type: str, content_markdown: str, content_html: str) -> str:
+    """Return the canonical text representation for hashing/embedding.
+
+    HTML pages are stripped to plain text so embeddings stay meaningful.
+    """
+    if content_type == "html":
+        return _strip_html(content_html)
+    return content_markdown
+
+
 # Dedup map for in-flight embed tasks: only one embed per page at a time.
 # Keyed by page_id; newer calls cancel the pending task.
 _embed_tasks: dict[UUID, asyncio.Task] = {}
@@ -170,21 +188,28 @@ async def create_page(
     folder_id: UUID | None = None,
     content: str = "",
     metadata: dict | None = None,
+    content_type: str = "markdown",
+    content_html: str = "",
 ) -> dict:
     pool = get_pool()
-    ch = _content_hash(content)
+    active = _active_content(content_type, content, content_html)
+    ch = _content_hash(active)
     meta = metadata or {}
     try:
         row = await pool.fetchrow(
             "INSERT INTO notebook_pages "
-            "(notebook_id, folder_id, name, content_markdown, content_hash, metadata, created_by, updated_by) "
-            "VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $7) "
-            "RETURNING id, notebook_id, folder_id, name, content_markdown, content_hash, metadata, "
-            "created_by, updated_by, created_at, updated_at",
+            "(notebook_id, folder_id, name, content_markdown, content_html, content_type, "
+            "content_hash, metadata, created_by, updated_by) "
+            "VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9, $9) "
+            "RETURNING id, notebook_id, folder_id, name, content_markdown, content_html, "
+            "content_type, content_hash, metadata, created_by, updated_by, "
+            "created_at, updated_at",
             notebook_id,
             folder_id,
             name,
             content,
+            content_html,
+            content_type,
             ch,
             meta,
             created_by,
@@ -192,9 +217,11 @@ async def create_page(
     except asyncpg.UniqueViolationError as e:
         raise DuplicatePageName(notebook_id, folder_id, name) from e
     page = dict(row)
-    # Fire-and-forget: embed page + extract wiki links
-    if content:
-        _schedule_embed(page["id"], content)
+    # Fire-and-forget: embed page + extract wiki links. Wiki links are a
+    # markdown-only concept ([[page]] syntax), so HTML pages skip extraction.
+    if active:
+        _schedule_embed(page["id"], active)
+    if content_type == "markdown" and content:
         asyncio.create_task(_update_page_links(page["id"], notebook_id, content))
     # Re-resolve dangling links from other pages that might reference this new page
     asyncio.create_task(_resolve_dangling_links(notebook_id, name, page["id"]))
@@ -204,7 +231,8 @@ async def create_page(
 async def get_page(page_id: UUID, notebook_id: UUID) -> dict | None:
     pool = get_pool()
     row = await pool.fetchrow(
-        "SELECT id, notebook_id, folder_id, name, content_markdown, content_hash, metadata, "
+        "SELECT id, notebook_id, folder_id, name, content_markdown, content_html, "
+        "content_type, content_hash, metadata, "
         "created_by, updated_by, created_at, updated_at "
         "FROM notebook_pages WHERE id = $1 AND notebook_id = $2",
         page_id,
@@ -244,6 +272,8 @@ async def update_page(
     name: str | None = None,
     folder_id: UUID | None = None,
     content: str | None = None,
+    content_type: str | None = None,
+    content_html: str | None = None,
     move_to_root: bool = False,
     metadata: dict | None = None,
     on_conflict: Callable[[dict], Awaitable[str]] | None = None,
@@ -261,18 +291,22 @@ async def update_page(
     Bounded to MAX_UPDATE_RETRIES attempts.
     """
     pool = get_pool()
+    content_changed = content is not None or content_type is not None or content_html is not None
 
     for attempt in range(MAX_UPDATE_RETRIES):
         expected_hash: str | None = None
-        if content is not None:
+        current_type: str | None = None
+        if content_changed:
             current = await pool.fetchrow(
-                "SELECT content_hash FROM notebook_pages WHERE id = $1 AND notebook_id = $2",
+                "SELECT content_hash, content_type, content_markdown, content_html "
+                "FROM notebook_pages WHERE id = $1 AND notebook_id = $2",
                 page_id,
                 notebook_id,
             )
             if current is None:
                 return None
             expected_hash = current["content_hash"]
+            current_type = current["content_type"]
 
         sets = ["updated_at = now()", "updated_by = $1"]
         args: list = [updated_by]
@@ -292,8 +326,22 @@ async def update_page(
             sets.append(f"content_markdown = ${idx}")
             args.append(content)
             idx += 1
+        if content_html is not None:
+            sets.append(f"content_html = ${idx}")
+            args.append(content_html)
+            idx += 1
+        if content_type is not None:
+            sets.append(f"content_type = ${idx}")
+            args.append(content_type)
+            idx += 1
+        if content_changed:
+            # Hash over the active content for the post-update state.
+            new_type = content_type or current_type or "markdown"
+            new_md = content if content is not None else (current["content_markdown"] if current else "")
+            new_html = content_html if content_html is not None else (current["content_html"] if current else "")
+            new_active = _active_content(new_type, new_md, new_html)
             sets.append(f"content_hash = ${idx}")
-            args.append(_content_hash(content))
+            args.append(_content_hash(new_active))
             idx += 1
         if metadata is not None:
             sets.append(f"metadata = ${idx}::jsonb")
@@ -310,7 +358,8 @@ async def update_page(
         try:
             row = await pool.fetchrow(
                 f"UPDATE notebook_pages SET {', '.join(sets)} WHERE {where} "
-                "RETURNING id, notebook_id, folder_id, name, content_markdown, content_hash, metadata, "
+                "RETURNING id, notebook_id, folder_id, name, content_markdown, content_html, "
+                "content_type, content_hash, metadata, "
                 "created_by, updated_by, created_at, updated_at",
                 *args,
             )
@@ -320,19 +369,23 @@ async def update_page(
             raise DuplicatePageName(notebook_id, folder_id, name or "") from e
         if row:
             page = dict(row)
-            if content is not None:
-                # Skip the embed if content hash didn't change — saves an OpenAI call
-                # on pure rename/folder-move/metadata updates that still pass content.
-                if page["content_hash"] != expected_hash:
-                    _schedule_embed(page["id"], content)
-                asyncio.create_task(_update_page_links(page["id"], notebook_id, content))
+            if content_changed and page["content_hash"] != expected_hash:
+                active = _active_content(
+                    page["content_type"], page["content_markdown"], page["content_html"]
+                )
+                _schedule_embed(page["id"], active)
+                if page["content_type"] == "markdown":
+                    asyncio.create_task(
+                        _update_page_links(page["id"], notebook_id, page["content_markdown"])
+                    )
             return page
 
         if expected_hash is None:
             return None
 
         fresh = await pool.fetchrow(
-            "SELECT id, notebook_id, folder_id, name, content_markdown, content_hash, metadata, "
+            "SELECT id, notebook_id, folder_id, name, content_markdown, content_html, "
+            "content_type, content_hash, metadata, "
             "created_by, updated_by, created_at, updated_at "
             "FROM notebook_pages WHERE id = $1 AND notebook_id = $2",
             page_id,
@@ -355,7 +408,8 @@ async def update_page(
 
     logger.warning("update_page exhausted retries for page %s", page_id)
     fresh = await pool.fetchrow(
-        "SELECT id, notebook_id, folder_id, name, content_markdown, content_hash "
+        "SELECT id, notebook_id, folder_id, name, content_markdown, content_html, "
+        "content_type, content_hash "
         "FROM notebook_pages WHERE id = $1 AND notebook_id = $2",
         page_id,
         notebook_id,

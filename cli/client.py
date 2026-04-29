@@ -280,8 +280,15 @@ class StashClient:
         name: str,
         content: str = "",
         folder_id: str | None = None,
+        content_type: str = "markdown",
+        content_html: str = "",
     ) -> dict:
-        body: dict = {"name": name, "content": content}
+        body: dict = {
+            "name": name,
+            "content": content,
+            "content_type": content_type,
+            "content_html": content_html,
+        }
         if folder_id:
             body["folder_id"] = folder_id
         return self._post(

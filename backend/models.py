@@ -336,12 +336,16 @@ class PageCreateRequest(BaseModel):
     name: str = Field(..., min_length=1, max_length=255)
     folder_id: UUID | None = None
     content: str = ""
+    content_type: str = Field("markdown", pattern=r"^(markdown|html)$")
+    content_html: str = ""
 
 
 class PageUpdateRequest(BaseModel):
     name: str | None = Field(None, min_length=1, max_length=255)
     folder_id: UUID | None = None
     content: str | None = None
+    content_type: str | None = Field(None, pattern=r"^(markdown|html)$")
+    content_html: str | None = None
     move_to_root: bool = False
 
 
@@ -351,6 +355,8 @@ class PageResponse(BaseModel):
     folder_id: UUID | None
     name: str
     content_markdown: str
+    content_type: str = "markdown"
+    content_html: str = ""
     content_hash: str | None = None
     metadata: dict = {}
     created_by: UUID

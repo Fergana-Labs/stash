@@ -356,11 +356,18 @@ export async function createPage(
   notebookId: string,
   name: string,
   folderId?: string,
-  content?: string
+  content?: string,
+  options?: { content_type?: "markdown" | "html"; content_html?: string }
 ): Promise<NotebookPage> {
   return apiFetch(`${scope(workspaceId)}/notebooks/${notebookId}/pages`, {
     method: "POST",
-    body: JSON.stringify({ name, folder_id: folderId || null, content: content || "" }),
+    body: JSON.stringify({
+      name,
+      folder_id: folderId || null,
+      content: content || "",
+      content_type: options?.content_type ?? "markdown",
+      content_html: options?.content_html ?? "",
+    }),
   });
 }
 
@@ -376,7 +383,14 @@ export async function updatePage(
   workspaceId: string | null,
   notebookId: string,
   pageId: string,
-  data: { name?: string; folder_id?: string; content?: string; move_to_root?: boolean }
+  data: {
+    name?: string;
+    folder_id?: string;
+    content?: string;
+    content_type?: "markdown" | "html";
+    content_html?: string;
+    move_to_root?: boolean;
+  }
 ): Promise<NotebookPage> {
   return apiFetch(`${scope(workspaceId)}/notebooks/${notebookId}/pages/${pageId}`, {
     method: "PATCH",

@@ -1121,12 +1121,33 @@ def nb_add_page(
     name: str = typer.Argument(...),
     workspace_id: str = typer.Option(None, "--ws"),
     content: str = typer.Option(""),
+    page_type: str = typer.Option(
+        "markdown", "--type", help="Page type: markdown (default) or html.", case_sensitive=False
+    ),
+    html_file: str = typer.Option(
+        None, "--html-file", help="Local HTML file to load as content for an html page."
+    ),
     attach: list[str] = typer.Option(
         None, "--attach", help="Local file path to upload and embed (repeatable)."
     ),
     as_json: bool = typer.Option(False, "--json"),
 ):
-    """Add a page to a notebook."""
+    """Add a page to a notebook. Use --type html and --html-file for AI-generated slides."""
+    page_type = page_type.lower()
+    if page_type not in ("markdown", "html"):
+        console.print(f"[red]--type must be 'markdown' or 'html', got: {page_type}[/red]")
+        raise typer.Exit(1)
+    if page_type == "html" and html_file:
+        if not Path(html_file).is_file():
+            console.print(f"[red]Not a file: {html_file}[/red]")
+            raise typer.Exit(1)
+        html_body = Path(html_file).read_text()
+    elif page_type == "html":
+        html_body = content  # caller can pass --content with raw HTML
+        content = ""
+    else:
+        html_body = ""
+
     with _client() as c:
         try:
             ws = workspace_id or _resolve_workspace()
@@ -1134,14 +1155,29 @@ def nb_add_page(
                 if not Path(p).is_file():
                     console.print(f"[red]Not a file: {p}[/red]")
                     raise typer.Exit(1)
-            body = _prepend_attachments(c, ws, content, attach)
-            data = c.create_page(ws, notebook_id, name, content=body)
+            if page_type == "markdown":
+                body = _prepend_attachments(c, ws, content, attach)
+            else:
+                body = ""
+                if attach:
+                    console.print("[yellow]--attach is ignored for html pages[/yellow]")
+            data = c.create_page(
+                ws,
+                notebook_id,
+                name,
+                content=body,
+                content_type=page_type,
+                content_html=html_body,
+            )
         except StashError as e:
             _err(e)
     if _use_json(as_json):
         output_json(data)
     else:
-        console.print(f"[green]Page '{data['name']}' created.[/green]  ID: {data['id']}")
+        console.print(
+            f"[green]Page '{data['name']}' created.[/green]  ID: {data['id']}  "
+            f"Type: {data.get('content_type', 'markdown')}"
+        )
 
 
 @nb_app.command("read-page")
@@ -1162,7 +1198,10 @@ def nb_read_page(
         output_json(data)
     else:
         console.print(f"[bold]{data['name']}[/bold]\n")
-        console.print(data.get("content_markdown", ""))
+        if data.get("content_type") == "html":
+            console.print(data.get("content_html", ""))
+        else:
+            console.print(data.get("content_markdown", ""))
 
 
 @nb_app.command("edit-page")
@@ -1172,14 +1211,43 @@ def nb_edit_page(
     content: str = typer.Option(None, "--content"),
     name: str = typer.Option(None, "--name"),
     workspace_id: str = typer.Option(None, "--ws"),
+    page_type: str = typer.Option(
+        None, "--type", help="Switch the page to this type: markdown or html.", case_sensitive=False
+    ),
+    html_file: str = typer.Option(
+        None, "--html-file", help="Local HTML file to load as content_html."
+    ),
     attach: list[str] = typer.Option(
         None, "--attach", help="Local file path to upload and prepend (repeatable)."
     ),
     as_json: bool = typer.Option(False, "--json"),
 ):
-    """Update a page. Reads from stdin if --content not given."""
+    """Update a page. Reads from stdin if --content not given.
+
+    For html pages: pass --html-file to replace content_html, or pipe HTML on
+    stdin and pass --type html.
+    """
+    html_body: str | None = None
+    if html_file:
+        if not Path(html_file).is_file():
+            console.print(f"[red]Not a file: {html_file}[/red]")
+            raise typer.Exit(1)
+        html_body = Path(html_file).read_text()
     if content is None and not sys.stdin.isatty():
         content = sys.stdin.read()
+    if page_type:
+        page_type = page_type.lower()
+        if page_type not in ("markdown", "html"):
+            console.print(f"[red]--type must be 'markdown' or 'html', got: {page_type}[/red]")
+            raise typer.Exit(1)
+    # If --html-file is set without --type, infer html.
+    if html_body is not None and page_type is None:
+        page_type = "html"
+    # If --type html and only --content (no --html-file), treat content as HTML.
+    if page_type == "html" and html_body is None and content is not None:
+        html_body = content
+        content = None
+
     with _client() as c:
         try:
             ws = workspace_id or _resolve_workspace()
@@ -1187,18 +1255,24 @@ def nb_edit_page(
                 if not Path(p).is_file():
                     console.print(f"[red]Not a file: {p}[/red]")
                     raise typer.Exit(1)
-            if attach:
+            if attach and page_type != "html":
                 base = (
                     content
                     if content is not None
                     else c.get_page(ws, notebook_id, page_id).get("content_markdown", "")
                 )
                 content = _prepend_attachments(c, ws, base, attach)
+            elif attach:
+                console.print("[yellow]--attach is ignored for html pages[/yellow]")
             kwargs = {}
             if content is not None:
                 kwargs["content"] = content
             if name is not None:
                 kwargs["name"] = name
+            if page_type is not None:
+                kwargs["content_type"] = page_type
+            if html_body is not None:
+                kwargs["content_html"] = html_body
             data = c.update_page(ws, notebook_id, page_id, **kwargs)
         except StashError as e:
             _err(e)

@@ -319,20 +319,23 @@ async def fork_workspace(
                     folder_id_map[f["id"]] = new_folder_id
 
                 pages = await conn.fetch(
-                    "SELECT id, folder_id, name, content_markdown, content_hash, metadata "
+                    "SELECT id, folder_id, name, content_markdown, content_html, "
+                    "content_type, content_hash, metadata "
                     "FROM notebook_pages WHERE notebook_id = $1",
                     nb["id"],
                 )
                 for p in pages:
                     new_page_id = await conn.fetchval(
                         "INSERT INTO notebook_pages "
-                        "(notebook_id, folder_id, name, content_markdown, content_hash, "
-                        "metadata, created_by) "
-                        "VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id",
+                        "(notebook_id, folder_id, name, content_markdown, content_html, "
+                        "content_type, content_hash, metadata, created_by) "
+                        "VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id",
                         new_nb_id,
                         folder_id_map.get(p["folder_id"]) if p["folder_id"] else None,
                         p["name"],
                         p["content_markdown"] or "",
+                        p["content_html"] or "",
+                        p["content_type"],
                         p["content_hash"],
                         p["metadata"] or {},
                         forker_id,
