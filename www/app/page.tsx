@@ -306,9 +306,9 @@ function Hero() {
           </ScrollLink>
 
           <h1 className="mt-7 text-balance font-display text-[clamp(44px,6.2vw,80px)] font-black leading-[0.95] tracking-[-0.045em] text-ink">
-            Your team&apos;s AI work,
+            Your team&apos;s self-improving
             <br />
-            <span className="text-brand">compounding.</span>
+            <span className="text-brand">memory.</span>
           </h1>
 
           <p className="mt-7 max-w-[520px] text-[18px] leading-[1.55] text-foreground">

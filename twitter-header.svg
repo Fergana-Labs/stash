@@ -34,8 +34,8 @@
 
   <!-- Right side: Typography like the landing page -->
   <text x="560" y="205" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="80" font-weight="800" fill="#0F172A" letter-spacing="-3">Your team's</text>
-  <text x="560" y="295" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="80" font-weight="800" fill="#0F172A" letter-spacing="-3">AI work,</text>
-  <text x="560" y="385" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="80" font-weight="800" fill="#F97316" letter-spacing="-3">compounding.</text>
+  <text x="560" y="295" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="80" font-weight="800" fill="#0F172A" letter-spacing="-3">self-improving</text>
+  <text x="560" y="385" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="80" font-weight="800" fill="#F97316" letter-spacing="-3">memory.</text>
 
   <!-- Subtle top border accent -->
   <rect x="0" y="0" width="1500" height="3" fill="#F97316" opacity="0.6"/>
