@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1500 500" width="1500" height="500">
+  <defs>
+    <radialGradient id="warm-glow" gradientUnits="userSpaceOnUse" cx="225" cy="100" r="600">
+      <stop offset="0%" stop-color="#F97316" stop-opacity="0.09"/>
+      <stop offset="60%" stop-color="#F97316" stop-opacity="0.03"/>
+      <stop offset="100%" stop-color="#F97316" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="warm-glow-2" gradientUnits="userSpaceOnUse" cx="1275" cy="400" r="500">
+      <stop offset="0%" stop-color="#F97316" stop-opacity="0.05"/>
+      <stop offset="100%" stop-color="#F97316" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <!-- Clean white background -->
+  <rect width="1500" height="500" fill="#FAFAFA"/>
+
+  <!-- Warm ambient glows like the landing page -->
+  <ellipse cx="200" cy="80" rx="700" ry="400" fill="url(#warm-glow)"/>
+  <ellipse cx="1300" cy="450" rx="500" ry="350" fill="url(#warm-glow-2)"/>
+
+  <!-- Left side: Octopus logo -->
+  <g transform="translate(145, 110) scale(4.2)">
+    <ellipse cx="32" cy="24" rx="22" ry="18" fill="#F97316"/>
+    <circle cx="25" cy="22" r="4" fill="#fff"/>
+    <circle cx="39" cy="22" r="4" fill="#fff"/>
+    <circle cx="26" cy="22" r="2" fill="#0F172A"/>
+    <circle cx="40" cy="22" r="2" fill="#0F172A"/>
+    <path d="M12 38 Q8 52 4 60" stroke="#F97316" stroke-width="4" stroke-linecap="round" fill="none"/>
+    <path d="M20 40 Q18 54 14 62" stroke="#F97316" stroke-width="4" stroke-linecap="round" fill="none"/>
+    <path d="M32 42 Q32 56 32 64" stroke="#F97316" stroke-width="4" stroke-linecap="round" fill="none"/>
+    <path d="M44 40 Q46 54 50 62" stroke="#F97316" stroke-width="4" stroke-linecap="round" fill="none"/>
+    <path d="M52 38 Q56 52 60 60" stroke="#F97316" stroke-width="4" stroke-linecap="round" fill="none"/>
+  </g>
+
+  <!-- Right side: Typography like the landing page -->
+  <text x="560" y="205" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="80" font-weight="800" fill="#0F172A" letter-spacing="-3">Your team's</text>
+  <text x="560" y="295" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="80" font-weight="800" fill="#0F172A" letter-spacing="-3">self-improving</text>
+  <text x="560" y="385" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="80" font-weight="800" fill="#F97316" letter-spacing="-3">memory.</text>
+
+  <!-- Subtle top border accent -->
+  <rect x="0" y="0" width="1500" height="3" fill="#F97316" opacity="0.6"/>
+</svg>
