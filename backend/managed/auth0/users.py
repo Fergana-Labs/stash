@@ -1,8 +1,7 @@
 """Provision / rotate users from Auth0 identities."""
 
-import re
-
 import logging
+import re
 
 from backend.auth import create_api_key
 from backend.database import get_pool
