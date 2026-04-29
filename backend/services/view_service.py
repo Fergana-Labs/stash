@@ -336,36 +336,23 @@ async def fork_view(slug: str, forker_id: UUID, name: str | None = None) -> dict
                         )
                         folder_id_map[f["id"]] = new_f
                     pages = await conn.fetch(
-<<<<<<< HEAD
                         "SELECT folder_id, name, content_markdown, content_html, "
                         "content_type, content_hash, metadata "
-=======
-                        "SELECT folder_id, name, content_markdown, content_hash, metadata "
->>>>>>> d95b6d5 (fix: cursor pagination crash for forks sort + position=0 bug)
                         "FROM notebook_pages WHERE notebook_id = $1",
                         src_id,
                     )
                     for p in pages:
                         await conn.execute(
                             "INSERT INTO notebook_pages "
-<<<<<<< HEAD
                             "(notebook_id, folder_id, name, content_markdown, content_html, "
                             "content_type, content_hash, metadata, created_by) "
                             "VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)",
-=======
-                            "(notebook_id, folder_id, name, content_markdown, "
-                            "content_hash, metadata, created_by) "
-                            "VALUES ($1, $2, $3, $4, $5, $6, $7)",
->>>>>>> d95b6d5 (fix: cursor pagination crash for forks sort + position=0 bug)
                             new_nb_id,
                             folder_id_map.get(p["folder_id"]) if p["folder_id"] else None,
                             p["name"],
                             p["content_markdown"] or "",
-<<<<<<< HEAD
                             p["content_html"] or "",
                             p["content_type"],
-=======
->>>>>>> d95b6d5 (fix: cursor pagination crash for forks sort + position=0 bug)
                             p["content_hash"],
                             p["metadata"] or {},
                             forker_id,
