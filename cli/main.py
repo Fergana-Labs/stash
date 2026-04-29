@@ -957,21 +957,29 @@ app.add_typer(hist_app, name="history")
 
 
 @hist_app.callback()
-def hist_default(ctx: typer.Context):
+def hist_default(
+    ctx: typer.Context,
+    workspace_id: str = typer.Option(None, "--ws"),
+    limit: int = typer.Option(20, "-n", "--limit"),
+    as_json: bool = typer.Option(False, "--json"),
+):
     """History — structured agent event logs."""
     if ctx.invoked_subcommand is not None:
         return
-    console.print(
-        "\n"
-        "  [bold]stash history[/bold] — browse your workspace's agent event log.\n"
-        "\n"
-        "  [#1e3a8a]stash history query --limit 20[/#1e3a8a]      recent events\n"
-        '  [#1e3a8a]stash history search "deploy"[/#1e3a8a]       full-text search\n'
-        "  [#1e3a8a]stash history agents[/#1e3a8a]                who's been active\n"
-        "  [#1e3a8a]stash history transcript <id>[/#1e3a8a]       fetch a full session transcript\n"
-        "\n"
-        "  Run [dim]stash history --help[/dim] for all commands.\n"
-    )
+    ws = workspace_id or _resolve_workspace()
+    with _client() as c:
+        try:
+            data = c.query_events(ws, limit=limit)
+        except StashError as e:
+            _err(e)
+    if _use_json(as_json):
+        output_json(data)
+    else:
+        for ev in data:
+            tool = f" ({ev['tool_name']})" if ev.get("tool_name") else ""
+            console.print(
+                f"  [{ev['created_at'][:19]}] {ev['agent_name']}/{ev['event_type']}{tool}: {ev['content'][:200]}"
+            )
 
 
 @hist_app.command("agents")
