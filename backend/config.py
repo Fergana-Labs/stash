@@ -57,5 +57,11 @@ class Settings:
     # --- Email (Postmark) ---
     POSTMARK_SERVER_TOKEN: str | None = os.getenv("POSTMARK_SERVER_TOKEN")
 
+    # --- Admin ---
+    # Shared secret for /api/v1/admin/* endpoints. The www admin page sends
+    # this in X-Admin-Token from server-side fetches; never exposed to the
+    # browser. Leave unset to disable admin endpoints entirely.
+    ADMIN_PASSWORD: str | None = os.getenv("ADMIN_PASSWORD")
+
 
 settings = Settings()

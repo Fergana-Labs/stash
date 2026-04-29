@@ -13,6 +13,7 @@ from .config import settings
 from .database import close_db, init_db
 from .middleware import limiter
 from .routers import (
+    admin,
     aggregate,
     discover,
     files,
@@ -93,6 +94,7 @@ app.include_router(files.ws_router)
 app.include_router(transcripts.router)
 app.include_router(aggregate.router)
 app.include_router(skill.router)
+app.include_router(admin.router)
 
 if settings.AUTH0_ENABLED:
     from backend.managed.auth0 import router as auth0_router
