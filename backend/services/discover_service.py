@@ -76,7 +76,12 @@ async def list_catalog(
     next_cursor = None
     if len(rows) > PAGE_SIZE:
         last = items[-1]
-        next_cursor = _encode_cursor(last["updated_at" if sort != "newest" else "created_at"])
+        if sort == "forks":
+            next_cursor = _encode_cursor(last["fork_count"])
+        elif sort == "newest":
+            next_cursor = _encode_cursor(last["created_at"])
+        else:
+            next_cursor = _encode_cursor(last["updated_at"])
     return items, next_cursor
 
 
@@ -123,11 +128,18 @@ async def get_public_detail(workspace_id: UUID) -> dict | None:
     }
 
 
-def _encode_cursor(value: datetime) -> str:
-    return base64.urlsafe_b64encode(value.isoformat().encode()).decode().rstrip("=")
+def _encode_cursor(value: datetime | int) -> str:
+    raw = value.isoformat() if isinstance(value, datetime) else str(value)
+    return base64.urlsafe_b64encode(raw.encode()).decode().rstrip("=")
 
 
-def _decode_cursor(token: str) -> datetime | None:
-    padded = token + "=" * (-len(token) % 4)
-    raw = base64.urlsafe_b64decode(padded.encode()).decode()
-    return datetime.fromisoformat(raw)
+def _decode_cursor(token: str) -> datetime | int | None:
+    try:
+        padded = token + "=" * (-len(token) % 4)
+        raw = base64.urlsafe_b64decode(padded.encode()).decode()
+        try:
+            return int(raw)
+        except ValueError:
+            return datetime.fromisoformat(raw)
+    except (ValueError, UnicodeDecodeError):
+        return None
