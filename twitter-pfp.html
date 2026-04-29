@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    width: 800px;
+    height: 800px;
+    background: #FFFFFF;
+    position: relative;
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .glow {
+    position: absolute;
+    width: 100%;
+    height: 100%;
+    background: radial-gradient(circle at 40% 35%, rgba(249,115,22,0.06) 0%, transparent 60%);
+  }
+  .logo {
+    position: relative;
+    margin-top: -40px;
+  }
+</style>
+</head>
+<body>
+  <div class="glow"></div>
+  <svg class="logo" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 72" width="520" height="585">
+    <ellipse cx="32" cy="24" rx="22" ry="18" fill="#F97316"/>
+    <circle cx="25" cy="22" r="4" fill="#fff"/>
+    <circle cx="39" cy="22" r="4" fill="#fff"/>
+    <circle cx="26" cy="22" r="2" fill="#0F172A"/>
+    <circle cx="40" cy="22" r="2" fill="#0F172A"/>
+    <path d="M12 38 Q8 52 4 60" stroke="#F97316" stroke-width="4" stroke-linecap="round" fill="none"/>
+    <path d="M20 40 Q18 54 14 62" stroke="#F97316" stroke-width="4" stroke-linecap="round" fill="none"/>
+    <path d="M32 42 Q32 56 32 64" stroke="#F97316" stroke-width="4" stroke-linecap="round" fill="none"/>
+    <path d="M44 40 Q46 54 50 62" stroke="#F97316" stroke-width="4" stroke-linecap="round" fill="none"/>
+    <path d="M52 38 Q56 52 60 60" stroke="#F97316" stroke-width="4" stroke-linecap="round" fill="none"/>
+  </svg>
+</body>
+</html>
