@@ -991,6 +991,7 @@ def hist_push(
     attach_id: list[str] = typer.Option(
         None, "--attach-id", help="Pre-uploaded file id to attach (repeatable)."
     ),
+    created_at: str = typer.Option(None, "--created-at", help="ISO-8601 timestamp (e.g. 2026-04-22T10:30:00Z)."),
     as_json: bool = typer.Option(False, "--json"),
 ):
     """Push an event to the workspace history."""
@@ -1016,6 +1017,7 @@ def hist_push(
                 session_id=session_id,
                 tool_name=tool_name,
                 attachments=attachments or None,
+                created_at=created_at,
             )
         except StashError as e:
             _err(e)
