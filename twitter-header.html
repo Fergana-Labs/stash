@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    width: 3000px;
+    height: 1000px;
+    background: #FAFAFA;
+    position: relative;
+    overflow: hidden;
+    font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+  }
+  .glow1 {
+    position: absolute;
+    width: 1400px;
+    height: 800px;
+    top: -200px;
+    left: -200px;
+    background: radial-gradient(ellipse at center, rgba(249,115,22,0.09), rgba(249,115,22,0.03) 60%, transparent 100%);
+  }
+  .glow2 {
+    position: absolute;
+    width: 1000px;
+    height: 700px;
+    bottom: -150px;
+    right: -100px;
+    background: radial-gradient(ellipse at center, rgba(249,115,22,0.05), transparent 100%);
+  }
+  .accent-bar {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 6px;
+    background: #F97316;
+    opacity: 0.6;
+  }
+  .center {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    display: flex;
+    align-items: center;
+    gap: 80px;
+  }
+  .logo-group {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 20px;
+  }
+  .wordmark {
+    font-size: 100px;
+    font-weight: 800;
+    color: #0F172A;
+    letter-spacing: -0.03em;
+  }
+  .divider {
+    width: 3px;
+    height: 340px;
+    background: #E2E8F0;
+    border-radius: 2px;
+  }
+  .tagline {
+    display: flex;
+    flex-direction: column;
+  }
+  .tagline .line {
+    font-size: 120px;
+    font-weight: 800;
+    color: #0F172A;
+    letter-spacing: -0.03em;
+    line-height: 1.08;
+  }
+  .tagline .line.orange {
+    color: #F97316;
+  }
+</style>
+</head>
+<body>
+  <div class="glow1"></div>
+  <div class="glow2"></div>
+  <div class="accent-bar"></div>
+
+  <div class="center">
+    <div class="logo-group">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 72" width="320" height="360">
+        <ellipse cx="32" cy="24" rx="22" ry="18" fill="#F97316"/>
+        <circle cx="25" cy="22" r="4" fill="#fff"/>
+        <circle cx="39" cy="22" r="4" fill="#fff"/>
+        <circle cx="26" cy="22" r="2" fill="#0F172A"/>
+        <circle cx="40" cy="22" r="2" fill="#0F172A"/>
+        <path d="M12 38 Q8 52 4 60" stroke="#F97316" stroke-width="4" stroke-linecap="round" fill="none"/>
+        <path d="M20 40 Q18 54 14 62" stroke="#F97316" stroke-width="4" stroke-linecap="round" fill="none"/>
+        <path d="M32 42 Q32 56 32 64" stroke="#F97316" stroke-width="4" stroke-linecap="round" fill="none"/>
+        <path d="M44 40 Q46 54 50 62" stroke="#F97316" stroke-width="4" stroke-linecap="round" fill="none"/>
+        <path d="M52 38 Q56 52 60 60" stroke="#F97316" stroke-width="4" stroke-linecap="round" fill="none"/>
+      </svg>
+      <div class="wordmark">stash</div>
+    </div>
+
+    <div class="divider"></div>
+
+    <div class="tagline">
+      <div class="line">Your team's</div>
+      <div class="line">AI work,</div>
+      <div class="line orange">compounding.</div>
+    </div>
+  </div>
+</body>
+</html>
