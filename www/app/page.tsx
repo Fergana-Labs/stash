@@ -94,6 +94,12 @@ function Nav() {
             Docs
           </Link>
           <Link
+            href="/blog"
+            className="rounded-md px-3 py-2 transition hover:bg-raised hover:text-ink"
+          >
+            Blog
+          </Link>
+          <Link
             href="/contact-sales"
             className="rounded-md px-3 py-2 transition hover:bg-raised hover:text-ink"
           >

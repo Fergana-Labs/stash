@@ -110,15 +110,14 @@ function project(points: Point3D[], rotY: number, rotX: number): Projected[] {
 }
 
 export default function EmbeddingProjection3D() {
-  const [projected, setProjected] = useState<Projected[]>(() =>
-    project(POINTS, 0.4, 0.3),
-  );
+  const [projected, setProjected] = useState<Projected[]>([]);
   const rotYRef = useRef(0.4);
   const rotXRef = useRef(0.3);
   const rafRef = useRef<number | null>(null);
   const lastRef = useRef<number | null>(null);
 
   useEffect(() => {
+    setProjected(project(POINTS, rotYRef.current, rotXRef.current));
     const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     if (reduce) return;
 
