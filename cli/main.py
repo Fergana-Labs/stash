@@ -952,8 +952,26 @@ def nb_edit_page(
 # History (was memory stores)
 # ===========================================================================
 
-hist_app = typer.Typer(help="History — structured agent event logs.")
+hist_app = typer.Typer(help="History — structured agent event logs.", invoke_without_command=True)
 app.add_typer(hist_app, name="history")
+
+
+@hist_app.callback()
+def hist_default(ctx: typer.Context):
+    """History — structured agent event logs."""
+    if ctx.invoked_subcommand is not None:
+        return
+    console.print(
+        "\n"
+        "  [bold]stash history[/bold] — browse your workspace's agent event log.\n"
+        "\n"
+        "  [#1e3a8a]stash history query --limit 20[/#1e3a8a]      recent events\n"
+        '  [#1e3a8a]stash history search "deploy"[/#1e3a8a]       full-text search\n'
+        "  [#1e3a8a]stash history agents[/#1e3a8a]                who's been active\n"
+        "  [#1e3a8a]stash history transcript <id>[/#1e3a8a]       fetch a full session transcript\n"
+        "\n"
+        "  Run [dim]stash history --help[/dim] for all commands.\n"
+    )
 
 
 @hist_app.command("agents")
