@@ -15,9 +15,7 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.execute(
-        "DROP INDEX IF EXISTS idx_transcripts_ws_session"
-    )
+    op.execute("DROP INDEX IF EXISTS idx_transcripts_ws_session")
     op.execute(
         "CREATE UNIQUE INDEX idx_transcripts_ws_session "
         "ON session_transcripts(workspace_id, session_id)"

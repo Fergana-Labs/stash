@@ -36,6 +36,7 @@ class ConversationInfo:
 # Subsequent lines have {type, timestamp, cwd, sessionId}.
 # ---------------------------------------------------------------------------
 
+
 def _discover_claude() -> list[ConversationInfo]:
     if not CLAUDE_PROJECTS_DIR.is_dir():
         return []
@@ -102,6 +103,7 @@ def _parse_claude_meta(path: Path) -> ConversationInfo | None:
 # Lines are {role: "user"/"assistant", message: {content: [...]}}
 # ---------------------------------------------------------------------------
 
+
 def _discover_cursor() -> list[ConversationInfo]:
     if not CURSOR_PROJECTS_DIR.is_dir():
         return []
@@ -161,6 +163,7 @@ def _parse_cursor_meta(path: Path, project_dir_name: str) -> ConversationInfo | 
 # Codex: ~/.codex/sessions/<year>/<month>/<day>/<name>.jsonl
 # First line is {type: "session_meta", payload: {id, cwd, timestamp, ...}}
 # ---------------------------------------------------------------------------
+
 
 def _discover_codex() -> list[ConversationInfo]:
     if not CODEX_SESSIONS_DIR.is_dir():

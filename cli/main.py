@@ -1183,7 +1183,9 @@ def hist_import(
     else:
         console.print(f"\n[green]Imported {imported} conversations.[/green]")
         if errors:
-            console.print(f"[yellow]{errors} failed (likely already imported or too large).[/yellow]")
+            console.print(
+                f"[yellow]{errors} failed (likely already imported or too large).[/yellow]"
+            )
 
 
 # ===========================================================================

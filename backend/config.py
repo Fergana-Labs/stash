@@ -54,8 +54,8 @@ class Settings:
     AUTH0_DOMAIN: str | None = os.getenv("AUTH0_DOMAIN")
     AUTH0_AUDIENCE: str | None = os.getenv("AUTH0_AUDIENCE")
 
-    # --- Email (Resend) ---
-    RESEND_API_KEY: str | None = os.getenv("RESEND_API_KEY")
+    # --- Email (Postmark) ---
+    POSTMARK_SERVER_TOKEN: str | None = os.getenv("POSTMARK_SERVER_TOKEN")
 
 
 settings = Settings()
