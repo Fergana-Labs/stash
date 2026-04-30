@@ -16,7 +16,6 @@ export type CohortResponse = {
   bucket: "month" | "week" | "rolling_7d";
   mode: "standard" | "future";
   max_period: number;
-  user_type: string;
   cohorts: Cohort[];
   totals: { users: number; events: number };
   generated_at: string;

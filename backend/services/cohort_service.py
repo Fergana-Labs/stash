@@ -56,7 +56,6 @@ def compute_engagement_cohorts(
     bucket: Bucket = "month",
     mode: Mode = "standard",
     max_period: int | None = None,
-    user_type: str = "human",
 ) -> dict:
     """Compute cohort retention from raw (user_id, signup_at, event_at) rows.
 
@@ -150,7 +149,6 @@ def compute_engagement_cohorts(
         "bucket": bucket,
         "mode": mode,
         "max_period": max_period,
-        "user_type": user_type,
         "cohorts": cohorts_out,
         "totals": {"users": total_users, "events": total_events},
         "generated_at": datetime.now(UTC).isoformat(),
@@ -161,22 +159,19 @@ async def get_engagement_cohorts(
     bucket: Bucket = "month",
     mode: Mode = "standard",
     max_period: int | None = None,
-    user_type: str = "human",
 ) -> dict:
     pool = get_pool()
     sql = """
-        SELECT u.id, u.created_at AS signup_at, u.type,
+        SELECT u.id, u.created_at AS signup_at,
                he.created_at AS event_at
         FROM users u
         LEFT JOIN history_events he ON he.created_by = u.id
-        WHERE u.type = $1
         ORDER BY u.id, he.created_at NULLS FIRST
     """
-    rows = await pool.fetch(sql, user_type)
+    rows = await pool.fetch(sql)
     return compute_engagement_cohorts(
         [dict(r) for r in rows],
         bucket=bucket,
         mode=mode,
         max_period=max_period,
-        user_type=user_type,
     )
