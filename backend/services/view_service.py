@@ -181,7 +181,7 @@ async def inline_items(view: dict) -> list[dict]:
                 pages = await pool.fetch(
                     "SELECT id, name, content_markdown, content_html, content_type, "
                     "updated_at FROM notebook_pages "
-                    "WHERE notebook_id = $1 ORDER BY name",
+                    "WHERE notebook_id = $1 ORDER BY created_at, name",
                     obj_id,
                 )
                 inline = {
