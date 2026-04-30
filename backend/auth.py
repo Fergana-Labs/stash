@@ -77,14 +77,7 @@ def verify_password(password: str, password_hash: str) -> bool:
 # ---------------------------------------------------------------------------
 
 
-async def get_current_user(
-    credentials: HTTPAuthorizationCredentials = Depends(security),
-) -> dict:
-    token: str = credentials.credentials
-
-    if not token.startswith("mc_"):
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid API key")
-
+async def _get_user_from_api_key(token: str) -> dict:
     key_hash = hash_api_key(token)
     pool = get_pool()
     row = await pool.fetchrow(
@@ -107,6 +100,46 @@ async def get_current_user(
             "UPDATE user_api_keys SET last_used_at = now() WHERE id = $1", user["key_id"]
         )
     return user
+
+
+async def _get_user_from_jwt(token: str) -> dict:
+    from .config import settings
+    from .managed.auth0.jwt import validate_auth0_token
+
+    claims = await validate_auth0_token(token)
+    pool = get_pool()
+    row = await pool.fetchrow(
+        "SELECT id, name, display_name, description, created_at, last_seen "
+        "FROM users WHERE auth0_sub = $1",
+        claims["sub"],
+    )
+    if not row:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Unknown user")
+
+    user = dict(row)
+    user["key_id"] = None
+    uid = str(user["id"])
+    now = time.monotonic()
+    if now - _last_seen_written.get(uid) > _LAST_SEEN_DEBOUNCE_SECONDS:
+        _last_seen_written.set(uid, now)
+        await pool.execute("UPDATE users SET last_seen = now() WHERE id = $1", user["id"])
+    return user
+
+
+async def get_current_user(
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+) -> dict:
+    token: str = credentials.credentials
+
+    if token.startswith("mc_"):
+        return await _get_user_from_api_key(token)
+
+    from .config import settings
+
+    if settings.AUTH0_ENABLED:
+        return await _get_user_from_jwt(token)
+
+    raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid API key")
 
 
 async def get_current_user_optional(
