@@ -822,15 +822,48 @@ def _find_session_jsonl(session_id: str) -> Path | None:
 
 
 def _current_session_id() -> str | None:
-    """Read the active session ID from the Stash plugin state file."""
+    """Read the active session ID from the Stash plugin state file,
+    falling back to the most recently modified JSONL in the current
+    project's Claude directory."""
     state_file = Path.home() / ".claude" / "plugins" / "data" / "stash" / "state.json"
-    if not state_file.exists():
+    if state_file.exists():
+        try:
+            data = json.loads(state_file.read_text())
+            sid = data.get("session_id") or ""
+            if sid and _find_session_jsonl(sid):
+                return sid
+        except Exception:
+            pass
+
+    # Fallback: find the most recently modified JSONL for the current working directory
+    cwd = str(Path.cwd())
+    projects = Path.home() / ".claude" / "projects"
+    if not projects.is_dir():
         return None
-    try:
-        data = json.loads(state_file.read_text())
-        return data.get("session_id") or None
-    except Exception:
-        return None
+    for project_dir in sorted(projects.iterdir(), key=lambda p: p.name, reverse=True):
+        if not project_dir.is_dir():
+            continue
+        # Claude Code encodes the cwd path as the project dir name
+        decoded = project_dir.name.replace("-", "/", 1).replace("-", "/")
+        if not decoded.startswith("/"):
+            decoded = "/" + decoded
+        # Check if this project dir could match our cwd
+        jsonls = sorted(project_dir.glob("*.jsonl"), key=lambda p: p.stat().st_mtime, reverse=True)
+        for jsonl in jsonls:
+            with open(jsonl) as f:
+                for i, raw in enumerate(f):
+                    if i > 5:
+                        break
+                    try:
+                        line = json.loads(raw)
+                    except (json.JSONDecodeError, ValueError):
+                        continue
+                    file_cwd = line.get("cwd", "")
+                    if file_cwd and cwd.startswith(file_cwd):
+                        sid = line.get("sessionId", "") or jsonl.stem
+                        if sid:
+                            return sid
+    return None
 
 
 def _extract_artifact(raw_jsonl: str) -> tuple[str, str, str]:
