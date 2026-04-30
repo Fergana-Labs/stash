@@ -1,5 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import Markdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 
 import HtmlPageView from "../../../components/workspace/HtmlPageView";
 import ViewForkButton from "./ViewForkButton";
@@ -154,9 +156,11 @@ function ItemBody({ item }: { item: ViewItemInlined }) {
                 <HtmlPageView html={p.content_html || ""} title={p.name} />
               </div>
             ) : (
-              <pre className="mt-2 whitespace-pre-wrap break-words rounded bg-background p-3 font-mono text-[12px] leading-[1.5] text-foreground">
-                {p.content_markdown || "(empty)"}
-              </pre>
+              <div className="mt-2 markdown-content">
+                <Markdown remarkPlugins={[remarkGfm]}>
+                  {p.content_markdown || "(empty)"}
+                </Markdown>
+              </div>
             )}
           </div>
         ))}
