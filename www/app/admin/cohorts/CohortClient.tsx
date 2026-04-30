@@ -91,22 +91,9 @@ function calendarLabel(
     const dt = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + periodOffset, 1));
     return `${dt.getUTCFullYear()}-${String(dt.getUTCMonth() + 1).padStart(2, "0")}`;
   }
-  // week & rolling_7d: add periodOffset * 7 days
+  // week & rolling_7d both step by 7 days; week aligns to Monday already.
   const dt = new Date(d.getTime() + periodOffset * 7 * 24 * 60 * 60 * 1000);
-  if (bucket === "week") {
-    const iso = isoWeek(dt);
-    return `${iso.year}-W${String(iso.week).padStart(2, "0")}`;
-  }
   return `${dt.getUTCFullYear()}-${String(dt.getUTCMonth() + 1).padStart(2, "0")}-${String(dt.getUTCDate()).padStart(2, "0")}`;
-}
-
-function isoWeek(d: Date): { year: number; week: number } {
-  const t = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
-  const day = t.getUTCDay() || 7;
-  t.setUTCDate(t.getUTCDate() + 4 - day);
-  const yearStart = new Date(Date.UTC(t.getUTCFullYear(), 0, 1));
-  const week = Math.ceil(((t.getTime() - yearStart.getTime()) / 86400000 + 1) / 7);
-  return { year: t.getUTCFullYear(), week };
 }
 
 type OffsetRow = { label: string; [cohort: string]: number | string | null };
@@ -206,6 +193,16 @@ export default function CohortClient({
     () => buildCalendarData(cohorts, "active_users", bucket),
     [cohorts, bucket],
   );
+
+  // Date labels (YYYY-MM-DD) collide if rendered horizontally — rotate them.
+  // Month labels are short enough to lay flat.
+  const isDateAxis = bucket !== "month";
+  const calRotate = isDateAxis ? -90 : 0;
+  const calXHeight = isDateAxis ? 80 : 30;
+  const calHeight = isDateAxis ? 360 : 300;
+  const calMargin = isDateAxis
+    ? { top: 10, right: 20, bottom: 10, left: 0 }
+    : { top: 10, right: 20, bottom: 0, left: 0 };
 
   return (
     <main className="min-h-screen bg-gray-50 text-gray-800">
@@ -320,10 +317,17 @@ export default function CohortClient({
             </ChartShell>
           </div>
 
-          <ChartCard title="Total Actions by Cohort">
-            <AreaChart data={actionsData}>
+          <ChartCard title="Total Actions by Cohort" height={calHeight}>
+            <AreaChart data={actionsData} margin={calMargin}>
               <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="label" tick={{ fontSize: 9 }} interval={0} />
+              <XAxis
+                dataKey="label"
+                tick={{ fontSize: 10 }}
+                interval={0}
+                angle={calRotate}
+                textAnchor={calRotate ? "end" : "middle"}
+                height={calXHeight}
+              />
               <YAxis tick={{ fontSize: 11 }} />
               <Tooltip
                 content={
@@ -353,10 +357,17 @@ export default function CohortClient({
             </AreaChart>
           </ChartCard>
 
-          <ChartCard title="Active Users by Cohort">
-            <AreaChart data={activeData}>
+          <ChartCard title="Active Users by Cohort" height={calHeight}>
+            <AreaChart data={activeData} margin={calMargin}>
               <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="label" tick={{ fontSize: 9 }} interval={0} />
+              <XAxis
+                dataKey="label"
+                tick={{ fontSize: 10 }}
+                interval={0}
+                angle={calRotate}
+                textAnchor={calRotate ? "end" : "middle"}
+                height={calXHeight}
+              />
               <YAxis tick={{ fontSize: 11 }} />
               <Tooltip
                 content={

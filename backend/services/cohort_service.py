@@ -35,9 +35,8 @@ def _bucket_start(ts: datetime, bucket: Bucket) -> datetime:
 def _bucket_label(start: datetime, bucket: Bucket) -> str:
     if bucket == "month":
         return start.strftime("%Y-%m")
-    if bucket == "week":
-        iso = start.isocalendar()
-        return f"{iso.year}-W{iso.week:02d}"
+    # week: render the Monday date so users can read the actual week
+    # without translating ISO week numbers in their head.
     return start.strftime("%Y-%m-%d")
 
 
@@ -71,22 +70,22 @@ def compute_engagement_cohorts(
     if max_period is None:
         max_period = _DEFAULT_MAX_PERIOD[bucket]
 
+    # Cohorts are defined by first activity in the filtered event set.
+    # Users with zero events in the filter are NOT in any cohort — including
+    # them would leave them in the denominator with all-zero rows and pull
+    # period-0 retention below 100%.
     user_cohort: dict[str, datetime] = {}
     user_active_periods: dict[str, set[int]] = defaultdict(set)
     user_event_counts_by_period: dict[str, dict[int, int]] = defaultdict(lambda: defaultdict(int))
 
     by_user: dict[str, list[dict]] = defaultdict(list)
-    signup_at: dict[str, datetime] = {}
     for r in rows:
-        uid = str(r["id"])
-        signup_at[uid] = r["signup_at"]
-        if r["event_at"] is not None:
-            by_user[uid].append(r)
+        if r["event_at"] is None:
+            continue
+        by_user[str(r["id"])].append(r)
 
-    for uid, signup in signup_at.items():
-        events = by_user.get(uid, [])
-        anchor = events[0]["event_at"] if events else signup
-        user_cohort[uid] = _bucket_start(anchor, bucket)
+    for uid, events in by_user.items():
+        user_cohort[uid] = _bucket_start(events[0]["event_at"], bucket)
 
     for uid, events in by_user.items():
         cohort_start = user_cohort[uid]
