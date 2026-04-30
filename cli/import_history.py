@@ -229,14 +229,22 @@ _AGENT_DISCOVERERS = {
 }
 
 
-def discover_conversations(agents: list[str] | None = None) -> list[ConversationInfo]:
-    """Find all historical conversations from the specified agents (default: all)."""
+def discover_conversations(
+    agents: list[str] | None = None,
+    repo_dir: str | Path | None = None,
+) -> list[ConversationInfo]:
+    """Find historical conversations, optionally scoped to a repo directory."""
     targets = agents or list(_AGENT_DISCOVERERS.keys())
     results: list[ConversationInfo] = []
     for agent in targets:
         fn = _AGENT_DISCOVERERS.get(agent)
         if fn:
             results.extend(fn())
+
+    if repo_dir is not None:
+        prefix = str(Path(repo_dir).resolve())
+        results = [c for c in results if c.cwd and c.cwd.startswith(prefix)]
+
     results.sort(key=lambda c: c.timestamp, reverse=True)
     return results
 

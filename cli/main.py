@@ -1492,7 +1492,7 @@ def hist_import(
     _require_auth()
 
     agents = [agent_name] if agent_name else None
-    conversations = discover_conversations(agents)
+    conversations = discover_conversations(agents, repo_dir=Path.cwd())
 
     if not conversations:
         console.print("[dim]No historical conversations found.[/dim]")
