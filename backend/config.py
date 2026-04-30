@@ -25,7 +25,7 @@ class Settings:
     PUBLIC_URL: str = os.getenv("PUBLIC_URL", "http://localhost:3457")
     CORS_ORIGINS: list[str] = [
         o.strip()
-        for o in os.getenv("CORS_ORIGINS", "http://localhost:3457,http://localhost:3456").split(",")
+        for o in os.getenv("CORS_ORIGINS", "http://localhost:3457,http://localhost:3456,http://localhost:3000").split(",")
         if o.strip()
     ]
 
