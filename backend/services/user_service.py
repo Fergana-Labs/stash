@@ -107,14 +107,19 @@ async def update_user(
     )
 
     if password is not None:
-        # Revoke every other active key. The caller's key stays valid so the
-        # user doesn't get kicked out of the tab that just changed the password.
-        await pool.execute(
-            "UPDATE user_api_keys SET revoked_at = now() "
-            "WHERE user_id = $1 AND revoked_at IS NULL AND id <> $2",
-            user_id,
-            current_key_id,
-        )
+        if current_key_id is not None:
+            await pool.execute(
+                "UPDATE user_api_keys SET revoked_at = now() "
+                "WHERE user_id = $1 AND revoked_at IS NULL AND id <> $2",
+                user_id,
+                current_key_id,
+            )
+        else:
+            await pool.execute(
+                "UPDATE user_api_keys SET revoked_at = now() "
+                "WHERE user_id = $1 AND revoked_at IS NULL",
+                user_id,
+            )
     return dict(row)
 
 

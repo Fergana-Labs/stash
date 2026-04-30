@@ -117,6 +117,7 @@ async def _get_user_from_jwt(token: str) -> dict:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Unknown user")
 
     user = dict(row)
+    user["key_id"] = None
     uid = str(user["id"])
     now = time.monotonic()
     if now - _last_seen_written.get(uid) > _LAST_SEEN_DEBOUNCE_SECONDS:
