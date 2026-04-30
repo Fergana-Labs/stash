@@ -274,15 +274,13 @@ def items_to_text(title: str, items: list[dict]) -> str:
             cols = inline.get("columns", [])
             rows = inline.get("rows", [])
             if cols:
-                parts.append(f"## {label}\n")
                 header = " | ".join(c["name"] for c in cols)
                 sep = " | ".join("---" for _ in cols)
-                parts.append(f"| {header} |")
-                parts.append(f"| {sep} |")
+                table_lines = [f"## {label}", "", f"| {header} |", f"| {sep} |"]
                 for r in rows[:100]:
                     vals = " | ".join(str(r["data"].get(c["name"], "")) for c in cols)
-                    parts.append(f"| {vals} |")
-                parts.append("")
+                    table_lines.append(f"| {vals} |")
+                parts.append("\n".join(table_lines))
         elif obj_type == "file":
             parts.append(f"*Attached file: {label} ({inline.get('content_type', 'unknown')})*\n")
         elif obj_type == "history":

@@ -1658,7 +1658,10 @@ def _transcript_to_markdown(raw_jsonl: str) -> str:
         raw_line = raw_line.strip()
         if not raw_line:
             continue
-        obj = json.loads(raw_line)
+        try:
+            obj = json.loads(raw_line)
+        except (json.JSONDecodeError, ValueError):
+            continue
 
         msg = obj.get("message")
         if not msg:
