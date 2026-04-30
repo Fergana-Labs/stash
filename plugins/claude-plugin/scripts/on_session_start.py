@@ -48,11 +48,13 @@ def _build_context() -> str:
 
     parts.append(
         "Key commands (all support `--json`): "
+        "`stash share --title \"...\"` (share this session as a public artifact with a link), "
         "`stash history search \"<query>\"` (full-text search), "
         "`stash history query --limit 20` (recent events), "
         "`stash notebooks list --all` (shared notebooks), "
         "`stash tables list` (workspace tables), "
-        "`stash files list` (workspace files)."
+        "`stash files list` (workspace files). "
+        "Use `stash share` when the user wants to share findings, research, or session artifacts with teammates."
     )
 
     return " ".join(parts)

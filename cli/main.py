@@ -2668,7 +2668,8 @@ def _append_claude_md(repo_root: Path) -> None:
 This repo uses [Stash](https://joinstash.ai) for shared agent history.
 Your coding agent has the `stash` CLI on its PATH. Run `stash --help` to see commands.
 
-Common reads (all support `--json`):
+Common commands (all support `--json`):
+- `stash share --title "..."` — share this session as a public artifact with a shareable link
 - `stash history search "<query>"` — full-text search across transcripts
 - `stash history query --limit 20` — latest events
 - `stash history agents` — who's been active
