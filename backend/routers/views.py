@@ -2,7 +2,8 @@
 
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import PlainTextResponse
 
 from ..auth import get_current_user
 from ..models import (
@@ -85,12 +86,22 @@ async def delete_view(
         raise HTTPException(status_code=404, detail="View not found")
 
 
-@public_router.get("/{slug}", response_model=ViewPublicResponse)
-async def get_public_view(slug: str):
+@public_router.get("/{slug}")
+async def get_public_view(
+    slug: str,
+    format: str = Query(None, alias="format"),
+):
     view = await view_service.get_public_view(slug)
     if not view:
         raise HTTPException(status_code=404, detail="View not found")
     items = await view_service.inline_items(view)
+
+    if format == "text":
+        return PlainTextResponse(
+            view_service.items_to_text(view["title"], items),
+            media_type="text/markdown",
+        )
+
     workspace_name = view.pop("_workspace_name", "")
     workspace_is_public = view.pop("_workspace_is_public", False)
     return ViewPublicResponse(

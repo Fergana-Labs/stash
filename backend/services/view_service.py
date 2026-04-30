@@ -256,6 +256,44 @@ async def inline_items(view: dict) -> list[dict]:
     return out
 
 
+def items_to_text(title: str, items: list[dict]) -> str:
+    """Flatten a View's inlined items into readable markdown text."""
+    parts = [f"# {title}\n"]
+    for item in items:
+        obj_type = item["object_type"]
+        label = item.get("label", "")
+        inline = item.get("inline", {})
+        if not inline:
+            continue
+
+        if obj_type == "notebook":
+            for page in inline.get("pages", []):
+                if page.get("content_markdown"):
+                    parts.append(page["content_markdown"])
+        elif obj_type == "table":
+            cols = inline.get("columns", [])
+            rows = inline.get("rows", [])
+            if cols:
+                parts.append(f"## {label}\n")
+                header = " | ".join(c["name"] for c in cols)
+                sep = " | ".join("---" for _ in cols)
+                parts.append(f"| {header} |")
+                parts.append(f"| {sep} |")
+                for r in rows[:100]:
+                    vals = " | ".join(str(r["data"].get(c["name"], "")) for c in cols)
+                    parts.append(f"| {vals} |")
+                parts.append("")
+        elif obj_type == "file":
+            parts.append(f"*Attached file: {label} ({inline.get('content_type', 'unknown')})*\n")
+        elif obj_type == "history":
+            parts.append(f"**{inline.get('agent_name', '')}** ({inline.get('event_type', '')})")
+            if inline.get("content"):
+                parts.append(inline["content"])
+            parts.append("")
+
+    return "\n\n".join(parts)
+
+
 async def fork_view(slug: str, forker_id: UUID, name: str | None = None) -> dict | None:
     """Create a new private workspace containing only the items in the view.
 

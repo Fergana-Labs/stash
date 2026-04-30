@@ -795,6 +795,183 @@ def fork(
 
 
 # ===========================================================================
+# Share — publish a session artifact as a public View
+# ===========================================================================
+
+
+def _find_session_jsonl(session_id: str) -> Path | None:
+    """Locate the .jsonl file for a given session ID under ~/.claude/projects/."""
+    projects = Path.home() / ".claude" / "projects"
+    if not projects.is_dir():
+        return None
+    for project_dir in projects.iterdir():
+        if not project_dir.is_dir():
+            continue
+        for jsonl in project_dir.glob("*.jsonl"):
+            with open(jsonl) as f:
+                for i, raw in enumerate(f):
+                    if i > 5:
+                        break
+                    try:
+                        line = json.loads(raw)
+                    except (json.JSONDecodeError, ValueError):
+                        continue
+                    if line.get("sessionId") == session_id:
+                        return jsonl
+    return None
+
+
+def _current_session_id() -> str | None:
+    """Read the active session ID from the Stash plugin state file."""
+    state_file = Path.home() / ".claude" / "plugins" / "data" / "stash" / "state.json"
+    if not state_file.exists():
+        return None
+    try:
+        data = json.loads(state_file.read_text())
+        return data.get("session_id") or None
+    except Exception:
+        return None
+
+
+def _extract_artifact(raw_jsonl: str) -> tuple[str, str, str]:
+    """Extract (title, first_user_prompt, last_assistant_message) from a transcript.
+
+    Returns the bookends of the conversation: the question that kicked it off
+    and the final answer — which is usually the investigation summary.
+    """
+    first_user = ""
+    last_assistant = ""
+    title = ""
+
+    for raw_line in raw_jsonl.splitlines():
+        raw_line = raw_line.strip()
+        if not raw_line:
+            continue
+        try:
+            obj = json.loads(raw_line)
+        except (json.JSONDecodeError, ValueError):
+            continue
+
+        if obj.get("type") == "ai-title":
+            title = obj.get("aiTitle") or obj.get("title") or ""
+            continue
+
+        msg = obj.get("message")
+        if not msg:
+            continue
+        role = msg.get("role", "")
+        content = msg.get("content", "")
+        if not content:
+            continue
+
+        blocks = content if isinstance(content, list) else [{"type": "text", "text": content}]
+        text_parts = []
+        for block in blocks:
+            if isinstance(block, dict) and block.get("type") == "text" and block.get("text", "").strip():
+                text_parts.append(block["text"].strip())
+
+        if not text_parts:
+            continue
+        combined = "\n\n".join(text_parts)
+
+        if role == "user" and not first_user:
+            first_user = combined
+        elif role == "assistant":
+            last_assistant = combined
+
+    return title, first_user, last_assistant
+
+
+@app.command("share")
+def share_session(
+    title: str = typer.Option("", "--title", "-t", help="Title for the shared artifact."),
+    session_id: str = typer.Option("", "--session", "-s", help="Session ID. Auto-detected if omitted."),
+    files: list[str] = typer.Option([], "--file", "-f", help="Files to attach (repeatable)."),
+    workspace_id: str = typer.Option(None, "--ws"),
+):
+    """Share a session as a public artifact with a shareable link.
+
+    Publishes a curated summary (the question + finding), the full conversation
+    transcript, and any attached files as a single public View.
+    """
+    _require_auth()
+    ws = workspace_id or _resolve_workspace()
+
+    # Resolve session ID
+    sid = session_id or _current_session_id()
+    if not sid:
+        console.print("[red]Could not detect session. Pass --session <id> explicitly.[/red]")
+        raise typer.Exit(1)
+
+    # Find and read the JSONL transcript
+    jsonl_path = _find_session_jsonl(sid)
+    if not jsonl_path:
+        console.print(f"[red]Transcript file not found for session {sid[:8]}…[/red]")
+        raise typer.Exit(1)
+
+    raw_jsonl = jsonl_path.read_text(errors="replace")
+    ai_title, first_user, last_assistant = _extract_artifact(raw_jsonl)
+
+    if not last_assistant:
+        console.print("[red]No assistant messages found in this session.[/red]")
+        raise typer.Exit(1)
+
+    page_title = title or ai_title or f"Session {sid[:8]}"
+
+    # Build the summary page
+    summary_parts = []
+    if first_user:
+        summary_parts.append(f"## Question\n\n{first_user}")
+    summary_parts.append(f"## Finding\n\n{last_assistant}")
+    summary_md = "\n\n---\n\n".join(summary_parts)
+
+    # Build the full transcript page
+    full_md = _transcript_to_markdown(raw_jsonl)
+
+    console.print(f"[dim]Sharing session {sid[:8]}…[/dim]")
+
+    with _client() as c:
+        # Create notebook with two pages: Summary + Full Transcript
+        nb = c.create_notebook(ws, page_title, description="Shared session artifact")
+        c.create_page(ws, nb["id"], "Summary", content=summary_md)
+        c.create_page(ws, nb["id"], "Full Transcript", content=full_md)
+
+        view_items: list[dict] = [
+            {"object_type": "notebook", "object_id": nb["id"], "position": 0},
+        ]
+
+        # Upload attached files
+        for fp in files:
+            p = Path(fp)
+            if not p.exists():
+                console.print(f"[yellow]Skipping {fp} (not found)[/yellow]")
+                continue
+            uploaded = c.upload_ws_file(ws, str(p))
+            view_items.append({
+                "object_type": "file",
+                "object_id": uploaded["id"],
+                "position": len(view_items),
+                "label_override": p.name,
+            })
+            console.print(f"  [dim]Attached {p.name}[/dim]")
+
+        # Upload the full transcript blob
+        c.upload_transcript(ws, sid, str(jsonl_path), agent_name="claude", cwd=str(jsonl_path.parent))
+
+        # Create the public View
+        view = c.create_view(
+            ws,
+            title=page_title,
+            description="Shared session artifact",
+            is_public=True,
+            items=view_items,
+        )
+
+    public_url = f"{_web_app_url()}/v/{view['slug']}"
+    console.print(f"\n[green bold]Shared![/green bold]  {public_url}")
+
+
+# ===========================================================================
 # Views (curated subsets of a workspace, publishable as their own URL)
 # ===========================================================================
 
