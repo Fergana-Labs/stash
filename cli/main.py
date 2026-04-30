@@ -955,8 +955,12 @@ def share_session(
             })
             console.print(f"  [dim]Attached {p.name}[/dim]")
 
-        # Upload the full transcript blob
-        c.upload_transcript(ws, sid, str(jsonl_path), agent_name="claude", cwd=str(jsonl_path.parent))
+        # Upload the full transcript blob (may already exist via hooks — that's fine)
+        try:
+            c.upload_transcript(ws, sid, str(jsonl_path), agent_name="claude", cwd=str(jsonl_path.parent))
+        except StashError as e:
+            if e.status_code != 409:
+                raise
 
         # Create the public View
         view = c.create_view(
