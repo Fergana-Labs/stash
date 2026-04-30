@@ -4,18 +4,33 @@ Supports Claude Code, Cursor, and Codex. Each agent stores conversations as
 .jsonl files in predictable locations under ~/.<agent>/. We discover them,
 extract lightweight metadata (session_id, cwd, timestamp, size), and upload
 them as transcript blobs + summary events.
+
+Cursor also stores conversations in SQLite databases under
+~/Library/Application Support/Cursor/User/. We read those when .jsonl files
+aren't available for a workspace.
 """
 
 from __future__ import annotations
 
 import json
+import platform
+import sqlite3
+import tempfile
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
+from urllib.parse import unquote
 
 CLAUDE_PROJECTS_DIR = Path.home() / ".claude" / "projects"
 CURSOR_PROJECTS_DIR = Path.home() / ".cursor" / "projects"
 CODEX_SESSIONS_DIR = Path.home() / ".codex" / "sessions"
+
+if platform.system() == "Darwin":
+    CURSOR_STORAGE_DIR = (
+        Path.home() / "Library" / "Application Support" / "Cursor" / "User"
+    )
+else:
+    CURSOR_STORAGE_DIR = Path.home() / ".config" / "Cursor" / "User"
 
 
 @dataclass
@@ -131,9 +146,7 @@ def _parse_cursor_meta(path: Path, project_dir_name: str) -> ConversationInfo | 
         return None
 
     session_id = path.stem
-    cwd = project_dir_name.replace("-", "/")
-    if not cwd.startswith("/"):
-        cwd = "/" + cwd
+    cwd = project_dir_name
     timestamp = datetime.fromtimestamp(path.stat().st_mtime, tz=UTC)
     user_count = 0
 
@@ -157,6 +170,219 @@ def _parse_cursor_meta(path: Path, project_dir_name: str) -> ConversationInfo | 
         size_bytes=size,
         user_messages=user_count,
     )
+
+
+# ---------------------------------------------------------------------------
+# Cursor SQLite: conversations stored in per-workspace state.vscdb + global
+# state.vscdb under ~/Library/Application Support/Cursor/User/.
+# ---------------------------------------------------------------------------
+
+CURSOR_WORKSPACE_STORAGE = CURSOR_STORAGE_DIR / "workspaceStorage"
+CURSOR_GLOBAL_DB = CURSOR_STORAGE_DIR / "globalStorage" / "state.vscdb"
+
+
+def _discover_cursor_sqlite(repo_dir: Path | None = None) -> list[ConversationInfo]:
+    """Discover Cursor conversations from SQLite for a specific repo."""
+    if repo_dir is None:
+        return []
+    ws_dir = CURSOR_WORKSPACE_STORAGE
+    if not ws_dir.is_dir() or not CURSOR_GLOBAL_DB.is_file():
+        return []
+
+    workspace_hash = _find_cursor_workspace(ws_dir, repo_dir)
+    if not workspace_hash:
+        return []
+
+    ws_db_path = ws_dir / workspace_hash / "state.vscdb"
+    if not ws_db_path.is_file():
+        return []
+
+    composer_ids = _extract_composer_ids(ws_db_path)
+    if not composer_ids:
+        return []
+
+    cwd = str(repo_dir)
+    results = []
+    global_db = sqlite3.connect(f"file:{CURSOR_GLOBAL_DB}?mode=ro", uri=True)
+    try:
+        for composer_id in composer_ids:
+            info = _parse_cursor_sqlite_conversation(global_db, composer_id, cwd)
+            if info:
+                results.append(info)
+    finally:
+        global_db.close()
+
+    return results
+
+
+def _find_cursor_workspace(ws_dir: Path, repo_dir: Path) -> str | None:
+    """Find the workspace hash whose workspace.json points to repo_dir."""
+    target = str(repo_dir.resolve())
+    for d in ws_dir.iterdir():
+        if not d.is_dir():
+            continue
+        ws_json = d / "workspace.json"
+        if not ws_json.is_file():
+            continue
+        try:
+            data = json.loads(ws_json.read_text())
+        except (json.JSONDecodeError, OSError):
+            continue
+        folder = data.get("folder", "")
+        if folder.startswith("file://"):
+            folder = unquote(folder[7:])
+        if folder.rstrip("/") == target.rstrip("/"):
+            return d.name
+    return None
+
+
+def _extract_composer_ids(ws_db_path: Path) -> list[str]:
+    """Extract conversation (composer) UUIDs from a workspace state.vscdb."""
+    ids: set[str] = set()
+    db = sqlite3.connect(f"file:{ws_db_path}?mode=ro", uri=True)
+    try:
+        # composerChatViewPane entries contain inner aichat.view.<composer-uuid> refs
+        cur = db.execute(
+            "SELECT value FROM ItemTable "
+            "WHERE key LIKE 'workbench.panel.composerChatViewPane.%'"
+        )
+        for (val,) in cur:
+            try:
+                data = json.loads(val)
+            except (json.JSONDecodeError, TypeError):
+                continue
+            for k in data:
+                if "aichat.view." in k:
+                    ids.add(k.split("aichat.view.")[1])
+
+        # Also grab currently-selected composers
+        cur = db.execute(
+            "SELECT value FROM ItemTable WHERE key = 'composer.composerData'"
+        )
+        row = cur.fetchone()
+        if row:
+            try:
+                data = json.loads(row[0])
+                for uid in data.get("selectedComposerIds", []):
+                    ids.add(uid)
+            except (json.JSONDecodeError, TypeError):
+                pass
+    finally:
+        db.close()
+    return list(ids)
+
+
+def _parse_cursor_sqlite_conversation(
+    db: sqlite3.Connection, composer_id: str, cwd: str
+) -> ConversationInfo | None:
+    """Read a single conversation's metadata from the global Cursor DB."""
+    cur = db.execute(
+        "SELECT value FROM cursorDiskKV WHERE key = ?",
+        (f"composerData:{composer_id}",),
+    )
+    row = cur.fetchone()
+    if not row:
+        return None
+
+    val = row[0]
+    if isinstance(val, bytes):
+        val = val.decode("utf-8", errors="replace")
+    try:
+        data = json.loads(val)
+    except (json.JSONDecodeError, TypeError):
+        return None
+
+    created = data.get("createdAt")
+    if isinstance(created, (int, float)):
+        timestamp = datetime.fromtimestamp(created / 1000, tz=UTC)
+    else:
+        timestamp = datetime.now(tz=UTC)
+
+    bubbles = data.get("fullConversationHeadersOnly", [])
+    user_count = sum(1 for b in bubbles if b.get("type") == 1)
+
+    # Estimate size from the raw composerData JSON — the actual transcript will be
+    # smaller (just messages) but this gives a reasonable order-of-magnitude.
+    estimated_size = len(val.encode("utf-8"))
+
+    return ConversationInfo(
+        agent="cursor",
+        session_id=composer_id,
+        path=Path("/dev/null"),
+        cwd=cwd,
+        timestamp=timestamp,
+        size_bytes=estimated_size,
+        user_messages=user_count,
+        extras={
+            "source": "sqlite",
+            "name": data.get("name", ""),
+            "bubble_count": len(bubbles),
+        },
+    )
+
+
+def _materialize_cursor_conversation(conv: ConversationInfo) -> Path:
+    """Extract a Cursor SQLite conversation to a temp .jsonl file for upload."""
+    db = sqlite3.connect(f"file:{CURSOR_GLOBAL_DB}?mode=ro", uri=True)
+    try:
+        cur = db.execute(
+            "SELECT value FROM cursorDiskKV WHERE key = ?",
+            (f"composerData:{conv.session_id}",),
+        )
+        row = cur.fetchone()
+        if not row:
+            raise ValueError(f"composerData not found for {conv.session_id}")
+
+        val = row[0]
+        if isinstance(val, bytes):
+            val = val.decode("utf-8", errors="replace")
+        data = json.loads(val)
+        bubbles = data.get("fullConversationHeadersOnly", [])
+
+        lines = []
+        for b in bubbles:
+            bid = b.get("bubbleId")
+            btype = b.get("type")
+            if not bid:
+                continue
+            role = "user" if btype == 1 else "assistant"
+
+            cur = db.execute(
+                "SELECT value FROM cursorDiskKV WHERE key = ?",
+                (f"bubbleId:{conv.session_id}:{bid}",),
+            )
+            brow = cur.fetchone()
+            text = ""
+            if brow:
+                bval = brow[0]
+                if isinstance(bval, bytes):
+                    bval = bval.decode("utf-8", errors="replace")
+                try:
+                    bdata = json.loads(bval)
+                    text = bdata.get("text", "")
+                except (json.JSONDecodeError, TypeError):
+                    pass
+
+            if not text:
+                continue
+
+            lines.append(
+                json.dumps(
+                    {
+                        "role": role,
+                        "message": {"content": [{"type": "text", "text": text}]},
+                    }
+                )
+            )
+    finally:
+        db.close()
+
+    tmp = tempfile.NamedTemporaryFile(
+        mode="w", suffix=".jsonl", prefix=f"cursor-{conv.session_id[:8]}-", delete=False
+    )
+    tmp.write("\n".join(lines))
+    tmp.close()
+    return Path(tmp.name)
 
 
 # ---------------------------------------------------------------------------
@@ -229,6 +455,18 @@ _AGENT_DISCOVERERS = {
 }
 
 
+def _encode_cursor_dir(path: str) -> str:
+    return path.lstrip("/").replace("/", "-").replace(".", "-").replace("_", "-")
+
+
+def _cwd_matches(cwd: str, prefix: str, cursor_prefix: str) -> bool:
+    if not cwd:
+        return False
+    if cwd.startswith("/"):
+        return cwd.startswith(prefix)
+    return cwd.startswith(cursor_prefix)
+
+
 def discover_conversations(
     agents: list[str] | None = None,
     repo_dir: str | Path | None = None,
@@ -242,8 +480,16 @@ def discover_conversations(
             results.extend(fn())
 
     if repo_dir is not None:
-        prefix = str(Path(repo_dir).resolve())
-        results = [c for c in results if c.cwd and c.cwd.startswith(prefix)]
+        resolved = Path(repo_dir).resolve()
+        prefix = str(resolved)
+        cursor_prefix = _encode_cursor_dir(prefix)
+        results = [c for c in results if _cwd_matches(c.cwd, prefix, cursor_prefix)]
+
+        if "cursor" in targets:
+            sqlite_ids = {c.session_id for c in results if c.agent == "cursor"}
+            for conv in _discover_cursor_sqlite(resolved):
+                if conv.session_id not in sqlite_ids:
+                    results.append(conv)
 
     results.sort(key=lambda c: c.timestamp, reverse=True)
     return results
@@ -262,13 +508,26 @@ def summarize_discovery(conversations: list[ConversationInfo]) -> dict[str, dict
 
 def upload_conversation(client, workspace_id: str, conv: ConversationInfo) -> dict:
     """Upload a single conversation transcript + push a summary event."""
-    result = client.upload_transcript(
-        workspace_id=workspace_id,
-        session_id=conv.session_id,
-        transcript_path=conv.path,
-        agent_name=conv.agent,
-        cwd=conv.cwd,
-    )
+    import os
+
+    transcript_path = conv.path
+    materialized = False
+
+    if conv.extras.get("source") == "sqlite":
+        transcript_path = _materialize_cursor_conversation(conv)
+        materialized = True
+
+    try:
+        result = client.upload_transcript(
+            workspace_id=workspace_id,
+            session_id=conv.session_id,
+            transcript_path=transcript_path,
+            agent_name=conv.agent,
+            cwd=conv.cwd,
+        )
+    finally:
+        if materialized:
+            os.unlink(transcript_path)
 
     client.push_event(
         workspace_id=workspace_id,
