@@ -1474,6 +1474,119 @@ def hist_transcript(
     sys.stdout.write(body)
 
 
+def _transcript_to_markdown(raw_jsonl: str) -> str:
+    """Convert a Claude Code .jsonl transcript into readable markdown."""
+    lines = []
+    for raw_line in raw_jsonl.splitlines():
+        raw_line = raw_line.strip()
+        if not raw_line:
+            continue
+        obj = json.loads(raw_line)
+
+        msg = obj.get("message")
+        if not msg:
+            if obj.get("type") == "ai-title":
+                title = obj.get("title", "")
+                if title:
+                    lines.append(f"# {title}\n")
+            continue
+
+        role = msg.get("role", "")
+        content = msg.get("content", "")
+        if not content:
+            continue
+
+        blocks = content if isinstance(content, list) else [{"type": "text", "text": content}]
+        for block in blocks:
+            if not isinstance(block, dict):
+                continue
+            btype = block.get("type", "")
+
+            if btype == "text" and block.get("text", "").strip():
+                prefix = "**User:**" if role == "user" else "**Assistant:**"
+                lines.append(f"{prefix}\n\n{block['text'].strip()}\n")
+
+            elif btype == "tool_use":
+                name = block.get("name", "tool")
+                inp = block.get("input", {})
+                if name.lower() in ("bash", "shell"):
+                    cmd = inp.get("command", "")
+                    lines.append(f"```bash\n$ {cmd}\n```\n")
+                elif name.lower() in ("read", "readfile"):
+                    lines.append(f"*Read `{inp.get('file_path', '?')}`*\n")
+                elif name.lower() in ("edit", "write"):
+                    fp = inp.get("file_path", "?")
+                    lines.append(f"*{name.title()} `{fp}`*\n")
+                else:
+                    lines.append(f"*Tool: {name}*\n")
+
+            elif btype == "tool_result":
+                text = ""
+                sub = block.get("content", "")
+                if isinstance(sub, str):
+                    text = sub
+                elif isinstance(sub, list):
+                    text = "\n".join(
+                        s.get("text", "") for s in sub if isinstance(s, dict) and s.get("type") == "text"
+                    )
+                if text.strip():
+                    preview = text.strip()[:2000]
+                    lines.append(f"```\n{preview}\n```\n")
+
+    return "\n---\n\n".join(lines) if lines else "(empty transcript)"
+
+
+@hist_app.command("share")
+def hist_share(
+    session_id: str = typer.Argument(...),
+    title: str = typer.Option("", "--title", help="Title for the shared page. Auto-generated if omitted."),
+    workspace_id: str = typer.Option(None, "--ws"),
+):
+    """Share a session transcript as a public Stash link.
+
+    Fetches the transcript, formats it as a readable page, publishes it
+    in a new View, and prints the shareable URL.
+    """
+    import gzip
+
+    import httpx
+
+    ws = workspace_id or _resolve_workspace()
+    cfg = load_config()
+    base = cfg["base_url"].rstrip("/")
+    headers = {"Authorization": f"Bearer {cfg.get('api_key', '')}"}
+
+    # 1. Fetch transcript
+    url = f"{base}/api/v1/workspaces/{ws}/transcripts/{session_id}"
+    meta = httpx.get(url, headers=headers, timeout=30).json()
+    if "download_url" not in meta:
+        console.print(f"[red]{meta.get('detail', 'Transcript not found')}[/red]")
+        raise typer.Exit(1)
+    raw = httpx.get(meta["download_url"], timeout=60).content
+    if raw[:2] == b"\x1f\x8b":
+        raw = gzip.decompress(raw)
+    body = raw.decode("utf-8", errors="replace")
+
+    # 2. Format into markdown
+    md = _transcript_to_markdown(body)
+
+    # 3. Create notebook + page + public view
+    page_title = title or f"Session {session_id[:8]}"
+    with _client() as c:
+        nb = c.create_notebook(ws, page_title, description="Shared transcript")
+        c.create_page(ws, nb["id"], page_title, content=md)
+        view = c.create_view(
+            ws,
+            title=page_title,
+            description="Shared session transcript",
+            is_public=True,
+            items=[{"object_type": "notebook", "object_id": nb["id"]}],
+        )
+
+    public_url = f"{_web_app_url()}/v/{view['slug']}"
+    console.print(f"[green]Shared![/green]  {public_url}")
+
+
 @hist_app.command("import")
 def hist_import(
     workspace_id: str = typer.Option(None, "--ws"),
