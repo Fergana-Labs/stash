@@ -205,6 +205,10 @@ class StashClient:
     def get_public_view(self, slug: str) -> dict:
         return self._get(f"/api/v1/views/{slug}")
 
+    def get_view_text(self, slug: str) -> str:
+        resp = self._request("GET", f"/api/v1/views/{slug}", params={"format": "text"})
+        return resp.text
+
     def fork_view(self, slug: str, name: str = "") -> dict:
         body: dict = {}
         if name:

@@ -1008,6 +1008,25 @@ def share_session(
     console.print(f"\n[green bold]Shared![/green bold]  {public_url}")
 
 
+def _parse_view_slug(url_or_slug: str) -> str:
+    """Extract a View slug from a full URL or bare slug."""
+    url_or_slug = url_or_slug.strip().rstrip("/")
+    if "/v/" in url_or_slug:
+        return url_or_slug.split("/v/")[-1]
+    return url_or_slug
+
+
+@app.command("view")
+def view_artifact(
+    url: str = typer.Argument(..., help="Stash View URL or slug."),
+):
+    """Read a shared Stash artifact and print its contents."""
+    slug = _parse_view_slug(url)
+    with _client() as c:
+        text = c.get_view_text(slug)
+    console.print(text)
+
+
 # ===========================================================================
 # Views (curated subsets of a workspace, publishable as their own URL)
 # ===========================================================================
@@ -2703,6 +2722,7 @@ Your coding agent has the `stash` CLI on its PATH. Run `stash --help` to see com
 
 Common commands (all support `--json`):
 - `stash share --title "..."` — share this session as a public artifact with a shareable link
+- `stash view <url>` — read a shared Stash artifact (use this for any joinstash.ai/v/ link)
 - `stash history search "<query>"` — full-text search across transcripts
 - `stash history query --limit 20` — latest events
 - `stash history agents` — who's been active
