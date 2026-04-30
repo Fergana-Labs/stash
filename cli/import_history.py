@@ -131,9 +131,7 @@ def _parse_cursor_meta(path: Path, project_dir_name: str) -> ConversationInfo | 
         return None
 
     session_id = path.stem
-    cwd = project_dir_name.replace("-", "/")
-    if not cwd.startswith("/"):
-        cwd = "/" + cwd
+    cwd = project_dir_name
     timestamp = datetime.fromtimestamp(path.stat().st_mtime, tz=UTC)
     user_count = 0
 
@@ -229,6 +227,18 @@ _AGENT_DISCOVERERS = {
 }
 
 
+def _encode_cursor_dir(path: str) -> str:
+    return path.lstrip("/").replace("/", "-").replace(".", "-").replace("_", "-")
+
+
+def _cwd_matches(cwd: str, prefix: str, cursor_prefix: str) -> bool:
+    if not cwd:
+        return False
+    if cwd.startswith("/"):
+        return cwd.startswith(prefix)
+    return cwd.startswith(cursor_prefix)
+
+
 def discover_conversations(
     agents: list[str] | None = None,
     repo_dir: str | Path | None = None,
@@ -243,7 +253,8 @@ def discover_conversations(
 
     if repo_dir is not None:
         prefix = str(Path(repo_dir).resolve())
-        results = [c for c in results if c.cwd and c.cwd.startswith(prefix)]
+        cursor_prefix = _encode_cursor_dir(prefix)
+        results = [c for c in results if _cwd_matches(c.cwd, prefix, cursor_prefix)]
 
     results.sort(key=lambda c: c.timestamp, reverse=True)
     return results
