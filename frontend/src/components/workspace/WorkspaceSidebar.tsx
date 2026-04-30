@@ -103,7 +103,7 @@ interface WorkspaceSidebarProps {
   onLeave: () => void;
   onDelete: () => void;
   onKickMember: (userId: string) => void;
-  onUpdateWorkspace: (data: { name?: string; description?: string }) => void;
+  onUpdateWorkspace: (data: { name?: string; description?: string; is_public?: boolean }) => Promise<void> | void;
   onAddMember: (username: string) => Promise<void>;
   onAddToAccessList?: (userName: string, listType: "allow" | "block") => Promise<void>;
   onRemoveFromAccessList?: (userName: string, listType: "allow" | "block") => Promise<void>;
@@ -144,6 +144,19 @@ export default function WorkspaceSidebar({
 
   const [copied, setCopied] = useState(false);
   const [rotating, setRotating] = useState(false);
+  const [updatingVisibility, setUpdatingVisibility] = useState(false);
+
+  const toggleVisibility = async () => {
+    if (updatingVisibility) return;
+    const next = !workspace.is_public;
+    if (next && !window.confirm("Make this workspace public? Anyone will be able to view it and its public views.")) return;
+    setUpdatingVisibility(true);
+    try {
+      await onUpdateWorkspace({ is_public: next });
+    } finally {
+      setUpdatingVisibility(false);
+    }
+  };
 
   const copyInvite = async () => {
     const url = `${window.location.origin}/join/${workspace.invite_code}`;
@@ -285,6 +298,23 @@ export default function WorkspaceSidebar({
             )}
           </>
         )}
+        <div className="mt-3 flex items-center justify-between text-xs">
+          <span className="text-muted">
+            Visibility:{" "}
+            <span className={workspace.is_public ? "text-brand" : "text-dim"}>
+              {workspace.is_public ? "Public" : "Private"}
+            </span>
+          </span>
+          {isOwner && (
+            <button
+              onClick={toggleVisibility}
+              disabled={updatingVisibility}
+              className="text-[10px] text-muted hover:text-foreground underline underline-offset-2 disabled:opacity-50"
+            >
+              {updatingVisibility ? "saving..." : workspace.is_public ? "make private" : "make public"}
+            </button>
+          )}
+        </div>
         <div className="mt-3 flex flex-col gap-2">
           <button
             onClick={copyInvite}

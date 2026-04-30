@@ -219,7 +219,7 @@ export async function getWorkspaceMembers(workspaceId: string): Promise<Workspac
 
 export async function updateWorkspace(
   workspaceId: string,
-  data: { name?: string; description?: string }
+  data: { name?: string; description?: string; is_public?: boolean }
 ): Promise<Workspace> {
   return apiFetch(`/api/v1/workspaces/${workspaceId}`, {
     method: "PATCH",
