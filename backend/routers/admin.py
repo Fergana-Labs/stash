@@ -23,9 +23,11 @@ async def engagement_cohorts(
     bucket: str = Query("month", pattern="^(month|week|rolling_7d)$"),
     mode: str = Query("standard", pattern="^(standard|future)$"),
     max_period: int | None = Query(None, ge=1, le=104),
+    events_filter: str = Query("all", pattern="^(all|active)$"),
 ):
     return await cohort_service.get_engagement_cohorts(
         bucket=bucket,
         mode=mode,
         max_period=max_period,
+        events_filter=events_filter,
     )

@@ -7,12 +7,13 @@ user's first activity).
 """
 
 from collections import defaultdict
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, datetime, timedelta
 
 from ..database import get_pool
 
 Bucket = str  # "month" | "week" | "rolling_7d"
 Mode = str  # "standard" | "future"
+EventsFilter = str  # "all" | "active"
 
 _DEFAULT_MAX_PERIOD = {"month": 12, "week": 26, "rolling_7d": 12}
 _DEFAULT_COHORT_CAP = {"month": 24, "week": 52, "rolling_7d": 60}
@@ -70,13 +71,10 @@ def compute_engagement_cohorts(
     if max_period is None:
         max_period = _DEFAULT_MAX_PERIOD[bucket]
 
-    # Per-user: cohort_start (datetime), set of active period offsets, total events.
     user_cohort: dict[str, datetime] = {}
     user_active_periods: dict[str, set[int]] = defaultdict(set)
     user_event_counts_by_period: dict[str, dict[int, int]] = defaultdict(lambda: defaultdict(int))
 
-    # First pass: assign each user's cohort_start = bucket_start of first event,
-    # falling back to signup_at when the user has no events.
     by_user: dict[str, list[dict]] = defaultdict(list)
     signup_at: dict[str, datetime] = {}
     for r in rows:
@@ -90,7 +88,6 @@ def compute_engagement_cohorts(
         anchor = events[0]["event_at"] if events else signup
         user_cohort[uid] = _bucket_start(anchor, bucket)
 
-    # Second pass: bucket each event into a period offset and tally.
     for uid, events in by_user.items():
         cohort_start = user_cohort[uid]
         for e in events:
@@ -101,7 +98,6 @@ def compute_engagement_cohorts(
             user_active_periods[uid].add(p)
             user_event_counts_by_period[uid][p] += 1
 
-    # Group users by cohort_start.
     cohort_users: dict[datetime, list[str]] = defaultdict(list)
     for uid, cs in user_cohort.items():
         cohort_users[cs].append(uid)
@@ -112,19 +108,20 @@ def compute_engagement_cohorts(
         size = len(uids)
         retention = []
         active_users = []
+        actions = []
         avg_cum_actions = []
+        running_cum_total = 0
         for p in range(max_period + 1):
             if mode == "standard":
                 active = sum(1 for u in uids if p in user_active_periods[u])
-            else:  # future
+            else:
                 active = sum(1 for u in uids if any(q >= p for q in user_active_periods[u]))
             retention.append(active / size if size else 0.0)
             active_users.append(active)
-            cum = 0
-            for u in uids:
-                counts = user_event_counts_by_period[u]
-                cum += sum(counts[q] for q in range(p + 1) if q in counts)
-            avg_cum_actions.append(cum / size if size else 0.0)
+            period_actions = sum(user_event_counts_by_period[u].get(p, 0) for u in uids)
+            actions.append(period_actions)
+            running_cum_total += period_actions
+            avg_cum_actions.append(running_cum_total / size if size else 0.0)
 
         cohorts_out.append(
             {
@@ -133,6 +130,7 @@ def compute_engagement_cohorts(
                 "size": size,
                 "retention": retention,
                 "active_users": active_users,
+                "actions": actions,
                 "avg_cumulative_actions": avg_cum_actions,
             }
         )
@@ -155,23 +153,41 @@ def compute_engagement_cohorts(
     }
 
 
+# Hook events from the Claude Code / Cursor / etc. plugins all set
+# metadata.client (e.g. "claude_code"); imported sessions set
+# metadata.source = "history_import". "Active" events are the rest —
+# CLI commands and any custom-typed events.
+_ACTIVE_EVENTS_PREDICATE = (
+    "(he.metadata->>'client') IS NULL "
+    "AND COALESCE(he.metadata->>'source', '') <> 'history_import'"
+)
+
+
 async def get_engagement_cohorts(
     bucket: Bucket = "month",
     mode: Mode = "standard",
     max_period: int | None = None,
+    events_filter: EventsFilter = "all",
 ) -> dict:
+    if events_filter not in ("all", "active"):
+        raise ValueError(f"unknown events_filter: {events_filter}")
     pool = get_pool()
-    sql = """
+    join_filter = f"AND {_ACTIVE_EVENTS_PREDICATE}" if events_filter == "active" else ""
+    sql = f"""
         SELECT u.id, u.created_at AS signup_at,
                he.created_at AS event_at
         FROM users u
-        LEFT JOIN history_events he ON he.created_by = u.id
+        LEFT JOIN history_events he
+            ON he.created_by = u.id
+            {join_filter}
         ORDER BY u.id, he.created_at NULLS FIRST
     """
     rows = await pool.fetch(sql)
-    return compute_engagement_cohorts(
+    out = compute_engagement_cohorts(
         [dict(r) for r in rows],
         bucket=bucket,
         mode=mode,
         max_period=max_period,
     )
+    out["events_filter"] = events_filter
+    return out
