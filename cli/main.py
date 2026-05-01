@@ -2748,13 +2748,19 @@ def _append_claude_md(repo_root: Path) -> None:
 This repo uses [Stash](https://joinstash.ai) for shared agent history.
 Your coding agent has the `stash` CLI on its PATH. Run `stash --help` to see commands.
 
-Common commands (all support `--json`):
-- `stash share --title "..."` — share this session as a public artifact with a shareable link
-- `stash view <url>` — read a shared Stash artifact (use this for any joinstash.ai/v/ link)
+**Before starting work, use Stash to check for relevant context.** When you need to understand
+why something was built a certain way, what's been tried before, or what teammates are working on,
+search Stash first — it has the full history of agent sessions and human decisions across the team.
+
+Common reads (all support `--json`):
 - `stash history search "<query>"` — full-text search across transcripts
 - `stash history query --limit 20` — latest events
 - `stash history agents` — who's been active
 - `stash notebooks list --all` — shared notebooks
+
+Common writes:
+- `stash share --title "..."` — share this session as a public artifact with a shareable link
+- `stash view <url>` — read a shared Stash artifact (use this for any joinstash.ai/v/ link)
 """
     claude_md.write_text(existing.rstrip() + "\n" + block)
     console.print("  Appended Stash context to [cyan]CLAUDE.md[/cyan]")
