@@ -108,7 +108,7 @@ export interface History {
 export interface HistoryEvent {
   id: string;
   store_id: string;
-  agent_name: string;
+  tag_name: string;
   event_type: string;
   session_id: string | null;
   tool_name: string | null;
@@ -237,10 +237,10 @@ export interface PageGraph {
 // --- Dashboard Visualizations ---
 
 export interface ActivityTimeline {
-  agents: string[];
+  tags: string[];
   buckets: {
     date: string;
-    agents: Record<string, { total: number; by_type: Record<string, number> }>;
+    tags: Record<string, { total: number; by_type: Record<string, number> }>;
   }[];
 }
 

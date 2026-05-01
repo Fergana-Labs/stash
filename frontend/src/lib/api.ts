@@ -476,7 +476,7 @@ export async function queryHistoryEvents(
   workspaceId: string | null,
   storeId: string,
   params?: {
-    agent_name?: string;
+    tag_name?: string;
     session_id?: string;
     event_type?: string;
     after?: string;
@@ -485,7 +485,7 @@ export async function queryHistoryEvents(
   }
 ): Promise<{ events: HistoryEvent[]; has_more: boolean }> {
   const searchParams = new URLSearchParams();
-  if (params?.agent_name) searchParams.set("agent_name", params.agent_name);
+  if (params?.tag_name) searchParams.set("tag_name", params.tag_name);
   if (params?.session_id) searchParams.set("session_id", params.session_id);
   if (params?.event_type) searchParams.set("event_type", params.event_type);
   if (params?.after) searchParams.set("after", params.after);
@@ -518,7 +518,7 @@ export async function listAllHistories(): Promise<{ stores: HistoryWithWorkspace
 
 export async function queryAllHistoryEvents(
   params?: {
-    agent_name?: string;
+    tag_name?: string;
     event_type?: string;
     after?: string;
     before?: string;
@@ -526,7 +526,7 @@ export async function queryAllHistoryEvents(
   }
 ): Promise<{ events: HistoryEventWithContext[]; has_more: boolean }> {
   const searchParams = new URLSearchParams();
-  if (params?.agent_name) searchParams.set("agent_name", params.agent_name);
+  if (params?.tag_name) searchParams.set("tag_name", params.tag_name);
   if (params?.event_type) searchParams.set("event_type", params.event_type);
   if (params?.after) searchParams.set("after", params.after);
   if (params?.before) searchParams.set("before", params.before);
@@ -538,7 +538,7 @@ export async function queryAllHistoryEvents(
 export async function queryWorkspaceHistoryEvents(
   workspaceId: string,
   params?: {
-    agent_name?: string;
+    tag_name?: string;
     session_id?: string;
     event_type?: string;
     after?: string;
@@ -547,7 +547,7 @@ export async function queryWorkspaceHistoryEvents(
   }
 ): Promise<{ events: HistoryEvent[]; has_more: boolean }> {
   const searchParams = new URLSearchParams();
-  if (params?.agent_name) searchParams.set("agent_name", params.agent_name);
+  if (params?.tag_name) searchParams.set("tag_name", params.tag_name);
   if (params?.session_id) searchParams.set("session_id", params.session_id);
   if (params?.event_type) searchParams.set("event_type", params.event_type);
   if (params?.after) searchParams.set("after", params.after);
@@ -970,11 +970,11 @@ export async function semanticSearchTableRows(
   return data.rows;
 }
 
-// --- Agent Names ---
+// --- Tag Names ---
 
-export async function listAgentNames(workspaceId: string): Promise<string[]> {
-  const data = await apiFetch<{ agent_names: string[] }>(
-    `/api/v1/workspaces/${workspaceId}/memory/agent-names`
+export async function listTagNames(workspaceId: string): Promise<string[]> {
+  const data = await apiFetch<{ tag_names: string[] }>(
+    `/api/v1/workspaces/${workspaceId}/memory/tag-names`
   );
-  return data.agent_names;
+  return data.tag_names;
 }

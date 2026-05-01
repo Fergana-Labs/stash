@@ -143,21 +143,21 @@ def test_push_event_stamps_client_into_metadata():
     c = FakeClient(base_url="http://x", api_key="k")
 
     c.push_event(
-        workspace_id="ws1", agent_name="henry", event_type="tool_use",
+        workspace_id="ws1", tag_name="henry", event_type="tool_use",
         content="...", tool_name="edit", metadata={"cwd": "/tmp"}, client="cursor",
     )
     body = calls[-1][1]["json"]
     assert body["metadata"] == {"cwd": "/tmp", "client": "cursor"}
 
     c.push_event(
-        workspace_id="ws1", agent_name="henry", event_type="user_message",
+        workspace_id="ws1", tag_name="henry", event_type="user_message",
         content="hi", client="claude_code",
     )
     body = calls[-1][1]["json"]
     assert body["metadata"] == {"client": "claude_code"}
 
     c.push_event(
-        workspace_id="ws1", agent_name="henry", event_type="user_message", content="hi",
+        workspace_id="ws1", tag_name="henry", event_type="user_message", content="hi",
     )
     body = calls[-1][1]["json"]
     assert "metadata" not in body
@@ -213,7 +213,7 @@ def test_client_facet_flows_through_stream_paths():
         calls.clear()
         cfg = {
             "workspace_id": "ws1",
-            "agent_name": "henry",
+            "tag_name": "henry",
             "client": client_name,
         }
         state = {"session_id": "s1"}
@@ -250,7 +250,7 @@ def test_stream_session_end_not_emitted_on_assistant_message():
             return {}
 
     c = FakeClient(base_url="http://x", api_key="k")
-    cfg = {"workspace_id": "ws1", "agent_name": "henry", "client": "claude_code"}
+    cfg = {"workspace_id": "ws1", "tag_name": "henry", "client": "claude_code"}
     state = {"session_id": "s1"}
     stream_assistant_message(c, cfg, state, HookEvent(
         kind="stop", last_assistant_message="turn complete.",

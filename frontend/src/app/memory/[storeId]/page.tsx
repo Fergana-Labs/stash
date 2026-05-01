@@ -18,15 +18,15 @@ import { HistoryEvent, History, HistoryWithWorkspace } from "../../../lib/types"
 
 interface SessionGroup {
   sessionId: string;
-  agentName: string;
+  tagName: string;
   events: HistoryEvent[];
   firstContent: string;
   timeRange: string;
   lastTimestamp: number;
 }
 
-interface AgentGroup {
-  agentName: string;
+interface TagGroup {
+  tagName: string;
   sessions: SessionGroup[];
   eventCount: number;
 }
@@ -57,11 +57,11 @@ function shouldShowTimestamp(a: string, b: string): boolean {
   return Math.abs(new Date(a).getTime() - new Date(b).getTime()) > 5 * 60 * 1000;
 }
 
-function buildGroups(events: HistoryEvent[]): AgentGroup[] {
+function buildGroups(events: HistoryEvent[]): TagGroup[] {
   const agentMap = new Map<string, Map<string, HistoryEvent[]>>();
 
   for (const evt of events) {
-    const agent = evt.agent_name || "unknown";
+    const agent = evt.tag_name || "unknown";
     const session = evt.session_id || "no-session";
     if (!agentMap.has(agent)) agentMap.set(agent, new Map());
     const sessionMap = agentMap.get(agent)!;
@@ -69,9 +69,9 @@ function buildGroups(events: HistoryEvent[]): AgentGroup[] {
     sessionMap.get(session)!.push(evt);
   }
 
-  const groups: AgentGroup[] = [];
+  const groups: TagGroup[] = [];
 
-  for (const [agentName, sessionMap] of agentMap) {
+  for (const [tagName, sessionMap] of agentMap) {
     const sessions: SessionGroup[] = [];
 
     for (const [sessionId, evts] of sessionMap) {
@@ -82,7 +82,7 @@ function buildGroups(events: HistoryEvent[]): AgentGroup[] {
       const last = sorted[sorted.length - 1];
       sessions.push({
         sessionId,
-        agentName,
+        tagName,
         events: sorted,
         firstContent: truncate(first.content, 60),
         timeRange: `${formatTime(first.created_at)} — ${formatTimeShort(last.created_at)}`,
@@ -93,7 +93,7 @@ function buildGroups(events: HistoryEvent[]): AgentGroup[] {
     sessions.sort((a, b) => b.lastTimestamp - a.lastTimestamp);
 
     groups.push({
-      agentName,
+      tagName,
       sessions,
       eventCount: sessions.reduce((sum, s) => sum + s.events.length, 0),
     });
@@ -133,7 +133,7 @@ function HistoryDetailPageInner() {
   const [eventsLoading, setEventsLoading] = useState(false);
 
   /* sidebar selection */
-  const [selectedAgent, setSelectedAgent] = useState<string | null>(null);
+  const [selectedTag, setSelectedAgent] = useState<string | null>(null);
   const [selectedSession, setSelectedSession] = useState<string | null>(null);
 
   const workspaceId = searchParams.get("workspaceId");
@@ -296,7 +296,7 @@ function HistoryDetailPageInner() {
                 setSelectedSession(null);
               }}
               className={`w-full text-left px-2 py-1.5 rounded text-[13px] font-medium transition-colors duration-[150ms] ${
-                !selectedSession && !selectedAgent
+                !selectedSession && !selectedTag
                   ? "bg-brand/15 text-brand"
                   : "text-foreground hover:bg-raised"
               }`}
@@ -314,23 +314,23 @@ function HistoryDetailPageInner() {
           ) : (
             <div className="px-2 py-2">
               {groups.map((ag) => (
-                <div key={ag.agentName} className="mb-2">
+                <div key={ag.tagName} className="mb-2">
                   <button
                     onClick={() => {
                       setSelectedAgent(
-                        selectedAgent === ag.agentName ? null : ag.agentName
+                        selectedTag === ag.tagName ? null : ag.tagName
                       );
                       setSelectedSession(null);
                     }}
                     className={`w-full text-left flex items-center gap-1.5 px-2 py-1 rounded transition-colors duration-[150ms] ${
-                      selectedAgent === ag.agentName && !selectedSession
+                      selectedTag === ag.tagName && !selectedSession
                         ? "bg-agent-muted"
                         : "hover:bg-raised"
                     }`}
                   >
                     <span className="w-1.5 h-1.5 rounded-full bg-agent flex-shrink-0" />
                     <span className="text-[13px] font-medium text-foreground truncate">
-                      {ag.agentName}
+                      {ag.tagName}
                     </span>
                     <span className="text-[10px] text-muted ml-auto font-mono">
                       {ag.eventCount}
@@ -342,7 +342,7 @@ function HistoryDetailPageInner() {
                       <button
                         key={sess.sessionId}
                         onClick={() => {
-                          setSelectedAgent(ag.agentName);
+                          setSelectedAgent(ag.tagName);
                           setSelectedSession(sess.sessionId);
                         }}
                         className={`w-full text-left px-2 py-1 rounded transition-colors duration-[150ms] ${
@@ -375,12 +375,12 @@ function HistoryDetailPageInner() {
               <SessionView
                 events={selectedEvents}
                 sessionId={selectedSession}
-                agentName={selectedAgent || ""}
+                tagName={selectedTag || ""}
               />
-            ) : selectedAgent ? (
-              <AgentOverview
+            ) : selectedTag ? (
+              <TagOverview
                 groups={groups}
-                agentName={selectedAgent}
+                tagName={selectedTag}
                 onSelectSession={(sid) => setSelectedSession(sid)}
               />
             ) : (
@@ -405,16 +405,16 @@ function HistoryDetailPageInner() {
 function SessionView({
   events,
   sessionId,
-  agentName,
+  tagName,
 }: {
   events: HistoryEvent[];
   sessionId: string;
-  agentName: string;
+  tagName: string;
 }) {
   return (
     <div>
       <div className="mb-6">
-        <h1 className="text-xl font-bold text-foreground font-display">{agentName}</h1>
+        <h1 className="text-xl font-bold text-foreground font-display">{tagName}</h1>
         <p className="text-[11px] text-muted font-mono mt-1">
           session: {sessionId} &middot; {events.length} event
           {events.length !== 1 ? "s" : ""}
@@ -449,16 +449,16 @@ function SessionView({
 
 /* ── Agent overview ── */
 
-function AgentOverview({
+function TagOverview({
   groups,
-  agentName,
+  tagName,
   onSelectSession,
 }: {
-  groups: AgentGroup[];
-  agentName: string;
+  groups: TagGroup[];
+  tagName: string;
   onSelectSession: (sid: string) => void;
 }) {
-  const ag = groups.find((g) => g.agentName === agentName);
+  const ag = groups.find((g) => g.tagName === tagName);
   if (!ag) return <p className="text-muted text-sm">No data for this agent.</p>;
 
   return (
@@ -466,7 +466,7 @@ function AgentOverview({
       <div className="mb-6">
         <h1 className="text-xl font-bold text-foreground font-display flex items-center gap-2">
           <span className="w-2 h-2 rounded-full bg-agent" />
-          {agentName}
+          {tagName}
         </h1>
         <p className="text-[11px] text-muted mt-1">
           {ag.sessions.length} session{ag.sessions.length !== 1 ? "s" : ""} &middot;{" "}
@@ -507,7 +507,7 @@ function AllEventsView({
   eventsLoading,
   onSelectSession,
 }: {
-  groups: AgentGroup[];
+  groups: TagGroup[];
   eventsLoading: boolean;
   onSelectSession: (agent: string, sid: string) => void;
 }) {
@@ -526,11 +526,11 @@ function AllEventsView({
       </h1>
 
       {groups.map((ag) => (
-        <div key={ag.agentName} className="mb-6">
+        <div key={ag.tagName} className="mb-6">
           <div className="flex items-center gap-2 mb-2">
             <span className="w-2 h-2 rounded-full bg-agent" />
             <h2 className="text-[15px] font-semibold text-foreground">
-              {ag.agentName}
+              {ag.tagName}
             </h2>
             <span className="text-[10px] text-muted font-mono">
               {ag.eventCount} events
@@ -541,7 +541,7 @@ function AllEventsView({
             {ag.sessions.slice(0, 5).map((sess) => (
               <button
                 key={sess.sessionId}
-                onClick={() => onSelectSession(ag.agentName, sess.sessionId)}
+                onClick={() => onSelectSession(ag.tagName, sess.sessionId)}
                 className="w-full text-left bg-surface border border-border rounded-lg p-2.5 hover:bg-raised transition-colors duration-[150ms]"
               >
                 <div className="flex items-center gap-2">
@@ -580,7 +580,7 @@ function StoreEventCard({ event }: { event: HistoryEvent }) {
         {/* Header row */}
         <div className="flex items-center gap-1.5 mb-1 flex-wrap">
           <span className="text-[11px] font-medium text-agent bg-agent-muted px-1.5 py-0.5 rounded font-mono uppercase tracking-[0.05em]">
-            {event.agent_name}
+            {event.tag_name}
           </span>
           <span className="text-[11px] bg-raised text-muted px-1.5 py-0.5 rounded">
             {event.event_type}

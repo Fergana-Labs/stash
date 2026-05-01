@@ -48,7 +48,7 @@ curl -X POST {{BASE_URL}}/api/v1/workspaces \
 curl -X POST {{BASE_URL}}/api/v1/workspaces/$WS/memory/events \
   -H "Authorization: Bearer $API_KEY" \
   -H "Content-Type: application/json" \
-  -d '{"agent_name":"cli","event_type":"note","content":"Hello"}'
+  -d '{"tag_name":"cli","event_type":"note","content":"Hello"}'
 ```
 
 ### 4. Create a Notebook Page
@@ -161,12 +161,12 @@ you'll round-trip cleanly through edit mode:
 
 ## History / Memory Events
 
-Events are structured append-only records keyed by `(workspace, agent_name, event_type)`.
+Events are structured append-only records keyed by `(workspace, tag_name, event_type)`.
 
 ```json
 POST /api/v1/workspaces/{ws}/memory/events
 {
-  "agent_name": "cli",
+  "tag_name": "cli",
   "event_type": "note",
   "content": "text body",
   "session_id": "optional",
@@ -182,7 +182,7 @@ POST /api/v1/workspaces/{ws}/memory/events
 wrapper (`stash history push --attach ./path`) uploads and attaches in one step.
 
 Query/search:
-- `GET /events?agent_name=&event_type=&limit=&after=`
+- `GET /events?tag_name=&event_type=&limit=&after=`
 - `GET /events/search?q=&limit=`
 - `GET /events/{event_id}`
 

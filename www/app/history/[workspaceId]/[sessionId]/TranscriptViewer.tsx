@@ -43,7 +43,7 @@ function extractToolNames(content: string | ContentBlock[] | undefined): string[
 
 export default function TranscriptViewer({ apiUrl, workspaceId, sessionId, accessToken }: Props) {
   const [messages, setMessages] = useState<Message[]>([]);
-  const [meta, setMeta] = useState<{ agent_name?: string; cwd?: string; uploaded_at?: string }>({});
+  const [meta, setMeta] = useState<{ tag_name?: string; cwd?: string; uploaded_at?: string }>({});
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -105,7 +105,7 @@ export default function TranscriptViewer({ apiUrl, workspaceId, sessionId, acces
     <>
       {!loading && (
         <div className="mb-6 flex items-center gap-2 font-mono text-[12px] text-muted">
-          {meta.agent_name && <span className="text-ink">{meta.agent_name}</span>}
+          {meta.tag_name && <span className="text-ink">{meta.tag_name}</span>}
           {meta.cwd && (
             <>
               <span>&middot;</span>

@@ -540,7 +540,7 @@ class Attachment(BaseModel):
 
 
 class HistoryEventCreateRequest(BaseModel):
-    agent_name: str = Field(..., min_length=1, max_length=64)
+    tag_name: str = Field(..., min_length=1, max_length=64)
     event_type: str = Field(..., min_length=1, max_length=64)
     content: str = Field(..., min_length=1)
     session_id: str | None = Field(None, max_length=64)
@@ -561,7 +561,7 @@ class HistoryEventResponse(BaseModel):
     workspace_id: UUID | None = None
     created_by: UUID | None = None
     created_by_name: str | None = None
-    agent_name: str
+    tag_name: str
     event_type: str
     session_id: str | None
     tool_name: str | None
@@ -636,7 +636,7 @@ class SessionTranscriptResponse(BaseModel):
     id: UUID
     workspace_id: UUID
     session_id: str
-    agent_name: str
+    tag_name: str
     size_bytes: int
     cwd: str | None
     download_url: str | None

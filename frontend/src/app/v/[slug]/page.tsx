@@ -220,7 +220,7 @@ function ItemBody({ item }: { item: ViewItemInlined }) {
 
   if (item.object_type === "history") {
     const inline = item.inline as {
-      agent_name?: string;
+      tag_name?: string;
       event_type?: string;
       content?: string;
       created_at?: string;
@@ -228,7 +228,7 @@ function ItemBody({ item }: { item: ViewItemInlined }) {
     return (
       <div>
         <p className="font-mono text-[11px] uppercase text-muted">
-          {inline.agent_name} · {inline.event_type} · {inline.created_at}
+          {inline.tag_name} · {inline.event_type} · {inline.created_at}
         </p>
         <pre className="mt-2 whitespace-pre-wrap break-words rounded bg-background p-3 font-mono text-[12px] leading-[1.5] text-foreground">
           {inline.content || ""}

@@ -394,14 +394,14 @@ async def fork_workspace(
                         forker_id,
                     )
 
-            # History events: preserve original author, agent_name, content,
+            # History events: preserve original author, tag_name, content,
             # event_type, session_id, tool_name, metadata, attachments, created_at.
             # Embeddings are not copied.
             await conn.execute(
-                "INSERT INTO history_events (workspace_id, created_by, agent_name, "
+                "INSERT INTO history_events (workspace_id, created_by, tag_name, "
                 "event_type, session_id, tool_name, content, metadata, attachments, "
                 "created_at) "
-                "SELECT $1, created_by, agent_name, event_type, session_id, tool_name, "
+                "SELECT $1, created_by, tag_name, event_type, session_id, tool_name, "
                 "content, metadata, attachments, created_at "
                 "FROM history_events WHERE workspace_id = $2",
                 new_ws_id,

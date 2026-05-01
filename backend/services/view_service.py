@@ -228,14 +228,14 @@ async def inline_items(view: dict) -> list[dict]:
                 }
         elif obj_type == "history":
             ev = await pool.fetchrow(
-                "SELECT agent_name, event_type, content, created_at "
+                "SELECT tag_name, event_type, content, created_at "
                 "FROM history_events WHERE id = $1",
                 obj_id,
             )
             if ev:
-                label = label or f"{ev['agent_name']} · {ev['event_type']}"
+                label = label or f"{ev['tag_name']} · {ev['event_type']}"
                 inline = {
-                    "agent_name": ev["agent_name"],
+                    "tag_name": ev["tag_name"],
                     "event_type": ev["event_type"],
                     "content": ev["content"],
                     "created_at": ev["created_at"].isoformat(),
@@ -284,7 +284,7 @@ def items_to_text(title: str, items: list[dict]) -> str:
         elif obj_type == "file":
             parts.append(f"*Attached file: {label} ({inline.get('content_type', 'unknown')})*\n")
         elif obj_type == "history":
-            parts.append(f"**{inline.get('agent_name', '')}** ({inline.get('event_type', '')})")
+            parts.append(f"**{inline.get('tag_name', '')}** ({inline.get('event_type', '')})")
             if inline.get("content"):
                 parts.append(inline["content"])
             parts.append("")
@@ -421,7 +421,7 @@ async def fork_view(slug: str, forker_id: UUID, name: str | None = None) -> dict
 
                 elif t == "history":
                     src = await conn.fetchrow(
-                        "SELECT created_by, agent_name, event_type, session_id, tool_name, "
+                        "SELECT created_by, tag_name, event_type, session_id, tool_name, "
                         "content, metadata, attachments, created_at "
                         "FROM history_events WHERE id = $1",
                         src_id,
@@ -429,10 +429,10 @@ async def fork_view(slug: str, forker_id: UUID, name: str | None = None) -> dict
                     if not src:
                         continue
                     await conn.execute(
-                        "INSERT INTO history_events (workspace_id, created_by, agent_name, "
+                        "INSERT INTO history_events (workspace_id, created_by, tag_name, "
                         "event_type, session_id, tool_name, content, metadata, attachments, "
                         "created_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)",
-                        new_ws_id, src["created_by"], src["agent_name"],
+                        new_ws_id, src["created_by"], src["tag_name"],
                         src["event_type"], src["session_id"], src["tool_name"],
                         src["content"], src["metadata"], src["attachments"],
                         src["created_at"],

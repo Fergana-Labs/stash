@@ -990,7 +990,7 @@ def share_session(
 
         # Upload the full transcript blob (may already exist via hooks — that's fine)
         try:
-            c.upload_transcript(ws, sid, str(jsonl_path), agent_name="claude", cwd=str(jsonl_path.parent))
+            c.upload_transcript(ws, sid, str(jsonl_path), tag_name="claude", cwd=str(jsonl_path.parent))
         except StashError as e:
             if e.status_code != 409:
                 raise
@@ -1519,7 +1519,7 @@ def nb_edit_page(
 # History (was memory stores)
 # ===========================================================================
 
-hist_app = typer.Typer(help="History — structured agent event logs.", invoke_without_command=True)
+hist_app = typer.Typer(help="History — structured event logs.", invoke_without_command=True)
 app.add_typer(hist_app, name="history")
 
 
@@ -1530,7 +1530,7 @@ def hist_default(
     limit: int = typer.Option(20, "-n", "--limit"),
     as_json: bool = typer.Option(False, "--json"),
 ):
-    """History — structured agent event logs."""
+    """History — structured event logs."""
     if ctx.invoked_subcommand is not None:
         return
     ws = workspace_id or _resolve_workspace()
@@ -1545,26 +1545,26 @@ def hist_default(
         for ev in data:
             tool = f" ({ev['tool_name']})" if ev.get("tool_name") else ""
             console.print(
-                f"  [{ev['created_at'][:19]}] {ev['agent_name']}/{ev['event_type']}{tool}: {ev['content'][:200]}"
+                f"  [{ev['created_at'][:19]}] {ev['tag_name']}/{ev['event_type']}{tool}: {ev['content'][:200]}"
             )
 
 
-@hist_app.command("agents")
-def hist_agents(
+@hist_app.command("tags")
+def hist_tags(
     workspace_id: str = typer.Option(None, "--ws"), as_json: bool = typer.Option(False, "--json")
 ):
-    """List distinct agent names that have logged events in this workspace."""
+    """List distinct tag names that have logged events in this workspace."""
     ws = workspace_id or _resolve_workspace()
     with _client() as c:
         try:
-            data = c.list_agent_names(ws)
+            data = c.list_tag_names(ws)
         except StashError as e:
             _err(e)
     if _use_json(as_json):
         output_json(data)
     else:
         if not data:
-            console.print("[dim]No agents have logged events yet.[/dim]")
+            console.print("[dim]No tags have logged events yet.[/dim]")
         else:
             for name in data:
                 console.print(f"  {name}")
@@ -1574,7 +1574,7 @@ def hist_agents(
 def hist_push(
     content: str = typer.Argument(...),
     workspace_id: str = typer.Option(None, "--ws"),
-    agent_name: str = typer.Option("cli", "--agent"),
+    tag_name: str = typer.Option("cli", "--tag"),
     event_type: str = typer.Option("message", "--type"),
     session_id: str = typer.Option(None, "--session"),
     tool_name: str = typer.Option(None, "--tool"),
@@ -1604,7 +1604,7 @@ def hist_push(
                 )
             data = c.push_event(
                 ws,
-                agent_name=agent_name,
+                tag_name=tag_name,
                 event_type=event_type,
                 content=content,
                 session_id=session_id,
@@ -1623,7 +1623,7 @@ def hist_push(
 @hist_app.command("query")
 def hist_query(
     workspace_id: str = typer.Option(None, "--ws"),
-    agent_name: str = typer.Option(None, "--agent"),
+    tag_name: str = typer.Option(None, "--tag"),
     event_type: str = typer.Option(None, "--type"),
     limit: int = typer.Option(50, "-n", "--limit"),
     all_: bool = typer.Option(False, "--all"),
@@ -1633,10 +1633,10 @@ def hist_query(
     with _client() as c:
         try:
             if all_:
-                data = c.all_events(agent_name=agent_name, event_type=event_type, limit=limit)
+                data = c.all_events(tag_name=tag_name, event_type=event_type, limit=limit)
             else:
                 ws = workspace_id or _resolve_workspace()
-                data = c.query_events(ws, agent_name=agent_name, event_type=event_type, limit=limit)
+                data = c.query_events(ws, tag_name=tag_name, event_type=event_type, limit=limit)
         except StashError as e:
             _err(e)
     if _use_json(as_json):
@@ -1645,7 +1645,7 @@ def hist_query(
         for ev in data:
             tool = f" ({ev['tool_name']})" if ev.get("tool_name") else ""
             console.print(
-                f"  [{ev['created_at'][:19]}] {ev['agent_name']}/{ev['event_type']}{tool}: {ev['content'][:200]}"
+                f"  [{ev['created_at'][:19]}] {ev['tag_name']}/{ev['event_type']}{tool}: {ev['content'][:200]}"
             )
 
 
@@ -1668,7 +1668,7 @@ def hist_search(
     else:
         for ev in data:
             console.print(
-                f"  [{ev['created_at'][:19]}] {ev['agent_name']}/{ev['event_type']}: {ev['content'][:200]}"
+                f"  [{ev['created_at'][:19]}] {ev['tag_name']}/{ev['event_type']}: {ev['content'][:200]}"
             )
 
 
@@ -1826,7 +1826,7 @@ def hist_share(
 @hist_app.command("import")
 def hist_import(
     workspace_id: str = typer.Option(None, "--ws"),
-    agent_name: str = typer.Option(None, "--agent", help="Only import from this agent."),
+    agent_name: str = typer.Option(None, "--agent", help="Only import from this agent binary."),
     limit: int = typer.Option(0, "-n", "--limit", help="Max conversations to import (0 = all)."),
     yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation prompt."),
     as_json: bool = typer.Option(False, "--json"),

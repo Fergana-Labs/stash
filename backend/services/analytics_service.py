@@ -89,7 +89,7 @@ async def get_activity_timeline(
     bucket: str = "day",
     workspace_id: UUID | None = None,
 ) -> dict:
-    """Agent activity bucketed by time for the timeline visualization."""
+    """Tag activity bucketed by time for the timeline visualization."""
     pool = get_pool()
     days = min(days, 90)
     if bucket not in ("hour", "day", "week"):
@@ -107,13 +107,13 @@ async def get_activity_timeline(
         _accessible_events_cte(ws_idx=ws_idx) + """
         SELECT
             DATE_TRUNC($2, me.created_at) AS bucket_date,
-            me.agent_name,
+            me.tag_name,
             me.event_type,
             COUNT(*) AS cnt
         FROM history_events me
         JOIN accessible_events a ON a.event_id = me.id
         WHERE me.created_at >= $3
-        GROUP BY bucket_date, me.agent_name, me.event_type
+        GROUP BY bucket_date, me.tag_name, me.event_type
         ORDER BY bucket_date
         """,
         scope_arg,
@@ -122,29 +122,29 @@ async def get_activity_timeline(
     )
 
     # Build response shape
-    agents_set: set[str] = set()
+    tags_set: set[str] = set()
     buckets_map: dict[str, dict] = {}
 
     for row in rows:
         date_str = row["bucket_date"].isoformat()
-        agent = row["agent_name"] or "unknown"
+        tag = row["tag_name"] or "unknown"
         etype = row["event_type"] or "other"
         cnt = row["cnt"]
 
-        agents_set.add(agent)
+        tags_set.add(tag)
 
         if date_str not in buckets_map:
-            buckets_map[date_str] = {"date": date_str, "agents": {}}
+            buckets_map[date_str] = {"date": date_str, "tags": {}}
 
         b = buckets_map[date_str]
-        if agent not in b["agents"]:
-            b["agents"][agent] = {"total": 0, "by_type": {}}
+        if tag not in b["tags"]:
+            b["tags"][tag] = {"total": 0, "by_type": {}}
 
-        b["agents"][agent]["total"] += cnt
-        b["agents"][agent]["by_type"][etype] = b["agents"][agent]["by_type"].get(etype, 0) + cnt
+        b["tags"][tag]["total"] += cnt
+        b["tags"][tag]["by_type"][etype] = b["tags"][tag]["by_type"].get(etype, 0) + cnt
 
     return {
-        "agents": sorted(agents_set),
+        "tags": sorted(tags_set),
         "buckets": list(buckets_map.values()),
     }
 
@@ -653,7 +653,7 @@ async def get_embedding_projection(
     if source is None or source == "history_events":
         rows = await pool.fetch(
             _accessible_events_cte(ws_idx=ws_idx) + """
-            SELECT me.id, me.agent_name, me.event_type, me.embedding, me.created_at
+            SELECT me.id, me.tag_name, me.event_type, me.embedding, me.created_at
             FROM history_events me
             JOIN accessible_events a ON a.event_id = me.id
             WHERE me.embedding IS NOT NULL
@@ -667,7 +667,7 @@ async def get_embedding_projection(
             all_items.append(
                 {
                     "id": str(r["id"]),
-                    "label": f"{r['agent_name'] or 'agent'}: {r['event_type'] or 'event'}",
+                    "label": f"{r['tag_name'] or 'unknown'}: {r['event_type'] or 'event'}",
                     "source": "history_events",
                     "created_at": r["created_at"].isoformat() if r["created_at"] else None,
                     "embedding": np.array(r["embedding"]),

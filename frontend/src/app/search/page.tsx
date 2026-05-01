@@ -288,10 +288,10 @@ function SearchPageInner() {
                           className="inline-flex h-[22px] w-[22px] flex-shrink-0 items-center justify-center rounded-full font-display text-[10px] font-bold text-white"
                           style={{ background: "var(--color-agent)" }}
                         >
-                          {event.agent_name[0]?.toUpperCase() || "A"}
+                          {event.tag_name[0]?.toUpperCase() || "A"}
                         </span>
                         <span className="text-[14px] font-semibold text-foreground">
-                          {event.agent_name}
+                          {event.tag_name}
                         </span>
                         <span
                           className="inline-flex items-center rounded px-1.5 py-0.5 font-mono text-[10px] font-medium uppercase tracking-[0.08em]"

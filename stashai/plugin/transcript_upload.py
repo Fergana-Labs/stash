@@ -45,7 +45,7 @@ def spawn_transcript_upload(
     transcript_path: str,
     session_id: str,
     workspace_id: str,
-    agent_name: str,
+    tag_name: str,
     cwd: str,
     base_url: str,
     api_key: str,
@@ -68,7 +68,7 @@ def spawn_transcript_upload(
         subprocess.Popen(
             [
                 sys.executable, str(script),
-                str(path), session_id, workspace_id, agent_name, cwd, base_url, api_key,
+                str(path), session_id, workspace_id, tag_name, cwd, base_url, api_key,
             ],
             env=env,
             stdin=subprocess.DEVNULL,

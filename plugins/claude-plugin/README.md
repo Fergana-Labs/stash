@@ -20,7 +20,7 @@ Claude Code will prompt you for three config values:
 | Config | Value |
 |--------|-------|
 | `api_key` | Your API key (from step 1) |
-| `agent_name` | A name for this agent (any string) |
+| `tag_name` | A name for this tag (any string) |
 | `api_endpoint` | `https://joinstash.ai` (default, usually skip) |
 
 ### Step 3: Connect to a workspace
@@ -70,7 +70,7 @@ Now everyone's activity streams to the same workspace. You can:
 |-----|---------|-------------|
 | `api_endpoint` | `https://joinstash.ai` | Stash backend URL |
 | `api_key` | *(required)* | Your API key |
-| `agent_name` | *(required)* | Agent name (any string) |
+| `tag_name` | *(required)* | Tag name (any string) |
 | `workspace_id` | *(optional)* | Set via `stash connect` |
 | `auto_curate` | `true` | Spawn `claude -p` headless at session end to curate history into wiki pages. Stored in `~/.stash/config.json`. |
 

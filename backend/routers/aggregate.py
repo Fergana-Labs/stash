@@ -19,7 +19,7 @@ async def list_all_notebooks(current_user: dict = Depends(get_current_user)):
 
 @router.get("/history-events")
 async def list_all_history_events(
-    agent_name: str | None = Query(None),
+    tag_name: str | None = Query(None),
     event_type: str | None = Query(None),
     after: str | None = Query(None),
     before: str | None = Query(None),
@@ -29,7 +29,7 @@ async def list_all_history_events(
     """Events across all accessible workspaces + personal, with filters."""
     events, has_more = await memory_service.query_all_user_events(
         current_user["id"],
-        agent_name=agent_name,
+        tag_name=tag_name,
         event_type=event_type,
         after=after,
         before=before,
@@ -63,7 +63,7 @@ async def activity_timeline(
     workspace_id: UUID | None = Query(None),
     current_user: dict = Depends(get_current_user),
 ):
-    """Agent activity bucketed by time for the dashboard timeline."""
+    """Tag activity bucketed by time for the dashboard timeline."""
     if workspace_id is not None:
         await _verify_workspace_access(workspace_id, current_user["id"])
     return await analytics_service.get_activity_timeline(

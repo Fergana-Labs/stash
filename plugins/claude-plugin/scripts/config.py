@@ -76,7 +76,7 @@ def _load_cli_config() -> dict:
 
 def get_config() -> dict:
     api_key = os.environ.get("CLAUDE_PLUGIN_USER_CONFIG_api_key", "")
-    agent_name = os.environ.get("CLAUDE_PLUGIN_USER_CONFIG_agent_name", "")
+    tag_name = os.environ.get("CLAUDE_PLUGIN_USER_CONFIG_tag_name", "")
 
     if not api_key:
         cli = _load_cli_config()
@@ -84,7 +84,7 @@ def get_config() -> dict:
         return {
             "api_endpoint": cli.get("base_url", "https://joinstash.ai"),
             "api_key": cli.get("api_key", ""),
-            "agent_name": cli.get("username", ""),
+            "tag_name": cli.get("username", ""),
             "workspace_id": (manifest or {}).get("workspace_id", ""),
             "auto_curate": os.environ.get("CLAUDE_PLUGIN_USER_CONFIG_auto_curate", "true"),
             "client": "claude_code",
@@ -93,7 +93,7 @@ def get_config() -> dict:
     return {
         "api_endpoint": os.environ.get("CLAUDE_PLUGIN_USER_CONFIG_api_endpoint", "https://joinstash.ai"),
         "api_key": api_key,
-        "agent_name": agent_name,
+        "tag_name": tag_name,
         "workspace_id": os.environ.get("CLAUDE_PLUGIN_USER_CONFIG_workspace_id", ""),
         "auto_curate": os.environ.get("CLAUDE_PLUGIN_USER_CONFIG_auto_curate", "true"),
         "client": "claude_code",
@@ -107,4 +107,4 @@ def get_client() -> StashClient:
 
 def is_configured() -> bool:
     cfg = get_config()
-    return bool(cfg["api_key"] and cfg["agent_name"])
+    return bool(cfg["api_key"] and cfg["tag_name"])

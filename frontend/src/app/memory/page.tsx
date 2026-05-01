@@ -14,15 +14,15 @@ import { HistoryEventWithContext } from "../../lib/types";
 
 interface SessionGroup {
   sessionId: string;
-  agentName: string;
+  tagName: string;
   events: HistoryEventWithContext[];
   firstContent: string;
   timeRange: string;
   lastTimestamp: number;
 }
 
-interface AgentGroup {
-  agentName: string;
+interface TagGroup {
+  tagName: string;
   sessions: SessionGroup[];
   eventCount: number;
 }
@@ -53,21 +53,21 @@ function shouldShowTimestamp(a: string, b: string): boolean {
   return Math.abs(new Date(a).getTime() - new Date(b).getTime()) > 5 * 60 * 1000;
 }
 
-function buildGroups(events: HistoryEventWithContext[]): AgentGroup[] {
-  const agentMap = new Map<string, Map<string, HistoryEventWithContext[]>>();
+function buildGroups(events: HistoryEventWithContext[]): TagGroup[] {
+  const tagMap = new Map<string, Map<string, HistoryEventWithContext[]>>();
 
   for (const evt of events) {
-    const agent = evt.agent_name || "unknown";
+    const tag = evt.tag_name || "unknown";
     const session = evt.session_id || "no-session";
-    if (!agentMap.has(agent)) agentMap.set(agent, new Map());
-    const sessionMap = agentMap.get(agent)!;
+    if (!tagMap.has(tag)) tagMap.set(tag, new Map());
+    const sessionMap = tagMap.get(tag)!;
     if (!sessionMap.has(session)) sessionMap.set(session, []);
     sessionMap.get(session)!.push(evt);
   }
 
-  const groups: AgentGroup[] = [];
+  const groups: TagGroup[] = [];
 
-  for (const [agentName, sessionMap] of agentMap) {
+  for (const [tagName, sessionMap] of tagMap) {
     const sessions: SessionGroup[] = [];
 
     for (const [sessionId, evts] of sessionMap) {
@@ -78,7 +78,7 @@ function buildGroups(events: HistoryEventWithContext[]): AgentGroup[] {
       const last = sorted[sorted.length - 1];
       sessions.push({
         sessionId,
-        agentName,
+        tagName,
         events: sorted,
         firstContent: truncate(first.content, 60),
         timeRange: `${formatTime(first.created_at)} — ${formatTimeShort(last.created_at)}`,
@@ -89,7 +89,7 @@ function buildGroups(events: HistoryEventWithContext[]): AgentGroup[] {
     sessions.sort((a, b) => b.lastTimestamp - a.lastTimestamp);
 
     groups.push({
-      agentName,
+      tagName,
       sessions,
       eventCount: sessions.reduce((sum, s) => sum + s.events.length, 0),
     });
@@ -173,7 +173,7 @@ function MemoryPageInner() {
 
   const [hasMore, setHasMore] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
-  const [selectedAgent, setSelectedAgent] = useState<string | null>(null);
+  const [selectedTag, setSelectedAgent] = useState<string | null>(null);
   const [selectedSession, setSelectedSession] = useState<string | null>(null);
 
   const fetchEvents = useCallback(
@@ -235,12 +235,12 @@ function MemoryPageInner() {
   }, [groups]);
 
   const selectedEvents = useMemo(() => {
-    if (!selectedSession || !selectedAgent) return null;
-    const ag = groups.find((g) => g.agentName === selectedAgent);
+    if (!selectedSession || !selectedTag) return null;
+    const ag = groups.find((g) => g.tagName === selectedTag);
     if (!ag) return null;
     const sess = ag.sessions.find((s) => s.sessionId === selectedSession);
     return sess?.events ?? null;
-  }, [groups, selectedAgent, selectedSession]);
+  }, [groups, selectedTag, selectedSession]);
 
   useEffect(() => {
     if (!loading && !user) router.push("/login");
@@ -261,10 +261,10 @@ function MemoryPageInner() {
         <aside className="w-[250px] flex-shrink-0 overflow-y-auto border-r border-border bg-surface">
           <div className="border-b border-border-subtle px-4 py-4">
             <p className="font-mono text-[10px] font-medium uppercase tracking-[0.12em] text-muted">
-              Agents
+              Tags
             </p>
             <p className="mt-1 font-display text-[15px] font-semibold text-foreground">
-              {groups.length} agent{groups.length === 1 ? "" : "s"} · {events.length} events
+              {groups.length} tag{groups.length === 1 ? "" : "s"} · {events.length} events
             </p>
           </div>
 
@@ -274,14 +274,14 @@ function MemoryPageInner() {
             <div className="px-2 py-2">
               {groups.map((ag) => (
                 <button
-                  key={ag.agentName}
+                  key={ag.tagName}
                   onClick={() => {
-                    setSelectedAgent(ag.agentName);
+                    setSelectedAgent(ag.tagName);
                     setSelectedSession(null);
                   }}
                   className={
                     "mb-0.5 flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left transition-colors " +
-                    (selectedAgent === ag.agentName
+                    (selectedTag === ag.tagName
                       ? "bg-agent-muted"
                       : "hover:bg-raised")
                   }
@@ -291,7 +291,7 @@ function MemoryPageInner() {
                     style={{ background: "var(--color-agent)" }}
                   />
                   <span className="truncate text-[13px] font-medium text-foreground">
-                    {ag.agentName}
+                    {ag.tagName}
                   </span>
                   <span className="ml-auto font-mono text-[10px] text-muted">
                     {ag.eventCount}
@@ -299,7 +299,7 @@ function MemoryPageInner() {
                 </button>
               ))}
               {groups.length === 0 && !eventsLoading && (
-                <p className="px-2 py-2 text-[11px] text-muted">No agents yet.</p>
+                <p className="px-2 py-2 text-[11px] text-muted">No tags yet.</p>
               )}
             </div>
           )}
@@ -320,15 +320,15 @@ function MemoryPageInner() {
                   onClick={() => setSelectedSession(null)}
                   className="mb-5 text-[13px] text-muted transition-colors hover:text-foreground"
                 >
-                  ← {selectedAgent}
+                  ← {selectedTag}
                 </button>
                 <SessionView
                   events={selectedEvents}
                   sessionId={selectedSession}
-                  agentName={selectedAgent || ""}
+                  tagName={selectedTag || ""}
                 />
               </div>
-            ) : selectedAgent ? (
+            ) : selectedTag ? (
               <div>
                 <button
                   onClick={() => {
@@ -339,9 +339,9 @@ function MemoryPageInner() {
                 >
                   ← Recent activity
                 </button>
-                <AgentOverview
+                <TagOverview
                   groups={groups}
-                  agentName={selectedAgent}
+                  tagName={selectedTag}
                   wsId={wsId}
                   onSelectSession={(sid) => setSelectedSession(sid)}
                   onDelete={async () => {
@@ -349,8 +349,8 @@ function MemoryPageInner() {
                     try {
                       const { apiFetch } = await import("../../lib/api");
                       await apiFetch(
-                        `/api/v1/workspaces/${wsId}/memory/agents/${encodeURIComponent(
-                          selectedAgent
+                        `/api/v1/workspaces/${wsId}/memory/tags/${encodeURIComponent(
+                          selectedTag
                         )}`,
                         { method: "DELETE" }
                       );
@@ -367,7 +367,7 @@ function MemoryPageInner() {
                 hasMore={hasMore}
                 loadingMore={loadingMore}
                 onLoadMore={loadMore}
-                onSelectAgent={(agent) => {
+                onSelectTag={(agent) => {
                   setSelectedAgent(agent);
                   setSelectedSession(null);
                 }}
@@ -392,11 +392,11 @@ type SortOrder = "oldest" | "newest";
 function SessionView({
   events,
   sessionId,
-  agentName,
+  tagName,
 }: {
   events: HistoryEventWithContext[];
   sessionId: string;
-  agentName: string;
+  tagName: string;
 }) {
   const [typeFilter, setTypeFilter] = useState<string>("all");
   const [toolFilter, setToolFilter] = useState<string>("all");
@@ -424,7 +424,7 @@ function SessionView({
       result = result.filter(
         (e) =>
           e.content.toLowerCase().includes(q) ||
-          e.agent_name.toLowerCase().includes(q) ||
+          e.tag_name.toLowerCase().includes(q) ||
           (e.tool_name && e.tool_name.toLowerCase().includes(q))
       );
     }
@@ -457,10 +457,10 @@ function SessionView({
   return (
     <div>
       <header className="mb-5 flex items-center gap-3 border-b border-border-subtle pb-4">
-        <RoleAvatar role="agent" name={agentName} size={32} />
+        <RoleAvatar role="agent" name={tagName} size={32} />
         <div>
           <div className="font-display text-[16px] font-bold text-foreground">
-            {agentName}
+            {tagName}
           </div>
           <div className="mt-0.5 flex items-center gap-2 font-mono text-[11px] text-muted">
             <RoleTag role="agent" />
@@ -561,29 +561,29 @@ function SessionView({
 
 /* ── Agent overview ── */
 
-function AgentOverview({
+function TagOverview({
   groups,
-  agentName,
+  tagName,
   onSelectSession,
   onDelete,
 }: {
-  groups: AgentGroup[];
-  agentName: string;
+  groups: TagGroup[];
+  tagName: string;
   wsId: string | null;
   onSelectSession: (sid: string) => void;
   onDelete: () => void;
 }) {
-  const ag = groups.find((g) => g.agentName === agentName);
-  if (!ag) return <p className="text-[13px] text-muted">No data for this agent.</p>;
+  const ag = groups.find((g) => g.tagName === tagName);
+  if (!ag) return <p className="text-[13px] text-muted">No data for this tag.</p>;
 
   return (
     <div>
       <header className="mb-6 flex items-start justify-between gap-3 border-b border-border-subtle pb-4">
         <div className="flex items-center gap-3">
-          <RoleAvatar role="agent" name={agentName} size={32} />
+          <RoleAvatar role="agent" name={tagName} size={32} />
           <div>
             <div className="font-display text-[16px] font-bold text-foreground">
-              {agentName}
+              {tagName}
             </div>
             <div className="mt-0.5 flex items-center gap-2 font-mono text-[11px] text-muted">
               <RoleTag role="agent" />
@@ -596,13 +596,13 @@ function AgentOverview({
         </div>
         <button
           onClick={() => {
-            if (confirm(`Delete all ${ag.eventCount} events for "${agentName}"?`)) {
+            if (confirm(`Delete all ${ag.eventCount} events for "${tagName}"?`)) {
               onDelete();
             }
           }}
           className="rounded px-2 py-1 text-[12px] text-red-500 transition-colors hover:bg-red-500/10"
         >
-          Delete agent
+          Delete tag
         </button>
       </header>
 
@@ -639,7 +639,7 @@ function RecentActivityView({
   hasMore: hasMoreEvents,
   loadingMore: loadingMoreEvents,
   onLoadMore: onLoadMoreEvents,
-  onSelectAgent,
+  onSelectTag,
   onSelectSession,
 }: {
   allSessions: SessionGroup[];
@@ -647,7 +647,7 @@ function RecentActivityView({
   hasMore: boolean;
   loadingMore: boolean;
   onLoadMore: () => void;
-  onSelectAgent: (agent: string) => void;
+  onSelectTag: (agent: string) => void;
   onSelectSession: (agent: string, sid: string) => void;
 }) {
   const [visibleCount, setVisibleCount] = useState(SESSIONS_PAGE_SIZE);
@@ -685,7 +685,7 @@ function RecentActivityView({
   if (allSessions.length === 0) {
     return (
       <p className="text-[13px] text-muted">
-        No events found. Agent activity will appear here as events are logged.
+        No events found. Activity will appear here as events are logged.
       </p>
     );
   }
@@ -698,20 +698,20 @@ function RecentActivityView({
       <div className="flex flex-col gap-2">
         {visible.map((sess) => (
           <div
-            key={`${sess.agentName}-${sess.sessionId}`}
-            onClick={() => onSelectSession(sess.agentName, sess.sessionId)}
+            key={`${sess.tagName}-${sess.sessionId}`}
+            onClick={() => onSelectSession(sess.tagName, sess.sessionId)}
             className="w-full cursor-pointer rounded-lg border border-border-subtle bg-base px-4 py-3 text-left transition-colors hover:border-brand"
           >
             <div className="flex items-center gap-2">
-              <RoleAvatar role="agent" name={sess.agentName} size={22} />
+              <RoleAvatar role="agent" name={sess.tagName} size={22} />
               <button
                 onClick={(e) => {
                   e.stopPropagation();
-                  onSelectAgent(sess.agentName);
+                  onSelectTag(sess.tagName);
                 }}
                 className="rounded font-mono text-[11px] font-medium tracking-[0.05em] text-foreground underline-offset-2 hover:underline"
               >
-                {sess.agentName}
+                {sess.tagName}
               </button>
               <RoleTag role="agent" />
               <span className="truncate text-[13px] text-dim">
@@ -747,7 +747,7 @@ function RecentActivityView({
 function EventRow({ event }: { event: HistoryEventWithContext }) {
   const isUser = isUserEvent(event.event_type);
   const role: Role = isUser ? "human" : "agent";
-  const displayName = isUser ? (event.created_by_name || "user") : event.agent_name;
+  const displayName = isUser ? (event.created_by_name || "user") : event.tag_name;
   return (
     <div className="flex gap-3">
       <RoleAvatar role={role} name={displayName} size={24} />
@@ -761,7 +761,7 @@ function EventRow({ event }: { event: HistoryEventWithContext }) {
           <span className="font-mono text-[11px] text-dim">{event.event_type}</span>
           {isUser && (
             <span className="text-[11px] text-muted">
-              → {event.agent_name}
+              → {event.tag_name}
             </span>
           )}
           {event.store_name && (

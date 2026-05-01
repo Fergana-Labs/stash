@@ -1,7 +1,7 @@
-"""History service: structured agent event storage with FTS, vector search, and batch insert.
+"""History service: structured event storage with FTS, vector search, and batch insert.
 
 Events belong directly to a workspace (or are personal with workspace_id=NULL).
-Grouped by agent_name → session_id for display.
+Grouped by tag_name → session_id for display.
 """
 
 import asyncio
@@ -84,7 +84,7 @@ async def _embed_events_batch(event_ids: list[UUID], contents: list[str]) -> Non
 
 async def push_event(
     workspace_id: UUID | None,
-    agent_name: str,
+    tag_name: str,
     event_type: str,
     content: str,
     created_by: UUID,
@@ -105,13 +105,13 @@ async def push_event(
         ts = created_at
     row = await pool.fetchrow(
         "INSERT INTO history_events "
-        "(workspace_id, created_by, agent_name, event_type, content, session_id, tool_name, metadata, attachments, created_at) "
+        "(workspace_id, created_by, tag_name, event_type, content, session_id, tool_name, metadata, attachments, created_at) "
         "VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9, $10) "
-        "RETURNING id, workspace_id, created_by, agent_name, event_type, session_id, "
+        "RETURNING id, workspace_id, created_by, tag_name, event_type, session_id, "
         "tool_name, content, metadata, attachments, created_at",
         workspace_id,
         created_by,
-        agent_name,
+        tag_name,
         event_type,
         content,
         session_id,
@@ -147,14 +147,14 @@ async def push_events_batch(
                     ts = raw_ts
                 row = await conn.fetchrow(
                     "INSERT INTO history_events "
-                    "(workspace_id, created_by, agent_name, event_type, content, "
+                    "(workspace_id, created_by, tag_name, event_type, content, "
                     "session_id, tool_name, metadata, attachments, created_at) "
                     "VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9, $10) "
-                    "RETURNING id, workspace_id, created_by, agent_name, event_type, "
+                    "RETURNING id, workspace_id, created_by, tag_name, event_type, "
                     "session_id, tool_name, content, metadata, attachments, created_at",
                     workspace_id,
                     created_by,
-                    evt["agent_name"],
+                    evt["tag_name"],
                     evt["event_type"],
                     evt["content"],
                     evt.get("session_id"),
@@ -195,7 +195,7 @@ async def get_personal_event(event_id: UUID, user_id: UUID) -> dict | None:
 def _build_event_filters(
     base_condition: str,
     base_args: list,
-    agent_name: str | None,
+    tag_name: str | None,
     session_id: str | None,
     event_type: str | None,
     after: str | None,
@@ -206,9 +206,9 @@ def _build_event_filters(
     args = list(base_args)
     idx = len(args) + 1
 
-    if agent_name:
-        conditions.append(f"agent_name = ${idx}")
-        args.append(agent_name)
+    if tag_name:
+        conditions.append(f"tag_name = ${idx}")
+        args.append(tag_name)
         idx += 1
     if session_id:
         conditions.append(f"session_id = ${idx}")
@@ -239,7 +239,7 @@ async def _query_events(
     pool = get_pool()
     args = [*args, limit + 1]
     rows = await pool.fetch(
-        f"SELECT id, workspace_id, created_by, agent_name, event_type, session_id, "
+        f"SELECT id, workspace_id, created_by, tag_name, event_type, session_id, "
         f"tool_name, content, metadata, attachments, created_at "
         f"FROM history_events WHERE {where} "
         f"ORDER BY created_at ASC LIMIT ${limit_idx}",
@@ -254,7 +254,7 @@ async def _query_events(
 
 async def query_workspace_events(
     workspace_id: UUID,
-    agent_name: str | None = None,
+    tag_name: str | None = None,
     session_id: str | None = None,
     event_type: str | None = None,
     after: str | None = None,
@@ -266,7 +266,7 @@ async def query_workspace_events(
     where, args, next_idx = _build_event_filters(
         "workspace_id = $1",
         [workspace_id],
-        agent_name,
+        tag_name,
         session_id,
         event_type,
         after,
@@ -277,7 +277,7 @@ async def query_workspace_events(
 
 async def query_personal_events(
     user_id: UUID,
-    agent_name: str | None = None,
+    tag_name: str | None = None,
     session_id: str | None = None,
     event_type: str | None = None,
     after: str | None = None,
@@ -289,7 +289,7 @@ async def query_personal_events(
     where, args, next_idx = _build_event_filters(
         "workspace_id IS NULL AND created_by = $1",
         [user_id],
-        agent_name,
+        tag_name,
         session_id,
         event_type,
         after,
@@ -307,7 +307,7 @@ async def search_workspace_events(
     pool = get_pool()
     limit = min(limit, 200)
     rows = await pool.fetch(
-        "SELECT id, workspace_id, created_by, agent_name, event_type, session_id, "
+        "SELECT id, workspace_id, created_by, tag_name, event_type, session_id, "
         "tool_name, content, metadata, attachments, created_at, "
         "ts_rank(to_tsvector('english', content), websearch_to_tsquery('english', $2)) AS rank "
         "FROM history_events "
@@ -329,7 +329,7 @@ async def search_personal_events(
     pool = get_pool()
     limit = min(limit, 200)
     rows = await pool.fetch(
-        "SELECT id, workspace_id, created_by, agent_name, event_type, session_id, "
+        "SELECT id, workspace_id, created_by, tag_name, event_type, session_id, "
         "tool_name, content, metadata, attachments, created_at, "
         "ts_rank(to_tsvector('english', content), websearch_to_tsquery('english', $2)) AS rank "
         "FROM history_events "
@@ -352,7 +352,7 @@ async def search_workspace_events_vector(
     pool = get_pool()
     limit = min(limit, 200)
     rows = await pool.fetch(
-        "SELECT id, workspace_id, created_by, agent_name, event_type, session_id, "
+        "SELECT id, workspace_id, created_by, tag_name, event_type, session_id, "
         "tool_name, content, metadata, attachments, created_at, "
         "1 - (embedding <=> $2) AS similarity "
         "FROM history_events "
@@ -374,7 +374,7 @@ async def search_personal_events_vector(
     pool = get_pool()
     limit = min(limit, 200)
     rows = await pool.fetch(
-        "SELECT id, workspace_id, created_by, agent_name, event_type, session_id, "
+        "SELECT id, workspace_id, created_by, tag_name, event_type, session_id, "
         "tool_name, content, metadata, attachments, created_at, "
         "1 - (embedding <=> $2) AS similarity "
         "FROM history_events "
@@ -392,7 +392,7 @@ async def search_personal_events_vector(
 
 async def query_all_user_events(
     user_id: UUID,
-    agent_name: str | None = None,
+    tag_name: str | None = None,
     event_type: str | None = None,
     after: str | None = None,
     before: str | None = None,
@@ -409,9 +409,9 @@ async def query_all_user_events(
     args: list = [user_id]
     idx = 2
 
-    if agent_name:
-        conditions.append(f"he.agent_name = ${idx}")
-        args.append(agent_name)
+    if tag_name:
+        conditions.append(f"he.tag_name = ${idx}")
+        args.append(tag_name)
         idx += 1
     if event_type:
         conditions.append(f"he.event_type = ${idx}")
@@ -430,7 +430,7 @@ async def query_all_user_events(
     args.append(limit + 1)
 
     rows = await pool.fetch(
-        f"SELECT he.id, he.workspace_id, he.created_by, he.agent_name, he.event_type, "
+        f"SELECT he.id, he.workspace_id, he.created_by, he.tag_name, he.event_type, "
         f"he.session_id, he.tool_name, he.content, he.metadata, he.created_at, "
         f"w.name AS workspace_name, "
         f"COALESCE(u.display_name, u.name) AS created_by_name "
@@ -449,23 +449,23 @@ async def query_all_user_events(
     return events, has_more
 
 
-async def delete_workspace_agent_events(agent_name: str, workspace_id: UUID) -> int:
-    """Delete all workspace events for a given agent. Returns count deleted."""
+async def delete_workspace_tag_events(tag_name: str, workspace_id: UUID) -> int:
+    """Delete all workspace events for a given tag. Returns count deleted."""
     pool = get_pool()
     result = await pool.execute(
-        "DELETE FROM history_events WHERE agent_name = $1 AND workspace_id = $2",
-        agent_name,
+        "DELETE FROM history_events WHERE tag_name = $1 AND workspace_id = $2",
+        tag_name,
         workspace_id,
     )
     return int(result.split()[-1]) if result else 0
 
 
-async def delete_personal_agent_events(agent_name: str, user_id: UUID) -> int:
-    """Delete all personal events for a given agent. Returns count deleted."""
+async def delete_personal_tag_events(tag_name: str, user_id: UUID) -> int:
+    """Delete all personal events for a given tag. Returns count deleted."""
     pool = get_pool()
     result = await pool.execute(
-        "DELETE FROM history_events WHERE agent_name = $1 AND workspace_id IS NULL AND created_by = $2",
-        agent_name,
+        "DELETE FROM history_events WHERE tag_name = $1 AND workspace_id IS NULL AND created_by = $2",
+        tag_name,
         user_id,
     )
     return int(result.split()[-1]) if result else 0

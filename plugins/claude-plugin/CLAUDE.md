@@ -32,10 +32,10 @@ stash notebooks add-page <notebook_id> "title" --ws <ws_id> --content "markdown 
 stash notebooks edit-page <notebook_id> <page_id> --ws <ws_id> --content "new content"
 ```
 
-### History (Agent Event Logs)
+### History (Event Logs)
 ```bash
-stash history agents --ws <workspace_id>                              # List distinct agent names
-stash history push "text" --ws <ws_id> --agent <name> --type <event_type>
+stash history tags --ws <workspace_id>                                # List distinct tag names
+stash history push "text" --ws <ws_id> --tag <name> --type <event_type>
 stash history query --ws <ws_id> --limit 20                           # Query events
 stash history search "query" --ws <ws_id>                             # Full-text search
 stash history query --all --limit 20                                  # Cross-workspace events

@@ -126,7 +126,7 @@ def test_out_of_scope_blocks_live_events(monkeypatch):
     monkeypatch.setattr(hooks, "cwd_in_scope", lambda cwd: False)
 
     c = _RecordingClient()
-    stream_user_message(c, {"workspace_id": "ws1", "agent_name": "a"}, {"session_id": "s"},
+    stream_user_message(c, {"workspace_id": "ws1", "tag_name": "a"}, {"session_id": "s"},
                         "hello", HookEvent(kind="prompt", cwd="/other"))
     assert c.calls == []
 
@@ -135,6 +135,6 @@ def test_in_scope_allows_live_events(monkeypatch):
     from stashai.plugin.hooks import stream_user_message
     # Autouse fixture in conftest already patches cwd_in_scope → True.
     c = _RecordingClient()
-    stream_user_message(c, {"workspace_id": "ws1", "agent_name": "a"}, {"session_id": "s"},
+    stream_user_message(c, {"workspace_id": "ws1", "tag_name": "a"}, {"session_id": "s"},
                         "hello", HookEvent(kind="prompt", cwd="/anywhere"))
     assert len(c.calls) == 1

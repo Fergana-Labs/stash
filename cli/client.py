@@ -326,14 +326,14 @@ class StashClient:
 
     # --- History (workspace events) ---
 
-    def list_agent_names(self, workspace_id: str) -> list:
-        data = self._get(f"/api/v1/workspaces/{workspace_id}/memory/agent-names")
-        return data.get("agent_names", []) if isinstance(data, dict) else data
+    def list_tag_names(self, workspace_id: str) -> list:
+        data = self._get(f"/api/v1/workspaces/{workspace_id}/memory/tag-names")
+        return data.get("tag_names", []) if isinstance(data, dict) else data
 
     def push_event(
         self,
         workspace_id: str,
-        agent_name: str,
+        tag_name: str,
         event_type: str,
         content: str,
         session_id: str | None = None,
@@ -342,7 +342,7 @@ class StashClient:
         attachments: list[dict] | None = None,
         created_at: str | None = None,
     ) -> dict:
-        body: dict = {"agent_name": agent_name, "event_type": event_type, "content": content}
+        body: dict = {"tag_name": tag_name, "event_type": event_type, "content": content}
         if session_id:
             body["session_id"] = session_id
         if tool_name:
@@ -358,14 +358,14 @@ class StashClient:
     def query_events(
         self,
         workspace_id: str,
-        agent_name: str | None = None,
+        tag_name: str | None = None,
         event_type: str | None = None,
         limit: int = 50,
         after: str | None = None,
     ) -> list:
         params: dict = {"limit": limit}
-        if agent_name:
-            params["agent_name"] = agent_name
+        if tag_name:
+            params["tag_name"] = tag_name
         if event_type:
             params["event_type"] = event_type
         if after:
@@ -381,11 +381,11 @@ class StashClient:
         )
 
     def all_events(
-        self, agent_name: str | None = None, event_type: str | None = None, limit: int = 50
+        self, tag_name: str | None = None, event_type: str | None = None, limit: int = 50
     ) -> list:
         params: dict = {"limit": limit}
-        if agent_name:
-            params["agent_name"] = agent_name
+        if tag_name:
+            params["tag_name"] = tag_name
         if event_type:
             params["event_type"] = event_type
         return self._list("/api/v1/me/history-events", "events", **params)
@@ -401,7 +401,7 @@ class StashClient:
         workspace_id: str,
         session_id: str,
         transcript_path: str | Path,
-        agent_name: str,
+        tag_name: str,
         cwd: str = "",
     ) -> dict:
         import gzip as _gzip
@@ -415,7 +415,7 @@ class StashClient:
         resp = self._request(
             "POST",
             f"/api/v1/workspaces/{workspace_id}/transcripts",
-            data={"session_id": session_id, "agent_name": agent_name, "cwd": cwd},
+            data={"session_id": session_id, "tag_name": tag_name, "cwd": cwd},
             files={"file": (name, body, "application/gzip")},
             timeout=120,
         )

@@ -1,7 +1,7 @@
-"""History router: workspace and personal agent event storage.
+"""History router: workspace and personal event storage.
 
 Events belong directly to workspaces. No intermediate "store" abstraction.
-Hierarchy: Workspace → Agent → Session → Events
+Hierarchy: Workspace → Tag → Session → Events
 """
 
 from uuid import UUID
@@ -41,7 +41,7 @@ async def push_ws_event(
     attachments = [a.model_dump(mode="json") for a in req.attachments] if req.attachments else None
     event = await memory_service.push_event(
         workspace_id,
-        agent_name=req.agent_name,
+        tag_name=req.tag_name,
         event_type=req.event_type,
         content=req.content,
         created_by=current_user["id"],
@@ -69,7 +69,7 @@ async def push_ws_events_batch(
 @ws_router.get("/events", response_model=HistoryEventListResponse)
 async def query_ws_events(
     workspace_id: UUID,
-    agent_name: str | None = Query(None),
+    tag_name: str | None = Query(None),
     session_id: str | None = Query(None),
     event_type: str | None = Query(None),
     after: str | None = Query(None),
@@ -80,7 +80,7 @@ async def query_ws_events(
     await _check_member(workspace_id, current_user["id"])
     events, has_more = await memory_service.query_workspace_events(
         workspace_id,
-        agent_name=agent_name,
+        tag_name=tag_name,
         session_id=session_id,
         event_type=event_type,
         after=after,
@@ -121,30 +121,30 @@ async def get_ws_event(
     return HistoryEventResponse(**event)
 
 
-@ws_router.delete("/agents/{agent_name}", status_code=204)
-async def delete_ws_agent(
+@ws_router.delete("/tags/{tag_name}", status_code=204)
+async def delete_ws_tag(
     workspace_id: UUID,
-    agent_name: str,
+    tag_name: str,
     current_user: dict = Depends(get_current_user),
 ):
-    """Delete all events for an agent in this workspace."""
+    """Delete all events for a tag in this workspace."""
     await _check_member(workspace_id, current_user["id"])
-    await memory_service.delete_workspace_agent_events(agent_name, workspace_id)
+    await memory_service.delete_workspace_tag_events(tag_name, workspace_id)
 
 
-@ws_router.get("/agent-names")
-async def list_ws_agent_names(
+@ws_router.get("/tag-names")
+async def list_ws_tag_names(
     workspace_id: UUID,
     current_user: dict = Depends(get_current_user),
 ):
-    """List distinct agent names in this workspace."""
+    """List distinct tag names in this workspace."""
     await _check_member(workspace_id, current_user["id"])
     from ..database import get_pool
 
     pool = get_pool()
     rows = await pool.fetch(
-        "SELECT DISTINCT agent_name FROM history_events "
-        "WHERE workspace_id = $1 ORDER BY agent_name",
+        "SELECT DISTINCT tag_name FROM history_events "
+        "WHERE workspace_id = $1 ORDER BY tag_name",
         workspace_id,
     )
-    return {"agent_names": [r["agent_name"] for r in rows]}
+    return {"tag_names": [r["tag_name"] for r in rows]}

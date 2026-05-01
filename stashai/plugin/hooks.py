@@ -104,7 +104,7 @@ def stream_user_message(
     try:
         client.push_event(
             workspace_id=workspace_id,
-            agent_name=cfg["agent_name"],
+            tag_name=cfg["tag_name"],
             event_type="user_message",
             content=prompt_text[:2000],
             session_id=state.get("session_id", ""),
@@ -137,7 +137,7 @@ def stream_tool_use(
     try:
         client.push_event(
             workspace_id=workspace_id,
-            agent_name=cfg["agent_name"],
+            tag_name=cfg["tag_name"],
             event_type="tool_use",
             content=content,
             session_id=state.get("session_id", ""),
@@ -165,7 +165,7 @@ def stream_assistant_message(
     try:
         client.push_event(
             workspace_id=workspace_id,
-            agent_name=cfg["agent_name"],
+            tag_name=cfg["tag_name"],
             event_type="assistant_message",
             content=event.last_assistant_message[:4000],
             session_id=state.get("session_id", ""),
@@ -204,7 +204,7 @@ def stream_session_end(
     try:
         client.push_event(
             workspace_id=workspace_id,
-            agent_name=cfg["agent_name"],
+            tag_name=cfg["tag_name"],
             event_type="session_end",
             content=" ".join(parts),
             session_id=state.get("session_id", ""),
@@ -231,7 +231,7 @@ def stream_session_end(
             workspace_id=workspace_id,
             session_id=sid,
             transcript_path=path,
-            agent_name=cfg["agent_name"],
+            tag_name=cfg["tag_name"],
             cwd=event.cwd,
         )
     except Exception:

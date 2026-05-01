@@ -53,7 +53,7 @@ def test_reset_stats_clears(tmp_path):
 
 
 def test_stream_tool_use_writes_counter(tmp_path):
-    cfg = {"workspace_id": "ws", "agent_name": "h", "client": "claude_code"}
+    cfg = {"workspace_id": "ws", "tag_name": "h", "client": "claude_code"}
     state = {"session_id": "s1"}
     c = _FakeClient()
 
@@ -73,7 +73,7 @@ def test_stream_tool_use_writes_counter(tmp_path):
 
 
 def test_stream_session_end_reads_counter(tmp_path):
-    cfg = {"workspace_id": "ws", "agent_name": "h", "client": "claude_code"}
+    cfg = {"workspace_id": "ws", "tag_name": "h", "client": "claude_code"}
     state = {
         "session_id": "s1",
         "stats": {"tool_count": 7, "tools_used": ["edit", "bash"], "files_changed": ["a.py", "b.py"]},
@@ -92,7 +92,7 @@ def test_stream_session_end_reads_counter(tmp_path):
 
 
 def test_stream_session_end_with_no_prior_tool_use(tmp_path):
-    cfg = {"workspace_id": "ws", "agent_name": "h", "client": "claude_code"}
+    cfg = {"workspace_id": "ws", "tag_name": "h", "client": "claude_code"}
     state = {"session_id": "s1"}
     c = _FakeClient()
 

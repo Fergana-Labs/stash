@@ -20,9 +20,9 @@
       "type": "string",
       "sensitive": true
     },
-    "agent_name": {
-      "title": "Agent Name",
-      "description": "Agent identity name in Stash",
+    "tag_name": {
+      "title": "Tag Name",
+      "description": "Tag identity name in Stash",
       "type": "string",
       "sensitive": false
     },

@@ -30,7 +30,7 @@ type StashManifest = {
 };
 
 type EventBody = {
-  agent_name: string;
+  tag_name: string;
   event_type: "session_start" | "user_message" | "assistant_message" | "session_end";
   content: string;
   session_id?: string;
@@ -164,7 +164,7 @@ async function pushEvent(body: EventBody): Promise<void> {
 
   const fullBody: EventBody = {
     ...body,
-    agent_name: cfg.username ?? "openclaw",
+    tag_name: cfg.username ?? "openclaw",
     metadata: { ...(body.metadata ?? {}), client: "openclaw" },
   };
   const path = eventsPath(workspaceId);
@@ -186,7 +186,7 @@ export default definePluginEntry({
   register(api) {
     api.on("session_start", (event, ctx) => {
       send({
-        agent_name: "",
+        tag_name: "",
         event_type: "session_start",
         content: "",
         session_id: event.sessionKey ?? event.sessionId ?? ctx.sessionKey,
@@ -202,7 +202,7 @@ export default definePluginEntry({
 
       if (role === "user") {
         send({
-          agent_name: "",
+          tag_name: "",
           event_type: "user_message",
           content: stripSenderWrapper(text),
           session_id: event.sessionKey ?? ctx.sessionKey,
@@ -211,7 +211,7 @@ export default definePluginEntry({
       }
       if (role === "assistant") {
         send({
-          agent_name: "",
+          tag_name: "",
           event_type: "assistant_message",
           content: text,
           session_id: event.sessionKey ?? ctx.sessionKey,
@@ -223,7 +223,7 @@ export default definePluginEntry({
 
     api.on("session_end", (event, ctx) => {
       send({
-        agent_name: "",
+        tag_name: "",
         event_type: "session_end",
         content: "",
         session_id: event.sessionKey ?? event.sessionId ?? ctx.sessionKey,

@@ -5,7 +5,7 @@ import type { ActivityTimeline } from "../../lib/types";
 
 interface Props {
   data: ActivityTimeline;
-  onAgentClick?: (agent: string) => void;
+  onTagClick?: (tag: string) => void;
 }
 
 const CELL_SIZE = 14;
@@ -37,22 +37,22 @@ function getIntensity(count: number, maxCount: number): number {
 interface TooltipInfo {
   x: number;
   y: number;
-  agent: string;
+  tag: string;
   date: string;
   total: number;
   byType: Record<string, number>;
 }
 
-export default function AgentActivityTimeline({ data, onAgentClick }: Props) {
+export default function TagActivityTimeline({ data, onTagClick }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [tooltip, setTooltip] = useState<TooltipInfo | null>(null);
-  const [hoverAgent, setHoverAgent] = useState<string | null>(null);
+  const [hoverTag, setHoverTag] = useState<string | null>(null);
 
   // Compute max count for intensity scaling
   const maxCount = data.buckets.reduce((max, b) => {
-    for (const agent of Object.values(b.agents)) {
-      if (agent.total > max) max = agent.total;
+    for (const tag of Object.values(b.tags)) {
+      if (tag.total > max) max = tag.total;
     }
     return max;
   }, 0);
@@ -64,11 +64,11 @@ export default function AgentActivityTimeline({ data, onAgentClick }: Props) {
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
-    const agents = data.agents;
+    const tags = data.tags;
     const buckets = data.buckets;
 
     const totalWidth = LABEL_WIDTH + PADDING + buckets.length * (CELL_SIZE + CELL_GAP);
-    const totalHeight = PADDING + agents.length * (CELL_SIZE + CELL_GAP) + PADDING;
+    const totalHeight = PADDING + tags.length * (CELL_SIZE + CELL_GAP) + PADDING;
 
     const dpr = window.devicePixelRatio || 2;
     canvas.width = totalWidth * dpr;
@@ -79,15 +79,15 @@ export default function AgentActivityTimeline({ data, onAgentClick }: Props) {
 
     ctx.clearRect(0, 0, totalWidth, totalHeight);
 
-    // Agent labels (violet)
+    // Tag labels (violet)
     ctx.font = "500 11px 'JetBrains Mono', monospace";
     ctx.textAlign = "right";
     ctx.textBaseline = "middle";
     ctx.fillStyle = "#8B5CF6";
 
-    for (let i = 0; i < agents.length; i++) {
+    for (let i = 0; i < tags.length; i++) {
       const y = PADDING + i * (CELL_SIZE + CELL_GAP) + CELL_SIZE / 2;
-      const label = agents[i].length > 10 ? agents[i].slice(0, 9) + "..." : agents[i];
+      const label = tags[i].length > 10 ? tags[i].slice(0, 9) + "..." : tags[i];
       ctx.fillText(label, LABEL_WIDTH, y);
     }
 
@@ -96,10 +96,10 @@ export default function AgentActivityTimeline({ data, onAgentClick }: Props) {
       const bucket = buckets[bi];
       const x = LABEL_WIDTH + PADDING + bi * (CELL_SIZE + CELL_GAP);
 
-      for (let ai = 0; ai < agents.length; ai++) {
+      for (let ai = 0; ai < tags.length; ai++) {
         const y = PADDING + ai * (CELL_SIZE + CELL_GAP);
-        const agentData = bucket.agents[agents[ai]];
-        const count = agentData?.total ?? 0;
+        const tagData = bucket.tags[tags[ai]];
+        const count = tagData?.total ?? 0;
         const intensity = getIntensity(count, maxCount);
 
         // Cell background
@@ -135,21 +135,20 @@ export default function AgentActivityTimeline({ data, onAgentClick }: Props) {
     if (!p) return;
     const { bi, ai, clientX, clientY } = p;
 
-    // Any hover over a valid row — the whole row is a click target for the agent filter
-    const agent = ai >= 0 && ai < data.agents.length ? data.agents[ai] : null;
-    setHoverAgent(agent);
+    const tag = ai >= 0 && ai < data.tags.length ? data.tags[ai] : null;
+    setHoverTag(tag);
 
-    if (bi >= 0 && bi < data.buckets.length && agent) {
+    if (bi >= 0 && bi < data.buckets.length && tag) {
       const bucket = data.buckets[bi];
-      const agentData = bucket.agents[agent];
-      if (agentData && agentData.total > 0) {
+      const tagData = bucket.tags[tag];
+      if (tagData && tagData.total > 0) {
         setTooltip({
           x: clientX,
           y: clientY,
-          agent,
+          tag,
           date: bucket.date.split("T")[0],
-          total: agentData.total,
-          byType: agentData.by_type,
+          total: tagData.total,
+          byType: tagData.by_type,
         });
         return;
       }
@@ -158,13 +157,13 @@ export default function AgentActivityTimeline({ data, onAgentClick }: Props) {
   };
 
   const handleClick = (e: React.MouseEvent) => {
-    if (!onAgentClick) return;
+    if (!onTagClick) return;
     const p = pointToCell(e);
     if (!p) return;
-    if (p.ai >= 0 && p.ai < data.agents.length) onAgentClick(data.agents[p.ai]);
+    if (p.ai >= 0 && p.ai < data.tags.length) onTagClick(data.tags[p.ai]);
   };
 
-  const cursor = onAgentClick && hoverAgent ? "cursor-pointer" : "cursor-crosshair";
+  const cursor = onTagClick && hoverTag ? "cursor-pointer" : "cursor-crosshair";
 
   return (
     <div ref={containerRef} className="relative overflow-x-auto">
@@ -172,7 +171,7 @@ export default function AgentActivityTimeline({ data, onAgentClick }: Props) {
         ref={canvasRef}
         className={cursor}
         onMouseMove={handleMouseMove}
-        onMouseLeave={() => { setTooltip(null); setHoverAgent(null); }}
+        onMouseLeave={() => { setTooltip(null); setHoverTag(null); }}
         onClick={handleClick}
       />
       {tooltip && (
@@ -181,7 +180,7 @@ export default function AgentActivityTimeline({ data, onAgentClick }: Props) {
           style={{ left: tooltip.x + 12, top: tooltip.y - 8 }}
         >
           <div className="text-xs font-medium text-foreground">
-            <span className="text-violet-400">{tooltip.agent}</span>
+            <span className="text-violet-400">{tooltip.tag}</span>
             <span className="text-muted mx-1">&middot;</span>
             <span className="text-muted font-mono">{tooltip.date}</span>
           </div>

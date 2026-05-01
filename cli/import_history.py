@@ -522,7 +522,7 @@ def upload_conversation(client, workspace_id: str, conv: ConversationInfo) -> di
             workspace_id=workspace_id,
             session_id=conv.session_id,
             transcript_path=transcript_path,
-            agent_name=conv.agent,
+            tag_name=conv.agent,
             cwd=conv.cwd,
         )
     finally:
@@ -531,7 +531,7 @@ def upload_conversation(client, workspace_id: str, conv: ConversationInfo) -> di
 
     client.push_event(
         workspace_id=workspace_id,
-        agent_name=conv.agent,
+        tag_name=conv.agent,
         event_type="session_end",
         content=f"Imported historical session ({_fmt_size(conv.size_bytes)})",
         session_id=conv.session_id,

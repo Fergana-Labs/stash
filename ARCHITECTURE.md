@@ -98,7 +98,7 @@ workspaces ─┬── workspace_members ──── users
                   object_shares
 ```
 
-`history_events` lives directly under a workspace (no intermediate "store" abstraction). Grouping in the UI is by `agent_name` + `session_id` on the event row.
+`history_events` lives directly under a workspace (no intermediate "store" abstraction). Grouping in the UI is by `tag_name` + `session_id` on the event row.
 
 ### Workspace scoping
 

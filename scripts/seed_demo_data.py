@@ -533,7 +533,7 @@ def generate_history_events(count: int = 200):
         events.append({
             "id": uuid4(),
             "workspace_id": WORKSPACE_ID if random.random() > 0.2 else None,
-            "agent_name": agent,
+            "tag_name": agent,
             "event_type": event_type,
             "session_id": f"session-{random.randint(1, 30):03d}",
             "content": content_templates[event_type],
@@ -602,9 +602,9 @@ async def main():
             events = generate_history_events(200)
             for ev in events:
                 await conn.execute(
-                    """INSERT INTO history_events (id, workspace_id, agent_name, event_type, session_id, content, metadata, created_by, created_at, embedding)
+                    """INSERT INTO history_events (id, workspace_id, tag_name, event_type, session_id, content, metadata, created_by, created_at, embedding)
                        VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8, $9, $10)""",
-                    ev["id"], ev["workspace_id"], ev["agent_name"], ev["event_type"],
+                    ev["id"], ev["workspace_id"], ev["tag_name"], ev["event_type"],
                     ev["session_id"], ev["content"], "{}", ev["created_by"],
                     ev["created_at"], ev["embedding"],
                 )

@@ -24,7 +24,7 @@ async def upload_transcript(
     workspace_id: UUID,
     file: UploadFile,
     session_id: str = Form(...),
-    agent_name: str = Form(...),
+    tag_name: str = Form(...),
     cwd: str | None = Form(None),
     current_user: dict = Depends(get_current_user),
 ):
@@ -48,13 +48,13 @@ async def upload_transcript(
     pool = get_pool()
     row = await pool.fetchrow(
         "INSERT INTO session_transcripts "
-        "(workspace_id, session_id, agent_name, storage_key, size_bytes, cwd, uploaded_by) "
+        "(workspace_id, session_id, tag_name, storage_key, size_bytes, cwd, uploaded_by) "
         "VALUES ($1, $2, $3, $4, $5, $6, $7) "
         "ON CONFLICT (workspace_id, session_id) DO NOTHING "
-        "RETURNING id, workspace_id, session_id, agent_name, size_bytes, cwd, uploaded_by, uploaded_at",
+        "RETURNING id, workspace_id, session_id, tag_name, size_bytes, cwd, uploaded_by, uploaded_at",
         workspace_id,
         session_id,
-        agent_name,
+        tag_name,
         storage_key,
         len(content),
         cwd,
@@ -74,7 +74,7 @@ async def get_transcript(
     await _check_member(workspace_id, current_user["id"])
     pool = get_pool()
     row = await pool.fetchrow(
-        "SELECT id, workspace_id, session_id, agent_name, storage_key, size_bytes, cwd, "
+        "SELECT id, workspace_id, session_id, tag_name, storage_key, size_bytes, cwd, "
         "uploaded_by, uploaded_at FROM session_transcripts "
         "WHERE workspace_id = $1 AND session_id = $2 "
         "ORDER BY uploaded_at DESC LIMIT 1",

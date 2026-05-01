@@ -71,7 +71,7 @@ def get_config() -> dict:
     return {
         "api_endpoint": cli.get("base_url", "https://joinstash.ai"),
         "api_key": cli.get("api_key", ""),
-        "agent_name": cli.get("username", ""),
+        "tag_name": cli.get("username", ""),
         "workspace_id": (manifest or {}).get("workspace_id", ""),
         "auto_curate": os.environ.get("STASH_AUTO_CURATE", "false"),
         "client": "opencode",
@@ -85,4 +85,4 @@ def get_client() -> StashClient:
 
 def is_configured() -> bool:
     cfg = get_config()
-    return bool(cfg["api_key"] and cfg["agent_name"])
+    return bool(cfg["api_key"] and cfg["tag_name"])

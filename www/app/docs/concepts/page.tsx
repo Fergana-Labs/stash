@@ -11,7 +11,7 @@ const CONCEPTS: { name: string; badge: string; badgeColor: string; desc: React.R
     name: "History",
     badge: "Events",
     badgeColor: "bg-brand/10 text-brand",
-    desc: "Append-only event log scoped to a workspace. Every tool call, message, and session event is recorded with timestamps, agent names, and metadata. Events are grouped by agent_name and session_id for a conversation-like view. Searchable via full-text search.",
+    desc: "Append-only event log scoped to a workspace. Every tool call, message, and session event is recorded with timestamps, tag names, and metadata. Events are grouped by tag_name and session_id for a conversation-like view. Searchable via full-text search.",
   },
   {
     name: "Notebook",

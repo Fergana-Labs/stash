@@ -57,7 +57,7 @@ async def test_upload_and_fetch_roundtrip(client: AsyncClient, stub_storage):
     up = await client.post(
         f"/api/v1/workspaces/{ws}/transcripts",
         files={"file": ("s.jsonl", io.BytesIO(BODY), "application/jsonl")},
-        data={"session_id": "sess-1", "agent_name": "claude"},
+        data={"session_id": "sess-1", "tag_name": "claude"},
         headers={"Authorization": f"Bearer {key}"},
     )
     assert up.status_code == 201, up.text
@@ -79,7 +79,7 @@ async def test_oversize_rejected(client: AsyncClient, stub_storage):
     r = await client.post(
         f"/api/v1/workspaces/{ws}/transcripts",
         files={"file": ("s.jsonl", io.BytesIO(big), "application/jsonl")},
-        data={"session_id": "sess-big", "agent_name": "claude"},
+        data={"session_id": "sess-big", "tag_name": "claude"},
         headers={"Authorization": f"Bearer {key}"},
     )
     assert r.status_code == 413
@@ -93,7 +93,7 @@ async def test_non_member_forbidden(client: AsyncClient, stub_storage):
     r = await client.post(
         f"/api/v1/workspaces/{ws}/transcripts",
         files={"file": ("s.jsonl", io.BytesIO(BODY), "application/jsonl")},
-        data={"session_id": "sess", "agent_name": "claude"},
+        data={"session_id": "sess", "tag_name": "claude"},
         headers={"Authorization": f"Bearer {other}"},
     )
     assert r.status_code == 403

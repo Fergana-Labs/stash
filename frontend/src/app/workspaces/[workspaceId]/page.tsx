@@ -39,7 +39,7 @@ import {
   WorkspaceMember,
 } from "../../../lib/types";
 import DashboardSection from "../../../components/viz/DashboardSection";
-import AgentActivityTimeline from "../../../components/viz/AgentActivityTimeline";
+import TagActivityTimeline from "../../../components/viz/TagActivityTimeline";
 import KnowledgeDensityMap from "../../../components/viz/KnowledgeDensityMap";
 import EmbeddingSpaceExplorer from "../../../components/viz/EmbeddingSpaceExplorer";
 import PageGraphView from "../../../components/workspace/PageGraphView";
@@ -241,12 +241,12 @@ export default function WorkspacePage() {
               {/* Visualizations */}
               {(vizLoading || timeline?.buckets.length || density?.clusters.length || projection?.points.length) ? (
                 <div className="space-y-4">
-                  <DashboardSection title="Agent Activity" loading={vizLoading} empty={!timeline?.buckets.length} emptyMessage="No agent activity yet.">
+                  <DashboardSection title="Tag Activity" loading={vizLoading} empty={!timeline?.buckets.length} emptyMessage="No tag activity yet.">
                     {timeline && (
-                      <AgentActivityTimeline
+                      <TagActivityTimeline
                         data={timeline}
-                        onAgentClick={(agent) =>
-                          router.push(`/memory?ws=${workspaceId}&agent=${encodeURIComponent(agent)}`)
+                        onTagClick={(tag) =>
+                          router.push(`/memory?ws=${workspaceId}&tag=${encodeURIComponent(tag)}`)
                         }
                       />
                     )}

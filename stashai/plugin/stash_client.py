@@ -105,11 +105,11 @@ class StashClient:
 
     def push_event(
         self, workspace_id: str | None,
-        agent_name: str, event_type: str, content: str,
+        tag_name: str, event_type: str, content: str,
         session_id: str | None = None, tool_name: str | None = None,
         metadata: dict | None = None, client: str | None = None,
     ) -> dict:
-        body: dict = {"agent_name": agent_name, "event_type": event_type, "content": content}
+        body: dict = {"tag_name": tag_name, "event_type": event_type, "content": content}
         if session_id:
             body["session_id"] = session_id
         if tool_name:
@@ -210,13 +210,13 @@ class StashClient:
 
     def query_events(
         self, workspace_id: str | None,
-        agent_name: str | None = None, event_type: str | None = None,
+        tag_name: str | None = None, event_type: str | None = None,
         session_id: str | None = None,
         limit: int = 50, after: str | None = None,
     ) -> list:
         params: dict = {"limit": limit}
-        if agent_name:
-            params["agent_name"] = agent_name
+        if tag_name:
+            params["tag_name"] = tag_name
         if event_type:
             params["event_type"] = event_type
         if session_id:
@@ -237,7 +237,7 @@ class StashClient:
     # request.
     def upload_transcript(
         self, workspace_id: str, session_id: str, transcript_path: Path,
-        agent_name: str, cwd: str | None = None,
+        tag_name: str, cwd: str | None = None,
     ) -> dict:
         import gzip
 
@@ -251,7 +251,7 @@ class StashClient:
             "POST",
             f"/api/v1/workspaces/{workspace_id}/transcripts",
             headers=self._headers(),
-            data={"session_id": session_id, "agent_name": agent_name, "cwd": cwd or ""},
+            data={"session_id": session_id, "tag_name": tag_name, "cwd": cwd or ""},
             files={"file": (name, body, "application/gzip")},
             timeout=httpx.Timeout(60.0, connect=5.0),
         )
@@ -262,12 +262,12 @@ class StashClient:
     # --- Cross-workspace aggregate (optional) ---
 
     def list_all_history_events(
-        self, agent_name: str | None = None, event_type: str | None = None,
+        self, tag_name: str | None = None, event_type: str | None = None,
         limit: int = 50,
     ) -> list:
         params: dict = {"limit": limit}
-        if agent_name:
-            params["agent_name"] = agent_name
+        if tag_name:
+            params["tag_name"] = tag_name
         if event_type:
             params["event_type"] = event_type
         return self._list("/api/v1/me/history-events", "events", **params)

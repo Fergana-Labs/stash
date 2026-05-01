@@ -39,7 +39,7 @@ def main():
         transcript_path=event.transcript_path,
         session_id=state.get("session_id", ""),
         workspace_id=cfg["workspace_id"],
-        agent_name=cfg["agent_name"],
+        tag_name=cfg["tag_name"],
         cwd=event.cwd,
         base_url=cfg["api_endpoint"],
         api_key=cfg["api_key"],
