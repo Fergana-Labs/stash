@@ -1,10 +1,10 @@
 import secrets
-import time
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 
 from ..auth import create_api_key, get_current_user
 from ..config import settings
+from ..database import get_pool
 from ..middleware import limiter
 from ..models import (
     ApiKeyCreateRequest,
@@ -23,19 +23,7 @@ from ..services import invite_token_service, user_service
 
 router = APIRouter(prefix="/api/v1/users", tags=["users"])
 
-# ---------------------------------------------------------------------------
-# CLI auth sessions — in-memory, short-lived (10 min TTL)
-# ---------------------------------------------------------------------------
-
-_CLI_AUTH_TTL = 600  # seconds
-_cli_sessions: dict[str, dict] = {}  # session_id → {created_at, api_key?, username?}
-
-
-def _prune_cli_sessions() -> None:
-    cutoff = time.time() - _CLI_AUTH_TTL
-    expired = [k for k, v in _cli_sessions.items() if v["created_at"] < cutoff]
-    for k in expired:
-        del _cli_sessions[k]
+_CLI_AUTH_TTL_INTERVAL = "10 minutes"
 
 
 def _require_password_auth() -> None:
@@ -220,7 +208,7 @@ async def create_cli_auth_session(request: Request):
     Optional body `{"device_name": "..."}` names the key that'll be minted,
     so users can tell devices apart in `stash keys list`.
     """
-    _prune_cli_sessions()
+    pool = get_pool()
     session_id = secrets.token_urlsafe(32)
     device_name = ""
     try:
@@ -228,7 +216,13 @@ async def create_cli_auth_session(request: Request):
         device_name = str(body.get("device_name") or "")[:128]
     except Exception:
         pass
-    _cli_sessions[session_id] = {"created_at": time.time(), "device_name": device_name}
+    await pool.execute(
+        "INSERT INTO cli_auth_sessions (session_id, device_name) VALUES ($1, $2)",
+        session_id, device_name,
+    )
+    await pool.execute(
+        f"DELETE FROM cli_auth_sessions WHERE created_at < now() - interval '{_CLI_AUTH_TTL_INTERVAL}'"
+    )
     return {"session_id": session_id, "device_name": device_name}
 
 
@@ -236,17 +230,17 @@ async def create_cli_auth_session(request: Request):
 @limiter.limit("60/minute")
 async def poll_cli_auth_session(request: Request, session_id: str):
     """Poll for CLI auth result. Returns pending or complete with api_key."""
-    _prune_cli_sessions()
-    session = _cli_sessions.get(session_id)
-    if not session:
+    pool = get_pool()
+    row = await pool.fetchrow(
+        "SELECT api_key, username FROM cli_auth_sessions "
+        f"WHERE session_id = $1 AND created_at > now() - interval '{_CLI_AUTH_TTL_INTERVAL}'",
+        session_id,
+    )
+    if not row:
         raise HTTPException(status_code=404, detail="Session not found or expired")
-    if "api_key" in session:
-        del _cli_sessions[session_id]
-        return {
-            "status": "complete",
-            "api_key": session["api_key"],
-            "username": session["username"],
-        }
+    if row["api_key"]:
+        await pool.execute("DELETE FROM cli_auth_sessions WHERE session_id = $1", session_id)
+        return {"status": "complete", "api_key": row["api_key"], "username": row["username"]}
     return {"status": "pending"}
 
 
@@ -285,12 +279,18 @@ async def approve_cli_auth_session(
     browser's own session key. Instead we mint a new named key scoped to this
     device, so each CLI install has its own revocable identity.
     """
-    _prune_cli_sessions()
-    session = _cli_sessions.get(session_id)
-    if not session:
+    pool = get_pool()
+    row = await pool.fetchrow(
+        "SELECT device_name FROM cli_auth_sessions "
+        f"WHERE session_id = $1 AND created_at > now() - interval '{_CLI_AUTH_TTL_INTERVAL}'",
+        session_id,
+    )
+    if not row:
         raise HTTPException(status_code=404, detail="Session not found or expired")
-    device_name = session.get("device_name") or "CLI"
+    device_name = row["device_name"] or "CLI"
     api_key = await create_api_key(current_user["id"], name=f"CLI ({device_name})")
-    session["api_key"] = api_key
-    session["username"] = current_user["name"]
+    await pool.execute(
+        "UPDATE cli_auth_sessions SET api_key = $1, username = $2 WHERE session_id = $3",
+        api_key, current_user["name"], session_id,
+    )
     return {"status": "approved"}
