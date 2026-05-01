@@ -961,6 +961,21 @@ def share_session(
     # Build the full transcript page
     full_md = _transcript_to_markdown(raw_jsonl)
 
+    # Discover subagent transcripts
+    subagents_dir = jsonl_path.parent / jsonl_path.stem / "subagents"
+    subagent_entries: list[tuple[str, str, str]] = []  # (label, raw_jsonl, jsonl_path)
+    if subagents_dir.is_dir():
+        for sa_jsonl in sorted(subagents_dir.glob("agent-*.jsonl")):
+            meta_path = sa_jsonl.with_suffix("").with_suffix(".meta.json")
+            label = sa_jsonl.stem
+            if meta_path.exists():
+                meta = json.loads(meta_path.read_text())
+                desc = meta.get("description", "")
+                name = meta.get("name", "")
+                label = desc or name or label
+            sa_raw = sa_jsonl.read_text(errors="replace")
+            subagent_entries.append((label, sa_raw, str(sa_jsonl)))
+
     console.print(f"[dim]Sharing session {sid[:8]}…[/dim]")
 
     with _client() as c:
@@ -968,6 +983,11 @@ def share_session(
         nb = c.create_notebook(ws, page_title, description="Shared session artifact")
         c.create_page(ws, nb["id"], "Summary", content=summary_md)
         c.create_page(ws, nb["id"], "Full Transcript", content=full_md)
+
+        for sa_label, sa_raw, _sa_path in subagent_entries:
+            sa_md = _transcript_to_markdown(sa_raw)
+            c.create_page(ws, nb["id"], f"Subagent: {sa_label}", content=sa_md)
+            console.print(f"  [dim]Included subagent: {sa_label}[/dim]")
 
         view_items: list[dict] = [
             {"object_type": "notebook", "object_id": nb["id"], "position": 0},
@@ -994,6 +1014,14 @@ def share_session(
         except StashError as e:
             if e.status_code != 409:
                 raise
+
+        for sa_label, _sa_raw, sa_path in subagent_entries:
+            sa_session_id = Path(sa_path).stem
+            try:
+                c.upload_transcript(ws, sa_session_id, sa_path, agent_name="claude-subagent", cwd=str(jsonl_path.parent))
+            except StashError as e:
+                if e.status_code != 409:
+                    raise
 
         # Create the public View
         view = c.create_view(
