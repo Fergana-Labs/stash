@@ -18,10 +18,7 @@ set -euo pipefail
 
 PACKAGE="stashai"
 
-if command -v pipx >/dev/null 2>&1; then
-  INSTALLER="pipx"
-  INSTALL_CMD=(pipx install "$PACKAGE" --force)
-elif command -v uv >/dev/null 2>&1; then
+if command -v uv >/dev/null 2>&1; then
   INSTALLER="uv"
   INSTALL_CMD=(uv tool install "$PACKAGE" --force)
 else
@@ -35,9 +32,8 @@ fi
 printf '→ Installing %s via %s…\n' "$PACKAGE" "$INSTALLER"
 "${INSTALL_CMD[@]}" >/dev/null 2>&1
 
-# pipx + uv put binaries in ~/.local/bin; pip --user puts them somewhere
-# similar. If the shell hasn't picked up PATH yet, surface the fix instead
-# of silently failing.
+# uv puts binaries in ~/.local/bin. If the shell hasn't picked up PATH yet,
+# surface the fix instead of silently failing.
 if ! command -v stash >/dev/null 2>&1; then
   cat >&2 <<'MSG'
 stash installed, but it isn't on PATH yet. Add this to your shell rc and
