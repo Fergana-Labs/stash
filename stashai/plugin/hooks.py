@@ -236,3 +236,17 @@ def stream_session_end(
         )
     except Exception:
         pass
+
+    subagents_dir = path.parent / path.stem / "subagents"
+    if subagents_dir.is_dir():
+        for sa_jsonl in subagents_dir.glob("agent-*.jsonl"):
+            try:
+                client.upload_transcript(
+                    workspace_id=workspace_id,
+                    session_id=sa_jsonl.stem,
+                    transcript_path=sa_jsonl,
+                    agent_name="claude-subagent",
+                    cwd=event.cwd,
+                )
+            except Exception:
+                pass
