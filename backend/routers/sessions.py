@@ -132,14 +132,25 @@ async def materialize_session(
         raise HTTPException(status_code=404, detail="No events for that session in this workspace")
 
     notebook = await _find_or_create_sessions_notebook(workspace_id, current_user["id"])
-    short = session_id[:8]
-    page_name = f"Session {short}"
+
+    # Title format: "{agent} · {date} · {short_id}". Naive prefix-truncation
+    # produced ugly names like "Session session-" for non-UUID session_ids;
+    # combining agent + date + short_id reads naturally and avoids collisions
+    # within an agent in the same minute.
+    agent = (events[0]["agent_name"] or "agent").strip() or "agent"
+    started = events[0]["created_at"]
+    date_str = started.strftime("%Y-%m-%d %H:%M")
+    short_id = session_id.removeprefix("session-").removeprefix("session_")[:6] or session_id[:6]
+    page_name = f"{agent} · {date_str} · {short_id}"
     content = _format_session_markdown([dict(e) for e in events])
 
+    # Idempotency by metadata.session_id, not by name — that way we can change
+    # the display name format without orphaning previously-materialized pages.
     existing = await pool.fetchrow(
-        "SELECT id FROM notebook_pages WHERE notebook_id = $1 AND name = $2 LIMIT 1",
+        "SELECT id FROM notebook_pages "
+        "WHERE notebook_id = $1 AND metadata->>'session_id' = $2 LIMIT 1",
         notebook["id"],
-        page_name,
+        session_id,
     )
     if existing:
         page = await notebook_service.update_page(
@@ -154,5 +165,6 @@ async def materialize_session(
             name=page_name,
             content=content,
             created_by=current_user["id"],
+            metadata={"session_id": session_id, "materialized": True},
         )
     return {"page": page, "notebook_id": str(notebook["id"])}
