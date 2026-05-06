@@ -94,15 +94,24 @@ export default function ShareSheet({ objectType, objectId, objectLabel, onClose 
   };
 
   const onCopyLink = async () => {
+    let result;
     try {
-      const result = await createShareLink(objectType, objectId);
-      setLinkUrl(result.url);
-      setEmbedSlug(result.kind === "view" ? result.view_slug ?? null : null);
+      result = await createShareLink(objectType, objectId);
+    } catch (err) {
+      setLoadError(err instanceof Error ? err.message : "Failed to create link");
+      return;
+    }
+    setLinkUrl(result.url);
+    setEmbedSlug(result.kind === "view" ? result.view_slug ?? null : null);
+    // Clipboard is best-effort — some browsers (headless, sandboxed iframes,
+    // permission denied) reject writeText. The URL is still shown above so
+    // the user can select-and-copy by hand.
+    try {
       await navigator.clipboard.writeText(result.url);
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
-    } catch (err) {
-      setLoadError(err instanceof Error ? err.message : "Failed to create link");
+    } catch {
+      /* ignore — link is rendered for manual copy */
     }
   };
 
@@ -110,9 +119,13 @@ export default function ShareSheet({ objectType, objectId, objectLabel, onClose 
     if (!embedSlug) return;
     const origin = window.location.origin;
     const snippet = `<iframe src="${origin}/v/${embedSlug}/embed" width="100%" height="600" frameborder="0"></iframe>`;
-    await navigator.clipboard.writeText(snippet);
-    setEmbedCopied(true);
-    setTimeout(() => setEmbedCopied(false), 1500);
+    try {
+      await navigator.clipboard.writeText(snippet);
+      setEmbedCopied(true);
+      setTimeout(() => setEmbedCopied(false), 1500);
+    } catch {
+      /* ignore — snippet is rendered for manual copy */
+    }
   };
 
   return (
