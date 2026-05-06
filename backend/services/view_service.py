@@ -301,19 +301,16 @@ async def get_public_view(slug: str, viewer_id: UUID | None = None) -> dict | No
         return None
     view = await _attach_items(dict(row))
 
-    # The View itself can also be ACLd via object_permissions on object_type='view'
-    # (e.g. a viewer was explicitly shared on the curation). If the viewer can't
-    # see the View object directly AND can't see at least one item, treat as 404.
-    can_see_view = await permission_service.check_access(
-        "view", view["id"], viewer_id, workspace_id=view["workspace_id"]
-    )
-
+    # Strict mode: the View renders iff every underlying item is readable to
+    # the viewer. There's no separate View ACL — Views are pure presentation,
+    # so an item being privately overridden hides the whole publication, even
+    # for the workspace owner browsing the public URL. Owners can always
+    # navigate via the workspace UI.
     for item in view["items"]:
-        item_workspace = view["workspace_id"]
         ok = await permission_service.check_access(
-            item["object_type"], item["object_id"], viewer_id, workspace_id=item_workspace
+            item["object_type"], item["object_id"], viewer_id, workspace_id=view["workspace_id"]
         )
-        if not ok and not can_see_view:
+        if not ok:
             return None
 
     await pool.execute("UPDATE views SET view_count = view_count + 1 WHERE id = $1", view["id"])
