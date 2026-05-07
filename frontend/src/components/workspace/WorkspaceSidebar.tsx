@@ -160,8 +160,10 @@ export default function WorkspaceSidebar({
     }
   };
 
-  const copyInvite = async () => {
-    const url = `${window.location.origin}/join/${workspace.invite_code}`;
+  const copyShareLink = async () => {
+    const url = workspace.is_public
+      ? `${window.location.origin}/s/${workspace.id}`
+      : `${window.location.origin}/join/${workspace.invite_code}`;
     await navigator.clipboard.writeText(url);
     setCopied(true);
     setTimeout(() => setCopied(false), 1500);
@@ -339,14 +341,14 @@ export default function WorkspaceSidebar({
         </div>
         <div className="mt-3 flex flex-col gap-2">
           <button
-            onClick={copyInvite}
+            onClick={copyShareLink}
             className={`w-full text-xs px-3 py-1.5 rounded border transition-colors ${
               copied
                 ? "bg-brand/15 border-brand/40 text-brand"
                 : "bg-raised hover:bg-raised text-dim border-border"
             }`}
           >
-            {copied ? "Copied!" : "Copy Invite Link"}
+            {copied ? "Copied!" : workspace.is_public ? "Copy Share Link" : "Copy Invite Link"}
           </button>
           <div className="text-xs text-muted text-center flex items-center justify-center gap-2">
             <span>
