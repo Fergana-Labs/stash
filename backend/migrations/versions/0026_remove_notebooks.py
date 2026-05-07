@@ -52,10 +52,26 @@ def upgrade() -> None:
     )
     # Single CTE generates the new folder UUIDs alongside the source notebook
     # id so the insert + map population both see the same rows.
+    #
+    # Notebooks never had a (workspace_id, name) unique constraint, but the
+    # new folders table will (idx_folders_unique_at_root). Disambiguate
+    # duplicates here by appending a numeric suffix to every collision after
+    # the first, ordered by created_at. The first notebook keeps its name.
     op.execute(
         "WITH new_folders AS ("
-        "  SELECT n.id AS notebook_id, gen_random_uuid() AS folder_id, "
-        "         n.name, n.workspace_id, n.created_by, n.created_at, n.updated_at "
+        "  SELECT"
+        "    n.id AS notebook_id,"
+        "    gen_random_uuid() AS folder_id,"
+        "    CASE"
+        "      WHEN ROW_NUMBER() OVER ("
+        "        PARTITION BY n.workspace_id, n.name ORDER BY n.created_at, n.id"
+        "      ) = 1 THEN n.name"
+        "      ELSE n.name || ' ('"
+        "        || ROW_NUMBER() OVER ("
+        "          PARTITION BY n.workspace_id, n.name ORDER BY n.created_at, n.id"
+        "        )::text || ')'"
+        "    END AS name,"
+        "    n.workspace_id, n.created_by, n.created_at, n.updated_at "
         "  FROM notebooks n"
         "), "
         "ins AS ("
