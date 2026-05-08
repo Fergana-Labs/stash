@@ -480,59 +480,7 @@ function WikiPageInner() {
 
         {wsId && (
           <div className="flex flex-1 overflow-hidden">
-            {/* Sidebar: workspace tree */}
-            <div className="flex w-[280px] flex-shrink-0 flex-col overflow-hidden border-r border-border bg-surface">
-              <div className="border-b border-border-subtle px-3 py-3">
-                <input
-                  type="text"
-                  placeholder="Search pages…"
-                  value={semanticQuery}
-                  onChange={(e) => {
-                    setSemanticQuery(e.target.value);
-                    if (!e.target.value) setSemanticResults([]);
-                  }}
-                  onKeyDown={(e) => e.key === "Enter" && handleSemanticSearch()}
-                  className="w-full rounded-md border border-border bg-base px-2.5 py-1.5 text-[12px] text-foreground placeholder:text-muted focus:border-brand focus:outline-none focus:shadow-[0_0_0_3px_rgba(249,115,22,0.2)]"
-                />
-                {semanticSearching && (
-                  <div className="mt-1 px-1 text-[10px] text-muted">Searching…</div>
-                )}
-                {semanticResults.length > 0 && (
-                  <div className="mt-1.5 max-h-[160px] space-y-0.5 overflow-y-auto">
-                    {semanticResults.map((p) => (
-                      <button
-                        key={p.id}
-                        onClick={() => {
-                          handleSelectPage(p.id);
-                          setSemanticResults([]);
-                          setSemanticQuery("");
-                        }}
-                        className="flex w-full items-center justify-between gap-2 truncate rounded px-2 py-1 text-left text-[12px] text-foreground transition-colors hover:bg-raised"
-                      >
-                        <span className="truncate">{p.name}</span>
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              <div className="flex-1 overflow-hidden">
-                <FileTreeComponent
-                  tree={tree}
-                  selectedPageId={selectedPageId}
-                  onSelectPage={handleSelectPage}
-                  onCreatePage={handleCreatePage}
-                  onCreateFolder={handleCreateFolder}
-                  onDeletePage={handleDeletePage}
-                  onDeleteFolder={handleDeleteFolder}
-                  onRenamePage={handleRenamePage}
-                  onRenameFolder={handleRenameFolder}
-                  onMovePage={handleMovePage}
-                />
-              </div>
-            </div>
-
-            {/* Editor */}
+            {/* Editor (no inner sidebar — navigation lives in the global AppSidebar) */}
             <div className="relative flex flex-1 flex-col overflow-hidden">
               {error && (
                 <div className="border-b border-red-500/30 bg-red-500/10 px-4 py-2 text-[13px] text-red-500">

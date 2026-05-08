@@ -257,61 +257,35 @@ function MemoryPageInner() {
   return (
     <AppShell user={user} onLogout={logout}>
       <div className="flex h-full overflow-hidden">
-        {/* Sidebar: agent list */}
-        <aside className="w-[250px] flex-shrink-0 overflow-y-auto border-r border-border bg-surface">
-          <div className="border-b border-border-subtle px-4 py-4">
-            <p className="font-mono text-[10px] font-medium uppercase tracking-[0.12em] text-muted">
-              Agents
-            </p>
-            <p className="mt-1 font-display text-[15px] font-semibold text-foreground">
-              {groups.length} agent{groups.length === 1 ? "" : "s"} · {events.length} events
-            </p>
-          </div>
-
-          {eventsLoading ? (
-            <p className="px-4 py-3 text-[11px] text-muted">Loading…</p>
-          ) : (
-            <div className="px-2 py-2">
-              {groups.map((ag) => (
-                <button
-                  key={ag.agentName}
-                  onClick={() => {
-                    setSelectedAgent(ag.agentName);
-                    setSelectedSession(null);
-                  }}
-                  className={
-                    "mb-0.5 flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left transition-colors " +
-                    (selectedAgent === ag.agentName
-                      ? "bg-agent-muted"
-                      : "hover:bg-raised")
-                  }
-                >
-                  <span
-                    className="h-1.5 w-1.5 flex-shrink-0 rounded-full"
-                    style={{ background: "var(--color-agent)" }}
-                  />
-                  <span className="truncate text-[13px] font-medium text-foreground">
-                    {ag.agentName}
-                  </span>
-                  <span className="ml-auto font-mono text-[10px] text-muted">
-                    {ag.eventCount}
-                  </span>
-                </button>
-              ))}
-              {groups.length === 0 && !eventsLoading && (
-                <p className="px-2 py-2 text-[11px] text-muted">No agents yet.</p>
-              )}
-            </div>
-          )}
-        </aside>
-
         {/* Main */}
         <div className="flex-1 overflow-y-auto">
           <div className="mx-auto w-full max-w-[900px] px-8 py-8">
-            <div className="mb-8">
-              <h1 className="font-display text-[32px] font-bold tracking-[-0.02em] text-foreground">
-                History
-              </h1>
+            <div className="mb-6 flex items-end justify-between gap-4">
+              <div>
+                <h1 className="font-display text-[32px] font-bold tracking-[-0.02em] text-foreground">
+                  History
+                </h1>
+                <p className="mt-1 text-[12.5px] text-muted">
+                  {groups.length} agent{groups.length === 1 ? "" : "s"} · {events.length} events
+                </p>
+              </div>
+              {groups.length > 0 && (
+                <select
+                  value={selectedAgent ?? ""}
+                  onChange={(e) => {
+                    setSelectedAgent(e.target.value || null);
+                    setSelectedSession(null);
+                  }}
+                  className="rounded-md border border-border bg-base px-2.5 py-1.5 text-[12.5px] text-foreground focus:border-[var(--color-brand-400)] focus:outline-none"
+                >
+                  <option value="">All agents</option>
+                  {groups.map((ag) => (
+                    <option key={ag.agentName} value={ag.agentName}>
+                      {ag.agentName} ({ag.eventCount})
+                    </option>
+                  ))}
+                </select>
+              )}
             </div>
 
             {selectedSession && selectedEvents ? (
