@@ -8,7 +8,7 @@ import FileTreeComponent from "../../components/workspace/FileTree";
 import MarkdownEditor, { SaveStatus } from "../../components/workspace/MarkdownEditor";
 import HtmlPageEditor from "../../components/workspace/HtmlPageEditor";
 import AddToCollect from "../../components/share/AddToCollect";
-import ShareSheet from "../../components/share/ShareSheet";
+import { useSetShareTarget } from "../../components/share/ShareTargetContext";
 import { useAuth } from "../../hooks/useAuth";
 import {
   createFolder,
@@ -427,6 +427,13 @@ function WikiPageInner() {
   const depKey = `${activeWorkspace?.id ?? ""}:${folderPath.join("/")}:${selectedPage?.id ?? ""}:${selectedPage?.name ?? ""}`;
   useBreadcrumbs(crumbs, depKey);
 
+  useSetShareTarget(
+    selectedPage
+      ? { objectType: "page", objectId: selectedPage.id, label: selectedPage.name }
+      : null,
+    `page:${selectedPage?.id ?? ""}:${selectedPage?.name ?? ""}`
+  );
+
   if (loading)
     return (
       <div className="min-h-screen flex items-center justify-center text-muted">Loading...</div>
@@ -560,7 +567,6 @@ function WikiPageInner() {
                     workspaceId={wsId}
                     label={selectedPage.name}
                   />
-                  <PageShareButton pageId={selectedPage.id} pageName={selectedPage.name} />
                 </div>
               )}
 
@@ -628,24 +634,3 @@ function WikiPageInner() {
   );
 }
 
-function PageShareButton({ pageId, pageName }: { pageId: string; pageName: string }) {
-  const [open, setOpen] = useState(false);
-  return (
-    <div className="relative">
-      <button
-        onClick={() => setOpen((v) => !v)}
-        className="rounded border border-border bg-raised px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.08em] text-foreground hover:border-foreground"
-      >
-        Share
-      </button>
-      {open && (
-        <ShareSheet
-          objectType="page"
-          objectId={pageId}
-          objectLabel={pageName}
-          onClose={() => setOpen(false)}
-        />
-      )}
-    </div>
-  );
-}

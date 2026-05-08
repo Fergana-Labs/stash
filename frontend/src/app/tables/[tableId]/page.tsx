@@ -4,7 +4,7 @@ import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import AppShell from "../../../components/AppShell";
 import AddToCollect from "../../../components/share/AddToCollect";
-import ShareSheet from "../../../components/share/ShareSheet";
+import { useSetShareTarget } from "../../../components/share/ShareTargetContext";
 import { useAuth } from "../../../hooks/useAuth";
 import {
   getTable, updateTable,
@@ -118,6 +118,11 @@ function TableEditorPageInner() {
   const sortedColumns = table?.columns ? [...table.columns].sort((a, b) => a.order - b.order) : [];
   const visibleColumns = sortedColumns.filter((c) => !hiddenCols.has(c.id));
   const hasMore = offset < totalCount;
+
+  useSetShareTarget(
+    table ? { objectType: "table", objectId: table.id, label: table.name } : null,
+    `table:${table?.id ?? ""}:${table?.name ?? ""}`
+  );
 
   // --- Data Loading ---
   const loadTable = useCallback(async () => {
@@ -535,7 +540,6 @@ function TableEditorPageInner() {
                 label={table.name}
               />
             )}
-            {table && <TableShareButton tableId={table.id} tableName={table.name} />}
             <button onClick={handleDelete} className="text-xs text-red-400 hover:text-red-300 px-2 py-1">Delete table</button>
           </>}
         </div>
@@ -797,24 +801,3 @@ function TableEditorPageInner() {
   );
 }
 
-function TableShareButton({ tableId, tableName }: { tableId: string; tableName: string }) {
-  const [open, setOpen] = useState(false);
-  return (
-    <div className="relative">
-      <button
-        onClick={() => setOpen((v) => !v)}
-        className="rounded border border-border bg-raised px-2 py-1 font-mono text-[10px] uppercase tracking-wider text-foreground hover:border-foreground"
-      >
-        Share
-      </button>
-      {open && (
-        <ShareSheet
-          objectType="table"
-          objectId={tableId}
-          objectLabel={tableName}
-          onClose={() => setOpen(false)}
-        />
-      )}
-    </div>
-  );
-}
