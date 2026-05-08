@@ -97,16 +97,12 @@ async def upload_stash_transcript(
     if not storage_service.is_configured():
         raise HTTPException(status_code=503, detail="File storage is not configured")
 
-    content = await file.read()
+    body = await file.read()
     MAX_TRANSCRIPT_SIZE = 50 * 1024 * 1024
-    if len(content) > MAX_TRANSCRIPT_SIZE:
+    if len(body) > MAX_TRANSCRIPT_SIZE:
         raise HTTPException(status_code=413, detail="Transcript too large (max 50 MB)")
 
-    import gzip
-    body = gzip.compress(content)
-    name = file.filename or "transcript.jsonl"
-    if not name.endswith(".gz"):
-        name += ".gz"
+    name = file.filename or "transcript.jsonl.gz"
 
     storage_key = await storage_service.upload_file(
         str(stash["workspace_id"]), name, body, "application/gzip",
