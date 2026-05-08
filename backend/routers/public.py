@@ -69,9 +69,18 @@ markdown:
 - Page: GET /api/v1/public/pages/{page_id}?format=text
 - Folder (all pages): GET /api/v1/public/folders/{folder_id}?format=text
 - Workspace overview: GET /api/v1/public/workspaces/{workspace_id}?format=text
+- Session bundle: GET /api/v1/bundles/{slug}?format=text
 
-All public endpoints are anonymous-readable when the underlying object's
-visibility is `link` or `public`. No auth headers needed.
+## Session Bundles
+
+Session bundles archive a complete coding session: transcript, artifacts
+(files read/written), and an AI-generated summary. Shared via /b/{slug}.
+
+- Bundle overview: GET /api/v1/bundles/{slug}?format=text
+- Specific artifact: GET /api/v1/bundles/{slug}/files/{artifact_id}
+- Full transcript: GET /api/v1/bundles/{slug}/transcript
+
+All bundle endpoints are anonymous-readable. No auth headers needed.
 
 ## Privacy
 

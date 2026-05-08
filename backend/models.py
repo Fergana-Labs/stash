@@ -714,3 +714,48 @@ class WorkspacePublicInfo(BaseModel):
     id: UUID
     name: str
     member_count: int
+
+
+# --- Session Bundles ---
+
+
+class BundleCreateRequest(BaseModel):
+    session_id: str = Field(..., min_length=1, max_length=128)
+    agent_name: str = Field("", max_length=64)
+    cwd: str | None = Field(None, max_length=1024)
+    files_touched: list[str] = Field(default_factory=list)
+
+
+class BundleUpdateRequest(BaseModel):
+    summary: str | None = None
+    status: str | None = Field(None, pattern=r"^(uploading|summarizing|ready|failed)$")
+
+
+class BundleArtifactResponse(BaseModel):
+    id: UUID
+    file_path: str
+    size_bytes: int
+    created_at: datetime
+
+
+class BundleResponse(BaseModel):
+    id: UUID
+    workspace_id: UUID
+    session_id: str
+    slug: str
+    agent_name: str
+    cwd: str | None
+    status: str
+    summary: str | None
+    files_touched: list[str]
+    artifact_count: int = 0
+    has_transcript: bool = False
+    created_by: UUID
+    created_at: datetime
+    updated_at: datetime
+
+
+class BundleCreateResponse(BaseModel):
+    id: UUID
+    slug: str
+    url: str

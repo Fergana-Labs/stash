@@ -15,6 +15,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from stashai.plugin.bundle_upload import spawn_bundle_upload
 from stashai.plugin.event import HookEvent
 from stashai.plugin.scope import cwd_in_scope, find_manifest
 from stashai.plugin.stash_client import StashClient
@@ -179,27 +180,25 @@ def stream_assistant_message(
 
 def stream_session_end(
     client: StashClient, cfg: dict, state: dict, event: HookEvent,
-) -> None:
-    """Push the session_end summary AND upload the full transcript (.jsonl)
-    if the agent exposed one. Call ONCE per conversation from SessionEnd /
-    session.deleted hooks. The upload uses a 60s per-request timeout (the
-    default StashClient timeout is 2s, fine for small events but way too
-    short for a 50MB transcript).
+) -> str | None:
+    """Push the session_end summary, upload transcript, create bundle.
+
+    Returns the bundle URL if one was created, None otherwise.
     """
     skip, workspace_id = _short_circuit(cfg, event)
     if skip:
-        return
+        return None
 
     stats = read_stats(state)
     tool_count = stats["tool_count"]
-    files_changed = stats["files_changed"]
+    files_touched = stats["files_touched"]
     tools_used = stats["tools_used"]
 
     parts = ["Session ended."]
     if tool_count:
         parts.append(f"{tool_count} tool uses.")
-    if files_changed:
-        parts.append(f"{len(files_changed)} files changed.")
+    if files_touched:
+        parts.append(f"{len(files_touched)} files touched.")
 
     try:
         client.push_event(
@@ -211,7 +210,7 @@ def stream_session_end(
             metadata={
                 "cwd": event.cwd,
                 "tool_count": tool_count,
-                "files_changed": files_changed,
+                "files_touched": files_touched,
                 "tools_used": tools_used,
             },
             client=cfg.get("client") or None,
@@ -222,10 +221,11 @@ def stream_session_end(
     tp = getattr(event, "transcript_path", "") or ""
     sid = state.get("session_id", "") or ""
     if not tp or not sid.strip():
-        return
+        return None
     path = Path(tp)
     if not path.is_file():
-        return
+        return None
+
     try:
         client.upload_transcript(
             workspace_id=workspace_id,
@@ -250,3 +250,5 @@ def stream_session_end(
                 )
             except Exception:
                 pass
+
+    return None

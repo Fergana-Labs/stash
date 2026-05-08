@@ -21,7 +21,7 @@ CODEX_HOOKS_FRESHNESS_SECONDS = 60
 
 CENTRAL_CONFIG_PATH = Path.home() / ".stash" / "config.json"
 
-_DEFAULT_STATS = {"tool_count": 0, "tools_used": [], "files_changed": []}
+_DEFAULT_STATS = {"tool_count": 0, "tools_used": [], "files_touched": []}
 
 DEFAULT_STATE = {
     "session_id": "",
@@ -73,7 +73,7 @@ def _load_stats(state: dict) -> dict:
     return {
         "tool_count": int(stats.get("tool_count", 0) or 0),
         "tools_used": list(stats.get("tools_used") or []),
-        "files_changed": list(stats.get("files_changed") or []),
+        "files_touched": list(stats.get("files_touched") or stats.get("files_changed") or []),
     }
 
 
@@ -86,8 +86,8 @@ def record_tool_use(data_dir: Path, tool_name: str, file_path: str | None) -> No
     stats["tool_count"] += 1
     if tool_name not in stats["tools_used"]:
         stats["tools_used"].append(tool_name)
-    if file_path and tool_name in ("edit", "write") and file_path not in stats["files_changed"]:
-        stats["files_changed"].append(file_path)
+    if file_path and tool_name in ("edit", "write", "read") and file_path not in stats["files_touched"]:
+        stats["files_touched"].append(file_path)
     state["stats"] = stats
     _write_json(data_dir / "state.json", state)
 

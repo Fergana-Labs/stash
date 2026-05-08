@@ -15,6 +15,7 @@ from .middleware import limiter
 from .routers import (
     admin,
     aggregate,
+    bundles,
     discover,
     files,
     memory,
@@ -103,6 +104,8 @@ app.include_router(public.router)
 app.include_router(public.llms_router)
 app.include_router(sessions.router)
 app.include_router(publish.router)
+app.include_router(bundles.ws_router)
+app.include_router(bundles.public_router)
 
 if settings.AUTH0_ENABLED:
     from backend.managed.auth0 import router as auth0_router
