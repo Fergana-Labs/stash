@@ -26,6 +26,7 @@ async def list_all_history_events(
     after: str | None = Query(None),
     before: str | None = Query(None),
     limit: int = Query(50, ge=1, le=200),
+    order: str = Query("desc", pattern="^(asc|desc)$"),
     current_user: dict = Depends(get_current_user),
 ):
     """Events across all accessible workspaces + personal, with filters."""
@@ -36,6 +37,7 @@ async def list_all_history_events(
         after=after,
         before=before,
         limit=limit,
+        order=order,
     )
     return {"events": events, "has_more": has_more}
 

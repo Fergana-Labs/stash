@@ -355,8 +355,9 @@ class StashClient:
         limit: int = 50,
         after: str | None = None,
         before: str | None = None,
+        order: str = "desc",
     ) -> list:
-        params: dict = {"limit": limit}
+        params: dict = {"limit": limit, "order": order}
         if agent_name:
             params["agent_name"] = agent_name
         if event_type:

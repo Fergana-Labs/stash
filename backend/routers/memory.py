@@ -75,6 +75,7 @@ async def query_ws_events(
     after: str | None = Query(None),
     before: str | None = Query(None),
     limit: int = Query(50, ge=1, le=200),
+    order: str = Query("desc", pattern="^(asc|desc)$"),
     current_user: dict = Depends(get_current_user),
 ):
     await _check_member(workspace_id, current_user["id"])
@@ -86,6 +87,7 @@ async def query_ws_events(
         after=after,
         before=before,
         limit=limit,
+        order=order,
     )
     return HistoryEventListResponse(
         events=[HistoryEventResponse(**e) for e in events],

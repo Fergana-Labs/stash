@@ -235,14 +235,16 @@ async def _query_events(
     args: list,
     limit_idx: int,
     limit: int,
+    order: str = "desc",
 ) -> tuple[list[dict], bool]:
     pool = get_pool()
+    direction = "ASC" if order == "asc" else "DESC"
     args = [*args, limit + 1]
     rows = await pool.fetch(
         f"SELECT id, workspace_id, created_by, agent_name, event_type, session_id, "
         f"tool_name, content, metadata, attachments, created_at "
         f"FROM history_events WHERE {where} "
-        f"ORDER BY created_at DESC LIMIT ${limit_idx}",
+        f"ORDER BY created_at {direction} LIMIT ${limit_idx}",
         *args,
     )
     events = [dict(r) for r in rows]
@@ -260,6 +262,7 @@ async def query_workspace_events(
     after: str | None = None,
     before: str | None = None,
     limit: int = 50,
+    order: str = "desc",
 ) -> tuple[list[dict], bool]:
     """Query events in a workspace. Returns (events, has_more)."""
     limit = min(limit, 200)
@@ -272,7 +275,7 @@ async def query_workspace_events(
         after,
         before,
     )
-    return await _query_events(where, args, next_idx, limit)
+    return await _query_events(where, args, next_idx, limit, order=order)
 
 
 async def query_personal_events(
@@ -283,6 +286,7 @@ async def query_personal_events(
     after: str | None = None,
     before: str | None = None,
     limit: int = 50,
+    order: str = "desc",
 ) -> tuple[list[dict], bool]:
     """Query personal (non-workspace) events for a user. Returns (events, has_more)."""
     limit = min(limit, 200)
@@ -295,7 +299,7 @@ async def query_personal_events(
         after,
         before,
     )
-    return await _query_events(where, args, next_idx, limit)
+    return await _query_events(where, args, next_idx, limit, order=order)
 
 
 async def search_workspace_events(
@@ -397,10 +401,12 @@ async def query_all_user_events(
     after: str | None = None,
     before: str | None = None,
     limit: int = 50,
+    order: str = "desc",
 ) -> tuple[list[dict], bool]:
     """Events across ALL accessible workspaces + personal, with filters."""
     pool = get_pool()
     limit = min(limit, 200)
+    direction = "ASC" if order == "asc" else "DESC"
 
     conditions = [
         "(he.workspace_id IN (SELECT workspace_id FROM workspace_members WHERE user_id = $1) "
@@ -438,7 +444,7 @@ async def query_all_user_events(
         f"LEFT JOIN workspaces w ON w.id = he.workspace_id "
         f"LEFT JOIN users u ON u.id = he.created_by "
         f"WHERE {where} "
-        f"ORDER BY he.created_at DESC LIMIT ${idx}",
+        f"ORDER BY he.created_at {direction} LIMIT ${idx}",
         *args,
     )
 
