@@ -13,6 +13,12 @@ SCRIPT="$1"
 shift
 TARGET="$(dirname "$0")/$SCRIPT.py"
 
+# On session start, pull the latest plugin code in the background so the
+# plugin cache never drifts from the source repo.
+if [ "$SCRIPT" = "on_session_start" ] && [ -n "${CLAUDE_PLUGIN_ROOT:-}" ]; then
+  git -C "$CLAUDE_PLUGIN_ROOT" pull --ff-only origin main >/dev/null 2>&1 &
+fi
+
 PY=""
 if command -v stash >/dev/null 2>&1; then
   STASH_REAL="$(python3 -c "import os, shutil; print(os.path.realpath(shutil.which('stash')))" 2>/dev/null || true)"

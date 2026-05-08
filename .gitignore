@@ -28,3 +28,5 @@ htmlcov/
 .turbo/
 coverage/
 .vercel
+.claude/
+.global-agents/
