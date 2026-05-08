@@ -242,7 +242,7 @@ async def _query_events(
         f"SELECT id, workspace_id, created_by, agent_name, event_type, session_id, "
         f"tool_name, content, metadata, attachments, created_at "
         f"FROM history_events WHERE {where} "
-        f"ORDER BY created_at ASC LIMIT ${limit_idx}",
+        f"ORDER BY created_at DESC LIMIT ${limit_idx}",
         *args,
     )
     events = [dict(r) for r in rows]

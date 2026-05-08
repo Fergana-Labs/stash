@@ -1689,17 +1689,19 @@ def hist_query(
     agent_name: str = typer.Option(None, "--agent"),
     event_type: str = typer.Option(None, "--type"),
     limit: int = typer.Option(50, "-n", "--limit"),
+    before: str = typer.Option(None, "--before", help="Cursor: ISO timestamp or event ID for previous page"),
+    after: str = typer.Option(None, "--after", help="Cursor: ISO timestamp or event ID for next page"),
     all_: bool = typer.Option(False, "--all"),
     as_json: bool = typer.Option(False, "--json"),
 ):
-    """Query events. --all for cross-workspace."""
+    """Query events (newest first). --all for cross-workspace."""
     with _client() as c:
         try:
             if all_:
                 data = c.all_events(agent_name=agent_name, event_type=event_type, limit=limit)
             else:
                 ws = workspace_id or _resolve_workspace()
-                data = c.query_events(ws, agent_name=agent_name, event_type=event_type, limit=limit)
+                data = c.query_events(ws, agent_name=agent_name, event_type=event_type, limit=limit, before=before, after=after)
         except StashError as e:
             _err(e)
     if _use_json(as_json):

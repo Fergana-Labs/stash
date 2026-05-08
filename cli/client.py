@@ -354,6 +354,7 @@ class StashClient:
         event_type: str | None = None,
         limit: int = 50,
         after: str | None = None,
+        before: str | None = None,
     ) -> list:
         params: dict = {"limit": limit}
         if agent_name:
@@ -362,6 +363,8 @@ class StashClient:
             params["event_type"] = event_type
         if after:
             params["after"] = after
+        if before:
+            params["before"] = before
         return self._list(f"/api/v1/workspaces/{workspace_id}/memory/events", "events", **params)
 
     def search_events(self, workspace_id: str, query: str, limit: int = 50) -> list:
