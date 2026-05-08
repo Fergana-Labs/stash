@@ -259,6 +259,70 @@ class StashClient:
             raise StashError(resp.status_code, resp.text)
         return resp.json()
 
+    # --- Stashes ---
+
+    def create_stash(
+        self, workspace_id: str, session_id: str, agent_name: str,
+        cwd: str | None = None, files_touched: list[str] | None = None,
+    ) -> dict:
+        return self._post(
+            f"/api/v1/workspaces/{workspace_id}/stashes",
+            json={
+                "session_id": session_id,
+                "agent_name": agent_name,
+                "cwd": cwd or "",
+                "files_touched": files_touched or [],
+            },
+        )
+
+    def upload_stash_artifact(
+        self, stash_id: str, file_path: str, content: bytes,
+    ) -> dict:
+        resp = self._http.request(
+            "POST",
+            f"/api/v1/stashes/{stash_id}/artifacts",
+            headers=self._headers(),
+            data={"file_path": file_path},
+            files={"file": (file_path.split("/")[-1], content, "application/octet-stream")},
+            timeout=httpx.Timeout(30.0, connect=5.0),
+        )
+        if not resp.is_success:
+            raise StashError(resp.status_code, resp.text)
+        return resp.json()
+
+    def upload_stash_transcript(
+        self, stash_id: str, transcript_path: Path,
+    ) -> dict:
+        import gzip
+        raw = transcript_path.read_bytes()
+        body = gzip.compress(raw)
+        name = transcript_path.name
+        if not name.endswith(".gz"):
+            name += ".gz"
+        resp = self._http.request(
+            "POST",
+            f"/api/v1/stashes/{stash_id}/transcript",
+            headers=self._headers(),
+            files={"file": (name, body, "application/gzip")},
+            timeout=httpx.Timeout(60.0, connect=5.0),
+        )
+        if not resp.is_success:
+            raise StashError(resp.status_code, resp.text)
+        return resp.json()
+
+    def update_stash(self, stash_id: str, **fields) -> dict:
+        body = {k: v for k, v in fields.items() if v is not None}
+        resp = self._http.request(
+            "PATCH",
+            f"/api/v1/stashes/{stash_id}",
+            headers={**self._headers(), "Content-Type": "application/json"},
+            json=body,
+            timeout=httpx.Timeout(10.0, connect=5.0),
+        )
+        if not resp.is_success:
+            raise StashError(resp.status_code, resp.text)
+        return resp.json()
+
     # --- Cross-workspace aggregate (optional) ---
 
     def list_all_history_events(
