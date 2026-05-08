@@ -126,6 +126,64 @@ details[open] > summary .chev {
   border-bottom: 2px solid #facc15;
 }
 
+/* Narrative stat cards (3-up grid) */
+.markdown-content .stat-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.5rem;
+  margin: 1.25rem 0 1.5rem;
+  text-align: center;
+}
+.markdown-content .stat-card {
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 0.75rem;
+  background: var(--bg-base);
+}
+.markdown-content .stat-num {
+  font-family: var(--font-display), sans-serif;
+  font-weight: 700;
+  font-size: 1.5rem;
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+}
+.markdown-content .stat-num.stat-pos {
+  color: #047857;
+}
+.markdown-content .stat-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  margin-top: 0.15rem;
+}
+
+/* Brand-bordered quote callout used in narratives */
+.markdown-content .quote-callout {
+  border-left: 4px solid var(--color-brand-500, #527559);
+  background: var(--color-brand-50, #f3f7f4);
+  border-radius: 4px;
+  padding: 0.85rem 1rem;
+  margin: 1rem 0 1.25rem;
+}
+.markdown-content .quote-eyebrow {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--color-brand-700, #36503c);
+}
+.markdown-content .quote-body {
+  font-style: italic;
+  font-size: 14px;
+  margin-top: 0.25rem;
+}
+.markdown-content .quote-cite {
+  font-size: 11.5px;
+  color: var(--text-muted);
+  margin-top: 0.25rem;
+}
+
 /* === TipTap Editor === */
 
 .tiptap {

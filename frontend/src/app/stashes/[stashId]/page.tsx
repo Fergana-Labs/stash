@@ -153,14 +153,13 @@ export default function StashHomePage() {
   return (
     <AppShell user={user} onLogout={logout}>
       <div className="scroll-thin flex-1 overflow-y-auto">
-        <div className="h-32 bg-gradient-to-r from-[var(--color-brand-200)] via-[var(--color-brand-100)] to-amber-100" />
-        <div className="mx-auto -mt-8 max-w-3xl px-12 pb-16">
-          <div className="mb-2 text-5xl">📊</div>
-          <h1 className="font-display text-4xl font-bold tracking-tight text-foreground">
+        <div className="h-24 bg-gradient-to-r from-[var(--color-brand-200)] via-[var(--color-brand-100)] to-amber-100" />
+        <div className="mx-auto -mt-6 max-w-3xl px-12 pb-16">
+          <h1 className="font-display text-[34px] font-bold tracking-tight text-foreground">
             {stash?.name || "Loading…"}
           </h1>
           {stash?.description && (
-            <p className="mt-2 text-[15px] text-muted">{stash.description}</p>
+            <p className="mt-2 text-[14.5px] leading-relaxed text-muted">{stash.description}</p>
           )}
 
           <div className="mt-3 flex flex-wrap items-center gap-1.5 text-[11px]">

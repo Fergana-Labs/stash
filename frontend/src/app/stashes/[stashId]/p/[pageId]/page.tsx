@@ -3,6 +3,7 @@
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import Markdown from "react-markdown";
+import rehypeRaw from "rehype-raw";
 import remarkGfm from "remark-gfm";
 import AppShell from "../../../../../components/AppShell";
 import { useBreadcrumbs } from "../../../../../components/BreadcrumbContext";
@@ -89,7 +90,12 @@ export default function StashPageView() {
 
           <article className="markdown-content mt-8 text-[15px] leading-relaxed text-foreground">
             {page ? (
-              <Markdown remarkPlugins={[remarkGfm]}>{page.content_markdown || ""}</Markdown>
+              <Markdown
+                remarkPlugins={[remarkGfm]}
+                rehypePlugins={[rehypeRaw]}
+              >
+                {page.content_markdown || ""}
+              </Markdown>
             ) : (
               <p className="text-muted">Loading…</p>
             )}

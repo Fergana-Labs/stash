@@ -48,7 +48,33 @@ NOW = datetime.now(timezone.utc)
 # Content
 # ---------------------------------------------------------------------------
 
-NARRATIVE_DECK = """# Acme — Series A
+NARRATIVE_DECK = """Acme is a <span class="hl-yellow rounded px-0.5">$1.4M ARR</span> vertical AI company growing 18% net new each month. We have moved from "AI-curious" to mission critical for 32 mid-market AP teams.
+
+<div class="stat-grid">
+  <div class="stat-card"><div class="stat-num">$1.4M</div><div class="stat-label">ARR</div></div>
+  <div class="stat-card"><div class="stat-num stat-pos">+18%</div><div class="stat-label">MoM net new</div></div>
+  <div class="stat-card"><div class="stat-num">138%</div><div class="stat-label">NRR</div></div>
+</div>
+
+## Why now?
+
+Mid-market AP just unlocked dedicated AI procurement budget — the legal-tech procurement cycle (9+ months) collapsed to weeks under the AI committee.
+
+<div class="quote-callout">
+  <div class="quote-eyebrow">📌 From #customer-discovery</div>
+  <div class="quote-body">"Replaced 4 paralegals with Acme on the discovery side. It saved us $380K this year."</div>
+  <div class="quote-cite">— Maya Chen, GC at Reed Smith</div>
+</div>
+
+## Why us?
+
+We're the only product that ships with <span class="hl-yellow rounded px-0.5">audit-grade citations</span> as a first-class output — vertical depth beats horizontal breadth in regulated buys.
+
+- 92% gross margin (vs. 60–70% for horizontal AI tools)
+- SOC 2 Type II since Q3 2025
+- 18 of 32 customers have Acme citations embedded in their own SOC 2 reports
+
+# Acme — Series A
 
 Reinventing how mid-market teams handle accounts payable.
 

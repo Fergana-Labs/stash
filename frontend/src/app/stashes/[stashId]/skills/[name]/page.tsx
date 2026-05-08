@@ -103,7 +103,8 @@ export default function SkillPage() {
   return (
     <AppShell user={user} onLogout={logout}>
       <div className="scroll-thin flex-1 overflow-y-auto">
-        <div className="mx-auto max-w-3xl px-12 py-10">
+        <div className="mx-auto grid max-w-5xl gap-10 px-12 py-10 lg:grid-cols-[1fr_220px]">
+          <div className="min-w-0">
           <div className="mb-2 flex items-center gap-2 text-[12px] uppercase tracking-wider text-[var(--color-brand-700)]">
             <span>⚡</span> Skill
             <span className="text-muted">·</span>
@@ -158,14 +159,57 @@ export default function SkillPage() {
             )}
           </article>
 
+          </div>
+
+          {/* Right rail: files in this skill */}
+          <aside className="hidden lg:block">
+            <div className="sticky top-4 rounded-xl border border-border bg-surface p-4">
+              <div className="mb-2 text-[10.5px] font-semibold uppercase tracking-wider text-muted">
+                Files in this skill
+              </div>
+              <ul className="flex flex-col gap-1 text-[12.5px]">
+                {(skill?.files ?? []).map((f) => {
+                  const isSkillMd = f.name === "SKILL.md";
+                  const icon = isSkillMd ? "📄" : f.name.endsWith(".md") ? "📋" : "📄";
+                  return (
+                    <li
+                      key={f.id}
+                      className={
+                        "flex items-center gap-1.5 rounded-md px-2 py-1 " +
+                        (isSkillMd
+                          ? "bg-base text-foreground ring-1 ring-border"
+                          : "text-dim hover:bg-base hover:text-foreground")
+                      }
+                    >
+                      <span>{icon}</span>
+                      <span className="truncate">{f.name}</span>
+                    </li>
+                  );
+                })}
+                {!skill && <li className="px-2 py-1 italic text-muted">Loading…</li>}
+              </ul>
+              <div className="mt-3 border-t border-border pt-3 text-[10.5px] uppercase tracking-wide text-muted">
+                MCP exposed
+              </div>
+              <div className="mt-1 font-mono text-[11px] text-foreground">
+                stash_read_skill(&quot;{skill?.name || name}&quot;)
+              </div>
+            </div>
+          </aside>
+          {/* Mobile: render the same list inline below the body */}
           {supportingFiles.length > 0 && (
-            <div className="mt-10 border-t border-border pt-6">
+            <div className="border-t border-border pt-6 lg:hidden">
               <div className="mb-3 text-[10.5px] font-semibold uppercase tracking-wider text-muted">
                 Supporting files
               </div>
               <div className="flex flex-col gap-2">
                 {supportingFiles.map((f) => (
-                  <SkillFileCard key={f.id} stashId={stashId} skillName={name} file={f} />
+                  <div
+                    key={f.id}
+                    className="rounded-lg border border-border bg-base px-3 py-2 text-[13px]"
+                  >
+                    📄 {f.name}
+                  </div>
                 ))}
               </div>
             </div>
@@ -173,26 +217,5 @@ export default function SkillPage() {
         </div>
       </div>
     </AppShell>
-  );
-}
-
-function SkillFileCard({
-  stashId,
-  skillName,
-  file,
-}: {
-  stashId: string;
-  skillName: string;
-  file: { id: string; name: string };
-}) {
-  void stashId;
-  void skillName;
-  return (
-    <div className="rounded-lg border border-border bg-base px-3 py-2 text-[13px]">
-      <div className="flex items-center gap-2">
-        <span>📄</span>
-        <span className="font-medium text-foreground">{file.name}</span>
-      </div>
-    </div>
   );
 }
