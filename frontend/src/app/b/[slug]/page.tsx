@@ -4,14 +4,14 @@ import { notFound } from "next/navigation";
 const BACKEND_ORIGIN =
   process.env.NEXT_PUBLIC_API_URL || "http://localhost:3456";
 
-type BundleArtifact = {
+type StashArtifact = {
   id: string;
   file_path: string;
   size_bytes: number;
   created_at: string;
 };
 
-type BundleData = {
+type StashData = {
   id: string;
   workspace_id: string;
   session_id: string;
@@ -26,15 +26,15 @@ type BundleData = {
   created_by: string;
   created_at: string;
   updated_at: string;
-  artifacts: BundleArtifact[];
+  artifacts: StashArtifact[];
 };
 
-async function loadBundle(slug: string): Promise<BundleData | null> {
-  const res = await fetch(`${BACKEND_ORIGIN}/api/v1/bundles/${slug}`, {
+async function loadStash(slug: string): Promise<StashData | null> {
+  const res = await fetch(`${BACKEND_ORIGIN}/api/v1/stashes/${slug}`, {
     cache: "no-store",
   });
   if (res.status === 404) return null;
-  if (!res.ok) throw new Error(`bundle fetch failed: ${res.status}`);
+  if (!res.ok) throw new Error(`stash fetch failed: ${res.status}`);
   return res.json();
 }
 
@@ -44,12 +44,12 @@ export async function generateMetadata({
   params: Promise<{ slug: string }>;
 }): Promise<Metadata> {
   const { slug } = await params;
-  const data = await loadBundle(slug);
-  if (!data) return { title: "Bundle not found · Stash" };
-  const title = `Session Bundle · Stash`;
+  const data = await loadStash(slug);
+  if (!data) return { title: "Stash not found" };
+  const title = `Stash · ${data.agent_name || "Session"}`;
   const description =
     data.summary?.slice(0, 160) ||
-    `A session bundle with ${data.artifact_count} artifact${data.artifact_count === 1 ? "" : "s"}.`;
+    `A stash with ${data.artifact_count} artifact${data.artifact_count === 1 ? "" : "s"}.`;
   return {
     title,
     description,
@@ -58,13 +58,13 @@ export async function generateMetadata({
   };
 }
 
-export default async function BundlePage({
+export default async function StashPage({
   params,
 }: {
   params: Promise<{ slug: string }>;
 }) {
   const { slug } = await params;
-  const data = await loadBundle(slug);
+  const data = await loadStash(slug);
   if (!data) notFound();
 
   const statusLabel: Record<string, { text: string; color: string }> = {
@@ -79,7 +79,7 @@ export default async function BundlePage({
     <main className="mx-auto max-w-[900px] px-7 py-12">
       <header className="border-b border-border-subtle pb-8">
         <p className="font-mono text-[11px] uppercase tracking-wider text-muted">
-          Session Bundle
+          Stash
         </p>
         <h1 className="mt-3 font-display text-[clamp(28px,3.5vw,40px)] font-black leading-[1.1] tracking-[-0.03em] text-ink">
           {data.agent_name ? `${data.agent_name} session` : "Coding session"}
@@ -120,7 +120,7 @@ export default async function BundlePage({
             {data.artifacts.map((a) => (
               <a
                 key={a.id}
-                href={`${BACKEND_ORIGIN}/api/v1/bundles/${slug}/files/${a.id}`}
+                href={`${BACKEND_ORIGIN}/api/v1/stashes/${slug}/files/${a.id}`}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="flex items-center justify-between border-b border-border-subtle/50 px-4 py-2 last:border-b-0 hover:bg-raised/40"
@@ -139,7 +139,7 @@ export default async function BundlePage({
           <h2 className="font-display text-[18px] font-bold text-ink">Transcript</h2>
           <p className="mt-3 text-[14px] text-foreground">
             <a
-              href={`${BACKEND_ORIGIN}/api/v1/bundles/${slug}/transcript`}
+              href={`${BACKEND_ORIGIN}/api/v1/stashes/${slug}/transcript`}
               target="_blank"
               rel="noopener noreferrer"
               className="text-brand hover:underline"
@@ -153,9 +153,9 @@ export default async function BundlePage({
       {/* Agent-readable notice */}
       <footer className="mt-12 border-t border-border-subtle pt-6">
         <p className="font-mono text-[11px] text-muted">
-          Agents: fetch this bundle as structured markdown at{" "}
+          Agents: fetch this stash as structured markdown at{" "}
           <code className="rounded bg-raised px-1 py-0.5">
-            {BACKEND_ORIGIN}/api/v1/bundles/{slug}?format=text
+            {BACKEND_ORIGIN}/api/v1/stashes/{slug}?format=text
           </code>
         </p>
       </footer>

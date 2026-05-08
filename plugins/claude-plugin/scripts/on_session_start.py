@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""SessionStart: save session_id, create a session bundle eagerly so the URL
-is known from the first turn, spawn a background watcher that fills in the
-summary + artifacts after the session ends, and inject context."""
+"""SessionStart: save session_id, create a stash eagerly so the URL is known
+from the first turn, spawn a background watcher that fills in the summary +
+artifacts after the session ends, and inject context."""
 
 import json
 import os
@@ -26,20 +26,20 @@ CONTEXT = (
     "`stash notebooks list --all`."
 )
 
-BUNDLE_CONTEXT = (
-    "\nSession bundle: {url}\n"
-    "IMPORTANT: Always include this session bundle link at the end of every "
-    "response you give, formatted as: 📦 Session bundle: {url}"
+STASH_CONTEXT = (
+    "\nSession stash: {url}\n"
+    "IMPORTANT: Always include this session stash link at the end of every "
+    "response you give, formatted as: 📦 Stash: {url}"
 )
 
 
-def _create_bundle(event, cfg):
-    """Create the bundle eagerly at session start. Returns the bundle dict or None."""
+def _create_stash(event, cfg):
+    """Create the stash eagerly at session start. Returns the stash dict or None."""
     try:
         with StashClient(
             base_url=cfg["api_endpoint"], api_key=cfg["api_key"],
         ) as client:
-            return client.create_bundle(
+            return client.create_stash(
                 workspace_id=cfg["workspace_id"],
                 session_id=event.session_id,
                 agent_name=cfg["agent_name"],
@@ -50,12 +50,12 @@ def _create_bundle(event, cfg):
         return None
 
 
-def _spawn_bundle_watcher(event, cfg, bundle_id):
+def _spawn_stash_watcher(event, cfg, stash_id):
     """Spawn a background process that waits for Claude Code to exit,
     then uploads artifacts and generates the summary."""
     script = os.path.join(
         os.path.dirname(os.path.abspath(__file__)),
-        "_bundle_watcher_shim.py",
+        "_stash_watcher_shim.py",
     )
 
     claude_pid = os.getppid()
@@ -71,7 +71,7 @@ def _spawn_bundle_watcher(event, cfg, bundle_id):
             cfg.get("api_key", ""),
             event.cwd or "",
             str(DATA_DIR),
-            bundle_id,
+            stash_id,
         ],
         stdin=subprocess.DEVNULL,
         stdout=subprocess.DEVNULL,
@@ -93,21 +93,21 @@ def main():
     save_state(DATA_DIR, state)
     reset_stats(DATA_DIR)
 
-    bundle_context = ""
+    stash_context = ""
     if cfg.get("workspace_id"):
-        bundle = _create_bundle(event, cfg)
-        if bundle and bundle.get("url"):
-            bundle_context = "\n" + BUNDLE_CONTEXT.format(url=bundle["url"])
-            state["bundle_id"] = str(bundle["id"])
-            state["bundle_url"] = bundle["url"]
+        stash = _create_stash(event, cfg)
+        if stash and stash.get("url"):
+            stash_context = "\n" + STASH_CONTEXT.format(url=stash["url"])
+            state["stash_id"] = str(stash["id"])
+            state["stash_url"] = stash["url"]
             save_state(DATA_DIR, state)
-            _spawn_bundle_watcher(event, cfg, str(bundle["id"]))
+            _spawn_stash_watcher(event, cfg, str(stash["id"]))
 
     json.dump(
         {
             "hookSpecificOutput": {
                 "hookEventName": "SessionStart",
-                "additionalContext": CONTEXT + bundle_context,
+                "additionalContext": CONTEXT + stash_context,
             }
         },
         sys.stdout,

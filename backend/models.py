@@ -716,29 +716,29 @@ class WorkspacePublicInfo(BaseModel):
     member_count: int
 
 
-# --- Session Bundles ---
+# --- Stashes ---
 
 
-class BundleCreateRequest(BaseModel):
+class StashCreateRequest(BaseModel):
     session_id: str = Field(..., min_length=1, max_length=128)
     agent_name: str = Field("", max_length=64)
     cwd: str | None = Field(None, max_length=1024)
     files_touched: list[str] = Field(default_factory=list)
 
 
-class BundleUpdateRequest(BaseModel):
+class StashUpdateRequest(BaseModel):
     summary: str | None = None
     status: str | None = Field(None, pattern=r"^(uploading|summarizing|ready|failed)$")
 
 
-class BundleArtifactResponse(BaseModel):
+class StashArtifactResponse(BaseModel):
     id: UUID
     file_path: str
     size_bytes: int
     created_at: datetime
 
 
-class BundleResponse(BaseModel):
+class StashResponse(BaseModel):
     id: UUID
     workspace_id: UUID
     session_id: str
@@ -755,7 +755,7 @@ class BundleResponse(BaseModel):
     updated_at: datetime
 
 
-class BundleCreateResponse(BaseModel):
+class StashCreateResponse(BaseModel):
     id: UUID
     slug: str
     url: str

@@ -1,11 +1,11 @@
 """Background watcher: waits for the Claude Code process to exit,
-then uploads artifacts and generates the summary for the pre-created bundle.
+then uploads artifacts and generates the summary for the pre-created stash.
 
-The bundle is created eagerly at session start so the URL is known immediately.
+The stash is created eagerly at session start so the URL is known immediately.
 This watcher fills in the content after the session ends.
 
 argv: script.py <claude_pid> <session_id> <workspace_id> <agent_name>
-                <base_url> <api_key> <cwd> <data_dir> <bundle_id>
+                <base_url> <api_key> <cwd> <data_dir> <stash_id>
 """
 
 import json
@@ -40,12 +40,12 @@ def _find_transcript(session_id: str) -> str:
 
 def main() -> None:
     (_, claude_pid_str, session_id, workspace_id, agent_name,
-     base_url, api_key, cwd, data_dir, bundle_id) = sys.argv
+     base_url, api_key, cwd, data_dir, stash_id) = sys.argv
 
     claude_pid = int(claude_pid_str)
     _wait_for_exit(claude_pid)
 
-    if not bundle_id:
+    if not stash_id:
         return
 
     stats_path = Path(data_dir) / "stats.json"
@@ -59,11 +59,11 @@ def main() -> None:
 
     transcript_path = _find_transcript(session_id)
 
-    from stashai.plugin.bundle_upload import spawn_bundle_upload
+    from stashai.plugin.stash_upload import spawn_stash_upload
 
     if transcript_path:
-        spawn_bundle_upload(
-            bundle_id=bundle_id,
+        spawn_stash_upload(
+            stash_id=stash_id,
             transcript_path=transcript_path,
             cwd=cwd,
             files_touched=files_touched,

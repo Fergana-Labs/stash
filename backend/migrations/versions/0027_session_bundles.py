@@ -1,7 +1,7 @@
-"""Session bundles: shareable archive of a coding session.
+"""Stashes: shareable archive of a coding session.
 
-A session_bundle captures the full context of an agent session: transcript,
-artifacts (files touched), and an AI-generated summary. Bundles are served
+A stash captures the full context of an agent session: transcript,
+artifacts (files touched), and an AI-generated summary. Stashes are served
 at /b/{slug} for humans and ?format=text for agent consumption.
 
 Revision ID: 0027
@@ -18,7 +18,7 @@ depends_on = None
 
 def upgrade() -> None:
     op.execute("""
-        CREATE TABLE session_bundles (
+        CREATE TABLE stashes (
             id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
             workspace_id UUID NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
             session_id TEXT NOT NULL,
@@ -36,20 +36,20 @@ def upgrade() -> None:
         )
     """)
     op.execute("""
-        CREATE TABLE bundle_artifacts (
+        CREATE TABLE stash_artifacts (
             id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-            bundle_id UUID NOT NULL REFERENCES session_bundles(id) ON DELETE CASCADE,
+            stash_id UUID NOT NULL REFERENCES stashes(id) ON DELETE CASCADE,
             file_path TEXT NOT NULL,
             storage_key TEXT NOT NULL,
             size_bytes INT NOT NULL DEFAULT 0,
             created_at TIMESTAMPTZ NOT NULL DEFAULT now()
         )
     """)
-    op.execute("CREATE INDEX idx_bundles_workspace ON session_bundles(workspace_id)")
-    op.execute("CREATE INDEX idx_bundles_session ON session_bundles(session_id)")
-    op.execute("CREATE INDEX idx_bundle_artifacts_bundle ON bundle_artifacts(bundle_id)")
+    op.execute("CREATE INDEX idx_stashes_workspace ON stashes(workspace_id)")
+    op.execute("CREATE INDEX idx_stashes_session ON stashes(session_id)")
+    op.execute("CREATE INDEX idx_stash_artifacts_stash ON stash_artifacts(stash_id)")
 
 
 def downgrade() -> None:
-    op.execute("DROP TABLE IF EXISTS bundle_artifacts CASCADE")
-    op.execute("DROP TABLE IF EXISTS session_bundles CASCADE")
+    op.execute("DROP TABLE IF EXISTS stash_artifacts CASCADE")
+    op.execute("DROP TABLE IF EXISTS stashes CASCADE")

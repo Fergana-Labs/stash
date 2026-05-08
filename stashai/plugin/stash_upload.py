@@ -1,4 +1,4 @@
-"""Spawn a detached background process to upload bundle artifacts and generate summary."""
+"""Spawn a detached background process to upload stash artifacts and generate summary."""
 
 from __future__ import annotations
 
@@ -9,8 +9,8 @@ import sys
 from pathlib import Path
 
 
-def spawn_bundle_upload(
-    bundle_id: str,
+def spawn_stash_upload(
+    stash_id: str,
     transcript_path: str,
     cwd: str,
     files_touched: list[str],
@@ -19,15 +19,15 @@ def spawn_bundle_upload(
     base_url: str,
     api_key: str,
 ) -> bool:
-    script = Path(__file__).parent / "_do_bundle.py"
+    script = Path(__file__).parent / "_do_stash.py"
     env = os.environ.copy()
-    env["BUNDLE_FILES_TOUCHED"] = json.dumps(files_touched)
+    env["STASH_FILES_TOUCHED"] = json.dumps(files_touched)
 
     try:
         subprocess.Popen(
             [
                 sys.executable, str(script),
-                bundle_id, transcript_path, cwd, workspace_id,
+                stash_id, transcript_path, cwd, workspace_id,
                 agent_name, base_url, api_key,
             ],
             env=env,

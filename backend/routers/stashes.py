@@ -1,4 +1,4 @@
-"""Session bundles: create, upload artifacts, update summary, and serve."""
+"""Stashes: create, upload artifacts, update summary, and serve."""
 
 from uuid import UUID
 
@@ -8,18 +8,18 @@ from fastapi.responses import PlainTextResponse
 from ..auth import get_current_user, get_current_user_optional
 from ..config import settings
 from ..models import (
-    BundleArtifactResponse,
-    BundleCreateRequest,
-    BundleCreateResponse,
-    BundleResponse,
-    BundleUpdateRequest,
+    StashArtifactResponse,
+    StashCreateRequest,
+    StashCreateResponse,
+    StashResponse,
+    StashUpdateRequest,
 )
-from ..services import bundle_service, storage_service, workspace_service
+from ..services import stash_service, storage_service, workspace_service
 
 ws_router = APIRouter(
-    prefix="/api/v1/workspaces/{workspace_id}/bundles", tags=["bundles"],
+    prefix="/api/v1/workspaces/{workspace_id}/stashes", tags=["stashes"],
 )
-public_router = APIRouter(prefix="/api/v1/bundles", tags=["bundles"])
+public_router = APIRouter(prefix="/api/v1/stashes", tags=["stashes"])
 
 
 async def _check_member(workspace_id: UUID, user_id: UUID) -> None:
@@ -27,14 +27,14 @@ async def _check_member(workspace_id: UUID, user_id: UUID) -> None:
         raise HTTPException(status_code=403, detail="Not a workspace member")
 
 
-@ws_router.post("", response_model=BundleCreateResponse, status_code=201)
-async def create_bundle(
+@ws_router.post("", response_model=StashCreateResponse, status_code=201)
+async def create_stash(
     workspace_id: UUID,
-    req: BundleCreateRequest,
+    req: StashCreateRequest,
     current_user: dict = Depends(get_current_user),
 ):
     await _check_member(workspace_id, current_user["id"])
-    bundle = await bundle_service.create_bundle(
+    stash = await stash_service.create_stash(
         workspace_id=workspace_id,
         session_id=req.session_id,
         created_by=current_user["id"],
@@ -43,22 +43,22 @@ async def create_bundle(
         files_touched=req.files_touched,
     )
     base = settings.PUBLIC_URL.rstrip("/")
-    return BundleCreateResponse(
-        id=bundle["id"], slug=bundle["slug"], url=f"{base}/b/{bundle['slug']}",
+    return StashCreateResponse(
+        id=stash["id"], slug=stash["slug"], url=f"{base}/b/{stash['slug']}",
     )
 
 
-@public_router.post("/{bundle_id}/artifacts", status_code=201)
+@public_router.post("/{stash_id}/artifacts", status_code=201)
 async def upload_artifact(
-    bundle_id: UUID,
+    stash_id: UUID,
     file: UploadFile,
     file_path: str = Form(...),
     current_user: dict = Depends(get_current_user),
 ):
-    bundle = await bundle_service.get_bundle_by_id(bundle_id)
-    if not bundle:
-        raise HTTPException(status_code=404, detail="Bundle not found")
-    if not await workspace_service.is_member(bundle["workspace_id"], current_user["id"]):
+    stash = await stash_service.get_stash_by_id(stash_id)
+    if not stash:
+        raise HTTPException(status_code=404, detail="Stash not found")
+    if not await workspace_service.is_member(stash["workspace_id"], current_user["id"]):
         raise HTTPException(status_code=403, detail="Not a workspace member")
     if not storage_service.is_configured():
         raise HTTPException(status_code=503, detail="File storage is not configured")
@@ -69,30 +69,30 @@ async def upload_artifact(
         raise HTTPException(status_code=413, detail="Artifact too large (max 1 MB)")
 
     storage_key = await storage_service.upload_file(
-        str(bundle["workspace_id"]),
+        str(stash["workspace_id"]),
         file.filename or file_path.split("/")[-1],
         content,
         file.content_type or "application/octet-stream",
     )
-    artifact = await bundle_service.add_artifact(
-        bundle_id=bundle_id,
+    artifact = await stash_service.add_artifact(
+        stash_id=stash_id,
         file_path=file_path,
         storage_key=storage_key,
         size_bytes=len(content),
     )
-    return BundleArtifactResponse(**artifact)
+    return StashArtifactResponse(**artifact)
 
 
-@public_router.post("/{bundle_id}/transcript", status_code=201)
-async def upload_bundle_transcript(
-    bundle_id: UUID,
+@public_router.post("/{stash_id}/transcript", status_code=201)
+async def upload_stash_transcript(
+    stash_id: UUID,
     file: UploadFile,
     current_user: dict = Depends(get_current_user),
 ):
-    bundle = await bundle_service.get_bundle_by_id(bundle_id)
-    if not bundle:
-        raise HTTPException(status_code=404, detail="Bundle not found")
-    if not await workspace_service.is_member(bundle["workspace_id"], current_user["id"]):
+    stash = await stash_service.get_stash_by_id(stash_id)
+    if not stash:
+        raise HTTPException(status_code=404, detail="Stash not found")
+    if not await workspace_service.is_member(stash["workspace_id"], current_user["id"]):
         raise HTTPException(status_code=403, detail="Not a workspace member")
     if not storage_service.is_configured():
         raise HTTPException(status_code=503, detail="File storage is not configured")
@@ -109,54 +109,54 @@ async def upload_bundle_transcript(
         name += ".gz"
 
     storage_key = await storage_service.upload_file(
-        str(bundle["workspace_id"]), name, body, "application/gzip",
+        str(stash["workspace_id"]), name, body, "application/gzip",
     )
-    await bundle_service.set_transcript_key(bundle_id, storage_key)
+    await stash_service.set_transcript_key(stash_id, storage_key)
     return {"status": "ok"}
 
 
-@public_router.patch("/{bundle_id}", response_model=BundleResponse)
-async def update_bundle(
-    bundle_id: UUID,
-    req: BundleUpdateRequest,
+@public_router.patch("/{stash_id}", response_model=StashResponse)
+async def update_stash(
+    stash_id: UUID,
+    req: StashUpdateRequest,
     current_user: dict = Depends(get_current_user),
 ):
-    bundle = await bundle_service.get_bundle_by_id(bundle_id)
-    if not bundle:
-        raise HTTPException(status_code=404, detail="Bundle not found")
-    if not await workspace_service.is_member(bundle["workspace_id"], current_user["id"]):
+    stash = await stash_service.get_stash_by_id(stash_id)
+    if not stash:
+        raise HTTPException(status_code=404, detail="Stash not found")
+    if not await workspace_service.is_member(stash["workspace_id"], current_user["id"]):
         raise HTTPException(status_code=403, detail="Not a workspace member")
 
-    updated = await bundle_service.update_bundle(
-        bundle_id, summary=req.summary, status=req.status,
+    updated = await stash_service.update_stash(
+        stash_id, summary=req.summary, status=req.status,
     )
-    return BundleResponse(**updated)
+    return StashResponse(**updated)
 
 
 # --- Public read endpoints (no auth required) ---
 
 
 @public_router.get("/{slug}")
-async def get_bundle(
+async def get_stash(
     slug: str,
     format: str | None = Query(None),
     current_user: dict | None = Depends(get_current_user_optional),
 ):
-    bundle = await bundle_service.get_bundle_by_slug(slug)
-    if not bundle:
-        raise HTTPException(status_code=404, detail="Bundle not found")
+    stash = await stash_service.get_stash_by_slug(slug)
+    if not stash:
+        raise HTTPException(status_code=404, detail="Stash not found")
 
-    artifacts = await bundle_service.list_artifacts(bundle["id"])
+    artifacts = await stash_service.list_artifacts(stash["id"])
 
     if format == "text":
         return PlainTextResponse(
-            _bundle_to_text(bundle, artifacts), media_type="text/markdown",
+            _stash_to_text(stash, artifacts), media_type="text/markdown",
         )
 
     return {
-        **BundleResponse(**bundle).model_dump(),
+        **StashResponse(**stash).model_dump(),
         "artifacts": [
-            BundleArtifactResponse(
+            StashArtifactResponse(
                 id=a["id"], file_path=a["file_path"],
                 size_bytes=a["size_bytes"], created_at=a["created_at"],
             ).model_dump()
@@ -166,9 +166,9 @@ async def get_bundle(
 
 
 @public_router.get("/{slug}/files/{artifact_id}")
-async def get_bundle_artifact(slug: str, artifact_id: UUID):
-    artifact = await bundle_service.get_artifact(artifact_id)
-    if not artifact or artifact["bundle_slug"] != slug:
+async def get_stash_artifact(slug: str, artifact_id: UUID):
+    artifact = await stash_service.get_artifact(artifact_id)
+    if not artifact or artifact["stash_slug"] != slug:
         raise HTTPException(status_code=404, detail="Artifact not found")
 
     content = await storage_service.download_file(artifact["storage_key"])
@@ -178,12 +178,12 @@ async def get_bundle_artifact(slug: str, artifact_id: UUID):
 
 
 @public_router.get("/{slug}/transcript")
-async def get_bundle_transcript(slug: str):
-    bundle = await bundle_service.get_bundle_by_slug(slug)
-    if not bundle:
-        raise HTTPException(status_code=404, detail="Bundle not found")
+async def get_stash_transcript(slug: str):
+    stash = await stash_service.get_stash_by_slug(slug)
+    if not stash:
+        raise HTTPException(status_code=404, detail="Stash not found")
 
-    transcript_key = await bundle_service.get_transcript_key(bundle["id"])
+    transcript_key = await stash_service.get_transcript_key(stash["id"])
     if not transcript_key:
         raise HTTPException(status_code=404, detail="Transcript not available")
 
@@ -196,24 +196,24 @@ async def get_bundle_transcript(slug: str):
     return PlainTextResponse(text, media_type="application/jsonl")
 
 
-def _bundle_to_text(bundle: dict, artifacts: list[dict]) -> str:
+def _stash_to_text(stash: dict, artifacts: list[dict]) -> str:
     base = settings.PUBLIC_URL.rstrip("/")
-    lines = [f"# Session Bundle: {bundle['slug']}", ""]
+    lines = [f"# Stash: {stash['slug']}", ""]
 
-    if bundle.get("agent_name"):
-        lines.append(f"**Agent:** {bundle['agent_name']}")
-    if bundle.get("cwd"):
-        lines.append(f"**Directory:** {bundle['cwd']}")
-    lines.append(f"**Status:** {bundle['status']}")
-    lines.append(f"**Created:** {bundle['created_at']}")
+    if stash.get("agent_name"):
+        lines.append(f"**Agent:** {stash['agent_name']}")
+    if stash.get("cwd"):
+        lines.append(f"**Directory:** {stash['cwd']}")
+    lines.append(f"**Status:** {stash['status']}")
+    lines.append(f"**Created:** {stash['created_at']}")
     lines.append("")
 
-    if bundle.get("summary"):
+    if stash.get("summary"):
         lines.append("## Summary")
         lines.append("")
-        lines.append(bundle["summary"])
+        lines.append(stash["summary"])
         lines.append("")
-    elif bundle["status"] in ("uploading", "summarizing"):
+    elif stash["status"] in ("uploading", "summarizing"):
         lines.append("## Summary")
         lines.append("")
         lines.append("_Summary is being generated..._")
@@ -223,14 +223,14 @@ def _bundle_to_text(bundle: dict, artifacts: list[dict]) -> str:
         lines.append("## Artifacts")
         lines.append("")
         for a in artifacts:
-            url = f"{base}/api/v1/bundles/{bundle['slug']}/files/{a['id']}"
+            url = f"{base}/api/v1/stashes/{stash['slug']}/files/{a['id']}"
             lines.append(f"- [{a['file_path']}]({url}) ({a['size_bytes']} bytes)")
         lines.append("")
 
-    transcript_url = f"{base}/api/v1/bundles/{bundle['slug']}/transcript"
+    transcript_url = f"{base}/api/v1/stashes/{stash['slug']}/transcript"
     lines.append("## Transcript")
     lines.append("")
-    if bundle.get("has_transcript"):
+    if stash.get("has_transcript"):
         lines.append(f"Full session transcript: [download]({transcript_url})")
     else:
         lines.append("_Transcript not yet available._")

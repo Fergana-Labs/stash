@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from stashai.plugin.bundle_upload import spawn_bundle_upload
+from stashai.plugin.stash_upload import spawn_stash_upload
 from stashai.plugin.event import HookEvent
 from stashai.plugin.scope import cwd_in_scope, find_manifest
 from stashai.plugin.stash_client import StashClient
@@ -181,9 +181,9 @@ def stream_assistant_message(
 def stream_session_end(
     client: StashClient, cfg: dict, state: dict, event: HookEvent,
 ) -> str | None:
-    """Push the session_end summary, upload transcript, create bundle.
+    """Push the session_end summary and upload transcript.
 
-    Returns the bundle URL if one was created, None otherwise.
+    Returns the stash URL if one was created, None otherwise.
     """
     skip, workspace_id = _short_circuit(cfg, event)
     if skip:

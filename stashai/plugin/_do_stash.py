@@ -1,12 +1,12 @@
-"""Detached background process: upload bundle artifacts + generate summary.
+"""Detached background process: upload stash artifacts + generate summary.
 
-Invoked by bundle_upload.spawn_bundle_upload(). Runs outside the hook
+Invoked by stash_upload.spawn_stash_upload(). Runs outside the hook
 timeout so large uploads and LLM calls don't block the agent.
 
-argv: script.py <bundle_id> <transcript_path> <cwd> <workspace_id>
+argv: script.py <stash_id> <transcript_path> <cwd> <workspace_id>
                 <agent_name> <base_url> <api_key>
 
-env: BUNDLE_FILES_TOUCHED = JSON list of file paths from the session
+env: STASH_FILES_TOUCHED = JSON list of file paths from the session
 """
 
 import json
@@ -137,19 +137,17 @@ def _generate_summary(transcript_path: Path) -> str | None:
 
 
 def main() -> None:
-    _, bundle_id, transcript_path, cwd, workspace_id, agent_name, base_url, api_key = sys.argv
-    files_touched = json.loads(os.environ.get("BUNDLE_FILES_TOUCHED", "[]"))
+    _, stash_id, transcript_path, cwd, workspace_id, agent_name, base_url, api_key = sys.argv
+    files_touched = json.loads(os.environ.get("STASH_FILES_TOUCHED", "[]"))
 
     with StashClient(base_url=base_url, api_key=api_key) as client:
-        # 1. Upload transcript to the bundle
         tp = Path(transcript_path)
         if tp.is_file():
             try:
-                client.upload_bundle_transcript(bundle_id, tp)
+                client.upload_stash_transcript(stash_id, tp)
             except Exception:
                 pass
 
-        # 2. Upload artifact files
         all_paths = _resolve_paths(files_touched, cwd)
         for fp in all_paths:
             if _should_skip(fp):
@@ -161,26 +159,23 @@ def main() -> None:
                 continue
             try:
                 content = p.read_bytes()
-                # Use path relative to cwd for display
                 try:
                     display_path = str(p.relative_to(cwd))
                 except ValueError:
                     display_path = str(p)
-                client.upload_bundle_artifact(bundle_id, display_path, content)
+                client.upload_stash_artifact(stash_id, display_path, content)
             except Exception:
                 continue
 
-        # 3. Generate summary with Haiku
-        client.update_bundle(bundle_id, status="summarizing")
+        client.update_stash(stash_id, status="summarizing")
         summary = None
         if tp.is_file():
             summary = _generate_summary(tp)
 
-        # 4. Update bundle with summary (or mark as failed)
         if summary:
-            client.update_bundle(bundle_id, summary=summary, status="ready")
+            client.update_stash(stash_id, summary=summary, status="ready")
         else:
-            client.update_bundle(bundle_id, status="failed")
+            client.update_stash(stash_id, status="failed")
 
 
 if __name__ == "__main__":

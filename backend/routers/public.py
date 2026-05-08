@@ -69,18 +69,18 @@ markdown:
 - Page: GET /api/v1/public/pages/{page_id}?format=text
 - Folder (all pages): GET /api/v1/public/folders/{folder_id}?format=text
 - Workspace overview: GET /api/v1/public/workspaces/{workspace_id}?format=text
-- Session bundle: GET /api/v1/bundles/{slug}?format=text
+- Stash: GET /api/v1/stashes/{slug}?format=text
 
-## Session Bundles
+## Stashes
 
-Session bundles archive a complete coding session: transcript, artifacts
+Stashes archive a complete coding session: transcript, artifacts
 (files read/written), and an AI-generated summary. Shared via /b/{slug}.
 
-- Bundle overview: GET /api/v1/bundles/{slug}?format=text
-- Specific artifact: GET /api/v1/bundles/{slug}/files/{artifact_id}
-- Full transcript: GET /api/v1/bundles/{slug}/transcript
+- Stash overview: GET /api/v1/stashes/{slug}?format=text
+- Specific artifact: GET /api/v1/stashes/{slug}/files/{artifact_id}
+- Full transcript: GET /api/v1/stashes/{slug}/transcript
 
-All bundle endpoints are anonymous-readable. No auth headers needed.
+All stash endpoints are anonymous-readable. No auth headers needed.
 
 ## Privacy
 
