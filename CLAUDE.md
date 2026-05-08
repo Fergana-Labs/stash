@@ -4,7 +4,7 @@ Write extremely easy to consume code. Optimize for readability: skimmable, no cl
 We are a startup. Therefore, code simplicity is our most important concern. Please NEVER
  - Attempt to preserve backwards compatibility when making an edit.
  - Use fallbacks to save the UX when a primary path doesn't work (we'd rather fail fast, and this helps us to maintain as few codepaths as possible)
- - Add dual-write or dual-read shims to support old and new formats side by side. If a format changes, change it everywhere in one shot. The plugin auto-updates on session start so stale code is not an excuse to maintain two codepaths.
+ - Support old formats. If a format changes, change it everywhere in one shot.
  
 Here are some common code patterns that we need you to avoid:
  - Excessive try/catch: only use try/catch when there's a reasonable expectation that the code within might fail during normal usage. Every try/catch that we add adds another codepath that we need to maintain (the catch) and balloons complexity. In general, we follow the concept of "parse, don't validate" from TDD whenever possible. That is, we validate inputs at module boundaries, and within a module, we don't randomly add try/catch everywhere.
