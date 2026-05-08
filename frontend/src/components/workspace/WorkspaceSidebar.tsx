@@ -4,7 +4,7 @@ import { useCallback, useRef, useState } from "react";
 
 import { Workspace, WorkspaceMember } from "../../lib/types";
 import { rotateWorkspaceInvite } from "../../lib/api";
-import ShareSheet from "../share/ShareSheet";
+import ShareButton from "../share/ShareButton";
 
 interface UserResult { id: string; name: string; display_name: string }
 
@@ -146,7 +146,6 @@ export default function WorkspaceSidebar({
   const [copied, setCopied] = useState(false);
   const [rotating, setRotating] = useState(false);
   const [updatingVisibility, setUpdatingVisibility] = useState(false);
-  const [shareOpen, setShareOpen] = useState(false);
 
   const toggleVisibility = async () => {
     if (updatingVisibility) return;
@@ -318,22 +317,11 @@ export default function WorkspaceSidebar({
               </button>
             )}
             {isOwner && (
-              <div className="relative">
-                <button
-                  onClick={() => setShareOpen((v) => !v)}
-                  className="rounded border border-border bg-raised px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-foreground hover:border-foreground"
-                >
-                  Share
-                </button>
-                {shareOpen && (
-                  <ShareSheet
-                    objectType="workspace"
-                    objectId={workspace.id}
-                    objectLabel={workspace.name}
-                    onClose={() => setShareOpen(false)}
-                  />
-                )}
-              </div>
+              <ShareButton
+                objectType="workspace"
+                objectId={workspace.id}
+                label={workspace.name}
+              />
             )}
           </div>
         </div>

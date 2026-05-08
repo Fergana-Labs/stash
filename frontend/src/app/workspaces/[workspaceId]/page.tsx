@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { ReactNode, useCallback, useEffect, useState } from "react";
 import AppShell from "../../../components/AppShell";
+import { useSetShareTarget } from "../../../components/share/ShareTargetContext";
 import WorkspaceSidebar from "../../../components/workspace/WorkspaceSidebar";
 import { useAuth } from "../../../hooks/useAuth";
 import {
@@ -104,6 +105,11 @@ export default function WorkspacePage() {
   const loadWorkspace = useCallback(async () => {
     try { setWorkspace(await getWorkspace(workspaceId)); } catch { setError("Workspace not found"); }
   }, [workspaceId]);
+
+  useSetShareTarget(
+    workspace ? { objectType: "workspace", objectId: workspace.id, label: workspace.name } : null,
+    `workspace:${workspace?.id ?? ""}:${workspace?.name ?? ""}`
+  );
 
   const loadData = useCallback(async () => {
     try {

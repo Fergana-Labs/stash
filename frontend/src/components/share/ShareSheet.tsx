@@ -27,6 +27,10 @@ interface Props {
   objectId: string;
   objectLabel: string;
   onClose: () => void;
+  // When provided, the sheet renders fixed-positioned at the given viewport
+  // coords (used by the wiki tree right-click flow). Otherwise it anchors
+  // inline relative to its `relative` parent.
+  anchorAt?: { x: number; y: number } | null;
 }
 
 const VISIBILITY_OPTIONS: { value: ObjectVisibility; label: string; hint: string }[] = [
@@ -35,7 +39,17 @@ const VISIBILITY_OPTIONS: { value: ObjectVisibility; label: string; hint: string
   { value: "public", label: "Public on the web", hint: "Discoverable in /discover" },
 ];
 
-export default function ShareSheet({ objectType, objectId, objectLabel, onClose }: Props) {
+const TYPE_CHIPS: Partial<Record<ShareableObjectType, string>> = {
+  page: "Page",
+  folder: "Folder",
+  table: "Table",
+  workspace: "Workspace",
+  file: "File",
+  history: "Session",
+  view: "View",
+};
+
+export default function ShareSheet({ objectType, objectId, objectLabel, onClose, anchorAt }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [perms, setPerms] = useState<ObjectPermissions | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -129,13 +143,25 @@ export default function ShareSheet({ objectType, objectId, objectLabel, onClose 
     }
   };
 
+  const containerClass = anchorAt
+    ? "fixed z-30 w-[360px] rounded-lg border border-border bg-surface shadow-xl"
+    : "absolute right-0 top-9 z-30 w-[360px] rounded-lg border border-border bg-surface shadow-xl";
+  const containerStyle = anchorAt
+    ? { left: Math.min(anchorAt.x, window.innerWidth - 376), top: anchorAt.y + 4 }
+    : undefined;
+  const typeChip = TYPE_CHIPS[objectType];
+
   return (
-    <div
-      ref={containerRef}
-      className="absolute right-0 top-9 z-30 w-[360px] rounded-lg border border-border bg-surface shadow-xl"
-    >
+    <div ref={containerRef} className={containerClass} style={containerStyle}>
       <div className="border-b border-border-subtle px-4 py-3">
-        <div className="text-[13px] font-medium text-foreground">Share</div>
+        <div className="flex items-center gap-2">
+          <span className="text-[13px] font-medium text-foreground">Share</span>
+          {typeChip && (
+            <span className="rounded border border-border-subtle bg-raised px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.08em] text-muted">
+              {typeChip}
+            </span>
+          )}
+        </div>
         <div className="truncate text-[12px] text-muted">{objectLabel}</div>
       </div>
 

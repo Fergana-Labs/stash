@@ -1,6 +1,8 @@
 "use client";
 
 import { useState } from "react";
+import ShareSheet from "../share/ShareSheet";
+import type { ShareableObjectType } from "../../lib/api";
 import {
   FolderTreeNode,
   PageSummary,
@@ -59,6 +61,13 @@ export default function FileTreeComponent({
 }: FileTreeProps) {
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [contextMenu, setContextMenu] = useState<ContextMenu | null>(null);
+  const [shareSheet, setShareSheet] = useState<{
+    x: number;
+    y: number;
+    objectType: ShareableObjectType;
+    objectId: string;
+    label: string;
+  } | null>(null);
 
   const toggle = (folderId: string) => {
     setCollapsed((prev) => {
@@ -268,6 +277,30 @@ export default function FileTreeComponent({
           <div className="my-1 h-px bg-border-subtle" />
           <button
             onClick={() => {
+              const target = contextMenu.target;
+              setShareSheet({
+                x: contextMenu.x,
+                y: contextMenu.y,
+                objectType: target.type === "page" ? "page" : "folder",
+                objectId: target.id,
+                label: target.name,
+              });
+              closeContextMenu();
+            }}
+            className="block w-full px-3 py-1.5 text-left text-[13px] text-foreground transition-colors hover:bg-raised"
+          >
+            {contextMenu.target.type === "folder" ? (
+              <>
+                <span>Share folder…</span>
+                <span className="ml-1 font-mono text-[10px] text-muted">applies to pages inside</span>
+              </>
+            ) : (
+              "Share page…"
+            )}
+          </button>
+          <div className="my-1 h-px bg-border-subtle" />
+          <button
+            onClick={() => {
               if (contextMenu.target.type === "page") {
                 onDeletePage(contextMenu.target.id);
               } else {
@@ -280,6 +313,16 @@ export default function FileTreeComponent({
             Delete
           </button>
         </div>
+      )}
+
+      {shareSheet && (
+        <ShareSheet
+          objectType={shareSheet.objectType}
+          objectId={shareSheet.objectId}
+          objectLabel={shareSheet.label}
+          onClose={() => setShareSheet(null)}
+          anchorAt={{ x: shareSheet.x, y: shareSheet.y }}
+        />
       )}
     </div>
   );

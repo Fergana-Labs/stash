@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Instrument_Sans, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import { BreadcrumbProvider } from "../components/BreadcrumbContext";
+import { ShareTargetProvider } from "../components/share/ShareTargetContext";
 
 const instrumentSans = Instrument_Sans({
   variable: "--font-instrument-sans",
@@ -34,7 +35,9 @@ export default function RootLayout({
       <body
         className={`${instrumentSans.variable} ${jetbrainsMono.variable} antialiased min-h-screen`}
       >
-        <BreadcrumbProvider>{children}</BreadcrumbProvider>
+        <BreadcrumbProvider>
+          <ShareTargetProvider>{children}</ShareTargetProvider>
+        </BreadcrumbProvider>
       </body>
     </html>
   );

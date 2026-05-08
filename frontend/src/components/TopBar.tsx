@@ -6,6 +6,8 @@ import { usePathname, useSearchParams } from "next/navigation";
 import type { Workspace } from "../lib/types";
 import { listMyWorkspaces } from "../lib/api";
 import { useBreadcrumbsValue, type Crumb } from "./BreadcrumbContext";
+import ShareButton from "./share/ShareButton";
+import { useShareTargetValue } from "./share/ShareTargetContext";
 
 const WS_STORAGE_KEY = "stash_selected_workspace";
 
@@ -29,6 +31,7 @@ export default function TopBar() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const pageCrumbs = useBreadcrumbsValue();
+  const shareTarget = useShareTargetValue();
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [selectedWsId, setSelectedWsId] = useState<string | null>(null);
 
@@ -92,7 +95,7 @@ export default function TopBar() {
   }, [pageCrumbs, pathname, selectedWsId, workspaces]);
 
   return (
-    <div className="sticky top-0 z-10 flex h-12 items-center border-b border-border bg-base px-6">
+    <div className="sticky top-0 z-10 flex h-12 items-center justify-between border-b border-border bg-base px-6">
       <nav className="flex min-w-0 items-center gap-2 text-[12px] text-muted">
         {crumbs.map((c, i) => {
           const isLast = i === crumbs.length - 1;
@@ -119,6 +122,16 @@ export default function TopBar() {
           );
         })}
       </nav>
+      {shareTarget && (
+        <div className="ml-4 shrink-0">
+          <ShareButton
+            objectType={shareTarget.objectType}
+            objectId={shareTarget.objectId}
+            label={shareTarget.label}
+            variant="prominent"
+          />
+        </div>
+      )}
     </div>
   );
 }
