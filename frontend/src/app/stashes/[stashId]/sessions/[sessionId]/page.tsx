@@ -5,7 +5,12 @@ import { useCallback, useEffect, useState } from "react";
 import AppShell from "../../../../../components/AppShell";
 import { useBreadcrumbs } from "../../../../../components/BreadcrumbContext";
 import { useAuth } from "../../../../../hooks/useAuth";
-import { getStashTranscript, getWorkspace, type SessionTranscript } from "../../../../../lib/api";
+import {
+  downloadStashTranscriptText,
+  getStashTranscript,
+  getWorkspace,
+  type SessionTranscript,
+} from "../../../../../lib/api";
 import type { Workspace } from "../../../../../lib/types";
 
 interface MessageTurn {
@@ -106,17 +111,8 @@ export default function SessionViewerPage() {
       setStash(await getWorkspace(stashId));
       const tx = await getStashTranscript(stashId, sessionId);
       setTranscript(tx);
-      if (tx.download_url) {
-        const res = await fetch(tx.download_url);
-        if (res.ok) {
-          const text = await res.text();
-          setTurns(parseJsonl(text));
-        } else {
-          setError(`Couldn't download transcript: ${res.status}`);
-        }
-      } else {
-        setError("Transcript has no download URL.");
-      }
+      const text = await downloadStashTranscriptText(stashId, sessionId);
+      setTurns(parseJsonl(text));
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load session");
     }

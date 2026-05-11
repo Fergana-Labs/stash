@@ -2,7 +2,7 @@
 
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, Form, HTTPException, Response, UploadFile
 
 from ..auth import get_current_user
 from ..database import get_pool
@@ -86,4 +86,30 @@ async def get_transcript(
     url = await storage_service.get_file_url(row["storage_key"])
     return SessionTranscriptResponse(
         **{k: v for k, v in dict(row).items() if k != "storage_key"}, download_url=url
+    )
+
+
+@router.get("/{session_id}/download")
+async def download_transcript(
+    workspace_id: UUID,
+    session_id: str,
+    current_user: dict = Depends(get_current_user),
+):
+    """Stream transcript bytes through the backend so browsers don't need R2 CORS."""
+    await _check_member(workspace_id, current_user["id"])
+    pool = get_pool()
+    row = await pool.fetchrow(
+        "SELECT storage_key FROM session_transcripts "
+        "WHERE workspace_id = $1 AND session_id = $2 "
+        "ORDER BY uploaded_at DESC LIMIT 1",
+        workspace_id,
+        session_id,
+    )
+    if not row:
+        raise HTTPException(status_code=404, detail="Transcript not found")
+    body = await storage_service.download_file(row["storage_key"])
+    return Response(
+        content=body,
+        media_type="application/jsonl",
+        headers={"Cache-Control": "private, max-age=300"},
     )

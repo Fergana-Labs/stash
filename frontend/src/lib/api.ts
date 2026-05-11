@@ -1241,6 +1241,18 @@ export async function getStashTranscript(
   );
 }
 
+export async function downloadStashTranscriptText(
+  stashId: string,
+  sessionId: string
+): Promise<string> {
+  const res = await fetch(
+    `/api/v1/workspaces/${stashId}/transcripts/${encodeURIComponent(sessionId)}/download`,
+    { credentials: "include" }
+  );
+  if (!res.ok) throw new Error(`Transcript download failed: ${res.status}`);
+  return res.text();
+}
+
 // --- Stashes (canonical naming, aliases /api/v1/workspaces/* on the server) ---
 
 export interface StashSpineSession {
