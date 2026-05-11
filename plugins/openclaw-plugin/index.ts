@@ -13,9 +13,11 @@
  * next successful post, matching the stashai Python client's behavior.
  */
 
+import { spawn } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, appendFileSync, readFileSync as read, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 
 import { definePluginEntry } from "openclaw/plugin-sdk/core";
 
@@ -39,6 +41,9 @@ type EventBody = {
 
 const CONFIG_PATH = join(homedir(), ".stash", "config.json");
 const DATA_DIR = join(homedir(), ".stash", "plugins", "openclaw");
+const PLUGIN_ROOT = dirname(fileURLToPath(import.meta.url));
+const SCRIPTS = join(PLUGIN_ROOT, "scripts");
+const RUN_SH = join(SCRIPTS, "_run.sh");
 const QUEUE_PATH = join(DATA_DIR, "event_queue.jsonl");
 const QUEUE_MAX = 1000;
 const DRAIN_BATCH = 50;
@@ -179,18 +184,36 @@ function send(body: EventBody): void {
   pushEvent(body).catch(() => { /* swallow */ });
 }
 
+function runHook(script: string, payload: unknown): void {
+  const hookName = script.replace(/\.py$/, "");
+  try {
+    const child = spawn("bash", [RUN_SH, hookName], {
+      stdio: ["pipe", "ignore", "ignore"],
+      detached: true,
+    });
+    child.on("error", () => { /* bash missing / crash — swallow */ });
+    child.stdin?.write(JSON.stringify(payload));
+    child.stdin?.end();
+    child.unref();
+  } catch {
+    // spawn failed synchronously — swallow
+  }
+}
+
 export default definePluginEntry({
   id: "stash",
   name: "Stash",
   description: "Stream Openclaw sessions to a Stash workspace.",
   register(api) {
     api.on("session_start", (event, ctx) => {
+      const sessionId = event.sessionKey ?? event.sessionId ?? ctx.sessionKey;
+      runHook("on_session_start.py", { session_id: sessionId, cwd: process.cwd() });
       send({
         agent_name: "",
         event_type: "session_start",
         content: "",
-        session_id: event.sessionKey ?? event.sessionId ?? ctx.sessionKey,
-        metadata: { cwd: "" },
+        session_id: sessionId,
+        metadata: { cwd: process.cwd() },
       });
     });
 
@@ -222,12 +245,8 @@ export default definePluginEntry({
     });
 
     api.on("session_end", (event, ctx) => {
-      send({
-        agent_name: "",
-        event_type: "session_end",
-        content: "",
-        session_id: event.sessionKey ?? event.sessionId ?? ctx.sessionKey,
-      });
+      const sessionId = event.sessionKey ?? event.sessionId ?? ctx.sessionKey;
+      runHook("on_session_end.py", { session_id: sessionId, cwd: process.cwd() });
     });
   },
 });

@@ -44,6 +44,8 @@ def test_session_start(plugin):
     event = adapt.adapt_session_start(_load_fixture(plugin, "session_start"))
     assert event.kind == "session_start"
     assert event.session_id  # non-empty
+    if plugin in ("codex", "cursor", "gemini"):
+        assert event.transcript_path
 
 
 # Cursor's beforeSubmitPrompt/postToolUse/afterAgentResponse payloads don't
@@ -95,6 +97,20 @@ def test_cursor_agent_response():
     assert event.kind == "stop"
     # afterAgentResponse has no session_id; streaming uses state.session_id.
     assert event.last_assistant_message == "Done."
+
+
+def test_transcript_paths_flow_through_session_end_adapters():
+    cases = [
+        ("claude", {"session_id": "s1", "cwd": "/repo", "transcript_path": "/t/claude.jsonl"}),
+        ("cursor", {"session_id": "s1", "workspace_roots": ["/repo"], "transcript_path": "/t/cursor.jsonl"}),
+        ("gemini", {"session_id": "s1", "cwd": "/repo", "transcript_path": "/t/gemini.json"}),
+    ]
+    for plugin, payload in cases:
+        adapt = _load_adapt(plugin)
+        event = adapt.adapt_session_end(payload)
+        assert event.kind == "session_end"
+        assert event.cwd == "/repo"
+        assert event.transcript_path.startswith("/t/")
 
 
 def test_cursor_tool_output_json_string_parses():

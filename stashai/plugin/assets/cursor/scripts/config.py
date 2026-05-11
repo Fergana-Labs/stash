@@ -37,6 +37,7 @@ def _read_json(path: Path) -> dict:
 
 
 def _cli_config() -> dict:
+    """User-scoped CLI config only. Repo config lives in the `.stash` manifest."""
     user_path = Path.home() / ".stash" / "config.json"
     if user_path.exists():
         return _read_json(user_path)
@@ -55,7 +56,7 @@ def get_config() -> dict:
         "api_key": api_key,
         "agent_name": cli.get("username", ""),
         "workspace_id": (manifest or {}).get("workspace_id", ""),
-        "auto_curate": os.environ.get("STASH_AUTO_CURATE", "false"),
+        "auto_curate": os.environ.get("STASH_AUTO_CURATE", "false"),  # off by default for Cursor
         "client": "cursor",
     }
 

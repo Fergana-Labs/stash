@@ -85,12 +85,11 @@ export default function CLIPage() {
 
       <CommandRef
         command="stash config"
-        args="[key] [value] [--project]"
+        args="[key] [value]"
         description="View or update a configuration value. Keys: base_url, default_workspace, output_format. Run without arguments to show all config."
         params={[
           { name: "key", type: "string", desc: "Config key to read or write." },
           { name: "value", type: "string", desc: "New value. Omit to read the current value." },
-          { name: "--project", type: "flag", desc: "Write to project-level config (.stash/config.json in the repo) instead of user config." },
         ]}
       />
 

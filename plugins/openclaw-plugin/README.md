@@ -16,6 +16,7 @@ openclaw-plugin/
 ├── package.json        # openclaw.extensions entry
 ├── index.ts            # plugin entry — calls api.on(...) for plugin hooks
 ├── scripts/            # Python scripts reusing stashai.plugin
+│   ├── _run.sh
 │   ├── adapt.py
 │   ├── config.py
 │   ├── on_session_start.py

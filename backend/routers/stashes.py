@@ -42,7 +42,6 @@ from ..services import (
     skill_service,
     stash_service,
     storage_service,
-    transcript_import,
     workspace_service,
 )
 from . import workspaces as ws_router_module

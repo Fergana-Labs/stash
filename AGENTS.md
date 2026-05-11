@@ -25,8 +25,10 @@ If you are about to ask the user to do something for you, think about whether yo
 Previous Claude coding sessions are stored as `.jsonl` files in your ~/.claude file. Read these to understand prior decisions, debugging sessions, and context that isn't in git history.
 
 When you create or update a PR, share the GitHub link with the user at the end of your session.
+When making local changes for a task that already has a PR, commit and push those changes to the PR branch before finishing so the remote branch stays up to date.
 
 
+<!-- stash-plugin:begin -->
 # Stash
 
 You have the `stash` CLI on your PATH. Run `stash --help` to see commands. Use it to read transcripts, notebooks, and history from your team's shared Stash workspace.
@@ -38,6 +40,7 @@ Common reads (all support `--json`):
 - `stash history query --limit 20` - recent events
 - `stash history agents` - who's been active
 - `stash notebooks list --all` - shared notebooks
+<!-- stash-plugin:end -->
 
 ## PR hygiene
 

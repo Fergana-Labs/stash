@@ -71,7 +71,7 @@ approval behavior.
 | `SessionStart` | — (warms cache) | — |
 | `UserPromptSubmit` | `user_message` | — |
 | `PostToolUse` | `tool_use` | **Bash only today** — Codex hardcodes `tool_name="Bash"` for every shell call |
-| `Stop` | `assistant_message` + `session_end` | — |
+| `Stop` | `assistant_message` + transcript upload | Transcript uploaded in background with 60s cooldown |
 
 ## Retrieval
 

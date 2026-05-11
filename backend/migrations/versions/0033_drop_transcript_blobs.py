@@ -24,20 +24,15 @@ depends_on = None
 
 def upgrade() -> None:
     op.execute("DROP TABLE IF EXISTS session_transcripts CASCADE")
-    op.execute(
-        "ALTER TABLE stashes DROP COLUMN IF EXISTS transcript_storage_key"
-    )
+    op.execute("ALTER TABLE stashes DROP COLUMN IF EXISTS transcript_storage_key")
 
 
 def downgrade() -> None:
     # Schema-only restore. The blobs themselves are not re-linked — the
     # one-shot delete sweep runs after this migration has soaked, and
     # downgrade is a panic button, not a regular flow.
-    op.execute(
-        "ALTER TABLE stashes ADD COLUMN IF NOT EXISTS transcript_storage_key TEXT"
-    )
-    op.execute(
-        """
+    op.execute("ALTER TABLE stashes ADD COLUMN IF NOT EXISTS transcript_storage_key TEXT")
+    op.execute("""
         CREATE TABLE IF NOT EXISTS session_transcripts (
             id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
             workspace_id UUID NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
@@ -50,5 +45,4 @@ def downgrade() -> None:
             uploaded_at TIMESTAMPTZ NOT NULL DEFAULT now(),
             UNIQUE (workspace_id, session_id)
         )
-        """
-    )
+        """)

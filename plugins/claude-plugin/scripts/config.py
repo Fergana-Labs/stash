@@ -19,6 +19,8 @@ DATA_DIR = Path(os.environ.get(
     Path.home() / ".claude/plugins/data/stash",
 ))
 
+PRODUCTION_BASE_URL = "https://api.joinstash.ai"
+
 
 def get_stdin_data() -> dict:
     try:
@@ -34,44 +36,12 @@ def _read_json(path: Path) -> dict:
         return {}
 
 
-def _project_config() -> Path | None:
-    """Walk up from cwd looking for .stash/config.json."""
-    try:
-        cur = Path.cwd().resolve()
-    except Exception:
-        return None
-    for parent in [cur, *cur.parents]:
-        candidate = parent / ".stash" / "config.json"
-        if candidate.exists():
-            return candidate
-    return None
-
-
-# Keys that ONLY the user-scoped ~/.stash/config.json is allowed to set.
-# A project-scoped .stash/config.json (walked up from cwd) must not be able
-# to override these — otherwise any writable ancestor dir becomes an exfil
-# vector (attacker points base_url at their own server, captures every
-# prompt + tool output).
-_USER_ONLY_KEYS = {"base_url", "api_key"}
-
-
 def _load_cli_config() -> dict:
-    """User config (~/.stash/config.json) overlaid with project config.
-
-    Project config may override workspace/username scoping, but NOT the
-    transport credentials (base_url, api_key).
-    """
-    merged: dict = {}
+    """User-scoped CLI config only. Repo config lives in the `.stash` manifest."""
     user_path = Path.home() / ".stash" / "config.json"
     if user_path.exists():
-        merged.update(_read_json(user_path))
-    project_path = _project_config()
-    if project_path:
-        project = _read_json(project_path)
-        for key in _USER_ONLY_KEYS:
-            project.pop(key, None)
-        merged.update(project)
-    return merged
+        return _read_json(user_path)
+    return {}
 
 
 def get_config() -> dict:
@@ -81,9 +51,13 @@ def get_config() -> dict:
     if not api_key:
         cli = _load_cli_config()
         manifest = find_manifest(os.getcwd())
+        manifest_base = (manifest or {}).get("base_url")
+        user_base = cli.get("base_url", PRODUCTION_BASE_URL)
+        api_endpoint = manifest_base or user_base
+        api_key = cli.get("api_key", "") if api_endpoint == user_base else ""
         return {
-            "api_endpoint": cli.get("base_url", "https://joinstash.ai"),
-            "api_key": cli.get("api_key", ""),
+            "api_endpoint": api_endpoint,
+            "api_key": api_key,
             "agent_name": cli.get("username", ""),
             "workspace_id": (manifest or {}).get("workspace_id", ""),
             "auto_curate": os.environ.get("CLAUDE_PLUGIN_USER_CONFIG_auto_curate", "true"),
@@ -91,7 +65,7 @@ def get_config() -> dict:
         }
 
     return {
-        "api_endpoint": os.environ.get("CLAUDE_PLUGIN_USER_CONFIG_api_endpoint", "https://joinstash.ai"),
+        "api_endpoint": os.environ.get("CLAUDE_PLUGIN_USER_CONFIG_api_endpoint", PRODUCTION_BASE_URL),
         "api_key": api_key,
         "agent_name": agent_name,
         "workspace_id": os.environ.get("CLAUDE_PLUGIN_USER_CONFIG_workspace_id", ""),

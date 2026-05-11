@@ -33,6 +33,7 @@ def _read_json(path: Path) -> dict:
 
 
 def _cli_config() -> dict:
+    """User-scoped CLI config only. Repo config lives in the `.stash` manifest."""
     user_path = Path.home() / ".stash" / "config.json"
     if user_path.exists():
         return _read_json(user_path)

@@ -6,7 +6,7 @@ assistant_message here; session_end lives in on_session_end.py.
 """
 
 from config import DATA_DIR, get_client, get_config, get_stdin_data, is_configured
-from stashai.plugin.hooks import stream_assistant_message
+from stashai.plugin.hooks import remember_transcript_path, stream_assistant_message
 from stashai.plugin.state import load_state
 
 from adapt import adapt_stop
@@ -17,6 +17,7 @@ def main():
         return
     state = load_state(DATA_DIR)
     event = adapt_stop(get_stdin_data())
+    remember_transcript_path(state, event, DATA_DIR)
     cfg = get_config()
     try:
         with get_client() as client:
