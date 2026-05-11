@@ -128,20 +128,27 @@ export default function StashHomePage() {
     title: `#${s.session_id.length > 28 ? s.session_id.slice(0, 28) + "…" : s.session_id}`,
     subtitle: `${s.agent_name} · ${formatBytes(s.size_bytes)}`,
   }));
-  const skills: CardItem[] = (spine?.skills ?? []).map((s) => ({
-    href: `/stashes/${stashId}/skills/${encodeURIComponent(s.name)}`,
-    icon: "⚙︎",
-    iconColor: "text-indigo-600",
-    title: `/${s.name}`,
-    subtitle: s.description || `${s.file_count} file${s.file_count === 1 ? "" : "s"}`,
+  const wikiPages: CardItem[] = (spine?.root_pages ?? []).map((p) => ({
+    href: `/stashes/${stashId}/p/${p.id}`,
+    icon: "📄",
+    title: p.name,
+    subtitle: "Page",
   }));
-  const driveFolders: CardItem[] = (spine?.drive.folders ?? []).slice(0, 3).map((f) => ({
-    href: `/files?ws=${stashId}`,
-    icon: "📁",
-    title: f.name,
-    subtitle: "Folder",
-  }));
-  const driveFiles: CardItem[] = (spine?.drive.files ?? []).slice(0, 8).map((f) => {
+  const wikiFolders: CardItem[] = [
+    ...(spine?.skills ?? []).map((s) => ({
+      href: `/stashes/${stashId}/skills/${encodeURIComponent(s.name)}`,
+      icon: "📁",
+      title: s.name,
+      subtitle: s.description || `${s.file_count} file${s.file_count === 1 ? "" : "s"}`,
+    })),
+    ...(spine?.drive.folders ?? []).map((f) => ({
+      href: `/files?ws=${stashId}`,
+      icon: "📁",
+      title: f.name,
+      subtitle: "Folder",
+    })),
+  ];
+  const wikiFiles: CardItem[] = (spine?.drive.files ?? []).slice(0, 12).map((f) => {
     const isCsvLinked = f.content_type?.includes("csv") && f.linked_table_id;
     return {
       href: isCsvLinked
@@ -161,6 +168,7 @@ export default function StashHomePage() {
         : `${f.content_type || "file"} · ${formatBytes(f.size_bytes)}`,
     };
   });
+  const wikiItems = [...wikiFolders, ...wikiPages, ...wikiFiles];
 
   return (
     <AppShell user={user} onLogout={logout}>
@@ -228,13 +236,11 @@ export default function StashHomePage() {
               Stash structure
             </div>
             <p className="mt-1 text-[12.5px] leading-relaxed text-muted">
-              Every stash has three default folders mapped to how memory works for an agent:{" "}
-              <span className="font-medium text-foreground">Sessions</span> (episodic — agent
-              transcripts),{" "}
-              <span className="font-medium text-foreground">Skills</span> (procedural — what the
-              agent can do), and{" "}
-              <span className="font-medium text-foreground">Drive</span> (semantic — files we
-              create and manipulate).
+              Two surfaces:{" "}
+              <span className="font-medium text-foreground">Sessions</span> (agent transcripts —
+              episodic memory) and{" "}
+              <span className="font-medium text-foreground">Wiki</span> (pages, files, and
+              folders — the structured, shared content of the stash).
             </p>
           </div>
 
@@ -253,33 +259,15 @@ export default function StashHomePage() {
             <EmptyState text="No sessions yet. Push agent transcripts via the CLI." />
           )}
 
-          {/* Skills */}
+          {/* Wiki */}
           <SectionHeader
-            icon="⚡"
-            title="Skills"
-            subtitle="procedural"
-            trailing={`${spine?.skills.length ?? 0} skill${
-              spine?.skills.length === 1 ? "" : "s"
-            } · MCP exposed`}
-          />
-          {skills.length > 0 ? (
-            <CardGrid items={skills} hover="indigo" />
-          ) : (
-            <EmptyState
-              text="No skills yet."
-              action={{ href: "#", label: "Drop a SKILL.md folder via `stash skill add`" }}
-            />
-          )}
-
-          {/* Drive */}
-          <SectionHeader
-            icon="📁"
-            title="Drive"
-            subtitle="semantic"
-            trailing={`${(spine?.drive.files.length ?? 0)} file${
-              spine?.drive.files.length === 1 ? "" : "s"
-            } · ${(spine?.drive.folders.length ?? 0)} folder${
-              spine?.drive.folders.length === 1 ? "" : "s"
+            icon="📖"
+            title="Wiki"
+            subtitle="structured"
+            trailing={`${wikiPages.length} page${wikiPages.length === 1 ? "" : "s"} · ${
+              wikiFiles.length
+            } file${wikiFiles.length === 1 ? "" : "s"} · ${wikiFolders.length} folder${
+              wikiFolders.length === 1 ? "" : "s"
             }`}
           />
           {isMember && (
@@ -312,8 +300,8 @@ export default function StashHomePage() {
               </button>
             </div>
           )}
-          {driveFolders.length + driveFiles.length > 0 ? (
-            <CardGrid items={[...driveFolders, ...driveFiles]} hover="brand" />
+          {wikiItems.length > 0 ? (
+            <CardGrid items={wikiItems} hover="brand" />
           ) : (
             <EmptyState text="Upload PDFs, sheets, or create wiki pages." />
           )}

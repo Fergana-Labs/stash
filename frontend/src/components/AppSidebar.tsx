@@ -145,24 +145,29 @@ function StashTree({
           </div>
         </details>
 
-        <details className="text-[13px]">
+        <details open className="text-[13px]">
           <summary className="page-row flex items-center gap-1 rounded-md px-2 py-1 hover:bg-raised">
             <Chevron />
-            <span className="text-[14px]">⚡</span>
-            <span className="flex-1 truncate font-medium text-foreground">Skills</span>
-            <span className="text-[10.5px] text-muted">{spine?.skills.length ?? 0}</span>
+            <span className="text-[14px]">📖</span>
+            <span className="flex-1 truncate font-medium text-foreground">Wiki</span>
+            <span className="text-[10.5px] text-muted">
+              {(spine?.root_pages?.length ?? 0) +
+                (spine?.skills.length ?? 0) +
+                (spine?.drive.folders.length ?? 0) +
+                (spine?.drive.files.length ?? 0)}
+            </span>
           </summary>
           <div className="ml-3 space-y-0.5 border-l border-border pl-2">
             {spine?.skills.map((s) => (
               <details key={s.folder_id} className="text-[12.5px]">
                 <summary className="page-row flex items-center gap-1 rounded-md px-2 py-0.5 hover:bg-raised">
                   <Chevron />
-                  <span className="text-indigo-600">⚙︎</span>
+                  <span className="text-muted">📁</span>
                   <Link
                     href={`/stashes/${stash.id}/skills/${encodeURIComponent(s.name)}`}
                     className="flex-1 truncate text-left text-foreground hover:text-[var(--color-brand-700)]"
                   >
-                    /{s.name}
+                    {s.name}
                   </Link>
                 </summary>
                 <div className="ml-2.5 space-y-0.5 border-l border-border pl-2">
@@ -170,33 +175,13 @@ function StashTree({
                     <NavRow
                       key={f}
                       href={`/stashes/${stash.id}/skills/${encodeURIComponent(s.name)}?file=${encodeURIComponent(f)}`}
-                      icon={
-                        <span className="text-muted">
-                          {f === "SKILL.md" ? "📄" : f.endsWith(".md") ? "📋" : "📄"}
-                        </span>
-                      }
+                      icon={<span className="text-muted">📄</span>}
                       label={f}
                     />
                   ))}
                 </div>
               </details>
             ))}
-            {(!spine || spine.skills.length === 0) && (
-              <div className="px-2 py-1 text-[11px] italic text-muted">no skills yet</div>
-            )}
-          </div>
-        </details>
-
-        <details open className="text-[13px]">
-          <summary className="page-row flex items-center gap-1 rounded-md px-2 py-1 hover:bg-raised">
-            <Chevron />
-            <span className="text-[14px]">📁</span>
-            <span className="flex-1 truncate font-medium text-foreground">Drive</span>
-            <span className="text-[10.5px] text-muted">
-              {(spine?.drive.files.length ?? 0) + (spine?.drive.folders.length ?? 0)}
-            </span>
-          </summary>
-          <div className="ml-3 space-y-0.5 border-l border-border pl-2">
             {spine?.drive.folders.slice(0, 4).map((f) => (
               <NavRow
                 key={f.id}
@@ -205,7 +190,15 @@ function StashTree({
                 label={f.name}
               />
             ))}
-            {spine?.drive.files.slice(0, 8).map((f) => {
+            {spine?.root_pages?.slice(0, 10).map((p) => (
+              <NavRow
+                key={p.id}
+                href={`/stashes/${stash.id}/p/${p.id}`}
+                icon={<span className="text-muted">📄</span>}
+                label={p.name}
+              />
+            ))}
+            {spine?.drive.files.slice(0, 12).map((f) => {
               const isCsvLinked =
                 f.content_type?.includes("csv") && f.linked_table_id;
               const href = isCsvLinked
@@ -234,7 +227,11 @@ function StashTree({
                 />
               );
             })}
-            {(!spine || (spine.drive.files.length === 0 && spine.drive.folders.length === 0)) && (
+            {(!spine ||
+              ((spine.root_pages?.length ?? 0) === 0 &&
+                spine.skills.length === 0 &&
+                spine.drive.files.length === 0 &&
+                spine.drive.folders.length === 0)) && (
               <div className="px-2 py-1 text-[11px] italic text-muted">empty</div>
             )}
           </div>
@@ -291,21 +288,8 @@ export default function AppSidebar({ user, collapsed, onCmdkOpen }: AppSidebarPr
     <aside className="scroll-thin overflow-y-auto border-r border-border bg-surface">
       <div className="px-3 pb-1 pt-3">
         <Link href="/" className="flex items-center gap-2">
-          <span className="flex h-7 w-7 items-center justify-center rounded-md bg-gradient-to-br from-[var(--color-brand-500)] to-[var(--color-brand-700)] text-white shadow-sm">
-            <svg
-              viewBox="0 0 24 24"
-              className="h-4 w-4"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2.2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <path d="M12 2 2 7l10 5 10-5z" />
-              <path d="m2 17 10 5 10-5" />
-              <path d="m2 12 10 5 10-5" />
-            </svg>
-          </span>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/octopus.svg" alt="Stash" className="h-7 w-7" />
           <span className="font-display text-[14px] font-semibold tracking-tight text-foreground">
             stash
           </span>

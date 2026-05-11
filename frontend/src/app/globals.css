@@ -41,21 +41,21 @@
   --color-border: var(--border-color);
   --color-border-subtle: var(--border-subtle-color);
 
-  /* Brand (olive/forest — Stash 2026, matches mockup brand-50…900) */
-  --color-brand-50: #F3F7F4;
-  --color-brand-100: #E3EDE5;
-  --color-brand-200: #C8DBCC;
-  --color-brand-300: #9FBEA6;
-  --color-brand-400: #73A07D;
-  --color-brand-500: #527559;
-  --color-brand-600: #43614A;
-  --color-brand-700: #36503C;
-  --color-brand-800: #2C4031;
-  --color-brand-900: #243429;
-  --color-brand: #43614A;
-  --color-brand-hover: #36503C;
-  --color-brand-muted: #F3F7F4;
-  --color-brand-deep: #36503C;
+  /* Brand (orange — DESIGN.md: #F97316 primary) */
+  --color-brand-50: #FFF7ED;
+  --color-brand-100: #FFEDD5;
+  --color-brand-200: #FED7AA;
+  --color-brand-300: #FDBA74;
+  --color-brand-400: #FB923C;
+  --color-brand-500: #F97316;
+  --color-brand-600: #EA580C;
+  --color-brand-700: #C2410C;
+  --color-brand-800: #9A3412;
+  --color-brand-900: #7C2D12;
+  --color-brand: #F97316;
+  --color-brand-hover: #EA580C;
+  --color-brand-muted: #FFF7ED;
+  --color-brand-deep: #C2410C;
 
   /* Agent (violet) */
   --color-agent: #8B5CF6;
@@ -160,8 +160,8 @@ details[open] > summary .chev {
 
 /* Brand-bordered quote callout used in narratives */
 .markdown-content .quote-callout {
-  border-left: 4px solid var(--color-brand-500, #527559);
-  background: var(--color-brand-50, #f3f7f4);
+  border-left: 4px solid var(--color-brand-500, #F97316);
+  background: var(--color-brand-50, #FFF7ED);
   border-radius: 4px;
   padding: 0.85rem 1rem;
   margin: 1rem 0 1.25rem;
@@ -171,7 +171,7 @@ details[open] > summary .chev {
   font-weight: 600;
   letter-spacing: 0.05em;
   text-transform: uppercase;
-  color: var(--color-brand-700, #36503c);
+  color: var(--color-brand-700, #C2410C);
 }
 .markdown-content .quote-body {
   font-style: italic;
