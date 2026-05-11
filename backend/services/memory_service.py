@@ -25,6 +25,12 @@ def _text_hash(text: str) -> str:
     return hashlib.sha256(text.encode()).hexdigest()
 
 
+def _normalize_ts(ts: datetime) -> datetime:
+    if ts.tzinfo is None:
+        return ts.replace(tzinfo=UTC)
+    return ts
+
+
 # Dedup map for in-flight event embeds, keyed by event_id.
 _embed_tasks: dict[UUID, asyncio.Task] = {}
 
@@ -99,10 +105,8 @@ async def push_event(
     meta = metadata or {}
     if created_at is None:
         ts = datetime.now(UTC)
-    elif created_at.tzinfo is None:
-        ts = created_at.replace(tzinfo=UTC)
     else:
-        ts = created_at
+        ts = _normalize_ts(created_at)
     row = await pool.fetchrow(
         "INSERT INTO history_events "
         "(workspace_id, created_by, agent_name, event_type, content, session_id, tool_name, metadata, attachments, created_at) "
@@ -198,8 +202,8 @@ def _build_event_filters(
     agent_name: str | None,
     session_id: str | None,
     event_type: str | None,
-    after: str | None,
-    before: str | None,
+    after: datetime | None,
+    before: datetime | None,
 ) -> tuple[str, list, int]:
     """Append optional filters to a base scope condition. Returns (where, args, next_idx)."""
     conditions = [base_condition]
@@ -220,11 +224,11 @@ def _build_event_filters(
         idx += 1
     if after:
         conditions.append(f"created_at > ${idx}")
-        args.append(after)
+        args.append(_normalize_ts(after))
         idx += 1
     if before:
         conditions.append(f"created_at < ${idx}")
-        args.append(before)
+        args.append(_normalize_ts(before))
         idx += 1
 
     return " AND ".join(conditions), args, idx
@@ -259,8 +263,8 @@ async def query_workspace_events(
     agent_name: str | None = None,
     session_id: str | None = None,
     event_type: str | None = None,
-    after: str | None = None,
-    before: str | None = None,
+    after: datetime | None = None,
+    before: datetime | None = None,
     limit: int = 50,
     order: str = "desc",
 ) -> tuple[list[dict], bool]:
@@ -283,8 +287,8 @@ async def query_personal_events(
     agent_name: str | None = None,
     session_id: str | None = None,
     event_type: str | None = None,
-    after: str | None = None,
-    before: str | None = None,
+    after: datetime | None = None,
+    before: datetime | None = None,
     limit: int = 50,
     order: str = "desc",
 ) -> tuple[list[dict], bool]:
@@ -398,8 +402,8 @@ async def query_all_user_events(
     user_id: UUID,
     agent_name: str | None = None,
     event_type: str | None = None,
-    after: str | None = None,
-    before: str | None = None,
+    after: datetime | None = None,
+    before: datetime | None = None,
     limit: int = 50,
     order: str = "desc",
 ) -> tuple[list[dict], bool]:
@@ -425,11 +429,11 @@ async def query_all_user_events(
         idx += 1
     if after:
         conditions.append(f"he.created_at > ${idx}")
-        args.append(after)
+        args.append(_normalize_ts(after))
         idx += 1
     if before:
         conditions.append(f"he.created_at < ${idx}")
-        args.append(before)
+        args.append(_normalize_ts(before))
         idx += 1
 
     where = " AND ".join(conditions)

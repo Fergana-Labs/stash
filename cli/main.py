@@ -1699,7 +1699,14 @@ def hist_query(
     with _client() as c:
         try:
             if all_:
-                data = c.all_events(agent_name=agent_name, event_type=event_type, limit=limit)
+                data = c.all_events(
+                    agent_name=agent_name,
+                    event_type=event_type,
+                    limit=limit,
+                    before=before,
+                    after=after,
+                    order=order,
+                )
             else:
                 ws = workspace_id or _resolve_workspace()
                 data = c.query_events(ws, agent_name=agent_name, event_type=event_type, limit=limit, before=before, after=after, order=order)
