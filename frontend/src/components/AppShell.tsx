@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import { User, Workspace } from "../lib/types";
 import { listMyWorkspaces } from "../lib/api";
 import AppSidebar from "./AppSidebar";
+import CommandPalette from "./CommandPalette";
 import ShareModal from "./ShareModal";
 import { useBreadcrumbsValue } from "./BreadcrumbContext";
 
@@ -148,6 +149,11 @@ export default function AppShell({ user, onLogout, children }: AppShellProps) {
           onClose={() => setShareOpen(false)}
         />
       )}
+      <CommandPalette
+        open={cmdkOpen}
+        onClose={() => setCmdkOpen(false)}
+        stashId={activeStashId}
+      />
     </div>
   );
 }
