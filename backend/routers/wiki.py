@@ -157,7 +157,7 @@ async def get_folder_contents(
         folder_id,
     )
     pages = await pool.fetch(
-        "SELECT id, name, public_in_share FROM pages WHERE folder_id = $1 ORDER BY name",
+        "SELECT id, name FROM pages WHERE folder_id = $1 ORDER BY name",
         folder_id,
     )
     files = await pool.fetch(
@@ -203,7 +203,7 @@ async def get_folder_contents(
             for r in subfolders
         ],
         "pages": [
-            {"id": str(r["id"]), "name": r["name"], "public_in_share": r["public_in_share"]}
+            {"id": str(r["id"]), "name": r["name"]}
             for r in pages
         ],
         "files": file_payload,
@@ -342,7 +342,6 @@ async def update_page(
             content_type=req.content_type,
             content_html=req.content_html,
             move_to_root=req.move_to_root,
-            public_in_share=req.public_in_share,
         )
     except DuplicatePageName as e:
         raise HTTPException(status_code=409, detail=str(e))

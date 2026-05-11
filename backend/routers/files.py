@@ -15,8 +15,6 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, Form, HTTPException, UploadFile
 from fastapi.responses import RedirectResponse
-from pydantic import BaseModel
-
 from ..auth import get_current_user
 from ..database import get_pool
 from ..models import FileListResponse, FileResponse, TableResponse
@@ -185,44 +183,10 @@ async def get_ws_file_text(
     }
 
 
-class FileUpdateRequest(BaseModel):
-    public_in_share: bool | None = None
-
-
-@ws_router.patch("/{file_id}", response_model=FileResponse)
-async def patch_ws_file(
-    workspace_id: UUID,
-    file_id: UUID,
-    req: FileUpdateRequest,
-    current_user: dict = Depends(get_current_user),
-):
-    await _check_member(workspace_id, current_user["id"])
-    pool = get_pool()
-    sets, args, idx = [], [], 1
-    if req.public_in_share is not None:
-        sets.append(f"public_in_share = ${idx}")
-        args.append(req.public_in_share)
-        idx += 1
-    if not sets:
-        row = await pool.fetchrow(
-            "SELECT id, workspace_id, folder_id, name, content_type, size_bytes, storage_key, uploaded_by, created_at, linked_table_id "
-            "FROM files WHERE id = $1 AND workspace_id = $2",
-            file_id,
-            workspace_id,
-        )
-        if not row:
-            raise HTTPException(status_code=404, detail="File not found")
-        return await _file_to_response(dict(row))
-    args.append(file_id)
-    args.append(workspace_id)
-    row = await pool.fetchrow(
-        f"UPDATE files SET {', '.join(sets)} WHERE id = ${idx} AND workspace_id = ${idx + 1} "
-        "RETURNING id, workspace_id, folder_id, name, content_type, size_bytes, storage_key, uploaded_by, created_at, linked_table_id",
-        *args,
-    )
-    if not row:
-        raise HTTPException(status_code=404, detail="File not found")
-    return await _file_to_response(dict(row))
+# PATCH /files/{id} removed: the only field it edited was `public_in_share`,
+# which is gone in the unified sharing model. To make a file shareable now,
+# mint a share-link via POST /api/v1/workspaces/{ws}/shares with
+# target_type='file'.
 
 
 @ws_router.delete("/{file_id}", status_code=204)

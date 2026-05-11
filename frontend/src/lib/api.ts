@@ -1204,29 +1204,9 @@ export async function listAgentNames(workspaceId: string): Promise<string[]> {
   return data.agent_names;
 }
 
-// --- Share toggles ---
-
-export async function togglePagePublic(
-  workspaceId: string,
-  pageId: string,
-  publicInShare: boolean
-): Promise<Page> {
-  return apiFetch(`/api/v1/workspaces/${workspaceId}/pages/${pageId}`, {
-    method: "PATCH",
-    body: JSON.stringify({ public_in_share: publicInShare }),
-  });
-}
-
-export async function toggleFilePublic(
-  workspaceId: string,
-  fileId: string,
-  publicInShare: boolean
-): Promise<FileInfo> {
-  return apiFetch(`/api/v1/workspaces/${workspaceId}/files/${fileId}`, {
-    method: "PATCH",
-    body: JSON.stringify({ public_in_share: publicInShare }),
-  });
-}
+// `togglePagePublic` / `toggleFilePublic` are gone. Sharing is now link-
+// based — to share a single page or file, mint a share-link with
+// target_type='page' or 'file' via `createShareLink` (TODO: add helper).
 
 // --- Activity feed ---
 
@@ -1308,7 +1288,6 @@ export interface WikiPage {
   id: string;
   name: string;
   folder_id: string | null;
-  public_in_share: boolean;
 }
 export interface WikiFile {
   id: string;
@@ -1348,7 +1327,7 @@ export interface FolderContents {
   folder: { id: string; name: string; parent_folder_id: string | null };
   breadcrumbs: FolderBreadcrumb[];
   subfolders: FolderSubfolder[];
-  pages: { id: string; name: string; public_in_share: boolean }[];
+  pages: { id: string; name: string }[];
   files: Omit<WikiFile, "folder_id">[];
 }
 

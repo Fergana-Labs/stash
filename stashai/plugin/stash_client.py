@@ -277,12 +277,15 @@ class StashClient:
             },
         )
 
-    def upload_stash_artifact(
-        self, stash_id: str, file_path: str, content: bytes,
+    def upload_session_artifact(
+        self, session_id: str, file_path: str, content: bytes,
     ) -> dict:
+        """Upload a file the agent touched during a session. `session_id`
+        is the sessions.id UUID returned by create_stash (the legacy name
+        for what's now a session-share)."""
         resp = self._http.request(
             "POST",
-            f"/api/v1/stashes/{stash_id}/artifacts",
+            f"/api/v1/stashes/{session_id}/artifacts",
             headers=self._headers(),
             data={"file_path": file_path},
             files={"file": (file_path.split("/")[-1], content, "application/octet-stream")},
@@ -291,6 +294,9 @@ class StashClient:
         if not resp.is_success:
             raise StashError(resp.status_code, resp.text)
         return resp.json()
+
+    # Backward-compat alias for any external SDK callers.
+    upload_stash_artifact = upload_session_artifact
 
     def update_stash(self, stash_id: str, **fields) -> dict:
         body = {k: v for k, v in fields.items() if v is not None}

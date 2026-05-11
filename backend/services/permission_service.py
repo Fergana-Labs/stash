@@ -223,15 +223,6 @@ async def set_visibility(object_type: str, object_id: UUID, visibility: str) -> 
             visibility,
         )
 
-    # Workspaces have a legacy is_public column the Discover catalog still
-    # queries. Mirror visibility=public into it on toggle.
-    if object_type == "workspace":
-        await pool.execute(
-            "UPDATE workspaces SET is_public = $1 WHERE id = $2",
-            visibility == "public",
-            object_id,
-        )
-
 
 async def add_share(
     object_type: str,

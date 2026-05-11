@@ -25,18 +25,18 @@ async def create_workspace(
             break
 
     row = await pool.fetchrow(
-        "INSERT INTO workspaces (name, description, creator_id, invite_code, is_public) "
-        "VALUES ($1, $2, $3, $4, $5) "
-        "RETURNING id, name, description, creator_id, invite_code, is_public, "
+        "INSERT INTO workspaces (name, description, creator_id, invite_code) "
+        "VALUES ($1, $2, $3, $4) "
+        "RETURNING id, name, description, creator_id, invite_code, "
         "created_at, updated_at, summary, tags, category, discoverable, featured, "
         "cover_image_url, fork_count, forked_from_workspace_id",
         name,
         description,
         creator_id,
         invite_code,
-        is_public,
     )
     ws = dict(row)
+    ws["is_public"] = is_public
     # Auto-add creator as owner
     await pool.execute(
         "INSERT INTO workspace_members (workspace_id, user_id, role) VALUES ($1, $2, 'owner')",
@@ -54,7 +54,12 @@ async def create_workspace(
 async def get_workspace(workspace_id: UUID) -> dict | None:
     pool = get_pool()
     row = await pool.fetchrow(
-        "SELECT w.id, w.name, w.description, w.creator_id, w.invite_code, w.is_public, "
+        "SELECT w.id, w.name, w.description, w.creator_id, w.invite_code, "
+        "COALESCE("
+        "  (SELECT visibility = 'public' FROM object_permissions "
+        "   WHERE object_type = 'workspace' AND object_id = w.id), "
+        "  false"
+        ") AS is_public, "
         "w.created_at, w.updated_at, w.summary, w.tags, w.category, "
         "w.discoverable, w.featured, "
         "w.cover_image_url, w.fork_count, w.forked_from_workspace_id, "
@@ -68,12 +73,19 @@ async def get_workspace(workspace_id: UUID) -> dict | None:
 async def list_public_workspaces() -> list[dict]:
     pool = get_pool()
     rows = await pool.fetch(
-        "SELECT w.id, w.name, w.description, w.creator_id, w.invite_code, w.is_public, "
+        "SELECT w.id, w.name, w.description, w.creator_id, w.invite_code, "
+        "true AS is_public, "
         "w.created_at, w.updated_at, w.summary, w.tags, w.category, "
         "w.discoverable, w.featured, "
         "w.cover_image_url, w.fork_count, w.forked_from_workspace_id, "
         "(SELECT COUNT(*) FROM workspace_members wm WHERE wm.workspace_id = w.id) AS member_count "
-        "FROM workspaces w WHERE w.is_public = true ORDER BY w.created_at DESC",
+        "FROM workspaces w "
+        "WHERE EXISTS ("
+        "  SELECT 1 FROM object_permissions op "
+        "  WHERE op.object_type = 'workspace' AND op.object_id = w.id "
+        "    AND op.visibility = 'public'"
+        ") "
+        "ORDER BY w.created_at DESC",
     )
     return [dict(r) for r in rows]
 
@@ -81,7 +93,12 @@ async def list_public_workspaces() -> list[dict]:
 async def list_user_workspaces(user_id: UUID) -> list[dict]:
     pool = get_pool()
     rows = await pool.fetch(
-        "SELECT w.id, w.name, w.description, w.creator_id, w.invite_code, w.is_public, "
+        "SELECT w.id, w.name, w.description, w.creator_id, w.invite_code, "
+        "COALESCE("
+        "  (SELECT visibility = 'public' FROM object_permissions "
+        "   WHERE object_type = 'workspace' AND object_id = w.id), "
+        "  false"
+        ") AS is_public, "
         "w.created_at, w.updated_at, w.summary, w.tags, w.category, "
         "w.discoverable, w.featured, "
         "w.cover_image_url, w.fork_count, w.forked_from_workspace_id, "
@@ -104,6 +121,8 @@ async def update_workspace(
     cover_image_url: str | None = None,
     is_public: bool | None = None,
 ) -> dict | None:
+    """Update a workspace. `is_public` writes into `object_permissions`
+    (the column on workspaces is gone — visibility lives in one place)."""
     pool = get_pool()
     sets, args, idx = [], [], 1
     for col, val in (
@@ -113,34 +132,26 @@ async def update_workspace(
         ("tags", tags),
         ("category", category),
         ("cover_image_url", cover_image_url),
-        ("is_public", is_public),
     ):
         if val is not None:
             sets.append(f"{col} = ${idx}")
             args.append(val)
             idx += 1
-    if not sets:
-        return await get_workspace(workspace_id)
-    sets.append("updated_at = now()")
-    args.append(workspace_id)
-    row = await pool.fetchrow(
-        f"UPDATE workspaces SET {', '.join(sets)} WHERE id = ${idx} "
-        "RETURNING id, name, description, creator_id, invite_code, is_public, "
-        "created_at, updated_at, summary, tags, category, discoverable, featured, "
-        "cover_image_url, fork_count, forked_from_workspace_id, "
-        "(SELECT COUNT(*) FROM workspace_members wm WHERE wm.workspace_id = id) AS member_count",
-        *args,
-    )
-    if row and is_public is not None:
-        # Mirror the legacy is_public toggle into the unified ACL so the
-        # public reader (which checks object_permissions) stays in sync with
-        # the discover catalog (which still queries workspaces.is_public).
+    if is_public is not None:
         from . import permission_service
 
         await permission_service.set_visibility(
             "workspace", workspace_id, "public" if is_public else "inherit"
         )
-    return dict(row) if row else None
+    if not sets:
+        return await get_workspace(workspace_id)
+    sets.append("updated_at = now()")
+    args.append(workspace_id)
+    await pool.execute(
+        f"UPDATE workspaces SET {', '.join(sets)} WHERE id = ${idx}",
+        *args,
+    )
+    return await get_workspace(workspace_id)
 
 
 async def delete_workspace(workspace_id: UUID, user_id: UUID) -> bool:
@@ -163,7 +174,7 @@ async def join_workspace(workspace_id: UUID, user_id: UUID) -> dict | None:
     if exists:
         return await get_workspace(workspace_id)
     await pool.execute(
-        "INSERT INTO workspace_members (workspace_id, user_id, role) VALUES ($1, $2, 'member')",
+        "INSERT INTO workspace_members (workspace_id, user_id, role) VALUES ($1, $2, 'editor')",
         workspace_id,
         user_id,
     )
@@ -171,9 +182,9 @@ async def join_workspace(workspace_id: UUID, user_id: UUID) -> dict | None:
 
 
 async def rotate_invite_code(workspace_id: UUID, user_id: UUID) -> dict | None:
-    """Generate a new invite_code, invalidating the previous one. Owner/admin only."""
+    """Generate a new invite_code, invalidating the previous one. Owner only."""
     role = await get_member_role(workspace_id, user_id)
-    if role not in ("owner", "admin"):
+    if role != "owner":
         return None
     pool = get_pool()
     new_code = ""
@@ -185,16 +196,12 @@ async def rotate_invite_code(workspace_id: UUID, user_id: UUID) -> dict | None:
         )
         if not exists:
             break
-    row = await pool.fetchrow(
-        "UPDATE workspaces SET invite_code = $1, updated_at = now() WHERE id = $2 "
-        "RETURNING id, name, description, creator_id, invite_code, is_public, "
-        "created_at, updated_at, summary, tags, category, discoverable, featured, "
-        "cover_image_url, fork_count, forked_from_workspace_id, "
-        "(SELECT COUNT(*) FROM workspace_members wm WHERE wm.workspace_id = id) AS member_count",
+    await pool.execute(
+        "UPDATE workspaces SET invite_code = $1, updated_at = now() WHERE id = $2",
         new_code,
         workspace_id,
     )
-    return dict(row) if row else None
+    return await get_workspace(workspace_id)
 
 
 async def join_by_invite(invite_code: str, user_id: UUID) -> dict | None:
@@ -263,7 +270,12 @@ async def fork_workspace(
     """
     pool = get_pool()
     source = await pool.fetchrow(
-        "SELECT id, name, description, summary, is_public FROM workspaces WHERE id = $1",
+        "SELECT w.id, w.name, w.description, w.summary, "
+        "EXISTS("
+        "  SELECT 1 FROM object_permissions op "
+        "  WHERE op.object_type = 'workspace' AND op.object_id = w.id AND op.visibility = 'public'"
+        ") AS is_public "
+        "FROM workspaces w WHERE w.id = $1",
         source_id,
     )
     if not source or not source["is_public"]:
@@ -280,9 +292,9 @@ async def fork_workspace(
         async with conn.transaction():
             new_ws_row = await conn.fetchrow(
                 "INSERT INTO workspaces (name, description, summary, creator_id, "
-                "invite_code, is_public, forked_from_workspace_id) "
-                "VALUES ($1, $2, $3, $4, $5, false, $6) "
-                "RETURNING id, name, description, creator_id, invite_code, is_public, "
+                "invite_code, forked_from_workspace_id) "
+                "VALUES ($1, $2, $3, $4, $5, $6) "
+                "RETURNING id, name, description, creator_id, invite_code, "
                 "created_at, updated_at, summary, tags, category, discoverable, featured, "
                 "cover_image_url, fork_count, forked_from_workspace_id",
                 new_name,
@@ -442,11 +454,13 @@ async def fork_workspace(
             )
 
     new_ws = dict(new_ws_row)
+    new_ws["is_public"] = False
     new_ws["member_count"] = 1
     return new_ws
 
 
 async def kick_member(workspace_id: UUID, target_user_id: UUID, kicker_id: UUID) -> bool:
+    """Only owners can kick. Owners can't be kicked."""
     pool = get_pool()
     kicker_role = await get_member_role(workspace_id, kicker_id)
     target_role = await get_member_role(workspace_id, target_user_id)
@@ -454,9 +468,7 @@ async def kick_member(workspace_id: UUID, target_user_id: UUID, kicker_id: UUID)
         return False
     if target_role == "owner":
         return False
-    if kicker_role == "member":
-        return False
-    if kicker_role == "admin" and target_role == "admin":
+    if kicker_role != "owner":
         return False
     result = await pool.execute(
         "DELETE FROM workspace_members WHERE workspace_id = $1 AND user_id = $2",
@@ -471,3 +483,60 @@ async def kick_member(workspace_id: UUID, target_user_id: UUID, kicker_id: UUID)
         )
         return True
     return False
+
+
+# Role-based authorization helpers (PR 7).
+ROLES_CAN_READ = {"owner", "editor", "viewer"}
+ROLES_CAN_WRITE = {"owner", "editor"}
+ROLES_ADMIN = {"owner"}
+
+
+async def can_read(workspace_id: UUID, user_id: UUID) -> bool:
+    role = await get_member_role(workspace_id, user_id)
+    return role in ROLES_CAN_READ
+
+
+async def can_write(workspace_id: UUID, user_id: UUID) -> bool:
+    role = await get_member_role(workspace_id, user_id)
+    return role in ROLES_CAN_WRITE
+
+
+async def is_owner(workspace_id: UUID, user_id: UUID) -> bool:
+    role = await get_member_role(workspace_id, user_id)
+    return role in ROLES_ADMIN
+
+
+async def set_member_role(
+    workspace_id: UUID,
+    target_user_id: UUID,
+    setter_id: UUID,
+    role: str,
+) -> bool:
+    """Only owners can change roles. Owners cannot demote themselves
+    (would lock the workspace if they're the only owner). Role must be
+    one of owner/editor/viewer."""
+    if role not in ("owner", "editor", "viewer"):
+        return False
+    if not await is_owner(workspace_id, setter_id):
+        return False
+    pool = get_pool()
+    target_role = await get_member_role(workspace_id, target_user_id)
+    if target_role is None:
+        return False
+    if target_role == "owner" and role != "owner":
+        # Prevent demoting the last owner.
+        owner_count = await pool.fetchval(
+            "SELECT COUNT(*) FROM workspace_members "
+            "WHERE workspace_id = $1 AND role = 'owner'",
+            workspace_id,
+        )
+        if owner_count <= 1:
+            return False
+    await pool.execute(
+        "UPDATE workspace_members SET role = $1 "
+        "WHERE workspace_id = $2 AND user_id = $3",
+        role,
+        workspace_id,
+        target_user_id,
+    )
+    return True

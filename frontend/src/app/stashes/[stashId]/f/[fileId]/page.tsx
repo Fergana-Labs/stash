@@ -11,7 +11,6 @@ import {
   getFile,
   getFolderContents,
   ingestCsvFile,
-  toggleFilePublic,
   type FolderBreadcrumb,
 } from "../../../../../lib/api";
 import type { FileInfo } from "../../../../../lib/types";
@@ -123,22 +122,9 @@ export default function FileViewerPage() {
             )}
           </div>
           <div className="flex items-center gap-1">
-            {file && (
-              <label className="flex items-center gap-1.5 cursor-pointer select-none mr-2" title="When on, this file is visible to anyone with a share link.">
-                <input
-                  type="checkbox"
-                  checked={!!(file as FileInfo & { public_in_share?: boolean }).public_in_share}
-                  onChange={async (e) => {
-                    try {
-                      const updated = await toggleFilePublic(stashId, fileId, e.target.checked);
-                      setFile(updated);
-                    } catch { /* */ }
-                  }}
-                  className="accent-[var(--color-brand)]"
-                />
-                <span className="text-[11px] text-muted">Share</span>
-              </label>
-            )}
+            {/* "Share" checkbox is gone — sharing is now link-based. Mint a
+                share-link with target_type='file' via the workspace Share
+                button. */}
             {file?.url && (
               <a
                 href={file.url}

@@ -236,8 +236,7 @@ async def _spine_wiki(stash_id: UUID) -> dict:
             stash_id,
         ),
         pool.fetch(
-            "SELECT id, name, folder_id, public_in_share "
-            "FROM pages WHERE workspace_id = $1 ORDER BY name",
+            "SELECT id, name, folder_id FROM pages WHERE workspace_id = $1 ORDER BY name",
             stash_id,
         ),
         pool.fetch(
@@ -284,7 +283,6 @@ async def _spine_wiki(stash_id: UUID) -> dict:
                 "id": str(r["id"]),
                 "name": r["name"],
                 "folder_id": str(r["folder_id"]) if r["folder_id"] else None,
-                "public_in_share": r["public_in_share"],
             }
             for r in page_rows
         ],
@@ -509,8 +507,10 @@ async def upload_artifact(
         content,
         file.content_type or "application/octet-stream",
     )
+    # stash_id in this URL is the sessions.id UUID (the target of the
+    # session-share link). The artifact attaches to that session.
     artifact = await stash_service.add_artifact(
-        stash_id=stash_id,
+        session_id=stash_id,
         file_path=file_path,
         storage_key=storage_key,
         size_bytes=len(content),

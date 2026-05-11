@@ -11,9 +11,19 @@ from uuid import UUID
 
 from ..database import get_pool
 
-_CATALOG_SELECT = """
+# `is_public` is derived from object_permissions — the legacy boolean
+# column on workspaces is gone.
+_IS_PUBLIC_EXPR = (
+    "EXISTS("
+    "  SELECT 1 FROM object_permissions op "
+    "  WHERE op.object_type = 'workspace' AND op.object_id = w.id "
+    "    AND op.visibility = 'public'"
+    ")"
+)
+
+_CATALOG_SELECT = f"""
 SELECT
-    w.id, w.name, w.summary, w.description, w.is_public,
+    w.id, w.name, w.summary, w.description, {_IS_PUBLIC_EXPR} AS is_public,
     w.tags, w.category, w.discoverable, w.featured, w.cover_image_url,
     w.creator_id, u.name AS creator_name, u.display_name AS creator_display_name,
     w.fork_count, w.forked_from_workspace_id, w.created_at, w.updated_at,
@@ -39,7 +49,7 @@ async def list_catalog(
     cursor: str | None = None,
 ) -> tuple[list[dict], str | None]:
     pool = get_pool()
-    where = ["w.is_public = true", "w.discoverable = true"]
+    where = ["EXISTS(SELECT 1 FROM object_permissions op WHERE op.object_type = 'workspace' AND op.object_id = w.id AND op.visibility = 'public')", "w.discoverable = true"]
     args: list = []
     idx = 1
 
@@ -95,7 +105,7 @@ async def list_catalog(
 async def get_featured() -> list[dict]:
     pool = get_pool()
     rows = await pool.fetch(
-        f"{_CATALOG_SELECT} WHERE w.is_public = true AND w.discoverable = true "
+        f"{_CATALOG_SELECT} WHERE EXISTS(SELECT 1 FROM object_permissions op WHERE op.object_type = 'workspace' AND op.object_id = w.id AND op.visibility = 'public') AND w.discoverable = true "
         "AND w.featured = true "
         "ORDER BY w.updated_at DESC LIMIT 12"
     )
@@ -105,7 +115,7 @@ async def get_featured() -> list[dict]:
 async def get_public_detail(workspace_id: UUID) -> dict | None:
     pool = get_pool()
     ws_row = await pool.fetchrow(
-        f"{_CATALOG_SELECT} WHERE w.id = $1 AND w.is_public = true " "AND w.discoverable = true",
+        f"{_CATALOG_SELECT} WHERE w.id = $1 AND EXISTS(SELECT 1 FROM object_permissions op WHERE op.object_type = 'workspace' AND op.object_id = w.id AND op.visibility = 'public') " "AND w.discoverable = true",
         workspace_id,
     )
     if not ws_row:
@@ -150,7 +160,7 @@ async def list_admin_candidates(
 ) -> list[dict]:
     """List public workspaces available to curate into Discover."""
     pool = get_pool()
-    where = ["w.is_public = true"]
+    where = ["EXISTS(SELECT 1 FROM object_permissions op WHERE op.object_type = 'workspace' AND op.object_id = w.id AND op.visibility = 'public')"]
     args: list = []
     idx = 1
 
@@ -193,7 +203,9 @@ async def curate_workspace(
     """Update Discover catalog metadata for a workspace."""
     pool = get_pool()
     current = await pool.fetchrow(
-        "SELECT is_public, discoverable FROM workspaces WHERE id = $1",
+        "SELECT w.discoverable, "
+        f"{_IS_PUBLIC_EXPR} AS is_public "
+        "FROM workspaces w WHERE w.id = $1",
         workspace_id,
     )
     if not current:

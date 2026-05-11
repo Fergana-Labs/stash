@@ -29,13 +29,21 @@ async def mint_share_link(
     req: CreateShareRequest,
     current_user: dict = Depends(get_current_user),
 ):
+    """Mint a share link. `stash_id` in this URL is the workspace.
+
+    For now, this endpoint creates a workspace-target link. Target picker
+    UI lands in a follow-up — the polymorphic create endpoint (page /
+    folder / file / session targets) is on `share_service.create_link`
+    once the request model gains target_type/target_id fields."""
     if not await workspace_service.is_member(stash_id, current_user["id"]):
         raise HTTPException(status_code=403, detail="Not a stash member")
-    if req.permission not in ("view", "comment", "edit-request"):
+    if req.permission not in ("view", "edit"):
         raise HTTPException(status_code=400, detail="Invalid permission")
     return await share_service.create_link(
-        stash_id=stash_id,
+        workspace_id=stash_id,
         creator_id=current_user["id"],
+        target_type="workspace",
+        target_id=stash_id,
         ttl_days=req.ttl_days,
         permission=req.permission,
     )
@@ -89,7 +97,7 @@ async def resolve_share(
     except Exception:
         pass
 
-    return await share_service.public_projection(link["workspace_id"], link)
+    return await share_service.public_projection(link)
 
 
 class RecipientAskRequest(BaseModel):
