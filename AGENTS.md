@@ -25,7 +25,7 @@ If you are about to ask the user to do something for you, think about whether yo
 Previous Claude coding sessions are stored as `.jsonl` files in your ~/.claude file. Read these to understand prior decisions, debugging sessions, and context that isn't in git history.
 
 When you create or update a PR, share the GitHub link with the user at the end of your session.
-When you make local changes for a task, commit them, push the branch, and open a PR before finishing unless the user explicitly says not to.
+When you make local changes for a task, commit them, push the branch, and open a ready-for-review PR before finishing unless the user explicitly says not to. Do not open draft PRs unless the user explicitly asks for a draft.
 When making local changes for a task that already has a PR, commit and push those changes to the PR branch before finishing so the remote branch stays up to date.
 
 
