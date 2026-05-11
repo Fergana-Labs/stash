@@ -246,15 +246,25 @@ export default function AppSidebar({
           type="button"
           onClick={addSomethingToStash}
           disabled={!selectedWsId}
+          aria-label="Add Something to the Stash"
           title={
             selectedWsId
               ? "Add Something to the Stash"
               : "Open a workspace to add something to the stash"
           }
-          className="flex h-10 w-full items-center justify-center gap-2 rounded-md border border-border bg-base px-3 text-[13px] font-semibold text-foreground shadow-sm transition-colors hover:border-brand hover:bg-brand/5 disabled:cursor-not-allowed disabled:opacity-50"
+          className="group flex w-full items-center gap-3 rounded-md border border-brand/20 bg-brand-muted/70 px-[10px] py-2 text-left text-brand shadow-sm transition-colors hover:border-brand/40 hover:bg-brand-muted disabled:cursor-not-allowed disabled:opacity-50"
         >
-          <span className="text-[18px] leading-none">+</span>
-          Add Something to the Stash
+          <span className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md bg-brand text-[18px] font-semibold leading-none text-white shadow-sm transition-colors group-hover:bg-brand-hover">
+            +
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block text-[12px] font-semibold leading-[1.15] text-foreground">
+              Add Something
+            </span>
+            <span className="mt-0.5 block text-[11px] font-medium leading-none text-brand">
+              to the Stash
+            </span>
+          </span>
         </button>
       </div>
 
