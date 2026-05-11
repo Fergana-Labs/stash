@@ -10,9 +10,11 @@ interface NavItem {
   href: string;
   label: string;
   icon: string;
+  scoped?: boolean;
 }
 
 const NAV_ITEMS: NavItem[] = [
+  { href: "/discover", label: "Discover", icon: "D", scoped: false },
   { href: "/search", label: "Search", icon: "S" },
   { href: "/memory", label: "History", icon: "H" },
   { href: "/wiki", label: "Wiki", icon: "W" },
@@ -41,7 +43,7 @@ function NavLink({
   isActive: boolean;
   wsId?: string | null;
 }) {
-  const href = wsId ? `${item.href}?ws=${wsId}` : item.href;
+  const href = item.scoped === false || !wsId ? item.href : `${item.href}?ws=${wsId}`;
   return (
     <Link
       href={href}

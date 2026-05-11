@@ -279,6 +279,7 @@ export interface CatalogCard {
   is_public: boolean;
   tags: string[];
   category: string | null;
+  discoverable: boolean;
   featured: boolean;
   cover_image_url: string | null;
   creator_id: string;

@@ -36,7 +36,7 @@ interface Props {
 const VISIBILITY_OPTIONS: { value: ObjectVisibility; label: string; hint: string }[] = [
   { value: "private", label: "Restricted", hint: "Only people you've added can open" },
   { value: "link", label: "Anyone with the link", hint: "Anyone with the URL can read" },
-  { value: "public", label: "Public on the web", hint: "Discoverable in /discover" },
+  { value: "public", label: "Public on the web", hint: "Readable by anyone; Discover is curated" },
 ];
 
 const TYPE_CHIPS: Partial<Record<ShareableObjectType, string>> = {

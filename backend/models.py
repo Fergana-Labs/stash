@@ -99,6 +99,7 @@ class WorkspaceResponse(BaseModel):
     summary: str | None = None
     tags: list[str] = []
     category: str | None = None
+    discoverable: bool = False
     featured: bool = False
     cover_image_url: str | None = None
     fork_count: int = 0
@@ -124,6 +125,7 @@ class WorkspaceCatalogCard(BaseModel):
     is_public: bool
     tags: list[str] = []
     category: str | None = None
+    discoverable: bool = False
     featured: bool = False
     cover_image_url: str | None = None
     creator_id: UUID
@@ -179,6 +181,15 @@ class WorkspacePublicDetail(BaseModel):
     root_pages: list[WorkspacePublicRootPageSummary]
     tables: list[WorkspacePublicTableSummary]
     files: list[WorkspacePublicFileSummary]
+
+
+class DiscoverCatalogUpdateRequest(BaseModel):
+    discoverable: bool | None = None
+    featured: bool | None = None
+    summary: str | None = Field(None, max_length=280)
+    tags: list[str] | None = None
+    category: str | None = Field(None, max_length=32)
+    cover_image_url: str | None = None
 
 
 # --- Views (curated subsets of a workspace) ---

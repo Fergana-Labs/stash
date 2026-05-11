@@ -1,11 +1,13 @@
 """Admin router: cross-user analytics. Gated by a shared X-Admin-Token header."""
 
 import hmac
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query
 
 from ..config import settings
-from ..services import cohort_service
+from ..models import CatalogListResponse, DiscoverCatalogUpdateRequest, WorkspaceCatalogCard
+from ..services import cohort_service, discover_service
 
 router = APIRouter(prefix="/api/v1/admin", tags=["admin"])
 
@@ -33,3 +35,51 @@ async def engagement_cohorts(
         max_period=max_period,
         events_filter=events_filter,
     )
+
+
+@router.get(
+    "/discover/workspaces",
+    response_model=CatalogListResponse,
+    dependencies=[Depends(require_admin_token)],
+)
+async def discover_workspaces(
+    q: str | None = Query(None, max_length=128),
+    status: str = Query("all", pattern="^(all|curated|uncurated)$"),
+    limit: int = Query(100, ge=1, le=250),
+):
+    items = await discover_service.list_admin_candidates(
+        query=q,
+        status=status,
+        limit=limit,
+    )
+    return CatalogListResponse(
+        workspaces=[WorkspaceCatalogCard(**i) for i in items],
+        next_cursor=None,
+    )
+
+
+@router.patch(
+    "/discover/workspaces/{workspace_id}",
+    response_model=WorkspaceCatalogCard,
+    dependencies=[Depends(require_admin_token)],
+)
+async def update_discover_workspace(
+    workspace_id: UUID,
+    req: DiscoverCatalogUpdateRequest,
+):
+    try:
+        item = await discover_service.curate_workspace(
+            workspace_id,
+            discoverable=req.discoverable,
+            featured=req.featured,
+            summary=req.summary,
+            tags=req.tags,
+            category=req.category,
+            cover_image_url=req.cover_image_url,
+        )
+    except discover_service.CatalogCurationError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    if not item:
+        raise HTTPException(status_code=404, detail="Workspace not found")
+    return WorkspaceCatalogCard(**item)

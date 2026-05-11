@@ -20,6 +20,7 @@ const SEGMENT_LABELS: Record<string, { label: string; href: string }> = {
   tables: { label: "Tables", href: "/tables" },
   settings: { label: "Settings", href: "/settings" },
   docs: { label: "Docs", href: "/docs" },
+  discover: { label: "Discover", href: "/discover" },
   workspaces: { label: "Workspaces", href: "/rooms" },
 };
 
