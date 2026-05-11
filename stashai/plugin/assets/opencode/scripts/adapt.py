@@ -79,4 +79,5 @@ def adapt_session_end(data: dict) -> HookEvent:
     return HookEvent(
         kind="session_end",
         session_id=data.get("session_id", ""),
+        cwd=data.get("cwd", ""),
     )

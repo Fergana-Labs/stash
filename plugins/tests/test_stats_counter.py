@@ -32,16 +32,16 @@ def test_record_tool_use_increments_counts(tmp_path):
     stats = state["stats"]
     assert stats["tool_count"] == 4
     assert sorted(stats["tools_used"]) == ["bash", "edit", "write"]
-    assert sorted(stats["files_changed"]) == ["a.py", "b.py"]
+    assert sorted(stats["files_touched"]) == ["a.py", "b.py"]
 
 
-def test_read_only_tools_do_not_count_files(tmp_path):
+def test_read_tools_count_files_for_artifacts(tmp_path):
     record_tool_use(tmp_path, "read", "a.py")
     record_tool_use(tmp_path, "grep", None)
 
     stats = load_state(tmp_path)["stats"]
     assert stats["tool_count"] == 2
-    assert stats["files_changed"] == []
+    assert stats["files_touched"] == ["a.py"]
 
 
 def test_reset_stats_clears(tmp_path):
@@ -49,7 +49,7 @@ def test_reset_stats_clears(tmp_path):
     reset_stats(tmp_path)
 
     stats = load_state(tmp_path)["stats"]
-    assert stats == {"tool_count": 0, "tools_used": [], "files_changed": []}
+    assert stats == {"tool_count": 0, "tools_used": [], "files_touched": []}
 
 
 def test_stream_tool_use_writes_counter(tmp_path):
@@ -69,14 +69,14 @@ def test_stream_tool_use_writes_counter(tmp_path):
     stats = load_state(tmp_path)["stats"]
     assert stats["tool_count"] == 2
     assert sorted(stats["tools_used"]) == ["bash", "edit"]
-    assert stats["files_changed"] == ["x.py"]
+    assert stats["files_touched"] == ["x.py"]
 
 
 def test_stream_session_end_reads_counter(tmp_path):
     cfg = {"workspace_id": "ws", "agent_name": "h", "client": "claude_code"}
     state = {
         "session_id": "s1",
-        "stats": {"tool_count": 7, "tools_used": ["edit", "bash"], "files_changed": ["a.py", "b.py"]},
+        "stats": {"tool_count": 7, "tools_used": ["edit", "bash"], "files_touched": ["a.py", "b.py"]},
     }
     c = _FakeClient()
 
@@ -84,9 +84,9 @@ def test_stream_session_end_reads_counter(tmp_path):
 
     body = c.calls[-1]
     assert body["event_type"] == "session_end"
-    assert body["content"] == "Session ended. 7 tool uses. 2 files changed."
+    assert body["content"] == "Session ended. 7 tool uses. 2 files touched."
     assert body["metadata"]["tool_count"] == 7
-    assert body["metadata"]["files_changed"] == ["a.py", "b.py"]
+    assert body["metadata"]["files_touched"] == ["a.py", "b.py"]
     assert body["metadata"]["tools_used"] == ["edit", "bash"]
     assert "stats_truncated" not in body["metadata"]
 

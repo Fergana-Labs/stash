@@ -5,8 +5,9 @@ final transcript, artifacts, and generates the summary.
 The stash is created eagerly at session start so the URL is known immediately.
 This watcher fills in the content as the session progresses.
 
-argv: script.py <claude_pid> <session_id> <workspace_id> <agent_name>
+argv: script.py <agent_pid> <session_id> <workspace_id> <agent_name>
                 <base_url> <api_key> <cwd> <data_dir> <stash_id>
+                [transcript_path]
 """
 
 import json
@@ -26,17 +27,34 @@ def _is_alive(pid: int) -> bool:
         return False
 
 
-def _find_transcript(session_id: str) -> str:
+def _find_transcript(session_id: str, transcript_path: str = "") -> str:
+    if transcript_path:
+        candidate = Path(transcript_path)
+        if candidate.is_file():
+            return str(candidate)
+
     transcript_dir = Path.home() / ".claude" / "projects"
     if not transcript_dir.is_dir():
-        return ""
+        return transcript_path
     for d in transcript_dir.iterdir():
         if not d.is_dir():
             continue
         candidate = d / f"{session_id}.jsonl"
         if candidate.is_file():
             return str(candidate)
-    return ""
+    return transcript_path
+
+
+def _state_transcript_path(data_dir: str) -> str:
+    path = Path(data_dir) / "state.json"
+    if not path.is_file():
+        return ""
+    try:
+        data = json.loads(path.read_text())
+    except Exception:
+        return ""
+    value = data.get("transcript_path", "")
+    return value if isinstance(value, str) else ""
 
 
 def _upload_transcript(client, stash_id: str, transcript_path: Path) -> bool:
@@ -48,10 +66,11 @@ def _upload_transcript(client, stash_id: str, transcript_path: Path) -> bool:
 
 
 def main() -> None:
-    (_, claude_pid_str, session_id, workspace_id, agent_name,
-     base_url, api_key, cwd, data_dir, stash_id) = sys.argv
+    (_, agent_pid_str, session_id, workspace_id, agent_name,
+     base_url, api_key, cwd, data_dir, stash_id, *rest) = sys.argv
 
-    claude_pid = int(claude_pid_str)
+    agent_pid = int(agent_pid_str)
+    initial_transcript_path = rest[0] if rest else ""
 
     if not stash_id:
         return
@@ -63,12 +82,15 @@ def main() -> None:
     last_upload_time = 0
 
     with StashClient(base_url=base_url, api_key=api_key) as client:
-        # Poll until Claude Code exits, uploading transcript periodically
-        while _is_alive(claude_pid):
+        # Poll until the agent exits, uploading transcript periodically.
+        while _is_alive(agent_pid):
             now = time.monotonic()
 
-            if not transcript_path:
-                transcript_path = _find_transcript(session_id)
+            if not transcript_path or not Path(transcript_path).is_file():
+                transcript_path = _find_transcript(
+                    session_id,
+                    initial_transcript_path or _state_transcript_path(data_dir),
+                )
 
             if transcript_path and now - last_upload_time >= UPLOAD_INTERVAL:
                 tp = Path(transcript_path)
@@ -82,22 +104,23 @@ def main() -> None:
             time.sleep(1)
 
         # Session ended — final upload
-        if not transcript_path:
-            transcript_path = _find_transcript(session_id)
-
-        if not transcript_path:
-            return
+        if not transcript_path or not Path(transcript_path).is_file():
+            transcript_path = _find_transcript(
+                session_id,
+                initial_transcript_path or _state_transcript_path(data_dir),
+            )
 
         tp = Path(transcript_path)
         if tp.is_file():
             _upload_transcript(client, stash_id, tp)
 
     # Upload artifacts and generate summary in a separate process
-    stats_path = Path(data_dir) / "stats.json"
+    stats_path = Path(data_dir) / "state.json"
     files_touched: list[str] = []
     if stats_path.is_file():
         try:
-            stats = json.loads(stats_path.read_text())
+            state = json.loads(stats_path.read_text())
+            stats = state.get("stats", {})
             files_touched = stats.get("files_touched", stats.get("files_changed", []))
         except Exception:
             pass
@@ -110,6 +133,7 @@ def main() -> None:
         cwd=cwd,
         files_touched=files_touched,
         workspace_id=workspace_id,
+        session_id=session_id,
         agent_name=agent_name,
         base_url=base_url,
         api_key=api_key,

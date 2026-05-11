@@ -212,7 +212,7 @@ class StashClient:
         self, workspace_id: str | None,
         agent_name: str | None = None, event_type: str | None = None,
         session_id: str | None = None,
-        limit: int = 50, after: str | None = None,
+        limit: int = 50, after: str | None = None, order: str | None = None,
     ) -> list:
         params: dict = {"limit": limit}
         if agent_name:
@@ -223,6 +223,8 @@ class StashClient:
             params["session_id"] = session_id
         if after:
             params["after"] = after
+        if order:
+            params["order"] = order
         return self._list(self._events_path(workspace_id), "events", **params)
 
     def search_events(self, workspace_id: str | None, query: str, limit: int = 50) -> list:

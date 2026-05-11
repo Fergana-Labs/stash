@@ -5,7 +5,7 @@ Gated by the central `auto_curate` flag plus the shared 24h cooldown.
 """
 
 from config import DATA_DIR, get_client, get_config, get_stdin_data, is_configured
-from stashai.plugin.hooks import stream_session_end
+from stashai.plugin.hooks import finalize_session_stash, stream_session_end
 from stashai.plugin.state import load_state, save_state
 
 from adapt import adapt_session_end
@@ -24,6 +24,7 @@ def main():
         try:
             with get_client() as client:
                 stream_session_end(client, cfg, state, event)
+                finalize_session_stash(client, cfg, state, event, DATA_DIR)
         except Exception:
             pass
 

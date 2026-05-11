@@ -49,6 +49,7 @@ def adapt_session_start(data: dict) -> HookEvent:
         kind="session_start",
         session_id=data.get("session_id", ""),
         cwd=data.get("cwd", ""),
+        transcript_path=data.get("transcript_path", ""),
     )
 
 
@@ -90,4 +91,5 @@ def adapt_session_end(data: dict) -> HookEvent:
         kind="session_end",
         session_id=data.get("session_id", ""),
         cwd=data.get("cwd", ""),
+        transcript_path=data.get("transcript_path", ""),
     )

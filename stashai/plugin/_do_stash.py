@@ -4,7 +4,7 @@ Invoked by stash_upload.spawn_stash_upload(). Runs outside the hook
 timeout so large uploads and LLM calls don't block the agent.
 
 argv: script.py <stash_id> <transcript_path> <cwd> <workspace_id>
-                <agent_name> <base_url> <api_key>
+                <session_id> <agent_name> <base_url> <api_key>
 
 env: STASH_FILES_TOUCHED = JSON list of file paths from the session
 """
@@ -81,24 +81,53 @@ def _resolve_paths(files_touched: list[str], cwd: str) -> list[str]:
     return sorted(all_paths)
 
 
-def _generate_summary(transcript_path: Path) -> str | None:
-    """Call Haiku to summarize the session transcript."""
-    api_key = os.environ.get("ANTHROPIC_API_KEY", "")
-    if not api_key:
+def _read_transcript_text(transcript_path: Path) -> str | None:
+    if not transcript_path.is_file():
         return None
-
     raw = transcript_path.read_bytes()
     # Decompress if gzipped
     if raw[:2] == b"\x1f\x8b":
         import gzip
         raw = gzip.decompress(raw)
+    return raw.decode("utf-8", errors="replace")
 
-    transcript_text = raw.decode("utf-8", errors="replace")
+
+def _history_text(client: StashClient, workspace_id: str, session_id: str) -> str | None:
+    if not session_id.strip():
+        return None
+    try:
+        events = client.query_events(
+            workspace_id=workspace_id,
+            session_id=session_id,
+            limit=200,
+            order="asc",
+        )
+    except Exception:
+        return None
+    if not events:
+        return None
+
+    lines = []
+    for event in events:
+        event_type = event.get("event_type", "")
+        tool = event.get("tool_name") or ""
+        content = event.get("content") or ""
+        created_at = event.get("created_at") or ""
+        label = event_type if not tool else f"{event_type}:{tool}"
+        lines.append(f"[{created_at}] {label}\n{content}")
+    return "\n\n---\n\n".join(lines)
+
+
+def _generate_summary(source_text: str, source_label: str) -> str | None:
+    """Call Haiku to summarize the session transcript or streamed events."""
+    api_key = os.environ.get("ANTHROPIC_API_KEY", "")
+    if not api_key:
+        return None
 
     # Truncate to ~150K chars to stay within Haiku's context
     max_chars = 150_000
-    if len(transcript_text) > max_chars:
-        transcript_text = transcript_text[:max_chars] + "\n\n[... transcript truncated ...]"
+    if len(source_text) > max_chars:
+        source_text = source_text[:max_chars] + f"\n\n[... {source_label} truncated ...]"
 
     try:
         import httpx
@@ -115,14 +144,14 @@ def _generate_summary(transcript_path: Path) -> str | None:
                 "messages": [{
                     "role": "user",
                     "content": (
-                        "Summarize this coding session transcript. Include:\n"
+                        f"Summarize this coding session {source_label}. Include:\n"
                         "1. What the session accomplished (1-2 sentences)\n"
                         "2. Key files modified or created\n"
                         "3. Important decisions made\n"
                         "4. Any unfinished work or known issues\n\n"
                         "Keep the summary concise and useful for someone picking up "
                         "where this session left off.\n\n"
-                        f"TRANSCRIPT:\n{transcript_text}"
+                        f"SESSION {source_label.upper()}:\n{source_text}"
                     ),
                 }],
             },
@@ -137,7 +166,7 @@ def _generate_summary(transcript_path: Path) -> str | None:
 
 
 def main() -> None:
-    _, stash_id, transcript_path, cwd, workspace_id, agent_name, base_url, api_key = sys.argv
+    _, stash_id, transcript_path, cwd, workspace_id, session_id, agent_name, base_url, api_key = sys.argv
     files_touched = json.loads(os.environ.get("STASH_FILES_TOUCHED", "[]"))
 
     with StashClient(base_url=base_url, api_key=api_key) as client:
@@ -168,9 +197,13 @@ def main() -> None:
                 continue
 
         client.update_stash(stash_id, status="summarizing")
-        summary = None
-        if tp.is_file():
-            summary = _generate_summary(tp)
+        source_text = _read_transcript_text(tp) if tp.is_file() else None
+        source_label = "transcript"
+        if not source_text:
+            source_text = _history_text(client, workspace_id, session_id)
+            source_label = "history events"
+
+        summary = _generate_summary(source_text, source_label) if source_text else None
 
         if summary:
             client.update_stash(stash_id, summary=summary, status="ready")

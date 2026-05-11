@@ -8,7 +8,7 @@ Payload: {text: "..."}.
 """
 
 from config import DATA_DIR, get_client, get_config, get_stdin_data, is_configured
-from stashai.plugin.hooks import stream_assistant_message
+from stashai.plugin.hooks import remember_transcript_path, stream_assistant_message
 from stashai.plugin.state import load_state
 
 from adapt import adapt_agent_response
@@ -19,6 +19,7 @@ def main():
         return
     state = load_state(DATA_DIR)
     event = adapt_agent_response(get_stdin_data())
+    remember_transcript_path(state, event, DATA_DIR)
     if not event.last_assistant_message:
         return
     cfg = get_config()

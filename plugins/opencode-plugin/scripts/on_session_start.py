@@ -10,7 +10,12 @@ the new one.
 
 from config import DATA_DIR, get_client, get_config, get_stdin_data, is_configured
 from stashai.plugin.event import HookEvent
-from stashai.plugin.hooks import stream_session_end
+from stashai.plugin.hooks import (
+    create_session_stash,
+    finalize_session_stash,
+    reset_session_stash_state,
+    stream_session_end,
+)
 from stashai.plugin.state import load_state, reset_stats, save_state
 
 from adapt import adapt_session_start
@@ -26,6 +31,7 @@ def _flush_stale_session(prior_sid: str, state: dict) -> None:
     try:
         with get_client() as client:
             stream_session_end(client, cfg, stale_state, stale_event)
+            finalize_session_stash(client, cfg, stale_state, stale_event, DATA_DIR)
     except Exception:
         pass
     # 24h cooldown still gates this; safe to call.
@@ -42,9 +48,19 @@ def main():
     if prior_sid and prior_sid != event.session_id:
         _flush_stale_session(prior_sid, state)
 
+    reset_session_stash_state(state)
     state["session_id"] = event.session_id
     save_state(DATA_DIR, state)
     reset_stats(DATA_DIR)
+    state = load_state(DATA_DIR)
+
+    cfg = get_config()
+    if cfg.get("workspace_id"):
+        try:
+            with get_client() as client:
+                create_session_stash(client, cfg, state, event, DATA_DIR)
+        except Exception:
+            pass
 
 
 if __name__ == "__main__":

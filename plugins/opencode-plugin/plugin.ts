@@ -29,13 +29,14 @@ const IDLE_END_MS = 10 * 60 * 1000;
 
 let idleTimer: ReturnType<typeof setTimeout> | null = null;
 let activeSessionId = "";
+let activeCwd = "";
 
 function scheduleIdleEnd(sessionId: string): void {
   if (idleTimer) clearTimeout(idleTimer);
   if (!sessionId) return;
   activeSessionId = sessionId;
   idleTimer = setTimeout(() => {
-    runHook("on_session_end.py", { session_id: sessionId });
+    runHook("on_session_end.py", { session_id: sessionId, cwd: activeCwd });
     activeSessionId = "";
     idleTimer = null;
   }, IDLE_END_MS);
@@ -83,6 +84,7 @@ export const StashPlugin = async ({
   worktree?: string;
 }) => {
   const cwd = worktree ?? project?.worktree ?? "";
+  activeCwd = cwd;
 
   return {
     // Keyed hook: fires once per user message.
@@ -131,7 +133,7 @@ export const StashPlugin = async ({
         }
         case "session.deleted": {
           const info = event.properties?.info;
-          runHook("on_session_end.py", { session_id: info?.id ?? "" });
+          runHook("on_session_end.py", { session_id: info?.id ?? "", cwd });
           cancelIdleEnd();
           break;
         }
