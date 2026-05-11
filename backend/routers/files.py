@@ -370,9 +370,7 @@ async def ingest_csv_file(
             table_id=table["id"], rows_data=payload, created_by=current_user["id"]
         )
 
-    await pool.execute(
-        "UPDATE files SET linked_table_id = $1 WHERE id = $2", table["id"], file_id
-    )
+    await pool.execute("UPDATE files SET linked_table_id = $1 WHERE id = $2", table["id"], file_id)
 
     refreshed = await table_service.get_table(table["id"])
     return TableResponse(**(refreshed or table))

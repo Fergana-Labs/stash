@@ -7,7 +7,7 @@ single stash; the recipient variant in Phase 5 passes a restricted ``tool_set``.
 from __future__ import annotations
 
 import json
-from typing import AsyncIterator
+from collections.abc import AsyncIterator
 from uuid import UUID
 
 from ..config import settings
@@ -113,9 +113,7 @@ def _tool_schemas(tool_set: tuple[str, ...]) -> list[dict]:
     return [catalog[name] for name in tool_set if name in catalog]
 
 
-async def _execute_tool(
-    name: str, args: dict, stash_id: UUID
-) -> tuple[str, str]:
+async def _execute_tool(name: str, args: dict, stash_id: UUID) -> tuple[str, str]:
     """Returns ``(json_payload, short_summary)``."""
     from ..database import get_pool
 

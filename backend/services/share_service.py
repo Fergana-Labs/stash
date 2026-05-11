@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 import secrets
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
 from ..config import settings
@@ -23,9 +23,7 @@ async def create_link(
     permission: str,
 ) -> dict:
     pool = get_pool()
-    expires_at = (
-        datetime.now(timezone.utc) + timedelta(days=ttl_days) if ttl_days else None
-    )
+    expires_at = datetime.now(UTC) + timedelta(days=ttl_days) if ttl_days else None
     token = _new_token()
     row = await pool.fetchrow(
         "INSERT INTO share_links (token, workspace_id, created_by, expires_at, permission) "
@@ -84,7 +82,7 @@ async def resolve_token(token: str) -> dict | None:
         return {"status": "missing"}
     if row["revoked_at"]:
         return {"status": "revoked"}
-    if row["expires_at"] and row["expires_at"] < datetime.now(timezone.utc):
+    if row["expires_at"] and row["expires_at"] < datetime.now(UTC):
         return {"status": "expired"}
     return {"status": "ok", "link": dict(row)}
 

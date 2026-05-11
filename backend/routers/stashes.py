@@ -8,7 +8,7 @@
 
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, Form
+from fastapi import APIRouter, Depends, Form, HTTPException, Query, UploadFile
 from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel
 from starlette.responses import StreamingResponse
@@ -20,7 +20,6 @@ from ..models import (
     InviteTokenCreateRequest,
     InviteTokenCreateResponse,
     InviteTokenListResponse,
-    InviteTokenSummary,
     JoinRequestListResponse,
     JoinRequestResponse,
     RedeemInviteAuthedRequest,
@@ -78,9 +77,7 @@ async def redeem_invite(
 
 
 @router.get("/{stash_id}", response_model=WsStashResponse)
-async def get_stash(
-    stash_id: UUID, current_user: dict | None = Depends(get_current_user_optional)
-):
+async def get_stash(stash_id: UUID, current_user: dict | None = Depends(get_current_user_optional)):
     return await ws_router_module.get_workspace(stash_id, current_user)
 
 
@@ -143,9 +140,7 @@ async def get_stash_public_info(stash_id: UUID):
 
 
 @router.post("/{stash_id}/join-requests", response_model=JoinRequestResponse, status_code=201)
-async def create_stash_join_request(
-    stash_id: UUID, current_user: dict = Depends(get_current_user)
-):
+async def create_stash_join_request(stash_id: UUID, current_user: dict = Depends(get_current_user)):
     return await ws_router_module.create_join_request(stash_id, current_user)
 
 
@@ -154,9 +149,7 @@ async def list_stash_join_requests(stash_id: UUID, current_user: dict = Depends(
     return await ws_router_module.list_join_requests(stash_id, current_user)
 
 
-@router.post(
-    "/{stash_id}/join-requests/{request_id}/approve", response_model=JoinRequestResponse
-)
+@router.post("/{stash_id}/join-requests/{request_id}/approve", response_model=JoinRequestResponse)
 async def approve_stash_join_request(
     stash_id: UUID, request_id: UUID, current_user: dict = Depends(get_current_user)
 ):
@@ -171,15 +164,11 @@ async def deny_stash_join_request(
 
 
 @router.get("/{stash_id}/join-requests/mine", response_model=JoinRequestResponse)
-async def get_my_stash_join_request(
-    stash_id: UUID, current_user: dict = Depends(get_current_user)
-):
+async def get_my_stash_join_request(stash_id: UUID, current_user: dict = Depends(get_current_user)):
     return await ws_router_module.get_my_join_request(stash_id, current_user)
 
 
-@router.post(
-    "/{stash_id}/invite-tokens", response_model=InviteTokenCreateResponse, status_code=201
-)
+@router.post("/{stash_id}/invite-tokens", response_model=InviteTokenCreateResponse, status_code=201)
 async def create_stash_invite_token(
     stash_id: UUID,
     req: InviteTokenCreateRequest,
@@ -189,9 +178,7 @@ async def create_stash_invite_token(
 
 
 @router.get("/{stash_id}/invite-tokens", response_model=InviteTokenListResponse)
-async def list_stash_invite_tokens(
-    stash_id: UUID, current_user: dict = Depends(get_current_user)
-):
+async def list_stash_invite_tokens(stash_id: UUID, current_user: dict = Depends(get_current_user)):
     return await ws_router_module.list_invite_tokens(stash_id, current_user)
 
 
@@ -286,9 +273,7 @@ async def _spine_drive(stash_id: UUID) -> dict:
                 "content_type": f["content_type"],
                 "url": url,
                 "created_at": f["created_at"],
-                "linked_table_id": (
-                    str(f["linked_table_id"]) if f["linked_table_id"] else None
-                ),
+                "linked_table_id": (str(f["linked_table_id"]) if f["linked_table_id"] else None),
             }
         )
 
@@ -473,7 +458,8 @@ async def get_stash_spine(stash_id: UUID, current_user: dict = Depends(get_curre
 # ---------------------------------------------------------------------------
 
 ws_router = APIRouter(
-    prefix="/api/v1/workspaces/{workspace_id}/stashes", tags=["stashes"],
+    prefix="/api/v1/workspaces/{workspace_id}/stashes",
+    tags=["stashes"],
 )
 public_router = APIRouter(prefix="/api/v1/stashes", tags=["stashes"])
 
@@ -500,7 +486,9 @@ async def create_session_stash(
     )
     base = settings.PUBLIC_URL.rstrip("/")
     return StashCreateResponse(
-        id=stash["id"], slug=stash["slug"], url=f"{base}/b/{stash['slug']}",
+        id=stash["id"],
+        slug=stash["slug"],
+        url=f"{base}/b/{stash['slug']}",
     )
 
 
@@ -561,7 +549,10 @@ async def upload_stash_transcript(
     name = file.filename or "transcript.jsonl.gz"
 
     storage_key = await storage_service.upload_file(
-        str(stash["workspace_id"]), name, body, "application/gzip",
+        str(stash["workspace_id"]),
+        name,
+        body,
+        "application/gzip",
     )
     await stash_service.set_transcript_key(stash_id, storage_key)
     return {"status": "ok"}
@@ -580,7 +571,9 @@ async def update_session_stash(
         raise HTTPException(status_code=403, detail="Not a workspace member")
 
     updated = await stash_service.update_stash(
-        stash_id, summary=req.summary, status=req.status,
+        stash_id,
+        summary=req.summary,
+        status=req.status,
     )
     return StashResponse(**updated)
 
@@ -602,15 +595,18 @@ async def get_session_stash(
 
     if format == "text":
         return PlainTextResponse(
-            _stash_to_text(stash, artifacts), media_type="text/markdown",
+            _stash_to_text(stash, artifacts),
+            media_type="text/markdown",
         )
 
     return {
         **StashResponse(**stash).model_dump(),
         "artifacts": [
             StashArtifactResponse(
-                id=a["id"], file_path=a["file_path"],
-                size_bytes=a["size_bytes"], created_at=a["created_at"],
+                id=a["id"],
+                file_path=a["file_path"],
+                size_bytes=a["size_bytes"],
+                created_at=a["created_at"],
             ).model_dump()
             for a in artifacts
         ],
@@ -625,7 +621,8 @@ async def get_stash_artifact(slug: str, artifact_id: UUID):
 
     content = await storage_service.download_file(artifact["storage_key"])
     return PlainTextResponse(
-        content.decode("utf-8", errors="replace"), media_type="text/plain",
+        content.decode("utf-8", errors="replace"),
+        media_type="text/plain",
     )
 
 
@@ -640,6 +637,7 @@ async def get_stash_transcript(slug: str):
         raise HTTPException(status_code=404, detail="Transcript not available")
 
     import gzip
+
     raw = await storage_service.download_file(transcript_key)
     try:
         text = gzip.decompress(raw).decode("utf-8", errors="replace")
@@ -685,7 +683,11 @@ async def get_stash_transcript_messages(slug: str):
                 text_parts.append(content)
         elif isinstance(content, list):
             for block in content:
-                if isinstance(block, dict) and block.get("type") == "text" and block.get("text", "").strip():
+                if (
+                    isinstance(block, dict)
+                    and block.get("type") == "text"
+                    and block.get("text", "").strip()
+                ):
                     text_parts.append(block["text"])
         if text_parts:
             messages.append({"role": entry_type, "text": "\n\n".join(text_parts)})

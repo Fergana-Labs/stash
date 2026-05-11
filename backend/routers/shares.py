@@ -42,9 +42,7 @@ async def mint_share_link(
 
 
 @sender_router.get("/{stash_id}/shares")
-async def list_share_links(
-    stash_id: UUID, current_user: dict = Depends(get_current_user)
-):
+async def list_share_links(stash_id: UUID, current_user: dict = Depends(get_current_user)):
     if not await workspace_service.is_member(stash_id, current_user["id"]):
         raise HTTPException(status_code=403, detail="Not a stash member")
     return await share_service.list_links(stash_id)
@@ -107,9 +105,7 @@ async def recipient_ask(token: str, req: RecipientAskRequest):
     from ..database import get_pool
 
     pool = get_pool()
-    stash = await pool.fetchrow(
-        "SELECT name FROM workspaces WHERE id = $1", link["workspace_id"]
-    )
+    stash = await pool.fetchrow("SELECT name FROM workspaces WHERE id = $1", link["workspace_id"])
     if not stash:
         raise HTTPException(status_code=404, detail="Stash not found")
 

@@ -41,9 +41,7 @@ def upgrade() -> None:
         "  created_at TIMESTAMPTZ NOT NULL DEFAULT now()"
         ")"
     )
-    op.execute(
-        "CREATE INDEX idx_ask_messages_thread ON ask_messages(thread_id, created_at)"
-    )
+    op.execute("CREATE INDEX idx_ask_messages_thread ON ask_messages(thread_id, created_at)")
 
 
 def downgrade() -> None:

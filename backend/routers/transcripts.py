@@ -112,6 +112,7 @@ async def download_transcript(
     # browser sees plain JSONL — simpler than juggling Content-Encoding.
     if body[:2] == b"\x1f\x8b":
         import gzip
+
         body = gzip.decompress(body)
     return Response(
         content=body,
