@@ -1,5 +1,6 @@
 """Aggregate router: cross-workspace views for the authenticated user."""
 
+from datetime import datetime
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query
@@ -23,8 +24,8 @@ async def list_all_pages(current_user: dict = Depends(get_current_user)):
 async def list_all_history_events(
     agent_name: str | None = Query(None),
     event_type: str | None = Query(None),
-    after: str | None = Query(None),
-    before: str | None = Query(None),
+    after: datetime | None = Query(None),
+    before: datetime | None = Query(None),
     limit: int = Query(50, ge=1, le=200),
     order: str = Query("desc", pattern="^(asc|desc)$"),
     current_user: dict = Depends(get_current_user),

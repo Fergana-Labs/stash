@@ -377,13 +377,23 @@ class StashClient:
         )
 
     def all_events(
-        self, agent_name: str | None = None, event_type: str | None = None, limit: int = 50
+        self,
+        agent_name: str | None = None,
+        event_type: str | None = None,
+        limit: int = 50,
+        after: str | None = None,
+        before: str | None = None,
+        order: str = "desc",
     ) -> list:
-        params: dict = {"limit": limit}
+        params: dict = {"limit": limit, "order": order}
         if agent_name:
             params["agent_name"] = agent_name
         if event_type:
             params["event_type"] = event_type
+        if after:
+            params["after"] = after
+        if before:
+            params["before"] = before
         return self._list("/api/v1/me/history-events", "events", **params)
 
     def push_events_batch(self, workspace_id: str, events: list[dict]) -> list:
