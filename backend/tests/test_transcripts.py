@@ -1,8 +1,8 @@
 """Backend coverage for the rows-only transcript path.
 
 Upload now parses JSONL into history_events rows; no R2 blob. The
-roundtrip test confirms the events come back out of the /download
-endpoint shaped like JSONL the chat viewer can parse.
+roundtrip test confirms the events come back out of the /events
+endpoint in the shape the chat viewer can parse.
 """
 
 import io
@@ -46,7 +46,7 @@ async def _workspace(client, key):
 
 
 @pytest.mark.asyncio
-async def test_upload_inserts_events_and_download_roundtrips(client: AsyncClient):
+async def test_upload_inserts_events_and_events_roundtrip(client: AsyncClient):
     key = await _register(client)
     ws = await _workspace(client, key)
     headers = {"Authorization": f"Bearer {key}"}
@@ -69,15 +69,15 @@ async def test_upload_inserts_events_and_download_roundtrips(client: AsyncClient
     assert meta.status_code == 200
     assert meta.json()["event_count"] == 2
 
-    dl = await client.get(
-        f"/api/v1/workspaces/{ws}/transcripts/sess-1/download",
+    events_resp = await client.get(
+        f"/api/v1/workspaces/{ws}/transcripts/sess-1/events",
         headers=headers,
     )
-    assert dl.status_code == 200
-    lines = [json.loads(line) for line in dl.text.splitlines() if line.strip()]
-    assert [line["type"] for line in lines] == ["user", "assistant"]
-    assert lines[0]["message"]["content"] == "hi"
-    assert lines[1]["message"]["content"] == "hello"
+    assert events_resp.status_code == 200
+    events = events_resp.json()["events"]
+    assert [event["role"] for event in events] == ["user", "assistant"]
+    assert events[0]["content"] == "hi"
+    assert events[1]["content"] == "hello"
 
 
 @pytest.mark.asyncio

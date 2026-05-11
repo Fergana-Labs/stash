@@ -6,6 +6,7 @@ import json
 import sys
 import textwrap
 from pathlib import Path
+from urllib.parse import urlparse
 
 import questionary
 import typer
@@ -886,13 +887,25 @@ def _do_fork(workspace_id: str, suggested_name: str = "") -> None:
         console.print(f"  Wrote [cyan]{MANIFEST_FILE}[/cyan] → {new_ws['id']}")
 
 
+def _parse_workspace_id(url_or_id: str) -> str:
+    value = url_or_id.strip().rstrip("/")
+    parsed = urlparse(value)
+    parts = [part for part in parsed.path.split("/") if part]
+    for marker in ("s", "workspaces"):
+        if marker in parts:
+            marker_index = parts.index(marker)
+            if marker_index + 1 < len(parts):
+                return parts[marker_index + 1]
+    return value
+
+
 @app.command("fork")
 def fork(
-    workspace_id: str = typer.Argument(..., help="ID of the public Stash to fork."),
+    workspace_id: str = typer.Argument(..., help="ID or URL of the public Stash to fork."),
     name: str = typer.Option("", "--name", help="Name for the new private Stash."),
 ):
     """Fork a public Stash into a new private Stash you own."""
-    _do_fork(workspace_id, suggested_name=name)
+    _do_fork(_parse_workspace_id(workspace_id), suggested_name=name)
 
 
 # ===========================================================================
@@ -1151,6 +1164,175 @@ def share_session(
 
     public_url = f"{_web_app_url()}/v/{view['slug']}"
     console.print(f"\n[green bold]Shared![/green bold]  {public_url}")
+
+
+_UPLOAD_TEXT_EXTENSIONS = {
+    ".bash",
+    ".bib",
+    ".c",
+    ".cfg",
+    ".cpp",
+    ".csv",
+    ".fish",
+    ".go",
+    ".h",
+    ".htm",
+    ".html",
+    ".ini",
+    ".java",
+    ".js",
+    ".json",
+    ".jsx",
+    ".kt",
+    ".lua",
+    ".md",
+    ".mdx",
+    ".org",
+    ".pl",
+    ".py",
+    ".r",
+    ".rb",
+    ".rs",
+    ".rst",
+    ".sh",
+    ".sql",
+    ".svg",
+    ".swift",
+    ".tex",
+    ".toml",
+    ".ts",
+    ".tsx",
+    ".txt",
+    ".xml",
+    ".yaml",
+    ".yml",
+    ".zsh",
+}
+
+
+def _is_upload_text_file(path: Path) -> bool:
+    return path.suffix.lower() in _UPLOAD_TEXT_EXTENSIONS
+
+
+def _has_hidden_part(path: Path) -> bool:
+    return any(part.startswith(".") for part in path.parts)
+
+
+def _upload_file_list(target: Path) -> list[Path]:
+    if target.is_file():
+        return [target]
+    return sorted(
+        path
+        for path in target.rglob("*")
+        if path.is_file() and not _has_hidden_part(path.relative_to(target))
+    )
+
+
+def _upload_folder_for_file(
+    c: StashClient,
+    workspace_id: str,
+    root_folder_id: str,
+    folder_cache: dict[tuple[str, str], str],
+    relative_path: Path,
+) -> str:
+    parent_id = root_folder_id
+    for folder_name in relative_path.parts[:-1]:
+        key = (parent_id, folder_name)
+        if key not in folder_cache:
+            folder_cache[key] = c.create_folder(
+                workspace_id,
+                folder_name,
+                parent_folder_id=parent_id,
+            )["id"]
+        parent_id = folder_cache[key]
+    return parent_id
+
+
+@app.command("upload")
+def upload(
+    path: str = typer.Argument(..., help="Directory or file to upload."),
+    name: str = typer.Option("", "--name", "-n", help="Name for the uploaded folder."),
+    workspace_id: str = typer.Option(None, "--ws"),
+    public: bool = typer.Option(True, "--public/--private", help="Publish a shareable View."),
+    as_json: bool = typer.Option(False, "--json"),
+):
+    """Upload local files into workspace pages and publish them as a View."""
+    _require_auth()
+    target = Path(path)
+    if not target.exists():
+        console.print(f"[red]Not found: {path}[/red]")
+        raise typer.Exit(1)
+
+    files = _upload_file_list(target)
+    if not files:
+        console.print(f"[red]No files found in {path}[/red]")
+        raise typer.Exit(1)
+
+    root_name = name or (target.stem if target.is_file() else target.name)
+    ws = workspace_id or _resolve_workspace()
+    console.print(f"[dim]Uploading {len(files)} file(s) as '{root_name}'...[/dim]")
+
+    with _client() as c:
+        root_folder = c.create_folder(ws, root_name)
+        folder_cache: dict[tuple[str, str], str] = {}
+        view_items: list[dict] = [
+            {"object_type": "folder", "object_id": root_folder["id"], "position": 0},
+        ]
+
+        for file_path in files:
+            relative_path = (
+                file_path.relative_to(target) if target.is_dir() else Path(file_path.name)
+            )
+            folder_id = _upload_folder_for_file(
+                c,
+                ws,
+                root_folder["id"],
+                folder_cache,
+                relative_path,
+            )
+
+            if _is_upload_text_file(file_path):
+                content = file_path.read_text(errors="replace")
+                c.create_page(ws, file_path.name, content=content, folder_id=folder_id)
+                console.print(f"  [dim]Page: {relative_path}[/dim]")
+                continue
+
+            uploaded = c.upload_ws_file(ws, str(file_path))
+            c.create_page(
+                ws,
+                file_path.name,
+                content=_markdown_snippet(uploaded),
+                folder_id=folder_id,
+            )
+            view_items.append(
+                {
+                    "object_type": "file",
+                    "object_id": uploaded["id"],
+                    "position": len(view_items),
+                    "label_override": str(relative_path),
+                }
+            )
+            console.print(f"  [dim]File: {relative_path}[/dim]")
+
+        view = c.create_view(
+            ws,
+            title=root_name,
+            description=f"Uploaded from {target.name}",
+            is_public=public,
+            items=view_items,
+        )
+
+    result = {"folder": root_folder, "view": view}
+    if _use_json(as_json):
+        output_json(result)
+        return
+    if public:
+        public_url = f"{_web_app_url()}/v/{view['slug']}"
+        console.print(f"\n[green bold]Uploaded![/green bold]  {public_url}")
+        return
+    console.print(
+        f"\n[green bold]Uploaded![/green bold]  Folder: {root_folder['id']}  View: {view['id']}"
+    )
 
 
 def _parse_view_slug(url_or_slug: str) -> str:
@@ -1502,6 +1684,33 @@ def wiki_pages(
             label = f"{path}/{p['name']}" if path else p["name"]
             ws = f" [{p.get('workspace_name', '')}]" if p.get("workspace_name") else ""
             console.print(f"  {label}{ws}  (id: {str(p['id'])[:8]})")
+
+
+@wiki_app.command("search")
+def wiki_search(
+    query: str = typer.Argument(..., help="Search query."),
+    workspace_id: str = typer.Option(None, "--ws"),
+    limit: int = typer.Option(20, "-n", "--limit"),
+    as_json: bool = typer.Option(False, "--json"),
+):
+    """Full-text search across wiki pages in a workspace."""
+    ws = workspace_id or _resolve_workspace()
+    with _client() as c:
+        try:
+            data = c.search_pages(ws, query, limit=limit)
+        except StashError as e:
+            _err(e)
+    if _use_json(as_json):
+        output_json(data)
+        return
+    if not data:
+        console.print("[dim]No matching pages.[/dim]")
+        return
+    for page in data:
+        snippet = (page.get("content_markdown") or "")[:200].replace("\n", " ")
+        console.print(f"  [bold]{page['name']}[/bold]  [dim](page: {str(page['id'])[:8]})[/dim]")
+        if snippet:
+            console.print(f"    {snippet}...")
 
 
 def _markdown_snippet(file_resp: dict) -> str:

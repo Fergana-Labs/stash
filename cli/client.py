@@ -304,6 +304,14 @@ class StashClient:
     def list_pages(self, workspace_id: str) -> list:
         return self._list(f"/api/v1/workspaces/{workspace_id}/pages", "pages")
 
+    def search_pages(self, workspace_id: str, query: str, limit: int = 20) -> list:
+        return self._list(
+            f"/api/v1/workspaces/{workspace_id}/pages/search",
+            "pages",
+            q=query,
+            limit=limit,
+        )
+
     def get_page(self, workspace_id: str, page_id: str) -> dict:
         return self._get(f"/api/v1/workspaces/{workspace_id}/pages/{page_id}")
 
