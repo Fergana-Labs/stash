@@ -4,14 +4,14 @@ A stash captures the full context of an agent session: transcript,
 artifacts (files touched), and an AI-generated summary. Stashes are served
 at /b/{slug} for humans and ?format=text for agent consumption.
 
-Revision ID: 0027
-Revises: 0026
+Revision ID: 0030
+Revises: 0029
 """
 
 from alembic import op
 
-revision = "0027"
-down_revision = "0026"
+revision = "0030"
+down_revision = "0029"
 branch_labels = None
 depends_on = None
 
