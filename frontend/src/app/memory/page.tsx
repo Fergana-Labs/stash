@@ -184,6 +184,7 @@ function MemoryPageInner() {
   const searchParams = useSearchParams();
   const wsId = searchParams.get("ws");
   const urlAgent = searchParams.get("agent");
+  const addParam = searchParams.get("add");
   const { user, loading, logout } = useAuth();
   const [events, setEvents] = useState<HistoryEventWithContext[]>([]);
   const [eventsLoading, setEventsLoading] = useState(false);
@@ -241,6 +242,21 @@ function MemoryPageInner() {
     if (user) loadEvents();
   }, [user, loadEvents]);
 
+  useEffect(() => {
+    if (user && wsId && addParam === "stash") {
+      setShowAddSources(true);
+    }
+  }, [user, wsId, addParam]);
+
+  const closeAddSources = useCallback(() => {
+    setShowAddSources(false);
+    if (addParam !== "stash") return;
+    const params = new URLSearchParams(searchParams.toString());
+    params.delete("add");
+    const qs = params.toString();
+    router.replace(qs ? `/memory?${qs}` : "/memory");
+  }, [addParam, router, searchParams]);
+
   const groups = useMemo(() => buildGroups(events), [events]);
 
   const allSessions = useMemo(() => {
@@ -273,12 +289,7 @@ function MemoryPageInner() {
   }
 
   return (
-    <AppShell
-      user={user}
-      onLogout={logout}
-      onAddToStash={() => wsId && setShowAddSources(true)}
-      addToStashDisabled={!wsId}
-    >
+    <AppShell user={user} onLogout={logout}>
       <div className="flex h-full overflow-hidden">
         {/* Sidebar: agent list */}
         <aside className="w-[250px] flex-shrink-0 overflow-y-auto border-r border-border bg-surface">
@@ -407,9 +418,9 @@ function MemoryPageInner() {
         <AddSourcesDialog
           workspaceId={wsId}
           user={user}
-          onClose={() => setShowAddSources(false)}
+          onClose={closeAddSources}
           onCreated={async () => {
-            setShowAddSources(false);
+            closeAddSources();
             setSelectedAgent(null);
             setSelectedSession(null);
             await loadEvents();
@@ -500,7 +511,7 @@ function AddSourcesDialog({
         <div className="flex items-start justify-between gap-4 border-b border-border-subtle px-5 py-4">
           <div>
             <h2 className="font-display text-[20px] font-bold text-foreground">
-              add to stash
+              Add Something to the Stash
             </h2>
             <p className="mt-1 font-mono text-[11px] text-muted">
               History source · {user.name}

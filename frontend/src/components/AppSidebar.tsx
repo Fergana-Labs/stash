@@ -63,15 +63,11 @@ const WS_STORAGE_KEY = "stash_selected_workspace";
 interface AppSidebarProps {
   user?: User;
   onLogout?: () => void;
-  onAddToStash?: () => void;
-  addToStashDisabled?: boolean;
 }
 
 export default function AppSidebar({
   user,
   onLogout,
-  onAddToStash,
-  addToStashDisabled,
 }: AppSidebarProps) {
   const pathname = usePathname();
   const router = useRouter();
@@ -127,6 +123,11 @@ export default function AppSidebar({
       return;
     }
     router.push(`${pathname}?ws=${wsId}`);
+  };
+
+  const addSomethingToStash = () => {
+    if (!selectedWsId) return;
+    router.push(`/memory?ws=${encodeURIComponent(selectedWsId)}&add=stash`);
   };
 
   const selectedWs = workspaces.find((w) => w.id === selectedWsId);
@@ -240,24 +241,22 @@ export default function AppSidebar({
         )}
       </div>
 
-      {onAddToStash && (
-        <div className="px-2 pb-2">
-          <button
-            type="button"
-            onClick={onAddToStash}
-            disabled={addToStashDisabled}
-            title={
-              addToStashDisabled
-                ? "Open a workspace to add to stash"
-                : "add to stash"
-            }
-            className="flex h-10 w-full items-center justify-center gap-2 rounded-md border border-border bg-base px-3 text-[13px] font-semibold text-foreground shadow-sm transition-colors hover:border-brand hover:bg-brand/5 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            <span className="text-[18px] leading-none">+</span>
-            add to stash
-          </button>
-        </div>
-      )}
+      <div className="px-2 pb-2">
+        <button
+          type="button"
+          onClick={addSomethingToStash}
+          disabled={!selectedWsId}
+          title={
+            selectedWsId
+              ? "Add Something to the Stash"
+              : "Open a workspace to add something to the stash"
+          }
+          className="flex h-10 w-full items-center justify-center gap-2 rounded-md border border-border bg-base px-3 text-[13px] font-semibold text-foreground shadow-sm transition-colors hover:border-brand hover:bg-brand/5 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          <span className="text-[18px] leading-none">+</span>
+          Add Something to the Stash
+        </button>
+      </div>
 
       {/* Navigation */}
       <nav className="flex-1 space-y-0.5 overflow-y-auto px-2">
