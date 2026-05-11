@@ -273,7 +273,12 @@ function MemoryPageInner() {
   }
 
   return (
-    <AppShell user={user} onLogout={logout}>
+    <AppShell
+      user={user}
+      onLogout={logout}
+      onAddToStash={() => wsId && setShowAddSources(true)}
+      addToStashDisabled={!wsId}
+    >
       <div className="flex h-full overflow-hidden">
         {/* Sidebar: agent list */}
         <aside className="w-[250px] flex-shrink-0 overflow-y-auto border-r border-border bg-surface">
@@ -281,16 +286,7 @@ function MemoryPageInner() {
             <p className="font-mono text-[10px] font-medium uppercase tracking-[0.12em] text-muted">
               Sources
             </p>
-            <button
-              onClick={() => wsId && setShowAddSources(true)}
-              disabled={!wsId}
-              title={wsId ? "Add sources" : "Open a workspace to add sources"}
-              className="mt-3 flex h-12 w-full items-center justify-center gap-2 rounded-full border border-border bg-base text-[14px] font-semibold text-foreground shadow-sm transition-colors hover:border-brand hover:bg-brand/5 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              <span className="text-[20px] leading-none">+</span>
-              Add sources
-            </button>
-            <p className="mt-4 font-display text-[15px] font-semibold text-foreground">
+            <p className="mt-1 font-display text-[15px] font-semibold text-foreground">
               {groups.length} agent{groups.length === 1 ? "" : "s"} · {events.length} events
             </p>
           </div>
@@ -504,7 +500,7 @@ function AddSourcesDialog({
         <div className="flex items-start justify-between gap-4 border-b border-border-subtle px-5 py-4">
           <div>
             <h2 className="font-display text-[20px] font-bold text-foreground">
-              Add sources
+              add to stash
             </h2>
             <p className="mt-1 font-mono text-[11px] text-muted">
               History source · {user.name}
