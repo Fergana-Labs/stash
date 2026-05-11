@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import json
 import os
 import secrets
 import sys
@@ -787,27 +788,39 @@ async def _create_transcript(
     agent_name: str,
     content: bytes,
 ) -> None:
-    storage_key = f"local/seed/{session_id}.jsonl"
-    if storage_service.is_configured():
-        try:
-            storage_key = await storage_service.upload_file(
-                str(stash_id), f"{session_id}.jsonl", content, "application/jsonl"
-            )
-        except Exception as e:
-            print(f"  ⚠ failed to upload transcript {session_id}: {e}")
+    """Seed a session by parsing the JSONL into history_events rows.
 
-    await conn.execute(
-        "INSERT INTO session_transcripts "
-        "(workspace_id, session_id, agent_name, storage_key, size_bytes, cwd, uploaded_by) "
-        "VALUES ($1, $2, $3, $4, $5, $6, $7) "
-        "ON CONFLICT (workspace_id, session_id) DO NOTHING",
-        stash_id,
-        session_id,
-        agent_name,
-        storage_key,
-        len(content),
-        "/Users/sam/code/acme",
-        SAM_ID,
+    Mirrors the production upload path. `stash_id` here is the workspace
+    id — seed terminology, not the session-bundle table."""
+    from backend.services import transcript_import
+
+    events = transcript_import.parse_jsonl_to_events(
+        content, session_id=session_id, agent_name=agent_name,
+    )
+    if not events:
+        return
+    for e in events:
+        e["metadata"] = {**(e.get("metadata") or {}), "cwd": "/Users/sam/code/acme"}
+    await conn.executemany(
+        "INSERT INTO history_events "
+        "(workspace_id, created_by, agent_name, event_type, content, "
+        " session_id, tool_name, metadata, attachments, created_at) "
+        "VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9, COALESCE($10, now()))",
+        [
+            (
+                stash_id,
+                SAM_ID,
+                e["agent_name"],
+                e["event_type"],
+                e["content"],
+                e["session_id"],
+                e.get("tool_name"),
+                json.dumps(e.get("metadata") or {}),
+                None,
+                e.get("created_at"),
+            )
+            for e in events
+        ],
     )
 
 

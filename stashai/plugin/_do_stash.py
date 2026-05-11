@@ -141,13 +141,6 @@ def main() -> None:
     files_touched = json.loads(os.environ.get("STASH_FILES_TOUCHED", "[]"))
 
     with StashClient(base_url=base_url, api_key=api_key) as client:
-        tp = Path(transcript_path)
-        if tp.is_file():
-            try:
-                client.upload_stash_transcript(stash_id, tp)
-            except Exception:
-                pass
-
         all_paths = _resolve_paths(files_touched, cwd)
         for fp in all_paths:
             if _should_skip(fp):

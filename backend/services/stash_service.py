@@ -40,11 +40,9 @@ async def create_stash(
 
 
 async def _hydrate_stash(row: dict) -> dict:
-    """Common projection for stash rows. `has_transcript` is now derived
-    from the existence of history_events for this session, not from the
-    legacy transcript_storage_key column (which is on its way out)."""
+    """Common projection for stash rows. `has_transcript` is derived from
+    the existence of history_events for this session."""
     d = dict(row)
-    d.pop("transcript_storage_key", None)
     pool = get_pool()
     if d.get("session_id"):
         exists = await pool.fetchval(
@@ -63,7 +61,7 @@ async def get_stash_by_slug(slug: str) -> dict | None:
     pool = get_pool()
     row = await pool.fetchrow(
         "SELECT s.id, s.workspace_id, s.session_id, s.slug, s.agent_name, s.cwd, "
-        "s.status, s.summary, s.files_touched, s.transcript_storage_key, "
+        "s.status, s.summary, s.files_touched, "
         "s.created_by, s.created_at, s.updated_at, "
         "(SELECT COUNT(*) FROM stash_artifacts sa WHERE sa.stash_id = s.id) AS artifact_count "
         "FROM stashes s WHERE s.slug = $1",
@@ -78,7 +76,7 @@ async def get_stash_by_id(stash_id: UUID) -> dict | None:
     pool = get_pool()
     row = await pool.fetchrow(
         "SELECT s.id, s.workspace_id, s.session_id, s.slug, s.agent_name, s.cwd, "
-        "s.status, s.summary, s.files_touched, s.transcript_storage_key, "
+        "s.status, s.summary, s.files_touched, "
         "s.created_by, s.created_at, s.updated_at, "
         "(SELECT COUNT(*) FROM stash_artifacts sa WHERE sa.stash_id = s.id) AS artifact_count "
         "FROM stashes s WHERE s.id = $1",

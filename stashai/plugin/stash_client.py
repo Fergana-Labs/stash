@@ -290,26 +290,6 @@ class StashClient:
             raise StashError(resp.status_code, resp.text)
         return resp.json()
 
-    def upload_stash_transcript(
-        self, stash_id: str, transcript_path: Path,
-    ) -> dict:
-        import gzip
-        raw = transcript_path.read_bytes()
-        body = gzip.compress(raw)
-        name = transcript_path.name
-        if not name.endswith(".gz"):
-            name += ".gz"
-        resp = self._http.request(
-            "POST",
-            f"/api/v1/stashes/{stash_id}/transcript",
-            headers=self._headers(),
-            files={"file": (name, body, "application/gzip")},
-            timeout=httpx.Timeout(60.0, connect=5.0),
-        )
-        if not resp.is_success:
-            raise StashError(resp.status_code, resp.text)
-        return resp.json()
-
     def update_stash(self, stash_id: str, **fields) -> dict:
         body = {k: v for k, v in fields.items() if v is not None}
         resp = self._http.request(

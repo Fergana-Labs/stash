@@ -32,8 +32,33 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT))
 
-from backend.database import close_db, get_pool, init_db  # noqa: E402
+import asyncpg  # noqa: E402
+
+from backend import database  # noqa: E402
 from backend.services import memory_service, storage_service, transcript_import  # noqa: E402
+
+
+def _get_pool():
+    return database.pool
+
+
+async def _init_pool_directly() -> None:
+    """Skip the alembic-running init_db() — scripts should not migrate.
+    Just open a pool with the same codecs the rest of the backend expects."""
+    if database.pool is not None:
+        return
+    database.pool = await asyncpg.create_pool(
+        os.environ["DATABASE_URL"],
+        min_size=1,
+        max_size=4,
+        init=database._init_connection,
+    )
+
+
+async def _close_pool() -> None:
+    if database.pool is not None:
+        await database.pool.close()
+        database.pool = None
 
 logging.basicConfig(
     level=logging.INFO,
@@ -43,7 +68,7 @@ log = logging.getLogger("backfill")
 
 
 async def _session_already_imported(workspace_id, session_id: str) -> bool:
-    pool = get_pool()
+    pool = _get_pool()
     return bool(await pool.fetchval(
         "SELECT EXISTS(SELECT 1 FROM history_events "
         "WHERE workspace_id = $1 AND session_id = $2)",
@@ -84,7 +109,7 @@ async def _backfill_one(
 
 
 async def backfill_session_transcripts(dry_run: bool, limit: int | None) -> dict:
-    pool = get_pool()
+    pool = _get_pool()
     query = (
         "SELECT workspace_id, session_id, storage_key, agent_name, cwd, uploaded_by "
         "FROM session_transcripts ORDER BY uploaded_at"
@@ -112,7 +137,7 @@ async def backfill_session_transcripts(dry_run: bool, limit: int | None) -> dict
 
 
 async def backfill_stash_transcripts(dry_run: bool, limit: int | None) -> dict:
-    pool = get_pool()
+    pool = _get_pool()
     query = (
         "SELECT workspace_id, session_id, transcript_storage_key, agent_name, "
         "cwd, created_by FROM stashes "
@@ -159,7 +184,7 @@ async def main() -> int:
         log.error("DATABASE_URL is required")
         return 2
 
-    await init_db()
+    await _init_pool_directly()
     try:
         if args.source in ("both", "session_transcripts"):
             log.info("=== Backfilling session_transcripts ===")
@@ -171,7 +196,7 @@ async def main() -> int:
             counts = await backfill_stash_transcripts(args.dry_run, args.limit)
             log.info("stashes: %s", counts)
     finally:
-        await close_db()
+        await _close_pool()
     return 0
 
 

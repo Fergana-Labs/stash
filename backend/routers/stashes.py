@@ -384,10 +384,14 @@ async def get_stash_activity(
     events = await pool.fetch(
         """
         (
-          SELECT 'session.uploaded' AS kind, uploaded_at AS ts,
-                 uploaded_by AS actor_id, session_id AS target_id,
-                 agent_name || ': ' || session_id AS target_label
-          FROM session_transcripts WHERE workspace_id = $1
+          SELECT 'session.uploaded' AS kind,
+                 MAX(created_at) AS ts,
+                 MAX(created_by) AS actor_id,
+                 session_id AS target_id,
+                 MAX(agent_name) || ': ' || session_id AS target_label
+          FROM history_events
+          WHERE workspace_id = $1 AND session_id IS NOT NULL
+          GROUP BY session_id
         )
         UNION ALL
         (
@@ -528,51 +532,6 @@ async def upload_artifact(
         size_bytes=len(content),
     )
     return StashArtifactResponse(**artifact)
-
-
-@public_router.post("/{stash_id}/transcript", status_code=201)
-async def upload_stash_transcript(
-    stash_id: UUID,
-    file: UploadFile,
-    current_user: dict = Depends(get_current_user),
-):
-    """Parse the uploaded transcript into history_events for this stash's
-    session. No-op if the session already has events streamed in."""
-    stash = await stash_service.get_stash_by_id(stash_id)
-    if not stash:
-        raise HTTPException(status_code=404, detail="Stash not found")
-    if not await workspace_service.is_member(stash["workspace_id"], current_user["id"]):
-        raise HTTPException(status_code=403, detail="Not a workspace member")
-
-    body = await file.read()
-    MAX_TRANSCRIPT_SIZE = 50 * 1024 * 1024
-    if len(body) > MAX_TRANSCRIPT_SIZE:
-        raise HTTPException(status_code=413, detail="Transcript too large (max 50 MB)")
-
-    session_id = stash["session_id"]
-    pool = get_pool()
-    existing = await pool.fetchval(
-        "SELECT COUNT(*) FROM history_events " "WHERE workspace_id = $1 AND session_id = $2",
-        stash["workspace_id"],
-        session_id,
-    )
-    if existing:
-        return {"status": "ok", "imported": 0, "skipped": True}
-
-    events = transcript_import.parse_jsonl_to_events(
-        body,
-        session_id=session_id,
-        agent_name=stash.get("agent_name") or "",
-    )
-    if stash.get("cwd"):
-        for e in events:
-            e["metadata"] = {**(e.get("metadata") or {}), "cwd": stash["cwd"]}
-    inserted = await memory_service.push_events_batch(
-        stash["workspace_id"],
-        current_user["id"],
-        events,
-    )
-    return {"status": "ok", "imported": len(inserted), "skipped": False}
 
 
 @public_router.patch("/{stash_id}", response_model=StashResponse)
