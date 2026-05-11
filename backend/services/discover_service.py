@@ -1,4 +1,9 @@
-"""Public catalog of Stashes (workspaces with is_public=true)."""
+"""Curated public catalog of Stashes.
+
+Discover lists workspaces that are both public (`is_public=true`) and selected
+for the catalog (`discoverable=true`). Public-but-unlisted and link-shared
+workspaces remain readable through the permission-aware public endpoints.
+"""
 
 import base64
 from datetime import datetime
@@ -9,7 +14,7 @@ from ..database import get_pool
 _CATALOG_SELECT = """
 SELECT
     w.id, w.name, w.summary, w.description, w.is_public,
-    w.tags, w.category, w.featured, w.cover_image_url,
+    w.tags, w.category, w.discoverable, w.featured, w.cover_image_url,
     w.creator_id, u.name AS creator_name, u.display_name AS creator_display_name,
     w.fork_count, w.forked_from_workspace_id, w.created_at, w.updated_at,
     (SELECT COUNT(*) FROM workspace_members wm WHERE wm.workspace_id = w.id) AS member_count,
@@ -34,7 +39,7 @@ async def list_catalog(
     cursor: str | None = None,
 ) -> tuple[list[dict], str | None]:
     pool = get_pool()
-    where = ["w.is_public = true"]
+    where = ["w.is_public = true", "w.discoverable = true"]
     args: list = []
     idx = 1
 
@@ -90,7 +95,8 @@ async def list_catalog(
 async def get_featured() -> list[dict]:
     pool = get_pool()
     rows = await pool.fetch(
-        f"{_CATALOG_SELECT} WHERE w.is_public = true AND w.featured = true "
+        f"{_CATALOG_SELECT} WHERE w.is_public = true AND w.discoverable = true "
+        "AND w.featured = true "
         "ORDER BY w.updated_at DESC LIMIT 12"
     )
     return [dict(r) for r in rows]
@@ -99,7 +105,8 @@ async def get_featured() -> list[dict]:
 async def get_public_detail(workspace_id: UUID) -> dict | None:
     pool = get_pool()
     ws_row = await pool.fetchrow(
-        f"{_CATALOG_SELECT} WHERE w.id = $1 AND w.is_public = true",
+        f"{_CATALOG_SELECT} WHERE w.id = $1 AND w.is_public = true "
+        "AND w.discoverable = true",
         workspace_id,
     )
     if not ws_row:
@@ -134,6 +141,102 @@ async def get_public_detail(workspace_id: UUID) -> dict | None:
         "tables": [dict(r) for r in tables],
         "files": [dict(r) for r in files],
     }
+
+
+async def list_admin_candidates(
+    *,
+    query: str | None = None,
+    status: str = "all",
+    limit: int = 100,
+) -> list[dict]:
+    """List public workspaces available to curate into Discover."""
+    pool = get_pool()
+    where = ["w.is_public = true"]
+    args: list = []
+    idx = 1
+
+    if query:
+        where.append(
+            f"(w.name ILIKE ${idx} OR w.summary ILIKE ${idx} OR w.description ILIKE ${idx})"
+        )
+        args.append(f"%{query}%")
+        idx += 1
+
+    if status == "curated":
+        where.append("w.discoverable = true")
+    elif status == "uncurated":
+        where.append("w.discoverable = false")
+
+    args.append(limit)
+    sql = (
+        f"{_CATALOG_SELECT} WHERE {' AND '.join(where)} "
+        "ORDER BY w.discoverable DESC, w.featured DESC, w.updated_at DESC, w.id DESC "
+        f"LIMIT ${idx}"
+    )
+    rows = await pool.fetch(sql, *args)
+    return [dict(r) for r in rows]
+
+
+class CatalogCurationError(ValueError):
+    """Raised when a requested Discover curation state is invalid."""
+
+
+async def curate_workspace(
+    workspace_id: UUID,
+    *,
+    discoverable: bool | None = None,
+    featured: bool | None = None,
+    summary: str | None = None,
+    tags: list[str] | None = None,
+    category: str | None = None,
+    cover_image_url: str | None = None,
+) -> dict | None:
+    """Update Discover catalog metadata for a workspace."""
+    pool = get_pool()
+    current = await pool.fetchrow(
+        "SELECT is_public, discoverable FROM workspaces WHERE id = $1",
+        workspace_id,
+    )
+    if not current:
+        return None
+
+    target_discoverable = (
+        discoverable if discoverable is not None else bool(current["discoverable"])
+    )
+    if target_discoverable and not current["is_public"]:
+        raise CatalogCurationError("Only public workspaces can be listed in Discover")
+    if featured is True and not target_discoverable:
+        raise CatalogCurationError("Featured workspaces must be listed in Discover")
+
+    sets, args, idx = [], [], 1
+    for col, val in (
+        ("discoverable", discoverable),
+        ("featured", featured),
+        ("summary", summary),
+        ("tags", tags),
+        ("category", category),
+        ("cover_image_url", cover_image_url),
+    ):
+        if val is not None:
+            sets.append(f"{col} = ${idx}")
+            args.append(val)
+            idx += 1
+
+    if discoverable is False and featured is None:
+        sets.append(f"featured = ${idx}")
+        args.append(False)
+        idx += 1
+
+    if sets:
+        sets.append("updated_at = now()")
+        args.append(workspace_id)
+        await pool.execute(
+            f"UPDATE workspaces SET {', '.join(sets)} WHERE id = ${idx}",
+            *args,
+        )
+
+    row = await pool.fetchrow(f"{_CATALOG_SELECT} WHERE w.id = $1", workspace_id)
+    return dict(row) if row else None
 
 
 def _encode_cursor(value: datetime | int) -> str:

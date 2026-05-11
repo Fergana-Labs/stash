@@ -29,7 +29,7 @@ export async function generateMetadata({
 
 async function loadDetail(workspaceId: string): Promise<PublicWorkspaceDetail | null> {
   // /api/v1/public/* is permission-aware and works for both `link` and `public`
-  // workspaces. /api/v1/discover/* only returns is_public=true catalog cards
+  // workspaces. /api/v1/discover/* only returns catalog-listed public cards
   // (used by the Discover index, not by the share-URL reader).
   const res = await fetch(
     `${BACKEND_ORIGIN}/api/v1/public/workspaces/${workspaceId}`,

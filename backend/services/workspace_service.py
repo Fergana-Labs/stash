@@ -28,7 +28,7 @@ async def create_workspace(
         "INSERT INTO workspaces (name, description, creator_id, invite_code, is_public) "
         "VALUES ($1, $2, $3, $4, $5) "
         "RETURNING id, name, description, creator_id, invite_code, is_public, "
-        "created_at, updated_at, summary, tags, category, featured, "
+        "created_at, updated_at, summary, tags, category, discoverable, featured, "
         "cover_image_url, fork_count, forked_from_workspace_id",
         name,
         description,
@@ -43,6 +43,10 @@ async def create_workspace(
         ws["id"],
         creator_id,
     )
+    if is_public:
+        from . import permission_service
+
+        await permission_service.set_visibility("workspace", ws["id"], "public")
     ws["member_count"] = 1
     return ws
 
@@ -51,7 +55,8 @@ async def get_workspace(workspace_id: UUID) -> dict | None:
     pool = get_pool()
     row = await pool.fetchrow(
         "SELECT w.id, w.name, w.description, w.creator_id, w.invite_code, w.is_public, "
-        "w.created_at, w.updated_at, w.summary, w.tags, w.category, w.featured, "
+        "w.created_at, w.updated_at, w.summary, w.tags, w.category, "
+        "w.discoverable, w.featured, "
         "w.cover_image_url, w.fork_count, w.forked_from_workspace_id, "
         "(SELECT COUNT(*) FROM workspace_members wm WHERE wm.workspace_id = w.id) AS member_count "
         "FROM workspaces w WHERE w.id = $1",
@@ -64,7 +69,8 @@ async def list_public_workspaces() -> list[dict]:
     pool = get_pool()
     rows = await pool.fetch(
         "SELECT w.id, w.name, w.description, w.creator_id, w.invite_code, w.is_public, "
-        "w.created_at, w.updated_at, w.summary, w.tags, w.category, w.featured, "
+        "w.created_at, w.updated_at, w.summary, w.tags, w.category, "
+        "w.discoverable, w.featured, "
         "w.cover_image_url, w.fork_count, w.forked_from_workspace_id, "
         "(SELECT COUNT(*) FROM workspace_members wm WHERE wm.workspace_id = w.id) AS member_count "
         "FROM workspaces w WHERE w.is_public = true ORDER BY w.created_at DESC",
@@ -76,7 +82,8 @@ async def list_user_workspaces(user_id: UUID) -> list[dict]:
     pool = get_pool()
     rows = await pool.fetch(
         "SELECT w.id, w.name, w.description, w.creator_id, w.invite_code, w.is_public, "
-        "w.created_at, w.updated_at, w.summary, w.tags, w.category, w.featured, "
+        "w.created_at, w.updated_at, w.summary, w.tags, w.category, "
+        "w.discoverable, w.featured, "
         "w.cover_image_url, w.fork_count, w.forked_from_workspace_id, "
         "(SELECT COUNT(*) FROM workspace_members wm WHERE wm.workspace_id = w.id) AS member_count "
         "FROM workspaces w "
@@ -119,7 +126,7 @@ async def update_workspace(
     row = await pool.fetchrow(
         f"UPDATE workspaces SET {', '.join(sets)} WHERE id = ${idx} "
         "RETURNING id, name, description, creator_id, invite_code, is_public, "
-        "created_at, updated_at, summary, tags, category, featured, "
+        "created_at, updated_at, summary, tags, category, discoverable, featured, "
         "cover_image_url, fork_count, forked_from_workspace_id, "
         "(SELECT COUNT(*) FROM workspace_members wm WHERE wm.workspace_id = id) AS member_count",
         *args,
@@ -181,7 +188,7 @@ async def rotate_invite_code(workspace_id: UUID, user_id: UUID) -> dict | None:
     row = await pool.fetchrow(
         "UPDATE workspaces SET invite_code = $1, updated_at = now() WHERE id = $2 "
         "RETURNING id, name, description, creator_id, invite_code, is_public, "
-        "created_at, updated_at, summary, tags, category, featured, "
+        "created_at, updated_at, summary, tags, category, discoverable, featured, "
         "cover_image_url, fork_count, forked_from_workspace_id, "
         "(SELECT COUNT(*) FROM workspace_members wm WHERE wm.workspace_id = id) AS member_count",
         new_code,
@@ -276,7 +283,7 @@ async def fork_workspace(
                 "invite_code, is_public, forked_from_workspace_id) "
                 "VALUES ($1, $2, $3, $4, $5, false, $6) "
                 "RETURNING id, name, description, creator_id, invite_code, is_public, "
-                "created_at, updated_at, summary, tags, category, featured, "
+                "created_at, updated_at, summary, tags, category, discoverable, featured, "
                 "cover_image_url, fork_count, forked_from_workspace_id",
                 new_name,
                 source["description"] or "",

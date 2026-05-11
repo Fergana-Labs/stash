@@ -138,6 +138,9 @@ function LandingPage() {
             stash
           </span>
           <nav className="flex items-center gap-1 text-sm text-dim">
+            <Link href="/discover" className="rounded-md px-3 py-2 transition hover:bg-raised hover:text-foreground">
+              Discover
+            </Link>
             <Link href="/docs" className="rounded-md px-3 py-2 transition hover:bg-raised hover:text-foreground">
               Docs
             </Link>

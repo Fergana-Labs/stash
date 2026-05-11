@@ -6,7 +6,7 @@ import { APP_URL, fetchCatalog, type CatalogCard } from "../../lib/discover";
 export const metadata: Metadata = {
   title: "Discover Stashes · Stash",
   description:
-    "Browse public Stashes — shared agent memory, notebooks, tables, and chats from teams building in the open.",
+    "Browse curated public Stashes — shared agent memory, notebooks, tables, and chats from teams building in the open.",
 };
 
 type SearchParams = {
@@ -35,13 +35,13 @@ export default async function DiscoverPage({
           Discover
         </p>
         <h1 className="mt-5 text-balance font-display text-[clamp(36px,4.6vw,56px)] font-black leading-[1.02] tracking-[-0.035em] text-ink">
-          Public Stashes from teams<br />
+          Curated public Stashes from teams<br />
           <span className="text-brand">building in the open.</span>
         </h1>
         <p className="mt-6 max-w-[640px] text-[17px] leading-[1.6] text-foreground">
-          Browse notebooks, tables, files, and chat history from Stashes that
-          their owners have shared with the world. Open one to read it without
-          signing in. Fork it to make a copy you can edit.
+          Browse notebooks, tables, files, and chat history from public Stashes
+          selected for the catalog. Open one to read it without signing in.
+          Fork it to make a copy you can edit.
         </p>
 
         <SortBar current={sort} query={params.q} />
@@ -125,7 +125,7 @@ function Card({ ws }: { ws: CatalogCard }) {
   const owner = ws.creator_display_name || ws.creator_name;
   const updated = relativeTime(ws.updated_at);
   const shape = [
-    ws.notebook_count && `${ws.notebook_count} notebook${ws.notebook_count === 1 ? "" : "s"}`,
+    ws.page_count && `${ws.page_count} page${ws.page_count === 1 ? "" : "s"}`,
     ws.table_count && `${ws.table_count} table${ws.table_count === 1 ? "" : "s"}`,
     ws.file_count && `${ws.file_count} file${ws.file_count === 1 ? "" : "s"}`,
   ]
@@ -199,11 +199,10 @@ function EmptyState() {
   return (
     <div className="rounded-xl border border-dashed border-border-subtle bg-raised/30 p-12 text-center">
       <p className="font-display text-[20px] font-bold text-ink">
-        No public Stashes yet.
+        No curated public Stashes yet.
       </p>
       <p className="mt-2 text-[14px] text-dim">
-        Be the first — flip <code className="font-mono text-brand">is_public</code>{" "}
-        on a Stash you own and it will appear here.
+        Public Stashes appear here after they are selected for Discover.
       </p>
     </div>
   );

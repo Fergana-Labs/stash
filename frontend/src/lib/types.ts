@@ -29,6 +29,11 @@ export interface Workspace {
   summary?: string | null;
   tags?: string[];
   category?: string | null;
+  discoverable?: boolean;
+  featured?: boolean;
+  cover_image_url?: string | null;
+  fork_count?: number;
+  forked_from_workspace_id?: string | null;
 }
 
 export interface WorkspaceMember {

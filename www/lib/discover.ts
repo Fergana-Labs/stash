@@ -9,6 +9,7 @@ export type CatalogCard = {
   is_public: boolean;
   tags: string[];
   category: string | null;
+  discoverable: boolean;
   featured: boolean;
   cover_image_url: string | null;
   creator_id: string;
@@ -16,7 +17,7 @@ export type CatalogCard = {
   creator_display_name: string | null;
   member_count: number;
   fork_count: number;
-  notebook_count: number;
+  page_count: number;
   table_count: number;
   file_count: number;
   history_event_count: number;
