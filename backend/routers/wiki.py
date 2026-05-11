@@ -7,7 +7,7 @@ inside a folder.
 
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 
 from ..auth import get_current_user
 from ..models import (
@@ -202,6 +202,18 @@ async def semantic_search_pages(
     if query_embedding is None:
         raise HTTPException(status_code=500, detail="Failed to embed query")
     pages = await wiki_service.search_pages_vector(workspace_id, query_embedding, limit)
+    return {"pages": pages}
+
+
+@router.get("/pages/search")
+async def search_pages(
+    workspace_id: UUID,
+    q: str = Query(..., min_length=1),
+    limit: int = Query(20, ge=1, le=100),
+    current_user: dict = Depends(get_current_user),
+):
+    await _check_ws_access(workspace_id, current_user["id"])
+    pages = await wiki_service.search_pages_fts(workspace_id, q, limit)
     return {"pages": pages}
 
 

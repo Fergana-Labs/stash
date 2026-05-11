@@ -100,13 +100,15 @@ def _events_to_viewer_shape(events: list[dict]) -> list[dict]:
         role = _event_role(ev.get("event_type"))
         if role is None:
             continue
-        out.append({
-            "id": str(ev["id"]),
-            "role": role,
-            "content": ev.get("content") or "",
-            "tool_name": ev.get("tool_name"),
-            "created_at": ev["created_at"].isoformat() if ev.get("created_at") else None,
-        })
+        out.append(
+            {
+                "id": str(ev["id"]),
+                "role": role,
+                "content": ev.get("content") or "",
+                "tool_name": ev.get("tool_name"),
+                "created_at": ev["created_at"].isoformat() if ev.get("created_at") else None,
+            }
+        )
     return out
 
 
@@ -116,7 +118,7 @@ async def get_transcript_metadata(
     session_id: str,
     current_user: dict = Depends(get_current_user),
 ):
-    """Metadata-only response. The frontend follows up with /download for
+    """Metadata-only response. The frontend follows up with /events for
     the bytes."""
     await _check_member(workspace_id, current_user["id"])
     events = await memory_service.read_session_events(workspace_id, session_id)

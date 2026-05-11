@@ -105,8 +105,7 @@ async def get_featured() -> list[dict]:
 async def get_public_detail(workspace_id: UUID) -> dict | None:
     pool = get_pool()
     ws_row = await pool.fetchrow(
-        f"{_CATALOG_SELECT} WHERE w.id = $1 AND w.is_public = true "
-        "AND w.discoverable = true",
+        f"{_CATALOG_SELECT} WHERE w.id = $1 AND w.is_public = true " "AND w.discoverable = true",
         workspace_id,
     )
     if not ws_row:
