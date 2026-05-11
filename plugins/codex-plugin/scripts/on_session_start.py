@@ -23,26 +23,25 @@ def main():
     reset_stats(DATA_DIR)
     state = load_state(DATA_DIR)
 
-    if cfg.get("workspace_id"):
-        try:
-            with get_client() as client:
-                create_session_stash(client, cfg, state, event, DATA_DIR)
-        except Exception:
-            return
+    try:
+        with get_client() as client:
+            create_session_stash(client, cfg, state, event, DATA_DIR)
+    except Exception:
+        return
 
-        if state.get("stash_id"):
-            spawn_stash_watcher(
-                agent_pid=os.getppid(),
-                session_id=event.session_id,
-                workspace_id=cfg.get("workspace_id", ""),
-                agent_name=cfg.get("agent_name", ""),
-                base_url=cfg.get("api_endpoint", ""),
-                api_key=cfg.get("api_key", ""),
-                cwd=event.cwd or "",
-                data_dir=DATA_DIR,
-                stash_id=state.get("stash_id", ""),
-                transcript_path=event.transcript_path,
-            )
+    if state.get("stash_id"):
+        spawn_stash_watcher(
+            agent_pid=os.getppid(),
+            session_id=event.session_id,
+            workspace_id=state.get("stash_workspace_id") or cfg.get("workspace_id", ""),
+            agent_name=cfg.get("agent_name", ""),
+            base_url=cfg.get("api_endpoint", ""),
+            api_key=cfg.get("api_key", ""),
+            cwd=event.cwd or "",
+            data_dir=DATA_DIR,
+            stash_id=state.get("stash_id", ""),
+            transcript_path=event.transcript_path,
+        )
 
 
 if __name__ == "__main__":

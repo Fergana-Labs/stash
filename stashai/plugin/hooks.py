@@ -99,6 +99,7 @@ _STASH_STATE_KEYS = (
     "stash_id",
     "stash_url",
     "stash_session_id",
+    "stash_workspace_id",
     "transcript_path",
     "cwd",
 )
@@ -160,6 +161,7 @@ def create_session_stash(
     state["stash_id"] = str(stash["id"])
     state["stash_url"] = stash.get("url", "")
     state["stash_session_id"] = sid
+    state["stash_workspace_id"] = workspace_id
     state["cwd"] = event.cwd or state.get("cwd", "")
     remember_transcript_path(state, event)
     if data_dir is not None:

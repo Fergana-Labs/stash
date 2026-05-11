@@ -21,14 +21,13 @@ def main():
     state = load_state(DATA_DIR)
     cfg = get_config()
 
-    if cfg.get("workspace_id"):
-        event = adapt_session_end(get_stdin_data())
-        try:
-            with get_client() as client:
-                stream_session_end(client, cfg, state, event)
-                finalize_session_stash(client, cfg, state, event, DATA_DIR)
-        except Exception:
-            pass
+    event = adapt_session_end(get_stdin_data())
+    try:
+        with get_client() as client:
+            stream_session_end(client, cfg, state, event)
+            finalize_session_stash(client, cfg, state, event, DATA_DIR)
+    except Exception:
+        pass
 
     state["session_id"] = ""
     save_state(DATA_DIR, state)

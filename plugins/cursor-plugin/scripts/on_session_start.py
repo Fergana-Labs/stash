@@ -20,12 +20,11 @@ def main():
     reset_stats(DATA_DIR)
     state = load_state(DATA_DIR)
 
-    if cfg.get("workspace_id"):
-        try:
-            with get_client() as client:
-                create_session_stash(client, cfg, state, event, DATA_DIR)
-        except Exception:
-            pass
+    try:
+        with get_client() as client:
+            create_session_stash(client, cfg, state, event, DATA_DIR)
+    except Exception:
+        pass
 
 
 if __name__ == "__main__":

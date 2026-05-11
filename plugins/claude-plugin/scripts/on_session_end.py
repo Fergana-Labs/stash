@@ -22,14 +22,14 @@ def main():
     state = load_state(DATA_DIR)
     cfg = get_config()
 
-    if cfg.get("workspace_id"):
-        event = adapt_stop(get_stdin_data())
-        try:
-            with get_client() as client:
-                stream_session_end(client, cfg, state, event)
-        except Exception:
-            pass
+    event = adapt_stop(get_stdin_data())
+    try:
+        with get_client() as client:
+            stream_session_end(client, cfg, state, event)
+    except Exception:
+        pass
 
+    if cfg.get("workspace_id"):
         spawn_curation("claude", ["-p"])
 
     state["session_id"] = ""

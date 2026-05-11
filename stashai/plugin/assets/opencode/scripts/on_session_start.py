@@ -24,8 +24,6 @@ from stashai.plugin.curate_spawn import spawn_curation
 
 def _flush_stale_session(prior_sid: str, state: dict) -> None:
     cfg = get_config()
-    if not cfg.get("workspace_id"):
-        return
     stale_state = {**state, "session_id": prior_sid}
     stale_event = HookEvent(kind="session_end", session_id=prior_sid, cwd="")
     try:
@@ -35,7 +33,8 @@ def _flush_stale_session(prior_sid: str, state: dict) -> None:
     except Exception:
         pass
     # 24h cooldown still gates this; safe to call.
-    spawn_curation("opencode", ["run"])
+    if cfg.get("workspace_id"):
+        spawn_curation("opencode", ["run"])
 
 
 def main():
@@ -55,12 +54,11 @@ def main():
     state = load_state(DATA_DIR)
 
     cfg = get_config()
-    if cfg.get("workspace_id"):
-        try:
-            with get_client() as client:
-                create_session_stash(client, cfg, state, event, DATA_DIR)
-        except Exception:
-            pass
+    try:
+        with get_client() as client:
+            create_session_stash(client, cfg, state, event, DATA_DIR)
+    except Exception:
+        pass
 
 
 if __name__ == "__main__":

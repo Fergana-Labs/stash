@@ -45,7 +45,28 @@ def test_create_session_stash_saves_url_and_transcript_path(tmp_path):
     assert state["stash_id"] == "stash-1"
     assert state["stash_url"] == "https://joinstash.ai/b/b-test"
     assert state["stash_session_id"] == "s1"
+    assert state["stash_workspace_id"] == "ws1"
     assert state["transcript_path"] == "/tmp/s1.jsonl"
+
+
+def test_create_session_stash_resolves_workspace_from_event_cwd(monkeypatch, tmp_path):
+    from stashai.plugin import hooks
+
+    monkeypatch.setattr(
+        hooks,
+        "find_manifest",
+        lambda cwd: {"workspace_id": "ws-from-cwd"} if cwd == "/repo" else None,
+    )
+    cfg = {**_cfg(), "workspace_id": ""}
+    state = {"session_id": "s1"}
+    event = HookEvent(kind="session_start", session_id="s1", cwd="/repo")
+    client = _FakeClient()
+
+    url = create_session_stash(client, cfg, state, event, tmp_path)
+
+    assert url == "https://joinstash.ai/b/b-test"
+    assert client.created[0]["workspace_id"] == "ws-from-cwd"
+    assert state["stash_workspace_id"] == "ws-from-cwd"
 
 
 def test_finalize_session_stash_spawns_upload_with_transcript(monkeypatch, tmp_path):
