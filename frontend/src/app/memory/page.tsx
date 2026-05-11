@@ -1,14 +1,25 @@
 "use client";
 
 import { useRouter, useSearchParams } from "next/navigation";
-import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  type ChangeEvent,
+  type FormEvent,
+  Suspense,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import AppShell from "../../components/AppShell";
 import { useAuth } from "../../hooks/useAuth";
 import {
+  createWorkspaceHistoryEvent,
   queryAllHistoryEvents,
   queryWorkspaceHistoryEvents,
+  uploadFile,
 } from "../../lib/api";
-import { HistoryEventWithContext } from "../../lib/types";
+import type { Attachment, HistoryEventWithContext, User } from "../../lib/types";
 
 /* ── helpers ── */
 
@@ -40,6 +51,12 @@ function formatTime(iso: string): string {
     hour: "2-digit",
     minute: "2-digit",
   });
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 function formatTimeShort(iso: string): string {
@@ -170,6 +187,7 @@ function MemoryPageInner() {
   const { user, loading, logout } = useAuth();
   const [events, setEvents] = useState<HistoryEventWithContext[]>([]);
   const [eventsLoading, setEventsLoading] = useState(false);
+  const [showAddSources, setShowAddSources] = useState(false);
 
   const [hasMore, setHasMore] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -261,9 +279,18 @@ function MemoryPageInner() {
         <aside className="w-[250px] flex-shrink-0 overflow-y-auto border-r border-border bg-surface">
           <div className="border-b border-border-subtle px-4 py-4">
             <p className="font-mono text-[10px] font-medium uppercase tracking-[0.12em] text-muted">
-              Agents
+              Sources
             </p>
-            <p className="mt-1 font-display text-[15px] font-semibold text-foreground">
+            <button
+              onClick={() => wsId && setShowAddSources(true)}
+              disabled={!wsId}
+              title={wsId ? "Add sources" : "Open a workspace to add sources"}
+              className="mt-3 flex h-12 w-full items-center justify-center gap-2 rounded-full border border-border bg-base text-[14px] font-semibold text-foreground shadow-sm transition-colors hover:border-brand hover:bg-brand/5 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <span className="text-[20px] leading-none">+</span>
+              Add sources
+            </button>
+            <p className="mt-4 font-display text-[15px] font-semibold text-foreground">
               {groups.length} agent{groups.length === 1 ? "" : "s"} · {events.length} events
             </p>
           </div>
@@ -380,7 +407,217 @@ function MemoryPageInner() {
           </div>
         </div>
       </div>
+      {showAddSources && wsId && (
+        <AddSourcesDialog
+          workspaceId={wsId}
+          user={user}
+          onClose={() => setShowAddSources(false)}
+          onCreated={async () => {
+            setShowAddSources(false);
+            setSelectedAgent(null);
+            setSelectedSession(null);
+            await loadEvents();
+          }}
+        />
+      )}
     </AppShell>
+  );
+}
+
+function AddSourcesDialog({
+  workspaceId,
+  user,
+  onClose,
+  onCreated,
+}: {
+  workspaceId: string;
+  user: User;
+  onClose: () => void;
+  onCreated: () => Promise<void>;
+}) {
+  const [title, setTitle] = useState("");
+  const [content, setContent] = useState("");
+  const [file, setFile] = useState<File | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const canSubmit = Boolean(title.trim() || content.trim() || file);
+
+  const handleFileChange = (event: ChangeEvent<HTMLInputElement>) => {
+    setFile(event.target.files?.[0] ?? null);
+  };
+
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!canSubmit || saving) return;
+    setSaving(true);
+    setError("");
+
+    const trimmedTitle = title.trim();
+    const sourceTitle = trimmedTitle || file?.name || "Manual source";
+    const body = content.trim();
+    const eventContent = body ? `${sourceTitle}\n\n${body}` : sourceTitle;
+
+    try {
+      const attachments: Attachment[] = [];
+      if (file) {
+        const uploaded = await uploadFile(workspaceId, file);
+        attachments.push({
+          file_id: uploaded.id,
+          name: uploaded.name,
+          content_type: uploaded.content_type,
+        });
+      }
+
+      await createWorkspaceHistoryEvent(workspaceId, {
+        agent_name: user.name || "user",
+        event_type: "source",
+        content: eventContent,
+        session_id: `manual-source-${Date.now()}`,
+        metadata: {
+          source: "manual_ui",
+          title: sourceTitle,
+          added_by: user.display_name || user.name,
+        },
+        attachments: attachments.length > 0 ? attachments : null,
+      });
+
+      await onCreated();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to add source");
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/35 px-4"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget && !saving) onClose();
+      }}
+    >
+      <form
+        onSubmit={handleSubmit}
+        className="w-full max-w-[560px] rounded-lg border border-border bg-base shadow-2xl"
+      >
+        <div className="flex items-start justify-between gap-4 border-b border-border-subtle px-5 py-4">
+          <div>
+            <h2 className="font-display text-[20px] font-bold text-foreground">
+              Add sources
+            </h2>
+            <p className="mt-1 font-mono text-[11px] text-muted">
+              History source · {user.name}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={saving}
+            className="flex h-8 w-8 items-center justify-center rounded-md text-[20px] leading-none text-muted transition-colors hover:bg-raised hover:text-foreground disabled:opacity-50"
+            aria-label="Close"
+          >
+            &times;
+          </button>
+        </div>
+
+        <div className="space-y-4 px-5 py-5">
+          <label className="block">
+            <span className="mb-1.5 block text-[12px] font-medium text-dim">
+              Title
+            </span>
+            <input
+              value={title}
+              onChange={(event) => setTitle(event.target.value)}
+              placeholder={file?.name || "Manual source"}
+              className="h-10 w-full rounded-md border border-border bg-surface px-3 text-[14px] text-foreground outline-none transition-colors placeholder:text-muted focus:border-brand"
+            />
+          </label>
+
+          <label className="block">
+            <span className="mb-1.5 block text-[12px] font-medium text-dim">
+              Source text
+            </span>
+            <textarea
+              value={content}
+              onChange={(event) => setContent(event.target.value)}
+              placeholder="Paste a note, excerpt, URL, or context"
+              rows={8}
+              className="w-full resize-y rounded-md border border-border bg-surface px-3 py-2.5 text-[14px] leading-[1.5] text-foreground outline-none transition-colors placeholder:text-muted focus:border-brand"
+            />
+          </label>
+
+          <div>
+            <span className="mb-1.5 block text-[12px] font-medium text-dim">
+              File
+            </span>
+            <input
+              ref={fileInputRef}
+              type="file"
+              className="hidden"
+              onChange={handleFileChange}
+            />
+            {file ? (
+              <div className="flex items-center gap-3 rounded-md border border-border bg-surface px-3 py-2.5">
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-[13px] font-medium text-foreground">
+                    {file.name}
+                  </p>
+                  <p className="mt-0.5 font-mono text-[10px] text-muted">
+                    {formatBytes(file.size)}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setFile(null);
+                    if (fileInputRef.current) fileInputRef.current.value = "";
+                  }}
+                  disabled={saving}
+                  className="rounded px-2 py-1 text-[12px] text-muted transition-colors hover:bg-raised hover:text-foreground disabled:opacity-50"
+                >
+                  Remove
+                </button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={saving}
+                className="flex h-11 w-full items-center justify-center gap-2 rounded-full border border-border bg-surface text-[13px] font-medium text-foreground transition-colors hover:border-brand hover:bg-brand/5 disabled:opacity-50"
+              >
+                <span className="text-[18px] leading-none">+</span>
+                Attach file
+              </button>
+            )}
+          </div>
+
+          {error && (
+            <p className="rounded-md border border-error/30 bg-error-muted px-3 py-2 text-[13px] text-error">
+              {error}
+            </p>
+          )}
+        </div>
+
+        <div className="flex items-center justify-end gap-2 border-t border-border-subtle px-5 py-4">
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={saving}
+            className="rounded-md px-3 py-2 text-[13px] text-dim transition-colors hover:bg-raised hover:text-foreground disabled:opacity-50"
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            disabled={!canSubmit || saving}
+            className="rounded-md bg-brand px-4 py-2 text-[13px] font-semibold text-white transition-colors hover:bg-brand-hover disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {saving ? "Adding..." : "Add source"}
+          </button>
+        </div>
+      </form>
+    </div>
   );
 }
 
@@ -785,6 +1022,18 @@ function EventRow({ event }: { event: HistoryEventWithContext }) {
               tool
             </span>
             {event.tool_name}
+          </div>
+        )}
+        {event.attachments && event.attachments.length > 0 && (
+          <div className="mt-2 flex flex-wrap gap-2">
+            {event.attachments.map((attachment) => (
+              <span
+                key={attachment.file_id}
+                className="rounded-md border border-border-subtle bg-surface px-2.5 py-1 font-mono text-[11px] text-dim"
+              >
+                {attachment.name}
+              </span>
+            ))}
           </div>
         )}
         {Object.keys(event.metadata).length > 0 && (

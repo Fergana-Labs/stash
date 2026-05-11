@@ -21,6 +21,7 @@ import {
   WorkspaceMember,
   WorkspacePublicInfo,
   ActivityTimeline,
+  Attachment,
   KnowledgeDensity,
   EmbeddingProjection,
 } from "./types";
@@ -537,6 +538,26 @@ export async function queryWorkspaceHistoryEvents(
   if (params?.limit) searchParams.set("limit", String(params.limit));
   const qs = searchParams.toString();
   return apiFetch(`/api/v1/workspaces/${workspaceId}/memory/events${qs ? `?${qs}` : ""}`);
+}
+
+export interface CreateHistoryEventInput {
+  agent_name: string;
+  event_type: string;
+  content: string;
+  session_id?: string | null;
+  tool_name?: string | null;
+  metadata?: Record<string, unknown>;
+  attachments?: Attachment[] | null;
+}
+
+export async function createWorkspaceHistoryEvent(
+  workspaceId: string,
+  input: CreateHistoryEventInput
+): Promise<HistoryEvent> {
+  return apiFetch(`/api/v1/workspaces/${workspaceId}/memory/events`, {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
 }
 
 export async function listAllTables(): Promise<{ tables: TableWithWorkspace[] }> {
