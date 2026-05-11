@@ -109,6 +109,7 @@ export interface HistoryEvent {
   tool_name: string | null;
   content: string;
   metadata: Record<string, unknown>;
+  attachments?: Attachment[] | null;
   created_at: string;
   created_by: string | null;
   created_by_name: string | null;

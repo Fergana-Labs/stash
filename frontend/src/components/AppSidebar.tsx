@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import {
   getStashSpine,
   listMyWorkspaces,
@@ -225,6 +225,7 @@ function StashTree({
 }
 
 export default function AppSidebar({ user, collapsed, onCmdkOpen }: AppSidebarProps) {
+  const router = useRouter();
   const pathname = usePathname();
   const activeStashId = pathname.match(/^\/stashes\/([^/]+)/)?.[1] ?? null;
   const [mine, setMine] = useState<Workspace[]>([]);
@@ -265,6 +266,16 @@ export default function AppSidebar({ user, collapsed, onCmdkOpen }: AppSidebarPr
     }
   }
 
+  const targetStashId = activeStashId ?? mine[0]?.id ?? null;
+
+  function addSomethingToStash() {
+    const params = new URLSearchParams(window.location.search);
+    const currentStashId = params.get("ws") ?? params.get("workspaceId");
+    const stashId = activeStashId ?? currentStashId ?? mine[0]?.id ?? null;
+    if (!stashId) return;
+    router.push(`/memory?ws=${encodeURIComponent(stashId)}&add=stash`);
+  }
+
   if (collapsed) return null;
 
   return (
@@ -292,6 +303,23 @@ export default function AppSidebar({ user, collapsed, onCmdkOpen }: AppSidebarPr
           <span className="ml-auto rounded bg-base px-1 py-0 font-mono text-[10px] text-muted ring-1 ring-border">
             ⌘K
           </span>
+        </button>
+        <button
+          type="button"
+          onClick={addSomethingToStash}
+          disabled={!targetStashId}
+          aria-label="Add Something to the Stash"
+          title={
+            targetStashId
+              ? "Add Something to the Stash"
+              : "Create a stash before adding something"
+          }
+          className="page-row mb-1 flex w-full items-center gap-2 rounded-md border border-[var(--color-brand-200)] bg-[var(--color-brand-50)] px-2 py-1.5 text-left text-[13px] font-medium text-[var(--color-brand-800)] transition-colors hover:border-[var(--color-brand-300)] hover:bg-[var(--color-brand-100)] disabled:cursor-not-allowed disabled:opacity-55"
+        >
+          <span className="flex h-4 w-4 flex-shrink-0 items-center justify-center rounded bg-[var(--color-brand-500)] text-[13px] font-semibold leading-none text-white">
+            +
+          </span>
+          <span className="truncate">Add Something to the Stash</span>
         </button>
         <NavRow
           href="/discover"
