@@ -1245,11 +1245,14 @@ export async function downloadStashTranscriptText(
   stashId: string,
   sessionId: string
 ): Promise<string> {
+  const token = getToken();
+  const headers: Record<string, string> = {};
+  if (token) headers["Authorization"] = `Bearer ${token}`;
   const res = await fetch(
-    `/api/v1/workspaces/${stashId}/transcripts/${encodeURIComponent(sessionId)}/download`,
-    { credentials: "include" }
+    `${API_BASE}/api/v1/workspaces/${stashId}/transcripts/${encodeURIComponent(sessionId)}/download`,
+    { headers }
   );
-  if (!res.ok) throw new Error(`Transcript download failed: ${res.status}`);
+  if (!res.ok) throw new ApiError(res.status, `Transcript download failed: ${res.status}`);
   return res.text();
 }
 
