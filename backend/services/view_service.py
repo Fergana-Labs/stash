@@ -725,6 +725,21 @@ async def fork_view(slug: str, forker_id: UUID, name: str | None = None) -> dict
                     )
                     if not src:
                         continue
+                    if src["session_id"]:
+                        metadata = src["metadata"] or {}
+                        cwd = metadata.get("cwd") if isinstance(metadata, dict) else None
+                        await conn.execute(
+                            "INSERT INTO sessions (workspace_id, session_id, agent_name, cwd, "
+                            "started_at, finished_at, created_by) "
+                            "VALUES ($1, $2, $3, $4, $5, $5, $6) "
+                            "ON CONFLICT (workspace_id, session_id) DO NOTHING",
+                            new_ws_id,
+                            src["session_id"],
+                            src["agent_name"],
+                            cwd,
+                            src["created_at"],
+                            src["created_by"],
+                        )
                     await conn.execute(
                         "INSERT INTO history_events (workspace_id, created_by, agent_name, "
                         "event_type, session_id, tool_name, content, metadata, attachments, "

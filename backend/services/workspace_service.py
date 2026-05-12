@@ -438,6 +438,16 @@ async def fork_workspace(
             # event_type, session_id, tool_name, metadata, attachments, created_at.
             # Embeddings are not copied.
             await conn.execute(
+                "INSERT INTO sessions (workspace_id, session_id, agent_name, cwd, summary, "
+                "status, files_touched, started_at, finished_at, created_by) "
+                "SELECT $1, session_id, agent_name, cwd, summary, status, files_touched, "
+                "started_at, finished_at, created_by "
+                "FROM sessions WHERE workspace_id = $2 "
+                "ON CONFLICT (workspace_id, session_id) DO NOTHING",
+                new_ws_id,
+                source_id,
+            )
+            await conn.execute(
                 "INSERT INTO history_events (workspace_id, created_by, agent_name, "
                 "event_type, session_id, tool_name, content, metadata, attachments, "
                 "created_at) "

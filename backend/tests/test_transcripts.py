@@ -9,6 +9,7 @@ import io
 import json
 from uuid import UUID
 
+import asyncpg
 import pytest
 from httpx import AsyncClient
 
@@ -47,7 +48,7 @@ async def _workspace(client, key):
 
 
 @pytest.mark.asyncio
-async def test_upload_inserts_events_and_events_roundtrip(client: AsyncClient):
+async def test_upload_inserts_events_and_materializes_session(client: AsyncClient, pool):
     key = await _register(client)
     ws = await _workspace(client, key)
     headers = {"Authorization": f"Bearer {key}"}
@@ -69,6 +70,17 @@ async def test_upload_inserts_events_and_events_roundtrip(client: AsyncClient):
     )
     assert meta.status_code == 200
     assert meta.json()["event_count"] == 2
+    session_row = await pool.fetchrow(
+        "SELECT id, session_id, agent_name FROM sessions WHERE workspace_id = $1 AND session_id = $2",
+        UUID(ws),
+        "sess-1",
+    )
+    assert session_row
+    assert session_row["agent_name"] == "claude"
+
+    spine = await client.get(f"/api/v1/stashes/{ws}/spine", headers=headers)
+    assert spine.status_code == 200, spine.text
+    assert [s["session_id"] for s in spine.json()["sessions"]] == ["sess-1"]
 
     events_resp = await client.get(
         f"/api/v1/workspaces/{ws}/transcripts/sess-1/events",
@@ -79,6 +91,51 @@ async def test_upload_inserts_events_and_events_roundtrip(client: AsyncClient):
     assert [event["role"] for event in events] == ["user", "assistant"]
     assert events[0]["content"] == "hi"
     assert events[1]["content"] == "hello"
+
+
+@pytest.mark.asyncio
+async def test_memory_event_materializes_session(client: AsyncClient, pool):
+    key = await _register(client)
+    ws = await _workspace(client, key)
+    headers = {"Authorization": f"Bearer {key}"}
+
+    event = await client.post(
+        f"/api/v1/workspaces/{ws}/memory/events",
+        json={
+            "agent_name": "codex",
+            "event_type": "user_message",
+            "content": "start",
+            "session_id": "sess-live",
+            "metadata": {"cwd": "/repo"},
+        },
+        headers=headers,
+    )
+    assert event.status_code == 201, event.text
+
+    session_row = await pool.fetchrow(
+        "SELECT session_id, agent_name, cwd FROM sessions WHERE workspace_id = $1",
+        UUID(ws),
+    )
+    assert session_row["session_id"] == "sess-live"
+    assert session_row["agent_name"] == "codex"
+    assert session_row["cwd"] == "/repo"
+
+    spine = await client.get(f"/api/v1/stashes/{ws}/spine", headers=headers)
+    assert spine.status_code == 200, spine.text
+    assert spine.json()["sessions"][0]["session_id"] == "sess-live"
+
+
+@pytest.mark.asyncio
+async def test_database_rejects_event_only_workspace_session(client: AsyncClient, pool):
+    key = await _register(client)
+    ws = await _workspace(client, key)
+
+    with pytest.raises(asyncpg.ForeignKeyViolationError):
+        await pool.execute(
+            "INSERT INTO history_events (workspace_id, agent_name, event_type, content, session_id) "
+            "VALUES ($1, 'codex', 'user_message', 'orphan', 'missing-session')",
+            UUID(ws),
+        )
 
 
 @pytest.mark.asyncio

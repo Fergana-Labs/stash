@@ -68,6 +68,41 @@ def upgrade() -> None:
         GROUP BY workspace_id, session_id
         ON CONFLICT (workspace_id, session_id) DO NOTHING
     """)
+    op.execute("""
+        INSERT INTO sessions (
+            workspace_id, session_id, agent_name, cwd, summary, status,
+            files_touched, started_at, finished_at, created_by
+        )
+        SELECT st.workspace_id,
+               st.session_id,
+               st.agent_name,
+               st.cwd,
+               st.summary,
+               CASE
+                   WHEN st.status IN ('live','summarizing','ready','failed') THEN st.status
+                   ELSE 'live'
+               END,
+               st.files_touched,
+               st.created_at,
+               st.updated_at,
+               st.created_by
+        FROM stashes st
+        ON CONFLICT (workspace_id, session_id) DO NOTHING
+    """)
+    op.execute(
+        "CREATE INDEX IF NOT EXISTS idx_history_events_workspace_session "
+        "ON history_events(workspace_id, session_id)"
+    )
+    op.execute(
+        "ALTER TABLE history_events "
+        "DROP CONSTRAINT IF EXISTS history_events_workspace_session_fk"
+    )
+    op.execute(
+        "ALTER TABLE history_events "
+        "ADD CONSTRAINT history_events_workspace_session_fk "
+        "FOREIGN KEY (workspace_id, session_id) "
+        "REFERENCES sessions(workspace_id, session_id)"
+    )
 
     # Copy session-level metadata from any existing stashes rows.
     op.execute("""
@@ -284,4 +319,9 @@ def downgrade() -> None:
     op.execute("ALTER TABLE share_links DROP COLUMN IF EXISTS target_id")
     op.execute("ALTER TABLE share_links DROP COLUMN IF EXISTS target_type")
 
+    op.execute(
+        "ALTER TABLE history_events "
+        "DROP CONSTRAINT IF EXISTS history_events_workspace_session_fk"
+    )
+    op.execute("DROP INDEX IF EXISTS idx_history_events_workspace_session")
     op.execute("DROP TABLE IF EXISTS sessions CASCADE")

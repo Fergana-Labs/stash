@@ -19,6 +19,54 @@ from . import embeddings as embedding_service
 logger = logging.getLogger(__name__)
 
 
+def _event_cwd(event: dict) -> str | None:
+    metadata = event.get("metadata") or {}
+    if not isinstance(metadata, dict):
+        return None
+    cwd = metadata.get("cwd")
+    return cwd if isinstance(cwd, str) and cwd else None
+
+
+async def _upsert_workspace_session(
+    conn, workspace_id: UUID | None, created_by: UUID, event: dict
+) -> None:
+    if workspace_id is None:
+        return
+
+    session_id = event.get("session_id")
+    if not session_id:
+        return
+
+    await conn.execute(
+        "INSERT INTO sessions (workspace_id, session_id, agent_name, cwd, created_by) "
+        "VALUES ($1, $2, $3, $4, $5) "
+        "ON CONFLICT (workspace_id, session_id) DO UPDATE SET "
+        "  agent_name = COALESCE(NULLIF(EXCLUDED.agent_name, ''), sessions.agent_name), "
+        "  cwd = COALESCE(EXCLUDED.cwd, sessions.cwd), "
+        "  created_by = COALESCE(sessions.created_by, EXCLUDED.created_by)",
+        workspace_id,
+        session_id,
+        event.get("agent_name") or "",
+        _event_cwd(event),
+        created_by,
+    )
+
+
+async def _upsert_workspace_sessions(
+    conn,
+    workspace_id: UUID | None,
+    created_by: UUID,
+    events: list[dict],
+) -> None:
+    seen: set[str] = set()
+    for event in events:
+        session_id = event.get("session_id")
+        if not session_id or session_id in seen:
+            continue
+        seen.add(session_id)
+        await _upsert_workspace_session(conn, workspace_id, created_by, event)
+
+
 # --- Embedding helpers ---
 
 
@@ -108,23 +156,31 @@ async def push_event(
         ts = datetime.now(UTC)
     else:
         ts = _normalize_ts(created_at)
-    row = await pool.fetchrow(
-        "INSERT INTO history_events "
-        "(workspace_id, created_by, agent_name, event_type, content, session_id, tool_name, metadata, attachments, created_at) "
-        "VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9, $10) "
-        "RETURNING id, workspace_id, created_by, agent_name, event_type, session_id, "
-        "tool_name, content, metadata, attachments, created_at",
-        workspace_id,
-        created_by,
-        agent_name,
-        event_type,
-        content,
-        session_id,
-        tool_name,
-        meta,
-        attachments,
-        ts,
-    )
+    event_payload = {
+        "agent_name": agent_name,
+        "session_id": session_id,
+        "metadata": meta,
+    }
+    async with pool.acquire() as conn:
+        async with conn.transaction():
+            await _upsert_workspace_session(conn, workspace_id, created_by, event_payload)
+            row = await conn.fetchrow(
+                "INSERT INTO history_events "
+                "(workspace_id, created_by, agent_name, event_type, content, session_id, tool_name, metadata, attachments, created_at) "
+                "VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9, $10) "
+                "RETURNING id, workspace_id, created_by, agent_name, event_type, session_id, "
+                "tool_name, content, metadata, attachments, created_at",
+                workspace_id,
+                created_by,
+                agent_name,
+                event_type,
+                content,
+                session_id,
+                tool_name,
+                meta,
+                attachments,
+                ts,
+            )
     event = dict(row)
     if embedding_service.is_configured():
         _schedule_event_embed(event["id"], content, _text_hash(content))
@@ -158,34 +214,37 @@ async def push_events_batch(
     attachments = [json.dumps(e["attachments"]) if e.get("attachments") else None for e in events]
     timestamps = [_normalize_ts(e["created_at"]) if e.get("created_at") else now for e in events]
 
-    rows = await pool.fetch(
-        """
-        INSERT INTO history_events
-            (workspace_id, created_by, agent_name, event_type, content,
-             session_id, tool_name, metadata, attachments, created_at)
-        SELECT $1::uuid, $2::uuid, u.an, u.et, u.c,
-               u.sid, u.tn, u.md::jsonb,
-               CASE WHEN u.att IS NULL THEN NULL ELSE u.att::jsonb END,
-               u.ts
-        FROM UNNEST(
-            $3::varchar[], $4::varchar[], $5::text[],
-            $6::varchar[], $7::varchar[],
-            $8::text[], $9::text[], $10::timestamptz[]
-        ) AS u(an, et, c, sid, tn, md, att, ts)
-        RETURNING id, workspace_id, created_by, agent_name, event_type,
-                  session_id, tool_name, content, metadata, attachments, created_at
-        """,
-        workspace_id,
-        created_by,
-        agent_names,
-        event_types,
-        contents,
-        session_ids,
-        tool_names,
-        metadatas,
-        attachments,
-        timestamps,
-    )
+    async with pool.acquire() as conn:
+        async with conn.transaction():
+            await _upsert_workspace_sessions(conn, workspace_id, created_by, events)
+            rows = await conn.fetch(
+                """
+                INSERT INTO history_events
+                    (workspace_id, created_by, agent_name, event_type, content,
+                     session_id, tool_name, metadata, attachments, created_at)
+                SELECT $1::uuid, $2::uuid, u.an, u.et, u.c,
+                       u.sid, u.tn, u.md::jsonb,
+                       CASE WHEN u.att IS NULL THEN NULL ELSE u.att::jsonb END,
+                       u.ts
+                FROM UNNEST(
+                    $3::varchar[], $4::varchar[], $5::text[],
+                    $6::varchar[], $7::varchar[],
+                    $8::text[], $9::text[], $10::timestamptz[]
+                ) AS u(an, et, c, sid, tn, md, att, ts)
+                RETURNING id, workspace_id, created_by, agent_name, event_type,
+                          session_id, tool_name, content, metadata, attachments, created_at
+                """,
+                workspace_id,
+                created_by,
+                agent_names,
+                event_types,
+                contents,
+                session_ids,
+                tool_names,
+                metadatas,
+                attachments,
+                timestamps,
+            )
     results = [dict(r) for r in rows]
     if embedding_service.is_configured() and results:
         ids = [r["id"] for r in results]

@@ -1,5 +1,7 @@
 """Tests for workspace CRUD, invite codes, membership, and role enforcement."""
 
+from uuid import UUID
+
 import pytest
 from httpx import AsyncClient
 
@@ -251,3 +253,48 @@ async def test_owner_cannot_leave(client: AsyncClient):
 
     resp = await client.post(f"/api/v1/workspaces/{ws['id']}/leave", headers=_auth(key))
     assert resp.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_fork_workspace_copies_session_rows_before_history_events(client: AsyncClient, pool):
+    owner_key, _ = await _register(client)
+    forker_key, _ = await _register(client)
+    source = (
+        await client.post(
+            "/api/v1/workspaces",
+            json={"name": "Public source", "is_public": True},
+            headers=_auth(owner_key),
+        )
+    ).json()
+
+    event = await client.post(
+        f"/api/v1/workspaces/{source['id']}/memory/events",
+        json={
+            "agent_name": "codex",
+            "event_type": "assistant_message",
+            "content": "done",
+            "session_id": "sess-fork",
+        },
+        headers=_auth(owner_key),
+    )
+    assert event.status_code == 201, event.text
+
+    forked = await client.post(
+        f"/api/v1/workspaces/{source['id']}/fork",
+        json={"name": "Forked source"},
+        headers=_auth(forker_key),
+    )
+    assert forked.status_code == 201, forked.text
+    forked_id = UUID(forked.json()["id"])
+
+    session_id = await pool.fetchval(
+        "SELECT session_id FROM sessions WHERE workspace_id = $1",
+        forked_id,
+    )
+    assert session_id == "sess-fork"
+
+    copied_event_count = await pool.fetchval(
+        "SELECT COUNT(*) FROM history_events WHERE workspace_id = $1 AND session_id = 'sess-fork'",
+        forked_id,
+    )
+    assert copied_event_count == 1
