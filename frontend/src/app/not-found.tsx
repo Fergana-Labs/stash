@@ -141,6 +141,12 @@ export default function NotFound() {
         Not found
       </p>
 
+      <div className="mt-6 font-display text-base leading-7 text-foreground/75" aria-label="404 haiku">
+        <p>Lost page, quiet path</p>
+        <p>Stash keeps one small lantern lit</p>
+        <p>Home waits close at hand</p>
+      </div>
+
       <Link
         href="/"
         className="mt-8 inline-flex h-10 items-center rounded-md bg-brand px-5 text-sm font-medium text-white shadow-sm transition hover:bg-brand-hover"
