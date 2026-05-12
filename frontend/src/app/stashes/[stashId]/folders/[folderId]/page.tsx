@@ -4,6 +4,12 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import AppShell from "../../../../../components/AppShell";
+import {
+  FileIcon,
+  FolderIcon,
+  PageIcon,
+  TableIcon,
+} from "../../../../../components/StashIcons";
 import { useAuth } from "../../../../../hooks/useAuth";
 import {
   createFolder,
@@ -80,7 +86,9 @@ export default function FolderDetailPage() {
             })}
           </nav>
 
-          <div className="mb-1 text-4xl">📁</div>
+          <div className="mb-1 flex h-10 w-10 items-center justify-center text-4xl text-muted">
+            <FolderIcon />
+          </div>
           <h1 className="font-display text-[28px] font-bold tracking-tight text-foreground">
             {contents?.folder.name || "Loading…"}
           </h1>
@@ -153,7 +161,9 @@ export default function FolderDetailPage() {
                   href={`/stashes/${stashId}/folders/${sub.id}`}
                   className="flex items-center gap-3 rounded-lg border border-border bg-base p-3 text-left transition-colors hover:border-[var(--color-brand-200)] hover:bg-[var(--color-brand-50)]"
                 >
-                  <span className="text-2xl">📁</span>
+                  <span className="flex h-7 w-7 items-center justify-center text-2xl text-muted">
+                    <FolderIcon />
+                  </span>
                   <div className="min-w-0">
                     <div className="truncate text-[13.5px] font-semibold text-foreground">
                       {sub.name}
@@ -179,7 +189,9 @@ export default function FolderDetailPage() {
                   href={`/stashes/${stashId}/p/${p.id}`}
                   className="flex items-center gap-3 rounded-lg border border-border bg-base p-3 text-left transition-colors hover:border-[var(--color-brand-200)] hover:bg-[var(--color-brand-50)]"
                 >
-                  <span className="text-2xl">📄</span>
+                  <span className="flex h-7 w-7 items-center justify-center text-2xl text-muted">
+                    <PageIcon />
+                  </span>
                   <div className="min-w-0">
                     <div className="truncate text-[13.5px] font-semibold text-foreground">
                       {p.name.replace(/\.md$/, "")}
@@ -202,17 +214,17 @@ export default function FolderDetailPage() {
                   >
                     <span
                       className={
-                        "text-2xl " +
+                        "flex h-7 w-7 items-center justify-center text-2xl " +
                         (f.content_type?.includes("csv")
                           ? "text-emerald-600"
                           : f.content_type?.includes("pdf")
                           ? "text-rose-500"
                           : f.content_type?.includes("html")
                           ? "text-amber-600"
-                          : "")
+                          : "text-muted")
                       }
                     >
-                      {f.content_type?.includes("csv") ? "▦" : "📄"}
+                      {f.content_type?.includes("csv") ? <TableIcon /> : <FileIcon />}
                     </span>
                     <div className="min-w-0">
                       <div className="truncate text-[13.5px] font-semibold text-foreground">

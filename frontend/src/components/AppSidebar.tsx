@@ -13,6 +13,19 @@ import {
   type WikiFile,
 } from "../lib/api";
 import type { User, Workspace } from "../lib/types";
+import {
+  ActivityIcon,
+  DiscoverIcon,
+  FileIcon,
+  FolderIcon,
+  HelpIcon,
+  PageIcon,
+  SessionsIcon,
+  SettingsIcon,
+  StashIcon,
+  TableIcon,
+  WikiIcon,
+} from "./StashIcons";
 
 interface AppSidebarProps {
   user?: User;
@@ -97,7 +110,9 @@ function StashTree({
     >
       <summary className="page-row flex items-center gap-1 rounded-md px-2 py-1 text-[13px] hover:bg-raised">
         <Chevron />
-        <span className="text-[14px]">📊</span>
+        <span className="flex h-4 w-4 items-center justify-center text-[14px] text-muted">
+          <StashIcon />
+        </span>
         <Link
           href={`/stashes/${stash.id}`}
           className={
@@ -112,7 +127,9 @@ function StashTree({
         <details open className="text-[13px]">
           <summary className="page-row flex items-center gap-1 rounded-md px-2 py-1 hover:bg-raised">
             <Chevron />
-            <span className="text-[14px]">💬</span>
+            <span className="flex h-4 w-4 items-center justify-center text-[14px] text-muted">
+              <SessionsIcon />
+            </span>
             <span className="flex-1 truncate font-medium text-foreground">Sessions</span>
             <span className="text-[10.5px] text-muted">{spine?.sessions.length ?? 0}</span>
           </summary>
@@ -161,7 +178,7 @@ function FileNavRow({
       href={href}
       icon={
         <span className={fileIconClass(file.content_type)}>
-          {file.content_type?.includes("csv") ? "▦" : "📄"}
+          {file.content_type?.includes("csv") ? <TableIcon /> : <FileIcon />}
         </span>
       }
       label={file.name}
@@ -200,7 +217,9 @@ function FolderTreeNode({
     >
       <summary className="page-row flex items-center gap-1 rounded-md px-2 py-0.5 hover:bg-raised">
         <Chevron />
-        <span className="text-muted">📁</span>
+        <span className="flex h-4 w-4 items-center justify-center text-muted">
+          <FolderIcon />
+        </span>
         <Link
           href={`/stashes/${stashId}/folders/${folderId}`}
           className="flex-1 truncate text-left text-foreground hover:text-[var(--color-brand-700)]"
@@ -224,7 +243,7 @@ function FolderTreeNode({
           <NavRow
             key={p.id}
             href={`/stashes/${stashId}/p/${p.id}`}
-            icon={<span className="text-muted">📄</span>}
+            icon={<PageIcon className="text-muted" />}
             label={p.name}
           />
         ))}
@@ -254,7 +273,9 @@ function WikiBlock({ stash, spine }: { stash: StashNode; spine: StashSpine | nul
     <details open className="text-[13px]">
       <summary className="page-row flex items-center gap-1 rounded-md px-2 py-1 hover:bg-raised">
         <Chevron />
-        <span className="text-[14px]">📖</span>
+        <span className="flex h-4 w-4 items-center justify-center text-[14px] text-muted">
+          <WikiIcon />
+        </span>
         <span className="flex-1 truncate font-medium text-foreground">Wiki</span>
         <span className="text-[10.5px] text-muted">{total}</span>
       </summary>
@@ -271,7 +292,7 @@ function WikiBlock({ stash, spine }: { stash: StashNode; spine: StashSpine | nul
           <NavRow
             key={p.id}
             href={`/stashes/${stash.id}/p/${p.id}`}
-            icon={<span className="text-muted">📄</span>}
+            icon={<PageIcon className="text-muted" />}
             label={p.name}
           />
         ))}
@@ -385,13 +406,13 @@ export default function AppSidebar({ user, collapsed, onCmdkOpen }: AppSidebarPr
         </button>
         <NavRow
           href="/discover"
-          icon={<span>◐</span>}
+          icon={<DiscoverIcon />}
           label="Discover"
           active={pathname.startsWith("/discover")}
         />
         <NavRow
           href={activeStashId ? `/stashes/${activeStashId}/activity` : "/memory"}
-          icon={<span>⏱</span>}
+          icon={<ActivityIcon />}
           label="Activity"
           active={pathname.startsWith("/memory") || pathname.includes("/activity")}
         />
@@ -453,8 +474,8 @@ export default function AppSidebar({ user, collapsed, onCmdkOpen }: AppSidebarPr
       </nav>
 
       <div className="mt-6 border-t border-border px-2 py-2">
-        <NavRow href="/docs" icon={<span>?</span>} label="Docs" active={pathname.startsWith("/docs")} />
-        <NavRow href="/settings" icon={<span>⚙</span>} label="Settings" active={pathname.startsWith("/settings")} />
+        <NavRow href="/docs" icon={<HelpIcon />} label="Docs" active={pathname.startsWith("/docs")} />
+        <NavRow href="/settings" icon={<SettingsIcon />} label="Settings" active={pathname.startsWith("/settings")} />
       </div>
     </aside>
   );

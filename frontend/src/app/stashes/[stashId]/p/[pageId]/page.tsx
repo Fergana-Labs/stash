@@ -7,6 +7,7 @@ import rehypeRaw from "rehype-raw";
 import remarkGfm from "remark-gfm";
 import AppShell from "../../../../../components/AppShell";
 import { useBreadcrumbs } from "../../../../../components/BreadcrumbContext";
+import { PageIcon } from "../../../../../components/StashIcons";
 import { useAuth } from "../../../../../hooks/useAuth";
 import {
   getFolderContents,
@@ -82,7 +83,9 @@ export default function StashPageView() {
       <div className="scroll-thin flex-1 overflow-y-auto">
         <div className="h-16 w-full bg-gradient-to-r from-[var(--color-brand-200)] via-[var(--color-brand-100)] to-amber-100" />
         <div className="mx-auto -mt-6 max-w-3xl px-12 pb-20">
-          <div className="text-5xl">📄</div>
+          <div className="flex h-12 w-12 items-center justify-center text-5xl text-muted">
+            <PageIcon />
+          </div>
           <h1 className="mt-1 font-display text-[36px] font-bold tracking-tight text-foreground">
             {(page?.name || "").replace(/\.md$/, "")}
           </h1>
