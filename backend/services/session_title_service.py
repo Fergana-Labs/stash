@@ -51,11 +51,16 @@ async def ensure_session_titles(workspace_id: UUID, sessions: list[dict]) -> dic
     )
     cached = {r["session_id"]: dict(r) for r in cache_rows}
 
+    titles = {}
     stale = []
     for session in sessions:
         source_hash = _source_hash(session)
         cached_row = cached.get(session["session_id"])
-        if not cached_row or cached_row["source_hash"] != source_hash:
+
+        titles[session["session_id"]] = cached_row["title"] if cached_row else session["session_id"]
+        if cached_row and cached_row["source_hash"] == source_hash:
+            continue
+        if settings.ANTHROPIC_API_KEY:
             stale.append({**session, "source_hash": source_hash})
 
     for i in range(0, len(stale), MAX_BATCH_SIZE):
@@ -80,8 +85,9 @@ async def ensure_session_titles(workspace_id: UUID, sessions: list[dict]) -> dic
                 "title": title,
                 "source_hash": source_hash,
             }
+            titles[session_id] = title
 
-    return {session_id: cached[session_id]["title"] for session_id in session_ids}
+    return {session_id: titles[session_id] for session_id in session_ids}
 
 
 async def _build_candidates(workspace_id: UUID, sessions: list[dict]) -> list[dict]:
