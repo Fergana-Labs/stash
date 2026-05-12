@@ -372,7 +372,6 @@ export default function AppSidebar({ user, onCmdkOpen }: AppSidebarProps) {
   const pathname = usePathname();
   const userId = user?.id;
   const cachedWorkspaces = readCachedWorkspaces(userId);
-  const activeStashId = pathname.match(/^\/stashes\/([^/]+)/)?.[1] ?? null;
   const activeTreeMatch = pathname.match(
     /^\/stashes\/([^/]+)\/(sessions|folders|p|f|skills)(?:\/|$)/
   );
@@ -516,10 +515,10 @@ export default function AppSidebar({ user, onCmdkOpen }: AppSidebarProps) {
           active={pathname.startsWith("/discover")}
         />
         <NavRow
-          href={activeStashId ? `/stashes/${activeStashId}/activity` : "/memory"}
+          href="/activity"
           icon={<ActivityIcon />}
           label="Activity"
-          active={pathname.startsWith("/memory") || pathname.includes("/activity")}
+          active={pathname.startsWith("/activity")}
         />
       </nav>
 
