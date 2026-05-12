@@ -54,8 +54,8 @@ function PageGraphMock() {
   const nodeById = new Map(GRAPH_NODES.map((n) => [n.id, n]));
 
   const nodeColor = (degree: number) => {
-    if (degree >= 5) return "#F97316";
-    if (degree >= 3) return "#EA7C1F";
+    if (degree >= 5) return "var(--brand)";
+    if (degree >= 3) return "var(--brand-hover)";
     if (degree === 0) return "#8B5CF6";
     return "#64748B";
   };
@@ -139,7 +139,7 @@ function PageGraphMock() {
 
         <div className="absolute bottom-3 right-3 flex flex-col gap-1 rounded-md border border-border-subtle bg-background/85 px-2.5 py-2 backdrop-blur">
           {[
-            { dot: "#F97316", label: "hub" },
+            { dot: "var(--brand)", label: "hub" },
             { dot: "#64748B", label: "leaf" },
           ].map((row) => (
             <div
@@ -202,7 +202,7 @@ export default function VisualizationsShowcase() {
             <p className="mt-4 text-[13.5px] leading-[1.6] text-dim">
               <span className="text-ink">Wiki page graph.</span> Nodes are
               pages, edges are <span className="font-mono text-brand">[[backlinks]]</span>.
-              Orange nodes are the hubs your agents keep citing.
+              Green nodes are the hubs your agents keep citing.
             </p>
           </div>
         </div>
