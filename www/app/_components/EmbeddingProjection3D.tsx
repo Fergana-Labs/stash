@@ -177,8 +177,8 @@ export default function EmbeddingProjection3D() {
               />
             </pattern>
             <radialGradient id="embed-glow" cx="50%" cy="50%" r="50%">
-              <stop offset="0%" stopColor="rgba(249,115,22,0.06)" />
-              <stop offset="100%" stopColor="rgba(249,115,22,0)" />
+              <stop offset="0%" stopColor="var(--brand)" stopOpacity="0.06" />
+              <stop offset="100%" stopColor="var(--brand)" stopOpacity="0" />
             </radialGradient>
           </defs>
           <rect width={WIDTH} height={HEIGHT} fill="url(#embed-grid)" />

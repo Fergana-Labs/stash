@@ -1,5 +1,5 @@
 import Link from "next/link";
-import type { ReactNode } from "react";
+import type { CSSProperties, ReactNode } from "react";
 
 import CopyButton from "./_components/CopyButton";
 import ScrollLink from "./_components/ScrollLink";
@@ -7,9 +7,26 @@ import VisualizationsShowcase from "./_components/VisualizationsShowcase";
 
 const INSTALL_COMMAND = `bash -c "$(curl -fsSL https://raw.githubusercontent.com/Fergana-Labs/stash/main/install.sh)"`;
 
+const LANDING_BRAND = {
+  primary: "#DB2777",
+  hover: "#BE185D",
+  ink: "#831843",
+  soft: "rgba(219, 39, 119, 0.12)",
+  glow: "rgba(219,39,119,0.09)",
+  answerBg: "rgba(219,39,119,0.06)",
+  answerBorder: "rgba(219,39,119,0.2)",
+};
+
+const landingBrandVars = {
+  "--brand": LANDING_BRAND.primary,
+  "--brand-hover": LANDING_BRAND.hover,
+  "--brand-ink": LANDING_BRAND.ink,
+  "--brand-soft": LANDING_BRAND.soft,
+} as CSSProperties;
+
 export default function Page() {
   return (
-    <main className="min-h-screen bg-background text-foreground">
+    <main className="min-h-screen bg-background text-foreground" style={landingBrandVars}>
       <Nav />
       <Hero />
       <Logos />
@@ -34,16 +51,16 @@ function Logo({ size = 28 }: { size?: number }) {
       height={(size * 72) / 64}
       aria-hidden="true"
     >
-      <ellipse cx="32" cy="24" rx="22" ry="18" fill="#F97316" />
+      <ellipse cx="32" cy="24" rx="22" ry="18" fill={LANDING_BRAND.primary} />
       <circle cx="25" cy="22" r="4" fill="#fff" />
       <circle cx="39" cy="22" r="4" fill="#fff" />
       <circle cx="26" cy="22" r="2" fill="#0F172A" />
       <circle cx="40" cy="22" r="2" fill="#0F172A" />
-      <path d="M12 38 Q8 52 4 60" stroke="#F97316" strokeWidth="4" strokeLinecap="round" fill="none" />
-      <path d="M20 40 Q18 54 14 62" stroke="#F97316" strokeWidth="4" strokeLinecap="round" fill="none" />
-      <path d="M32 42 Q32 56 32 64" stroke="#F97316" strokeWidth="4" strokeLinecap="round" fill="none" />
-      <path d="M44 40 Q46 54 50 62" stroke="#F97316" strokeWidth="4" strokeLinecap="round" fill="none" />
-      <path d="M52 38 Q56 52 60 60" stroke="#F97316" strokeWidth="4" strokeLinecap="round" fill="none" />
+      <path d="M12 38 Q8 52 4 60" stroke={LANDING_BRAND.primary} strokeWidth="4" strokeLinecap="round" fill="none" />
+      <path d="M20 40 Q18 54 14 62" stroke={LANDING_BRAND.primary} strokeWidth="4" strokeLinecap="round" fill="none" />
+      <path d="M32 42 Q32 56 32 64" stroke={LANDING_BRAND.primary} strokeWidth="4" strokeLinecap="round" fill="none" />
+      <path d="M44 40 Q46 54 50 62" stroke={LANDING_BRAND.primary} strokeWidth="4" strokeLinecap="round" fill="none" />
+      <path d="M52 38 Q56 52 60 60" stroke={LANDING_BRAND.primary} strokeWidth="4" strokeLinecap="round" fill="none" />
     </svg>
   );
 }
@@ -295,7 +312,7 @@ function Hero() {
         className="pointer-events-none absolute inset-x-0 top-0 z-0 h-[680px]"
         style={{
           background:
-            "radial-gradient(ellipse 80% 60% at 20% 10%, rgba(249,115,22,0.09), transparent 60%)",
+            `radial-gradient(ellipse 80% 60% at 20% 10%, ${LANDING_BRAND.glow}, transparent 60%)`,
         }}
       />
       <div className="relative z-10 mx-auto grid max-w-[1200px] grid-cols-1 gap-12 px-7 pb-8 pt-20 lg:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)] lg:items-center lg:gap-16 lg:pb-16 lg:pt-28">
@@ -742,8 +759,8 @@ function SearchDemo() {
             <div
               className="mt-6 rounded-[10px] border p-5"
               style={{
-                background: "rgba(249,115,22,0.06)",
-                borderColor: "rgba(249,115,22,0.2)",
+                background: LANDING_BRAND.answerBg,
+                borderColor: LANDING_BRAND.answerBorder,
               }}
             >
               <p className="mb-2 font-mono text-[10px] uppercase tracking-[0.14em] text-brand">
