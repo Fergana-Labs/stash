@@ -153,6 +153,50 @@ async def get_session_share_by_id(target_id: UUID) -> dict | None:
     return out
 
 
+async def get_stash_by_session(workspace_id: UUID, session_id: str) -> dict | None:
+    """Return the legacy stash-shaped session projection for a workspace session."""
+    from . import session_service
+
+    pool = get_pool()
+    session = await session_service.get_session(workspace_id, session_id)
+    if not session:
+        return None
+
+    share = await pool.fetchrow(
+        "SELECT token, slug, target_type, target_id, workspace_id, created_by, created_at "
+        "FROM share_links "
+        "WHERE target_type = 'session' AND target_id = $1 AND revoked_at IS NULL "
+        "ORDER BY created_at LIMIT 1",
+        session["id"],
+    )
+    if share:
+        out = _share_to_session_dict(dict(share), session)
+    else:
+        out = {
+            "id": session["id"],
+            "workspace_id": session["workspace_id"],
+            "session_id": session["session_id"],
+            "slug": None,
+            "agent_name": session.get("agent_name") or "",
+            "cwd": session.get("cwd"),
+            "status": session.get("status"),
+            "summary": session.get("summary"),
+            "files_touched": session.get("files_touched") or [],
+            "created_by": session.get("created_by"),
+            "created_at": session.get("started_at"),
+            "updated_at": session.get("finished_at") or session.get("started_at"),
+            "has_transcript": True,
+            "artifact_count": 0,
+        }
+
+    artifacts = await pool.fetchval(
+        "SELECT COUNT(*) FROM session_artifacts WHERE session_id = $1",
+        session["id"],
+    )
+    out["artifact_count"] = int(artifacts or 0)
+    return out
+
+
 # Backward-compat aliases for legacy callers.
 get_stash_by_slug = get_session_share_by_slug
 get_stash_by_id = get_session_share_by_id

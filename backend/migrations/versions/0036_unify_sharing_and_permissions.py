@@ -62,7 +62,7 @@ def upgrade() -> None:
                COALESCE(MAX(agent_name), ''),
                MIN(created_at),
                MAX(created_at),
-               MIN(created_by)
+               (ARRAY_AGG(created_by ORDER BY created_at) FILTER (WHERE created_by IS NOT NULL))[1]
         FROM history_events
         WHERE workspace_id IS NOT NULL AND session_id IS NOT NULL
         GROUP BY workspace_id, session_id
@@ -125,7 +125,9 @@ def upgrade() -> None:
     )
 
     # Collapse the old permission enum (view, comment, edit-request) to (view, edit).
-    op.execute("UPDATE share_links SET permission = 'view' WHERE permission IN ('comment', 'edit-request')")
+    op.execute(
+        "UPDATE share_links SET permission = 'view' WHERE permission IN ('comment', 'edit-request')"
+    )
     op.execute("ALTER TABLE share_links DROP CONSTRAINT IF EXISTS share_links_permission_check")
     op.execute(
         "ALTER TABLE share_links ADD CONSTRAINT share_links_permission_check "
@@ -180,7 +182,9 @@ def upgrade() -> None:
     # ──────────────────────────────────────────────────────────────────
     # 5. workspace_members.role → owner/editor/viewer
     # ──────────────────────────────────────────────────────────────────
-    op.execute("ALTER TABLE workspace_members DROP CONSTRAINT IF EXISTS workspace_members_role_check")
+    op.execute(
+        "ALTER TABLE workspace_members DROP CONSTRAINT IF EXISTS workspace_members_role_check"
+    )
     op.execute("UPDATE workspace_members SET role = 'owner' WHERE role IN ('admin', 'owner')")
     op.execute(
         "UPDATE workspace_members SET role = 'editor' "
@@ -226,12 +230,22 @@ def downgrade() -> None:
     # Schema-only restore. The blob and metadata mappings can't be
     # round-tripped — this just gets the columns back so the old code
     # boots.
-    op.execute("ALTER TABLE workspaces ADD COLUMN IF NOT EXISTS is_public BOOLEAN NOT NULL DEFAULT FALSE")
-    op.execute("ALTER TABLE views ADD COLUMN IF NOT EXISTS is_public BOOLEAN NOT NULL DEFAULT FALSE")
-    op.execute("ALTER TABLE pages ADD COLUMN IF NOT EXISTS public_in_share BOOLEAN NOT NULL DEFAULT FALSE")
-    op.execute("ALTER TABLE files ADD COLUMN IF NOT EXISTS public_in_share BOOLEAN NOT NULL DEFAULT FALSE")
+    op.execute(
+        "ALTER TABLE workspaces ADD COLUMN IF NOT EXISTS is_public BOOLEAN NOT NULL DEFAULT FALSE"
+    )
+    op.execute(
+        "ALTER TABLE views ADD COLUMN IF NOT EXISTS is_public BOOLEAN NOT NULL DEFAULT FALSE"
+    )
+    op.execute(
+        "ALTER TABLE pages ADD COLUMN IF NOT EXISTS public_in_share BOOLEAN NOT NULL DEFAULT FALSE"
+    )
+    op.execute(
+        "ALTER TABLE files ADD COLUMN IF NOT EXISTS public_in_share BOOLEAN NOT NULL DEFAULT FALSE"
+    )
 
-    op.execute("ALTER TABLE workspace_members DROP CONSTRAINT IF EXISTS workspace_members_role_check")
+    op.execute(
+        "ALTER TABLE workspace_members DROP CONSTRAINT IF EXISTS workspace_members_role_check"
+    )
     op.execute(
         "ALTER TABLE workspace_members ADD CONSTRAINT workspace_members_role_check "
         "CHECK (role IN ('owner', 'admin', 'member'))"

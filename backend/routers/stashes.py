@@ -213,6 +213,11 @@ async def _spine_sessions(stash_id: UUID) -> list[dict]:
             "size_bytes": int(s["size_bytes"] or 0),
             "last_at": s["last_at"],
             "updated_at": s["last_at"],
+            "bundle_id": str(s["bundle_id"]) if s.get("bundle_id") else None,
+            "bundle_slug": s["bundle_slug"],
+            "status": s["status"],
+            "summary": s["summary"],
+            "artifact_count": int(s["artifact_count"] or 0),
         }
         for s in sessions
     ]

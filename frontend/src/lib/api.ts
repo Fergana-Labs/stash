@@ -1236,15 +1236,26 @@ export async function listStashActivity(stashId: string, limit = 50): Promise<Ac
 // --- Session transcripts ---
 
 export interface SessionTranscript {
-  id: string;
   workspace_id: string;
   session_id: string;
   agent_name: string;
+  event_count: number;
   size_bytes: number;
   cwd: string | null;
-  uploaded_by: string;
-  uploaded_at: string;
-  download_url: string | null;
+  started_at: string;
+  last_at: string;
+  bundle_id: string | null;
+  bundle_slug: string | null;
+  status: "live" | "summarizing" | "ready" | "failed" | null;
+  summary: string | null;
+  artifacts: SessionArtifact[];
+}
+
+export interface SessionArtifact {
+  id: string;
+  file_path: string;
+  size_bytes: number;
+  created_at: string | null;
 }
 
 export async function getStashTranscript(
@@ -1283,6 +1294,11 @@ export interface StashSpineSession {
   size_bytes: number;
   last_at: string;
   updated_at: string;
+  bundle_id: string | null;
+  bundle_slug: string | null;
+  status: "live" | "summarizing" | "ready" | "failed" | null;
+  summary: string | null;
+  artifact_count: number;
 }
 
 // Unified Wiki — one tree, no Drive/Skill split. Folders, pages, and files
