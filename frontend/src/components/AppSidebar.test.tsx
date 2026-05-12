@@ -70,6 +70,7 @@ const sharedWorkspace = {
 };
 
 const emptySpine = {
+  session_count: 0,
   sessions: [],
   wiki: {
     folders: [],
@@ -145,7 +146,11 @@ describe("AppSidebar tree expansion", () => {
     await waitFor(() => expect(detailsFor("Demo Stash")).toHaveAttribute("open"));
     expect(detailsFor("Sessions")).toHaveAttribute("open");
     expect(detailsFor("Wiki")).not.toHaveAttribute("open");
-    expect(getStashSpine).toHaveBeenCalledWith("ws-1");
+    expect(getStashSpine).toHaveBeenCalledWith("ws-1", {
+      sessionLimit: 8,
+      wikiDepth: "root",
+      includeFileUrls: false,
+    });
   });
 
   it("keeps the stash landing route collapsed without saved state", async () => {

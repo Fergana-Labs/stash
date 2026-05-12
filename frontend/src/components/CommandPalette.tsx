@@ -143,7 +143,7 @@ export default function CommandPalette({ open, onClose, stashId }: CommandPalett
   const kindIcon: Record<string, string> = {
     page: "📄",
     session: "#",
-    skill: "⚙︎",
+    folder: "📁",
     file: "📁",
     history: "⏱",
   };
@@ -163,7 +163,7 @@ export default function CommandPalette({ open, onClose, stashId }: CommandPalett
             ref={inputRef}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Jump to a page, session, skill, or file…"
+            placeholder="Jump to a page, folder, session, or file…"
             className="flex-1 bg-transparent text-[14px] text-foreground placeholder:text-muted focus:outline-none"
             autoFocus
           />

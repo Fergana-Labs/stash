@@ -213,8 +213,8 @@ async def list_workspace_sessions(
     workspace_id: UUID,
     limit: int | None = None,
 ) -> dict:
-    """One row per session_id in this workspace. Powers the spine sessions
-    list — replaces a SELECT against session_transcripts."""
+    """One row per session_id in this workspace. Powers navigation session
+    lists without reading session_transcripts."""
     pool = get_pool()
     limit_clause = "LIMIT $2" if limit is not None else ""
     args = [workspace_id]

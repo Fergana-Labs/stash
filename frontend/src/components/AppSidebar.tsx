@@ -369,7 +369,7 @@ export default function AppSidebar({ user, collapsed, onCmdkOpen }: AppSidebarPr
   const userId = user?.id;
   const activeStashId = pathname.match(/^\/stashes\/([^/]+)/)?.[1] ?? null;
   const activeTreeMatch = pathname.match(
-    /^\/stashes\/([^/]+)\/(sessions|folders|p|f|skills)(?:\/|$)/
+    /^\/stashes\/([^/]+)\/(sessions|folders|p|f)(?:\/|$)/
   );
   const activeTreeStashId = activeTreeMatch?.[1] ?? null;
   const activeTreeSection: SidebarSection | null =
@@ -436,9 +436,6 @@ export default function AppSidebar({ user, collapsed, onCmdkOpen }: AppSidebarPr
     if (activeTreeStashId) {
       openIds.push(activeTreeStashId);
     }
-    if (activeStashId && !openIds.includes(activeStashId)) {
-      openIds.push(activeStashId);
-    }
 
     Array.from(new Set(openIds))
       .filter((stashId) => !spines[stashId])
@@ -451,7 +448,7 @@ export default function AppSidebar({ user, collapsed, onCmdkOpen }: AppSidebarPr
           .then((sp) => setSpines((all) => ({ ...all, [stashId]: sp })))
           .catch(() => {});
       });
-  }, [activeTreeStashId, activeStashId, openStashes, spines]);
+  }, [activeTreeStashId, openStashes, spines]);
 
   function getOpenSections(stashId: string): Record<SidebarSection, boolean> {
     return {

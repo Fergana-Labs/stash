@@ -46,7 +46,7 @@ export default function NewStashPage() {
           Every stash has two main spaces —{" "}
           <strong className="text-foreground">Sessions</strong> for agent transcripts,{" "}
           and <strong className="text-foreground">Wiki</strong> for pages, files, folders, and
-          skills.
+          skill folders.
         </p>
 
         <form onSubmit={submit} className="mt-8 flex flex-col gap-4">

@@ -1,15 +1,14 @@
-# Stash — Shared Stashes, Skills, and Memory System
+# Stash - Shared Sessions, Wiki, and Memory System
 
-## Concept: Stashes and Skills
+## Concept: Stashes and Wiki
 
-A **stash** is a shared bundle a team works out of. Each stash maps to three
-folders matching how memory works for an agent:
+A **stash** is a shared bundle a team works out of. Each stash has two primary
+surfaces:
 
-- **Sessions** (episodic) — agent transcripts uploaded under
+- **Sessions** - agent transcripts uploaded under
   `/api/v1/stashes/{id}/transcripts`.
-- **Skills** (procedural) — wiki folders that contain a `SKILL.md`
-  frontmatter file. See below.
-- **Drive** (semantic) — files + non-skill wiki pages.
+- **Wiki** - folders, pages, and files. A Wiki folder can become an agent
+  skill folder when it contains a `SKILL.md` page.
 
 To give your agents a skill, **create a wiki folder** in a stash whose immediate
 children include a file named `SKILL.md`. The body of `SKILL.md` starts with
@@ -26,8 +25,9 @@ mcp_exposed: true
 ```
 
 The folder may contain any number of supporting `.md` files (`examples.md`,
-`checklist.md`, etc.) — they all become part of the skill payload. Stash
-exposes skills via:
+`checklist.md`, etc.) - they all become part of the skill payload. In product
+navigation, this folder still appears inside Wiki like any other folder. Stash
+also exposes SKILL.md folders to agents via:
 
 - `GET /api/v1/stashes/{id}/skills` — list skills in a stash
 - `GET /api/v1/stashes/{id}/skills/{name}` — full skill (SKILL.md + siblings)

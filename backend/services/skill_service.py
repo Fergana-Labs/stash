@@ -2,8 +2,8 @@
 
 Detection rule: any folder whose immediate children include a page named
 ``SKILL.md``. Skills are a *view* over the wiki tree; reads/writes still go
-through the wiki API. The view is what the new sidebar, stash home, and the
-Ask agent's tool surface.
+through the wiki API. Product navigation renders the underlying folder inside
+Wiki; this service packages SKILL.md folders for agent tool calls.
 """
 
 from __future__ import annotations

@@ -111,7 +111,7 @@ export default function StashHomePage() {
       setSpine(
         await getStashSpine(stashId, {
           sessionLimit: 20,
-          wikiDepth: "full",
+          wikiDepth: "root",
           includeFileUrls: false,
         })
       );
@@ -152,11 +152,9 @@ export default function StashHomePage() {
     subtitle: `${s.agent_name} · ${formatBytes(s.size_bytes)}`,
   }));
 
-  // Root-level wiki contents only. Nested folders/pages/files surface
-  // through their parent folder's detail page, not here.
-  const rootFolders = (spine?.wiki.folders ?? []).filter((f) => !f.parent_folder_id);
-  const rootPages = (spine?.wiki.pages ?? []).filter((p) => !p.folder_id);
-  const rootFiles = (spine?.wiki.files ?? []).filter((f) => !f.folder_id);
+  const rootFolders = spine?.wiki.folders ?? [];
+  const rootPages = spine?.wiki.pages ?? [];
+  const rootFiles = spine?.wiki.files ?? [];
 
   const wikiFolderItems: CardItem[] = rootFolders.map((f) => ({
     href: `/stashes/${stashId}/folders/${f.id}`,
@@ -165,7 +163,7 @@ export default function StashHomePage() {
     subtitle: [
       f.page_count ? `${f.page_count} page${f.page_count === 1 ? "" : "s"}` : null,
       f.file_count ? `${f.file_count} file${f.file_count === 1 ? "" : "s"}` : null,
-      f.has_skill ? "SKILL.md" : null,
+      f.has_skill ? "Skill folder" : null,
     ]
       .filter(Boolean)
       .join(" · ") || "Empty folder",

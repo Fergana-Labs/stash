@@ -1355,7 +1355,7 @@ function getStashSpineCacheKey(stashId: string, options: StashSpineOptions): str
     stashId,
     sessionLimit: options.sessionLimit ?? 0,
     wikiDepth: options.wikiDepth ?? "full",
-    includeFileUrls: options.includeFileUrls ?? true,
+    includeFileUrls: options.includeFileUrls ?? false,
   };
   return JSON.stringify(normalized);
 }
@@ -1390,9 +1390,10 @@ export async function getStashSpine(
     }
   );
   STASH_SPINE_INFLIGHT.set(cacheKey, request);
-  request.finally(() => {
-    STASH_SPINE_INFLIGHT.delete(cacheKey);
-  });
+  request.then(
+    () => STASH_SPINE_INFLIGHT.delete(cacheKey),
+    () => STASH_SPINE_INFLIGHT.delete(cacheKey)
+  );
   return request;
 }
 
@@ -1421,22 +1422,6 @@ export async function getFolderContents(
   return apiFetch(
     `/api/v1/workspaces/${workspaceId}/folders/${folderId}/contents`
   );
-}
-
-// Legacy skill detail endpoint — kept for backward compat with anything
-// still calling it (e.g. the soon-to-be-redirected /skills/[name] route).
-export interface StashSkillDetail {
-  folder_id: string;
-  name: string;
-  description: string;
-  when_to_use: string;
-  body: string;
-  files: { id: string; name: string; updated_at: string; content: string }[];
-  combined: string;
-}
-
-export async function getStashSkill(stashId: string, name: string): Promise<StashSkillDetail> {
-  return apiFetch(`/api/v1/stashes/${stashId}/skills/${encodeURIComponent(name)}`);
 }
 
 // --- Ask-the-stash agent (SSE) ---

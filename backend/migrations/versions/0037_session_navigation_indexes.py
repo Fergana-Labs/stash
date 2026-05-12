@@ -1,8 +1,8 @@
-"""Add indexes for fast session-spine reads.
+"""Add indexes for fast session navigation reads.
 
-The per-stash session list now groups history_events by session_id and sorts by
-last event timestamp. A focused workspace/session index keeps that query from
-scanning all history rows.
+Stash navigation shows recent sessions by grouping history_events by session_id
+and sorting by last event timestamp. A focused workspace/session index keeps
+that query from scanning all history rows.
 """
 
 from alembic import op

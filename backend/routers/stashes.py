@@ -1,7 +1,7 @@
 """Stash router — two concepts live here:
 
 1. Workspace-alias endpoints: re-exports workspace CRUD under /api/v1/stashes/*
-   with spine, skills, activity, and ask-the-stash.
+   with navigation, Wiki content, activity, and ask-the-stash.
 2. Session-stash endpoints: create/upload/read session snapshots with artifacts
    and transcripts, scoped under workspaces or public by slug.
 """
@@ -246,7 +246,7 @@ async def _wiki_for_spine(
             stash_id,
         ),
         pool.fetch(
-            "SELECT id, name, folder_id, public_in_share "
+            "SELECT id, name, folder_id "
             f"FROM pages WHERE workspace_id = $1 {page_filter} ORDER BY name",
             stash_id,
         ),
@@ -304,7 +304,7 @@ async def _wiki_for_spine(
 
 
 # ---------------------------------------------------------------------------
-# Skills (Phase 2) — markdown folders with a SKILL.md frontmatter file
+# Agent skill folders — Wiki folders with a SKILL.md frontmatter file
 # ---------------------------------------------------------------------------
 
 
@@ -442,13 +442,15 @@ async def get_stash_spine(
     stash_id: UUID,
     session_limit: int | None = Query(None, ge=1, le=200),
     wiki_depth: str = Query("full"),
-    include_file_urls: bool = Query(True),
+    include_file_urls: bool = Query(False),
     current_user: dict = Depends(get_current_user),
 ):
     """Return sessions and wiki content for stash navigation.
 
     Wiki content is returned as folders, pages, and files with parent ids so
-    clients can render the hierarchy."""
+    clients can render the hierarchy. `wiki_depth=root` returns only root Wiki
+    rows for summary views; `wiki_depth=full` returns all Wiki rows for tree
+    and search views."""
     if not await workspace_service.is_member(stash_id, current_user["id"]):
         ws = await workspace_service.get_workspace(stash_id)
         if not ws or not ws.get("is_public"):
