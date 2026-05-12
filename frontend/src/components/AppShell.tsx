@@ -95,6 +95,7 @@ export default function AppShell({ user, onLogout, children }: AppShellProps) {
               });
             }}
             className="rounded p-1 text-muted hover:bg-raised"
+            aria-label="Toggle sidebar"
             title="Toggle sidebar (⌘\\)"
           >
             <SidebarToggleIcon collapsed={sidebarCollapsed} />
@@ -131,16 +132,17 @@ export default function AppShell({ user, onLogout, children }: AppShellProps) {
       <div
         className="grid min-h-0 flex-1 overflow-hidden"
         style={{
-          gridTemplateColumns: `${sidebarCollapsed ? "0px" : "260px"} minmax(0, 1fr)`,
+          gridTemplateColumns: sidebarCollapsed ? "minmax(0, 1fr)" : "260px minmax(0, 1fr)",
         }}
       >
-        <AppSidebar
-          user={user}
-          onLogout={onLogout}
-          collapsed={sidebarCollapsed}
-          cmdkOpen={cmdkOpen}
-          onCmdkOpen={() => setCmdkOpen(true)}
-        />
+        {!sidebarCollapsed && (
+          <AppSidebar
+            user={user}
+            onLogout={onLogout}
+            cmdkOpen={cmdkOpen}
+            onCmdkOpen={() => setCmdkOpen(true)}
+          />
+        )}
         <main className="flex min-w-0 flex-col overflow-y-auto bg-base">
           {children}
         </main>

@@ -34,7 +34,6 @@ import {
 interface AppSidebarProps {
   user?: User;
   onLogout?: () => void;
-  collapsed?: boolean;
   cmdkOpen?: boolean;
   onCmdkOpen?: () => void;
 }
@@ -369,7 +368,7 @@ function WikiBlock({
   );
 }
 
-export default function AppSidebar({ user, collapsed, onCmdkOpen }: AppSidebarProps) {
+export default function AppSidebar({ user, onCmdkOpen }: AppSidebarProps) {
   const pathname = usePathname();
   const userId = user?.id;
   const cachedWorkspaces = readCachedWorkspaces(userId);
@@ -483,8 +482,6 @@ export default function AppSidebar({ user, collapsed, onCmdkOpen }: AppSidebarPr
     if (open && isRouteOpen) return;
     setOpenSection(stashId, section, open);
   }
-
-  if (collapsed) return null;
 
   return (
     <aside className="scroll-thin overflow-y-auto border-r border-border bg-surface">
