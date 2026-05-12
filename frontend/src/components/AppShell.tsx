@@ -1,12 +1,12 @@
 "use client";
 
-import { ReactNode, useEffect, useState } from "react";
+import { ReactNode, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { User, Workspace } from "../lib/types";
 import AppSidebar from "./AppSidebar";
 import CommandPalette from "./CommandPalette";
-import ShareModal from "./ShareModal";
+import { useShareModal } from "../lib/shareModalContext";
 import { useBreadcrumbsValue } from "./BreadcrumbContext";
 import { StashIcon } from "./StashIcons";
 import { getCachedWorkspaces, readCachedWorkspaces } from "../lib/stashNavigationCache";
@@ -37,12 +37,12 @@ function SidebarToggleIcon({ collapsed }: { collapsed: boolean }) {
 export default function AppShell({ user, onLogout, children }: AppShellProps) {
   const pathname = usePathname();
   const breadcrumbs = useBreadcrumbsValue();
+  const shareModal = useShareModal();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [activeStashId, setActiveStashId] = useState<string | null>(null);
   const [stashes, setStashes] = useState<Workspace[]>(
     () => readCachedWorkspaces(user.id)?.all ?? []
   );
-  const [shareOpen, setShareOpen] = useState(false);
   const [cmdkOpen, setCmdkOpen] = useState(false);
 
   useEffect(() => {
@@ -104,28 +104,24 @@ export default function AppShell({ user, onLogout, children }: AppShellProps) {
         </div>
 
         <div className="flex items-center gap-1">
-          <Link
-            href="/settings"
-            className="ml-1 inline-flex h-6 w-6 items-center justify-center rounded-full bg-brand-100 text-[10px] font-semibold text-[var(--color-brand-700)]"
-            title={user.display_name || user.name}
-          >
-            {initial}
-          </Link>
           {activeStashId && (
             <button
-              className="ml-1 rounded-md bg-[var(--color-brand-600)] px-2.5 py-1 text-[12.5px] font-medium text-white hover:bg-[var(--color-brand-700)]"
-              onClick={() => setShareOpen(true)}
+              className="mr-1 rounded-md bg-[var(--color-brand-600)] px-2.5 py-1 text-[12.5px] font-medium text-white hover:bg-[var(--color-brand-700)]"
+              onClick={() =>
+                shareModal.open({
+                  stashId: activeStashId,
+                  stashName: activeStash?.name,
+                })
+              }
             >
               Share
             </button>
           )}
-          <button onClick={onLogout} className="rounded p-1 text-muted hover:bg-raised" title="Sign out">
-            <svg className="h-4 w-4" viewBox="0 0 24 24" fill="currentColor">
-              <circle cx="5" cy="12" r="1.5" />
-              <circle cx="12" cy="12" r="1.5" />
-              <circle cx="19" cy="12" r="1.5" />
-            </svg>
-          </button>
+          <UserMenu
+            initial={initial}
+            label={user.display_name || user.name}
+            onLogout={onLogout}
+          />
         </div>
       </header>
 
@@ -148,19 +144,84 @@ export default function AppShell({ user, onLogout, children }: AppShellProps) {
         </main>
       </div>
 
-      {activeStashId && (
-        <ShareModal
-          open={shareOpen}
-          stashId={activeStashId}
-          stashName={activeStash?.name || "Stash"}
-          onClose={() => setShareOpen(false)}
-        />
-      )}
       <CommandPalette
         open={cmdkOpen}
         onClose={() => setCmdkOpen(false)}
         stashId={activeStashId}
       />
+    </div>
+  );
+}
+
+function UserMenu({
+  initial,
+  label,
+  onLogout,
+}: {
+  initial: string;
+  label: string;
+  onLogout: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent) => {
+      if (!containerRef.current) return;
+      if (!containerRef.current.contains(e.target as Node)) setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  return (
+    <div ref={containerRef} className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        title={label}
+        className="ml-1 inline-flex h-6 w-6 items-center justify-center rounded-full bg-brand-100 text-[10px] font-semibold text-[var(--color-brand-700)] hover:ring-2 hover:ring-[var(--color-brand-200)]"
+      >
+        {initial}
+      </button>
+      {open && (
+        <div
+          role="menu"
+          className="absolute right-0 top-full z-40 mt-1.5 w-44 overflow-hidden rounded-md border border-border bg-surface py-1 text-[13px] shadow-lg"
+        >
+          <div className="border-b border-border px-3 py-1.5 text-[11px] text-muted">
+            Signed in as <span className="text-foreground">{label}</span>
+          </div>
+          <Link
+            href="/settings"
+            role="menuitem"
+            onClick={() => setOpen(false)}
+            className="block px-3 py-1.5 text-foreground hover:bg-raised"
+          >
+            Settings
+          </Link>
+          <button
+            role="menuitem"
+            onClick={() => {
+              setOpen(false);
+              onLogout();
+            }}
+            className="block w-full px-3 py-1.5 text-left text-foreground hover:bg-raised"
+          >
+            Sign out
+          </button>
+        </div>
+      )}
     </div>
   );
 }

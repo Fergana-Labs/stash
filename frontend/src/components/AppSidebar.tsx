@@ -508,6 +508,15 @@ export default function AppSidebar({ user, onCmdkOpen }: AppSidebarProps) {
             ⌘K
           </span>
         </button>
+        <Link
+          href="/stashes/new"
+          className="mt-0.5 flex w-full items-center gap-2 rounded-md px-2 py-1 text-foreground hover:bg-raised"
+        >
+          <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M12 5v14M5 12h14" />
+          </svg>
+          New stash
+        </Link>
         <NavRow
           href="/discover"
           icon={<DiscoverIcon />}
@@ -548,17 +557,8 @@ export default function AppSidebar({ user, onCmdkOpen }: AppSidebarProps) {
         </>
       )}
 
-      <div className="mt-4 flex items-center justify-between px-3 pb-1">
+      <div className="mt-4 px-3 pb-1">
         <span className="text-[11px] font-semibold tracking-wide text-muted">MY STASHES</span>
-        <Link
-          href="/stashes/new"
-          className="rounded p-0.5 text-muted hover:bg-base hover:text-foreground"
-          title="New stash"
-        >
-          <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M12 5v14M5 12h14" />
-          </svg>
-        </Link>
       </div>
       <nav className="px-1 text-[13.5px]">
         {mine.map((s) => (

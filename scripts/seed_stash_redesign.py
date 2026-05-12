@@ -16,7 +16,7 @@ import json
 import os
 import secrets
 import sys
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from pathlib import Path
 from uuid import UUID, uuid4
 
@@ -517,7 +517,6 @@ async def main() -> None:
 
 async def _seed(conn: asyncpg.Connection) -> None:
     print("→ wiping previous demo state")
-    await conn.execute("DELETE FROM share_links WHERE workspace_id IN ($1, $2)", STASH_ID, STASH2_ID)
     await conn.execute("DELETE FROM workspaces WHERE id IN ($1, $2)", STASH_ID, STASH2_ID)
 
     # ─── Stash 1: Acme Series A ────────────────────────────────────────
@@ -606,10 +605,6 @@ async def _seed(conn: asyncpg.Connection) -> None:
     ]
     for name, ct, content, public in files:
         await _create_file(conn, STASH_ID, name, ct, content, public)
-
-    print("→ creating active share link")
-    token = await _create_share(conn, STASH_ID, ttl_days=14)
-    print(f"   share URL: http://localhost:3000/share/{token}")
 
     # ─── Stash 2: Engineering ─────────────────────────────────────────────
     print("→ creating stash: Acme Engineering")
@@ -924,21 +919,6 @@ async def _ingest_csv_inline(
             table_id=table["id"], rows_data=rows_data, created_by=SAM_ID
         )
     return table["id"]
-
-
-async def _create_share(
-    conn: asyncpg.Connection, stash_id: UUID, *, ttl_days: int
-) -> str:
-    token = secrets.token_urlsafe(16)
-    await conn.execute(
-        "INSERT INTO share_links (token, workspace_id, created_by, expires_at, permission) "
-        "VALUES ($1, $2, $3, $4, 'view')",
-        token,
-        stash_id,
-        SAM_ID,
-        NOW + timedelta(days=ttl_days),
-    )
-    return token
 
 
 if __name__ == "__main__":
