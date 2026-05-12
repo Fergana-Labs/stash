@@ -112,6 +112,26 @@ def _events_to_viewer_shape(events: list[dict]) -> list[dict]:
     return out
 
 
+def _events_to_transcript_metadata(workspace_id: UUID, session_id: str, events: list[dict]) -> dict:
+    agent_name = events[0]["agent_name"] or ""
+    cwd = ""
+    for event in events:
+        metadata = event.get("metadata") or {}
+        if isinstance(metadata, dict) and metadata.get("cwd"):
+            cwd = metadata["cwd"]
+            break
+    return {
+        "session_id": session_id,
+        "workspace_id": str(workspace_id),
+        "agent_name": agent_name,
+        "event_count": len(events),
+        "size_bytes": sum(len(event.get("content") or "") for event in events),
+        "cwd": cwd or None,
+        "started_at": events[0]["created_at"],
+        "last_at": events[-1]["created_at"],
+    }
+
+
 @router.get("/{session_id}")
 async def get_transcript_metadata(
     workspace_id: UUID,
@@ -124,24 +144,7 @@ async def get_transcript_metadata(
     events = await memory_service.read_session_events(workspace_id, session_id)
     if not events:
         raise HTTPException(status_code=404, detail="Transcript not found")
-    agent_name = events[0]["agent_name"] or ""
-    cwd = ""
-    for e in events:
-        meta = e.get("metadata") or {}
-        if isinstance(meta, dict) and meta.get("cwd"):
-            cwd = meta["cwd"]
-            break
-    size_bytes = sum(len(e.get("content") or "") for e in events)
-    return {
-        "session_id": session_id,
-        "workspace_id": str(workspace_id),
-        "agent_name": agent_name,
-        "event_count": len(events),
-        "size_bytes": size_bytes,
-        "cwd": cwd or None,
-        "started_at": events[0]["created_at"],
-        "last_at": events[-1]["created_at"],
-    }
+    return _events_to_transcript_metadata(workspace_id, session_id, events)
 
 
 @router.get("/{session_id}/events")
@@ -156,4 +159,7 @@ async def get_transcript_events(
     events = await memory_service.read_session_events(workspace_id, session_id)
     if not events:
         raise HTTPException(status_code=404, detail="Transcript not found")
-    return {"events": _events_to_viewer_shape(events)}
+    return {
+        "transcript": _events_to_transcript_metadata(workspace_id, session_id, events),
+        "events": _events_to_viewer_shape(events),
+    }

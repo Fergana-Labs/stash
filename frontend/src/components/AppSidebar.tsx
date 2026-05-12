@@ -114,7 +114,9 @@ function StashTree({
             <Chevron />
             <span className="text-[14px]">💬</span>
             <span className="flex-1 truncate font-medium text-foreground">Sessions</span>
-            <span className="text-[10.5px] text-muted">{spine?.sessions.length ?? 0}</span>
+            <span className="text-[10.5px] text-muted">
+              {spine?.session_count ?? spine?.sessions.length ?? 0}
+            </span>
           </summary>
           <div className="ml-3 space-y-0.5 border-l border-border pl-2">
             {spine?.sessions.slice(0, 8).map((s) => (
@@ -312,7 +314,11 @@ export default function AppSidebar({ user, collapsed, onCmdkOpen }: AppSidebarPr
     if (m?.[1]) {
       setOpenStashes((s) => ({ ...s, [m[1]]: true }));
       if (!spines[m[1]]) {
-        getStashSpine(m[1])
+        getStashSpine(m[1], {
+          sessionLimit: 8,
+          wikiDepth: "root",
+          includeFileUrls: false,
+        })
           .then((sp) => setSpines((all) => ({ ...all, [m[1]]: sp })))
           .catch(() => {});
       }
@@ -322,7 +328,11 @@ export default function AppSidebar({ user, collapsed, onCmdkOpen }: AppSidebarPr
   function handleOpen(stashId: string) {
     setOpenStashes((s) => ({ ...s, [stashId]: true }));
     if (!spines[stashId]) {
-      getStashSpine(stashId)
+      getStashSpine(stashId, {
+        sessionLimit: 8,
+        wikiDepth: "root",
+        includeFileUrls: false,
+      })
         .then((sp) => setSpines((all) => ({ ...all, [stashId]: sp })))
         .catch(() => {});
     }

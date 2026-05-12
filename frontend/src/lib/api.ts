@@ -1283,6 +1283,20 @@ export async function getSessionEvents(
   return res.events;
 }
 
+export interface SessionDetail {
+  transcript: SessionTranscript;
+  events: SessionEvent[];
+}
+
+export async function getSessionDetail(
+  stashId: string,
+  sessionId: string
+): Promise<SessionDetail> {
+  return apiFetch(
+    `/api/v1/workspaces/${stashId}/transcripts/${encodeURIComponent(sessionId)}/events`
+  );
+}
+
 // --- Stashes (canonical naming, aliases /api/v1/workspaces/* on the server) ---
 
 export interface StashSpineSession {
@@ -1326,12 +1340,29 @@ export interface StashWiki {
   files: WikiFile[];
 }
 export interface StashSpine {
+  session_count: number;
   sessions: StashSpineSession[];
   wiki: StashWiki;
 }
 
-export async function getStashSpine(stashId: string): Promise<StashSpine> {
-  return apiFetch(`/api/v1/stashes/${stashId}/spine`);
+export interface StashSpineOptions {
+  sessionLimit?: number;
+  wikiDepth?: "full" | "root";
+  includeFileUrls?: boolean;
+}
+
+export async function getStashSpine(
+  stashId: string,
+  options: StashSpineOptions = {}
+): Promise<StashSpine> {
+  const params = new URLSearchParams();
+  if (options.sessionLimit) params.set("session_limit", String(options.sessionLimit));
+  if (options.wikiDepth) params.set("wiki_depth", options.wikiDepth);
+  if (options.includeFileUrls !== undefined) {
+    params.set("include_file_urls", String(options.includeFileUrls));
+  }
+  const qs = params.toString();
+  return apiFetch(`/api/v1/stashes/${stashId}/spine${qs ? `?${qs}` : ""}`);
 }
 
 export interface FolderBreadcrumb {
