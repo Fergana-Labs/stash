@@ -37,6 +37,21 @@ ws_router = APIRouter(prefix="/api/v1/workspaces/{workspace_id}/tables", tags=["
 
 
 async def _check_member(workspace_id: UUID, user_id: UUID) -> None:
+    """Write gate (now the default): owner or editor only.
+
+    Most table endpoints mutate state, so the default is safe-by-default
+    write. Read-only endpoints opt into `_check_read` instead."""
+    if not await workspace_service.can_write(workspace_id, user_id):
+        if not await workspace_service.is_member(workspace_id, user_id):
+            raise HTTPException(status_code=403, detail="Not a workspace member")
+        raise HTTPException(
+            status_code=403,
+            detail="Viewers can read but not modify tables",
+        )
+
+
+async def _check_read(workspace_id: UUID, user_id: UUID) -> None:
+    """Read gate: any workspace member (viewer/editor/owner)."""
     if not await workspace_service.is_member(workspace_id, user_id):
         raise HTTPException(status_code=403, detail="Not a workspace member")
 
@@ -95,7 +110,7 @@ async def list_ws_tables(
     workspace_id: UUID,
     current_user: dict = Depends(get_current_user),
 ):
-    await _check_member(workspace_id, current_user["id"])
+    await _check_read(workspace_id, current_user["id"])
     tables = await table_service.list_tables(workspace_id)
     return TableListResponse(tables=[TableResponse(**t) for t in tables])
 
@@ -106,7 +121,7 @@ async def get_ws_table(
     table_id: UUID,
     current_user: dict = Depends(get_current_user),
 ):
-    await _check_member(workspace_id, current_user["id"])
+    await _check_read(workspace_id, current_user["id"])
     table = await _check_ws_table(workspace_id, table_id)
     return TableResponse(**table)
 
@@ -229,7 +244,7 @@ async def list_ws_rows(
     filters: str | None = Query(None),
     current_user: dict = Depends(get_current_user),
 ):
-    await _check_member(workspace_id, current_user["id"])
+    await _check_read(workspace_id, current_user["id"])
     await _check_ws_table(workspace_id, table_id)
     parsed_filters = json.loads(filters) if filters else None
     rows, total = await table_service.list_rows(
@@ -283,7 +298,7 @@ async def semantic_search_ws_rows(
     current_user: dict = Depends(get_current_user),
 ):
     """Semantic search on table rows using embeddings."""
-    await _check_member(workspace_id, current_user["id"])
+    await _check_read(workspace_id, current_user["id"])
     await _check_ws_table(workspace_id, table_id)
     from ..services import embeddings as embedding_service
 
@@ -361,7 +376,7 @@ async def count_ws_rows(
     filters: str | None = Query(None),
     current_user: dict = Depends(get_current_user),
 ):
-    await _check_member(workspace_id, current_user["id"])
+    await _check_read(workspace_id, current_user["id"])
     await _check_ws_table(workspace_id, table_id)
     parsed_filters = json.loads(filters) if filters else None
     count = await table_service.count_rows(table_id, filters=parsed_filters)
@@ -409,7 +424,7 @@ async def export_ws_csv(
     current_user: dict = Depends(get_current_user),
 ):
     """Export table as CSV. Streams all rows matching filters."""
-    await _check_member(workspace_id, current_user["id"])
+    await _check_read(workspace_id, current_user["id"])
     table = await _check_ws_table(workspace_id, table_id)
     parsed_filters = json.loads(filters) if filters else None
     rows = await table_service.export_rows_all(
@@ -453,7 +468,7 @@ async def search_ws_rows(
     offset: int = Query(0, ge=0),
     current_user: dict = Depends(get_current_user),
 ):
-    await _check_member(workspace_id, current_user["id"])
+    await _check_read(workspace_id, current_user["id"])
     await _check_ws_table(workspace_id, table_id)
     rows, total = await table_service.search_rows(table_id, q, limit=limit, offset=offset)
     return RowListResponse(
@@ -470,7 +485,7 @@ async def summarize_ws_rows(
     filters: str | None = Query(None),
     current_user: dict = Depends(get_current_user),
 ):
-    await _check_member(workspace_id, current_user["id"])
+    await _check_read(workspace_id, current_user["id"])
     await _check_ws_table(workspace_id, table_id)
     parsed_filters = json.loads(filters) if filters else None
     return await table_service.summarize_rows(table_id, filters=parsed_filters)
@@ -533,7 +548,7 @@ async def get_permissions(
     table_id: UUID,
     current_user: dict = Depends(get_current_user),
 ):
-    await _check_member(workspace_id, current_user["id"])
+    await _check_read(workspace_id, current_user["id"])
     await _check_ws_table(workspace_id, table_id)
     perms = await permission_service.get_permissions("table", table_id)
     return PermissionResponse(**perms)

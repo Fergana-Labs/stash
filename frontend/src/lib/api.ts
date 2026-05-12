@@ -255,6 +255,17 @@ export async function kickWorkspaceMember(workspaceId: string, userId: string): 
   await apiFetch(`/api/v1/workspaces/${workspaceId}/kick/${userId}`, { method: "POST" });
 }
 
+export async function setWorkspaceMemberRole(
+  workspaceId: string,
+  userId: string,
+  role: "owner" | "editor" | "viewer"
+): Promise<void> {
+  await apiFetch(`/api/v1/workspaces/${workspaceId}/members/${userId}`, {
+    method: "PATCH",
+    body: JSON.stringify({ role }),
+  });
+}
+
 // --- Join Requests ---
 
 export async function getWorkspacePublicInfo(workspaceId: string): Promise<WorkspacePublicInfo> {
@@ -1204,29 +1215,9 @@ export async function listAgentNames(workspaceId: string): Promise<string[]> {
   return data.agent_names;
 }
 
-// --- Share toggles ---
-
-export async function togglePagePublic(
-  workspaceId: string,
-  pageId: string,
-  publicInShare: boolean
-): Promise<Page> {
-  return apiFetch(`/api/v1/workspaces/${workspaceId}/pages/${pageId}`, {
-    method: "PATCH",
-    body: JSON.stringify({ public_in_share: publicInShare }),
-  });
-}
-
-export async function toggleFilePublic(
-  workspaceId: string,
-  fileId: string,
-  publicInShare: boolean
-): Promise<FileInfo> {
-  return apiFetch(`/api/v1/workspaces/${workspaceId}/files/${fileId}`, {
-    method: "PATCH",
-    body: JSON.stringify({ public_in_share: publicInShare }),
-  });
-}
+// `togglePagePublic` / `toggleFilePublic` are gone. Sharing is now link-
+// based — to share a single page or file, mint a share-link with
+// target_type='page' or 'file' via `createShareLink` (TODO: add helper).
 
 // --- Activity feed ---
 
@@ -1322,7 +1313,6 @@ export interface WikiPage {
   id: string;
   name: string;
   folder_id: string | null;
-  public_in_share: boolean;
 }
 export interface WikiFile {
   id: string;
@@ -1420,7 +1410,7 @@ export interface FolderContents {
   folder: { id: string; name: string; parent_folder_id: string | null };
   breadcrumbs: FolderBreadcrumb[];
   subfolders: FolderSubfolder[];
-  pages: { id: string; name: string; public_in_share: boolean }[];
+  pages: { id: string; name: string }[];
   files: Omit<WikiFile, "folder_id">[];
 }
 
@@ -1473,18 +1463,28 @@ interface AskRequest {
 
 export interface ShareLink {
   token: string;
+  slug?: string | null;
   workspace_id: string;
   created_by: string;
   created_at: string;
   expires_at: string | null;
-  permission: "view" | "comment" | "edit-request";
+  permission: "view" | "edit";
+  target_type?: "workspace" | "session" | "page" | "folder" | "file";
+  target_id?: string | null;
   view_count: number;
   url: string;
 }
 
+export interface CreateShareLinkBody {
+  permission: "view" | "edit";
+  ttl_days: number | null;
+  target_type?: "workspace" | "session" | "page" | "folder" | "file";
+  target_id?: string;
+}
+
 export async function createStashShareLink(
   stashId: string,
-  body: { permission: "view" | "comment" | "edit-request"; ttl_days: number | null }
+  body: CreateShareLinkBody
 ): Promise<ShareLink> {
   return apiFetch(`/api/v1/stashes/${stashId}/shares`, {
     method: "POST",
@@ -1501,7 +1501,7 @@ export async function revokeStashShareLink(stashId: string, token: string): Prom
 }
 
 export interface ShareProjection {
-  stash: {
+  stash?: {
     id: string;
     name: string;
     description: string;
@@ -1511,17 +1511,72 @@ export interface ShareProjection {
   };
   share: {
     token: string;
+    slug?: string | null;
+    target_type: "workspace" | "session" | "page" | "folder" | "file";
+    target_id: string | null;
     permission: string;
     expires_at: string | null;
     view_count: number;
     created_at: string;
   };
-  narrative: { id: string; name: string; body: string } | null;
-  deck:
+  // workspace target
+  narrative?: { id: string; name: string; body: string } | null;
+  deck?:
     | { index: number; title: string; kicker: string; body: string }[]
     | null;
-  pages: { id: string; name: string; body: string }[];
-  files: { id: string; name: string; content_type: string; size_bytes: number }[];
+  pages?: { id: string; name: string; body: string; folder_id?: string | null }[];
+  files?: {
+    id: string;
+    name: string;
+    content_type: string;
+    size_bytes: number;
+    folder_id?: string | null;
+  }[];
+  // session target
+  session?: {
+    id: string;
+    session_id: string;
+    agent_name: string;
+    cwd: string | null;
+    summary: string | null;
+    status: string;
+    files_touched: string[];
+    started_at: string;
+    finished_at: string | null;
+  };
+  artifacts?: { id: string; file_path: string; size_bytes: number }[];
+  events?: {
+    id: string;
+    role: "user" | "assistant";
+    content: string;
+    tool_name: string | null;
+    created_at: string | null;
+  }[];
+  // page target
+  page?: {
+    id: string;
+    name: string;
+    body: string;
+    content_html: string;
+    content_type: string;
+    folder_id: string | null;
+  };
+  // folder target
+  folder?: {
+    id: string;
+    name: string;
+    parent_folder_id: string | null;
+  };
+  subfolders?: { id: string; name: string }[];
+  // file target
+  file?: {
+    id: string;
+    name: string;
+    content_type: string;
+    size_bytes: number;
+    url: string | null;
+    folder_id: string | null;
+  };
 }
 
 export async function resolveShare(token: string): Promise<ShareProjection> {

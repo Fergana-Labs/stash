@@ -5,6 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import AppShell from "../../../../components/AppShell";
 import { useBreadcrumbs } from "../../../../components/BreadcrumbContext";
+import { FileIcon, PageIcon, PersonIcon, SessionsIcon } from "../../../../components/StashIcons";
 import { useAuth } from "../../../../hooks/useAuth";
 import { listStashActivity, getWorkspace, type ActivityEvent } from "../../../../lib/api";
 import type { Workspace } from "../../../../lib/types";
@@ -14,13 +15,6 @@ const VERB: Record<string, string> = {
   "page.updated": "edited a page",
   "file.uploaded": "uploaded a file",
   "member.joined": "joined the stash",
-};
-
-const ICON: Record<string, string> = {
-  "session.uploaded": "💬",
-  "page.updated": "📄",
-  "file.uploaded": "📁",
-  "member.joined": "👤",
 };
 
 const PALETTE = [
@@ -53,6 +47,14 @@ function relative(iso: string): string {
   const h = Math.floor(m / 60);
   if (h < 24) return `${h}h ago`;
   return `${Math.floor(h / 24)}d ago`;
+}
+
+function EventIcon({ kind }: { kind: string }) {
+  if (kind === "session.uploaded") return <SessionsIcon />;
+  if (kind === "page.updated") return <PageIcon />;
+  if (kind === "file.uploaded") return <FileIcon />;
+  if (kind === "member.joined") return <PersonIcon />;
+  return null;
 }
 
 export default function ActivityPage() {
@@ -125,7 +127,12 @@ export default function ActivityPage() {
                       <>
                         {" "}
                         <Link href={href} className="font-medium text-foreground hover:text-[var(--color-brand-700)]">
-                          {ICON[ev.kind]} {ev.target_label}
+                          <span className="inline-flex items-center gap-1">
+                            <span className="inline-flex text-[15px] text-muted">
+                              <EventIcon kind={ev.kind} />
+                            </span>
+                            {ev.target_label}
+                          </span>
                         </Link>
                       </>
                     )}

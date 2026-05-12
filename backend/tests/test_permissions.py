@@ -82,7 +82,7 @@ async def test_member_read_inherit(pool):
     member_id = await _make_user(pool)
     ws_id = await _make_workspace(pool, owner_id)
     await pool.execute(
-        "INSERT INTO workspace_members (workspace_id, user_id, role) VALUES ($1, $2, 'member')",
+        "INSERT INTO workspace_members (workspace_id, user_id, role) VALUES ($1, $2, 'editor')",
         ws_id,
         member_id,
     )
@@ -98,7 +98,7 @@ async def test_member_cannot_write_without_share(pool):
     member_id = await _make_user(pool)
     ws_id = await _make_workspace(pool, owner_id)
     await pool.execute(
-        "INSERT INTO workspace_members (workspace_id, user_id, role) VALUES ($1, $2, 'member')",
+        "INSERT INTO workspace_members (workspace_id, user_id, role) VALUES ($1, $2, 'editor')",
         ws_id,
         member_id,
     )
@@ -116,7 +116,7 @@ async def test_member_can_write_with_share(pool):
     member_id = await _make_user(pool)
     ws_id = await _make_workspace(pool, owner_id)
     await pool.execute(
-        "INSERT INTO workspace_members (workspace_id, user_id, role) VALUES ($1, $2, 'member')",
+        "INSERT INTO workspace_members (workspace_id, user_id, role) VALUES ($1, $2, 'editor')",
         ws_id,
         member_id,
     )
@@ -158,7 +158,7 @@ async def test_private_visibility_denies_member(pool):
     member_id = await _make_user(pool)
     ws_id = await _make_workspace(pool, owner_id)
     await pool.execute(
-        "INSERT INTO workspace_members (workspace_id, user_id, role) VALUES ($1, $2, 'member')",
+        "INSERT INTO workspace_members (workspace_id, user_id, role) VALUES ($1, $2, 'editor')",
         ws_id,
         member_id,
     )
@@ -207,7 +207,7 @@ async def test_private_folder_hides_inherited_pages_from_workspace_members(pool)
     member_id = await _make_user(pool)
     ws_id = await _make_workspace(pool, owner_id)
     await pool.execute(
-        "INSERT INTO workspace_members (workspace_id, user_id, role) VALUES ($1, $2, 'member')",
+        "INSERT INTO workspace_members (workspace_id, user_id, role) VALUES ($1, $2, 'editor')",
         ws_id,
         member_id,
     )
@@ -228,7 +228,7 @@ async def test_nested_folder_inherits_outer_folder_visibility(pool):
     member_id = await _make_user(pool)
     ws_id = await _make_workspace(pool, owner_id)
     await pool.execute(
-        "INSERT INTO workspace_members (workspace_id, user_id, role) VALUES ($1, $2, 'member')",
+        "INSERT INTO workspace_members (workspace_id, user_id, role) VALUES ($1, $2, 'editor')",
         ws_id,
         member_id,
     )

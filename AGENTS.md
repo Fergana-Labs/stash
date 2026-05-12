@@ -25,6 +25,7 @@ If you are about to ask the user to do something for you, think about whether yo
 Previous Claude coding sessions are stored as `.jsonl` files in your ~/.claude file. Read these to understand prior decisions, debugging sessions, and context that isn't in git history.
 
 When you create or update a PR, share the GitHub link with the user at the end of your session.
+When you make local changes for a task, commit them, push the branch, and open a ready-for-review PR before finishing unless the user explicitly says not to. Do not open draft PRs unless the user explicitly asks for a draft.
 When making local changes for a task that already has a PR, commit and push those changes to the PR branch before finishing so the remote branch stays up to date.
 
 
@@ -45,3 +46,4 @@ Common reads (all support `--json`):
 ## PR hygiene
 
 When opening or updating a PR that includes GUI changes, always add product screenshots to the PR description or PR thread. Capture the changed user-facing screens yourself, and include admin/configuration screens too when they are part of the workflow.
+Never commit screenshots, recordings, or other assets that exist only to support a PR description or review thread. Keep those files outside the repo or delete them before staging, then attach/upload them directly to the PR instead.

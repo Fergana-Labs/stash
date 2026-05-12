@@ -368,7 +368,6 @@ class PageUpdateRequest(BaseModel):
     content_type: str | None = Field(None, pattern=r"^(markdown|html)$")
     content_html: str | None = None
     move_to_root: bool = False
-    public_in_share: bool | None = None
 
 
 class PageResponse(BaseModel):
@@ -381,7 +380,6 @@ class PageResponse(BaseModel):
     content_html: str = ""
     content_hash: str | None = None
     metadata: dict = {}
-    public_in_share: bool = False
     created_by: UUID
     updated_by: UUID | None
     created_at: datetime

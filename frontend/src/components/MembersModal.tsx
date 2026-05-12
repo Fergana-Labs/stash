@@ -3,8 +3,11 @@
 import { useEffect, useState } from "react";
 import {
   apiFetch,
-  getWorkspaceMembers,
   createInviteToken,
+  getMe,
+  getWorkspaceMembers,
+  kickWorkspaceMember,
+  setWorkspaceMemberRole,
 } from "../lib/api";
 import type { WorkspaceMember } from "../lib/types";
 
@@ -30,6 +33,7 @@ function colorFor(name: string) {
 
 export default function MembersModal({ stashId, open, onClose }: MembersModalProps) {
   const [members, setMembers] = useState<WorkspaceMember[]>([]);
+  const [meId, setMeId] = useState<string | null>(null);
   const [username, setUsername] = useState("");
   const [inviteLink, setInviteLink] = useState("");
   const [msg, setMsg] = useState("");
@@ -41,9 +45,33 @@ export default function MembersModal({ stashId, open, onClose }: MembersModalPro
     setInviteLink("");
     setUsername("");
     getWorkspaceMembers(stashId).then(setMembers).catch(() => {});
+    getMe().then((u) => setMeId(u.id)).catch(() => {});
   }, [open, stashId]);
 
   if (!open) return null;
+
+  const myRole = members.find((m) => m.user_id === meId)?.role;
+  const canAdmin = myRole === "owner";
+
+  async function changeRole(userId: string, role: "owner" | "editor" | "viewer") {
+    try {
+      await setWorkspaceMemberRole(stashId, userId, role);
+      setMembers(await getWorkspaceMembers(stashId));
+      setMsg("Role updated.");
+    } catch (e) {
+      setMsg((e as Error).message || "Failed");
+    }
+  }
+
+  async function kick(userId: string) {
+    if (!confirm("Remove this member from the stash?")) return;
+    try {
+      await kickWorkspaceMember(stashId, userId);
+      setMembers(await getWorkspaceMembers(stashId));
+    } catch (e) {
+      setMsg((e as Error).message || "Failed");
+    }
+  }
 
   async function addByUsername(e: React.FormEvent) {
     e.preventDefault();
@@ -90,15 +118,40 @@ export default function MembersModal({ stashId, open, onClose }: MembersModalPro
             {members.map((m) => {
               const label = m.display_name || m.name;
               const c = colorFor(label);
+              const isMe = m.user_id === meId;
               return (
                 <li key={m.user_id} className="flex items-center gap-2.5 text-[13px]">
                   <span className={"inline-flex h-6 w-6 items-center justify-center rounded-full text-[9px] font-semibold " + c.bg + " " + c.fg}>
                     {label.slice(0, 2).toUpperCase()}
                   </span>
-                  <span className="flex-1 truncate font-medium text-foreground">{label}</span>
-                  <span className="rounded bg-surface px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-muted ring-1 ring-border">
-                    {m.role}
+                  <span className="flex-1 truncate font-medium text-foreground">
+                    {label}
+                    {isMe ? <span className="ml-1 text-[10px] text-muted">(you)</span> : null}
                   </span>
+                  {canAdmin && !isMe ? (
+                    <select
+                      value={m.role}
+                      onChange={(e) => changeRole(m.user_id, e.target.value as "owner" | "editor" | "viewer")}
+                      className="rounded border border-border bg-surface px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-foreground"
+                    >
+                      <option value="owner">Owner</option>
+                      <option value="editor">Editor</option>
+                      <option value="viewer">Viewer</option>
+                    </select>
+                  ) : (
+                    <span className="rounded bg-surface px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-muted ring-1 ring-border">
+                      {m.role}
+                    </span>
+                  )}
+                  {canAdmin && !isMe && m.role !== "owner" && (
+                    <button
+                      onClick={() => kick(m.user_id)}
+                      title="Remove from stash"
+                      className="text-[12px] text-muted hover:text-red-400"
+                    >
+                      ✕
+                    </button>
+                  )}
                 </li>
               );
             })}

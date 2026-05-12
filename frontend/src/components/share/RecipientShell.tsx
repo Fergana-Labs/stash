@@ -30,7 +30,9 @@ export default function RecipientShell({
   const [email, setEmail] = useState("");
 
   const sharer =
-    projection.stash.creator.display_name || projection.stash.creator.name;
+    projection.stash?.creator.display_name ||
+    projection.stash?.creator.name ||
+    "Shared link";
   const expiry = daysUntil(projection.share.expires_at);
 
   async function fork() {

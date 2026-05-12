@@ -22,9 +22,13 @@ const TTL_OPTIONS: { label: string; days: number | null }[] = [
   { label: "Never expires", days: null },
 ];
 
+type TargetType = "workspace" | "session" | "page" | "folder" | "file";
+
 export default function ShareModal({ stashId, stashName, open, onClose }: ShareModalProps) {
   const [ttlDays, setTtlDays] = useState<number | null>(14);
-  const [permission, setPermission] = useState<"view" | "comment" | "edit-request">("view");
+  const [permission, setPermission] = useState<"view" | "edit">("view");
+  const [targetType, setTargetType] = useState<TargetType>("workspace");
+  const [targetId, setTargetId] = useState<string>("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [links, setLinks] = useState<ShareLink[]>([]);
@@ -41,7 +45,18 @@ export default function ShareModal({ stashId, stashName, open, onClose }: ShareM
     setBusy(true);
     setError("");
     try {
-      const link = await createStashShareLink(stashId, { permission, ttl_days: ttlDays });
+      // Workspace target: target_id is the stash itself. Other targets
+      // need a UUID — paste it for now until per-resource Share buttons
+      // land that pre-fill this field.
+      if (targetType !== "workspace" && !targetId.trim()) {
+        throw new Error(`Paste the ${targetType} UUID to share`);
+      }
+      const link = await createStashShareLink(stashId, {
+        permission,
+        ttl_days: ttlDays,
+        target_type: targetType,
+        target_id: targetType === "workspace" ? stashId : targetId.trim(),
+      });
       setLinks((l) => [link, ...l]);
       await navigator.clipboard.writeText(link.url).catch(() => {});
       setCopiedId(link.token);
@@ -75,6 +90,40 @@ export default function ShareModal({ stashId, stashName, open, onClose }: ShareM
         </div>
 
         <div className="px-5 py-4">
+          <div className="mb-3 text-[12px]">
+            <label className="flex flex-col gap-1">
+              <span className="font-medium text-foreground">What to share</span>
+              <select
+                value={targetType}
+                onChange={(e) => {
+                  setTargetType(e.target.value as TargetType);
+                  setTargetId("");
+                }}
+                className="rounded-md border border-border bg-surface px-2 py-1.5"
+              >
+                <option value="workspace">The whole stash</option>
+                <option value="session">A specific session</option>
+                <option value="page">A specific page</option>
+                <option value="folder">A specific folder</option>
+                <option value="file">A specific file</option>
+              </select>
+            </label>
+            {targetType !== "workspace" && (
+              <label className="mt-2 flex flex-col gap-1">
+                <span className="font-medium text-foreground">{targetType} UUID</span>
+                <input
+                  type="text"
+                  value={targetId}
+                  onChange={(e) => setTargetId(e.target.value)}
+                  placeholder={`Paste the ${targetType} UUID`}
+                  className="rounded-md border border-border bg-surface px-2 py-1.5 font-mono text-[11px]"
+                />
+                <span className="text-[10.5px] text-muted">
+                  Per-resource Share buttons coming soon — for now, paste from the URL.
+                </span>
+              </label>
+            )}
+          </div>
           <div className="mb-4 grid grid-cols-2 gap-3 text-[12px]">
             <label className="flex flex-col gap-1">
               <span className="font-medium text-foreground">Expires</span>
@@ -97,13 +146,12 @@ export default function ShareModal({ stashId, stashName, open, onClose }: ShareM
               <select
                 value={permission}
                 onChange={(e) =>
-                  setPermission(e.target.value as "view" | "comment" | "edit-request")
+                  setPermission(e.target.value as "view" | "edit")
                 }
                 className="rounded-md border border-border bg-surface px-2 py-1.5"
               >
                 <option value="view">View only</option>
-                <option value="comment">Comment</option>
-                <option value="edit-request">Allow edit requests</option>
+                <option value="edit">Allow edit</option>
               </select>
             </label>
           </div>

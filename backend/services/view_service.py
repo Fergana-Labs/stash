@@ -17,9 +17,25 @@ def _slugify(title: str) -> str:
     return f"{base}-{secrets.token_urlsafe(4)[:6].lower()}"
 
 
+# `is_public` is no longer a column on `views` — it's derived from
+# object_permissions (visibility='public' on object_type='view').
 _VIEW_SELECT = (
-    "SELECT id, workspace_id, slug, title, description, owner_id, is_public, "
-    "cover_image_url, view_count, created_at, updated_at FROM views"
+    "SELECT v.id, v.workspace_id, v.slug, v.title, v.description, v.owner_id, "
+    "COALESCE("
+    "  (SELECT visibility = 'public' FROM object_permissions "
+    "   WHERE object_type = 'view' AND object_id = v.id), "
+    "  false"
+    ") AS is_public, "
+    "v.cover_image_url, v.view_count, v.created_at, v.updated_at FROM views v"
+)
+_VIEW_COLS = (
+    "v.id, v.workspace_id, v.slug, v.title, v.description, v.owner_id, "
+    "COALESCE("
+    "  (SELECT visibility = 'public' FROM object_permissions "
+    "   WHERE object_type = 'view' AND object_id = v.id), "
+    "  false"
+    ") AS is_public, "
+    "v.cover_image_url, v.view_count, v.created_at, v.updated_at"
 )
 
 
@@ -63,18 +79,24 @@ async def create_view(
         async with conn.transaction():
             row = await conn.fetchrow(
                 "INSERT INTO views (workspace_id, slug, title, description, owner_id, "
-                "is_public, cover_image_url) VALUES ($1, $2, $3, $4, $5, $6, $7) "
-                f"RETURNING {', '.join(['id','workspace_id','slug','title','description','owner_id','is_public','cover_image_url','view_count','created_at','updated_at'])}",
+                "cover_image_url) VALUES ($1, $2, $3, $4, $5, $6) "
+                "RETURNING id, workspace_id, slug, title, description, owner_id, "
+                "cover_image_url, view_count, created_at, updated_at",
                 workspace_id,
                 slug,
                 title,
                 description,
                 owner_id,
-                is_public,
                 cover_image_url,
             )
             await _replace_items(conn, row["id"], items)
-    return await _attach_items(dict(row))
+    if is_public:
+        from . import permission_service
+
+        await permission_service.set_visibility("view", row["id"], "public")
+    out = dict(row)
+    out["is_public"] = bool(is_public)
+    return await _attach_items(out)
 
 
 async def _object_title(object_type: str, object_id: UUID) -> str:
@@ -110,9 +132,7 @@ async def find_or_create_share_link_view(
     time on the same object returns the same /v/{slug} URL."""
     pool = get_pool()
     existing = await pool.fetchrow(
-        "SELECT v.id, v.workspace_id, v.slug, v.title, v.description, v.owner_id, "
-        "v.is_public, v.cover_image_url, v.view_count, v.created_at, v.updated_at "
-        "FROM views v "
+        f"SELECT {_VIEW_COLS} FROM views v "
         "WHERE v.owner_id = $1 "
         "AND (SELECT COUNT(*) FROM view_items WHERE view_id = v.id) = 1 "
         "AND EXISTS (SELECT 1 FROM view_items "
@@ -131,8 +151,9 @@ async def find_or_create_share_link_view(
         async with conn.transaction():
             row = await conn.fetchrow(
                 "INSERT INTO views (workspace_id, slug, title, description, owner_id, "
-                "is_public, cover_image_url) VALUES ($1, $2, $3, $4, $5, true, NULL) "
-                f"RETURNING {', '.join(['id','workspace_id','slug','title','description','owner_id','is_public','cover_image_url','view_count','created_at','updated_at'])}",
+                "cover_image_url) VALUES ($1, $2, $3, $4, $5, NULL) "
+                "RETURNING id, workspace_id, slug, title, description, owner_id, "
+                "cover_image_url, view_count, created_at, updated_at",
                 workspace_id,
                 slug,
                 title,
@@ -146,7 +167,12 @@ async def find_or_create_share_link_view(
                 object_type,
                 object_id,
             )
-    return await _attach_items(dict(row))
+    from . import permission_service
+
+    await permission_service.set_visibility("view", row["id"], "public")
+    out = dict(row)
+    out["is_public"] = True
+    return await _attach_items(out)
 
 
 async def update_view(
@@ -170,7 +196,6 @@ async def update_view(
     for col, val in (
         ("title", title),
         ("description", description),
-        ("is_public", is_public),
         ("cover_image_url", cover_image_url),
     ):
         if val is not None:
@@ -190,7 +215,14 @@ async def update_view(
             if items is not None:
                 await _replace_items(conn, view_id, items)
 
-    row = await pool.fetchrow(f"{_VIEW_SELECT} WHERE id = $1", view_id)
+    if is_public is not None:
+        from . import permission_service
+
+        await permission_service.set_visibility(
+            "view", view_id, "public" if is_public else "inherit"
+        )
+
+    row = await pool.fetchrow(f"{_VIEW_SELECT} WHERE v.id = $1", view_id)
     return await _attach_items(dict(row))
 
 
@@ -275,7 +307,7 @@ async def list_public_views(
 async def list_workspace_views(workspace_id: UUID) -> list[dict]:
     pool = get_pool()
     rows = await pool.fetch(
-        f"{_VIEW_SELECT} WHERE workspace_id = $1 ORDER BY updated_at DESC",
+        f"{_VIEW_SELECT} WHERE v.workspace_id = $1 ORDER BY updated_at DESC",
         workspace_id,
     )
     return [await _attach_items(dict(r)) for r in rows]
@@ -283,7 +315,7 @@ async def list_workspace_views(workspace_id: UUID) -> list[dict]:
 
 async def get_view(view_id: UUID) -> dict | None:
     pool = get_pool()
-    row = await pool.fetchrow(f"{_VIEW_SELECT} WHERE id = $1", view_id)
+    row = await pool.fetchrow(f"{_VIEW_SELECT} WHERE v.id = $1", view_id)
     return await _attach_items(dict(row)) if row else None
 
 
@@ -298,7 +330,7 @@ async def get_public_view(slug: str, viewer_id: UUID | None = None) -> dict | No
     from . import permission_service
 
     pool = get_pool()
-    row = await pool.fetchrow(f"{_VIEW_SELECT} WHERE slug = $1", slug)
+    row = await pool.fetchrow(f"{_VIEW_SELECT} WHERE v.slug = $1", slug)
     if not row:
         return None
     view = await _attach_items(dict(row))
@@ -318,7 +350,13 @@ async def get_public_view(slug: str, viewer_id: UUID | None = None) -> dict | No
     await pool.execute("UPDATE views SET view_count = view_count + 1 WHERE id = $1", view["id"])
 
     ws = await pool.fetchrow(
-        "SELECT name, is_public FROM workspaces WHERE id = $1", view["workspace_id"]
+        "SELECT w.name, "
+        "EXISTS("
+        "  SELECT 1 FROM object_permissions op "
+        "  WHERE op.object_type = 'workspace' AND op.object_id = w.id AND op.visibility = 'public'"
+        ") AS is_public "
+        "FROM workspaces w WHERE w.id = $1",
+        view["workspace_id"],
     )
     view["_workspace_name"] = ws["name"] if ws else ""
     view["_workspace_is_public"] = bool(ws and ws["is_public"])
@@ -530,9 +568,9 @@ async def fork_view(slug: str, forker_id: UUID, name: str | None = None) -> dict
         async with conn.transaction():
             new_ws = await conn.fetchrow(
                 "INSERT INTO workspaces (name, description, summary, creator_id, "
-                "invite_code, is_public, forked_from_workspace_id) "
-                "VALUES ($1, $2, $3, $4, $5, false, $6) "
-                "RETURNING id, name, description, creator_id, invite_code, is_public, "
+                "invite_code, forked_from_workspace_id) "
+                "VALUES ($1, $2, $3, $4, $5, $6) "
+                "RETURNING id, name, description, creator_id, invite_code, "
                 "created_at, updated_at, summary, tags, category, featured, "
                 "cover_image_url, fork_count, forked_from_workspace_id",
                 new_name,

@@ -7,12 +7,12 @@ import rehypeRaw from "rehype-raw";
 import remarkGfm from "remark-gfm";
 import AppShell from "../../../../../components/AppShell";
 import { useBreadcrumbs } from "../../../../../components/BreadcrumbContext";
+import { PageIcon } from "../../../../../components/StashIcons";
 import { useAuth } from "../../../../../hooks/useAuth";
 import {
   getFolderContents,
   getPage,
   getWorkspace,
-  togglePagePublic,
   type FolderBreadcrumb,
 } from "../../../../../lib/api";
 import type { Page, Workspace } from "../../../../../lib/types";
@@ -82,7 +82,9 @@ export default function StashPageView() {
       <div className="scroll-thin flex-1 overflow-y-auto">
         <div className="h-16 w-full bg-gradient-to-r from-[var(--color-brand-200)] via-[var(--color-brand-100)] to-amber-100" />
         <div className="mx-auto -mt-6 max-w-3xl px-12 pb-20">
-          <div className="text-5xl">📄</div>
+          <div className="flex h-12 w-12 items-center justify-center text-5xl text-muted">
+            <PageIcon />
+          </div>
           <h1 className="mt-1 font-display text-[36px] font-bold tracking-tight text-foreground">
             {(page?.name || "").replace(/\.md$/, "")}
           </h1>
@@ -93,22 +95,9 @@ export default function StashPageView() {
                 {stash ? <span> in <span className="text-foreground">{stash.name}</span></span> : null}
               </span>
             )}
-            {page && (
-              <label className="flex items-center gap-1.5 cursor-pointer select-none" title="When on, this page is visible to anyone with a share link.">
-                <input
-                  type="checkbox"
-                  checked={!!(page as Page & { public_in_share?: boolean }).public_in_share}
-                  onChange={async (e) => {
-                    try {
-                      const updated = await togglePagePublic(stashId, pageId, e.target.checked);
-                      setPage(updated);
-                    } catch { /* */ }
-                  }}
-                  className="accent-[var(--color-brand)]"
-                />
-                <span className="text-[11px]">Visible in share</span>
-              </label>
-            )}
+            {/* "Visible in share" checkbox is gone — sharing is now link-based.
+                Use the Share button (workspace toolbar) to mint a share-link
+                for this page with target_type='page'. */}
           </div>
 
           {error && (

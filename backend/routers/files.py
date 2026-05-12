@@ -15,8 +15,6 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, Form, HTTPException, UploadFile
 from fastapi.responses import RedirectResponse
-from pydantic import BaseModel
-
 from ..auth import get_current_user
 from ..database import get_pool
 from ..models import FileListResponse, FileResponse, TableResponse
@@ -30,8 +28,18 @@ MAX_FILE_SIZE = 50 * 1024 * 1024  # 50 MB
 
 
 async def _check_member(workspace_id: UUID, user_id: UUID) -> None:
+    """Read gate: any member."""
     if not await workspace_service.is_member(workspace_id, user_id):
         raise HTTPException(status_code=403, detail="Not a workspace member")
+
+
+async def _check_write(workspace_id: UUID, user_id: UUID) -> None:
+    """Write gate: owner or editor only."""
+    if not await workspace_service.can_write(workspace_id, user_id):
+        raise HTTPException(
+            status_code=403,
+            detail="Viewers can read but not modify files",
+        )
 
 
 async def _file_to_response(row: dict) -> FileResponse:
@@ -60,7 +68,7 @@ async def upload_ws_file(
     folder_id: UUID | None = Form(None),
     current_user: dict = Depends(get_current_user),
 ):
-    await _check_member(workspace_id, current_user["id"])
+    await _check_write(workspace_id, current_user["id"])
     if not storage_service.is_configured():
         raise HTTPException(status_code=503, detail="File storage is not configured")
 
@@ -185,44 +193,10 @@ async def get_ws_file_text(
     }
 
 
-class FileUpdateRequest(BaseModel):
-    public_in_share: bool | None = None
-
-
-@ws_router.patch("/{file_id}", response_model=FileResponse)
-async def patch_ws_file(
-    workspace_id: UUID,
-    file_id: UUID,
-    req: FileUpdateRequest,
-    current_user: dict = Depends(get_current_user),
-):
-    await _check_member(workspace_id, current_user["id"])
-    pool = get_pool()
-    sets, args, idx = [], [], 1
-    if req.public_in_share is not None:
-        sets.append(f"public_in_share = ${idx}")
-        args.append(req.public_in_share)
-        idx += 1
-    if not sets:
-        row = await pool.fetchrow(
-            "SELECT id, workspace_id, folder_id, name, content_type, size_bytes, storage_key, uploaded_by, created_at, linked_table_id "
-            "FROM files WHERE id = $1 AND workspace_id = $2",
-            file_id,
-            workspace_id,
-        )
-        if not row:
-            raise HTTPException(status_code=404, detail="File not found")
-        return await _file_to_response(dict(row))
-    args.append(file_id)
-    args.append(workspace_id)
-    row = await pool.fetchrow(
-        f"UPDATE files SET {', '.join(sets)} WHERE id = ${idx} AND workspace_id = ${idx + 1} "
-        "RETURNING id, workspace_id, folder_id, name, content_type, size_bytes, storage_key, uploaded_by, created_at, linked_table_id",
-        *args,
-    )
-    if not row:
-        raise HTTPException(status_code=404, detail="File not found")
-    return await _file_to_response(dict(row))
+# PATCH /files/{id} removed: the only field it edited was `public_in_share`,
+# which is gone in the unified sharing model. To make a file shareable now,
+# mint a share-link via POST /api/v1/workspaces/{ws}/shares with
+# target_type='file'.
 
 
 @ws_router.delete("/{file_id}", status_code=204)
@@ -231,7 +205,7 @@ async def delete_ws_file(
     file_id: UUID,
     current_user: dict = Depends(get_current_user),
 ):
-    await _check_member(workspace_id, current_user["id"])
+    await _check_write(workspace_id, current_user["id"])
     pool = get_pool()
     row = await pool.fetchrow(
         "SELECT storage_key FROM files WHERE id = $1 AND workspace_id = $2",
@@ -312,7 +286,7 @@ async def ingest_csv_file(
 
     Idempotent: if the file is already linked, returns the existing table.
     """
-    await _check_member(workspace_id, current_user["id"])
+    await _check_write(workspace_id, current_user["id"])
     pool = get_pool()
     row = await pool.fetchrow(
         "SELECT id, workspace_id, name, content_type, storage_key, linked_table_id "

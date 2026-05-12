@@ -12,6 +12,10 @@
   },
   "dependencies": {
     "@auth0/nextjs-auth0": "^4.17.0",
+    "@emotion/react": "^11.14.0",
+    "@emotion/styled": "^11.14.1",
+    "@mui/icons-material": "^9.0.1",
+    "@mui/material": "^9.0.1",
     "@tiptap/extension-image": "^3.22.2",
     "@tiptap/extension-link": "3.6.6",
     "@tiptap/extension-placeholder": "3.6.6",
@@ -42,6 +46,7 @@
   "devDependencies": {
     "@playwright/test": "^1.60.0",
     "@tailwindcss/postcss": "^4",
+    "@testing-library/dom": "^10.4.1",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
     "@types/d3-drag": "^3.0.7",

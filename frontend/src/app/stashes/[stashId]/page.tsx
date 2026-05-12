@@ -5,6 +5,15 @@ import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import AppShell from "../../../components/AppShell";
 import MembersModal from "../../../components/MembersModal";
+import {
+  FileIcon,
+  FolderIcon,
+  PageIcon,
+  SessionsIcon,
+  StashIcon,
+  TableIcon,
+  WikiIcon,
+} from "../../../components/StashIcons";
 import { useAuth } from "../../../hooks/useAuth";
 import {
   createFolder,
@@ -21,7 +30,7 @@ import type { Workspace, WorkspaceMember } from "../../../lib/types";
 interface CardItem {
   href: string;
   external?: boolean;
-  icon: string;
+  icon: React.ReactNode;
   iconColor?: string;
   title: string;
   subtitle: string;
@@ -40,7 +49,14 @@ function CardGrid({ items, hover }: { items: CardItem[]; hover: "brand" | "indig
           hoverCls;
         const inner = (
           <>
-            <span className={"text-2xl " + (c.iconColor || "")}>{c.icon}</span>
+            <span
+              className={
+                "flex h-7 w-7 items-center justify-center text-2xl " +
+                (c.iconColor || "text-muted")
+              }
+            >
+              {c.icon}
+            </span>
             <div className="min-w-0">
               <div className="truncate text-[13.5px] font-semibold text-foreground">{c.title}</div>
               <div className="truncate text-[11.5px] text-muted">{c.subtitle}</div>
@@ -131,7 +147,7 @@ export default function StashHomePage() {
 
   const sessions: CardItem[] = (spine?.sessions ?? []).slice(0, 6).map((s) => ({
     href: `/stashes/${stashId}/sessions/${encodeURIComponent(s.session_id)}`,
-    icon: "#",
+    icon: <SessionsIcon />,
     title: `#${s.session_id.length > 28 ? s.session_id.slice(0, 28) + "…" : s.session_id}`,
     subtitle: `${s.agent_name} · ${formatBytes(s.size_bytes)}`,
   }));
@@ -144,7 +160,7 @@ export default function StashHomePage() {
 
   const wikiFolderItems: CardItem[] = rootFolders.map((f) => ({
     href: `/stashes/${stashId}/folders/${f.id}`,
-    icon: "📁",
+    icon: <FolderIcon />,
     title: f.name,
     subtitle: [
       f.page_count ? `${f.page_count} page${f.page_count === 1 ? "" : "s"}` : null,
@@ -156,7 +172,7 @@ export default function StashHomePage() {
   }));
   const wikiPageItems: CardItem[] = rootPages.map((p) => ({
     href: `/stashes/${stashId}/p/${p.id}`,
-    icon: "📄",
+    icon: <PageIcon />,
     title: p.name.replace(/\.md$/, ""),
     subtitle: "Page",
   }));
@@ -166,7 +182,7 @@ export default function StashHomePage() {
       href: isCsvLinked
         ? `/tables/${f.linked_table_id}?workspaceId=${stashId}`
         : `/stashes/${stashId}/f/${f.id}`,
-      icon: f.content_type?.includes("csv") ? "▦" : "📄",
+      icon: f.content_type?.includes("csv") ? <TableIcon /> : <FileIcon />,
       iconColor: f.content_type?.includes("csv")
         ? "text-emerald-600"
         : f.content_type?.includes("pdf")
@@ -190,7 +206,9 @@ export default function StashHomePage() {
       <div className="scroll-thin flex-1 overflow-y-auto">
         <div className="h-32 bg-gradient-to-r from-[var(--color-brand-200)] via-amber-100 to-rose-100" />
         <div className="mx-auto -mt-8 max-w-3xl px-12 pb-16">
-          <div className="mb-2 text-5xl leading-none">📊</div>
+          <div className="mb-2 flex h-12 w-12 items-center justify-center text-5xl text-[var(--color-brand-700)]">
+            <StashIcon />
+          </div>
           <h1 className="font-display text-[34px] font-bold tracking-tight text-foreground">
             {stash?.name || "Loading…"}
           </h1>
@@ -241,7 +259,7 @@ export default function StashHomePage() {
 
           {/* Sessions */}
           <SectionHeader
-            icon="💬"
+            icon={<SessionsIcon />}
             title="Sessions"
             subtitle="episodic"
             trailing={`${spine?.session_count ?? spine?.sessions.length ?? 0} transcript${
@@ -256,7 +274,7 @@ export default function StashHomePage() {
 
           {/* Wiki */}
           <SectionHeader
-            icon="📖"
+            icon={<WikiIcon />}
             title="Wiki"
             subtitle="structured"
             trailing={`${totalFolders} folder${totalFolders === 1 ? "" : "s"} · ${
@@ -326,16 +344,19 @@ function SectionHeader({
   subtitle,
   trailing,
 }: {
-  icon: string;
+  icon: React.ReactNode;
   title: string;
   subtitle: string;
   trailing: string;
 }) {
   return (
     <div className="mt-8 flex items-baseline justify-between">
-      <h2 className="font-display text-xl font-semibold text-foreground">
-        {icon} {title}{" "}
-        <span className="text-[12px] font-normal italic text-muted">· {subtitle}</span>
+      <h2 className="flex items-baseline gap-2 font-display text-xl font-semibold text-foreground">
+        <span className="inline-flex text-[22px] text-muted">{icon}</span>
+        <span>
+          {title}{" "}
+          <span className="text-[12px] font-normal italic text-muted">· {subtitle}</span>
+        </span>
       </h2>
       <span className="text-[11.5px] text-muted">{trailing}</span>
     </div>
@@ -395,7 +416,7 @@ function MemberStack({ members }: { members: WorkspaceMember[] }) {
                 " " +
                 palette.fg
               }
-              title={`${label}${m.role && m.role !== "member" ? ` · ${m.role}` : ""}`}
+              title={`${label}${m.role && m.role !== "editor" ? ` · ${m.role}` : ""}`}
             >
               {label.slice(0, 2).toUpperCase()}
             </span>

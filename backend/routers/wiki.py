@@ -38,8 +38,18 @@ router = APIRouter(prefix="/api/v1/workspaces/{workspace_id}", tags=["wiki"])
 
 
 async def _check_ws_access(workspace_id: UUID, user_id: UUID) -> None:
+    """Read gate: any member (viewer/editor/owner) is allowed."""
     if not await workspace_service.is_member(workspace_id, user_id):
         raise HTTPException(status_code=403, detail="Not a workspace member")
+
+
+async def _check_ws_write(workspace_id: UUID, user_id: UUID) -> None:
+    """Write gate: owner or editor only. Viewer is blocked."""
+    if not await workspace_service.can_write(workspace_id, user_id):
+        raise HTTPException(
+            status_code=403,
+            detail="Viewers can read but not edit this workspace",
+        )
 
 
 async def _check_ws_owns_folder(workspace_id: UUID, folder_id: UUID) -> dict:
@@ -94,7 +104,7 @@ async def create_folder(
     req: FolderCreateRequest,
     current_user: dict = Depends(get_current_user),
 ):
-    await _check_ws_access(workspace_id, current_user["id"])
+    await _check_ws_write(workspace_id, current_user["id"])
     if req.parent_folder_id is not None:
         await _check_ws_owns_folder(workspace_id, req.parent_folder_id)
     try:
@@ -157,7 +167,7 @@ async def get_folder_contents(
         folder_id,
     )
     pages = await pool.fetch(
-        "SELECT id, name, public_in_share FROM pages WHERE folder_id = $1 ORDER BY name",
+        "SELECT id, name FROM pages WHERE folder_id = $1 ORDER BY name",
         folder_id,
     )
     files = await pool.fetch(
@@ -203,7 +213,7 @@ async def get_folder_contents(
             for r in subfolders
         ],
         "pages": [
-            {"id": str(r["id"]), "name": r["name"], "public_in_share": r["public_in_share"]}
+            {"id": str(r["id"]), "name": r["name"]}
             for r in pages
         ],
         "files": file_payload,
@@ -217,7 +227,7 @@ async def update_folder(
     req: FolderUpdateRequest,
     current_user: dict = Depends(get_current_user),
 ):
-    await _check_ws_access(workspace_id, current_user["id"])
+    await _check_ws_write(workspace_id, current_user["id"])
     await _check_ws_owns_folder(workspace_id, folder_id)
     if req.parent_folder_id is not None and not req.move_to_root:
         await _check_ws_owns_folder(workspace_id, req.parent_folder_id)
@@ -244,7 +254,7 @@ async def delete_folder(
     folder_id: UUID,
     current_user: dict = Depends(get_current_user),
 ):
-    await _check_ws_access(workspace_id, current_user["id"])
+    await _check_ws_write(workspace_id, current_user["id"])
     deleted = await wiki_service.delete_folder(folder_id, workspace_id)
     if not deleted:
         raise HTTPException(status_code=404, detail="Folder not found")
@@ -259,7 +269,7 @@ async def create_page(
     req: PageCreateRequest,
     current_user: dict = Depends(get_current_user),
 ):
-    await _check_ws_access(workspace_id, current_user["id"])
+    await _check_ws_write(workspace_id, current_user["id"])
     if req.folder_id is not None:
         await _check_ws_owns_folder(workspace_id, req.folder_id)
     try:
@@ -328,7 +338,7 @@ async def update_page(
     req: PageUpdateRequest,
     current_user: dict = Depends(get_current_user),
 ):
-    await _check_ws_access(workspace_id, current_user["id"])
+    await _check_ws_write(workspace_id, current_user["id"])
     if req.folder_id is not None and not req.move_to_root:
         await _check_ws_owns_folder(workspace_id, req.folder_id)
     try:
@@ -342,7 +352,6 @@ async def update_page(
             content_type=req.content_type,
             content_html=req.content_html,
             move_to_root=req.move_to_root,
-            public_in_share=req.public_in_share,
         )
     except DuplicatePageName as e:
         raise HTTPException(status_code=409, detail=str(e))
@@ -357,7 +366,7 @@ async def delete_page(
     page_id: UUID,
     current_user: dict = Depends(get_current_user),
 ):
-    await _check_ws_access(workspace_id, current_user["id"])
+    await _check_ws_write(workspace_id, current_user["id"])
     deleted = await wiki_service.delete_page(page_id, workspace_id)
     if not deleted:
         raise HTTPException(status_code=404, detail="Page not found")

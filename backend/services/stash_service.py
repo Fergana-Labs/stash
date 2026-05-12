@@ -1,4 +1,16 @@
-"""Stashes: shareable archive of a coding session."""
+"""Session-share + session-artifact helpers.
+
+The legacy name `stash_service` survives because the `/api/v1/stashes/*`
+workspace-alias routes still reference it (and the codebase calls
+workspaces "stashes" in the product). But the data this service touches
+moved: `stashes` table → `sessions` + `share_links`; `stash_artifacts`
+table → `session_artifacts`.
+
+This module is the thin compatibility layer that the share_session
+endpoint family (`/b/{slug}` legacy URL, the share_session router)
+needs to operate on the new tables while keeping the public API
+surface stable for one release.
+"""
 
 from __future__ import annotations
 
@@ -12,7 +24,7 @@ def _generate_slug() -> str:
     return f"b-{secrets.token_urlsafe(12)}"
 
 
-async def create_stash(
+async def create_session_share(
     workspace_id: UUID,
     session_id: str,
     created_by: UUID,
@@ -20,103 +32,164 @@ async def create_stash(
     cwd: str | None = None,
     files_touched: list[str] | None = None,
 ) -> dict:
+    """Create (or return) a public share-link targeting an agent session.
+
+    Idempotent: a second call for the same (workspace_id, session_id)
+    re-uses the existing slug + share link rather than minting a new one.
+    """
+    from . import session_service
+
     pool = get_pool()
-    slug = _generate_slug()
-    row = await pool.fetchrow(
-        "INSERT INTO stashes "
-        "(workspace_id, session_id, slug, agent_name, cwd, files_touched, created_by) "
-        "VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7) "
-        "RETURNING id, workspace_id, session_id, slug, agent_name, cwd, status, "
-        "summary, files_touched, created_by, created_at, updated_at",
+    # Ensure the session row exists, with metadata.
+    session = await session_service.upsert_session(
         workspace_id,
         session_id,
-        slug,
-        agent_name,
-        cwd,
-        files_touched or [],
+        agent_name=agent_name,
+        cwd=cwd,
+        created_by=created_by,
+    )
+    if files_touched:
+        await session_service.set_files_touched(session["id"], files_touched)
+
+    # Is there already a session-share link for this session? Reuse it.
+    existing = await pool.fetchrow(
+        "SELECT token, slug, target_type, target_id, workspace_id, created_by, created_at "
+        "FROM share_links "
+        "WHERE target_type = 'session' AND target_id = $1 AND revoked_at IS NULL "
+        "ORDER BY created_at LIMIT 1",
+        session["id"],
+    )
+    if existing:
+        return _share_to_session_dict(dict(existing), session)
+
+    slug = _generate_slug()
+    token = secrets.token_urlsafe(16)
+    row = await pool.fetchrow(
+        "INSERT INTO share_links "
+        "(token, workspace_id, created_by, permission, target_type, target_id, slug) "
+        "VALUES ($1, $2, $3, 'view', 'session', $4, $5) "
+        "RETURNING token, slug, target_type, target_id, workspace_id, created_by, created_at",
+        token,
+        workspace_id,
         created_by,
-    )
-    return dict(row)
-
-
-async def _hydrate_stash(row: dict) -> dict:
-    """Common projection for stash rows. `has_transcript` is derived from
-    the existence of history_events for this session."""
-    d = dict(row)
-    pool = get_pool()
-    if d.get("session_id"):
-        exists = await pool.fetchval(
-            "SELECT EXISTS(SELECT 1 FROM history_events "
-            "WHERE workspace_id = $1 AND session_id = $2)",
-            d["workspace_id"],
-            d["session_id"],
-        )
-        d["has_transcript"] = bool(exists)
-    else:
-        d["has_transcript"] = False
-    return d
-
-
-async def get_stash_by_slug(slug: str) -> dict | None:
-    pool = get_pool()
-    row = await pool.fetchrow(
-        "SELECT s.id, s.workspace_id, s.session_id, s.slug, s.agent_name, s.cwd, "
-        "s.status, s.summary, s.files_touched, "
-        "s.created_by, s.created_at, s.updated_at, "
-        "(SELECT COUNT(*) FROM stash_artifacts sa WHERE sa.stash_id = s.id) AS artifact_count "
-        "FROM stashes s WHERE s.slug = $1",
+        session["id"],
         slug,
     )
-    if not row:
-        return None
-    return await _hydrate_stash(dict(row))
+    return _share_to_session_dict(dict(row), session)
 
 
-async def get_stash_by_id(stash_id: UUID) -> dict | None:
+def _share_to_session_dict(share: dict, session: dict) -> dict:
+    """Stitch the share-link row + session row into one dict shaped like
+    the legacy `stashes` row that some callers still expect.
+
+    `artifact_count` defaults to 0; callers that care set it explicitly
+    after computing it via a separate query."""
+    return {
+        "id": share["target_id"],
+        "workspace_id": share["workspace_id"],
+        "session_id": session["session_id"],
+        "slug": share["slug"],
+        "agent_name": session.get("agent_name") or "",
+        "cwd": session.get("cwd"),
+        "status": session.get("status"),
+        "summary": session.get("summary"),
+        "files_touched": session.get("files_touched") or [],
+        "created_by": share["created_by"],
+        "created_at": share["created_at"],
+        "updated_at": share["created_at"],
+        "has_transcript": True,
+        "artifact_count": 0,
+    }
+
+
+async def get_session_share_by_slug(slug: str) -> dict | None:
+    """Returns the legacy stash-shaped dict for a public slug, or None."""
+    from . import session_service
+
     pool = get_pool()
-    row = await pool.fetchrow(
-        "SELECT s.id, s.workspace_id, s.session_id, s.slug, s.agent_name, s.cwd, "
-        "s.status, s.summary, s.files_touched, "
-        "s.created_by, s.created_at, s.updated_at, "
-        "(SELECT COUNT(*) FROM stash_artifacts sa WHERE sa.stash_id = s.id) AS artifact_count "
-        "FROM stashes s WHERE s.id = $1",
-        stash_id,
+    share = await pool.fetchrow(
+        "SELECT token, slug, target_type, target_id, workspace_id, created_by, created_at "
+        "FROM share_links "
+        "WHERE slug = $1 AND target_type = 'session' AND revoked_at IS NULL",
+        slug,
     )
-    if not row:
+    if not share:
         return None
-    return await _hydrate_stash(dict(row))
+    session = await session_service.get_session_by_id(share["target_id"])
+    if not session:
+        return None
+    out = _share_to_session_dict(dict(share), session)
+    artifacts = await pool.fetchval(
+        "SELECT COUNT(*) FROM session_artifacts WHERE session_id = $1",
+        session["id"],
+    )
+    out["artifact_count"] = int(artifacts or 0)
+    return out
 
 
-async def update_stash(stash_id: UUID, **fields) -> dict | None:
+async def get_session_share_by_id(target_id: UUID) -> dict | None:
+    """`target_id` is the sessions.id UUID."""
+    from . import session_service
+
     pool = get_pool()
-    sets = []
-    args = []
-    i = 1
-    for key in ("summary", "status"):
-        if key in fields and fields[key] is not None:
-            i += 1
-            sets.append(f"{key} = ${i}")
-            args.append(fields[key])
-    if not sets:
-        return await get_stash_by_id(stash_id)
-    sets.append("updated_at = now()")
-    sql = f"UPDATE stashes SET {', '.join(sets)} WHERE id = $1"
-    await pool.execute(sql, stash_id, *args)
-    return await get_stash_by_id(stash_id)
+    session = await session_service.get_session_by_id(target_id)
+    if not session:
+        return None
+    share = await pool.fetchrow(
+        "SELECT token, slug, target_type, target_id, workspace_id, created_by, created_at "
+        "FROM share_links "
+        "WHERE target_type = 'session' AND target_id = $1 AND revoked_at IS NULL "
+        "ORDER BY created_at LIMIT 1",
+        target_id,
+    )
+    if not share:
+        return None
+    out = _share_to_session_dict(dict(share), session)
+    artifacts = await pool.fetchval(
+        "SELECT COUNT(*) FROM session_artifacts WHERE session_id = $1",
+        target_id,
+    )
+    out["artifact_count"] = int(artifacts or 0)
+    return out
+
+
+# Backward-compat aliases for legacy callers.
+get_stash_by_slug = get_session_share_by_slug
+get_stash_by_id = get_session_share_by_id
+create_stash = create_session_share
+
+
+async def update_session_share(
+    session_row_id: UUID,
+    *,
+    summary: str | None = None,
+    status: str | None = None,
+) -> dict | None:
+    from . import session_service
+
+    if summary is not None:
+        await session_service.set_summary(session_row_id, summary, status=status or "ready")
+    elif status is not None:
+        await session_service.set_status(session_row_id, status)
+    return await get_session_share_by_id(session_row_id)
+
+
+update_stash = update_session_share
 
 
 async def add_artifact(
-    stash_id: UUID,
+    session_id: UUID,
     file_path: str,
     storage_key: str,
     size_bytes: int,
 ) -> dict:
+    """Insert a session_artifact row. `session_id` here is `sessions.id` UUID."""
     pool = get_pool()
     row = await pool.fetchrow(
-        "INSERT INTO stash_artifacts (stash_id, file_path, storage_key, size_bytes) "
+        "INSERT INTO session_artifacts (session_id, file_path, storage_key, size_bytes) "
         "VALUES ($1, $2, $3, $4) "
         "RETURNING id, file_path, size_bytes, created_at",
-        stash_id,
+        session_id,
         file_path,
         storage_key,
         size_bytes,
@@ -124,12 +197,12 @@ async def add_artifact(
     return dict(row)
 
 
-async def list_artifacts(stash_id: UUID) -> list[dict]:
+async def list_artifacts(session_id: UUID) -> list[dict]:
     pool = get_pool()
     rows = await pool.fetch(
         "SELECT id, file_path, storage_key, size_bytes, created_at "
-        "FROM stash_artifacts WHERE stash_id = $1 ORDER BY file_path",
-        stash_id,
+        "FROM session_artifacts WHERE session_id = $1 ORDER BY file_path",
+        session_id,
     )
     return [dict(r) for r in rows]
 
@@ -137,9 +210,11 @@ async def list_artifacts(stash_id: UUID) -> list[dict]:
 async def get_artifact(artifact_id: UUID) -> dict | None:
     pool = get_pool()
     row = await pool.fetchrow(
-        "SELECT sa.id, sa.stash_id, sa.file_path, sa.storage_key, sa.size_bytes, sa.created_at, "
-        "s.slug AS stash_slug "
-        "FROM stash_artifacts sa JOIN stashes s ON s.id = sa.stash_id "
+        "SELECT sa.id, sa.session_id, sa.file_path, sa.storage_key, sa.size_bytes, sa.created_at, "
+        "sl.slug AS stash_slug "
+        "FROM session_artifacts sa "
+        "LEFT JOIN share_links sl "
+        "  ON sl.target_type = 'session' AND sl.target_id = sa.session_id "
         "WHERE sa.id = $1",
         artifact_id,
     )

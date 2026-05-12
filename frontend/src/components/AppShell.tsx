@@ -9,6 +9,7 @@ import AppSidebar from "./AppSidebar";
 import CommandPalette from "./CommandPalette";
 import ShareModal from "./ShareModal";
 import { useBreadcrumbsValue } from "./BreadcrumbContext";
+import { StashIcon } from "./StashIcons";
 
 interface AppShellProps {
   user: User;
@@ -183,7 +184,11 @@ function Breadcrumb({
         return (
           <span key={i} className="flex min-w-0 items-center gap-1">
             {i > 0 && <span className="text-muted/60">/</span>}
-            {isStash && <span className="text-[14px]">📊</span>}
+            {isStash && (
+              <span className="flex h-4 w-4 items-center justify-center text-[14px] text-muted">
+                <StashIcon />
+              </span>
+            )}
             {!last && c.href ? (
               <Link href={c.href} className="truncate hover:text-foreground">
                 {c.label}

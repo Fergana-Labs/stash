@@ -265,7 +265,7 @@ async def get_page(page_id: UUID, workspace_id: UUID) -> dict | None:
     pool = get_pool()
     row = await pool.fetchrow(
         "SELECT id, workspace_id, folder_id, name, content_markdown, content_html, "
-        "content_type, content_hash, metadata, public_in_share, "
+        "content_type, content_hash, metadata, "
         "created_by, updated_by, created_at, updated_at "
         "FROM pages WHERE id = $1 AND workspace_id = $2",
         page_id,
@@ -306,7 +306,6 @@ async def update_page(
     move_to_root: bool = False,
     metadata: dict | None = None,
     on_conflict: Callable[[dict], Awaitable[str]] | None = None,
-    public_in_share: bool | None = None,
 ) -> dict | None:
     """Update a page with optimistic concurrency on content_hash."""
     pool = get_pool()
@@ -375,10 +374,6 @@ async def update_page(
         if metadata is not None:
             sets.append(f"metadata = ${idx}::jsonb")
             args.append(metadata)
-            idx += 1
-        if public_in_share is not None:
-            sets.append(f"public_in_share = ${idx}")
-            args.append(public_in_share)
             idx += 1
 
         args.append(page_id)

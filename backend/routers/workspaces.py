@@ -3,6 +3,7 @@
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
 
 from ..auth import get_current_user, get_current_user_optional
 from ..models import (
@@ -200,9 +201,8 @@ async def add_member(
     current_user: dict = Depends(get_current_user),
 ):
     """Add a registered user to the workspace by username."""
-    role = await workspace_service.get_member_role(workspace_id, current_user["id"])
-    if role not in ("owner", "admin"):
-        raise HTTPException(status_code=403, detail="Only owner/admin can add members")
+    if not await workspace_service.is_owner(workspace_id, current_user["id"]):
+        raise HTTPException(status_code=403, detail="Only the owner can add members")
     username = req.get("username", "").strip()
     if not username:
         raise HTTPException(status_code=400, detail="username is required")
@@ -227,6 +227,32 @@ async def kick_member(
     kicked = await workspace_service.kick_member(workspace_id, user_id, current_user["id"])
     if not kicked:
         raise HTTPException(status_code=403, detail="Cannot kick this member")
+
+
+class SetRoleRequest(BaseModel):
+    role: str  # 'owner' | 'editor' | 'viewer'
+
+
+@router.patch("/{workspace_id}/members/{user_id}")
+async def set_member_role(
+    workspace_id: UUID,
+    user_id: UUID,
+    req: SetRoleRequest,
+    current_user: dict = Depends(get_current_user),
+):
+    """Owner-only: change a member's role.
+
+    Refuses to demote the last remaining owner so the workspace doesn't
+    get locked out."""
+    ok = await workspace_service.set_member_role(
+        workspace_id, user_id, current_user["id"], req.role
+    )
+    if not ok:
+        raise HTTPException(
+            status_code=403,
+            detail="Couldn't set role — either not owner, invalid role, or last owner",
+        )
+    return {"status": "ok", "role": req.role}
 
 
 # ---------------------------------------------------------------------------

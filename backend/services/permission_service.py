@@ -76,34 +76,77 @@ async def _effective_read_visibility(
 ) -> str:
     """Resolve read inheritance for anonymous/link readers.
 
-    Pages walk: page → folder chain → workspace. Folders walk: folder chain →
-    workspace. The first non-'inherit' setting along the chain wins, so a
-    private folder hides everything beneath it.
+    One recursive CTE walks the object → folder chain → workspace path,
+    joins to object_permissions, and returns the first non-'inherit'
+    visibility. Used to short-circuit N+1 `get_visibility` calls.
     """
+    pool = get_pool()
+
+    if object_type == "page":
+        row = await pool.fetchrow(
+            """
+            WITH RECURSIVE chain AS (
+                -- The page itself: depth 0, "page" type
+                SELECT 0 AS depth, 'page'::text AS object_type, p.id AS object_id,
+                       p.folder_id AS next_folder
+                FROM pages p WHERE p.id = $1
+                UNION ALL
+                -- Walk up the folder chain
+                SELECT c.depth + 1, 'folder'::text, f.id, f.parent_folder_id
+                FROM folders f JOIN chain c ON c.next_folder = f.id
+            ),
+            with_ws AS (
+                SELECT depth, object_type, object_id FROM chain
+                UNION ALL
+                SELECT (SELECT COUNT(*)+1 FROM chain), 'workspace', $2::uuid
+                WHERE $2::uuid IS NOT NULL
+            )
+            SELECT op.visibility
+            FROM with_ws w
+            JOIN object_permissions op
+              ON op.object_type = w.object_type AND op.object_id = w.object_id
+            WHERE op.visibility <> 'inherit'
+            ORDER BY w.depth ASC
+            LIMIT 1
+            """,
+            object_id,
+            workspace_id,
+        )
+        return row["visibility"] if row else "inherit"
+
+    if object_type == "folder":
+        row = await pool.fetchrow(
+            """
+            WITH RECURSIVE chain AS (
+                SELECT 0 AS depth, id AS object_id, parent_folder_id AS next_folder
+                FROM folders WHERE id = $1
+                UNION ALL
+                SELECT c.depth + 1, f.id, f.parent_folder_id
+                FROM folders f JOIN chain c ON c.next_folder = f.id
+            ),
+            with_ws AS (
+                SELECT depth, 'folder'::text AS object_type, object_id FROM chain
+                UNION ALL
+                SELECT (SELECT COUNT(*)+1 FROM chain), 'workspace', $2::uuid
+                WHERE $2::uuid IS NOT NULL
+            )
+            SELECT op.visibility
+            FROM with_ws w
+            JOIN object_permissions op
+              ON op.object_type = w.object_type AND op.object_id = w.object_id
+            WHERE op.visibility <> 'inherit'
+            ORDER BY w.depth ASC
+            LIMIT 1
+            """,
+            object_id,
+            workspace_id,
+        )
+        return row["visibility"] if row else "inherit"
+
+    # Non-hierarchical types: just check own visibility, then workspace.
     vis = await get_visibility(object_type, object_id)
     if vis != "inherit":
         return vis
-
-    if object_type == "page":
-        for folder_id in await _folder_chain_for_page(object_id):
-            folder_vis = await get_visibility("folder", folder_id)
-            if folder_vis != "inherit":
-                return folder_vis
-        if workspace_id is None:
-            return "inherit"
-        return await get_visibility("workspace", workspace_id)
-
-    if object_type == "folder":
-        for folder_id in await _folder_chain(object_id):
-            if folder_id == object_id:
-                continue
-            folder_vis = await get_visibility("folder", folder_id)
-            if folder_vis != "inherit":
-                return folder_vis
-        if workspace_id is None:
-            return "inherit"
-        return await get_visibility("workspace", workspace_id)
-
     if object_type == "workspace" or workspace_id is None:
         return "inherit"
     return await get_visibility("workspace", workspace_id)
@@ -221,15 +264,6 @@ async def set_visibility(object_type: str, object_id: UUID, visibility: str) -> 
             object_type,
             object_id,
             visibility,
-        )
-
-    # Workspaces have a legacy is_public column the Discover catalog still
-    # queries. Mirror visibility=public into it on toggle.
-    if object_type == "workspace":
-        await pool.execute(
-            "UPDATE workspaces SET is_public = $1 WHERE id = $2",
-            visibility == "public",
-            object_id,
         )
 
 

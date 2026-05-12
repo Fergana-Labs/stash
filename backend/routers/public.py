@@ -106,7 +106,11 @@ async def public_workspace(
         raise HTTPException(status_code=404, detail="Workspace not found")
 
     ws = await pool.fetchrow(
-        "SELECT w.id, w.name, w.summary, w.description, w.cover_image_url, w.is_public, "
+        "SELECT w.id, w.name, w.summary, w.description, w.cover_image_url, "
+        "EXISTS("
+        "  SELECT 1 FROM object_permissions op "
+        "  WHERE op.object_type = 'workspace' AND op.object_id = w.id AND op.visibility = 'public'"
+        ") AS is_public, "
         "w.creator_id, u.name AS creator_name, u.display_name AS creator_display_name, "
         "w.tags, w.category, w.discoverable, w.featured, w.fork_count, "
         "w.forked_from_workspace_id, "
