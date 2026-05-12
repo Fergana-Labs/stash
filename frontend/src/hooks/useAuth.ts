@@ -1,10 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { ApiError, clearToken, getMe, getToken, logoutServer } from "../lib/api";
+import { ApiError, clearToken, getMe, getToken } from "../lib/api";
 import { User } from "../lib/types";
 
 const AUTH0_ENABLED = process.env.NEXT_PUBLIC_AUTH0_ENABLED === "true";
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "";
 
 /**
  * Auth hook. Reads the API key from localStorage and loads /users/me.
@@ -52,22 +53,26 @@ export function useAuth() {
     return () => window.removeEventListener("storage", onStorage);
   }, [loadUser]);
 
-  const logout = useCallback(async () => {
-    // Revoke server-side first so a captured token can't outlive the click.
-    // Best-effort: if the network drops, we still clear the local token.
-    try {
-      await logoutServer();
-    } catch {
-      // swallow — server may already be down, key may already be revoked
-    }
+  const logout = useCallback(() => {
+    // Drop local state first so the UI flips to signed-out the moment the
+    // user clicks — don't make them wait on a server round-trip. Revoke the
+    // key in the background; `keepalive` lets the request survive the
+    // navigation we're about to do.
+    const token = getToken();
     clearToken();
     setUser(null);
-    if (AUTH0_ENABLED) {
-      // Destroys the Next.js app-session cookie and redirects to Auth0's
-      // /v2/logout so the tenant SSO cookie is also cleared — otherwise "sign
-      // in again" silently re-auths into the same account.
-      window.location.href = "/auth/logout";
+    if (token) {
+      fetch(`${API_URL}/api/v1/users/logout`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+        keepalive: true,
+      }).catch(() => {});
     }
+    // Hard navigation so module-level caches reset. `?federated` makes the
+    // Auth0 SDK kill the tenant SSO cookie too — without it, /login silently
+    // re-auths via the surviving SSO cookie and lands the user back on their
+    // workspace page.
+    window.location.href = AUTH0_ENABLED ? "/auth/logout?federated" : "/login";
   }, []);
 
   return {

@@ -2,9 +2,8 @@
 
 import { useEffect, useState } from "react";
 import AppShell from "../../components/AppShell";
-import AddToCollect from "../../components/share/AddToCollect";
-import ShareSheet from "../../components/share/ShareSheet";
 import { useAuth } from "../../hooks/useAuth";
+import { useShareModal } from "../../lib/shareModalContext";
 import {
   listMySessions,
   materializeSession,
@@ -88,8 +87,7 @@ function SessionRow({ session }: { session: SessionSummary }) {
 }
 
 function SessionActions({ session }: { session: SessionSummary }) {
-  const [open, setOpen] = useState(false);
-  const [materialized, setMaterialized] = useState<{ id: string; folderId: string } | null>(null);
+  const shareModal = useShareModal();
   const [working, setWorking] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
@@ -102,8 +100,17 @@ function SessionActions({ session }: { session: SessionSummary }) {
     setErr(null);
     try {
       const result = await materializeSession(session.workspace_id, session.session_id);
-      setMaterialized({ id: result.page.id, folderId: result.folder_id });
-      setOpen(true);
+      shareModal.open({
+        stashId: session.workspace_id,
+        stashName: session.workspace_name ?? undefined,
+        initial: [
+          {
+            object_type: "page",
+            object_id: result.page.id,
+            label_override: `Session ${session.session_id.slice(0, 8)}`,
+          },
+        ],
+      });
     } catch (e) {
       setErr(e instanceof Error ? e.message : "Failed to share");
     } finally {
@@ -113,31 +120,13 @@ function SessionActions({ session }: { session: SessionSummary }) {
 
   return (
     <div className="flex shrink-0 items-center gap-2">
-      {session.workspace_id && materialized && (
-        <AddToCollect
-          objectType="page"
-          objectId={materialized.id}
-          workspaceId={session.workspace_id}
-          label={`Session ${session.session_id.slice(0, 8)}`}
-        />
-      )}
-      <div className="relative">
-        <button
-          onClick={onShare}
-          disabled={working}
-          className="rounded border border-border bg-raised px-2.5 py-1 font-mono text-[10px] uppercase tracking-wider text-foreground hover:border-foreground disabled:opacity-50"
-        >
-          {working ? "Preparing…" : "Share"}
-        </button>
-        {open && materialized && (
-          <ShareSheet
-            objectType="page"
-            objectId={materialized.id}
-            objectLabel={`Session ${session.session_id.slice(0, 8)}`}
-            onClose={() => setOpen(false)}
-          />
-        )}
-      </div>
+      <button
+        onClick={onShare}
+        disabled={working}
+        className="rounded border border-border bg-raised px-2.5 py-1 font-mono text-[10px] uppercase tracking-wider text-foreground hover:border-foreground disabled:opacity-50"
+      >
+        {working ? "Preparing…" : "Share"}
+      </button>
       {err && <span className="text-[11px] text-red-500">{err}</span>}
     </div>
   );
