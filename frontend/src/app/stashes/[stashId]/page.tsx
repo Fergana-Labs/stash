@@ -5,6 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import AppShell from "../../../components/AppShell";
 import MembersModal from "../../../components/MembersModal";
+import StashQuickAdd from "../../../components/StashQuickAdd";
 import {
   FileIcon,
   FolderIcon,
@@ -148,9 +149,9 @@ export default function StashHomePage() {
 
   // Root-level wiki contents only. Nested folders/pages/files surface
   // through their parent folder's detail page, not here.
-  const rootFolders = (spine?.wiki.folders ?? []).filter((f) => !f.parent_folder_id);
-  const rootPages = (spine?.wiki.pages ?? []).filter((p) => !p.folder_id);
-  const rootFiles = (spine?.wiki.files ?? []).filter((f) => !f.folder_id);
+  const rootFolders = (spine?.wiki?.folders ?? []).filter((f) => !f.parent_folder_id);
+  const rootPages = (spine?.wiki?.pages ?? []).filter((p) => !p.folder_id);
+  const rootFiles = (spine?.wiki?.files ?? []).filter((f) => !f.folder_id);
 
   const wikiFolderItems: CardItem[] = rootFolders.map((f) => ({
     href: `/stashes/${stashId}/folders/${f.id}`,
@@ -191,9 +192,9 @@ export default function StashHomePage() {
     };
   });
   const wikiItems = [...wikiFolderItems, ...wikiPageItems, ...wikiFileItems];
-  const totalFolders = spine?.wiki.folders.length ?? 0;
-  const totalPages = spine?.wiki.pages.length ?? 0;
-  const totalFiles = spine?.wiki.files.length ?? 0;
+  const totalFolders = spine?.wiki?.folders.length ?? 0;
+  const totalPages = spine?.wiki?.pages.length ?? 0;
+  const totalFiles = spine?.wiki?.files.length ?? 0;
 
   return (
     <AppShell user={user} onLogout={logout}>
@@ -234,6 +235,12 @@ export default function StashHomePage() {
               >
                 Join stash
               </button>
+            </div>
+          )}
+
+          {isMember && (
+            <div className="mt-6">
+              <StashQuickAdd stashId={stashId} user={user} onAdded={load} />
             </div>
           )}
 

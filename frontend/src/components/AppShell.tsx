@@ -8,7 +8,6 @@ import { listMyWorkspaces } from "../lib/api";
 import AppSidebar from "./AppSidebar";
 import CommandPalette from "./CommandPalette";
 import ShareModal from "./ShareModal";
-import StashQuickAdd from "./StashQuickAdd";
 import { useBreadcrumbsValue } from "./BreadcrumbContext";
 import { StashIcon } from "./StashIcons";
 
@@ -141,7 +140,6 @@ export default function AppShell({ user, onLogout, children }: AppShellProps) {
           onCmdkOpen={() => setCmdkOpen(true)}
         />
         <main className="flex min-w-0 flex-col overflow-y-auto bg-base">
-          {activeStashId && <StashQuickAdd stashId={activeStashId} user={user} />}
           {children}
         </main>
       </div>
