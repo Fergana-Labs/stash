@@ -1,34 +1,25 @@
 "use client";
 
-import { useParams, useRouter } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import ActivityFeed from "../../../../components/ActivityFeed";
-import AppShell from "../../../../components/AppShell";
-import { useBreadcrumbs } from "../../../../components/BreadcrumbContext";
-import { useAuth } from "../../../../hooks/useAuth";
-import { listStashActivity, getWorkspace, type ActivityEvent } from "../../../../lib/api";
-import type { Workspace } from "../../../../lib/types";
+import ActivityFeed from "../../components/ActivityFeed";
+import AppShell from "../../components/AppShell";
+import { useAuth } from "../../hooks/useAuth";
+import { listActivity, type ActivityEvent } from "../../lib/api";
 
 export default function ActivityPage() {
-  const params = useParams();
   const router = useRouter();
-  const stashId = params.stashId as string;
   const { user, loading, logout } = useAuth();
-  const [stash, setStash] = useState<Workspace | null>(null);
   const [events, setEvents] = useState<ActivityEvent[]>([]);
   const [fetching, setFetching] = useState(true);
-
-  useBreadcrumbs([{ label: "Activity" }], `${stashId}/activity`);
 
   useEffect(() => {
     if (!user) return;
 
     let cancelled = false;
-    Promise.all([getWorkspace(stashId), listStashActivity(stashId, 100)])
-      .then(([nextStash, nextEvents]) => {
-        if (cancelled) return;
-        setStash(nextStash);
-        setEvents(nextEvents);
+    listActivity(100)
+      .then((nextEvents) => {
+        if (!cancelled) setEvents(nextEvents);
       })
       .catch(() => {})
       .finally(() => {
@@ -38,8 +29,11 @@ export default function ActivityPage() {
     return () => {
       cancelled = true;
     };
-  }, [user, stashId]);
-  useEffect(() => { if (!loading && !user) router.push("/login"); }, [user, loading, router]);
+  }, [user]);
+
+  useEffect(() => {
+    if (!loading && !user) router.push("/login");
+  }, [user, loading, router]);
 
   if (loading) return <div className="flex h-screen items-center justify-center text-muted">Loading…</div>;
   if (!user) return null;
@@ -51,7 +45,7 @@ export default function ActivityPage() {
           Activity
         </h1>
         <p className="mt-1 text-[13px] text-muted">
-          Recent changes in {stash?.name || "this stash"}.
+          Recent changes across your stashes.
         </p>
 
         {fetching ? (
@@ -61,7 +55,7 @@ export default function ActivityPage() {
             No activity yet. Push a transcript, edit a page, or upload a file.
           </p>
         ) : (
-          <ActivityFeed events={events.map((event) => ({ ...event, stash_id: stashId }))} />
+          <ActivityFeed events={events} showStash />
         )}
       </div>
     </AppShell>

@@ -1227,6 +1227,12 @@ export interface ActivityEvent {
   actor: { name: string; display_name: string | null };
   target_id: string;
   target_label: string;
+  stash_id?: string;
+  stash_name?: string;
+}
+
+export async function listActivity(limit = 100): Promise<ActivityEvent[]> {
+  return apiFetch(`/api/v1/me/activity?limit=${limit}`);
 }
 
 export async function listStashActivity(stashId: string, limit = 50): Promise<ActivityEvent[]> {
