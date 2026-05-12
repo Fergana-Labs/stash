@@ -49,7 +49,10 @@ async def list_catalog(
     cursor: str | None = None,
 ) -> tuple[list[dict], str | None]:
     pool = get_pool()
-    where = ["EXISTS(SELECT 1 FROM object_permissions op WHERE op.object_type = 'workspace' AND op.object_id = w.id AND op.visibility = 'public')", "w.discoverable = true"]
+    where = [
+        "EXISTS(SELECT 1 FROM object_permissions op WHERE op.object_type = 'workspace' AND op.object_id = w.id AND op.visibility = 'public')",
+        "w.discoverable = true",
+    ]
     args: list = []
     idx = 1
 
@@ -115,7 +118,8 @@ async def get_featured() -> list[dict]:
 async def get_public_detail(workspace_id: UUID) -> dict | None:
     pool = get_pool()
     ws_row = await pool.fetchrow(
-        f"{_CATALOG_SELECT} WHERE w.id = $1 AND EXISTS(SELECT 1 FROM object_permissions op WHERE op.object_type = 'workspace' AND op.object_id = w.id AND op.visibility = 'public') " "AND w.discoverable = true",
+        f"{_CATALOG_SELECT} WHERE w.id = $1 AND EXISTS(SELECT 1 FROM object_permissions op WHERE op.object_type = 'workspace' AND op.object_id = w.id AND op.visibility = 'public') "
+        "AND w.discoverable = true",
         workspace_id,
     )
     if not ws_row:
@@ -160,7 +164,9 @@ async def list_admin_candidates(
 ) -> list[dict]:
     """List public workspaces available to curate into Discover."""
     pool = get_pool()
-    where = ["EXISTS(SELECT 1 FROM object_permissions op WHERE op.object_type = 'workspace' AND op.object_id = w.id AND op.visibility = 'public')"]
+    where = [
+        "EXISTS(SELECT 1 FROM object_permissions op WHERE op.object_type = 'workspace' AND op.object_id = w.id AND op.visibility = 'public')"
+    ]
     args: list = []
     idx = 1
 
