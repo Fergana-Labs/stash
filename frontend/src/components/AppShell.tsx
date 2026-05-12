@@ -4,12 +4,12 @@ import { ReactNode, useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { User, Workspace } from "../lib/types";
-import { listMyWorkspaces } from "../lib/api";
 import AppSidebar from "./AppSidebar";
 import CommandPalette from "./CommandPalette";
 import ShareModal from "./ShareModal";
 import { useBreadcrumbsValue } from "./BreadcrumbContext";
 import { StashIcon } from "./StashIcons";
+import { getCachedWorkspaces, readCachedWorkspaces } from "../lib/stashNavigationCache";
 
 interface AppShellProps {
   user: User;
@@ -39,16 +39,18 @@ export default function AppShell({ user, onLogout, children }: AppShellProps) {
   const breadcrumbs = useBreadcrumbsValue();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [activeStashId, setActiveStashId] = useState<string | null>(null);
-  const [stashes, setStashes] = useState<Workspace[]>([]);
+  const [stashes, setStashes] = useState<Workspace[]>(
+    () => readCachedWorkspaces(user.id)?.all ?? []
+  );
   const [shareOpen, setShareOpen] = useState(false);
   const [cmdkOpen, setCmdkOpen] = useState(false);
 
   useEffect(() => {
     setSidebarCollapsed(readBool(SIDEBAR_KEY));
-    listMyWorkspaces()
-      .then((r) => setStashes(r.workspaces ?? []))
+    getCachedWorkspaces(user.id)
+      .then((r) => setStashes(r.all))
       .catch(() => {});
-  }, []);
+  }, [user.id]);
 
   useEffect(() => {
     const m =
@@ -93,6 +95,7 @@ export default function AppShell({ user, onLogout, children }: AppShellProps) {
               });
             }}
             className="rounded p-1 text-muted hover:bg-raised"
+            aria-label="Toggle sidebar"
             title="Toggle sidebar (⌘\\)"
           >
             <SidebarToggleIcon collapsed={sidebarCollapsed} />
@@ -129,16 +132,17 @@ export default function AppShell({ user, onLogout, children }: AppShellProps) {
       <div
         className="grid min-h-0 flex-1 overflow-hidden"
         style={{
-          gridTemplateColumns: `${sidebarCollapsed ? "0px" : "260px"} minmax(0, 1fr)`,
+          gridTemplateColumns: sidebarCollapsed ? "minmax(0, 1fr)" : "260px minmax(0, 1fr)",
         }}
       >
-        <AppSidebar
-          user={user}
-          onLogout={onLogout}
-          collapsed={sidebarCollapsed}
-          cmdkOpen={cmdkOpen}
-          onCmdkOpen={() => setCmdkOpen(true)}
-        />
+        {!sidebarCollapsed && (
+          <AppSidebar
+            user={user}
+            onLogout={onLogout}
+            cmdkOpen={cmdkOpen}
+            onCmdkOpen={() => setCmdkOpen(true)}
+          />
+        )}
         <main className="flex min-w-0 flex-col overflow-y-auto bg-base">
           {children}
         </main>

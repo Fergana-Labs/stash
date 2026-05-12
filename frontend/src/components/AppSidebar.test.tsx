@@ -2,6 +2,7 @@ import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import AppSidebar from "./AppSidebar";
+import { resetStashNavigationCache } from "../lib/stashNavigationCache";
 import {
   getStashSpine,
   listMyWorkspaces,
@@ -86,6 +87,7 @@ function detailsFor(label: string): HTMLDetailsElement {
 
 describe("AppSidebar tree expansion", () => {
   beforeEach(() => {
+    resetStashNavigationCache();
     localStorage.clear();
     nav.pathname = "/";
     nav.push.mockClear();
@@ -100,10 +102,11 @@ describe("AppSidebar tree expansion", () => {
   });
 
   it("starts stashes and their top-level sections collapsed", async () => {
-    render(<AppSidebar user={user} collapsed={false} onCmdkOpen={vi.fn()} />);
+    render(<AppSidebar user={user} onCmdkOpen={vi.fn()} />);
 
     await screen.findByText("Demo Stash");
 
+    expect(screen.getByText("Activity").closest("a")).toHaveAttribute("href", "/activity");
     expect(detailsFor("Demo Stash")).not.toHaveAttribute("open");
     expect(detailsFor("Sessions")).not.toHaveAttribute("open");
     expect(detailsFor("Wiki")).not.toHaveAttribute("open");
@@ -115,7 +118,7 @@ describe("AppSidebar tree expansion", () => {
       workspaces: [workspace, sharedWorkspace],
     });
 
-    render(<AppSidebar user={user} collapsed={false} onCmdkOpen={vi.fn()} />);
+    render(<AppSidebar user={user} onCmdkOpen={vi.fn()} />);
 
     await screen.findByText("Shared Stash");
     await screen.findByText("Demo Stash");
@@ -138,7 +141,7 @@ describe("AppSidebar tree expansion", () => {
     localStorage.setItem("stash_sidebar_open_stashes", "ws-1");
     localStorage.setItem("stash_sidebar_open_sections", "ws-1:sessions");
 
-    render(<AppSidebar user={user} collapsed={false} onCmdkOpen={vi.fn()} />);
+    render(<AppSidebar user={user} onCmdkOpen={vi.fn()} />);
 
     await screen.findByText("Demo Stash");
 
@@ -151,7 +154,7 @@ describe("AppSidebar tree expansion", () => {
   it("keeps the stash landing route collapsed without saved state", async () => {
     nav.pathname = "/stashes/ws-1";
 
-    render(<AppSidebar user={user} collapsed={false} onCmdkOpen={vi.fn()} />);
+    render(<AppSidebar user={user} onCmdkOpen={vi.fn()} />);
 
     await screen.findByText("Demo Stash");
 
@@ -164,7 +167,7 @@ describe("AppSidebar tree expansion", () => {
   it("opens the relevant tree branch for deep links only", async () => {
     nav.pathname = "/stashes/ws-1/p/page-1";
 
-    render(<AppSidebar user={user} collapsed={false} onCmdkOpen={vi.fn()} />);
+    render(<AppSidebar user={user} onCmdkOpen={vi.fn()} />);
 
     await screen.findByText("Demo Stash");
 
@@ -173,5 +176,25 @@ describe("AppSidebar tree expansion", () => {
     expect(detailsFor("Wiki")).toHaveAttribute("open");
     expect(localStorage.getItem("stash_sidebar_open_stashes")).toBeNull();
     expect(localStorage.getItem("stash_sidebar_open_sections")).toBeNull();
+  });
+
+  it("reuses loaded workspace and spine data after a remount", async () => {
+    nav.pathname = "/stashes/ws-1/p/page-1";
+
+    const first = render(<AppSidebar user={user} onCmdkOpen={vi.fn()} />);
+    await screen.findByText("Demo Stash");
+    await waitFor(() => expect(getStashSpine).toHaveBeenCalledWith("ws-1"));
+    expect(listMyWorkspaces).toHaveBeenCalledTimes(1);
+    expect(getStashSpine).toHaveBeenCalledTimes(1);
+
+    first.unmount();
+    vi.clearAllMocks();
+
+    render(<AppSidebar user={user} onCmdkOpen={vi.fn()} />);
+
+    await screen.findByText("Demo Stash");
+    expect(listMyWorkspaces).not.toHaveBeenCalled();
+    expect(getStashSpine).not.toHaveBeenCalled();
+    expect(detailsFor("Demo Stash")).toHaveAttribute("open");
   });
 });

@@ -1,7 +1,7 @@
 """Stash router — two concepts live here:
 
 1. Workspace-alias endpoints: re-exports workspace CRUD under /api/v1/stashes/*
-   with spine, skills, activity, and ask-the-stash.
+   with spine, skills, and ask-the-stash.
 2. Session-stash endpoints: create/upload/read session snapshots with artifacts
    and transcripts, scoped under workspaces or public by slug.
 """
@@ -343,80 +343,6 @@ async def ask_stash(
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
-
-
-# ---------------------------------------------------------------------------
-# Activity feed (Phase D) — synthesized from real timestamps, no history_events
-# ---------------------------------------------------------------------------
-
-
-@router.get("/{stash_id}/activity")
-async def get_stash_activity(
-    stash_id: UUID,
-    limit: int = 50,
-    current_user: dict = Depends(get_current_user),
-):
-    """Recent activity across transcripts, pages, files, and members."""
-    if not await workspace_service.is_member(stash_id, current_user["id"]):
-        raise HTTPException(status_code=403, detail="Not a stash member")
-    pool = get_pool()
-    events = await pool.fetch(
-        """
-        (
-          SELECT 'session.uploaded' AS kind,
-                 MAX(created_at) AS ts,
-                 MAX(created_by) AS actor_id,
-                 session_id AS target_id,
-                 MAX(agent_name) || ': ' || session_id AS target_label
-          FROM history_events
-          WHERE workspace_id = $1 AND session_id IS NOT NULL
-          GROUP BY session_id
-        )
-        UNION ALL
-        (
-          SELECT 'page.updated' AS kind, updated_at AS ts,
-                 COALESCE(updated_by, created_by) AS actor_id, id::text AS target_id,
-                 name AS target_label
-          FROM pages WHERE workspace_id = $1
-        )
-        UNION ALL
-        (
-          SELECT 'file.uploaded' AS kind, created_at AS ts,
-                 uploaded_by AS actor_id, id::text AS target_id,
-                 name AS target_label
-          FROM files WHERE workspace_id = $1
-        )
-        UNION ALL
-        (
-          SELECT 'member.joined' AS kind, joined_at AS ts,
-                 user_id AS actor_id, user_id::text AS target_id,
-                 '' AS target_label
-          FROM workspace_members WHERE workspace_id = $1
-        )
-        ORDER BY ts DESC LIMIT $2
-        """,
-        stash_id,
-        min(limit, 200),
-    )
-    user_ids = list({r["actor_id"] for r in events if r["actor_id"]})
-    users = {}
-    if user_ids:
-        rows = await pool.fetch(
-            "SELECT id, name, display_name FROM users WHERE id = ANY($1::uuid[])",
-            user_ids,
-        )
-        users = {r["id"]: {"name": r["name"], "display_name": r["display_name"]} for r in rows}
-
-    return [
-        {
-            "kind": r["kind"],
-            "ts": r["ts"],
-            "actor": users.get(r["actor_id"], {"name": "unknown", "display_name": None}),
-            "target_id": r["target_id"],
-            "target_label": r["target_label"],
-        }
-        for r in events
-    ]
 
 
 @router.get("/{stash_id}/spine")

@@ -6,6 +6,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, Query
 
 from ..auth import get_current_user
+from ..database import get_pool
 from ..models import UserPageEntry, UserPageListResponse
 from ..services import analytics_service, memory_service, table_service, wiki_service
 
@@ -41,6 +42,104 @@ async def list_all_history_events(
         order=order,
     )
     return {"events": events, "has_more": has_more}
+
+
+@router.get("/activity")
+async def list_activity(
+    limit: int = Query(100, ge=1, le=200),
+    current_user: dict = Depends(get_current_user),
+):
+    """Recent product activity across every stash the user can access."""
+    pool = get_pool()
+    events = await pool.fetch(
+        """
+        WITH accessible_workspaces AS (
+          SELECT w.id, w.name
+          FROM workspaces w
+          JOIN workspace_members wm ON wm.workspace_id = w.id
+          WHERE wm.user_id = $1
+        )
+        (
+          SELECT 'session.uploaded' AS kind,
+                 MAX(he.created_at) AS ts,
+                 (
+                   ARRAY_AGG(he.created_by ORDER BY he.created_at DESC)
+                   FILTER (WHERE he.created_by IS NOT NULL)
+                 )[1] AS actor_id,
+                 he.session_id AS target_id,
+                 (
+                   ARRAY_AGG(he.agent_name ORDER BY he.created_at DESC)
+                   FILTER (WHERE he.agent_name IS NOT NULL)
+                 )[1] || ': ' || he.session_id AS target_label,
+                 aw.id AS stash_id,
+                 aw.name AS stash_name
+          FROM history_events he
+          JOIN accessible_workspaces aw ON aw.id = he.workspace_id
+          WHERE he.session_id IS NOT NULL
+          GROUP BY aw.id, aw.name, he.session_id
+        )
+        UNION ALL
+        (
+          SELECT 'page.updated' AS kind,
+                 p.updated_at AS ts,
+                 COALESCE(p.updated_by, p.created_by) AS actor_id,
+                 p.id::text AS target_id,
+                 p.name AS target_label,
+                 aw.id AS stash_id,
+                 aw.name AS stash_name
+          FROM pages p
+          JOIN accessible_workspaces aw ON aw.id = p.workspace_id
+        )
+        UNION ALL
+        (
+          SELECT 'file.uploaded' AS kind,
+                 f.created_at AS ts,
+                 f.uploaded_by AS actor_id,
+                 f.id::text AS target_id,
+                 f.name AS target_label,
+                 aw.id AS stash_id,
+                 aw.name AS stash_name
+          FROM files f
+          JOIN accessible_workspaces aw ON aw.id = f.workspace_id
+        )
+        UNION ALL
+        (
+          SELECT 'member.joined' AS kind,
+                 wm.joined_at AS ts,
+                 wm.user_id AS actor_id,
+                 wm.user_id::text AS target_id,
+                 '' AS target_label,
+                 aw.id AS stash_id,
+                 aw.name AS stash_name
+          FROM workspace_members wm
+          JOIN accessible_workspaces aw ON aw.id = wm.workspace_id
+        )
+        ORDER BY ts DESC LIMIT $2
+        """,
+        current_user["id"],
+        limit,
+    )
+    user_ids = list({r["actor_id"] for r in events if r["actor_id"]})
+    users = {}
+    if user_ids:
+        rows = await pool.fetch(
+            "SELECT id, name, display_name FROM users WHERE id = ANY($1::uuid[])",
+            user_ids,
+        )
+        users = {r["id"]: {"name": r["name"], "display_name": r["display_name"]} for r in rows}
+
+    return [
+        {
+            "kind": r["kind"],
+            "ts": r["ts"],
+            "actor": users.get(r["actor_id"], {"name": "unknown", "display_name": None}),
+            "target_id": r["target_id"],
+            "target_label": r["target_label"],
+            "stash_id": r["stash_id"],
+            "stash_name": r["stash_name"],
+        }
+        for r in events
+    ]
 
 
 @router.get("/tables")

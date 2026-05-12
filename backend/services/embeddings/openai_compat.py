@@ -15,6 +15,11 @@ from .base import BaseEmbedder
 
 logger = logging.getLogger(__name__)
 
+# OpenAI-compatible endpoints cap each input at 8192 tokens. We approximate
+# ~4 chars/token (matching the batch-sharding budget) and clip at 30k chars
+# (~7500 tokens) so one oversize transcript doesn't fail the whole batch.
+_PER_INPUT_CHAR_CAP = 30_000
+
 
 class OpenAICompatEmbedder(BaseEmbedder):
     name = "openai"
@@ -46,6 +51,8 @@ class OpenAICompatEmbedder(BaseEmbedder):
         if not self.api_key or not texts:
             return None
 
+        inputs = [t[:_PER_INPUT_CHAR_CAP] for t in texts]
+
         client = self._get_client()
         try:
             resp = await client.post(
@@ -56,7 +63,7 @@ class OpenAICompatEmbedder(BaseEmbedder):
                 },
                 json={
                     "model": self.model,
-                    "input": texts,
+                    "input": inputs,
                     "dimensions": self.dims,
                 },
             )
