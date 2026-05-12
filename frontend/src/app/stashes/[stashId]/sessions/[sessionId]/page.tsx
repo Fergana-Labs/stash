@@ -9,6 +9,7 @@ import {
   getSessionEvents,
   getStashTranscript,
   getWorkspace,
+  type SessionArtifact,
   type SessionEvent,
   type SessionTranscript,
 } from "../../../../../lib/api";
@@ -148,6 +149,13 @@ export default function SessionViewerPage() {
                     </>
                   ) : null}
                   {stash ? <span> · in <span className="text-foreground">{stash.name}</span></span> : null}
+                  {transcript.artifacts.length > 0 ? (
+                    <span>
+                      {" "}
+                      · {transcript.artifacts.length} artifact
+                      {transcript.artifacts.length === 1 ? "" : "s"}
+                    </span>
+                  ) : null}
                 </p>
               )}
             </div>
@@ -163,6 +171,8 @@ export default function SessionViewerPage() {
               {error}
             </div>
           )}
+
+          {transcript && <SessionPackage transcript={transcript} />}
 
           <div className="flex flex-col">
             {turns.map((turn, i) => {
@@ -198,6 +208,83 @@ function DateDivider({ label }: { label: string }) {
       <span>{label}</span>
       <span className="h-px flex-1 bg-border" />
     </div>
+  );
+}
+
+function SessionPackage({ transcript }: { transcript: SessionTranscript }) {
+  const placeholder = summaryPlaceholder(transcript.status);
+  const hasSummary = !!transcript.summary || !!placeholder;
+  const hasArtifacts = transcript.artifacts.length > 0;
+
+  if (!hasSummary && !hasArtifacts) return null;
+
+  return (
+    <div className="mb-6 space-y-5 border-b border-border pb-5">
+      {hasSummary && (
+        <section>
+          <div className="mb-2 flex items-center justify-between gap-3">
+            <h2 className="text-[13px] font-semibold text-foreground">Summary</h2>
+            {transcript.status && (
+              <span className="rounded-md border border-border bg-base px-2 py-0.5 font-mono text-[10.5px] uppercase text-muted">
+                {transcript.status}
+              </span>
+            )}
+          </div>
+          <div className="whitespace-pre-wrap text-[13.5px] leading-relaxed text-foreground">
+            {transcript.summary || placeholder}
+          </div>
+        </section>
+      )}
+
+      {hasArtifacts && (
+        <section>
+          <h2 className="mb-2 text-[13px] font-semibold text-foreground">Artifacts</h2>
+          <div className="divide-y divide-border rounded-md border border-border">
+            {transcript.artifacts.map((artifact) => (
+              <ArtifactRow
+                key={artifact.id}
+                artifact={artifact}
+                bundleSlug={transcript.bundle_slug}
+              />
+            ))}
+          </div>
+        </section>
+      )}
+    </div>
+  );
+}
+
+function ArtifactRow({
+  artifact,
+  bundleSlug,
+}: {
+  artifact: SessionArtifact;
+  bundleSlug: string | null;
+}) {
+  const content = (
+    <>
+      <span className="min-w-0 truncate font-mono text-[12.5px] text-foreground">
+        {artifact.file_path}
+      </span>
+      <span className="flex-shrink-0 font-mono text-[11px] text-muted">
+        {formatBytes(artifact.size_bytes)}
+      </span>
+    </>
+  );
+
+  if (!bundleSlug) {
+    return <div className="flex items-center justify-between gap-4 px-3 py-2">{content}</div>;
+  }
+
+  return (
+    <a
+      href={`/api/v1/stashes/${bundleSlug}/files/${artifact.id}`}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="flex items-center justify-between gap-4 px-3 py-2 hover:bg-raised"
+    >
+      {content}
+    </a>
   );
 }
 
@@ -237,4 +324,20 @@ function MessageRow({ turn }: { turn: MessageTurn }) {
       </div>
     </div>
   );
+}
+
+function summaryPlaceholder(status: SessionTranscript["status"]): string | null {
+  if (status === "live" || status === "summarizing") {
+    return "Summary is being generated.";
+  }
+  if (status === "failed") {
+    return "Summary unavailable.";
+  }
+  return null;
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 }

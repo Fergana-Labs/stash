@@ -7,6 +7,7 @@ endpoint in the shape the chat viewer can parse.
 
 import io
 import json
+from uuid import UUID
 
 import pytest
 from httpx import AsyncClient
@@ -78,6 +79,62 @@ async def test_upload_inserts_events_and_events_roundtrip(client: AsyncClient):
     assert [event["role"] for event in events] == ["user", "assistant"]
     assert events[0]["content"] == "hi"
     assert events[1]["content"] == "hello"
+
+
+@pytest.mark.asyncio
+async def test_transcript_metadata_includes_summary_and_artifacts(
+    client: AsyncClient, pool
+):
+    key = await _register(client)
+    ws = await _workspace(client, key)
+    headers = {"Authorization": f"Bearer {key}"}
+
+    up = await client.post(
+        f"/api/v1/workspaces/{ws}/transcripts",
+        files={"file": ("s.jsonl", io.BytesIO(BODY), "application/jsonl")},
+        data={"session_id": "sess-bundle", "agent_name": "claude"},
+        headers=headers,
+    )
+    assert up.status_code == 201, up.text
+
+    created = await client.post(
+        f"/api/v1/workspaces/{ws}/stashes",
+        json={"session_id": "sess-bundle", "agent_name": "claude"},
+        headers=headers,
+    )
+    assert created.status_code == 201, created.text
+    created_payload = created.json()
+    stash_id = UUID(created_payload["id"])
+
+    await pool.execute(
+        "UPDATE sessions SET summary = $1, status = 'ready' WHERE id = $2",
+        "Changed transcript sessions to include artifacts.",
+        stash_id,
+    )
+    await pool.execute(
+        "INSERT INTO session_artifacts (session_id, file_path, storage_key, size_bytes) "
+        "VALUES ($1, 'backend/routers/transcripts.py', 'test-key', 123)",
+        stash_id,
+    )
+
+    meta = await client.get(
+        f"/api/v1/workspaces/{ws}/transcripts/sess-bundle",
+        headers=headers,
+    )
+    assert meta.status_code == 200, meta.text
+    payload = meta.json()
+    assert payload["summary"] == "Changed transcript sessions to include artifacts."
+    assert payload["status"] == "ready"
+    assert payload["bundle_slug"] == created_payload["slug"]
+    assert len(payload["artifacts"]) == 1
+    assert payload["artifacts"][0]["file_path"] == "backend/routers/transcripts.py"
+    assert payload["artifacts"][0]["size_bytes"] == 123
+
+    spine = await client.get(f"/api/v1/stashes/{ws}/spine", headers=headers)
+    assert spine.status_code == 200, spine.text
+    session = spine.json()["sessions"][0]
+    assert session["summary"] == "Changed transcript sessions to include artifacts."
+    assert session["artifact_count"] == 1
 
 
 @pytest.mark.asyncio
