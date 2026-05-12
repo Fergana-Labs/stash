@@ -30,6 +30,7 @@ When making local changes for a task that already has a PR, commit and push thos
 ### PR hygiene
 
 When opening or updating a PR that includes GUI changes, always add product screenshots to the PR description or PR thread. Capture the changed user-facing screens yourself, and include admin/configuration screens too when they are part of the workflow.
+Never commit screenshots, recordings, or other assets that exist only to support a PR description or review thread. Keep those files outside the repo or delete them before staging, then attach/upload them directly to the PR instead.
 
 <!-- stash-context -->
 ## Stash
