@@ -12,6 +12,10 @@
   },
   "dependencies": {
     "@auth0/nextjs-auth0": "^4.17.0",
+    "@emotion/react": "^11.14.0",
+    "@emotion/styled": "^11.14.1",
+    "@mui/icons-material": "^9.0.1",
+    "@mui/material": "^9.0.1",
     "@tiptap/extension-image": "^3.22.2",
     "@tiptap/extension-link": "3.6.6",
     "@tiptap/extension-placeholder": "3.6.6",
