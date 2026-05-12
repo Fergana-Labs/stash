@@ -42,8 +42,11 @@ export default function StashPageView() {
 
   const load = useCallback(async () => {
     try {
-      setStash(await getWorkspace(stashId));
-      const p = await getPage(stashId, pageId);
+      const [workspace, p] = await Promise.all([
+        getWorkspace(stashId),
+        getPage(stashId, pageId),
+      ]);
+      setStash(workspace);
       setPage(p);
       if (p.folder_id) {
         const contents = await getFolderContents(stashId, p.folder_id);

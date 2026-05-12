@@ -2,7 +2,14 @@
 
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type Dispatch,
+  type SetStateAction,
+} from "react";
 import AppShell from "../../../components/AppShell";
 import MembersModal from "../../../components/MembersModal";
 import StashQuickAdd from "../../../components/StashQuickAdd";
@@ -25,8 +32,9 @@ import {
   joinWorkspace,
   uploadFile,
   type StashSpine,
+  type WikiFile,
 } from "../../../lib/api";
-import type { Workspace, WorkspaceMember } from "../../../lib/types";
+import type { FileInfo, Folder, Workspace, WorkspaceMember } from "../../../lib/types";
 
 interface CardItem {
   href: string;
@@ -98,16 +106,28 @@ export default function StashHomePage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const load = useCallback(async () => {
-    try {
-      setStash(await getWorkspace(stashId));
-    } catch {
+    const [stashResult, membersResult, spineResult] = await Promise.allSettled([
+      getWorkspace(stashId),
+      getWorkspaceMembers(stashId),
+      getStashSpine(stashId),
+    ]);
+
+    if (stashResult.status === "fulfilled") {
+      setStash(stashResult.value);
+    } else {
       setError("Stash not found");
     }
-    try {
-      setMembers(await getWorkspaceMembers(stashId));
-    } catch {
-      /* not a member yet */
+
+    if (membersResult.status === "fulfilled") {
+      setMembers(membersResult.value);
     }
+
+    if (spineResult.status === "fulfilled") {
+      setSpine(spineResult.value);
+    }
+  }, [stashId]);
+
+  const refreshSpine = useCallback(async () => {
     try {
       setSpine(await getStashSpine(stashId));
     } catch {
@@ -240,7 +260,7 @@ export default function StashHomePage() {
 
           {isMember && (
             <div className="mt-6">
-              <StashQuickAdd stashId={stashId} user={user} onAdded={load} />
+              <StashQuickAdd stashId={stashId} user={user} onAdded={refreshSpine} />
             </div>
           )}
 
@@ -290,8 +310,8 @@ export default function StashHomePage() {
                 const file = e.target.files?.[0];
                 if (!file) return;
                 try {
-                  await uploadFile(stashId, file);
-                  await load();
+                  const uploaded = await uploadFile(stashId, file);
+                  addFileToSpine(uploaded, setSpine);
                 } catch { /* */ }
                 if (fileInputRef.current) fileInputRef.current.value = "";
               }} />
@@ -317,8 +337,8 @@ export default function StashHomePage() {
                   const name = window.prompt("Folder name?");
                   if (!name?.trim()) return;
                   try {
-                    await createFolder(stashId, name.trim());
-                    await load();
+                    const folder = await createFolder(stashId, name.trim());
+                    addFolderToSpine(folder, setSpine);
                   } catch { /* */ }
                 }}
                 className="rounded-md border border-border bg-base px-2.5 py-1 text-[12px] text-foreground hover:bg-raised"
@@ -449,4 +469,53 @@ function formatBytes(b: number): string {
   if (b < 1024) return `${b} B`;
   if (b < 1024 * 1024) return `${(b / 1024).toFixed(1)} KB`;
   return `${(b / 1024 / 1024).toFixed(1)} MB`;
+}
+
+function addFolderToSpine(
+  folder: Folder,
+  setSpine: Dispatch<SetStateAction<StashSpine | null>>
+) {
+  setSpine((current) => {
+    if (!current) return current;
+    const folders = [
+      ...current.wiki.folders,
+      {
+        id: folder.id,
+        name: folder.name,
+        parent_folder_id: folder.parent_folder_id,
+        page_count: 0,
+        file_count: 0,
+        has_skill: false,
+      },
+    ].sort((a, b) => a.name.localeCompare(b.name));
+
+    return { ...current, wiki: { ...current.wiki, folders } };
+  });
+}
+
+function addFileToSpine(
+  file: FileInfo,
+  setSpine: Dispatch<SetStateAction<StashSpine | null>>
+) {
+  setSpine((current) => {
+    if (!current) return current;
+    const nextFile: WikiFile = {
+      id: file.id,
+      name: file.name,
+      folder_id: file.folder_id ?? null,
+      size_bytes: file.size_bytes,
+      content_type: file.content_type,
+      url: file.url,
+      created_at: file.created_at,
+      linked_table_id: file.linked_table_id ?? null,
+    };
+
+    return {
+      ...current,
+      wiki: {
+        ...current.wiki,
+        files: [nextFile, ...current.wiki.files],
+      },
+    };
+  });
 }
