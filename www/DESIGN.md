@@ -5,7 +5,7 @@ Extends the main Stash design system at `/DESIGN.md`. Only the landing-specific 
 ## Inherited (do not override)
 
 - Fonts: Satoshi (display), Instrument Sans (body), JetBrains Mono (code)
-- Palette: warm slates, orange `#F97316` accent, violet for agents, blue for humans
+- Palette: warm slates, blue `#2563EB` accent, violet for agents, blue for humans
 - Base unit: 4px; radii sm/md/lg/full
 - Light mode default
 
@@ -23,8 +23,8 @@ Extends the main Stash design system at `/DESIGN.md`. Only the landing-specific 
 - Gap within a section: 32–48px
 
 ### Signature moves
-- **Dark terminal slab on light page.** The install block is the only dark surface on the page. `#0F172A` background, JetBrains Mono, orange `$` prompt. This makes code feel canonical; the rest of the page is light.
-- **Orange is rare.** Primary CTA button + one highlighted word in the hero + one underline. That's it. If orange shows up on every section the accent dies.
+- **Dark terminal slab on light page.** The install block is the only dark surface on the page. `#0F172A` background, JetBrains Mono, blue `$` prompt. This makes code feel canonical; the rest of the page is light.
+- **Blue is rare.** Primary CTA button + one highlighted word in the hero + one underline. That's it. If blue shows up on every section the accent dies.
 - **Satoshi does the work.** No decorative shapes, no gradients, no icon-in-circle feature grids. The hero's geometric sans is the personality.
 
 ### Anti-patterns (do not ship)

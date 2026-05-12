@@ -1,15 +1,21 @@
 import Link from "next/link";
-import type { ReactNode } from "react";
+import type { CSSProperties, ReactNode } from "react";
 
 import CopyButton from "./_components/CopyButton";
 import ScrollLink from "./_components/ScrollLink";
 import VisualizationsShowcase from "./_components/VisualizationsShowcase";
 
 const INSTALL_COMMAND = `bash -c "$(curl -fsSL https://raw.githubusercontent.com/Fergana-Labs/stash/main/install.sh)"`;
+const LANDING_THEME = {
+  "--brand": "#2563EB",
+  "--brand-hover": "#1D4ED8",
+  "--brand-ink": "#1E3A8A",
+  "--brand-soft": "rgba(37, 99, 235, 0.12)",
+} as CSSProperties;
 
 export default function Page() {
   return (
-    <main className="min-h-screen bg-background text-foreground">
+    <main className="min-h-screen bg-background text-foreground" style={LANDING_THEME}>
       <Nav />
       <Hero />
       <Logos />
@@ -34,16 +40,16 @@ function Logo({ size = 28 }: { size?: number }) {
       height={(size * 72) / 64}
       aria-hidden="true"
     >
-      <ellipse cx="32" cy="24" rx="22" ry="18" fill="#F97316" />
+      <ellipse cx="32" cy="24" rx="22" ry="18" fill="var(--brand)" />
       <circle cx="25" cy="22" r="4" fill="#fff" />
       <circle cx="39" cy="22" r="4" fill="#fff" />
       <circle cx="26" cy="22" r="2" fill="#0F172A" />
       <circle cx="40" cy="22" r="2" fill="#0F172A" />
-      <path d="M12 38 Q8 52 4 60" stroke="#F97316" strokeWidth="4" strokeLinecap="round" fill="none" />
-      <path d="M20 40 Q18 54 14 62" stroke="#F97316" strokeWidth="4" strokeLinecap="round" fill="none" />
-      <path d="M32 42 Q32 56 32 64" stroke="#F97316" strokeWidth="4" strokeLinecap="round" fill="none" />
-      <path d="M44 40 Q46 54 50 62" stroke="#F97316" strokeWidth="4" strokeLinecap="round" fill="none" />
-      <path d="M52 38 Q56 52 60 60" stroke="#F97316" strokeWidth="4" strokeLinecap="round" fill="none" />
+      <path d="M12 38 Q8 52 4 60" stroke="var(--brand)" strokeWidth="4" strokeLinecap="round" fill="none" />
+      <path d="M20 40 Q18 54 14 62" stroke="var(--brand)" strokeWidth="4" strokeLinecap="round" fill="none" />
+      <path d="M32 42 Q32 56 32 64" stroke="var(--brand)" strokeWidth="4" strokeLinecap="round" fill="none" />
+      <path d="M44 40 Q46 54 50 62" stroke="var(--brand)" strokeWidth="4" strokeLinecap="round" fill="none" />
+      <path d="M52 38 Q56 52 60 60" stroke="var(--brand)" strokeWidth="4" strokeLinecap="round" fill="none" />
     </svg>
   );
 }
@@ -295,7 +301,7 @@ function Hero() {
         className="pointer-events-none absolute inset-x-0 top-0 z-0 h-[680px]"
         style={{
           background:
-            "radial-gradient(ellipse 80% 60% at 20% 10%, rgba(249,115,22,0.09), transparent 60%)",
+            "radial-gradient(ellipse 80% 60% at 20% 10%, rgba(37,99,235,0.09), transparent 60%)",
         }}
       />
       <div className="relative z-10 mx-auto grid max-w-[1200px] grid-cols-1 gap-12 px-7 pb-8 pt-20 lg:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)] lg:items-center lg:gap-16 lg:pb-16 lg:pt-28">
@@ -742,8 +748,8 @@ function SearchDemo() {
             <div
               className="mt-6 rounded-[10px] border p-5"
               style={{
-                background: "rgba(249,115,22,0.06)",
-                borderColor: "rgba(249,115,22,0.2)",
+                background: "rgba(37,99,235,0.06)",
+                borderColor: "rgba(37,99,235,0.2)",
               }}
             >
               <p className="mb-2 font-mono text-[10px] uppercase tracking-[0.14em] text-brand">
