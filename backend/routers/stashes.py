@@ -240,31 +240,26 @@ async def _spine_wiki(stash_id: UUID) -> dict:
             stash_id,
         ),
         pool.fetch(
-            "SELECT id, name, folder_id, size_bytes, content_type, storage_key, "
+            "SELECT id, name, folder_id, size_bytes, content_type, "
             "       created_at, linked_table_id "
             "FROM files WHERE workspace_id = $1 ORDER BY created_at DESC",
             stash_id,
         ),
     )
 
-    file_payload = []
-    for f in file_rows:
-        try:
-            url = await storage_service.get_file_url(f["storage_key"])
-        except Exception:
-            url = None
-        file_payload.append(
-            {
-                "id": str(f["id"]),
-                "name": f["name"],
-                "folder_id": str(f["folder_id"]) if f["folder_id"] else None,
-                "size_bytes": f["size_bytes"],
-                "content_type": f["content_type"],
-                "url": url,
-                "created_at": f["created_at"],
-                "linked_table_id": str(f["linked_table_id"]) if f["linked_table_id"] else None,
-            }
-        )
+    file_payload = [
+        {
+            "id": str(f["id"]),
+            "name": f["name"],
+            "folder_id": str(f["folder_id"]) if f["folder_id"] else None,
+            "size_bytes": f["size_bytes"],
+            "content_type": f["content_type"],
+            "url": None,
+            "created_at": f["created_at"],
+            "linked_table_id": str(f["linked_table_id"]) if f["linked_table_id"] else None,
+        }
+        for f in file_rows
+    ]
 
     return {
         "folders": [

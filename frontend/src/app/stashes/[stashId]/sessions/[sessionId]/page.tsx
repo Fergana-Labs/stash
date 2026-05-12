@@ -7,10 +7,8 @@ import { useBreadcrumbs } from "../../../../../components/BreadcrumbContext";
 import { useAuth } from "../../../../../hooks/useAuth";
 import {
   getSessionEvents,
-  getStashTranscript,
   getWorkspace,
   type SessionEvent,
-  type SessionTranscript,
 } from "../../../../../lib/api";
 import type { Workspace } from "../../../../../lib/types";
 
@@ -93,7 +91,7 @@ export default function SessionViewerPage() {
   const { user, loading, logout } = useAuth();
 
   const [stash, setStash] = useState<Workspace | null>(null);
-  const [transcript, setTranscript] = useState<SessionTranscript | null>(null);
+  const [agentName, setAgentName] = useState("");
   const [turns, setTurns] = useState<MessageTurn[]>([]);
   const [error, setError] = useState("");
 
@@ -104,10 +102,12 @@ export default function SessionViewerPage() {
 
   const load = useCallback(async () => {
     try {
-      setStash(await getWorkspace(stashId));
-      const tx = await getStashTranscript(stashId, sessionId);
-      setTranscript(tx);
-      const events = await getSessionEvents(stashId, sessionId);
+      const [workspace, events] = await Promise.all([
+        getWorkspace(stashId),
+        getSessionEvents(stashId, sessionId),
+      ]);
+      setStash(workspace);
+      setAgentName(events.find((event) => event.agent_name)?.agent_name ?? "");
       setTurns(events.map(eventToTurn));
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load session");
@@ -138,7 +138,7 @@ export default function SessionViewerPage() {
               <h1 className="font-display text-[24px] font-bold tracking-tight text-foreground">
                 #{sessionId.replace(/^acme-/, "")}
               </h1>
-              {transcript && (
+              {turns.length > 0 && (
                 <p className="mt-1.5 text-[11.5px] text-muted">
                   {turns.length} messages
                   {sessionDate ? (
@@ -151,9 +151,9 @@ export default function SessionViewerPage() {
                 </p>
               )}
             </div>
-            {transcript?.agent_name && (
+            {agentName && (
               <span className="inline-flex items-center gap-1.5 rounded-md border border-border bg-base px-2 py-1 text-[11px] text-foreground">
-                <span className="font-mono">⌘</span> {transcript.agent_name}
+                <span className="font-mono">⌘</span> {agentName}
               </span>
             )}
           </div>

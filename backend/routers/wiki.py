@@ -27,7 +27,7 @@ from ..models import (
     WorkspacePageListResponse,
     WorkspaceTreeResponse,
 )
-from ..services import permission_service, storage_service, wiki_service, workspace_service
+from ..services import permission_service, wiki_service, workspace_service
 from ..services.wiki_service import (
     DuplicateFolderName,
     DuplicatePageName,
@@ -171,28 +171,23 @@ async def get_folder_contents(
         folder_id,
     )
     files = await pool.fetch(
-        "SELECT id, name, size_bytes, content_type, storage_key, created_at, linked_table_id "
+        "SELECT id, name, size_bytes, content_type, created_at, linked_table_id "
         "FROM files WHERE folder_id = $1 ORDER BY created_at DESC",
         folder_id,
     )
 
-    file_payload = []
-    for f in files:
-        try:
-            url = await storage_service.get_file_url(f["storage_key"])
-        except Exception:
-            url = None
-        file_payload.append(
-            {
-                "id": str(f["id"]),
-                "name": f["name"],
-                "size_bytes": f["size_bytes"],
-                "content_type": f["content_type"],
-                "url": url,
-                "created_at": f["created_at"],
-                "linked_table_id": str(f["linked_table_id"]) if f["linked_table_id"] else None,
-            }
-        )
+    file_payload = [
+        {
+            "id": str(f["id"]),
+            "name": f["name"],
+            "size_bytes": f["size_bytes"],
+            "content_type": f["content_type"],
+            "url": None,
+            "created_at": f["created_at"],
+            "linked_table_id": str(f["linked_table_id"]) if f["linked_table_id"] else None,
+        }
+        for f in files
+    ]
 
     return {
         "folder": {
