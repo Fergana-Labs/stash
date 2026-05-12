@@ -2,11 +2,11 @@
 
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
+import { semanticSearchPages, type StashSpine } from "../lib/api";
 import {
-  getStashSpine,
-  semanticSearchPages,
-  type StashSpine,
-} from "../lib/api";
+  getCachedStashSpine,
+  readCachedStashSpine,
+} from "../lib/stashNavigationCache";
 
 interface CommandPaletteProps {
   open: boolean;
@@ -23,7 +23,9 @@ interface Result {
 
 export default function CommandPalette({ open, onClose, stashId }: CommandPaletteProps) {
   const [query, setQuery] = useState("");
-  const [spine, setSpine] = useState<StashSpine | null>(null);
+  const [spine, setSpine] = useState<StashSpine | null>(() =>
+    stashId ? readCachedStashSpine(stashId) : null
+  );
   const [results, setResults] = useState<Result[]>([]);
   const [selected, setSelected] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -34,12 +36,18 @@ export default function CommandPalette({ open, onClose, stashId }: CommandPalett
     setResults([]);
     setSelected(0);
     inputRef.current?.focus();
-    if (stashId && !spine) {
-      getStashSpine(stashId)
+    const cached = stashId ? readCachedStashSpine(stashId) : null;
+    if (cached) {
+      setSpine(cached);
+      return;
+    }
+    setSpine(null);
+    if (stashId) {
+      getCachedStashSpine(stashId)
         .then(setSpine)
         .catch(() => {});
     }
-  }, [open, stashId, spine]);
+  }, [open, stashId]);
 
   useEffect(() => {
     if (!open || !query.trim()) {
