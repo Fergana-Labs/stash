@@ -43,10 +43,10 @@ export default function NewStashPage() {
           Create a stash
         </h1>
         <p className="mt-3 text-[14px] text-dim">
-          Every stash gets the same three folders out of the box —{" "}
+          Every stash has two main spaces —{" "}
           <strong className="text-foreground">Sessions</strong> for agent transcripts,{" "}
-          <strong className="text-foreground">Skills</strong> for procedural how-tos, and{" "}
-          <strong className="text-foreground">Drive</strong> for files and wiki pages.
+          and <strong className="text-foreground">Wiki</strong> for pages, files, folders, and
+          skills.
         </p>
 
         <form onSubmit={submit} className="mt-8 flex flex-col gap-4">
@@ -111,17 +111,12 @@ export default function NewStashPage() {
           </div>
           <ul className="mt-3 flex flex-col gap-2 text-[13px] text-dim">
             <li>
-              📜 <strong className="text-foreground">Skills</strong> —{" "}
-              <code className="rounded bg-raised px-1 py-0.5 text-[12px]">stash skill add</code>{" "}
-              uploads a local Claude Code skill folder.
-            </li>
-            <li>
               ▤ <strong className="text-foreground">Sessions</strong> — agent transcripts pushed
               from your CLI / MCP integration.
             </li>
             <li>
-              ▦ <strong className="text-foreground">Drive</strong> — drop PDFs, slides, sheets;
-              text gets extracted and indexed for the Ask agent.
+              ▦ <strong className="text-foreground">Wiki</strong> — pages, PDFs, slides, sheets,
+              and skill folders; text gets indexed for the Ask agent.
             </li>
           </ul>
         </div>

@@ -109,7 +109,13 @@ export default function StashHomePage() {
       /* not a member yet */
     }
     try {
-      setSpine(await getStashSpine(stashId));
+      setSpine(
+        await getStashSpine(stashId, {
+          sessionLimit: 20,
+          wikiDepth: "full",
+          includeFileUrls: false,
+        })
+      );
     } catch {
       /* private */
     }
@@ -263,8 +269,8 @@ export default function StashHomePage() {
             icon={<SessionsIcon />}
             title="Sessions"
             subtitle="episodic"
-            trailing={`${spine?.sessions.length ?? 0} transcript${
-              spine?.sessions.length === 1 ? "" : "s"
+            trailing={`${spine?.session_count ?? spine?.sessions.length ?? 0} transcript${
+              (spine?.session_count ?? spine?.sessions.length ?? 0) === 1 ? "" : "s"
             }`}
           />
           {sessions.length > 0 ? (

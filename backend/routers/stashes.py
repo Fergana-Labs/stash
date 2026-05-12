@@ -198,61 +198,74 @@ async def revoke_stash_invite_token(
 
 
 # ---------------------------------------------------------------------------
-# Spine — the three-folder view (Sessions / Skills / Drive) for one stash
+# Spine — lightweight navigation data for one stash
 # ---------------------------------------------------------------------------
 
 
-async def _spine_sessions(stash_id: UUID) -> list[dict]:
+async def _sessions_for_spine(stash_id: UUID, limit: int | None) -> dict:
     """Sessions in this workspace, sourced from history_events rows."""
-    sessions = await memory_service.list_workspace_sessions(stash_id)
-    return [
-        {
-            "session_id": s["session_id"],
-            "title": s["session_id"],
-            "agent_name": s["agent_name"] or "",
-            "size_bytes": int(s["size_bytes"] or 0),
-            "last_at": s["last_at"],
-            "updated_at": s["last_at"],
-        }
-        for s in sessions
-    ]
+    result = await memory_service.list_workspace_sessions(stash_id, limit=limit)
+    return {
+        "sessions": [
+            {
+                "session_id": s["session_id"],
+                "title": s["session_id"],
+                "agent_name": s["agent_name"] or "",
+                "size_bytes": int(s["size_bytes"] or 0),
+                "last_at": s["last_at"],
+                "updated_at": s["last_at"],
+            }
+            for s in result["sessions"]
+        ],
+        "session_count": result["total_count"],
+    }
 
 
-async def _spine_wiki(stash_id: UUID) -> dict:
-    """One unified Wiki tree — folders, pages, and files for the workspace.
+async def _wiki_for_spine(
+    stash_id: UUID,
+    *,
+    root_only: bool,
+    include_file_urls: bool,
+) -> dict:
+    """Wiki rows for the stash navigation payload.
 
-    No Drive/Skill split. A folder is a folder regardless of whether it
-    contains a SKILL.md. The frontend builds the tree from parent_folder_id
-    and folder_id; the spine is just the flat row set.
+    Folders point to parent folders. Pages and files point to containing
+    folders. The frontend turns these rows into the visible Wiki hierarchy.
     """
     pool = get_pool()
+    folder_filter = "AND f.parent_folder_id IS NULL" if root_only else ""
+    page_filter = "AND folder_id IS NULL" if root_only else ""
+    file_filter = "AND folder_id IS NULL" if root_only else ""
     folder_rows, page_rows, file_rows = await asyncio.gather(
         pool.fetch(
             "SELECT f.id, f.name, f.parent_folder_id, "
             "       (SELECT COUNT(*) FROM pages p WHERE p.folder_id = f.id) AS page_count, "
             "       (SELECT COUNT(*) FROM files fi WHERE fi.folder_id = f.id) AS file_count, "
             "       EXISTS(SELECT 1 FROM pages p WHERE p.folder_id = f.id AND p.name = 'SKILL.md') AS has_skill "
-            "FROM folders f WHERE f.workspace_id = $1 ORDER BY f.name",
+            f"FROM folders f WHERE f.workspace_id = $1 {folder_filter} ORDER BY f.name",
             stash_id,
         ),
         pool.fetch(
-            "SELECT id, name, folder_id FROM pages WHERE workspace_id = $1 ORDER BY name",
+            "SELECT id, name, folder_id, public_in_share "
+            f"FROM pages WHERE workspace_id = $1 {page_filter} ORDER BY name",
             stash_id,
         ),
         pool.fetch(
             "SELECT id, name, folder_id, size_bytes, content_type, storage_key, "
             "       created_at, linked_table_id "
-            "FROM files WHERE workspace_id = $1 ORDER BY created_at DESC",
+            f"FROM files WHERE workspace_id = $1 {file_filter} ORDER BY created_at DESC",
             stash_id,
         ),
     )
 
     file_payload = []
     for f in file_rows:
-        try:
-            url = await storage_service.get_file_url(f["storage_key"])
-        except Exception:
-            url = None
+        url = None
+        if include_file_urls:
+            try:
+                url = await storage_service.get_file_url(f["storage_key"])
+            except Exception:
+                url = None
         file_payload.append(
             {
                 "id": str(f["id"]),
@@ -425,21 +438,38 @@ async def get_stash_activity(
 
 
 @router.get("/{stash_id}/spine")
-async def get_stash_spine(stash_id: UUID, current_user: dict = Depends(get_current_user)):
-    """Returns {sessions, wiki} for the stash home + sidebar tree.
+async def get_stash_spine(
+    stash_id: UUID,
+    session_limit: int | None = Query(None, ge=1, le=200),
+    wiki_depth: str = Query("full"),
+    include_file_urls: bool = Query(True),
+    current_user: dict = Depends(get_current_user),
+):
+    """Return sessions and wiki content for stash navigation.
 
-    `wiki` is one shape: {folders, pages, files}. All rows carry their
-    parent_folder_id / folder_id so the frontend can build a tree."""
+    Wiki content is returned as folders, pages, and files with parent ids so
+    clients can render the hierarchy."""
     if not await workspace_service.is_member(stash_id, current_user["id"]):
         ws = await workspace_service.get_workspace(stash_id)
         if not ws or not ws.get("is_public"):
             raise HTTPException(status_code=404, detail="Stash not found")
 
-    sessions, wiki = await asyncio.gather(
-        _spine_sessions(stash_id),
-        _spine_wiki(stash_id),
+    if wiki_depth not in {"full", "root"}:
+        raise HTTPException(status_code=400, detail="wiki_depth must be full or root")
+
+    session_result, wiki = await asyncio.gather(
+        _sessions_for_spine(stash_id, session_limit),
+        _wiki_for_spine(
+            stash_id,
+            root_only=wiki_depth == "root",
+            include_file_urls=include_file_urls,
+        ),
     )
-    return {"sessions": sessions, "wiki": wiki}
+    return {
+        "sessions": session_result["sessions"],
+        "session_count": session_result["session_count"],
+        "wiki": wiki,
+    }
 
 
 # ---------------------------------------------------------------------------

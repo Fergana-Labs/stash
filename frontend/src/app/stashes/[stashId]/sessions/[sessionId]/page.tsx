@@ -6,11 +6,10 @@ import AppShell from "../../../../../components/AppShell";
 import { useBreadcrumbs } from "../../../../../components/BreadcrumbContext";
 import { useAuth } from "../../../../../hooks/useAuth";
 import {
-  getSessionEvents,
-  getStashTranscript,
+  getSessionDetail,
+  type SessionDetail,
   getWorkspace,
   type SessionEvent,
-  type SessionTranscript,
 } from "../../../../../lib/api";
 import type { Workspace } from "../../../../../lib/types";
 
@@ -93,7 +92,7 @@ export default function SessionViewerPage() {
   const { user, loading, logout } = useAuth();
 
   const [stash, setStash] = useState<Workspace | null>(null);
-  const [transcript, setTranscript] = useState<SessionTranscript | null>(null);
+  const [transcript, setTranscript] = useState<SessionDetail["transcript"] | null>(null);
   const [turns, setTurns] = useState<MessageTurn[]>([]);
   const [error, setError] = useState("");
 
@@ -105,9 +104,9 @@ export default function SessionViewerPage() {
   const load = useCallback(async () => {
     try {
       setStash(await getWorkspace(stashId));
-      const tx = await getStashTranscript(stashId, sessionId);
-      setTranscript(tx);
-      const events = await getSessionEvents(stashId, sessionId);
+      const detail = await getSessionDetail(stashId, sessionId);
+      setTranscript(detail.transcript);
+      const events = detail.events;
       setTurns(events.map(eventToTurn));
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load session");

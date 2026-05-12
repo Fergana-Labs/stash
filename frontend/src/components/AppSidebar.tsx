@@ -166,7 +166,9 @@ function StashTree({
               <SessionsIcon />
             </span>
             <span className="flex-1 truncate font-medium text-foreground">Sessions</span>
-            <span className="text-[10.5px] text-muted">{spine?.sessions.length ?? 0}</span>
+            <span className="text-[10.5px] text-muted">
+              {spine?.session_count ?? spine?.sessions.length ?? 0}
+            </span>
           </summary>
           <div className="ml-3 space-y-0.5 border-l border-border pl-2">
             {spine?.sessions.slice(0, 8).map((s) => (
@@ -430,16 +432,25 @@ export default function AppSidebar({ user, collapsed, onCmdkOpen }: AppSidebarPr
 
   useEffect(() => {
     const openIds = Object.keys(openStashes).filter((stashId) => openStashes[stashId]);
-    if (activeTreeStashId) openIds.push(activeTreeStashId);
+    if (activeTreeStashId) {
+      openIds.push(activeTreeStashId);
+    }
+    if (activeStashId && !openIds.includes(activeStashId)) {
+      openIds.push(activeStashId);
+    }
 
     Array.from(new Set(openIds))
       .filter((stashId) => !spines[stashId])
       .forEach((stashId) => {
-        getStashSpine(stashId)
+        getStashSpine(stashId, {
+          sessionLimit: 8,
+          wikiDepth: "root",
+          includeFileUrls: false,
+        })
           .then((sp) => setSpines((all) => ({ ...all, [stashId]: sp })))
           .catch(() => {});
       });
-  }, [activeTreeStashId, openStashes, spines]);
+  }, [activeTreeStashId, activeStashId, openStashes, spines]);
 
   function getOpenSections(stashId: string): Record<SidebarSection, boolean> {
     return {

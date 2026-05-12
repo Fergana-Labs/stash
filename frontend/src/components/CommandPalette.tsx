@@ -35,7 +35,11 @@ export default function CommandPalette({ open, onClose, stashId }: CommandPalett
     setSelected(0);
     inputRef.current?.focus();
     if (stashId && !spine) {
-      getStashSpine(stashId)
+      getStashSpine(stashId, {
+        sessionLimit: 200,
+        wikiDepth: "full",
+        includeFileUrls: false,
+      })
         .then(setSpine)
         .catch(() => {});
     }

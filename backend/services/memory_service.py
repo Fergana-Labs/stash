@@ -209,24 +209,43 @@ async def read_session_events(workspace_id: UUID, session_id: str) -> list[dict]
     return [dict(r) for r in rows]
 
 
-async def list_workspace_sessions(workspace_id: UUID) -> list[dict]:
+async def list_workspace_sessions(
+    workspace_id: UUID,
+    limit: int | None = None,
+) -> dict:
     """One row per session_id in this workspace. Powers the spine sessions
     list — replaces a SELECT against session_transcripts."""
     pool = get_pool()
+    limit_clause = "LIMIT $2" if limit is not None else ""
+    args = [workspace_id]
+    if limit is not None:
+        args.append(limit)
+
     rows = await pool.fetch(
-        "SELECT session_id, "
-        "       MAX(agent_name) AS agent_name, "
-        "       COUNT(*)::INT AS event_count, "
-        "       SUM(LENGTH(content))::BIGINT AS size_bytes, "
-        "       MIN(created_at) AS started_at, "
-        "       MAX(created_at) AS last_at "
-        "FROM history_events "
-        "WHERE workspace_id = $1 AND session_id IS NOT NULL "
-        "GROUP BY session_id "
-        "ORDER BY last_at DESC",
-        workspace_id,
+        f"""
+        WITH grouped AS (
+            SELECT session_id,
+                   MAX(agent_name) AS agent_name,
+                   COUNT(*)::INT AS event_count,
+                   SUM(LENGTH(content))::BIGINT AS size_bytes,
+                   MIN(created_at) AS started_at,
+                   MAX(created_at) AS last_at
+            FROM history_events
+            WHERE workspace_id = $1 AND session_id IS NOT NULL
+            GROUP BY session_id
+        )
+        SELECT *,
+               COUNT(*) OVER()::INT AS total_count
+        FROM grouped
+        ORDER BY last_at DESC
+        {limit_clause}
+        """,
+        *args,
     )
-    return [dict(r) for r in rows]
+    return {
+        "sessions": [dict(r) for r in rows],
+        "total_count": int(rows[0]["total_count"]) if rows else 0,
+    }
 
 
 async def get_workspace_event(event_id: UUID, workspace_id: UUID) -> dict | None:
