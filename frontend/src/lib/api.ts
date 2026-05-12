@@ -1351,10 +1351,38 @@ export interface StashSpineOptions {
   includeFileUrls?: boolean;
 }
 
+interface CachedStashSpine {
+  expiresAt: number;
+  spine: StashSpine;
+}
+
+const STASH_SPINE_CACHE_TTL_MS = 30_000;
+const STASH_SPINE_CACHE: Map<string, CachedStashSpine> = new Map();
+const STASH_SPINE_INFLIGHT: Map<string, Promise<StashSpine>> = new Map();
+
+function getStashSpineCacheKey(stashId: string, options: StashSpineOptions): string {
+  const normalized = {
+    stashId,
+    sessionLimit: options.sessionLimit ?? 0,
+    wikiDepth: options.wikiDepth ?? "full",
+    includeFileUrls: options.includeFileUrls ?? true,
+  };
+  return JSON.stringify(normalized);
+}
+
 export async function getStashSpine(
   stashId: string,
   options: StashSpineOptions = {}
 ): Promise<StashSpine> {
+  const cacheKey = getStashSpineCacheKey(stashId, options);
+  const now = Date.now();
+  const cached = STASH_SPINE_CACHE.get(cacheKey);
+  if (cached && cached.expiresAt > now) {
+    return cached.spine;
+  }
+  const existing = STASH_SPINE_INFLIGHT.get(cacheKey);
+  if (existing) return existing;
+
   const params = new URLSearchParams();
   if (options.sessionLimit) params.set("session_limit", String(options.sessionLimit));
   if (options.wikiDepth) params.set("wiki_depth", options.wikiDepth);
@@ -1362,7 +1390,20 @@ export async function getStashSpine(
     params.set("include_file_urls", String(options.includeFileUrls));
   }
   const qs = params.toString();
-  return apiFetch(`/api/v1/stashes/${stashId}/spine${qs ? `?${qs}` : ""}`);
+  const request = apiFetch<StashSpine>(`/api/v1/stashes/${stashId}/spine${qs ? `?${qs}` : ""}`).then(
+    (spine) => {
+      STASH_SPINE_CACHE.set(cacheKey, {
+        spine,
+        expiresAt: now + STASH_SPINE_CACHE_TTL_MS,
+      });
+      return spine;
+    }
+  );
+  STASH_SPINE_INFLIGHT.set(cacheKey, request);
+  request.finally(() => {
+    STASH_SPINE_INFLIGHT.delete(cacheKey);
+  });
+  return request;
 }
 
 export interface FolderBreadcrumb {
