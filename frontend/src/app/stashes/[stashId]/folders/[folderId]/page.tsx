@@ -2,7 +2,14 @@
 
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type Dispatch,
+  type SetStateAction,
+} from "react";
 import AppShell from "../../../../../components/AppShell";
 import {
   FileIcon,
@@ -19,7 +26,7 @@ import {
   uploadFile,
   type FolderContents,
 } from "../../../../../lib/api";
-import type { Workspace } from "../../../../../lib/types";
+import type { FileInfo, Folder, Workspace } from "../../../../../lib/types";
 
 export default function FolderDetailPage() {
   const params = useParams();
@@ -35,8 +42,12 @@ export default function FolderDetailPage() {
 
   const load = useCallback(async () => {
     try {
-      setStash(await getWorkspace(stashId));
-      setContents(await getFolderContents(stashId, folderId));
+      const [workspace, folderContents] = await Promise.all([
+        getWorkspace(stashId),
+        getFolderContents(stashId, folderId),
+      ]);
+      setStash(workspace);
+      setContents(folderContents);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load folder");
     }
@@ -108,8 +119,8 @@ export default function FolderDetailPage() {
                 const file = e.target.files?.[0];
                 if (!file) return;
                 try {
-                  await uploadFile(stashId, file, folderId);
-                  await load();
+                  const uploaded = await uploadFile(stashId, file, folderId);
+                  addFileToContents(uploaded, setContents);
                 } catch {
                   /* */
                 }
@@ -140,8 +151,8 @@ export default function FolderDetailPage() {
                 const name = window.prompt("Folder name?");
                 if (!name?.trim()) return;
                 try {
-                  await createFolder(stashId, name.trim(), folderId);
-                  await load();
+                  const folder = await createFolder(stashId, name.trim(), folderId);
+                  addSubfolderToContents(folder, setContents);
                 } catch {
                   /* */
                 }
@@ -257,4 +268,39 @@ function formatBytes(b: number): string {
   if (b < 1024) return `${b} B`;
   if (b < 1024 * 1024) return `${(b / 1024).toFixed(1)} KB`;
   return `${(b / 1024 / 1024).toFixed(1)} MB`;
+}
+
+function addSubfolderToContents(
+  folder: Folder,
+  setContents: Dispatch<SetStateAction<FolderContents | null>>
+) {
+  setContents((current) => {
+    if (!current) return current;
+    const subfolders = [
+      ...current.subfolders,
+      { id: folder.id, name: folder.name, page_count: 0, file_count: 0 },
+    ].sort((a, b) => a.name.localeCompare(b.name));
+
+    return { ...current, subfolders };
+  });
+}
+
+function addFileToContents(
+  file: FileInfo,
+  setContents: Dispatch<SetStateAction<FolderContents | null>>
+) {
+  setContents((current) => {
+    if (!current) return current;
+    const nextFile = {
+      id: file.id,
+      name: file.name,
+      size_bytes: file.size_bytes,
+      content_type: file.content_type,
+      url: file.url,
+      created_at: file.created_at,
+      linked_table_id: file.linked_table_id ?? null,
+    };
+
+    return { ...current, files: [nextFile, ...current.files] };
+  });
 }
