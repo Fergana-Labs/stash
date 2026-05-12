@@ -2,10 +2,11 @@ Write extremely easy to consume code. Optimize for readability: skimmable, no cl
 
 ### Write simple code
 We are a startup. Therefore, code simplicity is our most important concern. Please NEVER
- - Add backwards compatibility support of any kind. This includes migrations, compatibility shims, aliases, legacy format support, and fallback code paths.
+ - Add backwards compatibility support of any kind. This includes migrations, compatibility shims, aliases, deprecated wrappers, old routes/endpoints, legacy UI surfaces, legacy format support, and fallback code paths.
  - Attempt to preserve backwards compatibility when making an edit.
  - Use fallbacks to save the UX when a primary path doesn't work (we'd rather fail fast, and this helps us to maintain as few codepaths as possible)
  - Support old formats. If a format changes, change it everywhere in one shot.
+ - Keep compatibility code "temporarily." When replacing an API, route, CLI command, data shape, or product concept, remove the old one in the same change.
 
 Here are some common code patterns that we need you to avoid:
  - Excessive try/catch: only use try/catch when there's a reasonable expectation that the code within might fail during normal usage. Every try/catch that we add adds another codepath that we need to maintain (the catch) and balloons complexity. In general, we follow the concept of "parse, don't validate" from TDD whenever possible. That is, we validate inputs at module boundaries, and within a module, we don't randomly add try/catch everywhere.
