@@ -33,6 +33,7 @@ depends_on = None
 
 def upgrade() -> None:
     import logging
+
     log = logging.getLogger("alembic.migration.0036")
 
     def step(msg: str) -> None:
@@ -143,7 +144,9 @@ def upgrade() -> None:
     )
 
     step("3c. collapse permission enum to (view, edit)")
-    op.execute("UPDATE share_links SET permission = 'view' WHERE permission IN ('comment', 'edit-request')")
+    op.execute(
+        "UPDATE share_links SET permission = 'view' WHERE permission IN ('comment', 'edit-request')"
+    )
     op.execute("ALTER TABLE share_links DROP CONSTRAINT IF EXISTS share_links_permission_check")
     op.execute(
         "ALTER TABLE share_links ADD CONSTRAINT share_links_permission_check "
@@ -201,7 +204,9 @@ def upgrade() -> None:
     # 5. workspace_members.role → owner/editor/viewer
     # ──────────────────────────────────────────────────────────────────
     step("5a. DROP workspace_members role check")
-    op.execute("ALTER TABLE workspace_members DROP CONSTRAINT IF EXISTS workspace_members_role_check")
+    op.execute(
+        "ALTER TABLE workspace_members DROP CONSTRAINT IF EXISTS workspace_members_role_check"
+    )
     step("5b. UPDATE roles admin->owner")
     op.execute("UPDATE workspace_members SET role = 'owner' WHERE role IN ('admin', 'owner')")
     step("5c. UPDATE roles other->editor")
@@ -259,12 +264,22 @@ def downgrade() -> None:
     # Schema-only restore. The blob and metadata mappings can't be
     # round-tripped — this just gets the columns back so the old code
     # boots.
-    op.execute("ALTER TABLE workspaces ADD COLUMN IF NOT EXISTS is_public BOOLEAN NOT NULL DEFAULT FALSE")
-    op.execute("ALTER TABLE views ADD COLUMN IF NOT EXISTS is_public BOOLEAN NOT NULL DEFAULT FALSE")
-    op.execute("ALTER TABLE pages ADD COLUMN IF NOT EXISTS public_in_share BOOLEAN NOT NULL DEFAULT FALSE")
-    op.execute("ALTER TABLE files ADD COLUMN IF NOT EXISTS public_in_share BOOLEAN NOT NULL DEFAULT FALSE")
+    op.execute(
+        "ALTER TABLE workspaces ADD COLUMN IF NOT EXISTS is_public BOOLEAN NOT NULL DEFAULT FALSE"
+    )
+    op.execute(
+        "ALTER TABLE views ADD COLUMN IF NOT EXISTS is_public BOOLEAN NOT NULL DEFAULT FALSE"
+    )
+    op.execute(
+        "ALTER TABLE pages ADD COLUMN IF NOT EXISTS public_in_share BOOLEAN NOT NULL DEFAULT FALSE"
+    )
+    op.execute(
+        "ALTER TABLE files ADD COLUMN IF NOT EXISTS public_in_share BOOLEAN NOT NULL DEFAULT FALSE"
+    )
 
-    op.execute("ALTER TABLE workspace_members DROP CONSTRAINT IF EXISTS workspace_members_role_check")
+    op.execute(
+        "ALTER TABLE workspace_members DROP CONSTRAINT IF EXISTS workspace_members_role_check"
+    )
     op.execute(
         "ALTER TABLE workspace_members ADD CONSTRAINT workspace_members_role_check "
         "CHECK (role IN ('owner', 'admin', 'member'))"

@@ -7,6 +7,7 @@ import { useBreadcrumbs } from "../../../../../components/BreadcrumbContext";
 import { useAuth } from "../../../../../hooks/useAuth";
 import {
   getSessionEvents,
+  getStashSpine,
   getStashTranscript,
   getWorkspace,
   type SessionEvent,
@@ -94,19 +95,30 @@ export default function SessionViewerPage() {
 
   const [stash, setStash] = useState<Workspace | null>(null);
   const [transcript, setTranscript] = useState<SessionTranscript | null>(null);
+  const [sessionTitle, setSessionTitle] = useState("");
   const [turns, setTurns] = useState<MessageTurn[]>([]);
   const [error, setError] = useState("");
 
   useBreadcrumbs(
-    [{ label: "Sessions" }, { label: `#${sessionId}` }],
-    `${stashId}/session/${sessionId}`
+    [
+      { label: "Sessions", href: `/stashes/${stashId}/sessions` },
+      { label: sessionTitle || "Session" },
+    ],
+    `${stashId}/session/${sessionId}/${sessionTitle}`
   );
 
   const load = useCallback(async () => {
     try {
-      setStash(await getWorkspace(stashId));
-      const tx = await getStashTranscript(stashId, sessionId);
+      const [workspace, tx, spine] = await Promise.all([
+        getWorkspace(stashId),
+        getStashTranscript(stashId, sessionId),
+        getStashSpine(stashId),
+      ]);
+      setStash(workspace);
       setTranscript(tx);
+      setSessionTitle(
+        spine.sessions.find((session) => session.session_id === sessionId)?.title ?? ""
+      );
       const events = await getSessionEvents(stashId, sessionId);
       setTurns(events.map(eventToTurn));
     } catch (e) {
@@ -136,7 +148,7 @@ export default function SessionViewerPage() {
           <div className="mb-5 flex items-start justify-between gap-4 border-b border-border pb-4">
             <div className="min-w-0">
               <h1 className="font-display text-[24px] font-bold tracking-tight text-foreground">
-                #{sessionId.replace(/^acme-/, "")}
+                {sessionTitle || "Session"}
               </h1>
               {transcript && (
                 <p className="mt-1.5 text-[11.5px] text-muted">

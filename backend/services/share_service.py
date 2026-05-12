@@ -18,7 +18,6 @@ from uuid import UUID
 from ..config import settings
 from ..database import get_pool
 
-
 VALID_TARGETS = {"workspace", "session", "page", "folder", "file"}
 VALID_PERMISSIONS = {"view", "edit"}
 
@@ -145,12 +144,14 @@ def _parse_deck(narrative_md: str) -> list[dict] | None:
                 title = stripped[2:].strip()
                 body_lines = lines[j + 1 :]
                 break
-        slides.append({
-            "index": i,
-            "title": title or f"Slide {i + 1}",
-            "kicker": f"{i + 1:02d} / {len(parts):02d}",
-            "body": "\n".join(body_lines).strip(),
-        })
+        slides.append(
+            {
+                "index": i,
+                "title": title or f"Slide {i + 1}",
+                "kicker": f"{i + 1:02d} / {len(parts):02d}",
+                "body": "\n".join(body_lines).strip(),
+            }
+        )
     return slides
 
 
@@ -256,8 +257,7 @@ async def _session_projection(session_row_id: UUID) -> dict:
         "events": [
             {
                 "id": str(e["id"]),
-                "role": "user" if e["event_type"] == "user_message"
-                        else "assistant",
+                "role": "user" if e["event_type"] == "user_message" else "assistant",
                 "content": e["content"] or "",
                 "tool_name": e["tool_name"],
                 "created_at": e["created_at"].isoformat() if e["created_at"] else None,
@@ -315,7 +315,9 @@ async def _folder_projection(folder_id: UUID) -> dict:
         "folder": {
             "id": str(folder["id"]),
             "name": folder["name"],
-            "parent_folder_id": str(folder["parent_folder_id"]) if folder["parent_folder_id"] else None,
+            "parent_folder_id": (
+                str(folder["parent_folder_id"]) if folder["parent_folder_id"] else None
+            ),
         },
         "subfolders": [{"id": str(r["id"]), "name": r["name"]} for r in subfolders],
         "pages": [{"id": str(r["id"]), "name": r["name"]} for r in pages],

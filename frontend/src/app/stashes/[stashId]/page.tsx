@@ -142,8 +142,8 @@ export default function StashHomePage() {
   const sessions: CardItem[] = (spine?.sessions ?? []).slice(0, 6).map((s) => ({
     href: `/stashes/${stashId}/sessions/${encodeURIComponent(s.session_id)}`,
     icon: <SessionsIcon />,
-    title: `#${s.session_id.length > 28 ? s.session_id.slice(0, 28) + "…" : s.session_id}`,
-    subtitle: `${s.agent_name} · ${formatBytes(s.size_bytes)}`,
+    title: s.title,
+    subtitle: `${s.agent_name} · ${s.event_count} events · ${formatBytes(s.size_bytes)}`,
   }));
 
   // Root-level wiki contents only. Nested folders/pages/files surface

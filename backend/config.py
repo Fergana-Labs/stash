@@ -68,6 +68,7 @@ class Settings:
     # --- LLM (Anthropic, for Ask-the-stash agent) ---
     ANTHROPIC_API_KEY: str | None = os.getenv("ANTHROPIC_API_KEY")
     ANTHROPIC_MODEL: str = os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-6")
+    SESSION_TITLE_MODEL: str = os.getenv("SESSION_TITLE_MODEL", "claude-haiku-4-5-20251001")
     ASK_MAX_TURNS: int = int(os.getenv("ASK_MAX_TURNS", "8"))
 
 

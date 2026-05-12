@@ -1,4 +1,4 @@
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import AppSidebar from "./AppSidebar";
@@ -78,12 +78,6 @@ const emptySpine = {
   },
 };
 
-function detailsFor(label: string): HTMLDetailsElement {
-  const details = screen.getByText(label).closest("details");
-  if (!details) throw new Error(`No details element for ${label}`);
-  return details as HTMLDetailsElement;
-}
-
 describe("AppSidebar tree expansion", () => {
   beforeEach(() => {
     localStorage.clear();
@@ -104,9 +98,9 @@ describe("AppSidebar tree expansion", () => {
 
     await screen.findByText("Demo Stash");
 
-    expect(detailsFor("Demo Stash")).not.toHaveAttribute("open");
-    expect(detailsFor("Sessions")).not.toHaveAttribute("open");
-    expect(detailsFor("Wiki")).not.toHaveAttribute("open");
+    expect(screen.getByLabelText("Expand stash")).toBeInTheDocument();
+    expect(screen.queryByText("Sessions")).not.toBeInTheDocument();
+    expect(screen.queryByText("Wiki")).not.toBeInTheDocument();
     expect(getStashSpine).not.toHaveBeenCalled();
   });
 
@@ -142,10 +136,61 @@ describe("AppSidebar tree expansion", () => {
 
     await screen.findByText("Demo Stash");
 
-    await waitFor(() => expect(detailsFor("Demo Stash")).toHaveAttribute("open"));
-    expect(detailsFor("Sessions")).toHaveAttribute("open");
-    expect(detailsFor("Wiki")).not.toHaveAttribute("open");
+    await waitFor(() => expect(screen.getByLabelText("Collapse stash")).toBeInTheDocument());
+    expect(screen.getByLabelText("Collapse sessions")).toBeInTheDocument();
+    expect(screen.getByLabelText("Expand wiki")).toBeInTheDocument();
     expect(getStashSpine).toHaveBeenCalledWith("ws-1");
+  });
+
+  it("gives section rows separate navigation and disclosure targets", async () => {
+    localStorage.setItem("stash_sidebar_open_stashes", "ws-1");
+
+    render(<AppSidebar user={user} collapsed={false} onCmdkOpen={vi.fn()} />);
+
+    await screen.findByText("Demo Stash");
+    const sessionsLink = await screen.findByRole("link", { name: /Sessions/ });
+    expect(sessionsLink).toHaveAttribute("href", "/stashes/ws-1/sessions");
+
+    fireEvent.click(screen.getByLabelText("Expand sessions"));
+
+    expect(screen.getByLabelText("Collapse sessions")).toBeInTheDocument();
+    expect(sessionsLink).toHaveAttribute("href", "/stashes/ws-1/sessions");
+  });
+
+  it("shows generated session titles with compact timestamps", async () => {
+    const lastAt = "2026-05-11T18:24:00Z";
+    const timestamp = new Intl.DateTimeFormat(undefined, {
+      month: "short",
+      day: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+    }).format(new Date(lastAt));
+    vi.mocked(getStashSpine).mockResolvedValue({
+      ...emptySpine,
+      sessions: [
+        {
+          session_id: "agent-1",
+          title: "Refine Sidebar Session Titles",
+          agent_name: "codex",
+          event_count: 12,
+          size_bytes: 1024,
+          last_at: lastAt,
+          updated_at: lastAt,
+        },
+      ],
+    });
+    localStorage.setItem("stash_sidebar_open_stashes", "ws-1");
+    localStorage.setItem("stash_sidebar_open_sections", "ws-1:sessions");
+
+    render(<AppSidebar user={user} collapsed={false} onCmdkOpen={vi.fn()} />);
+
+    const sessionLink = await screen.findByRole("link", {
+      name: /Refine Sidebar Session Titles/,
+    });
+
+    expect(sessionLink).toHaveAttribute("href", "/stashes/ws-1/sessions/agent-1");
+    expect(sessionLink).toHaveAttribute("title", `Refine Sidebar Session Titles - ${timestamp}`);
+    expect(screen.getByText(timestamp)).toBeInTheDocument();
   });
 
   it("keeps the stash landing route collapsed without saved state", async () => {
@@ -155,9 +200,9 @@ describe("AppSidebar tree expansion", () => {
 
     await screen.findByText("Demo Stash");
 
-    expect(detailsFor("Demo Stash")).not.toHaveAttribute("open");
-    expect(detailsFor("Sessions")).not.toHaveAttribute("open");
-    expect(detailsFor("Wiki")).not.toHaveAttribute("open");
+    expect(screen.getByLabelText("Expand stash")).toBeInTheDocument();
+    expect(screen.queryByText("Sessions")).not.toBeInTheDocument();
+    expect(screen.queryByText("Wiki")).not.toBeInTheDocument();
     expect(getStashSpine).not.toHaveBeenCalled();
   });
 
@@ -168,9 +213,9 @@ describe("AppSidebar tree expansion", () => {
 
     await screen.findByText("Demo Stash");
 
-    await waitFor(() => expect(detailsFor("Demo Stash")).toHaveAttribute("open"));
-    expect(detailsFor("Sessions")).not.toHaveAttribute("open");
-    expect(detailsFor("Wiki")).toHaveAttribute("open");
+    await waitFor(() => expect(screen.getByLabelText("Collapse stash")).toBeInTheDocument());
+    expect(screen.getByLabelText("Expand sessions")).toBeInTheDocument();
+    expect(screen.getByLabelText("Collapse wiki")).toBeInTheDocument();
     expect(localStorage.getItem("stash_sidebar_open_stashes")).toBeNull();
     expect(localStorage.getItem("stash_sidebar_open_sections")).toBeNull();
   });
