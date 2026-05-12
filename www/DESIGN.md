@@ -5,7 +5,7 @@ Extends the main Stash design system at `/DESIGN.md`. Only the landing-specific 
 ## Inherited (do not override)
 
 - Fonts: Satoshi (display), Instrument Sans (body), JetBrains Mono (code)
-- Palette: warm slates, orange `#F97316` accent, violet for agents, blue for humans
+- Palette foundation: warm slates, violet for agents, blue for humans; the landing accent override is defined below
 - Base unit: 4px; radii sm/md/lg/full
 - Light mode default
 
