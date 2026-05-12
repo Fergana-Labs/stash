@@ -18,7 +18,6 @@ from uuid import UUID
 from ..config import settings
 from ..database import get_pool
 
-
 VALID_TARGETS = {"workspace", "session", "page", "folder", "file"}
 VALID_PERMISSIONS = {"view", "edit"}
 
