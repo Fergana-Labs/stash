@@ -2,6 +2,7 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import AppShell from "./AppShell";
+import { ShareModalProvider } from "../lib/shareModalContext";
 import {
   getCachedWorkspaces,
   readCachedWorkspaces,
@@ -43,9 +44,6 @@ vi.mock("./CommandPalette", () => ({
   default: () => null,
 }));
 
-vi.mock("./ShareModal", () => ({
-  default: () => null,
-}));
 
 const user = {
   id: "user-1",
@@ -81,9 +79,11 @@ describe("AppShell sidebar collapse", () => {
 
   it("keeps page content in the visible grid column when collapsed", () => {
     render(
-      <AppShell user={user} onLogout={vi.fn()}>
-        <div>Page content</div>
-      </AppShell>
+      <ShareModalProvider>
+        <AppShell user={user} onLogout={vi.fn()}>
+          <div>Page content</div>
+        </AppShell>
+      </ShareModalProvider>
     );
 
     fireEvent.click(screen.getByRole("button", { name: "Toggle sidebar" }));

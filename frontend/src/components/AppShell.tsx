@@ -6,7 +6,7 @@ import { usePathname } from "next/navigation";
 import { User, Workspace } from "../lib/types";
 import AppSidebar from "./AppSidebar";
 import CommandPalette from "./CommandPalette";
-import ShareModal from "./ShareModal";
+import { useShareModal } from "../lib/shareModalContext";
 import { useBreadcrumbsValue } from "./BreadcrumbContext";
 import { StashIcon } from "./StashIcons";
 import { getCachedWorkspaces, readCachedWorkspaces } from "../lib/stashNavigationCache";
@@ -37,12 +37,12 @@ function SidebarToggleIcon({ collapsed }: { collapsed: boolean }) {
 export default function AppShell({ user, onLogout, children }: AppShellProps) {
   const pathname = usePathname();
   const breadcrumbs = useBreadcrumbsValue();
+  const shareModal = useShareModal();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [activeStashId, setActiveStashId] = useState<string | null>(null);
   const [stashes, setStashes] = useState<Workspace[]>(
     () => readCachedWorkspaces(user.id)?.all ?? []
   );
-  const [shareOpen, setShareOpen] = useState(false);
   const [cmdkOpen, setCmdkOpen] = useState(false);
 
   useEffect(() => {
@@ -114,7 +114,12 @@ export default function AppShell({ user, onLogout, children }: AppShellProps) {
           {activeStashId && (
             <button
               className="ml-1 rounded-md bg-[var(--color-brand-600)] px-2.5 py-1 text-[12.5px] font-medium text-white hover:bg-[var(--color-brand-700)]"
-              onClick={() => setShareOpen(true)}
+              onClick={() =>
+                shareModal.open({
+                  stashId: activeStashId,
+                  stashName: activeStash?.name,
+                })
+              }
             >
               Share
             </button>
@@ -148,14 +153,6 @@ export default function AppShell({ user, onLogout, children }: AppShellProps) {
         </main>
       </div>
 
-      {activeStashId && (
-        <ShareModal
-          open={shareOpen}
-          stashId={activeStashId}
-          stashName={activeStash?.name || "Stash"}
-          onClose={() => setShareOpen(false)}
-        />
-      )}
       <CommandPalette
         open={cmdkOpen}
         onClose={() => setCmdkOpen(false)}
