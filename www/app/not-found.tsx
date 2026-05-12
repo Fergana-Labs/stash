@@ -1,5 +1,12 @@
 import Link from "next/link";
 
+const BALLAD_LINES = [
+  "Where every stash and star should gleam,",
+  "A lantern lost its way;",
+  "It sings beside the empty stream,",
+  "And waits to guide your day.",
+];
+
 function LostOctopus() {
   return (
     <svg
@@ -123,6 +130,12 @@ export default function NotFound() {
       <p className="mt-2 text-[15px] text-dim">
         This page doesn&apos;t exist, or it was moved.
       </p>
+
+      <div className="mt-5 max-w-sm space-y-1 text-[15px] leading-[1.6] text-dim">
+        {BALLAD_LINES.map((line) => (
+          <p key={line}>{line}</p>
+        ))}
+      </div>
 
       <Link
         href="/"
