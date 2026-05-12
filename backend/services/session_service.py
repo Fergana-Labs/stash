@@ -77,6 +77,7 @@ async def set_summary(session_row_id: UUID, summary: str, status: str = "ready")
 
 async def set_files_touched(session_row_id: UUID, files: list[str]) -> None:
     import json
+
     pool = get_pool()
     await pool.execute(
         "UPDATE sessions SET files_touched = $1::jsonb WHERE id = $2",

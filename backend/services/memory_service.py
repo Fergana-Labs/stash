@@ -214,16 +214,25 @@ async def list_workspace_sessions(workspace_id: UUID) -> list[dict]:
     list — replaces a SELECT against session_transcripts."""
     pool = get_pool()
     rows = await pool.fetch(
-        "SELECT session_id, "
-        "       MAX(agent_name) AS agent_name, "
-        "       COUNT(*)::INT AS event_count, "
-        "       SUM(LENGTH(content))::BIGINT AS size_bytes, "
-        "       MIN(created_at) AS started_at, "
-        "       MAX(created_at) AS last_at "
-        "FROM history_events "
-        "WHERE workspace_id = $1 AND session_id IS NOT NULL "
-        "GROUP BY session_id "
-        "ORDER BY last_at DESC",
+        "WITH history_sessions AS ("
+        "  SELECT session_id, "
+        "         MAX(agent_name) AS agent_name, "
+        "         COUNT(*)::INT AS event_count, "
+        "         SUM(LENGTH(content))::BIGINT AS size_bytes, "
+        "         MIN(created_at) AS started_at, "
+        "         MAX(created_at) AS last_at "
+        "  FROM history_events "
+        "  WHERE workspace_id = $1 AND session_id IS NOT NULL "
+        "  GROUP BY session_id"
+        ") "
+        "SELECT history_sessions.*, session_meta.summary AS stash_summary "
+        "FROM history_sessions "
+        "LEFT JOIN sessions session_meta "
+        "  ON session_meta.workspace_id = $1 "
+        "  AND session_meta.session_id = history_sessions.session_id "
+        "  AND session_meta.summary IS NOT NULL "
+        "  AND session_meta.summary <> '' "
+        "ORDER BY history_sessions.last_at DESC",
         workspace_id,
     )
     return [dict(r) for r in rows]

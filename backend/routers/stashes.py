@@ -40,6 +40,7 @@ from ..models import (
 from ..services import (
     ask_service,
     memory_service,
+    session_title_service,
     skill_service,
     stash_service,
     storage_service,
@@ -205,11 +206,13 @@ async def revoke_stash_invite_token(
 async def _spine_sessions(stash_id: UUID) -> list[dict]:
     """Sessions in this workspace, sourced from history_events rows."""
     sessions = await memory_service.list_workspace_sessions(stash_id)
+    titles = await session_title_service.ensure_session_titles(stash_id, sessions)
     return [
         {
             "session_id": s["session_id"],
-            "title": s["session_id"],
+            "title": titles[s["session_id"]],
             "agent_name": s["agent_name"] or "",
+            "event_count": int(s["event_count"] or 0),
             "size_bytes": int(s["size_bytes"] or 0),
             "last_at": s["last_at"],
             "updated_at": s["last_at"],

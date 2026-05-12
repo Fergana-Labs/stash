@@ -61,12 +61,12 @@ export default function CommandPalette({ open, onClose, stashId }: CommandPalett
           });
       });
       spine.sessions.forEach((s) => {
-        if (s.session_id.toLowerCase().includes(q))
+        if (`${s.title} ${s.session_id}`.toLowerCase().includes(q))
           local.push({
             kind: "session",
-            label: `#${s.session_id}`,
+            label: s.title,
             href: `/stashes/${stashId}/sessions/${encodeURIComponent(s.session_id)}`,
-            detail: s.agent_name,
+            detail: `${s.agent_name} · ${s.event_count} events`,
           });
       });
       spine.wiki.folders.forEach((f) => {

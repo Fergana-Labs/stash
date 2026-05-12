@@ -1280,6 +1280,7 @@ export interface StashSpineSession {
   session_id: string;
   title: string;
   agent_name: string;
+  event_count: number;
   size_bytes: number;
   last_at: string;
   updated_at: string;

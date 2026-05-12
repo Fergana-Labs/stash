@@ -68,6 +68,15 @@ function sectionKey(stashId: string, section: SidebarSection): string {
   return `${stashId}:${section}`;
 }
 
+function formatSessionTimestamp(value: string): string {
+  return new Intl.DateTimeFormat(undefined, {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(new Date(value));
+}
+
 function Chevron() {
   return (
     <svg
@@ -88,29 +97,134 @@ function NavRow({
   href,
   icon,
   label,
+  title,
   active,
   trailing,
 }: {
   href: string;
   icon: React.ReactNode;
   label: string;
+  title?: string;
   active?: boolean;
   trailing?: React.ReactNode;
 }) {
   return (
     <Link
       href={href}
+      title={title ?? label}
       className={
-        "page-row flex items-center gap-2 rounded-md px-2 py-1 text-[13px] transition-colors " +
+        "page-row flex min-w-0 items-center gap-2 rounded-md px-2 py-1 text-[13px] transition-colors " +
         (active
           ? "bg-[var(--color-brand-50)] text-[var(--color-brand-800)]"
           : "text-dim hover:bg-raised hover:text-foreground")
       }
     >
-      <span className="flex h-4 w-4 items-center justify-center text-[14px]">{icon}</span>
-      <span className="flex-1 truncate">{label}</span>
+      <span className="flex h-4 w-4 flex-shrink-0 items-center justify-center text-[14px]">
+        {icon}
+      </span>
+      <span className="min-w-0 flex-1 truncate">{label}</span>
       {trailing}
     </Link>
+  );
+}
+
+function ChevronButton({
+  open,
+  onClick,
+  label,
+}: {
+  open: boolean;
+  onClick: () => void;
+  label: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={
+        "flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-sm transition-colors hover:bg-base " +
+        (open ? "rotate-90" : "")
+      }
+      aria-label={label}
+    >
+      <Chevron />
+    </button>
+  );
+}
+
+function SessionsBlock({
+  stash,
+  spine,
+  open,
+  onOpenChange,
+  pathname,
+}: {
+  stash: StashNode;
+  spine: StashSpine | null;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  pathname: string;
+}) {
+  const href = `/stashes/${stash.id}/sessions`;
+  const active = pathname === href;
+
+  return (
+    <div className="text-[13px]">
+      <div
+        className={
+          "page-row flex items-center gap-1 rounded-md px-2 py-1 transition-colors " +
+          (active
+            ? "bg-[var(--color-brand-50)] text-[var(--color-brand-800)]"
+            : "hover:bg-raised")
+        }
+      >
+        <ChevronButton
+          open={open}
+          onClick={() => onOpenChange(!open)}
+          label={open ? "Collapse sessions" : "Expand sessions"}
+        />
+        <Link href={href} className="flex min-w-0 flex-1 items-center gap-1.5">
+          <span className="flex h-4 w-4 items-center justify-center text-[14px] text-muted">
+            <SessionsIcon />
+          </span>
+          <span
+            className={
+              "flex-1 truncate font-medium " +
+              (active ? "text-[var(--color-brand-800)]" : "text-foreground")
+            }
+          >
+            Sessions
+          </span>
+          <span className="text-[10.5px] text-muted">{spine?.sessions.length ?? 0}</span>
+        </Link>
+      </div>
+      {open && (
+        <div className="ml-3 space-y-0.5 border-l border-border pl-2">
+          {spine?.sessions.map((s) => {
+            const sessionHref = `/stashes/${stash.id}/sessions/${encodeURIComponent(s.session_id)}`;
+            const sessionTimestamp = formatSessionTimestamp(s.last_at);
+            return (
+              <NavRow
+                key={s.session_id}
+                href={sessionHref}
+                icon={<SessionsIcon className="text-muted" />}
+                label={s.title}
+                title={`${s.title} - ${sessionTimestamp}`}
+                trailing={
+                  <span className="flex-shrink-0 text-[10.5px] text-muted">
+                    {sessionTimestamp}
+                  </span>
+                }
+                active={pathname === sessionHref}
+              />
+            );
+          })}
+          {(!spine || spine.sessions.length === 0) && (
+            <div className="px-2 py-1 text-[11px] italic text-muted">empty</div>
+          )}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -134,63 +248,51 @@ function StashTree({
   const isActive = pathname === `/stashes/${stash.id}`;
 
   return (
-    <details
-      open={open}
-      onToggle={(e) => onOpenChange(e.currentTarget.open)}
-      className="group/stash"
-    >
-      <summary className="page-row flex items-center gap-1 rounded-md px-2 py-1 text-[13px] hover:bg-raised">
-        <Chevron />
-        <span className="flex h-4 w-4 items-center justify-center text-[14px] text-muted">
-          <StashIcon />
-        </span>
+    <div className="group/stash">
+      <div
+        className={
+          "page-row flex items-center gap-1 rounded-md px-2 py-1 text-[13px] transition-colors " +
+          (isActive ? "bg-[var(--color-brand-50)]" : "hover:bg-raised")
+        }
+      >
+        <ChevronButton
+          open={open}
+          onClick={() => onOpenChange(!open)}
+          label={open ? "Collapse stash" : "Expand stash"}
+        />
         <Link
           href={`/stashes/${stash.id}`}
           className={
-            "flex-1 truncate font-medium " +
+            "flex min-w-0 flex-1 items-center gap-1.5 truncate font-medium " +
             (isActive ? "text-[var(--color-brand-800)]" : "text-foreground")
           }
         >
-          {stash.name}
+          <span className="flex h-4 w-4 items-center justify-center text-[14px] text-muted">
+            <StashIcon />
+          </span>
+          <span className="truncate">{stash.name}</span>
         </Link>
-      </summary>
-      <div className="ml-3 space-y-0.5 border-l border-border pl-2">
-        <details
-          open={openSections.sessions}
-          onToggle={(e) => onSectionOpenChange("sessions", e.currentTarget.open)}
-          className="text-[13px]"
-        >
-          <summary className="page-row flex items-center gap-1 rounded-md px-2 py-1 hover:bg-raised">
-            <Chevron />
-            <span className="flex h-4 w-4 items-center justify-center text-[14px] text-muted">
-              <SessionsIcon />
-            </span>
-            <span className="flex-1 truncate font-medium text-foreground">Sessions</span>
-            <span className="text-[10.5px] text-muted">{spine?.sessions.length ?? 0}</span>
-          </summary>
-          <div className="ml-3 space-y-0.5 border-l border-border pl-2">
-            {spine?.sessions.slice(0, 8).map((s) => (
-              <NavRow
-                key={s.session_id}
-                href={`/stashes/${stash.id}/sessions/${encodeURIComponent(s.session_id)}`}
-                icon={<span className="text-muted">#</span>}
-                label={s.session_id.length > 22 ? s.session_id.slice(0, 22) + "…" : s.session_id}
-              />
-            ))}
-            {(!spine || spine.sessions.length === 0) && (
-              <div className="px-2 py-1 text-[11px] italic text-muted">empty</div>
-            )}
-          </div>
-        </details>
-
-        <WikiBlock
-          stash={stash}
-          spine={spine}
-          open={openSections.wiki}
-          onOpenChange={(nextOpen) => onSectionOpenChange("wiki", nextOpen)}
-        />
       </div>
-    </details>
+      {open && (
+        <div className="ml-3 space-y-0.5 border-l border-border pl-2">
+          <SessionsBlock
+            stash={stash}
+            spine={spine}
+            open={openSections.sessions}
+            onOpenChange={(nextOpen) => onSectionOpenChange("sessions", nextOpen)}
+            pathname={pathname}
+          />
+
+          <WikiBlock
+            stash={stash}
+            spine={spine}
+            open={openSections.wiki}
+            onOpenChange={(nextOpen) => onSectionOpenChange("wiki", nextOpen)}
+            pathname={pathname}
+          />
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -230,74 +332,90 @@ function FolderTreeNode({
   stashId,
   folderId,
   name,
+  pathname,
 }: {
   stashId: string;
   folderId: string;
   name: string;
+  pathname: string;
 }) {
   const [contents, setContents] = useState<FolderContents | null>(null);
   const [loaded, setLoaded] = useState(false);
+  const [open, setOpen] = useState(false);
+  const href = `/stashes/${stashId}/folders/${folderId}`;
+  const active = pathname === href;
+
+  function toggleOpen() {
+    const nextOpen = !open;
+    setOpen(nextOpen);
+    if (!nextOpen || loaded) return;
+    setLoaded(true);
+    getFolderContents(stashId, folderId).then(setContents);
+  }
+
   return (
-    <details
-      className="text-[12.5px]"
-      onToggle={(e) => {
-        if ((e.target as HTMLDetailsElement).open && !loaded) {
-          setLoaded(true);
-          getFolderContents(stashId, folderId)
-            .then(setContents)
-            .catch(() => setContents({
-              folder: { id: folderId, name, parent_folder_id: null },
-              breadcrumbs: [],
-              subfolders: [],
-              pages: [],
-              files: [],
-            }));
+    <div className="text-[12.5px]">
+      <div
+        className={
+          "page-row flex items-center gap-1 rounded-md px-2 py-0.5 transition-colors " +
+          (active
+            ? "bg-[var(--color-brand-50)] text-[var(--color-brand-800)]"
+            : "hover:bg-raised")
         }
-      }}
-    >
-      <summary className="page-row flex items-center gap-1 rounded-md px-2 py-0.5 hover:bg-raised">
-        <Chevron />
-        <span className="flex h-4 w-4 items-center justify-center text-muted">
-          <FolderIcon />
-        </span>
+      >
+        <ChevronButton
+          open={open}
+          onClick={toggleOpen}
+          label={open ? "Collapse folder" : "Expand folder"}
+        />
         <Link
-          href={`/stashes/${stashId}/folders/${folderId}`}
-          className="flex-1 truncate text-left text-foreground hover:text-[var(--color-brand-700)]"
+          href={href}
+          className={
+            "flex min-w-0 flex-1 items-center gap-1.5 text-left hover:text-[var(--color-brand-700)] " +
+            (active ? "text-[var(--color-brand-800)]" : "text-foreground")
+          }
         >
-          {name}
+          <span className="flex h-4 w-4 items-center justify-center text-muted">
+            <FolderIcon />
+          </span>
+          <span className="truncate">{name}</span>
         </Link>
-      </summary>
-      <div className="ml-2.5 space-y-0.5 border-l border-border pl-2">
-        {contents === null && loaded && (
-          <div className="px-2 py-1 text-[11px] italic text-muted">loading…</div>
-        )}
-        {contents?.subfolders.map((sub) => (
-          <FolderTreeNode
-            key={sub.id}
-            stashId={stashId}
-            folderId={sub.id}
-            name={sub.name}
-          />
-        ))}
-        {contents?.pages.map((p) => (
-          <NavRow
-            key={p.id}
-            href={`/stashes/${stashId}/p/${p.id}`}
-            icon={<PageIcon className="text-muted" />}
-            label={p.name}
-          />
-        ))}
-        {contents?.files.map((f) => (
-          <FileNavRow key={f.id} stashId={stashId} file={f} />
-        ))}
-        {contents &&
-          contents.subfolders.length === 0 &&
-          contents.pages.length === 0 &&
-          contents.files.length === 0 && (
-            <div className="px-2 py-1 text-[11px] italic text-muted">empty</div>
-          )}
       </div>
-    </details>
+      {open && (
+        <div className="ml-2.5 space-y-0.5 border-l border-border pl-2">
+          {contents === null && loaded && (
+            <div className="px-2 py-1 text-[11px] italic text-muted">loading…</div>
+          )}
+          {contents?.subfolders.map((sub) => (
+            <FolderTreeNode
+              key={sub.id}
+              stashId={stashId}
+              folderId={sub.id}
+              name={sub.name}
+              pathname={pathname}
+            />
+          ))}
+          {contents?.pages.map((p) => (
+            <NavRow
+              key={p.id}
+              href={`/stashes/${stashId}/p/${p.id}`}
+              icon={<PageIcon className="text-muted" />}
+              label={p.name}
+              active={pathname === `/stashes/${stashId}/p/${p.id}`}
+            />
+          ))}
+          {contents?.files.map((f) => (
+            <FileNavRow key={f.id} stashId={stashId} file={f} />
+          ))}
+          {contents &&
+            contents.subfolders.length === 0 &&
+            contents.pages.length === 0 &&
+            contents.files.length === 0 && (
+              <div className="px-2 py-1 text-[11px] italic text-muted">empty</div>
+            )}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -306,11 +424,13 @@ function WikiBlock({
   spine,
   open,
   onOpenChange,
+  pathname,
 }: {
   stash: StashNode;
   spine: StashSpine | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  pathname: string;
 }) {
   const folders = spine?.wiki.folders ?? [];
   const pages = spine?.wiki.pages ?? [];
@@ -320,44 +440,51 @@ function WikiBlock({
   const rootFiles = files.filter((f) => !f.folder_id);
   const total = folders.length + pages.length + files.length;
   return (
-    <details
-      open={open}
-      onToggle={(e) => onOpenChange(e.currentTarget.open)}
-      className="text-[13px]"
-    >
-      <summary className="page-row flex items-center gap-1 rounded-md px-2 py-1 hover:bg-raised">
-        <Chevron />
+    <div className="text-[13px]">
+      <div className="page-row flex items-center gap-1 rounded-md px-2 py-1 hover:bg-raised">
+        <ChevronButton
+          open={open}
+          onClick={() => onOpenChange(!open)}
+          label={open ? "Collapse wiki" : "Expand wiki"}
+        />
         <span className="flex h-4 w-4 items-center justify-center text-[14px] text-muted">
           <WikiIcon />
         </span>
         <span className="flex-1 truncate font-medium text-foreground">Wiki</span>
         <span className="text-[10.5px] text-muted">{total}</span>
-      </summary>
-      <div className="ml-3 space-y-0.5 border-l border-border pl-2">
-        {rootFolders.map((f) => (
-          <FolderTreeNode
-            key={f.id}
-            stashId={stash.id}
-            folderId={f.id}
-            name={f.name}
-          />
-        ))}
-        {rootPages.slice(0, 10).map((p) => (
-          <NavRow
-            key={p.id}
-            href={`/stashes/${stash.id}/p/${p.id}`}
-            icon={<PageIcon className="text-muted" />}
-            label={p.name}
-          />
-        ))}
-        {rootFiles.slice(0, 12).map((f) => (
-          <FileNavRow key={f.id} stashId={stash.id} file={f} />
-        ))}
-        {!spine || total === 0 ? (
-          <div className="px-2 py-1 text-[11px] italic text-muted">empty</div>
-        ) : null}
       </div>
-    </details>
+      {open && (
+        <div className="ml-3 space-y-0.5 border-l border-border pl-2">
+          {rootFolders.map((f) => (
+            <FolderTreeNode
+              key={f.id}
+              stashId={stash.id}
+              folderId={f.id}
+              name={f.name}
+              pathname={pathname}
+            />
+          ))}
+          {rootPages.slice(0, 10).map((p) => {
+            const href = `/stashes/${stash.id}/p/${p.id}`;
+            return (
+              <NavRow
+                key={p.id}
+                href={href}
+                icon={<PageIcon className="text-muted" />}
+                label={p.name}
+                active={pathname === href}
+              />
+            );
+          })}
+          {rootFiles.slice(0, 12).map((f) => (
+            <FileNavRow key={f.id} stashId={stash.id} file={f} />
+          ))}
+          {!spine || total === 0 ? (
+            <div className="px-2 py-1 text-[11px] italic text-muted">empty</div>
+          ) : null}
+        </div>
+      )}
+    </div>
   );
 }
 

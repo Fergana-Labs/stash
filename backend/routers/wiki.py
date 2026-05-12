@@ -212,10 +212,7 @@ async def get_folder_contents(
             }
             for r in subfolders
         ],
-        "pages": [
-            {"id": str(r["id"]), "name": r["name"]}
-            for r in pages
-        ],
+        "pages": [{"id": str(r["id"]), "name": r["name"]} for r in pages],
         "files": file_payload,
     }
 
