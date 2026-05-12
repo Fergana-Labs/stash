@@ -1,5 +1,5 @@
 import Link from "next/link";
-import type { ReactNode } from "react";
+import type { CSSProperties, ReactNode } from "react";
 
 import CopyButton from "./_components/CopyButton";
 import ScrollLink from "./_components/ScrollLink";
@@ -7,9 +7,16 @@ import VisualizationsShowcase from "./_components/VisualizationsShowcase";
 
 const INSTALL_COMMAND = `bash -c "$(curl -fsSL https://raw.githubusercontent.com/Fergana-Labs/stash/main/install.sh)"`;
 
+const LANDING_THEME = {
+  "--brand": "#2563EB",
+  "--brand-hover": "#1D4ED8",
+  "--brand-ink": "#1E3A8A",
+  "--brand-soft": "rgba(37, 99, 235, 0.12)",
+} as CSSProperties;
+
 export default function Page() {
   return (
-    <main className="min-h-screen bg-background text-foreground">
+    <main className="min-h-screen bg-background text-foreground" style={LANDING_THEME}>
       <Nav />
       <Hero />
       <Logos />
