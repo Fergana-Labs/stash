@@ -198,11 +198,11 @@ async def revoke_stash_invite_token(
 
 
 # ---------------------------------------------------------------------------
-# Spine — the three-folder view (Sessions / Skills / Drive) for one stash
+# Spine — lightweight navigation data for one stash
 # ---------------------------------------------------------------------------
 
 
-async def _spine_sessions(stash_id: UUID, limit: int | None) -> dict:
+async def _sessions_for_spine(stash_id: UUID, limit: int | None) -> dict:
     """Sessions in this workspace, sourced from history_events rows."""
     result = await memory_service.list_workspace_sessions(stash_id, limit=limit)
     return {
@@ -221,17 +221,16 @@ async def _spine_sessions(stash_id: UUID, limit: int | None) -> dict:
     }
 
 
-async def _spine_wiki(
+async def _wiki_for_spine(
     stash_id: UUID,
     *,
     root_only: bool,
     include_file_urls: bool,
 ) -> dict:
-    """One unified Wiki tree — folders, pages, and files for the workspace.
+    """Wiki rows for the stash navigation payload.
 
-    No Drive/Skill split. A folder is a folder regardless of whether it
-    contains a SKILL.md. The frontend builds the tree from parent_folder_id
-    and folder_id; the spine is just the flat row set.
+    Folders point to parent folders. Pages and files point to containing
+    folders. The frontend turns these rows into the visible Wiki hierarchy.
     """
     pool = get_pool()
     folder_filter = "AND f.parent_folder_id IS NULL" if root_only else ""
@@ -446,10 +445,10 @@ async def get_stash_spine(
     include_file_urls: bool = Query(True),
     current_user: dict = Depends(get_current_user),
 ):
-    """Returns {sessions, wiki} for the stash home + sidebar tree.
+    """Return sessions and wiki content for stash navigation.
 
-    `wiki` is one shape: {folders, pages, files}. All rows carry their
-    parent_folder_id / folder_id so the frontend can build a tree."""
+    Wiki content is returned as folders, pages, and files with parent ids so
+    clients can render the hierarchy."""
     if not await workspace_service.is_member(stash_id, current_user["id"]):
         ws = await workspace_service.get_workspace(stash_id)
         if not ws or not ws.get("is_public"):
@@ -459,8 +458,8 @@ async def get_stash_spine(
         raise HTTPException(status_code=400, detail="wiki_depth must be full or root")
 
     session_result, wiki = await asyncio.gather(
-        _spine_sessions(stash_id, session_limit),
-        _spine_wiki(
+        _sessions_for_spine(stash_id, session_limit),
+        _wiki_for_spine(
             stash_id,
             root_only=wiki_depth == "root",
             include_file_urls=include_file_urls,

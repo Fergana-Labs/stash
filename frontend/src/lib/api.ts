@@ -1299,8 +1299,8 @@ export interface StashSpineSession {
   updated_at: string;
 }
 
-// Unified Wiki — one tree, no Drive/Skill split. Folders, pages, and files
-// each carry their parent so the frontend can build the hierarchy.
+// Wiki content for stash navigation. Folders point to parent folders; pages
+// and files point to folders.
 export interface WikiFolder {
   id: string;
   name: string;
