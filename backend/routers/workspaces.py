@@ -117,6 +117,9 @@ async def update_workspace(
         tags=req.tags,
         category=req.category,
         cover_image_url=req.cover_image_url,
+        home_background=(
+            req.home_background.model_dump() if req.home_background is not None else None
+        ),
         is_public=req.is_public,
     )
     if not ws:

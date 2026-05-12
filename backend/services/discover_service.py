@@ -24,7 +24,7 @@ _IS_PUBLIC_EXPR = (
 _CATALOG_SELECT = f"""
 SELECT
     w.id, w.name, w.summary, w.description, {_IS_PUBLIC_EXPR} AS is_public,
-    w.tags, w.category, w.discoverable, w.featured, w.cover_image_url,
+    w.tags, w.category, w.discoverable, w.featured, w.cover_image_url, w.home_background,
     w.creator_id, u.name AS creator_name, u.display_name AS creator_display_name,
     w.fork_count, w.forked_from_workspace_id, w.created_at, w.updated_at,
     (SELECT COUNT(*) FROM workspace_members wm WHERE wm.workspace_id = w.id) AS member_count,

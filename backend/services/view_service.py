@@ -572,7 +572,7 @@ async def fork_view(slug: str, forker_id: UUID, name: str | None = None) -> dict
                 "VALUES ($1, $2, $3, $4, $5, $6) "
                 "RETURNING id, name, description, creator_id, invite_code, "
                 "created_at, updated_at, summary, tags, category, featured, "
-                "cover_image_url, fork_count, forked_from_workspace_id",
+                "cover_image_url, home_background, fork_count, forked_from_workspace_id",
                 new_name,
                 view["description"] or "",
                 view["title"],
@@ -748,6 +748,7 @@ async def fork_view(slug: str, forker_id: UUID, name: str | None = None) -> dict
             )
 
     new_ws_dict = dict(new_ws)
+    new_ws_dict["is_public"] = False
     new_ws_dict["member_count"] = 1
     return new_ws_dict
 

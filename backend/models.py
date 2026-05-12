@@ -1,7 +1,8 @@
 from datetime import datetime
+from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 # --- Users ---
 
@@ -70,6 +71,32 @@ class ApiKeyCreateResponse(BaseModel):
 # --- Workspaces ---
 
 
+class WorkspaceHomeBackground(BaseModel):
+    kind: Literal["gradient", "image"] = "gradient"
+    gradient_start: str = Field("#FED7AA", pattern=r"^#[0-9A-Fa-f]{6}$")
+    gradient_middle: str = Field("#FEF3C7", pattern=r"^#[0-9A-Fa-f]{6}$")
+    gradient_end: str = Field("#FFE4E6", pattern=r"^#[0-9A-Fa-f]{6}$")
+    image_url: str | None = Field(None, max_length=2048)
+
+    @field_validator("image_url")
+    @classmethod
+    def clean_image_url(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        cleaned = value.strip()
+        if not cleaned:
+            return None
+        if cleaned.startswith(("http://", "https://", "/")):
+            return cleaned
+        raise ValueError("image_url must be http(s) or root-relative")
+
+    @model_validator(mode="after")
+    def require_image_url(self):
+        if self.kind == "image" and not self.image_url:
+            raise ValueError("image_url is required for image backgrounds")
+        return self
+
+
 class WorkspaceCreateRequest(BaseModel):
     name: str = Field(..., min_length=1, max_length=128)
     description: str = Field("", max_length=1000)
@@ -83,6 +110,7 @@ class WorkspaceUpdateRequest(BaseModel):
     tags: list[str] | None = None
     category: str | None = Field(None, max_length=32)
     cover_image_url: str | None = None
+    home_background: WorkspaceHomeBackground | None = None
     is_public: bool | None = None
 
 
@@ -102,6 +130,7 @@ class WorkspaceResponse(BaseModel):
     discoverable: bool = False
     featured: bool = False
     cover_image_url: str | None = None
+    home_background: WorkspaceHomeBackground
     fork_count: int = 0
     forked_from_workspace_id: UUID | None = None
 
@@ -128,6 +157,7 @@ class WorkspaceCatalogCard(BaseModel):
     discoverable: bool = False
     featured: bool = False
     cover_image_url: str | None = None
+    home_background: WorkspaceHomeBackground
     creator_id: UUID
     creator_name: str
     creator_display_name: str | None = None

@@ -2,7 +2,7 @@
 
 import { useCallback, useRef, useState } from "react";
 
-import { Workspace, WorkspaceMember } from "../../lib/types";
+import { HomeBackground, Workspace, WorkspaceMember } from "../../lib/types";
 import { rotateWorkspaceInvite } from "../../lib/api";
 import ShareButton from "../share/ShareButton";
 
@@ -104,7 +104,12 @@ interface WorkspaceSidebarProps {
   onLeave: () => void;
   onDelete: () => void;
   onKickMember: (userId: string) => void;
-  onUpdateWorkspace: (data: { name?: string; description?: string; is_public?: boolean }) => Promise<void> | void;
+  onUpdateWorkspace: (data: {
+    name?: string;
+    description?: string;
+    is_public?: boolean;
+    home_background?: HomeBackground;
+  }) => Promise<void> | void;
   onAddMember: (username: string) => Promise<void>;
   onAddToAccessList?: (userName: string, listType: "allow" | "block") => Promise<void>;
   onRemoveFromAccessList?: (userName: string, listType: "allow" | "block") => Promise<void>;

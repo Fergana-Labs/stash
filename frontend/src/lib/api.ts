@@ -7,6 +7,7 @@ import {
   HistoryWithWorkspace,
   JoinRequest,
   Folder,
+  HomeBackground,
   Page,
   PageGraph,
   PageLink,
@@ -229,7 +230,12 @@ export async function getWorkspaceMembers(workspaceId: string): Promise<Workspac
 
 export async function updateWorkspace(
   workspaceId: string,
-  data: { name?: string; description?: string; is_public?: boolean }
+  data: {
+    name?: string;
+    description?: string;
+    is_public?: boolean;
+    home_background?: HomeBackground;
+  }
 ): Promise<Workspace> {
   return apiFetch(`/api/v1/workspaces/${workspaceId}`, {
     method: "PATCH",
@@ -305,6 +311,7 @@ export interface CatalogCard {
   discoverable: boolean;
   featured: boolean;
   cover_image_url: string | null;
+  home_background: HomeBackground;
   creator_id: string;
   creator_name: string;
   creator_display_name: string | null;

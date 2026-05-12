@@ -30,11 +30,19 @@ import {
   getWorkspace,
   getWorkspaceMembers,
   joinWorkspace,
+  updateWorkspace,
   uploadFile,
   type StashSpine,
   type WikiFile,
 } from "../../../lib/api";
-import type { FileInfo, Folder, Workspace, WorkspaceMember } from "../../../lib/types";
+import { homeBackgroundStyle } from "../../../lib/homeBackground";
+import type {
+  FileInfo,
+  Folder,
+  HomeBackground,
+  Workspace,
+  WorkspaceMember,
+} from "../../../lib/types";
 
 interface CardItem {
   href: string;
@@ -103,6 +111,10 @@ export default function StashHomePage() {
   const [spine, setSpine] = useState<StashSpine | null>(null);
   const [error, setError] = useState("");
   const [membersOpen, setMembersOpen] = useState(false);
+  const [backgroundOpen, setBackgroundOpen] = useState(false);
+  const [backgroundDraft, setBackgroundDraft] = useState<HomeBackground | null>(null);
+  const [backgroundSaving, setBackgroundSaving] = useState(false);
+  const [backgroundError, setBackgroundError] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const load = useCallback(async () => {
@@ -145,6 +157,55 @@ export default function StashHomePage() {
   }, [user, loading, router]);
 
   const isMember = !!user && members.some((m) => m.user_id === user.id);
+  const currentMember = user ? members.find((m) => m.user_id === user.id) : null;
+  const canCustomizeBackground =
+    currentMember?.role === "owner" || currentMember?.role === "admin";
+
+  function openBackgroundEditor() {
+    if (!stash) return;
+    setBackgroundDraft({ ...stash.home_background });
+    setBackgroundError("");
+    setBackgroundOpen(true);
+  }
+
+  function setBackgroundKind(kind: HomeBackground["kind"]) {
+    setBackgroundDraft((current) => {
+      if (!current) return current;
+      return {
+        ...current,
+        kind,
+        image_url: kind === "image" ? current.image_url || "" : null,
+      };
+    });
+  }
+
+  async function saveBackground(e: React.FormEvent) {
+    e.preventDefault();
+    if (!stash || !backgroundDraft) return;
+
+    const next: HomeBackground = {
+      ...backgroundDraft,
+      image_url:
+        backgroundDraft.kind === "image" ? (backgroundDraft.image_url || "").trim() : null,
+    };
+    if (next.kind === "image" && !next.image_url) {
+      setBackgroundError("Image URL is required.");
+      return;
+    }
+
+    setBackgroundSaving(true);
+    setBackgroundError("");
+    try {
+      const updated = await updateWorkspace(stash.id, { home_background: next });
+      setStash(updated);
+      setBackgroundOpen(false);
+      setBackgroundDraft(null);
+    } catch (err) {
+      setBackgroundError(err instanceof Error ? err.message : "Failed to save background");
+    } finally {
+      setBackgroundSaving(false);
+    }
+  }
 
   async function handleJoin() {
     if (!stash) return;
@@ -219,7 +280,11 @@ export default function StashHomePage() {
   return (
     <AppShell user={user} onLogout={logout}>
       <div className="scroll-thin flex-1 overflow-y-auto">
-        <div className="h-32 bg-gradient-to-r from-[var(--color-brand-200)] via-amber-100 to-rose-100" />
+        {stash ? (
+          <div className="h-32" style={homeBackgroundStyle(stash.home_background)} />
+        ) : (
+          <div className="h-32 bg-surface" />
+        )}
         <div className="mx-auto -mt-8 max-w-3xl px-12 pb-16">
           <div className="mb-2 flex h-12 w-12 items-center justify-center text-5xl text-[var(--color-brand-700)]">
             <StashIcon />
@@ -238,7 +303,124 @@ export default function StashHomePage() {
             <span>· updated {stash?.updated_at ? formatRelative(stash.updated_at) : ""}</span>
             <span className="text-muted">·</span>
             <span>{stash?.is_public ? "Public" : "Private"}</span>
+            {canCustomizeBackground && stash && (
+              <>
+                <span className="text-muted">·</span>
+                <button
+                  type="button"
+                  onClick={openBackgroundEditor}
+                  className="text-[12px] font-medium text-[var(--color-brand-700)] hover:text-[var(--color-brand-800)]"
+                >
+                  Customize background
+                </button>
+              </>
+            )}
           </div>
+
+          {backgroundOpen && backgroundDraft && (
+            <form
+              onSubmit={saveBackground}
+              className="mt-4 rounded-lg border border-border bg-surface p-4"
+            >
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="text-[13px] font-semibold text-foreground">Home background</div>
+                <div className="inline-flex rounded-md border border-border bg-base p-0.5">
+                  <button
+                    type="button"
+                    onClick={() => setBackgroundKind("gradient")}
+                    className={
+                      "rounded px-2.5 py-1 text-[12px] " +
+                      (backgroundDraft.kind === "gradient"
+                        ? "bg-[var(--color-brand-100)] text-[var(--color-brand-800)]"
+                        : "text-muted hover:text-foreground")
+                    }
+                  >
+                    Gradient
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setBackgroundKind("image")}
+                    className={
+                      "rounded px-2.5 py-1 text-[12px] " +
+                      (backgroundDraft.kind === "image"
+                        ? "bg-[var(--color-brand-100)] text-[var(--color-brand-800)]"
+                        : "text-muted hover:text-foreground")
+                    }
+                  >
+                    Image
+                  </button>
+                </div>
+              </div>
+
+              {backgroundDraft.kind === "gradient" ? (
+                <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
+                  <ColorField
+                    label="Start"
+                    value={backgroundDraft.gradient_start}
+                    onChange={(gradient_start) =>
+                      setBackgroundDraft({ ...backgroundDraft, gradient_start })
+                    }
+                  />
+                  <ColorField
+                    label="Middle"
+                    value={backgroundDraft.gradient_middle}
+                    onChange={(gradient_middle) =>
+                      setBackgroundDraft({ ...backgroundDraft, gradient_middle })
+                    }
+                  />
+                  <ColorField
+                    label="End"
+                    value={backgroundDraft.gradient_end}
+                    onChange={(gradient_end) =>
+                      setBackgroundDraft({ ...backgroundDraft, gradient_end })
+                    }
+                  />
+                </div>
+              ) : (
+                <label className="mt-4 flex flex-col gap-1.5">
+                  <span className="text-[12px] font-medium text-foreground">Image URL</span>
+                  <input
+                    value={backgroundDraft.image_url || ""}
+                    onChange={(e) =>
+                      setBackgroundDraft({ ...backgroundDraft, image_url: e.target.value })
+                    }
+                    placeholder="https://example.com/cover.jpg"
+                    className="rounded-md border border-border bg-base px-3 py-2 text-[13px] text-foreground placeholder:text-muted focus:border-[var(--color-brand-500)] focus:outline-none"
+                  />
+                </label>
+              )}
+
+              <div
+                className="mt-4 h-20 rounded-md border border-border"
+                style={homeBackgroundStyle(backgroundDraft)}
+              />
+
+              {backgroundError && (
+                <div className="mt-3 text-[12px] text-red-500">{backgroundError}</div>
+              )}
+
+              <div className="mt-4 flex items-center justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setBackgroundOpen(false);
+                    setBackgroundDraft(null);
+                    setBackgroundError("");
+                  }}
+                  className="rounded-md px-3 py-1.5 text-[12px] text-muted hover:text-foreground"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={backgroundSaving}
+                  className="rounded-md bg-[var(--color-brand-600)] px-3 py-1.5 text-[12px] font-medium text-white hover:bg-[var(--color-brand-700)] disabled:opacity-50"
+                >
+                  {backgroundSaving ? "Saving…" : "Save"}
+                </button>
+              </div>
+            </form>
+          )}
 
           {error && (
             <div className="mt-4 rounded-lg border border-red-300/40 bg-red-500/10 px-4 py-2 text-[13px] text-red-500">
@@ -382,6 +564,40 @@ function SectionHeader({
       <span className="text-[11.5px] text-muted">{trailing}</span>
     </div>
   );
+}
+
+function ColorField({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <label className="flex flex-col gap-1.5">
+      <span className="text-[12px] font-medium text-foreground">{label}</span>
+      <div className="flex items-center gap-2 rounded-md border border-border bg-base px-2 py-1.5">
+        <input
+          type="color"
+          value={colorInputValue(value)}
+          onChange={(e) => onChange(e.target.value.toUpperCase())}
+          className="h-7 w-7 shrink-0 cursor-pointer rounded border-0 bg-transparent p-0"
+        />
+        <input
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          pattern="^#[0-9A-Fa-f]{6}$"
+          className="min-w-0 flex-1 bg-transparent font-mono text-[12px] text-foreground focus:outline-none"
+        />
+      </div>
+    </label>
+  );
+}
+
+function colorInputValue(value: string) {
+  return /^#[0-9A-Fa-f]{6}$/.test(value) ? value : "#000000";
 }
 
 function EmptyState({

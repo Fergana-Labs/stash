@@ -44,6 +44,13 @@ async def test_create_workspace(client: AsyncClient):
     assert body["name"] == "My Workspace"
     assert body["invite_code"]
     assert body["member_count"] == 1
+    assert body["home_background"] == {
+        "kind": "gradient",
+        "gradient_start": "#FED7AA",
+        "gradient_middle": "#FEF3C7",
+        "gradient_end": "#FFE4E6",
+        "image_url": None,
+    }
 
 
 @pytest.mark.asyncio
@@ -173,6 +180,80 @@ async def test_update_workspace(client: AsyncClient):
     )
     assert resp.status_code == 200
     assert resp.json()["name"] == "New"
+
+
+@pytest.mark.asyncio
+async def test_update_workspace_home_background(client: AsyncClient):
+    key, _ = await _register(client)
+    ws = (await client.post("/api/v1/workspaces", json={"name": "Old"}, headers=_auth(key))).json()
+
+    home_background = {
+        "kind": "image",
+        "gradient_start": "#111111",
+        "gradient_middle": "#222222",
+        "gradient_end": "#333333",
+        "image_url": "https://example.com/cover.jpg",
+    }
+    resp = await client.patch(
+        f"/api/v1/workspaces/{ws['id']}",
+        json={"home_background": home_background},
+        headers=_auth(key),
+    )
+
+    assert resp.status_code == 200
+    assert resp.json()["home_background"] == home_background
+
+
+@pytest.mark.asyncio
+async def test_update_workspace_image_background_requires_url(client: AsyncClient):
+    key, _ = await _register(client)
+    ws = (await client.post("/api/v1/workspaces", json={"name": "Old"}, headers=_auth(key))).json()
+
+    resp = await client.patch(
+        f"/api/v1/workspaces/{ws['id']}",
+        json={
+            "home_background": {
+                "kind": "image",
+                "gradient_start": "#111111",
+                "gradient_middle": "#222222",
+                "gradient_end": "#333333",
+                "image_url": "",
+            }
+        },
+        headers=_auth(key),
+    )
+
+    assert resp.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_public_workspace_includes_home_background(client: AsyncClient):
+    key, _ = await _register(client)
+    ws = (
+        await client.post(
+            "/api/v1/workspaces",
+            json={"name": "Public", "is_public": True},
+            headers=_auth(key),
+        )
+    ).json()
+    home_background = {
+        "kind": "gradient",
+        "gradient_start": "#102030",
+        "gradient_middle": "#405060",
+        "gradient_end": "#708090",
+        "image_url": None,
+    }
+
+    update = await client.patch(
+        f"/api/v1/workspaces/{ws['id']}",
+        json={"home_background": home_background},
+        headers=_auth(key),
+    )
+    resp = await client.get(f"/api/v1/public/workspaces/{ws['id']}")
+
+    assert update.status_code == 200
+    assert resp.status_code == 200
+    assert resp.json()["workspace"]["home_background"] == home_background
 
 
 @pytest.mark.asyncio
