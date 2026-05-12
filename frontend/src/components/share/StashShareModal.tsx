@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   createSharedView,
   deleteView,
@@ -17,6 +17,9 @@ type Tab = "new" | "manage";
 type Visibility = "link" | "public";
 
 type RowGroup = "Folders" | "Pages" | "Files" | "Tables";
+type GroupKey = "Sessions" | RowGroup;
+
+const ROW_GROUP_ORDER: RowGroup[] = ["Folders", "Pages", "Files", "Tables"];
 
 interface SelectableRow {
   key: string;
@@ -105,6 +108,55 @@ export default function StashShareModal() {
       const sessions = new Map(s.sessions);
       if (sessions.has(row.key)) sessions.delete(row.key);
       else sessions.set(row.key, row);
+      return { ...s, sessions };
+    });
+  };
+
+  const onToggleAllVisible = (
+    visibleRows: SelectableRow[],
+    visibleSessions: SessionRow[]
+  ) => {
+    setSelected((s) => {
+      const allSelected =
+        visibleRows.every((r) => s.rows.has(r.key)) &&
+        visibleSessions.every((r) => s.sessions.has(r.key));
+      const rows = new Map(s.rows);
+      const sessions = new Map(s.sessions);
+      if (allSelected) {
+        for (const r of visibleRows) rows.delete(r.key);
+        for (const r of visibleSessions) sessions.delete(r.key);
+      } else {
+        for (const r of visibleRows) rows.set(r.key, r);
+        for (const r of visibleSessions) sessions.set(r.key, r);
+      }
+      return { rows, sessions };
+    });
+  };
+
+  const onClearAll = () => setSelected(EMPTY_SELECTED);
+
+  const onToggleGroupRows = (groupRows: SelectableRow[]) => {
+    setSelected((s) => {
+      const rows = new Map(s.rows);
+      const allSelected = groupRows.every((r) => rows.has(r.key));
+      if (allSelected) {
+        for (const r of groupRows) rows.delete(r.key);
+      } else {
+        for (const r of groupRows) rows.set(r.key, r);
+      }
+      return { ...s, rows };
+    });
+  };
+
+  const onToggleGroupSessions = (groupSessions: SessionRow[]) => {
+    setSelected((s) => {
+      const sessions = new Map(s.sessions);
+      const allSelected = groupSessions.every((r) => sessions.has(r.key));
+      if (allSelected) {
+        for (const r of groupSessions) sessions.delete(r.key);
+      } else {
+        for (const r of groupSessions) sessions.set(r.key, r);
+      }
       return { ...s, sessions };
     });
   };
@@ -214,6 +266,10 @@ export default function StashShareModal() {
             selected={selected}
             onToggleRow={onToggleRow}
             onToggleSession={onToggleSession}
+            onToggleAllVisible={onToggleAllVisible}
+            onClearAll={onClearAll}
+            onToggleGroupRows={onToggleGroupRows}
+            onToggleGroupSessions={onToggleGroupSessions}
             title={title}
             setTitle={setTitle}
             placeholderTitle={defaultTitle}
@@ -282,6 +338,10 @@ function NewShareTab(props: {
   selected: SelectedState;
   onToggleRow: (r: SelectableRow) => void;
   onToggleSession: (r: SessionRow) => void;
+  onToggleAllVisible: (rows: SelectableRow[], sessions: SessionRow[]) => void;
+  onClearAll: () => void;
+  onToggleGroupRows: (rows: SelectableRow[]) => void;
+  onToggleGroupSessions: (sessions: SessionRow[]) => void;
   title: string;
   setTitle: (v: string) => void;
   placeholderTitle: string;
@@ -300,6 +360,10 @@ function NewShareTab(props: {
     selected,
     onToggleRow,
     onToggleSession,
+    onToggleAllVisible,
+    onClearAll,
+    onToggleGroupRows,
+    onToggleGroupSessions,
     title,
     setTitle,
     placeholderTitle,
@@ -311,6 +375,15 @@ function NewShareTab(props: {
     error,
   } = props;
 
+  const [collapsed, setCollapsed] = useState<Set<GroupKey>>(new Set());
+  const toggleCollapse = (g: GroupKey) =>
+    setCollapsed((c) => {
+      const next = new Set(c);
+      if (next.has(g)) next.delete(g);
+      else next.add(g);
+      return next;
+    });
+
   const grouped = useMemo(() => {
     const out: Record<RowGroup, SelectableRow[]> = {
       Folders: [],
@@ -321,6 +394,15 @@ function NewShareTab(props: {
     for (const r of filteredRows) out[r.group].push(r);
     return out;
   }, [filteredRows]);
+
+  const visibleTotal = filteredRows.length + filteredSessions.length;
+  const visibleSelected =
+    filteredRows.reduce((n, r) => n + (selected.rows.has(r.key) ? 1 : 0), 0) +
+    filteredSessions.reduce((n, r) => n + (selected.sessions.has(r.key) ? 1 : 0), 0);
+
+  const allLabel = search.trim()
+    ? `Select all matching (${visibleTotal})`
+    : `Select all (${visibleTotal})`;
 
   return (
     <>
@@ -334,9 +416,35 @@ function NewShareTab(props: {
         />
       </div>
 
+      {visibleTotal > 0 && (
+        <div className="flex items-center justify-between border-b border-border-subtle px-5 py-2">
+          <TriCheckbox
+            checked={visibleSelected > 0 && visibleSelected === visibleTotal}
+            indeterminate={visibleSelected > 0 && visibleSelected < visibleTotal}
+            onChange={() => onToggleAllVisible(filteredRows, filteredSessions)}
+            label={allLabel}
+          />
+          {total > 0 && (
+            <button
+              onClick={onClearAll}
+              className="text-[11.5px] text-muted hover:text-foreground"
+            >
+              Clear ({total})
+            </button>
+          )}
+        </div>
+      )}
+
       <div className="scroll-thin flex-1 overflow-y-auto px-5 py-3">
         {filteredSessions.length > 0 && (
-          <Group title="Sessions">
+          <GroupBlock
+            title="Sessions"
+            count={filteredSessions.length}
+            collapsed={collapsed.has("Sessions")}
+            onToggleCollapse={() => toggleCollapse("Sessions")}
+            allSelected={filteredSessions.every((s) => selected.sessions.has(s.key))}
+            onToggleSelectAll={() => onToggleGroupSessions(filteredSessions)}
+          >
             {filteredSessions.map((s) => (
               <Row
                 key={s.key}
@@ -347,11 +455,19 @@ function NewShareTab(props: {
                 tag="session"
               />
             ))}
-          </Group>
+          </GroupBlock>
         )}
-        {(["Folders", "Pages", "Files", "Tables"] as const).map((g) =>
+        {ROW_GROUP_ORDER.map((g) =>
           grouped[g].length === 0 ? null : (
-            <Group key={g} title={g}>
+            <GroupBlock
+              key={g}
+              title={g}
+              count={grouped[g].length}
+              collapsed={collapsed.has(g)}
+              onToggleCollapse={() => toggleCollapse(g)}
+              allSelected={grouped[g].every((r) => selected.rows.has(r.key))}
+              onToggleSelectAll={() => onToggleGroupRows(grouped[g])}
+            >
               {grouped[g].map((r) => (
                 <Row
                   key={r.key}
@@ -362,7 +478,7 @@ function NewShareTab(props: {
                   tag={r.object_type}
                 />
               ))}
-            </Group>
+            </GroupBlock>
           )
         )}
         {filteredRows.length === 0 && filteredSessions.length === 0 && (
@@ -498,14 +614,72 @@ function ManageTab(props: {
   );
 }
 
-function Group({ title, children }: { title: string; children: React.ReactNode }) {
+function GroupBlock({
+  title,
+  count,
+  collapsed,
+  onToggleCollapse,
+  allSelected,
+  onToggleSelectAll,
+  children,
+}: {
+  title: GroupKey;
+  count: number;
+  collapsed: boolean;
+  onToggleCollapse: () => void;
+  allSelected: boolean;
+  onToggleSelectAll: () => void;
+  children: React.ReactNode;
+}) {
   return (
     <div className="mb-3">
-      <div className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-muted">
-        {title}
+      <div className="mb-1 flex items-center justify-between gap-2">
+        <button
+          onClick={onToggleCollapse}
+          className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted hover:text-foreground"
+        >
+          <span className="inline-block w-2 text-center">{collapsed ? "▸" : "▾"}</span>
+          {title}
+          <span className="font-mono normal-case text-muted">· {count}</span>
+        </button>
+        <button
+          onClick={onToggleSelectAll}
+          className="text-[10.5px] text-muted hover:text-foreground"
+        >
+          {allSelected ? "Clear" : "Select all"}
+        </button>
       </div>
-      <div className="flex flex-col">{children}</div>
+      {!collapsed && <div className="flex flex-col">{children}</div>}
     </div>
+  );
+}
+
+function TriCheckbox({
+  checked,
+  indeterminate,
+  onChange,
+  label,
+}: {
+  checked: boolean;
+  indeterminate: boolean;
+  onChange: () => void;
+  label: string;
+}) {
+  const ref = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (ref.current) ref.current.indeterminate = indeterminate;
+  }, [indeterminate]);
+  return (
+    <label className="flex cursor-pointer items-center gap-2 text-[12px] text-foreground">
+      <input
+        ref={ref}
+        type="checkbox"
+        checked={checked}
+        onChange={onChange}
+        className="h-3.5 w-3.5 accent-[var(--color-brand-600)]"
+      />
+      <span>{label}</span>
+    </label>
   );
 }
 
