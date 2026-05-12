@@ -11,7 +11,7 @@ function LostOctopus() {
       style={{ animation: "bob 3s ease-in-out infinite" }}
     >
       <g transform="rotate(-8, 100, 70)">
-        <ellipse cx="100" cy="70" rx="52" ry="42" fill="#F97316" />
+        <ellipse cx="100" cy="70" rx="52" ry="42" fill="#2563EB" />
         <circle cx="82" cy="64" r="10" fill="#fff" />
         <circle cx="118" cy="64" r="10" fill="#fff" />
         <circle cx="79" cy="62" r="5" fill="#0F172A" />
@@ -23,12 +23,12 @@ function LostOctopus() {
           strokeLinecap="round"
           fill="none"
         />
-        <ellipse cx="100" cy="84" rx="5" ry="6" fill="#EA580C" />
+        <ellipse cx="100" cy="84" rx="5" ry="6" fill="#1D4ED8" />
       </g>
 
       <path
         d="M56 108 Q28 128 16 158 Q12 170 20 168"
-        stroke="#F97316"
+        stroke="#2563EB"
         strokeWidth="8"
         strokeLinecap="round"
         fill="none"
@@ -36,7 +36,7 @@ function LostOctopus() {
       />
       <path
         d="M72 114 Q54 140 42 170 Q38 182 46 178"
-        stroke="#F97316"
+        stroke="#2563EB"
         strokeWidth="8"
         strokeLinecap="round"
         fill="none"
@@ -44,14 +44,14 @@ function LostOctopus() {
       />
       <path
         d="M98 118 Q96 158 100 194"
-        stroke="#F97316"
+        stroke="#2563EB"
         strokeWidth="8"
         strokeLinecap="round"
         fill="none"
       />
       <path
         d="M124 114 Q142 140 154 170 Q158 182 150 178"
-        stroke="#F97316"
+        stroke="#2563EB"
         strokeWidth="8"
         strokeLinecap="round"
         fill="none"
@@ -59,7 +59,7 @@ function LostOctopus() {
       />
       <path
         d="M140 108 Q168 128 180 158 Q184 170 176 168"
-        stroke="#F97316"
+        stroke="#2563EB"
         strokeWidth="8"
         strokeLinecap="round"
         fill="none"
@@ -71,7 +71,7 @@ function LostOctopus() {
         y="28"
         fontSize="28"
         fontWeight="bold"
-        fill="#F97316"
+        fill="#2563EB"
         opacity="0.6"
         style={{ animation: "float 2s ease-in-out infinite" }}
       >
