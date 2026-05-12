@@ -19,7 +19,7 @@ from fastapi import APIRouter, Depends, Form, HTTPException, UploadFile
 
 from ..auth import get_current_user
 from ..database import get_pool
-from ..services import memory_service, transcript_import, workspace_service
+from ..services import memory_service, stash_service, transcript_import, workspace_service
 
 router = APIRouter(prefix="/api/v1/workspaces/{workspace_id}/transcripts", tags=["transcripts"])
 
@@ -29,6 +29,35 @@ MAX_TRANSCRIPT_SIZE = 50 * 1024 * 1024
 async def _check_member(workspace_id: UUID, user_id: UUID) -> None:
     if not await workspace_service.is_member(workspace_id, user_id):
         raise HTTPException(status_code=403, detail="Not a workspace member")
+
+
+async def _session_bundle(workspace_id: UUID, session_id: str) -> dict:
+    stash = await stash_service.get_stash_by_session(workspace_id, session_id)
+    if not stash:
+        return {
+            "bundle_id": None,
+            "bundle_slug": None,
+            "status": None,
+            "summary": None,
+            "artifacts": [],
+        }
+
+    artifacts = await stash_service.list_artifacts(stash["id"])
+    return {
+        "bundle_id": str(stash["id"]),
+        "bundle_slug": stash["slug"],
+        "status": stash["status"],
+        "summary": stash["summary"],
+        "artifacts": [
+            {
+                "id": str(a["id"]),
+                "file_path": a["file_path"],
+                "size_bytes": a["size_bytes"],
+                "created_at": a["created_at"].isoformat() if a.get("created_at") else None,
+            }
+            for a in artifacts
+        ],
+    }
 
 
 @router.post("", status_code=201)
@@ -118,8 +147,8 @@ async def get_transcript_metadata(
     session_id: str,
     current_user: dict = Depends(get_current_user),
 ):
-    """Metadata-only response. The frontend follows up with /events for
-    the bytes."""
+    """Session package metadata. The frontend follows up with /events for
+    the transcript turns."""
     await _check_member(workspace_id, current_user["id"])
     events = await memory_service.read_session_events(workspace_id, session_id)
     if not events:
@@ -141,6 +170,7 @@ async def get_transcript_metadata(
         "cwd": cwd or None,
         "started_at": events[0]["created_at"],
         "last_at": events[-1]["created_at"],
+        **await _session_bundle(workspace_id, session_id),
     }
 
 

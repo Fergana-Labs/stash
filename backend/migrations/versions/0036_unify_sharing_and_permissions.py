@@ -62,7 +62,7 @@ def upgrade() -> None:
                COALESCE(MAX(agent_name), ''),
                MIN(created_at),
                MAX(created_at),
-               MIN(created_by)
+               (ARRAY_AGG(created_by ORDER BY created_at) FILTER (WHERE created_by IS NOT NULL))[1]
         FROM history_events
         WHERE workspace_id IS NOT NULL AND session_id IS NOT NULL
         GROUP BY workspace_id, session_id

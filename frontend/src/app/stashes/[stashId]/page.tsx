@@ -24,6 +24,7 @@ import {
   joinWorkspace,
   uploadFile,
   type StashSpine,
+  type StashSpineSession,
 } from "../../../lib/api";
 import type { Workspace, WorkspaceMember } from "../../../lib/types";
 
@@ -143,7 +144,7 @@ export default function StashHomePage() {
     href: `/stashes/${stashId}/sessions/${encodeURIComponent(s.session_id)}`,
     icon: <SessionsIcon />,
     title: `#${s.session_id.length > 28 ? s.session_id.slice(0, 28) + "…" : s.session_id}`,
-    subtitle: `${s.agent_name} · ${formatBytes(s.size_bytes)}`,
+    subtitle: sessionSubtitle(s),
   }));
 
   // Root-level wiki contents only. Nested folders/pages/files surface
@@ -423,6 +424,16 @@ function MemberStack({ members }: { members: WorkspaceMember[] }) {
       </span>
     </div>
   );
+}
+
+function sessionSubtitle(session: StashSpineSession): string {
+  const parts = [session.agent_name, formatBytes(session.size_bytes)].filter(Boolean);
+  if (session.artifact_count > 0) {
+    parts.push(
+      `${session.artifact_count} artifact${session.artifact_count === 1 ? "" : "s"}`
+    );
+  }
+  return parts.join(" · ");
 }
 
 function formatRelative(iso: string): string {
