@@ -526,15 +526,13 @@ async def set_member_role(
     if target_role == "owner" and role != "owner":
         # Prevent demoting the last owner.
         owner_count = await pool.fetchval(
-            "SELECT COUNT(*) FROM workspace_members "
-            "WHERE workspace_id = $1 AND role = 'owner'",
+            "SELECT COUNT(*) FROM workspace_members " "WHERE workspace_id = $1 AND role = 'owner'",
             workspace_id,
         )
         if owner_count <= 1:
             return False
     await pool.execute(
-        "UPDATE workspace_members SET role = $1 "
-        "WHERE workspace_id = $2 AND user_id = $3",
+        "UPDATE workspace_members SET role = $1 " "WHERE workspace_id = $2 AND user_id = $3",
         role,
         workspace_id,
         target_user_id,

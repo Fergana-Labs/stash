@@ -4,13 +4,18 @@ import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import {
-  getFolderContents,
-  getStashSpine,
-  listMyWorkspaces,
   type FolderContents,
   type StashSpine,
   type WikiFile,
 } from "../lib/api";
+import {
+  getCachedFolderContents,
+  getCachedStashSpine,
+  getCachedWorkspaces,
+  readCachedFolderContents,
+  readCachedSpines,
+  readCachedWorkspaces,
+} from "../lib/stashNavigationCache";
 import type { User, Workspace } from "../lib/types";
 import {
   ActivityIcon,
@@ -29,7 +34,6 @@ import {
 interface AppSidebarProps {
   user?: User;
   onLogout?: () => void;
-  collapsed?: boolean;
   cmdkOpen?: boolean;
   onCmdkOpen?: () => void;
 }
@@ -235,23 +239,26 @@ function FolderTreeNode({
   folderId: string;
   name: string;
 }) {
-  const [contents, setContents] = useState<FolderContents | null>(null);
-  const [loaded, setLoaded] = useState(false);
+  const cachedContents = readCachedFolderContents(folderId);
+  const [contents, setContents] = useState<FolderContents | null>(cachedContents);
+  const [loaded, setLoaded] = useState(!!cachedContents);
   return (
     <details
       className="text-[12.5px]"
       onToggle={(e) => {
         if ((e.target as HTMLDetailsElement).open && !loaded) {
           setLoaded(true);
-          getFolderContents(stashId, folderId)
+          getCachedFolderContents(stashId, folderId)
             .then(setContents)
-            .catch(() => setContents({
-              folder: { id: folderId, name, parent_folder_id: null },
-              breadcrumbs: [],
-              subfolders: [],
-              pages: [],
-              files: [],
-            }));
+            .catch(() =>
+              setContents({
+                folder: { id: folderId, name, parent_folder_id: null },
+                breadcrumbs: [],
+                subfolders: [],
+                pages: [],
+                files: [],
+              })
+            );
         }
       }}
     >
@@ -361,9 +368,10 @@ function WikiBlock({
   );
 }
 
-export default function AppSidebar({ user, collapsed, onCmdkOpen }: AppSidebarProps) {
+export default function AppSidebar({ user, onCmdkOpen }: AppSidebarProps) {
   const pathname = usePathname();
   const userId = user?.id;
+  const cachedWorkspaces = readCachedWorkspaces(userId);
   const activeStashId = pathname.match(/^\/stashes\/([^/]+)/)?.[1] ?? null;
   const activeTreeMatch = pathname.match(
     /^\/stashes\/([^/]+)\/(sessions|folders|p|f|skills)(?:\/|$)/
@@ -375,24 +383,25 @@ export default function AppSidebar({ user, collapsed, onCmdkOpen }: AppSidebarPr
       : activeTreeMatch
         ? "wiki"
         : null;
-  const [mine, setMine] = useState<Workspace[]>([]);
-  const [shared, setShared] = useState<Workspace[]>([]);
+  const [mine, setMine] = useState<Workspace[]>(cachedWorkspaces?.mine ?? []);
+  const [shared, setShared] = useState<Workspace[]>(cachedWorkspaces?.shared ?? []);
   const [openStashes, setOpenStashes] = useState<Record<string, boolean>>(() =>
     readOpenMap(OPEN_STASHES_KEY)
   );
   const [openSections, setOpenSections] = useState<Record<string, boolean>>(() =>
     readOpenMap(OPEN_SECTIONS_KEY)
   );
-  const [spines, setSpines] = useState<Record<string, StashSpine>>({});
+  const [spines, setSpines] = useState<Record<string, StashSpine>>(() =>
+    readCachedSpines()
+  );
 
   useEffect(() => {
     if (!userId) return;
 
-    listMyWorkspaces()
+    getCachedWorkspaces(userId)
       .then((r) => {
-        const workspaces = r.workspaces ?? [];
-        setMine(workspaces.filter((w) => w.creator_id === userId));
-        setShared(workspaces.filter((w) => w.creator_id !== userId));
+        setMine(r.mine);
+        setShared(r.shared);
       })
       .catch(() => {});
   }, [userId]);
@@ -435,7 +444,7 @@ export default function AppSidebar({ user, collapsed, onCmdkOpen }: AppSidebarPr
     Array.from(new Set(openIds))
       .filter((stashId) => !spines[stashId])
       .forEach((stashId) => {
-        getStashSpine(stashId)
+        getCachedStashSpine(stashId)
           .then((sp) => setSpines((all) => ({ ...all, [stashId]: sp })))
           .catch(() => {});
       });
@@ -473,8 +482,6 @@ export default function AppSidebar({ user, collapsed, onCmdkOpen }: AppSidebarPr
     if (open && isRouteOpen) return;
     setOpenSection(stashId, section, open);
   }
-
-  if (collapsed) return null;
 
   return (
     <aside className="scroll-thin overflow-y-auto border-r border-border bg-surface">
