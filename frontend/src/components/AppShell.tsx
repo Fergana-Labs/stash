@@ -2,12 +2,13 @@
 
 import { ReactNode, useEffect, useState } from "react";
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import { User, Workspace } from "../lib/types";
 import { listMyWorkspaces } from "../lib/api";
 import AppSidebar from "./AppSidebar";
 import CommandPalette from "./CommandPalette";
 import ShareModal from "./ShareModal";
+import StashQuickAdd from "./StashQuickAdd";
 import { useBreadcrumbsValue } from "./BreadcrumbContext";
 import { StashIcon } from "./StashIcons";
 
@@ -36,7 +37,6 @@ function SidebarToggleIcon({ collapsed }: { collapsed: boolean }) {
 
 export default function AppShell({ user, onLogout, children }: AppShellProps) {
   const pathname = usePathname();
-  const router = useRouter();
   const breadcrumbs = useBreadcrumbsValue();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [activeStashId, setActiveStashId] = useState<string | null>(null);
@@ -110,26 +110,12 @@ export default function AppShell({ user, onLogout, children }: AppShellProps) {
             {initial}
           </Link>
           {activeStashId && (
-            <>
-              <button
-                className="ml-1 inline-flex items-center gap-1.5 rounded-md border border-[var(--color-brand-200)] bg-[var(--color-brand-50)] px-2.5 py-1 text-[12.5px] font-medium text-[var(--color-brand-800)] hover:border-[var(--color-brand-300)] hover:bg-[var(--color-brand-100)]"
-                onClick={() =>
-                  router.push(`/memory?ws=${encodeURIComponent(activeStashId)}&add=stash`)
-                }
-                title="Add Something to the Stash"
-              >
-                <span className="flex h-4 w-4 items-center justify-center rounded bg-[var(--color-brand-500)] text-[12px] font-semibold leading-none text-white">
-                  +
-                </span>
-                Add
-              </button>
-              <button
-                className="ml-1 rounded-md bg-[var(--color-brand-600)] px-2.5 py-1 text-[12.5px] font-medium text-white hover:bg-[var(--color-brand-700)]"
-                onClick={() => setShareOpen(true)}
-              >
-                Share
-              </button>
-            </>
+            <button
+              className="ml-1 rounded-md bg-[var(--color-brand-600)] px-2.5 py-1 text-[12.5px] font-medium text-white hover:bg-[var(--color-brand-700)]"
+              onClick={() => setShareOpen(true)}
+            >
+              Share
+            </button>
           )}
           <button onClick={onLogout} className="rounded p-1 text-muted hover:bg-raised" title="Sign out">
             <svg className="h-4 w-4" viewBox="0 0 24 24" fill="currentColor">
@@ -154,7 +140,10 @@ export default function AppShell({ user, onLogout, children }: AppShellProps) {
           cmdkOpen={cmdkOpen}
           onCmdkOpen={() => setCmdkOpen(true)}
         />
-        <main className="flex min-w-0 flex-col overflow-y-auto bg-base">{children}</main>
+        <main className="flex min-w-0 flex-col overflow-y-auto bg-base">
+          {activeStashId && <StashQuickAdd stashId={activeStashId} user={user} />}
+          {children}
+        </main>
       </div>
 
       {activeStashId && (
