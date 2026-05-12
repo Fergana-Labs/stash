@@ -104,6 +104,7 @@ def _events_to_viewer_shape(events: list[dict]) -> list[dict]:
             {
                 "id": str(ev["id"]),
                 "role": role,
+                "agent_name": ev.get("agent_name") or "",
                 "content": ev.get("content") or "",
                 "tool_name": ev.get("tool_name"),
                 "created_at": ev["created_at"].isoformat() if ev.get("created_at") else None,

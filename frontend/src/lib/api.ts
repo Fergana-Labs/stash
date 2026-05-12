@@ -1259,6 +1259,7 @@ export async function getStashTranscript(
 export interface SessionEvent {
   id: string;
   role: "user" | "assistant";
+  agent_name: string;
   content: string;
   tool_name: string | null;
   created_at: string | null;
