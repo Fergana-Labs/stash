@@ -3,9 +3,8 @@
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import AppShell from "../../../components/AppShell";
-import AddToCollect from "../../../components/share/AddToCollect";
-import { useSetShareTarget } from "../../../components/share/ShareTargetContext";
 import { useAuth } from "../../../hooks/useAuth";
+import { useShareModal } from "../../../lib/shareModalContext";
 import {
   getTable, updateTable,
   deleteTable, addTableColumn, updateTableColumn,
@@ -119,10 +118,7 @@ function TableEditorPageInner() {
   const visibleColumns = sortedColumns.filter((c) => !hiddenCols.has(c.id));
   const hasMore = offset < totalCount;
 
-  useSetShareTarget(
-    table ? { objectType: "table", objectId: table.id, label: table.name } : null,
-    `table:${table?.id ?? ""}:${table?.name ?? ""}`
-  );
+  const shareModal = useShareModal();
 
   // --- Data Loading ---
   const loadTable = useCallback(async () => {
@@ -533,12 +529,17 @@ function TableEditorPageInner() {
             <input ref={fileInputRef} type="file" accept=".csv" className="hidden" onChange={(e) => { if (e.target.files?.[0]) handleCsvImport(e.target.files[0]); e.target.value = ""; }} />
             {selectedRows.size > 0 && <button onClick={handleBulkDelete} className="text-xs text-red-400 hover:text-red-300 px-2 py-1">Delete {selectedRows.size}</button>}
             {wsId && table && (
-              <AddToCollect
-                objectType="table"
-                objectId={table.id}
-                workspaceId={wsId}
-                label={table.name}
-              />
+              <button
+                onClick={() =>
+                  shareModal.open({
+                    stashId: wsId,
+                    initial: [{ object_type: "table", object_id: table.id, label_override: table.name }],
+                  })
+                }
+                className="text-xs text-muted hover:text-foreground px-2 py-1 rounded hover:bg-raised"
+              >
+                Share
+              </button>
             )}
             <button onClick={handleDelete} className="text-xs text-red-400 hover:text-red-300 px-2 py-1">Delete table</button>
           </>}

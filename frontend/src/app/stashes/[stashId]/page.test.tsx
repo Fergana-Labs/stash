@@ -6,6 +6,7 @@ import {
   getStashSpine,
   getWorkspace,
   getWorkspaceMembers,
+  listViews,
   updateWorkspace,
 } from "../../../lib/api";
 import type { HomeBackground, Workspace } from "../../../lib/types";
@@ -54,6 +55,13 @@ vi.mock("../../../hooks/useAuth", () => ({
   }),
 }));
 
+vi.mock("../../../lib/shareModalContext", () => ({
+  useShareModal: () => ({
+    open: vi.fn(),
+    version: 0,
+  }),
+}));
+
 vi.mock("../../../lib/api", () => ({
   createFolder: vi.fn(),
   createPage: vi.fn(),
@@ -61,6 +69,7 @@ vi.mock("../../../lib/api", () => ({
   getWorkspace: vi.fn(),
   getWorkspaceMembers: vi.fn(),
   joinWorkspace: vi.fn(),
+  listViews: vi.fn(),
   updateWorkspace: vi.fn(),
   uploadFile: vi.fn(),
 }));
@@ -129,6 +138,7 @@ describe("Stash homepage background customization", () => {
     vi.mocked(getWorkspace).mockResolvedValue(workspace());
     vi.mocked(getWorkspaceMembers).mockResolvedValue(members);
     vi.mocked(getStashSpine).mockResolvedValue(emptySpine);
+    vi.mocked(listViews).mockResolvedValue([]);
     vi.mocked(updateWorkspace).mockImplementation(async (_workspaceId, data) => {
       return workspace(data.home_background ?? defaultBackground);
     });

@@ -135,10 +135,6 @@ export async function updateMe(data: {
   });
 }
 
-export async function logoutServer(): Promise<void> {
-  await apiFetch("/api/v1/users/logout", { method: "POST" });
-}
-
 export interface ApiKeyInfo {
   id: string;
   name: string;
@@ -869,92 +865,6 @@ export async function removeShare(
   );
 }
 
-// --- Universal share API (works on any shareable object_type) ---
-
-export type ShareableObjectType =
-  | "workspace"
-  | "folder"
-  | "page"
-  | "table"
-  | "file"
-  | "history"
-  | "view";
-
-export type ObjectVisibility = "inherit" | "private" | "link" | "public";
-
-export interface ObjectShare {
-  user_id: string;
-  user_name: string;
-  permission: "read" | "write" | "admin";
-  granted_by: string;
-  created_at: string;
-}
-
-export interface ObjectPermissions {
-  object_type: string;
-  object_id: string;
-  visibility: ObjectVisibility;
-  shares: ObjectShare[];
-}
-
-export interface ShareLinkResult {
-  url: string;
-  kind: "workspace" | "view";
-  view_id?: string | null;
-  view_slug?: string | null;
-}
-
-export async function getObjectPermissions(
-  objectType: ShareableObjectType,
-  objectId: string
-): Promise<ObjectPermissions> {
-  return apiFetch(`/api/v1/objects/${objectType}/${objectId}/permissions`);
-}
-
-export async function setObjectVisibility(
-  objectType: ShareableObjectType,
-  objectId: string,
-  visibility: ObjectVisibility
-): Promise<void> {
-  await apiFetch(`/api/v1/objects/${objectType}/${objectId}/permissions`, {
-    method: "PATCH",
-    body: JSON.stringify({ visibility }),
-  });
-}
-
-export async function addObjectShare(
-  objectType: ShareableObjectType,
-  objectId: string,
-  userId: string,
-  permission: "read" | "write" | "admin"
-): Promise<ObjectShare> {
-  return apiFetch(`/api/v1/objects/${objectType}/${objectId}/shares`, {
-    method: "POST",
-    body: JSON.stringify({ user_id: userId, permission }),
-  });
-}
-
-export async function removeObjectShare(
-  objectType: ShareableObjectType,
-  objectId: string,
-  userId: string
-): Promise<void> {
-  await apiFetch(`/api/v1/objects/${objectType}/${objectId}/shares/${userId}`, {
-    method: "DELETE",
-  });
-}
-
-export async function createShareLink(
-  objectType: ShareableObjectType,
-  objectId: string,
-  ensure?: "link" | "public"
-): Promise<ShareLinkResult> {
-  const qs = ensure ? `?ensure=${ensure}` : "";
-  return apiFetch(`/api/v1/objects/${objectType}/${objectId}/share-link${qs}`, {
-    method: "POST",
-  });
-}
-
 // --- Files ---
 
 export async function uploadFile(
@@ -1115,6 +1025,32 @@ export async function createSharedView(
   });
 }
 
+export interface StashView {
+  id: string;
+  workspace_id: string;
+  slug: string;
+  title: string;
+  description: string;
+  owner_id: string;
+  is_public: boolean;
+  cover_image_url: string | null;
+  view_count: number;
+  items: ViewItemSpec[];
+  created_at: string;
+  updated_at: string;
+}
+
+export async function listViews(workspaceId: string): Promise<StashView[]> {
+  const data = await apiFetch<{ views: StashView[] }>(
+    `/api/v1/workspaces/${workspaceId}/views`
+  );
+  return data.views;
+}
+
+export async function deleteView(viewId: string): Promise<void> {
+  await apiFetch(`/api/v1/views/${viewId}`, { method: "DELETE" });
+}
+
 // --- Workspace-wide page index (used by wiki-link autocomplete + click-resolve) ---
 
 export interface WorkspacePageEntry {
@@ -1221,10 +1157,6 @@ export async function listAgentNames(workspaceId: string): Promise<string[]> {
   );
   return data.agent_names;
 }
-
-// `togglePagePublic` / `toggleFilePublic` are gone. Sharing is now link-
-// based — to share a single page or file, mint a share-link with
-// target_type='page' or 'file' via `createShareLink` (TODO: add helper).
 
 // --- Activity feed ---
 
@@ -1377,207 +1309,3 @@ export async function getStashSkill(stashId: string, name: string): Promise<Stas
   return apiFetch(`/api/v1/stashes/${stashId}/skills/${encodeURIComponent(name)}`);
 }
 
-// --- Ask-the-stash agent (SSE) ---
-
-export interface AskCitation {
-  id: string;
-  label: string;
-  summary: string;
-}
-export type AskEvent =
-  | { type: "text"; delta: string }
-  | { type: "tool"; name: string; args?: unknown; result_summary?: string }
-  | { type: "end" }
-  | { type: "error"; message: string };
-
-interface AskRequest {
-  stashId: string | null;
-  shareToken?: string;
-  messages: { role: "user" | "assistant"; content: string }[];
-  scope?: string;
-}
-
-// --- Share links ---
-
-export interface ShareLink {
-  token: string;
-  slug?: string | null;
-  workspace_id: string;
-  created_by: string;
-  created_at: string;
-  expires_at: string | null;
-  permission: "view" | "edit";
-  target_type?: "workspace" | "session" | "page" | "folder" | "file";
-  target_id?: string | null;
-  view_count: number;
-  url: string;
-}
-
-export interface CreateShareLinkBody {
-  permission: "view" | "edit";
-  ttl_days: number | null;
-  target_type?: "workspace" | "session" | "page" | "folder" | "file";
-  target_id?: string;
-}
-
-export async function createStashShareLink(
-  stashId: string,
-  body: CreateShareLinkBody
-): Promise<ShareLink> {
-  return apiFetch(`/api/v1/stashes/${stashId}/shares`, {
-    method: "POST",
-    body: JSON.stringify(body),
-  });
-}
-
-export async function listStashShareLinks(stashId: string): Promise<ShareLink[]> {
-  return apiFetch(`/api/v1/stashes/${stashId}/shares`);
-}
-
-export async function revokeStashShareLink(stashId: string, token: string): Promise<void> {
-  await apiFetch(`/api/v1/stashes/${stashId}/shares/${token}`, { method: "DELETE" });
-}
-
-export interface ShareProjection {
-  stash?: {
-    id: string;
-    name: string;
-    description: string;
-    summary: string | null;
-    cover_image_url: string | null;
-    creator: { name: string; display_name: string | null };
-  };
-  share: {
-    token: string;
-    slug?: string | null;
-    target_type: "workspace" | "session" | "page" | "folder" | "file";
-    target_id: string | null;
-    permission: string;
-    expires_at: string | null;
-    view_count: number;
-    created_at: string;
-  };
-  // workspace target
-  narrative?: { id: string; name: string; body: string } | null;
-  deck?:
-    | { index: number; title: string; kicker: string; body: string }[]
-    | null;
-  pages?: { id: string; name: string; body: string; folder_id?: string | null }[];
-  files?: {
-    id: string;
-    name: string;
-    content_type: string;
-    size_bytes: number;
-    folder_id?: string | null;
-  }[];
-  // session target
-  session?: {
-    id: string;
-    session_id: string;
-    agent_name: string;
-    cwd: string | null;
-    summary: string | null;
-    status: string;
-    files_touched: string[];
-    started_at: string;
-    finished_at: string | null;
-  };
-  artifacts?: { id: string; file_path: string; size_bytes: number }[];
-  events?: {
-    id: string;
-    role: "user" | "assistant";
-    content: string;
-    tool_name: string | null;
-    created_at: string | null;
-  }[];
-  // page target
-  page?: {
-    id: string;
-    name: string;
-    body: string;
-    content_html: string;
-    content_type: string;
-    folder_id: string | null;
-  };
-  // folder target
-  folder?: {
-    id: string;
-    name: string;
-    parent_folder_id: string | null;
-  };
-  subfolders?: { id: string; name: string }[];
-  // file target
-  file?: {
-    id: string;
-    name: string;
-    content_type: string;
-    size_bytes: number;
-    url: string | null;
-    folder_id: string | null;
-  };
-}
-
-export async function resolveShare(token: string): Promise<ShareProjection> {
-  return apiFetch(`/api/v1/shares/${token}`);
-}
-
-export async function shareForkStash(
-  token: string,
-  name?: string
-): Promise<{ id: string; name: string }> {
-  return apiFetch(`/api/v1/shares/${token}/fork`, {
-    method: "POST",
-    body: JSON.stringify(name ? { name } : {}),
-  });
-}
-
-export async function shareRequestEdit(
-  token: string,
-  body: { email?: string; message?: string }
-): Promise<{ status: string }> {
-  return apiFetch(`/api/v1/shares/${token}/request-edit`, {
-    method: "POST",
-    body: JSON.stringify(body),
-  });
-}
-
-export async function askStash(req: AskRequest, onEvent: (e: AskEvent) => void): Promise<void> {
-  const url = req.shareToken
-    ? `/api/v1/shares/${req.shareToken}/ask`
-    : `/api/v1/stashes/${req.stashId}/ask`;
-  const token = getToken();
-  const headers: Record<string, string> = { "Content-Type": "application/json" };
-  if (token) headers["Authorization"] = `Bearer ${token}`;
-
-  const res = await fetch(url, {
-    method: "POST",
-    headers,
-    body: JSON.stringify({ messages: req.messages, scope: req.scope ?? "stash" }),
-  });
-  if (!res.ok || !res.body) {
-    const txt = await res.text().catch(() => "");
-    throw new Error(txt || `Ask failed: ${res.status}`);
-  }
-
-  const reader = res.body.getReader();
-  const decoder = new TextDecoder();
-  let buf = "";
-  while (true) {
-    const { value, done } = await reader.read();
-    if (done) break;
-    buf += decoder.decode(value, { stream: true });
-    let idx;
-    while ((idx = buf.indexOf("\n\n")) >= 0) {
-      const chunk = buf.slice(0, idx).trim();
-      buf = buf.slice(idx + 2);
-      if (!chunk.startsWith("data:")) continue;
-      const payload = chunk.slice(5).trim();
-      if (!payload || payload === "[DONE]") continue;
-      try {
-        onEvent(JSON.parse(payload) as AskEvent);
-      } catch {
-        // ignore malformed
-      }
-    }
-  }
-}

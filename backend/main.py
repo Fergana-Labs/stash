@@ -22,7 +22,6 @@ from .routers import (
     public,
     publish,
     sessions,
-    shares,
     skill,
     stashes,
     tables,
@@ -90,8 +89,6 @@ app.add_middleware(
 app.include_router(users.router)
 app.include_router(workspaces.router)
 app.include_router(stashes.router)
-app.include_router(shares.sender_router)
-app.include_router(shares.public_router)
 app.include_router(discover.router)
 app.include_router(views.ws_router)
 app.include_router(views.public_router)

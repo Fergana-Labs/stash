@@ -2,7 +2,8 @@ import type { Metadata } from "next";
 import { Instrument_Sans, JetBrains_Mono, Space_Grotesk } from "next/font/google";
 import "./globals.css";
 import { BreadcrumbProvider } from "../components/BreadcrumbContext";
-import { ShareTargetProvider } from "../components/share/ShareTargetContext";
+import { ShareModalProvider } from "../lib/shareModalContext";
+import StashShareModal from "../components/share/StashShareModal";
 
 const instrumentSans = Instrument_Sans({
   variable: "--font-instrument-sans",
@@ -35,7 +36,10 @@ export default function RootLayout({
         className={`${instrumentSans.variable} ${jetbrainsMono.variable} ${spaceGrotesk.variable} antialiased min-h-screen`}
       >
         <BreadcrumbProvider>
-          <ShareTargetProvider>{children}</ShareTargetProvider>
+          <ShareModalProvider>
+            {children}
+            <StashShareModal />
+          </ShareModalProvider>
         </BreadcrumbProvider>
       </body>
     </html>

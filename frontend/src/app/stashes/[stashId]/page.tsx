@@ -30,12 +30,15 @@ import {
   getWorkspace,
   getWorkspaceMembers,
   joinWorkspace,
+  listViews,
   updateWorkspace,
   uploadFile,
   type StashSpine,
+  type StashView,
   type WikiFile,
 } from "../../../lib/api";
 import { homeBackgroundStyle } from "../../../lib/homeBackground";
+import { useShareModal } from "../../../lib/shareModalContext";
 import type {
   FileInfo,
   Folder,
@@ -109,19 +112,23 @@ export default function StashHomePage() {
   const [stash, setStash] = useState<Workspace | null>(null);
   const [members, setMembers] = useState<WorkspaceMember[]>([]);
   const [spine, setSpine] = useState<StashSpine | null>(null);
+  const [views, setViews] = useState<StashView[]>([]);
   const [error, setError] = useState("");
   const [membersOpen, setMembersOpen] = useState(false);
   const [backgroundOpen, setBackgroundOpen] = useState(false);
   const [backgroundDraft, setBackgroundDraft] = useState<HomeBackground | null>(null);
   const [backgroundSaving, setBackgroundSaving] = useState(false);
   const [backgroundError, setBackgroundError] = useState("");
+  const shareModal = useShareModal();
+  const shareVersion = shareModal.version;
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const load = useCallback(async () => {
-    const [stashResult, membersResult, spineResult] = await Promise.allSettled([
+    const [stashResult, membersResult, spineResult, viewsResult] = await Promise.allSettled([
       getWorkspace(stashId),
       getWorkspaceMembers(stashId),
       getStashSpine(stashId),
+      listViews(stashId),
     ]);
 
     if (stashResult.status === "fulfilled") {
@@ -137,6 +144,10 @@ export default function StashHomePage() {
     if (spineResult.status === "fulfilled") {
       setSpine(spineResult.value);
     }
+
+    if (viewsResult.status === "fulfilled") {
+      setViews(viewsResult.value);
+    }
   }, [stashId]);
 
   const refreshSpine = useCallback(async () => {
@@ -150,7 +161,7 @@ export default function StashHomePage() {
   useEffect(() => {
     if (!user) return;
     load();
-  }, [user, load]);
+  }, [user, load, shareVersion]);
 
   useEffect(() => {
     if (!loading && !user) router.push("/login");
@@ -297,10 +308,35 @@ export default function StashHomePage() {
           )}
 
           <div className="mt-3 flex flex-wrap items-center gap-2 text-[12px] text-muted">
-            <button onClick={() => setMembersOpen(true)} title="Manage members">
+            <button
+              onClick={() => setMembersOpen(true)}
+              title="View, add, or remove members"
+              className="rounded-md px-1.5 py-0.5 hover:bg-raised"
+            >
               <MemberStack members={members} />
+              <span className="ml-1.5 text-[11px] underline-offset-2 hover:underline">
+                Manage
+              </span>
             </button>
-            <span>· updated {stash?.updated_at ? formatRelative(stash.updated_at) : ""}</span>
+            <span className="text-muted">·</span>
+            <button
+              onClick={() =>
+                shareModal.open({
+                  stashId,
+                  stashName: stash?.name,
+                  tab: views.length > 0 ? "manage" : "new",
+                })
+              }
+              title="View, create, or revoke share links"
+              className="rounded-md px-1.5 py-0.5 hover:bg-raised"
+            >
+              <span aria-hidden>🔗</span>{" "}
+              {views.length === 0
+                ? "No share links"
+                : `${views.length} share link${views.length === 1 ? "" : "s"}`}
+            </button>
+            <span className="text-muted">·</span>
+            <span>updated {stash?.updated_at ? formatRelative(stash.updated_at) : ""}</span>
             <span className="text-muted">·</span>
             <span>{stash?.is_public ? "Public" : "Private"}</span>
             {canCustomizeBackground && stash && (
@@ -446,19 +482,25 @@ export default function StashHomePage() {
             </div>
           )}
 
-          {/* Stash structure callout */}
-          <div className="mt-8 rounded-xl border border-border bg-surface/50 p-4">
-            <div className="text-[10.5px] font-semibold uppercase tracking-wider text-muted">
-              Stash structure
-            </div>
-            <p className="mt-1 text-[12.5px] leading-relaxed text-muted">
-              Two surfaces:{" "}
-              <span className="font-medium text-foreground">Sessions</span> (agent transcripts —
-              episodic memory) and{" "}
-              <span className="font-medium text-foreground">Wiki</span> (pages, files, and
-              folders — the structured, shared content of the stash).
-            </p>
-          </div>
+          {/* Stash structure callout — only for empty stashes, as onboarding. */}
+          {spine &&
+            spine.sessions.length === 0 &&
+            totalFolders === 0 &&
+            totalPages === 0 &&
+            totalFiles === 0 && (
+              <div className="mt-8 rounded-xl border border-border bg-surface/50 p-4">
+                <div className="text-[10.5px] font-semibold uppercase tracking-wider text-muted">
+                  Stash structure
+                </div>
+                <p className="mt-1 text-[12.5px] leading-relaxed text-muted">
+                  Two surfaces:{" "}
+                  <span className="font-medium text-foreground">Sessions</span> (agent transcripts —
+                  episodic memory) and{" "}
+                  <span className="font-medium text-foreground">Wiki</span> (pages, files, and
+                  folders — the structured, shared content of the stash).
+                </p>
+              </div>
+            )}
 
           {/* Sessions */}
           <SectionHeader

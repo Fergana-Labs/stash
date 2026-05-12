@@ -43,12 +43,20 @@ export default function ExchangeAndRedirect({ cliSession, onCliApproved }: Props
     (async () => {
       try {
         await exchange();
-        if (cancelled) return;
-        const { workspaces } = await listMyWorkspaces();
-        router.push(workspaces.length === 1 ? `/workspaces/${workspaces[0].id}` : "/");
       } catch (e) {
         if (!cancelled) setError(e instanceof Error ? e.message : "Sign-in failed");
+        return;
       }
+      if (cancelled) return;
+      // Exchange succeeded — the user is signed in. If the workspace lookup
+      // hiccups (transient backend), don't flash a "sign-in failed" error;
+      // just land on /, which can reload the list itself.
+      const target = await listMyWorkspaces()
+        .then(({ workspaces }) =>
+          workspaces.length === 1 ? `/workspaces/${workspaces[0].id}` : "/",
+        )
+        .catch(() => "/");
+      if (!cancelled) router.push(target);
     })();
     return () => {
       cancelled = true;
