@@ -13,6 +13,7 @@ import {
 import AppShell from "../../../components/AppShell";
 import MembersModal from "../../../components/MembersModal";
 import StashQuickAdd from "../../../components/StashQuickAdd";
+import HandoffPanel from "../../../components/stash/HandoffPanel";
 import {
   FileIcon,
   FolderIcon,
@@ -319,6 +320,15 @@ export default function StashHomePage() {
                 </p>
               </div>
             )}
+
+          {/* Handoff (orientation doc curated by the sleep-time agent) */}
+          {isMember && (
+            <HandoffPanel
+              stashId={stashId}
+              canWrite={isMember}
+              spineHint={spine?.handoff}
+            />
+          )}
 
           {/* Sessions */}
           <SectionHeader

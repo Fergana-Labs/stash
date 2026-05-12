@@ -129,6 +129,27 @@ class StashClient:
     def workspace_members(self, workspace_id: str) -> list:
         return self._get(f"/api/v1/workspaces/{workspace_id}/members")
 
+    # --- Handoff ---
+
+    def get_handoff(self, stash_id: str, *, wait: bool = False, max_wait: int = 60) -> dict:
+        return self._get(
+            f"/api/v1/stashes/{stash_id}/handoff",
+            wait="true" if wait else "false",
+            max_wait=max_wait,
+        )
+
+    def refresh_handoff(self, stash_id: str) -> dict:
+        return self._post(f"/api/v1/stashes/{stash_id}/handoff/refresh")
+
+    def edit_handoff(self, stash_id: str, body_markdown: str) -> dict:
+        return self._patch(
+            f"/api/v1/stashes/{stash_id}/handoff",
+            json={"body_markdown": body_markdown},
+        )
+
+    def unpin_handoff(self, stash_id: str) -> dict:
+        return self._post(f"/api/v1/stashes/{stash_id}/handoff/unpin")
+
     def workspace_public_info(self, workspace_id: str) -> dict:
         return self._get(f"/api/v1/workspaces/{workspace_id}/public-info")
 

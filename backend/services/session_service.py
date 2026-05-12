@@ -66,13 +66,19 @@ async def get_session_by_id(session_row_id: UUID) -> dict | None:
 
 async def set_summary(session_row_id: UUID, summary: str, status: str = "ready") -> None:
     pool = get_pool()
-    await pool.execute(
+    row = await pool.fetchrow(
         "UPDATE sessions SET summary = $1, status = $2, finished_at = COALESCE(finished_at, now()) "
-        "WHERE id = $3",
+        "WHERE id = $3 RETURNING workspace_id",
         summary,
         status,
         session_row_id,
     )
+    if row:
+        import asyncio as _asyncio
+
+        from . import handoff_curator
+
+        _asyncio.create_task(handoff_curator.mark_stale(row["workspace_id"]))
 
 
 async def set_files_touched(session_row_id: UUID, files: list[str]) -> None:

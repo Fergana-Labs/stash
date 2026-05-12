@@ -43,6 +43,23 @@ Common reads (all support `--json`):
 - `stash history query --limit 20` — latest events
 - `stash history agents` — who's been active
 - `stash notebooks list --all` — shared notebooks
+- `stash stash handoff [STASH]` — agent-curated orientation doc for a stash (read this first when picking up unfamiliar work)
+
+### LLM configuration (server-side)
+
+All LLM calls go through the backend. The plugin no longer makes Anthropic
+calls — it only uploads transcripts and marks sessions for summarization.
+
+Two model tiers, both read by `backend/services/llm.py`:
+- `ANTHROPIC_API_KEY` — required for ask, the handoff curator, and the
+  session summarizer to actually run.
+- `ANTHROPIC_MODEL` — quality tier (default `claude-sonnet-4-6`). Used by
+  ask-the-stash and the handoff curator's agent loop.
+- `ANTHROPIC_FAST_MODEL` — fast tier (default `claude-haiku-4-5`). Used by
+  the server-side session summarizer.
+
+Set both in `backend/.env`. Spend monitoring lives on per-row token
+counters (`stash_handoffs.input_tokens`, `sessions.summary_input_tokens`).
 
 # CLAUDE.md — 12-rule template
 

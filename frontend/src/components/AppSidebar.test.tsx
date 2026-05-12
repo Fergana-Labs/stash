@@ -71,6 +71,7 @@ const sharedWorkspace = {
 };
 
 const emptySpine = {
+  handoff: { present: false, generated_at: null, stale: false, pinned_at: null },
   sessions: [],
   wiki: {
     folders: [],

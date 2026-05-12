@@ -1,7 +1,11 @@
 """Ask-the-stash agent loop.
 
-Streams text + tool-use events as Server-Sent Events. Tools are scoped to a
-single stash; the recipient variant in Phase 5 passes a restricted ``tool_set``.
+Streams text + tool-use events as Server-Sent Events. Tool schemas live in
+``services.prompts``; the executors below run repo code, so they stay here.
+
+The handoff curator imports ``_execute_tool`` to reuse the same toolset for
+its own agent loop — keeping the two features aligned without a shared
+abstraction.
 """
 
 from __future__ import annotations
@@ -11,110 +15,18 @@ from collections.abc import AsyncIterator
 from uuid import UUID
 
 from ..config import settings
-from . import memory_service, skill_service, table_service, wiki_service
-
-# Full tool surface for an authenticated stash member.
-STASH_TOOL_SET = (
-    "search_history",
-    "read_page",
-    "grep_pages",
-    "list_files",
-    "read_file",
-    "query_table",
-    "list_skills",
-    "read_skill",
+from . import (
+    llm,
+    memory_service,
+    prompts,
+    skill_service,
+    table_service,
+    wiki_service,
 )
-
-# Recipient (share-link) tool set — public-projection content only.
-RECIPIENT_TOOL_SET = (
-    "read_page",
-    "grep_pages",
-    "list_files",
-    "read_file",
-)
-
-
-def _tool_schemas(tool_set: tuple[str, ...]) -> list[dict]:
-    catalog: dict[str, dict] = {
-        "search_history": {
-            "name": "search_history",
-            "description": "Full-text search across this stash's agent transcripts and history events.",
-            "input_schema": {
-                "type": "object",
-                "properties": {
-                    "query": {"type": "string"},
-                    "limit": {"type": "integer", "default": 10},
-                },
-                "required": ["query"],
-            },
-        },
-        "read_page": {
-            "name": "read_page",
-            "description": "Read the full markdown body of a wiki page by id.",
-            "input_schema": {
-                "type": "object",
-                "properties": {"page_id": {"type": "string"}},
-                "required": ["page_id"],
-            },
-        },
-        "grep_pages": {
-            "name": "grep_pages",
-            "description": "Full-text search across wiki pages in this stash. Returns page id + snippet.",
-            "input_schema": {
-                "type": "object",
-                "properties": {
-                    "pattern": {"type": "string"},
-                    "limit": {"type": "integer", "default": 10},
-                },
-                "required": ["pattern"],
-            },
-        },
-        "list_files": {
-            "name": "list_files",
-            "description": "List files (PDFs, docs, images) uploaded to this stash.",
-            "input_schema": {"type": "object", "properties": {}},
-        },
-        "read_file": {
-            "name": "read_file",
-            "description": "Read extracted text content from a stash file by id.",
-            "input_schema": {
-                "type": "object",
-                "properties": {"file_id": {"type": "string"}},
-                "required": ["file_id"],
-            },
-        },
-        "query_table": {
-            "name": "query_table",
-            "description": "List rows from a table by name. Returns the row payloads.",
-            "input_schema": {
-                "type": "object",
-                "properties": {
-                    "table_name": {"type": "string"},
-                    "limit": {"type": "integer", "default": 50},
-                },
-                "required": ["table_name"],
-            },
-        },
-        "list_skills": {
-            "name": "list_skills",
-            "description": "List skills (folders with SKILL.md frontmatter) defined in this stash.",
-            "input_schema": {"type": "object", "properties": {}},
-        },
-        "read_skill": {
-            "name": "read_skill",
-            "description": "Read a skill by name — returns SKILL.md + sibling files concatenated.",
-            "input_schema": {
-                "type": "object",
-                "properties": {"name": {"type": "string"}},
-                "required": ["name"],
-            },
-        },
-    }
-    return [catalog[name] for name in tool_set if name in catalog]
 
 
 async def _execute_tool(name: str, args: dict, stash_id: UUID) -> tuple[str, str]:
-    """Returns ``(json_payload, short_summary)``."""
+    """Returns ``(json_payload, short_summary)`` for a tool invocation."""
     from ..database import get_pool
 
     pool = get_pool()
@@ -232,7 +144,7 @@ async def stream_ask(
     stash_id: UUID,
     stash_name: str,
     messages: list[dict],
-    tool_set: tuple[str, ...] = STASH_TOOL_SET,
+    tool_set: tuple[str, ...] = prompts.STASH_TOOL_SET,
 ) -> AsyncIterator[str]:
     """Run the agent loop and yield SSE-encoded chunks.
 
@@ -250,25 +162,15 @@ async def stream_ask(
         yield _sse({"type": "end"})
         return
 
-    try:
-        from anthropic import AsyncAnthropic
-    except ImportError:
-        yield _sse({"type": "error", "message": "anthropic SDK not installed"})
-        return
-
-    client = AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY)
-    tools = _tool_schemas(tool_set)
-    system = (
-        f"You are an expert assistant for the '{stash_name}' stash. Answer questions "
-        "by calling tools to ground every claim. Reference what you found by name "
-        "(e.g., the wiki page name or table). Be concise."
-    )
-
+    client = llm.get_async_client()
+    model = llm.model_for(llm.ModelTier.QUALITY)
+    tools = prompts.tool_schemas(tool_set)
+    system = prompts.render_ask_system(stash_name)
     convo: list[dict] = list(messages)
 
-    for turn in range(settings.ASK_MAX_TURNS):
+    for _turn in range(settings.ASK_MAX_TURNS):
         async with client.messages.stream(
-            model=settings.ANTHROPIC_MODEL,
+            model=model,
             max_tokens=2048,
             system=system,
             tools=tools,
@@ -300,7 +202,6 @@ async def stream_ask(
         if response.stop_reason != "tool_use" or not tool_uses:
             break
 
-        # Execute each tool call, stream a "tool" event, append tool_result to convo.
         tool_results = []
         for tu in tool_uses:
             payload, summary = await _execute_tool(tu.name, dict(tu.input), stash_id)
@@ -322,3 +223,9 @@ async def stream_ask(
         convo.append({"role": "user", "content": tool_results})
 
     yield _sse({"type": "end"})
+
+
+# Re-exports for backwards compatibility with any caller importing constants
+# from this module.
+STASH_TOOL_SET = prompts.STASH_TOOL_SET
+RECIPIENT_TOOL_SET = prompts.RECIPIENT_TOOL_SET

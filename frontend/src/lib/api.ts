@@ -1250,13 +1250,63 @@ export interface StashWiki {
   pages: WikiPage[];
   files: WikiFile[];
 }
+export interface StashHandoffSummary {
+  present: boolean;
+  generated_at: string | null;
+  stale: boolean;
+  pinned_at: string | null;
+}
 export interface StashSpine {
+  handoff: StashHandoffSummary;
   sessions: StashSpineSession[];
   wiki: StashWiki;
 }
 
 export async function getStashSpine(stashId: string): Promise<StashSpine> {
   return apiFetch(`/api/v1/stashes/${stashId}/spine`);
+}
+
+export interface StashHandoff {
+  body_markdown: string;
+  generated_at: string | null;
+  stale: boolean;
+  model: string | null;
+  input_tokens: number | null;
+  output_tokens: number | null;
+  turns_used: number | null;
+  tool_calls_used: number | null;
+  pinned_at: string | null;
+  pinned_by: string | null;
+  last_error: string | null;
+}
+
+export async function getStashHandoff(
+  stashId: string,
+  opts?: { wait?: boolean; maxWait?: number },
+): Promise<StashHandoff> {
+  const wait = opts?.wait ? "true" : "false";
+  const maxWait = opts?.maxWait ?? 60;
+  return apiFetch(
+    `/api/v1/stashes/${stashId}/handoff?wait=${wait}&max_wait=${maxWait}`,
+  );
+}
+
+export async function refreshStashHandoff(stashId: string): Promise<{ queued: boolean }> {
+  return apiFetch(`/api/v1/stashes/${stashId}/handoff/refresh`, { method: "POST" });
+}
+
+export async function editStashHandoff(
+  stashId: string,
+  bodyMarkdown: string,
+): Promise<StashHandoff> {
+  return apiFetch(`/api/v1/stashes/${stashId}/handoff`, {
+    method: "PATCH",
+    body: JSON.stringify({ body_markdown: bodyMarkdown }),
+  });
+}
+
+export async function unpinStashHandoff(stashId: string): Promise<StashHandoff> {
+  return apiFetch(`/api/v1/stashes/${stashId}/handoff/unpin`, { method: "POST" });
 }
 
 export interface FolderBreadcrumb {

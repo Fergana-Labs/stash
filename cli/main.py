@@ -671,6 +671,51 @@ def stash_leave(stash_id: str = typer.Argument(...)):
     console.print("[green]Left stash.[/green]")
 
 
+@stash_app.command("handoff")
+def stash_handoff(
+    stash_id: str = typer.Argument(None),
+    wait: bool = typer.Option(False, "--wait", help="Force regen and wait for it"),
+    refresh: bool = typer.Option(
+        False,
+        "--refresh",
+        help="Mark the handoff stale; combine with --wait to block until it lands.",
+    ),
+    as_json: bool = typer.Option(False, "--json"),
+):
+    """Print the curated orientation doc for a stash.
+
+    A new agent landing on a stash should read this first — it summarises
+    what's in the stash, what's going on, and where to start.
+    """
+    ws = stash_id or _resolve_workspace()
+    with _client() as c:
+        try:
+            if refresh:
+                c.refresh_handoff(ws)
+            data = c.get_handoff(ws, wait=wait)
+        except StashError as e:
+            _err(e)
+    if _use_json(as_json):
+        output_json(data)
+        return
+    body = (data or {}).get("body_markdown") or ""
+    if not body:
+        console.print("[dim]No handoff yet. Run `stash stash handoff --refresh --wait`.[/dim]")
+        return
+    console.print(body)
+    meta_parts = []
+    if data.get("generated_at"):
+        meta_parts.append(f"updated {data['generated_at']}")
+    if data.get("model"):
+        meta_parts.append(data["model"])
+    if data.get("turns_used"):
+        meta_parts.append(f"{data['turns_used']} turn(s)")
+    if data.get("pinned_at"):
+        meta_parts.append("[yellow]pinned[/yellow]")
+    if meta_parts:
+        console.print(f"\n[dim]{' · '.join(meta_parts)}[/dim]")
+
+
 @ws_app.command("list")
 def ws_list(
     mine: bool = typer.Option(False, "--mine"), as_json: bool = typer.Option(False, "--json")

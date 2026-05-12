@@ -39,12 +39,14 @@ from ..models import (
 )
 from ..services import (
     ask_service,
+    handoff_curator,
     memory_service,
     skill_service,
     stash_service,
     storage_service,
     workspace_service,
 )
+from ..workers import handoff_curator as handoff_curator_worker
 from . import workspaces as ws_router_module
 
 # ---------------------------------------------------------------------------
@@ -347,20 +349,146 @@ async def ask_stash(
 
 @router.get("/{stash_id}/spine")
 async def get_stash_spine(stash_id: UUID, current_user: dict = Depends(get_current_user)):
-    """Returns {sessions, wiki} for the stash home + sidebar tree.
+    """Returns {handoff, sessions, wiki} for the stash home + sidebar tree.
 
     `wiki` is one shape: {folders, pages, files}. All rows carry their
-    parent_folder_id / folder_id so the frontend can build a tree."""
+    parent_folder_id / folder_id so the frontend can build a tree.
+    `handoff` is a small envelope; the body is fetched separately via
+    /{stash_id}/handoff so the spine response stays small."""
     if not await workspace_service.is_member(stash_id, current_user["id"]):
         ws = await workspace_service.get_workspace(stash_id)
         if not ws or not ws.get("is_public"):
             raise HTTPException(status_code=404, detail="Stash not found")
 
-    sessions, wiki = await asyncio.gather(
+    sessions, wiki, handoff = await asyncio.gather(
         _spine_sessions(stash_id),
         _spine_wiki(stash_id),
+        handoff_curator.get_handoff(stash_id),
     )
-    return {"sessions": sessions, "wiki": wiki}
+    handoff_summary = {
+        "present": bool(handoff and handoff["body_markdown"]),
+        "generated_at": handoff["generated_at"].isoformat()
+        if handoff and handoff["generated_at"]
+        else None,
+        "stale": bool(handoff["stale"]) if handoff else False,
+        "pinned_at": handoff["pinned_at"].isoformat()
+        if handoff and handoff["pinned_at"]
+        else None,
+    }
+    return {"handoff": handoff_summary, "sessions": sessions, "wiki": wiki}
+
+
+# --- Handoff endpoints ----------------------------------------------------
+
+
+class HandoffEditRequest(BaseModel):
+    body_markdown: str
+
+
+def _handoff_to_response(row: dict | None) -> dict:
+    if row is None:
+        return {
+            "body_markdown": "",
+            "generated_at": None,
+            "stale": True,
+            "model": None,
+            "input_tokens": None,
+            "output_tokens": None,
+            "turns_used": None,
+            "tool_calls_used": None,
+            "pinned_at": None,
+            "pinned_by": None,
+            "last_error": None,
+        }
+    return {
+        "body_markdown": row["body_markdown"],
+        "generated_at": row["generated_at"].isoformat() if row["generated_at"] else None,
+        "stale": bool(row["stale"]),
+        "model": row["model"],
+        "input_tokens": row["input_tokens"],
+        "output_tokens": row["output_tokens"],
+        "turns_used": row["turns_used"],
+        "tool_calls_used": row["tool_calls_used"],
+        "pinned_at": row["pinned_at"].isoformat() if row["pinned_at"] else None,
+        "pinned_by": str(row["pinned_by"]) if row["pinned_by"] else None,
+        "last_error": row["last_error"],
+    }
+
+
+async def _check_handoff_member(stash_id: UUID, user_id: UUID) -> None:
+    if not await workspace_service.is_member(stash_id, user_id):
+        ws = await workspace_service.get_workspace(stash_id)
+        if not ws or not ws.get("is_public"):
+            raise HTTPException(status_code=404, detail="Stash not found")
+
+
+@router.get("/{stash_id}/handoff")
+async def get_handoff(
+    stash_id: UUID,
+    wait: bool = Query(False),
+    max_wait: int = Query(60),
+    current_user: dict = Depends(get_current_user),
+):
+    await _check_handoff_member(stash_id, current_user["id"])
+
+    if wait:
+        existing = await handoff_curator.get_handoff(stash_id)
+        if existing and existing["pinned_at"]:
+            return _handoff_to_response(existing)
+        # Force a regen now and block until it lands.
+        await handoff_curator.force_mark_stale_now(stash_id)
+        try:
+            await asyncio.wait_for(
+                handoff_curator_worker.force_regenerate(stash_id),
+                timeout=float(max_wait),
+            )
+        except asyncio.TimeoutError:
+            pass  # Fall through and return whatever's persisted
+
+    row = await handoff_curator.get_handoff(stash_id)
+    return _handoff_to_response(row)
+
+
+@router.post("/{stash_id}/handoff/refresh", status_code=202)
+async def refresh_handoff(
+    stash_id: UUID,
+    current_user: dict = Depends(get_current_user),
+):
+    if not await workspace_service.can_write(stash_id, current_user["id"]):
+        raise HTTPException(status_code=403, detail="Not allowed to refresh handoff")
+    existing = await handoff_curator.get_handoff(stash_id)
+    if existing and existing["pinned_at"]:
+        raise HTTPException(
+            status_code=409,
+            detail="Handoff is pinned. Unpin before regenerating.",
+        )
+    await handoff_curator.force_mark_stale_now(stash_id)
+    return {"queued": True}
+
+
+@router.patch("/{stash_id}/handoff")
+async def edit_handoff(
+    stash_id: UUID,
+    req: HandoffEditRequest,
+    current_user: dict = Depends(get_current_user),
+):
+    if not await workspace_service.can_write(stash_id, current_user["id"]):
+        raise HTTPException(status_code=403, detail="Not allowed to edit handoff")
+    await handoff_curator.edit_and_pin(stash_id, req.body_markdown, current_user["id"])
+    row = await handoff_curator.get_handoff(stash_id)
+    return _handoff_to_response(row)
+
+
+@router.post("/{stash_id}/handoff/unpin", status_code=200)
+async def unpin_handoff(
+    stash_id: UUID,
+    current_user: dict = Depends(get_current_user),
+):
+    if not await workspace_service.can_write(stash_id, current_user["id"]):
+        raise HTTPException(status_code=403, detail="Not allowed to unpin handoff")
+    await handoff_curator.unpin(stash_id)
+    row = await handoff_curator.get_handoff(stash_id)
+    return _handoff_to_response(row)
 
 
 # ---------------------------------------------------------------------------
