@@ -134,10 +134,6 @@ export async function updateMe(data: {
   });
 }
 
-export async function logoutServer(): Promise<void> {
-  await apiFetch("/api/v1/users/logout", { method: "POST" });
-}
-
 export interface ApiKeyInfo {
   id: string;
   name: string;
