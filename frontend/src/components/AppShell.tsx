@@ -4,12 +4,12 @@ import { ReactNode, useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { User, Workspace } from "../lib/types";
-import { listMyWorkspaces } from "../lib/api";
 import AppSidebar from "./AppSidebar";
 import CommandPalette from "./CommandPalette";
 import ShareModal from "./ShareModal";
 import { useBreadcrumbsValue } from "./BreadcrumbContext";
 import { StashIcon } from "./StashIcons";
+import { getCachedWorkspaces, readCachedWorkspaces } from "../lib/stashNavigationCache";
 
 interface AppShellProps {
   user: User;
@@ -39,16 +39,18 @@ export default function AppShell({ user, onLogout, children }: AppShellProps) {
   const breadcrumbs = useBreadcrumbsValue();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [activeStashId, setActiveStashId] = useState<string | null>(null);
-  const [stashes, setStashes] = useState<Workspace[]>([]);
+  const [stashes, setStashes] = useState<Workspace[]>(
+    () => readCachedWorkspaces(user.id)?.all ?? []
+  );
   const [shareOpen, setShareOpen] = useState(false);
   const [cmdkOpen, setCmdkOpen] = useState(false);
 
   useEffect(() => {
     setSidebarCollapsed(readBool(SIDEBAR_KEY));
-    listMyWorkspaces()
-      .then((r) => setStashes(r.workspaces ?? []))
+    getCachedWorkspaces(user.id)
+      .then((r) => setStashes(r.all))
       .catch(() => {});
-  }, []);
+  }, [user.id]);
 
   useEffect(() => {
     const m =
