@@ -2,18 +2,20 @@
 
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
-import Markdown from "react-markdown";
-import rehypeRaw from "rehype-raw";
-import remarkGfm from "remark-gfm";
 import AppShell from "../../../../../components/AppShell";
 import { useBreadcrumbs } from "../../../../../components/BreadcrumbContext";
 import { PageIcon } from "../../../../../components/StashIcons";
+import HtmlPageView from "../../../../../components/workspace/HtmlPageView";
+import MarkdownEditor, { type SaveStatus } from "../../../../../components/workspace/MarkdownEditor";
 import { useAuth } from "../../../../../hooks/useAuth";
 import {
   getFolderContents,
   getPage,
   getWorkspace,
+  listWorkspacePages,
+  updatePage,
   type FolderBreadcrumb,
+  type WorkspacePageEntry,
 } from "../../../../../lib/api";
 import type { Page, Workspace } from "../../../../../lib/types";
 
@@ -27,6 +29,8 @@ export default function StashPageView() {
   const [stash, setStash] = useState<Workspace | null>(null);
   const [page, setPage] = useState<Page | null>(null);
   const [folderChain, setFolderChain] = useState<FolderBreadcrumb[]>([]);
+  const [pageIndex, setPageIndex] = useState<WorkspacePageEntry[]>([]);
+  const [saveStatus, setSaveStatus] = useState<SaveStatus>("saved");
   const [error, setError] = useState("");
 
   useBreadcrumbs(
@@ -42,12 +46,14 @@ export default function StashPageView() {
 
   const load = useCallback(async () => {
     try {
-      const [workspace, p] = await Promise.all([
+      const [workspace, p, index] = await Promise.all([
         getWorkspace(stashId),
         getPage(stashId, pageId),
+        listWorkspacePages(stashId).catch(() => [] as WorkspacePageEntry[]),
       ]);
       setStash(workspace);
       setPage(p);
+      setPageIndex(index);
       if (p.folder_id) {
         const contents = await getFolderContents(stashId, p.folder_id);
         setFolderChain(contents.breadcrumbs);
@@ -58,6 +64,18 @@ export default function StashPageView() {
       setError(e instanceof Error ? e.message : "Failed to load page");
     }
   }, [stashId, pageId]);
+
+  const handleSave = useCallback(
+    async (content: string) => {
+      try {
+        const updated = await updatePage(stashId, pageId, { content });
+        setPage(updated);
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Save failed");
+      }
+    },
+    [stashId, pageId]
+  );
 
   useEffect(() => {
     if (user) load();
@@ -98,9 +116,19 @@ export default function StashPageView() {
                 {stash ? <span> in <span className="text-foreground">{stash.name}</span></span> : null}
               </span>
             )}
-            {/* "Visible in share" checkbox is gone — sharing is now link-based.
-                Use the Share button (workspace toolbar) to mint a share-link
-                for this page with target_type='page'. */}
+            {page && page.content_type !== "html" && (
+              <span
+                className={
+                  saveStatus === "saving"
+                    ? "text-amber-500"
+                    : saveStatus === "dirty"
+                    ? "text-amber-600"
+                    : "text-emerald-600"
+                }
+              >
+                {saveStatus === "saving" ? "Saving…" : saveStatus === "dirty" ? "Unsaved" : "Saved"}
+              </span>
+            )}
           </div>
 
           {error && (
@@ -109,14 +137,21 @@ export default function StashPageView() {
             </div>
           )}
 
-          <article className="markdown-content mt-8 text-[15px] leading-relaxed text-foreground">
+          <article className="mt-8 text-[15px] leading-relaxed text-foreground">
             {page ? (
-              <Markdown
-                remarkPlugins={[remarkGfm]}
-                rehypePlugins={[rehypeRaw]}
-              >
-                {page.content_markdown || ""}
-              </Markdown>
+              page.content_type === "html" ? (
+                <HtmlPageView html={page.content_html || ""} title={page.name} />
+              ) : (
+                <MarkdownEditor
+                  workspaceId={stashId}
+                  folderPath={folderChain.map((c) => c.name)}
+                  file={page}
+                  pageIndex={pageIndex}
+                  onSave={handleSave}
+                  onSaveStatusChange={setSaveStatus}
+                  onNavigateInternal={(href) => router.push(href)}
+                />
+              )
             ) : (
               <p className="text-muted">Loading…</p>
             )}
