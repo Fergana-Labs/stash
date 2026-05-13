@@ -473,129 +473,142 @@ function AddSourcesDialog({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/35 px-4"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-[rgba(15,23,42,0.42)] px-4 py-6 backdrop-blur-sm"
       onMouseDown={(event) => {
         if (event.target === event.currentTarget && !saving) onClose();
       }}
     >
       <form
         onSubmit={handleSubmit}
-        className="w-full max-w-[560px] overflow-hidden rounded-lg border border-border bg-base shadow-2xl"
+        className="w-full max-w-[680px] overflow-hidden rounded-[28px] border border-border-subtle bg-base shadow-[0_24px_80px_rgba(15,23,42,0.24)]"
       >
-        <div className="flex items-start justify-between gap-4 border-b border-border-subtle px-5 py-4">
+        <div className="flex items-start justify-between gap-4 px-7 pb-4 pt-6">
           <div>
-            <h2 className="font-display text-[20px] font-bold text-foreground">
-              Add Something to the Stash
-            </h2>
-            <p className="mt-1 font-mono text-[11px] text-muted">
+            <p className="mb-2 font-mono text-[11px] font-medium uppercase tracking-[0.16em] text-muted">
               History source · {user.name}
+            </p>
+            <h2 className="font-display text-[28px] font-bold tracking-[-0.03em] text-foreground">
+              Add sources
+            </h2>
+            <p className="mt-2 max-w-[460px] text-[14px] leading-6 text-dim">
+              Paste context or attach a file so agents can find it later.
             </p>
           </div>
           <button
             type="button"
             onClick={onClose}
             disabled={saving}
-            className="flex h-8 w-8 items-center justify-center rounded-md text-[20px] leading-none text-muted transition-colors hover:bg-raised hover:text-foreground disabled:opacity-50"
+            className="flex h-9 w-9 items-center justify-center rounded-full border border-border-subtle bg-surface text-[22px] leading-none text-muted transition-colors hover:bg-raised hover:text-foreground disabled:opacity-50"
             aria-label="Close"
           >
             &times;
           </button>
         </div>
 
-        <div className="space-y-4 px-5 py-5">
-          <label className="block">
-            <span className="mb-1.5 block text-[12px] font-medium text-dim">
-              Title
-            </span>
-            <input
-              value={title}
-              onChange={(event) => setTitle(event.target.value)}
-              placeholder={file?.name || "Manual source"}
-              className="h-10 w-full rounded-md border border-border bg-surface px-3 text-[14px] text-foreground outline-none transition-colors placeholder:text-muted focus:border-brand"
-            />
-          </label>
-
-          <label className="block">
-            <span className="mb-1.5 block text-[12px] font-medium text-dim">
-              Source text
-            </span>
+        <div className="px-7 pb-7">
+          <div className="rounded-[24px] border border-border bg-surface p-3 shadow-inner shadow-white/40 transition-[border-color,box-shadow] focus-within:border-[var(--color-brand-300)] focus-within:shadow-[0_0_0_4px_rgba(249,115,22,0.12)]">
             <textarea
               value={content}
               onChange={(event) => setContent(event.target.value)}
-              placeholder="Paste a note, excerpt, URL, or context"
+              placeholder="Paste text, notes, URLs, or meeting context..."
               rows={8}
-              className="w-full resize-y rounded-md border border-border bg-surface px-3 py-2.5 text-[14px] leading-[1.5] text-foreground outline-none transition-colors placeholder:text-muted focus:border-brand"
+              className="min-h-[180px] w-full resize-none rounded-[18px] bg-base px-4 py-4 text-[15px] leading-7 text-foreground outline-none placeholder:text-muted"
             />
-          </label>
 
-          <div>
-            <span className="mb-1.5 block text-[12px] font-medium text-dim">
-              File
-            </span>
-            <input
-              ref={fileInputRef}
-              type="file"
-              className="hidden"
-              onChange={handleFileChange}
-            />
-            {file ? (
-              <div className="flex items-center gap-3 rounded-md border border-border bg-surface px-3 py-2.5">
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-[13px] font-medium text-foreground">
-                    {file.name}
-                  </p>
-                  <p className="mt-0.5 font-mono text-[10px] text-muted">
-                    {formatBytes(file.size)}
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setFile(null);
-                    if (fileInputRef.current) fileInputRef.current.value = "";
-                  }}
-                  disabled={saving}
-                  className="rounded px-2 py-1 text-[12px] text-muted transition-colors hover:bg-raised hover:text-foreground disabled:opacity-50"
-                >
-                  Remove
-                </button>
+            <div className="mt-3 grid gap-3 md:grid-cols-[1fr_220px]">
+              <label className="block rounded-[18px] border border-border-subtle bg-base px-4 py-3">
+                <span className="mb-2 block font-mono text-[10px] font-medium uppercase tracking-[0.12em] text-muted">
+                  Source title
+                </span>
+                <input
+                  value={title}
+                  onChange={(event) => setTitle(event.target.value)}
+                  placeholder={file?.name || "Manual source"}
+                  className="h-8 w-full bg-transparent text-[14px] font-medium text-foreground outline-none placeholder:text-muted"
+                />
+              </label>
+
+              <div className="rounded-[18px] border border-border-subtle bg-base p-3">
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  className="hidden"
+                  onChange={handleFileChange}
+                />
+                {file ? (
+                  <div className="flex h-full items-center gap-3">
+                    <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl bg-[var(--color-brand-50)] text-[18px] text-[var(--color-brand-700)]">
+                      📎
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-[13px] font-semibold text-foreground">
+                        {file.name}
+                      </p>
+                      <p className="mt-0.5 font-mono text-[10px] text-muted">
+                        {formatBytes(file.size)}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setFile(null);
+                        if (fileInputRef.current) fileInputRef.current.value = "";
+                      }}
+                      disabled={saving}
+                      className="rounded-full px-2 py-1 text-[12px] text-muted transition-colors hover:bg-raised hover:text-foreground disabled:opacity-50"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={saving}
+                    className="flex h-full min-h-16 w-full items-center justify-center gap-2 rounded-xl border border-dashed border-[var(--color-brand-300)] bg-[var(--color-brand-50)] px-3 text-[13px] font-semibold text-[var(--color-brand-700)] transition-colors hover:bg-[var(--color-brand-100)] disabled:opacity-50"
+                  >
+                    <span className="text-[18px] leading-none">+</span>
+                    Upload file
+                  </button>
+                )}
               </div>
-            ) : (
-              <button
-                type="button"
-                onClick={() => fileInputRef.current?.click()}
-                disabled={saving}
-                className="flex h-11 w-full items-center justify-center gap-2 rounded-md border border-border bg-surface text-[13px] font-medium text-foreground transition-colors hover:border-[var(--color-brand-300)] hover:bg-[var(--color-brand-50)] disabled:opacity-50"
+            </div>
+          </div>
+
+          <div className="mt-4 flex flex-wrap gap-2">
+            {["Docs", "Notes", "Links", "Transcripts"].map((sourceType) => (
+              <span
+                key={sourceType}
+                className="rounded-full border border-border-subtle bg-surface px-3 py-1.5 text-[12px] font-medium text-dim"
               >
-                <span className="text-[18px] leading-none">+</span>
-                Attach file
-              </button>
-            )}
+                {sourceType}
+              </span>
+            ))}
           </div>
 
           {error && (
-            <p className="rounded-md border border-error/30 bg-error-muted px-3 py-2 text-[13px] text-error">
+            <p className="mt-4 rounded-xl border border-error/30 bg-error-muted px-3 py-2 text-[13px] text-error">
               {error}
             </p>
           )}
-        </div>
 
-        <div className="flex items-center justify-end gap-2 border-t border-border-subtle px-5 py-4">
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={saving}
-            className="rounded-md px-3 py-2 text-[13px] text-dim transition-colors hover:bg-raised hover:text-foreground disabled:opacity-50"
-          >
-            Cancel
-          </button>
-          <button
-            type="submit"
-            disabled={!canSubmit || saving}
-            className="rounded-md bg-[var(--color-brand-600)] px-4 py-2 text-[13px] font-semibold text-white transition-colors hover:bg-[var(--color-brand-700)] disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {saving ? "Adding..." : "Add source"}
-          </button>
+          <div className="mt-6 flex items-center justify-end gap-2">
+            <button
+              type="button"
+              onClick={onClose}
+              disabled={saving}
+              className="rounded-full px-4 py-2 text-[13px] font-medium text-dim transition-colors hover:bg-raised hover:text-foreground disabled:opacity-50"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={!canSubmit || saving}
+              className="rounded-full bg-[var(--color-brand-600)] px-5 py-2.5 text-[13px] font-semibold text-white shadow-[0_8px_20px_rgba(234,88,12,0.24)] transition-colors hover:bg-[var(--color-brand-700)] disabled:cursor-not-allowed disabled:opacity-50 disabled:shadow-none"
+            >
+              {saving ? "Adding..." : "Add source"}
+            </button>
+          </div>
         </div>
       </form>
     </div>
