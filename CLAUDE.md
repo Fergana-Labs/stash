@@ -48,7 +48,8 @@ Common reads (all support `--json`):
 ### LLM configuration (server-side)
 
 All LLM calls go through the backend. The plugin no longer makes Anthropic
-calls — it only uploads transcripts and marks sessions for summarization.
+calls — it only uploads transcripts/artifacts. The backend worker claims
+sessions for summarization when it starts writing their summaries.
 
 Two model tiers, both read by `backend/services/llm.py`:
 - `ANTHROPIC_API_KEY` — required for ask, the handoff curator, and the

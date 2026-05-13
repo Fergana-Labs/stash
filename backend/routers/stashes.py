@@ -367,13 +367,11 @@ async def get_stash_spine(stash_id: UUID, current_user: dict = Depends(get_curre
     )
     handoff_summary = {
         "present": bool(handoff and handoff["body_markdown"]),
-        "generated_at": handoff["generated_at"].isoformat()
-        if handoff and handoff["generated_at"]
-        else None,
+        "generated_at": (
+            handoff["generated_at"].isoformat() if handoff and handoff["generated_at"] else None
+        ),
         "stale": bool(handoff["stale"]) if handoff else False,
-        "pinned_at": handoff["pinned_at"].isoformat()
-        if handoff and handoff["pinned_at"]
-        else None,
+        "pinned_at": handoff["pinned_at"].isoformat() if handoff and handoff["pinned_at"] else None,
     }
     return {"handoff": handoff_summary, "sessions": sessions, "wiki": wiki}
 
@@ -442,7 +440,7 @@ async def get_handoff(
                 handoff_curator_worker.force_regenerate(stash_id),
                 timeout=float(max_wait),
             )
-        except asyncio.TimeoutError:
+        except TimeoutError:
             pass  # Fall through and return whatever's persisted
 
     row = await handoff_curator.get_handoff(stash_id)
@@ -582,7 +580,6 @@ async def update_session_stash(
     updated = await stash_service.update_stash(
         stash_id,
         summary=req.summary,
-        status=req.status,
     )
     return StashResponse(**updated)
 

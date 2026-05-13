@@ -88,12 +88,3 @@ async def set_files_touched(session_row_id: UUID, files: list[str]) -> None:
         json.dumps(files),
         session_row_id,
     )
-
-
-async def set_status(session_row_id: UUID, status: str) -> None:
-    pool = get_pool()
-    await pool.execute(
-        "UPDATE sessions SET status = $1 WHERE id = $2",
-        status,
-        session_row_id,
-    )

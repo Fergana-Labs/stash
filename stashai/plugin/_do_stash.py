@@ -1,11 +1,11 @@
-"""Detached background process: upload stash artifacts and mark session for summarization.
+"""Detached background process: upload stash artifacts after a session ends.
 
 Invoked by stash_upload.spawn_stash_upload(). Runs outside the hook
 timeout so large uploads don't block the agent.
 
 The session summary itself is generated server-side by
-`backend/workers/session_summarizer.py` — this script just uploads files
-and flips the session status to 'summarizing' so the worker picks it up.
+`backend/workers/session_summarizer.py`. This script only uploads files; the
+backend worker owns summary status transitions because it writes the summary.
 
 argv: script.py <stash_id> <transcript_path> <cwd> <workspace_id>
                 <session_id> <agent_name> <base_url> <api_key>
@@ -122,8 +122,6 @@ def main() -> None:
                 client.upload_stash_artifact(stash_id, display_path, content)
             except Exception:
                 continue
-
-        client.update_stash(stash_id, status="summarizing")
 
 
 if __name__ == "__main__":

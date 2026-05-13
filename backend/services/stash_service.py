@@ -163,14 +163,11 @@ async def update_session_share(
     session_row_id: UUID,
     *,
     summary: str | None = None,
-    status: str | None = None,
 ) -> dict | None:
     from . import session_service
 
     if summary is not None:
-        await session_service.set_summary(session_row_id, summary, status=status or "ready")
-    elif status is not None:
-        await session_service.set_status(session_row_id, status)
+        await session_service.set_summary(session_row_id, summary)
     return await get_session_share_by_id(session_row_id)
 
 

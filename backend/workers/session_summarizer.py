@@ -1,12 +1,12 @@
 """Server-side session summarizer worker.
 
-Picks up sessions with status='summarizing' (or any older NULL-summary
-'live' row backfilled by migration 0038), assembles a transcript from
-history_events, and runs one Haiku call to populate `sessions.summary`.
+Picks up summary-less sessions, claims them with status='summarizing',
+assembles a transcript from history_events, and runs one Haiku call to
+populate `sessions.summary`.
 
 Replaces the LLM call that used to live in `stashai/plugin/_do_stash.py`.
-The plugin now only uploads artifacts and marks status='summarizing'; the
-backend owns LLM spend.
+The plugin now only uploads artifacts; the backend owns summary status and LLM
+spend.
 
 Each successful summary marks the corresponding stash handoff stale so the
 curator re-incorporates the new session on its next eligible run.
@@ -20,8 +20,8 @@ from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
 from ..database import get_pool
-from ._lock_helpers import advisory_lock
 from ..services import handoff_curator, llm, memory_service, prompts
+from ._lock_helpers import advisory_lock
 
 logger = logging.getLogger(__name__)
 
@@ -61,6 +61,19 @@ async def _record_attempt(session_id: UUID, error: str | None) -> None:
     )
 
 
+async def _claim_session(session_id: UUID) -> bool:
+    pool = get_pool()
+    row = await pool.fetchrow(
+        "UPDATE sessions SET status = 'summarizing' "
+        "WHERE id = $1 "
+        "AND summary IS NULL "
+        "AND status IN ('live', 'summarizing') "
+        "RETURNING id",
+        session_id,
+    )
+    return row is not None
+
+
 async def _write_summary(
     session_id: UUID,
     summary: str,
@@ -82,6 +95,9 @@ async def _write_summary(
 
 
 async def summarize_one(session_id: UUID, workspace_id: UUID, session_external_id: str) -> bool:
+    if not await _claim_session(session_id):
+        return False
+
     events = await memory_service.read_session_events(workspace_id, session_external_id)
     if not events:
         # Session has no events to summarize. Mark as failed so we don't loop.
@@ -96,9 +112,7 @@ async def summarize_one(session_id: UUID, workspace_id: UUID, session_external_i
 
     transcript = _events_to_text(events)
     if len(transcript) > TRANSCRIPT_CHAR_BUDGET:
-        transcript = (
-            transcript[:TRANSCRIPT_CHAR_BUDGET] + "\n\n[... transcript truncated ...]"
-        )
+        transcript = transcript[:TRANSCRIPT_CHAR_BUDGET] + "\n\n[... transcript truncated ...]"
 
     user = prompts.render_session_summary_user(transcript, source_label="history events")
 

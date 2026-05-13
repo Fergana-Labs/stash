@@ -4,8 +4,8 @@
   pin/edit metadata.
 - New columns on `sessions` for the summarizer worker (attempts, model used,
   token counts).
-- Backfill: any session with NULL summary that's still in the 'live' state
-  flips to 'summarizing' so the new worker picks it up.
+- Summary-less live sessions stay live until the summarizer worker claims them
+  by setting status to 'summarizing'.
 
 Revision ID: 0038
 Revises: 0037
@@ -50,9 +50,7 @@ def upgrade() -> None:
     op.execute(
         "ALTER TABLE sessions ADD COLUMN IF NOT EXISTS summary_attempts INT NOT NULL DEFAULT 0"
     )
-    op.execute(
-        "ALTER TABLE sessions ADD COLUMN IF NOT EXISTS summary_last_attempt_at TIMESTAMPTZ"
-    )
+    op.execute("ALTER TABLE sessions ADD COLUMN IF NOT EXISTS summary_last_attempt_at TIMESTAMPTZ")
     op.execute("ALTER TABLE sessions ADD COLUMN IF NOT EXISTS summary_last_error TEXT")
     op.execute("ALTER TABLE sessions ADD COLUMN IF NOT EXISTS summary_model VARCHAR(64)")
     op.execute("ALTER TABLE sessions ADD COLUMN IF NOT EXISTS summary_input_tokens INT")
@@ -62,15 +60,6 @@ def upgrade() -> None:
         "CREATE INDEX IF NOT EXISTS idx_sessions_needs_summary "
         "ON sessions (started_at) "
         "WHERE summary IS NULL AND status IN ('live', 'summarizing')"
-    )
-
-    # Backfill: any existing summary-less session in 'live' status moves to
-    # 'summarizing' so the new worker picks them up on first tick. Sessions
-    # already in 'summarizing' (plugin set them on its way to a now-deleted
-    # LLM call) are also already eligible. 'failed' and 'ready' are untouched.
-    op.execute(
-        "UPDATE sessions SET status = 'summarizing' "
-        "WHERE summary IS NULL AND status = 'live'"
     )
 
 
