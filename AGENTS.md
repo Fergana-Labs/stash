@@ -47,3 +47,36 @@ Common reads (all support `--json`):
 
 When opening or updating a PR that includes GUI changes, always add product screenshots to the PR description or PR thread. Capture the changed user-facing screens yourself, and include admin/configuration screens too when they are part of the workflow.
 Never commit screenshots, recordings, or other assets that exist only to support a PR description or review thread. Keep those files outside the repo or delete them before staging, then attach/upload them directly to the PR instead.
+
+## Project layout
+
+- `backend/` — FastAPI app (Python 3.12), runs on port `3456`. Migrations via Alembic.
+- `frontend/` — Next.js app (the product UI), runs on port `3457`.
+- `www/` — Next.js landing page, runs on port `3100`.
+
+## Commands
+
+### Backend
+- Install deps: `pip install -r backend/requirements.txt -r backend/requirements-dev.txt && pip install -e .`
+- Migrate DB: `alembic upgrade head`
+- Run server: `uvicorn backend.main:app --host 0.0.0.0 --port 3456 --proxy-headers --forwarded-allow-ips '*'`
+- Tests: `pytest`
+- Lint: `ruff check .`
+
+### Frontend (`frontend/`)
+- Install: `cd frontend && npm ci`
+- Dev: `cd frontend && npm run dev` (port 3457)
+- Build: `cd frontend && npm run build`
+- Tests: `cd frontend && npm test` (vitest)
+- Lint: `cd frontend && npm run lint`
+- E2E: `cd frontend && npx playwright test` (requires `npx playwright install chromium` once)
+
+### Landing page (`www/`)
+- Install: `cd www && npm ci`
+- Dev: `cd www && npm run dev` (port 3100)
+- Build: `cd www && npm run build`
+- Lint: `cd www && npm run lint`
+
+### Local stack
+- One-shot start (migrations + backend + frontend): `./start.sh`
+- Docker compose: `docker compose up`
