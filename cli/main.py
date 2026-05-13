@@ -671,37 +671,21 @@ def stash_leave(stash_id: str = typer.Argument(...)):
     console.print("[green]Left stash.[/green]")
 
 
-@stash_app.command("handoff")
-def stash_handoff(
-    stash_id: str = typer.Argument(None),
-    wait: bool = typer.Option(False, "--wait", help="Force regen and wait for it"),
-    refresh: bool = typer.Option(
-        False,
-        "--refresh",
-        help="Mark the handoff stale; combine with --wait to block until it lands.",
-    ),
-    as_json: bool = typer.Option(False, "--json"),
-):
-    """Print the curated orientation doc for a stash.
+handoff_app = typer.Typer(
+    help="Stash handoff: agent-written orientation doc for a stash."
+)
+app.add_typer(handoff_app, name="handoff")
 
-    A new agent landing on a stash should read this first — it summarises
-    what's in the stash, what's going on, and where to start.
-    """
-    ws = stash_id or _resolve_workspace()
-    with _client() as c:
-        try:
-            if refresh:
-                c.refresh_handoff(ws)
-            data = c.get_handoff(ws, wait=wait)
-        except StashError as e:
-            _err(e)
-    if _use_json(as_json):
-        output_json(data)
-        return
+
+def _print_handoff(data: dict) -> None:
     body = (data or {}).get("body_markdown") or ""
     if not body:
-        console.print("[dim]No handoff yet. Run `stash stash handoff --refresh --wait`.[/dim]")
-        return
+        reason = (data or {}).get("reason") or "never_generated"
+        console.print(
+            f"[dim]Handoff not available ({reason}). "
+            "Run `stash handoff refresh` to (re)generate.[/dim]"
+        )
+        raise typer.Exit(code=1)
     console.print(body)
     meta_parts = []
     if data.get("generated_at"):
@@ -711,9 +695,55 @@ def stash_handoff(
     if data.get("turns_used"):
         meta_parts.append(f"{data['turns_used']} turn(s)")
     if data.get("pinned_at"):
-        meta_parts.append("[yellow]pinned[/yellow]")
+        meta_parts.append("[yellow]pinned · auto-curation off[/yellow]")
     if meta_parts:
         console.print(f"\n[dim]{' · '.join(meta_parts)}[/dim]")
+
+
+@handoff_app.command("show")
+def handoff_show(
+    stash_id: str = typer.Argument(None),
+    as_json: bool = typer.Option(False, "--json"),
+):
+    """Print the current handoff for a stash.
+
+    Returns the body only when it is fresh or pinned. If the writer hasn't
+    generated one yet, or content has changed since the last run, you'll
+    see a 'not available' message — use `stash handoff refresh` to update.
+    """
+    ws = stash_id or _resolve_workspace()
+    with _client() as c:
+        try:
+            data = c.get_handoff(ws)
+        except StashError as e:
+            _err(e)
+    if _use_json(as_json):
+        output_json(data)
+        return
+    _print_handoff(data)
+
+
+@handoff_app.command("refresh")
+def handoff_refresh(
+    stash_id: str = typer.Argument(None),
+    as_json: bool = typer.Option(False, "--json"),
+):
+    """Regenerate the handoff and print the new body.
+
+    Blocks until the writer agent finishes (or another worker that's already
+    running finishes for us). Pinned handoffs are rejected — turn auto-curation
+    back on first.
+    """
+    ws = stash_id or _resolve_workspace()
+    with _client() as c:
+        try:
+            data = c.regenerate_handoff(ws)
+        except StashError as e:
+            _err(e)
+    if _use_json(as_json):
+        output_json(data)
+        return
+    _print_handoff(data)
 
 
 @ws_app.command("list")

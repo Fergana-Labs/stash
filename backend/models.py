@@ -759,7 +759,7 @@ class StashResponse(BaseModel):
     slug: str
     agent_name: str
     cwd: str | None
-    status: str
+    summary_status: str
     summary: str | None
     files_touched: list[str]
     artifact_count: int = 0

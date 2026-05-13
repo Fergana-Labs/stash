@@ -1,19 +1,18 @@
 """Centralised system prompts + tool schemas used by LLM features.
 
 Three call sites consume this module:
-- ask_service        : ASK_SYSTEM, ASK_TOOLS, ASK_TOOLS_RECIPIENT
-- handoff_curator    : HANDOFF_AGENT_SYSTEM, render_handoff_seed, ASK_TOOLS
+- ask_service        : render_ask_system, STASH_TOOL_SET
+- handoff_writer     : HANDOFF_WRITER_SYSTEM, render_handoff_seed, STASH_TOOL_SET
 - session_summarizer : SESSION_SUMMARY_SYSTEM, render_session_summary_user
 
 Editing a prompt here changes behavior for every caller that uses it. The
-ASK_TOOLS catalog is the curator's primary asset — same toolset it can call
+tool set is the writer's primary asset — same toolset ask-the-stash can call
 to explore a stash.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
 
 # ---------------------------------------------------------------------------
 # Session summary (one-shot, Haiku tier)
@@ -52,85 +51,7 @@ def render_ask_system(stash_name: str) -> str:
     )
 
 
-# Tool catalog. Schemas only — executors live in ask_service._execute_tool.
-# The handoff curator also reuses this catalog so it can explore a stash with
-# the same surface ask has.
-_TOOL_CATALOG: dict[str, dict[str, Any]] = {
-    "search_history": {
-        "name": "search_history",
-        "description": "Full-text search across this stash's agent transcripts and history events.",
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "query": {"type": "string"},
-                "limit": {"type": "integer", "default": 10},
-            },
-            "required": ["query"],
-        },
-    },
-    "read_page": {
-        "name": "read_page",
-        "description": "Read the full markdown body of a wiki page by id.",
-        "input_schema": {
-            "type": "object",
-            "properties": {"page_id": {"type": "string"}},
-            "required": ["page_id"],
-        },
-    },
-    "grep_pages": {
-        "name": "grep_pages",
-        "description": "Full-text search across wiki pages in this stash. Returns page id + snippet.",
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "pattern": {"type": "string"},
-                "limit": {"type": "integer", "default": 10},
-            },
-            "required": ["pattern"],
-        },
-    },
-    "list_files": {
-        "name": "list_files",
-        "description": "List files (PDFs, docs, images) uploaded to this stash.",
-        "input_schema": {"type": "object", "properties": {}},
-    },
-    "read_file": {
-        "name": "read_file",
-        "description": "Read extracted text content from a stash file by id.",
-        "input_schema": {
-            "type": "object",
-            "properties": {"file_id": {"type": "string"}},
-            "required": ["file_id"],
-        },
-    },
-    "query_table": {
-        "name": "query_table",
-        "description": "List rows from a table by name. Returns the row payloads.",
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "table_name": {"type": "string"},
-                "limit": {"type": "integer", "default": 50},
-            },
-            "required": ["table_name"],
-        },
-    },
-    "list_skills": {
-        "name": "list_skills",
-        "description": "List skills (folders with SKILL.md frontmatter) defined in this stash.",
-        "input_schema": {"type": "object", "properties": {}},
-    },
-    "read_skill": {
-        "name": "read_skill",
-        "description": "Read a skill by name — returns SKILL.md + sibling files concatenated.",
-        "input_schema": {
-            "type": "object",
-            "properties": {"name": {"type": "string"}},
-            "required": ["name"],
-        },
-    },
-}
-
+# Tool set names — schemas + executors live in agent_runtime.
 STASH_TOOL_SET = (
     "search_history",
     "read_page",
@@ -144,19 +65,17 @@ STASH_TOOL_SET = (
 RECIPIENT_TOOL_SET = ("read_page", "grep_pages", "list_files", "read_file")
 
 
-def tool_schemas(tool_set: tuple[str, ...] = STASH_TOOL_SET) -> list[dict]:
-    return [_TOOL_CATALOG[name] for name in tool_set if name in _TOOL_CATALOG]
-
-
 # ---------------------------------------------------------------------------
-# Handoff curator (agent loop, Sonnet tier, reuses ask tools)
+# Handoff writer (agent loop, Sonnet tier, reuses ask tools)
 # ---------------------------------------------------------------------------
 
-HANDOFF_AGENT_SYSTEM = (
-    "You are the curator of a stash's orientation document — a markdown handoff that "
+HANDOFF_WRITER_SYSTEM = (
+    "You are the writer of a stash's orientation document — a markdown handoff that "
     "a new coding agent will read first when it lands on this stash. Your job is to "
     "explore the stash using the tools provided, then produce a complete, accurate, "
     "concise document.\n\n"
+    "If the seed includes a Stash Description, treat it as authoritative human input — "
+    "the stash owner wrote it to tell you what matters. Build your document around it.\n\n"
     "Use the tools liberally on early turns to ground your understanding: search "
     "history, read top pages, list files, query tables. Cite specific page names, "
     "session ids, file names. Do NOT speculate beyond what you find.\n\n"
@@ -176,27 +95,22 @@ HANDOFF_AGENT_SYSTEM = (
 @dataclass(slots=True)
 class HandoffSeed:
     workspace_name: str
-    description: str | None
-    sessions: list[dict]            # [{session_id, agent_name, last_at, summary}]
-    pages: list[dict]               # [{page_id, name}]
-    file_counts: dict[str, int]     # {content_type: count}
-    recent_files: list[str]         # last 20 names
-    activity: list[dict]            # last 30 events
-    principles_body: str | None     # verbatim HANDOFF_PRINCIPLES.md body if present
+    description: str | None  # human-written Stash Description
+    sessions: list[dict]  # [{session_id, agent_name, last_at, summary}]
+    pages: list[dict]  # [{page_id, name}]
+    file_counts: dict[str, int]  # {content_type: count}
+    recent_files: list[str]  # last 20 names
+    activity: list[dict]  # last 30 events
 
 
 def render_handoff_seed(seed: HandoffSeed) -> str:
     parts: list[str] = []
     parts.append(f"Stash name: {seed.workspace_name}")
     if seed.description:
-        parts.append(f"Description: {seed.description}")
-
-    if seed.principles_body:
         parts.append(
-            "\n--- HUMAN-AUTHORED PRINCIPLES (treat as authoritative; include verbatim "
-            "in the Operating principles section) ---\n"
-            + seed.principles_body.strip()
-            + "\n--- end principles ---"
+            "\n--- Stash Description (human-written; treat as authoritative) ---\n"
+            + seed.description.strip()
+            + "\n--- end description ---"
         )
 
     if seed.sessions:
@@ -232,10 +146,9 @@ def render_handoff_seed(seed: HandoffSeed) -> str:
         parts.append("\nRecent activity (last 14 days):")
         for ev in seed.activity:
             parts.append(
-                f"- {ev.get('ts')} kind={ev.get('kind')} target={ev.get('target_label') or ev.get('target_id')}"
+                f"- {ev.get('ts')} kind={ev.get('kind')} "
+                f"target={ev.get('target_label') or ev.get('target_id')}"
             )
 
-    parts.append(
-        "\nNow explore via tools as needed, then emit the final handoff document."
-    )
+    parts.append("\nNow explore via tools as needed, then emit the final handoff document.")
     return "\n".join(parts)

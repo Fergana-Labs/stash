@@ -7,10 +7,12 @@
 """
 
 import asyncio
+import json
+from datetime import datetime
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Form, HTTPException, Query, UploadFile
-from fastapi.responses import PlainTextResponse
+from fastapi import APIRouter, Depends, Form, HTTPException, Query, Request, UploadFile
+from fastapi.responses import PlainTextResponse, Response
 from pydantic import BaseModel
 from starlette.responses import StreamingResponse
 
@@ -39,14 +41,14 @@ from ..models import (
 )
 from ..services import (
     ask_service,
-    handoff_curator,
+    handoff_writer,
     memory_service,
     skill_service,
     stash_service,
     storage_service,
     workspace_service,
 )
-from ..workers import handoff_curator as handoff_curator_worker
+from ..workers import handoff_writer as handoff_writer_worker
 from . import workspaces as ws_router_module
 
 # ---------------------------------------------------------------------------
@@ -200,11 +202,15 @@ async def revoke_stash_invite_token(
 
 
 # ---------------------------------------------------------------------------
-# Spine — the three-folder view (Sessions / Skills / Drive) for one stash
+# Overview + Sidebar — the per-stash view shapes
+#
+# `/overview` is what the stash home page loads: handoff metadata + sessions
+#   + wiki. `/sidebar` is a smaller payload for the nav tree, served with an
+#   ETag so it can be cached cheaply across navigation.
 # ---------------------------------------------------------------------------
 
 
-async def _spine_sessions(stash_id: UUID) -> list[dict]:
+async def _list_sessions(stash_id: UUID) -> list[dict]:
     """Sessions in this workspace, sourced from history_events rows."""
     sessions = await memory_service.list_workspace_sessions(stash_id)
     return [
@@ -220,7 +226,7 @@ async def _spine_sessions(stash_id: UUID) -> list[dict]:
     ]
 
 
-async def _spine_wiki(stash_id: UUID) -> dict:
+async def _wiki_tree(stash_id: UUID) -> dict:
     """One unified Wiki tree — folders, pages, and files for the workspace.
 
     No Drive/Skill split. A folder is a folder regardless of whether it
@@ -347,33 +353,104 @@ async def ask_stash(
     )
 
 
-@router.get("/{stash_id}/spine")
-async def get_stash_spine(stash_id: UUID, current_user: dict = Depends(get_current_user)):
-    """Returns {handoff, sessions, wiki} for the stash home + sidebar tree.
+@router.get("/{stash_id}/overview")
+async def get_stash_overview(stash_id: UUID, current_user: dict = Depends(get_current_user)):
+    """{handoff_metadata, sessions, wiki} for the stash home page.
 
-    `wiki` is one shape: {folders, pages, files}. All rows carry their
-    parent_folder_id / folder_id so the frontend can build a tree.
-    `handoff` is a small envelope; the body is fetched separately via
-    /{stash_id}/handoff so the spine response stays small."""
-    if not await workspace_service.is_member(stash_id, current_user["id"]):
+    `handoff_metadata` is a small envelope (present/generated_at/stale/pinned_at);
+    the body lives behind /{stash_id}/handoff. `wiki` is the flat folder + page
+    + file row set; the frontend builds the tree from parent_folder_id."""
+    await _check_overview_access(stash_id, current_user["id"])
+
+    sessions, wiki, handoff = await asyncio.gather(
+        _list_sessions(stash_id),
+        _wiki_tree(stash_id),
+        handoff_writer.get_handoff_metadata(stash_id),
+    )
+    return {
+        "handoff_metadata": _handoff_metadata(handoff),
+        "sessions": sessions,
+        "wiki": wiki,
+    }
+
+
+@router.get("/{stash_id}/sidebar")
+async def get_stash_sidebar(
+    stash_id: UUID,
+    request: Request,
+    current_user: dict = Depends(get_current_user),
+):
+    """Lighter payload for the nav sidebar: just sessions + wiki. Carries an
+    ETag derived from the workspace's mutation timestamps so navigation
+    between stashes hits 304 instead of re-fetching."""
+    await _check_overview_access(stash_id, current_user["id"])
+
+    etag = await _sidebar_etag(stash_id)
+    if request.headers.get("if-none-match") == etag:
+        return Response(status_code=304, headers={"ETag": etag})
+
+    sessions, wiki = await asyncio.gather(
+        _list_sessions(stash_id),
+        _wiki_tree(stash_id),
+    )
+    return Response(
+        content=json.dumps({"sessions": sessions, "wiki": wiki}, default=_json_default),
+        media_type="application/json",
+        headers={"ETag": etag, "Cache-Control": "private, max-age=15"},
+    )
+
+
+async def _check_overview_access(stash_id: UUID, user_id: UUID) -> None:
+    if not await workspace_service.is_member(stash_id, user_id):
         ws = await workspace_service.get_workspace(stash_id)
         if not ws or not ws.get("is_public"):
             raise HTTPException(status_code=404, detail="Stash not found")
 
-    sessions, wiki, handoff = await asyncio.gather(
-        _spine_sessions(stash_id),
-        _spine_wiki(stash_id),
-        handoff_curator.get_handoff_summary(stash_id),
-    )
-    handoff_summary = {
-        "present": bool(handoff and handoff["body_markdown"]),
-        "generated_at": (
-            handoff["generated_at"].isoformat() if handoff and handoff["generated_at"] else None
-        ),
-        "stale": bool(handoff["stale"]) if handoff else False,
-        "pinned_at": handoff["pinned_at"].isoformat() if handoff and handoff["pinned_at"] else None,
+
+def _handoff_metadata(row: dict | None) -> dict:
+    if not row:
+        return {"present": False, "generated_at": None, "stale": True, "pinned_at": None}
+    return {
+        "present": bool(row["body_markdown"]),
+        "generated_at": row["generated_at"].isoformat() if row["generated_at"] else None,
+        "stale": bool(row["stale"]),
+        "pinned_at": row["pinned_at"].isoformat() if row["pinned_at"] else None,
     }
-    return {"handoff": handoff_summary, "sessions": sessions, "wiki": wiki}
+
+
+async def _sidebar_etag(stash_id: UUID) -> str:
+    """One short string that changes any time the sidebar's content
+    changes. Concatenates last-modified timestamps across the workspace's
+    mutating tables."""
+    pool = get_pool()
+    row = await pool.fetchrow(
+        """
+        SELECT
+          (SELECT MAX(updated_at) FROM pages WHERE workspace_id = $1)            AS p,
+          (SELECT MAX(created_at) FROM files WHERE workspace_id = $1)            AS f,
+          (SELECT MAX(updated_at) FROM folders WHERE workspace_id = $1)          AS d,
+          (SELECT MAX(GREATEST(finished_at, started_at)) FROM sessions
+            WHERE workspace_id = $1)                                              AS s,
+          (SELECT updated_at FROM workspaces WHERE id = $1)                       AS w
+        """,
+        stash_id,
+    )
+    raw = "|".join(str(row[k] or "") for k in ("p", "f", "d", "s", "w"))
+    return f'W/"{_short_hash(raw)}"'
+
+
+def _short_hash(s: str) -> str:
+    import hashlib
+
+    return hashlib.sha256(s.encode()).hexdigest()[:16]
+
+
+def _json_default(o):
+    if isinstance(o, datetime):
+        return o.isoformat()
+    if isinstance(o, UUID):
+        return str(o)
+    raise TypeError(f"not serializable: {type(o)}")
 
 
 # --- Handoff endpoints ----------------------------------------------------
@@ -383,85 +460,95 @@ class HandoffEditRequest(BaseModel):
     body_markdown: str
 
 
-def _handoff_to_response(row: dict | None) -> dict:
+def _handoff_full_response(row: dict | None, *, fallback_reason: str | None = None) -> dict:
+    """Shape for GET /handoff and the regenerate response.
+
+    `present=true` when the body is fresh-or-pinned; `present=false` when
+    stale/missing — we never hand back a body the user shouldn't trust.
+    """
     if row is None:
         return {
-            "body_markdown": "",
-            "generated_at": None,
-            "stale": True,
-            "model": None,
-            "input_tokens": None,
-            "output_tokens": None,
-            "turns_used": None,
-            "tool_calls_used": None,
+            "present": False,
+            "reason": fallback_reason or "never_generated",
             "pinned_at": None,
-            "pinned_by": None,
             "last_error": None,
         }
+
+    pinned = bool(row["pinned_at"])
+    stale = bool(row["stale"])
+    body = row["body_markdown"] or ""
+
+    if pinned or (body and not stale):
+        return {
+            "present": True,
+            "reason": "pinned" if pinned else "fresh",
+            "body_markdown": body,
+            "generated_at": row["generated_at"].isoformat() if row["generated_at"] else None,
+            "model": row["model"],
+            "input_tokens": row["input_tokens"],
+            "output_tokens": row["output_tokens"],
+            "turns_used": row["turns_used"],
+            "tool_calls_used": row["tool_calls_used"],
+            "pinned_at": row["pinned_at"].isoformat() if pinned else None,
+            "pinned_by": str(row["pinned_by"]) if row["pinned_by"] else None,
+            "last_error": row["last_error"],
+        }
+
     return {
-        "body_markdown": row["body_markdown"],
-        "generated_at": row["generated_at"].isoformat() if row["generated_at"] else None,
-        "stale": bool(row["stale"]),
-        "model": row["model"],
-        "input_tokens": row["input_tokens"],
-        "output_tokens": row["output_tokens"],
-        "turns_used": row["turns_used"],
-        "tool_calls_used": row["tool_calls_used"],
-        "pinned_at": row["pinned_at"].isoformat() if row["pinned_at"] else None,
-        "pinned_by": str(row["pinned_by"]) if row["pinned_by"] else None,
+        "present": False,
+        "reason": "stale" if body else "never_generated",
+        "pinned_at": None,
         "last_error": row["last_error"],
     }
-
-
-async def _check_handoff_member(stash_id: UUID, user_id: UUID) -> None:
-    if not await workspace_service.is_member(stash_id, user_id):
-        ws = await workspace_service.get_workspace(stash_id)
-        if not ws or not ws.get("is_public"):
-            raise HTTPException(status_code=404, detail="Stash not found")
 
 
 @router.get("/{stash_id}/handoff")
 async def get_handoff(
     stash_id: UUID,
-    wait: bool = Query(False),
-    max_wait: int = Query(60),
     current_user: dict = Depends(get_current_user),
 ):
-    await _check_handoff_member(stash_id, current_user["id"])
-
-    if wait:
-        existing = await handoff_curator.get_handoff(stash_id)
-        if existing and existing["pinned_at"]:
-            return _handoff_to_response(existing)
-        # Force a regen now and block until it lands.
-        await handoff_curator.force_mark_stale_now(stash_id)
-        try:
-            await asyncio.wait_for(
-                handoff_curator_worker.force_regenerate(stash_id),
-                timeout=float(max_wait),
-            )
-        except TimeoutError:
-            pass  # Fall through and return whatever's persisted
-
-    row = await handoff_curator.get_handoff(stash_id)
-    return _handoff_to_response(row)
+    """Read the current handoff. Returns the body only when fresh or pinned;
+    a stale row reports {present:false, reason:'stale'} so the caller knows
+    to regenerate rather than receive out-of-date orientation."""
+    await _check_overview_access(stash_id, current_user["id"])
+    row = await handoff_writer.get_handoff(stash_id)
+    return _handoff_full_response(row)
 
 
-@router.post("/{stash_id}/handoff/refresh", status_code=202)
-async def refresh_handoff(
+@router.post("/{stash_id}/handoff/regenerate")
+async def regenerate_handoff(
     stash_id: UUID,
     current_user: dict = Depends(get_current_user),
 ):
+    """Synchronous regenerate: marks the row stale, runs the writer under
+    advisory lock, returns the new body. If another process already holds
+    the lock, waits for it to finish rather than spending tokens twice."""
     if not await workspace_service.can_write(stash_id, current_user["id"]):
-        raise HTTPException(status_code=403, detail="Not allowed to refresh handoff")
-    existing = await handoff_curator.get_handoff(stash_id)
+        raise HTTPException(status_code=403, detail="Not allowed to regenerate handoff")
+
+    existing = await handoff_writer.get_handoff(stash_id)
     if existing and existing["pinned_at"]:
         raise HTTPException(
             status_code=409,
             detail="Handoff is pinned. Unpin before regenerating.",
         )
-    await handoff_curator.force_mark_stale_now(stash_id)
-    return {"queued": True}
+
+    await handoff_writer.mark_stale(stash_id)
+    try:
+        ran = await handoff_writer_worker.regenerate_under_lock(stash_id)
+    except TimeoutError:
+        raise HTTPException(status_code=504, detail="Regenerate timed out")
+    if not ran:
+        # Another worker is regenerating; wait it out.
+        if not await handoff_writer_worker.wait_for_completion(
+            stash_id, timeout=handoff_writer.PER_REGEN_TIMEOUT
+        ):
+            raise HTTPException(
+                status_code=504, detail="Concurrent regenerate did not complete in time"
+            )
+
+    row = await handoff_writer.get_handoff(stash_id)
+    return _handoff_full_response(row)
 
 
 @router.patch("/{stash_id}/handoff")
@@ -472,9 +559,9 @@ async def edit_handoff(
 ):
     if not await workspace_service.can_write(stash_id, current_user["id"]):
         raise HTTPException(status_code=403, detail="Not allowed to edit handoff")
-    await handoff_curator.edit_and_pin(stash_id, req.body_markdown, current_user["id"])
-    row = await handoff_curator.get_handoff(stash_id)
-    return _handoff_to_response(row)
+    await handoff_writer.edit_and_pin(stash_id, req.body_markdown, current_user["id"])
+    row = await handoff_writer.get_handoff(stash_id)
+    return _handoff_full_response(row)
 
 
 @router.post("/{stash_id}/handoff/unpin", status_code=200)
@@ -484,9 +571,9 @@ async def unpin_handoff(
 ):
     if not await workspace_service.can_write(stash_id, current_user["id"]):
         raise HTTPException(status_code=403, detail="Not allowed to unpin handoff")
-    await handoff_curator.unpin(stash_id)
-    row = await handoff_curator.get_handoff(stash_id)
-    return _handoff_to_response(row)
+    await handoff_writer.unpin(stash_id)
+    row = await handoff_writer.get_handoff(stash_id)
+    return _handoff_full_response(row)
 
 
 # ---------------------------------------------------------------------------
@@ -709,7 +796,6 @@ def _stash_to_text(stash: dict, artifacts: list[dict]) -> str:
         lines.append(f"**Agent:** {stash['agent_name']}")
     if stash.get("cwd"):
         lines.append(f"**Directory:** {stash['cwd']}")
-    lines.append(f"**Status:** {stash['status']}")
     lines.append(f"**Created:** {stash['created_at']}")
     lines.append("")
 
@@ -718,7 +804,7 @@ def _stash_to_text(stash: dict, artifacts: list[dict]) -> str:
         lines.append("")
         lines.append(stash["summary"])
         lines.append("")
-    elif stash["status"] in ("live", "summarizing"):
+    elif stash.get("summary_status") in ("need_summary", "in_progress"):
         lines.append("## Summary")
         lines.append("")
         lines.append("_Summary is being generated..._")

@@ -1,15 +1,11 @@
 """Server-side session summarizer worker.
 
-Picks up summary-less sessions, claims them with status='summarizing',
-assembles a transcript from history_events, and runs one Haiku call to
+Claims sessions with summary_status='need_summary', assembles a transcript
+from history_events, and runs one Haiku call through the agent runtime to
 populate `sessions.summary`.
 
-Replaces the LLM call that used to live in `stashai/plugin/_do_stash.py`.
-The plugin now only uploads artifacts; the backend owns summary status and LLM
-spend.
-
 Each successful summary marks the corresponding stash handoff stale so the
-curator re-incorporates the new session on its next eligible run.
+writer re-incorporates the new session on its next eligible run.
 """
 
 from __future__ import annotations
@@ -19,8 +15,9 @@ import logging
 from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
+from ..config import settings
 from ..database import get_pool
-from ..services import handoff_curator, llm, memory_service, prompts
+from ..services import agent_runtime, handoff_writer, memory_service, prompts
 from ._lock_helpers import advisory_lock
 
 logger = logging.getLogger(__name__)
@@ -77,11 +74,11 @@ async def _claim_session(session_id: UUID) -> bool:
 async def _write_summary(
     session_id: UUID,
     summary: str,
-    result: llm.OneShotResult,
+    result: agent_runtime.AgentResult,
 ) -> None:
     pool = get_pool()
     await pool.execute(
-        "UPDATE sessions SET summary = $1, status = 'ready', "
+        "UPDATE sessions SET summary = $1, summary_status = 'done', "
         "finished_at = COALESCE(finished_at, now()), "
         "summary_model = $2, summary_input_tokens = $3, summary_output_tokens = $4, "
         "summary_last_error = NULL "
@@ -100,9 +97,8 @@ async def summarize_one(session_id: UUID, workspace_id: UUID, session_external_i
 
     events = await memory_service.read_session_events(workspace_id, session_external_id)
     if not events:
-        # Session has no events to summarize. Mark as failed so we don't loop.
         await get_pool().execute(
-            "UPDATE sessions SET status = 'failed', "
+            "UPDATE sessions SET summary_status = 'failed', "
             "summary_last_attempt_at = now(), "
             "summary_last_error = 'no history events for session' "
             "WHERE id = $1",
@@ -119,11 +115,14 @@ async def summarize_one(session_id: UUID, workspace_id: UUID, session_external_i
     started = datetime.now(UTC)
     try:
         result = await asyncio.wait_for(
-            llm.one_shot(
-                llm.ModelTier.FAST,
-                prompts.SESSION_SUMMARY_SYSTEM,
-                user,
-                max_tokens=MAX_TOKENS,
+            agent_runtime.run_agent(
+                tier=agent_runtime.ModelTier.FAST,
+                system=prompts.SESSION_SUMMARY_SYSTEM,
+                prompt=user,
+                stash_id=workspace_id,
+                tool_set=(),
+                max_turns=1,
+                max_output_tokens=MAX_TOKENS,
             ),
             timeout=PER_CALL_TIMEOUT,
         )
@@ -138,7 +137,7 @@ async def summarize_one(session_id: UUID, workspace_id: UUID, session_external_i
         return False
 
     await _write_summary(session_id, text, result)
-    await handoff_curator.mark_stale(workspace_id)
+    await handoff_writer.mark_stale(workspace_id)
     latency = (datetime.now(UTC) - started).total_seconds()
     logger.info(
         "session summarizer: summarized %s (%s, in=%d out=%d, %.1fs)",
@@ -155,17 +154,22 @@ async def _tick() -> int:
     pool = get_pool()
     rows = await pool.fetch(
         """
-        SELECT id, workspace_id, session_id
-        FROM sessions
-        WHERE summary IS NULL
-          AND status IN ('live', 'summarizing')
-          AND summary_attempts < $1
-          AND (
-                summary_last_attempt_at IS NULL
-                OR summary_last_attempt_at <= now() - ($2::interval * power(2, LEAST(summary_attempts, 6)))
-          )
-        ORDER BY started_at ASC
-        LIMIT $3
+        UPDATE sessions
+        SET summary_status = 'in_progress'
+        WHERE id IN (
+            SELECT id FROM sessions
+            WHERE summary IS NULL
+              AND summary_status = 'need_summary'
+              AND summary_attempts < $1
+              AND (
+                    summary_last_attempt_at IS NULL
+                    OR summary_last_attempt_at <= now() - ($2::interval * power(2, LEAST(summary_attempts, 6)))
+              )
+            ORDER BY started_at ASC
+            LIMIT $3
+            FOR UPDATE SKIP LOCKED
+        )
+        RETURNING id, workspace_id, session_id
         """,
         MAX_ATTEMPTS,
         ERROR_BACKOFF_BASE,
@@ -205,6 +209,4 @@ async def run() -> None:
 
 
 def _has_api_key() -> bool:
-    from ..config import settings
-
     return bool(settings.ANTHROPIC_API_KEY)

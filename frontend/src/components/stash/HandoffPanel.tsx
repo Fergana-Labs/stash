@@ -7,7 +7,7 @@ import remarkGfm from "remark-gfm";
 import {
   editStashHandoff,
   getStashHandoff,
-  refreshStashHandoff,
+  regenerateStashHandoff,
   unpinStashHandoff,
   type StashHandoff,
 } from "../../lib/api";
@@ -15,12 +15,12 @@ import {
 interface HandoffPanelProps {
   stashId: string;
   canWrite: boolean;
-  // Initial bits from the spine response so we can decide whether to render
+  // Initial bits from the overview response so we can decide whether to render
   // before the body GET resolves.
-  spineHint?: { present: boolean; stale: boolean; pinned_at: string | null };
+  metadataHint?: { present: boolean; stale: boolean; pinned_at: string | null };
 }
 
-export default function HandoffPanel({ stashId, canWrite, spineHint }: HandoffPanelProps) {
+export default function HandoffPanel({ stashId, canWrite, metadataHint }: HandoffPanelProps) {
   const [data, setData] = useState<StashHandoff | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -48,27 +48,16 @@ export default function HandoffPanel({ stashId, canWrite, spineHint }: HandoffPa
 
   const isPinned = !!data?.pinned_at;
   const hasBody = !!data?.body_markdown;
+  const reason = data?.reason;
 
   async function handleRegenerate() {
     setBusy(true);
     setError("");
     try {
-      const fresh = await getStashHandoff(stashId, { wait: true, maxWait: 90 });
+      const fresh = await regenerateStashHandoff(stashId);
       setData(fresh);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to regenerate");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function handleQueueRefresh() {
-    setBusy(true);
-    setError("");
-    try {
-      await refreshStashHandoff(stashId);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to queue refresh");
     } finally {
       setBusy(false);
     }
@@ -115,10 +104,7 @@ export default function HandoffPanel({ stashId, canWrite, spineHint }: HandoffPa
     }
   }
 
-  // Don't render anything while loading if we don't even have a hint of a body.
-  if (loading && !spineHint?.present) {
-    return null;
-  }
+  if (loading && !metadataHint?.present) return null;
 
   return (
     <section className="mt-6 rounded-xl border border-border bg-surface p-4">
@@ -128,17 +114,15 @@ export default function HandoffPanel({ stashId, canWrite, spineHint }: HandoffPa
             Orientation
           </span>
           <span className="text-[11px] text-muted">— agent-curated overview</span>
-        </div>
-        <div className="flex items-center gap-2 text-[11px] text-muted">
-          {isPinned && (
-            <span className="rounded-full bg-amber-100 px-2 py-0.5 text-amber-800">
-              📌 Pinned
+          {isPinned ? (
+            <span
+              className="rounded-full bg-amber-100 px-2 py-0.5 text-[10.5px] text-amber-800"
+              title={`Pinned ${data?.pinned_at ? formatRelative(data.pinned_at) : ""}`}
+            >
+              📌 Auto-curation off
             </span>
-          )}
-          {!isPinned && data?.stale && hasBody && (
-            <span className="rounded-full bg-blue-50 px-2 py-0.5 text-blue-700">
-              Refreshing soon
-            </span>
+          ) : (
+            <span className="text-[10.5px] text-muted">Auto-curation on</span>
           )}
         </div>
       </div>
@@ -155,27 +139,28 @@ export default function HandoffPanel({ stashId, canWrite, spineHint }: HandoffPa
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
             className="min-h-[280px] w-full rounded-md border border-border bg-base p-3 font-mono text-[13px] leading-relaxed"
-            placeholder="Markdown handoff document. Saving will pin this until you unpin."
+            placeholder="Markdown handoff document."
           />
+          <p className="mt-1.5 text-[11px] text-muted">
+            Saving pauses auto-curation until you turn it back on.
+          </p>
         </div>
       ) : hasBody ? (
         <div className="prose prose-sm mt-3 max-w-none text-foreground">
           <Markdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeRaw]}>
-            {data!.body_markdown}
+            {data!.body_markdown!}
           </Markdown>
         </div>
       ) : (
         <div className="mt-3 rounded-lg border border-dashed border-border bg-base/50 p-6 text-center">
-          <div className="text-[13px] text-muted">
-            An orientation summary will appear here once the curator runs.
-          </div>
+          <div className="text-[13px] text-muted">{emptyReasonCopy(reason)}</div>
           {canWrite && (
             <button
               onClick={handleRegenerate}
               disabled={busy}
               className="mt-3 rounded-md bg-[var(--color-brand-600)] px-3 py-1.5 text-[12px] font-medium text-white hover:bg-[var(--color-brand-700)] disabled:opacity-60"
             >
-              {busy ? "Generating…" : "Generate now"}
+              {busy ? "Regenerating…" : reason === "never_generated" ? "Generate now" : "Regenerate"}
             </button>
           )}
         </div>
@@ -207,29 +192,20 @@ export default function HandoffPanel({ stashId, canWrite, spineHint }: HandoffPa
                   onClick={saveEdit}
                   disabled={busy}
                   className="rounded-md bg-[var(--color-brand-600)] px-2.5 py-1 text-[11px] font-medium text-white hover:bg-[var(--color-brand-700)] disabled:opacity-60"
+                  title="Saving pauses auto-curation until you turn it back on."
                 >
-                  {busy ? "Saving…" : "Save (pins)"}
+                  {busy ? "Saving…" : "Save & pin"}
                 </button>
               </>
             ) : (
               <>
                 {!isPinned && hasBody && (
                   <button
-                    onClick={handleQueueRefresh}
-                    disabled={busy}
-                    className="rounded-md border border-border px-2.5 py-1 text-[11px] hover:bg-base disabled:opacity-60"
-                    title="Mark stale — worker will rerun"
-                  >
-                    Queue refresh
-                  </button>
-                )}
-                {!isPinned && (
-                  <button
                     onClick={handleRegenerate}
                     disabled={busy}
                     className="rounded-md border border-border px-2.5 py-1 text-[11px] hover:bg-base disabled:opacity-60"
                   >
-                    {busy ? "…" : "Regenerate"}
+                    {busy ? "Regenerating…" : "Regenerate"}
                   </button>
                 )}
                 {hasBody && (
@@ -241,12 +217,12 @@ export default function HandoffPanel({ stashId, canWrite, spineHint }: HandoffPa
                     Copy
                   </button>
                 )}
-                {hasBody && (
+                {hasBody && !isPinned && (
                   <button
                     onClick={startEdit}
                     disabled={busy}
                     className="rounded-md border border-border px-2.5 py-1 text-[11px] hover:bg-base disabled:opacity-60"
-                    title="Edit will pin the doc"
+                    title="Editing pauses auto-curation until you turn it back on."
                   >
                     Edit
                   </button>
@@ -257,7 +233,7 @@ export default function HandoffPanel({ stashId, canWrite, spineHint }: HandoffPa
                     disabled={busy}
                     className="rounded-md border border-amber-300 bg-amber-50 px-2.5 py-1 text-[11px] text-amber-800 hover:bg-amber-100 disabled:opacity-60"
                   >
-                    Unpin and let curator resume
+                    Turn auto-curation back on
                   </button>
                 )}
               </>
@@ -267,6 +243,16 @@ export default function HandoffPanel({ stashId, canWrite, spineHint }: HandoffPa
       </div>
     </section>
   );
+}
+
+function emptyReasonCopy(reason: string | undefined): string {
+  if (reason === "stale") {
+    return "Out of date — click Regenerate to update.";
+  }
+  if (reason === "failed") {
+    return "Last regenerate failed. Click Regenerate to try again.";
+  }
+  return "No handoff yet — click Generate to create one.";
 }
 
 function formatRelative(iso: string): string {

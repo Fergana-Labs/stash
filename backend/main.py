@@ -35,9 +35,11 @@ from .services.row_validation import RowValidationError
 from .workers import dispatcher as extraction_dispatcher
 from .workers import (
     embedding_reconciler,
-    handoff_curator as handoff_curator_worker,
     session_summarizer,
     viz_precompute,
+)
+from .workers import (
+    handoff_writer as handoff_writer_worker,
 )
 
 logger = logging.getLogger("stash")
@@ -50,13 +52,13 @@ async def lifespan(app: FastAPI):
     reconciler_task = asyncio.create_task(embedding_reconciler.run())
     viz_task = asyncio.create_task(viz_precompute.run())
     summarizer_task = asyncio.create_task(session_summarizer.run())
-    curator_task = asyncio.create_task(handoff_curator_worker.run())
+    writer_task = asyncio.create_task(handoff_writer_worker.run())
     tasks = (
         dispatcher_task,
         reconciler_task,
         viz_task,
         summarizer_task,
-        curator_task,
+        writer_task,
     )
     try:
         yield

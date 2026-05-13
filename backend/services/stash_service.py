@@ -91,7 +91,7 @@ def _share_to_session_dict(share: dict, session: dict) -> dict:
         "slug": share["slug"],
         "agent_name": session.get("agent_name") or "",
         "cwd": session.get("cwd"),
-        "status": session.get("status"),
+        "summary_status": session.get("summary_status"),
         "summary": session.get("summary"),
         "files_touched": session.get("files_touched") or [],
         "created_by": share["created_by"],
@@ -164,6 +164,9 @@ async def update_session_share(
     *,
     summary: str | None = None,
 ) -> dict | None:
+    """The only field a session-share's PATCH currently exposes is the
+    summary. The summarizer worker owns summary_status; clients no longer
+    drive it directly."""
     from . import session_service
 
     if summary is not None:

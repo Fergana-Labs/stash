@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import AppSidebar from "./AppSidebar";
 import { resetStashNavigationCache } from "../lib/stashNavigationCache";
 import {
-  getStashSpine,
+  getStashSidebar,
   listMyWorkspaces,
   listPublicWorkspaces,
 } from "../lib/api";
@@ -36,7 +36,7 @@ vi.mock("next/link", () => ({
 
 vi.mock("../lib/api", () => ({
   getFolderContents: vi.fn(),
-  getStashSpine: vi.fn(),
+  getStashSidebar: vi.fn(),
   listMyWorkspaces: vi.fn(),
   listPublicWorkspaces: vi.fn(),
 }));
@@ -70,8 +70,7 @@ const sharedWorkspace = {
   invite_code: "shared",
 };
 
-const emptySpine = {
-  handoff: { present: false, generated_at: null, stale: false, pinned_at: null },
+const emptySidebar = {
   sessions: [],
   wiki: {
     folders: [],
@@ -95,7 +94,7 @@ describe("AppSidebar tree expansion", () => {
     vi.clearAllMocks();
     vi.mocked(listMyWorkspaces).mockResolvedValue({ workspaces: [workspace] });
     vi.mocked(listPublicWorkspaces).mockResolvedValue({ workspaces: [] });
-    vi.mocked(getStashSpine).mockResolvedValue(emptySpine);
+    vi.mocked(getStashSidebar).mockResolvedValue(emptySidebar);
   });
 
   afterEach(() => {
@@ -111,7 +110,7 @@ describe("AppSidebar tree expansion", () => {
     expect(detailsFor("Demo Stash")).not.toHaveAttribute("open");
     expect(detailsFor("Sessions")).not.toHaveAttribute("open");
     expect(detailsFor("Wiki")).not.toHaveAttribute("open");
-    expect(getStashSpine).not.toHaveBeenCalled();
+    expect(getStashSidebar).not.toHaveBeenCalled();
   });
 
   it("splits owned and shared memberships without reading the public catalog", async () => {
@@ -149,7 +148,7 @@ describe("AppSidebar tree expansion", () => {
     await waitFor(() => expect(detailsFor("Demo Stash")).toHaveAttribute("open"));
     expect(detailsFor("Sessions")).toHaveAttribute("open");
     expect(detailsFor("Wiki")).not.toHaveAttribute("open");
-    expect(getStashSpine).toHaveBeenCalledWith("ws-1");
+    expect(getStashSidebar).toHaveBeenCalledWith("ws-1");
   });
 
   it("keeps the stash landing route collapsed without saved state", async () => {
@@ -162,7 +161,7 @@ describe("AppSidebar tree expansion", () => {
     expect(detailsFor("Demo Stash")).not.toHaveAttribute("open");
     expect(detailsFor("Sessions")).not.toHaveAttribute("open");
     expect(detailsFor("Wiki")).not.toHaveAttribute("open");
-    expect(getStashSpine).not.toHaveBeenCalled();
+    expect(getStashSidebar).not.toHaveBeenCalled();
   });
 
   it("opens the relevant tree branch for deep links only", async () => {
@@ -184,9 +183,9 @@ describe("AppSidebar tree expansion", () => {
 
     const first = render(<AppSidebar user={user} onCmdkOpen={vi.fn()} />);
     await screen.findByText("Demo Stash");
-    await waitFor(() => expect(getStashSpine).toHaveBeenCalledWith("ws-1"));
+    await waitFor(() => expect(getStashSidebar).toHaveBeenCalledWith("ws-1"));
     expect(listMyWorkspaces).toHaveBeenCalledTimes(1);
-    expect(getStashSpine).toHaveBeenCalledTimes(1);
+    expect(getStashSidebar).toHaveBeenCalledTimes(1);
 
     first.unmount();
     vi.clearAllMocks();
@@ -195,7 +194,7 @@ describe("AppSidebar tree expansion", () => {
 
     await screen.findByText("Demo Stash");
     expect(listMyWorkspaces).not.toHaveBeenCalled();
-    expect(getStashSpine).not.toHaveBeenCalled();
+    expect(getStashSidebar).not.toHaveBeenCalled();
     expect(detailsFor("Demo Stash")).toHaveAttribute("open");
   });
 });

@@ -131,15 +131,11 @@ class StashClient:
 
     # --- Handoff ---
 
-    def get_handoff(self, stash_id: str, *, wait: bool = False, max_wait: int = 60) -> dict:
-        return self._get(
-            f"/api/v1/stashes/{stash_id}/handoff",
-            wait="true" if wait else "false",
-            max_wait=max_wait,
-        )
+    def get_handoff(self, stash_id: str) -> dict:
+        return self._get(f"/api/v1/stashes/{stash_id}/handoff")
 
-    def refresh_handoff(self, stash_id: str) -> dict:
-        return self._post(f"/api/v1/stashes/{stash_id}/handoff/refresh")
+    def regenerate_handoff(self, stash_id: str) -> dict:
+        return self._post(f"/api/v1/stashes/{stash_id}/handoff/regenerate")
 
     def edit_handoff(self, stash_id: str, body_markdown: str) -> dict:
         return self._patch(

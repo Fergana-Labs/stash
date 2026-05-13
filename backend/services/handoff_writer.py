@@ -1,16 +1,15 @@
-"""Stash handoff curator.
+"""Stash handoff writer.
 
 A new coding agent landing on a stash should be able to read one document
 that orients them — what's here, what's going on, where to start, and the
-operating principles. The curator agent maintains that document.
+human-written Stash Description. The writer agent maintains that document.
 
-Design (vs. the removed `sleep_configs` system that did something similar
-and was unmaintainable):
+Design:
 - One global cadence and one global toolset. Zero per-stash config.
-- Inputs are gathered deterministically in code, then an agent loop is
-  allowed to use ask-the-stash's tools to dig deeper. Hard caps on turns,
-  tool calls, tokens, and wall-clock prevent unbounded cost.
-- Pin state freezes the doc when a human edits it; unpin resumes curation.
+- Inputs are gathered deterministically in code, then the SDK-backed
+  agent loop is allowed to use the same toolset ask-the-stash uses to
+  dig deeper. Hard caps prevent unbounded cost.
+- Pin state freezes the doc when a human edits it; unpin resumes writing.
 """
 
 from __future__ import annotations
@@ -23,19 +22,13 @@ from datetime import UTC, datetime
 from uuid import UUID
 
 from ..database import get_pool
-from . import llm, prompts
+from . import agent_runtime, prompts
 
 logger = logging.getLogger(__name__)
 
-# Caps shared with the worker; the curator service knows about them too
-# because regenerate() runs the agent loop and needs to set them.
-DEFAULT_CAPS = llm.AgentLoopCaps(
-    max_turns=8,
-    max_tool_calls=30,
-    max_input_tokens=80_000,
-    max_output_tokens_per_turn=4096,
-)
-PRINCIPLES_PAGE_NAME = "HANDOFF_PRINCIPLES.md"
+PER_REGEN_TIMEOUT = 300.0
+MAX_TURNS = 8
+MAX_OUTPUT_TOKENS = 4096
 
 
 # --- Stale marking ---------------------------------------------------------
@@ -44,10 +37,9 @@ PRINCIPLES_PAGE_NAME = "HANDOFF_PRINCIPLES.md"
 async def mark_stale(workspace_id: UUID) -> None:
     """Upsert the handoff row and mark it stale.
 
-    Called from every write path that touches stash content (page edits,
-    file uploads, session summaries written). Idempotent. If we miss a
-    call site, the consequence is only that the handoff is slightly
-    stale — never data corruption.
+    Called from every write path that touches stash content. Idempotent.
+    If we miss a call site, the consequence is only a slightly stale
+    handoff — never data corruption.
     """
     pool = get_pool()
     await pool.execute(
@@ -76,23 +68,7 @@ def mark_stale_bg(workspace_id: UUID) -> None:
     task.add_done_callback(_on_done)
 
 
-async def force_mark_stale_now(workspace_id: UUID) -> None:
-    """Mark stale and reset stale_marked_at so the worker picks it up on
-    the next tick even if there was a recent write."""
-    pool = get_pool()
-    await pool.execute(
-        """
-        INSERT INTO stash_handoffs (workspace_id, stale, stale_marked_at)
-        VALUES ($1, TRUE, now() - INTERVAL '1 hour')
-        ON CONFLICT (workspace_id) DO UPDATE
-            SET stale = TRUE,
-                stale_marked_at = now() - INTERVAL '1 hour'
-        """,
-        workspace_id,
-    )
-
-
-# --- Pin / unpin / edit ----------------------------------------------------
+# --- Reads -----------------------------------------------------------------
 
 
 async def get_handoff(workspace_id: UUID) -> dict | None:
@@ -107,8 +83,8 @@ async def get_handoff(workspace_id: UUID) -> dict | None:
     return dict(row) if row else None
 
 
-async def get_handoff_summary(workspace_id: UUID) -> dict | None:
-    """Lightweight query for the spine response — only the fields the
+async def get_handoff_metadata(workspace_id: UUID) -> dict | None:
+    """Lightweight query for the overview response — only the fields the
     frontend needs to decide whether to render the panel."""
     pool = get_pool()
     row = await pool.fetchrow(
@@ -119,8 +95,11 @@ async def get_handoff_summary(workspace_id: UUID) -> dict | None:
     return dict(row) if row else None
 
 
+# --- Pin / unpin / edit ----------------------------------------------------
+
+
 async def edit_and_pin(workspace_id: UUID, body_markdown: str, user_id: UUID) -> None:
-    """Editing implicitly pins. Curator worker skips pinned rows."""
+    """Editing implicitly pins. The writer worker skips pinned rows."""
     pool = get_pool()
     await pool.execute(
         """
@@ -142,7 +121,7 @@ async def unpin(workspace_id: UUID) -> None:
     """Clear pin state and reset generated_at so the worker bypasses the
     24h gap and rewrites from scratch on its next eligible tick. The body
     is preserved until the worker overwrites — so the user sees their
-    edited text until the curator runs."""
+    edited text until the writer runs."""
     pool = get_pool()
     await pool.execute(
         """
@@ -164,9 +143,7 @@ async def unpin(workspace_id: UUID) -> None:
 async def _gather_seed(workspace_id: UUID) -> prompts.HandoffSeed:
     pool = get_pool()
 
-    ws = await pool.fetchrow(
-        "SELECT name, description FROM workspaces WHERE id = $1", workspace_id
-    )
+    ws = await pool.fetchrow("SELECT name, description FROM workspaces WHERE id = $1", workspace_id)
     workspace_name = (ws and ws["name"]) or "stash"
     description = ws["description"] if ws else None
 
@@ -183,9 +160,11 @@ async def _gather_seed(workspace_id: UUID) -> prompts.HandoffSeed:
             {
                 "session_id": s["session_id"],
                 "agent_name": s["agent_name"] or "",
-                "last_at": (s["finished_at"] or s["started_at"]).isoformat()
-                if (s["finished_at"] or s["started_at"])
-                else None,
+                "last_at": (
+                    (s["finished_at"] or s["started_at"]).isoformat()
+                    if (s["finished_at"] or s["started_at"])
+                    else None
+                ),
                 "summary": s["summary"] or "",
             }
         )
@@ -207,8 +186,7 @@ async def _gather_seed(workspace_id: UUID) -> prompts.HandoffSeed:
     file_counts = {r["ct"]: r["n"] for r in file_counts_rows}
 
     recent_files_rows = await pool.fetch(
-        "SELECT name FROM files WHERE workspace_id = $1 "
-        "ORDER BY created_at DESC LIMIT 20",
+        "SELECT name FROM files WHERE workspace_id = $1 " "ORDER BY created_at DESC LIMIT 20",
         workspace_id,
     )
     recent_files = [r["name"] for r in recent_files_rows]
@@ -235,15 +213,6 @@ async def _gather_seed(workspace_id: UUID) -> prompts.HandoffSeed:
         for r in activity_rows
     ]
 
-    principles = await pool.fetchrow(
-        "SELECT content_markdown FROM pages "
-        "WHERE workspace_id = $1 AND folder_id IS NULL AND name = $2 "
-        "LIMIT 1",
-        workspace_id,
-        PRINCIPLES_PAGE_NAME,
-    )
-    principles_body = principles["content_markdown"] if principles else None
-
     return prompts.HandoffSeed(
         workspace_name=workspace_name,
         description=description,
@@ -252,7 +221,6 @@ async def _gather_seed(workspace_id: UUID) -> prompts.HandoffSeed:
         file_counts=file_counts,
         recent_files=recent_files,
         activity=activity,
-        principles_body=principles_body,
     )
 
 
@@ -265,7 +233,9 @@ def _seed_fingerprint(seed: prompts.HandoffSeed) -> str:
     if seed.description:
         h.update(seed.description.encode())
     for s in sorted(seed.sessions, key=lambda x: x.get("session_id") or ""):
-        h.update(f"{s.get('session_id')}|{s.get('last_at')}|{(s.get('summary') or '')[:200]}".encode())
+        h.update(
+            f"{s.get('session_id')}|{s.get('last_at')}|{(s.get('summary') or '')[:200]}".encode()
+        )
     for p in sorted(seed.pages, key=lambda x: x.get("page_id") or ""):
         h.update(f"{p.get('page_id')}|{p.get('name')}".encode())
     for ct, n in sorted(seed.file_counts.items()):
@@ -274,9 +244,6 @@ def _seed_fingerprint(seed: prompts.HandoffSeed) -> str:
         h.update(fn.encode())
     for ev in seed.activity:
         h.update(f"{ev.get('ts')}|{ev.get('kind')}|{ev.get('target_id')}".encode())
-    if seed.principles_body:
-        h.update(b"|principles|")
-        h.update(seed.principles_body.encode())
     return h.hexdigest()
 
 
@@ -302,10 +269,12 @@ async def _record_success(
     workspace_id: UUID,
     body: str,
     fingerprint: str,
-    result: llm.AgentLoopResult,
+    result: agent_runtime.AgentResult,
 ) -> None:
     pool = get_pool()
-    last_error = None if result.terminated_by == "end_turn" else f"loop terminated by {result.terminated_by}"
+    last_error = (
+        None if result.terminated_by == "end_turn" else f"loop terminated by {result.terminated_by}"
+    )
     await pool.execute(
         """
         UPDATE stash_handoffs
@@ -354,13 +323,10 @@ async def _clear_stale_only(workspace_id: UUID, fingerprint: str) -> None:
     )
 
 
-async def regenerate(workspace_id: UUID, execute_tool) -> None:
-    """Re-curate the handoff. ``execute_tool`` is dependency-injected from
-    ask_service so the curator reuses the same tool executors without
-    pulling backend.routers into a service.
-
-    Signature of execute_tool: ``async (name: str, args: dict) -> (json_payload, summary)``
-    """
+async def regenerate(workspace_id: UUID) -> None:
+    """Re-write the handoff for this stash. Synchronous; the caller (worker
+    tick, regenerate endpoint) wraps in an advisory lock + wall-clock
+    timeout."""
     seed = await _gather_seed(workspace_id)
     fingerprint = _seed_fingerprint(seed)
 
@@ -373,33 +339,30 @@ async def regenerate(workspace_id: UUID, execute_tool) -> None:
     ):
         await _clear_stale_only(workspace_id, fingerprint)
         logger.info(
-            "handoff curator: fingerprint unchanged for %s — skipped LLM call",
+            "handoff writer: fingerprint unchanged for %s — skipped LLM call",
             workspace_id,
         )
         return
 
     seed_text = prompts.render_handoff_seed(seed)
-    tools = prompts.tool_schemas(prompts.STASH_TOOL_SET)
-
     started = datetime.now(UTC)
     try:
-        result = await llm.agent_loop(
-            llm.ModelTier.QUALITY,
-            system=prompts.HANDOFF_AGENT_SYSTEM,
-            messages=[{"role": "user", "content": seed_text}],
-            tools=tools,
-            execute_tool=execute_tool,
-            caps=DEFAULT_CAPS,
+        result = await agent_runtime.run_agent(
+            tier=agent_runtime.ModelTier.QUALITY,
+            system=prompts.HANDOFF_WRITER_SYSTEM,
+            prompt=seed_text,
+            stash_id=workspace_id,
+            tool_set=prompts.STASH_TOOL_SET,
+            max_turns=MAX_TURNS,
+            max_output_tokens=MAX_OUTPUT_TOKENS,
         )
     except Exception as exc:
-        logger.exception("handoff curator failed for %s: %s", workspace_id, exc)
+        logger.exception("handoff writer failed for %s: %s", workspace_id, exc)
         await _record_failure(workspace_id, f"{type(exc).__name__}: {exc}")
         return
 
     body = (result.text or "").strip()
     if not body:
-        # Loop ran but produced no final text. Persist diagnostics; leave
-        # stale=TRUE so we retry on the next eligible tick.
         await _record_failure(
             workspace_id,
             f"loop produced no text (terminated_by={result.terminated_by}, "
@@ -410,7 +373,7 @@ async def regenerate(workspace_id: UUID, execute_tool) -> None:
     await _record_success(workspace_id, body, fingerprint, result)
     latency = (datetime.now(UTC) - started).total_seconds()
     logger.info(
-        "handoff curator: regenerated %s (%s, turns=%d, tool_calls=%d, "
+        "handoff writer: regenerated %s (%s, turns=%d, tool_calls=%d, "
         "in=%d out=%d, %.1fs, terminated_by=%s)",
         workspace_id,
         result.model,
