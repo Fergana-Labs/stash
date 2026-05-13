@@ -6,7 +6,6 @@ short-lived child per file to run pypdf under RLIMIT, keeping extraction
 off the request path.
 """
 
-import asyncio
 import csv
 import io
 import logging
@@ -114,7 +113,7 @@ async def upload_ws_file(
         current_user["id"],
         folder_id,
     )
-    asyncio.create_task(handoff_curator.mark_stale(workspace_id))
+    handoff_curator.mark_stale_bg(workspace_id)
     return await _file_to_response(dict(row))
 
 
@@ -229,7 +228,7 @@ async def delete_ws_file(
     await pool.execute(
         "DELETE FROM files WHERE id = $1 AND workspace_id = $2", file_id, workspace_id
     )
-    asyncio.create_task(handoff_curator.mark_stale(workspace_id))
+    handoff_curator.mark_stale_bg(workspace_id)
 
 
 # ===== CSV → Table ingest =====

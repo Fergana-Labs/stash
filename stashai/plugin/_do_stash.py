@@ -100,9 +100,7 @@ def _resolve_paths(files_touched: list[str], cwd: str) -> list[str]:
 
 
 def main() -> None:
-    _, stash_id, _transcript_path, cwd, _workspace_id, _session_id, _agent_name, base_url, api_key = (
-        sys.argv
-    )
+    _, stash_id, _, cwd, _, _, _, base_url, api_key = sys.argv
     files_touched = json.loads(os.environ.get("STASH_FILES_TOUCHED", "[]"))
 
     with StashClient(base_url=base_url, api_key=api_key) as client:
@@ -125,13 +123,7 @@ def main() -> None:
             except Exception:
                 continue
 
-        # Hand off summarization to the backend worker. Worker picks up
-        # sessions in 'summarizing' state and writes the summary + flips
-        # status to 'ready' (or 'failed').
-        try:
-            client.update_stash(stash_id, status="summarizing")
-        except Exception:
-            pass
+        client.update_stash(stash_id, status="summarizing")
 
 
 if __name__ == "__main__":

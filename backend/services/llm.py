@@ -133,6 +133,7 @@ async def agent_loop(
     cumulative_output = 0
     tool_calls = 0
     final_text = ""
+    turn = -1
     terminated_by = "max_turns"
 
     for turn in range(caps.max_turns):
@@ -203,7 +204,7 @@ async def agent_loop(
         text=final_text,
         input_tokens=cumulative_input,
         output_tokens=cumulative_output,
-        turns_used=turn + 1 if "turn" in locals() else 0,
+        turns_used=turn + 1,
         tool_calls_used=tool_calls,
         model=model,
         terminated_by=terminated_by,

@@ -363,7 +363,7 @@ async def get_stash_spine(stash_id: UUID, current_user: dict = Depends(get_curre
     sessions, wiki, handoff = await asyncio.gather(
         _spine_sessions(stash_id),
         _spine_wiki(stash_id),
-        handoff_curator.get_handoff(stash_id),
+        handoff_curator.get_handoff_summary(stash_id),
     )
     handoff_summary = {
         "present": bool(handoff and handoff["body_markdown"]),

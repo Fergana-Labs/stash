@@ -74,11 +74,9 @@ async def set_summary(session_row_id: UUID, summary: str, status: str = "ready")
         session_row_id,
     )
     if row:
-        import asyncio as _asyncio
-
         from . import handoff_curator
 
-        _asyncio.create_task(handoff_curator.mark_stale(row["workspace_id"]))
+        handoff_curator.mark_stale_bg(row["workspace_id"])
 
 
 async def set_files_touched(session_row_id: UUID, files: list[str]) -> None:

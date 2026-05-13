@@ -223,9 +223,3 @@ async def stream_ask(
         convo.append({"role": "user", "content": tool_results})
 
     yield _sse({"type": "end"})
-
-
-# Re-exports for backwards compatibility with any caller importing constants
-# from this module.
-STASH_TOOL_SET = prompts.STASH_TOOL_SET
-RECIPIENT_TOOL_SET = prompts.RECIPIENT_TOOL_SET

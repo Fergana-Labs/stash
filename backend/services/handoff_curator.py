@@ -15,6 +15,7 @@ and was unmaintainable):
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import logging
 from dataclasses import asdict
@@ -61,6 +62,20 @@ async def mark_stale(workspace_id: UUID) -> None:
     )
 
 
+def mark_stale_bg(workspace_id: UUID) -> None:
+    """Fire-and-forget wrapper that logs errors instead of swallowing them."""
+
+    def _on_done(t: asyncio.Task) -> None:
+        if t.cancelled():
+            return
+        exc = t.exception()
+        if exc:
+            logger.warning("mark_stale failed for %s: %s", workspace_id, exc)
+
+    task = asyncio.create_task(mark_stale(workspace_id))
+    task.add_done_callback(_on_done)
+
+
 async def force_mark_stale_now(workspace_id: UUID) -> None:
     """Mark stale and reset stale_marked_at so the worker picks it up on
     the next tick even if there was a recent write."""
@@ -86,6 +101,18 @@ async def get_handoff(workspace_id: UUID) -> dict | None:
         "SELECT workspace_id, body_markdown, model, input_tokens, output_tokens, "
         "turns_used, tool_calls_used, generated_at, stale, stale_marked_at, "
         "last_attempt_at, last_error, consecutive_failures, pinned_at, pinned_by "
+        "FROM stash_handoffs WHERE workspace_id = $1",
+        workspace_id,
+    )
+    return dict(row) if row else None
+
+
+async def get_handoff_summary(workspace_id: UUID) -> dict | None:
+    """Lightweight query for the spine response — only the fields the
+    frontend needs to decide whether to render the panel."""
+    pool = get_pool()
+    row = await pool.fetchrow(
+        "SELECT body_markdown, generated_at, stale, pinned_at "
         "FROM stash_handoffs WHERE workspace_id = $1",
         workspace_id,
     )
