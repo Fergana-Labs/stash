@@ -4,10 +4,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   createSharedView,
   deleteView,
-  getStashSpine,
+  getStashSidebar,
   listViews,
   materializeSession,
-  type StashSpine,
+  type StashSidebar,
   type StashView,
   type ViewItemSpec,
 } from "../../lib/api";
@@ -53,7 +53,7 @@ export default function StashShareModal() {
   const { open, stashId, stashName, initial, tab: initialTab } = state;
 
   const [tab, setTab] = useState<Tab>(initialTab ?? "new");
-  const [spine, setSpine] = useState<StashSpine | null>(null);
+  const [spine, setSpine] = useState<StashSidebar | null>(null);
   const [views, setViews] = useState<StashView[]>([]);
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<SelectedState>(EMPTY_SELECTED);
@@ -66,7 +66,7 @@ export default function StashShareModal() {
   const refresh = useCallback(async () => {
     if (!stashId) return;
     const [spineResult, viewsResult] = await Promise.allSettled([
-      getStashSpine(stashId),
+      getStashSidebar(stashId),
       listViews(stashId),
     ]);
     if (spineResult.status === "fulfilled") setSpine(spineResult.value);
@@ -738,7 +738,7 @@ function buildInitialSelection(initial: ViewItemSpec[] | undefined): SelectedSta
   return { rows, sessions: new Map() };
 }
 
-function buildRows(spine: StashSpine | null): SelectableRow[] {
+function buildRows(spine: StashSidebar | null): SelectableRow[] {
   if (!spine) return [];
   const folders = spine.wiki.folders.map<SelectableRow>((f) => ({
     key: `folder:${f.id}`,
@@ -789,7 +789,7 @@ function buildRows(spine: StashSpine | null): SelectableRow[] {
   return [...folders, ...pages, ...files, ...tables];
 }
 
-function buildSessions(spine: StashSpine | null): SessionRow[] {
+function buildSessions(spine: StashSidebar | null): SessionRow[] {
   if (!spine) return [];
   return spine.sessions.map((s) => ({
     key: `session:${s.session_id}`,

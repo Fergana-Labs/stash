@@ -19,7 +19,12 @@ from fastapi.responses import RedirectResponse
 from ..auth import get_current_user
 from ..database import get_pool
 from ..models import FileListResponse, FileResponse, TableResponse
-from ..services import storage_service, table_service, workspace_service
+from ..services import (
+    handoff_writer,
+    storage_service,
+    table_service,
+    workspace_service,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -108,6 +113,7 @@ async def upload_ws_file(
         current_user["id"],
         folder_id,
     )
+    handoff_writer.mark_stale_bg(workspace_id)
     return await _file_to_response(dict(row))
 
 
@@ -222,6 +228,7 @@ async def delete_ws_file(
     await pool.execute(
         "DELETE FROM files WHERE id = $1 AND workspace_id = $2", file_id, workspace_id
     )
+    handoff_writer.mark_stale_bg(workspace_id)
 
 
 # ===== CSV → Table ingest =====

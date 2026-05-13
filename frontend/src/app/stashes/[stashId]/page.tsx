@@ -13,6 +13,7 @@ import {
 import AppShell from "../../../components/AppShell";
 import MembersModal from "../../../components/MembersModal";
 import StashQuickAdd from "../../../components/StashQuickAdd";
+import HandoffPanel from "../../../components/stash/HandoffPanel";
 import {
   FileIcon,
   FolderIcon,
@@ -26,14 +27,14 @@ import { useAuth } from "../../../hooks/useAuth";
 import {
   createFolder,
   createPage,
-  getStashSpine,
+  getStashOverview,
   getWorkspace,
   getWorkspaceMembers,
   joinWorkspace,
   listViews,
   updateWorkspace,
   uploadFile,
-  type StashSpine,
+  type StashOverview,
   type StashView,
   type WikiFile,
 } from "../../../lib/api";
@@ -111,7 +112,7 @@ export default function StashHomePage() {
 
   const [stash, setStash] = useState<Workspace | null>(null);
   const [members, setMembers] = useState<WorkspaceMember[]>([]);
-  const [spine, setSpine] = useState<StashSpine | null>(null);
+  const [spine, setSpine] = useState<StashOverview | null>(null);
   const [views, setViews] = useState<StashView[]>([]);
   const [error, setError] = useState("");
   const [membersOpen, setMembersOpen] = useState(false);
@@ -127,7 +128,7 @@ export default function StashHomePage() {
     const [stashResult, membersResult, spineResult, viewsResult] = await Promise.allSettled([
       getWorkspace(stashId),
       getWorkspaceMembers(stashId),
-      getStashSpine(stashId),
+      getStashOverview(stashId),
       listViews(stashId),
     ]);
 
@@ -152,7 +153,7 @@ export default function StashHomePage() {
 
   const refreshSpine = useCallback(async () => {
     try {
-      setSpine(await getStashSpine(stashId));
+      setSpine(await getStashOverview(stashId));
     } catch {
       /* private */
     }
@@ -303,9 +304,12 @@ export default function StashHomePage() {
           <h1 className="font-display text-[34px] font-bold tracking-tight text-foreground">
             {stash?.name || "Loading…"}
           </h1>
-          {stash?.description && (
-            <p className="mt-2 text-[14.5px] leading-relaxed text-muted">{stash.description}</p>
-          )}
+          <StashDescription
+            stash={stash}
+            canEdit={isMember}
+            onSaved={(updated) => setStash(updated)}
+          />
+
 
           <div className="mt-3 flex flex-wrap items-center gap-2 text-[12px] text-muted">
             <button
@@ -501,6 +505,15 @@ export default function StashHomePage() {
                 </p>
               </div>
             )}
+
+          {/* Handoff (orientation doc written by the sleep-time agent) */}
+          {isMember && (
+            <HandoffPanel
+              stashId={stashId}
+              canWrite={isMember}
+              metadataHint={spine?.handoff_metadata}
+            />
+          )}
 
           {/* Sessions */}
           <SectionHeader
@@ -731,7 +744,7 @@ function formatBytes(b: number): string {
 
 function addFolderToSpine(
   folder: Folder,
-  setSpine: Dispatch<SetStateAction<StashSpine | null>>
+  setSpine: Dispatch<SetStateAction<StashOverview | null>>
 ) {
   setSpine((current) => {
     if (!current) return current;
@@ -753,7 +766,7 @@ function addFolderToSpine(
 
 function addFileToSpine(
   file: FileInfo,
-  setSpine: Dispatch<SetStateAction<StashSpine | null>>
+  setSpine: Dispatch<SetStateAction<StashOverview | null>>
 ) {
   setSpine((current) => {
     if (!current) return current;
@@ -776,4 +789,107 @@ function addFileToSpine(
       },
     };
   });
+}
+
+// Inline-editable description on the stash home. Backs the handoff
+// writer's `description` seed input — the stash owner's only freeform
+// hint about what the stash is for.
+function StashDescription({
+  stash,
+  canEdit,
+  onSaved,
+}: {
+  stash: Workspace | null;
+  canEdit: boolean;
+  onSaved: (updated: Workspace) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  if (!stash) return null;
+
+  const description = stash.description ?? "";
+
+  function startEdit() {
+    setDraft(description);
+    setError("");
+    setEditing(true);
+  }
+
+  async function save() {
+    if (!stash) return;
+    setBusy(true);
+    setError("");
+    try {
+      const updated = await updateWorkspace(stash.id, { description: draft });
+      onSaved(updated);
+      setEditing(false);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to save");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (editing) {
+    return (
+      <div className="mt-2">
+        <textarea
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          maxLength={1000}
+          rows={4}
+          className="w-full rounded-md border border-border bg-base p-2 text-[14px] leading-relaxed"
+          placeholder="What is this stash for? Anything the handoff writer should treat as authoritative."
+        />
+        {error && <div className="mt-1 text-[11.5px] text-red-700">{error}</div>}
+        <div className="mt-1.5 flex items-center gap-2 text-[11.5px] text-muted">
+          <button
+            onClick={save}
+            disabled={busy}
+            className="rounded-md bg-[var(--color-brand-600)] px-2.5 py-1 font-medium text-white hover:bg-[var(--color-brand-700)] disabled:opacity-60"
+          >
+            {busy ? "Saving…" : "Save description"}
+          </button>
+          <button
+            onClick={() => setEditing(false)}
+            disabled={busy}
+            className="rounded-md border border-border px-2.5 py-1 hover:bg-base"
+          >
+            Cancel
+          </button>
+          <span className="ml-auto">{draft.length}/1000</span>
+        </div>
+      </div>
+    );
+  }
+
+  if (description) {
+    return (
+      <p className="group/desc mt-2 text-[14.5px] leading-relaxed text-muted">
+        {description}
+        {canEdit && (
+          <button
+            onClick={startEdit}
+            className="ml-2 align-middle text-[11.5px] text-muted opacity-0 underline-offset-2 hover:underline group-hover/desc:opacity-100"
+          >
+            Edit
+          </button>
+        )}
+      </p>
+    );
+  }
+
+  if (!canEdit) return null;
+
+  return (
+    <button
+      onClick={startEdit}
+      className="mt-2 text-[12.5px] italic text-muted underline-offset-2 hover:underline"
+    >
+      + Add a description — tell the handoff writer what this stash is for.
+    </button>
+  );
 }

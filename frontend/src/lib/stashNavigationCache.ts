@@ -1,9 +1,9 @@
 import {
   getFolderContents,
-  getStashSpine,
+  getStashSidebar,
   listMyWorkspaces,
   type FolderContents,
-  type StashSpine,
+  type StashSidebar,
 } from "./api";
 import type { Workspace } from "./types";
 
@@ -16,8 +16,8 @@ interface CachedWorkspaces {
 
 let workspaceCache: CachedWorkspaces | null = null;
 let workspacePromise: Promise<CachedWorkspaces> | null = null;
-const spineCache: Record<string, StashSpine> = {};
-const spinePromises: Partial<Record<string, Promise<StashSpine>>> = {};
+const sidebarCache: Record<string, StashSidebar> = {};
+const sidebarPromises: Partial<Record<string, Promise<StashSidebar>>> = {};
 const folderContentsCache: Record<string, FolderContents> = {};
 const folderContentsPromises: Partial<Record<string, Promise<FolderContents>>> = {};
 
@@ -49,29 +49,29 @@ export async function getCachedWorkspaces(userId: string): Promise<CachedWorkspa
   return workspacePromise;
 }
 
-export function readCachedSpines(): Record<string, StashSpine> {
-  return { ...spineCache };
+export function readCachedSidebars(): Record<string, StashSidebar> {
+  return { ...sidebarCache };
 }
 
-export function readCachedStashSpine(stashId: string): StashSpine | null {
-  return spineCache[stashId] ?? null;
+export function readCachedStashSidebar(stashId: string): StashSidebar | null {
+  return sidebarCache[stashId] ?? null;
 }
 
-export async function getCachedStashSpine(stashId: string): Promise<StashSpine> {
-  const cached = readCachedStashSpine(stashId);
+export async function getCachedStashSidebar(stashId: string): Promise<StashSidebar> {
+  const cached = readCachedStashSidebar(stashId);
   if (cached) return cached;
-  const pending = spinePromises[stashId];
+  const pending = sidebarPromises[stashId];
   if (pending) return pending;
 
-  const promise = getStashSpine(stashId)
-    .then((spine) => {
-      spineCache[stashId] = spine;
-      return spine;
+  const promise = getStashSidebar(stashId)
+    .then((sidebar) => {
+      sidebarCache[stashId] = sidebar;
+      return sidebar;
     })
     .finally(() => {
-      delete spinePromises[stashId];
+      delete sidebarPromises[stashId];
     });
-  spinePromises[stashId] = promise;
+  sidebarPromises[stashId] = promise;
 
   return promise;
 }
@@ -105,8 +105,8 @@ export async function getCachedFolderContents(
 export function resetStashNavigationCache() {
   workspaceCache = null;
   workspacePromise = null;
-  for (const key of Object.keys(spineCache)) delete spineCache[key];
-  for (const key of Object.keys(spinePromises)) delete spinePromises[key];
+  for (const key of Object.keys(sidebarCache)) delete sidebarCache[key];
+  for (const key of Object.keys(sidebarPromises)) delete sidebarPromises[key];
   for (const key of Object.keys(folderContentsCache)) delete folderContentsCache[key];
   for (const key of Object.keys(folderContentsPromises)) delete folderContentsPromises[key];
 }

@@ -2,10 +2,10 @@
 
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
-import { semanticSearchPages, type StashSpine } from "../lib/api";
+import { semanticSearchPages, type StashSidebar } from "../lib/api";
 import {
-  getCachedStashSpine,
-  readCachedStashSpine,
+  getCachedStashSidebar,
+  readCachedStashSidebar,
 } from "../lib/stashNavigationCache";
 
 interface CommandPaletteProps {
@@ -23,8 +23,8 @@ interface Result {
 
 export default function CommandPalette({ open, onClose, stashId }: CommandPaletteProps) {
   const [query, setQuery] = useState("");
-  const [spine, setSpine] = useState<StashSpine | null>(() =>
-    stashId ? readCachedStashSpine(stashId) : null
+  const [spine, setSpine] = useState<StashSidebar | null>(() =>
+    stashId ? readCachedStashSidebar(stashId) : null
   );
   const [results, setResults] = useState<Result[]>([]);
   const [selected, setSelected] = useState(0);
@@ -36,14 +36,14 @@ export default function CommandPalette({ open, onClose, stashId }: CommandPalett
     setResults([]);
     setSelected(0);
     inputRef.current?.focus();
-    const cached = stashId ? readCachedStashSpine(stashId) : null;
+    const cached = stashId ? readCachedStashSidebar(stashId) : null;
     if (cached) {
       setSpine(cached);
       return;
     }
     setSpine(null);
     if (stashId) {
-      getCachedStashSpine(stashId)
+      getCachedStashSidebar(stashId)
         .then(setSpine)
         .catch(() => {});
     }

@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import StashHomePage from "./page";
 import {
-  getStashSpine,
+  getStashOverview,
   getWorkspace,
   getWorkspaceMembers,
   listViews,
@@ -47,6 +47,10 @@ vi.mock("../../../components/StashQuickAdd", () => ({
   default: () => null,
 }));
 
+vi.mock("../../../components/stash/HandoffPanel", () => ({
+  default: () => null,
+}));
+
 vi.mock("../../../hooks/useAuth", () => ({
   useAuth: () => ({
     user,
@@ -65,7 +69,7 @@ vi.mock("../../../lib/shareModalContext", () => ({
 vi.mock("../../../lib/api", () => ({
   createFolder: vi.fn(),
   createPage: vi.fn(),
-  getStashSpine: vi.fn(),
+  getStashOverview: vi.fn(),
   getWorkspace: vi.fn(),
   getWorkspaceMembers: vi.fn(),
   joinWorkspace: vi.fn(),
@@ -117,6 +121,12 @@ const members = [
 ];
 
 const emptySpine = {
+  handoff_metadata: {
+    present: false,
+    generated_at: null,
+    stale: false,
+    pinned_at: null,
+  },
   sessions: [],
   wiki: {
     folders: [],
@@ -137,7 +147,7 @@ describe("Stash homepage background customization", () => {
     vi.clearAllMocks();
     vi.mocked(getWorkspace).mockResolvedValue(workspace());
     vi.mocked(getWorkspaceMembers).mockResolvedValue(members);
-    vi.mocked(getStashSpine).mockResolvedValue(emptySpine);
+    vi.mocked(getStashOverview).mockResolvedValue(emptySpine);
     vi.mocked(listViews).mockResolvedValue([]);
     vi.mocked(updateWorkspace).mockImplementation(async (_workspaceId, data) => {
       return workspace(data.home_background ?? defaultBackground);

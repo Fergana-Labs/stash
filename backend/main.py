@@ -33,7 +33,14 @@ from .routers import (
 )
 from .services.row_validation import RowValidationError
 from .workers import dispatcher as extraction_dispatcher
-from .workers import embedding_reconciler, viz_precompute
+from .workers import (
+    embedding_reconciler,
+    session_summarizer,
+    viz_precompute,
+)
+from .workers import (
+    handoff_writer as handoff_writer_worker,
+)
 
 logger = logging.getLogger("stash")
 
@@ -44,12 +51,21 @@ async def lifespan(app: FastAPI):
     dispatcher_task = asyncio.create_task(extraction_dispatcher.run())
     reconciler_task = asyncio.create_task(embedding_reconciler.run())
     viz_task = asyncio.create_task(viz_precompute.run())
+    summarizer_task = asyncio.create_task(session_summarizer.run())
+    writer_task = asyncio.create_task(handoff_writer_worker.run())
+    tasks = (
+        dispatcher_task,
+        reconciler_task,
+        viz_task,
+        summarizer_task,
+        writer_task,
+    )
     try:
         yield
     finally:
-        for task in (dispatcher_task, reconciler_task, viz_task):
+        for task in tasks:
             task.cancel()
-        for task in (dispatcher_task, reconciler_task, viz_task):
+        for task in tasks:
             try:
                 await task
             except (asyncio.CancelledError, Exception):

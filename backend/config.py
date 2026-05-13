@@ -65,9 +65,14 @@ class Settings:
     # browser. Leave unset to disable admin endpoints entirely.
     ADMIN_PASSWORD: str | None = os.getenv("ADMIN_PASSWORD")
 
-    # --- LLM (Anthropic, for Ask-the-stash agent) ---
+    # --- LLM (Anthropic) ---
+    # Two tiers used across ask-the-stash, the handoff curator, and the
+    # server-side session summarizer.
+    #   ANTHROPIC_MODEL      — quality tier (Sonnet): ask + curator
+    #   ANTHROPIC_FAST_MODEL — fast tier (Haiku): session summary
     ANTHROPIC_API_KEY: str | None = os.getenv("ANTHROPIC_API_KEY")
     ANTHROPIC_MODEL: str = os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-6")
+    ANTHROPIC_FAST_MODEL: str = os.getenv("ANTHROPIC_FAST_MODEL", "claude-haiku-4-5")
     ASK_MAX_TURNS: int = int(os.getenv("ASK_MAX_TURNS", "8"))
 
 

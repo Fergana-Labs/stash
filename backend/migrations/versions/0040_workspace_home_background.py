@@ -1,14 +1,14 @@
 """Add workspace home background settings.
 
-Revision ID: 0038
-Revises: 0037
+Revision ID: 0040
+Revises: 0039
 Create Date: 2026-05-11 20:38:00.000000
 """
 
 from alembic import op
 
-revision = "0038"
-down_revision = "0037"
+revision = "0040"
+down_revision = "0039"
 branch_labels = None
 depends_on = None
 

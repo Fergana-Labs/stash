@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 # --- Users ---
 
@@ -770,8 +770,9 @@ class StashCreateRequest(BaseModel):
 
 
 class StashUpdateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     summary: str | None = None
-    status: str | None = Field(None, pattern=r"^(live|summarizing|ready|failed)$")
 
 
 class StashArtifactResponse(BaseModel):
@@ -788,7 +789,7 @@ class StashResponse(BaseModel):
     slug: str
     agent_name: str
     cwd: str | None
-    status: str
+    summary_status: str
     summary: str | None
     files_touched: list[str]
     artifact_count: int = 0

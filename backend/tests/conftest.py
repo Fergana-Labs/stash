@@ -104,6 +104,8 @@ _TRUNCATE_TABLES = [
     "deck_share_views",
     "deck_shares",
     "table_rows",
+    "stash_handoffs",
+    "sessions",
     "workspace_members",
     "histories",
     "decks",
