@@ -5,15 +5,15 @@ import { useCallback, useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import {
   type FolderContents,
-  type StashSpine,
+  type StashSidebar,
   type WikiFile,
 } from "../lib/api";
 import {
   getCachedFolderContents,
-  getCachedStashSpine,
+  getCachedStashSidebar,
   getCachedWorkspaces,
   readCachedFolderContents,
-  readCachedSpines,
+  readCachedSidebars,
   readCachedWorkspaces,
 } from "../lib/stashNavigationCache";
 import type { User, Workspace } from "../lib/types";
@@ -139,7 +139,7 @@ function StashTree({
   pathname,
 }: {
   stash: StashNode;
-  spine: StashSpine | null;
+  spine: StashSidebar | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   openSections: Record<SidebarSection, boolean>;
@@ -345,7 +345,7 @@ function WikiBlock({
   onOpenChange,
 }: {
   stash: StashNode;
-  spine: StashSpine | null;
+  spine: StashSidebar | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
@@ -426,8 +426,8 @@ export default function AppSidebar({ user, onCmdkOpen }: AppSidebarProps) {
   const [openSections, setOpenSections] = useState<Record<string, boolean>>(() =>
     readOpenMap(OPEN_SECTIONS_KEY)
   );
-  const [spines, setSpines] = useState<Record<string, StashSpine>>(() =>
-    readCachedSpines()
+  const [spines, setSpines] = useState<Record<string, StashSidebar>>(() =>
+    readCachedSidebars()
   );
 
   useEffect(() => {
@@ -479,7 +479,7 @@ export default function AppSidebar({ user, onCmdkOpen }: AppSidebarProps) {
     Array.from(new Set(openIds))
       .filter((stashId) => !spines[stashId])
       .forEach((stashId) => {
-        getCachedStashSpine(stashId)
+        getCachedStashSidebar(stashId)
           .then((sp) => setSpines((all) => ({ ...all, [stashId]: sp })))
           .catch(() => {});
       });

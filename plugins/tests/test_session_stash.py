@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import json
+import sys
+
 from stashai.plugin.event import HookEvent
 from stashai.plugin.hooks import create_session_stash, finalize_session_stash
-from stashai.plugin._do_stash import _history_text
 
 
 class _FakeClient:
@@ -97,17 +99,19 @@ def test_finalize_session_stash_spawns_upload_with_transcript(monkeypatch, tmp_p
 
     assert finalize_session_stash(_FakeClient(), _cfg(), state, event, tmp_path)
 
-    assert calls == [{
-        "stash_id": "stash-1",
-        "transcript_path": "/tmp/s1.jsonl",
-        "cwd": "/repo",
-        "files_touched": ["app.py"],
-        "workspace_id": "ws1",
-        "session_id": "s1",
-        "agent_name": "alice-agent",
-        "base_url": "https://joinstash.ai",
-        "api_key": "key",
-    }]
+    assert calls == [
+        {
+            "stash_id": "stash-1",
+            "transcript_path": "/tmp/s1.jsonl",
+            "cwd": "/repo",
+            "files_touched": ["app.py"],
+            "workspace_id": "ws1",
+            "session_id": "s1",
+            "agent_name": "alice-agent",
+            "base_url": "https://joinstash.ai",
+            "api_key": "key",
+        }
+    ]
 
 
 def test_finalize_session_stash_spawns_history_fallback_without_transcript(monkeypatch):
@@ -133,29 +137,48 @@ def test_finalize_session_stash_spawns_history_fallback_without_transcript(monke
     assert calls[0]["workspace_id"] == "ws1"
 
 
-def test_history_text_formats_session_events_for_summary():
-    class Client:
-        def query_events(self, **kwargs):
-            assert kwargs["workspace_id"] == "ws1"
-            assert kwargs["session_id"] == "s1"
-            assert kwargs["order"] == "asc"
-            return [
-                {
-                    "created_at": "2026-05-11T00:00:00Z",
-                    "event_type": "user_message",
-                    "tool_name": None,
-                    "content": "Fix login.",
-                },
-                {
-                    "created_at": "2026-05-11T00:00:01Z",
-                    "event_type": "tool_use",
-                    "tool_name": "edit",
-                    "content": "Edited auth.py",
-                },
-            ]
+def test_do_stash_uploads_artifacts_without_setting_summary_status(monkeypatch, tmp_path):
+    from stashai.plugin import _do_stash
 
-    text = _history_text(Client(), "ws1", "s1")
+    artifact = tmp_path / "app.py"
+    artifact.write_text("print('hi')\n")
+    uploads = []
 
-    assert "user_message" in text
-    assert "Fix login." in text
-    assert "tool_use:edit" in text
+    class FakeClient:
+        def __init__(self, **kwargs):
+            assert kwargs == {"base_url": "https://joinstash.ai", "api_key": "key"}
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return None
+
+        def upload_stash_artifact(self, stash_id, display_path, content):
+            uploads.append((stash_id, display_path, content))
+
+        def update_stash(self, *args, **kwargs):
+            raise AssertionError("plugin should not set summary status")
+
+    monkeypatch.setattr(_do_stash, "StashClient", FakeClient)
+    monkeypatch.setattr(_do_stash, "_collect_git_files", lambda cwd: [])
+    monkeypatch.setenv("STASH_FILES_TOUCHED", json.dumps([str(artifact)]))
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "_do_stash.py",
+            "stash-1",
+            "",
+            str(tmp_path),
+            "ws1",
+            "s1",
+            "alice-agent",
+            "https://joinstash.ai",
+            "key",
+        ],
+    )
+
+    _do_stash.main()
+
+    assert uploads == [("stash-1", "app.py", b"print('hi')\n")]

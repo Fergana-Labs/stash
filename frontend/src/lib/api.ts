@@ -1250,13 +1250,94 @@ export interface StashWiki {
   pages: WikiPage[];
   files: WikiFile[];
 }
-export interface StashSpine {
+export interface StashHandoffMetadata {
+  present: boolean;
+  generated_at: string | null;
+  stale: boolean;
+  pinned_at: string | null;
+}
+export interface StashOverview {
+  handoff_metadata: StashHandoffMetadata;
   sessions: StashSpineSession[];
   wiki: StashWiki;
 }
 
-export async function getStashSpine(stashId: string): Promise<StashSpine> {
-  return apiFetch(`/api/v1/stashes/${stashId}/spine`);
+export async function getStashOverview(stashId: string): Promise<StashOverview> {
+  return apiFetch(`/api/v1/stashes/${stashId}/overview`);
+}
+
+export interface StashSidebar {
+  sessions: StashSpineSession[];
+  wiki: StashWiki;
+}
+
+// In-memory store for the last ETag seen per stash, so navigating between
+// stashes hits the cached payload instead of refetching.
+const _sidebarEtags: Record<string, string> = {};
+const _sidebarCache: Record<string, StashSidebar> = {};
+
+export async function getStashSidebar(stashId: string): Promise<StashSidebar> {
+  const token = getToken();
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+  const cached = _sidebarEtags[stashId];
+  if (cached) headers["If-None-Match"] = cached;
+
+  const res = await fetch(`${API_BASE}/api/v1/stashes/${stashId}/sidebar`, {
+    method: "GET",
+    headers,
+  });
+  if (res.status === 304 && _sidebarCache[stashId]) return _sidebarCache[stashId];
+  if (!res.ok) throw new ApiError(res.status, `sidebar fetch failed: ${res.status}`);
+  const etag = res.headers.get("etag");
+  if (etag) _sidebarEtags[stashId] = etag;
+  const body = (await res.json()) as StashSidebar;
+  _sidebarCache[stashId] = body;
+  return body;
+}
+
+export type StashHandoffReason =
+  | "fresh"
+  | "pinned"
+  | "stale"
+  | "never_generated"
+  | "failed";
+
+export interface StashHandoff {
+  present: boolean;
+  reason: StashHandoffReason;
+  body_markdown?: string;
+  generated_at?: string | null;
+  model?: string | null;
+  input_tokens?: number | null;
+  output_tokens?: number | null;
+  turns_used?: number | null;
+  tool_calls_used?: number | null;
+  pinned_at: string | null;
+  pinned_by?: string | null;
+  last_error: string | null;
+}
+
+export async function getStashHandoff(stashId: string): Promise<StashHandoff> {
+  return apiFetch(`/api/v1/stashes/${stashId}/handoff`);
+}
+
+export async function regenerateStashHandoff(stashId: string): Promise<StashHandoff> {
+  return apiFetch(`/api/v1/stashes/${stashId}/handoff/regenerate`, { method: "POST" });
+}
+
+export async function editStashHandoff(
+  stashId: string,
+  bodyMarkdown: string,
+): Promise<StashHandoff> {
+  return apiFetch(`/api/v1/stashes/${stashId}/handoff`, {
+    method: "PATCH",
+    body: JSON.stringify({ body_markdown: bodyMarkdown }),
+  });
+}
+
+export async function unpinStashHandoff(stashId: string): Promise<StashHandoff> {
+  return apiFetch(`/api/v1/stashes/${stashId}/handoff/unpin`, { method: "POST" });
 }
 
 export interface FolderBreadcrumb {
