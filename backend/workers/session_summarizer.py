@@ -61,10 +61,10 @@ async def _record_attempt(session_id: UUID, error: str | None) -> None:
 async def _claim_session(session_id: UUID) -> bool:
     pool = get_pool()
     row = await pool.fetchrow(
-        "UPDATE sessions SET status = 'summarizing' "
+        "UPDATE sessions SET summary_status = 'in_progress' "
         "WHERE id = $1 "
         "AND summary IS NULL "
-        "AND status IN ('live', 'summarizing') "
+        "AND summary_status IN ('need_summary', 'in_progress') "
         "RETURNING id",
         session_id,
     )
