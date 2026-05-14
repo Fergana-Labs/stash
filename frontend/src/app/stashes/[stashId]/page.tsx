@@ -341,10 +341,10 @@ export default function StashHomePage() {
             totalFiles === 0 && (
               <div className="mt-8 rounded-xl border border-[var(--color-brand-200)] bg-[var(--color-brand-50)] p-5">
                 <h3 className="font-display text-[18px] font-semibold text-foreground">
-                  Welcome — here's how a stash works
+                  Welcome — here&apos;s how a stash works
                 </h3>
                 <p className="mt-2 text-[13.5px] leading-relaxed text-foreground/80">
-                  Drop in anything above — a link, a note, or a file — and we'll file it into the
+                  Drop in anything above — a link, a note, or a file — and we&apos;ll file it into the
                   Hopper folder for you. Connect your agents via the Stash CLI and their sessions
                   appear under <span className="font-medium text-foreground">Sessions</span>; your
                   pages, files, and folders live in the <span className="font-medium text-foreground">Wiki</span>.

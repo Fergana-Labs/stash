@@ -191,7 +191,5 @@ async def export_transcript_jsonl(
     return PlainTextResponse(
         ("\n".join(lines) + ("\n" if lines else "")),
         media_type="application/jsonl",
-        headers={
-            "Content-Disposition": f'attachment; filename="session-{session_id}.jsonl"'
-        },
+        headers={"Content-Disposition": f'attachment; filename="session-{session_id}.jsonl"'},
     )

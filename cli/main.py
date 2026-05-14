@@ -671,9 +671,7 @@ def stash_leave(stash_id: str = typer.Argument(...)):
     console.print("[green]Left stash.[/green]")
 
 
-handoff_app = typer.Typer(
-    help="Stash handoff: agent-written orientation doc for a stash."
-)
+handoff_app = typer.Typer(help="Stash handoff: agent-written orientation doc for a stash.")
 app.add_typer(handoff_app, name="handoff")
 
 
@@ -1237,7 +1235,6 @@ def share_session(
             ensure="public",
             items=view_items,
         )
-        view = bundle["view"]
 
     public_url = bundle["url"]
     console.print(f"\n[green bold]Shared![/green bold]  {public_url}")

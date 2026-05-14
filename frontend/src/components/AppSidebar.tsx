@@ -506,6 +506,12 @@ export default function AppSidebar({ user, onCmdkOpen }: AppSidebarProps) {
   }
 
   function handleStashOpenChange(stashId: string, open: boolean) {
+    // Skip persisting the auto-open that fires when a route activates this
+    // stash and no explicit user preference exists yet. Otherwise route nav
+    // would write a "true" override that survives forever.
+    const explicit = openStashes[stashId];
+    const routeOpen = activeTreeStashId === stashId;
+    if (open && routeOpen && explicit === undefined) return;
     setOpenStash(stashId, open);
   }
 
@@ -514,6 +520,10 @@ export default function AppSidebar({ user, onCmdkOpen }: AppSidebarProps) {
     section: SidebarSection,
     open: boolean
   ) {
+    const explicit = openSections[sectionKey(stashId, section)];
+    const routeOpen =
+      activeTreeStashId === stashId && activeTreeSection === section;
+    if (open && routeOpen && explicit === undefined) return;
     setOpenSection(stashId, section, open);
   }
 

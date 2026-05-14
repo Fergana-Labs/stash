@@ -56,9 +56,7 @@ async def _require_can_share(object_type: str, object_id: UUID, user_id: UUID) -
         object_type, object_id, user_id, workspace_id=workspace_id, require_write=False
     )
     if not can_read:
-        raise HTTPException(
-            status_code=403, detail="Not allowed to share this object"
-        )
+        raise HTTPException(status_code=403, detail="Not allowed to share this object")
 
 
 @router.get("/{object_type}/{object_id}/permissions", response_model=PermissionResponse)

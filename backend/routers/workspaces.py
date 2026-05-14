@@ -105,7 +105,9 @@ async def update_workspace(
     role = await workspace_service.get_member_role(workspace_id, current_user["id"])
     if role not in workspace_service.ROLES_CAN_WRITE:
         raise HTTPException(status_code=403, detail="Editors and owners can update workspace")
-    if (req.is_public is not None or req.discoverable is not None) and role not in workspace_service.ROLES_ADMIN:
+    if (
+        req.is_public is not None or req.discoverable is not None
+    ) and role not in workspace_service.ROLES_ADMIN:
         raise HTTPException(
             status_code=403, detail="Only the workspace owner can change visibility"
         )

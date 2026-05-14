@@ -45,7 +45,7 @@ export default function NewStashPage() {
           Create a stash
         </h1>
         <p className="mt-3 text-[15px] leading-relaxed text-foreground/80">
-          A stash is your team's shared workspace for agent work — sessions,
+          A stash is your team&apos;s shared workspace for agent work — sessions,
           curated wiki pages, and files all in one place, with a single share link
           for anything inside.
         </p>
