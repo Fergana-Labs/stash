@@ -364,6 +364,7 @@ class PageCreateRequest(BaseModel):
     content: str = ""
     content_type: str = Field("markdown", pattern=r"^(markdown|html)$")
     content_html: str = ""
+    html_layout: str = Field("responsive", pattern=r"^(responsive|fixed-aspect)$")
 
 
 class PageUpdateRequest(BaseModel):
@@ -372,6 +373,7 @@ class PageUpdateRequest(BaseModel):
     content: str | None = None
     content_type: str | None = Field(None, pattern=r"^(markdown|html)$")
     content_html: str | None = None
+    html_layout: str | None = Field(None, pattern=r"^(responsive|fixed-aspect)$")
     move_to_root: bool = False
 
 
@@ -383,6 +385,7 @@ class PageResponse(BaseModel):
     content_markdown: str
     content_type: str = "markdown"
     content_html: str = ""
+    html_layout: str = "responsive"
     content_hash: str | None = None
     metadata: dict = {}
     created_by: UUID
@@ -663,6 +666,7 @@ class PublishRequest(BaseModel):
     title: str = Field(..., min_length=1, max_length=255)
     content: str = ""
     content_type: str = Field("markdown", pattern=r"^(markdown|html)$")
+    html_layout: str = Field("responsive", pattern=r"^(responsive|fixed-aspect)$")
     audience: str = Field("link", pattern=r"^(link|public)$")
     folder_id: UUID | None = None
 

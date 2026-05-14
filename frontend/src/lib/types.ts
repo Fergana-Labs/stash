@@ -60,6 +60,8 @@ export interface Folder {
   updated_at: string;
 }
 
+export type HtmlLayout = "responsive" | "fixed-aspect";
+
 export interface Page {
   id: string;
   workspace_id: string;
@@ -68,6 +70,7 @@ export interface Page {
   content_type: PageContentType;
   content_markdown: string;
   content_html: string;
+  html_layout: HtmlLayout;
   created_by: string;
   updated_by: string | null;
   created_at: string;

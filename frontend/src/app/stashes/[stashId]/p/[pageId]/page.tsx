@@ -181,7 +181,11 @@ export default function StashPageView() {
           <article className="mt-8 text-[15px] leading-relaxed text-foreground">
             {page ? (
               page.content_type === "html" ? (
-                <HtmlPageView html={page.content_html || ""} title={page.name} />
+                <HtmlPageView
+                  html={page.content_html || ""}
+                  title={page.name}
+                  layout={page.html_layout}
+                />
               ) : (
                 <MarkdownEditor
                   workspaceId={stashId}

@@ -426,7 +426,11 @@ export async function createPage(
   name: string,
   folderId?: string | null,
   content?: string,
-  options?: { content_type?: "markdown" | "html"; content_html?: string }
+  options?: {
+    content_type?: "markdown" | "html";
+    content_html?: string;
+    html_layout?: "responsive" | "fixed-aspect";
+  }
 ): Promise<Page> {
   return apiFetch(`/api/v1/workspaces/${workspaceId}/pages/new`, {
     method: "POST",
@@ -436,6 +440,7 @@ export async function createPage(
       content: content || "",
       content_type: options?.content_type ?? "markdown",
       content_html: options?.content_html ?? "",
+      html_layout: options?.html_layout ?? "responsive",
     }),
   });
 }
@@ -453,6 +458,7 @@ export async function updatePage(
     content?: string;
     content_type?: "markdown" | "html";
     content_html?: string;
+    html_layout?: "responsive" | "fixed-aspect";
     move_to_root?: boolean;
   }
 ): Promise<Page> {
