@@ -10,7 +10,6 @@ import {
   type Dispatch,
   type SetStateAction,
 } from "react";
-import AppShell from "../../../../../components/AppShell";
 import {
   FileIcon,
   FolderIcon,
@@ -66,9 +65,8 @@ export default function FolderDetailPage() {
   if (!user) return null;
 
   return (
-    <AppShell user={user} onLogout={logout}>
-      <div className="scroll-thin flex-1 overflow-y-auto">
-        <div className="mx-auto max-w-3xl px-12 py-8">
+    <div className="scroll-thin flex-1 overflow-y-auto">
+      <div className="mx-auto max-w-3xl px-12 py-8">
           {/* Breadcrumbs: stash → folder chain */}
           <nav className="mb-4 flex flex-wrap items-center gap-1.5 text-[12.5px] text-muted">
             <Link
@@ -259,7 +257,6 @@ export default function FolderDetailPage() {
           )}
         </div>
       </div>
-    </AppShell>
   );
 }
 

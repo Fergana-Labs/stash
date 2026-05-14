@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import AppShell from "../../../../components/AppShell";
 import { SessionsIcon } from "../../../../components/StashIcons";
 import { useAuth } from "../../../../hooks/useAuth";
 import {
@@ -63,9 +62,8 @@ export default function StashSessionsPage() {
   if (!user) return null;
 
   return (
-    <AppShell user={user} onLogout={logout}>
-      <div className="scroll-thin flex-1 overflow-y-auto">
-        <div className="mx-auto max-w-3xl px-12 py-8">
+    <div className="scroll-thin flex-1 overflow-y-auto">
+      <div className="mx-auto max-w-3xl px-12 py-8">
           <nav className="mb-4 flex flex-wrap items-center gap-1.5 text-[12.5px] text-muted">
             <Link href={`/stashes/${stashId}`} className="hover:text-foreground">
               {stash?.name || "Stash"}
@@ -131,7 +129,6 @@ export default function StashSessionsPage() {
           )}
         </div>
       </div>
-    </AppShell>
   );
 }
 

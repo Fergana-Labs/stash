@@ -120,9 +120,13 @@ async def update_workspace(
     category: str | None = None,
     cover_image_url: str | None = None,
     is_public: bool | None = None,
+    discoverable: bool | None = None,
 ) -> dict | None:
     """Update a workspace. `is_public` writes into `object_permissions`
-    (the column on workspaces is gone — visibility lives in one place)."""
+    (the column on workspaces is gone — visibility lives in one place).
+    `discoverable` toggles whether the (public) workspace shows up in
+    the discover catalog — public+discoverable=listed,
+    public+!discoverable=unlisted, !public=private."""
     pool = get_pool()
     sets, args, idx = [], [], 1
     for col, val in (
@@ -132,6 +136,7 @@ async def update_workspace(
         ("tags", tags),
         ("category", category),
         ("cover_image_url", cover_image_url),
+        ("discoverable", discoverable),
     ):
         if val is not None:
             sets.append(f"{col} = ${idx}")

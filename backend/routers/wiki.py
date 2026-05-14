@@ -420,9 +420,10 @@ async def set_folder_visibility(
     req: SetVisibilityRequest,
     current_user: dict = Depends(get_current_user),
 ):
-    role = await workspace_service.get_member_role(workspace_id, current_user["id"])
-    if role not in ("owner", "admin"):
-        raise HTTPException(status_code=403, detail="Only owner/admin can change visibility")
+    if not await permission_service.check_access(
+        "folder", folder_id, current_user["id"], workspace_id=workspace_id, require_write=False
+    ):
+        raise HTTPException(status_code=403, detail="Not allowed to share this folder")
     await _check_ws_owns_folder(workspace_id, folder_id)
     await permission_service.set_visibility("folder", folder_id, req.visibility)
     return {"status": "ok", "visibility": req.visibility}
@@ -435,9 +436,10 @@ async def add_folder_share(
     req: ShareRequest,
     current_user: dict = Depends(get_current_user),
 ):
-    role = await workspace_service.get_member_role(workspace_id, current_user["id"])
-    if role not in ("owner", "admin"):
-        raise HTTPException(status_code=403, detail="Only owner/admin can share")
+    if not await permission_service.check_access(
+        "folder", folder_id, current_user["id"], workspace_id=workspace_id, require_write=False
+    ):
+        raise HTTPException(status_code=403, detail="Not allowed to share this folder")
     await _check_ws_owns_folder(workspace_id, folder_id)
     share = await permission_service.add_share(
         "folder",
@@ -466,8 +468,9 @@ async def remove_folder_share(
     user_id: UUID,
     current_user: dict = Depends(get_current_user),
 ):
-    role = await workspace_service.get_member_role(workspace_id, current_user["id"])
-    if role not in ("owner", "admin"):
-        raise HTTPException(status_code=403, detail="Only owner/admin can remove shares")
+    if not await permission_service.check_access(
+        "folder", folder_id, current_user["id"], workspace_id=workspace_id, require_write=False
+    ):
+        raise HTTPException(status_code=403, detail="Not allowed to manage this folder's shares")
     await _check_ws_owns_folder(workspace_id, folder_id)
     await permission_service.remove_share("folder", folder_id, user_id)

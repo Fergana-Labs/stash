@@ -390,7 +390,11 @@ function markdownToInitialJSON(markdown: string): JSONNode {
     return { type: "doc", content: [{ type: "paragraph" }] };
   }
 
-  const blocks = markdown.split(/\n{2,}/).map((b) => b.trim()).filter(Boolean);
+  // Heading lines often appear without a leading blank line in agent-authored
+  // markdown. Force a paragraph break before any ATX heading so block-splitting
+  // doesn't bury the heading inside a preceding paragraph.
+  const normalized = markdown.replace(/(?<!\n\n)(\n)(#{1,6}[ \t]+)/g, "\n\n$2");
+  const blocks = normalized.split(/\n{2,}/).map((b) => b.trim()).filter(Boolean);
   const nodes: JSONNode[] = blocks.map((block) => {
     const headingMatch = block.match(/^(#{1,3})\s+(.+)$/);
     if (headingMatch) {

@@ -84,6 +84,7 @@ class WorkspaceUpdateRequest(BaseModel):
     category: str | None = Field(None, max_length=32)
     cover_image_url: str | None = None
     is_public: bool | None = None
+    discoverable: bool | None = None
 
 
 class WorkspaceResponse(BaseModel):
