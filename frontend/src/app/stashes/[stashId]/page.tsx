@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import {
   useCallback,
   useEffect,
@@ -99,15 +99,21 @@ function CardGrid({ items, hover }: { items: CardItem[]; hover: "brand" | "indig
 export default function StashHomePage() {
   const params = useParams();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const stashId = params.stashId as string;
   const { user, loading, logout } = useAuth();
+
+  // Deep-link from the /v/[slug] creator-actions card: auto-open the members
+  // modal when the URL says ?invite=open. Captured at mount so a later URL
+  // change doesn't re-trigger.
+  const initialInviteOpen = searchParams.get("invite") === "open";
 
   const [stash, setStash] = useState<Workspace | null>(null);
   const [members, setMembers] = useState<WorkspaceMember[]>([]);
   const [spine, setSpine] = useState<StashOverview | null>(null);
   const [views, setViews] = useState<StashView[]>([]);
   const [error, setError] = useState("");
-  const [membersOpen, setMembersOpen] = useState(false);
+  const [membersOpen, setMembersOpen] = useState(initialInviteOpen);
   const shareModal = useShareModal();
   const shareVersion = shareModal.version;
   const fileInputRef = useRef<HTMLInputElement>(null);
