@@ -34,17 +34,25 @@ function LoginPageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const cliSession = searchParams.get("cli");
+  const initialMode = searchParams.get("mode") === "register" ? "register" : "login";
   const { user, loading, logout, refresh } = useAuth();
-  const [mode, setMode] = useState<"login" | "register">("login");
+  const [mode, setMode] = useState<"login" | "register">(initialMode);
   const [name, setName] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [cliApproved, setCliApproved] = useState(false);
+  const [justRegistered, setJustRegistered] = useState(false);
 
-  // Normal redirect for non-CLI logins
+  // Normal redirect for non-CLI logins. New registrations go to /onboarding;
+  // returning logins land on a workspace.
   useEffect(() => {
     if (loading || !user || cliSession) return;
+
+    if (justRegistered) {
+      router.push("/onboarding");
+      return;
+    }
 
     listMyWorkspaces().then(({ workspaces }) => {
       if (workspaces.length === 1) {
@@ -55,7 +63,7 @@ function LoginPageInner() {
     }).catch(() => {
       router.push("/");
     });
-  }, [user, loading, cliSession, router]);
+  }, [user, loading, cliSession, router, justRegistered]);
 
   // Wait for useAuth to load before rendering — otherwise the signed-out form
   // flashes on every /login hit even for already-signed-in users.
@@ -104,6 +112,9 @@ function LoginPageInner() {
 
       const data = await res.json();
       setToken(data.api_key);
+      if (mode === "register" && !cliSession) {
+        setJustRegistered(true);
+      }
 
       if (cliSession) {
         const approveRes = await fetch(

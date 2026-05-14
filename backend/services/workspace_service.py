@@ -11,8 +11,14 @@ async def create_workspace(
     description: str,
     creator_id: UUID,
     is_public: bool = False,
+    is_primary: bool = False,
 ) -> dict:
-    """Create a workspace with the creator as owner."""
+    """Create a workspace with the creator as owner.
+
+    Pass is_primary=True to mark the creator's membership as their primary
+    workspace — used by /publish as the fallback target when no workspace_id
+    is supplied. Only the auto-provisioned signup workspace should pass this.
+    """
     pool = get_pool()
     invite_code = ""
     for _ in range(5):
@@ -37,11 +43,12 @@ async def create_workspace(
     )
     ws = dict(row)
     ws["is_public"] = is_public
-    # Auto-add creator as owner
     await pool.execute(
-        "INSERT INTO workspace_members (workspace_id, user_id, role) VALUES ($1, $2, 'owner')",
+        "INSERT INTO workspace_members (workspace_id, user_id, role, is_primary) "
+        "VALUES ($1, $2, 'owner', $3)",
         ws["id"],
         creator_id,
+        is_primary,
     )
     if is_public:
         from . import permission_service
@@ -49,6 +56,28 @@ async def create_workspace(
         await permission_service.set_visibility("workspace", ws["id"], "public")
     ws["member_count"] = 1
     return ws
+
+
+async def get_primary_for_user(user_id: UUID) -> UUID | None:
+    """Return the workspace_id this user's /publish calls fall back to.
+
+    Prefers the membership flagged is_primary (set when the workspace was
+    auto-provisioned at signup). Falls back to the earliest membership so
+    accounts without a flagged primary still resolve to a sensible workspace.
+    """
+    pool = get_pool()
+    primary = await pool.fetchval(
+        "SELECT workspace_id FROM workspace_members "
+        "WHERE user_id = $1 AND is_primary = TRUE",
+        user_id,
+    )
+    if primary:
+        return primary
+    return await pool.fetchval(
+        "SELECT workspace_id FROM workspace_members "
+        "WHERE user_id = $1 ORDER BY joined_at ASC LIMIT 1",
+        user_id,
+    )
 
 
 async def get_workspace(workspace_id: UUID) -> dict | None:

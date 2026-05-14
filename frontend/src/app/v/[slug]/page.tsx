@@ -5,6 +5,7 @@ import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
 import HtmlPageView from "../../../components/workspace/HtmlPageView";
+import CreatorActions from "./CreatorActions";
 import ViewForkButton from "./ViewForkButton";
 
 const BACKEND_ORIGIN =
@@ -55,6 +56,7 @@ type ViewPublic = {
     created_at: string;
     updated_at: string;
     workspace_id: string;
+    owner_id: string;
   };
   workspace_name: string;
   workspace_is_public: boolean;
@@ -137,6 +139,8 @@ export default async function ViewPage({
           <Item key={`${it.object_type}-${it.object_id}`} idx={i} item={it} />
         ))}
       </div>
+
+      <CreatorActions ownerId={view.owner_id} workspaceId={view.workspace_id} />
     </main>
   );
 }
