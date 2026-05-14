@@ -74,9 +74,10 @@ def mark_stale_bg(workspace_id: UUID) -> None:
 async def get_handoff(workspace_id: UUID) -> dict | None:
     pool = get_pool()
     row = await pool.fetchrow(
-        "SELECT workspace_id, body_markdown, model, input_tokens, output_tokens, "
-        "turns_used, tool_calls_used, generated_at, stale, stale_marked_at, "
-        "last_attempt_at, last_error, consecutive_failures, pinned_at, pinned_by "
+        "SELECT workspace_id, body_markdown, input_fingerprint, model, "
+        "input_tokens, output_tokens, turns_used, tool_calls_used, "
+        "generated_at, stale, stale_marked_at, last_attempt_at, last_error, "
+        "consecutive_failures, pinned_at, pinned_by "
         "FROM stash_handoffs WHERE workspace_id = $1",
         workspace_id,
     )
