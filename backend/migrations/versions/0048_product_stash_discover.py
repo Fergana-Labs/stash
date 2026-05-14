@@ -13,7 +13,9 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.execute("ALTER TABLE stashes ADD COLUMN IF NOT EXISTS discoverable BOOLEAN NOT NULL DEFAULT false")
+    op.execute(
+        "ALTER TABLE stashes ADD COLUMN IF NOT EXISTS discoverable BOOLEAN NOT NULL DEFAULT false"
+    )
     op.execute(
         "CREATE INDEX IF NOT EXISTS idx_stashes_discover "
         "ON stashes (discoverable DESC, updated_at DESC)"

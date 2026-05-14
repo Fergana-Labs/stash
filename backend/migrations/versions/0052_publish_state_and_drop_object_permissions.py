@@ -13,7 +13,9 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.execute("ALTER TABLE stashes ADD COLUMN IF NOT EXISTS is_public BOOLEAN NOT NULL DEFAULT false")
+    op.execute(
+        "ALTER TABLE stashes ADD COLUMN IF NOT EXISTS is_public BOOLEAN NOT NULL DEFAULT false"
+    )
     op.execute("""
 UPDATE stashes s
 SET is_public = true

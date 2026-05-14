@@ -52,7 +52,9 @@ _VISIBILITY_RANK = {"private": 0, "inherit": 0, "link": 1, "public": 2}
 _workspace_ctx: contextvars.ContextVar[UUID | None] = contextvars.ContextVar(
     "stash_workspace_id", default=None
 )
-_user_ctx: contextvars.ContextVar[UUID | None] = contextvars.ContextVar("stash_user_id", default=None)
+_user_ctx: contextvars.ContextVar[UUID | None] = contextvars.ContextVar(
+    "stash_user_id", default=None
+)
 
 
 class ModelTier(StrEnum):

@@ -176,7 +176,9 @@ async def ask_workspace(
 
 
 @router.get("/{workspace_id}/overview")
-async def get_workspace_overview(workspace_id: UUID, current_user: dict = Depends(get_current_user)):
+async def get_workspace_overview(
+    workspace_id: UUID, current_user: dict = Depends(get_current_user)
+):
     """{sessions, wiki} for the workspace home page.
 
     `wiki` is the flat folder + page + file row set; the frontend builds the tree

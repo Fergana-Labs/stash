@@ -22,7 +22,9 @@ CREATE TABLE IF NOT EXISTS external_stashes (
     PRIMARY KEY (workspace_id, stash_id)
 )
 """)
-    op.execute("CREATE INDEX IF NOT EXISTS idx_external_stashes_stash ON external_stashes(stash_id)")
+    op.execute(
+        "CREATE INDEX IF NOT EXISTS idx_external_stashes_stash ON external_stashes(stash_id)"
+    )
 
 
 def downgrade() -> None:

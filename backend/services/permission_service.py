@@ -156,9 +156,7 @@ async def check_access(
         workspace_id = await resolve_workspace_id(object_type, object_id)
 
     if object_type in _TAG_OBJECT_TYPES:
-        return await _check_tag_access(
-            object_type, object_id, user_id, workspace_id, require_write
-        )
+        return await _check_tag_access(object_type, object_id, user_id, workspace_id, require_write)
 
     if user_id is None:
         return False

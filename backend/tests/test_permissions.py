@@ -77,8 +77,7 @@ async def _make_session(pool, workspace_id, created_by, session_id="session-1"):
 
 async def _make_table(pool, workspace_id, created_by, name="table"):
     row = await pool.fetchrow(
-        "INSERT INTO tables (workspace_id, name, created_by) "
-        "VALUES ($1, $2, $3) RETURNING id",
+        "INSERT INTO tables (workspace_id, name, created_by) " "VALUES ($1, $2, $3) RETURNING id",
         workspace_id,
         name,
         created_by,

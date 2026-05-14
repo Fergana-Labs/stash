@@ -141,7 +141,9 @@ async def _object_title(object_type: str, object_id: UUID) -> str:
             "SELECT agent_name AS name FROM history_events WHERE id = $1", object_id
         )
     elif object_type == "session":
-        row = await pool.fetchrow("SELECT session_id AS name FROM sessions WHERE id = $1", object_id)
+        row = await pool.fetchrow(
+            "SELECT session_id AS name FROM sessions WHERE id = $1", object_id
+        )
     else:
         row = None
     return row["name"] if row else "Shared item"

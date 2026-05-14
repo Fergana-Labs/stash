@@ -21,19 +21,13 @@ def upgrade() -> None:
         "TO stash_items_object_type_check"
     )
     op.execute("ALTER INDEX IF EXISTS idx_views_workspace RENAME TO idx_stashes_workspace")
-    op.execute(
-        "ALTER INDEX IF EXISTS idx_public_views_recent RENAME TO idx_public_stashes_recent"
-    )
-    op.execute(
-        "ALTER INDEX IF EXISTS idx_view_items_position RENAME TO idx_stash_items_position"
-    )
+    op.execute("ALTER INDEX IF EXISTS idx_public_views_recent RENAME TO idx_public_stashes_recent")
+    op.execute("ALTER INDEX IF EXISTS idx_view_items_position RENAME TO idx_stash_items_position")
 
 
 def downgrade() -> None:
     op.execute("ALTER INDEX IF EXISTS idx_stash_items_position RENAME TO idx_view_items_position")
-    op.execute(
-        "ALTER INDEX IF EXISTS idx_public_stashes_recent RENAME TO idx_public_views_recent"
-    )
+    op.execute("ALTER INDEX IF EXISTS idx_public_stashes_recent RENAME TO idx_public_views_recent")
     op.execute("ALTER INDEX IF EXISTS idx_stashes_workspace RENAME TO idx_views_workspace")
     op.execute(
         "ALTER TABLE stash_items RENAME CONSTRAINT stash_items_object_type_check "

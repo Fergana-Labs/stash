@@ -623,9 +623,7 @@ def ws_info(workspace_id: str = typer.Argument(...), as_json: bool = typer.Optio
     if _use_json(as_json):
         output_json(data)
     else:
-        console.print(
-            f"[bold]{data['name']}[/bold]  Members: {data.get('member_count', '?')}"
-        )
+        console.print(f"[bold]{data['name']}[/bold]  Members: {data.get('member_count', '?')}")
         console.print(f"ID: {data['id']}  Invite: {data['invite_code']}")
 
 
@@ -755,9 +753,7 @@ def browse(
                 c.add_external_stash(picked["slug"], workspace_id)
             except StashError as e:
                 _err(e)
-        console.print(
-            f"[green]Added[/green] {picked['title']} to workspace {workspace_id}"
-        )
+        console.print(f"[green]Added[/green] {picked['title']} to workspace {workspace_id}")
 
 
 # ===========================================================================
@@ -1223,9 +1219,7 @@ def read_stash(
 # Product Stashes (publishable subsets of a workspace)
 # ===========================================================================
 
-stashes_app = typer.Typer(
-    help="Product Stashes — publish a shareable subset of a Stash Workspace."
-)
+stashes_app = typer.Typer(help="Product Stashes — publish a shareable subset of a Stash Workspace.")
 app.add_typer(stashes_app, name="stashes")
 
 
@@ -1261,7 +1255,9 @@ def stashes_create(
     workspace_id: str = typer.Option("", "--workspace", help="Workspace ID; falls back to .stash."),
     description: str = typer.Option("", "--description"),
     public: bool = typer.Option(False, "--public", help="Publish immediately."),
-    discover: bool = typer.Option(False, "--discover", help="List the public Product Stash in Discover."),
+    discover: bool = typer.Option(
+        False, "--discover", help="List the public Product Stash in Discover."
+    ),
     items_json: str = typer.Option(
         "[]",
         "--items",
@@ -1314,7 +1310,9 @@ def stashes_create(
 def stashes_publish(
     stash_id: str = typer.Argument(...),
     unpublish: bool = typer.Option(False, "--unpublish", help="Make the Product Stash private."),
-    discover: bool = typer.Option(False, "--discover", help="List the public Product Stash in Discover."),
+    discover: bool = typer.Option(
+        False, "--discover", help="List the public Product Stash in Discover."
+    ),
 ):
     """Toggle a Product Stash's public flag."""
     if unpublish and discover:
@@ -3736,7 +3734,9 @@ def config_cmd(
 
 @app.command("share-object")
 def share_object_cmd(
-    object_type: str = typer.Argument(..., help="workspace|folder|page|session|table|file|history|stash"),
+    object_type: str = typer.Argument(
+        ..., help="workspace|folder|page|session|table|file|history|stash"
+    ),
     object_id: str = typer.Argument(..., help="UUID of the object"),
     ensure: str = typer.Option(
         "link", "--ensure", help="Raise visibility to at least this level: ''|'link'|'public'"
@@ -3751,7 +3751,9 @@ def share_object_cmd(
 
 @app.command("visibility")
 def visibility_cmd(
-    object_type: str = typer.Argument(..., help="workspace|folder|page|session|table|file|history|stash"),
+    object_type: str = typer.Argument(
+        ..., help="workspace|folder|page|session|table|file|history|stash"
+    ),
     object_id: str = typer.Argument(..., help="UUID of the object"),
     level: str = typer.Argument(..., help="inherit|private|link|public"),
 ):
