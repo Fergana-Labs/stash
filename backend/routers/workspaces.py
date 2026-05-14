@@ -117,6 +117,8 @@ async def update_workspace(
         tags=req.tags,
         category=req.category,
         cover_image_url=req.cover_image_url,
+        icon_url=req.icon_url,
+        color_gradient=req.color_gradient,
         is_public=req.is_public,
         discoverable=req.discoverable,
     )

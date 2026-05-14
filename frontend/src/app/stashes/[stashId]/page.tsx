@@ -231,10 +231,24 @@ export default function StashHomePage() {
   return (
     <>
       <div className="scroll-thin flex-1 overflow-y-auto">
-        <div className="h-32 bg-gradient-to-r from-[var(--color-brand-200)] via-amber-100 to-rose-100" />
+        <div
+          className="h-32 bg-gradient-to-r from-[var(--color-brand-200)] via-amber-100 to-rose-100 bg-cover bg-center"
+          style={
+            stash?.cover_image_url
+              ? { backgroundImage: `url(${stash.cover_image_url})` }
+              : stash?.color_gradient
+              ? { backgroundImage: stash.color_gradient }
+              : undefined
+          }
+        />
         <div className="mx-auto -mt-8 max-w-3xl px-12 pb-16">
-          <div className="mb-2 flex h-12 w-12 items-center justify-center text-5xl text-[var(--color-brand-700)]">
-            <StashIcon />
+          <div className="mb-2 flex h-12 w-12 items-center justify-center overflow-hidden text-5xl text-[var(--color-brand-700)]">
+            {stash?.icon_url ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={stash.icon_url} alt="" className="h-12 w-12 rounded-lg object-cover" />
+            ) : (
+              <StashIcon />
+            )}
           </div>
           <div className="flex items-center gap-2">
             <h1 className="font-display text-[34px] font-bold tracking-tight text-foreground">

@@ -235,6 +235,9 @@ export async function updateWorkspace(
   data: {
     name?: string;
     description?: string;
+    cover_image_url?: string | null;
+    icon_url?: string | null;
+    color_gradient?: string | null;
     is_public?: boolean;
     discoverable?: boolean;
   }

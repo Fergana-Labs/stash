@@ -32,6 +32,8 @@ export interface Workspace {
   discoverable?: boolean;
   featured?: boolean;
   cover_image_url?: string | null;
+  icon_url?: string | null;
+  color_gradient?: string | null;
   fork_count?: number;
   forked_from_workspace_id?: string | null;
 }
