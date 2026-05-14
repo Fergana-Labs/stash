@@ -170,6 +170,7 @@ function ItemBody({ item }: { item: ViewItemInlined }) {
         content_type?: "markdown" | "html";
         content_markdown: string;
         content_html?: string;
+        html_layout?: "responsive" | "fixed-aspect";
       }[];
     };
     return (
@@ -179,7 +180,11 @@ function ItemBody({ item }: { item: ViewItemInlined }) {
             <h3 className="font-display text-[16px] font-bold text-ink">{p.name}</h3>
             {p.content_type === "html" ? (
               <div className="mt-2">
-                <HtmlPageView html={p.content_html || ""} title={p.name} />
+                <HtmlPageView
+                  html={p.content_html || ""}
+                  title={p.name}
+                  layout={p.html_layout}
+                />
               </div>
             ) : (
               <div className="mt-2 markdown-content">
@@ -202,12 +207,17 @@ function ItemBody({ item }: { item: ViewItemInlined }) {
         content_type?: "markdown" | "html";
         content_markdown: string;
         content_html?: string;
+        html_layout?: "responsive" | "fixed-aspect";
       };
     };
     const p = inline.page;
     if (!p) return <p className="text-[13px] italic text-muted">This page is no longer available.</p>;
     return p.content_type === "html" ? (
-      <HtmlPageView html={p.content_html || ""} title={p.name} />
+      <HtmlPageView
+        html={p.content_html || ""}
+        title={p.name}
+        layout={p.html_layout}
+      />
     ) : (
       <div className="markdown-content">
         <Markdown remarkPlugins={[remarkGfm]}>

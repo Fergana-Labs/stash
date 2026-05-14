@@ -389,7 +389,7 @@ async def inline_items(view: dict, viewer_id: UUID | None = None) -> list[dict]:
                     "  SELECT f.id FROM folders f JOIN subtree s ON f.parent_folder_id = s.id"
                     ") "
                     "SELECT p.id, p.name, p.content_markdown, p.content_html, p.content_type, "
-                    "p.updated_at FROM pages p "
+                    "p.html_layout, p.updated_at FROM pages p "
                     "WHERE p.folder_id IN (SELECT id FROM subtree) "
                     "ORDER BY p.created_at, p.name",
                     obj_id,
@@ -408,6 +408,7 @@ async def inline_items(view: dict, viewer_id: UUID | None = None) -> list[dict]:
                             "content_type": p["content_type"],
                             "content_markdown": p["content_markdown"],
                             "content_html": p["content_html"],
+                            "html_layout": p["html_layout"],
                             "updated_at": p["updated_at"].isoformat(),
                         }
                         for p in visible_pages
@@ -415,8 +416,8 @@ async def inline_items(view: dict, viewer_id: UUID | None = None) -> list[dict]:
                 }
         elif obj_type == "page":
             p = await pool.fetchrow(
-                "SELECT id, name, content_markdown, content_html, content_type, updated_at "
-                "FROM pages WHERE id = $1",
+                "SELECT id, name, content_markdown, content_html, content_type, "
+                "html_layout, updated_at FROM pages WHERE id = $1",
                 obj_id,
             )
             if p:
@@ -428,6 +429,7 @@ async def inline_items(view: dict, viewer_id: UUID | None = None) -> list[dict]:
                         "content_type": p["content_type"],
                         "content_markdown": p["content_markdown"],
                         "content_html": p["content_html"],
+                        "html_layout": p["html_layout"],
                         "updated_at": p["updated_at"].isoformat(),
                     }
                 }
@@ -636,7 +638,7 @@ async def fork_view(slug: str, forker_id: UUID, name: str | None = None) -> dict
 
                     pages = await conn.fetch(
                         "SELECT id, folder_id, name, content_markdown, content_html, "
-                        "content_type, content_hash, metadata FROM pages "
+                        "content_type, html_layout, content_hash, metadata FROM pages "
                         "WHERE folder_id = ANY($1::uuid[])",
                         list(folder_id_map.keys()),
                     )
@@ -648,14 +650,15 @@ async def fork_view(slug: str, forker_id: UUID, name: str | None = None) -> dict
                         await conn.execute(
                             "INSERT INTO pages "
                             "(workspace_id, folder_id, name, content_markdown, content_html, "
-                            "content_type, content_hash, metadata, created_by) "
-                            "VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)",
+                            "content_type, html_layout, content_hash, metadata, created_by) "
+                            "VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)",
                             new_ws_id,
                             folder_id_map.get(p["folder_id"]),
                             p["name"],
                             p["content_markdown"] or "",
                             p["content_html"] or "",
                             p["content_type"],
+                            p["html_layout"],
                             p["content_hash"],
                             p["metadata"] or {},
                             forker_id,
@@ -664,7 +667,7 @@ async def fork_view(slug: str, forker_id: UUID, name: str | None = None) -> dict
                 elif t == "page":
                     src = await conn.fetchrow(
                         "SELECT name, content_markdown, content_html, content_type, "
-                        "content_hash, metadata FROM pages WHERE id = $1",
+                        "html_layout, content_hash, metadata FROM pages WHERE id = $1",
                         src_id,
                     )
                     if not src:
@@ -672,13 +675,14 @@ async def fork_view(slug: str, forker_id: UUID, name: str | None = None) -> dict
                     await conn.execute(
                         "INSERT INTO pages "
                         "(workspace_id, name, content_markdown, content_html, "
-                        "content_type, content_hash, metadata, created_by) "
-                        "VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
+                        "content_type, html_layout, content_hash, metadata, created_by) "
+                        "VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)",
                         new_ws_id,
                         src["name"],
                         src["content_markdown"] or "",
                         src["content_html"] or "",
                         src["content_type"],
+                        src["html_layout"],
                         src["content_hash"],
                         src["metadata"] or {},
                         forker_id,

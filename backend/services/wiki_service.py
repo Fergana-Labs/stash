@@ -223,6 +223,7 @@ async def create_page(
     metadata: dict | None = None,
     content_type: str = "markdown",
     content_html: str = "",
+    html_layout: str = "responsive",
 ) -> dict:
     pool = get_pool()
     if folder_id is not None:
@@ -236,10 +237,10 @@ async def create_page(
         row = await pool.fetchrow(
             "INSERT INTO pages "
             "(workspace_id, folder_id, name, content_markdown, content_html, content_type, "
-            "content_hash, metadata, created_by, updated_by) "
-            "VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9, $9) "
+            "html_layout, content_hash, metadata, created_by, updated_by) "
+            "VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10, $10) "
             "RETURNING id, workspace_id, folder_id, name, content_markdown, content_html, "
-            "content_type, content_hash, metadata, created_by, updated_by, "
+            "content_type, html_layout, content_hash, metadata, created_by, updated_by, "
             "created_at, updated_at",
             workspace_id,
             folder_id,
@@ -247,6 +248,7 @@ async def create_page(
             content,
             content_html,
             content_type,
+            html_layout,
             ch,
             meta,
             created_by,
@@ -267,7 +269,7 @@ async def get_page(page_id: UUID, workspace_id: UUID) -> dict | None:
     pool = get_pool()
     row = await pool.fetchrow(
         "SELECT id, workspace_id, folder_id, name, content_markdown, content_html, "
-        "content_type, content_hash, metadata, "
+        "content_type, html_layout, content_hash, metadata, "
         "created_by, updated_by, created_at, updated_at "
         "FROM pages WHERE id = $1 AND workspace_id = $2",
         page_id,
@@ -305,6 +307,7 @@ async def update_page(
     content: str | None = None,
     content_type: str | None = None,
     content_html: str | None = None,
+    html_layout: str | None = None,
     move_to_root: bool = False,
     metadata: dict | None = None,
     on_conflict: Callable[[dict], Awaitable[str]] | None = None,
@@ -359,6 +362,10 @@ async def update_page(
             sets.append(f"content_type = ${idx}")
             args.append(content_type)
             idx += 1
+        if html_layout is not None:
+            sets.append(f"html_layout = ${idx}")
+            args.append(html_layout)
+            idx += 1
         if content_changed:
             new_type = content_type or current_type or "markdown"
             new_md = (
@@ -389,7 +396,7 @@ async def update_page(
             row = await pool.fetchrow(
                 f"UPDATE pages SET {', '.join(sets)} WHERE {where} "
                 "RETURNING id, workspace_id, folder_id, name, content_markdown, content_html, "
-                "content_type, content_hash, metadata, "
+                "content_type, html_layout, content_hash, metadata, "
                 "created_by, updated_by, created_at, updated_at",
                 *args,
             )
@@ -414,7 +421,7 @@ async def update_page(
 
         fresh = await pool.fetchrow(
             "SELECT id, workspace_id, folder_id, name, content_markdown, content_html, "
-            "content_type, content_hash, metadata, "
+            "content_type, html_layout, content_hash, metadata, "
             "created_by, updated_by, created_at, updated_at "
             "FROM pages WHERE id = $1 AND workspace_id = $2",
             page_id,
@@ -438,7 +445,7 @@ async def update_page(
     logger.warning("update_page exhausted retries for page %s", page_id)
     fresh = await pool.fetchrow(
         "SELECT id, workspace_id, folder_id, name, content_markdown, content_html, "
-        "content_type, content_hash "
+        "content_type, html_layout, content_hash "
         "FROM pages WHERE id = $1 AND workspace_id = $2",
         page_id,
         workspace_id,
