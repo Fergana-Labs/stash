@@ -64,7 +64,7 @@ async def _claim_session(session_id: UUID) -> bool:
         "UPDATE sessions SET summary_status = 'in_progress' "
         "WHERE id = $1 "
         "AND summary IS NULL "
-        "AND summary_status = 'in_progress' "
+        "AND summary_status IN ('need_summary', 'in_progress') "
         "RETURNING id",
         session_id,
     )

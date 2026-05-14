@@ -153,8 +153,8 @@ async def delete_ws_table(
     current_user: dict = Depends(get_current_user),
 ):
     role = await workspace_service.get_member_role(workspace_id, current_user["id"])
-    if role not in ("owner", "admin"):
-        raise HTTPException(status_code=403, detail="Only owner/admin can delete tables")
+    if role not in workspace_service.ROLES_CAN_WRITE:
+        raise HTTPException(status_code=403, detail="Editors and owners can delete tables")
     await _check_ws_table(workspace_id, table_id)
     deleted = await table_service.delete_table(table_id)
     if not deleted:
@@ -561,9 +561,10 @@ async def set_visibility(
     req: SetVisibilityRequest,
     current_user: dict = Depends(get_current_user),
 ):
-    role = await workspace_service.get_member_role(workspace_id, current_user["id"])
-    if role not in ("owner", "admin"):
-        raise HTTPException(status_code=403, detail="Only owner/admin can change visibility")
+    if not await permission_service.check_access(
+        "table", table_id, current_user["id"], workspace_id=workspace_id, require_write=False
+    ):
+        raise HTTPException(status_code=403, detail="Not allowed to share this table")
     await _check_ws_table(workspace_id, table_id)
     await permission_service.set_visibility("table", table_id, req.visibility)
     return {"status": "ok", "visibility": req.visibility}
@@ -576,9 +577,10 @@ async def add_share(
     req: ShareRequest,
     current_user: dict = Depends(get_current_user),
 ):
-    role = await workspace_service.get_member_role(workspace_id, current_user["id"])
-    if role not in ("owner", "admin"):
-        raise HTTPException(status_code=403, detail="Only owner/admin can share")
+    if not await permission_service.check_access(
+        "table", table_id, current_user["id"], workspace_id=workspace_id, require_write=False
+    ):
+        raise HTTPException(status_code=403, detail="Not allowed to share this table")
     await _check_ws_table(workspace_id, table_id)
     share = await permission_service.add_share(
         "table",
@@ -607,8 +609,9 @@ async def remove_share(
     user_id: UUID,
     current_user: dict = Depends(get_current_user),
 ):
-    role = await workspace_service.get_member_role(workspace_id, current_user["id"])
-    if role not in ("owner", "admin"):
-        raise HTTPException(status_code=403, detail="Only owner/admin can remove shares")
+    if not await permission_service.check_access(
+        "table", table_id, current_user["id"], workspace_id=workspace_id, require_write=False
+    ):
+        raise HTTPException(status_code=403, detail="Not allowed to manage this table's shares")
     await _check_ws_table(workspace_id, table_id)
     await permission_service.remove_share("table", table_id, user_id)

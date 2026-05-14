@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState, type DragEvent, type FormEvent } from "react";
-import { createWorkspaceHistoryEvent, uploadFile } from "../lib/api";
+import { createPage, ensureHopperFolder, uploadFile } from "../lib/api";
 import type { User } from "../lib/types";
 
 interface StashQuickAddProps {
@@ -12,7 +12,9 @@ interface StashQuickAddProps {
 
 type Status = "idle" | "saving" | "saved" | "error";
 
-export default function StashQuickAdd({ stashId, user, onAdded }: StashQuickAddProps) {
+const URL_RE = /^https?:\/\/\S+$/i;
+
+export default function StashQuickAdd({ stashId, user: _user, onAdded }: StashQuickAddProps) {
   const [value, setValue] = useState("");
   const [status, setStatus] = useState<Status>("idle");
   const [dragActive, setDragActive] = useState(false);
@@ -32,28 +34,23 @@ export default function StashQuickAdd({ stashId, user, onAdded }: StashQuickAddP
     if (!text || status === "saving") return;
 
     setStatus("saving");
-    const title = text.split("\n")[0].slice(0, 80) || "Manual source";
     try {
-      await createWorkspaceHistoryEvent(stashId, {
-        agent_name: user.name || "user",
-        event_type: "source",
-        content: text === title ? text : `${title}\n\n${text}`,
-        session_id: `manual-source-${Date.now()}`,
-        metadata: {
-          source: "manual_ui",
-          title,
-          added_by: user.display_name || user.name,
-        },
-      });
+      const hopperId = await ensureHopperFolder(stashId);
+      const isUrl = URL_RE.test(text);
+      const title = isUrl
+        ? text.replace(/^https?:\/\//, "").slice(0, 80)
+        : text.split("\n")[0].slice(0, 80) || "Note";
+      const body = isUrl ? `<${text}>` : text;
+      await createPage(stashId, title, hopperId, body);
     } catch {
       setStatus("error");
-      flashHint("Couldn’t save — try again", 2500);
+      flashHint("Couldn't save — try again", 2500);
       window.setTimeout(() => setStatus("idle"), 2500);
       return;
     }
     setValue("");
     setStatus("saved");
-    flashHint("Added to stash");
+    flashHint("Added to Hopper");
     onAdded?.();
     window.setTimeout(() => setStatus("idle"), 1500);
   }
@@ -64,8 +61,9 @@ export default function StashQuickAdd({ stashId, user, onAdded }: StashQuickAddP
     setStatus("saving");
     flashHint(list.length === 1 ? `Uploading ${list[0].name}…` : `Uploading ${list.length} files…`, 8000);
     try {
+      const hopperId = await ensureHopperFolder(stashId);
       for (const f of list) {
-        await uploadFile(stashId, f);
+        await uploadFile(stashId, f, hopperId);
       }
     } catch {
       setStatus("error");
@@ -74,7 +72,7 @@ export default function StashQuickAdd({ stashId, user, onAdded }: StashQuickAddP
       return;
     }
     setStatus("saved");
-    flashHint(list.length === 1 ? `${list[0].name} added` : `${list.length} files added`);
+    flashHint(list.length === 1 ? `${list[0].name} added to Hopper` : `${list.length} files added to Hopper`);
     onAdded?.();
     window.setTimeout(() => setStatus("idle"), 1500);
   }
@@ -132,13 +130,16 @@ export default function StashQuickAdd({ stashId, user, onAdded }: StashQuickAddP
       onDragOver={handleDragOver}
       onDrop={handleDrop}
       className={
-        "group relative rounded-xl border-2 border-dashed px-4 py-3.5 transition-colors " +
+        "group relative transition-colors " +
         (dragActive
-          ? "border-[var(--color-brand-500)] bg-[var(--color-brand-50)]"
-          : "border-border bg-surface/40 hover:border-[var(--color-brand-300)] hover:bg-surface/60")
+          ? "rounded-xl border-2 border-dashed border-[var(--color-brand-500)] bg-[var(--color-brand-50)] p-1"
+          : "")
       }
     >
-      <form onSubmit={handleTextSubmit} className="flex items-center gap-2.5">
+      <form
+        onSubmit={handleTextSubmit}
+        className="flex items-center gap-2 rounded-lg border border-border bg-base px-3 py-2 focus-within:border-[var(--color-brand-500)] focus-within:ring-1 focus-within:ring-[var(--color-brand-200)]"
+      >
         <span className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-md bg-[var(--color-brand-500)] text-[14px] font-semibold leading-none text-white">
           +
         </span>
@@ -148,8 +149,8 @@ export default function StashQuickAdd({ stashId, user, onAdded }: StashQuickAddP
           onChange={(e) => setValue(e.target.value)}
           placeholder={
             dragActive
-              ? "Drop to upload to this stash…"
-              : "Paste a link, type a note, or drop a file here"
+              ? "Drop to add to Hopper…"
+              : "Paste a link, type a note, or drop a file"
           }
           disabled={status === "saving"}
           className="h-7 flex-1 bg-transparent text-[13.5px] text-foreground outline-none placeholder:text-muted disabled:opacity-60"
@@ -167,7 +168,7 @@ export default function StashQuickAdd({ stashId, user, onAdded }: StashQuickAddP
             type="button"
             onClick={() => fileInputRef.current?.click()}
             disabled={status === "saving"}
-            className="rounded-md border border-border bg-base px-2.5 py-1 text-[12px] text-muted hover:bg-raised hover:text-foreground disabled:opacity-60"
+            className="rounded-md border border-border bg-surface px-2.5 py-1 text-[12px] text-muted hover:bg-raised hover:text-foreground disabled:opacity-60"
             title="Choose a file to upload"
           >
             Upload file
@@ -184,15 +185,11 @@ export default function StashQuickAdd({ stashId, user, onAdded }: StashQuickAddP
           }}
         />
       </form>
-      <div className="mt-1.5 pl-[34px] text-[11.5px] leading-tight">
-        {statusText ? (
+      {statusText && (
+        <div className="mt-1 pl-[42px] text-[11.5px] leading-tight">
           <span className={"font-medium " + statusTone}>{statusText}</span>
-        ) : (
-          <span className="text-muted">
-            Drop a file anywhere in this box, or press Enter to save a link or note
-          </span>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   );
 }

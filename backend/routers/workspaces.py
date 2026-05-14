@@ -103,9 +103,11 @@ async def update_workspace(
     current_user: dict = Depends(get_current_user),
 ):
     role = await workspace_service.get_member_role(workspace_id, current_user["id"])
-    if role not in ("owner", "admin"):
-        raise HTTPException(status_code=403, detail="Only owner/admin can update workspace")
-    if req.is_public is not None and role != "owner":
+    if role not in workspace_service.ROLES_CAN_WRITE:
+        raise HTTPException(status_code=403, detail="Editors and owners can update workspace")
+    if (
+        req.is_public is not None or req.discoverable is not None
+    ) and role not in workspace_service.ROLES_ADMIN:
         raise HTTPException(
             status_code=403, detail="Only the workspace owner can change visibility"
         )
@@ -117,7 +119,10 @@ async def update_workspace(
         tags=req.tags,
         category=req.category,
         cover_image_url=req.cover_image_url,
+        icon_url=req.icon_url,
+        color_gradient=req.color_gradient,
         is_public=req.is_public,
+        discoverable=req.discoverable,
     )
     if not ws:
         raise HTTPException(status_code=404, detail="Workspace not found")
@@ -169,7 +174,7 @@ async def rotate_invite_code(
 ):
     ws = await workspace_service.rotate_invite_code(workspace_id, current_user["id"])
     if not ws:
-        raise HTTPException(status_code=403, detail="Only owner/admin can rotate invite code")
+        raise HTTPException(status_code=403, detail="Only the owner can rotate invite code")
     return WorkspaceResponse(**ws)
 
 
@@ -296,8 +301,8 @@ async def list_join_requests(
     current_user: dict = Depends(get_current_user),
 ):
     role = await workspace_service.get_member_role(workspace_id, current_user["id"])
-    if role not in ("owner", "admin"):
-        raise HTTPException(status_code=403, detail="Only owner/admin can view join requests")
+    if role not in workspace_service.ROLES_ADMIN:
+        raise HTTPException(status_code=403, detail="Only the owner can view join requests")
     pending = await join_request_service.list_pending(workspace_id)
     return JoinRequestListResponse(requests=[JoinRequestResponse(**r) for r in pending])
 
@@ -311,8 +316,8 @@ async def approve_join_request(
     current_user: dict = Depends(get_current_user),
 ):
     role = await workspace_service.get_member_role(workspace_id, current_user["id"])
-    if role not in ("owner", "admin"):
-        raise HTTPException(status_code=403, detail="Only owner/admin can approve join requests")
+    if role not in workspace_service.ROLES_ADMIN:
+        raise HTTPException(status_code=403, detail="Only the owner can approve join requests")
     result = await join_request_service.approve_request(request_id, current_user["id"])
     if not result:
         raise HTTPException(status_code=404, detail="Join request not found or already resolved")
@@ -332,8 +337,8 @@ async def deny_join_request(
     current_user: dict = Depends(get_current_user),
 ):
     role = await workspace_service.get_member_role(workspace_id, current_user["id"])
-    if role not in ("owner", "admin"):
-        raise HTTPException(status_code=403, detail="Only owner/admin can deny join requests")
+    if role not in workspace_service.ROLES_ADMIN:
+        raise HTTPException(status_code=403, detail="Only the owner can deny join requests")
     result = await join_request_service.deny_request(request_id, current_user["id"])
     if not result:
         raise HTTPException(status_code=404, detail="Join request not found or already resolved")
@@ -403,8 +408,8 @@ async def revoke_invite_token(
     current_user: dict = Depends(get_current_user),
 ):
     role = await workspace_service.get_member_role(workspace_id, current_user["id"])
-    if role not in ("owner", "admin"):
-        raise HTTPException(status_code=403, detail="Only owner/admin can revoke invite tokens")
+    if role not in workspace_service.ROLES_ADMIN:
+        raise HTTPException(status_code=403, detail="Only the owner can revoke invite tokens")
     ok = await invite_token_service.revoke_token(token_id, workspace_id)
     if not ok:
         raise HTTPException(status_code=404, detail="Token not found or already revoked")

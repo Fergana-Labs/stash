@@ -83,7 +83,10 @@ class WorkspaceUpdateRequest(BaseModel):
     tags: list[str] | None = None
     category: str | None = Field(None, max_length=32)
     cover_image_url: str | None = None
+    icon_url: str | None = None
+    color_gradient: str | None = Field(None, max_length=256)
     is_public: bool | None = None
+    discoverable: bool | None = None
 
 
 class WorkspaceResponse(BaseModel):
@@ -102,6 +105,8 @@ class WorkspaceResponse(BaseModel):
     discoverable: bool = False
     featured: bool = False
     cover_image_url: str | None = None
+    icon_url: str | None = None
+    color_gradient: str | None = None
     fork_count: int = 0
     forked_from_workspace_id: UUID | None = None
 

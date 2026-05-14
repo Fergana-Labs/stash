@@ -213,6 +213,29 @@ class StashClient:
             },
         )
 
+    def create_shared_view(
+        self,
+        workspace_id: str,
+        title: str,
+        description: str = "",
+        ensure: str = "public",
+        items: list | None = None,
+    ) -> dict:
+        """Create a View and publish the underlying items in one atomic call.
+
+        Use this instead of create_view() when sharing — the basic endpoint
+        marks the View public but leaves items as 'inherit', so anonymous
+        viewers 404 on the resulting URL."""
+        return self._post(
+            f"/api/v1/workspaces/{workspace_id}/views/share-bundle?ensure={ensure}",
+            json={
+                "title": title,
+                "description": description,
+                "is_public": ensure == "public",
+                "items": items or [],
+            },
+        )
+
     def update_view(self, view_id: str, **fields) -> dict:
         return self._patch(f"/api/v1/views/{view_id}", json=fields)
 

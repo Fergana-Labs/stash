@@ -31,18 +31,14 @@ async def _require_can_share_item(workspace_id: UUID, item, user_id: UUID) -> No
     if item_workspace_id != workspace_id:
         raise HTTPException(status_code=400, detail="View items must be in the workspace")
 
-    role = await workspace_service.get_member_role(workspace_id, user_id)
-    if role in ("owner", "admin"):
-        return
-
-    can_write = await permission_service.check_access(
+    can_read = await permission_service.check_access(
         item.object_type,
         item.object_id,
         user_id,
         workspace_id=workspace_id,
-        require_write=True,
+        require_write=False,
     )
-    if not can_write:
+    if not can_read:
         raise HTTPException(status_code=403, detail="Not allowed to share one or more items")
 
 

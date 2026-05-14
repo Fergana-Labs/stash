@@ -375,7 +375,11 @@ function NewShareTab(props: {
     error,
   } = props;
 
-  const [collapsed, setCollapsed] = useState<Set<GroupKey>>(new Set());
+  // Default: every group collapsed. Users expand the groups they care about
+  // instead of scrolling past everything at once.
+  const [collapsed, setCollapsed] = useState<Set<GroupKey>>(
+    () => new Set<GroupKey>(["Sessions", "Folders", "Pages", "Files", "Tables"])
+  );
   const toggleCollapse = (g: GroupKey) =>
     setCollapsed((c) => {
       const next = new Set(c);
