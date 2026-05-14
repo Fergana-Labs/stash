@@ -7,6 +7,7 @@ import {
   HistoryWithWorkspace,
   JoinRequest,
   Folder,
+  HomeBackground,
   Page,
   PageGraph,
   PageLink,
@@ -235,6 +236,7 @@ export async function updateWorkspace(
   data: {
     name?: string;
     description?: string;
+    home_background?: HomeBackground;
     cover_image_url?: string | null;
     icon_url?: string | null;
     color_gradient?: string | null;
@@ -316,6 +318,7 @@ export interface CatalogCard {
   discoverable: boolean;
   featured: boolean;
   cover_image_url: string | null;
+  home_background: HomeBackground;
   creator_id: string;
   creator_name: string;
   creator_display_name: string | null;
@@ -1425,4 +1428,3 @@ export interface StashSkillDetail {
 export async function getStashSkill(stashId: string, name: string): Promise<StashSkillDetail> {
   return apiFetch(`/api/v1/stashes/${stashId}/skills/${encodeURIComponent(name)}`);
 }
-

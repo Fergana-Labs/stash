@@ -16,6 +16,14 @@ export interface RegisterResponse {
 
 // --- Workspaces ---
 
+export type HomeBackground = {
+  kind: "gradient" | "image";
+  gradient_start: string;
+  gradient_middle: string;
+  gradient_end: string;
+  image_url: string | null;
+};
+
 export interface Workspace {
   id: string;
   name: string;
@@ -32,6 +40,7 @@ export interface Workspace {
   discoverable?: boolean;
   featured?: boolean;
   cover_image_url?: string | null;
+  home_background: HomeBackground;
   icon_url?: string | null;
   color_gradient?: string | null;
   fork_count?: number;

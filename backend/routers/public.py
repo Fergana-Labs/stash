@@ -107,6 +107,7 @@ async def public_workspace(
 
     ws = await pool.fetchrow(
         "SELECT w.id, w.name, w.summary, w.description, w.cover_image_url, "
+        "w.home_background, "
         "EXISTS("
         "  SELECT 1 FROM object_permissions op "
         "  WHERE op.object_type = 'workspace' AND op.object_id = w.id AND op.visibility = 'public'"

@@ -6,19 +6,20 @@ import { useBreadcrumbs } from "../../../../components/BreadcrumbContext";
 import { useAuth } from "../../../../hooks/useAuth";
 import {
   deleteWorkspace,
+  editStashHandoff,
   getStashHandoff,
   getWorkspace,
   getWorkspaceMembers,
   kickWorkspaceMember,
   setWorkspaceMemberRole,
   unpinStashHandoff,
-  editStashHandoff,
   updateWorkspace,
   uploadFile,
   type StashHandoff,
 } from "../../../../lib/api";
+import { homeBackgroundStyle } from "../../../../lib/homeBackground";
 import { resetStashNavigationCache } from "../../../../lib/stashNavigationCache";
-import type { Workspace, WorkspaceMember } from "../../../../lib/types";
+import type { HomeBackground, Workspace, WorkspaceMember } from "../../../../lib/types";
 
 type Visibility = "private" | "unlisted" | "public";
 
@@ -36,6 +37,9 @@ export default function StashSettingsPage() {
   const [stash, setStash] = useState<Workspace | null>(null);
   const [members, setMembers] = useState<WorkspaceMember[]>([]);
   const [handoff, setHandoff] = useState<StashHandoff | null>(null);
+  const [backgroundDraft, setBackgroundDraft] = useState<HomeBackground | null>(null);
+  const [savingBackground, setSavingBackground] = useState(false);
+  const [backgroundError, setBackgroundError] = useState("");
   const [savingVis, setSavingVis] = useState(false);
   const [error, setError] = useState("");
 
@@ -69,9 +73,10 @@ export default function StashSettingsPage() {
     );
   }
 
+  const loadedStash = stash;
   const myRole = members.find((m) => m.user_id === user.id)?.role;
   const isOwner = myRole === "owner";
-  const currentVis = inferVisibility(stash);
+  const currentVis = inferVisibility(loadedStash);
 
   async function changeVisibility(v: Visibility) {
     if (!stash || savingVis) return;
@@ -108,23 +113,56 @@ export default function StashSettingsPage() {
     await load();
   }
 
-  async function uploadAndSet(file: File, field: "cover_image_url" | "icon_url") {
-    if (!stash) return;
-    const uploaded = await uploadFile(stash.id, file);
-    const updated = await updateWorkspace(stash.id, { [field]: uploaded.url });
+  async function uploadIcon(file: File) {
+    const uploaded = await uploadFile(loadedStash.id, file);
+    const updated = await updateWorkspace(loadedStash.id, { icon_url: uploaded.url });
     setStash(updated);
   }
 
-  async function clearField(field: "cover_image_url" | "icon_url" | "color_gradient") {
-    if (!stash) return;
-    const updated = await updateWorkspace(stash.id, { [field]: null });
+  async function clearIcon() {
+    const updated = await updateWorkspace(loadedStash.id, { icon_url: null });
     setStash(updated);
   }
 
-  async function setGradient(gradient: string | null) {
-    if (!stash) return;
-    const updated = await updateWorkspace(stash.id, { color_gradient: gradient });
-    setStash(updated);
+  function currentBackground() {
+    return backgroundDraft ?? loadedStash.home_background;
+  }
+
+  function setBackgroundKind(kind: HomeBackground["kind"]) {
+    const current = currentBackground();
+    setBackgroundDraft({
+      ...current,
+      kind,
+      image_url: kind === "image" ? current.image_url || "" : null,
+    });
+  }
+
+  function updateBackground(patch: Partial<HomeBackground>) {
+    setBackgroundDraft({ ...currentBackground(), ...patch });
+  }
+
+  async function saveBackground() {
+    const draft = currentBackground();
+    const next: HomeBackground = {
+      ...draft,
+      image_url: draft.kind === "image" ? (draft.image_url || "").trim() : null,
+    };
+    if (next.kind === "image" && !next.image_url) {
+      setBackgroundError("Image URL is required.");
+      return;
+    }
+
+    setSavingBackground(true);
+    setBackgroundError("");
+    try {
+      const updated = await updateWorkspace(loadedStash.id, { home_background: next });
+      setStash(updated);
+      setBackgroundDraft(updated.home_background);
+    } catch (e) {
+      setBackgroundError(e instanceof Error ? e.message : "Failed to save background");
+    } finally {
+      setSavingBackground(false);
+    }
   }
 
   async function removeMember(userId: string) {
@@ -134,8 +172,8 @@ export default function StashSettingsPage() {
   }
 
   async function handleDelete() {
-    if (!confirm(`Delete "${stash!.name}"? This cannot be undone.`)) return;
-    await deleteWorkspace(stash!.id);
+    if (!confirm(`Delete "${loadedStash.name}"? This cannot be undone.`)) return;
+    await deleteWorkspace(loadedStash.id);
     resetStashNavigationCache();
     router.push("/");
   }
@@ -146,7 +184,7 @@ export default function StashSettingsPage() {
         <h1 className="font-display text-[28px] font-bold tracking-tight text-foreground">
           Settings
         </h1>
-        <p className="mt-1 text-[13px] text-muted">{stash.name}</p>
+        <p className="mt-1 text-[13px] text-muted">{loadedStash.name}</p>
 
         {error && (
           <div className="mt-4 rounded-lg border border-red-300/40 bg-red-500/10 px-4 py-2 text-[13px] text-red-500">
@@ -242,56 +280,105 @@ export default function StashSettingsPage() {
           )}
         </Section>
 
-        <Section title="Branding">
-          <ImageField
-            label="Banner"
-            sub="Wide image rendered above the stash header."
-            url={stash.cover_image_url ?? null}
-            canEdit={isOwner}
-            onUpload={(f) => uploadAndSet(f, "cover_image_url")}
-            onClear={() => clearField("cover_image_url")}
-            previewClass="h-16 w-full rounded-md object-cover"
-          />
+        <Section title="Homepage background">
+          <div className="rounded-lg border border-border bg-base px-3 py-2">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <div className="text-[13.5px] font-medium text-foreground">Top background</div>
+                <div className="text-[11.5px] text-muted">Gradient or image</div>
+              </div>
+              <div className="flex rounded-md border border-border bg-surface p-0.5">
+                {(["gradient", "image"] as const).map((kind) => (
+                  <button
+                    key={kind}
+                    type="button"
+                    onClick={() => setBackgroundKind(kind)}
+                    disabled={!isOwner}
+                    className={
+                      "rounded px-2 py-1 text-[12px] capitalize " +
+                      (currentBackground().kind === kind
+                        ? "bg-base text-foreground shadow-sm"
+                        : "text-muted hover:text-foreground")
+                    }
+                  >
+                    {kind}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {currentBackground().kind === "gradient" ? (
+              <div className="mt-3 grid gap-2 sm:grid-cols-3">
+                <ColorField
+                  label="Start"
+                  value={currentBackground().gradient_start}
+                  disabled={!isOwner}
+                  onChange={(gradient_start) => updateBackground({ gradient_start })}
+                />
+                <ColorField
+                  label="Middle"
+                  value={currentBackground().gradient_middle}
+                  disabled={!isOwner}
+                  onChange={(gradient_middle) => updateBackground({ gradient_middle })}
+                />
+                <ColorField
+                  label="End"
+                  value={currentBackground().gradient_end}
+                  disabled={!isOwner}
+                  onChange={(gradient_end) => updateBackground({ gradient_end })}
+                />
+              </div>
+            ) : (
+              <label className="mt-3 flex flex-col gap-1.5">
+                <span className="text-[12px] font-medium text-foreground">Image URL</span>
+                <input
+                  value={currentBackground().image_url || ""}
+                  onChange={(e) => updateBackground({ image_url: e.target.value })}
+                  disabled={!isOwner}
+                  placeholder="https://example.com/cover.jpg"
+                  className="rounded-md border border-border bg-surface px-3 py-2 text-[13px] text-foreground placeholder:text-muted focus:border-[var(--color-brand-500)] focus:outline-none disabled:opacity-60"
+                />
+              </label>
+            )}
+
+            <div
+              className="mt-3 h-20 rounded-md border border-border"
+              style={homeBackgroundStyle(currentBackground())}
+            />
+
+            {backgroundError && (
+              <div className="mt-2 text-[12px] text-red-500">{backgroundError}</div>
+            )}
+
+            {isOwner ? (
+              <div className="mt-3 flex justify-end">
+                <button
+                  type="button"
+                  onClick={saveBackground}
+                  disabled={savingBackground}
+                  className="rounded-md bg-[var(--color-brand-600)] px-3 py-1.5 text-[12px] font-medium text-white hover:bg-[var(--color-brand-700)] disabled:opacity-50"
+                >
+                  {savingBackground ? "Saving…" : "Save background"}
+                </button>
+              </div>
+            ) : (
+              <p className="mt-2 text-[11.5px] text-muted">
+                Only the owner can update the homepage background.
+              </p>
+            )}
+          </div>
+        </Section>
+
+        <Section title="Icon">
           <ImageField
             label="Icon"
             sub="Square logo for the stash hero."
-            url={stash.icon_url ?? null}
+            url={loadedStash.icon_url ?? null}
             canEdit={isOwner}
-            onUpload={(f) => uploadAndSet(f, "icon_url")}
-            onClear={() => clearField("icon_url")}
+            onUpload={uploadIcon}
+            onClear={clearIcon}
             previewClass="h-12 w-12 rounded-md object-cover"
           />
-          <div className="rounded-lg border border-border bg-base px-3 py-2">
-            <div className="text-[13.5px] font-medium text-foreground">Color gradient</div>
-            <div className="text-[11.5px] text-muted">
-              Used when no banner image is set.
-            </div>
-            <div className="mt-2 flex flex-wrap items-center gap-2">
-              {GRADIENT_PRESETS.map((g) => (
-                <button
-                  key={g.label}
-                  onClick={() => setGradient(g.css)}
-                  disabled={!isOwner}
-                  className={
-                    "h-8 w-16 rounded-md border " +
-                    (stash.color_gradient === g.css
-                      ? "border-foreground ring-2 ring-[var(--color-brand-300)]"
-                      : "border-border")
-                  }
-                  style={{ backgroundImage: g.css }}
-                  title={g.label}
-                />
-              ))}
-              {stash.color_gradient && isOwner && (
-                <button
-                  onClick={() => clearField("color_gradient")}
-                  className="text-[11.5px] text-muted hover:text-foreground"
-                >
-                  Clear
-                </button>
-              )}
-            </div>
-          </div>
         </Section>
 
         <Section title="Handoff document">
@@ -345,14 +432,43 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   );
 }
 
-const GRADIENT_PRESETS = [
-  { label: "Warm", css: "linear-gradient(to right, #fde68a, #fda4af)" },
-  { label: "Sunset", css: "linear-gradient(to right, #fb923c, #db2777)" },
-  { label: "Ocean", css: "linear-gradient(to right, #38bdf8, #6366f1)" },
-  { label: "Forest", css: "linear-gradient(to right, #86efac, #14b8a6)" },
-  { label: "Slate", css: "linear-gradient(to right, #cbd5e1, #64748b)" },
-  { label: "Plum", css: "linear-gradient(to right, #c4b5fd, #ec4899)" },
-];
+function ColorField({
+  label,
+  value,
+  disabled,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  disabled: boolean;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <label className="flex flex-col gap-1.5">
+      <span className="text-[12px] font-medium text-foreground">{label}</span>
+      <div className="flex items-center gap-2 rounded-md border border-border bg-surface px-2 py-1.5">
+        <input
+          type="color"
+          value={colorInputValue(value)}
+          onChange={(e) => onChange(e.target.value.toUpperCase())}
+          disabled={disabled}
+          className="h-7 w-7 shrink-0 cursor-pointer rounded border-0 bg-transparent p-0 disabled:cursor-default"
+        />
+        <input
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          disabled={disabled}
+          pattern="^#[0-9A-Fa-f]{6}$"
+          className="min-w-0 flex-1 bg-transparent font-mono text-[12px] text-foreground focus:outline-none disabled:opacity-60"
+        />
+      </div>
+    </label>
+  );
+}
+
+function colorInputValue(value: string) {
+  return /^#[0-9A-Fa-f]{6}$/.test(value) ? value : "#000000";
+}
 
 function ImageField({
   label,

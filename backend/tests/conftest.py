@@ -23,6 +23,7 @@ _TEST_DB_URL = os.getenv(
     "TEST_DATABASE_URL",
     "postgresql://stash:stash@localhost:5432/stash_test",
 )
+os.environ["TEST_DATABASE_URL"] = _TEST_DB_URL
 os.environ["DATABASE_URL"] = _TEST_DB_URL
 
 from backend import database as db_module  # noqa: E402

@@ -29,7 +29,8 @@ async def create_workspace(
         "VALUES ($1, $2, $3, $4) "
         "RETURNING id, name, description, creator_id, invite_code, "
         "created_at, updated_at, summary, tags, category, discoverable, featured, "
-        "cover_image_url, icon_url, color_gradient, fork_count, forked_from_workspace_id",
+        "cover_image_url, home_background, icon_url, color_gradient, "
+        "fork_count, forked_from_workspace_id",
         name,
         description,
         creator_id,
@@ -62,7 +63,8 @@ async def get_workspace(workspace_id: UUID) -> dict | None:
         ") AS is_public, "
         "w.created_at, w.updated_at, w.summary, w.tags, w.category, "
         "w.discoverable, w.featured, "
-        "w.cover_image_url, w.icon_url, w.color_gradient, w.fork_count, w.forked_from_workspace_id, "
+        "w.cover_image_url, w.home_background, w.icon_url, w.color_gradient, "
+        "w.fork_count, w.forked_from_workspace_id, "
         "(SELECT COUNT(*) FROM workspace_members wm WHERE wm.workspace_id = w.id) AS member_count "
         "FROM workspaces w WHERE w.id = $1",
         workspace_id,
@@ -77,7 +79,8 @@ async def list_public_workspaces() -> list[dict]:
         "true AS is_public, "
         "w.created_at, w.updated_at, w.summary, w.tags, w.category, "
         "w.discoverable, w.featured, "
-        "w.cover_image_url, w.icon_url, w.color_gradient, w.fork_count, w.forked_from_workspace_id, "
+        "w.cover_image_url, w.home_background, w.icon_url, w.color_gradient, "
+        "w.fork_count, w.forked_from_workspace_id, "
         "(SELECT COUNT(*) FROM workspace_members wm WHERE wm.workspace_id = w.id) AS member_count "
         "FROM workspaces w "
         "WHERE EXISTS ("
@@ -101,7 +104,8 @@ async def list_user_workspaces(user_id: UUID) -> list[dict]:
         ") AS is_public, "
         "w.created_at, w.updated_at, w.summary, w.tags, w.category, "
         "w.discoverable, w.featured, "
-        "w.cover_image_url, w.icon_url, w.color_gradient, w.fork_count, w.forked_from_workspace_id, "
+        "w.cover_image_url, w.home_background, w.icon_url, w.color_gradient, "
+        "w.fork_count, w.forked_from_workspace_id, "
         "(SELECT COUNT(*) FROM workspace_members wm WHERE wm.workspace_id = w.id) AS member_count "
         "FROM workspaces w "
         "JOIN workspace_members wm ON wm.workspace_id = w.id "
@@ -119,6 +123,7 @@ async def update_workspace(
     tags: list[str] | None = None,
     category: str | None = None,
     cover_image_url: str | None = None,
+    home_background: dict | None = None,
     icon_url: str | None = None,
     color_gradient: str | None = None,
     is_public: bool | None = None,
@@ -138,6 +143,7 @@ async def update_workspace(
         ("tags", tags),
         ("category", category),
         ("cover_image_url", cover_image_url),
+        ("home_background", home_background),
         ("icon_url", icon_url),
         ("color_gradient", color_gradient),
         ("discoverable", discoverable),
@@ -279,7 +285,7 @@ async def fork_workspace(
     """
     pool = get_pool()
     source = await pool.fetchrow(
-        "SELECT w.id, w.name, w.description, w.summary, "
+        "SELECT w.id, w.name, w.description, w.summary, w.home_background, "
         "EXISTS("
         "  SELECT 1 FROM object_permissions op "
         "  WHERE op.object_type = 'workspace' AND op.object_id = w.id AND op.visibility = 'public'"
@@ -300,15 +306,17 @@ async def fork_workspace(
     async with pool.acquire() as conn:
         async with conn.transaction():
             new_ws_row = await conn.fetchrow(
-                "INSERT INTO workspaces (name, description, summary, creator_id, "
+                "INSERT INTO workspaces (name, description, summary, home_background, creator_id, "
                 "invite_code, forked_from_workspace_id) "
-                "VALUES ($1, $2, $3, $4, $5, $6) "
+                "VALUES ($1, $2, $3, $4, $5, $6, $7) "
                 "RETURNING id, name, description, creator_id, invite_code, "
                 "created_at, updated_at, summary, tags, category, discoverable, featured, "
-                "cover_image_url, icon_url, color_gradient, fork_count, forked_from_workspace_id",
+                "cover_image_url, home_background, icon_url, color_gradient, "
+                "fork_count, forked_from_workspace_id",
                 new_name,
                 source["description"] or "",
                 source["summary"],
+                source["home_background"],
                 forker_id,
                 invite_code,
                 source_id,

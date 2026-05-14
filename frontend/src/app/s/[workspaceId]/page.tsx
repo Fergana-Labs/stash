@@ -3,6 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import type { PublicWorkspaceDetail } from "../../../lib/api";
+import { homeBackgroundStyle } from "../../../lib/homeBackground";
 import ForkButton from "./ForkButton";
 
 const BACKEND_ORIGIN =
@@ -54,119 +55,127 @@ export default async function PublicStashPage({
   const owner = ws.creator_display_name || ws.creator_name;
 
   return (
-    <main className="mx-auto max-w-[1100px] px-7 py-12">
-      <Link
-        href="/discover"
-        className="font-mono text-[12px] uppercase tracking-wider text-muted hover:text-ink"
-      >
-        ← Discover
-      </Link>
+    <main>
+      <div className="h-32" style={homeBackgroundStyle(ws.home_background)} />
+      <div className="mx-auto -mt-8 max-w-[1100px] px-7 pb-12">
+        <Link
+          href="/discover"
+          className="font-mono text-[12px] uppercase tracking-wider text-muted hover:text-ink"
+        >
+          ← Discover
+        </Link>
 
-      <header className="mt-6 flex flex-col gap-4 border-b border-border-subtle pb-8">
-        <div className="flex items-start justify-between gap-6">
-          <div>
-            <h1 className="font-display text-[clamp(32px,4vw,48px)] font-black leading-[1.05] tracking-[-0.03em] text-ink">
-              {ws.name}
-            </h1>
-            <p className="mt-2 text-[14px] text-dim">
-              by {owner} · updated {relativeTime(ws.updated_at)}
-            </p>
-          </div>
-          <div className="flex items-start gap-2">
-            <ForkButton workspaceId={ws.id} defaultName={`${ws.name} (fork)`} />
-            <Link
-              href={`/login?next=${encodeURIComponent(`/workspaces/${ws.id}`)}`}
-              className="rounded-lg border border-border px-4 py-2 text-[14px] font-medium text-ink transition hover:border-ink"
-            >
-              Sign in to join
-            </Link>
-          </div>
-        </div>
-
-        {ws.summary ? (
-          <p className="max-w-[720px] text-[16px] leading-[1.55] text-foreground">{ws.summary}</p>
-        ) : null}
-
-        <div className="flex flex-wrap items-center gap-x-5 gap-y-2 font-mono text-[11px] uppercase tracking-wider text-muted">
-          <span>★ {ws.fork_count} forks</span>
-          <span>{ws.member_count} members</span>
-          <span>{ws.page_count} pages</span>
-          <span>{ws.table_count} tables</span>
-          <span>{ws.file_count} files</span>
-          <span>{ws.history_event_count} events</span>
-        </div>
-
-        {ws.tags?.length ? (
-          <div className="flex flex-wrap gap-1.5">
-            {ws.tags.map((t) => (
-              <span
-                key={t}
-                className="rounded-md border border-border-subtle px-2 py-0.5 font-mono text-[10px] text-muted"
+        <header className="mt-6 flex flex-col gap-4 border-b border-border-subtle pb-8">
+          <div className="flex items-start justify-between gap-6">
+            <div>
+              <h1 className="font-display text-[clamp(32px,4vw,48px)] font-black leading-[1.05] tracking-[-0.03em] text-ink">
+                {ws.name}
+              </h1>
+              <p className="mt-2 text-[14px] text-dim">
+                by {owner} · updated {relativeTime(ws.updated_at)}
+              </p>
+            </div>
+            <div className="flex items-start gap-2">
+              <ForkButton workspaceId={ws.id} defaultName={`${ws.name} (fork)`} />
+              <Link
+                href={`/login?next=${encodeURIComponent(`/workspaces/${ws.id}`)}`}
+                className="rounded-lg border border-border px-4 py-2 text-[14px] font-medium text-ink transition hover:border-ink"
               >
-                {t}
-              </span>
-            ))}
+                Sign in to join
+              </Link>
+            </div>
           </div>
+
+          {ws.summary ? (
+            <p className="max-w-[720px] text-[16px] leading-[1.55] text-foreground">
+              {ws.summary}
+            </p>
+          ) : null}
+
+          <div className="flex flex-wrap items-center gap-x-5 gap-y-2 font-mono text-[11px] uppercase tracking-wider text-muted">
+            <span>★ {ws.fork_count} forks</span>
+            <span>{ws.member_count} members</span>
+            <span>{ws.page_count} pages</span>
+            <span>{ws.table_count} tables</span>
+            <span>{ws.file_count} files</span>
+            <span>{ws.history_event_count} events</span>
+          </div>
+
+          {ws.tags?.length ? (
+            <div className="flex flex-wrap gap-1.5">
+              {ws.tags.map((t) => (
+                <span
+                  key={t}
+                  className="rounded-md border border-border-subtle px-2 py-0.5 font-mono text-[10px] text-muted"
+                >
+                  {t}
+                </span>
+              ))}
+            </div>
+          ) : null}
+
+          {ws.forked_from_workspace_id ? (
+            <p className="text-[12px] text-dim">
+              Forked from{" "}
+              <Link
+                href={`/s/${ws.forked_from_workspace_id}`}
+                className="text-brand hover:underline"
+              >
+                another Stash
+              </Link>
+            </p>
+          ) : null}
+        </header>
+
+        {ws.description ? (
+          <section className="prose prose-invert mt-8 max-w-none text-[16px] leading-[1.65] text-foreground">
+            <p>{ws.description}</p>
+          </section>
         ) : null}
 
-        {ws.forked_from_workspace_id ? (
-          <p className="text-[12px] text-dim">
-            Forked from{" "}
-            <Link href={`/s/${ws.forked_from_workspace_id}`} className="text-brand hover:underline">
-              another Stash
-            </Link>
-          </p>
-        ) : null}
-      </header>
+        <Section title="Folders" empty="No folders.">
+          {rootFolders.map((f) => (
+            <Row
+              key={f.id}
+              href={`/s/${ws.id}/f/${f.id}`}
+              title={f.name}
+              meta={`${f.page_count} page${f.page_count === 1 ? "" : "s"} · updated ${relativeTime(f.updated_at)}`}
+            />
+          ))}
+        </Section>
 
-      {ws.description ? (
-        <section className="prose prose-invert mt-8 max-w-none text-[16px] leading-[1.65] text-foreground">
-          <p>{ws.description}</p>
-        </section>
-      ) : null}
+        <Section title="Pages" empty="No top-level pages.">
+          {root_pages.map((p) => (
+            <Row
+              key={p.id}
+              href={`/s/${ws.id}/p/${p.id}`}
+              title={p.name}
+              meta={`updated ${relativeTime(p.updated_at)}`}
+            />
+          ))}
+        </Section>
 
-      <Section title="Folders" empty="No folders.">
-        {rootFolders.map((f) => (
-          <Row
-            key={f.id}
-            href={`/s/${ws.id}/f/${f.id}`}
-            title={f.name}
-            meta={`${f.page_count} page${f.page_count === 1 ? "" : "s"} · updated ${relativeTime(f.updated_at)}`}
-          />
-        ))}
-      </Section>
+        <Section title="Tables" empty="No tables.">
+          {tables.map((t) => (
+            <Row
+              key={t.id}
+              href={`/s/${ws.id}/t/${t.id}`}
+              title={t.name}
+              meta={`${t.row_count} row${t.row_count === 1 ? "" : "s"} · updated ${relativeTime(t.updated_at)}`}
+            />
+          ))}
+        </Section>
 
-      <Section title="Pages" empty="No top-level pages.">
-        {root_pages.map((p) => (
-          <Row
-            key={p.id}
-            href={`/s/${ws.id}/p/${p.id}`}
-            title={p.name}
-            meta={`updated ${relativeTime(p.updated_at)}`}
-          />
-        ))}
-      </Section>
-
-      <Section title="Tables" empty="No tables.">
-        {tables.map((t) => (
-          <Row
-            key={t.id}
-            href={`/s/${ws.id}/t/${t.id}`}
-            title={t.name}
-            meta={`${t.row_count} row${t.row_count === 1 ? "" : "s"} · updated ${relativeTime(t.updated_at)}`}
-          />
-        ))}
-      </Section>
-
-      <Section title="Files" empty="No files.">
-        {files.map((f) => (
-          <Row
-            key={f.id}
-            title={f.name}
-            meta={`${formatSize(f.size_bytes)} · ${relativeTime(f.created_at)}`}
-          />
-        ))}
-      </Section>
+        <Section title="Files" empty="No files.">
+          {files.map((f) => (
+            <Row
+              key={f.id}
+              title={f.name}
+              meta={`${formatSize(f.size_bytes)} · ${relativeTime(f.created_at)}`}
+            />
+          ))}
+        </Section>
+      </div>
     </main>
   );
 }

@@ -60,6 +60,13 @@ const workspace = {
   created_at: "2026-05-11T00:00:00Z",
   updated_at: "2026-05-11T00:00:00Z",
   member_count: 1,
+  home_background: {
+    kind: "gradient" as const,
+    gradient_start: "#FED7AA",
+    gradient_middle: "#FEF3C7",
+    gradient_end: "#FFE4E6",
+    image_url: null,
+  },
 };
 
 const sharedWorkspace = {
