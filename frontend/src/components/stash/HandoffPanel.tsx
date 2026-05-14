@@ -110,19 +110,34 @@ export default function HandoffPanel({ stashId, canWrite, metadataHint }: Handof
     <section className="mt-6 rounded-xl border border-border bg-surface p-4">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <span className="text-[10.5px] font-semibold uppercase tracking-wider text-muted">
-            Orientation
-          </span>
-          <span className="text-[11px] text-muted">— agent-curated overview</span>
-          {isPinned ? (
-            <span
-              className="rounded-full bg-amber-100 px-2 py-0.5 text-[10.5px] text-amber-800"
-              title={`Pinned ${data?.pinned_at ? formatRelative(data.pinned_at) : ""}`}
-            >
-              📌 Auto-curation off
+          <span className="text-[12px] font-semibold text-foreground">Handoff document</span>
+          {canWrite &&
+            (isPinned ? (
+              <button
+                onClick={handleUnpin}
+                disabled={busy}
+                className="rounded-full border border-amber-300 bg-amber-50 px-2 py-0.5 text-[10.5px] text-amber-800 hover:bg-amber-100 disabled:opacity-60"
+                title="Click to re-enable auto-curation"
+              >
+                Auto-curate: off
+              </button>
+            ) : hasBody ? (
+              <button
+                onClick={startEdit}
+                className="rounded-full border border-border bg-base px-2 py-0.5 text-[10.5px] text-muted hover:bg-raised"
+                title="Editing pauses auto-curation"
+              >
+                Auto-curate: on
+              </button>
+            ) : (
+              <span className="rounded-full border border-border bg-base px-2 py-0.5 text-[10.5px] text-muted">
+                Auto-curate: on
+              </span>
+            ))}
+          {!canWrite && (
+            <span className="rounded-full border border-border bg-base px-2 py-0.5 text-[10.5px] text-muted">
+              {isPinned ? "Auto-curate: off" : "Auto-curate: on"}
             </span>
-          ) : (
-            <span className="text-[10.5px] text-muted">Auto-curation on</span>
           )}
         </div>
       </div>
@@ -141,9 +156,6 @@ export default function HandoffPanel({ stashId, canWrite, metadataHint }: Handof
             className="min-h-[280px] w-full rounded-md border border-border bg-base p-3 font-mono text-[13px] leading-relaxed"
             placeholder="Markdown handoff document."
           />
-          <p className="mt-1.5 text-[11px] text-muted">
-            Saving pauses auto-curation until you turn it back on.
-          </p>
         </div>
       ) : hasBody ? (
         <div className="prose prose-sm mt-3 max-w-none text-foreground">
@@ -225,15 +237,6 @@ export default function HandoffPanel({ stashId, canWrite, metadataHint }: Handof
                     title="Editing pauses auto-curation until you turn it back on."
                   >
                     Edit
-                  </button>
-                )}
-                {isPinned && (
-                  <button
-                    onClick={handleUnpin}
-                    disabled={busy}
-                    className="rounded-md border border-amber-300 bg-amber-50 px-2.5 py-1 text-[11px] text-amber-800 hover:bg-amber-100 disabled:opacity-60"
-                  >
-                    Turn auto-curation back on
                   </button>
                 )}
               </>

@@ -35,6 +35,7 @@ interface PublicPage {
   content_type: "markdown" | "html";
   content_markdown: string;
   content_html: string;
+  html_layout: "responsive" | "fixed-aspect";
   folder_id: string | null;
   folder_name: string | null;
   workspace_id: string;
@@ -84,7 +85,11 @@ export default async function PublicPageReader({
 
       <article className="mt-8">
         {page.content_type === "html" ? (
-          <HtmlPageView html={page.content_html || ""} title={page.name} />
+          <HtmlPageView
+            html={page.content_html || ""}
+            title={page.name}
+            layout={page.html_layout}
+          />
         ) : (
           <div className="markdown-content">
             <Markdown remarkPlugins={[remarkGfm]}>{page.content_markdown || "(empty)"}</Markdown>

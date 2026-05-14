@@ -54,6 +54,13 @@ export class ApiError extends Error {
   }
 }
 
+export async function fetchAuthed(path: string): Promise<Response> {
+  const token = getToken();
+  const headers: Record<string, string> = {};
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+  return fetch(`${API_BASE}${path}`, { headers });
+}
+
 // Scope = workspace-scoped when workspaceId is set, personal otherwise.
 // Used everywhere a resource has both /api/v1/workspaces/{ws}/... and /api/v1/... variants.
 function scope(workspaceId: string | null): string {
@@ -229,8 +236,12 @@ export async function updateWorkspace(
   data: {
     name?: string;
     description?: string;
-    is_public?: boolean;
     home_background?: HomeBackground;
+    cover_image_url?: string | null;
+    icon_url?: string | null;
+    color_gradient?: string | null;
+    is_public?: boolean;
+    discoverable?: boolean;
   }
 ): Promise<Workspace> {
   return apiFetch(`/api/v1/workspaces/${workspaceId}`, {
@@ -373,6 +384,28 @@ export async function createFolder(
   });
 }
 
+// Quick-add drops (notes, links, files) all funnel into a single "Hopper"
+// folder at the wiki root. We auto-create it on first use so the user
+// doesn't have to set anything up.
+const HOPPER_FOLDER_NAME = "Hopper";
+const hopperCache = new Map<string, string>();
+
+export async function ensureHopperFolder(workspaceId: string): Promise<string> {
+  const cached = hopperCache.get(workspaceId);
+  if (cached) return cached;
+  const { folders } = await listFolders(workspaceId);
+  const existing = folders.find(
+    (f) => !f.parent_folder_id && f.name === HOPPER_FOLDER_NAME
+  );
+  if (existing) {
+    hopperCache.set(workspaceId, existing.id);
+    return existing.id;
+  }
+  const created = await createFolder(workspaceId, HOPPER_FOLDER_NAME, null);
+  hopperCache.set(workspaceId, created.id);
+  return created.id;
+}
+
 export async function updateFolder(
   workspaceId: string,
   folderId: string,
@@ -396,7 +429,11 @@ export async function createPage(
   name: string,
   folderId?: string | null,
   content?: string,
-  options?: { content_type?: "markdown" | "html"; content_html?: string }
+  options?: {
+    content_type?: "markdown" | "html";
+    content_html?: string;
+    html_layout?: "responsive" | "fixed-aspect";
+  }
 ): Promise<Page> {
   return apiFetch(`/api/v1/workspaces/${workspaceId}/pages/new`, {
     method: "POST",
@@ -406,6 +443,7 @@ export async function createPage(
       content: content || "",
       content_type: options?.content_type ?? "markdown",
       content_html: options?.content_html ?? "",
+      html_layout: options?.html_layout ?? "responsive",
     }),
   });
 }
@@ -423,6 +461,7 @@ export async function updatePage(
     content?: string;
     content_type?: "markdown" | "html";
     content_html?: string;
+    html_layout?: "responsive" | "fixed-aspect";
     move_to_root?: boolean;
   }
 ): Promise<Page> {
@@ -1389,4 +1428,3 @@ export interface StashSkillDetail {
 export async function getStashSkill(stashId: string, name: string): Promise<StashSkillDetail> {
   return apiFetch(`/api/v1/stashes/${stashId}/skills/${encodeURIComponent(name)}`);
 }
-

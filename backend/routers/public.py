@@ -266,7 +266,7 @@ async def public_page(
 
     page = await pool.fetchrow(
         "SELECT p.id, p.name, p.content_type, p.content_markdown, p.content_html, "
-        "p.folder_id, p.workspace_id, p.updated_at, "
+        "p.html_layout, p.folder_id, p.workspace_id, p.updated_at, "
         "f.name AS folder_name "
         "FROM pages p LEFT JOIN folders f ON f.id = p.folder_id WHERE p.id = $1",
         page_id,

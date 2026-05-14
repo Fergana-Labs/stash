@@ -10,7 +10,6 @@ import {
   type Dispatch,
   type SetStateAction,
 } from "react";
-import AppShell from "../../../components/AppShell";
 import MembersModal from "../../../components/MembersModal";
 import StashQuickAdd from "../../../components/StashQuickAdd";
 import HandoffPanel from "../../../components/stash/HandoffPanel";
@@ -19,6 +18,7 @@ import {
   FolderIcon,
   PageIcon,
   SessionsIcon,
+  SettingsIcon,
   StashIcon,
   TableIcon,
   WikiIcon,
@@ -108,7 +108,7 @@ export default function StashHomePage() {
   const params = useParams();
   const router = useRouter();
   const stashId = params.stashId as string;
-  const { user, loading, logout } = useAuth();
+  const { user, loading } = useAuth();
 
   const [stash, setStash] = useState<Workspace | null>(null);
   const [members, setMembers] = useState<WorkspaceMember[]>([]);
@@ -290,7 +290,7 @@ export default function StashHomePage() {
   const totalFiles = spine?.wiki?.files.length ?? 0;
 
   return (
-    <AppShell user={user} onLogout={logout}>
+    <>
       <div className="scroll-thin flex-1 overflow-y-auto">
         {stash ? (
           <div className="h-32" style={homeBackgroundStyle(stash.home_background)} />
@@ -298,12 +298,29 @@ export default function StashHomePage() {
           <div className="h-32 bg-surface" />
         )}
         <div className="mx-auto -mt-8 max-w-3xl px-12 pb-16">
-          <div className="mb-2 flex h-12 w-12 items-center justify-center text-5xl text-[var(--color-brand-700)]">
-            <StashIcon />
+          <div className="mb-2 flex h-12 w-12 items-center justify-center overflow-hidden text-5xl text-[var(--color-brand-700)]">
+            {stash?.icon_url ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={stash.icon_url} alt="" className="h-12 w-12 rounded-lg object-cover" />
+            ) : (
+              <StashIcon />
+            )}
           </div>
-          <h1 className="font-display text-[34px] font-bold tracking-tight text-foreground">
-            {stash?.name || "Loading…"}
-          </h1>
+          <div className="flex items-center gap-2">
+            <h1 className="font-display text-[34px] font-bold tracking-tight text-foreground">
+              {stash?.name || "Loading…"}
+            </h1>
+            {isMember && (
+              <Link
+                href={`/stashes/${stashId}/settings`}
+                title="Stash settings"
+                className="rounded-md p-1.5 text-muted hover:bg-raised hover:text-foreground"
+                aria-label="Settings"
+              >
+                <SettingsIcon className="h-[18px] w-[18px]" />
+              </Link>
+            )}
+          </div>
           <StashDescription
             stash={stash}
             canEdit={isMember}
@@ -486,22 +503,22 @@ export default function StashHomePage() {
             </div>
           )}
 
-          {/* Stash structure callout — only for empty stashes, as onboarding. */}
+          {/* Get-started callout — only for empty stashes. */}
           {spine &&
             spine.sessions.length === 0 &&
             totalFolders === 0 &&
             totalPages === 0 &&
             totalFiles === 0 && (
-              <div className="mt-8 rounded-xl border border-border bg-surface/50 p-4">
-                <div className="text-[10.5px] font-semibold uppercase tracking-wider text-muted">
-                  Stash structure
-                </div>
-                <p className="mt-1 text-[12.5px] leading-relaxed text-muted">
-                  Two surfaces:{" "}
-                  <span className="font-medium text-foreground">Sessions</span> (agent transcripts —
-                  episodic memory) and{" "}
-                  <span className="font-medium text-foreground">Wiki</span> (pages, files, and
-                  folders — the structured, shared content of the stash).
+              <div className="mt-8 rounded-xl border border-[var(--color-brand-200)] bg-[var(--color-brand-50)] p-5">
+                <h3 className="font-display text-[18px] font-semibold text-foreground">
+                  Welcome — here&apos;s how a stash works
+                </h3>
+                <p className="mt-2 text-[13.5px] leading-relaxed text-foreground/80">
+                  Drop in anything above — a link, a note, or a file — and we&apos;ll file it into the
+                  Hopper folder for you. Connect your agents via the Stash CLI and their sessions
+                  appear under <span className="font-medium text-foreground">Sessions</span>; your
+                  pages, files, and folders live in the <span className="font-medium text-foreground">Wiki</span>.
+                  Share any part of it with a single link.
                 </p>
               </div>
             )}
@@ -592,7 +609,7 @@ export default function StashHomePage() {
         </div>
       </div>
       <MembersModal stashId={stashId} open={membersOpen} onClose={() => setMembersOpen(false)} />
-    </AppShell>
+    </>
   );
 }
 

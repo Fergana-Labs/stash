@@ -16,6 +16,7 @@ just to have the client parse it back — the rows are the source of truth.
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Form, HTTPException, UploadFile
+from fastapi.responses import PlainTextResponse
 
 from ..auth import get_current_user
 from ..database import get_pool
@@ -158,3 +159,37 @@ async def get_transcript_events(
     if not events:
         raise HTTPException(status_code=404, detail="Transcript not found")
     return {"events": _events_to_viewer_shape(events)}
+
+
+@router.get("/{session_id}/export.jsonl")
+async def export_transcript_jsonl(
+    workspace_id: UUID,
+    session_id: str,
+    current_user: dict = Depends(get_current_user),
+):
+    """JSONL projection of the session — one event per line."""
+    import json as json_mod
+
+    await _check_member(workspace_id, current_user["id"])
+    events = await memory_service.read_session_events(workspace_id, session_id)
+    if not events:
+        raise HTTPException(status_code=404, detail="Transcript not found")
+
+    lines: list[str] = []
+    for ev in events:
+        role = _event_role(ev.get("event_type"))
+        if role is None:
+            continue
+        line: dict = {
+            "type": role,
+            "message": {"content": ev.get("content") or ""},
+            "timestamp": ev["created_at"].isoformat() if ev.get("created_at") else None,
+        }
+        if ev.get("tool_name"):
+            line["tool_name"] = ev["tool_name"]
+        lines.append(json_mod.dumps(line, ensure_ascii=False))
+    return PlainTextResponse(
+        ("\n".join(lines) + ("\n" if lines else "")),
+        media_type="application/jsonl",
+        headers={"Content-Disposition": f'attachment; filename="session-{session_id}.jsonl"'},
+    )

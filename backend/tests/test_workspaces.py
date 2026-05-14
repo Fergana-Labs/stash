@@ -257,7 +257,35 @@ async def test_public_workspace_includes_home_background(client: AsyncClient):
 
 
 @pytest.mark.asyncio
-async def test_member_cannot_update_workspace(client: AsyncClient):
+async def test_viewer_cannot_update_workspace(client: AsyncClient):
+    owner_key, _ = await _register(client)
+    member_key, member_body = await _register(client)
+    member_id = member_body["id"]
+
+    ws = (
+        await client.post("/api/v1/workspaces", json={"name": "Team"}, headers=_auth(owner_key))
+    ).json()
+    await client.post(f"/api/v1/workspaces/join/{ws['invite_code']}", headers=_auth(member_key))
+
+    # Editors (the default for joiners) can update; demote to viewer to verify
+    # read-only access.
+    demote = await client.patch(
+        f"/api/v1/workspaces/{ws['id']}/members/{member_id}",
+        json={"role": "viewer"},
+        headers=_auth(owner_key),
+    )
+    assert demote.status_code == 200
+
+    resp = await client.patch(
+        f"/api/v1/workspaces/{ws['id']}",
+        json={"name": "Hacked"},
+        headers=_auth(member_key),
+    )
+    assert resp.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_editor_can_update_workspace(client: AsyncClient):
     owner_key, _ = await _register(client)
     member_key, _ = await _register(client)
 
@@ -266,12 +294,14 @@ async def test_member_cannot_update_workspace(client: AsyncClient):
     ).json()
     await client.post(f"/api/v1/workspaces/join/{ws['invite_code']}", headers=_auth(member_key))
 
+    # Default role for joiners is editor; editors can rename/describe the stash.
     resp = await client.patch(
         f"/api/v1/workspaces/{ws['id']}",
-        json={"name": "Hacked"},
+        json={"name": "Edited by member"},
         headers=_auth(member_key),
     )
-    assert resp.status_code == 403
+    assert resp.status_code == 200
+    assert resp.json()["name"] == "Edited by member"
 
 
 @pytest.mark.asyncio

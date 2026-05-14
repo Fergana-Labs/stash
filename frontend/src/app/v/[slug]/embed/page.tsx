@@ -58,10 +58,14 @@ function ItemBody({ item }: { item: ViewItemInlined }) {
     return <p className="text-[12px] italic text-muted">Item unavailable.</p>;
   }
   if (item.object_type === "page") {
-    const p = (item.inline as { page?: { content_type?: string; content_markdown?: string; content_html?: string; name?: string } }).page;
+    const p = (item.inline as { page?: { content_type?: string; content_markdown?: string; content_html?: string; html_layout?: "responsive" | "fixed-aspect"; name?: string } }).page;
     if (!p) return null;
     return p.content_type === "html" ? (
-      <HtmlPageView html={p.content_html || ""} title={p.name || item.label} />
+      <HtmlPageView
+        html={p.content_html || ""}
+        title={p.name || item.label}
+        layout={p.html_layout}
+      />
     ) : (
       <div className="markdown-content">
         <Markdown remarkPlugins={[remarkGfm]}>{p.content_markdown || ""}</Markdown>
@@ -70,7 +74,7 @@ function ItemBody({ item }: { item: ViewItemInlined }) {
   }
   if (item.object_type === "folder") {
     const inline = item.inline as {
-      pages?: { id: string; name: string; content_type?: string; content_markdown?: string; content_html?: string }[];
+      pages?: { id: string; name: string; content_type?: string; content_markdown?: string; content_html?: string; html_layout?: "responsive" | "fixed-aspect" }[];
     };
     return (
       <div className="space-y-4">
@@ -78,7 +82,11 @@ function ItemBody({ item }: { item: ViewItemInlined }) {
           <div key={p.id}>
             <h2 className="mb-2 font-display text-[15px] font-bold text-ink">{p.name}</h2>
             {p.content_type === "html" ? (
-              <HtmlPageView html={p.content_html || ""} title={p.name} />
+              <HtmlPageView
+                html={p.content_html || ""}
+                title={p.name}
+                layout={p.html_layout}
+              />
             ) : (
               <div className="markdown-content">
                 <Markdown remarkPlugins={[remarkGfm]}>{p.content_markdown || ""}</Markdown>

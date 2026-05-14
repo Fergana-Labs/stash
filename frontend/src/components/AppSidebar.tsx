@@ -53,6 +53,18 @@ function readOpenMap(key: string): Record<string, boolean> {
   const raw = window.localStorage.getItem(key);
   if (!raw) return {};
 
+  // New format: JSON object with explicit true/false values so we can
+  // distinguish "user closed this" from "no preference yet".
+  if (raw.startsWith("{")) {
+    try {
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === "object") return parsed;
+    } catch {
+      // fall through to legacy format
+    }
+  }
+
+  // Legacy format: newline-separated IDs (presence = open).
   return Object.fromEntries(
     raw
       .split("\n")
@@ -63,9 +75,7 @@ function readOpenMap(key: string): Record<string, boolean> {
 
 function writeOpenMap(key: string, value: Record<string, boolean>) {
   if (typeof window === "undefined") return;
-
-  const openIds = Object.keys(value).filter((id) => value[id]);
-  window.localStorage.setItem(key, openIds.join("\n"));
+  window.localStorage.setItem(key, JSON.stringify(value));
 }
 
 function sectionKey(stashId: string, section: SidebarSection): string {
@@ -443,12 +453,7 @@ export default function AppSidebar({ user, onCmdkOpen }: AppSidebarProps) {
 
   const setOpenStash = useCallback((stashId: string, open: boolean) => {
     setOpenStashes((current) => {
-      const next = { ...current };
-      if (open) {
-        next[stashId] = true;
-      } else {
-        delete next[stashId];
-      }
+      const next = { ...current, [stashId]: open };
       writeOpenMap(OPEN_STASHES_KEY, next);
       return next;
     });
@@ -460,13 +465,7 @@ export default function AppSidebar({ user, onCmdkOpen }: AppSidebarProps) {
     open: boolean
   ) => {
     setOpenSections((current) => {
-      const next = { ...current };
-      const key = sectionKey(stashId, section);
-      if (open) {
-        next[key] = true;
-      } else {
-        delete next[key];
-      }
+      const next = { ...current, [sectionKey(stashId, section)]: open };
       writeOpenMap(OPEN_SECTIONS_KEY, next);
       return next;
     });
@@ -485,23 +484,34 @@ export default function AppSidebar({ user, onCmdkOpen }: AppSidebarProps) {
       });
   }, [activeTreeStashId, openStashes, spines]);
 
+  function sectionOpen(stashId: string, section: SidebarSection): boolean {
+    // Explicit user preference (open or closed) wins. Otherwise fall back to
+    // route-derived open (so the active page's accordion expands by default).
+    const explicit = openSections[sectionKey(stashId, section)];
+    if (explicit !== undefined) return explicit;
+    return activeTreeStashId === stashId && activeTreeSection === section;
+  }
+
   function getOpenSections(stashId: string): Record<SidebarSection, boolean> {
     return {
-      sessions:
-        !!openSections[sectionKey(stashId, "sessions")] ||
-        (activeTreeStashId === stashId && activeTreeSection === "sessions"),
-      wiki:
-        !!openSections[sectionKey(stashId, "wiki")] ||
-        (activeTreeStashId === stashId && activeTreeSection === "wiki"),
+      sessions: sectionOpen(stashId, "sessions"),
+      wiki: sectionOpen(stashId, "wiki"),
     };
   }
 
   function isStashOpen(stashId: string): boolean {
-    return !!openStashes[stashId] || activeTreeStashId === stashId;
+    const explicit = openStashes[stashId];
+    if (explicit !== undefined) return explicit;
+    return activeTreeStashId === stashId;
   }
 
   function handleStashOpenChange(stashId: string, open: boolean) {
-    if (open && activeTreeStashId === stashId && !openStashes[stashId]) return;
+    // Skip persisting the auto-open that fires when a route activates this
+    // stash and no explicit user preference exists yet. Otherwise route nav
+    // would write a "true" override that survives forever.
+    const explicit = openStashes[stashId];
+    const routeOpen = activeTreeStashId === stashId;
+    if (open && routeOpen && explicit === undefined) return;
     setOpenStash(stashId, open);
   }
 
@@ -510,11 +520,10 @@ export default function AppSidebar({ user, onCmdkOpen }: AppSidebarProps) {
     section: SidebarSection,
     open: boolean
   ) {
-    const isRouteOpen =
-      activeTreeStashId === stashId &&
-      activeTreeSection === section &&
-      !openSections[sectionKey(stashId, section)];
-    if (open && isRouteOpen) return;
+    const explicit = openSections[sectionKey(stashId, section)];
+    const routeOpen =
+      activeTreeStashId === stashId && activeTreeSection === section;
+    if (open && routeOpen && explicit === undefined) return;
     setOpenSection(stashId, section, open);
   }
 

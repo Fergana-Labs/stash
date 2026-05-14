@@ -2,10 +2,11 @@
 
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
-import AppShell from "../../../../../components/AppShell";
 import { useBreadcrumbs } from "../../../../../components/BreadcrumbContext";
+import DownloadMenu from "../../../../../components/DownloadMenu";
 import { useAuth } from "../../../../../hooks/useAuth";
 import {
+  fetchAuthed,
   getSessionEvents,
   getWorkspace,
   type SessionEvent,
@@ -129,9 +130,8 @@ export default function SessionViewerPage() {
   const sessionDate = turns.find((turn) => turn.dateLabel)?.dateLabel;
 
   return (
-    <AppShell user={user} onLogout={logout}>
-      <div className="scroll-thin flex-1 overflow-y-auto">
-        <div className="mx-auto max-w-3xl px-12 py-8">
+    <div className="scroll-thin flex-1 overflow-y-auto">
+      <div className="mx-auto max-w-3xl px-12 py-8">
           {/* Title row — chat-style header (matches mockup chat-customer-discovery) */}
           <div className="mb-5 flex items-start justify-between gap-4 border-b border-border pb-4">
             <div className="min-w-0">
@@ -151,11 +151,36 @@ export default function SessionViewerPage() {
                 </p>
               )}
             </div>
-            {agentName && (
-              <span className="inline-flex items-center gap-1.5 rounded-md border border-border bg-base px-2 py-1 text-[11px] text-foreground">
-                <span className="font-mono">⌘</span> {agentName}
-              </span>
-            )}
+            <div className="flex items-center gap-2">
+              {agentName && (
+                <span className="inline-flex items-center gap-1.5 rounded-md border border-border bg-base px-2 py-1 text-[11px] text-foreground">
+                  <span className="font-mono">⌘</span> {agentName}
+                </span>
+              )}
+              <DownloadMenu
+                options={[
+                  {
+                    label: "JSONL transcript",
+                    onSelect: async () => {
+                      const path = `/api/v1/workspaces/${stashId}/transcripts/${encodeURIComponent(
+                        sessionId
+                      )}/export.jsonl`;
+                      const res = await fetchAuthed(path);
+                      if (!res.ok) return;
+                      const blob = await res.blob();
+                      const url = URL.createObjectURL(blob);
+                      const a = document.createElement("a");
+                      a.href = url;
+                      a.download = `session-${sessionId}.jsonl`;
+                      document.body.appendChild(a);
+                      a.click();
+                      a.remove();
+                      URL.revokeObjectURL(url);
+                    },
+                  },
+                ]}
+              />
+            </div>
           </div>
 
           {error && (
@@ -185,9 +210,8 @@ export default function SessionViewerPage() {
               </div>
             )}
           </div>
-        </div>
       </div>
-    </AppShell>
+    </div>
   );
 }
 

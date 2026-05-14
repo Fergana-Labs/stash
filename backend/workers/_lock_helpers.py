@@ -1,9 +1,10 @@
 """Postgres advisory-lock helpers for workers.
 
 Pattern: each worker has a constant namespace (a 32-bit int) and locks
-per-resource by hashing the resource id with hashtextextended. Multiple
-uvicorn workers in the same process pool then can't double-process the
-same resource on the same tick.
+per-resource by hashing the resource id with hashtext (which returns
+int4, the type pg_try_advisory_lock(int, int) expects). Multiple uvicorn
+workers in the same process pool then can't double-process the same
+resource on the same tick.
 
 Advisory locks are connection-scoped, so we hold a dedicated connection
 for the duration of the lock. Use `advisory_lock` as a context manager:
@@ -30,7 +31,7 @@ async def advisory_lock(namespace: int, resource: str):
     pool = get_pool()
     async with pool.acquire() as conn:
         got = await conn.fetchval(
-            "SELECT pg_try_advisory_lock($1, hashtextextended($2, 0)::int)",
+            "SELECT pg_try_advisory_lock($1, hashtext($2))",
             namespace,
             resource,
         )
@@ -42,7 +43,7 @@ async def advisory_lock(namespace: int, resource: str):
         finally:
             try:
                 await conn.execute(
-                    "SELECT pg_advisory_unlock($1, hashtextextended($2, 0)::int)",
+                    "SELECT pg_advisory_unlock($1, hashtext($2))",
                     namespace,
                     resource,
                 )

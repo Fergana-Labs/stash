@@ -29,7 +29,8 @@ async def create_workspace(
         "VALUES ($1, $2, $3, $4) "
         "RETURNING id, name, description, creator_id, invite_code, "
         "created_at, updated_at, summary, tags, category, discoverable, featured, "
-        "cover_image_url, home_background, fork_count, forked_from_workspace_id",
+        "cover_image_url, home_background, icon_url, color_gradient, "
+        "fork_count, forked_from_workspace_id",
         name,
         description,
         creator_id,
@@ -62,7 +63,8 @@ async def get_workspace(workspace_id: UUID) -> dict | None:
         ") AS is_public, "
         "w.created_at, w.updated_at, w.summary, w.tags, w.category, "
         "w.discoverable, w.featured, "
-        "w.cover_image_url, w.home_background, w.fork_count, w.forked_from_workspace_id, "
+        "w.cover_image_url, w.home_background, w.icon_url, w.color_gradient, "
+        "w.fork_count, w.forked_from_workspace_id, "
         "(SELECT COUNT(*) FROM workspace_members wm WHERE wm.workspace_id = w.id) AS member_count "
         "FROM workspaces w WHERE w.id = $1",
         workspace_id,
@@ -77,7 +79,8 @@ async def list_public_workspaces() -> list[dict]:
         "true AS is_public, "
         "w.created_at, w.updated_at, w.summary, w.tags, w.category, "
         "w.discoverable, w.featured, "
-        "w.cover_image_url, w.home_background, w.fork_count, w.forked_from_workspace_id, "
+        "w.cover_image_url, w.home_background, w.icon_url, w.color_gradient, "
+        "w.fork_count, w.forked_from_workspace_id, "
         "(SELECT COUNT(*) FROM workspace_members wm WHERE wm.workspace_id = w.id) AS member_count "
         "FROM workspaces w "
         "WHERE EXISTS ("
@@ -101,7 +104,8 @@ async def list_user_workspaces(user_id: UUID) -> list[dict]:
         ") AS is_public, "
         "w.created_at, w.updated_at, w.summary, w.tags, w.category, "
         "w.discoverable, w.featured, "
-        "w.cover_image_url, w.home_background, w.fork_count, w.forked_from_workspace_id, "
+        "w.cover_image_url, w.home_background, w.icon_url, w.color_gradient, "
+        "w.fork_count, w.forked_from_workspace_id, "
         "(SELECT COUNT(*) FROM workspace_members wm WHERE wm.workspace_id = w.id) AS member_count "
         "FROM workspaces w "
         "JOIN workspace_members wm ON wm.workspace_id = w.id "
@@ -120,10 +124,16 @@ async def update_workspace(
     category: str | None = None,
     cover_image_url: str | None = None,
     home_background: dict | None = None,
+    icon_url: str | None = None,
+    color_gradient: str | None = None,
     is_public: bool | None = None,
+    discoverable: bool | None = None,
 ) -> dict | None:
     """Update a workspace. `is_public` writes into `object_permissions`
-    (the column on workspaces is gone — visibility lives in one place)."""
+    (the column on workspaces is gone — visibility lives in one place).
+    `discoverable` toggles whether the (public) workspace shows up in
+    the discover catalog — public+discoverable=listed,
+    public+!discoverable=unlisted, !public=private."""
     pool = get_pool()
     sets, args, idx = [], [], 1
     for col, val in (
@@ -134,6 +144,9 @@ async def update_workspace(
         ("category", category),
         ("cover_image_url", cover_image_url),
         ("home_background", home_background),
+        ("icon_url", icon_url),
+        ("color_gradient", color_gradient),
+        ("discoverable", discoverable),
     ):
         if val is not None:
             sets.append(f"{col} = ${idx}")
@@ -298,7 +311,8 @@ async def fork_workspace(
                 "VALUES ($1, $2, $3, $4, $5, $6, $7) "
                 "RETURNING id, name, description, creator_id, invite_code, "
                 "created_at, updated_at, summary, tags, category, discoverable, featured, "
-                "cover_image_url, home_background, fork_count, forked_from_workspace_id",
+                "cover_image_url, home_background, icon_url, color_gradient, "
+                "fork_count, forked_from_workspace_id",
                 new_name,
                 source["description"] or "",
                 source["summary"],

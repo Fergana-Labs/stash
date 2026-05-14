@@ -43,6 +43,7 @@ async def publish(
         content=req.content if req.content_type == "markdown" else "",
         content_type=req.content_type,
         content_html=req.content if req.content_type == "html" else "",
+        html_layout=req.html_layout,
     )
 
     await permission_service.set_visibility("page", page["id"], req.audience)

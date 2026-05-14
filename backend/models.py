@@ -111,7 +111,10 @@ class WorkspaceUpdateRequest(BaseModel):
     category: str | None = Field(None, max_length=32)
     cover_image_url: str | None = None
     home_background: WorkspaceHomeBackground | None = None
+    icon_url: str | None = None
+    color_gradient: str | None = Field(None, max_length=256)
     is_public: bool | None = None
+    discoverable: bool | None = None
 
 
 class WorkspaceResponse(BaseModel):
@@ -131,6 +134,8 @@ class WorkspaceResponse(BaseModel):
     featured: bool = False
     cover_image_url: str | None = None
     home_background: WorkspaceHomeBackground
+    icon_url: str | None = None
+    color_gradient: str | None = None
     fork_count: int = 0
     forked_from_workspace_id: UUID | None = None
 
@@ -389,6 +394,7 @@ class PageCreateRequest(BaseModel):
     content: str = ""
     content_type: str = Field("markdown", pattern=r"^(markdown|html)$")
     content_html: str = ""
+    html_layout: str = Field("responsive", pattern=r"^(responsive|fixed-aspect)$")
 
 
 class PageUpdateRequest(BaseModel):
@@ -397,6 +403,7 @@ class PageUpdateRequest(BaseModel):
     content: str | None = None
     content_type: str | None = Field(None, pattern=r"^(markdown|html)$")
     content_html: str | None = None
+    html_layout: str | None = Field(None, pattern=r"^(responsive|fixed-aspect)$")
     move_to_root: bool = False
 
 
@@ -408,6 +415,7 @@ class PageResponse(BaseModel):
     content_markdown: str
     content_type: str = "markdown"
     content_html: str = ""
+    html_layout: str = "responsive"
     content_hash: str | None = None
     metadata: dict = {}
     created_by: UUID
@@ -688,6 +696,7 @@ class PublishRequest(BaseModel):
     title: str = Field(..., min_length=1, max_length=255)
     content: str = ""
     content_type: str = Field("markdown", pattern=r"^(markdown|html)$")
+    html_layout: str = Field("responsive", pattern=r"^(responsive|fixed-aspect)$")
     audience: str = Field("link", pattern=r"^(link|public)$")
     folder_id: UUID | None = None
 
