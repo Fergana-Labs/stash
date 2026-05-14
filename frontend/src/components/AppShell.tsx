@@ -3,6 +3,7 @@
 import { ReactNode, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import type { ViewItemSpec } from "../lib/api";
 import { User, Workspace } from "../lib/types";
 import AppSidebar from "./AppSidebar";
 import CommandPalette from "./CommandPalette";
@@ -22,6 +23,19 @@ const SIDEBAR_KEY = "stash_sidebar_collapsed";
 function readBool(key: string): boolean {
   if (typeof window === "undefined") return false;
   return localStorage.getItem(key) === "1";
+}
+
+// Pre-select the current page/folder/file/session when the Share button is
+// clicked from a detail route, so "share this" is one click instead of a hunt
+// through the picker.
+function inferShareInitial(pathname: string): ViewItemSpec[] | undefined {
+  const pageMatch = pathname.match(/^\/stashes\/[^/]+\/p\/([^/?#]+)/);
+  if (pageMatch) return [{ object_type: "page", object_id: pageMatch[1], position: 0 }];
+  const folderMatch = pathname.match(/^\/stashes\/[^/]+\/folders\/([^/?#]+)/);
+  if (folderMatch) return [{ object_type: "folder", object_id: folderMatch[1], position: 0 }];
+  const fileMatch = pathname.match(/^\/stashes\/[^/]+\/f\/([^/?#]+)/);
+  if (fileMatch) return [{ object_type: "file", object_id: fileMatch[1], position: 0 }];
+  return undefined;
 }
 
 function SidebarToggleIcon({ collapsed }: { collapsed: boolean }) {
@@ -111,6 +125,7 @@ export default function AppShell({ user, onLogout, children }: AppShellProps) {
                 shareModal.open({
                   stashId: activeStashId,
                   stashName: activeStash?.name,
+                  initial: inferShareInitial(pathname),
                 })
               }
             >

@@ -5,6 +5,7 @@ import { useState } from "react";
 import AppShell from "../../../components/AppShell";
 import { useAuth } from "../../../hooks/useAuth";
 import { createWorkspace } from "../../../lib/api";
+import { resetStashNavigationCache } from "../../../lib/stashNavigationCache";
 
 export default function NewStashPage() {
   const router = useRouter();
@@ -28,6 +29,7 @@ export default function NewStashPage() {
     setError("");
     try {
       const ws = await createWorkspace(name.trim(), description.trim(), isPublic);
+      resetStashNavigationCache();
       router.push(`/stashes/${ws.id}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to create stash");
@@ -42,11 +44,10 @@ export default function NewStashPage() {
         <h1 className="mt-2 font-display text-[34px] font-bold tracking-tight text-foreground">
           Create a stash
         </h1>
-        <p className="mt-3 text-[14px] text-dim">
-          Every stash gets the same three folders out of the box —{" "}
-          <strong className="text-foreground">Sessions</strong> for agent transcripts,{" "}
-          <strong className="text-foreground">Skills</strong> for procedural how-tos, and{" "}
-          <strong className="text-foreground">Drive</strong> for files and wiki pages.
+        <p className="mt-3 text-[15px] leading-relaxed text-foreground/80">
+          A stash is your team&apos;s shared workspace for agent work — sessions,
+          curated wiki pages, and files all in one place, with a single share link
+          for anything inside.
         </p>
 
         <form onSubmit={submit} className="mt-8 flex flex-col gap-4">

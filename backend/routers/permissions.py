@@ -29,8 +29,11 @@ router = APIRouter(prefix="/api/v1/objects", tags=["permissions"])
 _SHAREABLE = {"workspace", "folder", "page", "table", "file", "history", "view"}
 
 
-async def _require_admin(object_type: str, object_id: UUID, user_id: UUID) -> None:
-    """Caller must be workspace owner/admin (or, for personal items, the creator)."""
+async def _require_can_share(object_type: str, object_id: UUID, user_id: UUID) -> None:
+    """Caller can share this object if they can read it.
+
+    Per project intent: read access implies share. Edit access implies share + edit.
+    Owner-only gates (members, delete, transfer) live elsewhere."""
     if object_type not in _SHAREABLE:
         raise HTTPException(status_code=400, detail=f"Unsupported object_type: {object_type}")
 
@@ -44,24 +47,16 @@ async def _require_admin(object_type: str, object_id: UUID, user_id: UUID) -> No
         raise HTTPException(status_code=403, detail="Not allowed to manage this view")
 
     if object_type == "workspace":
-        # Sharing the workspace itself: must be a workspace owner/admin.
         role = await workspace_service.get_member_role(workspace_id, user_id)
-        if role not in ("owner", "admin"):
-            raise HTTPException(status_code=403, detail="Only workspace owner/admin can share")
+        if role not in workspace_service.ROLES_CAN_READ:
+            raise HTTPException(status_code=403, detail="Only workspace members can share")
         return
 
-    role = await workspace_service.get_member_role(workspace_id, user_id)
-    if role in ("owner", "admin"):
-        return
-
-    # Members can manage shares on objects they have write access to (Drive-style).
-    can_write = await permission_service.check_access(
-        object_type, object_id, user_id, workspace_id=workspace_id, require_write=True
+    can_read = await permission_service.check_access(
+        object_type, object_id, user_id, workspace_id=workspace_id, require_write=False
     )
-    if not can_write:
-        raise HTTPException(
-            status_code=403, detail="Not allowed to manage permissions for this object"
-        )
+    if not can_read:
+        raise HTTPException(status_code=403, detail="Not allowed to share this object")
 
 
 @router.get("/{object_type}/{object_id}/permissions", response_model=PermissionResponse)
@@ -70,7 +65,7 @@ async def get_permissions(
     object_id: UUID,
     current_user: dict = Depends(get_current_user),
 ):
-    await _require_admin(object_type, object_id, current_user["id"])
+    await _require_can_share(object_type, object_id, current_user["id"])
     perms = await permission_service.get_permissions(object_type, object_id)
     return PermissionResponse(**perms)
 
@@ -82,7 +77,7 @@ async def set_visibility(
     req: SetVisibilityRequest,
     current_user: dict = Depends(get_current_user),
 ):
-    await _require_admin(object_type, object_id, current_user["id"])
+    await _require_can_share(object_type, object_id, current_user["id"])
     await permission_service.set_visibility(object_type, object_id, req.visibility)
     return {"status": "ok", "visibility": req.visibility}
 
@@ -94,7 +89,7 @@ async def add_share(
     req: ShareRequest,
     current_user: dict = Depends(get_current_user),
 ):
-    await _require_admin(object_type, object_id, current_user["id"])
+    await _require_can_share(object_type, object_id, current_user["id"])
     share = await permission_service.add_share(
         object_type, object_id, req.user_id, req.permission, current_user["id"]
     )
@@ -116,7 +111,7 @@ async def remove_share(
     user_id: UUID,
     current_user: dict = Depends(get_current_user),
 ):
-    await _require_admin(object_type, object_id, current_user["id"])
+    await _require_can_share(object_type, object_id, current_user["id"])
     await permission_service.remove_share(object_type, object_id, user_id)
 
 
@@ -141,7 +136,7 @@ async def create_share_link(
     least the requested level before returning the URL. Without this, an
     agent that calls share-link on an `inherit` object gets back a URL that
     immediately 404s for anonymous viewers — easy to forget, hard to debug."""
-    await _require_admin(object_type, object_id, current_user["id"])
+    await _require_can_share(object_type, object_id, current_user["id"])
 
     if ensure and object_type != "view":
         current_vis = await permission_service.get_visibility(object_type, object_id)
@@ -161,7 +156,7 @@ async def create_share_link(
             raise HTTPException(status_code=404, detail="View not found")
         if ensure:
             for item in view["items"]:
-                await _require_admin(item["object_type"], item["object_id"], current_user["id"])
+                await _require_can_share(item["object_type"], item["object_id"], current_user["id"])
             for item in view["items"]:
                 current_vis = await permission_service.get_visibility(
                     item["object_type"], item["object_id"]

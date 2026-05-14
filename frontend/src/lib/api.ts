@@ -53,6 +53,13 @@ export class ApiError extends Error {
   }
 }
 
+export async function fetchAuthed(path: string): Promise<Response> {
+  const token = getToken();
+  const headers: Record<string, string> = {};
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+  return fetch(`${API_BASE}${path}`, { headers });
+}
+
 // Scope = workspace-scoped when workspaceId is set, personal otherwise.
 // Used everywhere a resource has both /api/v1/workspaces/{ws}/... and /api/v1/... variants.
 function scope(workspaceId: string | null): string {
@@ -225,7 +232,15 @@ export async function getWorkspaceMembers(workspaceId: string): Promise<Workspac
 
 export async function updateWorkspace(
   workspaceId: string,
-  data: { name?: string; description?: string; is_public?: boolean }
+  data: {
+    name?: string;
+    description?: string;
+    cover_image_url?: string | null;
+    icon_url?: string | null;
+    color_gradient?: string | null;
+    is_public?: boolean;
+    discoverable?: boolean;
+  }
 ): Promise<Workspace> {
   return apiFetch(`/api/v1/workspaces/${workspaceId}`, {
     method: "PATCH",
@@ -364,6 +379,28 @@ export async function createFolder(
       parent_folder_id: parentFolderId || null,
     }),
   });
+}
+
+// Quick-add drops (notes, links, files) all funnel into a single "Hopper"
+// folder at the wiki root. We auto-create it on first use so the user
+// doesn't have to set anything up.
+const HOPPER_FOLDER_NAME = "Hopper";
+const hopperCache = new Map<string, string>();
+
+export async function ensureHopperFolder(workspaceId: string): Promise<string> {
+  const cached = hopperCache.get(workspaceId);
+  if (cached) return cached;
+  const { folders } = await listFolders(workspaceId);
+  const existing = folders.find(
+    (f) => !f.parent_folder_id && f.name === HOPPER_FOLDER_NAME
+  );
+  if (existing) {
+    hopperCache.set(workspaceId, existing.id);
+    return existing.id;
+  }
+  const created = await createFolder(workspaceId, HOPPER_FOLDER_NAME, null);
+  hopperCache.set(workspaceId, created.id);
+  return created.id;
 }
 
 export async function updateFolder(

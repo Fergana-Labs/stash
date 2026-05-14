@@ -2,8 +2,8 @@
 
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
-import AppShell from "../../../../../components/AppShell";
 import { useBreadcrumbs } from "../../../../../components/BreadcrumbContext";
+import DownloadMenu, { downloadBlob } from "../../../../../components/DownloadMenu";
 import { PageIcon } from "../../../../../components/StashIcons";
 import HtmlPageView from "../../../../../components/workspace/HtmlPageView";
 import MarkdownEditor, { type SaveStatus } from "../../../../../components/workspace/MarkdownEditor";
@@ -18,6 +18,18 @@ import {
   type WorkspacePageEntry,
 } from "../../../../../lib/api";
 import type { Page, Workspace } from "../../../../../lib/types";
+
+function wrapHtml(title: string, body: string): string {
+  return `<!doctype html><html><head><meta charset="utf-8"><title>${escapeHtml(
+    title
+  )}</title><style>body{font-family:system-ui,sans-serif;max-width:720px;margin:2em auto;padding:0 1em;line-height:1.6;color:#1a1a1a}h1,h2,h3{line-height:1.25}pre{background:#f6f6f6;padding:1em;overflow:auto;border-radius:6px}code{background:#f6f6f6;padding:.1em .3em;border-radius:3px}</style></head><body>${body}</body></html>`;
+}
+
+function escapeHtml(s: string): string {
+  return s.replace(/[&<>"']/g, (c) =>
+    c === "&" ? "&amp;" : c === "<" ? "&lt;" : c === ">" ? "&gt;" : c === '"' ? "&quot;" : "&#39;"
+  );
+}
 
 export default function StashPageView() {
   const params = useParams();
@@ -99,9 +111,8 @@ export default function StashPageView() {
     : null;
 
   return (
-    <AppShell user={user} onLogout={logout}>
-      <div className="scroll-thin flex-1 overflow-y-auto">
-        <div className="h-16 w-full bg-gradient-to-r from-[var(--color-brand-200)] via-[var(--color-brand-100)] to-amber-100" />
+    <div className="scroll-thin flex-1 overflow-y-auto">
+      <div className="h-16 w-full bg-gradient-to-r from-[var(--color-brand-200)] via-[var(--color-brand-100)] to-amber-100" />
         <div className="mx-auto -mt-6 max-w-3xl px-12 pb-20">
           <div className="flex h-12 w-12 items-center justify-center text-5xl text-muted">
             <PageIcon />
@@ -109,25 +120,55 @@ export default function StashPageView() {
           <h1 className="mt-1 font-display text-[36px] font-bold tracking-tight text-foreground">
             {(page?.name || "").replace(/\.md$/, "")}
           </h1>
-          <div className="mt-1 flex items-center gap-3 text-[12px] text-muted">
-            {updatedAt && (
-              <span>
-                Last edited {updatedAt}
-                {stash ? <span> in <span className="text-foreground">{stash.name}</span></span> : null}
-              </span>
-            )}
-            {page && page.content_type !== "html" && (
-              <span
-                className={
-                  saveStatus === "saving"
-                    ? "text-amber-500"
-                    : saveStatus === "dirty"
-                    ? "text-amber-600"
-                    : "text-emerald-600"
-                }
-              >
-                {saveStatus === "saving" ? "Saving…" : saveStatus === "dirty" ? "Unsaved" : "Saved"}
-              </span>
+          <div className="mt-1 flex items-center justify-between gap-3 text-[12px] text-muted">
+            <div className="flex items-center gap-3">
+              {updatedAt && (
+                <span>
+                  Last edited {updatedAt}
+                  {stash ? <span> in <span className="text-foreground">{stash.name}</span></span> : null}
+                </span>
+              )}
+              {page && page.content_type !== "html" && (
+                <span
+                  className={
+                    saveStatus === "saving"
+                      ? "text-amber-500"
+                      : saveStatus === "dirty"
+                      ? "text-amber-600"
+                      : "text-emerald-600"
+                  }
+                >
+                  {saveStatus === "saving" ? "Saving…" : saveStatus === "dirty" ? "Unsaved" : "Saved"}
+                </span>
+              )}
+            </div>
+            {page && (
+              <DownloadMenu
+                options={[
+                  {
+                    label: "Markdown (.md)",
+                    onSelect: () =>
+                      downloadBlob(
+                        page.content_markdown ?? "",
+                        "text/markdown",
+                        `${page.name.replace(/\.md$/, "")}.md`
+                      ),
+                  },
+                  {
+                    label: "HTML (.html)",
+                    onSelect: () =>
+                      downloadBlob(
+                        wrapHtml(page.name, page.content_html ?? ""),
+                        "text/html",
+                        `${page.name.replace(/\.md$/, "")}.html`
+                      ),
+                  },
+                  {
+                    label: "PDF (print)",
+                    onSelect: () => window.print(),
+                  },
+                ]}
+              />
             )}
           </div>
 
@@ -158,6 +199,5 @@ export default function StashPageView() {
           </article>
         </div>
       </div>
-    </AppShell>
   );
 }

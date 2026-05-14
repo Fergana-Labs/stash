@@ -4,7 +4,6 @@ import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import AppShell from "../../../../../components/AppShell";
 import { useBreadcrumbs } from "../../../../../components/BreadcrumbContext";
 import { useAuth } from "../../../../../hooks/useAuth";
 import {
@@ -110,8 +109,7 @@ export default function FileViewerPage() {
   if (!user) return null;
 
   return (
-    <AppShell user={user} onLogout={logout}>
-      <div className="flex flex-1 min-h-0 flex-col overflow-hidden">
+    <div className="flex flex-1 min-h-0 flex-col overflow-hidden">
         <div className="flex items-center justify-between border-b border-border px-5 py-2.5 text-[13px]">
           <div className="flex items-center gap-2">
             <span className="font-mono font-medium text-foreground">{file?.name}</span>
@@ -152,7 +150,6 @@ export default function FileViewerPage() {
           {file && <FileBody file={file} text={textBody} />}
         </div>
       </div>
-    </AppShell>
   );
 }
 

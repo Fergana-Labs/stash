@@ -671,9 +671,7 @@ def stash_leave(stash_id: str = typer.Argument(...)):
     console.print("[green]Left stash.[/green]")
 
 
-handoff_app = typer.Typer(
-    help="Stash handoff: agent-written orientation doc for a stash."
-)
+handoff_app = typer.Typer(help="Stash handoff: agent-written orientation doc for a stash.")
 app.add_typer(handoff_app, name="handoff")
 
 
@@ -1228,16 +1226,17 @@ def share_session(
                 if e.status_code != 409:
                     raise
 
-        # Create the public View
-        view = c.create_view(
+        # Create the public View — atomically publishes the underlying items
+        # so the anonymous URL works immediately.
+        bundle = c.create_shared_view(
             ws,
             title=page_title,
             description="Shared session artifact",
-            is_public=True,
+            ensure="public",
             items=view_items,
         )
 
-    public_url = f"{_web_app_url()}/v/{view['slug']}"
+    public_url = bundle["url"]
     console.print(f"\n[green bold]Shared![/green bold]  {public_url}")
 
 
