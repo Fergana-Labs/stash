@@ -614,10 +614,10 @@ export async function duplicateTableRow(
 export async function saveTableView(
   workspaceId: string | null,
   tableId: string,
-  view: { id?: string; name: string; filters?: object[]; sort_by?: string; sort_order?: string; visible_columns?: string[] }
+  layout: { id?: string; name: string; filters?: object[]; sort_by?: string; sort_order?: string; visible_columns?: string[] }
 ): Promise<Table> {
   return apiFetch(`${scope(workspaceId)}/tables/${tableId}/views`, {
-    method: "POST", body: JSON.stringify(view),
+    method: "POST", body: JSON.stringify(layout),
   });
 }
 

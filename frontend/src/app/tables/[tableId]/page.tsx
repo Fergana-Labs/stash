@@ -350,19 +350,19 @@ function TableEditorPageInner() {
     const name = prompt("Layout name:");
     if (!name) return;
     try {
-      const view = { name, filters: filters.length > 0 ? filters : undefined, sort_by: sortBy || undefined, sort_order: sortBy ? sortOrder : undefined, visible_columns: hiddenCols.size > 0 ? visibleColumns.map((c) => c.id) : undefined };
-      const updated = await saveTableView(wsId, tableId, view);
+      const layout = { name, filters: filters.length > 0 ? filters : undefined, sort_by: sortBy || undefined, sort_order: sortBy ? sortOrder : undefined, visible_columns: hiddenCols.size > 0 ? visibleColumns.map((c) => c.id) : undefined };
+      const updated = await saveTableView(wsId, tableId, layout);
       setTable(updated);
       const saved = updated.views?.find((v: TableView) => v.name === name);
       if (saved) setActiveViewId(saved.id);
     } catch (err) { setError(err instanceof Error ? err.message : "Failed"); }
   };
-  const handleLoadLayout = (view: TableView) => {
-    setActiveViewId(view.id);
-    setFilters(view.filters?.map((f) => ({ column_id: f.column_id, op: f.op, value: f.value || "" })) ?? []);
-    setSortBy(view.sort_by || ""); setSortOrder((view.sort_order as "asc" | "desc") || "asc");
-    if (view.visible_columns) { const vis = new Set(view.visible_columns); setHiddenCols(new Set(sortedColumns.filter((c) => !vis.has(c.id)).map((c) => c.id))); } else { setHiddenCols(new Set()); }
-    if (view.filters && view.filters.length > 0) setShowFilterBar(true); else setShowFilterBar(false);
+  const handleLoadLayout = (layout: TableView) => {
+    setActiveViewId(layout.id);
+    setFilters(layout.filters?.map((f) => ({ column_id: f.column_id, op: f.op, value: f.value || "" })) ?? []);
+    setSortBy(layout.sort_by || ""); setSortOrder((layout.sort_order as "asc" | "desc") || "asc");
+    if (layout.visible_columns) { const vis = new Set(layout.visible_columns); setHiddenCols(new Set(sortedColumns.filter((c) => !vis.has(c.id)).map((c) => c.id))); } else { setHiddenCols(new Set()); }
+    if (layout.filters && layout.filters.length > 0) setShowFilterBar(true); else setShowFilterBar(false);
   };
   const handleDeleteLayout = async (viewId: string) => {
     try { const updated = await deleteTableView(wsId, tableId, viewId); setTable(updated); if (activeViewId === viewId) { setActiveViewId(null); setFilters([]); setSortBy(""); setSortOrder("asc"); setShowFilterBar(false); setHiddenCols(new Set()); } }
@@ -627,10 +627,10 @@ function TableEditorPageInner() {
         {table?.views && table.views.length > 0 && (
           <div className="px-4 py-1.5 border-b border-border bg-surface flex items-center gap-1 flex-shrink-0 overflow-x-auto">
             <button onClick={() => { setActiveViewId(null); setFilters([]); setSortBy(""); setSortOrder("asc"); setShowFilterBar(false); setHiddenCols(new Set()); }} className={`px-3 py-1 text-xs rounded ${!activeViewId ? "bg-brand/15 text-brand font-medium" : "text-muted hover:text-foreground hover:bg-raised"}`}>All rows</button>
-            {table.views.map((view: TableView) => (
-              <div key={view.id} className="flex items-center group">
-                <button onClick={() => handleLoadLayout(view)} className={`px-3 py-1 text-xs rounded ${activeViewId === view.id ? "bg-brand/15 text-brand font-medium" : "text-muted hover:text-foreground hover:bg-raised"}`}>{view.name}</button>
-                <button onClick={() => handleDeleteLayout(view.id)} className="text-[10px] text-muted hover:text-red-400 opacity-0 group-hover:opacity-100 -ml-1">&times;</button>
+            {table.views.map((layout: TableView) => (
+              <div key={layout.id} className="flex items-center group">
+                <button onClick={() => handleLoadLayout(layout)} className={`px-3 py-1 text-xs rounded ${activeViewId === layout.id ? "bg-brand/15 text-brand font-medium" : "text-muted hover:text-foreground hover:bg-raised"}`}>{layout.name}</button>
+                <button onClick={() => handleDeleteLayout(layout.id)} className="text-[10px] text-muted hover:text-red-400 opacity-0 group-hover:opacity-100 -ml-1">&times;</button>
               </div>
             ))}
             <button onClick={handleSaveLayout} className="px-2 py-1 text-xs text-muted hover:text-brand">+ Save layout</button>

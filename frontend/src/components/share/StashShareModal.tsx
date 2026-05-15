@@ -492,7 +492,7 @@ function NewShareTab(props: {
                 onToggle={() => onToggleSession(s)}
                 label={s.label}
                 sub={s.sub}
-                tag="session"
+                kind="session"
               />
             ))}
           </GroupBlock>
@@ -515,7 +515,7 @@ function NewShareTab(props: {
                   onToggle={() => onToggleRow(r)}
                   label={r.label}
                   sub={r.sub}
-                  tag={r.object_type}
+                  kind={r.object_type}
                 />
               ))}
             </GroupBlock>
@@ -949,13 +949,13 @@ function Row({
   onToggle,
   label,
   sub,
-  tag,
+  kind,
 }: {
   checked: boolean;
   onToggle: () => void;
   label: string;
   sub: string;
-  tag: string;
+  kind: string;
 }) {
   return (
     <label className="flex cursor-pointer items-center gap-3 rounded-md px-2 py-1.5 text-[13px] hover:bg-raised">
@@ -968,7 +968,7 @@ function Row({
       <span className="min-w-0 flex-1 truncate text-foreground">{label}</span>
       <span className="shrink-0 text-[11px] text-muted">{sub}</span>
       <span className="shrink-0 font-mono text-[9px] uppercase tracking-wider text-muted">
-        {tag}
+        {kind}
       </span>
     </label>
   );
