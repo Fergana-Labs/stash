@@ -9,11 +9,11 @@ import {
   getWorkspaceSidebar,
   getPublicStash,
   listStashes,
-  listMySessions,
   listMyWorkspaces,
+  searchWorkspaceEvents,
   searchWorkspacePages,
-  type SessionSummary,
   type PublicStashDetail,
+  type WorkspaceHistoryEvent,
   type WorkspaceSidebar,
   type WorkspaceStash,
   type WorkspaceFolder,
@@ -126,11 +126,6 @@ function SearchPageInner() {
     if (!loading && !user) router.push("/login");
   }, [user, loading, router]);
 
-  const workspaceById = useMemo(
-    () => new Map(workspaces.map((workspace) => [workspace.id, workspace])),
-    [workspaces]
-  );
-
   const searchedWorkspaces = useMemo(() => {
     return selectedWorkspaceId
       ? workspaces.filter((workspace) => workspace.id === selectedWorkspaceId)
@@ -205,8 +200,19 @@ function SearchPageInner() {
       }
 
       if (includeSessions && !selectedFolderId && !selectedPageId) {
-        const sessions = await listMySessions(selectedWorkspaceId || undefined, 200);
-        nextResults.push(...searchSessions(sessions, q, workspaceById, searchedWorkspaces));
+        const settledSessionGroups = await Promise.allSettled(
+          searchedWorkspaces.map(async (workspace) => ({
+            workspace,
+            events: await searchWorkspaceEvents(workspace.id, q, 100),
+          }))
+        );
+        const sessionGroups = settledSessionGroups
+          .filter((result) => result.status === "fulfilled")
+          .map((result) => result.value);
+        nextResults.push(...searchSessionsFromEvents(sessionGroups, q));
+        if (sessionGroups.length < searchedWorkspaces.length) {
+          setError("Session search is unavailable for one or more workspaces.");
+        }
       }
 
       if (includePages) {
@@ -252,7 +258,6 @@ function SearchPageInner() {
     selectedProductStash,
     selectedWorkspaceId,
     sidebars,
-    workspaceById,
   ]);
 
   useEffect(() => {
@@ -514,41 +519,44 @@ function searchStashes(stashes: SearchableStash[], query: string): SearchResult[
     }));
 }
 
-function searchSessions(
-  sessions: SessionSummary[],
-  query: string,
-  workspaceById: Map<string, Workspace>,
-  searchedWorkspaces: Workspace[]
+function searchSessionsFromEvents(
+  groups: { workspace: Workspace; events: WorkspaceHistoryEvent[] }[],
+  query: string
 ): SearchResult[] {
-  const q = query.toLowerCase();
-  const searchedIds = new Set(searchedWorkspaces.map((workspace) => workspace.id));
+  const resultsBySession = new Map<string, SearchResult>();
+  for (const { workspace, events } of groups) {
+    for (const event of events) {
+      if (!event.session_id) continue;
+      const id = `${workspace.id}:${event.session_id}`;
+      const existing = resultsBySession.get(id);
+      if (existing && new Date(existing.updatedAt) >= new Date(event.created_at)) continue;
+      resultsBySession.set(id, {
+        id,
+        kind: "Session",
+        title: event.session_id,
+        href: `/workspaces/${workspace.id}/sessions/${encodeURIComponent(event.session_id)}`,
+        sourceName: workspace.name,
+        detail: sessionSearchSnippet(event, query),
+        updatedAt: event.created_at,
+      });
+    }
+  }
+  return [...resultsBySession.values()];
+}
 
-  return sessions
-    .filter((session) => session.workspace_id && searchedIds.has(session.workspace_id))
-    .filter((session) => {
-      const text = [
-        session.session_id,
-        session.agent_name,
-        session.first_prompt_preview,
-        session.workspace_name,
-      ]
-        .filter(Boolean)
-        .join(" ")
-        .toLowerCase();
-      return text.includes(q);
-    })
-    .map((session) => {
-      const workspace = session.workspace_id ? workspaceById.get(session.workspace_id) : null;
-      return {
-        id: session.session_id,
-        kind: "Session" as const,
-        title: session.first_prompt_preview || session.session_id,
-        href: `/workspaces/${session.workspace_id}/sessions/${encodeURIComponent(session.session_id)}`,
-        sourceName: workspace?.name || session.workspace_name || "Workspace",
-        detail: `${session.agent_name || "agent"} / ${session.event_count} events`,
-        updatedAt: session.last_event_at,
-      };
-    });
+function sessionSearchSnippet(event: WorkspaceHistoryEvent, query: string): string {
+  const content = event.content.trim();
+  if (!content) return `${event.agent_name || "agent"} / ${event.event_type}`;
+
+  const lower = content.toLowerCase();
+  const index = lower.indexOf(query.toLowerCase());
+  if (index === -1) return content.slice(0, 220);
+
+  const start = Math.max(0, index - 80);
+  const end = Math.min(content.length, index + query.length + 140);
+  const prefix = start > 0 ? "..." : "";
+  const suffix = end < content.length ? "..." : "";
+  return `${prefix}${content.slice(start, end)}${suffix}`;
 }
 
 function searchPages(

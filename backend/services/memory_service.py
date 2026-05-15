@@ -262,9 +262,12 @@ def readable_session_event_condition(event_alias: str, user_arg: int) -> str:
                   WHERE session_stash_item.object_type = 'session'
                     AND session_stash_item.object_id = readable_session.id
                     AND (
-                      session_stash.access IN ('public', 'workspace')
+                      session_stash.access = 'public'
+                      OR (
+                        session_stash.access = 'workspace'
+                        AND session_workspace_member.user_id IS NOT NULL
+                      )
                       OR session_stash.owner_id = ${user_arg}
-                      OR session_workspace_member.role IN ('owner', 'admin')
                       OR session_stash_member.user_id IS NOT NULL
                     )
                 )

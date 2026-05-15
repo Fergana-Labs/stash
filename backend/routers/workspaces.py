@@ -87,7 +87,7 @@ async def update_workspace(
 ):
     role = await workspace_service.get_member_role(workspace_id, current_user["id"])
     if role not in workspace_service.ROLES_CAN_WRITE:
-        raise HTTPException(status_code=403, detail="Editors and owners can update workspace")
+        raise HTTPException(status_code=403, detail="Workspace editors and admins can update workspace")
     ws = await workspace_service.update_workspace(
         workspace_id,
         name=req.name,
@@ -108,7 +108,7 @@ async def delete_workspace(
 ):
     deleted = await workspace_service.delete_workspace(workspace_id, current_user["id"])
     if not deleted:
-        raise HTTPException(status_code=403, detail="Only workspace owner can delete")
+        raise HTTPException(status_code=403, detail="Only workspace admins can delete")
 
 
 @router.post("/join/{invite_code}", response_model=WorkspaceResponse)
@@ -129,7 +129,7 @@ async def rotate_invite_code(
 ):
     ws = await workspace_service.rotate_invite_code(workspace_id, current_user["id"])
     if not ws:
-        raise HTTPException(status_code=403, detail="Only the owner can rotate invite code")
+        raise HTTPException(status_code=403, detail="Only workspace admins can rotate invite code")
     return WorkspaceResponse(**ws)
 
 
@@ -140,7 +140,7 @@ async def leave_workspace(
 ):
     left = await workspace_service.leave_workspace(workspace_id, current_user["id"])
     if not left:
-        raise HTTPException(status_code=400, detail="Cannot leave (owner cannot leave)")
+        raise HTTPException(status_code=400, detail="Cannot leave as the last workspace admin")
 
 
 @router.get("/{workspace_id}/members", response_model=list[WorkspaceMember])
@@ -162,7 +162,7 @@ async def add_member(
 ):
     """Add a registered user to the workspace by username."""
     if not await workspace_service.is_owner(workspace_id, current_user["id"]):
-        raise HTTPException(status_code=403, detail="Only the owner can add members")
+        raise HTTPException(status_code=403, detail="Only workspace admins can add members")
     username = req.get("username", "").strip()
     if not username:
         raise HTTPException(status_code=400, detail="username is required")
@@ -190,7 +190,7 @@ async def kick_member(
 
 
 class SetRoleRequest(BaseModel):
-    role: str  # 'owner' | 'editor' | 'viewer'
+    role: str  # 'owner' is the product-facing workspace admin role.
 
 
 @router.patch("/{workspace_id}/members/{user_id}")
@@ -200,17 +200,14 @@ async def set_member_role(
     req: SetRoleRequest,
     current_user: dict = Depends(get_current_user),
 ):
-    """Owner-only: change a member's role.
-
-    Refuses to demote the last remaining owner so the workspace doesn't
-    get locked out."""
+    """Admin-only: change a member's role."""
     ok = await workspace_service.set_member_role(
         workspace_id, user_id, current_user["id"], req.role
     )
     if not ok:
         raise HTTPException(
             status_code=403,
-            detail="Couldn't set role — either not owner, invalid role, or last owner",
+            detail="Couldn't set role — either not admin, invalid role, or last admin",
         )
     return {"status": "ok", "role": req.role}
 
@@ -228,8 +225,9 @@ async def create_invite_token(
     req: InviteTokenCreateRequest,
     current_user: dict = Depends(get_current_user),
 ):
-    if not await workspace_service.is_member(workspace_id, current_user["id"]):
-        raise HTTPException(status_code=403, detail="Not a workspace member")
+    role = await workspace_service.get_member_role(workspace_id, current_user["id"])
+    if role not in workspace_service.ROLES_ADMIN:
+        raise HTTPException(status_code=403, detail="Only workspace admins can create invite tokens")
     ws = await workspace_service.get_workspace(workspace_id)
     if not ws:
         raise HTTPException(status_code=404, detail="Workspace not found")
@@ -254,8 +252,9 @@ async def list_invite_tokens(
     workspace_id: UUID,
     current_user: dict = Depends(get_current_user),
 ):
-    if not await workspace_service.is_member(workspace_id, current_user["id"]):
-        raise HTTPException(status_code=403, detail="Not a workspace member")
+    role = await workspace_service.get_member_role(workspace_id, current_user["id"])
+    if role not in workspace_service.ROLES_ADMIN:
+        raise HTTPException(status_code=403, detail="Only workspace admins can list invite tokens")
     tokens = await invite_token_service.list_tokens(workspace_id)
     return InviteTokenListResponse(tokens=[InviteTokenSummary(**t) for t in tokens])
 
@@ -268,7 +267,7 @@ async def revoke_invite_token(
 ):
     role = await workspace_service.get_member_role(workspace_id, current_user["id"])
     if role not in workspace_service.ROLES_ADMIN:
-        raise HTTPException(status_code=403, detail="Only the owner can revoke invite tokens")
+        raise HTTPException(status_code=403, detail="Only workspace admins can revoke invite tokens")
     ok = await invite_token_service.revoke_token(token_id, workspace_id)
     if not ok:
         raise HTTPException(status_code=404, detail="Token not found or already revoked")

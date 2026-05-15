@@ -5,9 +5,12 @@ import { useParams, useRouter } from "next/navigation";
 import {
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
 } from "react";
+import type { ReactNode } from "react";
+import ActivityFeed from "../../../components/ActivityFeed";
 import MembersModal from "../../../components/MembersModal";
 import {
   StashIcon,
@@ -16,9 +19,13 @@ import { useAuth } from "../../../hooks/useAuth";
 import {
   getWorkspace,
   getWorkspaceMembers,
+  getWorkspaceOverview,
   joinWorkspace,
   listStashes,
+  listWorkspaceActivity,
   updateWorkspace,
+  type ActivityEvent,
+  type WorkspaceOverview,
   type WorkspaceStash,
 } from "../../../lib/api";
 import { useShareModal } from "../../../lib/shareModalContext";
@@ -40,17 +47,22 @@ export default function WorkspaceHomePage() {
   const [workspace, setWorkspace] = useState<Workspace | null>(null);
   const [members, setMembers] = useState<WorkspaceMember[]>([]);
   const [stashes, setStashes] = useState<WorkspaceStash[]>([]);
+  const [overview, setOverview] = useState<WorkspaceOverview | null>(null);
+  const [activity, setActivity] = useState<ActivityEvent[]>([]);
   const [error, setError] = useState("");
   const [membersOpen, setMembersOpen] = useState(false);
   const shareModal = useShareModal();
   const shareVersion = shareModal.version;
 
   const load = useCallback(async () => {
-    const [workspaceResult, membersResult, stashesResult] = await Promise.allSettled([
-      getWorkspace(workspaceId),
-      getWorkspaceMembers(workspaceId),
-      listStashes(workspaceId),
-    ]);
+    const [workspaceResult, membersResult, stashesResult, overviewResult, activityResult] =
+      await Promise.allSettled([
+        getWorkspace(workspaceId),
+        getWorkspaceMembers(workspaceId),
+        listStashes(workspaceId),
+        getWorkspaceOverview(workspaceId),
+        listWorkspaceActivity(workspaceId, 12),
+      ]);
 
     if (workspaceResult.status === "fulfilled") {
       setWorkspace(workspaceResult.value);
@@ -65,6 +77,12 @@ export default function WorkspaceHomePage() {
     if (stashesResult.status === "fulfilled") {
       setStashes(stashesResult.value);
     }
+    if (overviewResult.status === "fulfilled") {
+      setOverview(overviewResult.value);
+    }
+    if (activityResult.status === "fulfilled") {
+      setActivity(activityResult.value);
+    }
   }, [workspaceId]);
 
   useEffect(() => {
@@ -77,6 +95,17 @@ export default function WorkspaceHomePage() {
   }, [user, loading, router]);
 
   const isMember = !!user && members.some((m) => m.user_id === user.id);
+  const recentSessions = useMemo(() => overview?.sessions.slice(0, 6) ?? [], [overview]);
+  const newsfeedStashes = useMemo(
+    () =>
+      [...stashes]
+        .sort((a, b) => {
+          if (a.discoverable !== b.discoverable) return a.discoverable ? -1 : 1;
+          return new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime();
+        })
+        .slice(0, 6),
+    [stashes]
+  );
 
   async function handleJoin() {
     if (!workspace) return;
@@ -184,7 +213,17 @@ export default function WorkspaceHomePage() {
             </div>
           )}
 
-          <div className="mt-8">
+          <WorkspaceNewsfeed
+            workspaceId={workspaceId}
+            sessions={recentSessions}
+            stashes={newsfeedStashes}
+            activity={activity}
+          />
+
+          <div className="mt-10 border-t border-border-subtle pt-8">
+            <h2 className="mb-3 font-display text-[20px] font-semibold text-foreground">
+              About this workspace
+            </h2>
             <WorkspaceDescriptionEditor
               workspace={workspace}
               canEdit={isMember}
@@ -207,6 +246,132 @@ const AVATAR_PALETTE: { bg: string; fg: string }[] = [
   { bg: "bg-sky-200", fg: "text-sky-800" },
   { bg: "bg-fuchsia-200", fg: "text-fuchsia-800" },
 ];
+
+function roleLabel(role: string): string {
+  if (role === "owner") return "admin";
+  return role;
+}
+
+type NewsfeedSession = WorkspaceOverview["sessions"][number];
+
+function WorkspaceNewsfeed({
+  workspaceId,
+  sessions,
+  stashes,
+  activity,
+}: {
+  workspaceId: string;
+  sessions: NewsfeedSession[];
+  stashes: WorkspaceStash[];
+  activity: ActivityEvent[];
+}) {
+  return (
+    <section className="mt-8">
+      <div className="mb-4 flex items-end justify-between gap-3">
+        <div>
+          <p className="font-mono text-[11px] font-medium uppercase tracking-[0.14em] text-muted">
+            Newsfeed
+          </p>
+          <h2 className="mt-1 font-display text-[22px] font-semibold text-foreground">
+            Recent work
+          </h2>
+        </div>
+        <Link
+          href={`/activity?workspace=${workspaceId}`}
+          className="rounded-md border border-border-subtle px-2.5 py-1.5 text-[12px] text-muted hover:border-brand hover:text-brand"
+        >
+          Activity
+        </Link>
+      </div>
+
+      <div className="grid gap-5 lg:grid-cols-[minmax(0,1.15fr)_minmax(260px,0.85fr)]">
+        <div className="space-y-5">
+          <NewsfeedPanel title="Recent sessions">
+            {sessions.length === 0 ? (
+              <EmptyNewsfeedLine text="No sessions yet." />
+            ) : (
+              <div className="flex flex-col gap-2">
+                {sessions.map((session) => (
+                  <Link
+                    key={session.session_id}
+                    href={`/workspaces/${workspaceId}/sessions/${encodeURIComponent(session.session_id)}`}
+                    className="rounded-lg border border-border-subtle bg-base px-3 py-2.5 hover:border-brand hover:bg-[var(--color-brand-50)]"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="truncate text-[13px] font-medium text-foreground">
+                          {session.title || session.session_id}
+                        </div>
+                        <div className="mt-1 text-[11px] text-muted">
+                          {session.agent_name || "agent"} · {formatRelative(session.last_at)}
+                        </div>
+                      </div>
+                      <span className="shrink-0 font-mono text-[10px] uppercase text-muted">
+                        Session
+                      </span>
+                    </div>
+                  </Link>
+                ))}
+              </div>
+            )}
+          </NewsfeedPanel>
+
+          <NewsfeedPanel title="Stashes">
+            {stashes.length === 0 ? (
+              <EmptyNewsfeedLine text="No Stashes yet." />
+            ) : (
+              <div className="grid gap-2 sm:grid-cols-2">
+                {stashes.map((stash) => (
+                  <Link
+                    key={`${stash.added_to_workspace_id ?? stash.workspace_id}:${stash.id}`}
+                    href={`/stashes/${stash.slug}`}
+                    className="rounded-lg border border-border-subtle bg-base px-3 py-2.5 hover:border-brand hover:bg-[var(--color-brand-50)]"
+                  >
+                    <div className="truncate text-[13px] font-medium text-foreground">
+                      {stash.title}
+                    </div>
+                    <div className="mt-1 text-[11px] text-muted">
+                      {stash.discoverable ? "Discover · " : ""}
+                      {stash.is_external ? "External · " : ""}
+                      {stash.items.length} item{stash.items.length === 1 ? "" : "s"}
+                    </div>
+                  </Link>
+                ))}
+              </div>
+            )}
+          </NewsfeedPanel>
+        </div>
+
+        <NewsfeedPanel title="Activity">
+          {activity.length === 0 ? (
+            <EmptyNewsfeedLine text="No activity yet." />
+          ) : (
+            <ActivityFeed events={activity} />
+          )}
+        </NewsfeedPanel>
+      </div>
+    </section>
+  );
+}
+
+function NewsfeedPanel({
+  title,
+  children,
+}: {
+  title: string;
+  children: ReactNode;
+}) {
+  return (
+    <section>
+      <h3 className="mb-2 font-display text-[15px] font-semibold text-foreground">{title}</h3>
+      <div className="rounded-lg border border-border bg-surface p-3">{children}</div>
+    </section>
+  );
+}
+
+function EmptyNewsfeedLine({ text }: { text: string }) {
+  return <p className="px-1 py-2 text-[13px] text-muted">{text}</p>;
+}
 
 function avatarFor(name: string) {
   let h = 5381;
@@ -233,7 +398,7 @@ function MemberStack({ members }: { members: WorkspaceMember[] }) {
                 " " +
                 palette.fg
               }
-              title={`${label}${m.role && m.role !== "editor" ? ` · ${m.role}` : ""}`}
+              title={`${label}${m.role && m.role !== "editor" ? ` · ${roleLabel(m.role)}` : ""}`}
             >
               {label.slice(0, 2).toUpperCase()}
             </span>

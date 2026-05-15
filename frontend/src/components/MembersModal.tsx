@@ -31,6 +31,11 @@ function colorFor(name: string) {
   return PALETTE[h % PALETTE.length];
 }
 
+function roleLabel(role: string): string {
+  if (role === "owner") return "admin";
+  return role;
+}
+
 export default function MembersModal({ workspaceId, open, onClose }: MembersModalProps) {
   const [members, setMembers] = useState<WorkspaceMember[]>([]);
   const [meId, setMeId] = useState<string | null>(null);
@@ -134,13 +139,13 @@ export default function MembersModal({ workspaceId, open, onClose }: MembersModa
                       onChange={(e) => changeRole(m.user_id, e.target.value as "owner" | "editor" | "viewer")}
                       className="rounded border border-border bg-surface px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-foreground"
                     >
-                      <option value="owner">Owner</option>
+                      <option value="owner">Admin</option>
                       <option value="editor">Editor</option>
                       <option value="viewer">Viewer</option>
                     </select>
                   ) : (
                     <span className="rounded bg-surface px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-muted ring-1 ring-border">
-                      {m.role}
+                      {roleLabel(m.role)}
                     </span>
                   )}
                   {canAdmin && !isMe && m.role !== "owner" && (

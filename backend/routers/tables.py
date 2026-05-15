@@ -76,8 +76,6 @@ async def _check_table_access(
     )
     if allowed:
         return
-    if require_write and await permission_service.get_visibility("table", table_id) != "private":
-        return
     raise HTTPException(status_code=404, detail="Table not found")
 
 
@@ -193,6 +191,7 @@ async def add_ws_column(
 ):
     await _check_member(workspace_id, current_user["id"])
     await _check_ws_table(workspace_id, table_id)
+    await _check_table_access(workspace_id, table_id, current_user["id"], require_write=True)
     table = await table_service.add_column(table_id, req.model_dump(), current_user["id"])
     if not table:
         raise HTTPException(status_code=404, detail="Table not found")
@@ -209,6 +208,7 @@ async def update_ws_column(
 ):
     await _check_member(workspace_id, current_user["id"])
     await _check_ws_table(workspace_id, table_id)
+    await _check_table_access(workspace_id, table_id, current_user["id"], require_write=True)
     table = await table_service.update_column(
         table_id,
         column_id,
@@ -229,6 +229,7 @@ async def delete_ws_column(
 ):
     await _check_member(workspace_id, current_user["id"])
     await _check_ws_table(workspace_id, table_id)
+    await _check_table_access(workspace_id, table_id, current_user["id"], require_write=True)
     table = await table_service.delete_column(table_id, column_id, current_user["id"])
     if not table:
         raise HTTPException(status_code=404, detail="Table or column not found")
@@ -244,6 +245,7 @@ async def reorder_ws_columns(
 ):
     await _check_member(workspace_id, current_user["id"])
     await _check_ws_table(workspace_id, table_id)
+    await _check_table_access(workspace_id, table_id, current_user["id"], require_write=True)
     table = await table_service.reorder_columns(table_id, req.column_ids, current_user["id"])
     if not table:
         raise HTTPException(status_code=404, detail="Table not found or invalid column IDs")
@@ -266,6 +268,7 @@ async def list_ws_rows(
 ):
     await _check_read(workspace_id, current_user["id"])
     await _check_ws_table(workspace_id, table_id)
+    await _check_table_access(workspace_id, table_id, current_user["id"])
     parsed_filters = json.loads(filters) if filters else None
     rows, total = await table_service.list_rows(
         table_id,
@@ -291,6 +294,7 @@ async def create_ws_row(
 ):
     await _check_member(workspace_id, current_user["id"])
     await _check_ws_table(workspace_id, table_id)
+    await _check_table_access(workspace_id, table_id, current_user["id"], require_write=True)
     row = await table_service.create_row(table_id, req.data, current_user["id"])
     return RowResponse(**row)
 
@@ -304,6 +308,7 @@ async def create_ws_rows_batch(
 ):
     await _check_member(workspace_id, current_user["id"])
     await _check_ws_table(workspace_id, table_id)
+    await _check_table_access(workspace_id, table_id, current_user["id"], require_write=True)
     rows_data = [r.data for r in req.rows]
     rows = await table_service.create_rows_batch(table_id, rows_data, current_user["id"])
     return {"rows": [RowResponse(**r) for r in rows]}
@@ -320,6 +325,7 @@ async def semantic_search_ws_rows(
     """Semantic search on table rows using embeddings."""
     await _check_read(workspace_id, current_user["id"])
     await _check_ws_table(workspace_id, table_id)
+    await _check_table_access(workspace_id, table_id, current_user["id"])
     from ..services import embeddings as embedding_service
 
     if not embedding_service.is_configured():
@@ -341,6 +347,7 @@ async def update_ws_row(
 ):
     await _check_member(workspace_id, current_user["id"])
     await _check_ws_table(workspace_id, table_id)
+    await _check_table_access(workspace_id, table_id, current_user["id"], require_write=True)
     row = await table_service.update_row(row_id, req.data, current_user["id"], table_id=table_id)
     if not row:
         raise HTTPException(status_code=404, detail="Row not found")
@@ -356,6 +363,7 @@ async def delete_ws_row(
 ):
     await _check_member(workspace_id, current_user["id"])
     await _check_ws_table(workspace_id, table_id)
+    await _check_table_access(workspace_id, table_id, current_user["id"], require_write=True)
     deleted = await table_service.delete_row(row_id, table_id=table_id)
     if not deleted:
         raise HTTPException(status_code=404, detail="Row not found")
@@ -370,6 +378,7 @@ async def delete_ws_rows_batch(
 ):
     await _check_member(workspace_id, current_user["id"])
     await _check_ws_table(workspace_id, table_id)
+    await _check_table_access(workspace_id, table_id, current_user["id"], require_write=True)
     row_ids = _parse_row_ids(body)
     count = await table_service.delete_rows_batch(table_id, row_ids)
     return {"deleted": count}
@@ -384,6 +393,7 @@ async def update_ws_rows_batch(
 ):
     await _check_member(workspace_id, current_user["id"])
     await _check_ws_table(workspace_id, table_id)
+    await _check_table_access(workspace_id, table_id, current_user["id"], require_write=True)
     updates = [{"row_id": r.row_id, "data": r.data} for r in req.rows]
     rows = await table_service.update_rows_batch(table_id, updates, current_user["id"])
     return {"rows": [RowResponse(**r) for r in rows]}
@@ -398,6 +408,7 @@ async def count_ws_rows(
 ):
     await _check_read(workspace_id, current_user["id"])
     await _check_ws_table(workspace_id, table_id)
+    await _check_table_access(workspace_id, table_id, current_user["id"])
     parsed_filters = json.loads(filters) if filters else None
     count = await table_service.count_rows(table_id, filters=parsed_filters)
     return {"count": count}
@@ -416,6 +427,7 @@ async def set_ws_embedding_config(
     """
     await _check_member(workspace_id, current_user["id"])
     await _check_ws_table(workspace_id, table_id)
+    await _check_table_access(workspace_id, table_id, current_user["id"], require_write=True)
     result = await table_service.set_embedding_config(table_id, config, current_user["id"])
     if not result:
         raise HTTPException(status_code=404, detail="Table not found")
@@ -431,6 +443,7 @@ async def backfill_ws_embeddings(
     """Re-embed all rows in the table based on current embedding config."""
     await _check_member(workspace_id, current_user["id"])
     await _check_ws_table(workspace_id, table_id)
+    await _check_table_access(workspace_id, table_id, current_user["id"], require_write=True)
     return await table_service.backfill_embeddings(table_id)
 
 
@@ -446,6 +459,7 @@ async def export_ws_csv(
     """Export table as CSV. Streams all rows matching filters."""
     await _check_read(workspace_id, current_user["id"])
     table = await _check_ws_table(workspace_id, table_id)
+    await _check_table_access(workspace_id, table_id, current_user["id"])
     parsed_filters = json.loads(filters) if filters else None
     rows = await table_service.export_rows_all(
         table_id,
@@ -490,6 +504,7 @@ async def search_ws_rows(
 ):
     await _check_read(workspace_id, current_user["id"])
     await _check_ws_table(workspace_id, table_id)
+    await _check_table_access(workspace_id, table_id, current_user["id"])
     rows, total = await table_service.search_rows(table_id, q, limit=limit, offset=offset)
     return RowListResponse(
         rows=[RowResponse(**r) for r in rows],
@@ -507,6 +522,7 @@ async def summarize_ws_rows(
 ):
     await _check_read(workspace_id, current_user["id"])
     await _check_ws_table(workspace_id, table_id)
+    await _check_table_access(workspace_id, table_id, current_user["id"])
     parsed_filters = json.loads(filters) if filters else None
     return await table_service.summarize_rows(table_id, filters=parsed_filters)
 
@@ -520,6 +536,7 @@ async def duplicate_ws_row(
 ):
     await _check_member(workspace_id, current_user["id"])
     await _check_ws_table(workspace_id, table_id)
+    await _check_table_access(workspace_id, table_id, current_user["id"], require_write=True)
     row = await table_service.duplicate_row(row_id, table_id, current_user["id"])
     if not row:
         raise HTTPException(status_code=404, detail="Row not found")
@@ -538,6 +555,7 @@ async def save_ws_view(
 ):
     await _check_member(workspace_id, current_user["id"])
     await _check_ws_table(workspace_id, table_id)
+    await _check_table_access(workspace_id, table_id, current_user["id"], require_write=True)
     table = await table_service.save_view(table_id, body, current_user["id"])
     if not table:
         raise HTTPException(status_code=404, detail="Table not found")
@@ -553,6 +571,7 @@ async def delete_ws_view(
 ):
     await _check_member(workspace_id, current_user["id"])
     await _check_ws_table(workspace_id, table_id)
+    await _check_table_access(workspace_id, table_id, current_user["id"], require_write=True)
     table = await table_service.delete_view(table_id, view_id, current_user["id"])
     if not table:
         raise HTTPException(status_code=404, detail="Table or view not found")

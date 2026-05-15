@@ -75,6 +75,7 @@ function ItemBody({ item }: { item: StashItemInlined }) {
   if (item.object_type === "folder") {
     const inline = item.inline as {
       pages?: { id: string; name: string; content_type?: string; content_markdown?: string; content_html?: string; html_layout?: "responsive" | "fixed-aspect" }[];
+      files?: { id: string; name: string; content_type?: string; size_bytes?: number; url?: string }[];
     };
     return (
       <div className="space-y-4">
@@ -93,6 +94,20 @@ function ItemBody({ item }: { item: StashItemInlined }) {
               </div>
             )}
           </div>
+        ))}
+        {(inline.files ?? []).map((file) => (
+          <a
+            key={file.id}
+            href={file.url}
+            target="_blank"
+            rel="noreferrer"
+            className="block rounded-md border border-border-subtle bg-base px-3 py-2 text-[12px] text-foreground"
+          >
+            <span className="block truncate font-medium">{file.name}</span>
+            <span className="mt-0.5 block text-muted">
+              {file.content_type} · {formatSize(file.size_bytes ?? 0)}
+            </span>
+          </a>
         ))}
       </div>
     );
@@ -114,4 +129,10 @@ function ItemBody({ item }: { item: StashItemInlined }) {
     );
   }
   return <p className="text-[12px] text-muted">{item.label}</p>;
+}
+
+function formatSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 }

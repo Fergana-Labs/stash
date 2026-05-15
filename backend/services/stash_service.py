@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
+import json
 import re
 import secrets
 from uuid import UUID
 
 from ..database import get_pool
-from . import files_tree_service, permission_service, workspace_service
+from . import files_tree_service, permission_service, storage_service, workspace_service
 
 _SLUG_RE = re.compile(r"[^a-z0-9]+")
 
@@ -119,6 +120,39 @@ async def _partition_targets(conn, object_type: str, object_id: UUID) -> list[tu
             object_id,
         )
         targets.extend((row["object_type"], row["object_id"]) for row in rows)
+    elif object_type in {"page", "file"}:
+        source_table = "pages" if object_type == "page" else "files"
+        rows = await conn.fetch(
+            f"WITH RECURSIVE chain AS ("
+            f"  SELECT fo.id, fo.parent_folder_id FROM folders fo "
+            f"  JOIN {source_table} o ON o.folder_id = fo.id WHERE o.id = $1 "
+            f"  UNION ALL "
+            f"  SELECT fo.id, fo.parent_folder_id FROM folders fo "
+            f"  JOIN chain c ON fo.id = c.parent_folder_id"
+            f") SELECT id FROM chain",
+            object_id,
+        )
+        targets.extend(("folder", row["id"]) for row in rows)
+
+    deduped = {}
+    for target_type, target_id in targets:
+        deduped[(target_type, target_id)] = None
+    return list(deduped.keys())
+
+
+async def _containing_targets(conn, object_type: str, object_id: UUID) -> list[tuple[str, UUID]]:
+    targets = [(object_type, object_id)]
+    if object_type == "folder":
+        rows = await conn.fetch(
+            "WITH RECURSIVE chain AS ("
+            "  SELECT id, parent_folder_id FROM folders WHERE id = $1"
+            "  UNION ALL"
+            "  SELECT f.id, f.parent_folder_id FROM folders f "
+            "  JOIN chain c ON f.id = c.parent_folder_id"
+            ") SELECT id FROM chain",
+            object_id,
+        )
+        targets.extend(("folder", row["id"]) for row in rows)
     elif object_type in {"page", "file"}:
         source_table = "pages" if object_type == "page" else "files"
         rows = await conn.fetch(
@@ -423,7 +457,7 @@ async def add_external_stash(workspace_id: UUID, slug: str, added_by: UUID) -> d
     stash = await _attach_items(dict(row))
     if stash["workspace_id"] == workspace_id:
         return _mark_native(stash)
-    if not await _is_anonymously_readable(stash):
+    if not await user_can_read(stash["id"], added_by):
         return None
 
     await pool.execute(
@@ -453,16 +487,22 @@ async def list_object_stashes(
     user_id: UUID | None = None,
 ) -> list[dict]:
     pool = get_pool()
-    rows = await pool.fetch(
-        f"SELECT {_STASH_COLS} FROM stashes v "
-        "JOIN stash_items vi ON vi.stash_id = v.id "
-        "WHERE v.workspace_id = $1 AND vi.object_type = $2 AND vi.object_id = $3 "
-        "ORDER BY v.updated_at DESC",
-        workspace_id,
-        object_type,
-        object_id,
-    )
-    return await _filter_readable_stashes([await _attach_items(dict(row)) for row in rows], user_id)
+    rows = []
+    for target_type, target_id in await _containing_targets(pool, object_type, object_id):
+        target_rows = await pool.fetch(
+            f"SELECT {_STASH_COLS} FROM stashes v "
+            "JOIN stash_items vi ON vi.stash_id = v.id "
+            "WHERE v.workspace_id = $1 AND vi.object_type = $2 AND vi.object_id = $3 "
+            "ORDER BY v.updated_at DESC",
+            workspace_id,
+            target_type,
+            target_id,
+        )
+        rows.extend(target_rows)
+
+    deduped = {row["id"]: dict(row) for row in rows}
+    stashes = sorted(deduped.values(), key=lambda row: row["updated_at"], reverse=True)
+    return await _filter_readable_stashes([await _attach_items(row) for row in stashes], user_id)
 
 
 async def get_stash(stash_id: UUID) -> dict | None:
@@ -575,6 +615,23 @@ async def inline_items(stash: dict, viewer_id: UUID | None = None) -> list[dict]
                         "page", p["id"], viewer_id, workspace_id=stash["workspace_id"]
                     ):
                         visible_pages.append(p)
+                files = await pool.fetch(
+                    "WITH RECURSIVE subtree AS ("
+                    "  SELECT id FROM folders WHERE id = $1"
+                    "  UNION ALL"
+                    "  SELECT f.id FROM folders f JOIN subtree s ON f.parent_folder_id = s.id"
+                    ") "
+                    "SELECT f.id, f.name, f.content_type, f.size_bytes, f.storage_key, f.created_at "
+                    "FROM files f WHERE f.folder_id IN (SELECT id FROM subtree) "
+                    "ORDER BY f.created_at, f.name",
+                    obj_id,
+                )
+                visible_files = []
+                for f in files:
+                    if await permission_service.check_access(
+                        "file", f["id"], viewer_id, workspace_id=stash["workspace_id"]
+                    ):
+                        visible_files.append(f)
                 inline = {
                     "pages": [
                         {
@@ -587,6 +644,17 @@ async def inline_items(stash: dict, viewer_id: UUID | None = None) -> list[dict]
                             "updated_at": p["updated_at"].isoformat(),
                         }
                         for p in visible_pages
+                    ],
+                    "files": [
+                        {
+                            "id": str(f["id"]),
+                            "name": f["name"],
+                            "content_type": f["content_type"],
+                            "size_bytes": f["size_bytes"],
+                            "url": await storage_service.get_file_url(f["storage_key"]),
+                            "created_at": f["created_at"].isoformat(),
+                        }
+                        for f in visible_files
                     ],
                 }
         elif obj_type == "page":
@@ -626,24 +694,29 @@ async def inline_items(stash: dict, viewer_id: UUID | None = None) -> list[dict]
                 }
         elif obj_type == "file":
             f = await pool.fetchrow(
-                "SELECT name, content_type, size_bytes, created_at FROM files WHERE id = $1",
+                "SELECT name, content_type, size_bytes, storage_key, created_at FROM files WHERE id = $1",
                 obj_id,
             )
             if f:
                 label = label or f["name"]
                 inline = {
+                    "name": f["name"],
                     "content_type": f["content_type"],
                     "size_bytes": f["size_bytes"],
+                    "url": await storage_service.get_file_url(f["storage_key"]),
                     "created_at": f["created_at"].isoformat(),
                 }
         elif obj_type == "session":
             s = await pool.fetchrow(
-                "SELECT id, session_id, agent_name, summary, summary_status, started_at, "
+                "SELECT id, session_id, agent_name, summary, summary_status, files_touched, started_at, "
                 "finished_at FROM sessions WHERE id = $1",
                 obj_id,
             )
             if s:
                 label = label or f"#{s['session_id']}"
+                files_touched = s["files_touched"] or []
+                if isinstance(files_touched, str):
+                    files_touched = json.loads(files_touched)
                 events = await pool.fetch(
                     "SELECT agent_name, event_type, tool_name, content, created_at "
                     "FROM history_events "
@@ -652,6 +725,11 @@ async def inline_items(stash: dict, viewer_id: UUID | None = None) -> list[dict]
                     stash["workspace_id"],
                     s["session_id"],
                 )
+                artifacts = await pool.fetch(
+                    "SELECT id, file_path, storage_key, size_bytes, created_at "
+                    "FROM session_artifacts WHERE session_id = $1 ORDER BY created_at",
+                    s["id"],
+                )
                 inline = {
                     "session": {
                         "id": str(s["id"]),
@@ -659,8 +737,19 @@ async def inline_items(stash: dict, viewer_id: UUID | None = None) -> list[dict]
                         "agent_name": s["agent_name"],
                         "summary": s["summary"],
                         "summary_status": s["summary_status"],
+                        "files_touched": files_touched,
                         "started_at": s["started_at"].isoformat() if s["started_at"] else None,
                         "finished_at": s["finished_at"].isoformat() if s["finished_at"] else None,
+                        "artifacts": [
+                            {
+                                "id": str(artifact["id"]),
+                                "file_path": artifact["file_path"],
+                                "size_bytes": artifact["size_bytes"],
+                                "url": await storage_service.get_file_url(artifact["storage_key"]),
+                                "created_at": artifact["created_at"].isoformat(),
+                            }
+                            for artifact in artifacts
+                        ],
                         "events": [
                             {
                                 "agent_name": e["agent_name"],
@@ -704,6 +793,10 @@ def items_to_text(title: str, items: list[dict]) -> str:
             for page in inline.get("pages", []):
                 if page.get("content_markdown"):
                     parts.append(page["content_markdown"])
+            for file in inline.get("files", []):
+                parts.append(
+                    f"*Attached file: {file.get('name', label)} ({file.get('content_type', 'unknown')})*\n"
+                )
         elif obj_type == "page":
             page = inline.get("page", {})
             if page.get("content_markdown"):
@@ -744,9 +837,6 @@ async def user_can_admin(stash_id: UUID, user_id: UUID) -> bool:
     if not row:
         return False
     if row["owner_id"] == user_id:
-        return True
-    role = await workspace_service.get_member_role(row["workspace_id"], user_id)
-    if role in ("owner", "admin"):
         return True
     member = await pool.fetchrow(
         "SELECT permission FROM stash_members WHERE stash_id = $1 AND user_id = $2",
@@ -828,9 +918,6 @@ async def user_can_write(stash_id: UUID, user_id: UUID) -> bool:
         return False
     if row["owner_id"] == user_id:
         return True
-    role = await workspace_service.get_member_role(row["workspace_id"], user_id)
-    if role in ("owner", "admin"):
-        return True
     member = await pool.fetchrow(
         "SELECT permission FROM stash_members WHERE stash_id = $1 AND user_id = $2",
         stash_id,
@@ -854,13 +941,13 @@ async def user_can_read(stash_id: UUID, user_id: UUID | None) -> bool:
     if row["owner_id"] == user_id:
         return True
     role = await workspace_service.get_member_role(row["workspace_id"], user_id)
-    if role in ("owner", "admin"):
-        return True
-    if row["access"] == "workspace":
-        return role is not None
     member = await pool.fetchrow(
         "SELECT 1 FROM stash_members WHERE stash_id = $1 AND user_id = $2",
         stash_id,
         user_id,
     )
-    return member is not None
+    if member is not None:
+        return True
+    if row["access"] == "workspace":
+        return role is not None
+    return False

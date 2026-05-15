@@ -16,6 +16,11 @@ import {
 import { resetStashNavigationCache } from "../../../../lib/stashNavigationCache";
 import type { Workspace, WorkspaceMember } from "../../../../lib/types";
 
+function roleLabel(role: string): string {
+  if (role === "owner") return "admin";
+  return role;
+}
+
 export default function StashSettingsPage() {
   const params = useParams();
   const router = useRouter();
@@ -55,7 +60,7 @@ export default function StashSettingsPage() {
   }
 
   const myRole = members.find((m) => m.user_id === user.id)?.role;
-  const isOwner = myRole === "owner";
+  const isAdmin = myRole === "owner";
 
   async function changeMemberRole(userId: string, role: "owner" | "editor" | "viewer") {
     await setWorkspaceMemberRole(workspaceId, userId, role);
@@ -122,7 +127,7 @@ export default function StashSettingsPage() {
                   <div className="text-[11.5px] text-muted">@{m.name}</div>
                 </div>
                 <div className="flex items-center gap-2">
-                  {isOwner && m.user_id !== user.id ? (
+                  {isAdmin && m.user_id !== user.id ? (
                     <>
                       <select
                         value={m.role}
@@ -136,7 +141,7 @@ export default function StashSettingsPage() {
                       >
                         <option value="viewer">Viewer</option>
                         <option value="editor">Editor</option>
-                        <option value="owner">Owner</option>
+                        <option value="owner">Admin</option>
                       </select>
                       <button
                         onClick={() => removeMember(m.user_id)}
@@ -147,7 +152,7 @@ export default function StashSettingsPage() {
                     </>
                   ) : (
                     <span className="rounded bg-raised px-2 py-0.5 text-[11.5px] text-muted">
-                      {m.role}
+                      {roleLabel(m.role)}
                     </span>
                   )}
                 </div>
@@ -161,7 +166,7 @@ export default function StashSettingsPage() {
             label="Banner"
             sub="Wide image rendered above the workspace header."
             url={workspace.cover_image_url ?? null}
-            canEdit={isOwner}
+            canEdit={isAdmin}
             onUpload={(f) => uploadAndSet(f, "cover_image_url")}
             onClear={() => clearField("cover_image_url")}
             previewClass="h-16 w-full rounded-md object-cover"
@@ -170,7 +175,7 @@ export default function StashSettingsPage() {
             label="Icon"
             sub="Square logo for the workspace hero."
             url={workspace.icon_url ?? null}
-            canEdit={isOwner}
+            canEdit={isAdmin}
             onUpload={(f) => uploadAndSet(f, "icon_url")}
             onClear={() => clearField("icon_url")}
             previewClass="h-12 w-12 rounded-md object-cover"
@@ -185,7 +190,7 @@ export default function StashSettingsPage() {
                 <button
                   key={g.label}
                   onClick={() => setGradient(g.css)}
-                  disabled={!isOwner}
+                  disabled={!isAdmin}
                   className={
                     "h-8 w-16 rounded-md border " +
                     (workspace.color_gradient === g.css
@@ -196,7 +201,7 @@ export default function StashSettingsPage() {
                   title={g.label}
                 />
               ))}
-              {workspace.color_gradient && isOwner && (
+              {workspace.color_gradient && isAdmin && (
                 <button
                   onClick={() => clearField("color_gradient")}
                   className="text-[11.5px] text-muted hover:text-foreground"
@@ -208,7 +213,7 @@ export default function StashSettingsPage() {
           </div>
         </Section>
 
-        {isOwner && (
+        {isAdmin && (
           <Section title="Danger zone">
             <button
               onClick={handleDelete}

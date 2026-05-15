@@ -127,9 +127,9 @@ def _event_role(event_type: str | None) -> str | None:
 
     tool_use events fold into 'assistant' so the timeline shows tool calls
     inline with assistant turns instead of dropping them silently."""
-    if event_type == "user_message":
+    if event_type in ("user_message", "prompt", "user"):
         return "user"
-    if event_type in ("assistant_message", "tool_use"):
+    if event_type in ("assistant_message", "assistant", "tool_use", "tool_call", "tool_result"):
         return "assistant"
     return None
 

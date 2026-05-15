@@ -681,6 +681,36 @@ export interface MaterializedSession {
   folder_id: string;
 }
 
+export interface SessionArtifact {
+  id: string;
+  file_path: string;
+  size_bytes: number;
+  url: string;
+  created_at: string;
+}
+
+export interface SessionDetail {
+  id: string;
+  workspace_id: string;
+  session_id: string;
+  agent_name: string;
+  cwd: string | null;
+  summary: string | null;
+  summary_status: string | null;
+  files_touched: string[] | string;
+  started_at: string | null;
+  finished_at: string | null;
+  created_by: string | null;
+  artifacts: SessionArtifact[];
+}
+
+export async function getSessionDetail(
+  workspaceId: string,
+  sessionId: string
+): Promise<SessionDetail> {
+  return apiFetch(`/api/v1/workspaces/${workspaceId}/sessions/${encodeURIComponent(sessionId)}`);
+}
+
 export async function materializeSession(
   workspaceId: string,
   sessionId: string
@@ -837,6 +867,23 @@ export async function listObjectStashes(
 
 export async function deleteStash(stashId: string): Promise<void> {
   await apiFetch(`/api/v1/stashes/${stashId}`, { method: "DELETE" });
+}
+
+export async function updateStash(
+  stashId: string,
+  data: {
+    title?: string;
+    description?: string;
+    access?: "workspace" | "private" | "public";
+    discoverable?: boolean;
+    cover_image_url?: string | null;
+    items?: StashItemSpec[];
+  }
+): Promise<WorkspaceStash> {
+  return apiFetch(`/api/v1/stashes/${stashId}`, {
+    method: "PATCH",
+    body: JSON.stringify(data),
+  });
 }
 
 export async function listStashMembers(stashId: string): Promise<StashMember[]> {
@@ -1063,6 +1110,33 @@ export async function getSessionEvents(
 ): Promise<SessionEvent[]> {
   const res = await apiFetch<{ events: SessionEvent[] }>(
     `/api/v1/workspaces/${workspaceId}/transcripts/${encodeURIComponent(sessionId)}/events`
+  );
+  return res.events;
+}
+
+export interface WorkspaceHistoryEvent {
+  id: string;
+  workspace_id: string;
+  created_by: string;
+  created_by_name: string | null;
+  agent_name: string;
+  event_type: string;
+  session_id: string | null;
+  tool_name: string | null;
+  content: string;
+  metadata: Record<string, unknown>;
+  attachments: Record<string, unknown>[] | null;
+  created_at: string;
+}
+
+export async function searchWorkspaceEvents(
+  workspaceId: string,
+  query: string,
+  limit = 100
+): Promise<WorkspaceHistoryEvent[]> {
+  const params = new URLSearchParams({ q: query, limit: String(limit) });
+  const res = await apiFetch<{ events: WorkspaceHistoryEvent[] }>(
+    `/api/v1/workspaces/${workspaceId}/sessions/events/search?${params}`
   );
   return res.events;
 }

@@ -63,8 +63,6 @@ async def _can_access_file(
         require_write=require_write,
     ):
         return True
-    if require_write and await permission_service.get_visibility("file", file_id) != "private":
-        return True
     return False
 
 
@@ -128,8 +126,7 @@ async def upload_ws_file(
             workspace_id=workspace_id,
             require_write=True,
         )
-        folder_visibility = await permission_service.get_visibility("folder", folder_id)
-        if not can_write_folder and folder_visibility == "private":
+        if not can_write_folder:
             raise HTTPException(status_code=404, detail="Folder not found")
     row = await pool.fetchrow(
         "INSERT INTO files (workspace_id, name, content_type, size_bytes, storage_key, uploaded_by, folder_id) "
@@ -336,6 +333,8 @@ async def ingest_csv_file(
         workspace_id,
     )
     if not row:
+        raise HTTPException(status_code=404, detail="File not found")
+    if not await _can_access_file(file_id, workspace_id, current_user["id"], require_write=True):
         raise HTTPException(status_code=404, detail="File not found")
     if "csv" not in (row["content_type"] or ""):
         raise HTTPException(status_code=400, detail="File is not a CSV")

@@ -332,6 +332,13 @@ function ItemBody({ item }: { item: PublicStashItem }) {
         content_html?: string;
         html_layout?: "responsive" | "fixed-aspect";
       }[];
+      files?: {
+        id: string;
+        name: string;
+        content_type?: string;
+        size_bytes?: number;
+        url?: string;
+      }[];
     };
     return (
       <div>
@@ -349,6 +356,27 @@ function ItemBody({ item }: { item: PublicStashItem }) {
             )}
           </div>
         ))}
+        {(inline.files ?? []).length > 0 ? (
+          <div className={(inline.pages ?? []).length > 0 ? "mt-6" : ""}>
+            <h3 className="mb-2 font-display text-[16px] font-bold text-ink">Files</h3>
+            <div className="flex flex-col gap-2">
+              {(inline.files ?? []).map((file) => (
+                <a
+                  key={file.id}
+                  href={file.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="rounded-md border border-border-subtle bg-base px-3 py-2 text-[13px] text-foreground hover:border-brand hover:text-brand"
+                >
+                  <span className="block truncate font-medium">{file.name}</span>
+                  <span className="mt-0.5 block text-[12px] text-dim">
+                    {file.content_type} · {formatSize(file.size_bytes ?? 0)}
+                  </span>
+                </a>
+              ))}
+            </div>
+          </div>
+        ) : null}
       </div>
     );
   }
@@ -418,11 +446,36 @@ function ItemBody({ item }: { item: PublicStashItem }) {
   }
 
   if (item.object_type === "file") {
-    const inline = item.inline as { content_type?: string; size_bytes?: number };
+    const inline = item.inline as {
+      name?: string;
+      content_type?: string;
+      size_bytes?: number;
+      url?: string;
+    };
+    const body = (
+      <>
+        <span className="block text-[13px] font-medium text-foreground">
+          {inline.name || item.label}
+        </span>
+        <span className="mt-0.5 block text-[12px] text-dim">
+          {inline.content_type} · {formatSize(inline.size_bytes ?? 0)}
+        </span>
+      </>
+    );
+    if (inline.url) {
+      return (
+        <a
+          href={inline.url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="block rounded-md border border-border-subtle bg-base px-3 py-2 hover:border-brand hover:text-brand"
+        >
+          {body}
+        </a>
+      );
+    }
     return (
-      <p className="text-[13px] text-dim">
-        {inline.content_type} · {formatSize(inline.size_bytes ?? 0)}
-      </p>
+      <p className="text-[13px] text-dim">{body}</p>
     );
   }
 
@@ -432,6 +485,13 @@ function ItemBody({ item }: { item: PublicStashItem }) {
         session_id: string;
         agent_name?: string;
         summary?: string | null;
+        files_touched?: string[] | string;
+        artifacts?: {
+          id: string;
+          file_path: string;
+          size_bytes: number;
+          url: string;
+        }[];
         events?: {
           event_type: string;
           tool_name?: string | null;
@@ -442,6 +502,7 @@ function ItemBody({ item }: { item: PublicStashItem }) {
     };
     const session = inline.session;
     if (!session) return <p className="text-[13px] italic text-muted">Session unavailable.</p>;
+    const filesTouched = normalizeStringList(session.files_touched);
     return (
       <div className="space-y-4">
         <p className="font-mono text-[11px] uppercase text-muted">
@@ -451,6 +512,46 @@ function ItemBody({ item }: { item: PublicStashItem }) {
           <p className="whitespace-pre-wrap text-[14px] leading-relaxed text-foreground">
             {session.summary}
           </p>
+        ) : null}
+        {(filesTouched.length || session.artifacts?.length) ? (
+          <div className="grid gap-3 md:grid-cols-2">
+            {filesTouched.length ? (
+              <div>
+                <h4 className="mb-2 font-mono text-[10px] uppercase text-muted">Files touched</h4>
+                <div className="flex flex-col gap-1.5">
+                  {filesTouched.map((file) => (
+                    <div
+                      key={file}
+                      className="rounded-md border border-border-subtle bg-base px-2 py-1.5 font-mono text-[11px] text-foreground"
+                    >
+                      {file}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+            {session.artifacts?.length ? (
+              <div>
+                <h4 className="mb-2 font-mono text-[10px] uppercase text-muted">Artifacts</h4>
+                <div className="flex flex-col gap-1.5">
+                  {session.artifacts.map((artifact) => (
+                    <a
+                      key={artifact.id}
+                      href={artifact.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="rounded-md border border-border-subtle bg-base px-2 py-1.5 text-[12px] text-foreground hover:border-brand hover:text-brand"
+                    >
+                      <span className="block truncate">{artifact.file_path}</span>
+                      <span className="mt-0.5 block text-[11px] text-muted">
+                        {formatSize(artifact.size_bytes)}
+                      </span>
+                    </a>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+          </div>
         ) : null}
         <div className="space-y-3">
           {(session.events ?? []).map((event, index) => (
@@ -480,4 +581,11 @@ function formatSize(bytes: number): string {
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   if (bytes < 1024 * 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
   return `${(bytes / 1024 / 1024 / 1024).toFixed(1)} GB`;
+}
+
+function normalizeStringList(value: string[] | string | undefined): string[] {
+  if (Array.isArray(value)) return value;
+  if (!value) return [];
+  const parsed = JSON.parse(value);
+  return Array.isArray(parsed) ? parsed.map(String) : [];
 }

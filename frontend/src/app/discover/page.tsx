@@ -58,8 +58,7 @@ export default function DiscoverPage() {
           Public Stashes.
         </h1>
         <p className="mt-2 max-w-[620px] text-[14.5px] leading-[1.6] text-muted">
-          Browse high-signal Stashes that owners have made public and the Stash
-          team has selected for the catalog.
+          Browse Stashes that workspace owners have made public and shared to Discover.
         </p>
       </header>
 

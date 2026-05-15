@@ -143,7 +143,7 @@ async def redeem_as_new_user(raw_token: str, display_name: str) -> dict | None:
                 raise RuntimeError("invite token was consumed concurrently")
             await conn.execute(
                 "INSERT INTO workspace_members (workspace_id, user_id, role) "
-                "VALUES ($1, $2, 'member')",
+                "VALUES ($1, $2, 'editor')",
                 token_row["workspace_id"],
                 user_row["id"],
             )
@@ -184,7 +184,7 @@ async def redeem_as_existing_user(raw_token: str, user_id: UUID) -> dict | None:
             # Idempotent membership insert.
             await conn.execute(
                 "INSERT INTO workspace_members (workspace_id, user_id, role) "
-                "VALUES ($1, $2, 'member') "
+                "VALUES ($1, $2, 'editor') "
                 "ON CONFLICT (workspace_id, user_id) DO NOTHING",
                 token_row["workspace_id"],
                 user_id,

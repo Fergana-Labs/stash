@@ -3,7 +3,9 @@ import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import AppSidebar from "./AppSidebar";
 import { resetStashNavigationCache } from "../lib/stashNavigationCache";
+import { ShareModalProvider } from "../lib/shareModalContext";
 import {
+  createPage,
   getWorkspaceSidebar,
   listMyWorkspaces,
   uploadFile,
@@ -36,6 +38,7 @@ vi.mock("next/link", () => ({
 }));
 
 vi.mock("../lib/api", () => ({
+  createPage: vi.fn(),
   getFolderContents: vi.fn(),
   getWorkspaceSidebar: vi.fn(),
   listMyWorkspaces: vi.fn(),
@@ -128,6 +131,14 @@ function detailsFor(label: string): HTMLDetailsElement {
   return details as HTMLDetailsElement;
 }
 
+function renderSidebar() {
+  return render(
+    <ShareModalProvider>
+      <AppSidebar user={user} onCmdkOpen={vi.fn()} />
+    </ShareModalProvider>
+  );
+}
+
 describe("AppSidebar tree expansion", () => {
   beforeEach(() => {
     resetStashNavigationCache();
@@ -154,6 +165,20 @@ describe("AppSidebar tree expansion", () => {
       imported: 1,
       skipped: false,
     });
+    vi.mocked(createPage).mockResolvedValue({
+      id: "page-new",
+      workspace_id: "ws-1",
+      folder_id: null,
+      name: "New page",
+      content_type: "markdown",
+      content_markdown: "",
+      content_html: "",
+      html_layout: "responsive",
+      created_by: "user-1",
+      updated_by: null,
+      created_at: "2026-05-11T00:00:00Z",
+      updated_at: "2026-05-11T00:00:00Z",
+    });
   });
 
   afterEach(() => {
@@ -161,7 +186,7 @@ describe("AppSidebar tree expansion", () => {
   });
 
   it("starts top-level sections expanded", async () => {
-    render(<AppSidebar user={user} onCmdkOpen={vi.fn()} />);
+    renderSidebar();
 
     await screen.findByText("Sessions");
 
@@ -176,7 +201,7 @@ describe("AppSidebar tree expansion", () => {
       workspaces: [workspace, sharedWorkspace],
     });
 
-    render(<AppSidebar user={user} onCmdkOpen={vi.fn()} />);
+    renderSidebar();
 
     await screen.findByText("Shared Stash");
 
@@ -193,7 +218,7 @@ describe("AppSidebar tree expansion", () => {
       JSON.stringify({ "ws-1:files": false })
     );
 
-    render(<AppSidebar user={user} onCmdkOpen={vi.fn()} />);
+    renderSidebar();
 
     await screen.findByText("Sessions");
 
@@ -206,7 +231,7 @@ describe("AppSidebar tree expansion", () => {
   it("keeps the workspace landing route open by default", async () => {
     nav.pathname = "/workspaces/ws-1";
 
-    render(<AppSidebar user={user} onCmdkOpen={vi.fn()} />);
+    renderSidebar();
 
     await screen.findByText("Sessions");
 
@@ -218,7 +243,7 @@ describe("AppSidebar tree expansion", () => {
   it("keeps deep-linked tree sections open by default", async () => {
     nav.pathname = "/workspaces/ws-1/p/page-1";
 
-    render(<AppSidebar user={user} onCmdkOpen={vi.fn()} />);
+    renderSidebar();
 
     await screen.findByText("Sessions");
 
@@ -231,7 +256,7 @@ describe("AppSidebar tree expansion", () => {
   it("reuses loaded workspace and spine data after a remount", async () => {
     nav.pathname = "/workspaces/ws-1/p/page-1";
 
-    const first = render(<AppSidebar user={user} onCmdkOpen={vi.fn()} />);
+    const first = renderSidebar();
     await screen.findByText("Sessions");
     await waitFor(() => expect(getWorkspaceSidebar).toHaveBeenCalledWith("ws-1"));
     expect(listMyWorkspaces).toHaveBeenCalledTimes(1);
@@ -240,7 +265,7 @@ describe("AppSidebar tree expansion", () => {
     first.unmount();
     vi.clearAllMocks();
 
-    render(<AppSidebar user={user} onCmdkOpen={vi.fn()} />);
+    renderSidebar();
 
     await screen.findByText("Sessions");
     expect(listMyWorkspaces).not.toHaveBeenCalled();
@@ -251,7 +276,7 @@ describe("AppSidebar tree expansion", () => {
   it("collapses individual stashes and restores that browser state", async () => {
     vi.mocked(getWorkspaceSidebar).mockResolvedValue(sidebarWithStash);
 
-    const first = render(<AppSidebar user={user} onCmdkOpen={vi.fn()} />);
+    const first = renderSidebar();
 
     await screen.findByText("Project Alpha");
     expect(screen.getByText("Launch session")).toBeTruthy();
@@ -265,7 +290,7 @@ describe("AppSidebar tree expansion", () => {
 
     first.unmount();
 
-    render(<AppSidebar user={user} onCmdkOpen={vi.fn()} />);
+    renderSidebar();
 
     await screen.findByText("Project Alpha");
     expect(screen.queryByText("Launch session")).toBeNull();
@@ -283,7 +308,7 @@ describe("AppSidebar tree expansion", () => {
       JSON.stringify({ "ws-1:sessions": true })
     );
 
-    render(<AppSidebar user={user} onCmdkOpen={vi.fn()} />);
+    renderSidebar();
 
     await screen.findByText("Sessions");
 
@@ -305,7 +330,7 @@ describe("AppSidebar tree expansion", () => {
       JSON.stringify({ "ws-1:files": true })
     );
 
-    render(<AppSidebar user={user} onCmdkOpen={vi.fn()} />);
+    renderSidebar();
 
     await screen.findByText("Files");
 

@@ -2,8 +2,9 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState, type DragEvent, type MouseEvent } from "react";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import {
+  createPage,
   type FolderContents,
   type StashItemSpec,
   type WorkspaceFile,
@@ -14,6 +15,7 @@ import {
   uploadFile,
   uploadTranscript,
 } from "../lib/api";
+import { useShareModal } from "../lib/shareModalContext";
 import { displaySessionUserName } from "../lib/sessionGrouping";
 import {
   getCachedFolderContents,
@@ -289,6 +291,9 @@ function WorkspaceTree({
   onPinToggle,
   onUnpinAll,
   onStashCollapsedChange,
+  onAddSession,
+  onAddPage,
+  onAddStash,
 }: {
   workspace: WorkspaceNode;
   spine: WorkspaceSidebar | null;
@@ -306,6 +311,9 @@ function WorkspaceTree({
   onPinToggle: (kind: PinKind, workspaceId: string, id: string, label?: string) => void;
   onUnpinAll: (workspaceId: string) => void;
   onStashCollapsedChange: (workspaceId: string, stashId: string, collapsed: boolean) => void;
+  onAddSession: (workspaceId: string) => void;
+  onAddPage: (workspaceId: string) => void;
+  onAddStash: (workspaceId: string) => void;
 }) {
   const dropProps = (section: DropSection) => ({
     onDragOver(event: DragEvent<HTMLElement>) {
@@ -340,6 +348,29 @@ function WorkspaceTree({
           active={pathname === `/workspaces/${workspace.id}`}
         />
       )}
+      <div className="grid grid-cols-3 gap-1 px-2 pb-1">
+        <button
+          type="button"
+          onClick={() => onAddSession(workspace.id)}
+          className="rounded-md border border-border-subtle px-1.5 py-1 text-[10.5px] text-muted hover:border-brand hover:text-brand"
+        >
+          + Session
+        </button>
+        <button
+          type="button"
+          onClick={() => onAddPage(workspace.id)}
+          className="rounded-md border border-border-subtle px-1.5 py-1 text-[10.5px] text-muted hover:border-brand hover:text-brand"
+        >
+          + Page
+        </button>
+        <button
+          type="button"
+          onClick={() => onAddStash(workspace.id)}
+          className="rounded-md border border-[var(--color-brand-300)] bg-[var(--color-brand-50)] px-1.5 py-1 text-[10.5px] font-medium text-[var(--color-brand-800)] hover:bg-[var(--color-brand-100)]"
+        >
+          + Stash
+        </button>
+      </div>
       <details
         open={openSections.sessions}
         onToggle={(e) => onSectionOpenChange("sessions", e.currentTarget.open)}
@@ -1284,6 +1315,8 @@ export default function AppSidebar({
   activeWorkspaceId,
 }: AppSidebarProps) {
   const pathname = usePathname();
+  const router = useRouter();
+  const shareModal = useShareModal();
   const userId = user?.id;
   const cachedWorkspaces = readCachedWorkspaces(userId);
   const activeTreeMatch = pathname.match(
@@ -1441,6 +1474,50 @@ export default function AppSidebar({
   async function refreshSidebar(workspaceId: string) {
     const sidebar = await refreshWorkspaceSidebar(workspaceId);
     setSpines((all) => ({ ...all, [workspaceId]: sidebar }));
+  }
+
+  function handleAddSession(workspaceId: string) {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = ".jsonl,application/jsonl,application/x-ndjson";
+    input.multiple = true;
+    input.onchange = () => {
+      if (input.files) handleDropFiles(workspaceId, "sessions", input.files);
+    };
+    input.click();
+  }
+
+  async function handleAddPage(workspaceId: string) {
+    const name = window.prompt("Page name");
+    if (!name?.trim()) return;
+
+    setDropState({
+      key: dropKey(workspaceId, "files"),
+      status: "saving",
+      message: `Creating ${name.trim()}...`,
+    });
+    try {
+      const page = await createPage(workspaceId, name.trim());
+      await refreshSidebar(workspaceId);
+      setDropState({
+        key: dropKey(workspaceId, "files"),
+        status: "done",
+        message: `Created ${page.name}.`,
+      });
+      clearDropLater(workspaceId, "files");
+      router.push(`/workspaces/${workspaceId}/p/${page.id}`);
+    } catch (error) {
+      setDropState({
+        key: dropKey(workspaceId, "files"),
+        status: "error",
+        message: error instanceof Error ? error.message : "Failed to create page",
+      });
+      clearDropLater(workspaceId, "files");
+    }
+  }
+
+  function handleAddStash(workspaceId: string) {
+    shareModal.open({ workspaceId, tab: "new" });
   }
 
   async function handleDropFiles(workspaceId: string, section: DropSection, files: FileList) {
@@ -1763,6 +1840,9 @@ export default function AppSidebar({
                 onPinToggle={(kind, id, label) => handlePinToggle(kind, s.id, id, label)}
                 onUnpinAll={handleUnpinAll}
                 onStashCollapsedChange={handleStashCollapsedChange}
+                onAddSession={handleAddSession}
+                onAddPage={handleAddPage}
+                onAddStash={handleAddStash}
               />
             ))}
           </nav>
@@ -1790,6 +1870,9 @@ export default function AppSidebar({
             onPinToggle={(kind, id, label) => handlePinToggle(kind, s.id, id, label)}
             onUnpinAll={handleUnpinAll}
             onStashCollapsedChange={handleStashCollapsedChange}
+            onAddSession={handleAddSession}
+            onAddPage={handleAddPage}
+            onAddStash={handleAddStash}
           />
         ))}
         {mine.length === 0 && (

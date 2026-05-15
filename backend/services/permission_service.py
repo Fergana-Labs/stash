@@ -80,9 +80,12 @@ def readable_content_condition(object_type: str, object_alias: str, user_arg: in
              AND content_stash_member.user_id = ${user_arg}
             WHERE {target_condition}
               AND (
-                content_stash.access IN ('public', 'workspace')
+                content_stash.access = 'public'
+                OR (
+                  content_stash.access = 'workspace'
+                  AND content_workspace_member.user_id IS NOT NULL
+                )
                 OR content_stash.owner_id = ${user_arg}
-                OR content_workspace_member.role IN ('owner', 'admin')
                 OR content_stash_member.user_id IS NOT NULL
               )
           )
@@ -180,17 +183,16 @@ async def _stash_allows(stash: dict, user_id: UUID | None, require_write: bool) 
         return True
 
     role = await get_workspace_role(stash["workspace_id"], user_id)
-    if role in ("owner", "admin"):
-        return True
-    if access == "workspace":
-        return role is not None and not require_write
-
     permission = await _stash_member_permission(stash["id"], user_id)
-    if not permission:
-        return False
-    if not require_write:
+    if access == "workspace" and role is not None and not require_write:
         return True
-    return permission in ("write", "admin")
+    if permission:
+        if not require_write:
+            return True
+        return permission in ("write", "admin")
+    if access == "workspace":
+        return False
+    return False
 
 
 async def check_access(
@@ -216,11 +218,6 @@ async def check_access(
     if object_type not in _CONTENT_TYPES:
         return False
 
-    if user_id is not None and workspace_id is not None:
-        role = await get_workspace_role(workspace_id, user_id)
-        if role in ("owner", "admin"):
-            return True
-
     stashes = await _containing_stashes(object_type, object_id)
     if stashes:
         for stash in stashes:
@@ -231,7 +228,9 @@ async def check_access(
     if user_id is None or workspace_id is None:
         return False
     role = await get_workspace_role(workspace_id, user_id)
-    return role is not None and not require_write
+    if require_write:
+        return role in ("owner", "admin", "editor")
+    return role is not None
 
 
 async def get_workspace_role(workspace_id: UUID, user_id: UUID) -> str | None:

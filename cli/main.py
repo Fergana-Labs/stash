@@ -1342,6 +1342,61 @@ def stashes_publish(
         console.print(f"[yellow]{stash['access'].title()}[/yellow] '{stash['title']}'")
 
 
+@stashes_app.command("update")
+def stashes_update(
+    stash_id: str = typer.Argument(...),
+    title: str | None = typer.Option(None, "--title"),
+    description: str | None = typer.Option(None, "--description"),
+    access: str | None = typer.Option(
+        None,
+        "--access",
+        help="One of: workspace, private, public.",
+    ),
+    discover: bool | None = typer.Option(
+        None,
+        "--discover/--no-discover",
+        help="Whether a public Stash appears in Discover.",
+    ),
+    items_json: str | None = typer.Option(
+        None,
+        "--items",
+        help='Replace items with JSON: [{"object_type":"page","object_id":"..."}, ...]',
+    ),
+    as_json: bool = typer.Option(False, "--json"),
+):
+    """Update a Stash's metadata, access, Discover flag, or item list."""
+    fields = {}
+    if title is not None:
+        fields["title"] = title
+    if description is not None:
+        fields["description"] = description
+    if access is not None:
+        if access not in {"workspace", "private", "public"}:
+            console.print("[red]--access must be workspace, private, or public.[/red]")
+            raise typer.Exit(1)
+        fields["access"] = access
+    if discover is not None:
+        fields["discoverable"] = discover
+    if items_json is not None:
+        fields["items"] = json.loads(items_json)
+    if not fields:
+        console.print("[red]Pass at least one field to update.[/red]")
+        raise typer.Exit(1)
+
+    with _client() as c:
+        try:
+            stash = c.update_stash(stash_id, **fields)
+        except StashError as e:
+            _err(e)
+    if _use_json(as_json):
+        output_json(stash)
+        return
+    flag = f"[cyan]{stash['access']}[/cyan]"
+    if stash.get("discoverable"):
+        flag = f"{flag} [cyan]discover[/cyan]"
+    console.print(f"[green]Updated Stash[/green] '{stash['title']}'  {flag}")
+
+
 @stashes_app.command("default")
 def stashes_default(
     stash_id: str = typer.Argument("", help="Stash ID to receive this repo's streamed sessions."),

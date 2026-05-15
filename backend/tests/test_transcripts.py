@@ -142,6 +142,87 @@ async def test_upload_adds_session_to_default_stash(client: AsyncClient):
 
 
 @pytest.mark.asyncio
+async def test_session_detail_returns_files_touched_and_artifacts_list(client: AsyncClient):
+    key = await _register(client)
+    ws = await _workspace(client, key)
+    headers = {"Authorization": f"Bearer {key}"}
+
+    created = await client.post(
+        f"/api/v1/workspaces/{ws}/sessions",
+        json={
+            "session_id": "sess-files",
+            "agent_name": "codex",
+            "files_touched": ["frontend/src/app/page.tsx", "backend/main.py"],
+        },
+        headers=headers,
+    )
+    assert created.status_code == 201
+
+    detail = await client.get(
+        f"/api/v1/workspaces/{ws}/sessions/sess-files",
+        headers=headers,
+    )
+    assert detail.status_code == 200
+    assert detail.json()["files_touched"] == [
+        "frontend/src/app/page.tsx",
+        "backend/main.py",
+    ]
+    assert detail.json()["artifacts"] == []
+
+
+@pytest.mark.asyncio
+async def test_transcript_viewer_includes_streamed_legacy_event_types(client: AsyncClient):
+    key = await _register(client)
+    ws = await _workspace(client, key)
+    headers = {"Authorization": f"Bearer {key}"}
+
+    pushed = await client.post(
+        f"/api/v1/workspaces/{ws}/sessions/events/batch",
+        json={
+            "events": [
+                {
+                    "agent_name": "codex",
+                    "event_type": "prompt",
+                    "content": "Please inspect the release.",
+                    "session_id": "sess-streamed",
+                    "created_at": "2026-05-10T20:00:00Z",
+                },
+                {
+                    "agent_name": "codex",
+                    "event_type": "assistant",
+                    "content": "I found the relevant files.",
+                    "session_id": "sess-streamed",
+                    "created_at": "2026-05-10T20:00:01Z",
+                },
+                {
+                    "agent_name": "codex",
+                    "event_type": "tool_call",
+                    "tool_name": "rg",
+                    "content": "rg release",
+                    "session_id": "sess-streamed",
+                    "created_at": "2026-05-10T20:00:02Z",
+                },
+            ]
+        },
+        headers=headers,
+    )
+    assert pushed.status_code == 201
+
+    events_resp = await client.get(
+        f"/api/v1/workspaces/{ws}/transcripts/sess-streamed/events",
+        headers=headers,
+    )
+    assert events_resp.status_code == 200
+    events = events_resp.json()["events"]
+    assert [event["role"] for event in events] == ["user", "assistant", "assistant"]
+    assert [event["content"] for event in events] == [
+        "Please inspect the release.",
+        "I found the relevant files.",
+        "rg release",
+    ]
+
+
+@pytest.mark.asyncio
 async def test_oversize_rejected(client: AsyncClient):
     key = await _register(client)
     ws = await _workspace(client, key)

@@ -67,10 +67,7 @@ async def _check_content_access(
     )
     if allowed:
         return
-    if require_write and await permission_service.get_visibility(object_type, object_id) != "private":
-        return
-    if not allowed:
-        raise HTTPException(status_code=404, detail=f"{object_type.title()} not found")
+    raise HTTPException(status_code=404, detail=f"{object_type.title()} not found")
 
 
 # --- Pages: flat listing ---
@@ -211,6 +208,29 @@ async def get_folder_contents(
         current_user["id"],
         workspace_id,
     )
+    for folder_row in subfolders:
+        child_pages = await pool.fetch(
+            "SELECT id FROM pages WHERE folder_id = $1 "
+            "AND COALESCE(metadata->>'shared_in_stash_id', '') = ''",
+            folder_row["id"],
+        )
+        child_files = await pool.fetch("SELECT id FROM files WHERE folder_id = $1", folder_row["id"])
+        folder_row["page_count"] = len(
+            await files_tree_service._filter_readable(
+                [dict(row) for row in child_pages],
+                "page",
+                current_user["id"],
+                workspace_id,
+            )
+        )
+        folder_row["file_count"] = len(
+            await files_tree_service._filter_readable(
+                [dict(row) for row in child_files],
+                "file",
+                current_user["id"],
+                workspace_id,
+            )
+        )
 
     file_payload = [
         {
@@ -257,8 +277,22 @@ async def update_folder(
 ):
     await _check_ws_write(workspace_id, current_user["id"])
     await _check_ws_owns_folder(workspace_id, folder_id)
+    await _check_content_access(
+        "folder",
+        folder_id,
+        workspace_id,
+        current_user["id"],
+        require_write=True,
+    )
     if req.parent_folder_id is not None and not req.move_to_root:
         await _check_ws_owns_folder(workspace_id, req.parent_folder_id)
+        await _check_content_access(
+            "folder",
+            req.parent_folder_id,
+            workspace_id,
+            current_user["id"],
+            require_write=True,
+        )
     try:
         folder = await files_tree_service.update_folder(
             folder_id,
@@ -283,6 +317,14 @@ async def delete_folder(
     current_user: dict = Depends(get_current_user),
 ):
     await _check_ws_write(workspace_id, current_user["id"])
+    await _check_ws_owns_folder(workspace_id, folder_id)
+    await _check_content_access(
+        "folder",
+        folder_id,
+        workspace_id,
+        current_user["id"],
+        require_write=True,
+    )
     deleted = await files_tree_service.delete_folder(folder_id, workspace_id)
     if not deleted:
         raise HTTPException(status_code=404, detail="Folder not found")
@@ -300,6 +342,13 @@ async def create_page(
     await _check_ws_write(workspace_id, current_user["id"])
     if req.folder_id is not None:
         await _check_ws_owns_folder(workspace_id, req.folder_id)
+        await _check_content_access(
+            "folder",
+            req.folder_id,
+            workspace_id,
+            current_user["id"],
+            require_write=True,
+        )
     try:
         page = await files_tree_service.create_page(
             workspace_id,
@@ -382,6 +431,13 @@ async def update_page(
     )
     if req.folder_id is not None and not req.move_to_root:
         await _check_ws_owns_folder(workspace_id, req.folder_id)
+        await _check_content_access(
+            "folder",
+            req.folder_id,
+            workspace_id,
+            current_user["id"],
+            require_write=True,
+        )
     try:
         page = await files_tree_service.update_page(
             page_id,

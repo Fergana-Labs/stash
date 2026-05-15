@@ -7,9 +7,11 @@ import DownloadMenu from "../../../../../components/DownloadMenu";
 import { useAuth } from "../../../../../hooks/useAuth";
 import {
   fetchAuthed,
+  getSessionDetail,
   getSessionEvents,
   getWorkspaceSidebar,
   listObjectStashes,
+  type SessionDetail,
   type SessionEvent,
   type WorkspaceStash,
 } from "../../../../../lib/api";
@@ -93,6 +95,7 @@ export default function SessionViewerPage() {
   const { user, loading } = useAuth();
 
   const [agentName, setAgentName] = useState("");
+  const [sessionDetail, setSessionDetail] = useState<SessionDetail | null>(null);
   const [turns, setTurns] = useState<MessageTurn[]>([]);
   const [containingStashes, setContainingStashes] = useState<WorkspaceStash[]>([]);
   const [error, setError] = useState("");
@@ -104,11 +107,13 @@ export default function SessionViewerPage() {
 
   const load = useCallback(async () => {
     try {
-      const [events, sidebar] = await Promise.all([
+      const [events, sidebar, detail] = await Promise.all([
         getSessionEvents(workspaceId, sessionId),
         getWorkspaceSidebar(workspaceId),
+        getSessionDetail(workspaceId, sessionId),
       ]);
-      setAgentName(events.find((event) => event.agent_name)?.agent_name ?? "");
+      setAgentName(detail.agent_name || events.find((event) => event.agent_name)?.agent_name || "");
+      setSessionDetail(detail);
       setTurns(events.map(eventToTurn));
       const session = sidebar.sessions.find((item) => item.session_id === sessionId);
       setContainingStashes(
@@ -215,16 +220,72 @@ export default function SessionViewerPage() {
             )}
           </div>
         </main>
-        <StashAside stashes={containingStashes} />
+        <SessionAside detail={sessionDetail} stashes={containingStashes} />
       </div>
     </div>
   );
 }
 
-function StashAside({ stashes }: { stashes: WorkspaceStash[] }) {
+function SessionAside({
+  detail,
+  stashes,
+}: {
+  detail: SessionDetail | null;
+  stashes: WorkspaceStash[];
+}) {
+  const filesTouched = normalizeStringList(detail?.files_touched);
+  const artifacts = detail?.artifacts ?? [];
+
   return (
     <aside className="hidden lg:block">
-      <div className="sticky top-16 rounded-lg border border-border-subtle bg-surface p-3">
+      <div className="sticky top-16 flex flex-col gap-3">
+        <div className="rounded-lg border border-border-subtle bg-surface p-3">
+          <div className="text-[11px] font-semibold uppercase tracking-wider text-muted">
+            Session files
+          </div>
+          <div className="mt-2">
+            {filesTouched.length > 0 ? (
+              <div className="flex flex-col gap-1.5">
+                {filesTouched.map((file) => (
+                  <div
+                    key={file}
+                    className="rounded-md border border-border-subtle bg-base px-2.5 py-2 font-mono text-[11px] text-foreground"
+                  >
+                    {file}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="text-[12px] leading-relaxed text-muted">No files recorded.</div>
+            )}
+          </div>
+          <div className="mt-4 text-[11px] font-semibold uppercase tracking-wider text-muted">
+            Artifacts
+          </div>
+          <div className="mt-2">
+            {artifacts.length > 0 ? (
+              <div className="flex flex-col gap-1.5">
+                {artifacts.map((artifact) => (
+                  <a
+                    key={artifact.id}
+                    href={artifact.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="rounded-md border border-border-subtle bg-base px-2.5 py-2 text-[12px] text-foreground hover:border-brand hover:text-brand"
+                  >
+                    <span className="block truncate font-medium">{artifact.file_path}</span>
+                    <span className="mt-0.5 block text-[11px] text-muted">
+                      {formatBytes(artifact.size_bytes)}
+                    </span>
+                  </a>
+                ))}
+              </div>
+            ) : (
+              <div className="text-[12px] leading-relaxed text-muted">No artifacts recorded.</div>
+            )}
+          </div>
+        </div>
+        <div className="rounded-lg border border-border-subtle bg-surface p-3">
         <div className="text-[11px] font-semibold uppercase tracking-wider text-muted">
           In Stashes
         </div>
@@ -248,9 +309,23 @@ function StashAside({ stashes }: { stashes: WorkspaceStash[] }) {
             This session is not in a Stash yet.
           </div>
         )}
+        </div>
       </div>
     </aside>
   );
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+}
+
+function normalizeStringList(value: string[] | string | null | undefined): string[] {
+  if (Array.isArray(value)) return value;
+  if (!value) return [];
+  const parsed = JSON.parse(value);
+  return Array.isArray(parsed) ? parsed.map(String) : [];
 }
 
 function DateDivider({ label }: { label: string }) {

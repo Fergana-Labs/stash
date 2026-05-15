@@ -7,6 +7,7 @@ server-side, sourced from the events the workspace already has, so the
 session viewer can ship a Share button without involving the CLI.
 """
 
+import json
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
@@ -37,6 +38,9 @@ class SessionUpsertRequest(BaseModel):
 
 
 def _session_response(row: dict) -> dict:
+    files_touched = row.get("files_touched") or []
+    if isinstance(files_touched, str):
+        files_touched = json.loads(files_touched)
     return {
         "id": str(row["id"]),
         "workspace_id": str(row["workspace_id"]),
@@ -45,11 +49,27 @@ def _session_response(row: dict) -> dict:
         "cwd": row.get("cwd"),
         "summary": row.get("summary"),
         "summary_status": row.get("summary_status"),
-        "files_touched": row.get("files_touched") or [],
+        "files_touched": files_touched,
         "started_at": row.get("started_at"),
         "finished_at": row.get("finished_at"),
         "created_by": str(row["created_by"]) if row.get("created_by") else None,
     }
+
+
+async def _session_artifacts(session_row_id: UUID) -> list[dict]:
+    pool = get_pool()
+    rows = await pool.fetch(
+        "SELECT id, file_path, storage_key, size_bytes, created_at "
+        "FROM session_artifacts WHERE session_id = $1 ORDER BY created_at",
+        session_row_id,
+    )
+    artifacts = []
+    for row in rows:
+        artifact = dict(row)
+        artifact["id"] = str(artifact["id"])
+        artifact["url"] = await storage_service.get_file_url(artifact.pop("storage_key"))
+        artifacts.append(artifact)
+    return artifacts
 
 
 @router.get("/me/sessions")
@@ -125,6 +145,26 @@ async def upsert_workspace_session(
         await session_service.set_files_touched(row["id"], req.files_touched)
         row = await session_service.get_session_by_id(row["id"])
     return _session_response(row)
+
+
+@router.get("/workspaces/{workspace_id}/sessions/{session_id}")
+async def get_workspace_session(
+    workspace_id: UUID,
+    session_id: str,
+    current_user: dict = Depends(get_current_user),
+):
+    if not await workspace_service.is_member(workspace_id, current_user["id"]):
+        raise HTTPException(status_code=403, detail="Not a workspace member")
+    if not await memory_service.can_read_session(workspace_id, session_id, current_user["id"]):
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    session = await session_service.get_session(workspace_id, session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    payload = _session_response(session)
+    payload["artifacts"] = await _session_artifacts(session["id"])
+    return payload
 
 
 @router.post("/workspaces/{workspace_id}/sessions/{session_row_id}/artifacts", status_code=201)

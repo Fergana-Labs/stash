@@ -443,6 +443,33 @@ def stash_create_stash(
 
 
 @mcp.tool()
+def stash_update_stash(
+    stash_id: str,
+    title: str = "",
+    description: str = "",
+    access: str = "",
+    discoverable: str = "",
+    items: str = "",
+) -> str:
+    """Update a Stash's metadata, access, Discover flag, or item list."""
+    client, _ = _client()
+    fields: dict = {}
+    if title:
+        fields["title"] = title
+    if description:
+        fields["description"] = description
+    if access:
+        fields["access"] = access
+    if discoverable:
+        fields["discoverable"] = discoverable.lower() in {"1", "true", "yes", "on"}
+    if items:
+        fields["items"] = json.loads(items)
+    if not fields:
+        raise ValueError("Pass at least one field to update")
+    return _json(client.update_stash(stash_id, **fields))
+
+
+@mcp.tool()
 def stash_delete_stash(stash_id: str) -> str:
     """Delete a Stash."""
     client, _ = _client()

@@ -158,6 +158,38 @@ async def test_rotate_invite_code_member_forbidden(client: AsyncClient):
     assert resp.status_code == 403
 
 
+@pytest.mark.asyncio
+async def test_magic_invite_redeem_assigns_editor_role(client: AsyncClient):
+    owner_key, _ = await _register(client)
+    joiner_key, joiner = await _register(client)
+    ws = (
+        await client.post("/api/v1/workspaces", json={"name": "Magic Team"}, headers=_auth(owner_key))
+    ).json()
+
+    invite = await client.post(
+        f"/api/v1/workspaces/{ws['id']}/invite-tokens",
+        json={"max_uses": 1, "ttl_days": 7},
+        headers=_auth(owner_key),
+    )
+    assert invite.status_code == 201
+
+    redeemed = await client.post(
+        "/api/v1/workspaces/redeem-invite",
+        json={"token": invite.json()["token"]},
+        headers=_auth(joiner_key),
+    )
+    assert redeemed.status_code == 200
+
+    members = (
+        await client.get(
+            f"/api/v1/workspaces/{ws['id']}/members",
+            headers=_auth(owner_key),
+        )
+    ).json()
+    roles = {member["user_id"]: member["role"] for member in members}
+    assert roles[joiner["id"]] == "editor"
+
+
 # --- Update / Delete ---
 
 
