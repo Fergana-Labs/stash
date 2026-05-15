@@ -10,6 +10,8 @@ from ..config import settings
 from ..database import get_pool
 from ..models import (
     AddExternalStashRequest,
+    PageCreateRequest,
+    PageResponse,
     StashCreateRequest,
     StashMemberRequest,
     StashMemberResponse,
@@ -242,6 +244,31 @@ async def remove_stash_member(
     await stash_service.remove_member(stash_id, user_id)
 
 
+@public_router.post("/{stash_id}/shared-pages", response_model=PageResponse, status_code=201)
+async def create_shared_stash_page(
+    stash_id: UUID,
+    req: PageCreateRequest,
+    current_user: dict = Depends(get_current_user),
+):
+    try:
+        page = await stash_service.create_shared_page(
+            stash_id,
+            current_user["id"],
+            name=req.name,
+            content=req.content,
+            content_type=req.content_type,
+            content_html=req.content_html,
+            html_layout=req.html_layout,
+        )
+    except PermissionError as e:
+        raise HTTPException(status_code=403, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    if not page:
+        raise HTTPException(status_code=404, detail="Stash not found")
+    return PageResponse(**page)
+
+
 @public_router.get("/{slug}")
 async def get_public_stash(
     slug: str,
@@ -261,10 +288,12 @@ async def get_public_stash(
         )
 
     workspace_name = stash.pop("_workspace_name", "")
+    can_write = bool(current_user and await stash_service.user_can_write(stash["id"], current_user["id"]))
     return StashPublicResponse(
         stash=StashResponse(**stash),
         workspace_name=workspace_name,
         items=items,
+        can_write=can_write,
     )
 
 

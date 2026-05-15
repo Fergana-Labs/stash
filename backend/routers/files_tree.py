@@ -156,13 +156,15 @@ async def get_folder_contents(
 
     subfolders = await pool.fetch(
         "SELECT id, name, "
-        "       (SELECT COUNT(*) FROM pages p WHERE p.folder_id = f.id) AS page_count, "
+        "       (SELECT COUNT(*) FROM pages p WHERE p.folder_id = f.id "
+        "        AND COALESCE(p.metadata->>'shared_in_stash_id', '') = '') AS page_count, "
         "       (SELECT COUNT(*) FROM files fi WHERE fi.folder_id = f.id) AS file_count "
         "FROM folders f WHERE f.parent_folder_id = $1 ORDER BY name",
         folder_id,
     )
     pages = await pool.fetch(
-        "SELECT id, name FROM pages WHERE folder_id = $1 ORDER BY name",
+        "SELECT id, name FROM pages WHERE folder_id = $1 "
+        "AND COALESCE(metadata->>'shared_in_stash_id', '') = '' ORDER BY name",
         folder_id,
     )
     files = await pool.fetch(

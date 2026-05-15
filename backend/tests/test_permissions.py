@@ -323,6 +323,84 @@ async def test_stash_member_api_grants_and_revokes_private_page_access(
 
 
 @pytest.mark.asyncio
+async def test_stash_write_member_can_create_shared_page_outside_workspace_files(
+    client: AsyncClient,
+):
+    owner_key, _owner = await _register(client, "shared_page_owner")
+    collaborator_key, collaborator = await _register(client, "shared_page_collaborator")
+
+    workspace_resp = await client.post(
+        "/api/v1/workspaces",
+        json={"name": "Shared Page workspace"},
+        headers=_auth(owner_key),
+    )
+    assert workspace_resp.status_code == 201
+    workspace = workspace_resp.json()
+
+    page_resp = await client.post(
+        f"/api/v1/workspaces/{workspace['id']}/pages/new",
+        json={"name": "Source page", "content": "# Source page"},
+        headers=_auth(owner_key),
+    )
+    assert page_resp.status_code == 201
+    page = page_resp.json()
+
+    stash_resp = await client.post(
+        f"/api/v1/workspaces/{workspace['id']}/stashes",
+        json={
+            "title": "Private edit stash",
+            "access": "private",
+            "items": [{"object_type": "page", "object_id": page["id"]}],
+        },
+        headers=_auth(owner_key),
+    )
+    assert stash_resp.status_code == 201
+    stash = stash_resp.json()
+
+    add_resp = await client.post(
+        f"/api/v1/stashes/{stash['id']}/members",
+        json={"user_id": collaborator["id"], "permission": "write"},
+        headers=_auth(owner_key),
+    )
+    assert add_resp.status_code == 201
+
+    shared_resp = await client.post(
+        f"/api/v1/stashes/{stash['id']}/shared-pages",
+        json={"name": "Collaborator note", "content": "# Collaborator note"},
+        headers=_auth(collaborator_key),
+    )
+    assert shared_resp.status_code == 201
+    shared_page = shared_resp.json()
+    assert shared_page["metadata"]["shared_in_stash_id"] == stash["id"]
+
+    stash_detail = await client.get(
+        f"/api/v1/stashes/{stash['slug']}",
+        headers=_auth(collaborator_key),
+    )
+    assert stash_detail.status_code == 200
+    body = stash_detail.json()
+    assert body["can_write"] is True
+    assert [item["label"] for item in body["items"]] == [
+        "Source page",
+        "Collaborator note",
+    ]
+
+    pages_resp = await client.get(
+        f"/api/v1/workspaces/{workspace['id']}/pages",
+        headers=_auth(owner_key),
+    )
+    assert pages_resp.status_code == 200
+    assert [item["name"] for item in pages_resp.json()["pages"]] == ["Source page"]
+
+    tree_resp = await client.get(
+        f"/api/v1/workspaces/{workspace['id']}/tree",
+        headers=_auth(owner_key),
+    )
+    assert tree_resp.status_code == 200
+    assert [item["name"] for item in tree_resp.json()["pages"]] == ["Source page"]
+
+
+@pytest.mark.asyncio
 async def test_private_stash_partitions_items_from_workspace_and_public_stashes(pool):
     owner_id = await _make_user(pool)
     ws_id = await _make_workspace(pool, owner_id)

@@ -914,6 +914,7 @@ export interface PublicStashDetail {
   stash: WorkspaceStash;
   workspace_name: string;
   items: PublicStashItem[];
+  can_write: boolean;
 }
 
 export async function listStashes(workspaceId: string): Promise<WorkspaceStash[]> {
@@ -962,6 +963,28 @@ export async function removeStashMember(stashId: string, userId: string): Promis
 
 export async function getPublicStash(slug: string): Promise<PublicStashDetail> {
   return apiFetch(`/api/v1/stashes/${slug}`);
+}
+
+export async function createSharedStashPage(
+  stashId: string,
+  data: {
+    name: string;
+    content: string;
+    content_type?: "markdown" | "html";
+    content_html?: string;
+    html_layout?: "responsive" | "fixed-aspect";
+  }
+): Promise<Page> {
+  return apiFetch(`/api/v1/stashes/${stashId}/shared-pages`, {
+    method: "POST",
+    body: JSON.stringify({
+      name: data.name,
+      content: data.content,
+      content_type: data.content_type ?? "markdown",
+      content_html: data.content_html ?? "",
+      html_layout: data.html_layout ?? "responsive",
+    }),
+  });
 }
 
 export async function addExternalStash(

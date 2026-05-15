@@ -189,6 +189,7 @@ class StashPublicResponse(BaseModel):
     stash: StashResponse
     workspace_name: str
     items: list[StashItemInlined]
+    can_write: bool = False
 
 
 class AddExternalStashRequest(BaseModel):

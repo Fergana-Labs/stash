@@ -55,14 +55,17 @@ async def _files_tree(workspace_id: UUID) -> dict:
     folder_rows, page_rows, file_rows = await asyncio.gather(
         pool.fetch(
             "SELECT f.id, f.name, f.parent_folder_id, "
-            "       (SELECT COUNT(*) FROM pages p WHERE p.folder_id = f.id) AS page_count, "
+            "       (SELECT COUNT(*) FROM pages p WHERE p.folder_id = f.id "
+            "        AND COALESCE(p.metadata->>'shared_in_stash_id', '') = '') AS page_count, "
             "       (SELECT COUNT(*) FROM files fi WHERE fi.folder_id = f.id) AS file_count, "
-            "       EXISTS(SELECT 1 FROM pages p WHERE p.folder_id = f.id AND p.name = 'SKILL.md') AS has_skill "
+            "       EXISTS(SELECT 1 FROM pages p WHERE p.folder_id = f.id AND p.name = 'SKILL.md' "
+            "              AND COALESCE(p.metadata->>'shared_in_stash_id', '') = '') AS has_skill "
             "FROM folders f WHERE f.workspace_id = $1 ORDER BY f.name",
             workspace_id,
         ),
         pool.fetch(
-            "SELECT id, name, folder_id FROM pages WHERE workspace_id = $1 ORDER BY name",
+            "SELECT id, name, folder_id FROM pages WHERE workspace_id = $1 "
+            "AND COALESCE(metadata->>'shared_in_stash_id', '') = '' ORDER BY name",
             workspace_id,
         ),
         pool.fetch(
@@ -252,7 +255,8 @@ async def _sidebar_etag(workspace_id: UUID) -> str:
     row = await pool.fetchrow(
         """
         SELECT
-          (SELECT MAX(updated_at) FROM pages WHERE workspace_id = $1)            AS p,
+          (SELECT MAX(updated_at) FROM pages
+            WHERE workspace_id = $1 AND COALESCE(metadata->>'shared_in_stash_id', '') = '') AS p,
           (SELECT MAX(created_at) FROM files WHERE workspace_id = $1)            AS f,
           (SELECT MAX(updated_at) FROM folders WHERE workspace_id = $1)          AS d,
           (SELECT MAX(GREATEST(finished_at, started_at)) FROM sessions

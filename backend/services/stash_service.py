@@ -7,7 +7,7 @@ import secrets
 from uuid import UUID
 
 from ..database import get_pool
-from . import permission_service, workspace_service
+from . import files_tree_service, permission_service, workspace_service
 
 _SLUG_RE = re.compile(r"[^a-z0-9]+")
 
@@ -478,6 +478,50 @@ async def get_public_stash(slug: str, viewer_id: UUID | None = None) -> dict | N
     )
     stash["_workspace_name"] = ws["name"] if ws else ""
     return stash
+
+
+async def create_shared_page(
+    stash_id: UUID,
+    user_id: UUID,
+    *,
+    name: str,
+    content: str,
+    content_type: str,
+    content_html: str,
+    html_layout: str,
+) -> dict | None:
+    stash = await get_stash(stash_id)
+    if not stash:
+        return None
+    if not await user_can_write(stash_id, user_id):
+        raise PermissionError("Not allowed to edit this stash")
+
+    page = await files_tree_service.create_page(
+        stash["workspace_id"],
+        name,
+        user_id,
+        folder_id=None,
+        content=content,
+        metadata={"shared_in_stash_id": str(stash_id)},
+        content_type=content_type,
+        content_html=content_html,
+        html_layout=html_layout,
+    )
+
+    pool = get_pool()
+    position = await pool.fetchval(
+        "SELECT COALESCE(MAX(position), -1) + 1 FROM stash_items WHERE stash_id = $1",
+        stash_id,
+    )
+    await pool.execute(
+        "INSERT INTO stash_items (stash_id, object_type, object_id, position, label_override) "
+        "VALUES ($1, 'page', $2, $3, $4)",
+        stash_id,
+        page["id"],
+        position,
+        name,
+    )
+    return page
 
 
 async def inline_items(stash: dict, viewer_id: UUID | None = None) -> list[dict]:

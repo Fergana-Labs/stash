@@ -52,6 +52,7 @@ def _accessible_pages_cte(ws_idx: int | None = None) -> str:
             SELECT p.id AS page_id
             FROM pages p
             WHERE p.workspace_id = ${ws_idx}
+              AND COALESCE(p.metadata->>'shared_in_stash_id', '') = ''
         )
         """
     return """
@@ -59,6 +60,7 @@ def _accessible_pages_cte(ws_idx: int | None = None) -> str:
         SELECT p.id AS page_id
         FROM pages p
         WHERE p.workspace_id IN (SELECT workspace_id FROM workspace_members WHERE user_id = $1)
+          AND COALESCE(p.metadata->>'shared_in_stash_id', '') = ''
     )
     """
 
@@ -274,6 +276,7 @@ async def _get_source_counts(user_id: UUID, workspace_id: UUID | None = None) ->
             SELECT
                 (SELECT COUNT(*) FROM pages p
                  WHERE p.workspace_id = $1
+                   AND COALESCE(p.metadata->>'shared_in_stash_id', '') = ''
                    AND p.content_markdown IS NOT NULL AND p.content_markdown != '') AS pages,
                 (SELECT COUNT(*) FROM table_rows tr
                  WHERE tr.table_id IN (SELECT t.id FROM tables t WHERE t.workspace_id = $1)
@@ -288,6 +291,7 @@ async def _get_source_counts(user_id: UUID, workspace_id: UUID | None = None) ->
             SELECT
                 (SELECT COUNT(*) FROM pages p
                  WHERE p.workspace_id IN (SELECT workspace_id FROM workspace_members WHERE user_id = $1)
+                   AND COALESCE(p.metadata->>'shared_in_stash_id', '') = ''
                    AND p.content_markdown IS NOT NULL AND p.content_markdown != '') AS pages,
                 (SELECT COUNT(*) FROM table_rows tr
                  WHERE tr.table_id IN (

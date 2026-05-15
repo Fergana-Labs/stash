@@ -17,6 +17,8 @@ from ..database import get_pool
 
 logger = logging.getLogger(__name__)
 
+_WORKSPACE_PAGE_FILTER = "COALESCE(metadata->>'shared_in_stash_id', '') = ''"
+
 
 class DuplicatePageName(Exception):
     """A page with this name already exists in the target folder."""
@@ -264,7 +266,7 @@ async def get_page(page_id: UUID, workspace_id: UUID) -> dict | None:
         "SELECT id, workspace_id, folder_id, name, content_markdown, content_html, "
         "content_type, html_layout, content_hash, metadata, "
         "created_by, updated_by, created_at, updated_at "
-        "FROM pages WHERE id = $1 AND workspace_id = $2",
+        f"FROM pages WHERE id = $1 AND workspace_id = $2 AND {_WORKSPACE_PAGE_FILTER}",
         page_id,
         workspace_id,
     )
@@ -276,7 +278,7 @@ async def get_sync_manifest(workspace_id: UUID) -> list[dict]:
     pool = get_pool()
     rows = await pool.fetch(
         "SELECT id, name, content_hash, metadata, updated_at, folder_id "
-        "FROM pages WHERE workspace_id = $1 ORDER BY name",
+        f"FROM pages WHERE workspace_id = $1 AND {_WORKSPACE_PAGE_FILTER} ORDER BY name",
         workspace_id,
     )
     return [dict(r) for r in rows]
@@ -320,7 +322,7 @@ async def update_page(
         if content_changed:
             current = await pool.fetchrow(
                 "SELECT content_hash, content_type, content_markdown, content_html "
-                "FROM pages WHERE id = $1 AND workspace_id = $2",
+                f"FROM pages WHERE id = $1 AND workspace_id = $2 AND {_WORKSPACE_PAGE_FILTER}",
                 page_id,
                 workspace_id,
             )
@@ -380,7 +382,7 @@ async def update_page(
 
         args.append(page_id)
         args.append(workspace_id)
-        where = f"id = ${idx} AND workspace_id = ${idx + 1}"
+        where = f"id = ${idx} AND workspace_id = ${idx + 1} AND {_WORKSPACE_PAGE_FILTER}"
         if expected_hash is not None:
             args.append(expected_hash)
             where += f" AND content_hash = ${idx + 2}"
@@ -411,7 +413,7 @@ async def update_page(
             "SELECT id, workspace_id, folder_id, name, content_markdown, content_html, "
             "content_type, html_layout, content_hash, metadata, "
             "created_by, updated_by, created_at, updated_at "
-            "FROM pages WHERE id = $1 AND workspace_id = $2",
+            f"FROM pages WHERE id = $1 AND workspace_id = $2 AND {_WORKSPACE_PAGE_FILTER}",
             page_id,
             workspace_id,
         )
@@ -434,7 +436,7 @@ async def update_page(
     fresh = await pool.fetchrow(
         "SELECT id, workspace_id, folder_id, name, content_markdown, content_html, "
         "content_type, html_layout, content_hash "
-        "FROM pages WHERE id = $1 AND workspace_id = $2",
+        f"FROM pages WHERE id = $1 AND workspace_id = $2 AND {_WORKSPACE_PAGE_FILTER}",
         page_id,
         workspace_id,
     )
@@ -446,7 +448,7 @@ async def update_page(
 async def delete_page(page_id: UUID, workspace_id: UUID) -> bool:
     pool = get_pool()
     result = await pool.execute(
-        "DELETE FROM pages WHERE id = $1 AND workspace_id = $2",
+        f"DELETE FROM pages WHERE id = $1 AND workspace_id = $2 AND {_WORKSPACE_PAGE_FILTER}",
         page_id,
         workspace_id,
     )
@@ -471,7 +473,9 @@ async def list_workspace_pages(workspace_id: UUID) -> list[dict]:
         "SELECT p.id, p.name, p.workspace_id, p.folder_id, "
         "COALESCE(c.path, ARRAY[]::text[]) AS folder_path, p.updated_at "
         "FROM pages p LEFT JOIN chain c ON c.id = p.folder_id "
-        "WHERE p.workspace_id = $1 ORDER BY c.path NULLS FIRST, p.name",
+        "WHERE p.workspace_id = $1 "
+        "AND COALESCE(p.metadata->>'shared_in_stash_id', '') = '' "
+        "ORDER BY c.path NULLS FIRST, p.name",
         workspace_id,
     )
     return [dict(r) for r in rows]
@@ -496,6 +500,7 @@ async def list_user_pages(user_id: UUID) -> list[dict]:
         "JOIN workspace_members wm ON wm.workspace_id = p.workspace_id "
         "LEFT JOIN chain c ON c.id = p.folder_id "
         "WHERE wm.user_id = $1 "
+        "AND COALESCE(p.metadata->>'shared_in_stash_id', '') = '' "
         "ORDER BY w.name, c.path NULLS FIRST, p.name",
         user_id,
     )
@@ -508,7 +513,7 @@ async def list_workspace_tree(workspace_id: UUID) -> dict:
     pool = get_pool()
     page_rows = await pool.fetch(
         "SELECT id, workspace_id, folder_id, name, created_at, updated_at "
-        "FROM pages WHERE workspace_id = $1 ORDER BY name",
+        f"FROM pages WHERE workspace_id = $1 AND {_WORKSPACE_PAGE_FILTER} ORDER BY name",
         workspace_id,
     )
 
@@ -548,6 +553,7 @@ async def search_pages_fts(workspace_id: UUID, query: str, limit: int = 10) -> l
         f"ts_rank({vec_expr}, websearch_to_tsquery('english', $2)) AS rank "
         f"FROM pages "
         f"WHERE workspace_id = $1 "
+        f"AND {_WORKSPACE_PAGE_FILTER} "
         f"AND ({vec_expr}) @@ websearch_to_tsquery('english', $2) "
         f"ORDER BY rank DESC LIMIT $3",
         workspace_id,
@@ -590,7 +596,8 @@ async def search_pages_vector(
         "SELECT id, workspace_id, folder_id, name, content_markdown, metadata, "
         "created_by, updated_by, created_at, updated_at, "
         "1 - (embedding <=> $2) AS similarity "
-        "FROM pages WHERE workspace_id = $1 AND embedding IS NOT NULL "
+        f"FROM pages WHERE workspace_id = $1 AND {_WORKSPACE_PAGE_FILTER} "
+        "AND embedding IS NOT NULL "
         "ORDER BY embedding <=> $2 LIMIT $3",
         workspace_id,
         query_embedding,
