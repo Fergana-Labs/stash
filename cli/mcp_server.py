@@ -341,21 +341,6 @@ def stash_workspace_members(workspace_id: str = "") -> str:
     return _json(client.workspace_members(ws))
 
 
-@mcp.tool()
-def stash_join_workspace(invite_code: str) -> str:
-    """Join a workspace using an invite code."""
-    client, _ = _client()
-    return _json(client.join_workspace(invite_code))
-
-
-@mcp.tool()
-def stash_leave_workspace(workspace_id: str) -> str:
-    """Leave a workspace."""
-    client, _ = _client()
-    client.leave_workspace(workspace_id)
-    return _json({"left": workspace_id})
-
-
 # ── Skills ─────────────────────────────────────────────────────────
 
 
@@ -493,28 +478,11 @@ def stash_remove_external_stash(stash_id: str, workspace_id: str = "") -> str:
 
 
 @mcp.tool()
-def stash_create_invite(max_uses: int = 1, ttl_days: int = 7, workspace_id: str = "") -> str:
-    """Create an invite token for the workspace."""
-    client, default_ws = _client()
-    ws = _require_ws(workspace_id or default_ws)
-    return _json(client.create_invite_token(ws, max_uses=max_uses, ttl_days=ttl_days))
-
-
-@mcp.tool()
 def stash_list_invites(workspace_id: str = "") -> str:
     """List active invite tokens for the workspace."""
     client, default_ws = _client()
     ws = _require_ws(workspace_id or default_ws)
     return _json(client.list_invite_tokens(ws))
-
-
-@mcp.tool()
-def stash_revoke_invite(token_id: str, workspace_id: str = "") -> str:
-    """Revoke an invite token."""
-    client, default_ws = _client()
-    ws = _require_ws(workspace_id or default_ws)
-    client.revoke_invite_token(ws, token_id)
-    return _json({"revoked": token_id})
 
 
 # ── User ──────────────────────────────────────────────────────────
