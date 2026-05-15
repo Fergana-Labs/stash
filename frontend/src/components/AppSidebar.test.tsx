@@ -81,6 +81,47 @@ const emptySidebar = {
   stashes: [],
 };
 
+const sidebarWithStash = {
+  sessions: [
+    {
+      id: "session-row-1",
+      session_id: "session-1",
+      title: "Planning session",
+      agent_name: "Codex",
+      size_bytes: 256,
+      last_at: "2026-05-11T00:00:00Z",
+      updated_at: "2026-05-11T00:00:00Z",
+    },
+  ],
+  files: {
+    folders: [],
+    pages: [],
+    files: [],
+  },
+  stashes: [
+    {
+      id: "stash-1",
+      workspace_id: "ws-1",
+      slug: "project-alpha",
+      title: "Project Alpha",
+      description: "",
+      access: "workspace" as const,
+      discoverable: false,
+      is_external: false,
+      item_count: 1,
+      items: [
+        {
+          object_type: "session" as const,
+          object_id: "session-row-1",
+          label_override: "Launch session",
+          position: 0,
+        },
+      ],
+      updated_at: "2026-05-11T00:00:00Z",
+    },
+  ],
+};
+
 function detailsFor(label: string): HTMLDetailsElement {
   const details = screen.getByText(label).closest("details");
   if (!details) throw new Error(`No details element for ${label}`);
@@ -119,22 +160,18 @@ describe("AppSidebar tree expansion", () => {
     cleanup();
   });
 
-  it("starts workspaces and their top-level sections collapsed", async () => {
+  it("starts top-level sections expanded", async () => {
     render(<AppSidebar user={user} onCmdkOpen={vi.fn()} />);
 
-    await screen.findByText("Demo Stash");
+    await screen.findByText("Sessions");
 
-    const activityLinks = screen.getAllByText("Activity").map((node) => node.closest("a"));
-    expect(activityLinks.some((link) => link?.getAttribute("href") === "/activity")).toBe(true);
-    expect(activityLinks.some((link) => link?.getAttribute("href") === "/activity?workspace=ws-1")).toBe(true);
-    expect(detailsFor("Demo Stash")).not.toHaveAttribute("open");
-    expect(detailsFor("Sessions")).not.toHaveAttribute("open");
-    expect(detailsFor("Files")).not.toHaveAttribute("open");
-    expect(detailsFor("Stashes")).not.toHaveAttribute("open");
-    expect(getWorkspaceSidebar).not.toHaveBeenCalled();
+    await waitFor(() => expect(getWorkspaceSidebar).toHaveBeenCalledWith("ws-1"));
+    expect(detailsFor("Sessions")).toHaveAttribute("open");
+    expect(detailsFor("Files")).toHaveAttribute("open");
+    expect(detailsFor("Stashes")).toHaveAttribute("open");
   });
 
-  it("splits owned and shared memberships", async () => {
+  it("renders shared memberships in their own group", async () => {
     vi.mocked(listMyWorkspaces).mockResolvedValue({
       workspaces: [workspace, sharedWorkspace],
     });
@@ -142,72 +179,60 @@ describe("AppSidebar tree expansion", () => {
     render(<AppSidebar user={user} onCmdkOpen={vi.fn()} />);
 
     await screen.findByText("Shared Stash");
-    await screen.findByText("Demo Stash");
 
     const sidebarText = document.body.textContent ?? "";
     expect(sidebarText.indexOf("SHARED WORKSPACES")).toBeLessThan(
       sidebarText.indexOf("Shared Stash")
     );
-    expect(sidebarText.indexOf("Shared Stash")).toBeLessThan(
-      sidebarText.indexOf("MY WORKSPACES")
-    );
-    expect(sidebarText.indexOf("MY WORKSPACES")).toBeLessThan(
-      sidebarText.indexOf("Demo Stash")
-    );
     expect(screen.getAllByText("Shared Stash")).toHaveLength(1);
   });
 
-  it("restores explicit expanded state from localStorage", async () => {
-    localStorage.setItem("stash_sidebar_open_workspaces", JSON.stringify({ "ws-1": true }));
+  it("restores explicit section state from localStorage", async () => {
     localStorage.setItem(
       "stash_sidebar_open_sections",
-      JSON.stringify({ "ws-1:sessions": true })
+      JSON.stringify({ "ws-1:files": false })
     );
 
     render(<AppSidebar user={user} onCmdkOpen={vi.fn()} />);
 
-    await screen.findByText("Demo Stash");
+    await screen.findByText("Sessions");
 
-    await waitFor(() => expect(detailsFor("Demo Stash")).toHaveAttribute("open"));
     expect(detailsFor("Sessions")).toHaveAttribute("open");
     expect(detailsFor("Files")).not.toHaveAttribute("open");
-    expect(detailsFor("Stashes")).not.toHaveAttribute("open");
+    expect(detailsFor("Stashes")).toHaveAttribute("open");
     expect(getWorkspaceSidebar).toHaveBeenCalledWith("ws-1");
   });
 
-  it("keeps the workspace landing route collapsed without saved state", async () => {
+  it("keeps the workspace landing route open by default", async () => {
     nav.pathname = "/workspaces/ws-1";
 
     render(<AppSidebar user={user} onCmdkOpen={vi.fn()} />);
 
-    await screen.findByText("Demo Stash");
+    await screen.findByText("Sessions");
 
-    expect(detailsFor("Demo Stash")).not.toHaveAttribute("open");
-    expect(detailsFor("Sessions")).not.toHaveAttribute("open");
-    expect(detailsFor("Files")).not.toHaveAttribute("open");
-    expect(detailsFor("Stashes")).not.toHaveAttribute("open");
-    expect(getWorkspaceSidebar).not.toHaveBeenCalled();
+    expect(detailsFor("Sessions")).toHaveAttribute("open");
+    expect(detailsFor("Files")).toHaveAttribute("open");
+    expect(detailsFor("Stashes")).toHaveAttribute("open");
   });
 
-  it("opens the relevant tree branch for deep links only", async () => {
+  it("keeps deep-linked tree sections open by default", async () => {
     nav.pathname = "/workspaces/ws-1/p/page-1";
 
     render(<AppSidebar user={user} onCmdkOpen={vi.fn()} />);
 
-    await screen.findByText("Demo Stash");
+    await screen.findByText("Sessions");
 
-    await waitFor(() => expect(detailsFor("Demo Stash")).toHaveAttribute("open"));
-    expect(detailsFor("Sessions")).not.toHaveAttribute("open");
+    expect(detailsFor("Sessions")).toHaveAttribute("open");
     expect(detailsFor("Files")).toHaveAttribute("open");
+    expect(detailsFor("Stashes")).toHaveAttribute("open");
     expect(localStorage.getItem("stash_sidebar_open_workspaces")).toBeNull();
-    expect(localStorage.getItem("stash_sidebar_open_sections")).toBeNull();
   });
 
   it("reuses loaded workspace and spine data after a remount", async () => {
     nav.pathname = "/workspaces/ws-1/p/page-1";
 
     const first = render(<AppSidebar user={user} onCmdkOpen={vi.fn()} />);
-    await screen.findByText("Demo Stash");
+    await screen.findByText("Sessions");
     await waitFor(() => expect(getWorkspaceSidebar).toHaveBeenCalledWith("ws-1"));
     expect(listMyWorkspaces).toHaveBeenCalledTimes(1);
     expect(getWorkspaceSidebar).toHaveBeenCalledTimes(1);
@@ -217,10 +242,38 @@ describe("AppSidebar tree expansion", () => {
 
     render(<AppSidebar user={user} onCmdkOpen={vi.fn()} />);
 
-    await screen.findByText("Demo Stash");
+    await screen.findByText("Sessions");
     expect(listMyWorkspaces).not.toHaveBeenCalled();
     expect(getWorkspaceSidebar).not.toHaveBeenCalled();
-    expect(detailsFor("Demo Stash")).toHaveAttribute("open");
+    expect(detailsFor("Sessions")).toHaveAttribute("open");
+  });
+
+  it("collapses individual stashes and restores that browser state", async () => {
+    vi.mocked(getWorkspaceSidebar).mockResolvedValue(sidebarWithStash);
+
+    const first = render(<AppSidebar user={user} onCmdkOpen={vi.fn()} />);
+
+    await screen.findByText("Project Alpha");
+    expect(screen.getByText("Launch session")).toBeTruthy();
+
+    fireEvent.click(screen.getByLabelText("Collapse Project Alpha"));
+
+    expect(screen.queryByText("Launch session")).toBeNull();
+    expect(localStorage.getItem("stash_sidebar_collapsed_stashes")).toBe(
+      JSON.stringify({ "ws-1:stash-1": true })
+    );
+
+    first.unmount();
+
+    render(<AppSidebar user={user} onCmdkOpen={vi.fn()} />);
+
+    await screen.findByText("Project Alpha");
+    expect(screen.queryByText("Launch session")).toBeNull();
+
+    fireEvent.click(screen.getByLabelText("Expand Project Alpha"));
+
+    expect(await screen.findByText("Launch session")).toBeTruthy();
+    expect(localStorage.getItem("stash_sidebar_collapsed_stashes")).toBe("{}");
   });
 
   it("rejects non-jsonl files dropped on the Sessions section", async () => {
@@ -232,7 +285,7 @@ describe("AppSidebar tree expansion", () => {
 
     render(<AppSidebar user={user} onCmdkOpen={vi.fn()} />);
 
-    await screen.findByText("Demo Stash");
+    await screen.findByText("Sessions");
 
     const file = new File(["deck"], "launch-plan.pptx", {
       type: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
@@ -254,7 +307,7 @@ describe("AppSidebar tree expansion", () => {
 
     render(<AppSidebar user={user} onCmdkOpen={vi.fn()} />);
 
-    await screen.findByText("Demo Stash");
+    await screen.findByText("Files");
 
     const file = new File(["hello"], "brief.md", { type: "text/markdown" });
     fireEvent.drop(detailsFor("Files"), {
