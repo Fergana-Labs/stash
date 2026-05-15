@@ -7,11 +7,20 @@ export type SessionDayGroup = {
   users: { user: string; sessions: SessionSummary[] }[];
 };
 
+export function displaySessionUserName(
+  value: string | null | undefined,
+  fallback = "Unknown user"
+): string {
+  const trimmed = value?.trim() ?? "";
+  if (!trimmed) return fallback;
+  return trimmed.toLowerCase() === "codex" ? "Sam" : trimmed;
+}
+
 export function groupSessionsByDayAndUser(sessions: SessionSummary[]): SessionDayGroup[] {
   const days = new Map<string, Map<string, SessionSummary[]>>();
   for (const session of sortedSessions(sessions)) {
     const dayKey = sessionDayKey(session.last_event_at || session.started_at);
-    const user = session.user_name || session.agent_name || "Unknown user";
+    const user = displaySessionUserName(session.user_name || session.agent_name, "Unknown user");
     if (!days.has(dayKey)) days.set(dayKey, new Map());
     const users = days.get(dayKey)!;
     users.set(user, [...(users.get(user) ?? []), session]);
@@ -39,8 +48,8 @@ function sortedSessions(sessions: SessionSummary[]): SessionSummary[] {
     const timeDiff = sessionTime(b) - sessionTime(a);
     if (timeDiff !== 0) return timeDiff;
 
-    const userA = (a.user_name || a.agent_name || "").trim();
-    const userB = (b.user_name || b.agent_name || "").trim();
+    const userA = displaySessionUserName(a.user_name || a.agent_name, "");
+    const userB = displaySessionUserName(b.user_name || b.agent_name, "");
     const userDiff = userA.localeCompare(userB);
     if (userDiff !== 0) return userDiff;
 

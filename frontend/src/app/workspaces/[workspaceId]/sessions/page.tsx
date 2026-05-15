@@ -10,7 +10,10 @@ import {
   listMySessions,
   type SessionSummary,
 } from "../../../../lib/api";
-import { groupSessionsByDayAndUser } from "../../../../lib/sessionGrouping";
+import {
+  displaySessionUserName,
+  groupSessionsByDayAndUser,
+} from "../../../../lib/sessionGrouping";
 
 export default function StashSessionsPage() {
   const params = useParams();
@@ -155,7 +158,8 @@ export default function StashSessionsPage() {
 }
 
 function sessionTitle(s: SessionSummary): string {
-  if (s.agent_name) return s.agent_name;
+  const user = displaySessionUserName(s.agent_name, "");
+  if (user) return user;
   const id = s.session_id;
   const short = id.replace(/^session[-_]/, "").slice(0, 8);
   return short || id;

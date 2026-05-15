@@ -14,6 +14,7 @@ import {
   uploadFile,
   uploadTranscript,
 } from "../lib/api";
+import { displaySessionUserName } from "../lib/sessionGrouping";
 import {
   getCachedFolderContents,
   getCachedWorkspaceSidebar,
@@ -86,7 +87,13 @@ function readOpenMap(key: string): Record<string, boolean> {
   const raw = window.localStorage.getItem(key);
   if (!raw) return {};
 
-  return JSON.parse(raw);
+  try {
+    const parsed = JSON.parse(raw);
+    return typeof parsed === "object" && parsed !== null ? parsed : {};
+  } catch {
+    window.localStorage.removeItem(key);
+    return {};
+  }
 }
 
 function writeOpenMap(key: string, value: Record<string, boolean>) {
@@ -100,7 +107,13 @@ function readPinnedMap(): Record<string, { folders: string[]; files: string[] }>
   const raw = window.localStorage.getItem(PINNED_FS_KEY);
   if (!raw) return {};
 
-  return JSON.parse(raw);
+  try {
+    const parsed = JSON.parse(raw);
+    return typeof parsed === "object" && parsed !== null ? parsed : {};
+  } catch {
+    window.localStorage.removeItem(PINNED_FS_KEY);
+    return {};
+  }
 }
 
 function writePinnedMap(value: Record<string, { folders: string[]; files: string[] }>) {
@@ -114,7 +127,14 @@ function readPinnedLabelMap(): Record<string, PinnedLabels> {
   const raw = window.localStorage.getItem(PINNED_FS_LABELS_KEY);
   if (!raw) return {};
 
-  return JSON.parse(raw);
+  try {
+    const parsed = JSON.parse(raw);
+    return typeof parsed === "object" && parsed !== null ? parsed : {};
+  } catch {
+    window.localStorage.removeItem(PINNED_FS_KEY);
+    window.localStorage.removeItem(PINNED_FS_LABELS_KEY);
+    return {};
+  }
 }
 
 function writePinnedLabelMap(value: Record<string, PinnedLabels>) {
@@ -380,6 +400,10 @@ function sessionLabelForSidebar(session: WorkspaceSidebarSession): string {
   return raw.length > 26 ? `${raw.slice(0, 26)}…` : raw;
 }
 
+function displaySidebarSessionUser(raw: string | null | undefined): string {
+  return displaySessionUserName(raw, "Unknown user");
+}
+
 type SessionTreeDayGroup = {
   dateKey: string;
   label: string;
@@ -409,7 +433,7 @@ function groupSidebarSessions(sessions: WorkspaceSidebarSession[]): SessionTreeD
   const byDate = new Map<string, Map<string, WorkspaceSidebarSession[]>>();
   for (const session of sessions) {
     const dateKey = sessionDateKey(session.last_at || session.updated_at);
-    const user = (session.agent_name || "Unknown user").trim() || "Unknown user";
+    const user = displaySidebarSessionUser(session.agent_name);
     const users = byDate.get(dateKey) ?? new Map<string, WorkspaceSidebarSession[]>();
     users.set(user, [...(users.get(user) ?? []), session]);
     byDate.set(dateKey, users);
@@ -1273,17 +1297,22 @@ export default function AppSidebar({
   }, []);
 
   useEffect(() => {
-    const openIds = Object.keys(openWorkspaces).filter((workspaceId) => openWorkspaces[workspaceId]);
-    if (activeTreeWorkspaceId) openIds.push(activeTreeWorkspaceId);
+    const workspaceIds = new Set<string>([
+      ...Object.keys(openWorkspaces).filter((workspaceId) => openWorkspaces[workspaceId]),
+      ...mine.map((workspace) => workspace.id),
+      ...shared.map((workspace) => workspace.id),
+    ]);
 
-    Array.from(new Set(openIds))
+    if (activeTreeWorkspaceId) workspaceIds.add(activeTreeWorkspaceId);
+
+    Array.from(workspaceIds)
       .filter((workspaceId) => !spines[workspaceId])
       .forEach((workspaceId) => {
         getCachedWorkspaceSidebar(workspaceId)
           .then((sp) => setSpines((all) => ({ ...all, [workspaceId]: sp })))
           .catch(() => {});
       });
-  }, [activeTreeWorkspaceId, openWorkspaces, spines]);
+  }, [activeTreeWorkspaceId, mine, shared, openWorkspaces, spines]);
 
   function sectionOpen(workspaceId: string, section: SidebarSection): boolean {
     // Explicit user preference (open or closed) wins. Otherwise default open.
@@ -1449,12 +1478,13 @@ export default function AppSidebar({
             const workspaceLabels = currentLabels[workspaceId];
             if (!workspaceLabels) return currentLabels;
 
-            const { [id]: _, ...restFolders } = workspaceLabels.folders;
+            const nextFolders = { ...workspaceLabels.folders };
+            delete nextFolders[id];
             const nextLabels = {
               ...currentLabels,
               [workspaceId]: {
                 ...workspaceLabels,
-                folders: restFolders,
+                folders: nextFolders,
               },
             };
             writePinnedLabelMap(nextLabels);
@@ -1487,23 +1517,24 @@ export default function AppSidebar({
           return nextLabels;
         });
       }
-      if (isPinned) {
-        setPinnedLabelsState((currentLabels) => {
-          const workspaceLabels = currentLabels[workspaceId];
-          if (!workspaceLabels) return currentLabels;
+        if (isPinned) {
+          setPinnedLabelsState((currentLabels) => {
+            const workspaceLabels = currentLabels[workspaceId];
+            if (!workspaceLabels) return currentLabels;
 
-          const { [id]: _, ...restFiles } = workspaceLabels.files;
-          const nextLabels = {
-            ...currentLabels,
-            [workspaceId]: {
-              ...workspaceLabels,
-              files: restFiles,
-            },
-          };
-          writePinnedLabelMap(nextLabels);
-          return nextLabels;
-        });
-      }
+            const nextFiles = { ...workspaceLabels.files };
+            delete nextFiles[id];
+            const nextLabels = {
+              ...currentLabels,
+              [workspaceId]: {
+                ...workspaceLabels,
+                files: nextFiles,
+              },
+            };
+            writePinnedLabelMap(nextLabels);
+            return nextLabels;
+          });
+        }
       return nextState;
     });
   }
