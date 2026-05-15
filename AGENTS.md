@@ -32,15 +32,15 @@ When making local changes for a task that already has a PR, commit and push thos
 <!-- stash-plugin:begin -->
 # Stash
 
-You have the `stash` CLI on your PATH. Run `stash --help` to see commands. Use it to read transcripts, notebooks, and history from your team's shared Stash workspace.
+You have the `stash` CLI on your PATH. Run `stash --help` to see commands. Use it to read Sessions and Files from your team's shared Stash workspace.
 
 Your activity in this repo is streamed to that workspace, so teammates' agents and humans can see what you're working on.
 
 Common reads (all support `--json`):
-- `stash history search "<query>"` - full-text search across transcripts
-- `stash history query --limit 20` - recent events
-- `stash history agents` - who's been active
-- `stash notebooks list --all` - shared notebooks
+- `stash sessions search "<query>"` - full-text search across transcripts
+- `stash sessions query --limit 20` - recent session events
+- `stash sessions agents` - who's been active
+- `stash files tree` - browse workspace Files
 <!-- stash-plugin:end -->
 
 ## PR hygiene

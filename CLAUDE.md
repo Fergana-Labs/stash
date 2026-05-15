@@ -35,14 +35,14 @@ Never commit screenshots, recordings, or other assets that exist only to support
 <!-- stash-context -->
 ## Stash
 
-This repo uses [Stash](https://joinstash.ai) for shared agent history.
+This repo uses [Stash](https://joinstash.ai) for shared agent Sessions and Files.
 Your coding agent has the `stash` CLI on its PATH. Run `stash --help` to see commands.
 
 Common reads (all support `--json`):
-- `stash history search "<query>"` — full-text search across transcripts
-- `stash history query --limit 20` — latest events
-- `stash history agents` — who's been active
-- `stash notebooks list --all` — shared notebooks
+- `stash sessions search "<query>"` — full-text search across transcripts
+- `stash sessions query --limit 20` — latest session events
+- `stash sessions agents` — who's been active
+- `stash files tree` — browse workspace Files
 
 ### LLM configuration (server-side)
 
