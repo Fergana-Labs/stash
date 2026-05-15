@@ -153,6 +153,8 @@ function NavRow({
 function WorkspaceTree({
   workspace,
   spine,
+  showName,
+  pathname,
   openSections,
   onSectionOpenChange,
   dropState,
@@ -161,6 +163,8 @@ function WorkspaceTree({
 }: {
   workspace: WorkspaceNode;
   spine: WorkspaceSidebar | null;
+  showName?: boolean;
+  pathname: string;
   openSections: Record<SidebarSection, boolean>;
   onSectionOpenChange: (section: SidebarSection, open: boolean) => void;
   dropState: SidebarDropState;
@@ -192,6 +196,14 @@ function WorkspaceTree({
 
   return (
       <div className="space-y-0.5">
+      {showName && (
+        <NavRow
+          href={`/workspaces/${workspace.id}`}
+          icon={<StashIcon />}
+          label={workspace.name}
+          active={pathname === `/workspaces/${workspace.id}`}
+        />
+      )}
       <details
         open={openSections.sessions}
         onToggle={(e) => onSectionOpenChange("sessions", e.currentTarget.open)}
@@ -781,6 +793,8 @@ export default function AppSidebar({
                 key={s.id}
                 workspace={{ ...s, shared: true }}
                 spine={spines[s.id] ?? null}
+                showName
+                pathname={pathname}
                 openSections={getOpenSections(s.id)}
                 onSectionOpenChange={(section, open) =>
                   handleSectionOpenChange(s.id, section, open)
@@ -800,6 +814,7 @@ export default function AppSidebar({
             key={s.id}
             workspace={s}
             spine={spines[s.id] ?? null}
+            pathname={pathname}
             openSections={getOpenSections(s.id)}
             onSectionOpenChange={(section, open) =>
               handleSectionOpenChange(s.id, section, open)
