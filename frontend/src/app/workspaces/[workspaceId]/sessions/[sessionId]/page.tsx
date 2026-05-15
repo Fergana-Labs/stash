@@ -237,8 +237,8 @@ function StashAside({ stashes }: { stashes: WorkspaceStash[] }) {
                 className="rounded-md border border-border-subtle bg-base px-2.5 py-2 text-[12px] text-foreground hover:border-brand hover:text-brand"
               >
                 <span className="block truncate font-medium">{stash.title}</span>
-                <span className="mt-0.5 block text-[11px] capitalize text-muted">
-                  {stash.access}
+                <span className="mt-0.5 block text-[11px] text-muted">
+                  {stash.items.length} item{stash.items.length === 1 ? "" : "s"}
                 </span>
               </a>
             ))}

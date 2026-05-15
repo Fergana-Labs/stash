@@ -129,8 +129,7 @@ function StashPageBody({
         <div className="min-w-0">
           <section id="home" className="scroll-mt-8 border-b border-border-subtle pb-8">
             <p className="font-mono text-[11px] uppercase tracking-wider text-muted">
-              {stash.access === "public" ? "Public" : accessLabel(stash.access)} Stash ·{" "}
-              {items.length} item{items.length === 1 ? "" : "s"} · viewed {stash.view_count} time
+              Stash · {items.length} item{items.length === 1 ? "" : "s"} · viewed {stash.view_count} time
               {stash.view_count === 1 ? "" : "s"}
             </p>
             <h2 className="mt-3 font-display text-[clamp(32px,4vw,48px)] font-black leading-[1.05] text-ink">
@@ -481,10 +480,4 @@ function formatSize(bytes: number): string {
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   if (bytes < 1024 * 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
   return `${(bytes / 1024 / 1024 / 1024).toFixed(1)} GB`;
-}
-
-function accessLabel(access: string): string {
-  if (access === "private") return "Private";
-  if (access === "workspace") return "Workspace";
-  return "Public";
 }

@@ -454,7 +454,7 @@ export default function WorkspaceHomePage() {
                 href: `/stashes/${stash.slug}`,
                 icon: <StashIcon />,
                 title: stash.title,
-                subtitle: `${stash.access} · ${stash.items.length} item${
+                subtitle: `${stash.items.length} item${
                   stash.items.length === 1 ? "" : "s"
                 }`,
               }))}

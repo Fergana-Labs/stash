@@ -728,7 +728,7 @@ function ManagedStashCard({
           <div className="truncate text-[13px] font-medium text-foreground">{stash.title}</div>
           <div className="mt-0.5 text-[11px] text-muted">
             {stash.items.length} item{stash.items.length === 1 ? "" : "s"} ·{" "}
-            {stash.is_external ? "External" : "Native"} · {accessLabel(stash.access)} ·{" "}
+            {stash.is_external ? "External" : "Native"} ·{" "}
             {stash.discoverable ? "Discover · " : ""}
             {stash.view_count} view{stash.view_count === 1 ? "" : "s"}
           </div>
@@ -1152,12 +1152,6 @@ function titleCase(s: string): string {
 function absoluteUrl(path: string): string {
   if (typeof window === "undefined") return path;
   return `${window.location.origin}${path}`;
-}
-
-function accessLabel(access: StashAccess): string {
-  if (access === "public") return "Public";
-  if (access === "private") return "Private";
-  return "Workspace";
 }
 
 function permissionLabel(permission: StashMemberPermission): string {
