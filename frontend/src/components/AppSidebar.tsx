@@ -806,6 +806,12 @@ export default function AppSidebar({ user, onCmdkOpen }: AppSidebarProps) {
           </span>
         </button>
         <NavRow
+          href="/"
+          icon={<StashIcon />}
+          label="Homepage"
+          active={pathname === "/"}
+        />
+        <NavRow
           href="/discover"
           icon={<DiscoverIcon />}
           label="Discover"
