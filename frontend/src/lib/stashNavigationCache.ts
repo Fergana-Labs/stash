@@ -76,6 +76,12 @@ export async function getCachedWorkspaceSidebar(workspaceId: string): Promise<Wo
   return promise;
 }
 
+export async function refreshWorkspaceSidebar(workspaceId: string): Promise<WorkspaceSidebar> {
+  const sidebar = await getWorkspaceSidebar(workspaceId);
+  sidebarCache[workspaceId] = sidebar;
+  return sidebar;
+}
+
 export function readCachedFolderContents(folderId: string): FolderContents | null {
   return folderContentsCache[folderId] ?? null;
 }

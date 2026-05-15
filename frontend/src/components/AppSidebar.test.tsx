@@ -1,4 +1,4 @@
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import AppSidebar from "./AppSidebar";
@@ -6,6 +6,8 @@ import { resetStashNavigationCache } from "../lib/stashNavigationCache";
 import {
   getWorkspaceSidebar,
   listMyWorkspaces,
+  uploadFile,
+  uploadTranscript,
 } from "../lib/api";
 
 const nav = vi.hoisted(() => ({
@@ -37,6 +39,8 @@ vi.mock("../lib/api", () => ({
   getFolderContents: vi.fn(),
   getWorkspaceSidebar: vi.fn(),
   listMyWorkspaces: vi.fn(),
+  uploadFile: vi.fn(),
+  uploadTranscript: vi.fn(),
 }));
 
 const user = {
@@ -92,6 +96,23 @@ describe("AppSidebar tree expansion", () => {
     vi.clearAllMocks();
     vi.mocked(listMyWorkspaces).mockResolvedValue({ workspaces: [workspace] });
     vi.mocked(getWorkspaceSidebar).mockResolvedValue(emptySidebar);
+    vi.mocked(uploadFile).mockResolvedValue({
+      id: "file-1",
+      workspace_id: "ws-1",
+      folder_id: null,
+      name: "brief.md",
+      content_type: "text/markdown",
+      size_bytes: 5,
+      url: "/files/file-1",
+      uploaded_by: "user-1",
+      created_at: "2026-05-11T00:00:00Z",
+      linked_table_id: null,
+    });
+    vi.mocked(uploadTranscript).mockResolvedValue({
+      session_id: "session-1",
+      imported: 1,
+      skipped: false,
+    });
   });
 
   afterEach(() => {
@@ -200,5 +221,47 @@ describe("AppSidebar tree expansion", () => {
     expect(listMyWorkspaces).not.toHaveBeenCalled();
     expect(getWorkspaceSidebar).not.toHaveBeenCalled();
     expect(detailsFor("Demo Stash")).toHaveAttribute("open");
+  });
+
+  it("rejects non-jsonl files dropped on the Sessions section", async () => {
+    localStorage.setItem("stash_sidebar_open_workspaces", JSON.stringify({ "ws-1": true }));
+    localStorage.setItem(
+      "stash_sidebar_open_sections",
+      JSON.stringify({ "ws-1:sessions": true })
+    );
+
+    render(<AppSidebar user={user} onCmdkOpen={vi.fn()} />);
+
+    await screen.findByText("Demo Stash");
+
+    const file = new File(["deck"], "launch-plan.pptx", {
+      type: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    });
+    fireEvent.drop(detailsFor("Sessions"), {
+      dataTransfer: { types: ["Files"], files: [file] },
+    });
+
+    expect(await screen.findByText("Sessions only accept .jsonl transcripts.")).toBeTruthy();
+    expect(uploadTranscript).not.toHaveBeenCalled();
+  });
+
+  it("uploads files dropped on the Files section", async () => {
+    localStorage.setItem("stash_sidebar_open_workspaces", JSON.stringify({ "ws-1": true }));
+    localStorage.setItem(
+      "stash_sidebar_open_sections",
+      JSON.stringify({ "ws-1:files": true })
+    );
+
+    render(<AppSidebar user={user} onCmdkOpen={vi.fn()} />);
+
+    await screen.findByText("Demo Stash");
+
+    const file = new File(["hello"], "brief.md", { type: "text/markdown" });
+    fireEvent.drop(detailsFor("Files"), {
+      dataTransfer: { types: ["Files"], files: [file] },
+    });
+
+    await waitFor(() => expect(uploadFile).toHaveBeenCalledWith("ws-1", file));
+    expect(await screen.findByText("1 file added.")).toBeTruthy();
   });
 });

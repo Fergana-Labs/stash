@@ -1,12 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, type DragEvent } from "react";
 import { usePathname } from "next/navigation";
 import {
   type FolderContents,
   type WorkspaceFile,
   type WorkspaceSidebar,
+  uploadFile,
+  uploadTranscript,
 } from "../lib/api";
 import {
   getCachedFolderContents,
@@ -15,6 +17,7 @@ import {
   readCachedFolderContents,
   readCachedSidebars,
   readCachedWorkspaces,
+  refreshWorkspaceSidebar,
 } from "../lib/stashNavigationCache";
 import type { User, Workspace } from "../lib/types";
 import {
@@ -42,6 +45,14 @@ interface WorkspaceNode extends Workspace {
 }
 
 type SidebarSection = "sessions" | "files" | "stashes";
+type DropSection = "sessions" | "files";
+type DropStatus = "idle" | "over" | "saving" | "done" | "error";
+
+interface SidebarDropState {
+  key: string | null;
+  status: DropStatus;
+  message: string;
+}
 
 const OPEN_WORKSPACES_KEY = "stash_sidebar_open_workspaces";
 const OPEN_SECTIONS_KEY = "stash_sidebar_open_sections";
@@ -62,6 +73,22 @@ function writeOpenMap(key: string, value: Record<string, boolean>) {
 
 function sectionKey(workspaceId: string, section: SidebarSection): string {
   return `${workspaceId}:${section}`;
+}
+
+function dropKey(workspaceId: string, section: DropSection): string {
+  return `${workspaceId}:${section}`;
+}
+
+function isFilesDrag(event: DragEvent<HTMLElement>): boolean {
+  return Array.from(event.dataTransfer.types).includes("Files");
+}
+
+function isJsonl(file: File): boolean {
+  return file.name.toLowerCase().endsWith(".jsonl");
+}
+
+function sessionIdFromFile(file: File): string {
+  return file.name.replace(/\.jsonl$/i, "").trim();
 }
 
 function ChevronToggle({ onToggle }: { onToggle: () => void }) {
@@ -129,6 +156,9 @@ function WorkspaceTree({
   openSections,
   onSectionOpenChange,
   pathname,
+  dropState,
+  onDropFiles,
+  onDropHover,
 }: {
   workspace: WorkspaceNode;
   spine: WorkspaceSidebar | null;
@@ -137,8 +167,33 @@ function WorkspaceTree({
   openSections: Record<SidebarSection, boolean>;
   onSectionOpenChange: (section: SidebarSection, open: boolean) => void;
   pathname: string;
+  dropState: SidebarDropState;
+  onDropFiles: (workspaceId: string, section: DropSection, files: FileList) => void;
+  onDropHover: (workspaceId: string, section: DropSection, active: boolean) => void;
 }) {
   const isActive = pathname === `/workspaces/${workspace.id}`;
+  const dropProps = (section: DropSection) => ({
+    onDragOver(event: DragEvent<HTMLElement>) {
+      if (!isFilesDrag(event)) return;
+      event.preventDefault();
+      event.stopPropagation();
+      event.dataTransfer.dropEffect = "copy";
+      onDropHover(workspace.id, section, true);
+    },
+    onDragLeave(event: DragEvent<HTMLElement>) {
+      if (!isFilesDrag(event)) return;
+      event.preventDefault();
+      event.stopPropagation();
+      onDropHover(workspace.id, section, false);
+    },
+    onDrop(event: DragEvent<HTMLElement>) {
+      if (!isFilesDrag(event)) return;
+      event.preventDefault();
+      event.stopPropagation();
+      onDropFiles(workspace.id, section, event.dataTransfer.files);
+    },
+  });
+  const sessionsDrop = dropState.key === dropKey(workspace.id, "sessions") ? dropState : null;
 
   return (
     <details
@@ -180,10 +235,16 @@ function WorkspaceTree({
           open={openSections.sessions}
           onToggle={(e) => onSectionOpenChange("sessions", e.currentTarget.open)}
           className="text-[13px]"
+          {...dropProps("sessions")}
         >
           <summary
             onClick={(e) => e.preventDefault()}
-            className="page-row flex items-center gap-1 rounded-md px-2 py-1 hover:bg-raised"
+            className={
+              "page-row flex items-center gap-1 rounded-md px-2 py-1 hover:bg-raised " +
+              (sessionsDrop?.status === "over"
+                ? "bg-[var(--color-brand-50)] text-[var(--color-brand-800)] ring-1 ring-[var(--color-brand-300)]"
+                : "")
+            }
           >
             <ChevronToggle
               onToggle={() => onSectionOpenChange("sessions", !openSections.sessions)}
@@ -200,6 +261,7 @@ function WorkspaceTree({
             <span className="text-[10.5px] text-muted">{spine?.sessions.length ?? 0}</span>
           </summary>
           <div className="ml-3 space-y-0.5 border-l border-border pl-2">
+            {sessionsDrop?.message ? <DropMessage state={sessionsDrop} /> : null}
             {spine?.sessions.slice(0, 8).map((s) => (
               <NavRow
                 key={s.session_id}
@@ -219,9 +281,10 @@ function WorkspaceTree({
           spine={spine}
           open={openSections.files}
           onOpenChange={(nextOpen) => onSectionOpenChange("files", nextOpen)}
+          dropState={dropState}
+          dropProps={dropProps("files")}
         />
         <StashesBlock
-          workspace={workspace}
           spine={spine}
           open={openSections.stashes}
           onOpenChange={(nextOpen) => onSectionOpenChange("stashes", nextOpen)}
@@ -260,6 +323,21 @@ function FileNavRow({
       }
       label={file.name}
     />
+  );
+}
+
+function DropMessage({ state }: { state: SidebarDropState }) {
+  const tone =
+    state.status === "error"
+      ? "text-red-600"
+      : state.status === "done"
+        ? "text-[var(--color-brand-700)]"
+        : "text-muted";
+
+  return (
+    <div className={"px-2 py-1 text-[11px] " + tone}>
+      {state.message}
+    </div>
   );
 }
 
@@ -352,11 +430,19 @@ function FilesBlock({
   spine,
   open,
   onOpenChange,
+  dropState,
+  dropProps,
 }: {
   workspace: WorkspaceNode;
   spine: WorkspaceSidebar | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  dropState: SidebarDropState;
+  dropProps: {
+    onDragOver: (event: DragEvent<HTMLElement>) => void;
+    onDragLeave: (event: DragEvent<HTMLElement>) => void;
+    onDrop: (event: DragEvent<HTMLElement>) => void;
+  };
 }) {
   const tree = spine?.files;
   const folders = tree?.folders ?? [];
@@ -366,18 +452,25 @@ function FilesBlock({
   const rootPages = pages.filter((p) => !p.folder_id);
   const rootFiles = files.filter((f) => !f.folder_id);
   const total = folders.length + pages.length + files.length;
+  const filesDrop = dropState.key === dropKey(workspace.id, "files") ? dropState : null;
   return (
     <details
       open={open}
       onToggle={(e) => onOpenChange(e.currentTarget.open)}
       className="text-[13px]"
+      {...dropProps}
     >
       <summary
         onClick={(e) => {
           e.preventDefault();
           onOpenChange(!open);
         }}
-        className="page-row flex items-center gap-1 rounded-md px-2 py-1 hover:bg-raised"
+        className={
+          "page-row flex items-center gap-1 rounded-md px-2 py-1 hover:bg-raised " +
+          (filesDrop?.status === "over"
+            ? "bg-[var(--color-brand-50)] text-[var(--color-brand-800)] ring-1 ring-[var(--color-brand-300)]"
+            : "")
+        }
       >
         <ChevronToggle onToggle={() => onOpenChange(!open)} />
         <span className="flex h-4 w-4 items-center justify-center text-[14px] text-muted">
@@ -387,6 +480,7 @@ function FilesBlock({
         <span className="text-[10.5px] text-muted">{total}</span>
       </summary>
       <div className="ml-3 space-y-0.5 border-l border-border pl-2">
+        {filesDrop?.message ? <DropMessage state={filesDrop} /> : null}
         {rootFolders.map((f) => (
           <FolderTreeNode
             key={f.id}
@@ -415,12 +509,10 @@ function FilesBlock({
 }
 
 function StashesBlock({
-  workspace,
   spine,
   open,
   onOpenChange,
 }: {
-  workspace: WorkspaceNode;
   spine: WorkspaceSidebar | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -493,6 +585,11 @@ export default function AppSidebar({ user, onCmdkOpen }: AppSidebarProps) {
   const [spines, setSpines] = useState<Record<string, WorkspaceSidebar>>(() =>
     readCachedSidebars()
   );
+  const [dropState, setDropState] = useState<SidebarDropState>({
+    key: null,
+    status: "idle",
+    message: "",
+  });
 
   useEffect(() => {
     if (!userId) return;
@@ -582,6 +679,106 @@ export default function AppSidebar({ user, onCmdkOpen }: AppSidebarProps) {
     setOpenSection(workspaceId, section, open);
   }
 
+  function clearDropLater(workspaceId: string, section: DropSection) {
+    window.setTimeout(() => {
+      setDropState((current) =>
+        current.key === dropKey(workspaceId, section)
+          ? { key: null, status: "idle", message: "" }
+          : current
+      );
+    }, 2500);
+  }
+
+  function handleDropHover(workspaceId: string, section: DropSection, active: boolean) {
+    const key = dropKey(workspaceId, section);
+    setDropState((current) => {
+      if (!active && current.key === key && current.status === "over") {
+        return { key: null, status: "idle", message: "" };
+      }
+      if (!active) return current;
+      return {
+        key,
+        status: "over",
+        message:
+          section === "sessions"
+            ? "Drop .jsonl transcripts"
+            : "Drop files into Files",
+      };
+    });
+  }
+
+  async function refreshSidebar(workspaceId: string) {
+    const sidebar = await refreshWorkspaceSidebar(workspaceId);
+    setSpines((all) => ({ ...all, [workspaceId]: sidebar }));
+  }
+
+  async function handleDropFiles(workspaceId: string, section: DropSection, files: FileList) {
+    const list = Array.from(files);
+    const key = dropKey(workspaceId, section);
+    if (list.length === 0) return;
+
+    if (section === "sessions") {
+      const badFile = list.find((file) => !isJsonl(file));
+      if (badFile) {
+        setDropState({
+          key,
+          status: "error",
+          message: "Sessions only accept .jsonl transcripts.",
+        });
+        clearDropLater(workspaceId, section);
+        return;
+      }
+
+      const badSession = list.find((file) => !sessionIdFromFile(file));
+      if (badSession) {
+        setDropState({
+          key,
+          status: "error",
+          message: "Transcript filename must include a session id.",
+        });
+        clearDropLater(workspaceId, section);
+        return;
+      }
+    }
+
+    setDropState({
+      key,
+      status: "saving",
+      message: list.length === 1 ? `Uploading ${list[0].name}...` : `Uploading ${list.length} files...`,
+    });
+
+    try {
+      if (section === "sessions") {
+        for (const file of list) {
+          await uploadTranscript(workspaceId, file, sessionIdFromFile(file), "manual-upload");
+        }
+      } else {
+        for (const file of list) {
+          await uploadFile(workspaceId, file);
+        }
+      }
+      await refreshSidebar(workspaceId);
+    } catch (error) {
+      setDropState({
+        key,
+        status: "error",
+        message: error instanceof Error ? error.message : "Upload failed",
+      });
+      clearDropLater(workspaceId, section);
+      return;
+    }
+
+    setDropState({
+      key,
+      status: "done",
+      message:
+        section === "sessions"
+          ? `${list.length} session${list.length === 1 ? "" : "s"} added.`
+          : `${list.length} file${list.length === 1 ? "" : "s"} added.`,
+    });
+    clearDropLater(workspaceId, section);
+  }
+
   return (
     <aside className="scroll-thin overflow-y-auto border-r border-border bg-surface">
       <div className="px-3 pb-1 pt-3">
@@ -642,6 +839,9 @@ export default function AppSidebar({ user, onCmdkOpen }: AppSidebarProps) {
                   handleSectionOpenChange(s.id, section, open)
                 }
                 pathname={pathname}
+                dropState={dropState}
+                onDropFiles={handleDropFiles}
+                onDropHover={handleDropHover}
               />
             ))}
           </nav>
@@ -681,6 +881,9 @@ export default function AppSidebar({ user, onCmdkOpen }: AppSidebarProps) {
               handleSectionOpenChange(s.id, section, open)
             }
             pathname={pathname}
+            dropState={dropState}
+            onDropFiles={handleDropFiles}
+            onDropHover={handleDropHover}
           />
         ))}
         {mine.length === 0 && (
