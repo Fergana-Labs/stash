@@ -3775,36 +3775,6 @@ def config_cmd(
     console.print(json.dumps(display, indent=2, default=str))
 
 
-@app.command("share-object")
-def share_object_cmd(
-    object_type: str = typer.Argument(
-        ..., help="folder|page|session|table|file|stash"
-    ),
-    object_id: str = typer.Argument(..., help="UUID of the object"),
-    access: str = typer.Option(
-        "public", "--access", help="workspace | private | public"
-    ),
-):
-    """Mint a Stash URL for any object."""
-    cfg = load_config()
-    c = StashClient(cfg["base_url"], cfg.get("api_key", ""))
-    result = c.create_stash_url(object_type, object_id, access)
-    console.print(result["url"])
-
-
-@app.command("visibility")
-def visibility_cmd(
-    object_type: str = typer.Argument(
-        ..., help="folder|page|session|table|file|stash"
-    ),
-    object_id: str = typer.Argument(..., help="UUID of the object"),
-    level: str = typer.Argument(..., help="workspace|private|public"),
-):
-    """Object privacy is mediated by Stashes."""
-    console.print("[red]Create or update a Stash to change privacy.[/red]")
-    raise typer.Exit(1)
-
-
 @app.command("publish")
 def publish_cmd(
     file_path: str = typer.Argument(..., help="Path to .html or .md file to publish"),

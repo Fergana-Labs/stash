@@ -762,6 +762,7 @@ async def test_object_level_permission_mutators_are_not_routes(client: AsyncClie
         ("PATCH", f"/api/v1/objects/page/{page['id']}/permissions"),
         ("POST", f"/api/v1/objects/page/{page['id']}/shares"),
         ("DELETE", f"/api/v1/objects/page/{page['id']}/shares/{_owner['id']}"),
+        ("POST", f"/api/v1/objects/page/{page['id']}/share-link"),
         ("PATCH", f"/api/v1/workspaces/{workspace['id']}/folders/{folder['id']}/permissions"),
         ("POST", f"/api/v1/workspaces/{workspace['id']}/folders/{folder['id']}/permissions/share"),
         ("PATCH", f"/api/v1/workspaces/{workspace['id']}/tables/{table['id']}/permissions"),

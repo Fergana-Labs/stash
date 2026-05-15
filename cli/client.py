@@ -546,14 +546,6 @@ class StashClient:
         base = f"/api/v1/workspaces/{workspace_id}/tables" if workspace_id else "/api/v1/tables"
         return self._request("DELETE", f"{base}/{table_id}/columns/{column_id}").json()
 
-    # ── Stash sharing API (object_type: folder|page|session|table|file|stash) ──
-
-    def create_stash_url(self, object_type: str, object_id: str, access: str = "public") -> dict:
-        path = f"/api/v1/objects/{object_type}/{object_id}/share-link"
-        if access:
-            path += f"?access={access}"
-        return self._post(path)
-
     def publish(
         self,
         workspace_id: str,

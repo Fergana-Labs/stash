@@ -528,13 +528,6 @@ def stash_whoami() -> str:
 
 
 @mcp.tool()
-def stash_share(object_type: str, object_id: str, access: str = "public") -> str:
-    """Create a one-item Stash URL for any object. access: workspace | private | public."""
-    client, _ = _client()
-    return _json(client.create_stash_url(object_type, object_id, access))
-
-
-@mcp.tool()
 def stash_publish_html(
     title: str,
     html: str,

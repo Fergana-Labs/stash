@@ -547,18 +547,6 @@ class HistoryQueryResponse(BaseModel):
     sources: list[HistoryEventResponse]
 
 
-class ShareLinkResponse(BaseModel):
-    """URL the share sheet copies to clipboard.
-
-    Shareable objects resolve to an auto-created one-item Stash.
-    """
-
-    url: str
-    kind: str  # 'stash'
-    stash_id: UUID | None = None
-    stash_slug: str | None = None
-
-
 class PublishRequest(BaseModel):
     """Single-call publish: create a page from supplied content and return a
     share URL for it. Designed for AI agents — collapses 4-5 round trips into

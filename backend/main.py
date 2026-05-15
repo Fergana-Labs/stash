@@ -19,7 +19,6 @@ from .routers import (
     files,
     files_tree,
     memory,
-    permissions,
     publish,
     sessions,
     skill,
@@ -110,7 +109,6 @@ app.include_router(transcripts.router)
 app.include_router(aggregate.router)
 app.include_router(skill.router)
 app.include_router(admin.router)
-app.include_router(permissions.router)
 app.include_router(sessions.router)
 app.include_router(publish.router)
 
