@@ -3031,7 +3031,7 @@ Your coding agent has the `stash` CLI on its PATH. Run `stash --help` to see com
 
 **Before starting work, use Stash to check for relevant context.** When you need to understand
 why something was built a certain way, what's been tried before, or what teammates are working on,
-search Stash first — it has the full session history and human decisions across the team.
+search Stash first — it has the full session record and human decisions across the team.
 
 Common reads (all support `--json`):
 - `stash sessions search "<query>"` — full-text search across transcripts
