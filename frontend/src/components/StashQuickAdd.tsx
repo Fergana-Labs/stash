@@ -1,12 +1,10 @@
 "use client";
 
 import { useRef, useState, type DragEvent, type FormEvent } from "react";
-import { createPage, ensureHopperFolder, uploadFile } from "../lib/api";
-import type { User } from "../lib/types";
+import { createPage, uploadFile } from "../lib/api";
 
 interface StashQuickAddProps {
   workspaceId: string;
-  user: User;
   onAdded?: () => void;
 }
 
@@ -14,7 +12,7 @@ type Status = "idle" | "saving" | "saved" | "error";
 
 const URL_RE = /^https?:\/\/\S+$/i;
 
-export default function StashQuickAdd({ workspaceId, user: _user, onAdded }: StashQuickAddProps) {
+export default function StashQuickAdd({ workspaceId, onAdded }: StashQuickAddProps) {
   const [value, setValue] = useState("");
   const [status, setStatus] = useState<Status>("idle");
   const [dragActive, setDragActive] = useState(false);
@@ -35,13 +33,12 @@ export default function StashQuickAdd({ workspaceId, user: _user, onAdded }: Sta
 
     setStatus("saving");
     try {
-      const hopperId = await ensureHopperFolder(workspaceId);
       const isUrl = URL_RE.test(text);
       const title = isUrl
         ? text.replace(/^https?:\/\//, "").slice(0, 80)
         : text.split("\n")[0].slice(0, 80) || "Note";
       const body = isUrl ? `<${text}>` : text;
-      await createPage(workspaceId, title, hopperId, body);
+      await createPage(workspaceId, title, undefined, body);
     } catch {
       setStatus("error");
       flashHint("Couldn't save — try again", 2500);
@@ -50,7 +47,7 @@ export default function StashQuickAdd({ workspaceId, user: _user, onAdded }: Sta
     }
     setValue("");
     setStatus("saved");
-    flashHint("Added to Hopper");
+    flashHint("Added to Files");
     onAdded?.();
     window.setTimeout(() => setStatus("idle"), 1500);
   }
@@ -61,9 +58,8 @@ export default function StashQuickAdd({ workspaceId, user: _user, onAdded }: Sta
     setStatus("saving");
     flashHint(list.length === 1 ? `Uploading ${list[0].name}…` : `Uploading ${list.length} files…`, 8000);
     try {
-      const hopperId = await ensureHopperFolder(workspaceId);
       for (const f of list) {
-        await uploadFile(workspaceId, f, hopperId);
+        await uploadFile(workspaceId, f);
       }
     } catch {
       setStatus("error");
@@ -72,7 +68,7 @@ export default function StashQuickAdd({ workspaceId, user: _user, onAdded }: Sta
       return;
     }
     setStatus("saved");
-    flashHint(list.length === 1 ? `${list[0].name} added to Hopper` : `${list.length} files added to Hopper`);
+    flashHint(list.length === 1 ? `${list[0].name} added to Files` : `${list.length} files added to Files`);
     onAdded?.();
     window.setTimeout(() => setStatus("idle"), 1500);
   }
@@ -149,7 +145,7 @@ export default function StashQuickAdd({ workspaceId, user: _user, onAdded }: Sta
           onChange={(e) => setValue(e.target.value)}
           placeholder={
             dragActive
-              ? "Drop to add to Hopper…"
+              ? "Drop to add to Files…"
               : "Paste a link, type a note, or drop a file"
           }
           disabled={status === "saving"}

@@ -289,28 +289,6 @@ export async function createFolder(
   });
 }
 
-// Quick-add drops (notes, links, files) all funnel into a single "Hopper"
-// folder at the Files root. We auto-create it on first use so the user
-// doesn't have to set anything up.
-const HOPPER_FOLDER_NAME = "Hopper";
-const hopperCache = new Map<string, string>();
-
-export async function ensureHopperFolder(workspaceId: string): Promise<string> {
-  const cached = hopperCache.get(workspaceId);
-  if (cached) return cached;
-  const { folders } = await listFolders(workspaceId);
-  const existing = folders.find(
-    (f) => !f.parent_folder_id && f.name === HOPPER_FOLDER_NAME
-  );
-  if (existing) {
-    hopperCache.set(workspaceId, existing.id);
-    return existing.id;
-  }
-  const created = await createFolder(workspaceId, HOPPER_FOLDER_NAME, null);
-  hopperCache.set(workspaceId, created.id);
-  return created.id;
-}
-
 export async function updateFolder(
   workspaceId: string,
   folderId: string,

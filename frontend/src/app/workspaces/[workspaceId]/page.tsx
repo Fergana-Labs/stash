@@ -327,7 +327,7 @@ export default function WorkspaceHomePage() {
 
           {isMember && (
             <div className="mt-6">
-              <StashQuickAdd workspaceId={workspaceId} user={user} onAdded={refreshSpine} />
+              <StashQuickAdd workspaceId={workspaceId} onAdded={refreshSpine} />
             </div>
           )}
 
@@ -342,8 +342,8 @@ export default function WorkspaceHomePage() {
                   Welcome — here&apos;s how a workspace works
                 </h3>
                 <p className="mt-2 text-[13.5px] leading-relaxed text-foreground/80">
-                  Drop in anything above — a link, a note, or a file — and we&apos;ll file it into the
-                  Hopper folder for you. Connect your agents via the Stash CLI and their sessions
+                  Drop in anything above — a link, a note, or a file — and we&apos;ll add it to
+                  Files. Connect your agents via the Stash CLI and their sessions
                   appear under <span className="font-medium text-foreground">Sessions</span>; your
                   pages, files, and folders live in <span className="font-medium text-foreground">Files</span>.
                   Bundle any set of pages and sessions into a Stash when you need to publish or hand off context.
