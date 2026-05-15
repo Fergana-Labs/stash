@@ -286,7 +286,8 @@ async def _query_table(args: dict) -> dict:
     from ..database import get_pool
 
     workspace_id = _current_workspace()
-    tables = await table_service.list_tables(workspace_id)
+    user_id = _current_user()
+    tables = await table_service.list_tables(workspace_id, user_id)
     match = next(
         (t for t in tables if t.get("name", "").lower() == args.get("table_name", "").lower()),
         None,

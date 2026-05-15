@@ -8,6 +8,7 @@ import secrets
 from uuid import UUID
 
 from ..database import get_pool
+from . import permission_service
 from .row_validation import RowValidationError, validate_row_data
 
 logger = logging.getLogger(__name__)
@@ -139,7 +140,20 @@ async def list_tables(workspace_id: UUID | None, user_id: UUID | None = None) ->
             "ORDER BY t.updated_at DESC",
             user_id,
         )
-    return [dict(r) for r in rows]
+    tables = [dict(r) for r in rows]
+    if workspace_id is None or user_id is None:
+        return tables
+
+    readable = []
+    for table in tables:
+        if await permission_service.check_access(
+            "table",
+            table["id"],
+            user_id,
+            workspace_id=workspace_id,
+        ):
+            readable.append(table)
+    return readable
 
 
 async def list_all_user_tables(user_id: UUID) -> list[dict]:
@@ -158,7 +172,18 @@ async def list_all_user_tables(user_id: UUID) -> list[dict]:
         "ORDER BY t.updated_at DESC",
         user_id,
     )
-    return [dict(r) for r in rows]
+    readable = []
+    for row in rows:
+        table = dict(row)
+        workspace_id = table.get("workspace_id")
+        if workspace_id is None or await permission_service.check_access(
+            "table",
+            table["id"],
+            user_id,
+            workspace_id=workspace_id,
+        ):
+            readable.append(table)
+    return readable
 
 
 # --- Column Management ---

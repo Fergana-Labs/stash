@@ -14,6 +14,7 @@ from ..auth import get_current_user
 from ..database import get_pool
 from ..services import (
     ask_service,
+    files_tree_service,
     memory_service,
     skill_service,
     stash_service,
@@ -49,7 +50,7 @@ async def _list_sessions(workspace_id: UUID, user_id: UUID) -> list[dict]:
     ]
 
 
-async def _files_tree(workspace_id: UUID) -> dict:
+async def _files_tree(workspace_id: UUID, user_id: UUID) -> dict:
     """One unified file tree: folders, pages, and uploaded files."""
     pool = get_pool()
     folder_rows, page_rows, file_rows = await asyncio.gather(
@@ -76,6 +77,25 @@ async def _files_tree(workspace_id: UUID) -> dict:
         ),
     )
 
+    folders = await files_tree_service._filter_readable(
+        [dict(r) for r in folder_rows],
+        "folder",
+        user_id,
+        workspace_id,
+    )
+    pages = await files_tree_service._filter_readable(
+        [dict(r) for r in page_rows],
+        "page",
+        user_id,
+        workspace_id,
+    )
+    files = await files_tree_service._filter_readable(
+        [dict(r) for r in file_rows],
+        "file",
+        user_id,
+        workspace_id,
+    )
+
     file_payload = [
         {
             "id": str(f["id"]),
@@ -87,7 +107,7 @@ async def _files_tree(workspace_id: UUID) -> dict:
             "created_at": f["created_at"],
             "linked_table_id": str(f["linked_table_id"]) if f["linked_table_id"] else None,
         }
-        for f in file_rows
+        for f in files
     ]
 
     return {
@@ -100,7 +120,7 @@ async def _files_tree(workspace_id: UUID) -> dict:
                 "file_count": int(r["file_count"] or 0),
                 "has_skill": bool(r["has_skill"]),
             }
-            for r in folder_rows
+            for r in folders
         ],
         "pages": [
             {
@@ -108,7 +128,7 @@ async def _files_tree(workspace_id: UUID) -> dict:
                 "name": r["name"],
                 "folder_id": str(r["folder_id"]) if r["folder_id"] else None,
             }
-            for r in page_rows
+            for r in pages
         ],
         "files": file_payload,
     }
@@ -206,7 +226,7 @@ async def get_workspace_overview(
 
     sessions, files, stashes = await asyncio.gather(
         _list_sessions(workspace_id, current_user["id"]),
-        _files_tree(workspace_id),
+        _files_tree(workspace_id, current_user["id"]),
         _list_stashes(workspace_id),
     )
     return {"sessions": sessions, "files": files, "stashes": stashes}
@@ -229,7 +249,7 @@ async def get_workspace_sidebar(
 
     sessions, files, stashes = await asyncio.gather(
         _list_sessions(workspace_id, current_user["id"]),
-        _files_tree(workspace_id),
+        _files_tree(workspace_id, current_user["id"]),
         _list_stashes(workspace_id),
     )
     return Response(

@@ -54,6 +54,29 @@ async def _check_ws_owns_folder(workspace_id: UUID, folder_id: UUID) -> dict:
     return folder
 
 
+async def _check_content_access(
+    object_type: str,
+    object_id: UUID,
+    workspace_id: UUID,
+    user_id: UUID,
+    *,
+    require_write: bool = False,
+) -> None:
+    allowed = await permission_service.check_access(
+        object_type,
+        object_id,
+        user_id,
+        workspace_id=workspace_id,
+        require_write=require_write,
+    )
+    if allowed:
+        return
+    if require_write and await permission_service.get_visibility(object_type, object_id) != "private":
+        return
+    if not allowed:
+        raise HTTPException(status_code=404, detail=f"{object_type.title()} not found")
+
+
 # --- Pages: flat listing ---
 
 
@@ -63,7 +86,7 @@ async def list_workspace_pages(
     current_user: dict = Depends(get_current_user),
 ):
     await _check_ws_access(workspace_id, current_user["id"])
-    rows = await files_tree_service.list_workspace_pages(workspace_id)
+    rows = await files_tree_service.list_workspace_pages(workspace_id, current_user["id"])
     return WorkspacePageListResponse(pages=[WorkspacePageEntry(**r) for r in rows])
 
 
@@ -76,7 +99,7 @@ async def get_workspace_tree(
     current_user: dict = Depends(get_current_user),
 ):
     await _check_ws_access(workspace_id, current_user["id"])
-    tree = await files_tree_service.list_workspace_tree(workspace_id)
+    tree = await files_tree_service.list_workspace_tree(workspace_id, current_user["id"])
     return WorkspaceTreeResponse(**tree)
 
 
@@ -89,7 +112,7 @@ async def list_folders(
     current_user: dict = Depends(get_current_user),
 ):
     await _check_ws_access(workspace_id, current_user["id"])
-    folders = await files_tree_service.list_folders(workspace_id)
+    folders = await files_tree_service.list_folders(workspace_id, current_user["id"])
     return FolderListResponse(folders=[FolderResponse(**f) for f in folders])
 
 
@@ -122,6 +145,7 @@ async def get_folder(
 ):
     await _check_ws_access(workspace_id, current_user["id"])
     folder = await _check_ws_owns_folder(workspace_id, folder_id)
+    await _check_content_access("folder", folder_id, workspace_id, current_user["id"])
     return FolderResponse(**folder)
 
 
@@ -136,6 +160,7 @@ async def get_folder_contents(
     the unified Files tree (sidebar lazy-expand + folder detail page)."""
     await _check_ws_access(workspace_id, current_user["id"])
     folder = await _check_ws_owns_folder(workspace_id, folder_id)
+    await _check_content_access("folder", folder_id, workspace_id, current_user["id"])
     pool = get_pool()
 
     # Breadcrumb ancestry via recursive CTE
@@ -171,6 +196,24 @@ async def get_folder_contents(
         "SELECT id, name, size_bytes, content_type, created_at, linked_table_id "
         "FROM files WHERE folder_id = $1 ORDER BY created_at DESC",
         folder_id,
+    )
+    subfolders = await files_tree_service._filter_readable(
+        [dict(r) for r in subfolders],
+        "folder",
+        current_user["id"],
+        workspace_id,
+    )
+    pages = await files_tree_service._filter_readable(
+        [dict(r) for r in pages],
+        "page",
+        current_user["id"],
+        workspace_id,
+    )
+    files = await files_tree_service._filter_readable(
+        [dict(r) for r in files],
+        "file",
+        current_user["id"],
+        workspace_id,
     )
 
     file_payload = [
@@ -292,7 +335,12 @@ async def semantic_search_pages(
     query_embedding = await embedding_service.embed_text(q)
     if query_embedding is None:
         raise HTTPException(status_code=500, detail="Failed to embed query")
-    pages = await files_tree_service.search_pages_vector(workspace_id, query_embedding, limit)
+    pages = await files_tree_service.search_pages_vector(
+        workspace_id,
+        query_embedding,
+        limit,
+        current_user["id"],
+    )
     return {"pages": pages}
 
 
@@ -304,7 +352,7 @@ async def search_pages(
     current_user: dict = Depends(get_current_user),
 ):
     await _check_ws_access(workspace_id, current_user["id"])
-    pages = await files_tree_service.search_pages_fts(workspace_id, q, limit)
+    pages = await files_tree_service.search_pages_fts(workspace_id, q, limit, current_user["id"])
     return {"pages": pages}
 
 
@@ -315,7 +363,7 @@ async def get_page(
     current_user: dict = Depends(get_current_user),
 ):
     await _check_ws_access(workspace_id, current_user["id"])
-    page = await files_tree_service.get_page(page_id, workspace_id)
+    page = await files_tree_service.get_page(page_id, workspace_id, current_user["id"])
     if not page:
         raise HTTPException(status_code=404, detail="Page not found")
     return PageResponse(**page)
@@ -329,6 +377,13 @@ async def update_page(
     current_user: dict = Depends(get_current_user),
 ):
     await _check_ws_write(workspace_id, current_user["id"])
+    await _check_content_access(
+        "page",
+        page_id,
+        workspace_id,
+        current_user["id"],
+        require_write=True,
+    )
     if req.folder_id is not None and not req.move_to_root:
         await _check_ws_owns_folder(workspace_id, req.folder_id)
     try:
@@ -358,6 +413,13 @@ async def delete_page(
     current_user: dict = Depends(get_current_user),
 ):
     await _check_ws_write(workspace_id, current_user["id"])
+    await _check_content_access(
+        "page",
+        page_id,
+        workspace_id,
+        current_user["id"],
+        require_write=True,
+    )
     deleted = await files_tree_service.delete_page(page_id, workspace_id)
     if not deleted:
         raise HTTPException(status_code=404, detail="Page not found")

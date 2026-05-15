@@ -20,6 +20,7 @@ from ..auth import get_current_user
 from ..database import get_pool
 from ..models import FileListResponse, FileResponse, TableResponse
 from ..services import (
+    permission_service,
     storage_service,
     table_service,
     workspace_service,
@@ -45,6 +46,26 @@ async def _check_write(workspace_id: UUID, user_id: UUID) -> None:
             status_code=403,
             detail="Viewers can read but not modify files",
         )
+
+
+async def _can_access_file(
+    file_id: UUID,
+    workspace_id: UUID,
+    user_id: UUID,
+    *,
+    require_write: bool = False,
+) -> bool:
+    if await permission_service.check_access(
+        "file",
+        file_id,
+        user_id,
+        workspace_id=workspace_id,
+        require_write=require_write,
+    ):
+        return True
+    if require_write and await permission_service.get_visibility("file", file_id) != "private":
+        return True
+    return False
 
 
 async def _file_to_response(row: dict) -> FileResponse:
@@ -100,6 +121,16 @@ async def upload_ws_file(
         )
         if not owns:
             raise HTTPException(status_code=400, detail="folder_id does not belong to workspace")
+        can_write_folder = await permission_service.check_access(
+            "folder",
+            folder_id,
+            current_user["id"],
+            workspace_id=workspace_id,
+            require_write=True,
+        )
+        folder_visibility = await permission_service.get_visibility("folder", folder_id)
+        if not can_write_folder and folder_visibility == "private":
+            raise HTTPException(status_code=404, detail="Folder not found")
     row = await pool.fetchrow(
         "INSERT INTO files (workspace_id, name, content_type, size_bytes, storage_key, uploaded_by, folder_id) "
         "VALUES ($1, $2, $3, $4, $5, $6, $7) "
@@ -127,7 +158,11 @@ async def list_ws_files(
         "FROM files WHERE workspace_id = $1 ORDER BY created_at DESC",
         workspace_id,
     )
-    files = [await _file_to_response(dict(r)) for r in rows]
+    readable_rows = []
+    for row in rows:
+        if await _can_access_file(row["id"], workspace_id, current_user["id"]):
+            readable_rows.append(dict(row))
+    files = [await _file_to_response(r) for r in readable_rows]
     return FileListResponse(files=files)
 
 
@@ -146,6 +181,8 @@ async def get_ws_file(
         workspace_id,
     )
     if not row:
+        raise HTTPException(status_code=404, detail="File not found")
+    if not await _can_access_file(file_id, workspace_id, current_user["id"]):
         raise HTTPException(status_code=404, detail="File not found")
     return await _file_to_response(dict(row))
 
@@ -170,6 +207,8 @@ async def download_ws_file(
     )
     if not row:
         raise HTTPException(status_code=404, detail="File not found")
+    if not await _can_access_file(file_id, workspace_id, current_user["id"]):
+        raise HTTPException(status_code=404, detail="File not found")
     url = await storage_service.get_file_url(row["storage_key"])
     return RedirectResponse(url=url, status_code=302)
 
@@ -189,6 +228,8 @@ async def get_ws_file_text(
         workspace_id,
     )
     if not row:
+        raise HTTPException(status_code=404, detail="File not found")
+    if not await _can_access_file(file_id, workspace_id, current_user["id"]):
         raise HTTPException(status_code=404, detail="File not found")
     return {
         "text": row["extracted_text"],
@@ -211,6 +252,8 @@ async def delete_ws_file(
         workspace_id,
     )
     if not row:
+        raise HTTPException(status_code=404, detail="File not found")
+    if not await _can_access_file(file_id, workspace_id, current_user["id"], require_write=True):
         raise HTTPException(status_code=404, detail="File not found")
     try:
         await storage_service.delete_file(row["storage_key"])

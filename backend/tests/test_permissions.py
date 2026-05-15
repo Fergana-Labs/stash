@@ -110,6 +110,20 @@ async def _make_table(pool, workspace_id, created_by, name="table"):
     return row["id"]
 
 
+async def _make_file(pool, workspace_id, uploaded_by, folder_id=None, name="file.txt"):
+    row = await pool.fetchrow(
+        "INSERT INTO files "
+        "(workspace_id, folder_id, name, content_type, size_bytes, storage_key, uploaded_by) "
+        "VALUES ($1, $2, $3, 'text/plain', 12, $4, $5) RETURNING id",
+        workspace_id,
+        folder_id,
+        name,
+        f"test/{uuid.uuid4().hex}.txt",
+        uploaded_by,
+    )
+    return row["id"]
+
+
 async def _make_history_event(
     pool,
     workspace_id,
@@ -563,6 +577,90 @@ async def test_private_stash_hides_session_surfaces_until_user_is_added(
     )
     assert timeline_resp.status_code == 200
     assert timeline_resp.json()["agents"] == ["agent"]
+
+
+@pytest.mark.asyncio
+async def test_private_stash_hides_files_pages_and_tables_until_user_is_added(
+    client: AsyncClient,
+    pool,
+):
+    owner_key, owner = await _register(client, "content_privacy_owner")
+    member_key, member = await _register(client, "content_privacy_member")
+
+    workspace_resp = await client.post(
+        "/api/v1/workspaces",
+        json={"name": "Content Privacy workspace"},
+        headers=_auth(owner_key),
+    )
+    assert workspace_resp.status_code == 201
+    workspace = workspace_resp.json()
+    workspace_id = uuid.UUID(workspace["id"])
+    owner_id = uuid.UUID(owner["id"])
+    member_id = uuid.UUID(member["id"])
+    await _add_workspace_member(pool, workspace_id, member_id)
+
+    page_id = await _make_page(pool, workspace_id, owner_id, name="Private page")
+    file_id = await _make_file(pool, workspace_id, owner_id, name="private.txt")
+    table_id = await _make_table(pool, workspace_id, owner_id, name="Private table")
+
+    page_stash = await _make_stash(workspace_id, owner_id, "private", "page", page_id)
+    file_stash = await _make_stash(workspace_id, owner_id, "private", "file", file_id)
+    table_stash = await _make_stash(workspace_id, owner_id, "private", "table", table_id)
+
+    overview_resp = await client.get(
+        f"/api/v1/workspaces/{workspace['id']}/overview",
+        headers=_auth(member_key),
+    )
+    assert overview_resp.status_code == 200
+    files_payload = overview_resp.json()["files"]
+    assert files_payload["pages"] == []
+    assert files_payload["files"] == []
+
+    pages_resp = await client.get(
+        f"/api/v1/workspaces/{workspace['id']}/pages",
+        headers=_auth(member_key),
+    )
+    assert pages_resp.status_code == 200
+    assert pages_resp.json()["pages"] == []
+
+    page_resp = await client.get(
+        f"/api/v1/workspaces/{workspace['id']}/pages/{page_id}",
+        headers=_auth(member_key),
+    )
+    assert page_resp.status_code == 404
+
+    tables_resp = await client.get(
+        f"/api/v1/workspaces/{workspace['id']}/tables",
+        headers=_auth(member_key),
+    )
+    assert tables_resp.status_code == 200
+    assert tables_resp.json()["tables"] == []
+
+    table_resp = await client.get(
+        f"/api/v1/workspaces/{workspace['id']}/tables/{table_id}",
+        headers=_auth(member_key),
+    )
+    assert table_resp.status_code == 404
+
+    await _add_stash_member(pool, page_stash["id"], member_id, owner_id, "read")
+    await _add_stash_member(pool, file_stash["id"], member_id, owner_id, "read")
+    await _add_stash_member(pool, table_stash["id"], member_id, owner_id, "read")
+
+    overview_resp = await client.get(
+        f"/api/v1/workspaces/{workspace['id']}/overview",
+        headers=_auth(member_key),
+    )
+    assert overview_resp.status_code == 200
+    files_payload = overview_resp.json()["files"]
+    assert [page["name"] for page in files_payload["pages"]] == ["Private page"]
+    assert [file["name"] for file in files_payload["files"]] == ["private.txt"]
+
+    tables_resp = await client.get(
+        f"/api/v1/workspaces/{workspace['id']}/tables",
+        headers=_auth(member_key),
+    )
+    assert tables_resp.status_code == 200
+    assert [table["name"] for table in tables_resp.json()["tables"]] == ["Private table"]
 
 
 @pytest.mark.asyncio

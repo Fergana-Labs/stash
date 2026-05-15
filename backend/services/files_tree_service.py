@@ -14,10 +14,30 @@ from uuid import UUID
 import asyncpg
 
 from ..database import get_pool
+from . import permission_service
 
 logger = logging.getLogger(__name__)
 
 _WORKSPACE_PAGE_FILTER = "COALESCE(metadata->>'shared_in_stash_id', '') = ''"
+
+
+async def _filter_readable(
+    rows: list[dict],
+    object_type: str,
+    user_id: UUID,
+    workspace_id: UUID | None = None,
+) -> list[dict]:
+    readable = []
+    for row in rows:
+        row_workspace_id = workspace_id or row.get("workspace_id")
+        if await permission_service.check_access(
+            object_type,
+            row["id"],
+            user_id,
+            workspace_id=row_workspace_id,
+        ):
+            readable.append(row)
+    return readable
 
 
 class DuplicatePageName(Exception):
@@ -119,14 +139,17 @@ async def get_folder(folder_id: UUID) -> dict | None:
     return dict(row) if row else None
 
 
-async def list_folders(workspace_id: UUID) -> list[dict]:
+async def list_folders(workspace_id: UUID, user_id: UUID | None = None) -> list[dict]:
     pool = get_pool()
     rows = await pool.fetch(
         "SELECT id, workspace_id, parent_folder_id, name, created_by, created_at, updated_at "
         "FROM folders WHERE workspace_id = $1 ORDER BY name",
         workspace_id,
     )
-    return [dict(r) for r in rows]
+    folders = [dict(r) for r in rows]
+    if user_id is None:
+        return folders
+    return await _filter_readable(folders, "folder", user_id, workspace_id)
 
 
 async def update_folder(
@@ -260,7 +283,11 @@ async def create_page(
     return page
 
 
-async def get_page(page_id: UUID, workspace_id: UUID) -> dict | None:
+async def get_page(
+    page_id: UUID,
+    workspace_id: UUID,
+    user_id: UUID | None = None,
+) -> dict | None:
     pool = get_pool()
     row = await pool.fetchrow(
         "SELECT id, workspace_id, folder_id, name, content_markdown, content_html, "
@@ -270,7 +297,14 @@ async def get_page(page_id: UUID, workspace_id: UUID) -> dict | None:
         page_id,
         workspace_id,
     )
-    return dict(row) if row else None
+    if not row:
+        return None
+    page = dict(row)
+    if user_id is None:
+        return page
+    if not await permission_service.check_access("page", page_id, user_id, workspace_id):
+        return None
+    return page
 
 
 async def get_sync_manifest(workspace_id: UUID) -> list[dict]:
@@ -458,7 +492,7 @@ async def delete_page(page_id: UUID, workspace_id: UUID) -> bool:
 # --- Listings ---
 
 
-async def list_workspace_pages(workspace_id: UUID) -> list[dict]:
+async def list_workspace_pages(workspace_id: UUID, user_id: UUID | None = None) -> list[dict]:
     """Flat list of every page in a workspace with its folder path."""
     pool = get_pool()
     rows = await pool.fetch(
@@ -478,7 +512,10 @@ async def list_workspace_pages(workspace_id: UUID) -> list[dict]:
         "ORDER BY c.path NULLS FIRST, p.name",
         workspace_id,
     )
-    return [dict(r) for r in rows]
+    pages = [dict(r) for r in rows]
+    if user_id is None:
+        return pages
+    return await _filter_readable(pages, "page", user_id, workspace_id)
 
 
 async def list_user_pages(user_id: UUID) -> list[dict]:
@@ -504,18 +541,22 @@ async def list_user_pages(user_id: UUID) -> list[dict]:
         "ORDER BY w.name, c.path NULLS FIRST, p.name",
         user_id,
     )
-    return [dict(r) for r in rows]
+    return await _filter_readable([dict(r) for r in rows], "page", user_id)
 
 
-async def list_workspace_tree(workspace_id: UUID) -> dict:
+async def list_workspace_tree(workspace_id: UUID, user_id: UUID | None = None) -> dict:
     """Nested folder tree with pages attached at each level."""
-    folders = await list_folders(workspace_id)
+    folders = await list_folders(workspace_id, user_id)
     pool = get_pool()
     page_rows = await pool.fetch(
         "SELECT id, workspace_id, folder_id, name, created_at, updated_at "
         f"FROM pages WHERE workspace_id = $1 AND {_WORKSPACE_PAGE_FILTER} ORDER BY name",
         workspace_id,
     )
+
+    pages = [dict(row) for row in page_rows]
+    if user_id is not None:
+        pages = await _filter_readable(pages, "page", user_id, workspace_id)
 
     folder_by_id: dict[UUID, dict] = {}
     for f in folders:
@@ -529,8 +570,7 @@ async def list_workspace_tree(workspace_id: UUID) -> dict:
         parent = folder_by_id.get(node["parent_folder_id"]) if node["parent_folder_id"] else root
         parent["folders"].append(node)
 
-    for p in page_rows:
-        page = dict(p)
+    for page in pages:
         if page["folder_id"] and page["folder_id"] in folder_by_id:
             folder_by_id[page["folder_id"]]["pages"].append(page)
         else:
@@ -538,7 +578,12 @@ async def list_workspace_tree(workspace_id: UUID) -> dict:
     return root
 
 
-async def search_pages_fts(workspace_id: UUID, query: str, limit: int = 10) -> list[dict]:
+async def search_pages_fts(
+    workspace_id: UUID,
+    query: str,
+    limit: int = 10,
+    user_id: UUID | None = None,
+) -> list[dict]:
     pool = get_pool()
     kw_text_expr = (
         "COALESCE((SELECT string_agg(kw, ' ') "
@@ -558,9 +603,12 @@ async def search_pages_fts(workspace_id: UUID, query: str, limit: int = 10) -> l
         f"ORDER BY rank DESC LIMIT $3",
         workspace_id,
         query,
-        limit,
+        limit * 3,
     )
-    return [dict(r) for r in rows]
+    pages = [dict(r) for r in rows]
+    if user_id is not None:
+        pages = await _filter_readable(pages, "page", user_id, workspace_id)
+    return pages[:limit]
 
 
 # --- Page embeddings ---
@@ -590,6 +638,7 @@ async def search_pages_vector(
     workspace_id: UUID,
     query_embedding,
     limit: int = 20,
+    user_id: UUID | None = None,
 ) -> list[dict]:
     pool = get_pool()
     rows = await pool.fetch(
@@ -601,9 +650,12 @@ async def search_pages_vector(
         "ORDER BY embedding <=> $2 LIMIT $3",
         workspace_id,
         query_embedding,
-        limit,
+        limit * 3,
     )
-    return [dict(r) for r in rows]
+    pages = [dict(r) for r in rows]
+    if user_id is not None:
+        pages = await _filter_readable(pages, "page", user_id, workspace_id)
+    return pages[:limit]
 
 
 # --- Folder helpers used by other services ---

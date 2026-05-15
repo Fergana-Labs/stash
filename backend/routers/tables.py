@@ -64,6 +64,27 @@ async def _check_ws_table(workspace_id: UUID, table_id: UUID) -> dict:
     return table
 
 
+async def _check_table_access(
+    workspace_id: UUID,
+    table_id: UUID,
+    user_id: UUID,
+    *,
+    require_write: bool = False,
+) -> None:
+    allowed = await permission_service.check_access(
+        "table",
+        table_id,
+        user_id,
+        workspace_id=workspace_id,
+        require_write=require_write,
+    )
+    if allowed:
+        return
+    if require_write and await permission_service.get_visibility("table", table_id) != "private":
+        return
+    raise HTTPException(status_code=404, detail="Table not found")
+
+
 async def _check_table_owner(table_id: UUID, user_id: UUID) -> dict:
     table = await table_service.get_table(table_id)
     if not table or table.get("workspace_id") is not None or table.get("created_by") != user_id:
@@ -111,7 +132,7 @@ async def list_ws_tables(
     current_user: dict = Depends(get_current_user),
 ):
     await _check_read(workspace_id, current_user["id"])
-    tables = await table_service.list_tables(workspace_id)
+    tables = await table_service.list_tables(workspace_id, current_user["id"])
     return TableListResponse(tables=[TableResponse(**t) for t in tables])
 
 
@@ -123,6 +144,7 @@ async def get_ws_table(
 ):
     await _check_read(workspace_id, current_user["id"])
     table = await _check_ws_table(workspace_id, table_id)
+    await _check_table_access(workspace_id, table_id, current_user["id"])
     return TableResponse(**table)
 
 
@@ -135,6 +157,7 @@ async def update_ws_table(
 ):
     await _check_member(workspace_id, current_user["id"])
     await _check_ws_table(workspace_id, table_id)
+    await _check_table_access(workspace_id, table_id, current_user["id"], require_write=True)
     table = await table_service.update_table(
         table_id,
         current_user["id"],
@@ -156,6 +179,7 @@ async def delete_ws_table(
     if role not in workspace_service.ROLES_CAN_WRITE:
         raise HTTPException(status_code=403, detail="Editors and owners can delete tables")
     await _check_ws_table(workspace_id, table_id)
+    await _check_table_access(workspace_id, table_id, current_user["id"], require_write=True)
     deleted = await table_service.delete_table(table_id)
     if not deleted:
         raise HTTPException(status_code=404, detail="Table not found")
