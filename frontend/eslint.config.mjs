@@ -12,6 +12,8 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Static assets served as-is — designer reference, runtime globals.
+    "public/**",
   ]),
   {
     rules: {

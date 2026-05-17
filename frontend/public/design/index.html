@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Stash · v0 product mockups</title>
+
+  <!-- Fonts: Space Grotesk (display, stands in for Satoshi), Instrument Sans (body), JetBrains Mono (mono) -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Instrument+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" />
+
+  <link rel="stylesheet" href="styles.css" />
+
+  <!-- React + Babel (pinned with integrity, per platform requirements) -->
+  <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+
+  <style>
+    /* Full-bleed canvas */
+    html, body, #root { height: 100%; margin: 0; }
+    body { background: #f0eee9; }
+
+    /* Make each artboard render the real app font stack */
+    .stash-artboard {
+      font-family: var(--font-sans);
+      color: var(--text-primary);
+      background: var(--bg-base);
+    }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <!-- Mock data + icons + shell -->
+  <script type="text/babel" src="mock-data.jsx" data-presets="env,react"></script>
+  <script type="text/babel" src="icons.jsx" data-presets="env,react"></script>
+  <script type="text/babel" src="shell.jsx" data-presets="env,react"></script>
+
+  <!-- Screens -->
+  <script type="text/babel" src="screens/workspace-home.jsx" data-presets="env,react"></script>
+  <script type="text/babel" src="screens/session.jsx" data-presets="env,react"></script>
+  <script type="text/babel" src="screens/html-page.jsx" data-presets="env,react"></script>
+  <script type="text/babel" src="screens/markdown.jsx" data-presets="env,react"></script>
+  <script type="text/babel" src="screens/table.jsx" data-presets="env,react"></script>
+  <script type="text/babel" src="screens/folder.jsx" data-presets="env,react"></script>
+  <script type="text/babel" src="screens/stash-detail.jsx" data-presets="env,react"></script>
+  <script type="text/babel" src="screens/workspace-stashes.jsx" data-presets="env,react"></script>
+  <script type="text/babel" src="screens/discover.jsx" data-presets="env,react"></script>
+
+  <!-- Design canvas (must come after screens) -->
+  <script type="text/babel" src="design-canvas.jsx" data-presets="env,react"></script>
+
+  <!-- Mount -->
+  <script type="text/babel" data-presets="env,react">
+    const ART_W = 1320;
+    const ART_H = 880;
+
+    function Artboard({ children }) {
+      // Each artboard is a fully-formed product screen. The AppShell uses
+      // height: 100% — give it a fixed pixel height so it lays out the way
+      // it will in a real browser window.
+      return (
+        <div
+          className="stash-artboard"
+          style={{
+            width: ART_W,
+            height: ART_H,
+            background: 'var(--bg-base)',
+          }}
+          data-screen-label={children?.props?.['data-screen-label']}
+        >
+          {children}
+        </div>
+      );
+    }
+
+    function App() {
+      return (
+        <DesignCanvas>
+          <DCSection
+            id="primary"
+            title="Stash · v0 product mockups"
+            subtitle="Workspace · pages · sessions · stashes. Drag headers to reorder; click ⤢ to focus."
+          >
+            <DCArtboard id="workspace-home" label="01 · Workspace home — newsfeed" width={ART_W} height={ART_H}>
+              <Artboard><WorkspaceHomeScreen /></Artboard>
+            </DCArtboard>
+
+            <DCArtboard id="discover" label="02 · Discover" width={ART_W} height={ART_H}>
+              <Artboard><DiscoverScreen /></Artboard>
+            </DCArtboard>
+
+            <DCArtboard id="workspace-stashes" label="03 · All stashes" width={ART_W} height={ART_H}>
+              <Artboard><WorkspaceStashesScreen /></Artboard>
+            </DCArtboard>
+
+            <DCArtboard id="stash-detail" label="04 · Stash detail" width={ART_W} height={ART_H}>
+              <Artboard><StashDetailScreen /></Artboard>
+            </DCArtboard>
+          </DCSection>
+
+          <DCSection
+            id="content"
+            title="Content surfaces"
+            subtitle="The different ways a page or session renders inside the workspace."
+          >
+            <DCArtboard id="folder" label="05 · Folder browser" width={ART_W} height={ART_H}>
+              <Artboard><FolderScreen /></Artboard>
+            </DCArtboard>
+
+            <DCArtboard id="markdown" label="06 · Page · markdown (edit)" width={ART_W} height={ART_H}>
+              <Artboard><MarkdownScreen /></Artboard>
+            </DCArtboard>
+
+            <DCArtboard id="html" label="07 · Page · html artifact" width={ART_W} height={ART_H}>
+              <Artboard><HtmlPageScreen /></Artboard>
+            </DCArtboard>
+
+            <DCArtboard id="table" label="08 · Table" width={ART_W} height={ART_H}>
+              <Artboard><TableScreen /></Artboard>
+            </DCArtboard>
+
+            <DCArtboard id="session" label="09 · Session viewer" width={ART_W} height={ART_H}>
+              <Artboard><SessionScreen /></Artboard>
+            </DCArtboard>
+          </DCSection>
+
+          <DCPostIt x={40} y={40}>
+            Direction: Notion-tan palette + warm orange brand, Space Grotesk display,
+            Instrument Sans body, JetBrains Mono for system labels. Three primitives
+            — sessions, pages, stashes — get a consistent visual treatment.
+            Click ⤢ on any artboard to step inside.
+          </DCPostIt>
+        </DesignCanvas>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+  </script>
+</body>
+</html>
