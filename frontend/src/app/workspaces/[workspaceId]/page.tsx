@@ -139,46 +139,23 @@ export default function WorkspaceHomePage() {
     return <div className="flex h-screen items-center justify-center text-muted">Loading…</div>;
   if (!user) return null;
 
-  const firstName = (user.display_name || user.name || "").split(" ")[0];
-  const totalRecent = stats.sessionsToday + stats.pagesEdited;
-
   return (
     <>
       <div className="scroll-thin flex-1 overflow-y-auto">
         <div className="mx-auto max-w-[920px] px-12 pb-20 pt-9">
-          {/* Hero */}
-          <div className="flex items-end justify-between gap-6">
-            <div className="min-w-0">
-              <div className="sys-label">
-                Workspace · {members.length} {members.length === 1 ? "member" : "members"}
-                {stashes.length > 0 && ` · ${stashes.length} ${stashes.length === 1 ? "Stash" : "Stashes"}`}
-              </div>
-              <h1 className="mt-1.5 font-display text-[40px] font-black leading-[1.05] tracking-[-0.025em]">
-                Hi {firstName || "there"} —{" "}
-                <span className="text-muted">
-                  {workspace?.name ? `here's what's new in ${workspace.name}.` : "here's what your agents shipped."}
-                </span>
-              </h1>
-              <p className="mt-1 max-w-[620px] text-[14.5px] text-dim">
-                {totalRecent > 0
-                  ? `${stats.sessionsToday} sessions and ${stats.pagesEdited} page edits in the last 24 hours.`
-                  : `Your team's recent activity in this workspace.`}
-              </p>
-            </div>
-            <div className="flex flex-shrink-0 gap-1.5">
-              <Link
-                href={`/workspaces/${workspaceId}/stashes`}
-                className="inline-flex items-center gap-1.5 rounded-md border border-border bg-base px-2.5 py-1 text-[12.5px] font-medium text-foreground hover:bg-raised"
-              >
-                <PlusGlyph /> New Stash
-              </Link>
-              <button
-                onClick={() => setMembersOpen(true)}
-                className="inline-flex items-center gap-1.5 rounded-md border border-border bg-base px-2.5 py-1 text-[12.5px] font-medium text-foreground hover:bg-raised"
-              >
-                Members
-              </button>
-            </div>
+          <div className="flex justify-end gap-1.5">
+            <Link
+              href={`/workspaces/${workspaceId}/stashes`}
+              className="inline-flex items-center gap-1.5 rounded-md border border-border bg-base px-2.5 py-1 text-[12.5px] font-medium text-foreground hover:bg-raised"
+            >
+              <PlusGlyph /> New Stash
+            </Link>
+            <button
+              onClick={() => setMembersOpen(true)}
+              className="inline-flex items-center gap-1.5 rounded-md border border-border bg-base px-2.5 py-1 text-[12.5px] font-medium text-foreground hover:bg-raised"
+            >
+              Members
+            </button>
           </div>
 
           {error && (
@@ -200,7 +177,7 @@ export default function WorkspaceHomePage() {
           )}
 
           {/* Stat strip */}
-          <div className="mt-6 grid grid-cols-4 gap-2.5">
+          <div className="mt-4 grid grid-cols-4 gap-2.5">
             <StatCard label="Sessions today" value={stats.sessionsToday} tint="var(--color-agent)" />
             <StatCard label="Pages edited" value={stats.pagesEdited} tint="var(--color-human)" />
             <StatCard label="Active Stashes" value={stats.activeStashes} tint="var(--color-brand-500)" />
