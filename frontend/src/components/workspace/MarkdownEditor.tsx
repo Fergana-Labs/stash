@@ -209,10 +209,23 @@ export default function MarkdownEditor({
     if (!workspaceId || !editor) return;
     for (const fileToUpload of Array.from(files)) {
       const result = await uploadFile(workspaceId, fileToUpload);
+      // During the upload await, an effect higher up in this file can
+      // re-hydrate the editor from a freshly-resolved `initialContent`
+      // (see the resolvedMarkdown setContent effect). A `chain()` built
+      // against the pre-rehydrate state would then throw "Applying a
+      // mismatched transaction" on .run(). Use `editor.commands.X`
+      // instead — each command builds a fresh transaction from the
+      // current state at dispatch time — and bail out cleanly if the
+      // editor was destroyed mid-flight.
+      if (editor.isDestroyed) return;
       if (result.content_type.startsWith("image/")) {
-        editor.chain().focus().setImage({ src: result.url, alt: result.name }).run();
+        editor.commands.setImage({ src: result.url, alt: result.name });
       } else {
-        editor.chain().focus().setLink({ href: result.url }).insertContent(result.name).run();
+        editor.commands.insertContent({
+          type: "text",
+          text: result.name,
+          marks: [{ type: "link", attrs: { href: result.url } }],
+        });
       }
     }
   }, [editor, workspaceId]);
