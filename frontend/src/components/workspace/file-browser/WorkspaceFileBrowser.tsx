@@ -23,9 +23,9 @@ import type {
   WorkspaceTree,
 } from "../../../lib/types";
 import EditableTitle from "../EditableTitle";
-import FolderTreePane from "./FolderTreePane";
 import FolderItemGrid, { type GridItem, type ItemKind } from "./FolderItemGrid";
-import ItemPreviewPane, { type PreviewSelection } from "./ItemPreviewPane";
+import ItemsList from "./ItemsList";
+import ItemsColumns from "./ItemsColumns";
 
 interface Props {
   workspaceId: string;
@@ -42,16 +42,36 @@ export interface FBDragPayload {
   id: string;
 }
 
+type View = "list" | "column" | "grid";
+
+const VIEW_STORAGE_KEY = "stash_files_view";
+
 export default function WorkspaceFileBrowser({ workspaceId, folderId }: Props) {
   const router = useRouter();
 
   const [tree, setTree] = useState<WorkspaceTree | null>(null);
   const [contents, setContents] = useState<FolderContents | null>(null);
   const [rootFiles, setRootFiles] = useState<GridItem[]>([]);
-  const [selected, setSelected] = useState<PreviewSelection | null>(null);
+  const [view, setView] = useState<View>("grid");
+
+  // Restore last-used view from localStorage on mount.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const saved = window.localStorage.getItem(VIEW_STORAGE_KEY) as View | null;
+    if (saved === "list" || saved === "column" || saved === "grid") setView(saved);
+  }, []);
+
+  function setViewPersisted(next: View) {
+    setView(next);
+    try {
+      window.localStorage.setItem(VIEW_STORAGE_KEY, next);
+    } catch {
+      /* ignore */
+    }
+  }
   const [error, setError] = useState("");
 
-  // Load workspace tree once per workspace; it powers the left rail.
+  // Load workspace tree once per workspace; powers the Column view.
   const loadTree = useCallback(async () => {
     try {
       const t = await getWorkspaceTree(workspaceId);
@@ -65,7 +85,6 @@ export default function WorkspaceFileBrowser({ workspaceId, folderId }: Props) {
   // /folders/{id}/contents. For the root view there's no such endpoint, so we
   // synthesize the contents from the tree + a list-files call.
   const loadContents = useCallback(async () => {
-    setSelected(null);
     if (folderId) {
       try {
         const c = await getFolderContents(workspaceId, folderId);
@@ -237,23 +256,21 @@ export default function WorkspaceFileBrowser({ workspaceId, folderId }: Props) {
     }
   }
 
-  async function handleDelete(item: PreviewSelection) {
+  async function handleDelete(item: GridItem) {
     const yes = window.confirm(`Delete "${item.name}"? This can't be undone.`);
     if (!yes) return;
     try {
       if (item.kind === "folder") await deleteFolder(workspaceId, item.id);
       else if (item.kind === "page" || item.kind === "html") await deletePage(workspaceId, item.id);
       else await deleteFile(workspaceId, item.id);
-      setSelected(null);
       await refreshAll();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Delete failed");
     }
   }
 
-  // Rename callback used by both the in-strip folder name and the preview
-  // pane's "Rename…" action. Dispatches by kind because each lives in a
-  // different table with its own API.
+  // Rename callback used by the folder strip + per-item context menus.
+  // Dispatches by kind since each lives in its own table with its own API.
   async function renameItem(
     kind: "folder" | "page" | "html" | "table" | "file",
     id: string,
@@ -291,6 +308,7 @@ export default function WorkspaceFileBrowser({ workspaceId, folderId }: Props) {
           <span className="text-[12.5px] font-medium text-muted">Files</span>
         )}
         <span className="flex-1" />
+        <ViewToggle view={view} onChange={setViewPersisted} />
         <button
           type="button"
           onClick={handleUploadFile}
@@ -320,42 +338,64 @@ export default function WorkspaceFileBrowser({ workspaceId, folderId }: Props) {
         </div>
       )}
 
-      {/* Three-pane Drive shape */}
-      <div className="grid min-h-0 flex-1 grid-cols-[220px_minmax(0,1fr)_280px] divide-x divide-border">
-        <FolderTreePane
-          workspaceId={workspaceId}
-          tree={tree}
-          activeFolderId={folderId}
-          onReparent={reparent}
-        />
-        <FolderItemGrid
-          items={items}
-          selectedId={selected?.id ?? null}
-          onSelect={(item) =>
-            setSelected({
-              kind: item.kind,
-              id: item.id,
-              name: item.name,
-              subtitle: item.subtitle,
-              sizeBytes: item.sizeBytes,
-              linkedTableId: item.linkedTableId,
-            })
-          }
-          onNavigate={navigateTo}
-          onReparent={reparent}
-        />
-        <ItemPreviewPane
-          workspaceId={workspaceId}
-          selection={selected}
-          onOpen={(s) => navigateTo(gridFromPreview(s))}
-          onDelete={handleDelete}
-          onRename={async (s, next) => {
-            const finalName = await renameItem(s.kind, s.id, next);
-            setSelected({ ...s, name: finalName });
-            return finalName;
-          }}
-        />
+      <div className="flex min-h-0 flex-1 flex-col">
+        {view === "list" && (
+          <ItemsList
+            items={items}
+            onNavigate={navigateTo}
+            onReparent={reparent}
+            onDelete={handleDelete}
+          />
+        )}
+        {view === "grid" && (
+          <FolderItemGrid
+            items={items}
+            selectedId={null}
+            onSelect={navigateTo}
+            onNavigate={navigateTo}
+            onReparent={reparent}
+          />
+        )}
+        {view === "column" && (
+          <ItemsColumns
+            workspaceId={workspaceId}
+            tree={tree}
+            activeFolderId={folderId}
+            currentContents={contents}
+            currentItems={items}
+            onNavigate={navigateTo}
+            onReparent={reparent}
+          />
+        )}
       </div>
+    </div>
+  );
+}
+
+function ViewToggle({ view, onChange }: { view: View; onChange: (next: View) => void }) {
+  const opts: { key: View; label: string }[] = [
+    { key: "list", label: "List" },
+    { key: "column", label: "Column" },
+    { key: "grid", label: "Grid" },
+  ];
+  return (
+    <div className="inline-flex gap-0.5 rounded-md border border-border bg-base p-[2px] text-[12px]">
+      {opts.map((opt) => {
+        const active = view === opt.key;
+        return (
+          <button
+            key={opt.key}
+            type="button"
+            onClick={() => onChange(opt.key)}
+            className={
+              "rounded px-2 py-[3px] " +
+              (active ? "bg-raised font-semibold text-foreground" : "text-muted hover:text-foreground")
+            }
+          >
+            {opt.label}
+          </button>
+        );
+      })}
     </div>
   );
 }
@@ -391,17 +431,6 @@ function formatBytes(b: number): string {
   if (b < 1024) return `${b} B`;
   if (b < 1024 * 1024) return `${(b / 1024).toFixed(1)} KB`;
   return `${(b / 1024 / 1024).toFixed(1)} MB`;
-}
-
-function gridFromPreview(s: PreviewSelection): GridItem {
-  return {
-    kind: s.kind,
-    id: s.id,
-    name: s.name,
-    subtitle: s.subtitle,
-    sizeBytes: s.sizeBytes,
-    linkedTableId: s.linkedTableId,
-  };
 }
 
 // Re-export tree node type for callers that want it.

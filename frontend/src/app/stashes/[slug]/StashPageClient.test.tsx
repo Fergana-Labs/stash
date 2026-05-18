@@ -27,8 +27,8 @@ vi.mock("../../../lib/api", () => ({
       this.status = status;
     }
   },
-  createSharedStashPage: vi.fn(),
   getPublicStash: vi.fn(),
+  updateStash: vi.fn(),
 }));
 
 vi.mock("../../../hooks/useAuth", () => ({
@@ -76,10 +76,12 @@ describe("StashPageClient sharing", () => {
     cleanup();
   });
 
-  it("copies the current Stash link instead of creating another Stash", async () => {
+  it("Share button opens a popover with a copy-link affordance", async () => {
     render(<StashPageClient slug="shared-stash" />);
 
-    fireEvent.click(await screen.findByRole("button", { name: "Share" }));
+    fireEvent.click(await screen.findByRole("button", { name: /Share/ }));
+    // Popover renders a "Copy" button for the public URL; click it.
+    fireEvent.click(await screen.findByRole("button", { name: "Copy" }));
 
     await waitFor(() =>
       expect(navigator.clipboard.writeText).toHaveBeenCalledWith(

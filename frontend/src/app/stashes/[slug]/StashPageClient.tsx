@@ -1,14 +1,20 @@
 "use client";
 
-import { useCallback, useEffect, useState, type ReactNode } from "react";
-import Markdown from "react-markdown";
-import remarkGfm from "remark-gfm";
+import Link from "next/link";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 
 import AppShell from "../../../components/AppShell";
 import { useBreadcrumbs } from "../../../components/BreadcrumbContext";
-import HtmlPageView from "../../../components/workspace/HtmlPageView";
+import AddToStashModal from "../../../components/stash/AddToStashModal";
 import { useAuth } from "../../../hooks/useAuth";
-import { ApiError, createSharedStashPage, getPublicStash, type PublicStashDetail, type PublicStashItem } from "../../../lib/api";
+import { useEscapeKey } from "../../../hooks/useEscapeKey";
+import {
+  ApiError,
+  getPublicStash,
+  updateStash,
+  type PublicStashDetail,
+  type PublicStashItem,
+} from "../../../lib/api";
 import AddToWorkspaceButton from "./AddToWorkspaceButton";
 
 type StashItemGroup = Partial<Record<PublicStashItem["object_type"], PublicStashItem[]>>;
@@ -124,6 +130,7 @@ function StashPageBody({
 }) {
   const { stash, workspace_name, items, can_write } = data;
   const groups = groupStashItems(items);
+  const [addOpen, setAddOpen] = useState(false);
 
   const visibility: "public" | "private" | "workspace" = stash.access;
   const visClass = visibility === "public" ? "public" : visibility === "private" ? "private" : "";
@@ -172,8 +179,20 @@ function StashPageBody({
             </div>
           </div>
           <div className="flex flex-shrink-0 items-center gap-1.5 pt-1">
-            <CopyStashLinkButton slug={stash.slug} />
-            <AddToWorkspaceButton slug={stash.slug} sourceWorkspaceId={stash.workspace_id} />
+            <ShareStashButton stash={stash} canWrite={can_write} onChanged={onRefresh} />
+            {can_write ? (
+              <button
+                type="button"
+                onClick={() => setAddOpen(true)}
+                className="rounded-md bg-[var(--color-brand-600)] px-2.5 py-1.5 text-[12.5px] font-medium text-white hover:bg-[var(--color-brand-700)]"
+              >
+                + Add things
+              </button>
+            ) : (
+              // Forking only makes sense when the viewer doesn't already have
+              // write access to this stash in its own workspace.
+              <AddToWorkspaceButton slug={stash.slug} sourceWorkspaceId={stash.workspace_id} />
+            )}
           </div>
         </div>
 
@@ -189,22 +208,58 @@ function StashPageBody({
           </section>
         )}
 
-        {can_write ? (
-          <div className="mt-6">
-            <SharedPageComposer stashId={stash.id} onCreated={onRefresh} />
-          </div>
-        ) : null}
-
-        <div className="mt-2">
-          <StashSection
-            id="files"
+        {/* Compact item lists by kind. Items deep-link to the editor /
+            viewer in the owning workspace — no inline rendering. */}
+        <div className="mt-6 flex flex-col gap-6">
+          <StashItemSection
             title="Files"
             items={[...(groups.folder ?? []), ...(groups.page ?? []), ...(groups.file ?? [])]}
+            workspaceId={stash.workspace_id}
           />
-          <StashSection id="sessions" title="Sessions" items={groups.session ?? []} />
-          <StashSection id="tables" title="Tables" items={groups.table ?? []} />
+          <StashItemSection
+            title="Sessions"
+            items={groups.session ?? []}
+            workspaceId={stash.workspace_id}
+          />
+          <StashItemSection
+            title="Tables"
+            items={groups.table ?? []}
+            workspaceId={stash.workspace_id}
+          />
+          {items.length === 0 && (
+            <div className="rounded-lg border border-dashed border-border bg-surface/30 px-4 py-10 text-center text-[13px] text-muted">
+              No items yet.{" "}
+              {can_write && (
+                <button
+                  type="button"
+                  onClick={() => setAddOpen(true)}
+                  className="font-medium text-[var(--color-brand-700)] hover:underline"
+                >
+                  Add things →
+                </button>
+              )}
+            </div>
+          )}
         </div>
       </div>
+
+      {can_write && (
+        <AddToStashModal
+          open={addOpen}
+          onClose={() => setAddOpen(false)}
+          stashId={stash.id}
+          workspaceId={stash.workspace_id}
+          existingItems={items.map((it, i) => ({
+            object_type: it.object_type,
+            object_id: it.object_id,
+            position: i,
+            label_override: it.label,
+          }))}
+          onAdded={() => {
+            void onRefresh();
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -221,126 +276,204 @@ function relativeTime(iso: string): string {
   return new Date(iso).toLocaleDateString();
 }
 
-function CopyStashLinkButton({ slug }: { slug: string }) {
-  const [status, setStatus] = useState<"idle" | "copied" | "error">("idle");
+// Single place to manage sharing: copy public URL, choose visibility,
+// toggle discoverability. Anonymous viewers and non-writers only see the
+// "Copy link" path.
+function ShareStashButton({
+  stash,
+  canWrite,
+  onChanged,
+}: {
+  stash: PublicStashDetail["stash"];
+  canWrite: boolean;
+  onChanged: () => Promise<void>;
+}) {
+  const [open, setOpen] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const [vis, setVis] = useState(stash.access);
+  const [discoverable, setDiscoverable] = useState(stash.discoverable);
+  const [saving, setSaving] = useState(false);
+  const popoverRef = useRef<HTMLDivElement>(null);
+
+  useEscapeKey(open, () => setOpen(false));
+
+  useEffect(() => {
+    if (!open) return;
+    function onDown(e: globalThis.MouseEvent) {
+      if (popoverRef.current && !popoverRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [open]);
 
   async function copyLink() {
     try {
-      await navigator.clipboard.writeText(absoluteUrl(`/stashes/${slug}`));
-      setStatus("copied");
-      window.setTimeout(() => setStatus("idle"), 1600);
+      await navigator.clipboard.writeText(absoluteUrl(`/stashes/${stash.slug}`));
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1600);
     } catch {
-      setStatus("error");
-      window.setTimeout(() => setStatus("idle"), 3000);
+      /* ignore */
+    }
+  }
+
+  async function applyChanges(next: Partial<{ access: typeof vis; discoverable: boolean }>) {
+    setSaving(true);
+    try {
+      await updateStash(stash.id, next);
+      await onChanged();
+    } finally {
+      setSaving(false);
     }
   }
 
   return (
+    <div className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="inline-flex items-center gap-1.5 rounded-md border border-border bg-base px-2.5 py-1.5 text-[12.5px] font-medium text-foreground hover:bg-raised"
+      >
+        <ShareGlyph /> Share
+      </button>
+      {open && (
+        <div
+          ref={popoverRef}
+          className="absolute right-0 top-full z-40 mt-1.5 w-[300px] rounded-lg border border-border bg-base p-3 shadow-lg"
+        >
+          <div className="sys-label mb-1">Public URL</div>
+          <div className="flex gap-1.5">
+            <input
+              readOnly
+              value={absoluteUrl(`/stashes/${stash.slug}`)}
+              className="min-w-0 flex-1 rounded-md border border-border bg-surface px-2 py-1.5 text-[11.5px] font-mono text-foreground"
+            />
+            <button
+              type="button"
+              onClick={() => void copyLink()}
+              className="rounded-md border border-border bg-base px-2 py-1.5 text-[11.5px] font-medium text-foreground hover:bg-raised"
+            >
+              {copied ? "Copied" : "Copy"}
+            </button>
+          </div>
+
+          {canWrite && (
+            <>
+              <div className="sys-label mb-1 mt-3">Visibility</div>
+              <div className="flex flex-col gap-1">
+                <VisOption
+                  label="Workspace"
+                  hint="Anyone in the owning workspace can view"
+                  value="workspace"
+                  current={vis}
+                  onChange={(v) => {
+                    setVis(v);
+                    void applyChanges({ access: v });
+                  }}
+                />
+                <VisOption
+                  label="Private"
+                  hint="Only the owner and explicit members"
+                  value="private"
+                  current={vis}
+                  onChange={(v) => {
+                    setVis(v);
+                    void applyChanges({ access: v });
+                  }}
+                />
+                <VisOption
+                  label="Public"
+                  hint="Anyone with the URL can view"
+                  value="public"
+                  current={vis}
+                  onChange={(v) => {
+                    setVis(v);
+                    void applyChanges({ access: v });
+                  }}
+                />
+              </div>
+
+              {vis === "public" && (
+                <label className="mt-3 flex cursor-pointer items-center gap-2 rounded-md border border-border bg-surface px-2 py-1.5">
+                  <input
+                    type="checkbox"
+                    checked={discoverable}
+                    onChange={(e) => {
+                      setDiscoverable(e.target.checked);
+                      void applyChanges({ discoverable: e.target.checked });
+                    }}
+                  />
+                  <span className="text-[12px] text-foreground">
+                    List on Discover
+                  </span>
+                </label>
+              )}
+
+              {saving && (
+                <div className="mt-2 text-[11px] text-muted">Saving…</div>
+              )}
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function VisOption({
+  label,
+  hint,
+  value,
+  current,
+  onChange,
+}: {
+  label: string;
+  hint: string;
+  value: "workspace" | "private" | "public";
+  current: "workspace" | "private" | "public";
+  onChange: (next: "workspace" | "private" | "public") => void;
+}) {
+  const active = value === current;
+  return (
     <button
       type="button"
-      onClick={() => void copyLink()}
-      className="rounded-lg border border-border-subtle bg-base px-4 py-2 text-[14px] font-medium text-foreground transition hover:border-brand hover:text-brand"
+      onClick={() => onChange(value)}
+      className={
+        "flex items-start gap-2 rounded-md px-2 py-1.5 text-left text-[12px] " +
+        (active ? "bg-[var(--color-brand-50)]" : "hover:bg-raised")
+      }
     >
-      {status === "copied" ? "Copied" : status === "error" ? "Copy failed" : "Share"}
+      <span
+        className={
+          "mt-[3px] inline-block h-3 w-3 flex-shrink-0 rounded-full border-2 " +
+          (active
+            ? "border-[var(--color-brand-600)] bg-[var(--color-brand-500)]"
+            : "border-border bg-base")
+        }
+      />
+      <span className="min-w-0">
+        <span className="block font-medium text-foreground">{label}</span>
+        <span className="block text-[11px] text-muted">{hint}</span>
+      </span>
     </button>
+  );
+}
+
+function ShareGlyph() {
+  return (
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="18" cy="5" r="3" />
+      <circle cx="6" cy="12" r="3" />
+      <circle cx="18" cy="19" r="3" />
+      <path d="M8.59 13.51l6.83 3.98M15.41 6.51l-6.82 3.98" />
+    </svg>
   );
 }
 
 function absoluteUrl(path: string): string {
   if (typeof window === "undefined") return path;
   return `${window.location.origin}${path}`;
-}
-
-function SharedPageComposer({
-  stashId,
-  onCreated,
-}: {
-  stashId: string;
-  onCreated: () => Promise<void>;
-}) {
-  const [open, setOpen] = useState(false);
-  const [title, setTitle] = useState("");
-  const [content, setContent] = useState("");
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState("");
-
-  const createPage = async () => {
-    const name = title.trim();
-    if (!name) {
-      setError("Name is required");
-      return;
-    }
-    setSubmitting(true);
-    setError("");
-    try {
-      await createSharedStashPage(stashId, { name, content });
-      setTitle("");
-      setContent("");
-      setOpen(false);
-      await onCreated();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to add page");
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  return (
-    <section className="border-b border-border-subtle py-6">
-      <div className="flex items-center justify-between gap-3">
-        <div>
-          <h2 className="font-display text-[18px] font-bold text-ink">Shared pages</h2>
-          <p className="mt-1 text-[13px] text-dim">
-            Add a page that lives in this Stash instead of the source workspace Files.
-          </p>
-        </div>
-        <button
-          onClick={() => setOpen((value) => !value)}
-          className="rounded-md bg-[var(--color-brand-600)] px-3 py-1.5 text-[13px] font-medium text-white hover:bg-[var(--color-brand-700)]"
-        >
-          + Add page
-        </button>
-      </div>
-
-      {open ? (
-        <div className="mt-4 rounded-lg border border-border-subtle bg-surface p-4">
-          <input
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            placeholder="Page name"
-            className="w-full rounded-md border border-border bg-base px-3 py-2 text-[14px] text-foreground outline-none focus:border-brand"
-          />
-          <textarea
-            value={content}
-            onChange={(e) => setContent(e.target.value)}
-            placeholder="Write Markdown..."
-            rows={7}
-            className="mt-3 w-full resize-y rounded-md border border-border bg-base px-3 py-2 text-[14px] leading-relaxed text-foreground outline-none focus:border-brand"
-          />
-          {error ? (
-            <div className="mt-3 rounded-md border border-red-300/40 bg-red-500/10 px-3 py-2 text-[12px] text-red-400">
-              {error}
-            </div>
-          ) : null}
-          <div className="mt-3 flex justify-end gap-2">
-            <button
-              onClick={() => setOpen(false)}
-              className="rounded-md border border-border-subtle px-3 py-1.5 text-[13px] text-muted hover:text-foreground"
-            >
-              Cancel
-            </button>
-            <button
-              onClick={createPage}
-              disabled={submitting}
-              className="rounded-md bg-[var(--color-brand-600)] px-3 py-1.5 text-[13px] font-medium text-white hover:bg-[var(--color-brand-700)] disabled:opacity-50"
-            >
-              {submitting ? "Adding..." : "Add to Stash"}
-            </button>
-          </div>
-        </div>
-      ) : null}
-    </section>
-  );
 }
 
 function groupStashItems(items: PublicStashItem[]): StashItemGroup {
@@ -360,320 +493,143 @@ function StashHeaderGlyph() {
   );
 }
 
-function StashSection({
-  id,
+// Compact item list — each item deep-links to its editor / viewer in the
+// owning workspace. No inline content rendering; the user wanted the stash
+// detail page to be a directory, not a wall of embedded documents.
+function StashItemSection({
   title,
   items,
+  workspaceId,
 }: {
-  id: string;
   title: string;
   items: PublicStashItem[];
+  workspaceId: string;
 }) {
   if (items.length === 0) return null;
   return (
-    <section id={id} className="scroll-mt-8 py-8 last:border-b-0">
-      <div className="mb-3 flex items-baseline gap-2.5 border-b border-border pb-2">
-        <h2 className="m-0 font-display text-[22px] font-bold leading-tight tracking-[-0.01em] text-foreground">
-          {title}
-        </h2>
-        <span className="sys-label">
-          {items.length} item{items.length === 1 ? "" : "s"}
+    <section>
+      <div className="mb-2 flex items-baseline gap-2 border-b border-border-subtle pb-1.5">
+        <h2 className="m-0 font-display text-[15px] font-semibold text-foreground">{title}</h2>
+        <span className="sys-label" style={{ fontSize: 10.5 }}>
+          {items.length}
         </span>
       </div>
-      <div className="space-y-7">
+      <div className="flex flex-col gap-1">
         {items.map((item) => (
-          <Item key={`${item.object_type}-${item.object_id}`} item={item} />
+          <StashItemRow key={`${item.object_type}-${item.object_id}`} item={item} workspaceId={workspaceId} />
         ))}
       </div>
     </section>
   );
 }
 
-function Item({ item }: { item: PublicStashItem }) {
-  return (
-    <section id={`item-${item.object_type}-${item.object_id}`} className="scroll-mt-12">
-      <div className="mb-3 flex items-center gap-2">
-        <span className="rounded border border-border-subtle px-2 py-0.5 font-mono text-[10px] uppercase text-muted">
-          {item.object_type}
+function StashItemRow({ item, workspaceId }: { item: PublicStashItem; workspaceId: string }) {
+  const href = hrefForItem(item, workspaceId);
+  const sub = subtitleForItem(item);
+  const tint = tintForKind(item.object_type);
+
+  const content = (
+    <>
+      <span className={"flex h-5 w-5 flex-shrink-0 items-center justify-center " + tint}>
+        <KindGlyph kind={item.object_type} />
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-[13.5px] font-medium text-foreground">
+          {item.label || "(untitled)"}
         </span>
-        <h2 className="font-display text-[20px] font-bold text-ink">{item.label}</h2>
-      </div>
-      <div className="rounded-lg border border-border-subtle bg-surface p-5">
-        <ItemBody item={item} />
-      </div>
-    </section>
+        {sub && (
+          <span className="block truncate text-[11.5px] text-muted">{sub}</span>
+        )}
+      </span>
+      {href && (
+        <span className="hidden text-[11.5px] text-muted sm:inline">Open →</span>
+      )}
+    </>
+  );
+
+  const cls =
+    "flex items-center gap-2.5 rounded-md px-2 py-1.5 " +
+    (href ? "hover:bg-raised" : "opacity-60");
+
+  return href ? (
+    <Link href={href} className={cls}>
+      {content}
+    </Link>
+  ) : (
+    <div className={cls}>{content}</div>
   );
 }
 
-function ItemBody({ item }: { item: PublicStashItem }) {
-  if (Object.keys(item.inline).length === 0) {
-    return <p className="text-[13px] italic text-muted">This item is no longer available.</p>;
-  }
-
-  if (item.object_type === "folder") {
-    const inline = item.inline as {
-      pages?: {
-        id: string;
-        name: string;
-        content_type?: "markdown" | "html";
-        content_markdown: string;
-        content_html?: string;
-        html_layout?: "responsive" | "fixed-aspect";
-      }[];
-      files?: {
-        id: string;
-        name: string;
-        content_type?: string;
-        size_bytes?: number;
-        url?: string;
-      }[];
-    };
-    return (
-      <div>
-        {(inline.pages ?? []).map((p) => (
-          <div key={p.id} className="mb-6 last:mb-0">
-            <h3 className="font-display text-[16px] font-bold text-ink">{p.name}</h3>
-            {p.content_type === "html" ? (
-              <div className="mt-2">
-                <HtmlPageView html={p.content_html || ""} title={p.name} layout={p.html_layout} />
-              </div>
-            ) : (
-              <div className="markdown-content mt-2">
-                <Markdown remarkPlugins={[remarkGfm]}>{p.content_markdown || "(empty)"}</Markdown>
-              </div>
-            )}
-          </div>
-        ))}
-        {(inline.files ?? []).length > 0 ? (
-          <div className={(inline.pages ?? []).length > 0 ? "mt-6" : ""}>
-            <h3 className="mb-2 font-display text-[16px] font-bold text-ink">Files</h3>
-            <div className="flex flex-col gap-2">
-              {(inline.files ?? []).map((file) => (
-                <a
-                  key={file.id}
-                  href={file.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="rounded-md border border-border-subtle bg-base px-3 py-2 text-[13px] text-foreground hover:border-brand hover:text-brand"
-                >
-                  <span className="block truncate font-medium">{file.name}</span>
-                  <span className="mt-0.5 block text-[12px] text-dim">
-                    {file.content_type} · {formatSize(file.size_bytes ?? 0)}
-                  </span>
-                </a>
-              ))}
-            </div>
-          </div>
-        ) : null}
-      </div>
-    );
-  }
-
-  if (item.object_type === "page") {
-    const inline = item.inline as {
-      page?: {
-        id: string;
-        name: string;
-        content_type?: "markdown" | "html";
-        content_markdown: string;
-        content_html?: string;
-        html_layout?: "responsive" | "fixed-aspect";
-      };
-    };
-    const page = inline.page;
-    if (!page) return <p className="text-[13px] italic text-muted">This page is no longer available.</p>;
-    return page.content_type === "html" ? (
-      <HtmlPageView html={page.content_html || ""} title={page.name} layout={page.html_layout} />
-    ) : (
-      <div className="markdown-content">
-        <Markdown remarkPlugins={[remarkGfm]}>{page.content_markdown || "(empty)"}</Markdown>
-      </div>
-    );
-  }
-
-  if (item.object_type === "table") {
-    const inline = item.inline as {
-      description?: string;
-      columns?: { name: string; type: string }[];
-      rows?: { data: Record<string, unknown> }[];
-    };
-    const cols = inline.columns ?? [];
-    const rows = inline.rows ?? [];
-    return (
-      <div>
-        {inline.description ? <p className="mb-3 text-[14px] text-dim">{inline.description}</p> : null}
-        <div className="overflow-x-auto">
-          <table className="min-w-full text-[13px]">
-            <thead>
-              <tr className="border-b border-border-subtle">
-                {cols.map((column) => (
-                  <th
-                    key={column.name}
-                    className="px-2 py-1 text-left font-mono text-[10px] uppercase text-muted"
-                  >
-                    {column.name}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((row, index) => (
-                <tr key={index} className="border-b border-border-subtle/50">
-                  {cols.map((column) => (
-                    <td key={column.name} className="px-2 py-1 text-foreground">
-                      {String(row.data[column.name] ?? "")}
-                    </td>
-                  ))}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    );
-  }
-
-  if (item.object_type === "file") {
-    const inline = item.inline as {
-      name?: string;
-      content_type?: string;
-      size_bytes?: number;
-      url?: string;
-    };
-    const body = (
-      <>
-        <span className="block text-[13px] font-medium text-foreground">
-          {inline.name || item.label}
-        </span>
-        <span className="mt-0.5 block text-[12px] text-dim">
-          {inline.content_type} · {formatSize(inline.size_bytes ?? 0)}
-        </span>
-      </>
-    );
-    if (inline.url) {
-      return (
-        <a
-          href={inline.url}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="block rounded-md border border-border-subtle bg-base px-3 py-2 hover:border-brand hover:text-brand"
-        >
-          {body}
-        </a>
-      );
-    }
-    return (
-      <p className="text-[13px] text-dim">{body}</p>
-    );
-  }
-
+function hrefForItem(item: PublicStashItem, workspaceId: string): string | null {
+  if (item.object_type === "page") return `/workspaces/${workspaceId}/p/${item.object_id}`;
+  if (item.object_type === "folder")
+    return `/workspaces/${workspaceId}/folders/${item.object_id}`;
+  if (item.object_type === "file") return `/workspaces/${workspaceId}/f/${item.object_id}`;
   if (item.object_type === "session") {
-    const inline = item.inline as {
-      session?: {
-        session_id: string;
-        agent_name?: string;
-        summary?: string | null;
-        files_touched?: string[] | string;
-        artifacts?: {
-          id: string;
-          file_path: string;
-          size_bytes: number;
-          url: string;
-        }[];
-        events?: {
-          event_type: string;
-          tool_name?: string | null;
-          content: string;
-          created_at: string;
-        }[];
-      };
-    };
-    const session = inline.session;
-    if (!session) return <p className="text-[13px] italic text-muted">Session unavailable.</p>;
-    const filesTouched = normalizeStringList(session.files_touched);
-    return (
-      <div className="space-y-4">
-        <p className="font-mono text-[11px] uppercase text-muted">
-          {session.agent_name || "Agent session"} · {session.session_id}
-        </p>
-        {session.summary ? (
-          <p className="whitespace-pre-wrap text-[14px] leading-relaxed text-foreground">
-            {session.summary}
-          </p>
-        ) : null}
-        {(filesTouched.length || session.artifacts?.length) ? (
-          <div className="grid gap-3 md:grid-cols-2">
-            {filesTouched.length ? (
-              <div>
-                <h4 className="mb-2 font-mono text-[10px] uppercase text-muted">Files touched</h4>
-                <div className="flex flex-col gap-1.5">
-                  {filesTouched.map((file) => (
-                    <div
-                      key={file}
-                      className="rounded-md border border-border-subtle bg-base px-2 py-1.5 font-mono text-[11px] text-foreground"
-                    >
-                      {file}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            ) : null}
-            {session.artifacts?.length ? (
-              <div>
-                <h4 className="mb-2 font-mono text-[10px] uppercase text-muted">Artifacts</h4>
-                <div className="flex flex-col gap-1.5">
-                  {session.artifacts.map((artifact) => (
-                    <a
-                      key={artifact.id}
-                      href={artifact.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="rounded-md border border-border-subtle bg-base px-2 py-1.5 text-[12px] text-foreground hover:border-brand hover:text-brand"
-                    >
-                      <span className="block truncate">{artifact.file_path}</span>
-                      <span className="mt-0.5 block text-[11px] text-muted">
-                        {formatSize(artifact.size_bytes)}
-                      </span>
-                    </a>
-                  ))}
-                </div>
-              </div>
-            ) : null}
-          </div>
-        ) : null}
-        <div className="space-y-3">
-          {(session.events ?? []).map((event, index) => (
-            <div
-              key={`${event.created_at}-${index}`}
-              className="rounded-md border border-border-subtle bg-base p-3"
-            >
-              <div className="mb-1 flex items-center gap-2 font-mono text-[10px] uppercase text-muted">
-                <span>{event.event_type}</span>
-                {event.tool_name ? <span>{event.tool_name}</span> : null}
-              </div>
-              <p className="whitespace-pre-wrap text-[13px] leading-relaxed text-foreground">
-                {event.content}
-              </p>
-            </div>
-          ))}
-        </div>
-      </div>
-    );
+    const sid =
+      (item.inline?.session as { session_id?: string } | undefined)?.session_id ||
+      item.object_id;
+    return `/workspaces/${workspaceId}/sessions/${encodeURIComponent(sid)}`;
   }
-
+  if (item.object_type === "table") return `/tables/${item.object_id}?workspaceId=${workspaceId}`;
   return null;
 }
 
-function formatSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  if (bytes < 1024 * 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
-  return `${(bytes / 1024 / 1024 / 1024).toFixed(1)} GB`;
+function subtitleForItem(item: PublicStashItem): string {
+  if (item.object_type === "session") {
+    const s = item.inline?.session as { agent_name?: string; events?: unknown[] } | undefined;
+    if (s) return [s.agent_name, s.events?.length ? `${s.events.length} events` : null].filter(Boolean).join(" · ");
+  }
+  if (item.object_type === "file") {
+    const f = item.inline as { content_type?: string; size_bytes?: number } | undefined;
+    if (f?.content_type) return f.content_type;
+  }
+  if (item.object_type === "page") {
+    const p = item.inline?.page as { content_type?: string } | undefined;
+    return p?.content_type === "html" ? "html page" : "page";
+  }
+  return "";
 }
 
-function normalizeStringList(value: string[] | string | undefined): string[] {
-  if (Array.isArray(value)) return value;
-  if (!value) return [];
-  const parsed = JSON.parse(value);
-  return Array.isArray(parsed) ? parsed.map(String) : [];
+function tintForKind(kind: PublicStashItem["object_type"]): string {
+  if (kind === "session") return "text-[var(--color-agent)]";
+  if (kind === "table") return "text-emerald-600";
+  if (kind === "folder") return "text-muted";
+  return "text-muted";
 }
+
+function KindGlyph({ kind }: { kind: PublicStashItem["object_type"] }) {
+  if (kind === "folder")
+    return (
+      <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.8">
+        <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z" />
+      </svg>
+    );
+  if (kind === "page")
+    return (
+      <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.8">
+        <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" />
+        <path d="M14 3v5h5" />
+      </svg>
+    );
+  if (kind === "session")
+    return (
+      <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.8">
+        <path d="M21 12c0 4.4-4 8-9 8-1.4 0-2.8-.3-4-.8L3 21l1.5-4C3.6 15.7 3 13.9 3 12c0-4.4 4-8 9-8s9 3.6 9 8z" />
+      </svg>
+    );
+  if (kind === "table")
+    return (
+      <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.8">
+        <rect x="3" y="4" width="18" height="16" rx="2" />
+        <path d="M3 10h18M3 16h18M9 4v16M15 4v16" />
+      </svg>
+    );
+  return (
+    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.8">
+      <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" />
+      <path d="M14 3v5h5" />
+    </svg>
+  );
+}
+
