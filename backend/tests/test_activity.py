@@ -96,10 +96,6 @@ async def test_user_activity_can_filter_to_one_workspace(client: AsyncClient):
     )
     assert resp.status_code == 200
 
-    events = [
-        event
-        for event in resp.json()
-        if event["kind"] == "session.uploaded"
-    ]
+    events = [event for event in resp.json() if event["kind"] == "session.uploaded"]
     assert {event["target_id"] for event in events} == {"first-session"}
     assert {event["workspace_id"] for event in events} == {first_workspace["id"]}

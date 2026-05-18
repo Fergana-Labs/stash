@@ -32,6 +32,7 @@ interface SearchResult {
   sourceName: string;
   detail: string;
   updatedAt: string;
+  relevance: number;
 }
 
 interface SearchableStash extends WorkspaceStash {
@@ -266,7 +267,7 @@ function SearchPageInner() {
           ? descendantFolderIds(selectedSidebar.files.folders, selectedFolderId)
           : new Set<string>();
         nextResults.push(
-          ...searchPages(pageGroups, {
+          ...searchPages(pageGroups, q, {
             selectedFolderId,
             selectedPageId,
             folderIds,
@@ -513,7 +514,7 @@ function SearchPageInner() {
                     Results
                   </h2>
                   <p className="font-mono text-[11px] uppercase tracking-[0.12em] text-muted">
-                    {results.length}
+                    {results.length} ranked by relevance
                   </p>
                 </div>
                 <div className="flex flex-col gap-2">
@@ -565,6 +566,14 @@ function searchSingleSession(
   );
   if (matches.length === 0) return [];
 
+  const bestMatch = matches.reduce((best, event) => {
+    const bestScore = scoreSessionEvent(query, sessionId, best);
+    const eventScore = scoreSessionEvent(query, sessionId, event);
+    if (eventScore !== bestScore) return eventScore > bestScore ? event : best;
+    if (!best.created_at) return event;
+    if (!event.created_at) return best;
+    return new Date(event.created_at) > new Date(best.created_at) ? event : best;
+  }, matches[0]);
   const latest = matches.reduce((best, event) => {
     if (!best.created_at) return event;
     if (!event.created_at) return best;
@@ -578,23 +587,25 @@ function searchSingleSession(
       title: sessionId,
       href: `/workspaces/${workspace.id}/sessions/${encodeURIComponent(sessionId)}`,
       sourceName: workspace.name,
-      detail: sessionEventSnippet(matches[0], query),
+      detail: sessionEventSnippet(bestMatch, query),
       updatedAt: latest.created_at ?? new Date().toISOString(),
+      relevance: scoreSessionEvent(query, sessionId, bestMatch),
     },
   ];
 }
 
 function searchStashes(stashes: SearchableStash[], query: string): SearchResult[] {
-  const q = query.toLowerCase();
   return stashes
-    .filter((stash) => {
-      const text = [stash.title, stash.description, stash.workspace_name]
-        .filter(Boolean)
-        .join(" ")
-        .toLowerCase();
-      return text.includes(q);
+    .map((stash) => {
+      const relevance = scoreValues(query, [
+        { value: stash.title, weight: 8 },
+        { value: stash.description, weight: 3 },
+        { value: stash.workspace_name, weight: 1 },
+      ]);
+      return { stash, relevance };
     })
-    .map((stash) => ({
+    .filter(({ relevance }) => relevance > 0)
+    .map(({ stash, relevance }) => ({
       id: stash.id,
       kind: "Stash" as const,
       title: stash.title,
@@ -604,6 +615,7 @@ function searchStashes(stashes: SearchableStash[], query: string): SearchResult[
         (stash.forked_from_stash_id ? "Forked Stash" : "Stash") +
         ` / ${stash.description || `${stash.items.length} items`}`,
       updatedAt: stash.updated_at,
+      relevance,
     }));
 }
 
@@ -617,7 +629,15 @@ function searchSessionsFromEvents(
       if (!event.session_id) continue;
       const id = `${workspace.id}:${event.session_id}`;
       const existing = resultsBySession.get(id);
-      if (existing && new Date(existing.updatedAt) >= new Date(event.created_at)) continue;
+      const relevance = scoreWorkspaceEvent(query, event);
+      if (
+        existing &&
+        (existing.relevance > relevance ||
+          (existing.relevance === relevance &&
+            new Date(existing.updatedAt) >= new Date(event.created_at)))
+      ) {
+        continue;
+      }
       resultsBySession.set(id, {
         id,
         kind: "Session",
@@ -626,6 +646,7 @@ function searchSessionsFromEvents(
         sourceName: workspace.name,
         detail: sessionSearchSnippet(event, query),
         updatedAt: event.created_at,
+        relevance,
       });
     }
   }
@@ -664,6 +685,7 @@ function sessionEventSnippet(event: SessionEvent, query: string): string {
 
 function searchPages(
   groups: { workspace: Workspace; pages: Page[] }[],
+  query: string,
   scope: {
     selectedFolderId: string;
     selectedPageId: string;
@@ -685,9 +707,10 @@ function searchPages(
         sourceName: workspace.name,
         detail:
           page.content_type === "html"
-            ? stripHtml(page.content_html).slice(0, 220) || "HTML page"
+            ? stripHtml(page.content_html ?? "").slice(0, 220) || "HTML page"
             : page.content_markdown?.slice(0, 220) || "Markdown page",
         updatedAt: page.updated_at,
+        relevance: scorePage(query, page),
       }))
   );
 }
@@ -723,16 +746,15 @@ function searchPublicStashItems(
   query: string,
   scope: { includePages: boolean; includeSessions: boolean }
 ): SearchResult[] {
-  const q = query.toLowerCase();
   return detail.items.flatMap((item, index) => {
     if (item.object_type === "folder" && scope.includePages) {
-      return searchPublicFolder(detail, item, index, q);
+      return searchPublicFolder(detail, item, index, query);
     }
     if (item.object_type === "page" && scope.includePages) {
-      return searchPublicPage(detail, item, index, q);
+      return searchPublicPage(detail, item, index, query);
     }
     if (item.object_type === "session" && scope.includeSessions) {
-      return searchPublicSession(detail, item, index, q);
+      return searchPublicSession(detail, item, index, query);
     }
     return [];
   });
@@ -764,6 +786,12 @@ function searchPublicFolder(
       sourceName: detail.stash.title,
       detail: pageSnippet(page.content_markdown, page.content_html),
       updatedAt: page.updated_at || detail.stash.updated_at,
+      relevance: scoreValues(query, [
+        { value: page.name, weight: 8 },
+        { value: page.content_markdown, weight: 2 },
+        { value: stripHtml(page.content_html ?? ""), weight: 2 },
+        { value: detail.stash.title, weight: 1 },
+      ]),
     }));
 }
 
@@ -795,6 +823,12 @@ function searchPublicPage(
       sourceName: detail.stash.title,
       detail: pageSnippet(page.content_markdown, page.content_html),
       updatedAt: page.updated_at || detail.stash.updated_at,
+      relevance: scoreValues(query, [
+        { value: page.name, weight: 8 },
+        { value: page.content_markdown, weight: 2 },
+        { value: stripHtml(page.content_html ?? ""), weight: 2 },
+        { value: detail.stash.title, weight: 1 },
+      ]),
     },
   ];
 }
@@ -840,16 +874,24 @@ function searchPublicSession(
       sourceName: detail.stash.title,
       detail: sessionSnippet(session),
       updatedAt: session.finished_at || session.started_at || detail.stash.updated_at,
+      relevance: scoreValues(query, [
+        { value: session.summary, weight: 8 },
+        { value: session.session_id, weight: 5 },
+        { value: session.agent_name, weight: 2 },
+        { value: eventText, weight: 1 },
+        { value: detail.stash.title, weight: 1 },
+      ]),
     },
   ];
 }
 
 function textIncludes(query: string, ...values: (string | null | undefined)[]): boolean {
-  return values
-    .filter(Boolean)
-    .join(" ")
-    .toLowerCase()
-    .includes(query);
+  const text = normalizeSearchText(values.filter(Boolean).join(" "));
+  const terms = searchTerms(query);
+  if (!text || terms.length === 0) return false;
+
+  const phrase = terms.join(" ");
+  return text.includes(phrase) || terms.every((term) => text.includes(term));
 }
 
 function pageSnippet(markdown?: string | null, html?: string | null): string {
@@ -870,9 +912,87 @@ function sessionSnippet(session: {
 }
 
 function sortResults(results: SearchResult[]): SearchResult[] {
-  return [...results].sort(
-    (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
+  return [...results].sort((a, b) => {
+    if (b.relevance !== a.relevance) return b.relevance - a.relevance;
+    return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime();
+  });
+}
+
+function scoreSessionEvent(query: string, sessionId: string, event: SessionEvent): number {
+  return scoreValues(query, [
+    { value: sessionId, weight: 8 },
+    { value: event.agent_name, weight: 3 },
+    { value: event.tool_name, weight: 2 },
+    { value: event.content, weight: 1 },
+  ]);
+}
+
+function scoreWorkspaceEvent(query: string, event: WorkspaceHistoryEvent): number {
+  const rank = typeof event.rank === "number" ? event.rank * 1000 : 0;
+  return (
+    rank +
+    scoreValues(query, [
+      { value: event.session_id, weight: 6 },
+      { value: event.agent_name, weight: 3 },
+      { value: event.tool_name, weight: 2 },
+      { value: event.event_type, weight: 1 },
+      { value: event.content, weight: 1 },
+    ])
   );
+}
+
+function scorePage(query: string, page: Page): number {
+  const rankedPage = page as Page & { rank?: number; similarity?: number };
+  const rank = typeof rankedPage.rank === "number" ? rankedPage.rank * 1000 : 0;
+  const similarity = typeof rankedPage.similarity === "number" ? rankedPage.similarity * 100 : 0;
+
+  return (
+    rank +
+    similarity +
+    scoreValues(query, [
+      { value: page.name, weight: 8 },
+      { value: page.content_markdown, weight: 2 },
+      { value: stripHtml(page.content_html ?? ""), weight: 2 },
+    ])
+  );
+}
+
+function scoreValues(
+  query: string,
+  values: { value: string | null | undefined; weight: number }[]
+): number {
+  const terms = searchTerms(query);
+  if (terms.length === 0) return 0;
+
+  const phrase = terms.join(" ");
+  let score = 0;
+  for (const { value, weight } of values) {
+    const text = normalizeSearchText(value ?? "");
+    if (!text) continue;
+
+    const words = new Set(text.split(" "));
+    if (text === phrase) score += 100 * weight;
+    if (text.startsWith(phrase)) score += 40 * weight;
+    if (text.includes(phrase)) score += 30 * weight;
+    if (terms.every((term) => text.includes(term))) score += 12 * weight;
+
+    for (const term of terms) {
+      if (words.has(term)) {
+        score += 8 * weight;
+      } else if (text.includes(term)) {
+        score += 3 * weight;
+      }
+    }
+  }
+  return score;
+}
+
+function searchTerms(query: string): string[] {
+  return normalizeSearchText(query).split(" ").filter(Boolean);
+}
+
+function normalizeSearchText(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
 }
 
 function stripHtml(html: string): string {

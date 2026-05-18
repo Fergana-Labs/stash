@@ -286,16 +286,22 @@ async def _get_source_counts(user_id: UUID, workspace_id: UUID | None = None) ->
                  WHERE p.workspace_id = $2
                    AND COALESCE(p.metadata->>'shared_in_stash_id', '') = ''
                    AND p.content_markdown IS NOT NULL AND p.content_markdown != ''
-                   AND """ + permission_service.readable_content_condition("page", "p", 1) + """) AS pages,
+                   AND """
+            + permission_service.readable_content_condition("page", "p", 1)
+            + """) AS pages,
                 (SELECT COUNT(*) FROM table_rows tr
                  WHERE tr.table_id IN (
                    SELECT t.id FROM tables t
                    WHERE t.workspace_id = $2
-                     AND """ + permission_service.readable_content_condition("table", "t", 1) + """)
+                     AND """
+            + permission_service.readable_content_condition("table", "t", 1)
+            + """)
                    AND tr.data IS NOT NULL) AS rows,
                 (SELECT COUNT(*) FROM history_events he
                  WHERE he.workspace_id = $2
-                   AND """ + memory_service.readable_session_event_condition("he", 1) + """) AS events
+                   AND """
+            + memory_service.readable_session_event_condition("he", 1)
+            + """) AS events
             """,
             user_id,
             workspace_id,
@@ -308,18 +314,24 @@ async def _get_source_counts(user_id: UUID, workspace_id: UUID | None = None) ->
                  WHERE p.workspace_id IN (SELECT workspace_id FROM workspace_members WHERE user_id = $1)
                    AND COALESCE(p.metadata->>'shared_in_stash_id', '') = ''
                    AND p.content_markdown IS NOT NULL AND p.content_markdown != ''
-                   AND """ + permission_service.readable_content_condition("page", "p", 1) + """) AS pages,
+                   AND """
+            + permission_service.readable_content_condition("page", "p", 1)
+            + """) AS pages,
                 (SELECT COUNT(*) FROM table_rows tr
                  WHERE tr.table_id IN (
                      SELECT t.id FROM tables t
                      WHERE (t.workspace_id IN (SELECT workspace_id FROM workspace_members WHERE user_id = $1)
                         OR (t.workspace_id IS NULL AND t.created_by = $1))
-                       AND (t.workspace_id IS NULL OR """ + permission_service.readable_content_condition("table", "t", 1) + """))
+                       AND (t.workspace_id IS NULL OR """
+            + permission_service.readable_content_condition("table", "t", 1)
+            + """))
                    AND tr.data IS NOT NULL) AS rows,
                 (SELECT COUNT(*) FROM history_events he
                  WHERE (he.workspace_id IN (SELECT workspace_id FROM workspace_members WHERE user_id = $1)
                     OR (he.workspace_id IS NULL AND he.created_by = $1))
-                   AND (he.workspace_id IS NULL OR """ + memory_service.readable_session_event_condition("he", 1) + """)) AS events
+                   AND (he.workspace_id IS NULL OR """
+            + memory_service.readable_session_event_condition("he", 1)
+            + """)) AS events
             """,
             user_id,
         )

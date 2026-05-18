@@ -16,18 +16,6 @@ type Sort = (typeof SORTS)[number];
 
 const COVERS = ["cover-1", "cover-2", "cover-3", "cover-4", "cover-5", "cover-6"];
 
-const TOPICS = [
-  "agents infra",
-  "design systems",
-  "evals",
-  "MCP",
-  "PRDs",
-  "launches",
-  "PMing with agents",
-  "cursor",
-  "eng / runtimes",
-];
-
 async function fetchPublicStashes(params: {
   q?: string;
   sort: Sort;
@@ -50,7 +38,6 @@ export default function DiscoverPage() {
   const [query, setQuery] = useState("");
   const [stashes, setStashes] = useState<PublicStashCard[]>([]);
   const [fetching, setFetching] = useState(true);
-  const [activeTopic, setActiveTopic] = useState(0);
 
   useBreadcrumbs([{ label: "Discover" }], "discover");
 
@@ -63,21 +50,7 @@ export default function DiscoverPage() {
 
   const content = (
     <div className="mx-auto max-w-[1180px] px-12 pb-20 pt-9">
-      {/* Hero */}
-      <div className="border-b border-border-subtle pb-5">
-        <p className="sys-label">Discover</p>
-        <h1 className="my-2 font-display text-[44px] font-black leading-[1.05] tracking-[-0.025em]">
-          Public Stashes, in the wild.
-        </h1>
-        <p className="m-0 max-w-[720px] text-[14.5px] leading-[1.55] text-dim">
-          Browse Stashes that workspaces have published and shared to Discover.
-          Open any of them, fork into your workspace, and it becomes an external
-          Stash you and your agents can search.
-        </p>
-      </div>
-
-      {/* Controls */}
-      <div className="mt-4 flex items-center gap-3">
+      <div className="flex items-center gap-3">
         <div className="flex max-w-[460px] flex-1 items-center gap-2 rounded-lg border border-border bg-base px-2.5 py-1.5">
           <SearchGlyph />
           <input
@@ -109,28 +82,6 @@ export default function DiscoverPage() {
         <span className="sys-label" style={{ fontSize: 10.5 }}>
           {stashes.length} result{stashes.length === 1 ? "" : "s"}
         </span>
-      </div>
-
-      {/* Topic chips */}
-      <div className="mt-3.5 flex flex-wrap gap-1.5">
-        {TOPICS.map((t, i) => {
-          const active = i === activeTopic;
-          return (
-            <button
-              key={t}
-              type="button"
-              onClick={() => setActiveTopic(i)}
-              className={
-                "rounded-full border px-2.5 py-[3px] text-[11.5px] " +
-                (active
-                  ? "border-[var(--color-brand-200)] bg-[var(--color-brand-50)] text-[var(--color-brand-700)]"
-                  : "border-border bg-transparent text-dim hover:bg-raised")
-              }
-            >
-              {t}
-            </button>
-          );
-        })}
       </div>
 
       {fetching ? (

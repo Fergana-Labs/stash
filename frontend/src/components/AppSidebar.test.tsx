@@ -358,6 +358,20 @@ describe("AppSidebar tree expansion", () => {
     promptSpy.mockRestore();
   });
 
+  it("closes the native sidebar modal with Escape", async () => {
+    vi.mocked(getWorkspaceSidebar).mockResolvedValue(sidebarWithTree);
+
+    renderSidebar();
+
+    // "+ New page" is the row button at the bottom of the Files section.
+    fireEvent.click(await screen.findByRole("button", { name: /\+\s*New page/ }));
+    expect(screen.getByRole("heading", { name: "New page" })).toBeTruthy();
+
+    fireEvent.keyDown(document, { key: "Escape" });
+
+    expect(screen.queryByRole("heading", { name: "New page" })).not.toBeInTheDocument();
+  });
+
   it("opens the Files section when a top-level page is clicked", async () => {
     localStorage.setItem(
       "stash_sidebar_open_sections",

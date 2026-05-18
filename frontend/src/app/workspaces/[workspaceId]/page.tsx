@@ -152,96 +152,23 @@ export default function WorkspaceHomePage() {
     return <div className="flex h-screen items-center justify-center text-muted">Loading…</div>;
   if (!user) return null;
 
-  const firstName = (user.display_name || user.name || "").split(" ")[0];
-  const totalRecent = stats.sessionsToday + stats.pagesEdited;
-
   return (
     <>
       <div className="scroll-thin flex-1 overflow-y-auto">
-        {/* Identity strip: cover + icon + name + meta + actions */}
-        <div
-          className="h-[72px] w-full bg-gradient-to-r from-[var(--color-brand-200)] via-amber-100 to-rose-100 bg-cover bg-center"
-          style={
-            workspace?.cover_image_url
-              ? { backgroundImage: `url(${workspace.cover_image_url})` }
-              : workspace?.color_gradient
-                ? { backgroundImage: workspace.color_gradient }
-                : undefined
-          }
-        />
-        <div className="mx-auto flex max-w-[920px] items-start justify-between gap-3 px-12 pt-4">
-          <div className="flex min-w-0 items-center gap-3">
-            <div className="-mt-9 flex h-12 w-12 items-center justify-center overflow-hidden rounded-[10px] border-2 border-base bg-base text-[var(--color-brand-700)] shadow-sm">
-              {workspace?.icon_url ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={workspace.icon_url} alt="" className="h-full w-full object-cover" />
-              ) : (
-                <StashIcon />
-              )}
-            </div>
-            <div className="min-w-0">
-              <h2 className="m-0 truncate font-display text-[17px] font-bold leading-tight tracking-[-0.015em] text-foreground">
-                {workspace?.name || "Workspace"}
-              </h2>
-              <p className="sys-label mt-0.5">
-                {members.length} {members.length === 1 ? "member" : "members"}
-                {stashes.length > 0 && ` · ${stashes.length} ${stashes.length === 1 ? "Stash" : "Stashes"}`}
-                {workspace?.updated_at && ` · updated ${relativeTime(workspace.updated_at)}`}
-              </p>
-            </div>
-          </div>
-          <div className="flex flex-shrink-0 items-center gap-1.5 pt-1">
-            {isMember && (
-              <Link
-                href={`/workspaces/${workspaceId}/settings`}
-                title="Workspace settings"
-                aria-label="Workspace settings"
-                className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted hover:bg-raised hover:text-foreground"
-              >
-                <SettingsGlyph />
-              </Link>
-            )}
+        <div className="mx-auto max-w-[920px] px-12 pb-20 pt-9">
+          <div className="flex justify-end gap-1.5">
+            <Link
+              href={`/workspaces/${workspaceId}/stashes`}
+              className="inline-flex items-center gap-1.5 rounded-md border border-border bg-base px-2.5 py-1 text-[12.5px] font-medium text-foreground hover:bg-raised"
+            >
+              <PlusGlyph /> New Stash
+            </Link>
             <button
               onClick={() => setMembersOpen(true)}
               className="inline-flex items-center gap-1.5 rounded-md border border-border bg-base px-2.5 py-1 text-[12.5px] font-medium text-foreground hover:bg-raised"
             >
               Members
             </button>
-            <button
-              type="button"
-              onClick={() =>
-                shareModal.open({
-                  workspaceId,
-                  workspaceName: workspace?.name,
-                  tab: stashes.length > 0 ? "manage" : "new",
-                })
-              }
-              title="Manage or create Stashes"
-              className="inline-flex items-center gap-1.5 rounded-md border border-border bg-base px-2.5 py-1 text-[12.5px] font-medium text-foreground hover:bg-raised"
-            >
-              <LinkGlyph />
-              {stashes.length === 0
-                ? "No Stashes"
-                : `${stashes.length} Stash${stashes.length === 1 ? "" : "es"}`}
-            </button>
-          </div>
-        </div>
-
-        <div className="mx-auto max-w-[920px] px-12 pb-20 pt-7">
-          {/* Greeting */}
-          <div className="min-w-0">
-            <div className="sys-label">Activity</div>
-            <h1 className="mt-1.5 font-display text-[32px] font-black leading-[1.05] tracking-[-0.025em]">
-              Hi {firstName || "there"} —{" "}
-              <span className="text-muted">
-                {workspace?.name ? `here's what's new in ${workspace.name}.` : "here's what your agents shipped."}
-              </span>
-            </h1>
-            <p className="mt-1 max-w-[620px] text-[14.5px] text-dim">
-              {totalRecent > 0
-                ? `${stats.sessionsToday} sessions and ${stats.pagesEdited} page edits in the last 24 hours.`
-                : `Your team's recent activity in this workspace.`}
-            </p>
           </div>
 
           {error && (
@@ -263,7 +190,7 @@ export default function WorkspaceHomePage() {
           )}
 
           {/* Stat strip */}
-          <div className="mt-6 grid grid-cols-4 gap-2.5">
+          <div className="mt-4 grid grid-cols-4 gap-2.5">
             <StatCard label="Sessions today" value={stats.sessionsToday} tint="var(--color-agent)" />
             <StatCard label="Pages edited" value={stats.pagesEdited} tint="var(--color-human)" />
             <StatCard label="Active Stashes" value={stats.activeStashes} tint="var(--color-brand-500)" />
@@ -456,20 +383,10 @@ function EventGlyph({ kind }: { kind: string }) {
   return null;
 }
 
-function SettingsGlyph() {
+function PlusGlyph() {
   return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-      <circle cx="12" cy="12" r="3" />
-      <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
-    </svg>
-  );
-}
-
-function LinkGlyph() {
-  return (
-    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M10 13a5 5 0 0 0 7.07 0l3-3a5 5 0 0 0-7.07-7.07l-1.5 1.5" />
-      <path d="M14 11a5 5 0 0 0-7.07 0l-3 3a5 5 0 0 0 7.07 7.07l1.5-1.5" />
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+      <path d="M12 5v14M5 12h14" />
     </svg>
   );
 }

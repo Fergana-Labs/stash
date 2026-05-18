@@ -49,7 +49,9 @@ CREATE TABLE IF NOT EXISTS stash_members (
 
 
 def downgrade() -> None:
-    op.execute("ALTER TABLE stashes ADD COLUMN IF NOT EXISTS is_public BOOLEAN NOT NULL DEFAULT false")
+    op.execute(
+        "ALTER TABLE stashes ADD COLUMN IF NOT EXISTS is_public BOOLEAN NOT NULL DEFAULT false"
+    )
     op.execute("UPDATE stashes SET is_public = access = 'public'")
     op.execute("DROP TABLE IF EXISTS stash_members CASCADE")
     op.execute("ALTER TABLE stashes DROP CONSTRAINT IF EXISTS stashes_access_check")

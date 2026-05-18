@@ -521,11 +521,11 @@ def upload_conversation(
         result = client.upload_transcript(
             workspace_id=workspace_id,
             session_id=conv.session_id,
-        transcript_path=transcript_path,
-        agent_name=conv.agent,
-        cwd=conv.cwd,
-        default_stash_id=default_stash_id,
-    )
+            transcript_path=transcript_path,
+            agent_name=conv.agent,
+            cwd=conv.cwd,
+            default_stash_id=default_stash_id,
+        )
     finally:
         if materialized:
             os.unlink(transcript_path)

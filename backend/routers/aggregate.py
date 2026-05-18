@@ -83,7 +83,9 @@ async def list_activity(
           FROM history_events he
           JOIN accessible_workspaces aw ON aw.id = he.workspace_id
           WHERE he.session_id IS NOT NULL
-            AND """ + memory_service.readable_session_event_condition("he", 1) + """
+            AND """
+        + memory_service.readable_session_event_condition("he", 1)
+        + """
           GROUP BY aw.id, aw.name, he.session_id
         )
         UNION ALL
@@ -98,7 +100,9 @@ async def list_activity(
           FROM pages p
           JOIN accessible_workspaces aw ON aw.id = p.workspace_id
           WHERE COALESCE(p.metadata->>'shared_in_stash_id', '') = ''
-            AND """ + permission_service.readable_content_condition("page", "p", 1) + """
+            AND """
+        + permission_service.readable_content_condition("page", "p", 1)
+        + """
         )
         UNION ALL
         (
@@ -111,7 +115,9 @@ async def list_activity(
                  aw.name AS workspace_name
           FROM files f
           JOIN accessible_workspaces aw ON aw.id = f.workspace_id
-          WHERE """ + permission_service.readable_content_condition("file", "f", 1) + """
+          WHERE """
+        + permission_service.readable_content_condition("file", "f", 1)
+        + """
         )
         UNION ALL
         (

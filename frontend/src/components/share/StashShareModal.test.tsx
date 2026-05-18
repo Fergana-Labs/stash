@@ -143,6 +143,25 @@ describe("StashShareModal session sharing", () => {
     );
   });
 
+  it("closes the share modal with Escape", async () => {
+    render(
+      <ShareModalProvider>
+        <OpenSessionShareButton />
+        <StashShareModal />
+      </ShareModalProvider>
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Share session" }));
+
+    await screen.findByRole("heading", { name: "Share session as Stash" });
+
+    fireEvent.keyDown(document, { key: "Escape" });
+
+    expect(
+      screen.queryByRole("heading", { name: "Share session as Stash" })
+    ).not.toBeInTheDocument();
+  });
+
   it("invites a searched user to a Stash from the Manage tab", async () => {
     vi.mocked(listStashes).mockResolvedValue([
       {

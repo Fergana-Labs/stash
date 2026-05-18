@@ -4,6 +4,7 @@ import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import AppShell from "../../../components/AppShell";
 import { useAuth } from "../../../hooks/useAuth";
+import { useEscapeKey } from "../../../hooks/useEscapeKey";
 import { useShareModal } from "../../../lib/shareModalContext";
 import {
   getTable, updateTable,
@@ -119,6 +120,12 @@ function TableEditorPageInner() {
   const hasMore = offset < totalCount;
 
   const shareModal = useShareModal();
+
+  useEscapeKey(!!colMenu, () => setColMenu(null));
+  useEscapeKey(showColVisibility, () => setShowColVisibility(false));
+  useEscapeKey(showEmbeddings, () => setShowEmbeddings(false));
+  useEscapeKey(showAddCol, () => setShowAddCol(false));
+  useEscapeKey(!!detailRow, () => setDetailRow(null));
 
   // --- Data Loading ---
   const loadTable = useCallback(async () => {
