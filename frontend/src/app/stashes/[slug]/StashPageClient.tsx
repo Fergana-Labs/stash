@@ -194,8 +194,6 @@ function StashPageBody({
     };
   }, [stash.workspace_id]);
 
-  const visibility: "public" | "private" | "workspace" = stash.access;
-  const visClass = visibility === "public" ? "public" : visibility === "private" ? "private" : "";
   const cover = stash.cover_image_url
     ? { backgroundImage: `url(${stash.cover_image_url})` }
     : { backgroundImage: COVER_GRADIENTS[coverIndexFor(stash.id)] };
@@ -232,12 +230,8 @@ function StashPageBody({
               onChanged={onRefresh}
             />
             <div className="min-w-0">
-              <h1 className="m-0 flex min-w-0 items-center gap-2 truncate font-display text-[20px] font-bold leading-tight tracking-[-0.015em] text-foreground">
-                <span className="truncate">{stash.title}</span>
-                <span className={`stash-chip ${visClass}`.trim()}>
-                  <span className="dot" />
-                  {visibility}
-                </span>
+              <h1 className="m-0 truncate font-display text-[20px] font-bold leading-tight tracking-[-0.015em] text-foreground">
+                {stash.title}
               </h1>
               <div className="mt-1 flex flex-wrap items-center gap-2 text-[12px] text-muted">
                 <span>
