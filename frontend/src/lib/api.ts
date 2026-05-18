@@ -955,6 +955,42 @@ export async function removeExternalStash(
   });
 }
 
+// --- Stash invites ---
+
+export interface StashInvite {
+  id: string;
+  stash_id: string;
+  stash_slug: string;
+  stash_title: string;
+  stash_description: string;
+  source_workspace_id: string;
+  source_workspace_name: string;
+  invited_by_user_id: string;
+  invited_by_name: string;
+  invited_by_display_name: string | null;
+  permission: StashMemberPermission;
+  created_at: string;
+}
+
+export async function listStashInvites(): Promise<StashInvite[]> {
+  const data = await apiFetch<{ invites: StashInvite[] }>("/api/v1/stash-invites");
+  return data.invites;
+}
+
+export async function acceptStashInvite(
+  inviteId: string,
+  workspaceId: string
+): Promise<WorkspaceStash> {
+  return apiFetch(`/api/v1/stash-invites/${inviteId}/accept`, {
+    method: "POST",
+    body: JSON.stringify({ workspace_id: workspaceId }),
+  });
+}
+
+export async function dismissStashInvite(inviteId: string): Promise<void> {
+  await apiFetch(`/api/v1/stash-invites/${inviteId}/dismiss`, { method: "POST" });
+}
+
 // --- Workspace-wide page index ---
 
 export interface WorkspacePageEntry {

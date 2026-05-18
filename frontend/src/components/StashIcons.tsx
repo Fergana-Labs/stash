@@ -5,6 +5,7 @@ import ExploreOutlinedIcon from "@mui/icons-material/ExploreOutlined";
 import FolderOutlinedIcon from "@mui/icons-material/FolderOutlined";
 import HelpOutlineOutlinedIcon from "@mui/icons-material/HelpOutlineOutlined";
 import InsertDriveFileOutlinedIcon from "@mui/icons-material/InsertDriveFileOutlined";
+import NotificationsNoneOutlinedIcon from "@mui/icons-material/NotificationsNoneOutlined";
 import PersonOutlineOutlinedIcon from "@mui/icons-material/PersonOutlineOutlined";
 import ScheduleOutlinedIcon from "@mui/icons-material/ScheduleOutlined";
 import SettingsOutlinedIcon from "@mui/icons-material/SettingsOutlined";
@@ -73,6 +74,10 @@ export function HelpIcon(props: IconProps) {
 
 export function SettingsIcon(props: IconProps) {
   return <MaterialIcon icon={SettingsOutlinedIcon} {...props} />;
+}
+
+export function NotificationsIcon(props: IconProps) {
+  return <MaterialIcon icon={NotificationsNoneOutlinedIcon} {...props} />;
 }
 
 export function PersonIcon(props: IconProps) {

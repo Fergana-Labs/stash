@@ -197,6 +197,29 @@ class AddExternalStashRequest(BaseModel):
     workspace_id: UUID
 
 
+class StashInviteResponse(BaseModel):
+    id: UUID
+    stash_id: UUID
+    stash_slug: str
+    stash_title: str
+    stash_description: str
+    source_workspace_id: UUID
+    source_workspace_name: str
+    invited_by_user_id: UUID
+    invited_by_name: str
+    invited_by_display_name: str | None = None
+    permission: str
+    created_at: datetime
+
+
+class StashInviteListResponse(BaseModel):
+    invites: list[StashInviteResponse]
+
+
+class AcceptStashInviteRequest(BaseModel):
+    workspace_id: UUID
+
+
 class WorkspaceMember(BaseModel):
     user_id: UUID
     name: str

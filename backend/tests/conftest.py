@@ -95,6 +95,7 @@ _TRUNCATE_TABLES = [
     "webhooks",
     "documents",
     "files",
+    "stash_invites",
     "stash_members",
     "stash_items",
     "stashes",

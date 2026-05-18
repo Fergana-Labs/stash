@@ -1240,6 +1240,15 @@ async def add_member(
     if not user:
         return None
 
+    from . import stash_invite_service
+
+    await stash_invite_service.create_or_update_invite(
+        stash_id=stash_id,
+        recipient_user_id=user_id,
+        invited_by_user_id=granted_by,
+        permission=permission,
+    )
+
     member = dict(row)
     member["name"] = user["name"]
     member["display_name"] = user["display_name"]
@@ -1255,6 +1264,9 @@ async def remove_member(stash_id: UUID, user_id: UUID) -> bool:
     )
     removed = result == "DELETE 1"
     if removed:
+        from . import stash_invite_service
+
+        await stash_invite_service.delete_pending_invite(stash_id, user_id)
         await pool.execute("UPDATE stashes SET updated_at = now() WHERE id = $1", stash_id)
     return removed
 

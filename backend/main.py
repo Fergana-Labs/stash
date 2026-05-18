@@ -22,6 +22,7 @@ from .routers import (
     publish,
     sessions,
     skill,
+    stash_invites,
     stashes,
     tables,
     transcripts,
@@ -99,6 +100,7 @@ app.include_router(users.router)
 app.include_router(workspaces.router)
 app.include_router(workspace_knowledge.router)
 app.include_router(discover.router)
+app.include_router(stash_invites.router)
 app.include_router(stashes.ws_router)
 app.include_router(stashes.public_router)
 app.include_router(files_tree.router)

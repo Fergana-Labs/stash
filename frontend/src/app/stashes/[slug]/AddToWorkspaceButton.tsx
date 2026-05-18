@@ -133,7 +133,7 @@ export default function AddToWorkspaceButton({ slug, sourceWorkspaceId }: Props)
                 onClick={() => void attachToWorkspace(selectedWorkspaceId)}
                 className="w-full rounded-md bg-brand px-3 py-2 text-[13px] font-medium text-white disabled:opacity-50"
               >
-                Add live Stash
+                Add Stash
               </button>
             </div>
           ) : (

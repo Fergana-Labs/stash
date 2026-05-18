@@ -2,9 +2,10 @@
 
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { type FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { useShareModal } from "../../../../lib/shareModalContext";
-import { listStashes, type WorkspaceStash } from "../../../../lib/api";
+import { addExternalStash, ApiError, listStashes, type WorkspaceStash } from "../../../../lib/api";
+import { stashSlugFromInput } from "../../../../lib/stashLinks";
 
 type Filter = "all" | "workspace" | "private" | "public" | "external";
 
@@ -136,6 +137,14 @@ export default function WorkspaceStashesPage() {
           })}
         </div>
 
+        <ExternalStashLinkForm
+          workspaceId={workspaceId}
+          onAdded={() => {
+            setFilter("external");
+            void load();
+          }}
+        />
+
         {/* Grid */}
         {filtered.length === 0 ? (
           <div className="mt-12 rounded-lg border border-dashed border-border bg-surface/30 px-4 py-10 text-center text-[12.5px] text-muted">
@@ -156,6 +165,78 @@ export default function WorkspaceStashesPage() {
         )}
       </div>
     </div>
+  );
+}
+
+function ExternalStashLinkForm({
+  workspaceId,
+  onAdded,
+}: {
+  workspaceId: string;
+  onAdded: () => void;
+}) {
+  const [input, setInput] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
+
+  async function submit(event: FormEvent) {
+    event.preventDefault();
+    const slug = stashSlugFromInput(input);
+    if (!slug) {
+      setError("Paste a Stash URL like /stashes/product-plan or a Stash slug.");
+      setMessage("");
+      return;
+    }
+
+    setBusy(true);
+    setError("");
+    setMessage("");
+    try {
+      const stash = await addExternalStash(slug, workspaceId);
+      setInput("");
+      setMessage(
+        stash.is_external
+          ? `Added ${stash.title} to this workspace.`
+          : `${stash.title} is already in this workspace.`
+      );
+      onAdded();
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "Could not add Stash");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <form
+      onSubmit={submit}
+      className="mt-4 rounded-lg border border-border-subtle bg-surface px-3 py-3"
+    >
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+        <div className="min-w-0 flex-1">
+          <label className="text-[12px] font-medium text-foreground" htmlFor="external-stash-link">
+            Add external Stash by link
+          </label>
+          <input
+            id="external-stash-link"
+            value={input}
+            onChange={(event) => setInput(event.target.value)}
+            placeholder="https://.../stashes/product-plan"
+            className="mt-1 w-full rounded-md border border-border bg-base px-3 py-2 text-[13px] text-foreground placeholder:text-muted focus:border-brand focus:outline-none"
+          />
+        </div>
+        <button
+          type="submit"
+          disabled={busy || !input.trim()}
+          className="rounded-md bg-[var(--color-brand-600)] px-3 py-2 text-[12.5px] font-medium text-white hover:bg-[var(--color-brand-700)] disabled:opacity-45 sm:mt-6"
+        >
+          {busy ? "Adding…" : "Add Stash"}
+        </button>
+      </div>
+      {error ? <p className="mt-2 text-[12px] text-red-500">{error}</p> : null}
+      {message ? <p className="mt-2 text-[12px] text-muted">{message}</p> : null}
+    </form>
   );
 }
 

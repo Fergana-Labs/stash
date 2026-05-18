@@ -57,6 +57,10 @@ vi.mock("./CommandPalette", () => ({
   },
 }));
 
+vi.mock("./StashInviteCenter", () => ({
+  default: () => <button aria-label="Stash invites">Invites</button>,
+}));
+
 
 const user = {
   id: "user-1",

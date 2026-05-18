@@ -7,6 +7,7 @@ import type { StashItemSpec } from "../lib/api";
 import { User, Workspace } from "../lib/types";
 import AppSidebar from "./AppSidebar";
 import CommandPalette from "./CommandPalette";
+import StashInviteCenter from "./StashInviteCenter";
 import { useShareModal } from "../lib/shareModalContext";
 import { type Crumb, useBreadcrumbsValue } from "./BreadcrumbContext";
 import { StashIcon } from "./StashIcons";
@@ -280,6 +281,7 @@ export default function AppShell({ user, onLogout, children }: AppShellProps) {
         />
 
         <div className="flex items-center justify-end gap-1">
+          <StashInviteCenter activeWorkspaceId={activeWorkspaceId} />
           {activeWorkspaceId && (
             <button
               className="mr-1 rounded-md bg-[var(--color-brand-600)] px-2.5 py-1 text-[12.5px] font-medium text-white hover:bg-[var(--color-brand-700)]"
