@@ -1672,6 +1672,37 @@ def files_create_folder(
         console.print(f"[green]Folder '{data['name']}' created.[/green]  ID: {data['id']}")
 
 
+@files_app.command("edit-folder")
+def files_edit_folder(
+    folder_id: str = typer.Argument(...),
+    name: str = typer.Option(None, "--name", help="Rename the folder."),
+    parent: str = typer.Option(None, "--parent", help="Move under this parent folder id."),
+    to_root: bool = typer.Option(False, "--to-root", help="Move to workspace root."),
+    workspace_id: str = typer.Option(None, "--ws"),
+    as_json: bool = typer.Option(False, "--json"),
+):
+    """Rename and/or reparent a folder."""
+    if parent and to_root:
+        console.print("[red]--parent and --to-root are mutually exclusive[/red]")
+        raise typer.Exit(1)
+    ws = workspace_id or _resolve_workspace()
+    with _client() as c:
+        try:
+            data = c.update_folder(
+                ws,
+                folder_id,
+                name=name,
+                parent_folder_id=parent,
+                move_to_root=to_root,
+            )
+        except StashError as e:
+            _err(e)
+    if _use_json(as_json):
+        output_json(data)
+    else:
+        console.print(f"[green]Folder updated.[/green] {data['name']}  [dim]{data['id']}[/dim]")
+
+
 @files_app.command("pages")
 def files_pages(
     workspace_id: str = typer.Option(None, "--ws"),
@@ -2895,6 +2926,37 @@ def files_list(
             f"  {f['id']}  [bold]{f['name']}[/bold]  "
             f"[dim]{f.get('content_type', '')}  {size_kb:.1f} KB[/dim]"
         )
+
+
+@files_app.command("edit-file")
+def files_edit_file(
+    file_id: str = typer.Argument(...),
+    name: str = typer.Option(None, "--name", help="Rename the file."),
+    folder: str = typer.Option(None, "--folder", help="Move into this folder id."),
+    to_root: bool = typer.Option(False, "--to-root", help="Move to workspace root."),
+    workspace_id: str = typer.Option(None, "--ws"),
+    as_json: bool = typer.Option(False, "--json"),
+):
+    """Rename and/or move a file. Pass any subset of --name / --folder / --to-root."""
+    if folder and to_root:
+        console.print("[red]--folder and --to-root are mutually exclusive[/red]")
+        raise typer.Exit(1)
+    ws = workspace_id or _resolve_workspace()
+    with _client() as c:
+        try:
+            data = c.update_ws_file(
+                ws,
+                file_id,
+                name=name,
+                folder_id=folder,
+                move_to_root=to_root,
+            )
+        except StashError as e:
+            _err(e)
+    if _use_json(as_json):
+        output_json(data)
+    else:
+        console.print(f"[green]File updated.[/green] {data['name']}  [dim]{data['id']}[/dim]")
 
 
 @files_app.command("rm")

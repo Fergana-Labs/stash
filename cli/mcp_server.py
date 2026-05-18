@@ -118,6 +118,28 @@ def stash_create_folder(
 
 
 @mcp.tool()
+def stash_edit_folder(
+    folder_id: str,
+    name: str = "",
+    parent_folder_id: str = "",
+    move_to_root: bool = False,
+    workspace_id: str = "",
+) -> str:
+    """Rename and/or reparent a folder. Pass any subset of name / parent_folder_id / move_to_root."""
+    client, default_ws = _client()
+    ws = _require_ws(workspace_id or default_ws)
+    return _json(
+        client.update_folder(
+            ws,
+            folder_id,
+            name=name or None,
+            parent_folder_id=parent_folder_id or None,
+            move_to_root=move_to_root,
+        )
+    )
+
+
+@mcp.tool()
 def stash_delete_folder(folder_id: str, workspace_id: str = "") -> str:
     """Delete a folder (and everything inside it) from the workspace."""
     client, default_ws = _client()
@@ -385,6 +407,28 @@ def stash_upload_file(file_path: str, workspace_id: str = "") -> str:
     client, default_ws = _client()
     ws = _require_ws(workspace_id or default_ws)
     return _json(client.upload_ws_file(ws, file_path))
+
+
+@mcp.tool()
+def stash_edit_file(
+    file_id: str,
+    name: str = "",
+    folder_id: str = "",
+    move_to_root: bool = False,
+    workspace_id: str = "",
+) -> str:
+    """Rename and/or move a file. Pass any subset of name / folder_id / move_to_root."""
+    client, default_ws = _client()
+    ws = _require_ws(workspace_id or default_ws)
+    return _json(
+        client.update_ws_file(
+            ws,
+            file_id,
+            name=name or None,
+            folder_id=folder_id or None,
+            move_to_root=move_to_root,
+        )
+    )
 
 
 @mcp.tool()
