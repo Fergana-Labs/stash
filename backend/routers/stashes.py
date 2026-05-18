@@ -18,6 +18,8 @@ from ..models import (
     StashMembersResponse,
     StashPublicResponse,
     StashResponse,
+    StashShareResponse,
+    StashShareUpdateRequest,
     StashUpdateRequest,
 )
 from ..services import permission_service, stash_service, workspace_service
@@ -209,6 +211,51 @@ async def _require_can_manage_stash(stash_id: UUID, user_id: UUID) -> None:
         raise HTTPException(status_code=403, detail="Not allowed to manage this stash")
 
 
+async def _stash_share_response(stash_id: UUID) -> StashShareResponse:
+    stash = await stash_service.get_stash(stash_id)
+    if not stash:
+        raise HTTPException(status_code=404, detail="Stash not found")
+
+    pool = get_pool()
+    owner = await pool.fetchrow(
+        "SELECT id AS user_id, name, display_name FROM users WHERE id = $1",
+        stash["owner_id"],
+    )
+    if not owner:
+        raise HTTPException(status_code=404, detail="Stash owner not found")
+
+    members = await stash_service.list_members(stash_id)
+    base = settings.PUBLIC_URL.rstrip("/")
+    return StashShareResponse(
+        stash=StashResponse(**stash),
+        url=f"{base}/stashes/{stash['slug']}",
+        owner=dict(owner),
+        members=[StashMemberResponse(**member) for member in members],
+    )
+
+
+async def _resolve_share_person(pool, person) -> UUID:
+    if bool(person.user_id) == bool(person.username):
+        raise HTTPException(status_code=400, detail="Provide exactly one user_id or username")
+
+    if person.user_id:
+        user = await pool.fetchrow("SELECT id FROM users WHERE id = $1", person.user_id)
+        label = str(person.user_id)
+    else:
+        username = person.username.strip() if person.username else ""
+        if not username:
+            raise HTTPException(status_code=400, detail="username is required")
+        user = await pool.fetchrow(
+            "SELECT id FROM users WHERE lower(name) = lower($1)",
+            username,
+        )
+        label = username
+
+    if not user:
+        raise HTTPException(status_code=404, detail=f"User '{label}' not found")
+    return user["id"]
+
+
 @public_router.get("/{stash_id}/members", response_model=StashMembersResponse)
 async def list_stash_members(
     stash_id: UUID,
@@ -254,6 +301,69 @@ async def remove_stash_member(
 ):
     await _require_can_manage_stash(stash_id, current_user["id"])
     await stash_service.remove_member(stash_id, user_id)
+
+
+@public_router.get("/{stash_id}/share", response_model=StashShareResponse)
+async def get_stash_share(
+    stash_id: UUID,
+    current_user: dict = Depends(get_current_user),
+):
+    await _require_can_manage_stash(stash_id, current_user["id"])
+    return await _stash_share_response(stash_id)
+
+
+@public_router.patch("/{stash_id}/share", response_model=StashShareResponse)
+async def update_stash_share(
+    stash_id: UUID,
+    req: StashShareUpdateRequest,
+    current_user: dict = Depends(get_current_user),
+):
+    await _require_can_manage_stash(stash_id, current_user["id"])
+    stash = await stash_service.get_stash(stash_id)
+    if not stash:
+        raise HTTPException(status_code=404, detail="Stash not found")
+
+    if req.access is not None or req.discoverable is not None:
+        try:
+            updated = await stash_service.update_stash(
+                stash_id,
+                current_user["id"],
+                access=req.access,
+                discoverable=req.discoverable,
+            )
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+        if not updated:
+            raise HTTPException(status_code=404, detail="Stash not found")
+
+    pool = get_pool()
+    grants: dict[UUID, str] = {}
+    for person in req.people:
+        user_id = await _resolve_share_person(pool, person)
+        if user_id == stash["owner_id"]:
+            raise HTTPException(status_code=400, detail="Stash owner already has access")
+        grants[user_id] = person.permission
+
+    remove_user_ids = set(req.remove_user_ids)
+    if stash["owner_id"] in remove_user_ids:
+        raise HTTPException(status_code=400, detail="Cannot remove the Stash owner")
+    if remove_user_ids.intersection(grants):
+        raise HTTPException(status_code=400, detail="Cannot grant and remove the same user")
+
+    for user_id, permission in grants.items():
+        member = await stash_service.add_member(
+            stash_id,
+            user_id,
+            permission,
+            current_user["id"],
+        )
+        if not member:
+            raise HTTPException(status_code=404, detail="Stash not found")
+
+    for user_id in remove_user_ids:
+        await stash_service.remove_member(stash_id, user_id)
+
+    return await _stash_share_response(stash_id)
 
 
 @public_router.post("/{stash_id}/shared-pages", response_model=PageResponse, status_code=201)
@@ -303,11 +413,15 @@ async def get_public_stash(
     can_write = bool(
         current_user and await stash_service.user_can_write(stash["id"], current_user["id"])
     )
+    can_manage_access = bool(
+        current_user and await stash_service.user_can_admin(stash["id"], current_user["id"])
+    )
     return StashPublicResponse(
         stash=StashResponse(**stash),
         workspace_name=workspace_name,
         items=items,
         can_write=can_write,
+        can_manage_access=can_manage_access,
     )
 
 

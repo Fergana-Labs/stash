@@ -862,6 +862,7 @@ export interface PublicStashDetail {
   workspace_name: string;
   items: PublicStashItem[];
   can_write: boolean;
+  can_manage_access: boolean;
 }
 
 export async function listStashes(workspaceId: string): Promise<WorkspaceStash[]> {
@@ -924,6 +925,44 @@ export async function addStashMember(
 
 export async function removeStashMember(stashId: string, userId: string): Promise<void> {
   await apiFetch(`/api/v1/stashes/${stashId}/members/${userId}`, { method: "DELETE" });
+}
+
+export interface StashShareOwner {
+  user_id: string;
+  name: string;
+  display_name: string | null;
+}
+
+export interface StashShare {
+  stash: WorkspaceStash;
+  url: string;
+  owner: StashShareOwner;
+  members: StashMember[];
+}
+
+export interface StashSharePersonInput {
+  user_id?: string;
+  username?: string;
+  permission: StashMemberPermission;
+}
+
+export async function getStashShare(stashId: string): Promise<StashShare> {
+  return apiFetch(`/api/v1/stashes/${stashId}/share`);
+}
+
+export async function updateStashShare(
+  stashId: string,
+  data: {
+    access?: "workspace" | "private" | "public";
+    discoverable?: boolean;
+    people?: StashSharePersonInput[];
+    remove_user_ids?: string[];
+  }
+): Promise<StashShare> {
+  return apiFetch(`/api/v1/stashes/${stashId}/share`, {
+    method: "PATCH",
+    body: JSON.stringify(data),
+  });
 }
 
 export async function getPublicStash(slug: string): Promise<PublicStashDetail> {

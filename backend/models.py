@@ -162,6 +162,19 @@ class StashMemberRequest(BaseModel):
     permission: str = Field("read", pattern=r"^(read|write|admin)$")
 
 
+class StashSharePersonRequest(BaseModel):
+    user_id: UUID | None = None
+    username: str | None = Field(None, min_length=1, max_length=64)
+    permission: str = Field("read", pattern=r"^(read|write|admin)$")
+
+
+class StashShareUpdateRequest(BaseModel):
+    access: str | None = Field(None, pattern=r"^(workspace|private|public)$")
+    discoverable: bool | None = None
+    people: list[StashSharePersonRequest] = Field(default_factory=list)
+    remove_user_ids: list[UUID] = Field(default_factory=list)
+
+
 class StashMemberResponse(BaseModel):
     user_id: UUID
     name: str
@@ -172,6 +185,19 @@ class StashMemberResponse(BaseModel):
 
 
 class StashMembersResponse(BaseModel):
+    members: list[StashMemberResponse]
+
+
+class StashShareOwnerResponse(BaseModel):
+    user_id: UUID
+    name: str
+    display_name: str | None
+
+
+class StashShareResponse(BaseModel):
+    stash: StashResponse
+    url: str
+    owner: StashShareOwnerResponse
     members: list[StashMemberResponse]
 
 
@@ -194,6 +220,7 @@ class StashPublicResponse(BaseModel):
     workspace_name: str
     items: list[StashItemInlined]
     can_write: bool = False
+    can_manage_access: bool = False
 
 
 class AddExternalStashRequest(BaseModel):

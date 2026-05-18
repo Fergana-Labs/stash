@@ -32,8 +32,11 @@ vi.mock("../../../lib/api", () => ({
     }
   },
   getPublicStash: vi.fn(),
+  getStashShare: vi.fn(),
   updateStash: vi.fn(),
+  updateStashShare: vi.fn(),
   uploadFile: vi.fn(),
+  searchUsers: vi.fn(),
   getActivityTimeline: vi.fn(),
   getEmbeddingProjection: vi.fn(),
 }));
@@ -93,6 +96,7 @@ describe("StashPageClient sharing", () => {
       workspace_name: "Demo Workspace",
       items: [],
       can_write: false,
+      can_manage_access: false,
     });
   });
 
