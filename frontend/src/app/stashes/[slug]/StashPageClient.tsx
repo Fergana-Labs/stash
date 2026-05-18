@@ -292,17 +292,17 @@ function StashPageBody({
           <StashItemSection
             title="Files"
             items={[...(groups.folder ?? []), ...(groups.page ?? []), ...(groups.file ?? [])]}
-            workspaceId={stash.workspace_id}
+            stashSlug={stash.slug}
           />
           <StashItemSection
             title="Sessions"
             items={groups.session ?? []}
-            workspaceId={stash.workspace_id}
+            stashSlug={stash.slug}
           />
           <StashItemSection
             title="Tables"
             items={groups.table ?? []}
-            workspaceId={stash.workspace_id}
+            stashSlug={stash.slug}
           />
           {items.length === 0 && (
             <div className="rounded-lg border border-dashed border-border bg-surface/30 px-4 py-10 text-center text-[13px] text-muted">
@@ -832,11 +832,11 @@ function StashHeaderGlyph() {
 function StashItemSection({
   title,
   items,
-  workspaceId,
+  stashSlug,
 }: {
   title: string;
   items: PublicStashItem[];
-  workspaceId: string;
+  stashSlug: string;
 }) {
   if (items.length === 0) return null;
   return (
@@ -849,15 +849,15 @@ function StashItemSection({
       </div>
       <div className="flex flex-col gap-1">
         {items.map((item) => (
-          <StashItemRow key={`${item.object_type}-${item.object_id}`} item={item} workspaceId={workspaceId} />
+          <StashItemRow key={`${item.object_type}-${item.object_id}`} item={item} stashSlug={stashSlug} />
         ))}
       </div>
     </section>
   );
 }
 
-function StashItemRow({ item, workspaceId }: { item: PublicStashItem; workspaceId: string }) {
-  const href = hrefForItem(item, workspaceId);
+function StashItemRow({ item, stashSlug }: { item: PublicStashItem; stashSlug: string }) {
+  const href = hrefForItem(item, stashSlug);
   const sub = subtitleForItem(item);
   const tint = tintForKind(item.object_type);
 
@@ -893,18 +893,21 @@ function StashItemRow({ item, workspaceId }: { item: PublicStashItem; workspaceI
   );
 }
 
-function hrefForItem(item: PublicStashItem, workspaceId: string): string | null {
-  if (item.object_type === "page") return `/workspaces/${workspaceId}/p/${item.object_id}`;
-  if (item.object_type === "folder")
-    return `/workspaces/${workspaceId}/folders/${item.object_id}`;
-  if (item.object_type === "file") return `/workspaces/${workspaceId}/f/${item.object_id}`;
-  if (item.object_type === "session") {
-    const sid =
-      (item.inline?.session as { session_id?: string } | undefined)?.session_id ||
-      item.object_id;
-    return `/workspaces/${workspaceId}/sessions/${encodeURIComponent(sid)}`;
+// Stash-scoped item URLs. Every link goes through /stashes/{slug}/items
+// so the backend's stash readability check is the single gate. Items in a
+// public stash become reachable to anyone with the link; items in a
+// private or workspace stash stay gated to the people who can read that
+// stash — regardless of whether the viewer is in the owning workspace.
+function hrefForItem(item: PublicStashItem, stashSlug: string): string | null {
+  if (
+    item.object_type === "page" ||
+    item.object_type === "folder" ||
+    item.object_type === "file" ||
+    item.object_type === "session" ||
+    item.object_type === "table"
+  ) {
+    return `/stashes/${stashSlug}/items/${item.object_type}/${item.object_id}`;
   }
-  if (item.object_type === "table") return `/tables/${item.object_id}?workspaceId=${workspaceId}`;
   return null;
 }
 
