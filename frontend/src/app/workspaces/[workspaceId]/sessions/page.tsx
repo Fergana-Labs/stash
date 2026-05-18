@@ -7,13 +7,8 @@ import { useBreadcrumbs } from "../../../../components/BreadcrumbContext";
 import SessionUpload from "../../../../components/SessionUpload";
 import { SessionsIcon, SettingsIcon } from "../../../../components/StashIcons";
 import { useAuth } from "../../../../hooks/useAuth";
-import {
-  listMySessions,
-  type SessionSummary,
-} from "../../../../lib/api";
-import {
-  displaySessionUserName,
-} from "../../../../lib/sessionGrouping";
+import { listMySessions, type SessionSummary } from "../../../../lib/api";
+import { displaySessionUserName } from "../../../../lib/sessionGrouping";
 
 export default function StashSessionsPage() {
   const params = useParams();
@@ -22,7 +17,6 @@ export default function StashSessionsPage() {
   const { user, loading } = useAuth();
 
   const [sessions, setSessions] = useState<SessionSummary[] | null>(null);
-  const [query, setQuery] = useState("");
   const [error, setError] = useState("");
 
   useBreadcrumbs([{ label: "Sessions" }], `${workspaceId}/sessions`);
@@ -44,23 +38,10 @@ export default function StashSessionsPage() {
     if (!loading && !user) router.push("/login");
   }, [user, loading, router]);
 
-  const filtered = useMemo(() => {
-    if (!sessions) return null;
-    const q = query.trim().toLowerCase();
-    if (!q) return sessions;
-    return sessions.filter((s) => {
-      const haystack = [s.agent_name, s.first_prompt_preview, s.session_id]
-        .filter(Boolean)
-        .join(" ")
-        .toLowerCase();
-      return haystack.includes(q);
-    });
-  }, [sessions, query]);
-
   const rows = useMemo(() => {
-    if (!filtered) return null;
-    return [...filtered].sort((a, b) => sessionTime(b) - sessionTime(a));
-  }, [filtered]);
+    if (!sessions) return null;
+    return [...sessions].sort((a, b) => sessionTime(b) - sessionTime(a));
+  }, [sessions]);
 
   if (loading)
     return <div className="flex h-screen items-center justify-center text-muted">Loading…</div>;
@@ -82,28 +63,11 @@ export default function StashSessionsPage() {
           </div>
         )}
 
-        <div className="mt-5 mb-4 space-y-3">
+        <div className="mt-5 mb-4">
           <SessionUpload workspaceId={workspaceId} onUploaded={load} />
-          <input
-            type="text"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search by agent, prompt, or session id…"
-            className="w-full rounded-md border border-border bg-base px-3 py-1.5 text-[13px] text-foreground placeholder:text-muted focus:border-[var(--color-brand-300)] focus:outline-none"
-          />
         </div>
 
-        {rows && (
-          <SessionsTable
-            workspaceId={workspaceId}
-            sessions={rows}
-            emptyText={
-              sessions && sessions.length === 0
-                ? "No sessions yet."
-                : "No sessions match your search."
-            }
-          />
-        )}
+        {rows && <SessionsTable workspaceId={workspaceId} sessions={rows} />}
       </div>
     </div>
   );
@@ -112,16 +76,14 @@ export default function StashSessionsPage() {
 function SessionsTable({
   workspaceId,
   sessions,
-  emptyText,
 }: {
   workspaceId: string;
   sessions: SessionSummary[];
-  emptyText: string;
 }) {
   if (sessions.length === 0) {
     return (
       <div className="rounded-lg border border-dashed border-border bg-surface/30 px-4 py-6 text-center text-[12.5px] text-muted">
-        {emptyText}
+        No sessions yet.
       </div>
     );
   }
