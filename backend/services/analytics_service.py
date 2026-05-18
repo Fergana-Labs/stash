@@ -157,25 +157,35 @@ async def get_activity_timeline(
     # Authorization: when scoped to a workspace, the caller has already been
     # access-checked by the route; otherwise restrict to pages in workspaces
     # the user is a member of.
-    page_query = (
-        """
-        SELECT DATE_TRUNC($2, p.updated_at) AS bucket_date, COUNT(*) AS cnt
-        FROM pages p
-        WHERE p.updated_at >= $3
-        """
-    )
-    page_args: list = [user_id, bucket, cutoff]
     if workspace_id is not None:
-        page_query += " AND p.workspace_id = $4"
-        page_args.append(workspace_id)
-    else:
-        page_query += (
-            " AND p.workspace_id IN ("
-            " SELECT workspace_id FROM workspace_members WHERE user_id = $1"
-            " )"
+        page_rows = await pool.fetch(
+            """
+            SELECT DATE_TRUNC($1, p.updated_at) AS bucket_date, COUNT(*) AS cnt
+            FROM pages p
+            WHERE p.updated_at >= $2 AND p.workspace_id = $3
+            GROUP BY bucket_date
+            ORDER BY bucket_date
+            """,
+            bucket,
+            cutoff,
+            workspace_id,
         )
-    page_query += " GROUP BY bucket_date ORDER BY bucket_date"
-    page_rows = await pool.fetch(page_query, *page_args)
+    else:
+        page_rows = await pool.fetch(
+            """
+            SELECT DATE_TRUNC($1, p.updated_at) AS bucket_date, COUNT(*) AS cnt
+            FROM pages p
+            WHERE p.updated_at >= $2
+              AND p.workspace_id IN (
+                SELECT workspace_id FROM workspace_members WHERE user_id = $3
+              )
+            GROUP BY bucket_date
+            ORDER BY bucket_date
+            """,
+            bucket,
+            cutoff,
+            user_id,
+        )
 
     if page_rows:
         agents_set.add("Pages")
