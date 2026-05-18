@@ -10,7 +10,6 @@ import {
 vi.mock("../../lib/api", () => ({
   getStashShare: vi.fn(),
   searchUsers: vi.fn(),
-  updateStash: vi.fn(),
   updateStashShare: vi.fn(),
 }));
 
@@ -82,7 +81,6 @@ describe("StashShareDialog", () => {
       <StashShareDialog
         stash={stash}
         workspaceName="Demo Workspace"
-        canWrite
         canManageAccess
         open
         onClose={vi.fn()}

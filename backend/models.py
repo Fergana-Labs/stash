@@ -1,7 +1,7 @@
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 # --- Users ---
 
@@ -124,10 +124,10 @@ class StashCreateRequest(BaseModel):
 
 
 class StashUpdateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     title: str | None = Field(None, min_length=1, max_length=160)
     description: str | None = Field(None, max_length=2000)
-    access: str | None = Field(None, pattern=r"^(workspace|private|public)$")
-    discoverable: bool | None = None
     cover_image_url: str | None = None
     icon_url: str | None = None
     items: list[StashItem] | None = None
@@ -157,11 +157,6 @@ class StashListResponse(BaseModel):
     stashes: list[StashResponse]
 
 
-class StashMemberRequest(BaseModel):
-    user_id: UUID
-    permission: str = Field("read", pattern=r"^(read|write|admin)$")
-
-
 class StashSharePersonRequest(BaseModel):
     user_id: UUID | None = None
     username: str | None = Field(None, min_length=1, max_length=64)
@@ -182,10 +177,6 @@ class StashMemberResponse(BaseModel):
     permission: str
     granted_by: UUID | None
     created_at: datetime
-
-
-class StashMembersResponse(BaseModel):
-    members: list[StashMemberResponse]
 
 
 class StashShareOwnerResponse(BaseModel):

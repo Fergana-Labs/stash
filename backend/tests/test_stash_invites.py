@@ -58,12 +58,12 @@ async def test_stash_invite_grants_view_access_before_adding(client: AsyncClient
         )
     ).json()
 
-    added_member = await client.post(
-        f"/api/v1/stashes/{stash['id']}/members",
-        json={"user_id": recipient["id"], "permission": "read"},
+    added_member = await client.patch(
+        f"/api/v1/stashes/{stash['id']}/share",
+        json={"people": [{"user_id": recipient["id"], "permission": "read"}]},
         headers=_auth(owner_key),
     )
-    assert added_member.status_code == 201
+    assert added_member.status_code == 200
 
     invites = await client.get("/api/v1/stash-invites", headers=_auth(recipient_key))
     assert invites.status_code == 200
@@ -128,9 +128,9 @@ async def test_stash_invite_can_be_dismissed(client: AsyncClient):
             headers=_auth(owner_key),
         )
     ).json()
-    await client.post(
-        f"/api/v1/stashes/{stash['id']}/members",
-        json={"user_id": recipient["id"], "permission": "read"},
+    await client.patch(
+        f"/api/v1/stashes/{stash['id']}/share",
+        json={"people": [{"user_id": recipient["id"], "permission": "read"}]},
         headers=_auth(owner_key),
     )
 

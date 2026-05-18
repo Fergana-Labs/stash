@@ -892,8 +892,6 @@ export async function updateStash(
   data: {
     title?: string;
     description?: string;
-    access?: "workspace" | "private" | "public";
-    discoverable?: boolean;
     cover_image_url?: string | null;
     icon_url?: string | null;
     items?: StashItemSpec[];
@@ -903,28 +901,6 @@ export async function updateStash(
     method: "PATCH",
     body: JSON.stringify(data),
   });
-}
-
-export async function listStashMembers(stashId: string): Promise<StashMember[]> {
-  const data = await apiFetch<{ members: StashMember[] }>(
-    `/api/v1/stashes/${stashId}/members`
-  );
-  return data.members;
-}
-
-export async function addStashMember(
-  stashId: string,
-  userId: string,
-  permission: StashMemberPermission
-): Promise<StashMember> {
-  return apiFetch(`/api/v1/stashes/${stashId}/members`, {
-    method: "POST",
-    body: JSON.stringify({ user_id: userId, permission }),
-  });
-}
-
-export async function removeStashMember(stashId: string, userId: string): Promise<void> {
-  await apiFetch(`/api/v1/stashes/${stashId}/members/${userId}`, { method: "DELETE" });
 }
 
 export interface StashShareOwner {

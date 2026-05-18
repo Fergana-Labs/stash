@@ -370,12 +370,12 @@ async def test_workspace_stash_content_requires_stash_write_permission(client: A
     )
     assert denied.status_code == 404
 
-    grant = await client.post(
-        f"/api/v1/stashes/{stash['id']}/members",
-        json={"user_id": member["id"], "permission": "write"},
+    grant = await client.patch(
+        f"/api/v1/stashes/{stash['id']}/share",
+        json={"people": [{"user_id": member["id"], "permission": "write"}]},
         headers=_auth(owner_key),
     )
-    assert grant.status_code == 201
+    assert grant.status_code == 200
 
     allowed = await client.patch(
         f"/api/v1/workspaces/{workspace['id']}/pages/{page['id']}",
@@ -423,12 +423,12 @@ async def test_invited_private_external_stash_can_be_added_to_workspace(client: 
             headers=_auth(owner_key),
         )
     ).json()
-    grant = await client.post(
-        f"/api/v1/stashes/{stash['id']}/members",
-        json={"user_id": collaborator["id"], "permission": "read"},
+    grant = await client.patch(
+        f"/api/v1/stashes/{stash['id']}/share",
+        json={"people": [{"user_id": collaborator["id"], "permission": "read"}]},
         headers=_auth(owner_key),
     )
-    assert grant.status_code == 201
+    assert grant.status_code == 200
 
     added = await client.post(
         f"/api/v1/stashes/{stash['slug']}/add-to-workspace",
@@ -467,7 +467,7 @@ async def test_invited_private_external_stash_can_be_added_to_workspace(client: 
 
 
 @pytest.mark.asyncio
-async def test_stash_member_api_grants_and_revokes_private_page_access(
+async def test_stash_share_api_grants_and_revokes_private_page_access(
     client: AsyncClient,
 ):
     owner_key, owner = await _register(client, "stash_owner")
@@ -475,7 +475,7 @@ async def test_stash_member_api_grants_and_revokes_private_page_access(
 
     workspace_resp = await client.post(
         "/api/v1/workspaces",
-        json={"name": "Member API workspace"},
+        json={"name": "Share API workspace"},
         headers=_auth(owner_key),
     )
     assert workspace_resp.status_code == 201
@@ -508,20 +508,20 @@ async def test_stash_member_api_grants_and_revokes_private_page_access(
         require_write=True,
     )
 
-    add_resp = await client.post(
-        f"/api/v1/stashes/{stash['id']}/members",
-        json={"user_id": collaborator["id"], "permission": "write"},
+    add_resp = await client.patch(
+        f"/api/v1/stashes/{stash['id']}/share",
+        json={"people": [{"user_id": collaborator["id"], "permission": "write"}]},
         headers=_auth(owner_key),
     )
-    assert add_resp.status_code == 201
-    assert add_resp.json()["permission"] == "write"
+    assert add_resp.status_code == 200
+    assert add_resp.json()["members"][0]["permission"] == "write"
 
-    members_resp = await client.get(
-        f"/api/v1/stashes/{stash['id']}/members",
+    share_resp = await client.get(
+        f"/api/v1/stashes/{stash['id']}/share",
         headers=_auth(owner_key),
     )
-    assert members_resp.status_code == 200
-    assert [member["user_id"] for member in members_resp.json()["members"]] == [collaborator["id"]]
+    assert share_resp.status_code == 200
+    assert [member["user_id"] for member in share_resp.json()["members"]] == [collaborator["id"]]
     assert await permission_service.check_access(
         "page",
         uuid.UUID(page["id"]),
@@ -529,24 +529,74 @@ async def test_stash_member_api_grants_and_revokes_private_page_access(
         require_write=True,
     )
 
-    forbidden_resp = await client.post(
-        f"/api/v1/stashes/{stash['id']}/members",
-        json={"user_id": owner["id"], "permission": "read"},
+    forbidden_resp = await client.patch(
+        f"/api/v1/stashes/{stash['id']}/share",
+        json={"people": [{"user_id": owner["id"], "permission": "read"}]},
         headers=_auth(collaborator_key),
     )
     assert forbidden_resp.status_code == 403
 
-    delete_resp = await client.delete(
-        f"/api/v1/stashes/{stash['id']}/members/{collaborator['id']}",
+    delete_resp = await client.patch(
+        f"/api/v1/stashes/{stash['id']}/share",
+        json={"remove_user_ids": [collaborator["id"]]},
         headers=_auth(owner_key),
     )
-    assert delete_resp.status_code == 204
+    assert delete_resp.status_code == 200
     assert not await permission_service.check_access(
         "page",
         uuid.UUID(page["id"]),
         uuid.UUID(collaborator["id"]),
         require_write=True,
     )
+
+
+@pytest.mark.asyncio
+async def test_generic_stash_update_rejects_share_state_fields(client: AsyncClient):
+    owner_key, _owner = await _register(client, "stash_update_owner")
+
+    workspace_resp = await client.post(
+        "/api/v1/workspaces",
+        json={"name": "Share state boundary workspace"},
+        headers=_auth(owner_key),
+    )
+    assert workspace_resp.status_code == 201
+    workspace = workspace_resp.json()
+
+    page_resp = await client.post(
+        f"/api/v1/workspaces/{workspace['id']}/pages/new",
+        json={"name": "Boundary page", "content": "# Boundary page"},
+        headers=_auth(owner_key),
+    )
+    assert page_resp.status_code == 201
+    page = page_resp.json()
+
+    stash_resp = await client.post(
+        f"/api/v1/workspaces/{workspace['id']}/stashes",
+        json={
+            "title": "Boundary Stash",
+            "access": "private",
+            "items": [{"object_type": "page", "object_id": page["id"]}],
+        },
+        headers=_auth(owner_key),
+    )
+    assert stash_resp.status_code == 201
+    stash = stash_resp.json()
+
+    rejected = await client.patch(
+        f"/api/v1/stashes/{stash['id']}",
+        json={"access": "public", "discoverable": True},
+        headers=_auth(owner_key),
+    )
+    assert rejected.status_code == 422
+
+    shared = await client.patch(
+        f"/api/v1/stashes/{stash['id']}/share",
+        json={"access": "public", "discoverable": True},
+        headers=_auth(owner_key),
+    )
+    assert shared.status_code == 200
+    assert shared.json()["stash"]["access"] == "public"
+    assert shared.json()["stash"]["discoverable"] is True
 
 
 @pytest.mark.asyncio
@@ -584,12 +634,12 @@ async def test_stash_write_member_can_create_shared_page_outside_workspace_files
     assert stash_resp.status_code == 201
     stash = stash_resp.json()
 
-    add_resp = await client.post(
-        f"/api/v1/stashes/{stash['id']}/members",
-        json={"user_id": collaborator["id"], "permission": "write"},
+    add_resp = await client.patch(
+        f"/api/v1/stashes/{stash['id']}/share",
+        json={"people": [{"user_id": collaborator["id"], "permission": "write"}]},
         headers=_auth(owner_key),
     )
-    assert add_resp.status_code == 201
+    assert add_resp.status_code == 200
 
     shared_resp = await client.post(
         f"/api/v1/stashes/{stash['id']}/shared-pages",

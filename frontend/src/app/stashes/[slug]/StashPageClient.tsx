@@ -245,7 +245,6 @@ function StashPageBody({
             <ShareStashButton
               stash={stash}
               workspaceName={workspace_name}
-              canWrite={can_write}
               canManageAccess={can_manage_access}
               onChanged={onRefresh}
             />
@@ -620,13 +619,11 @@ function relativeTime(iso: string): string {
 function ShareStashButton({
   stash,
   workspaceName,
-  canWrite,
   canManageAccess,
   onChanged,
 }: {
   stash: PublicStashDetail["stash"];
   workspaceName: string;
-  canWrite: boolean;
   canManageAccess: boolean;
   onChanged: () => Promise<void>;
 }) {
@@ -644,7 +641,6 @@ function ShareStashButton({
       <StashShareDialog
         stash={stash}
         workspaceName={workspaceName}
-        canWrite={canWrite}
         canManageAccess={canManageAccess}
         open={open}
         onClose={() => setOpen(false)}

@@ -4,7 +4,6 @@ import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from "re
 import {
   getStashShare,
   searchUsers,
-  updateStash,
   updateStashShare,
   type StashMember,
   type StashMemberPermission,
@@ -50,7 +49,6 @@ const EMPTY_MEMBERS: StashMember[] = [];
 export default function StashShareDialog({
   stash,
   workspaceName,
-  canWrite,
   canManageAccess,
   open,
   onClose,
@@ -58,7 +56,6 @@ export default function StashShareDialog({
 }: {
   stash: WorkspaceStash;
   workspaceName: string;
-  canWrite: boolean;
   canManageAccess: boolean;
   open: boolean;
   onClose: () => void;
@@ -223,13 +220,8 @@ export default function StashShareDialog({
     setBusy("access");
     setMessage("");
     try {
-      if (canManageAccess) {
-        const next = await updateStashShare(stash.id, { access: nextAccess });
-        await refreshShare(next, true);
-      } else {
-        await updateStash(stash.id, { access: nextAccess });
-        await onChanged();
-      }
+      const next = await updateStashShare(stash.id, { access: nextAccess });
+      await refreshShare(next, true);
       setMessage("Stash access updated.");
     } catch (error) {
       setVis(currentStash.access);
@@ -244,13 +236,8 @@ export default function StashShareDialog({
     setBusy("discover");
     setMessage("");
     try {
-      if (canManageAccess) {
-        const next = await updateStashShare(stash.id, { discoverable: nextDiscoverable });
-        await refreshShare(next, true);
-      } else {
-        await updateStash(stash.id, { discoverable: nextDiscoverable });
-        await onChanged();
-      }
+      const next = await updateStashShare(stash.id, { discoverable: nextDiscoverable });
+      await refreshShare(next, true);
       setMessage("Stash access updated.");
     } catch (error) {
       setDiscoverable(currentStash.discoverable);
@@ -417,7 +404,7 @@ export default function StashShareDialog({
             </section>
           ) : null}
 
-          {canWrite ? (
+          {canManageAccess ? (
             <section className="mt-5 border-t border-border-subtle pt-4">
               <div className="sys-label mb-2">General Stash access</div>
               <div className="flex flex-col gap-1.5">
