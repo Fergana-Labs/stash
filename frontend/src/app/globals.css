@@ -107,11 +107,10 @@ details > summary {
 details > summary::-webkit-details-marker {
   display: none;
 }
-details[open] > summary .chev {
-  transform: rotate(90deg);
-}
+/* Chevron rotation is owned by <ChevronToggle> (Tailwind `rotate-90`).
+   Only the transition lives here so rotates animate consistently. */
 .chev {
-  transition: transform 0.12s ease;
+  transition: rotate 0.12s ease, transform 0.12s ease;
 }
 
 .page-row .page-handle {
