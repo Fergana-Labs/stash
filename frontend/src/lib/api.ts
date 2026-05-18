@@ -1240,6 +1240,7 @@ export interface WorkspaceSidebarSession {
   id: string | null;
   session_id: string;
   title: string;
+  user_name: string | null;
   agent_name: string;
   size_bytes: number;
   last_at: string;

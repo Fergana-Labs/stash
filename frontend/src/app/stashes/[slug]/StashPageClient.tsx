@@ -21,7 +21,7 @@ import AppShell from "../../../components/AppShell";
 import { useBreadcrumbs } from "../../../components/BreadcrumbContext";
 import AddToStashModal from "../../../components/stash/AddToStashModal";
 import StashShareDialog from "../../../components/stash/StashShareDialog";
-import StashQuickAdd from "../../../components/StashQuickAdd";
+import { StashIcon } from "../../../components/StashIcons";
 import AgentActivityTimeline from "../../../components/viz/AgentActivityTimeline";
 import EmbeddingSpaceExplorer from "../../../components/viz/EmbeddingSpaceExplorer";
 import { useAuth } from "../../../hooks/useAuth";
@@ -46,7 +46,15 @@ const AUTOSAVE_MS = 1500;
 
 // Signed-in viewers see the Stash inside AppShell (sidebar + top bar) so
 // navigation context is preserved. Anonymous viewers see the raw page.
-function StashChrome({ data, children }: { data: PublicStashDetail | null; children: ReactNode }) {
+function StashChrome({
+  data,
+  shareAction,
+  children,
+}: {
+  data: PublicStashDetail | null;
+  shareAction?: ReactNode;
+  children: ReactNode;
+}) {
   const { user, loading, logout } = useAuth();
   useBreadcrumbs(
     [
@@ -64,7 +72,7 @@ function StashChrome({ data, children }: { data: PublicStashDetail | null; child
   }
   if (user) {
     return (
-      <AppShell user={user} onLogout={logout}>
+      <AppShell user={user} onLogout={logout} shareAction={shareAction}>
         {children}
       </AppShell>
     );
@@ -122,7 +130,17 @@ export default function StashPageClient({ slug }: { slug: string }) {
   }
 
   return (
-    <StashChrome data={data}>
+    <StashChrome
+      data={data}
+      shareAction={
+        <ShareStashButton
+          stash={data.stash}
+          workspaceName={data.workspace_name}
+          canManageAccess={data.can_manage_access}
+          onChanged={load}
+        />
+      }
+    >
       <StashPageBody data={data} onRefresh={load} />
     </StashChrome>
   );
@@ -153,7 +171,7 @@ function StashPageBody({
   data: PublicStashDetail;
   onRefresh: () => Promise<void>;
 }) {
-  const { stash, workspace_name, items, can_write, can_manage_access } = data;
+  const { stash, workspace_name, items, can_write } = data;
   const groups = groupStashItems(items);
   const [addOpen, setAddOpen] = useState(false);
   const [timeline, setTimeline] = useState<ActivityTimeline | null>(null);
@@ -177,8 +195,6 @@ function StashPageBody({
     };
   }, [stash.workspace_id]);
 
-  const visibility: "public" | "private" | "workspace" = stash.access;
-  const visClass = visibility === "public" ? "public" : visibility === "private" ? "private" : "";
   const cover = stash.cover_image_url
     ? { backgroundImage: `url(${stash.cover_image_url})` }
     : { backgroundImage: COVER_GRADIENTS[coverIndexFor(stash.id)] };
@@ -215,12 +231,8 @@ function StashPageBody({
               onChanged={onRefresh}
             />
             <div className="min-w-0">
-              <h1 className="m-0 flex min-w-0 items-center gap-2 truncate font-display text-[20px] font-bold leading-tight tracking-[-0.015em] text-foreground">
-                <span className="truncate">{stash.title}</span>
-                <span className={`stash-chip ${visClass}`.trim()}>
-                  <span className="dot" />
-                  {visibility}
-                </span>
+              <h1 className="m-0 truncate font-display text-[20px] font-bold leading-tight tracking-[-0.015em] text-foreground">
+                {stash.title}
               </h1>
               <div className="mt-1 flex flex-wrap items-center gap-2 text-[12px] text-muted">
                 <span>
@@ -242,12 +254,6 @@ function StashPageBody({
             </div>
           </div>
           <div className="flex flex-shrink-0 items-center gap-1.5 pt-1">
-            <ShareStashButton
-              stash={stash}
-              workspaceName={workspace_name}
-              canManageAccess={can_manage_access}
-              onChanged={onRefresh}
-            />
             {can_write ? (
               <button
                 type="button"
@@ -264,22 +270,6 @@ function StashPageBody({
           </div>
         </div>
 
-        {/* Quick-add: paste URL, drop a file. Items land in the workspace
-            and are auto-appended to this stash's items. */}
-        {can_write && (
-          <section className="mt-6">
-            <div className="sys-label mb-1.5">Quick add — paste a URL, drop a file</div>
-            <StashQuickAdd
-              workspaceId={stash.workspace_id}
-              stashId={stash.id}
-              existingItems={existingSpecs}
-              onAdded={() => {
-                void onRefresh();
-              }}
-            />
-          </section>
-        )}
-
         {/* About this Stash — inline editable for writers, read-only for
             viewers. Mirrors the workspace home editor. */}
         <StashDescriptionEditor
@@ -294,20 +284,26 @@ function StashPageBody({
         {/* Compact item lists by kind. Items deep-link to the editor /
             viewer in the owning workspace — no inline rendering. */}
         <div className="mt-6 flex flex-col gap-6">
+          {/* Two high-level taxonomies: Files (folders + pages + files +
+              tables — anything you could drop into Drive) and Sessions
+              (agent transcripts). Tables are a structured kind of file,
+              so they live under Files rather than as a separate section. */}
           <StashItemSection
             title="Files"
-            items={[...(groups.folder ?? []), ...(groups.page ?? []), ...(groups.file ?? [])]}
+            items={[
+              ...(groups.folder ?? []),
+              ...(groups.page ?? []),
+              ...(groups.file ?? []),
+              ...(groups.table ?? []),
+            ]}
             stashSlug={stash.slug}
+            workspaceId={stash.workspace_id}
           />
           <StashItemSection
             title="Sessions"
             items={groups.session ?? []}
             stashSlug={stash.slug}
-          />
-          <StashItemSection
-            title="Tables"
-            items={groups.table ?? []}
-            stashSlug={stash.slug}
+            workspaceId={stash.workspace_id}
           />
           {items.length === 0 && (
             <div className="rounded-lg border border-dashed border-border bg-surface/30 px-4 py-10 text-center text-[13px] text-muted">
@@ -334,7 +330,7 @@ function StashPageBody({
               <AgentActivityTimeline data={timeline} />
             ) : (
               <div className="px-2 py-6 text-center text-[12.5px] text-muted">
-                No agent sessions yet. Push a transcript via Quick add or the CLI to populate this view.
+                No agent sessions yet. Add a session to this Stash or push a transcript via the CLI.
               </div>
             )}
           </div>
@@ -471,7 +467,7 @@ function StashIconUpload({
     // eslint-disable-next-line @next/next/no-img-element
     <img src={iconUrl} alt="" className="h-full w-full object-cover" />
   ) : (
-    <StashHeaderGlyph />
+    <StashIcon className="text-[24px]" />
   );
 
   if (!canWrite) {
@@ -634,9 +630,9 @@ function ShareStashButton({
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="inline-flex items-center gap-1.5 rounded-md border border-border bg-base px-2.5 py-1.5 text-[12.5px] font-medium text-foreground hover:bg-raised"
+        className="rounded-md bg-[var(--color-brand-600)] px-2.5 py-1 text-[12.5px] font-medium text-white hover:bg-[var(--color-brand-700)]"
       >
-        <ShareGlyph /> Share
+        Share
       </button>
       <StashShareDialog
         stash={stash}
@@ -650,32 +646,12 @@ function ShareStashButton({
   );
 }
 
-function ShareGlyph() {
-  return (
-    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <circle cx="18" cy="5" r="3" />
-      <circle cx="6" cy="12" r="3" />
-      <circle cx="18" cy="19" r="3" />
-      <path d="M8.59 13.51l6.83 3.98M15.41 6.51l-6.82 3.98" />
-    </svg>
-  );
-}
-
 function groupStashItems(items: PublicStashItem[]): StashItemGroup {
   const groups: StashItemGroup = {};
   for (const item of items) {
     groups[item.object_type] = [...(groups[item.object_type] ?? []), item];
   }
   return groups;
-}
-
-function StashHeaderGlyph() {
-  return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-      <path d="M4 7h16l-1.3 11a2 2 0 0 1-2 1.8H7.3a2 2 0 0 1-2-1.8L4 7z" />
-      <path d="M9 7V5a3 3 0 0 1 6 0v2" />
-    </svg>
-  );
 }
 
 // Compact item list — each item deep-links to its editor / viewer in the
@@ -685,10 +661,12 @@ function StashItemSection({
   title,
   items,
   stashSlug,
+  workspaceId,
 }: {
   title: string;
   items: PublicStashItem[];
   stashSlug: string;
+  workspaceId: string;
 }) {
   if (items.length === 0) return null;
   return (
@@ -701,15 +679,15 @@ function StashItemSection({
       </div>
       <div className="flex flex-col gap-1">
         {items.map((item) => (
-          <StashItemRow key={`${item.object_type}-${item.object_id}`} item={item} stashSlug={stashSlug} />
+          <StashItemRow key={`${item.object_type}-${item.object_id}`} item={item} stashSlug={stashSlug} workspaceId={workspaceId} />
         ))}
       </div>
     </section>
   );
 }
 
-function StashItemRow({ item, stashSlug }: { item: PublicStashItem; stashSlug: string }) {
-  const href = hrefForItem(item, stashSlug);
+function StashItemRow({ item, stashSlug, workspaceId }: { item: PublicStashItem; stashSlug: string; workspaceId: string }) {
+  const href = hrefForItem(item, stashSlug, workspaceId);
   const sub = subtitleForItem(item);
   const tint = tintForKind(item.object_type);
 
@@ -745,18 +723,29 @@ function StashItemRow({ item, stashSlug }: { item: PublicStashItem; stashSlug: s
   );
 }
 
-// Stash-scoped item URLs. Every link goes through /stashes/{slug}/items
-// so the backend's stash readability check is the single gate. Items in a
-// public stash become reachable to anyone with the link; items in a
-// private or workspace stash stay gated to the people who can read that
-// stash — regardless of whether the viewer is in the owning workspace.
-function hrefForItem(item: PublicStashItem, stashSlug: string): string | null {
+// Stash-scoped item URLs. Files and tables route to their canonical
+// viewer pages with a `?stash=<slug>` hint so the viewer fetches via
+// the public stash payload (no workspace membership required). Folders,
+// pages, and sessions use the stash-scoped fallback viewer which
+// renders the inlined content from the stash payload.
+//
+// Either way the only authorization is the backend's stash readability
+// check inside getPublicStash — workspace-scoped endpoints stay strict.
+function hrefForItem(
+  item: PublicStashItem,
+  stashSlug: string,
+  workspaceId: string
+): string | null {
+  if (item.object_type === "file") {
+    return `/workspaces/${workspaceId}/f/${item.object_id}?stash=${encodeURIComponent(stashSlug)}`;
+  }
+  if (item.object_type === "table") {
+    return `/tables/${item.object_id}?stash=${encodeURIComponent(stashSlug)}&workspaceId=${workspaceId}`;
+  }
   if (
     item.object_type === "page" ||
     item.object_type === "folder" ||
-    item.object_type === "file" ||
-    item.object_type === "session" ||
-    item.object_type === "table"
+    item.object_type === "session"
   ) {
     return `/stashes/${stashSlug}/items/${item.object_type}/${item.object_id}`;
   }

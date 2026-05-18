@@ -41,6 +41,7 @@ import {
   SettingsIcon,
   StashIcon,
   TableIcon,
+  WorkspaceIcon,
 } from "./StashIcons";
 
 interface AppSidebarProps {
@@ -652,7 +653,7 @@ function groupSidebarSessions(sessions: WorkspaceSidebarSession[]): SessionTreeD
   for (const session of sessions) {
     const date = sessionDate(session.last_at || session.updated_at);
     const key = date ? bucketKey(date, bucket) : UNKNOWN_SESSION_DATE;
-    const user = displaySidebarSessionUser(session.agent_name);
+    const user = displaySidebarSessionUser(session.user_name);
     const users = byBucket.get(key) ?? new Map<string, WorkspaceSidebarSession[]>();
     users.set(user, [...(users.get(user) ?? []), session]);
     byBucket.set(key, users);
@@ -1623,8 +1624,8 @@ function WorkspaceSwitcher({
         aria-expanded={open}
         className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left hover:bg-raised"
       >
-        <span className="flex h-6 w-6 items-center justify-center rounded-[5px] bg-[var(--color-brand-600)] text-[11px] font-bold text-white">
-          {(active?.name ?? "S").slice(0, 1).toUpperCase()}
+        <span className="flex h-6 w-6 items-center justify-center rounded-[5px] bg-[var(--color-brand-100)] text-[var(--color-brand-700)]">
+          <WorkspaceIcon className="text-[16px]" />
         </span>
         <span className="min-w-0 flex-1">
           <span className="block truncate font-display text-[13.5px] font-semibold tracking-tight text-foreground">
@@ -1727,12 +1728,9 @@ function WorkspaceMenuItem({
       }
     >
       <span
-        className={
-          "flex h-5 w-5 items-center justify-center rounded-[4px] text-[10px] font-bold text-white " +
-          (active ? "bg-[var(--color-brand-700)]" : "bg-[var(--color-brand-600)]")
-        }
+        className="flex h-5 w-5 items-center justify-center rounded-[4px] bg-[var(--color-brand-100)] text-[var(--color-brand-700)]"
       >
-        {workspace.name.slice(0, 1).toUpperCase()}
+        <WorkspaceIcon className="text-[13px]" />
       </span>
       <span className="min-w-0 flex-1 truncate font-medium">{workspace.name}</span>
       {active && (

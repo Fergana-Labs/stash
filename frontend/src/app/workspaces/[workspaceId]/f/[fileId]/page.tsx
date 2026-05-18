@@ -1,7 +1,8 @@
 "use client";
 
-import { useParams, useRouter } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
+import { Suspense, useCallback, useEffect, useState } from "react";
+import Link from "next/link";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { useBreadcrumbs } from "../../../../../components/BreadcrumbContext";
@@ -9,6 +10,7 @@ import { useAuth } from "../../../../../hooks/useAuth";
 import {
   getFile,
   getFolderContents,
+  getPublicStash,
   ingestCsvFile,
   updateFile,
   type FolderBreadcrumb,
@@ -36,30 +38,94 @@ function isText(ct: string) {
 }
 
 export default function FileViewerPage() {
+  return (
+    <Suspense fallback={<div className="flex h-screen items-center justify-center text-muted">Loading…</div>}>
+      <FileViewerPageInner />
+    </Suspense>
+  );
+}
+
+function FileViewerPageInner() {
   const params = useParams();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const workspaceId = params.workspaceId as string;
   const fileId = params.fileId as string;
-  const { user, loading } = useAuth();
+  // When ?stash=<slug> is present, the viewer reads through the public
+  // stash payload instead of the workspace endpoint. This lets non-members
+  // of the owning workspace open files that the stash owner has shared,
+  // with the stash's permission gate the only authorization check.
+  const stashSlug = searchParams.get("stash");
+  const readOnly = !!stashSlug;
+  const { user, loading, logout: _logout } = useAuth();
+  // logout isn't used here; kept for parity with other workspace pages.
+  void _logout;
 
   const [file, setFile] = useState<FileInfo | null>(null);
   const [folderChain, setFolderChain] = useState<FolderBreadcrumb[]>([]);
   const [textBody, setTextBody] = useState<string | null>(null);
   const [error, setError] = useState("");
+  const [stashTitle, setStashTitle] = useState<string | null>(null);
 
   useBreadcrumbs(
-    [
-      ...folderChain.map((c) => ({
-        label: c.name,
-        href: `/workspaces/${workspaceId}/folders/${c.id}`,
-      })),
-      { label: file ? file.name : "File" },
-    ],
-    `${workspaceId}/file/${fileId}/${file?.name ?? ""}/${folderChain.map((c) => c.id).join(",")}`
+    readOnly
+      ? [
+          { label: "Stashes", href: "/stashes" },
+          { label: stashTitle ?? "Stash", href: stashSlug ? `/stashes/${stashSlug}` : "/stashes" },
+          { label: file ? file.name : "File" },
+        ]
+      : [
+          ...folderChain.map((c) => ({
+            label: c.name,
+            href: `/workspaces/${workspaceId}/folders/${c.id}`,
+          })),
+          { label: file ? file.name : "File" },
+        ],
+    `${workspaceId}/file/${fileId}/${file?.name ?? ""}/${folderChain.map((c) => c.id).join(",")}/${stashSlug ?? ""}`
   );
 
   const load = useCallback(async () => {
     try {
+      if (stashSlug) {
+        // Stash-scoped read. The backend inlines the file's metadata + a
+        // signed download URL when the stash is readable, so we synthesize
+        // a FileInfo from that and skip the workspace endpoint entirely.
+        const stash = await getPublicStash(stashSlug);
+        setStashTitle(stash.stash.title);
+        const item = stash.items.find(
+          (it) => it.object_type === "file" && it.object_id === fileId
+        );
+        if (!item || !item.inline) {
+          setError("File isn't in this Stash.");
+          return;
+        }
+        const inline = item.inline as {
+          name?: string;
+          content_type?: string;
+          size_bytes?: number;
+          url?: string;
+          created_at?: string;
+        };
+        const synth: FileInfo = {
+          id: fileId,
+          workspace_id: stash.stash.workspace_id,
+          folder_id: null,
+          name: inline.name ?? item.label,
+          content_type: inline.content_type ?? "",
+          size_bytes: inline.size_bytes ?? 0,
+          url: inline.url ?? "",
+          uploaded_by: "",
+          created_at: inline.created_at ?? "",
+        };
+        setFile(synth);
+        setFolderChain([]);
+        if (synth.url && (isText(synth.content_type) || isMarkdown(synth.content_type, synth.name))) {
+          const res = await fetch(synth.url);
+          if (res.ok) setTextBody(await res.text());
+        }
+        return;
+      }
+
       const f = await getFile(workspaceId, fileId);
       setFile(f);
       if (f.folder_id) {
@@ -96,25 +162,41 @@ export default function FileViewerPage() {
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load file");
     }
-  }, [workspaceId, fileId, router]);
+  }, [workspaceId, fileId, router, stashSlug]);
 
   useEffect(() => {
-    if (user) load();
-  }, [user, load]);
+    // Stash mode is anonymous-readable, so load eagerly. Workspace mode
+    // waits for the auth check before hitting the workspace endpoint.
+    if (readOnly || user) load();
+  }, [readOnly, user, load]);
 
   useEffect(() => {
-    if (!loading && !user) router.push("/login");
-  }, [user, loading, router]);
+    // Only redirect to login in workspace mode. Stash-scoped readers can
+    // be anonymous when the stash is public.
+    if (!readOnly && !loading && !user) router.push("/login");
+  }, [readOnly, user, loading, router]);
 
-  if (loading)
+  if (loading && !readOnly)
     return <div className="flex h-screen items-center justify-center text-muted">Loading…</div>;
-  if (!user) return null;
+  if (!user && !readOnly) return null;
 
   return (
     <div className="flex flex-1 min-h-0 flex-col overflow-hidden">
-        <div className="flex items-center justify-between border-b border-border px-5 py-2.5 text-[13px]">
-          <div className="flex items-center gap-2">
-            {file ? (
+      <div className="flex items-center justify-between border-b border-border px-5 py-2.5 text-[13px]">
+        <div className="flex min-w-0 items-center gap-2">
+          {readOnly && stashSlug && (
+            <Link
+              href={`/stashes/${stashSlug}`}
+              className="text-muted hover:text-foreground"
+              title={`Back to ${stashTitle ?? "Stash"}`}
+            >
+              ←
+            </Link>
+          )}
+          {file ? (
+            readOnly ? (
+              <span className="font-mono font-medium text-foreground truncate">{file.name}</span>
+            ) : (
               <EditableTitle
                 value={file.name}
                 className="font-mono font-medium text-foreground"
@@ -124,42 +206,47 @@ export default function FileViewerPage() {
                   return updated.name;
                 }}
               />
-            ) : null}
-            {file && (
-              <span className="text-muted">
-                {file.content_type} · {formatBytes(file.size_bytes)}
-              </span>
-            )}
-          </div>
-          <div className="flex items-center gap-1">
-            {/* File sharing now happens through the workspace Share button. */}
-            {file?.url && (
-              <a
-                href={file.url}
-                target="_blank"
-                rel="noopener noreferrer"
-                download={file.name}
-                className="rounded-md p-1.5 text-muted hover:bg-raised"
-                title="Download"
-              >
-                <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3" />
-                </svg>
-              </a>
-            )}
-          </div>
+            )
+          ) : null}
+          {file && (
+            <span className="text-muted">
+              {file.content_type} · {formatBytes(file.size_bytes)}
+            </span>
+          )}
         </div>
-
-        {error && (
-          <div className="border-b border-red-300/40 bg-red-500/10 px-5 py-2 text-[13px] text-red-500">
-            {error}
-          </div>
-        )}
-
-        <div className="flex-1 overflow-auto bg-base scroll-thin">
-          {file && <FileBody file={file} text={textBody} />}
+        <div className="flex items-center gap-1">
+          {readOnly && (
+            <span className="rounded-md bg-surface px-2 py-1 text-[10.5px] font-medium uppercase tracking-wide text-muted">
+              read-only · via Stash
+            </span>
+          )}
+          {file?.url && (
+            <a
+              href={file.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              download={file.name}
+              className="rounded-md p-1.5 text-muted hover:bg-raised"
+              title="Download"
+            >
+              <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3" />
+              </svg>
+            </a>
+          )}
         </div>
       </div>
+
+      {error && (
+        <div className="border-b border-red-300/40 bg-red-500/10 px-5 py-2 text-[13px] text-red-500">
+          {error}
+        </div>
+      )}
+
+      <div className="flex-1 overflow-auto bg-base scroll-thin">
+        {file && <FileBody file={file} text={textBody} />}
+      </div>
+    </div>
   );
 }
 

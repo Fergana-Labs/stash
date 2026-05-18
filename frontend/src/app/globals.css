@@ -623,25 +623,6 @@ details > summary::-webkit-details-marker {
 .tag-warning { background: rgba(234,179,8,0.18); color: #854D0E; }
 .tag-muted { background: var(--bg-raised); color: var(--text-dim); }
 
-/* Stash visibility chip */
-.stash-chip {
-  display: inline-flex; align-items: center; gap: 6px;
-  padding: 2px 8px;
-  border-radius: 999px;
-  font-size: 11.5px;
-  border: 1px solid #FED7AA;
-  background: #FFF7ED;
-  color: #C2410C;
-  font-weight: 500;
-}
-.stash-chip .dot {
-  width: 6px; height: 6px; border-radius: 999px; background: #F97316;
-}
-.stash-chip.private { border-color: #E5E7EB; background: #F9FAFB; color: #4B5563; }
-.stash-chip.private .dot { background: #9CA3AF; }
-.stash-chip.public { border-color: #BBF7D0; background: #F0FDF4; color: #15803D; }
-.stash-chip.public .dot { background: #22C55E; }
-
 /* Soft brand-gradient banner — used at top of pages */
 .brand-banner {
   height: 56px;

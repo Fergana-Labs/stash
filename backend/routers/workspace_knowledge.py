@@ -41,6 +41,7 @@ async def _list_sessions(workspace_id: UUID, user_id: UUID) -> list[dict]:
             "id": s["id"],
             "session_id": s["session_id"],
             "title": _auto_session_title(s),
+            "user_name": s["user_name"],
             "agent_name": s["agent_name"] or "",
             "size_bytes": int(s["size_bytes"] or 0),
             "last_at": s["last_at"],

@@ -18,6 +18,7 @@ interface AppShellProps {
   user: User;
   onLogout: () => void;
   children: ReactNode;
+  shareAction?: ReactNode;
 }
 
 const SIDEBAR_KEY = "stash_sidebar_collapsed";
@@ -230,7 +231,7 @@ function TopSearchButton({
   );
 }
 
-export default function AppShell({ user, onLogout, children }: AppShellProps) {
+export default function AppShell({ user, onLogout, children, shareAction }: AppShellProps) {
   const pathname = usePathname();
   const breadcrumbs = useBreadcrumbsValue();
   const shareModal = useShareModal();
@@ -334,6 +335,28 @@ export default function AppShell({ user, onLogout, children }: AppShellProps) {
     }
   }
 
+  const defaultShareAction = activeWorkspaceId ? (
+    <div className="mr-1 flex items-center gap-2">
+      {shareMessage && (
+        <span
+          className={
+            "max-w-[180px] truncate text-[11.5px] " +
+            (shareStatus === "error" ? "text-red-500" : "text-muted")
+          }
+        >
+          {shareMessage}
+        </span>
+      )}
+      <button
+        className="rounded-md bg-[var(--color-brand-600)] px-2.5 py-1 text-[12.5px] font-medium text-white hover:bg-[var(--color-brand-700)] disabled:opacity-50"
+        onClick={() => void copyCurrentViewLink()}
+        disabled={shareStatus === "creating"}
+      >
+        {shareStatus === "creating" ? "Creating..." : shareStatus === "copied" ? "Copied" : "Share"}
+      </button>
+    </div>
+  ) : null;
+
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-base">
       <header className="sticky top-0 z-30 grid h-11 flex-shrink-0 grid-cols-[minmax(0,1fr)_minmax(220px,460px)_minmax(0,1fr)] items-center gap-3 border-b border-border bg-base/85 px-3 backdrop-blur-md">
@@ -364,27 +387,7 @@ export default function AppShell({ user, onLogout, children }: AppShellProps) {
 
         <div className="flex items-center justify-end gap-1">
           <StashInviteCenter />
-          {activeWorkspaceId && (
-            <div className="mr-1 flex items-center gap-2">
-              {shareMessage && (
-                <span
-                  className={
-                    "max-w-[180px] truncate text-[11.5px] " +
-                    (shareStatus === "error" ? "text-red-500" : "text-muted")
-                  }
-                >
-                  {shareMessage}
-                </span>
-              )}
-              <button
-                className="rounded-md bg-[var(--color-brand-600)] px-2.5 py-1 text-[12.5px] font-medium text-white hover:bg-[var(--color-brand-700)] disabled:opacity-50"
-                onClick={() => void copyCurrentViewLink()}
-                disabled={shareStatus === "creating"}
-              >
-                {shareStatus === "creating" ? "Creating..." : shareStatus === "copied" ? "Copied" : "Share"}
-              </button>
-            </div>
-          )}
+          {shareAction ?? defaultShareAction}
           <UserMenu
             initial={initial}
             label={user.display_name || user.name}

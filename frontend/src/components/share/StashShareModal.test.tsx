@@ -42,6 +42,7 @@ describe("StashShareModal session sharing", () => {
           id: "session-row-uuid",
           session_id: "session-route-id",
           title: "Debug auth flow",
+          user_name: "Henry",
           agent_name: "Henry's Codex",
           size_bytes: 1024,
           last_at: "2026-05-14T12:00:00Z",

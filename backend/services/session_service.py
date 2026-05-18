@@ -39,7 +39,8 @@ async def upsert_session(
         "VALUES ($1, $2, $3, $4, $5) "
         "ON CONFLICT (workspace_id, session_id) DO UPDATE SET "
         "  agent_name = COALESCE(NULLIF(EXCLUDED.agent_name, ''), sessions.agent_name), "
-        "  cwd = COALESCE(EXCLUDED.cwd, sessions.cwd) "
+        "  cwd = COALESCE(EXCLUDED.cwd, sessions.cwd), "
+        "  created_by = COALESCE(sessions.created_by, EXCLUDED.created_by) "
         f"RETURNING {_SELECT_COLS}",
         workspace_id,
         session_id,

@@ -306,6 +306,26 @@ describe("AppShell sidebar collapse", () => {
     expect(publishStash).not.toHaveBeenCalled();
   });
 
+  it("renders a custom header Share action outside workspace routes", async () => {
+    nav.pathname = "/stashes/shared-stash";
+    mockWorkspaceCache();
+
+    render(
+      <ShareModalProvider>
+        <AppShell
+          user={user}
+          onLogout={vi.fn()}
+          shareAction={<button type="button">Share</button>}
+        >
+          <div>Stash content</div>
+        </AppShell>
+      </ShareModalProvider>
+    );
+
+    const share = await screen.findByRole("button", { name: "Share" });
+    expect(share.closest("header")).not.toBeNull();
+  });
+
   it("renders breadcrumbs as a Home-rooted file path", async () => {
     nav.pathname = "/workspaces/ws-1/p/page-1";
     mockWorkspaceCache();

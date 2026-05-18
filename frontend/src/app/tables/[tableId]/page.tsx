@@ -8,6 +8,7 @@ import { useAuth } from "../../../hooks/useAuth";
 import { useEscapeKey } from "../../../hooks/useEscapeKey";
 import { useShareModal } from "../../../lib/shareModalContext";
 import {
+  getPublicStash,
   getTable, updateTable,
   deleteTable, addTableColumn, updateTableColumn,
   deleteTableColumn, reorderTableColumns, listTableRows, searchTableRows,
@@ -17,6 +18,7 @@ import {
   setTableEmbeddingConfig, backfillTableEmbeddings,
 } from "../../../lib/api";
 import type { Table, TableColumn, TableRow, TableView } from "../../../lib/types";
+import Link from "next/link";
 
 // --- Constants ---
 const TYPE_ICONS: Record<string, string> = {
@@ -46,6 +48,12 @@ function TableEditorPageInner() {
   const router = useRouter();
   const tableId = params.tableId as string;
   const urlWorkspaceId = searchParams.get("workspaceId");
+  // Stash mode: `?stash=<slug>` switches the data source to the public
+  // stash payload (which the backend gates by stash readability). All
+  // mutating UI is hidden in this mode.
+  const stashSlug = searchParams.get("stash");
+  const readOnly = !!stashSlug;
+  const [stashTitle, setStashTitle] = useState<string | null>(null);
   const { user, loading, logout } = useAuth();
 
   // Core state
@@ -133,6 +141,50 @@ function TableEditorPageInner() {
   // --- Data Loading ---
   const loadTable = useCallback(async () => {
     try {
+      if (stashSlug) {
+        // Synthesize a Table from the stash's inlined item content. The
+        // backend serializes columns + the first 500 rows when the stash
+        // is readable; that's the source of truth in stash mode.
+        const stash = await getPublicStash(stashSlug);
+        setStashTitle(stash.stash.title);
+        const item = stash.items.find(
+          (it) => it.object_type === "table" && it.object_id === tableId
+        );
+        if (!item || !item.inline) {
+          setError("Table isn't in this Stash.");
+          return;
+        }
+        const inline = item.inline as {
+          description?: string;
+          columns?: TableColumn[];
+          rows?: { data: Record<string, unknown>; row_order?: number }[];
+        };
+        const synth: Table = {
+          id: tableId,
+          workspace_id: stash.stash.workspace_id,
+          name: item.label || "Table",
+          description: inline.description ?? "",
+          columns: (inline.columns ?? []).map((c) => ({ ...c })),
+          views: [],
+          created_at: "",
+          updated_at: "",
+        } as unknown as Table;
+        setResolvedWorkspaceId(stash.stash.workspace_id);
+        setTable(synth);
+        const synthRows: TableRow[] = (inline.rows ?? []).map((r, i) => ({
+          id: `stash-${i}`,
+          table_id: tableId,
+          data: r.data,
+          row_order: r.row_order ?? i,
+          created_at: "",
+          updated_at: "",
+          created_by: "",
+        } as unknown as TableRow));
+        setRows(synthRows);
+        setTotalCount(synthRows.length);
+        setOffset(synthRows.length);
+        return;
+      }
       if (resolvedWorkspaceId) {
         setTable(await getTable(resolvedWorkspaceId, tableId));
         return;
@@ -150,7 +202,7 @@ function TableEditorPageInner() {
         }
       }
     } catch { setError("Table not found"); }
-  }, [tableId, resolvedWorkspaceId]);
+  }, [tableId, resolvedWorkspaceId, stashSlug]);
 
   const buildRowParams = useCallback((pageOffset: number) => {
     const p: { sort_by?: string; sort_order?: string; limit?: number; offset?: number; filters?: object[] } = {
@@ -162,6 +214,10 @@ function TableEditorPageInner() {
   }, [sortBy, sortOrder, filters]);
 
   const loadRows = useCallback(async () => {
+    // In stash mode the rows are already populated inline by loadTable
+    // (the backend caps the inline payload at 500 rows). Search/filter
+    // happen client-side from that snapshot.
+    if (readOnly) return;
     try {
       if (searchQuery) {
         const res = await searchTableRows(wsId, tableId, searchQuery, { limit: PAGE_SIZE, offset: 0 });
@@ -171,7 +227,7 @@ function TableEditorPageInner() {
         setRows(res?.rows ?? []); setTotalCount(res?.total_count ?? 0); setOffset(res?.rows?.length ?? 0);
       }
     } catch (err) { setError(err instanceof Error ? err.message : "Failed to load rows"); }
-  }, [tableId, wsId, buildRowParams, searchQuery]);
+  }, [tableId, wsId, buildRowParams, searchQuery, readOnly]);
 
   const loadMore = useCallback(async () => {
     if (loadingMore || !hasMore) return;
@@ -188,15 +244,17 @@ function TableEditorPageInner() {
   }, [tableId, wsId, offset, loadingMore, hasMore, buildRowParams, searchQuery]);
 
   const loadSummary = useCallback(async () => {
-    if (!showSummary) return;
+    if (!showSummary || readOnly) return;
     try {
       const s = await summarizeTableRows(wsId, tableId, filters.length > 0 ? filters : undefined);
       setSummary(s);
     } catch { /* ignore */ }
-  }, [tableId, wsId, filters, showSummary]);
+  }, [tableId, wsId, filters, showSummary, readOnly]);
 
-  useEffect(() => { if (user) loadTable(); }, [user, loadTable]);
-  useEffect(() => { if (user && table) loadRows(); }, [user, table, loadRows]);
+  // Stash mode is anonymous-readable, so load eagerly. Workspace mode
+  // waits for auth before hitting workspace-scoped endpoints.
+  useEffect(() => { if (readOnly || user) loadTable(); }, [readOnly, user, loadTable]);
+  useEffect(() => { if ((readOnly || user) && table) loadRows(); }, [readOnly, user, table, loadRows]);
   useEffect(() => { if (user && table) loadSummary(); }, [user, table, loadSummary]);
 
   // Initialize embedding state from table config
@@ -318,6 +376,7 @@ function TableEditorPageInner() {
 
   // --- Cell editing ---
   const startEditing = (rowId: string, colId: string, currentValue: unknown) => {
+    if (readOnly) return;
     setEditingCell({ rowId, colId }); setCellValue(currentValue != null ? String(currentValue) : "");
   };
   const commitEdit = async (nextValue = cellValue) => {
@@ -446,9 +505,11 @@ function TableEditorPageInner() {
     return "";
   };
 
-  useEffect(() => { if (!loading && !user) router.push("/login"); }, [user, loading, router]);
-  if (loading) return <div className="min-h-screen flex items-center justify-center text-muted">Loading...</div>;
-  if (!user) return null;
+  // Stash-scoped readers can be anonymous when the stash is public; only
+  // redirect to /login in workspace mode.
+  useEffect(() => { if (!readOnly && !loading && !user) router.push("/login"); }, [readOnly, user, loading, router]);
+  if (loading && !readOnly) return <div className="min-h-screen flex items-center justify-center text-muted">Loading...</div>;
+  if (!user && !readOnly) return null;
 
   // --- Render row ---
   const renderRow = (row: TableRow, idx: number) => (
@@ -491,40 +552,40 @@ function TableEditorPageInner() {
       })}
       <td className="px-1 py-0" />
       <td className="px-1 py-0 whitespace-nowrap">
-        <button onClick={() => handleDuplicateRow(row.id)} className="text-xs text-muted/50 hover:text-foreground opacity-0 group-hover:opacity-100 transition-opacity px-1" title="Duplicate">\u2398</button>
-        <button onClick={() => handleDeleteRow(row.id)} className="text-xs text-red-400/50 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity px-1" title="Delete">&times;</button>
+        {!readOnly && (
+          <>
+            <button onClick={() => handleDuplicateRow(row.id)} className="text-xs text-muted/50 hover:text-foreground opacity-0 group-hover:opacity-100 transition-opacity px-1" title="Duplicate">\u2398</button>
+            <button onClick={() => handleDeleteRow(row.id)} className="text-xs text-red-400/50 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity px-1" title="Delete">&times;</button>
+          </>
+        )}
       </td>
     </tr>
   );
 
-  return (
-    <AppShell user={user} onLogout={logout}>
+  const tableContent = (
       <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
-        {/* Files / Table context bar */}
-        <div className="flex items-center gap-0 px-4 border-b border-border bg-surface flex-shrink-0">
-          <button
-            onClick={() => router.push(wsId ? `/workspaces/${wsId}` : "/")}
-            className="px-4 py-2.5 text-sm font-medium transition-colors text-dim hover:text-foreground"
-          >
-            Files
-          </button>
-          <button
-            className="px-4 py-2.5 text-sm font-medium transition-colors relative text-brand"
-          >
-            Table
-            <span className="absolute bottom-0 left-0 right-0 h-[2px] bg-brand rounded-t" />
-          </button>
-        </div>
         {/* Toolbar */}
         <div className="flex items-center gap-2 px-4 py-2.5 border-b border-border bg-surface flex-shrink-0 flex-wrap">
-          <button
-            onClick={() => router.push(wsId ? `/workspaces/${wsId}` : "/")}
-            className="text-muted hover:text-foreground text-sm"
-            aria-label="Back to Files"
-          >
-            &larr;
-          </button>
-          {editingName ? (
+          {readOnly && stashSlug ? (
+            <Link
+              href={`/stashes/${stashSlug}`}
+              className="inline-flex items-center gap-1 text-sm text-muted hover:text-foreground"
+              aria-label={`Back to ${stashTitle ?? "Stash"}`}
+            >
+              &larr; {stashTitle ?? "Stash"}
+            </Link>
+          ) : (
+            <button
+              onClick={() => router.push(wsId ? `/workspaces/${wsId}` : "/")}
+              className="text-muted hover:text-foreground text-sm"
+              aria-label="Back to Files"
+            >
+              &larr;
+            </button>
+          )}
+          {readOnly ? (
+            <h1 className="text-lg font-bold font-display text-foreground">{table?.name || "Loading..."}</h1>
+          ) : editingName ? (
             <input value={nameInput} onChange={(e) => setNameInput(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") handleRename(); if (e.key === "Escape") setEditingName(false); }} onBlur={handleRename} className="text-lg font-bold font-display bg-transparent border-b border-brand outline-none text-foreground" autoFocus />
           ) : (
             <h1 onClick={() => { setEditingName(true); setNameInput(table?.name || ""); }} className="text-lg font-bold font-display text-foreground cursor-pointer hover:text-brand transition-colors">{table?.name || "Loading..."}</h1>
@@ -537,8 +598,8 @@ function TableEditorPageInner() {
           {table && <>
             <span className="text-[11px] font-mono text-muted">{visibleColumns.length}/{sortedColumns.length} cols</span>
             <span className="text-[11px] font-mono text-muted">{totalCount} rows</span>
-            <button onClick={addFilter} className="text-xs text-muted hover:text-foreground px-2 py-1 rounded hover:bg-raised">Filter</button>
-            {(filters.length > 0 || sortBy) && <button onClick={handleSaveLayout} className="text-xs text-muted hover:text-foreground px-2 py-1 rounded hover:bg-raised">Save layout</button>}
+            {!readOnly && <button onClick={addFilter} className="text-xs text-muted hover:text-foreground px-2 py-1 rounded hover:bg-raised">Filter</button>}
+            {!readOnly && (filters.length > 0 || sortBy) && <button onClick={handleSaveLayout} className="text-xs text-muted hover:text-foreground px-2 py-1 rounded hover:bg-raised">Save layout</button>}
             {/* Group by */}
             <CustomSelect
               value={groupByCol}
@@ -552,15 +613,15 @@ function TableEditorPageInner() {
               className="min-w-[132px] rounded border border-border bg-raised px-2 py-1 text-xs text-foreground"
               menuClassName="text-xs"
             />
-            <button onClick={() => setShowSummary((p) => !p)} className={`text-xs px-2 py-1 rounded ${showSummary ? "bg-brand/15 text-brand" : "text-muted hover:text-foreground hover:bg-raised"}`}>Summary</button>
-            {wsId && <button onClick={() => setShowEmbeddings((p) => !p)} className={`text-xs px-2 py-1 rounded ${showEmbeddings ? "bg-brand/15 text-brand" : "text-muted hover:text-foreground hover:bg-raised"}`}>Embeddings</button>}
+            {!readOnly && <button onClick={() => setShowSummary((p) => !p)} className={`text-xs px-2 py-1 rounded ${showSummary ? "bg-brand/15 text-brand" : "text-muted hover:text-foreground hover:bg-raised"}`}>Summary</button>}
+            {!readOnly && wsId && <button onClick={() => setShowEmbeddings((p) => !p)} className={`text-xs px-2 py-1 rounded ${showEmbeddings ? "bg-brand/15 text-brand" : "text-muted hover:text-foreground hover:bg-raised"}`}>Embeddings</button>}
             <button onClick={() => setShowColVisibility((p) => !p)} className="text-xs text-muted hover:text-foreground px-2 py-1 rounded hover:bg-raised">Columns</button>
             <button onClick={() => setWrapCells((p) => !p)} className={`text-xs px-2 py-1 rounded ${wrapCells ? "bg-brand/15 text-brand" : "text-muted hover:text-foreground hover:bg-raised"}`}>{wrapCells ? "Wrap" : "Compact"}</button>
-            <button onClick={handleCsvExport} className="text-xs text-muted hover:text-foreground px-2 py-1 rounded hover:bg-raised">Export</button>
-            <button onClick={() => fileInputRef.current?.click()} className="text-xs text-muted hover:text-foreground px-2 py-1 rounded hover:bg-raised">Import</button>
-            <input ref={fileInputRef} type="file" accept=".csv" className="hidden" onChange={(e) => { if (e.target.files?.[0]) handleCsvImport(e.target.files[0]); e.target.value = ""; }} />
-            {selectedRows.size > 0 && <button onClick={handleBulkDelete} className="text-xs text-red-400 hover:text-red-300 px-2 py-1">Delete {selectedRows.size}</button>}
-            {wsId && table && (
+            {!readOnly && <button onClick={handleCsvExport} className="text-xs text-muted hover:text-foreground px-2 py-1 rounded hover:bg-raised">Export</button>}
+            {!readOnly && <button onClick={() => fileInputRef.current?.click()} className="text-xs text-muted hover:text-foreground px-2 py-1 rounded hover:bg-raised">Import</button>}
+            {!readOnly && <input ref={fileInputRef} type="file" accept=".csv" className="hidden" onChange={(e) => { if (e.target.files?.[0]) handleCsvImport(e.target.files[0]); e.target.value = ""; }} />}
+            {!readOnly && selectedRows.size > 0 && <button onClick={handleBulkDelete} className="text-xs text-red-400 hover:text-red-300 px-2 py-1">Delete {selectedRows.size}</button>}
+            {!readOnly && wsId && table && (
               <button
                 onClick={() =>
                   shareModal.open({
@@ -573,7 +634,12 @@ function TableEditorPageInner() {
                 Share
               </button>
             )}
-            <button onClick={handleDelete} className="text-xs text-red-400 hover:text-red-300 px-2 py-1">Delete table</button>
+            {!readOnly && <button onClick={handleDelete} className="text-xs text-red-400 hover:text-red-300 px-2 py-1">Delete table</button>}
+            {readOnly && (
+              <span className="rounded-md bg-surface px-2 py-1 text-[10.5px] font-medium uppercase tracking-wide text-muted">
+                read-only &middot; via Stash
+              </span>
+            )}
           </>}
         </div>
 
@@ -702,7 +768,16 @@ function TableEditorPageInner() {
                   <th className="w-8 px-1 py-2 text-center border-r border-border sticky left-0 z-20 bg-surface"><input type="checkbox" checked={selectedRows.size === rows.length && rows.length > 0} onChange={toggleSelectAll} className="accent-brand" /></th>
                   <th className="w-10 px-2 py-2 text-[10px] font-medium text-muted text-center border-r border-border sticky left-8 z-20 bg-surface shadow-[2px_0_4px_-2px_rgba(0,0,0,0.1)]">#</th>
                   {visibleColumns.map((col) => (
-                    <th key={col.id} className={`px-3 py-2 text-left text-xs font-medium text-muted border-r border-border min-w-[140px] select-none cursor-pointer hover:bg-raised transition-colors ${dragCol === col.id ? "opacity-50" : ""}`} draggable onDragStart={() => setDragCol(col.id)} onDragOver={(e) => e.preventDefault()} onDrop={() => handleColumnDrop(col.id)} onDragEnd={() => setDragCol(null)} onContextMenu={(e) => { e.preventDefault(); setColMenu({ colId: col.id, x: e.clientX, y: e.clientY }); }}>
+                    <th
+                      key={col.id}
+                      className={`px-3 py-2 text-left text-xs font-medium text-muted border-r border-border min-w-[140px] select-none cursor-pointer hover:bg-raised transition-colors ${dragCol === col.id ? "opacity-50" : ""}`}
+                      draggable={!readOnly}
+                      onDragStart={() => { if (!readOnly) setDragCol(col.id); }}
+                      onDragOver={(e) => { if (!readOnly) e.preventDefault(); }}
+                      onDrop={() => { if (!readOnly) handleColumnDrop(col.id); }}
+                      onDragEnd={() => setDragCol(null)}
+                      onContextMenu={(e) => { if (readOnly) return; e.preventDefault(); setColMenu({ colId: col.id, x: e.clientX, y: e.clientY }); }}
+                    >
                       <span className="flex items-center gap-1.5" onClick={() => handleSort(col.id)}>
                         <span className="text-[10px] text-muted/60 font-mono">{TYPE_ICONS[col.type] || "?"}</span>
                         {col.name}
@@ -710,7 +785,9 @@ function TableEditorPageInner() {
                       </span>
                     </th>
                   ))}
-                  <th className="w-10 px-2 py-2 border-r border-border"><button onClick={() => setShowAddCol(true)} className="w-6 h-6 rounded bg-raised hover:bg-brand/15 text-muted hover:text-brand text-sm font-bold">+</button></th>
+                  <th className="w-10 px-2 py-2 border-r border-border">
+                    {!readOnly && <button onClick={() => setShowAddCol(true)} className="w-6 h-6 rounded bg-raised hover:bg-brand/15 text-muted hover:text-brand text-sm font-bold">+</button>}
+                  </th>
                   <th className="w-16" />
                 </tr>
               </thead>
@@ -762,7 +839,7 @@ function TableEditorPageInner() {
             </table>
 
             {/* Add row + infinite scroll sentinel */}
-            <button onClick={handleAddRow} className="w-full py-2 text-sm text-muted hover:text-foreground hover:bg-raised border-b border-border/50 transition-colors text-left px-4">+ New row</button>
+            {!readOnly && <button onClick={handleAddRow} className="w-full py-2 text-sm text-muted hover:text-foreground hover:bg-raised border-b border-border/50 transition-colors text-left px-4">+ New row</button>}
             {hasMore && <div ref={sentinelRef} className="py-4 text-center text-xs text-muted">{loadingMore ? "Loading..." : `${totalCount - offset} more rows`}</div>}
           </div>
         )}
@@ -856,6 +933,17 @@ function TableEditorPageInner() {
           </div>
         )}
       </div>
+  );
+
+  // Anonymous stash viewers don't have a workspace context to power the
+  // sidebar, so they get the bare table. Signed-in users see the full
+  // AppShell either way.
+  if (!user) {
+    return <main className="flex min-h-screen flex-col bg-background">{tableContent}</main>;
+  }
+  return (
+    <AppShell user={user} onLogout={logout}>
+      {tableContent}
     </AppShell>
   );
 }
