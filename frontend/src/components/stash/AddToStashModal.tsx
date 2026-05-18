@@ -1,14 +1,16 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import {
   ApiError,
   addExternalStash,
+  createPage,
   listAllPages,
   listAllTables,
   listFiles,
   listMySessions,
   updateStash,
+  uploadFile,
   type StashItemSpec,
   type UserPageEntry,
   type SessionSummary,
@@ -31,7 +33,7 @@ interface Props {
   onAdded: () => void;
 }
 
-type Tab = "workspace" | "external";
+type AddMode = "existing" | "url" | "file" | "note" | "external";
 
 type PickerKind = "page" | "session" | "table" | "file";
 
@@ -55,20 +57,22 @@ export default function AddToStashModal({
   existingItems,
   onAdded,
 }: Props) {
-  const [tab, setTab] = useState<Tab>("workspace");
   const [query, setQuery] = useState("");
+  const [mode, setMode] = useState<AddMode>("existing");
+  const [urlValue, setUrlValue] = useState("");
+  const [noteValue, setNoteValue] = useState("");
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Workspace tab data
   const [pages, setPages] = useState<UserPageEntry[]>([]);
   const [sessions, setSessions] = useState<SessionSummary[]>([]);
   const [tables, setTables] = useState<TableWithWorkspace[]>([]);
   const [files, setFiles] = useState<WorkspaceFile[]>([]);
   const [loading, setLoading] = useState(false);
 
-  // External tab data
   const [externalUrl, setExternalUrl] = useState("");
 
   useEscapeKey(open, onClose);
@@ -78,7 +82,11 @@ export default function AddToStashModal({
     setSelected(new Set());
     setError(null);
     setQuery("");
-    setTab("workspace");
+    setMode("existing");
+    setUrlValue("");
+    setNoteValue("");
+    setSelectedFiles([]);
+    setExternalUrl("");
     setLoading(true);
     Promise.all([
       listAllPages().then((d) => d.pages.filter((p) => p.workspace_id === workspaceId)),
@@ -154,25 +162,88 @@ export default function AddToStashModal({
     });
   }
 
+  function nextItemsFor(newItems: StashItemSpec[]): StashItemSpec[] {
+    return [
+      ...existingItems.map((it, i) => ({ ...it, position: i })),
+      ...newItems.map((it, i) => ({ ...it, position: existingItems.length + i })),
+    ];
+  }
+
+  async function addNewItems(newItems: StashItemSpec[]) {
+    await updateStash(stashId, { items: nextItemsFor(newItems) });
+    onAdded();
+    onClose();
+  }
+
   async function saveWorkspaceSelection() {
     const toAdd = rows.filter((r) => selected.has(r.key)).map((r) => r.spec);
-    if (toAdd.length === 0) {
-      onClose();
+    if (toAdd.length === 0) return;
+    setSubmitting(true);
+    setError(null);
+    try {
+      await addNewItems(toAdd);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Couldn't add items");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function addUrlPage() {
+    const url = urlValue.trim();
+    if (!/^https?:\/\/\S+$/i.test(url)) {
+      setError("Paste a full URL that starts with http:// or https://.");
       return;
     }
     setSubmitting(true);
     setError(null);
     try {
-      // Backend's updateStash takes the full item set, so we union existing + new.
-      const nextItems: StashItemSpec[] = [
-        ...existingItems.map((it, i) => ({ ...it, position: i })),
-        ...toAdd.map((it, i) => ({ ...it, position: existingItems.length + i })),
-      ];
-      await updateStash(stashId, { items: nextItems });
-      onAdded();
-      onClose();
+      const page = await createPage(
+        workspaceId,
+        url.replace(/^https?:\/\//i, "").slice(0, 80),
+        undefined,
+        `<${url}>`
+      );
+      await addNewItems([{ object_type: "page", object_id: page.id, position: 0 }]);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Couldn't add items");
+      setError(e instanceof Error ? e.message : "Couldn't add URL");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function addNotePage() {
+    const note = noteValue.trim();
+    if (!note) {
+      setError("Write a note first.");
+      return;
+    }
+    setSubmitting(true);
+    setError(null);
+    try {
+      const title = note.split("\n")[0].slice(0, 80) || "Note";
+      const page = await createPage(workspaceId, title, undefined, note);
+      await addNewItems([{ object_type: "page", object_id: page.id, position: 0 }]);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Couldn't add note");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function uploadSelectedFiles() {
+    if (selectedFiles.length === 0) return;
+    setSubmitting(true);
+    setError(null);
+    try {
+      const newItems: StashItemSpec[] = [];
+      for (const file of selectedFiles) {
+        const uploaded = await uploadFile(workspaceId, file);
+        newItems.push({ object_type: "file", object_id: uploaded.id, position: 0 });
+      }
+      await addNewItems(newItems);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Couldn't upload files");
     } finally {
       setSubmitting(false);
     }
@@ -201,6 +272,26 @@ export default function AddToStashModal({
     }
   }
 
+  function onFileChange(e: ChangeEvent<HTMLInputElement>) {
+    setSelectedFiles(Array.from(e.target.files ?? []));
+  }
+
+  function submitCurrentMode() {
+    if (mode === "existing") return saveWorkspaceSelection();
+    if (mode === "url") return addUrlPage();
+    if (mode === "file") return uploadSelectedFiles();
+    if (mode === "note") return addNotePage();
+    return attachExternalStash();
+  }
+
+  const primaryDisabled =
+    submitting ||
+    (mode === "existing" && selected.size === 0) ||
+    (mode === "url" && !urlValue.trim()) ||
+    (mode === "file" && selectedFiles.length === 0) ||
+    (mode === "note" && !noteValue.trim()) ||
+    (mode === "external" && !externalUrl.trim());
+
   if (!open) return null;
 
   return (
@@ -224,13 +315,15 @@ export default function AddToStashModal({
           </button>
         </div>
 
-        {/* Tab strip */}
-        <div className="flex gap-0.5 border-b border-border bg-surface px-2 pt-2">
-          <TabBtn label="From workspace" active={tab === "workspace"} onClick={() => setTab("workspace")} />
-          <TabBtn label="External Stash" active={tab === "external"} onClick={() => setTab("external")} />
+        <div className="flex flex-wrap gap-1 border-b border-border bg-surface px-2 py-2">
+          <ModeBtn label="Add existing" active={mode === "existing"} onClick={() => setMode("existing")} />
+          <ModeBtn label="Paste URL" active={mode === "url"} onClick={() => setMode("url")} />
+          <ModeBtn label="Upload file" active={mode === "file"} onClick={() => setMode("file")} />
+          <ModeBtn label="New note" active={mode === "note"} onClick={() => setMode("note")} />
+          <ModeBtn label="External Stash" active={mode === "external"} onClick={() => setMode("external")} />
         </div>
 
-        {tab === "workspace" ? (
+        {mode === "existing" ? (
           <>
             <div className="border-b border-border px-4 py-2.5">
               <input
@@ -285,6 +378,69 @@ export default function AddToStashModal({
               )}
             </div>
           </>
+        ) : mode === "url" ? (
+          <div className="px-4 py-4">
+            <p className="m-0 text-[12.5px] text-muted">
+              Save a URL as a page in this workspace and add it to this Stash.
+            </p>
+            <input
+              type="url"
+              value={urlValue}
+              onChange={(e) => setUrlValue(e.target.value)}
+              placeholder="https://example.com/spec"
+              autoFocus
+              className="mt-3 w-full rounded-md border border-border bg-surface px-2.5 py-1.5 text-[13px] text-foreground placeholder:text-muted focus:border-[var(--color-brand-400)] focus:outline-none"
+            />
+          </div>
+        ) : mode === "file" ? (
+          <div className="px-4 py-4">
+            <p className="m-0 text-[12.5px] text-muted">
+              Upload files to this workspace and add them to this Stash.
+            </p>
+            <div className="mt-3 flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                className="rounded-md border border-border bg-base px-3 py-1.5 text-[12.5px] text-foreground hover:bg-raised"
+              >
+                Choose files
+              </button>
+              <span className="truncate text-[12px] text-muted">
+                {selectedFiles.length === 0
+                  ? "No files selected"
+                  : `${selectedFiles.length} file${selectedFiles.length === 1 ? "" : "s"} selected`}
+              </span>
+            </div>
+            {selectedFiles.length > 0 && (
+              <div className="mt-3 flex max-h-36 flex-col overflow-y-auto rounded-md border border-border bg-surface p-1">
+                {selectedFiles.map((file) => (
+                  <div key={`${file.name}-${file.size}`} className="truncate px-2 py-1 text-[12px] text-foreground">
+                    {file.name}
+                  </div>
+                ))}
+              </div>
+            )}
+            <input
+              ref={fileInputRef}
+              type="file"
+              multiple
+              className="hidden"
+              onChange={onFileChange}
+            />
+          </div>
+        ) : mode === "note" ? (
+          <div className="px-4 py-4">
+            <p className="m-0 text-[12.5px] text-muted">
+              Create a page from a note and add it to this Stash.
+            </p>
+            <textarea
+              value={noteValue}
+              onChange={(e) => setNoteValue(e.target.value)}
+              placeholder="Write a note..."
+              autoFocus
+              className="mt-3 h-40 w-full resize-none rounded-md border border-border bg-surface px-2.5 py-2 text-[13px] text-foreground placeholder:text-muted focus:border-[var(--color-brand-400)] focus:outline-none"
+            />
+          </div>
         ) : (
           <div className="px-4 py-4">
             <p className="m-0 text-[12.5px] text-muted">
@@ -309,9 +465,7 @@ export default function AddToStashModal({
 
         <div className="flex items-center justify-between gap-2 border-t border-border px-4 py-3">
           <span className="text-[11.5px] text-muted">
-            {tab === "workspace"
-              ? `${selected.size} selected`
-              : "Forks a copy into this workspace."}
+            {footerHint(mode, selected.size, selectedFiles)}
           </span>
           <div className="flex gap-1.5">
             <button
@@ -323,11 +477,11 @@ export default function AddToStashModal({
             </button>
             <button
               type="button"
-              disabled={submitting}
-              onClick={tab === "workspace" ? saveWorkspaceSelection : attachExternalStash}
+              disabled={primaryDisabled}
+              onClick={() => void submitCurrentMode()}
               className="rounded-md bg-[var(--color-brand-600)] px-3 py-1.5 text-[12.5px] font-medium text-white hover:bg-[var(--color-brand-700)] disabled:opacity-50"
             >
-              {submitting ? "Adding…" : tab === "workspace" ? "Add" : "Fork into workspace"}
+              {submitting ? "Adding…" : primaryLabel(mode)}
             </button>
           </div>
         </div>
@@ -336,21 +490,41 @@ export default function AddToStashModal({
   );
 }
 
-function TabBtn({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) {
+function ModeBtn({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) {
   return (
     <button
       type="button"
       onClick={onClick}
       className={
-        "rounded-t-md px-3 py-1.5 text-[12.5px] " +
+        "rounded-md px-3 py-1.5 text-[12.5px] " +
         (active
-          ? "bg-base font-semibold text-foreground"
-          : "text-muted hover:text-foreground")
+          ? "bg-base font-semibold text-foreground shadow-sm ring-1 ring-border"
+          : "text-muted hover:bg-base hover:text-foreground")
       }
     >
       {label}
     </button>
   );
+}
+
+function primaryLabel(mode: AddMode): string {
+  if (mode === "existing") return "Add existing";
+  if (mode === "url") return "Add URL";
+  if (mode === "file") return "Upload files";
+  if (mode === "note") return "Add note";
+  return "Fork into workspace";
+}
+
+function footerHint(mode: AddMode, selectedCount: number, selectedFiles: File[]): string {
+  if (mode === "existing") return `${selectedCount} selected`;
+  if (mode === "url") return "Creates a linked page.";
+  if (mode === "file") {
+    return selectedFiles.length === 0
+      ? "Uploads files into this workspace."
+      : `${selectedFiles.length} file${selectedFiles.length === 1 ? "" : "s"} ready`;
+  }
+  if (mode === "note") return "Creates a new page.";
+  return "Forks a copy into this workspace.";
 }
 
 function CloseGlyph() {

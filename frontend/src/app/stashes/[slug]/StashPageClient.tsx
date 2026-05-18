@@ -20,7 +20,6 @@ import Placeholder from "@tiptap/extension-placeholder";
 import AppShell from "../../../components/AppShell";
 import { useBreadcrumbs } from "../../../components/BreadcrumbContext";
 import AddToStashModal from "../../../components/stash/AddToStashModal";
-import StashQuickAdd from "../../../components/StashQuickAdd";
 import AgentActivityTimeline from "../../../components/viz/AgentActivityTimeline";
 import EmbeddingSpaceExplorer from "../../../components/viz/EmbeddingSpaceExplorer";
 import { useAuth } from "../../../hooks/useAuth";
@@ -275,22 +274,6 @@ function StashPageBody({
           </div>
         </div>
 
-        {/* Quick-add: paste URL, drop a file. Items land in the workspace
-            and are auto-appended to this stash's items. */}
-        {can_write && (
-          <section className="mt-6">
-            <div className="sys-label mb-1.5">Quick add — paste a URL, drop a file</div>
-            <StashQuickAdd
-              workspaceId={stash.workspace_id}
-              stashId={stash.id}
-              existingItems={existingSpecs}
-              onAdded={() => {
-                void onRefresh();
-              }}
-            />
-          </section>
-        )}
-
         {/* About this Stash — inline editable for writers, read-only for
             viewers. Mirrors the workspace home editor. */}
         <StashDescriptionEditor
@@ -345,7 +328,7 @@ function StashPageBody({
               <AgentActivityTimeline data={timeline} />
             ) : (
               <div className="px-2 py-6 text-center text-[12.5px] text-muted">
-                No agent sessions yet. Push a transcript via Quick add or the CLI to populate this view.
+                No agent sessions yet. Add a session to this Stash or push a transcript via the CLI.
               </div>
             )}
           </div>
