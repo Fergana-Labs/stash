@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { User } from "../lib/types";
+import { useEscapeKey } from "../hooks/useEscapeKey";
 
 interface HeaderProps {
   user: User | null;
@@ -34,6 +35,8 @@ function HeaderUserMenu({ user, onLogout }: { user: User; onLogout?: () => void 
   const label = user.display_name || user.name;
   const initial = (label || "?")[0].toUpperCase();
 
+  useEscapeKey(open, () => setOpen(false));
+
   useEffect(() => {
     if (!open) return;
 
@@ -42,15 +45,9 @@ function HeaderUserMenu({ user, onLogout }: { user: User; onLogout?: () => void 
       if (!containerRef.current.contains(event.target as Node)) setOpen(false);
     }
 
-    function onKey(event: KeyboardEvent) {
-      if (event.key === "Escape") setOpen(false);
-    }
-
     document.addEventListener("mousedown", onDown);
-    document.addEventListener("keydown", onKey);
     return () => {
       document.removeEventListener("mousedown", onDown);
-      document.removeEventListener("keydown", onKey);
     };
   }, [open]);
 

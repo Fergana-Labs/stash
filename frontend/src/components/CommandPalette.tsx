@@ -9,6 +9,7 @@ import {
   readCachedWorkspaceSidebar,
 } from "../lib/stashNavigationCache";
 import type { SearchScope } from "./AppShell";
+import { useEscapeKey } from "../hooks/useEscapeKey";
 
 interface CommandPaletteProps {
   open: boolean;
@@ -38,6 +39,8 @@ export default function CommandPalette({
   const [results, setResults] = useState<Result[]>([]);
   const [selected, setSelected] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  useEscapeKey(open, onClose);
 
   useEffect(() => {
     if (!open) return;
@@ -137,9 +140,7 @@ export default function CommandPalette({
   useEffect(() => {
     if (!open) return;
     function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") {
-        onClose();
-      } else if (e.key === "ArrowDown") {
+      if (e.key === "ArrowDown") {
         e.preventDefault();
         setSelected((s) => Math.min(s + 1, results.length - 1));
       } else if (e.key === "ArrowUp") {

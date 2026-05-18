@@ -16,6 +16,7 @@ import {
   uploadTranscript,
 } from "../lib/api";
 import { useShareModal } from "../lib/shareModalContext";
+import { useEscapeKey } from "../hooks/useEscapeKey";
 import { displaySessionUserName } from "../lib/sessionGrouping";
 import {
   getCachedFolderContents,
@@ -303,6 +304,8 @@ function CreatePageModal({
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
+
+  useEscapeKey(true, onClose);
 
   useEffect(() => {
     inputRef.current?.focus();
@@ -1126,6 +1129,8 @@ function FilesBlock({
         }
       : pinMenu;
 
+  useEscapeKey(!!pinMenu, () => setPinMenu(null));
+
   useEffect(() => {
     if (!pinMenu) return;
 
@@ -1133,16 +1138,11 @@ function FilesBlock({
       if (menuRef.current && menuRef.current.contains(event.target as Node)) return;
       setPinMenu(null);
     };
-    const onKey = (event: globalThis.KeyboardEvent) => {
-      if (event.key === "Escape") setPinMenu(null);
-    };
 
     document.addEventListener("mousedown", onDown);
-    document.addEventListener("keydown", onKey);
 
     return () => {
       document.removeEventListener("mousedown", onDown);
-      document.removeEventListener("keydown", onKey);
     };
   }, [pinMenu]);
 

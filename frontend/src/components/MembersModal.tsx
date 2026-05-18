@@ -10,6 +10,7 @@ import {
   setWorkspaceMemberRole,
 } from "../lib/api";
 import type { WorkspaceMember } from "../lib/types";
+import { useEscapeKey } from "../hooks/useEscapeKey";
 
 interface MembersModalProps {
   workspaceId: string;
@@ -43,6 +44,8 @@ export default function MembersModal({ workspaceId, open, onClose }: MembersModa
   const [inviteLink, setInviteLink] = useState("");
   const [msg, setMsg] = useState("");
   const [busy, setBusy] = useState(false);
+
+  useEscapeKey(open, onClose);
 
   useEffect(() => {
     if (!open) return;

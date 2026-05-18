@@ -11,6 +11,7 @@ import { useShareModal } from "../lib/shareModalContext";
 import { type Crumb, useBreadcrumbsValue } from "./BreadcrumbContext";
 import { StashIcon } from "./StashIcons";
 import { getCachedWorkspaces, readCachedWorkspaces } from "../lib/stashNavigationCache";
+import { useEscapeKey } from "../hooks/useEscapeKey";
 
 interface AppShellProps {
   user: User;
@@ -341,20 +342,17 @@ function UserMenu({
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
+  useEscapeKey(open, () => setOpen(false));
+
   useEffect(() => {
     if (!open) return;
     const onDown = (e: MouseEvent) => {
       if (!containerRef.current) return;
       if (!containerRef.current.contains(e.target as Node)) setOpen(false);
     };
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setOpen(false);
-    };
     document.addEventListener("mousedown", onDown);
-    document.addEventListener("keydown", onKey);
     return () => {
       document.removeEventListener("mousedown", onDown);
-      document.removeEventListener("keydown", onKey);
     };
   }, [open]);
 

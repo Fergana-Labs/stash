@@ -11,6 +11,7 @@ import {
   type WorkspaceStash,
 } from "../../../lib/api";
 import type { Workspace } from "../../../lib/types";
+import { useEscapeKey } from "../../../hooks/useEscapeKey";
 
 type Props = { slug: string; sourceWorkspaceId: string };
 
@@ -27,6 +28,8 @@ export default function AddToWorkspaceButton({ slug, sourceWorkspaceId }: Props)
     () => workspaces.filter((workspace) => workspace.id !== sourceWorkspaceId),
     [sourceWorkspaceId, workspaces]
   );
+
+  useEscapeKey(open, () => setOpen(false));
 
   useEffect(() => {
     if (typeof window === "undefined") return;

@@ -20,6 +20,7 @@ import {
 } from "../../lib/api";
 import type { UserSearchResult } from "../../lib/types";
 import { useShareModal } from "../../lib/shareModalContext";
+import { useEscapeKey } from "../../hooks/useEscapeKey";
 
 type Tab = "new" | "manage";
 type StashAccess = "workspace" | "private" | "public";
@@ -72,6 +73,8 @@ export default function StashShareModal() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
   const [copiedSlug, setCopiedSlug] = useState<string | null>(null);
+
+  useEscapeKey(open, close);
 
   const refresh = useCallback(async () => {
     if (!workspaceId) return;
