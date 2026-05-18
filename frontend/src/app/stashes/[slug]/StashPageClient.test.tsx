@@ -58,7 +58,13 @@ vi.mock("../../../lib/api", () => ({
       this.status = status;
     }
   },
+  addExternalStash: vi.fn(),
+  createPage: vi.fn(),
   getPublicStash: vi.fn(),
+  listAllPages: vi.fn(),
+  listAllTables: vi.fn(),
+  listFiles: vi.fn(),
+  listMySessions: vi.fn(),
   updateStash: vi.fn(),
   uploadFile: vi.fn(),
   getActivityTimeline: vi.fn(),
@@ -161,8 +167,24 @@ describe("StashPageClient sharing", () => {
     expect(screen.getByRole("button", { name: "Copied" })).toBeInTheDocument();
   });
 
+  it("keeps add/create flows behind the single Add things button", async () => {
+    vi.mocked(getPublicStash).mockResolvedValueOnce({
+      ...stashDetail({ access: "workspace" }),
+      can_write: true,
+    });
+
+    render(<StashPageClient slug="shared-stash" />);
+
+    expect(await screen.findByRole("button", { name: "+ Add things" })).toBeInTheDocument();
+    expect(
+      screen.queryByPlaceholderText("Paste a link, type a note, or drop a file")
+    ).not.toBeInTheDocument();
+  });
+
   it("does not render stash access as a title badge", async () => {
-    vi.mocked(getPublicStash).mockResolvedValueOnce(stashDetail({ access: "workspace" }));
+    vi.mocked(getPublicStash).mockResolvedValueOnce(
+      stashDetail({ access: "workspace" })
+    );
 
     render(<StashPageClient slug="shared-stash" />);
 
