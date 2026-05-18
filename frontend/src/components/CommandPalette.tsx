@@ -174,12 +174,14 @@ export default function CommandPalette({
   };
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-start justify-center bg-black/30 px-4 pt-[15vh]" onClick={onClose}>
+    <div className="fixed inset-0 z-[60] bg-transparent px-2 pt-2 sm:px-4" onClick={onClose}>
       <div
-        className="w-full max-w-lg overflow-hidden rounded-xl border border-border bg-base shadow-2xl"
+        className="mx-auto flex max-h-[calc(100vh-1rem)] w-full max-w-4xl flex-col overflow-hidden rounded-lg border border-border bg-base shadow-2xl"
         onClick={(e) => e.stopPropagation()}
+        role="dialog"
+        aria-label="Search"
       >
-        <div className="flex items-center gap-2 border-b border-border px-4 py-3">
+        <div className="flex items-center gap-3 border-b border-border px-4 py-3">
           <svg className="h-4 w-4 text-muted" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <circle cx="11" cy="11" r="8" />
             <path d="m21 21-4.3-4.3" />
@@ -189,14 +191,24 @@ export default function CommandPalette({
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Search Stash or jump to a page, session, or file..."
-            className="flex-1 bg-transparent text-[14px] text-foreground placeholder:text-muted focus:outline-none"
+            className="min-w-0 flex-1 bg-transparent text-[14px] text-foreground placeholder:text-muted focus:outline-none"
             autoFocus
           />
-          <span className="rounded bg-surface px-1.5 py-0.5 font-mono text-[10px] text-muted ring-1 ring-border">esc</span>
+          <button
+            type="button"
+            onClick={onClose}
+            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted hover:bg-surface hover:text-foreground"
+            aria-label="Close search"
+          >
+            <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M18 6 6 18" />
+              <path d="m6 6 12 12" />
+            </svg>
+          </button>
         </div>
 
         {results.length > 0 ? (
-          <div className="max-h-80 overflow-y-auto p-2">
+          <div className="max-h-[calc(100vh-5.5rem)] overflow-y-auto p-2">
             {results.map((r, i) => (
               <Link
                 key={r.href + i}

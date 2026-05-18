@@ -102,7 +102,7 @@ async def get_activity_timeline(
 ) -> dict:
     """Agent activity bucketed by time for the timeline visualization."""
     pool = get_pool()
-    days = min(days, 90)
+    days = min(days, 365)
     if bucket not in ("hour", "day", "week"):
         bucket = "day"
 
@@ -151,6 +151,56 @@ async def get_activity_timeline(
 
         b["agents"][agent]["total"] += cnt
         b["agents"][agent]["by_type"][etype] = b["agents"][agent]["by_type"].get(etype, 0) + cnt
+
+    # Pages get their own pseudo-agent row so the GitHub-contribution-style
+    # timeline shows human page edits alongside agent session activity.
+    # Authorization: when scoped to a workspace, the caller has already been
+    # access-checked by the route; otherwise restrict to pages in workspaces
+    # the user is a member of.
+    if workspace_id is not None:
+        page_rows = await pool.fetch(
+            """
+            SELECT DATE_TRUNC($1, p.updated_at) AS bucket_date, COUNT(*) AS cnt
+            FROM pages p
+            WHERE p.updated_at >= $2 AND p.workspace_id = $3
+            GROUP BY bucket_date
+            ORDER BY bucket_date
+            """,
+            bucket,
+            cutoff,
+            workspace_id,
+        )
+    else:
+        page_rows = await pool.fetch(
+            """
+            SELECT DATE_TRUNC($1, p.updated_at) AS bucket_date, COUNT(*) AS cnt
+            FROM pages p
+            WHERE p.updated_at >= $2
+              AND p.workspace_id IN (
+                SELECT workspace_id FROM workspace_members WHERE user_id = $3
+              )
+            GROUP BY bucket_date
+            ORDER BY bucket_date
+            """,
+            bucket,
+            cutoff,
+            user_id,
+        )
+
+    if page_rows:
+        agents_set.add("Pages")
+        for row in page_rows:
+            date_str = row["bucket_date"].isoformat()
+            cnt = row["cnt"]
+            if date_str not in buckets_map:
+                buckets_map[date_str] = {"date": date_str, "agents": {}}
+            b = buckets_map[date_str]
+            if "Pages" not in b["agents"]:
+                b["agents"]["Pages"] = {"total": 0, "by_type": {}}
+            b["agents"]["Pages"]["total"] += cnt
+            b["agents"]["Pages"]["by_type"]["page.updated"] = (
+                b["agents"]["Pages"]["by_type"].get("page.updated", 0) + cnt
+            )
 
     return {
         "agents": sorted(agents_set),

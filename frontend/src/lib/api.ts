@@ -652,6 +652,18 @@ export async function deleteFile(workspaceId: string, fileId: string): Promise<v
   await apiFetch(`/api/v1/workspaces/${workspaceId}/files/${fileId}`, { method: "DELETE" });
 }
 
+export async function updateFile(
+  workspaceId: string,
+  fileId: string,
+  data: { folder_id?: string | null; move_to_root?: boolean; name?: string }
+): Promise<FileInfo> {
+  return apiFetch(`/api/v1/workspaces/${workspaceId}/files/${fileId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+}
+
 // --- Sessions ---
 
 export interface SessionSummary {
@@ -740,6 +752,8 @@ export interface CreatedStash {
   owner_id: string;
   access: "workspace" | "private" | "public";
   discoverable: boolean;
+  cover_image_url: string | null;
+  icon_url: string | null;
   view_count: number;
   items: StashItemSpec[];
   is_external: boolean;
@@ -814,6 +828,7 @@ export interface WorkspaceStash {
   access: "workspace" | "private" | "public";
   discoverable: boolean;
   cover_image_url: string | null;
+  icon_url: string | null;
   view_count: number;
   items: StashItemSpec[];
   is_external: boolean;
@@ -879,6 +894,7 @@ export async function updateStash(
     access?: "workspace" | "private" | "public";
     discoverable?: boolean;
     cover_image_url?: string | null;
+    icon_url?: string | null;
     items?: StashItemSpec[];
   }
 ): Promise<WorkspaceStash> {

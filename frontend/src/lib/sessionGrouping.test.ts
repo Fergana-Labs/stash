@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import type { SessionSummary } from "./api";
-import { groupSessionsByDayAndUser } from "./sessionGrouping";
+import {
+  groupSessionsByAgent,
+  groupSessionsByDayAndUser,
+  groupSessionsByUser,
+} from "./sessionGrouping";
 
 function session(fields: Partial<SessionSummary> & { session_id: string }): SessionSummary {
   return {
@@ -47,5 +51,36 @@ describe("groupSessionsByDayAndUser", () => {
       "newest",
       "newer",
     ]);
+  });
+});
+
+describe("groupSessionsByUser", () => {
+  it("groups by user_name, largest-bucket-first, reverse-chronological inside", () => {
+    const grouped = groupSessionsByUser([
+      session({ session_id: "ada-old", user_name: "Ada", last_event_at: "2026-05-13T12:00:00Z" }),
+      session({ session_id: "ada-new", user_name: "Ada", last_event_at: "2026-05-14T13:00:00Z" }),
+      session({ session_id: "ben", user_name: "Ben", last_event_at: "2026-05-14T12:00:00Z" }),
+    ]);
+    expect(grouped.map((g) => g.key)).toEqual(["Ada", "Ben"]);
+    expect(grouped[0].sessions.map((s) => s.session_id)).toEqual(["ada-new", "ada-old"]);
+  });
+
+  it("falls back to agent_name when user_name is missing", () => {
+    const grouped = groupSessionsByUser([
+      session({ session_id: "x", user_name: null, agent_name: "claude" }),
+    ]);
+    expect(grouped[0].key).toBe("claude");
+  });
+});
+
+describe("groupSessionsByAgent", () => {
+  it("groups by agent_name and labels unknown buckets explicitly", () => {
+    const grouped = groupSessionsByAgent([
+      session({ session_id: "c1", agent_name: "codex" }),
+      session({ session_id: "c2", agent_name: "codex" }),
+      session({ session_id: "u1", agent_name: null }),
+    ]);
+    expect(grouped.map((g) => g.key)).toEqual(["codex", "Unknown agent"]);
+    expect(grouped[0].count).toBe(2);
   });
 });

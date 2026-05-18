@@ -265,6 +265,27 @@ class StashClient:
     def delete_folder(self, workspace_id: str, folder_id: str) -> None:
         self._delete(f"/api/v1/workspaces/{workspace_id}/folders/{folder_id}")
 
+    def update_folder(
+        self,
+        workspace_id: str,
+        folder_id: str,
+        *,
+        name: str | None = None,
+        parent_folder_id: str | None = None,
+        move_to_root: bool = False,
+    ) -> dict:
+        body: dict = {}
+        if name is not None:
+            body["name"] = name
+        if move_to_root:
+            body["move_to_root"] = True
+        elif parent_folder_id is not None:
+            body["parent_folder_id"] = parent_folder_id
+        return self._patch(
+            f"/api/v1/workspaces/{workspace_id}/folders/{folder_id}",
+            json=body,
+        )
+
     def get_workspace_tree(self, workspace_id: str) -> dict:
         return self._get(f"/api/v1/workspaces/{workspace_id}/tree")
 
@@ -453,6 +474,27 @@ class StashClient:
 
     def delete_ws_file(self, workspace_id: str, file_id: str) -> None:
         self._delete(f"/api/v1/workspaces/{workspace_id}/files/{file_id}")
+
+    def update_ws_file(
+        self,
+        workspace_id: str,
+        file_id: str,
+        *,
+        name: str | None = None,
+        folder_id: str | None = None,
+        move_to_root: bool = False,
+    ) -> dict:
+        body: dict = {}
+        if name is not None:
+            body["name"] = name
+        if move_to_root:
+            body["move_to_root"] = True
+        elif folder_id is not None:
+            body["folder_id"] = folder_id
+        return self._patch(
+            f"/api/v1/workspaces/{workspace_id}/files/{file_id}",
+            json=body,
+        )
 
     def get_ws_file_text(self, workspace_id: str, file_id: str) -> dict:
         return self._get(f"/api/v1/workspaces/{workspace_id}/files/{file_id}/text")

@@ -31,13 +31,13 @@ def _content_hash(content: str) -> str:
 _STASH_SELECT = (
     "SELECT v.id, v.workspace_id, v.slug, v.title, v.description, v.owner_id, "
     "v.access, "
-    "v.discoverable, v.cover_image_url, v.view_count, v.forked_from_stash_id, "
+    "v.discoverable, v.cover_image_url, v.icon_url, v.view_count, v.forked_from_stash_id, "
     "v.created_at, v.updated_at FROM stashes v"
 )
 _STASH_COLS = (
     "v.id, v.workspace_id, v.slug, v.title, v.description, v.owner_id, "
     "v.access, "
-    "v.discoverable, v.cover_image_url, v.view_count, v.forked_from_stash_id, "
+    "v.discoverable, v.cover_image_url, v.icon_url, v.view_count, v.forked_from_stash_id, "
     "v.created_at, v.updated_at"
 )
 
@@ -198,6 +198,7 @@ async def create_stash(
     discoverable: bool,
     cover_image_url: str | None,
     items: list,
+    icon_url: str | None = None,
 ) -> dict:
     if access not in {"workspace", "private", "public"}:
         raise ValueError("Unsupported Stash access")
@@ -211,10 +212,11 @@ async def create_stash(
             await _validate_item_partition(conn, access, items, None)
             row = await conn.fetchrow(
                 "INSERT INTO stashes (workspace_id, slug, title, description, owner_id, "
-                "access, discoverable, cover_image_url) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) "
+                "access, discoverable, cover_image_url, icon_url) "
+                "VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) "
                 "RETURNING id, workspace_id, slug, title, description, owner_id, "
-                "access, discoverable, cover_image_url, view_count, forked_from_stash_id, "
-                "created_at, updated_at",
+                "access, discoverable, cover_image_url, icon_url, view_count, "
+                "forked_from_stash_id, created_at, updated_at",
                 workspace_id,
                 slug,
                 title,
@@ -223,6 +225,7 @@ async def create_stash(
                 access,
                 discoverable,
                 cover_image_url,
+                icon_url,
             )
             await _replace_items(conn, row["id"], items)
     out = dict(row)
@@ -261,6 +264,7 @@ async def update_stash(
     access: str | None = None,
     discoverable: bool | None = None,
     cover_image_url: str | None = None,
+    icon_url: str | None = None,
     items: list | None = None,
 ) -> dict | None:
     pool = get_pool()
@@ -284,6 +288,7 @@ async def update_stash(
         ("access", access),
         ("discoverable", discoverable),
         ("cover_image_url", cover_image_url),
+        ("icon_url", icon_url),
     ):
         if val is not None:
             sets.append(f"{col} = ${idx}")
@@ -396,7 +401,8 @@ async def list_public_stashes(
 
     rows = await pool.fetch(
         f"SELECT v.id, v.workspace_id, v.slug, v.title, v.description, v.owner_id, "
-        f"v.access, v.discoverable, v.cover_image_url, v.view_count, v.created_at, v.updated_at, "
+        f"v.access, v.discoverable, v.cover_image_url, v.icon_url, v.view_count, "
+        f"v.created_at, v.updated_at, "
         f"u.name AS owner_name, u.display_name AS owner_display_name, "
         f"w.name AS workspace_name "
         f"FROM stashes v JOIN users u ON u.id = v.owner_id "
@@ -788,16 +794,18 @@ async def add_external_stash(workspace_id: UUID, slug: str, added_by: UUID) -> d
             fork = await conn.fetchrow(
                 "INSERT INTO stashes "
                 "(workspace_id, slug, title, description, owner_id, access, discoverable, "
-                "cover_image_url, forked_from_stash_id) "
-                "VALUES ($1, $2, $3, $4, $5, 'workspace', false, $6, $7) "
+                "cover_image_url, icon_url, forked_from_stash_id) "
+                "VALUES ($1, $2, $3, $4, $5, 'workspace', false, $6, $7, $8) "
                 "RETURNING id, workspace_id, slug, title, description, owner_id, access, "
-                "discoverable, cover_image_url, view_count, forked_from_stash_id, created_at, updated_at",
+                "discoverable, cover_image_url, icon_url, view_count, forked_from_stash_id, "
+                "created_at, updated_at",
                 workspace_id,
                 _slugify(stash["title"]),
                 stash["title"],
                 stash["description"],
                 added_by,
                 stash["cover_image_url"],
+                stash.get("icon_url"),
                 stash["id"],
             )
             forked_items = []

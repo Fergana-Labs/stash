@@ -119,6 +119,7 @@ class StashCreateRequest(BaseModel):
     access: str = Field("workspace", pattern=r"^(workspace|private|public)$")
     discoverable: bool = False
     cover_image_url: str | None = None
+    icon_url: str | None = None
     items: list[StashItem] = Field(default_factory=list)
 
 
@@ -128,6 +129,7 @@ class StashUpdateRequest(BaseModel):
     access: str | None = Field(None, pattern=r"^(workspace|private|public)$")
     discoverable: bool | None = None
     cover_image_url: str | None = None
+    icon_url: str | None = None
     items: list[StashItem] | None = None
 
 
@@ -141,6 +143,7 @@ class StashResponse(BaseModel):
     access: str
     discoverable: bool
     cover_image_url: str | None = None
+    icon_url: str | None = None
     view_count: int
     items: list[StashItem]
     is_external: bool = False
@@ -610,6 +613,12 @@ class FileResponse(BaseModel):
 
 class FileListResponse(BaseModel):
     files: list[FileResponse]
+
+
+class FileUpdateRequest(BaseModel):
+    folder_id: UUID | None = None
+    move_to_root: bool = False
+    name: str | None = None
 
 
 class SessionTranscriptResponse(BaseModel):

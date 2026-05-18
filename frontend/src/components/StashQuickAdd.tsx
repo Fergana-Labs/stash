@@ -1,18 +1,33 @@
 "use client";
 
 import { useRef, useState, type DragEvent, type FormEvent } from "react";
-import { createPage, uploadFile } from "../lib/api";
+import {
+  createPage,
+  updateStash,
+  uploadFile,
+  uploadTranscript,
+  type StashItemSpec,
+} from "../lib/api";
 
 interface StashQuickAddProps {
   workspaceId: string;
   onAdded?: () => void;
+  // When set, newly-created pages and files are also appended to this
+  // stash's items so the quick-add doubles as "add to this stash".
+  stashId?: string;
+  existingItems?: StashItemSpec[];
 }
 
 type Status = "idle" | "saving" | "saved" | "error";
 
 const URL_RE = /^https?:\/\/\S+$/i;
 
-export default function StashQuickAdd({ workspaceId, onAdded }: StashQuickAddProps) {
+export default function StashQuickAdd({
+  workspaceId,
+  onAdded,
+  stashId,
+  existingItems,
+}: StashQuickAddProps) {
   const [value, setValue] = useState("");
   const [status, setStatus] = useState<Status>("idle");
   const [dragActive, setDragActive] = useState(false);
@@ -26,6 +41,20 @@ export default function StashQuickAdd({ workspaceId, onAdded }: StashQuickAddPro
     window.setTimeout(() => setHint(""), ms);
   }
 
+  // Append newly-created items to the host stash. Backend wants the full
+  // ordered item list on PATCH, so we union existing + new.
+  async function appendToStash(newItems: StashItemSpec[]) {
+    if (!stashId || newItems.length === 0) return;
+    const base = (existingItems ?? []).map((it, i) => ({ ...it, position: i }));
+    const merged = [
+      ...base,
+      ...newItems.map((it, i) => ({ ...it, position: base.length + i })),
+    ];
+    await updateStash(stashId, { items: merged });
+  }
+
+  const targetLabel = stashId ? "Stash" : "Files";
+
   async function handleTextSubmit(e: FormEvent) {
     e.preventDefault();
     const text = value.trim();
@@ -38,7 +67,8 @@ export default function StashQuickAdd({ workspaceId, onAdded }: StashQuickAddPro
         ? text.replace(/^https?:\/\//, "").slice(0, 80)
         : text.split("\n")[0].slice(0, 80) || "Note";
       const body = isUrl ? `<${text}>` : text;
-      await createPage(workspaceId, title, undefined, body);
+      const page = await createPage(workspaceId, title, undefined, body);
+      await appendToStash([{ object_type: "page", object_id: page.id }]);
     } catch {
       setStatus("error");
       flashHint("Couldn't save — try again", 2500);
@@ -47,7 +77,7 @@ export default function StashQuickAdd({ workspaceId, onAdded }: StashQuickAddPro
     }
     setValue("");
     setStatus("saved");
-    flashHint("Added to Files");
+    flashHint(`Added to ${targetLabel}`);
     onAdded?.();
     window.setTimeout(() => setStatus("idle"), 1500);
   }
@@ -57,10 +87,26 @@ export default function StashQuickAdd({ workspaceId, onAdded }: StashQuickAddPro
     if (!list.length || status === "saving") return;
     setStatus("saving");
     flashHint(list.length === 1 ? `Uploading ${list[0].name}…` : `Uploading ${list.length} files…`, 8000);
+    let sessionCount = 0;
+    let fileCount = 0;
+    const newItems: StashItemSpec[] = [];
     try {
       for (const f of list) {
-        await uploadFile(workspaceId, f);
+        // .jsonl transcripts are sessions, not files — same drop target,
+        // different code path. Anything else goes to Files.
+        if (f.name.toLowerCase().endsWith(".jsonl")) {
+          const sessionId = f.name.replace(/\.jsonl$/i, "").trim() || "session";
+          await uploadTranscript(workspaceId, f, sessionId, "manual-upload");
+          sessionCount += 1;
+          // .jsonl flows land in the workspace's sessions list; quick-add
+          // doesn't auto-attach them to the host stash (use Add things).
+        } else {
+          const uploaded = await uploadFile(workspaceId, f);
+          fileCount += 1;
+          newItems.push({ object_type: "file", object_id: uploaded.id });
+        }
       }
+      await appendToStash(newItems);
     } catch {
       setStatus("error");
       flashHint("Upload failed — try again", 2500);
@@ -68,7 +114,10 @@ export default function StashQuickAdd({ workspaceId, onAdded }: StashQuickAddPro
       return;
     }
     setStatus("saved");
-    flashHint(list.length === 1 ? `${list[0].name} added to Files` : `${list.length} files added to Files`);
+    const parts: string[] = [];
+    if (sessionCount > 0) parts.push(`${sessionCount} session${sessionCount === 1 ? "" : "s"}`);
+    if (fileCount > 0) parts.push(`${fileCount} file${fileCount === 1 ? "" : "s"}`);
+    flashHint(parts.length ? `Added ${parts.join(" + ")}` : "Added");
     onAdded?.();
     window.setTimeout(() => setStatus("idle"), 1500);
   }
@@ -111,7 +160,7 @@ export default function StashQuickAdd({ workspaceId, onAdded }: StashQuickAddPro
 
   const statusText =
     hint ||
-    (status === "saved" ? "Added to Files" : "");
+    (status === "saved" ? `Added to ${targetLabel}` : "");
   const statusTone =
     status === "error"
       ? "text-red-500"
@@ -145,7 +194,7 @@ export default function StashQuickAdd({ workspaceId, onAdded }: StashQuickAddPro
           onChange={(e) => setValue(e.target.value)}
           placeholder={
             dragActive
-              ? "Drop to add to Files…"
+              ? `Drop to add to ${targetLabel}…`
               : "Paste a link, type a note, or drop a file"
           }
           disabled={status === "saving"}

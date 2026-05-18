@@ -346,6 +346,8 @@ function publishedStashResult(slug: string) {
       owner_id: "user-1",
       access: "public",
       discoverable: false,
+      cover_image_url: null,
+      icon_url: null,
       view_count: 0,
       items: [],
       is_external: false,

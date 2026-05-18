@@ -2,7 +2,11 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import StashPageClient from "./StashPageClient";
-import { getPublicStash } from "../../../lib/api";
+import {
+  getActivityTimeline,
+  getEmbeddingProjection,
+  getPublicStash,
+} from "../../../lib/api";
 
 vi.mock("next/link", () => ({
   default: ({
@@ -27,8 +31,18 @@ vi.mock("../../../lib/api", () => ({
       this.status = status;
     }
   },
-  createSharedStashPage: vi.fn(),
   getPublicStash: vi.fn(),
+  updateStash: vi.fn(),
+  uploadFile: vi.fn(),
+  getActivityTimeline: vi.fn(),
+  getEmbeddingProjection: vi.fn(),
+}));
+
+vi.mock("../../../components/viz/AgentActivityTimeline", () => ({
+  default: () => null,
+}));
+vi.mock("../../../components/viz/EmbeddingSpaceExplorer", () => ({
+  default: () => null,
 }));
 
 vi.mock("../../../hooks/useAuth", () => ({
@@ -47,6 +61,15 @@ describe("StashPageClient sharing", () => {
       configurable: true,
       value: { writeText: vi.fn().mockResolvedValue(undefined) },
     });
+    vi.mocked(getActivityTimeline).mockResolvedValue({
+      agents: [],
+      buckets: [],
+    });
+    vi.mocked(getEmbeddingProjection).mockResolvedValue({
+      points: [],
+      stats: { total_embeddings: 0, projected: 0 },
+      cached: false,
+    });
     vi.mocked(getPublicStash).mockResolvedValue({
       stash: {
         id: "stash-1",
@@ -58,6 +81,7 @@ describe("StashPageClient sharing", () => {
         access: "public",
         discoverable: false,
         cover_image_url: null,
+        icon_url: null,
         view_count: 0,
         items: [],
         is_external: false,
@@ -76,10 +100,12 @@ describe("StashPageClient sharing", () => {
     cleanup();
   });
 
-  it("copies the current Stash link instead of creating another Stash", async () => {
+  it("Share button opens a popover with a copy-link affordance", async () => {
     render(<StashPageClient slug="shared-stash" />);
 
-    fireEvent.click(await screen.findByRole("button", { name: "Share" }));
+    fireEvent.click(await screen.findByRole("button", { name: /Share/ }));
+    // Popover renders a "Copy" button for the public URL; click it.
+    fireEvent.click(await screen.findByRole("button", { name: "Copy" }));
 
     await waitFor(() =>
       expect(navigator.clipboard.writeText).toHaveBeenCalledWith(

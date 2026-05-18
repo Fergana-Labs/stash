@@ -18,7 +18,7 @@ from fastapi.responses import RedirectResponse
 
 from ..auth import get_current_user
 from ..database import get_pool
-from ..models import FileListResponse, FileResponse, TableResponse
+from ..models import FileListResponse, FileResponse, FileUpdateRequest, TableResponse
 from ..services import (
     permission_service,
     storage_service,
@@ -233,6 +233,70 @@ async def get_ws_file_text(
         "status": row["extraction_status"],
         "error": row["extraction_error"],
     }
+
+
+@ws_router.patch("/{file_id}", response_model=FileResponse)
+async def update_ws_file(
+    workspace_id: UUID,
+    file_id: UUID,
+    req: FileUpdateRequest,
+    current_user: dict = Depends(get_current_user),
+):
+    """Update a file. Supports rename (`name`) and reparent
+    (`folder_id` / `move_to_root`). Any subset can be passed; an empty
+    request returns the file unchanged."""
+    await _check_write(workspace_id, current_user["id"])
+    pool = get_pool()
+    file_row = await pool.fetchrow(
+        "SELECT * FROM files WHERE id = $1 AND workspace_id = $2",
+        file_id,
+        workspace_id,
+    )
+    if not file_row:
+        raise HTTPException(status_code=404, detail="File not found")
+    if not await _can_access_file(file_id, workspace_id, current_user["id"], require_write=True):
+        raise HTTPException(status_code=404, detail="File not found")
+
+    # Build the SET clause dynamically so we only touch fields the caller
+    # actually sent — keeps name and folder_id independent.
+    updates: list[str] = []
+    params: list = []
+
+    if req.name is not None:
+        name = req.name.strip()
+        if not name:
+            raise HTTPException(status_code=400, detail="Name cannot be empty")
+        params.append(name)
+        updates.append(f"name = ${len(params)}")
+
+    if req.move_to_root:
+        params.append(None)
+        updates.append(f"folder_id = ${len(params)}")
+    elif req.folder_id is not None:
+        # Target folder must belong to the same workspace; otherwise files
+        # could escape their workspace by getting reparented across the
+        # boundary.
+        owner = await pool.fetchrow(
+            "SELECT workspace_id FROM folders WHERE id = $1",
+            req.folder_id,
+        )
+        if not owner or owner["workspace_id"] != workspace_id:
+            raise HTTPException(status_code=404, detail="Folder not found")
+        params.append(req.folder_id)
+        updates.append(f"folder_id = ${len(params)}")
+
+    if not updates:
+        return await _file_to_response(dict(file_row))
+
+    params.append(file_id)
+    file_id_pos = len(params)
+    params.append(workspace_id)
+    ws_pos = len(params)
+    updated = await pool.fetchrow(
+        f"UPDATE files SET {', '.join(updates)} WHERE id = ${file_id_pos} AND workspace_id = ${ws_pos} RETURNING *",
+        *params,
+    )
+    return await _file_to_response(dict(updated))
 
 
 @ws_router.delete("/{file_id}", status_code=204)

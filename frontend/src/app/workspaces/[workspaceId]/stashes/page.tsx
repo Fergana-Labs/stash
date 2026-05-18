@@ -1,8 +1,8 @@
 "use client";
 
-import Link from "next/link";
 import { useParams } from "next/navigation";
 import { type FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import StashCard from "../../../../components/stash/StashCard";
 import { useShareModal } from "../../../../lib/shareModalContext";
 import { addExternalStash, ApiError, listStashes, type WorkspaceStash } from "../../../../lib/api";
 import { stashSlugFromInput } from "../../../../lib/stashLinks";
@@ -19,18 +19,6 @@ const FILTERS: { key: Filter; label: string }[] = [
 
 const COVERS = ["cover-1", "cover-2", "cover-3", "cover-4", "cover-5", "cover-6"];
 
-function relativeTime(iso: string): string {
-  const ms = Date.now() - new Date(iso).getTime();
-  if (ms < 60_000) return "just now";
-  const m = Math.floor(ms / 60_000);
-  if (m < 60) return `${m}m ago`;
-  const h = Math.floor(m / 60);
-  if (h < 24) return `${h}h ago`;
-  const d = Math.floor(h / 24);
-  if (d < 30) return `${d}d ago`;
-  return new Date(iso).toLocaleDateString();
-}
-
 export default function WorkspaceStashesPage() {
   const params = useParams();
   const workspaceId = params.workspaceId as string;
@@ -39,7 +27,6 @@ export default function WorkspaceStashesPage() {
 
   const [stashes, setStashes] = useState<WorkspaceStash[] | null>(null);
   const [filter, setFilter] = useState<Filter>("all");
-  const [query, setQuery] = useState("");
   const [error, setError] = useState("");
 
   const load = useCallback(async () => {
@@ -71,21 +58,10 @@ export default function WorkspaceStashesPage() {
     const ordered = [...stashes].sort(
       (a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()
     );
-    const byFilter =
-      filter === "all"
-        ? ordered
-        : filter === "external"
-          ? ordered.filter((s) => s.is_external)
-          : ordered.filter((s) => s.access === filter && !s.is_external);
-    const q = query.trim().toLowerCase();
-    if (!q) return byFilter;
-    return byFilter.filter((stash) =>
-      [stash.title, stash.description, stash.slug]
-        .join(" ")
-        .toLowerCase()
-        .includes(q)
-    );
-  }, [stashes, filter, query]);
+    if (filter === "all") return ordered;
+    if (filter === "external") return ordered.filter((s) => s.is_external);
+    return ordered.filter((s) => s.access === filter && !s.is_external);
+  }, [stashes, filter]);
 
   const native = useMemo(
     () => filtered.filter((s) => !s.forked_from_stash_id),
@@ -103,19 +79,10 @@ export default function WorkspaceStashesPage() {
   return (
     <div className="scroll-thin flex-1 overflow-y-auto">
       <div className="mx-auto max-w-[1120px] px-12 pb-20 pt-8">
-        {/* Hero */}
-        <div className="flex items-end justify-between gap-4">
-          <div className="min-w-0">
-            <p className="sys-label">All Stashes in workspace</p>
-            <h1 className="mb-1 mt-1 font-display text-[34px] font-bold tracking-[-0.02em]">
-              Stashes
-            </h1>
-            <p className="m-0 max-w-[620px] text-[13.5px] text-dim">
-              Stashes bundle pages, sessions, and tables into one shareable
-              surface. Privacy lives here — every item in a Stash inherits its
-              permission level.
-            </p>
-          </div>
+        <div className="flex items-center justify-between gap-4">
+          <h1 className="m-0 font-display text-[34px] font-bold tracking-[-0.02em]">
+            Stashes
+          </h1>
           <button
             type="button"
             onClick={() => shareModal.open({ workspaceId, tab: "new" })}
@@ -158,17 +125,6 @@ export default function WorkspaceStashesPage() {
               );
             })}
           </div>
-          <span className="flex-1" />
-          <div className="flex min-w-[220px] max-w-[280px] flex-1 items-center gap-2 rounded-md border border-border bg-base px-2 py-1">
-            <SearchGlyph />
-            <input
-              type="text"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search title, description, slug…"
-              className="min-w-0 flex-1 border-0 bg-transparent text-[12.5px] text-foreground placeholder:text-muted focus:outline-none"
-            />
-          </div>
         </div>
 
         <ExternalStashLinkForm
@@ -184,9 +140,7 @@ export default function WorkspaceStashesPage() {
           <div className="mt-12 rounded-lg border border-dashed border-border bg-surface/30 px-4 py-10 text-center text-[12.5px] text-muted">
             {stashes.length === 0
               ? "No Stashes yet."
-              : query.trim()
-                ? "No Stashes match your search."
-                : "No Stashes match this filter."}
+              : "No Stashes match this filter."}
           </div>
         ) : filter === "all" && forked.length > 0 && native.length > 0 ? (
           <>
@@ -285,62 +239,6 @@ function ExternalStashLinkForm({
   );
 }
 
-function StashCard({ stash, cover }: { stash: WorkspaceStash; cover: string }) {
-  const itemCount = stash.items.length;
-  const sessions = stash.items.filter((i) => i.object_type === "session").length;
-  const pages = stash.items.filter((i) => i.object_type === "page").length;
-  const visibility: "public" | "private" | "workspace" = stash.access;
-
-  return (
-    <Link
-      href={`/stashes/${stash.slug}`}
-      className="card group flex min-h-[260px] flex-col overflow-hidden transition hover:border-[var(--color-brand-300)]"
-    >
-      <div
-        className={`${cover} relative h-[84px]`}
-        style={
-          stash.cover_image_url
-            ? {
-                backgroundImage: `url(${stash.cover_image_url})`,
-                backgroundSize: "cover",
-                backgroundPosition: "center",
-              }
-            : undefined
-        }
-      >
-        {stash.is_external && (
-          <span className="absolute left-3 top-2.5 rounded-full border border-white/50 bg-white/70 px-2 py-0.5 font-mono text-[10.5px] text-foreground backdrop-blur">
-            EXTERNAL
-          </span>
-        )}
-        <span className="absolute right-3 top-2.5 inline-flex items-center gap-1.5 rounded-full bg-white/85 px-2 py-0.5 text-[11px] capitalize text-dim backdrop-blur">
-          <VisDot vis={visibility} />
-          {visibility}
-        </span>
-      </div>
-      <div className="flex flex-1 flex-col p-4">
-        <h3 className="m-0 font-display text-[17px] font-bold leading-tight tracking-[-0.015em] group-hover:text-[var(--color-brand-700)]">
-          {stash.title}
-        </h3>
-        <p className="mt-2 line-clamp-2 text-[12.5px] leading-[1.55] text-dim">
-          {stash.description || "No description."}
-        </p>
-        <div className="sys-label mt-2.5" style={{ fontSize: 10.5 }}>
-          {itemCount} item{itemCount === 1 ? "" : "s"}
-          {sessions > 0 && ` · ${sessions} session${sessions === 1 ? "" : "s"}`}
-          {pages > 0 && ` · ${pages} page${pages === 1 ? "" : "s"}`} ·{" "}
-          {stash.view_count} view{stash.view_count === 1 ? "" : "s"}
-        </div>
-        <div className="flex-1" />
-        <div className="mt-3.5 flex items-center justify-between border-t border-border-subtle pt-2.5 text-[11.5px] text-muted">
-          <span className="truncate">/{stash.slug}</span>
-          <span className="font-mono">{relativeTime(stash.updated_at)}</span>
-        </div>
-      </div>
-    </Link>
-  );
-}
-
 function VisDot({ vis }: { vis: string }) {
   const color =
     vis === "public" ? "#22C55E" : vis === "private" ? "#9CA3AF" : "var(--color-brand-500)";
@@ -365,14 +263,6 @@ function PlusGlyph() {
   );
 }
 
-function SearchGlyph() {
-  return (
-    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-muted">
-      <circle cx="11" cy="11" r="8" />
-      <path d="m21 21-4.3-4.3" />
-    </svg>
-  );
-}
 
 function StashGroup({
   title,

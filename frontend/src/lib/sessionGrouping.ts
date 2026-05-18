@@ -77,3 +77,39 @@ function formatSessionDay(key: string): string {
     day: "numeric",
   });
 }
+
+// Flat-axis groupings for the sessions index "View by" control. Same shape
+// as SessionDayGroup so the page can render any of them through one
+// component path.
+
+export type SessionFlatGroup = {
+  key: string;
+  label: string;
+  count: number;
+  sessions: SessionSummary[];
+};
+
+export function groupSessionsByUser(sessions: SessionSummary[]): SessionFlatGroup[] {
+  return groupBy(sessions, (s) =>
+    displaySessionUserName(s.user_name || s.agent_name, "Unknown user")
+  );
+}
+
+export function groupSessionsByAgent(sessions: SessionSummary[]): SessionFlatGroup[] {
+  return groupBy(sessions, (s) => (s.agent_name || "").trim() || "Unknown agent");
+}
+
+// Groups + sorts: largest groups first, sessions inside groups reverse-chronological.
+function groupBy(
+  sessions: SessionSummary[],
+  keyFn: (s: SessionSummary) => string
+): SessionFlatGroup[] {
+  const buckets = new Map<string, SessionSummary[]>();
+  for (const s of sortedSessions(sessions)) {
+    const k = keyFn(s);
+    buckets.set(k, [...(buckets.get(k) ?? []), s]);
+  }
+  return Array.from(buckets.entries())
+    .map(([key, rows]) => ({ key, label: key, count: rows.length, sessions: rows }))
+    .sort((a, b) => b.count - a.count || a.key.localeCompare(b.key));
+}

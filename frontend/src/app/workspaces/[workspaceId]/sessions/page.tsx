@@ -8,7 +8,33 @@ import SessionUpload from "../../../../components/SessionUpload";
 import { SettingsIcon } from "../../../../components/StashIcons";
 import { useAuth } from "../../../../hooks/useAuth";
 import { listMySessions, type SessionSummary } from "../../../../lib/api";
-import { displaySessionUserName } from "../../../../lib/sessionGrouping";
+import {
+  displaySessionUserName,
+  groupSessionsByAgent,
+  groupSessionsByDayAndUser,
+  groupSessionsByUser,
+  type SessionDayGroup,
+  type SessionFlatGroup,
+} from "../../../../lib/sessionGrouping";
+
+type ViewKey = "list" | "day" | "user" | "agent";
+type SortKey = "recent" | "oldest" | "events" | "name";
+
+const VIEW_STORAGE_KEY = "stash_sessions_view";
+
+const VIEWS: { key: ViewKey; label: string }[] = [
+  { key: "list", label: "List" },
+  { key: "day", label: "By day" },
+  { key: "user", label: "By user" },
+  { key: "agent", label: "By agent" },
+];
+
+const SORTS: { key: SortKey; label: string }[] = [
+  { key: "recent", label: "Recent" },
+  { key: "oldest", label: "Oldest" },
+  { key: "events", label: "Most events" },
+  { key: "name", label: "Name" },
+];
 
 export default function StashSessionsPage() {
   const params = useParams();
@@ -18,8 +44,19 @@ export default function StashSessionsPage() {
 
   const [sessions, setSessions] = useState<SessionSummary[] | null>(null);
   const [error, setError] = useState("");
+  const [view, setView] = useState<ViewKey>("list");
+  const [sort, setSort] = useState<SortKey>("recent");
 
   useBreadcrumbs([{ label: "Sessions" }], `${workspaceId}/sessions`);
+
+  // Restore last-used view from localStorage on mount. Sort + search are
+  // intentionally not persisted — they read more like ad-hoc filters than
+  // long-lived preferences.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const saved = window.localStorage.getItem(VIEW_STORAGE_KEY) as ViewKey | null;
+    if (saved && VIEWS.some((v) => v.key === saved)) setView(saved);
+  }, []);
 
   const load = useCallback(async () => {
     try {
@@ -38,21 +75,42 @@ export default function StashSessionsPage() {
     if (!loading && !user) router.push("/login");
   }, [user, loading, router]);
 
-  const rows = useMemo(() => {
+  const sorted = useMemo(() => {
     if (!sessions) return null;
-    return [...sessions].sort((a, b) => sessionTime(b) - sessionTime(a));
-  }, [sessions]);
+    const copy = [...sessions];
+    if (sort === "recent") copy.sort((a, b) => sessionTime(b) - sessionTime(a));
+    else if (sort === "oldest") copy.sort((a, b) => sessionTime(a) - sessionTime(b));
+    else if (sort === "events") copy.sort((a, b) => b.event_count - a.event_count);
+    else copy.sort((a, b) => sessionTitle(a).localeCompare(sessionTitle(b)));
+    return copy;
+  }, [sessions, sort]);
 
   if (loading)
     return <div className="flex h-screen items-center justify-center text-muted">Loading…</div>;
   if (!user) return null;
 
+  const total = sessions?.length ?? 0;
+
+  function setViewPersisted(next: ViewKey) {
+    setView(next);
+    try {
+      window.localStorage.setItem(VIEW_STORAGE_KEY, next);
+    } catch {
+      /* localStorage unavailable */
+    }
+  }
+
   return (
     <div className="scroll-thin flex-1 overflow-y-auto">
       <div className="mx-auto max-w-5xl px-12 py-8">
-        <h1 className="font-display text-[28px] font-bold tracking-tight text-foreground">
-          Sessions
-        </h1>
+        <div className="flex items-baseline justify-between gap-4">
+          <h1 className="font-display text-[28px] font-bold tracking-tight text-foreground">
+            Sessions
+          </h1>
+          <span className="sys-label" style={{ fontSize: 10.5 }}>
+            {total} total
+          </span>
+        </div>
 
         {error && (
           <div className="mt-4 rounded-lg border border-red-300/40 bg-red-500/10 px-4 py-2 text-[13px] text-red-500">
@@ -64,9 +122,208 @@ export default function StashSessionsPage() {
           <SessionUpload workspaceId={workspaceId} onUploaded={load} />
         </div>
 
-        {rows && <SessionsTable workspaceId={workspaceId} sessions={rows} />}
+        {/* Toolbar: View · Sort. Drives the rendering below. */}
+        <div className="mb-3 flex flex-wrap items-center gap-3 border-b border-border pb-2.5">
+          <SegmentedControl
+            label="View"
+            value={view}
+            options={VIEWS}
+            onChange={(v) => setViewPersisted(v as ViewKey)}
+          />
+          <SegmentedControl
+            label="Sort"
+            value={sort}
+            options={SORTS}
+            onChange={(v) => setSort(v as SortKey)}
+          />
+        </div>
+
+        {sorted && (
+          <SessionsView
+            view={view}
+            sessions={sorted}
+            workspaceId={workspaceId}
+          />
+        )}
       </div>
     </div>
+  );
+}
+
+function SessionsView({
+  view,
+  sessions,
+  workspaceId,
+}: {
+  view: ViewKey;
+  sessions: SessionSummary[];
+  workspaceId: string;
+}) {
+  if (sessions.length === 0) {
+    return (
+      <div className="rounded-lg border border-dashed border-border bg-surface/30 px-4 py-6 text-center text-[12.5px] text-muted">
+        No sessions yet.
+      </div>
+    );
+  }
+
+  if (view === "list") {
+    return <SessionsTable workspaceId={workspaceId} sessions={sessions} />;
+  }
+
+  if (view === "day") {
+    const groups = groupSessionsByDayAndUser(sessions);
+    return (
+      <div className="flex flex-col gap-4">
+        {groups.map((group, i) => (
+          <DayGroup
+            key={group.key}
+            group={group}
+            workspaceId={workspaceId}
+            initialOpen={i === 0}
+          />
+        ))}
+      </div>
+    );
+  }
+
+  const groups = view === "user" ? groupSessionsByUser(sessions) : groupSessionsByAgent(sessions);
+  return (
+    <div className="flex flex-col gap-4">
+      {groups.map((group, i) => (
+        <FlatGroup
+          key={group.key}
+          group={group}
+          workspaceId={workspaceId}
+          initialOpen={i === 0}
+        />
+      ))}
+    </div>
+  );
+}
+
+function DayGroup({
+  group,
+  workspaceId,
+  initialOpen,
+}: {
+  group: SessionDayGroup;
+  workspaceId: string;
+  initialOpen: boolean;
+}) {
+  const [open, setOpen] = useState(initialOpen);
+  return (
+    <section>
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="flex w-full items-center gap-2 rounded-md px-1 py-1 text-left hover:bg-raised"
+      >
+        <Chev open={open} />
+        <h2 className="m-0 font-display text-[15px] font-semibold">{group.label}</h2>
+        <span className="sys-label" style={{ fontSize: 10.5 }}>
+          {group.count}
+        </span>
+      </button>
+      {open && (
+        <div className="mt-1.5 flex flex-col gap-4">
+          {group.users.map((bucket) => (
+            <div key={bucket.user}>
+              <div className="mb-1 px-2 text-[11px] font-medium text-muted">{bucket.user}</div>
+              <SessionsTable workspaceId={workspaceId} sessions={bucket.sessions} />
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function FlatGroup({
+  group,
+  workspaceId,
+  initialOpen,
+}: {
+  group: SessionFlatGroup;
+  workspaceId: string;
+  initialOpen: boolean;
+}) {
+  const [open, setOpen] = useState(initialOpen);
+  return (
+    <section>
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="flex w-full items-center gap-2 rounded-md px-1 py-1 text-left hover:bg-raised"
+      >
+        <Chev open={open} />
+        <h2 className="m-0 font-display text-[15px] font-semibold">{group.label}</h2>
+        <span className="sys-label" style={{ fontSize: 10.5 }}>
+          {group.count}
+        </span>
+      </button>
+      {open && (
+        <div className="mt-1.5">
+          <SessionsTable workspaceId={workspaceId} sessions={group.sessions} />
+        </div>
+      )}
+    </section>
+  );
+}
+
+function SegmentedControl<T extends string>({
+  label,
+  value,
+  options,
+  onChange,
+}: {
+  label: string;
+  value: T;
+  options: { key: T; label: string }[];
+  onChange: (next: T) => void;
+}) {
+  return (
+    <div className="inline-flex items-center gap-1.5 text-[12px]">
+      <span className="sys-label" style={{ fontSize: 10 }}>
+        {label}
+      </span>
+      <div className="inline-flex gap-0.5 rounded-md border border-border bg-base p-[2px]">
+        {options.map((opt) => {
+          const active = value === opt.key;
+          return (
+            <button
+              key={opt.key}
+              type="button"
+              onClick={() => onChange(opt.key)}
+              className={
+                "rounded px-2 py-[3px] text-[12px] " +
+                (active
+                  ? "bg-raised font-semibold text-foreground"
+                  : "text-muted hover:text-foreground")
+              }
+            >
+              {opt.label}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function Chev({ open }: { open: boolean }) {
+  return (
+    <svg
+      className={"h-3 w-3 text-muted transition-transform " + (open ? "rotate-90" : "")}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <polyline points="9 18 15 12 9 6" />
+    </svg>
   );
 }
 

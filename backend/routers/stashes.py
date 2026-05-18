@@ -65,6 +65,7 @@ async def create_stash(
             access=req.access,
             discoverable=req.discoverable,
             cover_image_url=req.cover_image_url,
+            icon_url=req.icon_url,
             items=req.items,
         )
     except ValueError as e:
@@ -96,6 +97,7 @@ async def publish_stash(
             access="public",
             discoverable=req.discoverable,
             cover_image_url=req.cover_image_url,
+            icon_url=req.icon_url,
             items=req.items,
         )
     except ValueError as e:
@@ -177,6 +179,7 @@ async def update_stash(
             access=req.access,
             discoverable=req.discoverable,
             cover_image_url=req.cover_image_url,
+            icon_url=req.icon_url,
             items=req.items,
         )
     except ValueError as e:

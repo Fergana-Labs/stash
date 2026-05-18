@@ -1,10 +1,10 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useState } from "react";
 
 import AppShell from "../../components/AppShell";
 import { useBreadcrumbs } from "../../components/BreadcrumbContext";
+import StashCard from "../../components/stash/StashCard";
 import { useAuth } from "../../hooks/useAuth";
 import type { PublicStashCard } from "../../lib/api";
 
@@ -122,71 +122,53 @@ function DiscoverGrid({
 }) {
   return (
     <div className="mt-6 grid grid-cols-1 gap-3.5 sm:grid-cols-2 lg:grid-cols-3">
-      {stashes.map((stash, i) => (
-        <DiscoverStashCard
-          key={stash.id}
-          stash={stash}
-          cover={COVERS[i % COVERS.length]}
-          trending={sort === "trending" && i < 2}
-        />
-      ))}
-    </div>
-  );
-}
-
-function DiscoverStashCard({
-  stash,
-  cover,
-  trending,
-}: {
-  stash: PublicStashCard;
-  cover: string;
-  trending: boolean;
-}) {
-  const owner = stash.owner_display_name || stash.owner_name;
-  return (
-    <Link
-      href={`/stashes/${stash.slug}`}
-      className="card group flex min-h-[280px] flex-col overflow-hidden transition hover:border-[var(--color-brand-300)]"
-    >
-      <div className={`${cover} relative h-24`}>
-        {trending && (
-          <span
-            className="absolute left-3 top-2.5 inline-flex items-center gap-1 rounded-full bg-black/80 px-2 py-0.5 font-mono text-[10.5px] uppercase tracking-[0.04em] text-white"
-            style={{ letterSpacing: "0.04em" }}
-          >
-            ↗ trending
-          </span>
-        )}
-      </div>
-      <div className="flex flex-1 flex-col p-4">
-        <h3 className="m-0 font-display text-[17px] font-bold leading-tight tracking-[-0.015em] group-hover:text-[var(--color-brand-700)]">
-          {stash.title}
-        </h3>
-        <p className="mt-2 line-clamp-3 text-[12.5px] leading-[1.55] text-dim">
-          {stash.description || "No description."}
-        </p>
-        <div className="sys-label mt-3" style={{ fontSize: 10.5 }}>
-          {stash.item_count} item{stash.item_count === 1 ? "" : "s"} ·{" "}
-          {stash.view_count} view{stash.view_count === 1 ? "" : "s"}
-        </div>
-        <div className="flex-1" />
-        <div className="mt-3.5 flex items-center justify-between gap-1.5 border-t border-border-subtle pt-2.5 text-[11.5px] text-muted">
-          <span className="min-w-0 truncate">
-            {owner}
-            {stash.workspace_name && (
+      {stashes.map((stash, i) => {
+        const owner = stash.owner_display_name || stash.owner_name;
+        const trending = sort === "trending" && i < 2;
+        return (
+          <StashCard
+            key={stash.id}
+            stash={{
+              id: stash.id,
+              slug: stash.slug,
+              title: stash.title,
+              description: stash.description,
+              cover_image_url: stash.cover_image_url,
+              access: "public",
+              item_count: stash.item_count,
+              updated_at: stash.updated_at,
+            }}
+            cover={COVERS[i % COVERS.length]}
+            badge={
+              trending ? (
+                <span
+                  className="absolute left-3 top-2.5 inline-flex items-center gap-1 rounded-full bg-black/80 px-2 py-0.5 font-mono text-[10.5px] uppercase tracking-[0.04em] text-white"
+                  style={{ letterSpacing: "0.04em" }}
+                >
+                  ↗ trending
+                </span>
+              ) : undefined
+            }
+            footer={
               <>
-                {" · "}
-                <span className="font-mono text-dim">{stash.workspace_name}</span>
+                <span className="min-w-0 truncate">
+                  {owner}
+                  {stash.workspace_name && (
+                    <>
+                      {" · "}
+                      <span className="font-mono text-dim">{stash.workspace_name}</span>
+                    </>
+                  )}
+                </span>
+                <span className="inline-flex flex-shrink-0 items-center gap-1 rounded-md border border-border bg-base px-2 py-0.5 text-[11.5px] font-medium text-foreground group-hover:border-[var(--color-brand-300)] group-hover:bg-[var(--color-brand-50)] group-hover:text-[var(--color-brand-700)]">
+                  Open →
+                </span>
               </>
-            )}
-          </span>
-          <span className="inline-flex flex-shrink-0 items-center gap-1 rounded-md border border-border bg-base px-2 py-0.5 text-[11.5px] font-medium text-foreground group-hover:border-[var(--color-brand-300)] group-hover:bg-[var(--color-brand-50)] group-hover:text-[var(--color-brand-700)]">
-            Open →
-          </span>
-        </div>
-      </div>
-    </Link>
+            }
+          />
+        );
+      })}
+    </div>
   );
 }
 

@@ -10,9 +10,11 @@ import {
   getFile,
   getFolderContents,
   ingestCsvFile,
+  updateFile,
   type FolderBreadcrumb,
 } from "../../../../../lib/api";
 import type { FileInfo } from "../../../../../lib/types";
+import EditableTitle from "../../../../../components/workspace/EditableTitle";
 
 function isCsv(ct: string) {
   return ct?.includes("csv") || ct === "text/csv";
@@ -112,7 +114,17 @@ export default function FileViewerPage() {
     <div className="flex flex-1 min-h-0 flex-col overflow-hidden">
         <div className="flex items-center justify-between border-b border-border px-5 py-2.5 text-[13px]">
           <div className="flex items-center gap-2">
-            <span className="font-mono font-medium text-foreground">{file?.name}</span>
+            {file ? (
+              <EditableTitle
+                value={file.name}
+                className="font-mono font-medium text-foreground"
+                onSave={async (next) => {
+                  const updated = await updateFile(workspaceId, file.id, { name: next });
+                  setFile(updated);
+                  return updated.name;
+                }}
+              />
+            ) : null}
             {file && (
               <span className="text-muted">
                 {file.content_type} · {formatBytes(file.size_bytes)}
