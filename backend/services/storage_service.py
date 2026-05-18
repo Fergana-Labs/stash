@@ -7,6 +7,7 @@ Configured via environment variables.
 import logging
 import os
 from datetime import UTC
+from urllib.parse import quote
 from uuid import uuid4
 
 import httpx
@@ -40,6 +41,10 @@ def _storage_key(workspace_id: str | None, filename: str) -> str:
     return f"{prefix}/{uuid4().hex[:12]}/{filename}"
 
 
+def _object_uri(key: str) -> str:
+    return f"/{S3_BUCKET}/{quote(key, safe='/')}"
+
+
 async def upload_file(
     workspace_id: str | None,
     filename: str,
@@ -65,7 +70,7 @@ async def upload_file(
     # Canonical request components
     host = S3_ENDPOINT.replace("https://", "").replace("http://", "").rstrip("/")
     scheme = "https" if S3_ENDPOINT.startswith("https") else "http"
-    uri = f"/{S3_BUCKET}/{key}"
+    uri = _object_uri(key)
 
     payload_hash = hashlib.sha256(content).hexdigest()
 
@@ -124,7 +129,7 @@ async def upload_file(
 async def get_file_url(key: str, expires_in: int = 3600) -> str:
     """Generate a presigned GET URL for a storage key."""
     if S3_PUBLIC_URL:
-        return f"{S3_PUBLIC_URL.rstrip('/')}/{key}"
+        return f"{S3_PUBLIC_URL.rstrip('/')}/{quote(key, safe='/')}"
 
     if not is_configured():
         raise RuntimeError("S3 storage is not configured")
@@ -132,15 +137,13 @@ async def get_file_url(key: str, expires_in: int = 3600) -> str:
     import hashlib
     import hmac
     from datetime import datetime
-    from urllib.parse import quote
-
     now = datetime.now(UTC)
     date_stamp = now.strftime("%Y%m%d")
     amz_date = now.strftime("%Y%m%dT%H%M%SZ")
 
     host = S3_ENDPOINT.replace("https://", "").replace("http://", "").rstrip("/")
     scheme = "https" if S3_ENDPOINT.startswith("https") else "http"
-    uri = f"/{S3_BUCKET}/{key}"
+    uri = _object_uri(key)
 
     credential_scope = f"{date_stamp}/{S3_REGION}/s3/aws4_request"
     credential = f"{S3_ACCESS_KEY}/{credential_scope}"
@@ -203,7 +206,7 @@ async def delete_file(key: str) -> None:
 
     host = S3_ENDPOINT.replace("https://", "").replace("http://", "").rstrip("/")
     scheme = "https" if S3_ENDPOINT.startswith("https") else "http"
-    uri = f"/{S3_BUCKET}/{key}"
+    uri = _object_uri(key)
 
     payload_hash = hashlib.sha256(b"").hexdigest()
 
