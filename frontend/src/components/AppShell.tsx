@@ -9,7 +9,6 @@ import AppSidebar from "./AppSidebar";
 import CommandPalette from "./CommandPalette";
 import { useShareModal } from "../lib/shareModalContext";
 import { type Crumb, useBreadcrumbsValue } from "./BreadcrumbContext";
-import { StashIcon } from "./StashIcons";
 import { getCachedWorkspaces, readCachedWorkspaces } from "../lib/stashNavigationCache";
 import { useEscapeKey } from "../hooks/useEscapeKey";
 
@@ -269,7 +268,6 @@ export default function AppShell({ user, onLogout, children }: AppShellProps) {
               <path d="M15 18l-6-6 6-6" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
           </button>
-          <WorkspaceLabel workspace={activeWorkspace} />
           <Breadcrumb activeWorkspace={activeWorkspace} pageCrumbs={breadcrumbs} />
         </div>
 
@@ -401,23 +399,6 @@ function UserMenu({
   );
 }
 
-function WorkspaceLabel({ workspace }: { workspace: Workspace | undefined }) {
-  if (!workspace) return null;
-
-  return (
-    <Link
-      href={`/workspaces/${workspace.id}`}
-      className="ml-1.5 flex min-w-0 items-center gap-1.5 rounded px-1.5 py-1 text-foreground hover:bg-raised"
-      title={workspace.name}
-    >
-      <span className="flex h-4 w-4 items-center justify-center text-[14px] text-muted">
-        <StashIcon />
-      </span>
-      <span className="max-w-[180px] truncate font-medium">{workspace.name}</span>
-    </Link>
-  );
-}
-
 function Breadcrumb({
   activeWorkspace,
   pageCrumbs,
@@ -425,13 +406,14 @@ function Breadcrumb({
   activeWorkspace: Workspace | undefined;
   pageCrumbs: { label: string; href?: string; onClick?: () => void }[] | null;
 }) {
-  let items: { label: string; href?: string }[] = [];
+  const home = {
+    label: "Home",
+    href: activeWorkspace ? `/workspaces/${activeWorkspace.id}` : "/",
+  };
+
+  let items: { label: string; href?: string }[] = [home];
   if (pageCrumbs && pageCrumbs.length > 0) {
-    items = pageCrumbs.map((c) => ({ label: c.label, href: c.href }));
-  } else if (activeWorkspace) {
-    items = [{ label: "Home", href: `/workspaces/${activeWorkspace.id}` }];
-  } else {
-    items = [{ label: "Home", href: "/" }];
+    items = [...items, ...pageCrumbs.map((c) => ({ label: c.label, href: c.href }))];
   }
 
   return (
@@ -440,8 +422,8 @@ function Breadcrumb({
         const last = i === items.length - 1;
         return (
           <span key={i} className="flex min-w-0 items-center gap-1">
-            <span className="text-muted/60">/</span>
-            {!last && c.href ? (
+            {i > 0 && <span className="text-muted/60">/</span>}
+            {c.href && (!last || c.label === "Home") ? (
               <Link href={c.href} className="truncate hover:text-foreground">
                 {c.label}
               </Link>
