@@ -7,6 +7,7 @@ import { useBreadcrumbs } from "../../../../../components/BreadcrumbContext";
 import DownloadMenu, { downloadBlob } from "../../../../../components/DownloadMenu";
 import { StashIcon } from "../../../../../components/StashIcons";
 import HtmlPageView from "../../../../../components/workspace/HtmlPageView";
+import EditableTitle from "../../../../../components/workspace/EditableTitle";
 import MarkdownEditor, { type SaveStatus } from "../../../../../components/workspace/MarkdownEditor";
 import { useAuth } from "../../../../../hooks/useAuth";
 import {
@@ -117,7 +118,23 @@ export default function StashPageView() {
             {isHtml ? <HtmlGlyph /> : <PageGlyph />}
           </span>
           <h1 className="mb-1 mt-3 font-display text-[38px] font-bold leading-tight tracking-[-0.025em]">
-            {(page?.name || "").replace(/\.md$/, "")}
+            {page ? (
+              <EditableTitle
+                value={(page.name || "").replace(/\.md$/, "")}
+                onSave={async (next) => {
+                  // Preserve the .md suffix when the underlying page name
+                  // was a markdown file. Tiptap docs are saved without
+                  // extension, html pages keep .html, so only restore .md.
+                  const had = page.name.toLowerCase().endsWith(".md");
+                  const newName = had && !next.toLowerCase().endsWith(".md") ? `${next}.md` : next;
+                  const updated = await updatePage(workspaceId, pageId, { name: newName });
+                  setPage(updated);
+                  return updated.name.replace(/\.md$/, "");
+                }}
+              />
+            ) : (
+              ""
+            )}
           </h1>
 
           <div className="flex items-center gap-2.5 text-[12px] text-muted">

@@ -655,7 +655,7 @@ export async function deleteFile(workspaceId: string, fileId: string): Promise<v
 export async function updateFile(
   workspaceId: string,
   fileId: string,
-  data: { folder_id?: string | null; move_to_root?: boolean }
+  data: { folder_id?: string | null; move_to_root?: boolean; name?: string }
 ): Promise<FileInfo> {
   return apiFetch(`/api/v1/workspaces/${workspaceId}/files/${fileId}`, {
     method: "PATCH",
