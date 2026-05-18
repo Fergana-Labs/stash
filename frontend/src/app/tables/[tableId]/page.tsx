@@ -564,33 +564,17 @@ function TableEditorPageInner() {
 
   const tableContent = (
       <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
-        {/* Files / Table context bar */}
-        <div className="flex items-center gap-0 px-4 border-b border-border bg-surface flex-shrink-0">
+        {/* Toolbar */}
+        <div className="flex items-center gap-2 px-4 py-2.5 border-b border-border bg-surface flex-shrink-0 flex-wrap">
           {readOnly && stashSlug ? (
             <Link
               href={`/stashes/${stashSlug}`}
-              className="px-4 py-2.5 text-sm font-medium transition-colors text-dim hover:text-foreground"
+              className="inline-flex items-center gap-1 text-sm text-muted hover:text-foreground"
+              aria-label={`Back to ${stashTitle ?? "Stash"}`}
             >
               &larr; {stashTitle ?? "Stash"}
             </Link>
           ) : (
-            <button
-              onClick={() => router.push(wsId ? `/workspaces/${wsId}` : "/")}
-              className="px-4 py-2.5 text-sm font-medium transition-colors text-dim hover:text-foreground"
-            >
-              Files
-            </button>
-          )}
-          <button
-            className="px-4 py-2.5 text-sm font-medium transition-colors relative text-brand"
-          >
-            Table
-            <span className="absolute bottom-0 left-0 right-0 h-[2px] bg-brand rounded-t" />
-          </button>
-        </div>
-        {/* Toolbar */}
-        <div className="flex items-center gap-2 px-4 py-2.5 border-b border-border bg-surface flex-shrink-0 flex-wrap">
-          {!readOnly && (
             <button
               onClick={() => router.push(wsId ? `/workspaces/${wsId}` : "/")}
               className="text-muted hover:text-foreground text-sm"
