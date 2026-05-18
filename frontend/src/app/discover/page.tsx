@@ -50,21 +50,7 @@ export default function DiscoverPage() {
 
   const content = (
     <div className="mx-auto max-w-[1180px] px-12 pb-20 pt-9">
-      {/* Hero */}
-      <div className="border-b border-border-subtle pb-5">
-        <p className="sys-label">Discover</p>
-        <h1 className="my-2 font-display text-[44px] font-black leading-[1.05] tracking-[-0.025em]">
-          Public Stashes, in the wild.
-        </h1>
-        <p className="m-0 max-w-[720px] text-[14.5px] leading-[1.55] text-dim">
-          Browse Stashes that workspaces have published and shared to Discover.
-          Open any of them, fork into your workspace, and it becomes an external
-          Stash you and your agents can search.
-        </p>
-      </div>
-
-      {/* Controls */}
-      <div className="mt-4 flex items-center gap-3">
+      <div className="flex items-center gap-3">
         <div className="flex max-w-[460px] flex-1 items-center gap-2 rounded-lg border border-border bg-base px-2.5 py-1.5">
           <SearchGlyph />
           <input
