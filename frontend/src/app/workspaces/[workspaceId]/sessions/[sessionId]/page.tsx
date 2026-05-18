@@ -142,33 +142,32 @@ export default function SessionViewerPage() {
 
   return (
     <div className="scroll-thin flex-1 overflow-y-auto">
-      <div className="mx-auto grid max-w-5xl gap-8 px-12 py-8 lg:grid-cols-[minmax(0,1fr)_240px]">
+      <div className="mx-auto grid max-w-[1100px] gap-7 px-12 pb-20 pt-7 lg:grid-cols-[minmax(0,1fr)_260px]">
         <main className="min-w-0">
-          {/* Title row — chat-style header (matches mockup chat-customer-discovery) */}
-          <div className="mb-5 flex items-start justify-between gap-4 border-b border-border pb-4">
+          <div className="mb-2 flex items-start justify-between gap-4 border-b border-border pb-3.5">
             <div className="min-w-0">
-              <h1 className="font-display text-[24px] font-bold tracking-tight text-foreground">
+              <div className="flex items-center gap-2">
+                {agentName ? (
+                  <span className="tag tag-agent">agent · {agentName}</span>
+                ) : (
+                  <span className="tag tag-agent">agent</span>
+                )}
+                <span className="sys-label">session</span>
+              </div>
+              <h1 className="mt-1.5 font-display text-[28px] font-bold leading-tight tracking-[-0.02em]">
                 #{sessionId.replace(/^acme-/, "")}
               </h1>
               {turns.length > 0 && (
-                <p className="mt-1.5 text-[11.5px] text-muted">
-                  {turns.length} messages
-                  {sessionDate ? (
-                    <>
-                      {" · "}
-                      <span className="text-foreground">{sessionDate}</span>
-                    </>
-                  ) : null}
-                </p>
+                <div className="mt-1.5 flex flex-wrap items-center gap-2.5 text-[12px] text-muted">
+                  {sessionDate && <span>{sessionDate}</span>}
+                  {sessionDate && <span>·</span>}
+                  <span>
+                    {turns.length} message{turns.length === 1 ? "" : "s"}
+                  </span>
+                </div>
               )}
             </div>
-            <div className="flex items-center gap-2">
-              {agentName && (
-                <span className="inline-flex items-center gap-1.5 rounded-md border border-border bg-base px-2 py-1 text-[11px] text-foreground">
-                  <span className="text-muted">Agent</span>
-                  <span className="font-medium">{agentName}</span>
-                </span>
-              )}
+            <div className="flex flex-shrink-0 items-center gap-1.5">
               <DownloadMenu
                 options={[
                   {
@@ -247,66 +246,57 @@ function SessionAside({
   return (
     <aside className="hidden lg:block">
       <div className="sticky top-16 flex flex-col gap-3">
-        <div className="rounded-lg border border-border-subtle bg-surface p-3">
-          <div className="text-[11px] font-semibold uppercase tracking-wider text-muted">
-            Artifacts
-          </div>
-          {filesTouched.length > 0 ? (
-            <div className="mt-2">
-              <div className="flex flex-col gap-1.5">
-                {filesTouched.map((file) => (
-                  <div
-                    key={file}
-                    className="rounded-md border border-border-subtle bg-base px-2.5 py-2 font-mono text-[11px] text-foreground"
-                  >
-                    {file}
-                  </div>
-                ))}
-              </div>
-            </div>
-          ) : null}
-          <div className={filesTouched.length > 0 ? "mt-3" : "mt-2"}>
-            {artifacts.length > 0 ? (
-              <div className="flex flex-col gap-1.5">
-                {artifacts.map((artifact) => (
-                  <a
-                    key={artifact.id}
-                    href={artifact.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="rounded-md border border-border-subtle bg-base px-2.5 py-2 text-[12px] text-foreground hover:border-brand hover:text-brand"
-                  >
-                    <span className="block truncate font-medium">{artifact.file_path}</span>
-                    <span className="mt-0.5 block text-[11px] text-muted">
-                      {formatBytes(artifact.size_bytes)}
-                    </span>
-                  </a>
-                ))}
-              </div>
-            ) : (
-              filesTouched.length === 0 ? (
-                <div className="text-[12px] leading-relaxed text-muted">
-                  No artifacts recorded.
+        <div className="card-soft p-3.5">
+          <div className="sys-label">Artifacts</div>
+          {filesTouched.length > 0 && (
+            <div className="mt-2 flex flex-col gap-1.5">
+              {filesTouched.map((file) => (
+                <div
+                  key={file}
+                  className="flex items-center gap-1.5 rounded-md border border-border-subtle bg-base px-2 py-1.5 font-mono text-[11px] text-foreground"
+                >
+                  <FileGlyph />
+                  <span className="truncate">{file}</span>
                 </div>
-              ) : null
-            )}
-          </div>
+              ))}
+            </div>
+          )}
+          {artifacts.length > 0 && (
+            <div className={"flex flex-col gap-1.5 " + (filesTouched.length > 0 ? "mt-2" : "mt-2")}>
+              {artifacts.map((artifact) => (
+                <a
+                  key={artifact.id}
+                  href={artifact.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="linkrow px-2 py-1.5 font-mono text-[11px]"
+                >
+                  <FileGlyph />
+                  <span className="min-w-0 flex-1 truncate">{artifact.file_path}</span>
+                  <span className="sys-label" style={{ fontSize: 10 }}>
+                    {formatBytes(artifact.size_bytes)}
+                  </span>
+                </a>
+              ))}
+            </div>
+          )}
+          {filesTouched.length === 0 && artifacts.length === 0 && (
+            <div className="mt-2 text-[12px] leading-relaxed text-muted">
+              No artifacts recorded.
+            </div>
+          )}
         </div>
-        <div className="rounded-lg border border-border-subtle bg-surface p-3">
-          <div className="text-[11px] font-semibold uppercase tracking-wider text-muted">
-            Tool calls
-          </div>
+
+        <div className="card-soft p-3.5">
+          <div className="sys-label">Tool calls</div>
           {toolCalls.length > 0 ? (
             <div className="mt-2 flex flex-col gap-1.5">
               {toolCalls.map((turn) => (
-                <a
-                  key={turn.id}
-                  href={`#tool-call-${turn.index}`}
-                  className="rounded-md border border-border-subtle bg-base px-2.5 py-2 text-[12px] text-foreground hover:border-brand hover:text-brand"
-                >
-                  <span className="block truncate font-mono">{turn.toolName}</span>
-                  <span className="mt-0.5 block truncate text-[11px] text-muted">
-                    {turn.time ?? "Tool call"}
+                <a key={turn.id} href={`#tool-call-${turn.index}`} className="linkrow px-2 py-1.5">
+                  <span className="font-mono text-[11.5px] text-foreground">{turn.toolName}</span>
+                  <span className="flex-1" />
+                  <span className="sys-label" style={{ fontSize: 10 }}>
+                    {turn.time ?? "tool"}
                   </span>
                 </a>
               ))}
@@ -317,21 +307,25 @@ function SessionAside({
             </div>
           )}
         </div>
-        <div className="rounded-lg border border-border-subtle bg-surface p-3">
-          <div className="text-[11px] font-semibold uppercase tracking-wider text-muted">
-            In Stashes
-          </div>
+
+        <div className="card-soft p-3.5">
+          <div className="sys-label">In Stashes</div>
           {stashes.length > 0 ? (
             <div className="mt-2 flex flex-col gap-1.5">
               {stashes.map((stash) => (
                 <a
                   key={stash.id}
                   href={`/stashes/${stash.slug}`}
-                  className="rounded-md border border-border-subtle bg-base px-2.5 py-2 text-[12px] text-foreground hover:border-brand hover:text-brand"
+                  className="linkrow px-2 py-1.5"
                 >
-                  <span className="block truncate font-medium">{stash.title}</span>
-                  <span className="mt-0.5 block text-[11px] text-muted">
-                    {stash.items.length} item{stash.items.length === 1 ? "" : "s"}
+                  <span className="text-[var(--color-brand-600)]">
+                    <StashGlyph />
+                  </span>
+                  <span className="min-w-0 flex-1 truncate text-[12.5px] font-medium text-foreground">
+                    {stash.title}
+                  </span>
+                  <span className="sys-label" style={{ fontSize: 10 }}>
+                    {stash.items.length}
                   </span>
                 </a>
               ))}
@@ -344,6 +338,24 @@ function SessionAside({
         </div>
       </div>
     </aside>
+  );
+}
+
+function FileGlyph() {
+  return (
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="flex-shrink-0 text-muted">
+      <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" />
+      <path d="M14 3v5h5" />
+    </svg>
+  );
+}
+
+function StashGlyph() {
+  return (
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="flex-shrink-0">
+      <path d="M4 7h16l-1.3 11a2 2 0 0 1-2 1.8H7.3a2 2 0 0 1-2-1.8L4 7z" />
+      <path d="M9 7V5a3 3 0 0 1 6 0v2" />
+    </svg>
   );
 }
 
@@ -390,19 +402,31 @@ function MessageRow({ turn, index }: { turn: MessageTurn; index: number }) {
         <div className="min-w-0 flex-1">
           <div className="flex items-baseline gap-2 text-[12.5px]">
             <span className="font-semibold text-foreground">{turn.name}</span>
-            {isAgent && (
-              <span className="rounded bg-[var(--color-brand-50)] px-1 py-0 text-[9.5px] uppercase tracking-wide text-[var(--color-brand-700)] ring-1 ring-[var(--color-brand-200)]">
-                app
-              </span>
+            {isAgent ? (
+              <span className="tag tag-agent">agent</span>
+            ) : (
+              <span className="tag tag-human">human</span>
             )}
             {turn.toolName && (
-              <span className="rounded bg-indigo-50 px-1 py-0 font-mono text-[10px] text-indigo-700 ring-1 ring-indigo-200">
+              <span className="rounded bg-indigo-50 px-1.5 py-0 font-mono text-[10.5px] text-indigo-700 ring-1 ring-indigo-200">
                 {turn.toolName}
               </span>
             )}
-            {turn.time && <span className="text-[10.5px] text-muted">{turn.time}</span>}
+            <span className="flex-1" />
+            {turn.time && (
+              <span className="sys-label" style={{ fontSize: 10 }}>
+                {turn.time}
+              </span>
+            )}
           </div>
-          <div className="mt-0.5 whitespace-pre-wrap text-[13.5px] leading-relaxed text-foreground">
+          <div
+            className={
+              "mt-1 whitespace-pre-wrap leading-relaxed text-foreground " +
+              (turn.toolName
+                ? "rounded-md border border-border-subtle bg-surface px-2.5 py-2 font-mono text-[12px]"
+                : "text-[13.5px]")
+            }
+          >
             {turn.content}
           </div>
         </div>

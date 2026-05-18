@@ -75,16 +75,24 @@ function StashPageBody({
   const sessionCount = groups.session?.length ?? 0;
   const tableCount = groups.table?.length ?? 0;
 
+  const visibility: "public" | "private" | "workspace" = stash.access;
+  const visClass = visibility === "public" ? "public" : visibility === "private" ? "private" : "";
+
   return (
     <main className="min-h-screen bg-background">
       <div className="border-b border-border-subtle bg-surface">
-        <div className="mx-auto flex max-w-[1180px] items-center justify-between gap-4 px-7 py-3">
+        <div className="mx-auto flex max-w-[1180px] items-center justify-between gap-4 px-7 py-3.5">
           <div className="min-w-0">
-            <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-muted">
-              {workspace_name}
-            </p>
-            <h1 className="truncate font-display text-[20px] font-bold text-ink">
-              {stash.title}
+            <p className="sys-label">{workspace_name} · workspace</p>
+            <h1 className="mt-0.5 flex min-w-0 items-center gap-2.5 font-display text-[22px] font-bold tracking-[-0.015em]">
+              <span className="text-[var(--color-brand-600)]">
+                <StashHeaderGlyph />
+              </span>
+              <span className="truncate">{stash.title}</span>
+              <span className={`stash-chip ${visClass}`.trim()}>
+                <span className="dot" />
+                {visibility}
+              </span>
             </h1>
           </div>
           <div className="flex items-center gap-2">
@@ -147,26 +155,25 @@ function StashPageBody({
         </aside>
 
         <div className="min-w-0">
-          <section id="home" className="scroll-mt-8 border-b border-border-subtle pb-8">
-            <p className="font-mono text-[11px] uppercase tracking-wider text-muted">
-              Stash · {items.length} item{items.length === 1 ? "" : "s"} · viewed {stash.view_count} time
+          <section id="home" className="scroll-mt-8 border-b border-border-subtle pb-7">
+            <p className="sys-label">
+              Stash · {items.length} item{items.length === 1 ? "" : "s"} · {stash.view_count} view
               {stash.view_count === 1 ? "" : "s"}
             </p>
-            <h2 className="mt-3 font-display text-[clamp(32px,4vw,48px)] font-black leading-[1.05] text-ink">
-              Home
+            <h2 className="mt-3.5 font-display text-[44px] font-black leading-[1.05] tracking-[-0.025em] text-foreground">
+              {stash.title}
             </h2>
-            <div className="mt-5 max-w-[760px] rounded-lg border border-border-subtle bg-surface p-5">
-              <p className="font-mono text-[11px] uppercase tracking-wider text-muted">
-                About this Stash
-              </p>
-              <p className="mt-2 whitespace-pre-wrap text-[15px] leading-[1.7] text-foreground">
+            <div className="card-soft mt-5 max-w-[760px] p-[18px]">
+              <div className="sys-label">About this Stash</div>
+              <p className="mt-2 whitespace-pre-wrap text-[14.5px] leading-[1.7] text-foreground">
                 {stash.description || "No description yet."}
               </p>
             </div>
-            <div className="mt-5 grid gap-2 sm:grid-cols-3">
-              <SummaryStat label="Files" value={fileCount} />
-              <SummaryStat label="Sessions" value={sessionCount} />
-              <SummaryStat label="Tables" value={tableCount} />
+            <div className="mt-[18px] grid grid-cols-2 gap-2 sm:grid-cols-4">
+              <SummaryStat label="Pages" value={fileCount} tint="var(--text-primary)" />
+              <SummaryStat label="Sessions" value={sessionCount} tint="var(--color-agent)" />
+              <SummaryStat label="Tables" value={tableCount} tint="#16A34A" />
+              <SummaryStat label="Views" value={stash.view_count} tint="var(--color-brand-600)" />
             </div>
           </section>
 
@@ -285,12 +292,26 @@ function groupStashItems(items: PublicStashItem[]): StashItemGroup {
   return groups;
 }
 
-function SummaryStat({ label, value }: { label: string; value: number }) {
+function SummaryStat({ label, value, tint }: { label: string; value: number; tint?: string }) {
   return (
-    <div className="rounded-md border border-border-subtle bg-base px-3 py-2">
-      <div className="font-mono text-[10px] uppercase tracking-wider text-muted">{label}</div>
-      <div className="mt-1 text-[20px] font-semibold text-ink">{value}</div>
+    <div className="card p-3">
+      <div
+        className="font-display text-[24px] font-bold leading-[1.1] tracking-[-0.02em]"
+        style={{ color: tint ?? "var(--text-primary)" }}
+      >
+        {value}
+      </div>
+      <div className="sys-label mt-0.5">{label}</div>
     </div>
+  );
+}
+
+function StashHeaderGlyph() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+      <path d="M4 7h16l-1.3 11a2 2 0 0 1-2 1.8H7.3a2 2 0 0 1-2-1.8L4 7z" />
+      <path d="M9 7V5a3 3 0 0 1 6 0v2" />
+    </svg>
   );
 }
 
@@ -305,11 +326,13 @@ function StashSection({
 }) {
   if (items.length === 0) return null;
   return (
-    <section id={id} className="scroll-mt-8 border-b border-border-subtle py-8 last:border-b-0">
-      <div className="mb-5 flex items-center justify-between gap-3">
-        <h2 className="font-display text-[24px] font-bold text-ink">{title}</h2>
-        <span className="font-mono text-[10px] uppercase tracking-wider text-muted">
-          {items.length}
+    <section id={id} className="scroll-mt-8 py-8 last:border-b-0">
+      <div className="mb-3 flex items-baseline gap-2.5 border-b border-border pb-2">
+        <h2 className="m-0 font-display text-[22px] font-bold leading-tight tracking-[-0.01em] text-foreground">
+          {title}
+        </h2>
+        <span className="sys-label">
+          {items.length} item{items.length === 1 ? "" : "s"}
         </span>
       </div>
       <div className="space-y-7">

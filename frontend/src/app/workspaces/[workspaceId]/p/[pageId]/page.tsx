@@ -1,10 +1,11 @@
 "use client";
 
+import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { useBreadcrumbs } from "../../../../../components/BreadcrumbContext";
 import DownloadMenu, { downloadBlob } from "../../../../../components/DownloadMenu";
-import { PageIcon } from "../../../../../components/StashIcons";
+import { StashIcon } from "../../../../../components/StashIcons";
 import HtmlPageView from "../../../../../components/workspace/HtmlPageView";
 import MarkdownEditor, { type SaveStatus } from "../../../../../components/workspace/MarkdownEditor";
 import { useAuth } from "../../../../../hooks/useAuth";
@@ -94,6 +95,7 @@ export default function StashPageView() {
     return <div className="flex h-screen items-center justify-center text-muted">Loading…</div>;
   if (!user) return null;
 
+  const isHtml = page?.content_type === "html";
   const updatedAt = page?.updated_at
     ? new Date(page.updated_at).toLocaleString(undefined, {
         month: "short",
@@ -105,36 +107,43 @@ export default function StashPageView() {
 
   return (
     <div className="scroll-thin flex-1 overflow-y-auto">
-      <div className="h-16 w-full bg-gradient-to-r from-[var(--color-brand-200)] via-[var(--color-brand-100)] to-amber-100" />
-        <div className="mx-auto -mt-6 grid max-w-5xl gap-8 px-12 pb-20 lg:grid-cols-[minmax(0,1fr)_240px]">
-          <main className="min-w-0">
-          <div className="flex h-12 w-12 items-center justify-center text-5xl text-muted">
-            <PageIcon />
-          </div>
-          <h1 className="mt-1 font-display text-[36px] font-bold tracking-tight text-foreground">
+      <div className="brand-banner" />
+      <div className="mx-auto -mt-[22px] grid max-w-[1100px] gap-7 px-12 pb-20 lg:grid-cols-[minmax(0,1fr)_240px]">
+        <main className="min-w-0">
+          <span
+            className="inline-flex h-14 w-14 items-center justify-center rounded-[12px] border border-border bg-base"
+            style={{ color: isHtml ? "var(--color-brand-600)" : "var(--text-muted)" }}
+          >
+            {isHtml ? <HtmlGlyph /> : <PageGlyph />}
+          </span>
+          <h1 className="mb-1 mt-3 font-display text-[38px] font-bold leading-tight tracking-[-0.025em]">
             {(page?.name || "").replace(/\.md$/, "")}
           </h1>
-          <div className="mt-1 flex items-center justify-between gap-3 text-[12px] text-muted">
-            <div className="flex items-center gap-3">
-              {updatedAt && (
-                <span>
-                  Last edited {updatedAt}
-                </span>
-              )}
-              {page && page.content_type !== "html" && (
+
+          <div className="flex items-center gap-2.5 text-[12px] text-muted">
+            {isHtml && <span className="tag tag-brand">html</span>}
+            {updatedAt && <span>Last edited {updatedAt}</span>}
+            {page && !isHtml && (
+              <>
+                <span>·</span>
                 <span
                   className={
                     saveStatus === "saving"
                       ? "text-amber-500"
                       : saveStatus === "dirty"
-                      ? "text-amber-600"
-                      : "text-emerald-600"
+                        ? "text-amber-600"
+                        : "text-emerald-600"
                   }
                 >
-                  {saveStatus === "saving" ? "Saving…" : saveStatus === "dirty" ? "Unsaved" : "Saved"}
+                  {saveStatus === "saving"
+                    ? "Saving…"
+                    : saveStatus === "dirty"
+                      ? "Unsaved"
+                      : "Saved"}
                 </span>
-              )}
-            </div>
+              </>
+            )}
+            <span className="flex-1" />
             {page && (
               <DownloadMenu
                 options={[
@@ -171,9 +180,9 @@ export default function StashPageView() {
             </div>
           )}
 
-          <article className="mt-8 text-[15px] leading-relaxed text-foreground">
+          <article className="mt-7 text-[15px] leading-relaxed text-foreground">
             {page ? (
-              page.content_type === "html" ? (
+              isHtml ? (
                 <HtmlPageView
                   html={page.content_html || ""}
                   title={page.name}
@@ -192,33 +201,47 @@ export default function StashPageView() {
               <p className="text-muted">Loading…</p>
             )}
           </article>
-          </main>
-          <StashAside stashes={containingStashes} />
-        </div>
+
+          {page && !isHtml && (
+            <div className="mt-6 flex items-center gap-2 rounded-lg border border-dashed border-border bg-surface px-3 py-2.5 text-[12.5px] text-muted">
+              <span className="font-mono text-dim">/</span>
+              <span>
+                press <KeyHint>/</KeyHint> for blocks · <KeyHint>@</KeyHint> for pages or
+                people · <KeyHint>⌘+J</KeyHint> to ask the workspace
+              </span>
+            </div>
+          )}
+        </main>
+
+        <StashAside stashes={containingStashes} />
       </div>
+    </div>
   );
 }
 
 function StashAside({ stashes }: { stashes: WorkspaceStash[] }) {
   return (
     <aside className="mt-20 hidden lg:block">
-      <div className="sticky top-16 rounded-lg border border-border-subtle bg-surface p-3">
-        <div className="text-[11px] font-semibold uppercase tracking-wider text-muted">
-          In Stashes
-        </div>
+      <div className="card-soft sticky top-16 p-3.5">
+        <div className="sys-label">In Stashes</div>
         {stashes.length > 0 ? (
           <div className="mt-2 flex flex-col gap-1.5">
             {stashes.map((stash) => (
-              <a
+              <Link
                 key={stash.id}
                 href={`/stashes/${stash.slug}`}
-                className="rounded-md border border-border-subtle bg-base px-2.5 py-2 text-[12px] text-foreground hover:border-brand hover:text-brand"
+                className="linkrow px-2 py-1.5"
               >
-                <span className="block truncate font-medium">{stash.title}</span>
-                <span className="mt-0.5 block text-[11px] text-muted">
-                  {stash.items.length} item{stash.items.length === 1 ? "" : "s"}
+                <span className="text-[var(--color-brand-600)]">
+                  <StashIcon />
                 </span>
-              </a>
+                <span className="min-w-0 flex-1 truncate text-[12.5px] font-medium text-foreground">
+                  {stash.title}
+                </span>
+                <span className="sys-label" style={{ fontSize: 10 }}>
+                  {stash.items.length}
+                </span>
+              </Link>
             ))}
           </div>
         ) : (
@@ -228,5 +251,34 @@ function StashAside({ stashes }: { stashes: WorkspaceStash[] }) {
         )}
       </div>
     </aside>
+  );
+}
+
+function KeyHint({ children }: { children: React.ReactNode }) {
+  return (
+    <span className="rounded-[3px] bg-raised px-[5px] font-mono text-[11px] text-dim">
+      {children}
+    </span>
+  );
+}
+
+function PageGlyph() {
+  return (
+    <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" strokeWidth="1.6">
+      <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" />
+      <path d="M14 3v5h5" />
+      <path d="M9 13h6M9 17h4" />
+    </svg>
+  );
+}
+
+function HtmlGlyph() {
+  return (
+    <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" strokeWidth="1.6">
+      <rect x="3" y="4" width="18" height="16" rx="2" />
+      <path d="M3 9h18" />
+      <circle cx="6" cy="6.5" r="0.6" fill="currentColor" />
+      <circle cx="8.2" cy="6.5" r="0.6" fill="currentColor" />
+    </svg>
   );
 }

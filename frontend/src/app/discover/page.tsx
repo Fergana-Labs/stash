@@ -14,6 +14,20 @@ const BACKEND_ORIGIN =
 const SORTS = ["trending", "newest", "popular"] as const;
 type Sort = (typeof SORTS)[number];
 
+const COVERS = ["cover-1", "cover-2", "cover-3", "cover-4", "cover-5", "cover-6"];
+
+const TOPICS = [
+  "agents infra",
+  "design systems",
+  "evals",
+  "MCP",
+  "PRDs",
+  "launches",
+  "PMing with agents",
+  "cursor",
+  "eng / runtimes",
+];
+
 async function fetchPublicStashes(params: {
   q?: string;
   sort: Sort;
@@ -22,12 +36,10 @@ async function fetchPublicStashes(params: {
   for (const [key, value] of Object.entries(params)) {
     if (value) qs.set(key, value);
   }
-
   const res = await fetch(
     `${BACKEND_ORIGIN}/api/v1/discover/stashes${qs.size ? `?${qs}` : ""}`,
   );
   if (!res.ok) return [];
-
   const data = await res.json();
   return data.stashes ?? [];
 }
@@ -38,6 +50,7 @@ export default function DiscoverPage() {
   const [query, setQuery] = useState("");
   const [stashes, setStashes] = useState<PublicStashCard[]>([]);
   const [fetching, setFetching] = useState(true);
+  const [activeTopic, setActiveTopic] = useState(0);
 
   useBreadcrumbs([{ label: "Discover" }], "discover");
 
@@ -49,37 +62,42 @@ export default function DiscoverPage() {
   }, [query, sort]);
 
   const content = (
-    <div className="mx-auto max-w-[1100px] px-8 py-10">
-      <header className="border-b border-border-subtle pb-6">
-        <p className="font-mono text-[11px] font-medium uppercase tracking-[0.14em] text-muted">
-          Discover
-        </p>
-        <h1 className="mt-3 font-display text-[34px] font-bold tracking-tight text-foreground">
-          Public Stashes.
+    <div className="mx-auto max-w-[1180px] px-12 pb-20 pt-9">
+      {/* Hero */}
+      <div className="border-b border-border-subtle pb-5">
+        <p className="sys-label">Discover</p>
+        <h1 className="my-2 font-display text-[44px] font-black leading-[1.05] tracking-[-0.025em]">
+          Public Stashes, in the wild.
         </h1>
-        <p className="mt-2 max-w-[620px] text-[14.5px] leading-[1.6] text-muted">
-          Browse Stashes that workspace owners have made public and shared to Discover.
+        <p className="m-0 max-w-[720px] text-[14.5px] leading-[1.55] text-dim">
+          Browse Stashes that workspaces have published and shared to Discover.
+          Open any of them, fork into your workspace, and it becomes an external
+          Stash you and your agents can search.
         </p>
-      </header>
+      </div>
 
-      <div className="mt-5 flex flex-col gap-3 lg:flex-row lg:items-center">
-        <input
-          type="text"
-          value={query}
-          onChange={(event) => setQuery(event.target.value)}
-          placeholder="Search public Stashes"
-          className="min-w-0 flex-1 rounded-lg border border-border bg-base px-3 py-2 text-[13px] text-foreground placeholder:text-muted focus:border-[var(--color-brand-400)] focus:outline-none"
-        />
-        <div className="flex rounded-md border border-border bg-base p-0.5 text-[12px]">
+      {/* Controls */}
+      <div className="mt-4 flex items-center gap-3">
+        <div className="flex max-w-[460px] flex-1 items-center gap-2 rounded-lg border border-border bg-base px-2.5 py-1.5">
+          <SearchGlyph />
+          <input
+            type="text"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search public Stashes…"
+            className="min-w-0 flex-1 border-0 bg-transparent text-[13px] text-foreground placeholder:text-muted focus:outline-none"
+          />
+        </div>
+        <div className="inline-flex gap-0.5 rounded-lg border border-border bg-base p-[3px]">
           {SORTS.map((option) => (
             <button
               key={option}
               type="button"
               onClick={() => setSort(option)}
               className={
-                "rounded px-2.5 py-1 capitalize " +
+                "rounded-md px-2.5 py-[3px] text-[12px] " +
                 (sort === option
-                  ? "bg-raised font-medium text-foreground"
+                  ? "bg-raised font-semibold text-foreground"
                   : "text-muted hover:text-foreground")
               }
             >
@@ -87,30 +105,40 @@ export default function DiscoverPage() {
             </button>
           ))}
         </div>
+        <span className="flex-1" />
+        <span className="sys-label" style={{ fontSize: 10.5 }}>
+          {stashes.length} result{stashes.length === 1 ? "" : "s"}
+        </span>
+      </div>
+
+      {/* Topic chips */}
+      <div className="mt-3.5 flex flex-wrap gap-1.5">
+        {TOPICS.map((t, i) => {
+          const active = i === activeTopic;
+          return (
+            <button
+              key={t}
+              type="button"
+              onClick={() => setActiveTopic(i)}
+              className={
+                "rounded-full border px-2.5 py-[3px] text-[11.5px] " +
+                (active
+                  ? "border-[var(--color-brand-200)] bg-[var(--color-brand-50)] text-[var(--color-brand-700)]"
+                  : "border-border bg-transparent text-dim hover:bg-raised")
+              }
+            >
+              {t}
+            </button>
+          );
+        })}
       </div>
 
       {fetching ? (
-        <p className="mt-12 text-center text-[13px] text-muted">Loading...</p>
+        <p className="mt-12 text-center text-[13px] text-muted">Loading…</p>
       ) : stashes.length === 0 ? (
         <EmptyState />
       ) : (
-        <>
-          <section className="mt-8">
-            <div className="flex items-center justify-between gap-3">
-              <h2 className="font-display text-[20px] font-bold text-foreground">
-                Public Stashes
-              </h2>
-              <p className="font-mono text-[11px] uppercase tracking-[0.12em] text-muted">
-                {stashes.length} result{stashes.length === 1 ? "" : "s"}
-              </p>
-            </div>
-            <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {stashes.map((stash) => (
-                <StashCard key={stash.id} stash={stash} />
-              ))}
-            </div>
-          </section>
-        </>
+        <DiscoverGrid stashes={stashes} sort={sort} />
       )}
     </div>
   );
@@ -118,7 +146,7 @@ export default function DiscoverPage() {
   if (loading) {
     return (
       <div className="flex h-screen items-center justify-center text-muted">
-        Loading...
+        Loading…
       </div>
     );
   }
@@ -134,58 +162,80 @@ export default function DiscoverPage() {
   return <main>{content}</main>;
 }
 
-function StashCard({
+function DiscoverGrid({
+  stashes,
+  sort,
+}: {
+  stashes: PublicStashCard[];
+  sort: Sort;
+}) {
+  return (
+    <div className="mt-6 grid grid-cols-1 gap-3.5 sm:grid-cols-2 lg:grid-cols-3">
+      {stashes.map((stash, i) => (
+        <DiscoverStashCard
+          key={stash.id}
+          stash={stash}
+          cover={COVERS[i % COVERS.length]}
+          trending={sort === "trending" && i < 2}
+        />
+      ))}
+    </div>
+  );
+}
+
+function DiscoverStashCard({
   stash,
+  cover,
+  trending,
 }: {
   stash: PublicStashCard;
+  cover: string;
+  trending: boolean;
 }) {
   const owner = stash.owner_display_name || stash.owner_name;
   return (
     <Link
       href={`/stashes/${stash.slug}`}
-      className="group flex min-h-[250px] flex-col overflow-hidden rounded-xl border border-border bg-base transition hover:border-[var(--color-brand-300)]"
+      className="card group flex min-h-[280px] flex-col overflow-hidden transition hover:border-[var(--color-brand-300)]"
     >
-      <Cover stash={stash} />
-      <div className="flex flex-1 flex-col p-5">
-        <div className="flex items-start justify-between gap-3">
-          <h3 className="font-display text-[17px] font-bold text-foreground group-hover:text-[var(--color-brand-700)]">
-            {stash.title}
-          </h3>
-        </div>
-        <p className="mt-2 line-clamp-3 text-[13.5px] leading-[1.55] text-muted">
+      <div className={`${cover} relative h-24`}>
+        {trending && (
+          <span
+            className="absolute left-3 top-2.5 inline-flex items-center gap-1 rounded-full bg-black/80 px-2 py-0.5 font-mono text-[10.5px] uppercase tracking-[0.04em] text-white"
+            style={{ letterSpacing: "0.04em" }}
+          >
+            ↗ trending
+          </span>
+        )}
+      </div>
+      <div className="flex flex-1 flex-col p-4">
+        <h3 className="m-0 font-display text-[17px] font-bold leading-tight tracking-[-0.015em] group-hover:text-[var(--color-brand-700)]">
+          {stash.title}
+        </h3>
+        <p className="mt-2 line-clamp-3 text-[12.5px] leading-[1.55] text-dim">
           {stash.description || "No description."}
         </p>
-        <p className="mt-3 font-mono text-[11px] uppercase tracking-wider text-muted">
-          {stash.item_count} item{stash.item_count === 1 ? "" : "s"} /{" "}
+        <div className="sys-label mt-3" style={{ fontSize: 10.5 }}>
+          {stash.item_count} item{stash.item_count === 1 ? "" : "s"} ·{" "}
           {stash.view_count} view{stash.view_count === 1 ? "" : "s"}
-        </p>
-        <div className="mt-auto flex items-center justify-between gap-3 pt-4 text-[12px] text-dim">
-          <span className="min-w-0 truncate">by {owner}</span>
-          <span className="min-w-0 truncate">{stash.workspace_name}</span>
+        </div>
+        <div className="flex-1" />
+        <div className="mt-3.5 flex items-center justify-between gap-1.5 border-t border-border-subtle pt-2.5 text-[11.5px] text-muted">
+          <span className="min-w-0 truncate">
+            {owner}
+            {stash.workspace_name && (
+              <>
+                {" · "}
+                <span className="font-mono text-dim">{stash.workspace_name}</span>
+              </>
+            )}
+          </span>
+          <span className="inline-flex flex-shrink-0 items-center gap-1 rounded-md border border-border bg-base px-2 py-0.5 text-[11.5px] font-medium text-foreground group-hover:border-[var(--color-brand-300)] group-hover:bg-[var(--color-brand-50)] group-hover:text-[var(--color-brand-700)]">
+            Open →
+          </span>
         </div>
       </div>
     </Link>
-  );
-}
-
-function Cover({ stash }: { stash: PublicStashCard }) {
-  if (stash.cover_image_url) {
-    return (
-      <div
-        className="h-28 border-b border-border bg-cover bg-center"
-        style={{ backgroundImage: `url(${stash.cover_image_url})` }}
-      />
-    );
-  }
-
-  const hue = hashHue(stash.id);
-  return (
-    <div
-      className="h-28 border-b border-border"
-      style={{
-        background: `linear-gradient(135deg, hsl(${hue} 58% 64% / 0.95), hsl(${(hue + 42) % 360} 52% 48% / 0.82))`,
-      }}
-    />
   );
 }
 
@@ -204,13 +254,15 @@ function EmptyState() {
 
 function sortLabel(sort: Sort): string {
   if (sort === "popular") return "Most viewed";
-  return sort;
+  if (sort === "trending") return "Trending";
+  return "Newest";
 }
 
-function hashHue(id: string): number {
-  let hash = 0;
-  for (let i = 0; i < id.length; i += 1) {
-    hash = (hash * 31 + id.charCodeAt(i)) & 0xffffffff;
-  }
-  return Math.abs(hash) % 360;
+function SearchGlyph() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-muted">
+      <circle cx="11" cy="11" r="8" />
+      <path d="m21 21-4.3-4.3" />
+    </svg>
+  );
 }

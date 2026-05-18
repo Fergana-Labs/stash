@@ -2,34 +2,63 @@
 
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import {
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-} from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import MembersModal from "../../../components/MembersModal";
 import {
+  FileIcon,
+  PageIcon,
+  SessionsIcon,
   StashIcon,
 } from "../../../components/StashIcons";
 import { useAuth } from "../../../hooks/useAuth";
 import {
+  type ActivityEvent,
   getWorkspace,
   getWorkspaceMembers,
   joinWorkspace,
   listStashes,
-  updateWorkspace,
+  listWorkspaceActivity,
   type WorkspaceStash,
 } from "../../../lib/api";
-import { useShareModal } from "../../../lib/shareModalContext";
 import type { Workspace, WorkspaceMember } from "../../../lib/types";
-import { EditorContent, useEditor } from "@tiptap/react";
-import StarterKit from "@tiptap/starter-kit";
-import Heading from "@tiptap/extension-heading";
-import Bold from "@tiptap/extension-bold";
-import Italic from "@tiptap/extension-italic";
-import TiptapLink from "@tiptap/extension-link";
-import Placeholder from "@tiptap/extension-placeholder";
+
+type FilterKey = "all" | "sessions" | "pages" | "stashes" | "discover";
+
+const FILTERS: { key: FilterKey; label: string }[] = [
+  { key: "all", label: "Everything" },
+  { key: "sessions", label: "Sessions" },
+  { key: "pages", label: "Pages" },
+  { key: "stashes", label: "Stashes" },
+  { key: "discover", label: "From discover" },
+];
+
+const AVATAR_CLASSES = [
+  "av-rose",
+  "av-indigo",
+  "av-emerald",
+  "av-amber",
+  "av-sky",
+  "av-fuchsia",
+  "av-violet",
+];
+
+function avatarClassFor(name: string): string {
+  let h = 5381;
+  for (let i = 0; i < name.length; i++) h = (h * 33 + name.charCodeAt(i)) >>> 0;
+  return AVATAR_CLASSES[h % AVATAR_CLASSES.length];
+}
+
+function relativeTime(iso: string): string {
+  const ms = Date.now() - new Date(iso).getTime();
+  if (ms < 60_000) return "just now";
+  const m = Math.floor(ms / 60_000);
+  if (m < 60) return `${m} min ago`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h} h ago`;
+  const d = Math.floor(h / 24);
+  if (d < 30) return `${d} d ago`;
+  return new Date(iso).toLocaleDateString();
+}
 
 export default function WorkspaceHomePage() {
   const params = useParams();
@@ -40,38 +69,29 @@ export default function WorkspaceHomePage() {
   const [workspace, setWorkspace] = useState<Workspace | null>(null);
   const [members, setMembers] = useState<WorkspaceMember[]>([]);
   const [stashes, setStashes] = useState<WorkspaceStash[]>([]);
+  const [events, setEvents] = useState<ActivityEvent[]>([]);
+  const [filter, setFilter] = useState<FilterKey>("all");
   const [error, setError] = useState("");
   const [membersOpen, setMembersOpen] = useState(false);
-  const shareModal = useShareModal();
-  const shareVersion = shareModal.version;
 
   const load = useCallback(async () => {
-    const [workspaceResult, membersResult, stashesResult] =
-      await Promise.allSettled([
-        getWorkspace(workspaceId),
-        getWorkspaceMembers(workspaceId),
-        listStashes(workspaceId),
-      ]);
-
-    if (workspaceResult.status === "fulfilled") {
-      setWorkspace(workspaceResult.value);
-    } else {
-      setError("Workspace not found");
-    }
-
-    if (membersResult.status === "fulfilled") {
-      setMembers(membersResult.value);
-    }
-
-    if (stashesResult.status === "fulfilled") {
-      setStashes(stashesResult.value);
-    }
+    const [w, m, s, a] = await Promise.allSettled([
+      getWorkspace(workspaceId),
+      getWorkspaceMembers(workspaceId),
+      listStashes(workspaceId),
+      listWorkspaceActivity(workspaceId, 50),
+    ]);
+    if (w.status === "fulfilled") setWorkspace(w.value);
+    else setError("Workspace not found");
+    if (m.status === "fulfilled") setMembers(m.value);
+    if (s.status === "fulfilled") setStashes(s.value);
+    if (a.status === "fulfilled") setEvents(a.value);
   }, [workspaceId]);
 
   useEffect(() => {
     if (!user) return;
     load();
-  }, [user, load, shareVersion]);
+  }, [user, load]);
 
   useEffect(() => {
     if (!loading && !user) router.push("/login");
@@ -89,82 +109,76 @@ export default function WorkspaceHomePage() {
     }
   }
 
+  // "Now" is captured once on mount so the 24h window doesn't drift on every
+  // re-render (which would also trip the react-hooks/purity rule on useMemo).
+  const [nowMs] = useState(() => Date.now());
+  const stats = useMemo(() => {
+    const dayMs = 24 * 60 * 60 * 1000;
+    const since = nowMs - dayMs;
+    const recent = events.filter((e) => new Date(e.ts).getTime() >= since);
+    const sessionsToday = recent.filter((e) => e.kind === "session.uploaded").length;
+    const pagesEdited = recent.filter((e) => e.kind === "page.updated").length;
+    const external = stashes.filter((s) => s.access === "public").length;
+    return {
+      sessionsToday,
+      pagesEdited,
+      activeStashes: stashes.length,
+      externalStashes: external,
+    };
+  }, [events, stashes, nowMs]);
+
+  const filtered = useMemo(() => {
+    if (filter === "all") return events;
+    if (filter === "sessions") return events.filter((e) => e.kind === "session.uploaded");
+    if (filter === "pages") return events.filter((e) => e.kind === "page.updated" || e.kind === "file.uploaded");
+    if (filter === "stashes") return events.filter((e) => e.kind === "stash.published");
+    return [];
+  }, [events, filter]);
+
   if (loading)
     return <div className="flex h-screen items-center justify-center text-muted">Loading…</div>;
   if (!user) return null;
 
+  const firstName = (user.display_name || user.name || "").split(" ")[0];
+  const totalRecent = stats.sessionsToday + stats.pagesEdited;
+
   return (
     <>
       <div className="scroll-thin flex-1 overflow-y-auto">
-        <div
-          className="h-32 bg-gradient-to-r from-[var(--color-brand-200)] via-amber-100 to-rose-100 bg-cover bg-center"
-          style={
-            workspace?.cover_image_url
-              ? { backgroundImage: `url(${workspace.cover_image_url})` }
-              : workspace?.color_gradient
-              ? { backgroundImage: workspace.color_gradient }
-              : undefined
-          }
-        />
-        <div className="mx-auto -mt-8 max-w-3xl px-12 pb-16">
-          <div className="mb-2 flex h-12 w-12 items-center justify-center overflow-hidden text-5xl text-[var(--color-brand-700)]">
-            {workspace?.icon_url ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={workspace.icon_url} alt="" className="h-12 w-12 rounded-lg object-cover" />
-            ) : (
-              <StashIcon />
-            )}
-          </div>
-          <div className="flex items-center gap-2">
-            <h1 className="font-display text-[34px] font-bold tracking-tight text-foreground">
-              {workspace?.name || "Loading…"}
-            </h1>
-            {isMember && (
+        <div className="mx-auto max-w-[920px] px-12 pb-20 pt-9">
+          {/* Hero */}
+          <div className="flex items-end justify-between gap-6">
+            <div className="min-w-0">
+              <div className="sys-label">
+                Workspace · {members.length} {members.length === 1 ? "member" : "members"}
+                {stashes.length > 0 && ` · ${stashes.length} ${stashes.length === 1 ? "Stash" : "Stashes"}`}
+              </div>
+              <h1 className="mt-1.5 font-display text-[40px] font-black leading-[1.05] tracking-[-0.025em]">
+                Hi {firstName || "there"} —{" "}
+                <span className="text-muted">
+                  {workspace?.name ? `here's what's new in ${workspace.name}.` : "here's what your agents shipped."}
+                </span>
+              </h1>
+              <p className="mt-1 max-w-[620px] text-[14.5px] text-dim">
+                {totalRecent > 0
+                  ? `${stats.sessionsToday} sessions and ${stats.pagesEdited} page edits in the last 24 hours.`
+                  : `Your team's recent activity in this workspace.`}
+              </p>
+            </div>
+            <div className="flex flex-shrink-0 gap-1.5">
               <Link
-                href={`/workspaces/${workspaceId}/settings`}
-                title="Workspace settings"
-                className="rounded-md p-1.5 text-muted hover:bg-raised hover:text-foreground"
-                aria-label="Settings"
+                href={`/workspaces/${workspaceId}/stashes`}
+                className="inline-flex items-center gap-1.5 rounded-md border border-border bg-base px-2.5 py-1 text-[12.5px] font-medium text-foreground hover:bg-raised"
               >
-                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <circle cx="12" cy="12" r="3" />
-                  <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
-                </svg>
+                <PlusGlyph /> New Stash
               </Link>
-            )}
-          </div>
-
-
-          <div className="mt-3 flex flex-wrap items-center gap-2 text-[12px] text-muted">
-            <button
-              onClick={() => setMembersOpen(true)}
-              title="View, add, or remove members"
-              className="rounded-md px-1.5 py-0.5 hover:bg-raised"
-            >
-              <MemberStack members={members} />
-              <span className="ml-1.5 text-[11px] underline-offset-2 hover:underline">
+              <button
+                onClick={() => setMembersOpen(true)}
+                className="inline-flex items-center gap-1.5 rounded-md border border-border bg-base px-2.5 py-1 text-[12.5px] font-medium text-foreground hover:bg-raised"
+              >
                 Members
-              </span>
-            </button>
-            <span className="text-muted">·</span>
-            <button
-              onClick={() =>
-                shareModal.open({
-                  workspaceId,
-                  workspaceName: workspace?.name,
-                  tab: stashes.length > 0 ? "manage" : "new",
-                })
-              }
-              title="View, create, or revoke stashes"
-              className="rounded-md px-1.5 py-0.5 hover:bg-raised"
-            >
-              <span aria-hidden>🔗</span>{" "}
-              {stashes.length === 0
-                ? "No Stashes"
-                : `${stashes.length} Stash${stashes.length === 1 ? "" : "es"}`}
-            </button>
-            <span className="text-muted">·</span>
-            <span>updated {workspace?.updated_at ? formatRelative(workspace.updated_at) : ""}</span>
+              </button>
+            </div>
           </div>
 
           {error && (
@@ -185,168 +199,198 @@ export default function WorkspaceHomePage() {
             </div>
           )}
 
-          <div className="mt-12">
-            <WorkspaceDescriptionEditor
-              workspace={workspace}
-              canEdit={isMember}
-              onSaved={(updated) => setWorkspace(updated)}
-            />
+          {/* Stat strip */}
+          <div className="mt-6 grid grid-cols-4 gap-2.5">
+            <StatCard label="Sessions today" value={stats.sessionsToday} tint="var(--color-agent)" />
+            <StatCard label="Pages edited" value={stats.pagesEdited} tint="var(--color-human)" />
+            <StatCard label="Active Stashes" value={stats.activeStashes} tint="var(--color-brand-500)" />
+            <StatCard label="External" value={stats.externalStashes} tint="var(--text-muted)" />
+          </div>
+
+          {/* Filters */}
+          <div className="mt-8 flex items-center justify-between border-b border-border pb-2">
+            <div className="flex gap-1">
+              {FILTERS.map((f) => {
+                const active = filter === f.key;
+                return (
+                  <button
+                    key={f.key}
+                    onClick={() => setFilter(f.key)}
+                    className={
+                      "rounded-md px-2.5 py-1 text-[12.5px] " +
+                      (active
+                        ? "bg-raised font-semibold text-foreground"
+                        : "text-muted hover:text-foreground")
+                    }
+                  >
+                    {f.label}
+                  </button>
+                );
+              })}
+            </div>
+            <span className="sys-label">sorted · recent</span>
+          </div>
+
+          {/* Feed */}
+          <div className="mt-3.5 flex flex-col gap-2.5">
+            {filtered.length === 0 ? (
+              <div className="rounded-[10px] border border-border bg-base px-4 py-6 text-center text-[13px] text-muted">
+                {filter === "discover"
+                  ? "Discover suggestions will show here when available."
+                  : "No recent activity to show."}
+              </div>
+            ) : (
+              filtered.map((event, i) => (
+                <FeedCard
+                  key={`${event.kind}-${event.target_id}-${i}`}
+                  event={event}
+                />
+              ))
+            )}
           </div>
         </div>
       </div>
-      <MembersModal workspaceId={workspaceId} open={membersOpen} onClose={() => setMembersOpen(false)} />
+      <MembersModal
+        workspaceId={workspaceId}
+        open={membersOpen}
+        onClose={() => setMembersOpen(false)}
+      />
     </>
   );
 }
 
-
-const AVATAR_PALETTE: { bg: string; fg: string }[] = [
-  { bg: "bg-rose-200", fg: "text-rose-800" },
-  { bg: "bg-indigo-200", fg: "text-indigo-800" },
-  { bg: "bg-emerald-200", fg: "text-emerald-800" },
-  { bg: "bg-amber-200", fg: "text-amber-900" },
-  { bg: "bg-sky-200", fg: "text-sky-800" },
-  { bg: "bg-fuchsia-200", fg: "text-fuchsia-800" },
-];
-
-function roleLabel(role: string): string {
-  if (role === "owner") return "admin";
-  return role;
-}
-
-function avatarFor(name: string) {
-  let h = 5381;
-  for (let i = 0; i < name.length; i++) h = (h * 33 + name.charCodeAt(i)) >>> 0;
-  return AVATAR_PALETTE[h % AVATAR_PALETTE.length];
-}
-
-function MemberStack({ members }: { members: WorkspaceMember[] }) {
-  if (!members.length) return null;
-  const display = members.slice(0, 5);
-  const overflow = members.length - display.length;
+function StatCard({
+  label,
+  value,
+  tint,
+}: {
+  label: string;
+  value: number;
+  tint: string;
+}) {
   return (
-    <div className="flex items-center gap-1.5">
-      <div className="flex -space-x-1.5">
-        {display.map((m) => {
-          const label = (m.display_name || m.name || "?").trim();
-          const palette = avatarFor(label);
-          return (
-            <span
-              key={m.user_id}
-              className={
-                "inline-flex h-5 w-5 items-center justify-center rounded-full border-2 border-base text-[9.5px] font-semibold " +
-                palette.bg +
-                " " +
-                palette.fg
-              }
-              title={`${label}${m.role && m.role !== "editor" ? ` · ${roleLabel(m.role)}` : ""}`}
-            >
-              {label.slice(0, 2).toUpperCase()}
-            </span>
-          );
-        })}
+    <div className="card p-3.5">
+      <div
+        className="font-display text-[26px] font-bold leading-[1.1] tracking-[-0.02em]"
+        style={{ color: tint }}
+      >
+        {value}
       </div>
-      {overflow > 0 && <span className="text-[11px] text-muted">+{overflow}</span>}
-      <span className="text-[12px] text-muted">
-        {members.length} member{members.length !== 1 ? "s" : ""}
-      </span>
+      <div className="sys-label mt-0.5">{label}</div>
     </div>
   );
 }
 
-function formatRelative(iso: string): string {
-  const ms = Date.now() - new Date(iso).getTime();
-  if (ms < 60_000) return "just now";
-  const m = Math.floor(ms / 60_000);
-  if (m < 60) return `${m}m ago`;
-  const h = Math.floor(m / 60);
-  if (h < 24) return `${h}h ago`;
-  const d = Math.floor(h / 24);
-  if (d < 30) return `${d}d ago`;
-  return new Date(iso).toLocaleDateString();
-}
-
-
-const AUTOSAVE_MS = 1500;
-
-function WorkspaceDescriptionEditor({
-  workspace,
-  canEdit,
-  onSaved,
-}: {
-  workspace: Workspace | null;
-  canEdit: boolean;
-  onSaved: (updated: Workspace) => void;
-}) {
-  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const lastSaved = useRef<string>("");
-
-  const description = workspace?.description ?? "";
-
-  useEffect(() => {
-    lastSaved.current = description;
-  }, [description]);
-
-  const editor = useEditor({
-    immediatelyRender: false,
-    editable: canEdit,
-    content: description || "<p></p>",
-    extensions: [
-      StarterKit.configure({
-        blockquote: false,
-        codeBlock: false,
-        heading: false,
-        bold: false,
-        italic: false,
-        link: false,
-        underline: false,
-      }),
-      Heading.configure({ levels: [1, 2, 3] }),
-      Bold,
-      Italic,
-      TiptapLink.configure({ openOnClick: true, autolink: true }),
-      Placeholder.configure({
-        placeholder: "Describe this workspace…",
-      }),
-    ],
-    editorProps: {
-      attributes: {
-        class: "min-h-[320px] focus:outline-none file-page-body",
-      },
-    },
-    onUpdate: ({ editor: ed }) => {
-      if (!workspace) return;
-      const html = ed.getHTML();
-      if (html === lastSaved.current) return;
-      if (saveTimer.current) clearTimeout(saveTimer.current);
-      saveTimer.current = setTimeout(async () => {
-        lastSaved.current = html;
-        const updated = await updateWorkspace(workspace.id, { description: html });
-        onSaved(updated);
-      }, AUTOSAVE_MS);
-    },
-  });
-
-  useEffect(() => {
-    if (!editor) return;
-    if (editor.getHTML() === description) return;
-    editor.commands.setContent(description || "<p></p>", { emitUpdate: false });
-    lastSaved.current = description;
-  }, [description, editor]);
-
-  useEffect(() => {
-    return () => {
-      if (saveTimer.current) clearTimeout(saveTimer.current);
-    };
-  }, []);
-
-  if (!workspace) return null;
-
-  if (!canEdit && !description) return null;
+function FeedCard({ event }: { event: ActivityEvent }) {
+  const name = event.actor.display_name || event.actor.name;
+  const avClass = avatarClassFor(name);
+  const initials = name.slice(0, 2).toUpperCase();
+  const verb = verbFor(event.kind);
+  const tag = tagFor(event.kind);
+  const href = hrefFor(event);
 
   return (
-    <div className="file-page-content">
-      <EditorContent editor={editor} />
-    </div>
+    <article className="card flex items-start gap-3 px-4 py-3.5">
+      <span
+        className={`avatar ${avClass}`}
+        style={{ width: 28, height: 28, fontSize: 11 }}
+      >
+        {initials}
+      </span>
+      <div className="min-w-0 flex-1">
+        <div className="flex flex-wrap items-baseline gap-2 text-[13px] text-dim">
+          <span>
+            <strong className="text-foreground">{name}</strong> {verb}
+          </span>
+          <span className="sys-label" style={{ fontSize: 10.5 }}>
+            {relativeTime(event.ts)}
+          </span>
+          {tag && <span className={`tag tag-${tag.kind}`}>{tag.label}</span>}
+        </div>
+        <h3 className="my-1.5 font-display text-[17px] font-bold leading-tight tracking-[-0.01em]">
+          <span className="mr-1.5 inline-flex align-middle text-muted">
+            <EventGlyph kind={event.kind} />
+          </span>
+          {event.target_label || event.target_id}
+        </h3>
+        <div className="mt-2 flex flex-wrap items-center gap-2.5 text-[11.5px] text-muted">
+          {event.workspace_name && (
+            <span className="font-mono">{event.workspace_name}</span>
+          )}
+          <span className="flex-1" />
+          {href && (
+            <Link
+              href={href}
+              className="inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[12px] text-dim hover:bg-raised hover:text-foreground"
+            >
+              Open →
+            </Link>
+          )}
+        </div>
+      </div>
+    </article>
+  );
+}
+
+function verbFor(kind: string): string {
+  if (kind === "session.uploaded") return "pushed a session";
+  if (kind === "page.updated") return "edited a page";
+  if (kind === "file.uploaded") return "uploaded a file";
+  if (kind === "member.joined") return "joined the workspace";
+  if (kind === "stash.published") return "published a Stash";
+  return kind;
+}
+
+function tagFor(kind: string): { kind: "agent" | "human"; label: string } | null {
+  if (kind === "session.uploaded") return { kind: "agent", label: "agent" };
+  if (kind === "page.updated" || kind === "file.uploaded")
+    return { kind: "human", label: "human" };
+  return null;
+}
+
+function hrefFor(event: ActivityEvent): string | null {
+  if (!event.workspace_id) return null;
+  if (event.kind === "session.uploaded")
+    return `/workspaces/${event.workspace_id}/sessions/${encodeURIComponent(event.target_id)}`;
+  if (event.kind === "page.updated")
+    return `/workspaces/${event.workspace_id}/p/${event.target_id}`;
+  if (event.kind === "file.uploaded")
+    return `/workspaces/${event.workspace_id}/f/${event.target_id}`;
+  return null;
+}
+
+function EventGlyph({ kind }: { kind: string }) {
+  if (kind === "session.uploaded")
+    return (
+      <span style={{ color: "var(--color-agent)" }}>
+        <SessionsIcon />
+      </span>
+    );
+  if (kind === "page.updated")
+    return (
+      <span className="text-muted">
+        <PageIcon />
+      </span>
+    );
+  if (kind === "file.uploaded")
+    return (
+      <span className="text-muted">
+        <FileIcon />
+      </span>
+    );
+  if (kind === "stash.published")
+    return (
+      <span style={{ color: "var(--color-brand-600)" }}>
+        <StashIcon />
+      </span>
+    );
+  return null;
+}
+
+function PlusGlyph() {
+  return (
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+      <path d="M12 5v14M5 12h14" />
+    </svg>
   );
 }

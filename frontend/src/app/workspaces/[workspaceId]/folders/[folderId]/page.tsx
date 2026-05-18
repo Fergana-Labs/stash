@@ -5,6 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import {
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
   type Dispatch,
@@ -24,8 +25,12 @@ import {
   getFolderContents,
   uploadFile,
   type FolderContents,
+  type FolderSubfolder,
 } from "../../../../../lib/api";
 import type { FileInfo, Folder } from "../../../../../lib/types";
+
+type LiveFile = FolderContents["files"][number];
+type LivePage = FolderContents["pages"][number];
 
 export default function FolderDetailPage() {
   const params = useParams();
@@ -52,7 +57,7 @@ export default function FolderDetailPage() {
 
   useBreadcrumbs(
     breadcrumbs,
-    `${workspaceId}/folder/${folderId}/${folderPath.map((crumb) => crumb.id).join(",")}`
+    `${workspaceId}/folder/${folderId}/${folderPath.map((c) => c.id).join(",")}`
   );
 
   const load = useCallback(async () => {
@@ -72,54 +77,73 @@ export default function FolderDetailPage() {
     if (!loading && !user) router.push("/login");
   }, [user, loading, router]);
 
+  const grouped = useMemo(() => {
+    if (!contents) return null;
+    const tables = contents.files.filter((f) => f.content_type?.includes("csv"));
+    const files = contents.files.filter((f) => !f.content_type?.includes("csv"));
+    return {
+      folders: contents.subfolders,
+      pages: contents.pages,
+      tables,
+      files,
+    };
+  }, [contents]);
+
   if (loading)
     return <div className="flex h-screen items-center justify-center text-muted">Loading…</div>;
   if (!user) return null;
 
   return (
     <div className="scroll-thin flex-1 overflow-y-auto">
-      <div className="mx-auto max-w-3xl px-12 py-8">
-          <nav className="mb-4 flex flex-wrap items-center gap-1.5 text-[12.5px] text-muted">
-            <Link
-              href={`/workspaces/${workspaceId}`}
-              className="hover:text-foreground"
-            >
-              Home
-            </Link>
-            {contents?.breadcrumbs.map((crumb, i) => {
-              const isLast = i === contents.breadcrumbs.length - 1;
-              return (
-                <span key={crumb.id} className="flex items-center gap-1.5">
-                  <span className="text-muted/60">/</span>
-                  {isLast ? (
-                    <span className="font-medium text-foreground">{crumb.name}</span>
-                  ) : (
-                    <Link
-                      href={`/workspaces/${workspaceId}/folders/${crumb.id}`}
-                      className="hover:text-foreground"
-                    >
-                      {crumb.name}
-                    </Link>
-                  )}
+      <div className="mx-auto max-w-[980px] px-12 pb-20 pt-8">
+        {/* Breadcrumb path */}
+        <div className="flex items-center gap-1.5 text-[12.5px] text-muted">
+          <Link href={`/workspaces/${workspaceId}`} className="text-dim hover:text-foreground">
+            Home
+          </Link>
+          {contents?.breadcrumbs.map((crumb, i) => {
+            const isLast = i === contents.breadcrumbs.length - 1;
+            return (
+              <span key={crumb.id} className="flex items-center gap-1.5">
+                <span className="text-muted/60">/</span>
+                {isLast ? (
+                  <span className="font-medium text-foreground">{crumb.name}</span>
+                ) : (
+                  <Link
+                    href={`/workspaces/${workspaceId}/folders/${crumb.id}`}
+                    className="hover:text-foreground"
+                  >
+                    {crumb.name}
+                  </Link>
+                )}
+              </span>
+            );
+          })}
+        </div>
+
+        {/* Header */}
+        <div className="mt-3.5 flex items-end justify-between gap-4">
+          <div className="min-w-0">
+            <span className="inline-flex h-11 w-11 items-center justify-center rounded-[10px] border border-border bg-surface text-dim">
+              <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="1.6">
+                <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z" />
+              </svg>
+            </span>
+            <h1 className="mb-1 mt-2.5 font-display text-[30px] font-bold tracking-[-0.02em]">
+              {contents?.folder.name || "Loading…"}
+            </h1>
+            {grouped && (
+              <div className="flex items-center gap-2 text-[12.5px] text-muted">
+                <span>
+                  {grouped.folders.length} folder{grouped.folders.length === 1 ? "" : "s"} ·{" "}
+                  {grouped.pages.length} page{grouped.pages.length === 1 ? "" : "s"} ·{" "}
+                  {grouped.tables.length} table{grouped.tables.length === 1 ? "" : "s"} ·{" "}
+                  {grouped.files.length} file{grouped.files.length === 1 ? "" : "s"}
                 </span>
-              );
-            })}
-          </nav>
-
-          <div className="mb-1 flex h-10 w-10 items-center justify-center text-4xl text-muted">
-            <FolderIcon />
+              </div>
+            )}
           </div>
-          <h1 className="font-display text-[28px] font-bold tracking-tight text-foreground">
-            {contents?.folder.name || "Loading…"}
-          </h1>
-
-          {error && (
-            <div className="mt-4 rounded-lg border border-red-300/40 bg-red-500/10 px-4 py-2 text-[13px] text-red-500">
-              {error}
-            </div>
-          )}
-
-          <div className="mt-5 mb-4 flex flex-wrap items-center gap-2">
+          <div className="flex flex-shrink-0 gap-1.5">
             <input
               ref={fileInputRef}
               type="file"
@@ -136,13 +160,11 @@ export default function FolderDetailPage() {
                 if (fileInputRef.current) fileInputRef.current.value = "";
               }}
             />
-            <button
+            <ToolbarButton
               onClick={() => fileInputRef.current?.click()}
-              className="rounded-md border border-border bg-base px-2.5 py-1 text-[12px] text-foreground hover:bg-raised"
-            >
-              + Upload file
-            </button>
-            <button
+              label="Upload file"
+            />
+            <ToolbarButton
               onClick={async () => {
                 try {
                   const p = await createPage(workspaceId, "Untitled", folderId);
@@ -151,11 +173,9 @@ export default function FolderDetailPage() {
                   /* */
                 }
               }}
-              className="rounded-md border border-border bg-base px-2.5 py-1 text-[12px] text-foreground hover:bg-raised"
-            >
-              + New page
-            </button>
-            <button
+              label="New page"
+            />
+            <ToolbarButton
               onClick={async () => {
                 const name = window.prompt("Folder name?");
                 if (!name?.trim()) return;
@@ -166,108 +186,184 @@ export default function FolderDetailPage() {
                   /* */
                 }
               }}
-              className="rounded-md border border-border bg-base px-2.5 py-1 text-[12px] text-foreground hover:bg-raised"
-            >
-              + New folder
-            </button>
+              label="New folder"
+            />
           </div>
+        </div>
 
-          {/* Contents grid — same card style as the workspace home Files section */}
-          {contents && (
-            <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
-              {contents.subfolders.map((sub) => (
-                <Link
-                  key={sub.id}
-                  href={`/workspaces/${workspaceId}/folders/${sub.id}`}
-                  className="flex items-center gap-3 rounded-lg border border-border bg-base p-3 text-left transition-colors hover:border-[var(--color-brand-200)] hover:bg-[var(--color-brand-50)]"
-                >
-                  <span className="flex h-7 w-7 items-center justify-center text-2xl text-muted">
-                    <FolderIcon />
-                  </span>
-                  <div className="min-w-0">
-                    <div className="truncate text-[13.5px] font-semibold text-foreground">
-                      {sub.name}
-                    </div>
-                    <div className="truncate text-[11.5px] text-muted">
-                      {[
-                        sub.page_count
-                          ? `${sub.page_count} page${sub.page_count === 1 ? "" : "s"}`
-                          : null,
-                        sub.file_count
-                          ? `${sub.file_count} file${sub.file_count === 1 ? "" : "s"}`
-                          : null,
-                      ]
-                        .filter(Boolean)
-                        .join(" · ") || "Empty"}
-                    </div>
-                  </div>
-                </Link>
-              ))}
-              {contents.pages.map((p) => (
-                <Link
-                  key={p.id}
-                  href={`/workspaces/${workspaceId}/p/${p.id}`}
-                  className="flex items-center gap-3 rounded-lg border border-border bg-base p-3 text-left transition-colors hover:border-[var(--color-brand-200)] hover:bg-[var(--color-brand-50)]"
-                >
-                  <span className="flex h-7 w-7 items-center justify-center text-2xl text-muted">
-                    <PageIcon />
-                  </span>
-                  <div className="min-w-0">
-                    <div className="truncate text-[13.5px] font-semibold text-foreground">
-                      {p.name.replace(/\.md$/, "")}
-                    </div>
-                    <div className="truncate text-[11.5px] text-muted">Page</div>
-                  </div>
-                </Link>
-              ))}
-              {contents.files.map((f) => {
-                const isCsvLinked =
-                  f.content_type?.includes("csv") && f.linked_table_id;
-                const href = isCsvLinked
-                  ? `/tables/${f.linked_table_id}?workspaceId=${workspaceId}`
-                  : `/workspaces/${workspaceId}/f/${f.id}`;
-                return (
-                  <Link
-                    key={f.id}
-                    href={href}
-                    className="flex items-center gap-3 rounded-lg border border-border bg-base p-3 text-left transition-colors hover:border-[var(--color-brand-200)] hover:bg-[var(--color-brand-50)]"
-                  >
-                    <span
-                      className={
-                        "flex h-7 w-7 items-center justify-center text-2xl " +
-                        (f.content_type?.includes("csv")
-                          ? "text-emerald-600"
-                          : f.content_type?.includes("pdf")
-                          ? "text-rose-500"
-                          : f.content_type?.includes("html")
-                          ? "text-amber-600"
-                          : "text-muted")
-                      }
-                    >
-                      {f.content_type?.includes("csv") ? <TableIcon /> : <FileIcon />}
-                    </span>
-                    <div className="min-w-0">
-                      <div className="truncate text-[13.5px] font-semibold text-foreground">
-                        {f.name}
-                      </div>
-                      <div className="truncate text-[11.5px] text-muted">
-                        {f.content_type || "file"} · {formatBytes(f.size_bytes)}
-                      </div>
-                    </div>
-                  </Link>
-                );
-              })}
-              {contents.subfolders.length === 0 &&
-                contents.pages.length === 0 &&
-                contents.files.length === 0 && (
-                  <div className="col-span-full rounded-lg border border-dashed border-border bg-surface/30 px-4 py-6 text-center text-[12.5px] text-muted">
-                    Empty folder. Add a page, upload a file, or create a subfolder.
-                  </div>
-                )}
-            </div>
-          )}
+        {error && (
+          <div className="mt-4 rounded-lg border border-red-300/40 bg-red-500/10 px-4 py-2 text-[13px] text-red-500">
+            {error}
+          </div>
+        )}
+
+        {grouped && (
+          <>
+            {grouped.folders.length === 0 &&
+              grouped.pages.length === 0 &&
+              grouped.tables.length === 0 &&
+              grouped.files.length === 0 && (
+                <div className="mt-10 rounded-lg border border-dashed border-border bg-surface/30 px-4 py-10 text-center text-[12.5px] text-muted">
+                  Empty folder. Add a page, upload a file, or create a subfolder.
+                </div>
+              )}
+
+            {grouped.folders.length > 0 && (
+              <Section title="Folders" count={grouped.folders.length}>
+                {grouped.folders.map((sub) => (
+                  <FolderTile key={sub.id} sub={sub} workspaceId={workspaceId} />
+                ))}
+              </Section>
+            )}
+            {grouped.pages.length > 0 && (
+              <Section title="Pages" count={grouped.pages.length}>
+                {grouped.pages.map((p) => (
+                  <PageTile key={p.id} page={p} workspaceId={workspaceId} />
+                ))}
+              </Section>
+            )}
+            {grouped.tables.length > 0 && (
+              <Section title="Tables" count={grouped.tables.length}>
+                {grouped.tables.map((f) => (
+                  <TableTile key={f.id} file={f} workspaceId={workspaceId} />
+                ))}
+              </Section>
+            )}
+            {grouped.files.length > 0 && (
+              <Section title="Files" count={grouped.files.length}>
+                {grouped.files.map((f) => (
+                  <FileTile key={f.id} file={f} workspaceId={workspaceId} />
+                ))}
+              </Section>
+            )}
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function Section({
+  title,
+  count,
+  children,
+}: {
+  title: string;
+  count: number;
+  children: React.ReactNode;
+}) {
+  return (
+    <section className="mt-[22px]">
+      <div className="mb-2 flex items-baseline gap-2">
+        <h2 className="m-0 font-display text-[14px] font-semibold">{title}</h2>
+        <span className="sys-label" style={{ fontSize: 10.5 }}>
+          {count}
+        </span>
+      </div>
+      <div className="grid grid-cols-1 gap-2 md:grid-cols-2">{children}</div>
+    </section>
+  );
+}
+
+function ToolbarButton({ onClick, label }: { onClick: () => void; label: string }) {
+  return (
+    <button
+      onClick={onClick}
+      className="inline-flex items-center gap-1.5 rounded-md border border-border bg-base px-2.5 py-1 text-[12px] font-medium text-foreground hover:bg-raised"
+    >
+      <PlusGlyph /> {label}
+    </button>
+  );
+}
+
+function FolderTile({ sub, workspaceId }: { sub: FolderSubfolder; workspaceId: string }) {
+  const sub_label =
+    [
+      sub.page_count ? `${sub.page_count} page${sub.page_count === 1 ? "" : "s"}` : null,
+      sub.file_count ? `${sub.file_count} file${sub.file_count === 1 ? "" : "s"}` : null,
+    ]
+      .filter(Boolean)
+      .join(" · ") || "Empty";
+  return (
+    <Link href={`/workspaces/${workspaceId}/folders/${sub.id}`} className="linkrow items-start px-3.5 py-3">
+      <span className="mt-0.5 text-muted">
+        <FolderIcon />
+      </span>
+      <div className="min-w-0 flex-1">
+        <div className="truncate text-[13.5px] font-semibold text-foreground">{sub.name}</div>
+        <div className="mt-0.5 text-[11.5px] text-muted">{sub_label}</div>
+      </div>
+    </Link>
+  );
+}
+
+function PageTile({ page, workspaceId }: { page: LivePage; workspaceId: string }) {
+  const isHtml = page.name.endsWith(".html");
+  return (
+    <Link href={`/workspaces/${workspaceId}/p/${page.id}`} className="linkrow items-start px-3.5 py-3">
+      <span className={"mt-0.5 " + (isHtml ? "text-[#D97706]" : "text-muted")}>
+        <PageIcon />
+      </span>
+      <div className="min-w-0 flex-1">
+        <div className="truncate text-[13.5px] font-semibold text-foreground">
+          {page.name.replace(/\.md$/, "")}
+        </div>
+        <div className="mt-0.5 text-[11.5px] text-muted">
+          Page · {isHtml ? "html" : "markdown"}
         </div>
       </div>
+    </Link>
+  );
+}
+
+function TableTile({ file, workspaceId }: { file: LiveFile; workspaceId: string }) {
+  const href = file.linked_table_id
+    ? `/tables/${file.linked_table_id}?workspaceId=${workspaceId}`
+    : `/workspaces/${workspaceId}/f/${file.id}`;
+  return (
+    <Link href={href} className="linkrow items-start px-3.5 py-3">
+      <span className="mt-0.5 text-emerald-600">
+        <TableIcon />
+      </span>
+      <div className="min-w-0 flex-1">
+        <div className="truncate text-[13.5px] font-semibold text-foreground">{file.name}</div>
+        <div className="mt-0.5 text-[11.5px] text-muted">Table · {formatBytes(file.size_bytes)}</div>
+      </div>
+    </Link>
+  );
+}
+
+function FileTile({ file, workspaceId }: { file: LiveFile; workspaceId: string }) {
+  const tint = file.content_type?.includes("pdf")
+    ? "text-rose-500"
+    : file.content_type?.includes("image")
+      ? "text-violet-600"
+      : file.content_type?.includes("html")
+        ? "text-amber-600"
+        : "text-muted";
+  return (
+    <Link
+      href={`/workspaces/${workspaceId}/f/${file.id}`}
+      className="linkrow items-start px-3.5 py-3"
+    >
+      <span className={"mt-0.5 " + tint}>
+        <FileIcon />
+      </span>
+      <div className="min-w-0 flex-1">
+        <div className="truncate text-[13.5px] font-semibold text-foreground">{file.name}</div>
+        <div className="mt-0.5 text-[11.5px] text-muted">
+          {file.content_type || "file"} · {formatBytes(file.size_bytes)}
+        </div>
+      </div>
+    </Link>
+  );
+}
+
+function PlusGlyph() {
+  return (
+    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+      <path d="M12 5v14M5 12h14" />
+    </svg>
   );
 }
 
@@ -288,7 +384,6 @@ function addSubfolderToContents(
       ...current.subfolders,
       { id: folder.id, name: folder.name, page_count: 0, file_count: 0 },
     ].sort((a, b) => a.name.localeCompare(b.name));
-
     return { ...current, subfolders };
   });
 }
@@ -308,7 +403,6 @@ function addFileToContents(
       created_at: file.created_at,
       linked_table_id: file.linked_table_id ?? null,
     };
-
     return { ...current, files: [nextFile, ...current.files] };
   });
 }
