@@ -180,7 +180,7 @@ async def _verify_workspace_access(workspace_id: UUID, user_id: UUID) -> None:
 
 @router.get("/activity-timeline")
 async def activity_timeline(
-    days: int = Query(30, ge=1, le=90),
+    days: int = Query(30, ge=1, le=365),
     bucket: str = Query("day"),
     workspace_id: UUID | None = Query(None),
     current_user: dict = Depends(get_current_user),

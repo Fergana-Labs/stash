@@ -735,6 +735,7 @@ function SessionUserFolder({
   // Default collapsed — opening a date bucket already reveals N user rows,
   // and auto-expanding each one explodes the whole tree on first paint.
   const [open, setOpen] = useState(false);
+  const pathname = usePathname();
   return (
     <details open={open} className="text-[12px]">
       <summary
@@ -753,14 +754,18 @@ function SessionUserFolder({
         <span className="text-[10px] text-muted">{bucket.sessions.length}</span>
       </summary>
       <div className="ml-2.5 space-y-0.5 border-l border-border pl-2">
-        {bucket.sessions.map((s) => (
-          <NavRow
-            key={s.session_id}
-            href={`/workspaces/${workspaceId}/sessions/${encodeURIComponent(s.session_id)}`}
-            icon={<span className="text-muted"><SessionsIcon /></span>}
-            label={sessionLabelForSidebar(s)}
-          />
-        ))}
+        {bucket.sessions.map((s) => {
+          const href = `/workspaces/${workspaceId}/sessions/${encodeURIComponent(s.session_id)}`;
+          return (
+            <NavRow
+              key={s.session_id}
+              href={href}
+              icon={<span className="text-muted"><SessionsIcon /></span>}
+              label={sessionLabelForSidebar(s)}
+              active={pathname === href}
+            />
+          );
+        })}
       </div>
     </details>
   );
@@ -920,6 +925,9 @@ function StashSidebarRow({
   sessionBySessionId: Map<string, WorkspaceSidebarSession>;
 }) {
   const [open, setOpen] = useState(false);
+  const pathname = usePathname();
+  const href = `/stashes/${stash.slug}`;
+  const active = pathname === href;
   const children = buildStashTreeItems(
     workspaceId,
     stash.items ?? [],
@@ -931,18 +939,35 @@ function StashSidebarRow({
   );
   return (
     <div className="space-y-0.5">
-      <div className="page-row flex items-center gap-1 rounded-md px-2 py-0.5 hover:bg-raised">
+      <div
+        className={
+          "page-row flex items-center gap-1 rounded-md px-2 py-0.5 " +
+          (active
+            ? "bg-[var(--color-brand-50)] text-[var(--color-brand-800)]"
+            : "hover:bg-raised")
+        }
+      >
         <ChevronToggle
           open={open}
           ariaLabel={`${open ? "Collapse" : "Expand"} ${stash.title}`}
           onToggle={() => setOpen((current) => !current)}
         />
-        <span className="flex h-4 w-4 items-center justify-center text-[14px] text-muted">
+        <span
+          className={
+            "flex h-4 w-4 items-center justify-center text-[14px] " +
+            (active ? "text-[var(--color-brand-700)]" : "text-muted")
+          }
+        >
           <StashIcon />
         </span>
         <Link
-          href={`/stashes/${stash.slug}`}
-          className="flex-1 truncate text-foreground hover:text-[var(--color-brand-700)]"
+          href={href}
+          className={
+            "flex-1 truncate " +
+            (active
+              ? "font-medium text-[var(--color-brand-800)]"
+              : "text-foreground hover:text-[var(--color-brand-700)]")
+          }
         >
           {stash.title}
         </Link>
@@ -965,6 +990,7 @@ function StashSidebarRow({
 }
 
 function StashTreeRow({ row }: { row: StashTreeItem }) {
+  const pathname = usePathname();
   if (!row.href) {
     return (
       <div className="page-row flex items-center gap-2 rounded-md px-2 py-0.5 text-[12.5px] text-muted">
@@ -975,7 +1001,12 @@ function StashTreeRow({ row }: { row: StashTreeItem }) {
   }
 
   return (
-    <NavRow href={row.href} icon={row.icon} label={row.label} />
+    <NavRow
+      href={row.href}
+      icon={row.icon}
+      label={row.label}
+      active={pathname === row.href}
+    />
   );
 }
 
@@ -992,11 +1023,17 @@ function FileNavRow({
   onClick?: (event: MouseEvent<HTMLAnchorElement>) => void;
   onPinMenu?: (event: MouseEvent<HTMLAnchorElement>) => void;
 }) {
+  const pathname = usePathname();
   const isCsvLinked =
     file.content_type?.includes("csv") && file.linked_table_id;
   const href = isCsvLinked
     ? `/tables/${file.linked_table_id}?workspaceId=${workspaceId}`
     : `/workspaces/${workspaceId}/f/${file.id}`;
+  // Table files compare against pathname without query string; everything else
+  // is an exact match.
+  const active = isCsvLinked
+    ? pathname === `/tables/${file.linked_table_id}`
+    : pathname === href;
   return (
     <NavRow
       href={href}
@@ -1009,6 +1046,7 @@ function FileNavRow({
       onClick={onClick}
       trailing={null}
       onContextMenu={onPinMenu}
+      active={active}
     />
   );
 }
@@ -1047,6 +1085,9 @@ function FolderTreeNode({
   const [contents, setContents] = useState<FolderContents | null>(cachedContents);
   const [loaded, setLoaded] = useState(!!cachedContents);
   const [open, setOpen] = useState(false);
+  const pathname = usePathname();
+  const folderHref = `/workspaces/${workspaceId}/folders/${folderId}`;
+  const folderActive = pathname === folderHref;
 
   const loadContents = useCallback(() => {
     if (loaded) return;
@@ -1092,19 +1133,34 @@ function FolderTreeNode({
           e.preventDefault();
           openFolder();
         }}
-        className="page-row flex items-center gap-1 rounded-md px-2 py-0.5 hover:bg-raised"
+        className={
+          "page-row flex items-center gap-1 rounded-md px-2 py-0.5 " +
+          (folderActive
+            ? "bg-[var(--color-brand-50)] text-[var(--color-brand-800)]"
+            : "hover:bg-raised")
+        }
       >
         <ChevronToggle open={open} onToggle={handleToggle} />
-        <span className="flex h-4 w-4 items-center justify-center text-muted">
+        <span
+          className={
+            "flex h-4 w-4 items-center justify-center " +
+            (folderActive ? "text-[var(--color-brand-700)]" : "text-muted")
+          }
+        >
           <FolderIcon />
         </span>
         <Link
-          href={`/workspaces/${workspaceId}/folders/${folderId}`}
+          href={folderHref}
           onClick={(event) => {
             event.stopPropagation();
             openFolder();
           }}
-          className="flex-1 truncate text-left text-foreground hover:text-[var(--color-brand-700)]"
+          className={
+            "flex-1 truncate text-left " +
+            (folderActive
+              ? "font-medium text-[var(--color-brand-800)]"
+              : "text-foreground hover:text-[var(--color-brand-700)]")
+          }
         >
           {name}
         </Link>
@@ -1126,14 +1182,18 @@ function FolderTreeNode({
               onPinMenu={onPinMenu}
             />
           ))}
-        {contents?.pages.map((p) => (
-          <NavRow
-            key={p.id}
-            href={`/workspaces/${workspaceId}/p/${p.id}`}
-            icon={<PageIcon className="text-muted" />}
-            label={p.name}
-          />
-        ))}
+        {contents?.pages.map((p) => {
+          const pageHref = `/workspaces/${workspaceId}/p/${p.id}`;
+          return (
+            <NavRow
+              key={p.id}
+              href={pageHref}
+              icon={<PageIcon className="text-muted" />}
+              label={p.name}
+              active={pathname === pageHref}
+            />
+          );
+        })}
         {contents?.files
           .filter((f) => !isFilePinned(f.id))
           .map((f) => (
@@ -1189,6 +1249,7 @@ function FilesBlock({
   onUnpinAll: () => void;
   onAddPage: () => void;
 }) {
+  const pathname = usePathname();
   const tree = spine?.files;
   const folders = tree?.folders ?? [];
   const pages = tree?.pages ?? [];
@@ -1330,6 +1391,7 @@ function FilesBlock({
                     href={folder.href}
                     icon={folder.icon}
                     label={folder.label}
+                    active={pathname === folder.href}
                     onContextMenu={(event) =>
                       showPinMenu(event, "folder", folder.id, folder.label, true)
                     }
@@ -1341,6 +1403,7 @@ function FilesBlock({
                     href={file.href}
                     icon={file.icon}
                     label={file.label}
+                    active={pathname === file.href}
                     onContextMenu={(event) =>
                       showPinMenu(event, "file", file.id, file.label, true)
                     }
@@ -1359,15 +1422,19 @@ function FilesBlock({
             onPinMenu={showPinMenu}
           />
         ))}
-        {rootPages.slice(0, PREVIEW_ITEM_LIMIT).map((p) => (
-          <NavRow
-            key={p.id}
-            href={`/workspaces/${workspace.id}/p/${p.id}`}
-            icon={<PageIcon className="text-muted" />}
-            label={p.name}
-            onClick={() => onOpenChange(true)}
-          />
-        ))}
+        {rootPages.slice(0, PREVIEW_ITEM_LIMIT).map((p) => {
+          const pageHref = `/workspaces/${workspace.id}/p/${p.id}`;
+          return (
+            <NavRow
+              key={p.id}
+              href={pageHref}
+              icon={<PageIcon className="text-muted" />}
+              label={p.name}
+              active={pathname === pageHref}
+              onClick={() => onOpenChange(true)}
+            />
+          );
+        })}
         {rootFiles.slice(0, PREVIEW_ITEM_LIMIT).map((f) => (
           <FileNavRow
             key={f.id}

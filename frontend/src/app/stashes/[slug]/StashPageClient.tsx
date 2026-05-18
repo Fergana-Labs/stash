@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -98,6 +97,24 @@ export default function StashPageClient({ slug }: { slug: string }) {
   );
 }
 
+// Stable cover gradient per stash, mirroring the cover-1..6 utilities used
+// elsewhere in the design. djb2-ish hash → bucket index so the same stash
+// always gets the same cover.
+function coverIndexFor(id: string): number {
+  let h = 5381;
+  for (let i = 0; i < id.length; i++) h = (h * 33 + id.charCodeAt(i)) >>> 0;
+  return h % 6;
+}
+
+const COVER_GRADIENTS = [
+  "linear-gradient(135deg, #FED7AA, #FCA5A5)",
+  "linear-gradient(135deg, #DDD6FE, #BFDBFE)",
+  "linear-gradient(135deg, #A7F3D0, #BAE6FD)",
+  "linear-gradient(135deg, #FDE68A, #FECACA)",
+  "linear-gradient(135deg, #C7D2FE, #FBCFE8)",
+  "linear-gradient(135deg, #FECDD3, #FEF3C7)",
+];
+
 function StashPageBody({
   data,
   onRefresh,
@@ -107,116 +124,78 @@ function StashPageBody({
 }) {
   const { stash, workspace_name, items, can_write } = data;
   const groups = groupStashItems(items);
-  const fileCount =
-    (groups.folder?.length ?? 0) + (groups.page?.length ?? 0) + (groups.file?.length ?? 0);
-  const sessionCount = groups.session?.length ?? 0;
-  const tableCount = groups.table?.length ?? 0;
 
   const visibility: "public" | "private" | "workspace" = stash.access;
   const visClass = visibility === "public" ? "public" : visibility === "private" ? "private" : "";
+  const cover = stash.cover_image_url
+    ? { backgroundImage: `url(${stash.cover_image_url})` }
+    : { backgroundImage: COVER_GRADIENTS[coverIndexFor(stash.id)] };
 
   return (
-    <div className="min-h-screen bg-background">
-      <div className="border-b border-border-subtle bg-surface">
-        <div className="mx-auto flex max-w-[1180px] items-center justify-between gap-4 px-7 py-3.5">
-          <div className="min-w-0">
-            <p className="sys-label">{workspace_name} · workspace</p>
-            <h1 className="mt-0.5 flex min-w-0 items-center gap-2.5 font-display text-[22px] font-bold tracking-[-0.015em]">
-              <span className="text-[var(--color-brand-600)]">
-                <StashHeaderGlyph />
-              </span>
-              <span className="truncate">{stash.title}</span>
-              <span className={`stash-chip ${visClass}`.trim()}>
-                <span className="dot" />
-                {visibility}
-              </span>
-            </h1>
+    <div className="scroll-thin min-h-screen bg-background">
+      {/* Cover banner mirrors the workspace home identity strip. */}
+      <div className="h-[72px] w-full bg-cover bg-center" style={cover} />
+
+      <div className="mx-auto max-w-[920px] px-12 pb-20">
+        {/* Identity strip: icon overlaps banner, title + meta + actions.
+            Layout/spacing identical to workspace home's identity strip. */}
+        <div className="flex items-start justify-between gap-3 pt-4">
+          <div className="flex min-w-0 items-center gap-3">
+            <span className="-mt-9 flex h-12 w-12 flex-shrink-0 items-center justify-center overflow-hidden rounded-[10px] border-2 border-base bg-base text-[var(--color-brand-700)] shadow-sm">
+              <StashHeaderGlyph />
+            </span>
+            <div className="min-w-0">
+              <h1 className="m-0 flex min-w-0 items-center gap-2 truncate font-display text-[20px] font-bold leading-tight tracking-[-0.015em] text-foreground">
+                <span className="truncate">{stash.title}</span>
+                <span className={`stash-chip ${visClass}`.trim()}>
+                  <span className="dot" />
+                  {visibility}
+                </span>
+              </h1>
+              <div className="mt-1 flex flex-wrap items-center gap-2 text-[12px] text-muted">
+                <span>
+                  {items.length} item{items.length === 1 ? "" : "s"}
+                </span>
+                {stash.updated_at && (
+                  <>
+                    <span className="text-muted/60">·</span>
+                    <span>updated {relativeTime(stash.updated_at)}</span>
+                  </>
+                )}
+                {workspace_name && (
+                  <>
+                    <span className="text-muted/60">·</span>
+                    <span className="truncate">in {workspace_name}</span>
+                  </>
+                )}
+              </div>
+            </div>
           </div>
-          <div className="flex items-center gap-2">
-            <Link
-              href={`/search?stash=${encodeURIComponent(stash.slug)}`}
-              className="hidden h-8 min-w-[220px] items-center gap-2 rounded-md border border-border bg-base px-2.5 text-[12.5px] text-muted hover:border-[var(--color-brand-300)] hover:bg-raised hover:text-foreground sm:flex"
-              aria-label="Search this Stash"
-            >
-              <svg
-                className="h-3.5 w-3.5 shrink-0"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-              >
-                <circle cx="11" cy="11" r="8" />
-                <path d="m21 21-4.3-4.3" />
-              </svg>
-              <span className="min-w-0 flex-1 truncate">Search this Stash</span>
-            </Link>
+          <div className="flex flex-shrink-0 items-center gap-1.5 pt-1">
             <CopyStashLinkButton slug={stash.slug} />
             <AddToWorkspaceButton slug={stash.slug} sourceWorkspaceId={stash.workspace_id} />
           </div>
         </div>
-      </div>
 
-      <div className="mx-auto grid max-w-[1180px] gap-8 px-7 py-8 lg:grid-cols-[220px_minmax(0,1fr)]">
-        <aside className="hidden lg:block">
-          <nav className="sticky top-6 space-y-1 text-[13px]">
-            <a
-              href="#home"
-              className="block rounded-md px-2 py-1.5 font-medium text-foreground hover:bg-raised"
-            >
-              Home
-            </a>
-            {fileCount > 0 ? (
-              <a
-                href="#files"
-                className="block rounded-md px-2 py-1.5 text-dim hover:bg-raised hover:text-foreground"
-              >
-                Files
-              </a>
-            ) : null}
-            {sessionCount > 0 ? (
-              <a
-                href="#sessions"
-                className="block rounded-md px-2 py-1.5 text-dim hover:bg-raised hover:text-foreground"
-              >
-                Sessions
-              </a>
-            ) : null}
-            {tableCount > 0 ? (
-              <a
-                href="#tables"
-                className="block rounded-md px-2 py-1.5 text-dim hover:bg-raised hover:text-foreground"
-              >
-                Tables
-              </a>
-            ) : null}
-          </nav>
-        </aside>
-
-        <div className="min-w-0">
-          <section id="home" className="scroll-mt-8 border-b border-border-subtle pb-7">
-            <p className="sys-label">
-              Stash · {items.length} item{items.length === 1 ? "" : "s"} · {stash.view_count} view
-              {stash.view_count === 1 ? "" : "s"}
-            </p>
-            <h2 className="mt-3.5 font-display text-[44px] font-black leading-[1.05] tracking-[-0.025em] text-foreground">
-              {stash.title}
-            </h2>
-            <div className="card-soft mt-5 max-w-[760px] p-[18px]">
-              <div className="sys-label">About this Stash</div>
-              <p className="mt-2 whitespace-pre-wrap text-[14.5px] leading-[1.7] text-foreground">
-                {stash.description || "No description yet."}
+        {/* About this Stash — read-only mirror of workspace home's editor. */}
+        {stash.description && (
+          <section className="mt-6">
+            <div className="sys-label mb-1.5">About this Stash</div>
+            <div className="rounded-[10px] border border-border bg-surface/40 px-[18px] py-[14px]">
+              <p className="m-0 whitespace-pre-wrap text-[14.5px] leading-[1.7] text-foreground">
+                {stash.description}
               </p>
             </div>
-            <div className="mt-[18px] grid grid-cols-2 gap-2 sm:grid-cols-4">
-              <SummaryStat label="Pages" value={fileCount} tint="var(--text-primary)" />
-              <SummaryStat label="Sessions" value={sessionCount} tint="var(--color-agent)" />
-              <SummaryStat label="Tables" value={tableCount} tint="#16A34A" />
-              <SummaryStat label="Views" value={stash.view_count} tint="var(--color-brand-600)" />
-            </div>
           </section>
+        )}
 
-          {can_write ? <SharedPageComposer stashId={stash.id} onCreated={onRefresh} /> : null}
+        {can_write ? (
+          <div className="mt-6">
+            <SharedPageComposer stashId={stash.id} onCreated={onRefresh} />
+          </div>
+        ) : null}
 
+        <div className="mt-2">
           <StashSection
             id="files"
             title="Files"
@@ -228,6 +207,18 @@ function StashPageBody({
       </div>
     </div>
   );
+}
+
+function relativeTime(iso: string): string {
+  const ms = Date.now() - new Date(iso).getTime();
+  if (ms < 60_000) return "just now";
+  const m = Math.floor(ms / 60_000);
+  if (m < 60) return `${m} min ago`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h} h ago`;
+  const d = Math.floor(h / 24);
+  if (d < 30) return `${d} d ago`;
+  return new Date(iso).toLocaleDateString();
 }
 
 function CopyStashLinkButton({ slug }: { slug: string }) {
@@ -358,20 +349,6 @@ function groupStashItems(items: PublicStashItem[]): StashItemGroup {
     groups[item.object_type] = [...(groups[item.object_type] ?? []), item];
   }
   return groups;
-}
-
-function SummaryStat({ label, value, tint }: { label: string; value: number; tint?: string }) {
-  return (
-    <div className="card p-3">
-      <div
-        className="font-display text-[24px] font-bold leading-[1.1] tracking-[-0.02em]"
-        style={{ color: tint ?? "var(--text-primary)" }}
-      >
-        {value}
-      </div>
-      <div className="sys-label mt-0.5">{label}</div>
-    </div>
-  );
 }
 
 function StashHeaderGlyph() {

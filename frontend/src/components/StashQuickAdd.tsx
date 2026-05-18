@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState, type DragEvent, type FormEvent } from "react";
-import { createPage, uploadFile } from "../lib/api";
+import { createPage, uploadFile, uploadTranscript } from "../lib/api";
 
 interface StashQuickAddProps {
   workspaceId: string;
@@ -57,9 +57,20 @@ export default function StashQuickAdd({ workspaceId, onAdded }: StashQuickAddPro
     if (!list.length || status === "saving") return;
     setStatus("saving");
     flashHint(list.length === 1 ? `Uploading ${list[0].name}…` : `Uploading ${list.length} files…`, 8000);
+    let sessionCount = 0;
+    let fileCount = 0;
     try {
       for (const f of list) {
-        await uploadFile(workspaceId, f);
+        // .jsonl transcripts are sessions, not files — same drop target,
+        // different code path. Anything else goes to Files.
+        if (f.name.toLowerCase().endsWith(".jsonl")) {
+          const sessionId = f.name.replace(/\.jsonl$/i, "").trim() || "session";
+          await uploadTranscript(workspaceId, f, sessionId, "manual-upload");
+          sessionCount += 1;
+        } else {
+          await uploadFile(workspaceId, f);
+          fileCount += 1;
+        }
       }
     } catch {
       setStatus("error");
@@ -68,7 +79,10 @@ export default function StashQuickAdd({ workspaceId, onAdded }: StashQuickAddPro
       return;
     }
     setStatus("saved");
-    flashHint(list.length === 1 ? `${list[0].name} added to Files` : `${list.length} files added to Files`);
+    const parts: string[] = [];
+    if (sessionCount > 0) parts.push(`${sessionCount} session${sessionCount === 1 ? "" : "s"}`);
+    if (fileCount > 0) parts.push(`${fileCount} file${fileCount === 1 ? "" : "s"}`);
+    flashHint(parts.length ? `Added ${parts.join(" + ")}` : "Added");
     onAdded?.();
     window.setTimeout(() => setStatus("idle"), 1500);
   }
