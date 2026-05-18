@@ -49,10 +49,6 @@ interface AppSidebarProps {
   activeWorkspaceId?: string | null;
 }
 
-interface WorkspaceNode extends Workspace {
-  shared?: boolean;
-}
-
 type SidebarSection = "sessions" | "files" | "stashes";
 type DropSection = "sessions" | "files";
 type DropStatus = "idle" | "over" | "saving" | "done" | "error";
@@ -71,7 +67,6 @@ interface SidebarDropState {
   message: string;
 }
 
-const OPEN_WORKSPACES_KEY = "stash_sidebar_open_workspaces";
 const OPEN_SECTIONS_KEY = "stash_sidebar_open_sections";
 const COLLAPSED_STASHES_KEY = "stash_sidebar_collapsed_stashes";
 const PINNED_FS_KEY = "stash_sidebar_pinned_files_folders";
@@ -403,8 +398,6 @@ function SectionAddButton({
 function WorkspaceTree({
   workspace,
   spine,
-  showName,
-  pathname,
   openSections,
   onSectionOpenChange,
   dropState,
@@ -421,10 +414,8 @@ function WorkspaceTree({
   onAddPage,
   onAddStash,
 }: {
-  workspace: WorkspaceNode;
+  workspace: Workspace;
   spine: WorkspaceSidebar | null;
-  showName?: boolean;
-  pathname: string;
   openSections: Record<SidebarSection, boolean>;
   onSectionOpenChange: (section: SidebarSection, open: boolean) => void;
   dropState: SidebarDropState;
@@ -466,14 +457,6 @@ function WorkspaceTree({
 
   return (
       <div className="space-y-0.5">
-      {showName && (
-        <NavRow
-          href={`/workspaces/${workspace.id}`}
-          icon={<StashIcon />}
-          label={workspace.name}
-          active={pathname === `/workspaces/${workspace.id}`}
-        />
-      )}
       <details
         open={openSections.sessions}
         onToggle={(e) => onSectionOpenChange("sessions", e.currentTarget.open)}
@@ -1050,7 +1033,7 @@ function FilesBlock({
   onUnpinAll,
   onAddPage,
 }: {
-  workspace: WorkspaceNode;
+  workspace: Workspace;
   spine: WorkspaceSidebar | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -1290,7 +1273,7 @@ function StashesBlock({
   onStashCollapsedChange,
   onAddStash,
 }: {
-  workspace: WorkspaceNode;
+  workspace: Workspace;
   spine: WorkspaceSidebar | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -1471,9 +1454,6 @@ export default function AppSidebar({
   const currentWorkspaceId = activeWorkspaceId ?? routeWorkspaceId;
   const [mine, setMine] = useState<Workspace[]>(cachedWorkspaces?.mine ?? []);
   const [shared, setShared] = useState<Workspace[]>(cachedWorkspaces?.shared ?? []);
-  const [openWorkspaces] = useState<Record<string, boolean>>(() =>
-    readBooleanMap(OPEN_WORKSPACES_KEY)
-  );
   const [openSections, setOpenSections] = useState<Record<string, boolean>>(() =>
     readBooleanMap(OPEN_SECTIONS_KEY)
   );
@@ -1519,13 +1499,15 @@ export default function AppSidebar({
     });
   }, []);
 
-  useEffect(() => {
-    const workspaceIds = new Set<string>([
-      ...Object.keys(openWorkspaces).filter((workspaceId) => openWorkspaces[workspaceId]),
-      ...mine.map((workspace) => workspace.id),
-      ...shared.map((workspace) => workspace.id),
-    ]);
+  const workspaces = [...mine, ...shared];
+  const visibleWorkspace =
+    workspaces.find((workspace) => workspace.id === currentWorkspaceId) ??
+    workspaces[0] ??
+    null;
 
+  useEffect(() => {
+    const workspaceIds = new Set<string>();
+    if (visibleWorkspace) workspaceIds.add(visibleWorkspace.id);
     if (activeTreeWorkspaceId) workspaceIds.add(activeTreeWorkspaceId);
 
     Array.from(workspaceIds)
@@ -1535,7 +1517,7 @@ export default function AppSidebar({
           .then((sp) => setSpines((all) => ({ ...all, [workspaceId]: sp })))
           .catch(() => {});
       });
-  }, [activeTreeWorkspaceId, mine, shared, openWorkspaces, spines]);
+  }, [activeTreeWorkspaceId, visibleWorkspace, spines]);
 
   function sectionOpen(workspaceId: string, section: SidebarSection): boolean {
     // Explicit user preference (open or closed) wins. Otherwise default open.
@@ -1941,71 +1923,31 @@ export default function AppSidebar({
         />
       </nav>
 
-      {shared.length > 0 && (
-        <>
-          <div className="mt-4 flex items-center justify-between px-3 pb-1">
-            <span className="text-[11px] font-semibold tracking-wide text-muted">
-              SHARED WORKSPACES
-            </span>
-          </div>
-          <nav className="px-1 text-[13.5px]">
-            {shared.map((s) => (
-              <WorkspaceTree
-                key={s.id}
-                workspace={{ ...s, shared: true }}
-                spine={spines[s.id] ?? null}
-                showName
-                pathname={pathname}
-                openSections={getOpenSections(s.id)}
-                onSectionOpenChange={(section, open) =>
-                  handleSectionOpenChange(s.id, section, open)
-                }
-                dropState={dropState}
-                onDropFiles={handleDropFiles}
-                onDropHover={handleDropHover}
-                pinnedFolders={pinnedState[s.id]?.folders ?? EMPTY_PIN_STATE.folders}
-                pinnedFiles={pinnedState[s.id]?.files ?? EMPTY_PIN_STATE.files}
-                pinnedLabels={pinnedLabelsState[s.id] ?? { folders: {}, files: {} }}
-                collapsedStashes={collapsedStashes}
-                onPinToggle={(kind, id, label) => handlePinToggle(kind, s.id, id, label)}
-                onUnpinAll={handleUnpinAll}
-                onStashCollapsedChange={handleStashCollapsedChange}
-                onAddSession={handleAddSession}
-                onAddPage={handleAddPage}
-                onAddStash={handleAddStash}
-              />
-            ))}
-          </nav>
-        </>
-      )}
-
       <nav className="mt-4 px-1 text-[13.5px]">
-        {mine.map((s) => (
+        {visibleWorkspace ? (
           <WorkspaceTree
-            key={s.id}
-            workspace={s}
-            spine={spines[s.id] ?? null}
-            pathname={pathname}
-            openSections={getOpenSections(s.id)}
+            key={visibleWorkspace.id}
+            workspace={visibleWorkspace}
+            spine={spines[visibleWorkspace.id] ?? null}
+            openSections={getOpenSections(visibleWorkspace.id)}
             onSectionOpenChange={(section, open) =>
-              handleSectionOpenChange(s.id, section, open)
+              handleSectionOpenChange(visibleWorkspace.id, section, open)
             }
             dropState={dropState}
             onDropFiles={handleDropFiles}
             onDropHover={handleDropHover}
-            pinnedFolders={pinnedState[s.id]?.folders ?? EMPTY_PIN_STATE.folders}
-            pinnedFiles={pinnedState[s.id]?.files ?? EMPTY_PIN_STATE.files}
-            pinnedLabels={pinnedLabelsState[s.id] ?? { folders: {}, files: {} }}
+            pinnedFolders={pinnedState[visibleWorkspace.id]?.folders ?? EMPTY_PIN_STATE.folders}
+            pinnedFiles={pinnedState[visibleWorkspace.id]?.files ?? EMPTY_PIN_STATE.files}
+            pinnedLabels={pinnedLabelsState[visibleWorkspace.id] ?? { folders: {}, files: {} }}
             collapsedStashes={collapsedStashes}
-            onPinToggle={(kind, id, label) => handlePinToggle(kind, s.id, id, label)}
+            onPinToggle={(kind, id, label) => handlePinToggle(kind, visibleWorkspace.id, id, label)}
             onUnpinAll={handleUnpinAll}
             onStashCollapsedChange={handleStashCollapsedChange}
             onAddSession={handleAddSession}
             onAddPage={handleAddPage}
             onAddStash={handleAddStash}
           />
-        ))}
-        {mine.length === 0 && (
+        ) : (
           <div className="px-3 py-1.5 text-[12px] italic text-muted">
             No workspaces yet.
           </div>

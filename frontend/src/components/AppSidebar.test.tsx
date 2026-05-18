@@ -181,10 +181,10 @@ function openSectionState(): Record<string, boolean> {
   return JSON.parse(localStorage.getItem("stash_sidebar_open_sections") ?? "{}");
 }
 
-function renderSidebar() {
+function renderSidebar(activeWorkspaceId?: string) {
   return render(
     <ShareModalProvider>
-      <AppSidebar user={user} onCmdkOpen={vi.fn()} />
+      <AppSidebar user={user} onCmdkOpen={vi.fn()} activeWorkspaceId={activeWorkspaceId} />
     </ShareModalProvider>
   );
 }
@@ -253,20 +253,20 @@ describe("AppSidebar tree expansion", () => {
     expect(detailsFor("Stashes")).toHaveAttribute("open");
   });
 
-  it("renders shared memberships in their own group", async () => {
+  it("renders only the active workspace without a shared workspace group", async () => {
     vi.mocked(listMyWorkspaces).mockResolvedValue({
       workspaces: [workspace, sharedWorkspace],
     });
 
-    renderSidebar();
+    renderSidebar("ws-2");
 
-    await screen.findByText("Shared Stash");
+    await screen.findByText("Sessions");
 
     const sidebarText = document.body.textContent ?? "";
-    expect(sidebarText.indexOf("SHARED WORKSPACES")).toBeLessThan(
-      sidebarText.indexOf("Shared Stash")
-    );
-    expect(screen.getAllByText("Shared Stash")).toHaveLength(1);
+    expect(sidebarText).not.toContain("SHARED WORKSPACES");
+    expect(sidebarText).not.toContain("Demo Stash");
+    expect(getWorkspaceSidebar).toHaveBeenCalledWith("ws-2");
+    expect(getWorkspaceSidebar).not.toHaveBeenCalledWith("ws-1");
   });
 
   it("restores explicit section state from localStorage", async () => {
