@@ -2,7 +2,6 @@
 
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useState } from "react";
-import Link from "next/link";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { useBreadcrumbs } from "../../../../../components/BreadcrumbContext";
@@ -16,7 +15,7 @@ import {
   type FolderBreadcrumb,
 } from "../../../../../lib/api";
 import type { FileInfo } from "../../../../../lib/types";
-import EditableTitle from "../../../../../components/workspace/EditableTitle";
+import FileViewerHeader from "../../../../../components/workspace/FileViewerHeader";
 
 function isCsv(ct: string) {
   return ct?.includes("csv") || ct === "text/csv";
@@ -180,62 +179,46 @@ function FileViewerPageInner() {
     return <div className="flex h-screen items-center justify-center text-muted">Loading…</div>;
   if (!user && !readOnly) return null;
 
+  const fileKindLabel = file ? kindLabel(file.content_type, file.name) : "";
+  const updatedAt = file?.created_at
+    ? new Date(file.created_at).toLocaleString(undefined, {
+        month: "short",
+        day: "numeric",
+        hour: "numeric",
+        minute: "2-digit",
+      })
+    : null;
+  const tags = file ? [{ label: fileKindLabel, tone: "muted" as const }] : undefined;
+  const meta: string[] = [];
+  if (file) meta.push(formatBytes(file.size_bytes));
+  if (updatedAt) meta.push(`Uploaded ${updatedAt}`);
+
   return (
-    <div className="flex flex-1 min-h-0 flex-col overflow-hidden">
-      <div className="flex items-center justify-between border-b border-border px-5 py-2.5 text-[13px]">
-        <div className="flex min-w-0 items-center gap-2">
-          {readOnly && stashSlug && (
-            <Link
-              href={`/stashes/${stashSlug}`}
-              className="text-muted hover:text-foreground"
-              title={`Back to ${stashTitle ?? "Stash"}`}
-            >
-              ←
-            </Link>
-          )}
-          {file ? (
-            readOnly ? (
-              <span className="font-mono font-medium text-foreground truncate">{file.name}</span>
-            ) : (
-              <EditableTitle
-                value={file.name}
-                className="font-mono font-medium text-foreground"
-                onSave={async (next) => {
-                  const updated = await updateFile(workspaceId, file.id, { name: next });
-                  setFile(updated);
-                  return updated.name;
-                }}
-              />
-            )
-          ) : null}
-          {file && (
-            <span className="text-muted">
-              {file.content_type} · {formatBytes(file.size_bytes)}
-            </span>
-          )}
-        </div>
-        <div className="flex items-center gap-1">
-          {readOnly && (
-            <span className="rounded-md bg-surface px-2 py-1 text-[10.5px] font-medium uppercase tracking-wide text-muted">
-              read-only · via Stash
-            </span>
-          )}
-          {file?.url && (
-            <a
-              href={file.url}
-              target="_blank"
-              rel="noopener noreferrer"
-              download={file.name}
-              className="rounded-md p-1.5 text-muted hover:bg-raised"
-              title="Download"
-            >
-              <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3" />
-              </svg>
-            </a>
-          )}
-        </div>
-      </div>
+    <div className="scroll-thin flex flex-1 min-h-0 flex-col overflow-hidden">
+      <FileViewerHeader
+        icon={<KindGlyph contentType={file?.content_type ?? ""} name={file?.name ?? ""} />}
+        iconColor={kindIconColor(file?.content_type ?? "")}
+        title={file?.name ?? "File"}
+        onRenameTitle={
+          file
+            ? async (next) => {
+                const updated = await updateFile(workspaceId, file.id, { name: next });
+                setFile(updated);
+                return updated.name;
+              }
+            : undefined
+        }
+        readOnly={readOnly}
+        readOnlyLabel="read-only · via Stash"
+        backLink={readOnly && stashSlug ? { label: stashTitle ?? "Stash", href: `/stashes/${stashSlug}` } : undefined}
+        tags={tags}
+        meta={meta}
+        downloadOptions={
+          file?.url
+            ? [{ label: `Download ${file.name}`, onSelect: () => triggerDownload(file.url, file.name) }]
+            : undefined
+        }
+      />
 
       {error && (
         <div className="border-b border-red-300/40 bg-red-500/10 px-5 py-2 text-[13px] text-red-500">
@@ -307,4 +290,79 @@ function formatBytes(b: number): string {
   if (b < 1024) return `${b} B`;
   if (b < 1024 * 1024) return `${(b / 1024).toFixed(1)} KB`;
   return `${(b / 1024 / 1024).toFixed(1)} MB`;
+}
+
+function kindLabel(contentType: string, name: string): string {
+  if (isPdf(contentType)) return "pdf";
+  if (isImage(contentType)) return "image";
+  if (isHtml(contentType)) return "html";
+  if (isMarkdown(contentType, name)) return "markdown";
+  if (isText(contentType)) return "text";
+  return "file";
+}
+
+function kindIconColor(contentType: string): string {
+  if (isPdf(contentType)) return "#E11D48";
+  if (isImage(contentType)) return "#7C3AED";
+  if (isHtml(contentType)) return "var(--color-brand-600)";
+  return "var(--text-muted)";
+}
+
+function triggerDownload(url: string, name: string) {
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = name;
+  a.target = "_blank";
+  a.rel = "noopener noreferrer";
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+}
+
+function KindGlyph({ contentType, name }: { contentType: string; name: string }) {
+  if (isPdf(contentType)) {
+    return (
+      <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" strokeWidth="1.6">
+        <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" />
+        <path d="M14 3v5h5" />
+        <path d="M9 14h6" />
+        <path d="M9 17h3" />
+      </svg>
+    );
+  }
+  if (isImage(contentType)) {
+    return (
+      <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" strokeWidth="1.6">
+        <rect x="3" y="4" width="18" height="16" rx="2" />
+        <circle cx="9" cy="9.5" r="1.4" />
+        <path d="M21 16l-5-5-9 9" />
+      </svg>
+    );
+  }
+  if (isHtml(contentType)) {
+    return (
+      <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" strokeWidth="1.6">
+        <rect x="3" y="4" width="18" height="16" rx="2" />
+        <path d="M3 9h18" />
+        <circle cx="6" cy="6.5" r="0.6" fill="currentColor" />
+        <circle cx="8.2" cy="6.5" r="0.6" fill="currentColor" />
+      </svg>
+    );
+  }
+  if (isMarkdown(contentType, name)) {
+    return (
+      <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" strokeWidth="1.6">
+        <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" />
+        <path d="M14 3v5h5" />
+        <path d="M9 13h6M9 17h4" />
+      </svg>
+    );
+  }
+  // generic file
+  return (
+    <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" strokeWidth="1.6">
+      <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" />
+      <path d="M14 3v5h5" />
+    </svg>
+  );
 }
