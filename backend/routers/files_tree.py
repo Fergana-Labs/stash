@@ -214,7 +214,9 @@ async def get_folder_contents(
             "AND COALESCE(metadata->>'shared_in_stash_id', '') = ''",
             folder_row["id"],
         )
-        child_files = await pool.fetch("SELECT id FROM files WHERE folder_id = $1", folder_row["id"])
+        child_files = await pool.fetch(
+            "SELECT id FROM files WHERE folder_id = $1", folder_row["id"]
+        )
         folder_row["page_count"] = len(
             await files_tree_service._filter_readable(
                 [dict(row) for row in child_pages],

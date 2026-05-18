@@ -502,17 +502,13 @@ class StashClient:
         base = f"/api/v1/workspaces/{workspace_id}/tables"
         return self._post(f"{base}/{table_id}/rows", json={"data": data})
 
-    def insert_table_rows_batch(
-        self, workspace_id: str, table_id: str, rows: list[dict]
-    ) -> dict:
+    def insert_table_rows_batch(self, workspace_id: str, table_id: str, rows: list[dict]) -> dict:
         base = f"/api/v1/workspaces/{workspace_id}/tables"
         return self._post(
             f"{base}/{table_id}/rows/batch", json={"rows": [{"data": r} for r in rows]}
         )
 
-    def update_table_row(
-        self, workspace_id: str, table_id: str, row_id: str, data: dict
-    ) -> dict:
+    def update_table_row(self, workspace_id: str, table_id: str, row_id: str, data: dict) -> dict:
         base = f"/api/v1/workspaces/{workspace_id}/tables"
         return self._patch(f"{base}/{table_id}/rows/{row_id}", json={"data": data})
 

@@ -521,9 +521,7 @@ async def test_stash_member_api_grants_and_revokes_private_page_access(
         headers=_auth(owner_key),
     )
     assert members_resp.status_code == 200
-    assert [member["user_id"] for member in members_resp.json()["members"]] == [
-        collaborator["id"]
-    ]
+    assert [member["user_id"] for member in members_resp.json()["members"]] == [collaborator["id"]]
     assert await permission_service.check_access(
         "page",
         uuid.UUID(page["id"]),
@@ -762,9 +760,7 @@ async def test_private_stash_hides_session_surfaces_until_user_is_added(
         headers=_auth(member_key),
     )
     assert search_resp.status_code == 200
-    assert [event["session_id"] for event in search_resp.json()["events"]] == [
-        "private-session-1"
-    ]
+    assert [event["session_id"] for event in search_resp.json()["events"]] == ["private-session-1"]
 
     activity_resp = await client.get(
         "/api/v1/me/activity",
@@ -1013,7 +1009,9 @@ async def test_folder_stash_inlines_folder_files(pool, monkeypatch):
 async def test_object_level_permission_mutators_are_not_routes(client: AsyncClient):
     api_key, _owner = await _register(client)
     workspace = (
-        await client.post("/api/v1/workspaces", json={"name": "No object shares"}, headers=_auth(api_key))
+        await client.post(
+            "/api/v1/workspaces", json={"name": "No object shares"}, headers=_auth(api_key)
+        )
     ).json()
     folder = (
         await client.post(

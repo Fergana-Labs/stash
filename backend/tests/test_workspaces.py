@@ -163,7 +163,9 @@ async def test_magic_invite_redeem_assigns_editor_role(client: AsyncClient):
     owner_key, _ = await _register(client)
     joiner_key, joiner = await _register(client)
     ws = (
-        await client.post("/api/v1/workspaces", json={"name": "Magic Team"}, headers=_auth(owner_key))
+        await client.post(
+            "/api/v1/workspaces", json={"name": "Magic Team"}, headers=_auth(owner_key)
+        )
     ).json()
 
     invite = await client.post(

@@ -112,7 +112,9 @@ async def _validate_item_partition(conn, access: str, items: list, stash_id: UUI
                     "Private Stashes can only include items that are not in workspace or public Stashes"
                 )
             if access != "private" and row["access"] == "private":
-                raise ValueError("Items in private Stashes cannot be added to workspace or public Stashes")
+                raise ValueError(
+                    "Items in private Stashes cannot be added to workspace or public Stashes"
+                )
 
 
 async def _partition_targets(conn, object_type: str, object_id: UUID) -> list[tuple[str, UUID]]:
@@ -248,6 +250,7 @@ async def _object_title(object_type: str, object_id: UUID) -> str:
     else:
         row = None
     return row["name"] if row else "Shared item"
+
 
 async def update_stash(
     stash_id: UUID,

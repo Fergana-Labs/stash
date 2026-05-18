@@ -1107,9 +1107,7 @@ def upload(
     path: str = typer.Argument(..., help="Directory or file to upload."),
     name: str = typer.Option("", "--name", "-n", help="Name for the uploaded folder."),
     workspace_id: str = typer.Option(None, "--ws"),
-    public: bool = typer.Option(
-        True, "--public/--private", help="Publish a shareable Stash."
-    ),
+    public: bool = typer.Option(True, "--public/--private", help="Publish a shareable Stash."),
     as_json: bool = typer.Option(False, "--json"),
 ):
     """Upload local files into workspace pages and publish them as a Stash."""
@@ -1259,9 +1257,7 @@ def stashes_create(
     workspace_id: str = typer.Option("", "--workspace", help="Workspace ID; falls back to .stash."),
     description: str = typer.Option("", "--description"),
     public: bool = typer.Option(False, "--public", help="Publish immediately."),
-    discover: bool = typer.Option(
-        False, "--discover", help="List the public Stash in Discover."
-    ),
+    discover: bool = typer.Option(False, "--discover", help="List the public Stash in Discover."),
     items_json: str = typer.Option(
         "[]",
         "--items",
@@ -1313,10 +1309,10 @@ def stashes_create(
 def stashes_publish(
     stash_id: str = typer.Argument(...),
     private: bool = typer.Option(False, "--private", help="Make the Stash private."),
-    workspace: bool = typer.Option(False, "--workspace-access", help="Make the Stash workspace-visible."),
-    discover: bool = typer.Option(
-        False, "--discover", help="List the public Stash in Discover."
+    workspace: bool = typer.Option(
+        False, "--workspace-access", help="Make the Stash workspace-visible."
     ),
+    discover: bool = typer.Option(False, "--discover", help="List the public Stash in Discover."),
 ):
     """Change a Stash's access level."""
     if discover and (private or workspace):
@@ -1911,7 +1907,9 @@ def files_edit_page(
 # Sessions
 # ===========================================================================
 
-hist_app = typer.Typer(help="Sessions — agent transcripts and event logs.", invoke_without_command=True)
+hist_app = typer.Typer(
+    help="Sessions — agent transcripts and event logs.", invoke_without_command=True
+)
 app.add_typer(hist_app, name="sessions")
 
 

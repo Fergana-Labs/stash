@@ -297,7 +297,9 @@ async def get_public_stash(
         )
 
     workspace_name = stash.pop("_workspace_name", "")
-    can_write = bool(current_user and await stash_service.user_can_write(stash["id"], current_user["id"]))
+    can_write = bool(
+        current_user and await stash_service.user_can_write(stash["id"], current_user["id"])
+    )
     return StashPublicResponse(
         stash=StashResponse(**stash),
         workspace_name=workspace_name,

@@ -87,7 +87,9 @@ async def update_workspace(
 ):
     role = await workspace_service.get_member_role(workspace_id, current_user["id"])
     if role not in workspace_service.ROLES_CAN_WRITE:
-        raise HTTPException(status_code=403, detail="Workspace editors and admins can update workspace")
+        raise HTTPException(
+            status_code=403, detail="Workspace editors and admins can update workspace"
+        )
     ws = await workspace_service.update_workspace(
         workspace_id,
         name=req.name,
@@ -227,7 +229,9 @@ async def create_invite_token(
 ):
     role = await workspace_service.get_member_role(workspace_id, current_user["id"])
     if role not in workspace_service.ROLES_ADMIN:
-        raise HTTPException(status_code=403, detail="Only workspace admins can create invite tokens")
+        raise HTTPException(
+            status_code=403, detail="Only workspace admins can create invite tokens"
+        )
     ws = await workspace_service.get_workspace(workspace_id)
     if not ws:
         raise HTTPException(status_code=404, detail="Workspace not found")
@@ -267,7 +271,9 @@ async def revoke_invite_token(
 ):
     role = await workspace_service.get_member_role(workspace_id, current_user["id"])
     if role not in workspace_service.ROLES_ADMIN:
-        raise HTTPException(status_code=403, detail="Only workspace admins can revoke invite tokens")
+        raise HTTPException(
+            status_code=403, detail="Only workspace admins can revoke invite tokens"
+        )
     ok = await invite_token_service.revoke_token(token_id, workspace_id)
     if not ok:
         raise HTTPException(status_code=404, detail="Token not found or already revoked")
