@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import AppShell from "../../components/AppShell";
+import CustomSelect from "../../components/CustomSelect";
 import { useAuth } from "../../hooks/useAuth";
 import {
   getWorkspaceSidebar,
@@ -331,48 +332,51 @@ function SearchPageInner() {
         <div className="mt-6 grid gap-5 lg:grid-cols-[280px_minmax(0,1fr)]">
           <aside className="rounded-lg border border-border bg-surface p-4">
             <div className="flex flex-col gap-4">
-              <label className="flex flex-col gap-1.5">
+              <div className="flex flex-col gap-1.5">
                 <span className="text-[12px] font-medium text-foreground">Workspace</span>
-                <select
+                <CustomSelect
                   value={selectedWorkspaceId}
-                  onChange={(event) => {
-                    setSelectedWorkspaceId(event.target.value);
+                  options={[
+                    { value: "", label: "All workspaces" },
+                    ...workspaces.map((workspace) => ({
+                      value: workspace.id,
+                      label: workspace.name,
+                    })),
+                  ]}
+                  onChange={(next) => {
+                    setSelectedWorkspaceId(next);
                     setSelectedFolderId("");
                     setSelectedPageId("");
                     setSelectedProductStashId("");
                     setSelectedProductStashSlug("");
                     setSelectedSessionId("");
                   }}
-                  className="rounded-md border border-border bg-base px-2 py-2 text-[13px] text-foreground focus:border-brand focus:outline-none"
-                >
-                  <option value="">All workspaces</option>
-                  {workspaces.map((workspace) => (
-                    <option key={workspace.id} value={workspace.id}>
-                      {workspace.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
+                  ariaLabel="Workspace"
+                  className="w-full rounded-md border border-border bg-base px-2 py-2 text-[13px] text-foreground focus:border-brand focus:outline-none"
+                  menuClassName="text-[13px]"
+                />
+              </div>
 
-              <label className="flex flex-col gap-1.5">
+              <div className="flex flex-col gap-1.5">
                 <span className="text-[12px] font-medium text-foreground">Stash</span>
-                <select
+                <CustomSelect
                   value={selectedProductStashId}
-                  onChange={(event) => {
-                    setSelectedProductStashId(event.target.value);
+                  options={[
+                    { value: "", label: "All Stashes" },
+                    ...searchedStashes.map((stash) => ({
+                      value: stash.id,
+                      label: stash.title + (stash.forked_from_stash_id ? " (Fork)" : ""),
+                    })),
+                  ]}
+                  onChange={(next) => {
+                    setSelectedProductStashId(next);
                     setSelectedProductStashSlug("");
                   }}
-                  className="rounded-md border border-border bg-base px-2 py-2 text-[13px] text-foreground focus:border-brand focus:outline-none"
-                >
-                  <option value="">All Stashes</option>
-                  {searchedStashes.map((stash) => (
-                    <option key={stash.id} value={stash.id}>
-                      {stash.title}
-                      {stash.forked_from_stash_id ? " (Fork)" : ""}
-                    </option>
-                  ))}
-                </select>
-              </label>
+                  ariaLabel="Stash"
+                  className="w-full rounded-md border border-border bg-base px-2 py-2 text-[13px] text-foreground focus:border-brand focus:outline-none"
+                  menuClassName="text-[13px]"
+                />
+              </div>
 
               {selectedSessionId ? (
                 <div className="flex flex-col gap-1.5">
@@ -383,53 +387,59 @@ function SearchPageInner() {
                 </div>
               ) : null}
 
-              <label className="flex flex-col gap-1.5">
+              <div className="flex flex-col gap-1.5">
                 <span className="text-[12px] font-medium text-foreground">Folder</span>
-                <select
+                <CustomSelect
                   value={selectedFolderId}
-                  onChange={(event) => {
-                    setSelectedFolderId(event.target.value);
-                    if (event.target.value) setSelectedPageId("");
+                  options={[
+                    {
+                      value: "",
+                      label: selectedProductStashId ? "Stash selected" : "Entire workspace",
+                    },
+                    ...folderOptions.map((folder) => ({
+                      value: folder.id,
+                      label: folder.name,
+                    })),
+                  ]}
+                  onChange={(next) => {
+                    setSelectedFolderId(next);
+                    if (next) setSelectedPageId("");
                   }}
                   disabled={!selectedWorkspaceId || Boolean(selectedProductStashId || selectedPageId)}
-                  className="rounded-md border border-border bg-base px-2 py-2 text-[13px] text-foreground focus:border-brand focus:outline-none disabled:opacity-50"
-                >
-                  <option value="">
-                    {selectedProductStashId ? "Stash selected" : "Entire workspace"}
-                  </option>
-                  {folderOptions.map((folder) => (
-                    <option key={folder.id} value={folder.id}>
-                      {folder.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
+                  ariaLabel="Folder"
+                  className="w-full rounded-md border border-border bg-base px-2 py-2 text-[13px] text-foreground focus:border-brand focus:outline-none"
+                  menuClassName="text-[13px]"
+                />
+              </div>
 
-              <label className="flex flex-col gap-1.5">
+              <div className="flex flex-col gap-1.5">
                 <span className="text-[12px] font-medium text-foreground">Page</span>
-                <select
+                <CustomSelect
                   value={selectedPageId}
-                  onChange={(event) => {
-                    setSelectedPageId(event.target.value);
-                    if (event.target.value) setSelectedFolderId("");
+                  options={[
+                    {
+                      value: "",
+                      label: selectedProductStashId
+                        ? "Stash selected"
+                        : selectedFolderId
+                          ? "Folder selected"
+                          : "Any page",
+                    },
+                    ...pageOptions.map((page) => ({
+                      value: page.id,
+                      label: page.name,
+                    })),
+                  ]}
+                  onChange={(next) => {
+                    setSelectedPageId(next);
+                    if (next) setSelectedFolderId("");
                   }}
                   disabled={!selectedWorkspaceId || Boolean(selectedProductStashId || selectedFolderId)}
-                  className="rounded-md border border-border bg-base px-2 py-2 text-[13px] text-foreground focus:border-brand focus:outline-none disabled:opacity-50"
-                >
-                  <option value="">
-                    {selectedProductStashId
-                      ? "Stash selected"
-                      : selectedFolderId
-                        ? "Folder selected"
-                        : "Any page"}
-                  </option>
-                  {pageOptions.map((page) => (
-                    <option key={page.id} value={page.id}>
-                      {page.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
+                  ariaLabel="Page"
+                  className="w-full rounded-md border border-border bg-base px-2 py-2 text-[13px] text-foreground focus:border-brand focus:outline-none"
+                  menuClassName="text-[13px]"
+                />
+              </div>
 
               <div>
                 <span className="text-[12px] font-medium text-foreground">Content</span>
