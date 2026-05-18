@@ -222,7 +222,7 @@ export default function SessionViewerPage() {
             )}
           </div>
         </main>
-        <SessionAside detail={sessionDetail} stashes={containingStashes} turns={turns} />
+        <SessionAside detail={sessionDetail} stashes={containingStashes} />
       </div>
     </div>
   );
@@ -231,17 +231,12 @@ export default function SessionViewerPage() {
 function SessionAside({
   detail,
   stashes,
-  turns,
 }: {
   detail: SessionDetail | null;
   stashes: WorkspaceStash[];
-  turns: MessageTurn[];
 }) {
   const filesTouched = normalizeStringList(detail?.files_touched);
   const artifacts = detail?.artifacts ?? [];
-  const toolCalls = turns
-    .map((turn, index) => ({ ...turn, index }))
-    .filter((turn) => turn.toolName);
 
   return (
     <aside className="hidden lg:block">
@@ -283,27 +278,6 @@ function SessionAside({
           {filesTouched.length === 0 && artifacts.length === 0 && (
             <div className="mt-2 text-[12px] leading-relaxed text-muted">
               No artifacts recorded.
-            </div>
-          )}
-        </div>
-
-        <div className="card-soft p-3.5">
-          <div className="sys-label">Tool calls</div>
-          {toolCalls.length > 0 ? (
-            <div className="mt-2 flex flex-col gap-1.5">
-              {toolCalls.map((turn) => (
-                <a key={turn.id} href={`#tool-call-${turn.index}`} className="linkrow px-2 py-1.5">
-                  <span className="font-mono text-[11.5px] text-foreground">{turn.toolName}</span>
-                  <span className="flex-1" />
-                  <span className="sys-label" style={{ fontSize: 10 }}>
-                    {turn.time ?? "tool"}
-                  </span>
-                </a>
-              ))}
-            </div>
-          ) : (
-            <div className="mt-2 text-[12px] leading-relaxed text-muted">
-              No tool calls recorded.
             </div>
           )}
         </div>

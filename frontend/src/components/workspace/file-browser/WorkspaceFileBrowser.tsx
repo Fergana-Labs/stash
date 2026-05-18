@@ -1,8 +1,7 @@
 "use client";
 
-import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState, type DragEvent } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   createFolder,
   createPage,
@@ -16,7 +15,6 @@ import {
   updateFolder,
   updatePage,
   uploadFile,
-  type FolderBreadcrumb,
   type FolderContents,
 } from "../../../lib/api";
 import type {
@@ -150,8 +148,6 @@ export default function WorkspaceFileBrowser({ workspaceId, folderId }: Props) {
     ];
   }, [folderId, contents, tree, rootFiles]);
 
-  const breadcrumbs: FolderBreadcrumb[] = contents?.breadcrumbs ?? [];
-
   async function refreshAll() {
     await Promise.all([loadTree(), loadContents()]);
   }
@@ -256,15 +252,10 @@ export default function WorkspaceFileBrowser({ workspaceId, folderId }: Props) {
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      {/* Top strip: breadcrumb + toolbar */}
-      <div className="flex flex-wrap items-center gap-3 border-b border-border bg-surface px-4 py-2.5">
-        <Breadcrumbs
-          workspaceId={workspaceId}
-          breadcrumbs={breadcrumbs}
-          currentName={contents?.folder.name}
-          onDropToCrumb={reparent}
-        />
-        <span className="flex-1" />
+      {/* Top strip — toolbar only. The page path is already shown in
+          AppShell's breadcrumb, so an in-page breadcrumb would just
+          duplicate it. */}
+      <div className="flex flex-wrap items-center justify-end gap-1.5 border-b border-border bg-surface px-4 py-2.5">
         <button
           type="button"
           onClick={handleUploadFile}
@@ -326,73 +317,6 @@ export default function WorkspaceFileBrowser({ workspaceId, folderId }: Props) {
         />
       </div>
     </div>
-  );
-}
-
-function Breadcrumbs({
-  workspaceId,
-  breadcrumbs,
-  currentName,
-  onDropToCrumb,
-}: {
-  workspaceId: string;
-  breadcrumbs: FolderBreadcrumb[];
-  currentName?: string;
-  onDropToCrumb: (payload: FBDragPayload, targetFolderId: string | null) => Promise<void>;
-}) {
-  // "Files" root is also a drop target — drop onto it to move to workspace root.
-  function dropProps(targetFolderId: string | null) {
-    return {
-      onDragOver(e: DragEvent<HTMLAnchorElement>) {
-        if (!e.dataTransfer.types.includes(FB_DRAG_MIME)) return;
-        e.preventDefault();
-        e.dataTransfer.dropEffect = "move";
-      },
-      onDrop(e: DragEvent<HTMLAnchorElement>) {
-        const raw = e.dataTransfer.getData(FB_DRAG_MIME);
-        if (!raw) return;
-        e.preventDefault();
-        try {
-          const payload = JSON.parse(raw) as FBDragPayload;
-          onDropToCrumb(payload, targetFolderId);
-        } catch {
-          /* malformed payload — ignore */
-        }
-      },
-    };
-  }
-
-  return (
-    <nav className="flex min-w-0 items-center gap-1.5 text-[12.5px]">
-      <Link
-        href={`/workspaces/${workspaceId}/files`}
-        className="rounded px-1 py-0.5 text-dim hover:bg-raised hover:text-foreground"
-        {...dropProps(null)}
-      >
-        Files
-      </Link>
-      {breadcrumbs.map((crumb, i) => {
-        const last = i === breadcrumbs.length - 1;
-        return (
-          <span key={crumb.id} className="flex min-w-0 items-center gap-1.5">
-            <span className="text-muted/60">/</span>
-            {last ? (
-              <span className="truncate font-medium text-foreground">
-                {currentName ?? crumb.name}
-              </span>
-            ) : (
-              <Link
-                href={`/workspaces/${workspaceId}/folders/${crumb.id}`}
-                className="rounded px-1 py-0.5 text-dim hover:bg-raised hover:text-foreground"
-                {...dropProps(crumb.id)}
-              >
-                {crumb.name}
-              </Link>
-            )}
-          </span>
-        );
-      })}
-    </nav>
   );
 }
 

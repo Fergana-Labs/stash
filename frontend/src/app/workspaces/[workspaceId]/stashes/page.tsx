@@ -27,7 +27,6 @@ export default function WorkspaceStashesPage() {
 
   const [stashes, setStashes] = useState<WorkspaceStash[] | null>(null);
   const [filter, setFilter] = useState<Filter>("all");
-  const [query, setQuery] = useState("");
   const [error, setError] = useState("");
 
   const load = useCallback(async () => {
@@ -59,21 +58,10 @@ export default function WorkspaceStashesPage() {
     const ordered = [...stashes].sort(
       (a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()
     );
-    const byFilter =
-      filter === "all"
-        ? ordered
-        : filter === "external"
-          ? ordered.filter((s) => s.is_external)
-          : ordered.filter((s) => s.access === filter && !s.is_external);
-    const q = query.trim().toLowerCase();
-    if (!q) return byFilter;
-    return byFilter.filter((stash) =>
-      [stash.title, stash.description, stash.slug]
-        .join(" ")
-        .toLowerCase()
-        .includes(q)
-    );
-  }, [stashes, filter, query]);
+    if (filter === "all") return ordered;
+    if (filter === "external") return ordered.filter((s) => s.is_external);
+    return ordered.filter((s) => s.access === filter && !s.is_external);
+  }, [stashes, filter]);
 
   const native = useMemo(
     () => filtered.filter((s) => !s.forked_from_stash_id),
@@ -91,19 +79,10 @@ export default function WorkspaceStashesPage() {
   return (
     <div className="scroll-thin flex-1 overflow-y-auto">
       <div className="mx-auto max-w-[1120px] px-12 pb-20 pt-8">
-        {/* Hero */}
-        <div className="flex items-end justify-between gap-4">
-          <div className="min-w-0">
-            <p className="sys-label">All Stashes in workspace</p>
-            <h1 className="mb-1 mt-1 font-display text-[34px] font-bold tracking-[-0.02em]">
-              Stashes
-            </h1>
-            <p className="m-0 max-w-[620px] text-[13.5px] text-dim">
-              Stashes bundle pages, sessions, and tables into one shareable
-              surface. Privacy lives here — every item in a Stash inherits its
-              permission level.
-            </p>
-          </div>
+        <div className="flex items-center justify-between gap-4">
+          <h1 className="m-0 font-display text-[34px] font-bold tracking-[-0.02em]">
+            Stashes
+          </h1>
           <button
             type="button"
             onClick={() => shareModal.open({ workspaceId, tab: "new" })}
@@ -146,17 +125,6 @@ export default function WorkspaceStashesPage() {
               );
             })}
           </div>
-          <span className="flex-1" />
-          <div className="flex min-w-[220px] max-w-[280px] flex-1 items-center gap-2 rounded-md border border-border bg-base px-2 py-1">
-            <SearchGlyph />
-            <input
-              type="text"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search title, description, slug…"
-              className="min-w-0 flex-1 border-0 bg-transparent text-[12.5px] text-foreground placeholder:text-muted focus:outline-none"
-            />
-          </div>
         </div>
 
         <ExternalStashLinkForm
@@ -172,9 +140,7 @@ export default function WorkspaceStashesPage() {
           <div className="mt-12 rounded-lg border border-dashed border-border bg-surface/30 px-4 py-10 text-center text-[12.5px] text-muted">
             {stashes.length === 0
               ? "No Stashes yet."
-              : query.trim()
-                ? "No Stashes match your search."
-                : "No Stashes match this filter."}
+              : "No Stashes match this filter."}
           </div>
         ) : filter === "all" && forked.length > 0 && native.length > 0 ? (
           <>
@@ -297,14 +263,6 @@ function PlusGlyph() {
   );
 }
 
-function SearchGlyph() {
-  return (
-    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-muted">
-      <circle cx="11" cy="11" r="8" />
-      <path d="m21 21-4.3-4.3" />
-    </svg>
-  );
-}
 
 function StashGroup({
   title,

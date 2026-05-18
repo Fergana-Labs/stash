@@ -46,7 +46,6 @@ export default function StashSessionsPage() {
   const [error, setError] = useState("");
   const [view, setView] = useState<ViewKey>("list");
   const [sort, setSort] = useState<SortKey>("recent");
-  const [query, setQuery] = useState("");
 
   useBreadcrumbs([{ label: "Sessions" }], `${workspaceId}/sessions`);
 
@@ -76,33 +75,21 @@ export default function StashSessionsPage() {
     if (!loading && !user) router.push("/login");
   }, [user, loading, router]);
 
-  const filtered = useMemo(() => {
-    if (!sessions) return null;
-    const q = query.trim().toLowerCase();
-    if (!q) return sessions;
-    return sessions.filter((s) =>
-      [s.agent_name, s.user_name, s.first_prompt_preview, s.session_id]
-        .map((v) => (v ?? "").toLowerCase())
-        .some((v) => v.includes(q))
-    );
-  }, [sessions, query]);
-
   const sorted = useMemo(() => {
-    if (!filtered) return null;
-    const copy = [...filtered];
+    if (!sessions) return null;
+    const copy = [...sessions];
     if (sort === "recent") copy.sort((a, b) => sessionTime(b) - sessionTime(a));
     else if (sort === "oldest") copy.sort((a, b) => sessionTime(a) - sessionTime(b));
     else if (sort === "events") copy.sort((a, b) => b.event_count - a.event_count);
     else copy.sort((a, b) => sessionTitle(a).localeCompare(sessionTitle(b)));
     return copy;
-  }, [filtered, sort]);
+  }, [sessions, sort]);
 
   if (loading)
     return <div className="flex h-screen items-center justify-center text-muted">Loading…</div>;
   if (!user) return null;
 
   const total = sessions?.length ?? 0;
-  const visible = sorted?.length ?? 0;
 
   function setViewPersisted(next: ViewKey) {
     setView(next);
@@ -121,7 +108,7 @@ export default function StashSessionsPage() {
             Sessions
           </h1>
           <span className="sys-label" style={{ fontSize: 10.5 }}>
-            {query.trim() ? `${visible} of ${total}` : `${total} total`}
+            {total} total
           </span>
         </div>
 
@@ -135,7 +122,7 @@ export default function StashSessionsPage() {
           <SessionUpload workspaceId={workspaceId} onUploaded={load} />
         </div>
 
-        {/* Toolbar: View · Sort · Search. Drives the rendering below. */}
+        {/* Toolbar: View · Sort. Drives the rendering below. */}
         <div className="mb-3 flex flex-wrap items-center gap-3 border-b border-border pb-2.5">
           <SegmentedControl
             label="View"
@@ -149,16 +136,6 @@ export default function StashSessionsPage() {
             options={SORTS}
             onChange={(v) => setSort(v as SortKey)}
           />
-          <div className="flex max-w-[260px] flex-1 items-center gap-2 rounded-md border border-border bg-base px-2 py-1">
-            <SearchGlyph />
-            <input
-              type="text"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search title, agent, user…"
-              className="min-w-0 flex-1 border-0 bg-transparent text-[12.5px] text-foreground placeholder:text-muted focus:outline-none"
-            />
-          </div>
         </div>
 
         {sorted && (
@@ -166,8 +143,6 @@ export default function StashSessionsPage() {
             view={view}
             sessions={sorted}
             workspaceId={workspaceId}
-            queryActive={query.trim().length > 0}
-            totalUnfiltered={total}
           />
         )}
       </div>
@@ -179,23 +154,15 @@ function SessionsView({
   view,
   sessions,
   workspaceId,
-  queryActive,
-  totalUnfiltered,
 }: {
   view: ViewKey;
   sessions: SessionSummary[];
   workspaceId: string;
-  queryActive: boolean;
-  totalUnfiltered: number;
 }) {
   if (sessions.length === 0) {
     return (
       <div className="rounded-lg border border-dashed border-border bg-surface/30 px-4 py-6 text-center text-[12.5px] text-muted">
-        {queryActive
-          ? "No sessions match your search."
-          : totalUnfiltered === 0
-            ? "No sessions yet."
-            : "No sessions to show."}
+        No sessions yet.
       </div>
     );
   }
@@ -356,15 +323,6 @@ function Chev({ open }: { open: boolean }) {
       strokeLinejoin="round"
     >
       <polyline points="9 18 15 12 9 6" />
-    </svg>
-  );
-}
-
-function SearchGlyph() {
-  return (
-    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-muted">
-      <circle cx="11" cy="11" r="8" />
-      <path d="m21 21-4.3-4.3" />
     </svg>
   );
 }
