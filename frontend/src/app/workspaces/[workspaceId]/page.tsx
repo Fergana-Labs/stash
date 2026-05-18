@@ -33,22 +33,6 @@ import type {
 
 const AUTOSAVE_MS = 1500;
 
-const AVATAR_CLASSES = [
-  "av-rose",
-  "av-indigo",
-  "av-emerald",
-  "av-amber",
-  "av-sky",
-  "av-fuchsia",
-  "av-violet",
-];
-
-function avatarClassFor(name: string): string {
-  let h = 5381;
-  for (let i = 0; i < name.length; i++) h = (h * 33 + name.charCodeAt(i)) >>> 0;
-  return AVATAR_CLASSES[h % AVATAR_CLASSES.length];
-}
-
 function relativeTime(iso: string): string {
   const ms = Date.now() - new Date(iso).getTime();
   if (ms < 60_000) return "just now";
@@ -154,7 +138,7 @@ export default function WorkspaceHomePage() {
                     title="View members"
                     className="inline-flex items-center gap-1 rounded px-1 py-0.5 hover:bg-raised"
                   >
-                    <MemberStack members={members} />
+                    <MemberCount members={members} />
                   </button>
                   {workspace?.updated_at && (
                     <>
@@ -261,31 +245,12 @@ function SettingsGlyph() {
   );
 }
 
-function MemberStack({ members }: { members: WorkspaceMember[] }) {
+function MemberCount({ members }: { members: WorkspaceMember[] }) {
   if (!members.length) return null;
-  const display = members.slice(0, 4);
-  const overflow = members.length - display.length;
-  return (
-    <span className="flex items-center gap-1.5">
-      <span className="flex -space-x-1">
-        {display.map((m) => {
-          const label = (m.display_name || m.name || "?").trim();
-          return (
-            <span
-              key={m.user_id}
-              className={`avatar ${avatarClassFor(label)}`}
-              style={{ width: 18, height: 18, fontSize: 8.5, border: "1.5px solid var(--bg-base)" }}
-              title={label}
-            >
-              {label.slice(0, 2).toUpperCase()}
-            </span>
-          );
-        })}
-      </span>
-      {overflow > 0 && <span className="text-[10.5px] text-muted">+{overflow}</span>}
-      <span>{members.length} member{members.length === 1 ? "" : "s"}</span>
-    </span>
-  );
+
+  const label = `${members.length} member${members.length === 1 ? "" : "s"}`;
+
+  return <span>{label}</span>;
 }
 
 function WorkspaceDescriptionEditor({
@@ -384,4 +349,3 @@ function WorkspaceDescriptionEditor({
     </section>
   );
 }
-
