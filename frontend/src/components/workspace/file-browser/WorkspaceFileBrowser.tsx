@@ -22,6 +22,7 @@ import type {
   PageSummary,
   WorkspaceTree,
 } from "../../../lib/types";
+import EditableTitle from "../EditableTitle";
 import FolderTreePane from "./FolderTreePane";
 import FolderItemGrid, { type GridItem, type ItemKind } from "./FolderItemGrid";
 import ItemPreviewPane, { type PreviewSelection } from "./ItemPreviewPane";
@@ -250,12 +251,46 @@ export default function WorkspaceFileBrowser({ workspaceId, folderId }: Props) {
     }
   }
 
+  // Rename callback used by both the in-strip folder name and the preview
+  // pane's "Rename…" action. Dispatches by kind because each lives in a
+  // different table with its own API.
+  async function renameItem(
+    kind: "folder" | "page" | "html" | "table" | "file",
+    id: string,
+    next: string
+  ): Promise<string> {
+    if (kind === "folder") {
+      const updated = await updateFolder(workspaceId, id, { name: next });
+      await refreshAll();
+      return updated.name;
+    }
+    if (kind === "page" || kind === "html") {
+      const updated = await updatePage(workspaceId, id, { name: next });
+      await refreshAll();
+      return updated.name;
+    }
+    const updated = await updateFile(workspaceId, id, { name: next });
+    await refreshAll();
+    return updated.name;
+  }
+
   return (
     <div className="flex h-full min-h-0 flex-col">
-      {/* Top strip — toolbar only. The page path is already shown in
-          AppShell's breadcrumb, so an in-page breadcrumb would just
-          duplicate it. */}
-      <div className="flex flex-wrap items-center justify-end gap-1.5 border-b border-border bg-surface px-4 py-2.5">
+      {/* Top strip: current folder name (rename target) + toolbar. The page
+          path is shown in AppShell's top-bar breadcrumb, so we only repeat
+          the *current* folder here as an inline-editable title. */}
+      <div className="flex flex-wrap items-center gap-3 border-b border-border bg-surface px-4 py-2.5">
+        {folderId && contents?.folder ? (
+          <h2 className="m-0 min-w-0 font-display text-[15px] font-semibold leading-tight text-foreground">
+            <EditableTitle
+              value={contents.folder.name}
+              onSave={(next) => renameItem("folder", folderId, next)}
+            />
+          </h2>
+        ) : (
+          <span className="text-[12.5px] font-medium text-muted">Files</span>
+        )}
+        <span className="flex-1" />
         <button
           type="button"
           onClick={handleUploadFile}
@@ -314,6 +349,11 @@ export default function WorkspaceFileBrowser({ workspaceId, folderId }: Props) {
           selection={selected}
           onOpen={(s) => navigateTo(gridFromPreview(s))}
           onDelete={handleDelete}
+          onRename={async (s, next) => {
+            const finalName = await renameItem(s.kind, s.id, next);
+            setSelected({ ...s, name: finalName });
+            return finalName;
+          }}
         />
       </div>
     </div>

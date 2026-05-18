@@ -1,5 +1,6 @@
 "use client";
 
+import EditableTitle from "../EditableTitle";
 import { FileIcon, FolderIcon, PageIcon, TableIcon } from "../../StashIcons";
 import type { ItemKind } from "./FolderItemGrid";
 
@@ -17,9 +18,16 @@ interface Props {
   selection: PreviewSelection | null;
   onOpen: (s: PreviewSelection) => void;
   onDelete: (s: PreviewSelection) => Promise<void>;
+  onRename: (s: PreviewSelection, next: string) => Promise<string>;
 }
 
-export default function ItemPreviewPane({ workspaceId, selection, onOpen, onDelete }: Props) {
+export default function ItemPreviewPane({
+  workspaceId,
+  selection,
+  onOpen,
+  onDelete,
+  onRename,
+}: Props) {
   void workspaceId; // currently unused; kept for future deep-link actions
   if (!selection) {
     return (
@@ -51,7 +59,10 @@ export default function ItemPreviewPane({ workspaceId, selection, onOpen, onDele
           </span>
           <div className="min-w-0 flex-1">
             <div className="break-words text-[14px] font-semibold text-foreground">
-              {selection.name}
+              <EditableTitle
+                value={selection.name}
+                onSave={(next) => onRename(selection, next)}
+              />
             </div>
             <div className="mt-0.5 text-[11.5px] text-muted">{selection.subtitle}</div>
           </div>

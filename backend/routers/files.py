@@ -242,8 +242,9 @@ async def update_ws_file(
     req: FileUpdateRequest,
     current_user: dict = Depends(get_current_user),
 ):
-    """Reparent a file. Pass folder_id=<UUID> to move into a folder, or
-    move_to_root=true to move to the workspace root."""
+    """Update a file. Supports rename (`name`) and reparent
+    (`folder_id` / `move_to_root`). Any subset can be passed; an empty
+    request returns the file unchanged."""
     await _check_write(workspace_id, current_user["id"])
     pool = get_pool()
     file_row = await pool.fetchrow(
@@ -256,8 +257,21 @@ async def update_ws_file(
     if not await _can_access_file(file_id, workspace_id, current_user["id"], require_write=True):
         raise HTTPException(status_code=404, detail="File not found")
 
+    # Build the SET clause dynamically so we only touch fields the caller
+    # actually sent — keeps name and folder_id independent.
+    updates: list[str] = []
+    params: list = []
+
+    if req.name is not None:
+        name = req.name.strip()
+        if not name:
+            raise HTTPException(status_code=400, detail="Name cannot be empty")
+        params.append(name)
+        updates.append(f"name = ${len(params)}")
+
     if req.move_to_root:
-        next_folder_id = None
+        params.append(None)
+        updates.append(f"folder_id = ${len(params)}")
     elif req.folder_id is not None:
         # Target folder must belong to the same workspace; otherwise files
         # could escape their workspace by getting reparented across the
@@ -268,16 +282,19 @@ async def update_ws_file(
         )
         if not owner or owner["workspace_id"] != workspace_id:
             raise HTTPException(status_code=404, detail="Folder not found")
-        next_folder_id = req.folder_id
-    else:
-        # No-op request — return the file unchanged rather than 400.
+        params.append(req.folder_id)
+        updates.append(f"folder_id = ${len(params)}")
+
+    if not updates:
         return await _file_to_response(dict(file_row))
 
+    params.append(file_id)
+    file_id_pos = len(params)
+    params.append(workspace_id)
+    ws_pos = len(params)
     updated = await pool.fetchrow(
-        "UPDATE files SET folder_id = $1 WHERE id = $2 AND workspace_id = $3 RETURNING *",
-        next_folder_id,
-        file_id,
-        workspace_id,
+        f"UPDATE files SET {', '.join(updates)} WHERE id = ${file_id_pos} AND workspace_id = ${ws_pos} RETURNING *",
+        *params,
     )
     return await _file_to_response(dict(updated))
 

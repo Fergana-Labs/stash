@@ -615,6 +615,7 @@ class FileListResponse(BaseModel):
 class FileUpdateRequest(BaseModel):
     folder_id: UUID | None = None
     move_to_root: bool = False
+    name: str | None = None
 
 
 class SessionTranscriptResponse(BaseModel):
