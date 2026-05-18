@@ -3,7 +3,7 @@
 import { ReactNode, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import type { StashItemSpec } from "../lib/api";
+import { getSessionDetail, publishStash, type SessionDetail, type StashItemSpec } from "../lib/api";
 import { User, Workspace } from "../lib/types";
 import AppSidebar from "./AppSidebar";
 import CommandPalette from "./CommandPalette";
@@ -27,6 +27,12 @@ export interface SearchScope {
   detail: string;
   params: Record<string, string>;
 }
+
+type DirectShareTarget =
+  | { kind: "page"; workspaceId: string; pageId: string; title: string }
+  | { kind: "session"; workspaceId: string; sessionId: string };
+
+type ShareStatus = "idle" | "creating" | "copied" | "error";
 
 function readBool(key: string): boolean {
   if (typeof window === "undefined") return false;
@@ -71,6 +77,32 @@ function SidebarToggleIcon({ collapsed }: { collapsed: boolean }) {
 function lastCrumbLabel(crumbs: Crumb[] | null): string | null {
   const label = crumbs?.[crumbs.length - 1]?.label.trim();
   return label || null;
+}
+
+function inferDirectShareTarget(
+  pathname: string,
+  breadcrumbs: Crumb[] | null
+): DirectShareTarget | null {
+  const pageMatch = pathname.match(/^\/workspaces\/([^/]+)\/p\/([^/?#]+)/);
+  if (pageMatch) {
+    return {
+      kind: "page",
+      workspaceId: pageMatch[1],
+      pageId: pageMatch[2],
+      title: lastCrumbLabel(breadcrumbs) ?? "Shared page",
+    };
+  }
+
+  const sessionMatch = pathname.match(/^\/workspaces\/([^/]+)\/sessions\/([^/?#]+)/);
+  if (sessionMatch) {
+    return {
+      kind: "session",
+      workspaceId: sessionMatch[1],
+      sessionId: decodeURIComponent(sessionMatch[2]),
+    };
+  }
+
+  return null;
 }
 
 function inferSearchScope(
@@ -203,6 +235,8 @@ export default function AppShell({ user, onLogout, children }: AppShellProps) {
     () => readCachedWorkspaces(user.id)?.all ?? []
   );
   const [cmdkOpen, setCmdkOpen] = useState(false);
+  const [shareStatus, setShareStatus] = useState<ShareStatus>("idle");
+  const [shareMessage, setShareMessage] = useState("");
 
   useEffect(() => {
     setSidebarCollapsed(readBool(SIDEBAR_KEY));
@@ -238,6 +272,56 @@ export default function AppShell({ user, onLogout, children }: AppShellProps) {
   const activeWorkspace = workspaces.find((s) => s.id === activeWorkspaceId);
   const searchScope = inferSearchScope(pathname, activeWorkspace, breadcrumbs);
   const initial = (user.display_name || user.name || "?")[0].toUpperCase();
+  const directShareTarget = inferDirectShareTarget(pathname, breadcrumbs);
+
+  async function copyCurrentViewLink() {
+    if (!activeWorkspaceId) return;
+
+    const target = directShareTarget;
+    if (!target) {
+      shareModal.open({
+        workspaceId: activeWorkspaceId,
+        workspaceName: activeWorkspace?.name,
+        initial: inferShareInitial(pathname),
+      });
+      return;
+    }
+
+    setShareStatus("creating");
+    setShareMessage("");
+    try {
+      const result =
+        target.kind === "page"
+          ? await publishStash(
+              target.workspaceId,
+              target.title,
+              [
+                {
+                  object_type: "page",
+                  object_id: target.pageId,
+                  position: 0,
+                  label_override: target.title,
+                },
+              ],
+              { discoverable: false }
+            )
+          : await publishSessionStash(target);
+      await navigator.clipboard.writeText(result.url);
+      setShareStatus("copied");
+      setShareMessage("Link copied");
+      window.setTimeout(() => {
+        setShareStatus("idle");
+        setShareMessage("");
+      }, 1600);
+    } catch (e) {
+      setShareStatus("error");
+      setShareMessage(e instanceof Error ? e.message : "Share failed");
+      window.setTimeout(() => {
+        setShareStatus("idle");
+        setShareMessage("");
+      }, 3000);
+    }
+  }
 
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-base">
@@ -270,18 +354,25 @@ export default function AppShell({ user, onLogout, children }: AppShellProps) {
         <div className="flex items-center justify-end gap-1">
           <StashInviteCenter activeWorkspaceId={activeWorkspaceId} />
           {activeWorkspaceId && (
-            <button
-              className="mr-1 rounded-md bg-[var(--color-brand-600)] px-2.5 py-1 text-[12.5px] font-medium text-white hover:bg-[var(--color-brand-700)]"
-              onClick={() =>
-                shareModal.open({
-                  workspaceId: activeWorkspaceId,
-                  workspaceName: activeWorkspace?.name,
-                  initial: inferShareInitial(pathname),
-                })
-              }
-            >
-              Share
-            </button>
+            <div className="mr-1 flex items-center gap-2">
+              {shareMessage && (
+                <span
+                  className={
+                    "max-w-[180px] truncate text-[11.5px] " +
+                    (shareStatus === "error" ? "text-red-500" : "text-muted")
+                  }
+                >
+                  {shareMessage}
+                </span>
+              )}
+              <button
+                className="rounded-md bg-[var(--color-brand-600)] px-2.5 py-1 text-[12.5px] font-medium text-white hover:bg-[var(--color-brand-700)] disabled:opacity-50"
+                onClick={() => void copyCurrentViewLink()}
+                disabled={shareStatus === "creating"}
+              >
+                {shareStatus === "creating" ? "Creating..." : shareStatus === "copied" ? "Copied" : "Share"}
+              </button>
+            </div>
           )}
           <UserMenu
             initial={initial}
@@ -318,6 +409,33 @@ export default function AppShell({ user, onLogout, children }: AppShellProps) {
       />
     </div>
   );
+}
+
+async function publishSessionStash(target: Extract<DirectShareTarget, { kind: "session" }>) {
+  const session = await getSessionDetail(target.workspaceId, target.sessionId);
+  const title = sessionShareTitle(session);
+  return publishStash(
+    target.workspaceId,
+    title,
+    [
+      {
+        object_type: "session",
+        object_id: session.id,
+        position: 0,
+        label_override: title,
+      },
+    ],
+    { discoverable: false }
+  );
+}
+
+function sessionShareTitle(session: SessionDetail): string {
+  const summary = session.summary?.trim();
+  if (summary) {
+    const firstSentence = summary.split(".")[0]?.trim();
+    if (firstSentence) return firstSentence;
+  }
+  return `#${session.session_id}`;
 }
 
 function UserMenu({

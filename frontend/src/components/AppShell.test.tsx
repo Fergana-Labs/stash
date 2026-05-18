@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import AppShell from "./AppShell";
 import { BreadcrumbProvider, useBreadcrumbs } from "./BreadcrumbContext";
 import { ShareModalProvider } from "../lib/shareModalContext";
+import { getSessionDetail, publishStash } from "../lib/api";
 import {
   getCachedWorkspaces,
   readCachedWorkspaces,
@@ -39,6 +40,11 @@ vi.mock("next/link", () => ({
 vi.mock("../lib/stashNavigationCache", () => ({
   getCachedWorkspaces: vi.fn(),
   readCachedWorkspaces: vi.fn(),
+}));
+
+vi.mock("../lib/api", () => ({
+  getSessionDetail: vi.fn(),
+  publishStash: vi.fn(),
 }));
 
 vi.mock("./AppSidebar", () => ({
@@ -110,6 +116,11 @@ describe("AppShell sidebar collapse", () => {
     nav.pathname = "/";
     commandPaletteState.props = null;
     vi.clearAllMocks();
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText: vi.fn().mockResolvedValue(undefined) },
+    });
+    vi.mocked(publishStash).mockResolvedValue(publishedStashResult("shared-link"));
     vi.mocked(readCachedWorkspaces).mockReturnValue({
       userId: user.id,
       all: [],
@@ -164,6 +175,89 @@ describe("AppShell sidebar collapse", () => {
     expect(commandPaletteState.props?.searchScope?.kind).toBe("session");
   });
 
+  it("creates and copies a one-page Stash link from a page route", async () => {
+    nav.pathname = "/workspaces/ws-1/p/page-1";
+    mockWorkspaceCache();
+
+    render(
+      <ShareModalProvider>
+        <AppShell user={user} onLogout={vi.fn()}>
+          <div>Page content</div>
+        </AppShell>
+      </ShareModalProvider>
+    );
+
+    fireEvent.click(await screen.findByRole("button", { name: "Share" }));
+
+    await waitFor(() =>
+      expect(publishStash).toHaveBeenCalledWith(
+        "ws-1",
+        "Shared page",
+        [
+          {
+            object_type: "page",
+            object_id: "page-1",
+            position: 0,
+            label_override: "Shared page",
+          },
+        ],
+        { discoverable: false }
+      )
+    );
+    expect(navigator.clipboard.writeText).toHaveBeenCalledWith(
+      "https://app.joinstash.ai/stashes/shared-link"
+    );
+  });
+
+  it("creates and copies a one-session Stash link from a session route", async () => {
+    nav.pathname = "/workspaces/ws-1/sessions/session-route-id";
+    mockWorkspaceCache();
+    vi.mocked(getSessionDetail).mockResolvedValue({
+      id: "session-row-uuid",
+      workspace_id: "ws-1",
+      session_id: "session-route-id",
+      agent_name: "codex",
+      cwd: null,
+      summary: "Debug auth flow. Confirm token expiry.",
+      summary_status: "done",
+      files_touched: [],
+      started_at: null,
+      finished_at: null,
+      created_by: "user-1",
+      artifacts: [],
+    });
+
+    render(
+      <ShareModalProvider>
+        <AppShell user={user} onLogout={vi.fn()}>
+          <div>Session content</div>
+        </AppShell>
+      </ShareModalProvider>
+    );
+
+    fireEvent.click(await screen.findByRole("button", { name: "Share" }));
+
+    await waitFor(() =>
+      expect(publishStash).toHaveBeenCalledWith(
+        "ws-1",
+        "Debug auth flow",
+        [
+          {
+            object_type: "session",
+            object_id: "session-row-uuid",
+            position: 0,
+            label_override: "Debug auth flow",
+          },
+        ],
+        { discoverable: false }
+      )
+    );
+    expect(getSessionDetail).toHaveBeenCalledWith("ws-1", "session-route-id");
+    expect(navigator.clipboard.writeText).toHaveBeenCalledWith(
+      "https://app.joinstash.ai/stashes/shared-link"
+    );
+  });
+
   it("keeps Home clickable on the workspace home route", async () => {
     nav.pathname = "/workspaces/ws-1";
     mockWorkspaceCache();
@@ -210,3 +304,28 @@ describe("AppShell sidebar collapse", () => {
     expect(within(header!).queryByRole("link", { name: "Demo Stash" })).not.toBeInTheDocument();
   });
 });
+
+function publishedStashResult(slug: string) {
+  return {
+    stash: {
+      id: "stash-1",
+      workspace_id: "ws-1",
+      slug,
+      title: "Shared link",
+      description: "",
+      owner_id: "user-1",
+      access: "public",
+      discoverable: false,
+      view_count: 0,
+      items: [],
+      is_external: false,
+      added_to_workspace_id: null,
+      forked_from_stash_id: null,
+      created_at: "2026-05-11T00:00:00Z",
+      updated_at: "2026-05-11T00:00:00Z",
+    },
+    url: `https://app.joinstash.ai/stashes/${slug}`,
+    stash_id: "stash-1",
+    stash_slug: slug,
+  };
+}
