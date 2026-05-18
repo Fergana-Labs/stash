@@ -12,6 +12,7 @@ import {
 } from "../../../lib/api";
 import type { Workspace } from "../../../lib/types";
 import { useEscapeKey } from "../../../hooks/useEscapeKey";
+import CustomSelect from "../../../components/CustomSelect";
 
 type Props = { slug: string; sourceWorkspaceId: string };
 
@@ -111,22 +112,23 @@ export default function AddToWorkspaceButton({ slug, sourceWorkspaceId }: Props)
             </div>
           ) : eligibleWorkspaces.length > 0 ? (
             <div className="space-y-3">
-              <label className="block">
+              <div>
                 <span className="text-[11px] uppercase tracking-wider text-muted">
                   Workspace
                 </span>
-                <select
+                <CustomSelect
                   value={selectedWorkspaceId}
-                  onChange={(event) => setSelectedWorkspaceId(event.target.value)}
+                  options={eligibleWorkspaces.map((workspace) => ({
+                    value: workspace.id,
+                    label: workspace.name,
+                  }))}
+                  onChange={setSelectedWorkspaceId}
+                  ariaLabel="Workspace"
                   className="mt-1 w-full rounded-md border border-border-subtle bg-raised px-2 py-2 text-[13px] text-foreground"
-                >
-                  {eligibleWorkspaces.map((workspace) => (
-                    <option key={workspace.id} value={workspace.id}>
-                      {workspace.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
+                  menuClassName="text-[13px]"
+                  align="right"
+                />
+              </div>
               <button
                 type="button"
                 disabled={busy || !selectedWorkspaceId}

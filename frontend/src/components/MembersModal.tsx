@@ -11,6 +11,7 @@ import {
 } from "../lib/api";
 import type { WorkspaceMember } from "../lib/types";
 import { useEscapeKey } from "../hooks/useEscapeKey";
+import CustomSelect from "./CustomSelect";
 
 interface MembersModalProps {
   workspaceId: string;
@@ -27,6 +28,12 @@ const PALETTE = [
   { bg: "bg-amber-200", fg: "text-amber-900" },
   { bg: "bg-sky-200", fg: "text-sky-800" },
   { bg: "bg-fuchsia-200", fg: "text-fuchsia-800" },
+];
+
+const MEMBER_ROLE_OPTIONS = [
+  { value: "owner", label: "Admin" },
+  { value: "editor", label: "Editor" },
+  { value: "viewer", label: "Viewer" },
 ];
 function colorFor(name: string) {
   let h = 5381;
@@ -145,15 +152,16 @@ export default function MembersModal({
                     {isMe ? <span className="ml-1 text-[10px] text-muted">(you)</span> : null}
                   </span>
                   {canAdmin && !isMe ? (
-                    <select
+                    <CustomSelect
                       value={m.role}
-                      onChange={(e) => changeRole(m.user_id, e.target.value as "owner" | "editor" | "viewer")}
-                      className="rounded border border-border bg-surface px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-foreground"
-                    >
-                      <option value="owner">Admin</option>
-                      <option value="editor">Editor</option>
-                      <option value="viewer">Viewer</option>
-                    </select>
+                      options={MEMBER_ROLE_OPTIONS}
+                      onChange={(next) =>
+                        changeRole(m.user_id, next as "owner" | "editor" | "viewer")
+                      }
+                      className="min-w-[78px] rounded border border-border bg-surface px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-foreground"
+                      menuClassName="text-[11px]"
+                      align="right"
+                    />
                   ) : (
                     <span className="rounded bg-surface px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-muted ring-1 ring-border">
                       {roleLabel(m.role)}

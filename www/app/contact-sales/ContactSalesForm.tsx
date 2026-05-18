@@ -1,8 +1,9 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useState } from "react";
 import { useFormStatus } from "react-dom";
 
+import CustomSelect from "../_components/CustomSelect";
 import { submitContactSales, type ContactSalesState } from "./actions";
 
 const INITIAL_STATE: ContactSalesState = { status: "idle" };
@@ -23,6 +24,8 @@ const REFERRAL_SOURCES = [
 
 export default function ContactSalesForm() {
   const [state, formAction] = useActionState(submitContactSales, INITIAL_STATE);
+  const [teamSize, setTeamSize] = useState("");
+  const [referralSource, setReferralSource] = useState("");
 
   if (state.status === "ok") {
     return (
@@ -64,19 +67,16 @@ export default function ContactSalesForm() {
         >
           Team size
         </label>
-        <select
+        <CustomSelect
           id="teamSize"
           name="teamSize"
-          defaultValue=""
-          className="h-11 rounded-lg border border-border bg-surface px-3 text-[14px] text-ink outline-none transition focus:border-ink"
-        >
-          <option value="">Select…</option>
-          {TEAM_SIZES.map((size) => (
-            <option key={size} value={size}>
-              {size}
-            </option>
-          ))}
-        </select>
+          value={teamSize}
+          options={[
+            { value: "", label: "Select…" },
+            ...TEAM_SIZES.map((size) => ({ value: size, label: size })),
+          ]}
+          onChange={setTeamSize}
+        />
       </div>
 
       <div className="flex flex-col gap-2">
@@ -86,19 +86,16 @@ export default function ContactSalesForm() {
         >
           How did you hear about us?
         </label>
-        <select
+        <CustomSelect
           id="referralSource"
           name="referralSource"
-          defaultValue=""
-          className="h-11 rounded-lg border border-border bg-surface px-3 text-[14px] text-ink outline-none transition focus:border-ink"
-        >
-          <option value="">Select…</option>
-          {REFERRAL_SOURCES.map((source) => (
-            <option key={source} value={source}>
-              {source}
-            </option>
-          ))}
-        </select>
+          value={referralSource}
+          options={[
+            { value: "", label: "Select…" },
+            ...REFERRAL_SOURCES.map((source) => ({ value: source, label: source })),
+          ]}
+          onChange={setReferralSource}
+        />
       </div>
 
       <div className="flex flex-col gap-2">

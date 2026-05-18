@@ -3,6 +3,7 @@
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { useBreadcrumbs } from "../../../../components/BreadcrumbContext";
+import CustomSelect from "../../../../components/CustomSelect";
 import { useAuth } from "../../../../hooks/useAuth";
 import {
   deleteWorkspace,
@@ -15,6 +16,12 @@ import {
 } from "../../../../lib/api";
 import { resetStashNavigationCache } from "../../../../lib/stashNavigationCache";
 import type { Workspace, WorkspaceMember } from "../../../../lib/types";
+
+const MEMBER_ROLE_OPTIONS = [
+  { value: "viewer", label: "Viewer" },
+  { value: "editor", label: "Editor" },
+  { value: "owner", label: "Admin" },
+];
 
 function roleLabel(role: string): string {
   if (role === "owner") return "admin";
@@ -129,20 +136,18 @@ export default function StashSettingsPage() {
                 <div className="flex items-center gap-2">
                   {isAdmin && m.user_id !== user.id ? (
                     <>
-                      <select
+                      <CustomSelect
                         value={m.role}
-                        onChange={(e) =>
+                        options={MEMBER_ROLE_OPTIONS}
+                        onChange={(next) =>
                           changeMemberRole(
                             m.user_id,
-                            e.target.value as "owner" | "editor" | "viewer"
+                            next as "owner" | "editor" | "viewer"
                           )
                         }
-                        className="rounded border border-border bg-surface px-2 py-1 text-[12px]"
-                      >
-                        <option value="viewer">Viewer</option>
-                        <option value="editor">Editor</option>
-                        <option value="owner">Admin</option>
-                      </select>
+                        className="min-w-[82px] rounded border border-border bg-surface px-2 py-1 text-[12px]"
+                        align="right"
+                      />
                       <button
                         onClick={() => removeMember(m.user_id)}
                         className="text-[11.5px] text-red-500 hover:underline"

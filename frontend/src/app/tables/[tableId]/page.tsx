@@ -3,6 +3,7 @@
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import AppShell from "../../../components/AppShell";
+import CustomSelect from "../../../components/CustomSelect";
 import { useAuth } from "../../../hooks/useAuth";
 import { useEscapeKey } from "../../../hooks/useEscapeKey";
 import { useShareModal } from "../../../lib/shareModalContext";
@@ -25,6 +26,8 @@ const TYPE_ICONS: Record<string, string> = {
 const COLUMN_TYPES = ["text", "number", "boolean", "date", "datetime", "url", "email", "select", "multiselect", "json"] as const;
 const PAGE_SIZE = 100;
 const FILTER_OPS = ["eq", "neq", "gt", "gte", "lt", "lte", "contains", "is_empty", "is_not_empty"] as const;
+const COLUMN_TYPE_OPTIONS = COLUMN_TYPES.map((type) => ({ value: type, label: type }));
+const FILTER_OP_OPTIONS = FILTER_OPS.map((op) => ({ value: op, label: op }));
 
 interface FilterDef { column_id: string; op: string; value: string }
 type SummaryData = { total_rows: number; columns: Record<string, { name: string; filled: number; sum?: number; avg?: number; min?: number; max?: number }> };
@@ -317,14 +320,14 @@ function TableEditorPageInner() {
   const startEditing = (rowId: string, colId: string, currentValue: unknown) => {
     setEditingCell({ rowId, colId }); setCellValue(currentValue != null ? String(currentValue) : "");
   };
-  const commitEdit = async () => {
+  const commitEdit = async (nextValue = cellValue) => {
     if (!editingCell) return;
     const { rowId, colId } = editingCell;
     const col = sortedColumns.find((c) => c.id === colId);
-    let typedValue: unknown = cellValue;
+    let typedValue: unknown = nextValue;
     if (col) {
-      if (col.type === "number") typedValue = cellValue === "" ? null : Number(cellValue);
-      else if (col.type === "boolean") typedValue = cellValue === "true" || cellValue === "1";
+      if (col.type === "number") typedValue = nextValue === "" ? null : Number(nextValue);
+      else if (col.type === "boolean") typedValue = nextValue === "true" || nextValue === "1";
     }
     try { const updated = await updateTableRow(wsId, tableId, rowId, { [colId]: typedValue }); setRows((prev) => prev.map((r) => (r.id === rowId ? updated : r))); }
     catch (err) { setError(err instanceof Error ? err.message : "Failed"); }
@@ -460,13 +463,21 @@ function TableEditorPageInner() {
           <td key={col.id} className={`px-1 py-0 border-r border-border/50 min-w-[140px] ${cellBg}`} onClick={() => { if (!isEditing) startEditing(row.id, col.id, value); }}>
             {isEditing ? (
               col.type === "boolean" ? (
-                <label className="flex items-center h-8 px-2 cursor-pointer"><input type="checkbox" checked={cellValue === "true" || cellValue === "1"} onChange={(e) => setCellValue(String(e.target.checked))} onBlur={commitEdit} onKeyDown={(e) => { if (e.key === "Enter") commitEdit(); if (e.key === "Escape") cancelEdit(); }} className="accent-brand" autoFocus /></label>
+                <label className="flex items-center h-8 px-2 cursor-pointer"><input type="checkbox" checked={cellValue === "true" || cellValue === "1"} onChange={(e) => setCellValue(String(e.target.checked))} onBlur={() => void commitEdit()} onKeyDown={(e) => { if (e.key === "Enter") commitEdit(); if (e.key === "Escape") cancelEdit(); }} className="accent-brand" autoFocus /></label>
               ) : col.type === "select" && col.options ? (
-                <select value={cellValue} onChange={(e) => setCellValue(e.target.value)} onBlur={commitEdit} onKeyDown={(e) => { if (e.key === "Enter") commitEdit(); if (e.key === "Escape") cancelEdit(); if (e.key === "Tab") { e.preventDefault(); commitEdit(); } }} className="w-full h-8 px-2 text-sm bg-transparent outline-none font-mono text-foreground" autoFocus>
-                  <option value="">--</option>{col.options.map((opt) => <option key={opt} value={opt}>{opt}</option>)}
-                </select>
+                <CustomSelect
+                  value={cellValue}
+                  options={[
+                    { value: "", label: "--" },
+                    ...col.options.map((opt) => ({ value: opt, label: opt })),
+                  ]}
+                  onChange={(next) => void commitEdit(next)}
+                  className="h-8 w-full rounded border border-brand bg-surface px-2 text-sm font-mono text-foreground"
+                  menuClassName="text-sm"
+                  autoFocus
+                />
               ) : (
-                <input ref={cellInputRef} type={col.type === "number" ? "number" : col.type === "date" ? "date" : col.type === "datetime" ? "datetime-local" : "text"} value={cellValue} onChange={(e) => setCellValue(e.target.value)} onBlur={commitEdit} onKeyDown={(e) => { if (e.key === "Enter") commitEdit(); if (e.key === "Escape") cancelEdit(); if (e.key === "Tab") { e.preventDefault(); commitEdit(); } }} className="w-full h-8 px-2 text-sm bg-transparent outline-none ring-1 ring-brand rounded font-mono text-foreground" />
+                <input ref={cellInputRef} type={col.type === "number" ? "number" : col.type === "date" ? "date" : col.type === "datetime" ? "datetime-local" : "text"} value={cellValue} onChange={(e) => setCellValue(e.target.value)} onBlur={() => void commitEdit()} onKeyDown={(e) => { if (e.key === "Enter") commitEdit(); if (e.key === "Escape") cancelEdit(); if (e.key === "Tab") { e.preventDefault(); commitEdit(); } }} className="w-full h-8 px-2 text-sm bg-transparent outline-none ring-1 ring-brand rounded font-mono text-foreground" />
               )
             ) : (
               <div className={`${wrapCells ? "min-h-[32px] py-1" : "h-8"} px-2 flex items-center text-sm font-mono text-foreground ${wrapCells ? "whitespace-normal break-words" : "truncate"} cursor-text`}>
@@ -529,10 +540,18 @@ function TableEditorPageInner() {
             <button onClick={addFilter} className="text-xs text-muted hover:text-foreground px-2 py-1 rounded hover:bg-raised">Filter</button>
             {(filters.length > 0 || sortBy) && <button onClick={handleSaveLayout} className="text-xs text-muted hover:text-foreground px-2 py-1 rounded hover:bg-raised">Save layout</button>}
             {/* Group by */}
-            <select value={groupByCol} onChange={(e) => { setGroupByCol(e.target.value); setCollapsedGroups(new Set()); }} className="text-xs bg-raised border border-border rounded px-2 py-1 text-foreground outline-none">
-              <option value="">No grouping</option>
-              {sortedColumns.filter((c) => c.type === "select" || c.type === "text").map((c) => <option key={c.id} value={c.id}>Group: {c.name}</option>)}
-            </select>
+            <CustomSelect
+              value={groupByCol}
+              options={[
+                { value: "", label: "No grouping" },
+                ...sortedColumns
+                  .filter((c) => c.type === "select" || c.type === "text")
+                  .map((c) => ({ value: c.id, label: `Group: ${c.name}` })),
+              ]}
+              onChange={(next) => { setGroupByCol(next); setCollapsedGroups(new Set()); }}
+              className="min-w-[132px] rounded border border-border bg-raised px-2 py-1 text-xs text-foreground"
+              menuClassName="text-xs"
+            />
             <button onClick={() => setShowSummary((p) => !p)} className={`text-xs px-2 py-1 rounded ${showSummary ? "bg-brand/15 text-brand" : "text-muted hover:text-foreground hover:bg-raised"}`}>Summary</button>
             {wsId && <button onClick={() => setShowEmbeddings((p) => !p)} className={`text-xs px-2 py-1 rounded ${showEmbeddings ? "bg-brand/15 text-brand" : "text-muted hover:text-foreground hover:bg-raised"}`}>Embeddings</button>}
             <button onClick={() => setShowColVisibility((p) => !p)} className="text-xs text-muted hover:text-foreground px-2 py-1 rounded hover:bg-raised">Columns</button>
@@ -649,12 +668,20 @@ function TableEditorPageInner() {
           <div className="px-4 py-2 border-b border-border bg-raised/50 flex flex-wrap items-center gap-2 flex-shrink-0">
             {filters.map((f, idx) => (
               <div key={idx} className="flex items-center gap-1 bg-surface border border-border rounded px-2 py-1 text-xs">
-                <select value={f.column_id} onChange={(e) => updateFilter(idx, "column_id", e.target.value)} className="bg-transparent outline-none text-foreground">
-                  {sortedColumns.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-                </select>
-                <select value={f.op} onChange={(e) => updateFilter(idx, "op", e.target.value)} className="bg-transparent outline-none text-muted">
-                  {FILTER_OPS.map((op) => <option key={op} value={op}>{op}</option>)}
-                </select>
+                <CustomSelect
+                  value={f.column_id}
+                  options={sortedColumns.map((c) => ({ value: c.id, label: c.name }))}
+                  onChange={(next) => updateFilter(idx, "column_id", next)}
+                  className="min-w-[110px] bg-transparent px-1 py-0.5 text-foreground"
+                  menuClassName="text-xs"
+                />
+                <CustomSelect
+                  value={f.op}
+                  options={FILTER_OP_OPTIONS}
+                  onChange={(next) => updateFilter(idx, "op", next)}
+                  className="min-w-[96px] bg-transparent px-1 py-0.5 text-muted"
+                  menuClassName="text-xs"
+                />
                 {f.op !== "is_empty" && f.op !== "is_not_empty" && <input value={f.value} onChange={(e) => updateFilter(idx, "value", e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") loadRows(); }} className="w-24 bg-transparent outline-none text-foreground border-b border-border" placeholder="value" />}
                 <button onClick={() => removeFilter(idx)} className="text-muted hover:text-red-400 ml-1">&times;</button>
               </div>
@@ -757,7 +784,16 @@ function TableEditorPageInner() {
               <h2 className="text-base font-bold font-display text-foreground mb-4">Add Column</h2>
               <div className="space-y-3">
                 <div><label className="text-xs text-muted mb-1 block">Name</label><input value={newColName} onChange={(e) => setNewColName(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") handleAddColumn(); }} className="w-full px-3 py-2 text-sm bg-raised border border-border rounded text-foreground outline-none focus:ring-1 focus:ring-brand" autoFocus placeholder="Column name" /></div>
-                <div><label className="text-xs text-muted mb-1 block">Type</label><select value={newColType} onChange={(e) => setNewColType(e.target.value)} className="w-full px-3 py-2 text-sm bg-raised border border-border rounded text-foreground outline-none">{COLUMN_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}</select></div>
+                <div>
+                  <label className="text-xs text-muted mb-1 block">Type</label>
+                  <CustomSelect
+                    value={newColType}
+                    options={COLUMN_TYPE_OPTIONS}
+                    onChange={setNewColType}
+                    className="w-full rounded border border-border bg-raised px-3 py-2 text-sm text-foreground"
+                    menuClassName="text-sm"
+                  />
+                </div>
                 {(newColType === "select" || newColType === "multiselect") && <div><label className="text-xs text-muted mb-1 block">Options (comma-separated)</label><input value={newColOptions} onChange={(e) => setNewColOptions(e.target.value)} className="w-full px-3 py-2 text-sm bg-raised border border-border rounded text-foreground outline-none focus:ring-1 focus:ring-brand" placeholder="option1, option2" /></div>}
               </div>
               <div className="flex justify-end gap-2 mt-5">
@@ -785,9 +821,18 @@ function TableEditorPageInner() {
                     {col.type === "boolean" ? (
                       <label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={detailValues[col.id] === "true" || detailValues[col.id] === "1"} onChange={(e) => setDetailValues((prev) => ({ ...prev, [col.id]: String(e.target.checked) }))} className="accent-brand" /> {detailValues[col.id] === "true" ? "Yes" : "No"}</label>
                     ) : col.type === "select" && col.options ? (
-                      <select value={detailValues[col.id] || ""} onChange={(e) => setDetailValues((prev) => ({ ...prev, [col.id]: e.target.value }))} className="w-full px-3 py-2 text-sm bg-raised border border-border rounded text-foreground outline-none">
-                        <option value="">--</option>{col.options.map((o) => <option key={o} value={o}>{o}</option>)}
-                      </select>
+                      <CustomSelect
+                        value={detailValues[col.id] || ""}
+                        options={[
+                          { value: "", label: "--" },
+                          ...col.options.map((o) => ({ value: o, label: o })),
+                        ]}
+                        onChange={(next) =>
+                          setDetailValues((prev) => ({ ...prev, [col.id]: next }))
+                        }
+                        className="w-full rounded border border-border bg-raised px-3 py-2 text-sm text-foreground"
+                        menuClassName="text-sm"
+                      />
                     ) : (
                       <input type={col.type === "number" ? "number" : col.type === "date" ? "date" : col.type === "datetime" ? "datetime-local" : "text"} value={detailValues[col.id] || ""} onChange={(e) => setDetailValues((prev) => ({ ...prev, [col.id]: e.target.value }))} className="w-full px-3 py-2 text-sm bg-raised border border-border rounded text-foreground outline-none focus:ring-1 focus:ring-brand" />
                     )}

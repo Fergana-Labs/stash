@@ -10,6 +10,7 @@ import {
 } from "../../lib/api";
 import { useShareModal } from "../../lib/shareModalContext";
 import { useEscapeKey } from "../../hooks/useEscapeKey";
+import CustomSelect from "../CustomSelect";
 
 type StashAccess = "workspace" | "private" | "public";
 
@@ -17,6 +18,12 @@ type RowGroup = "Folders" | "Pages" | "Files" | "Tables";
 type GroupKey = "Sessions" | RowGroup;
 
 const ROW_GROUP_ORDER: RowGroup[] = ["Folders", "Pages", "Files", "Tables"];
+
+const STASH_ACCESS_OPTIONS = [
+  { value: "workspace", label: "Everyone in this workspace" },
+  { value: "private", label: "Only invited people" },
+  { value: "public", label: "Public on the web" },
+];
 
 interface SelectableRow {
   key: string;
@@ -440,18 +447,17 @@ function NewShareTab(props: {
               className="rounded-md border border-border bg-surface px-2 py-1.5"
             />
           </label>
-          <label className="flex flex-col gap-1">
+          <div className="flex flex-col gap-1">
             <span className="font-medium text-foreground">Stash access</span>
-            <select
+            <CustomSelect
               value={access}
-              onChange={(e) => setAccess(e.target.value as StashAccess)}
-              className="rounded-md border border-border bg-surface px-2 py-1.5"
-            >
-              <option value="workspace">Everyone in this workspace</option>
-              <option value="private">Only invited people</option>
-              <option value="public">Public on the web</option>
-            </select>
-          </label>
+              options={STASH_ACCESS_OPTIONS}
+              onChange={(next) => setAccess(next as StashAccess)}
+              ariaLabel="Stash access"
+              className="w-full rounded-md border border-border bg-surface px-2 py-1.5"
+              menuClassName="text-[12px]"
+            />
+          </div>
         </div>
 
         {access === "public" && (
