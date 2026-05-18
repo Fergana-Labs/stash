@@ -4,10 +4,10 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { useBreadcrumbs } from "../../../../../components/BreadcrumbContext";
-import DownloadMenu, { downloadBlob } from "../../../../../components/DownloadMenu";
+import { downloadBlob } from "../../../../../components/DownloadMenu";
 import { StashIcon } from "../../../../../components/StashIcons";
 import HtmlPageView from "../../../../../components/workspace/HtmlPageView";
-import EditableTitle from "../../../../../components/workspace/EditableTitle";
+import FileViewerHeader from "../../../../../components/workspace/FileViewerHeader";
 import MarkdownEditor, { type SaveStatus } from "../../../../../components/workspace/MarkdownEditor";
 import { useAuth } from "../../../../../hooks/useAuth";
 import {
@@ -106,98 +106,65 @@ export default function StashPageView() {
       })
     : null;
 
+  const baseName = page ? page.name.replace(/\.md$/i, "") : "";
+
   return (
     <div className="scroll-thin flex-1 overflow-y-auto">
-      <div className="brand-banner" />
-      <div className="mx-auto -mt-[22px] grid max-w-[1100px] gap-7 px-12 pb-20 lg:grid-cols-[minmax(0,1fr)_240px]">
+      <FileViewerHeader
+        icon={isHtml ? <HtmlGlyph /> : <PageGlyph />}
+        iconColor={isHtml ? "var(--color-brand-600)" : "var(--text-muted)"}
+        title={baseName}
+        onRenameTitle={
+          page
+            ? async (next) => {
+                // Preserve the .md suffix on markdown pages so the
+                // backend's file kind detection keeps working.
+                const had = page.name.toLowerCase().endsWith(".md");
+                const newName = had && !next.toLowerCase().endsWith(".md") ? `${next}.md` : next;
+                const updated = await updatePage(workspaceId, pageId, { name: newName });
+                setPage(updated);
+                return updated.name.replace(/\.md$/i, "");
+              }
+            : undefined
+        }
+        tags={isHtml ? [{ label: "html", tone: "brand" }] : undefined}
+        meta={updatedAt ? [`Last edited ${updatedAt}`] : undefined}
+        saveStatus={page && !isHtml ? saveStatus : null}
+        downloadOptions={
+          page
+            ? [
+                {
+                  label: "Markdown (.md)",
+                  onSelect: () =>
+                    downloadBlob(
+                      page.content_markdown ?? "",
+                      "text/markdown",
+                      `${baseName}.md`
+                    ),
+                },
+                {
+                  label: "HTML (.html)",
+                  onSelect: () =>
+                    downloadBlob(
+                      wrapHtml(page.name, page.content_html ?? ""),
+                      "text/html",
+                      `${baseName}.html`
+                    ),
+                },
+                { label: "PDF (print)", onSelect: () => window.print() },
+              ]
+            : undefined
+        }
+      />
+      <div className="mx-auto mt-6 grid max-w-[1100px] gap-7 px-12 pb-20 lg:grid-cols-[minmax(0,1fr)_240px]">
         <main className="min-w-0">
-          <span
-            className="inline-flex h-14 w-14 items-center justify-center rounded-[12px] border border-border bg-base"
-            style={{ color: isHtml ? "var(--color-brand-600)" : "var(--text-muted)" }}
-          >
-            {isHtml ? <HtmlGlyph /> : <PageGlyph />}
-          </span>
-          <h1 className="mb-1 mt-3 font-display text-[38px] font-bold leading-tight tracking-[-0.025em]">
-            {page ? (
-              <EditableTitle
-                value={(page.name || "").replace(/\.md$/, "")}
-                onSave={async (next) => {
-                  // Preserve the .md suffix when the underlying page name
-                  // was a markdown file. Tiptap docs are saved without
-                  // extension, html pages keep .html, so only restore .md.
-                  const had = page.name.toLowerCase().endsWith(".md");
-                  const newName = had && !next.toLowerCase().endsWith(".md") ? `${next}.md` : next;
-                  const updated = await updatePage(workspaceId, pageId, { name: newName });
-                  setPage(updated);
-                  return updated.name.replace(/\.md$/, "");
-                }}
-              />
-            ) : (
-              ""
-            )}
-          </h1>
-
-          <div className="flex items-center gap-2.5 text-[12px] text-muted">
-            {isHtml && <span className="tag tag-brand">html</span>}
-            {updatedAt && <span>Last edited {updatedAt}</span>}
-            {page && !isHtml && (
-              <>
-                <span>·</span>
-                <span
-                  className={
-                    saveStatus === "saving"
-                      ? "text-amber-500"
-                      : saveStatus === "dirty"
-                        ? "text-amber-600"
-                        : "text-emerald-600"
-                  }
-                >
-                  {saveStatus === "saving"
-                    ? "Saving…"
-                    : saveStatus === "dirty"
-                      ? "Unsaved"
-                      : "Saved"}
-                </span>
-              </>
-            )}
-            <span className="flex-1" />
-            {page && (
-              <DownloadMenu
-                options={[
-                  {
-                    label: "Markdown (.md)",
-                    onSelect: () =>
-                      downloadBlob(
-                        page.content_markdown ?? "",
-                        "text/markdown",
-                        `${page.name.replace(/\.md$/, "")}.md`
-                      ),
-                  },
-                  {
-                    label: "HTML (.html)",
-                    onSelect: () =>
-                      downloadBlob(
-                        wrapHtml(page.name, page.content_html ?? ""),
-                        "text/html",
-                        `${page.name.replace(/\.md$/, "")}.html`
-                      ),
-                  },
-                  {
-                    label: "PDF (print)",
-                    onSelect: () => window.print(),
-                  },
-                ]}
-              />
-            )}
-          </div>
-
           {error && (
-            <div className="mt-4 rounded-lg border border-red-300/40 bg-red-500/10 px-4 py-2 text-[13px] text-red-500">
+            <div className="mb-4 rounded-lg border border-red-300/40 bg-red-500/10 px-4 py-2 text-[13px] text-red-500">
               {error}
             </div>
           )}
 
-          <article className="mt-7 text-[15px] leading-relaxed text-foreground">
+          <article className="text-[15px] leading-relaxed text-foreground">
             {page ? (
               isHtml ? (
                 <HtmlPageView
