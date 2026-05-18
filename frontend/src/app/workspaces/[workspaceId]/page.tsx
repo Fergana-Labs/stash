@@ -2,7 +2,14 @@
 
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { EditorContent, useEditor } from "@tiptap/react";
+import StarterKit from "@tiptap/starter-kit";
+import Heading from "@tiptap/extension-heading";
+import Bold from "@tiptap/extension-bold";
+import Italic from "@tiptap/extension-italic";
+import TiptapLink from "@tiptap/extension-link";
+import Placeholder from "@tiptap/extension-placeholder";
 import MembersModal from "../../../components/MembersModal";
 import {
   FileIcon,
@@ -18,9 +25,13 @@ import {
   joinWorkspace,
   listStashes,
   listWorkspaceActivity,
+  updateWorkspace,
   type WorkspaceStash,
 } from "../../../lib/api";
+import { useShareModal } from "../../../lib/shareModalContext";
 import type { Workspace, WorkspaceMember } from "../../../lib/types";
+
+const AUTOSAVE_MS = 1500;
 
 type FilterKey = "all" | "sessions" | "pages" | "stashes" | "discover";
 
@@ -65,6 +76,8 @@ export default function WorkspaceHomePage() {
   const router = useRouter();
   const workspaceId = params.workspaceId as string;
   const { user, loading } = useAuth();
+  const shareModal = useShareModal();
+  const shareVersion = shareModal.version;
 
   const [workspace, setWorkspace] = useState<Workspace | null>(null);
   const [members, setMembers] = useState<WorkspaceMember[]>([]);
@@ -91,7 +104,7 @@ export default function WorkspaceHomePage() {
   useEffect(() => {
     if (!user) return;
     load();
-  }, [user, load]);
+  }, [user, load, shareVersion]);
 
   useEffect(() => {
     if (!loading && !user) router.push("/login");
@@ -145,40 +158,90 @@ export default function WorkspaceHomePage() {
   return (
     <>
       <div className="scroll-thin flex-1 overflow-y-auto">
-        <div className="mx-auto max-w-[920px] px-12 pb-20 pt-9">
-          {/* Hero */}
-          <div className="flex items-end justify-between gap-6">
+        {/* Identity strip: cover + icon + name + meta + actions */}
+        <div
+          className="h-[72px] w-full bg-gradient-to-r from-[var(--color-brand-200)] via-amber-100 to-rose-100 bg-cover bg-center"
+          style={
+            workspace?.cover_image_url
+              ? { backgroundImage: `url(${workspace.cover_image_url})` }
+              : workspace?.color_gradient
+                ? { backgroundImage: workspace.color_gradient }
+                : undefined
+          }
+        />
+        <div className="mx-auto flex max-w-[920px] items-start justify-between gap-3 px-12 pt-4">
+          <div className="flex min-w-0 items-center gap-3">
+            <div className="-mt-9 flex h-12 w-12 items-center justify-center overflow-hidden rounded-[10px] border-2 border-base bg-base text-[var(--color-brand-700)] shadow-sm">
+              {workspace?.icon_url ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={workspace.icon_url} alt="" className="h-full w-full object-cover" />
+              ) : (
+                <StashIcon />
+              )}
+            </div>
             <div className="min-w-0">
-              <div className="sys-label">
-                Workspace · {members.length} {members.length === 1 ? "member" : "members"}
+              <h2 className="m-0 truncate font-display text-[17px] font-bold leading-tight tracking-[-0.015em] text-foreground">
+                {workspace?.name || "Workspace"}
+              </h2>
+              <p className="sys-label mt-0.5">
+                {members.length} {members.length === 1 ? "member" : "members"}
                 {stashes.length > 0 && ` · ${stashes.length} ${stashes.length === 1 ? "Stash" : "Stashes"}`}
-              </div>
-              <h1 className="mt-1.5 font-display text-[40px] font-black leading-[1.05] tracking-[-0.025em]">
-                Hi {firstName || "there"} —{" "}
-                <span className="text-muted">
-                  {workspace?.name ? `here's what's new in ${workspace.name}.` : "here's what your agents shipped."}
-                </span>
-              </h1>
-              <p className="mt-1 max-w-[620px] text-[14.5px] text-dim">
-                {totalRecent > 0
-                  ? `${stats.sessionsToday} sessions and ${stats.pagesEdited} page edits in the last 24 hours.`
-                  : `Your team's recent activity in this workspace.`}
+                {workspace?.updated_at && ` · updated ${relativeTime(workspace.updated_at)}`}
               </p>
             </div>
-            <div className="flex flex-shrink-0 gap-1.5">
+          </div>
+          <div className="flex flex-shrink-0 items-center gap-1.5 pt-1">
+            {isMember && (
               <Link
-                href={`/workspaces/${workspaceId}/stashes`}
-                className="inline-flex items-center gap-1.5 rounded-md border border-border bg-base px-2.5 py-1 text-[12.5px] font-medium text-foreground hover:bg-raised"
+                href={`/workspaces/${workspaceId}/settings`}
+                title="Workspace settings"
+                aria-label="Workspace settings"
+                className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted hover:bg-raised hover:text-foreground"
               >
-                <PlusGlyph /> New Stash
+                <SettingsGlyph />
               </Link>
-              <button
-                onClick={() => setMembersOpen(true)}
-                className="inline-flex items-center gap-1.5 rounded-md border border-border bg-base px-2.5 py-1 text-[12.5px] font-medium text-foreground hover:bg-raised"
-              >
-                Members
-              </button>
-            </div>
+            )}
+            <button
+              onClick={() => setMembersOpen(true)}
+              className="inline-flex items-center gap-1.5 rounded-md border border-border bg-base px-2.5 py-1 text-[12.5px] font-medium text-foreground hover:bg-raised"
+            >
+              Members
+            </button>
+            <button
+              type="button"
+              onClick={() =>
+                shareModal.open({
+                  workspaceId,
+                  workspaceName: workspace?.name,
+                  tab: stashes.length > 0 ? "manage" : "new",
+                })
+              }
+              title="Manage or create Stashes"
+              className="inline-flex items-center gap-1.5 rounded-md border border-border bg-base px-2.5 py-1 text-[12.5px] font-medium text-foreground hover:bg-raised"
+            >
+              <LinkGlyph />
+              {stashes.length === 0
+                ? "No Stashes"
+                : `${stashes.length} Stash${stashes.length === 1 ? "" : "es"}`}
+            </button>
+          </div>
+        </div>
+
+        <div className="mx-auto max-w-[920px] px-12 pb-20 pt-7">
+          {/* Greeting */}
+          <div className="min-w-0">
+            <div className="sys-label">Activity</div>
+            <h1 className="mt-1.5 font-display text-[32px] font-black leading-[1.05] tracking-[-0.025em]">
+              Hi {firstName || "there"} —{" "}
+              <span className="text-muted">
+                {workspace?.name ? `here's what's new in ${workspace.name}.` : "here's what your agents shipped."}
+              </span>
+            </h1>
+            <p className="mt-1 max-w-[620px] text-[14.5px] text-dim">
+              {totalRecent > 0
+                ? `${stats.sessionsToday} sessions and ${stats.pagesEdited} page edits in the last 24 hours.`
+                : `Your team's recent activity in this workspace.`}
+            </p>
           </div>
 
           {error && (
@@ -206,6 +269,12 @@ export default function WorkspaceHomePage() {
             <StatCard label="Active Stashes" value={stats.activeStashes} tint="var(--color-brand-500)" />
             <StatCard label="External" value={stats.externalStashes} tint="var(--text-muted)" />
           </div>
+
+          <WorkspaceDescriptionEditor
+            workspace={workspace}
+            canEdit={isMember}
+            onSaved={(updated) => setWorkspace(updated)}
+          />
 
           {/* Filters */}
           <div className="mt-8 flex items-center justify-between border-b border-border pb-2">
@@ -387,10 +456,101 @@ function EventGlyph({ kind }: { kind: string }) {
   return null;
 }
 
-function PlusGlyph() {
+function SettingsGlyph() {
   return (
-    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-      <path d="M12 5v14M5 12h14" />
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="3" />
+      <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
     </svg>
+  );
+}
+
+function LinkGlyph() {
+  return (
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M10 13a5 5 0 0 0 7.07 0l3-3a5 5 0 0 0-7.07-7.07l-1.5 1.5" />
+      <path d="M14 11a5 5 0 0 0-7.07 0l-3 3a5 5 0 0 0 7.07 7.07l1.5-1.5" />
+    </svg>
+  );
+}
+
+function WorkspaceDescriptionEditor({
+  workspace,
+  canEdit,
+  onSaved,
+}: {
+  workspace: Workspace | null;
+  canEdit: boolean;
+  onSaved: (updated: Workspace) => void;
+}) {
+  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastSaved = useRef<string>("");
+  const description = workspace?.description ?? "";
+
+  useEffect(() => {
+    lastSaved.current = description;
+  }, [description]);
+
+  const editor = useEditor({
+    immediatelyRender: false,
+    editable: canEdit,
+    content: description || "<p></p>",
+    extensions: [
+      StarterKit.configure({
+        blockquote: false,
+        codeBlock: false,
+        heading: false,
+        bold: false,
+        italic: false,
+        link: false,
+        underline: false,
+      }),
+      Heading.configure({ levels: [1, 2, 3] }),
+      Bold,
+      Italic,
+      TiptapLink.configure({ openOnClick: true, autolink: true }),
+      Placeholder.configure({ placeholder: "Describe this workspace…" }),
+    ],
+    editorProps: {
+      attributes: {
+        class: "min-h-[120px] focus:outline-none file-page-body",
+      },
+    },
+    onUpdate: ({ editor: ed }) => {
+      if (!workspace) return;
+      const html = ed.getHTML();
+      if (html === lastSaved.current) return;
+      if (saveTimer.current) clearTimeout(saveTimer.current);
+      saveTimer.current = setTimeout(async () => {
+        lastSaved.current = html;
+        const updated = await updateWorkspace(workspace.id, { description: html });
+        onSaved(updated);
+      }, AUTOSAVE_MS);
+    },
+  });
+
+  useEffect(() => {
+    if (!editor) return;
+    if (editor.getHTML() === description) return;
+    editor.commands.setContent(description || "<p></p>", { emitUpdate: false });
+    lastSaved.current = description;
+  }, [description, editor]);
+
+  useEffect(() => {
+    return () => {
+      if (saveTimer.current) clearTimeout(saveTimer.current);
+    };
+  }, []);
+
+  if (!workspace) return null;
+  if (!canEdit && !description) return null;
+
+  return (
+    <section className="mt-6">
+      <div className="sys-label mb-1.5">About this workspace</div>
+      <div className="card-soft p-[18px]">
+        <EditorContent editor={editor} />
+      </div>
+    </section>
   );
 }

@@ -38,6 +38,7 @@ export default function WorkspaceStashesPage() {
 
   const [stashes, setStashes] = useState<WorkspaceStash[] | null>(null);
   const [filter, setFilter] = useState<Filter>("all");
+  const [query, setQuery] = useState("");
   const [error, setError] = useState("");
 
   const load = useCallback(async () => {
@@ -69,10 +70,30 @@ export default function WorkspaceStashesPage() {
     const ordered = [...stashes].sort(
       (a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()
     );
-    if (filter === "all") return ordered;
-    if (filter === "external") return ordered.filter((s) => s.is_external);
-    return ordered.filter((s) => s.access === filter && !s.is_external);
-  }, [stashes, filter]);
+    const byFilter =
+      filter === "all"
+        ? ordered
+        : filter === "external"
+          ? ordered.filter((s) => s.is_external)
+          : ordered.filter((s) => s.access === filter && !s.is_external);
+    const q = query.trim().toLowerCase();
+    if (!q) return byFilter;
+    return byFilter.filter((stash) =>
+      [stash.title, stash.description, stash.slug]
+        .join(" ")
+        .toLowerCase()
+        .includes(q)
+    );
+  }, [stashes, filter, query]);
+
+  const native = useMemo(
+    () => filtered.filter((s) => !s.forked_from_stash_id),
+    [filtered]
+  );
+  const forked = useMemo(
+    () => filtered.filter((s) => !!s.forked_from_stash_id),
+    [filtered]
+  );
 
   if (stashes === null) {
     return <div className="flex h-screen items-center justify-center text-muted">Loading…</div>;
@@ -110,30 +131,43 @@ export default function WorkspaceStashesPage() {
         )}
 
         {/* Toolbar */}
-        <div className="mt-5 flex items-center gap-1.5 border-b border-border pb-2.5">
-          {FILTERS.map((f) => {
-            const active = filter === f.key;
-            const count = counts[f.key];
-            return (
-              <button
-                key={f.key}
-                type="button"
-                onClick={() => setFilter(f.key)}
-                className={
-                  "inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-[12.5px] " +
-                  (active
-                    ? "bg-raised font-semibold text-foreground"
-                    : "text-muted hover:text-foreground")
-                }
-              >
-                {f.key !== "all" && <VisDot vis={f.key} />}
-                {f.label}
-                <span className="sys-label" style={{ fontSize: 10 }}>
-                  {count}
-                </span>
-              </button>
-            );
-          })}
+        <div className="mt-5 flex flex-wrap items-center gap-2 border-b border-border pb-2.5">
+          <div className="flex flex-wrap items-center gap-1.5">
+            {FILTERS.map((f) => {
+              const active = filter === f.key;
+              const count = counts[f.key];
+              return (
+                <button
+                  key={f.key}
+                  type="button"
+                  onClick={() => setFilter(f.key)}
+                  className={
+                    "inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-[12.5px] " +
+                    (active
+                      ? "bg-raised font-semibold text-foreground"
+                      : "text-muted hover:text-foreground")
+                  }
+                >
+                  {f.key !== "all" && <VisDot vis={f.key} />}
+                  {f.label}
+                  <span className="sys-label" style={{ fontSize: 10 }}>
+                    {count}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+          <span className="flex-1" />
+          <div className="flex min-w-[220px] max-w-[280px] flex-1 items-center gap-2 rounded-md border border-border bg-base px-2 py-1">
+            <SearchGlyph />
+            <input
+              type="text"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search title, description, slug…"
+              className="min-w-0 flex-1 border-0 bg-transparent text-[12.5px] text-foreground placeholder:text-muted focus:outline-none"
+            />
+          </div>
         </div>
 
         {/* Grid */}
@@ -141,8 +175,19 @@ export default function WorkspaceStashesPage() {
           <div className="mt-12 rounded-lg border border-dashed border-border bg-surface/30 px-4 py-10 text-center text-[12.5px] text-muted">
             {stashes.length === 0
               ? "No Stashes yet."
-              : "No Stashes match this filter."}
+              : query.trim()
+                ? "No Stashes match your search."
+                : "No Stashes match this filter."}
           </div>
+        ) : filter === "all" && forked.length > 0 && native.length > 0 ? (
+          <>
+            <StashGroup title="Workspace Stashes" stashes={native} startIndex={0} />
+            <StashGroup
+              title="Forked Stashes"
+              stashes={forked}
+              startIndex={native.length}
+            />
+          </>
         ) : (
           <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {filtered.map((stash, i) => (
@@ -236,5 +281,44 @@ function PlusGlyph() {
     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
       <path d="M12 5v14M5 12h14" />
     </svg>
+  );
+}
+
+function SearchGlyph() {
+  return (
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-muted">
+      <circle cx="11" cy="11" r="8" />
+      <path d="m21 21-4.3-4.3" />
+    </svg>
+  );
+}
+
+function StashGroup({
+  title,
+  stashes,
+  startIndex,
+}: {
+  title: string;
+  stashes: WorkspaceStash[];
+  startIndex: number;
+}) {
+  return (
+    <section className="mt-5">
+      <div className="mb-2 flex items-baseline gap-2">
+        <h2 className="m-0 font-display text-[14px] font-semibold">{title}</h2>
+        <span className="sys-label" style={{ fontSize: 10.5 }}>
+          {stashes.length}
+        </span>
+      </div>
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        {stashes.map((stash, i) => (
+          <StashCard
+            key={stash.id}
+            stash={stash}
+            cover={COVERS[(startIndex + i) % COVERS.length]}
+          />
+        ))}
+      </div>
+    </section>
   );
 }
