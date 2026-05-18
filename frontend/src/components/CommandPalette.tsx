@@ -14,6 +14,7 @@ interface CommandPaletteProps {
   open: boolean;
   onClose: () => void;
   workspaceId: string | null;
+  workspaceName?: string | null;
   searchScope: SearchScope | null;
 }
 
@@ -28,6 +29,7 @@ export default function CommandPalette({
   open,
   onClose,
   workspaceId,
+  workspaceName,
   searchScope,
 }: CommandPaletteProps) {
   const router = useRouter();
@@ -59,15 +61,21 @@ export default function CommandPalette({
   }, [open, workspaceId]);
 
   useEffect(() => {
-    if (!open || !query.trim()) {
-      setResults(searchScope ? [scopedSearchResult(searchScope, query)] : []);
+    if (!open) {
+      setResults([]);
+      setSelected(0);
+      return;
+    }
+    const fullPageSearch = fullPageSearchResult(searchScope, workspaceId, workspaceName, query);
+    if (!query.trim()) {
+      setResults([fullPageSearch]);
       setSelected(0);
       return;
     }
     const q = query.toLowerCase();
 
     // Local spine fuzzy match (instant)
-    const local: Result[] = searchScope ? [scopedSearchResult(searchScope, query)] : [];
+    const local: Result[] = [fullPageSearch];
     if (spine && workspaceId) {
       const filesTree = spine.files;
       filesTree.pages.forEach((p) => {
@@ -132,7 +140,7 @@ export default function CommandPalette({
       }
     }, 250);
     return () => clearTimeout(timer);
-  }, [query, open, spine, workspaceId, searchScope]);
+  }, [query, open, spine, workspaceId, workspaceName, searchScope]);
 
   useEffect(() => {
     if (!open) return;
@@ -179,7 +187,7 @@ export default function CommandPalette({
             ref={inputRef}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Jump to a page, session, skill, or file…"
+            placeholder="Search Stash or jump to a page, session, or file..."
             className="flex-1 bg-transparent text-[14px] text-foreground placeholder:text-muted focus:outline-none"
             autoFocus
           />
@@ -217,7 +225,7 @@ export default function CommandPalette({
           </div>
         ) : (
           <div className="px-4 py-6 text-center text-[13px] text-muted">
-            Start typing to search this stash…
+            Start typing to search this stash...
           </div>
         )}
       </div>
@@ -225,15 +233,25 @@ export default function CommandPalette({
   );
 }
 
-function scopedSearchResult(scope: SearchScope, query: string): Result {
-  const params = new URLSearchParams(scope.params);
+function fullPageSearchResult(
+  scope: SearchScope | null,
+  workspaceId: string | null,
+  workspaceName: string | null | undefined,
+  query: string
+): Result {
+  const params = new URLSearchParams(scope?.params);
+  if (!scope && workspaceId) params.set("workspace", workspaceId);
+
   const q = query.trim();
   if (q) params.set("q", q);
 
+  const label = scope?.label ?? workspaceName ?? (workspaceId ? "this workspace" : "Stash");
+  const hrefParams = params.toString();
+
   return {
     kind: "search",
-    label: q ? `Search ${scope.label} for "${q}"` : `Search ${scope.label}`,
-    href: `/search?${params.toString()}`,
-    detail: scope.detail,
+    label: q ? `Search ${label} for "${q}"` : `Search ${label}`,
+    href: hrefParams ? `/search?${hrefParams}` : "/search",
+    detail: scope?.detail ?? (workspaceId ? "Search this workspace" : "Search all workspaces"),
   };
 }

@@ -531,6 +531,7 @@ class HistoryEventResponse(BaseModel):
     attachments: list[dict] | None = None
     created_at: datetime
     workspace_name: str | None = None
+    rank: float | None = None
 
 
 class HistoryEventListResponse(BaseModel):

@@ -1129,6 +1129,7 @@ export interface WorkspaceHistoryEvent {
   metadata: Record<string, unknown>;
   attachments: Record<string, unknown>[] | null;
   created_at: string;
+  rank?: number | null;
 }
 
 export async function searchWorkspaceEvents(

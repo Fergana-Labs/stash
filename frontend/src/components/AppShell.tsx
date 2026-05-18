@@ -323,6 +323,7 @@ export default function AppShell({ user, onLogout, children }: AppShellProps) {
         open={cmdkOpen}
         onClose={() => setCmdkOpen(false)}
         workspaceId={activeWorkspaceId}
+        workspaceName={activeWorkspace?.name}
         searchScope={searchScope}
       />
     </div>
