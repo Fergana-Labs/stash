@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { EditorContent, useEditor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import Heading from "@tiptap/extension-heading";
@@ -16,7 +16,7 @@ import Placeholder from "@tiptap/extension-placeholder";
 import { Table, TableCell, TableHeader, TableRow } from "@tiptap/extension-table";
 import EditorToolbar from "./EditorToolbar";
 import { Page, FileInfo } from "../../lib/types";
-import { listFiles } from "../../lib/api";
+import { listFiles, uploadFile } from "../../lib/api";
 
 const AUTOSAVE_DEBOUNCE_MS = 1500;
 
@@ -25,10 +25,9 @@ export type SaveStatus = "saved" | "dirty" | "saving";
 interface MarkdownEditorProps {
   workspaceId: string | null;
   file: Page;
-  onSave: (content: string) => void;
+  onSave: (content: string) => void | Promise<void>;
   confirmSave?: () => boolean;
   onSaveStatusChange?: (status: SaveStatus) => void;
-  onRename?: (name: string) => void;
   /** Called on clicks to same-origin stash routes so the page
    *  can SPA-select the target instead of reloading. */
   onNavigateInternal?: (href: string) => void;
@@ -40,40 +39,41 @@ export default function MarkdownEditor({
   onSave,
   confirmSave,
   onSaveStatusChange,
-  onRename,
   onNavigateInternal,
 }: MarkdownEditorProps) {
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastSaved = useRef<string>(file.content_markdown);
+  const loadedFileId = useRef<string>(file.id);
+  const appliedMarkdown = useRef<string>(file.content_markdown);
+  const saveMarkdownRef = useRef<(md: string) => void>(() => {});
+  const insertUploadedFilesRef = useRef<(files: FileList | File[]) => void>(() => {});
 
   // Resolved markdown — relative image refs like ![](a69cb715b010.jpg) get
   // rewritten to absolute signed URLs if a matching workspace file exists.
   // While the lookup is in-flight, show the raw markdown so the page never
   // flashes empty.
+  const [sourceMarkdown, setSourceMarkdown] = useState<string>(file.content_markdown);
   const [resolvedMarkdown, setResolvedMarkdown] = useState<string>(file.content_markdown);
 
   useEffect(() => {
     let cancelled = false;
-    setResolvedMarkdown(file.content_markdown);
+    setResolvedMarkdown(sourceMarkdown);
     if (!workspaceId) return;
-    const relativeNames = extractRelativeImageNames(file.content_markdown);
+    const relativeNames = extractRelativeImageNames(sourceMarkdown);
     if (relativeNames.size === 0) return;
     listFiles(workspaceId)
       .then((files) => {
         if (cancelled) return;
         const map = buildFileNameMap(files, relativeNames);
         if (map.size === 0) return;
-        setResolvedMarkdown(rewriteRelativeImages(file.content_markdown, map));
+        setResolvedMarkdown(rewriteRelativeImages(sourceMarkdown, map));
       })
-      .catch(() => {
-        // Network flake is non-fatal — the raw markdown is still visible.
-      });
     return () => {
       cancelled = true;
     };
-  }, [workspaceId, file.content_markdown]);
+  }, [workspaceId, sourceMarkdown]);
 
   const initialContent = useMemo(
     () => markdownToInitialJSON(resolvedMarkdown),
@@ -134,6 +134,22 @@ export default function MarkdownEditor({
         class: "max-w-none min-h-[200px] focus:outline-none file-page-body",
       },
       handleDOMEvents: {
+        paste: (_view, event) => {
+          const files = event.clipboardData?.files;
+          if (!files || files.length === 0) return false;
+          const hasImage = Array.from(files).some((file) => file.type.startsWith("image/"));
+          if (!hasImage) return false;
+          event.preventDefault();
+          insertUploadedFilesRef.current(files);
+          return true;
+        },
+        drop: (_view, event) => {
+          const files = event.dataTransfer?.files;
+          if (!files || files.length === 0) return false;
+          event.preventDefault();
+          insertUploadedFilesRef.current(files);
+          return true;
+        },
         click: (_view, event) => {
           const target = event.target as HTMLElement | null;
           const anchor = target?.closest?.("a");
@@ -171,26 +187,69 @@ export default function MarkdownEditor({
       setDirty(true);
       if (saveTimer.current) clearTimeout(saveTimer.current);
       saveTimer.current = setTimeout(() => {
-        if (confirmSave && !confirmSave()) return;
-        setSaving(true);
-        lastSaved.current = md;
-        onSave(md);
-        setDirty(false);
-        setSaving(false);
+        saveTimer.current = null;
+        saveMarkdownRef.current(md);
       }, AUTOSAVE_DEBOUNCE_MS);
     },
   });
 
-  // When the resolved markdown changes (e.g. after file lookup completes),
-  // replace the editor's content. We guard against unsaved user edits by
-  // only replacing when the editor is still showing the original content.
+  const saveMarkdown = useCallback(async (md: string) => {
+    if (confirmSave && !confirmSave()) return;
+    setSaving(true);
+    await onSave(md);
+    const currentMd = editor ? serializeMarkdown(editor.getJSON(), md) : md;
+    if (currentMd === md) {
+      lastSaved.current = md;
+      setDirty(false);
+    }
+    setSaving(false);
+  }, [confirmSave, editor, onSave]);
+
+  const insertUploadedFiles = useCallback(async (files: FileList | File[]) => {
+    if (!workspaceId || !editor) return;
+    for (const fileToUpload of Array.from(files)) {
+      const result = await uploadFile(workspaceId, fileToUpload);
+      if (result.content_type.startsWith("image/")) {
+        editor.chain().focus().setImage({ src: result.url, alt: result.name }).run();
+      } else {
+        editor.chain().focus().setLink({ href: result.url }).insertContent(result.name).run();
+      }
+    }
+  }, [editor, workspaceId]);
+
+  useEffect(() => {
+    saveMarkdownRef.current = (md: string) => {
+      void saveMarkdown(md);
+    };
+  }, [saveMarkdown]);
+
+  useEffect(() => {
+    insertUploadedFilesRef.current = (files: FileList | File[]) => {
+      void insertUploadedFiles(files);
+    };
+  }, [insertUploadedFiles]);
+
   useEffect(() => {
     if (!editor) return;
-    const currentMd = serializeMarkdown(editor.getJSON(), lastSaved.current);
-    // Only reset if the editor's content still matches what we last loaded
-    // (i.e. user hasn't typed anything since).
-    if (currentMd !== lastSaved.current) return;
+    if (loadedFileId.current === file.id) return;
+    loadedFileId.current = file.id;
+    lastSaved.current = file.content_markdown;
+    appliedMarkdown.current = file.content_markdown;
+    setSourceMarkdown(file.content_markdown);
+    editor.commands.setContent(markdownToInitialJSON(file.content_markdown));
+    setDirty(false);
+    setSaving(false);
+  }, [editor, file.content_markdown, file.id]);
+
+  // Parent save responses for the same page are intentionally ignored. The
+  // editor is the local source of truth after mount, which avoids older save
+  // responses replacing newer in-progress typing.
+  useEffect(() => {
+    if (!editor) return;
+    const currentMd = serializeMarkdown(editor.getJSON(), appliedMarkdown.current);
+    if (currentMd !== appliedMarkdown.current) return;
     editor.commands.setContent(initialContent);
+    appliedMarkdown.current = resolvedMarkdown;
     lastSaved.current = resolvedMarkdown;
   }, [editor, initialContent, resolvedMarkdown]);
 
@@ -209,14 +268,12 @@ export default function MarkdownEditor({
         if (editor) {
           const md = serializeMarkdown(editor.getJSON(), lastSaved.current);
           if (md !== lastSaved.current) {
-            if (confirmSave && !confirmSave()) return;
-            lastSaved.current = md;
-            onSave(md);
+            saveMarkdownRef.current(md);
           }
         }
       }
     };
-  }, [confirmSave, editor, onSave]);
+  }, [editor]);
 
   // Ctrl/Cmd+S → flush immediately
   useEffect(() => {
@@ -229,54 +286,18 @@ export default function MarkdownEditor({
           saveTimer.current = null;
         }
         const md = serializeMarkdown(editor.getJSON(), lastSaved.current);
-        if (confirmSave && !confirmSave()) return;
-        lastSaved.current = md;
-        onSave(md);
-        setDirty(false);
+        saveMarkdownRef.current(md);
       }
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [confirmSave, editor, onSave]);
-
-  const [title, setTitle] = useState(file.name);
-  const titleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const handleTitleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const newTitle = e.target.value;
-    setTitle(newTitle);
-    if (!onRename || !newTitle.trim()) return;
-    if (titleTimer.current) clearTimeout(titleTimer.current);
-    titleTimer.current = setTimeout(() => onRename(newTitle.trim()), AUTOSAVE_DEBOUNCE_MS);
-  };
-
-  const updatedLabel = file.updated_at
-    ? `Updated ${new Date(file.updated_at).toLocaleDateString(undefined, {
-        month: "short",
-        day: "numeric",
-        year: "numeric",
-      })}`
-    : "";
+  }, [editor]);
 
   return (
     <div className="flex h-full flex-col">
       <EditorToolbar editor={editor} workspaceId={workspaceId} />
       <div className="flex-1 overflow-y-auto bg-background">
         <div className="mx-auto w-full max-w-[820px] px-12 py-10">
-          <header className="mb-8">
-            {updatedLabel && (
-              <p className="mb-2 font-mono text-[11px] font-medium uppercase tracking-[0.12em] text-muted">
-                {updatedLabel}
-              </p>
-            )}
-            <input
-              type="text"
-              value={title}
-              onChange={handleTitleChange}
-              placeholder="Untitled"
-              className="w-full border-none bg-transparent font-display text-[40px] font-bold leading-[1.05] tracking-[-0.02em] text-foreground outline-none placeholder:text-muted/40"
-            />
-          </header>
           <EditorContent editor={editor} className="file-page-content" />
         </div>
       </div>

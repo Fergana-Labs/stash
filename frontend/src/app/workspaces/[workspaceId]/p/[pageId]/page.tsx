@@ -2,9 +2,14 @@
 
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useBreadcrumbs } from "../../../../../components/BreadcrumbContext";
-import DownloadMenu, { downloadBlob } from "../../../../../components/DownloadMenu";
+import DownloadMenu, {
+  downloadBlob,
+  downloadRenderedPdf,
+  htmlToPdfBlocks,
+  markdownToPdfBlocks,
+} from "../../../../../components/DownloadMenu";
 import { StashIcon } from "../../../../../components/StashIcons";
 import HtmlPageView from "../../../../../components/workspace/HtmlPageView";
 import EditableTitle from "../../../../../components/workspace/EditableTitle";
@@ -21,6 +26,7 @@ import {
 import type { Page } from "../../../../../lib/types";
 
 function wrapHtml(title: string, body: string): string {
+  if (/^\s*(<!doctype|<html[\s>])/i.test(body)) return body;
   return `<!doctype html><html><head><meta charset="utf-8"><title>${escapeHtml(
     title
   )}</title><style>body{font-family:system-ui,sans-serif;max-width:720px;margin:2em auto;padding:0 1em;line-height:1.6;color:#1a1a1a}h1,h2,h3{line-height:1.25}pre{background:#f6f6f6;padding:1em;overflow:auto;border-radius:6px}code{background:#f6f6f6;padding:.1em .3em;border-radius:3px}</style></head><body>${body}</body></html>`;
@@ -44,6 +50,7 @@ export default function StashPageView() {
   const [containingStashes, setContainingStashes] = useState<WorkspaceStash[]>([]);
   const [saveStatus, setSaveStatus] = useState<SaveStatus>("saved");
   const [error, setError] = useState("");
+  const saveSeq = useRef(0);
 
   useBreadcrumbs(
     [
@@ -74,9 +81,11 @@ export default function StashPageView() {
 
   const handleSave = useCallback(
     async (content: string) => {
+      const seq = saveSeq.current + 1;
+      saveSeq.current = seq;
       try {
         const updated = await updatePage(workspaceId, pageId, { content });
-        setPage(updated);
+        if (saveSeq.current === seq) setPage(updated);
       } catch (e) {
         setError(e instanceof Error ? e.message : "Save failed");
       }
@@ -97,6 +106,7 @@ export default function StashPageView() {
   if (!user) return null;
 
   const isHtml = page?.content_type === "html";
+  const pageTitle = page ? page.name.replace(/\.(md|html)$/i, "") : "";
   const updatedAt = page?.updated_at
     ? new Date(page.updated_at).toLocaleString(undefined, {
         month: "short",
@@ -120,16 +130,13 @@ export default function StashPageView() {
           <h1 className="mb-1 mt-3 font-display text-[38px] font-bold leading-tight tracking-[-0.025em]">
             {page ? (
               <EditableTitle
-                value={(page.name || "").replace(/\.md$/, "")}
+                value={pageTitle}
                 onSave={async (next) => {
-                  // Preserve the .md suffix when the underlying page name
-                  // was a markdown file. Tiptap docs are saved without
-                  // extension, html pages keep .html, so only restore .md.
-                  const had = page.name.toLowerCase().endsWith(".md");
-                  const newName = had && !next.toLowerCase().endsWith(".md") ? `${next}.md` : next;
+                  const extension = page.content_type === "html" ? ".html" : ".md";
+                  const newName = next.toLowerCase().endsWith(extension) ? next : `${next}${extension}`;
                   const updated = await updatePage(workspaceId, pageId, { name: newName });
                   setPage(updated);
-                  return updated.name.replace(/\.md$/, "");
+                  return updated.name.replace(/\.(md|html)$/i, "");
                 }}
               />
             ) : (
@@ -163,30 +170,51 @@ export default function StashPageView() {
             <span className="flex-1" />
             {page && (
               <DownloadMenu
-                options={[
-                  {
-                    label: "Markdown (.md)",
-                    onSelect: () =>
-                      downloadBlob(
-                        page.content_markdown ?? "",
-                        "text/markdown",
-                        `${page.name.replace(/\.md$/, "")}.md`
-                      ),
-                  },
-                  {
-                    label: "HTML (.html)",
-                    onSelect: () =>
-                      downloadBlob(
-                        wrapHtml(page.name, page.content_html ?? ""),
-                        "text/html",
-                        `${page.name.replace(/\.md$/, "")}.html`
-                      ),
-                  },
-                  {
-                    label: "PDF (print)",
-                    onSelect: () => window.print(),
-                  },
-                ]}
+                options={
+                  isHtml
+                    ? [
+                        {
+                          label: "HTML (.html)",
+                          onSelect: () =>
+                            downloadBlob(
+                              wrapHtml(pageTitle, page.content_html ?? ""),
+                              "text/html",
+                              `${pageTitle}.html`
+                            ),
+                        },
+                        {
+                          label: "PDF (.pdf)",
+                          onSelect: () =>
+                            downloadRenderedPdf({
+                              title: pageTitle,
+                              subtitle: updatedAt ? `Last edited ${updatedAt}` : undefined,
+                              blocks: htmlToPdfBlocks(page.content_html ?? ""),
+                              filename: `${pageTitle}.pdf`,
+                            }),
+                        },
+                      ]
+                    : [
+                        {
+                          label: "Markdown (.md)",
+                          onSelect: () =>
+                            downloadBlob(
+                              page.content_markdown ?? "",
+                              "text/markdown",
+                              `${pageTitle}.md`
+                            ),
+                        },
+                        {
+                          label: "PDF (.pdf)",
+                          onSelect: () =>
+                            downloadRenderedPdf({
+                              title: pageTitle,
+                              subtitle: updatedAt ? `Last edited ${updatedAt}` : undefined,
+                              blocks: markdownToPdfBlocks(page.content_markdown ?? ""),
+                              filename: `${pageTitle}.pdf`,
+                            }),
+                        },
+                      ]
+                }
               />
             )}
           </div>
@@ -218,16 +246,6 @@ export default function StashPageView() {
               <p className="text-muted">Loading…</p>
             )}
           </article>
-
-          {page && !isHtml && (
-            <div className="mt-6 flex items-center gap-2 rounded-lg border border-dashed border-border bg-surface px-3 py-2.5 text-[12.5px] text-muted">
-              <span className="font-mono text-dim">/</span>
-              <span>
-                press <KeyHint>/</KeyHint> for blocks · <KeyHint>@</KeyHint> for pages or
-                people · <KeyHint>⌘+J</KeyHint> to ask the workspace
-              </span>
-            </div>
-          )}
         </main>
 
         <StashAside stashes={containingStashes} />
@@ -268,14 +286,6 @@ function StashAside({ stashes }: { stashes: WorkspaceStash[] }) {
         )}
       </div>
     </aside>
-  );
-}
-
-function KeyHint({ children }: { children: React.ReactNode }) {
-  return (
-    <span className="rounded-[3px] bg-raised px-[5px] font-mono text-[11px] text-dim">
-      {children}
-    </span>
   );
 }
 

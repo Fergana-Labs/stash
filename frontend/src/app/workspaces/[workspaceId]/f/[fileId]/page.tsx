@@ -16,6 +16,7 @@ import {
   type FolderBreadcrumb,
 } from "../../../../../lib/api";
 import type { FileInfo } from "../../../../../lib/types";
+import DownloadMenu, { downloadUrl } from "../../../../../components/DownloadMenu";
 import EditableTitle from "../../../../../components/workspace/EditableTitle";
 
 function isCsv(ct: string) {
@@ -220,19 +221,17 @@ function FileViewerPageInner() {
               read-only · via Stash
             </span>
           )}
-          {file?.url && (
-            <a
-              href={file.url}
-              target="_blank"
-              rel="noopener noreferrer"
-              download={file.name}
-              className="rounded-md p-1.5 text-muted hover:bg-raised"
-              title="Download"
-            >
-              <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3" />
-              </svg>
-            </a>
+          {file?.url ? (
+            <DownloadMenu
+              options={[
+                {
+                  label: "Original file",
+                  onSelect: () => void downloadUrl(file.url, file.name),
+                },
+              ]}
+            />
+          ) : (
+            null
           )}
         </div>
       </div>
