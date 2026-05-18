@@ -589,3 +589,183 @@ details[open] > summary .chev {
 .ProseMirror a:not([href^="/"]):not([href*="://"]):not([href^="mailto:"]):not([href^="tel:"]):hover {
   color: var(--text-muted, #8a8a87);
 }
+
+/* =============================================================
+ * Design utility classes — shared by the Claude Design mockups
+ * (see /design/index.html) and the ported real product pages.
+ * Class names match the mock 1:1 so JSX can be pasted in.
+ * ============================================================= */
+
+/* Mono SYS label */
+.sys-label {
+  font-family: var(--font-mono), monospace;
+  font-size: 10.5px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+/* Type tags */
+.tag {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-family: var(--font-mono), monospace;
+  font-size: 10px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.tag-agent { background: #EDE9FE; color: #6D28D9; }
+.tag-human { background: #DBEAFE; color: #1D4ED8; }
+.tag-brand { background: #FFEDD5; color: #C2410C; }
+.tag-success { background: rgba(34,197,94,0.12); color: #15803D; }
+.tag-warning { background: rgba(234,179,8,0.18); color: #854D0E; }
+.tag-muted { background: var(--bg-raised); color: var(--text-dim); }
+
+/* Stash visibility chip */
+.stash-chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  border: 1px solid #FED7AA;
+  background: #FFF7ED;
+  color: #C2410C;
+  font-weight: 500;
+}
+.stash-chip .dot {
+  width: 6px; height: 6px; border-radius: 999px; background: #F97316;
+}
+.stash-chip.private { border-color: #E5E7EB; background: #F9FAFB; color: #4B5563; }
+.stash-chip.private .dot { background: #9CA3AF; }
+.stash-chip.public { border-color: #BBF7D0; background: #F0FDF4; color: #15803D; }
+.stash-chip.public .dot { background: #22C55E; }
+
+/* Soft brand-gradient banner — used at top of pages */
+.brand-banner {
+  height: 56px;
+  background: linear-gradient(90deg, #FED7AA, #FFEDD5, #FEF3C7);
+}
+
+/* Card variants */
+.card {
+  background: var(--bg-base);
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+}
+.card-soft {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle-color);
+  border-radius: 10px;
+}
+
+/* Clickable card row */
+.linkrow {
+  display: flex; align-items: center; gap: 10px;
+  padding: 9px 10px;
+  border: 1px solid var(--border-color);
+  background: var(--bg-base);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: border-color .12s ease, background .12s ease;
+}
+.linkrow:hover { border-color: #FED7AA; background: #FFF7ED; }
+
+/* Avatar dots */
+.avatar {
+  display: inline-flex; align-items: center; justify-content: center;
+  border-radius: 999px;
+  font-weight: 600;
+  font-size: 10px;
+  flex-shrink: 0;
+}
+.av-rose { background: #FECDD3; color: #9F1239; }
+.av-indigo { background: #C7D2FE; color: #3730A3; }
+.av-emerald { background: #A7F3D0; color: #065F46; }
+.av-amber { background: #FDE68A; color: #78350F; }
+.av-sky { background: #BAE6FD; color: #075985; }
+.av-fuchsia { background: #F5D0FE; color: #86198F; }
+.av-violet { background: #DDD6FE; color: #5B21B6; }
+
+/* Discover/stash cover gradients */
+.cover-1 { background: linear-gradient(135deg, #FED7AA, #FCA5A5); }
+.cover-2 { background: linear-gradient(135deg, #DDD6FE, #BFDBFE); }
+.cover-3 { background: linear-gradient(135deg, #A7F3D0, #BAE6FD); }
+.cover-4 { background: linear-gradient(135deg, #FDE68A, #FECACA); }
+.cover-5 { background: linear-gradient(135deg, #C7D2FE, #FBCFE8); }
+.cover-6 { background: linear-gradient(135deg, #FECDD3, #FEF3C7); }
+
+/* Diagonal-stripe image placeholder */
+.stripe-placeholder {
+  background-image: repeating-linear-gradient(135deg, #F1F1EE 0 8px, #FAFAF8 8px 16px);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  display: flex; align-items: center; justify-content: center;
+  font-family: var(--font-mono), monospace;
+  font-size: 11px;
+  color: var(--text-muted);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+/* Notion-style typed spreadsheet */
+.tbl {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 13px;
+}
+.tbl th, .tbl td {
+  border-right: 1px solid var(--border-color);
+  border-bottom: 1px solid var(--border-color);
+  padding: 6px 10px;
+  text-align: left;
+  vertical-align: middle;
+  background: var(--bg-base);
+}
+.tbl th {
+  background: var(--bg-surface);
+  font-weight: 500;
+  color: var(--text-dim);
+  font-size: 11.5px;
+  font-family: var(--font-mono), monospace;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+.tbl tr:hover td { background: #FFF7ED; }
+.tbl td.num, .tbl th.num { text-align: right; font-variant-numeric: tabular-nums; font-family: var(--font-mono), monospace; }
+.tbl .row-num {
+  width: 36px;
+  text-align: center;
+  color: var(--text-muted);
+  font-family: var(--font-mono), monospace;
+  font-size: 11px;
+  background: var(--bg-surface);
+}
+
+/* In-page prose container — separate from .markdown-content which is
+   tighter (chat-message density). .proseish gives a doc-page feel. */
+.proseish {
+  font-size: 15px;
+  line-height: 1.7;
+  color: var(--text-dim);
+}
+.proseish h1, .proseish h2, .proseish h3 {
+  font-family: var(--font-display), sans-serif;
+  color: var(--text-primary);
+  letter-spacing: -0.01em;
+}
+.proseish h1 { font-size: 30px; font-weight: 700; margin: 28px 0 8px; }
+.proseish h2 { font-size: 22px; font-weight: 600; margin: 24px 0 6px; }
+.proseish h3 { font-size: 17px; font-weight: 600; margin: 18px 0 4px; }
+.proseish p { margin: 8px 0; }
+.proseish ul { padding-left: 22px; margin: 6px 0; }
+.proseish li { margin: 3px 0; }
+.proseish code { font-family: var(--font-mono), monospace; color: #C2410C; background: var(--bg-raised); padding: 1px 5px; border-radius: 4px; font-size: 0.88em; }
+.proseish a { color: #F97316; text-decoration: underline; text-underline-offset: 2px; }
+.proseish blockquote { border-left: 3px solid var(--border-color); padding-left: 12px; color: var(--text-muted); margin: 10px 0; }
