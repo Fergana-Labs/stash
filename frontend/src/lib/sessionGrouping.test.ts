@@ -65,11 +65,11 @@ describe("groupSessionsByUser", () => {
     expect(grouped[0].sessions.map((s) => s.session_id)).toEqual(["ada-new", "ada-old"]);
   });
 
-  it("falls back to agent_name when user_name is missing", () => {
+  it("keeps missing users out of agent-name buckets", () => {
     const grouped = groupSessionsByUser([
       session({ session_id: "x", user_name: null, agent_name: "claude" }),
     ]);
-    expect(grouped[0].key).toBe("claude");
+    expect(grouped[0].key).toBe("Unknown user");
   });
 });
 

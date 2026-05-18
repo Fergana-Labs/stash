@@ -20,6 +20,7 @@ import Placeholder from "@tiptap/extension-placeholder";
 import AppShell from "../../../components/AppShell";
 import { useBreadcrumbs } from "../../../components/BreadcrumbContext";
 import AddToStashModal from "../../../components/stash/AddToStashModal";
+import { StashIcon } from "../../../components/StashIcons";
 import ContributorActivityTimeline from "../../../components/viz/ContributorActivityTimeline";
 import EmbeddingSpaceExplorer from "../../../components/viz/EmbeddingSpaceExplorer";
 import { useAuth } from "../../../hooks/useAuth";
@@ -483,7 +484,7 @@ function StashIconUpload({
     // eslint-disable-next-line @next/next/no-img-element
     <img src={iconUrl} alt="" className="h-full w-full object-cover" />
   ) : (
-    <StashHeaderGlyph />
+    <StashIcon className="text-[24px]" />
   );
 
   if (!canWrite) {
@@ -827,22 +828,6 @@ function groupStashItems(items: PublicStashItem[]): StashItemGroup {
     groups[item.object_type] = [...(groups[item.object_type] ?? []), item];
   }
   return groups;
-}
-
-function StashHeaderGlyph() {
-  return (
-    <svg
-      width="18"
-      height="18"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.8"
-    >
-      <path d="M4 7h16l-1.3 11a2 2 0 0 1-2 1.8H7.3a2 2 0 0 1-2-1.8L4 7z" />
-      <path d="M9 7V5a3 3 0 0 1 6 0v2" />
-    </svg>
-  );
 }
 
 // Compact item list — each item deep-links to its editor / viewer in the

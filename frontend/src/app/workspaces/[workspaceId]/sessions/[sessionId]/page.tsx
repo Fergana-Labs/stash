@@ -4,6 +4,7 @@ import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { useBreadcrumbs } from "../../../../../components/BreadcrumbContext";
 import DownloadMenu from "../../../../../components/DownloadMenu";
+import { StashIcon } from "../../../../../components/StashIcons";
 import { useAuth } from "../../../../../hooks/useAuth";
 import {
   fetchAuthed,
@@ -325,12 +326,7 @@ function FileGlyph() {
 }
 
 function StashGlyph() {
-  return (
-    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="flex-shrink-0">
-      <path d="M4 7h16l-1.3 11a2 2 0 0 1-2 1.8H7.3a2 2 0 0 1-2-1.8L4 7z" />
-      <path d="M9 7V5a3 3 0 0 1 6 0v2" />
-    </svg>
-  );
+  return <StashIcon className="text-[12px]" />;
 }
 
 function formatBytes(bytes: number): string {

@@ -99,7 +99,11 @@ async def list_my_sessions(
           he.session_id,
           he.workspace_id,
           w.name AS workspace_name,
-          COALESCE(MAX(u.display_name), MAX(u.name), MAX(he.agent_name), 'Unknown user') AS user_name,
+          COALESCE(
+            MAX(NULLIF(u.display_name, '')),
+            MAX(NULLIF(u.name, '')),
+            'Unknown user'
+          ) AS user_name,
           MAX(he.agent_name) AS agent_name,
           COUNT(*)::INT AS event_count,
           MIN(he.created_at) AS started_at,
@@ -117,7 +121,7 @@ async def list_my_sessions(
         LEFT JOIN users u ON u.id = he.created_by
         WHERE {' AND '.join(where)}
         GROUP BY he.session_id, he.workspace_id, w.name
-        ORDER BY last_event_at DESC, COALESCE(MAX(u.display_name), MAX(u.name), MAX(he.agent_name), 'Unknown user') ASC, session_id ASC
+        ORDER BY last_event_at DESC, user_name ASC, session_id ASC
         LIMIT {int(limit)}
         """,
         *args,

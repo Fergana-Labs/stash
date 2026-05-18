@@ -372,7 +372,7 @@ function SessionTableRow({
   workspaceId: string;
   session: SessionSummary;
 }) {
-  const user = displaySessionUserName(session.user_name || session.agent_name, "Unknown");
+  const user = displaySessionUserName(session.user_name, "Unknown");
   const agent = session.agent_name || "agent";
   const avatar = avatarFor(user);
 

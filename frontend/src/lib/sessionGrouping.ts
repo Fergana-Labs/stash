@@ -13,14 +13,14 @@ export function displaySessionUserName(
 ): string {
   const trimmed = value?.trim() ?? "";
   if (!trimmed) return fallback;
-  return trimmed.toLowerCase() === "codex" ? "Sam" : trimmed;
+  return trimmed;
 }
 
 export function groupSessionsByDayAndUser(sessions: SessionSummary[]): SessionDayGroup[] {
   const days = new Map<string, Map<string, SessionSummary[]>>();
   for (const session of sortedSessions(sessions)) {
     const dayKey = sessionDayKey(session.last_event_at || session.started_at);
-    const user = displaySessionUserName(session.user_name || session.agent_name, "Unknown user");
+    const user = displaySessionUserName(session.user_name, "Unknown user");
     if (!days.has(dayKey)) days.set(dayKey, new Map());
     const users = days.get(dayKey)!;
     users.set(user, [...(users.get(user) ?? []), session]);
@@ -48,8 +48,8 @@ function sortedSessions(sessions: SessionSummary[]): SessionSummary[] {
     const timeDiff = sessionTime(b) - sessionTime(a);
     if (timeDiff !== 0) return timeDiff;
 
-    const userA = displaySessionUserName(a.user_name || a.agent_name, "");
-    const userB = displaySessionUserName(b.user_name || b.agent_name, "");
+    const userA = displaySessionUserName(a.user_name, "");
+    const userB = displaySessionUserName(b.user_name, "");
     const userDiff = userA.localeCompare(userB);
     if (userDiff !== 0) return userDiff;
 
@@ -90,9 +90,7 @@ export type SessionFlatGroup = {
 };
 
 export function groupSessionsByUser(sessions: SessionSummary[]): SessionFlatGroup[] {
-  return groupBy(sessions, (s) =>
-    displaySessionUserName(s.user_name || s.agent_name, "Unknown user")
-  );
+  return groupBy(sessions, (s) => displaySessionUserName(s.user_name, "Unknown user"));
 }
 
 export function groupSessionsByAgent(sessions: SessionSummary[]): SessionFlatGroup[] {

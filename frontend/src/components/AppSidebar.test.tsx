@@ -100,7 +100,8 @@ const sidebarWithStash = {
       id: "session-row-1",
       session_id: "session-1",
       title: "Planning session",
-      agent_name: "Codex",
+      user_name: "Henry",
+      agent_name: "Claude",
       size_bytes: 256,
       last_at: "2026-05-11T00:00:00Z",
       updated_at: "2026-05-11T00:00:00Z",
@@ -142,7 +143,8 @@ const sidebarWithTree = {
       id: "session-row-1",
       session_id: "session-1",
       title: "Planning session",
-      agent_name: "Codex",
+      user_name: "Henry",
+      agent_name: "Claude",
       size_bytes: 256,
       last_at: "2026-05-11T00:00:00Z",
       updated_at: "2026-05-11T00:00:00Z",
@@ -329,6 +331,8 @@ describe("AppSidebar tree expansion", () => {
     // never collapse it — only the chevron can collapse.
     const day = await screen.findByText(/May 11/);
     expect(detailsFor(day.textContent ?? "")).toHaveAttribute("open");
+    expect(screen.getByText("Henry")).toBeTruthy();
+    expect(screen.queryByText("Claude")).toBeNull();
     expect(screen.getByText("Planning session")).toBeTruthy();
 
     fireEvent.click(day);

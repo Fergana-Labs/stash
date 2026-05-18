@@ -142,6 +142,44 @@ async def test_upload_adds_session_to_default_stash(client: AsyncClient):
 
 
 @pytest.mark.asyncio
+async def test_workspace_sidebar_sessions_include_human_author(client: AsyncClient):
+    key = await _register(client)
+    ws = await _workspace(client, key)
+    headers = {"Authorization": f"Bearer {key}"}
+    me = await client.get("/api/v1/users/me", headers=headers)
+    assert me.status_code == 200
+    author = me.json()["display_name"] or me.json()["name"]
+
+    pushed = await client.post(
+        f"/api/v1/workspaces/{ws}/sessions/events/batch",
+        json={
+            "events": [
+                {
+                    "agent_name": "claude",
+                    "event_type": "user_message",
+                    "content": "Plan the release",
+                    "session_id": "sess-human-author",
+                }
+            ]
+        },
+        headers=headers,
+    )
+    assert pushed.status_code == 201
+
+    overview = await client.get(f"/api/v1/workspaces/{ws}/overview", headers=headers)
+    assert overview.status_code == 200
+    [overview_session] = overview.json()["sessions"]
+    assert overview_session["user_name"] == author
+    assert overview_session["agent_name"] == "claude"
+
+    sidebar = await client.get(f"/api/v1/workspaces/{ws}/sidebar", headers=headers)
+    assert sidebar.status_code == 200
+    [sidebar_session] = sidebar.json()["sessions"]
+    assert sidebar_session["user_name"] == author
+    assert sidebar_session["agent_name"] == "claude"
+
+
+@pytest.mark.asyncio
 async def test_session_detail_returns_files_touched_and_artifacts_list(client: AsyncClient):
     key = await _register(client)
     ws = await _workspace(client, key)
