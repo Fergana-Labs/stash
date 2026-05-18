@@ -150,6 +150,7 @@ function StashPageBody({
               </svg>
               <span className="min-w-0 flex-1 truncate">Search this Stash</span>
             </Link>
+            <CopyStashLinkButton slug={stash.slug} />
             <AddToWorkspaceButton slug={stash.slug} sourceWorkspaceId={stash.workspace_id} />
           </div>
         </div>
@@ -227,6 +228,36 @@ function StashPageBody({
       </div>
     </div>
   );
+}
+
+function CopyStashLinkButton({ slug }: { slug: string }) {
+  const [status, setStatus] = useState<"idle" | "copied" | "error">("idle");
+
+  async function copyLink() {
+    try {
+      await navigator.clipboard.writeText(absoluteUrl(`/stashes/${slug}`));
+      setStatus("copied");
+      window.setTimeout(() => setStatus("idle"), 1600);
+    } catch {
+      setStatus("error");
+      window.setTimeout(() => setStatus("idle"), 3000);
+    }
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={() => void copyLink()}
+      className="rounded-lg border border-border-subtle bg-base px-4 py-2 text-[14px] font-medium text-foreground transition hover:border-brand hover:text-brand"
+    >
+      {status === "copied" ? "Copied" : status === "error" ? "Copy failed" : "Share"}
+    </button>
+  );
+}
+
+function absoluteUrl(path: string): string {
+  if (typeof window === "undefined") return path;
+  return `${window.location.origin}${path}`;
 }
 
 function SharedPageComposer({
