@@ -71,9 +71,21 @@ const I = (props) => ({
     </svg>
   ),
   Stash: (
-    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.8" {...props}>
-      <path d="M4 7h16l-1.3 11a2 2 0 0 1-2 1.8H7.3a2 2 0 0 1-2-1.8L4 7z"/>
-      <path d="M9 7V5a3 3 0 0 1 6 0v2"/>
+    <svg viewBox="0 0 24 24" width="14" height="14" shapeRendering="crispEdges" {...props}>
+      <g fill="currentColor">
+        <rect x="8" y="4" width="8" height="2"/>
+        <rect x="6" y="6" width="12" height="8"/>
+        <rect x="4" y="9" width="2" height="5"/>
+        <rect x="18" y="9" width="2" height="5"/>
+        <rect x="5" y="14" width="3" height="3"/>
+        <rect x="10" y="14" width="2" height="5"/>
+        <rect x="14" y="14" width="2" height="5"/>
+        <rect x="17" y="14" width="3" height="3"/>
+      </g>
+      <g fill="var(--bg-base)">
+        <rect x="9" y="8" width="2" height="2"/>
+        <rect x="13" y="8" width="2" height="2"/>
+      </g>
     </svg>
   ),
   Activity: (

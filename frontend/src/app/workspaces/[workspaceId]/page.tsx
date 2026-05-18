@@ -12,7 +12,7 @@ import TiptapLink from "@tiptap/extension-link";
 import Placeholder from "@tiptap/extension-placeholder";
 import MembersModal from "../../../components/MembersModal";
 import StashQuickAdd from "../../../components/StashQuickAdd";
-import { StashIcon } from "../../../components/StashIcons";
+import { WorkspaceIcon } from "../../../components/StashIcons";
 import AgentActivityTimeline from "../../../components/viz/AgentActivityTimeline";
 import EmbeddingSpaceExplorer from "../../../components/viz/EmbeddingSpaceExplorer";
 import { useAuth } from "../../../hooks/useAuth";
@@ -140,7 +140,7 @@ export default function WorkspaceHomePage() {
                   // eslint-disable-next-line @next/next/no-img-element
                   <img src={workspace.icon_url} alt="" className="h-full w-full object-cover" />
                 ) : (
-                  <StashIcon />
+                  <WorkspaceIcon />
                 )}
               </span>
               <div className="min-w-0">
@@ -384,4 +384,3 @@ function WorkspaceDescriptionEditor({
     </section>
   );
 }
-

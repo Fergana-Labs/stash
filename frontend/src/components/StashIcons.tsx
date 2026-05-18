@@ -1,4 +1,3 @@
-import AnalyticsOutlinedIcon from "@mui/icons-material/AnalyticsOutlined";
 import ChatOutlinedIcon from "@mui/icons-material/ChatOutlined";
 import DescriptionOutlinedIcon from "@mui/icons-material/DescriptionOutlined";
 import ExploreOutlinedIcon from "@mui/icons-material/ExploreOutlined";
@@ -36,8 +35,40 @@ function MaterialIcon({
   );
 }
 
+function LowResOctopusIcon({ className }: IconProps) {
+  return (
+    <svg
+      aria-hidden="true"
+      className={iconClass(className)}
+      width="1em"
+      height="1em"
+      viewBox="0 0 24 24"
+      shapeRendering="crispEdges"
+    >
+      <g fill="currentColor">
+        <rect x="8" y="4" width="8" height="2" />
+        <rect x="6" y="6" width="12" height="8" />
+        <rect x="4" y="9" width="2" height="5" />
+        <rect x="18" y="9" width="2" height="5" />
+        <rect x="5" y="14" width="3" height="3" />
+        <rect x="10" y="14" width="2" height="5" />
+        <rect x="14" y="14" width="2" height="5" />
+        <rect x="17" y="14" width="3" height="3" />
+      </g>
+      <g fill="var(--bg-base)">
+        <rect x="9" y="8" width="2" height="2" />
+        <rect x="13" y="8" width="2" height="2" />
+      </g>
+    </svg>
+  );
+}
+
 export function StashIcon(props: IconProps) {
-  return <MaterialIcon icon={AnalyticsOutlinedIcon} {...props} />;
+  return <LowResOctopusIcon {...props} />;
+}
+
+export function WorkspaceIcon(props: IconProps) {
+  return <LowResOctopusIcon {...props} />;
 }
 
 export function SessionsIcon(props: IconProps) {
