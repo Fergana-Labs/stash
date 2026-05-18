@@ -131,8 +131,18 @@ export default function MembersModal({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4" onClick={onClose}>
       <div className="w-full max-w-md rounded-2xl border border-border bg-base shadow-xl" onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-center justify-between border-b border-border px-5 py-3">
-          <h2 className="font-display text-[15px] font-semibold text-foreground">{title}</h2>
+        <div className="flex items-start justify-between gap-4 border-b border-border px-5 py-3">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <h2 className="font-display text-[15px] font-semibold text-foreground">{title}</h2>
+              <span className="rounded-full bg-surface px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted ring-1 ring-border">
+                Workspace-level
+              </span>
+            </div>
+            <p className="mt-1 text-[12px] text-muted">
+              People added here can access workspace-visible content.
+            </p>
+          </div>
           <button onClick={onClose} className="text-muted hover:text-foreground">✕</button>
         </div>
 

@@ -862,6 +862,7 @@ export interface PublicStashDetail {
   workspace_name: string;
   items: PublicStashItem[];
   can_write: boolean;
+  can_manage_access: boolean;
 }
 
 export async function listStashes(workspaceId: string): Promise<WorkspaceStash[]> {
@@ -891,8 +892,6 @@ export async function updateStash(
   data: {
     title?: string;
     description?: string;
-    access?: "workspace" | "private" | "public";
-    discoverable?: boolean;
     cover_image_url?: string | null;
     icon_url?: string | null;
     items?: StashItemSpec[];
@@ -904,26 +903,42 @@ export async function updateStash(
   });
 }
 
-export async function listStashMembers(stashId: string): Promise<StashMember[]> {
-  const data = await apiFetch<{ members: StashMember[] }>(
-    `/api/v1/stashes/${stashId}/members`
-  );
-  return data.members;
+export interface StashShareOwner {
+  user_id: string;
+  name: string;
+  display_name: string | null;
 }
 
-export async function addStashMember(
+export interface StashShare {
+  stash: WorkspaceStash;
+  url: string;
+  owner: StashShareOwner;
+  members: StashMember[];
+}
+
+export interface StashSharePersonInput {
+  user_id?: string;
+  username?: string;
+  permission: StashMemberPermission;
+}
+
+export async function getStashShare(stashId: string): Promise<StashShare> {
+  return apiFetch(`/api/v1/stashes/${stashId}/share`);
+}
+
+export async function updateStashShare(
   stashId: string,
-  userId: string,
-  permission: StashMemberPermission
-): Promise<StashMember> {
-  return apiFetch(`/api/v1/stashes/${stashId}/members`, {
-    method: "POST",
-    body: JSON.stringify({ user_id: userId, permission }),
+  data: {
+    access?: "workspace" | "private" | "public";
+    discoverable?: boolean;
+    people?: StashSharePersonInput[];
+    remove_user_ids?: string[];
+  }
+): Promise<StashShare> {
+  return apiFetch(`/api/v1/stashes/${stashId}/share`, {
+    method: "PATCH",
+    body: JSON.stringify(data),
   });
-}
-
-export async function removeStashMember(stashId: string, userId: string): Promise<void> {
-  await apiFetch(`/api/v1/stashes/${stashId}/members/${userId}`, { method: "DELETE" });
 }
 
 export async function getPublicStash(slug: string): Promise<PublicStashDetail> {

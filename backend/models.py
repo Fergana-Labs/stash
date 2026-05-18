@@ -1,7 +1,7 @@
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 # --- Users ---
 
@@ -124,10 +124,10 @@ class StashCreateRequest(BaseModel):
 
 
 class StashUpdateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     title: str | None = Field(None, min_length=1, max_length=160)
     description: str | None = Field(None, max_length=2000)
-    access: str | None = Field(None, pattern=r"^(workspace|private|public)$")
-    discoverable: bool | None = None
     cover_image_url: str | None = None
     icon_url: str | None = None
     items: list[StashItem] | None = None
@@ -157,9 +157,17 @@ class StashListResponse(BaseModel):
     stashes: list[StashResponse]
 
 
-class StashMemberRequest(BaseModel):
-    user_id: UUID
+class StashSharePersonRequest(BaseModel):
+    user_id: UUID | None = None
+    username: str | None = Field(None, min_length=1, max_length=64)
     permission: str = Field("read", pattern=r"^(read|write|admin)$")
+
+
+class StashShareUpdateRequest(BaseModel):
+    access: str | None = Field(None, pattern=r"^(workspace|private|public)$")
+    discoverable: bool | None = None
+    people: list[StashSharePersonRequest] = Field(default_factory=list)
+    remove_user_ids: list[UUID] = Field(default_factory=list)
 
 
 class StashMemberResponse(BaseModel):
@@ -171,7 +179,16 @@ class StashMemberResponse(BaseModel):
     created_at: datetime
 
 
-class StashMembersResponse(BaseModel):
+class StashShareOwnerResponse(BaseModel):
+    user_id: UUID
+    name: str
+    display_name: str | None
+
+
+class StashShareResponse(BaseModel):
+    stash: StashResponse
+    url: str
+    owner: StashShareOwnerResponse
     members: list[StashMemberResponse]
 
 
@@ -194,6 +211,7 @@ class StashPublicResponse(BaseModel):
     workspace_name: str
     items: list[StashItemInlined]
     can_write: bool = False
+    can_manage_access: bool = False
 
 
 class AddExternalStashRequest(BaseModel):

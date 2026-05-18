@@ -20,11 +20,11 @@ import Placeholder from "@tiptap/extension-placeholder";
 import AppShell from "../../../components/AppShell";
 import { useBreadcrumbs } from "../../../components/BreadcrumbContext";
 import AddToStashModal from "../../../components/stash/AddToStashModal";
+import StashShareDialog from "../../../components/stash/StashShareDialog";
 import { StashIcon } from "../../../components/StashIcons";
 import AgentActivityTimeline from "../../../components/viz/AgentActivityTimeline";
 import EmbeddingSpaceExplorer from "../../../components/viz/EmbeddingSpaceExplorer";
 import { useAuth } from "../../../hooks/useAuth";
-import { useEscapeKey } from "../../../hooks/useEscapeKey";
 import {
   ApiError,
   getActivityTimeline,
@@ -135,7 +135,8 @@ export default function StashPageClient({ slug }: { slug: string }) {
       shareAction={
         <ShareStashButton
           stash={data.stash}
-          canWrite={data.can_write}
+          workspaceName={data.workspace_name}
+          canManageAccess={data.can_manage_access}
           onChanged={load}
         />
       }
@@ -609,192 +610,40 @@ function relativeTime(iso: string): string {
   return new Date(iso).toLocaleDateString();
 }
 
-// Header-level Stash share popover: copy public URL, choose visibility,
-// toggle discoverability. Non-writers only see the "Copy link" path.
+// Opens the Stash-level share sheet. Workspace invitations live in the
+// workspace member modal instead.
 function ShareStashButton({
   stash,
-  canWrite,
+  workspaceName,
+  canManageAccess,
   onChanged,
 }: {
   stash: PublicStashDetail["stash"];
-  canWrite: boolean;
+  workspaceName: string;
+  canManageAccess: boolean;
   onChanged: () => Promise<void>;
 }) {
   const [open, setOpen] = useState(false);
-  const [copied, setCopied] = useState(false);
-  const [vis, setVis] = useState(stash.access);
-  const [discoverable, setDiscoverable] = useState(stash.discoverable);
-  const [saving, setSaving] = useState(false);
-  const popoverRef = useRef<HTMLDivElement>(null);
-
-  useEscapeKey(open, () => setOpen(false));
-
-  useEffect(() => {
-    if (!open) return;
-    function onDown(e: globalThis.MouseEvent) {
-      if (popoverRef.current && !popoverRef.current.contains(e.target as Node)) {
-        setOpen(false);
-      }
-    }
-    document.addEventListener("mousedown", onDown);
-    return () => document.removeEventListener("mousedown", onDown);
-  }, [open]);
-
-  async function copyLink() {
-    try {
-      await navigator.clipboard.writeText(absoluteUrl(`/stashes/${stash.slug}`));
-      setCopied(true);
-      window.setTimeout(() => setCopied(false), 1600);
-    } catch {
-      /* ignore */
-    }
-  }
-
-  async function applyChanges(next: Partial<{ access: typeof vis; discoverable: boolean }>) {
-    setSaving(true);
-    try {
-      await updateStash(stash.id, next);
-      await onChanged();
-    } finally {
-      setSaving(false);
-    }
-  }
 
   return (
-    <div className="relative">
+    <>
       <button
         type="button"
-        onClick={() => setOpen((o) => !o)}
+        onClick={() => setOpen(true)}
         className="rounded-md bg-[var(--color-brand-600)] px-2.5 py-1 text-[12.5px] font-medium text-white hover:bg-[var(--color-brand-700)]"
       >
         Share
       </button>
-      {open && (
-        <div
-          ref={popoverRef}
-          className="absolute right-0 top-full z-40 mt-1.5 w-[300px] rounded-lg border border-border bg-base p-3 shadow-lg"
-        >
-          <div className="sys-label mb-1">Public URL</div>
-          <div className="flex gap-1.5">
-            <input
-              readOnly
-              value={absoluteUrl(`/stashes/${stash.slug}`)}
-              className="min-w-0 flex-1 rounded-md border border-border bg-surface px-2 py-1.5 text-[11.5px] font-mono text-foreground"
-            />
-            <button
-              type="button"
-              onClick={() => void copyLink()}
-              className="rounded-md border border-border bg-base px-2 py-1.5 text-[11.5px] font-medium text-foreground hover:bg-raised"
-            >
-              {copied ? "Copied" : "Copy"}
-            </button>
-          </div>
-
-          {canWrite && (
-            <>
-              <div className="sys-label mb-1 mt-3">Visibility</div>
-              <div className="flex flex-col gap-1">
-                <VisOption
-                  label="Workspace"
-                  hint="Anyone in the owning workspace can view"
-                  value="workspace"
-                  current={vis}
-                  onChange={(v) => {
-                    setVis(v);
-                    void applyChanges({ access: v });
-                  }}
-                />
-                <VisOption
-                  label="Private"
-                  hint="Only the owner and explicit members"
-                  value="private"
-                  current={vis}
-                  onChange={(v) => {
-                    setVis(v);
-                    void applyChanges({ access: v });
-                  }}
-                />
-                <VisOption
-                  label="Public"
-                  hint="Anyone with the URL can view"
-                  value="public"
-                  current={vis}
-                  onChange={(v) => {
-                    setVis(v);
-                    void applyChanges({ access: v });
-                  }}
-                />
-              </div>
-
-              {vis === "public" && (
-                <label className="mt-3 flex cursor-pointer items-center gap-2 rounded-md border border-border bg-surface px-2 py-1.5">
-                  <input
-                    type="checkbox"
-                    checked={discoverable}
-                    onChange={(e) => {
-                      setDiscoverable(e.target.checked);
-                      void applyChanges({ discoverable: e.target.checked });
-                    }}
-                  />
-                  <span className="text-[12px] text-foreground">
-                    List on Discover
-                  </span>
-                </label>
-              )}
-
-              {saving && (
-                <div className="mt-2 text-[11px] text-muted">Saving…</div>
-              )}
-            </>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function VisOption({
-  label,
-  hint,
-  value,
-  current,
-  onChange,
-}: {
-  label: string;
-  hint: string;
-  value: "workspace" | "private" | "public";
-  current: "workspace" | "private" | "public";
-  onChange: (next: "workspace" | "private" | "public") => void;
-}) {
-  const active = value === current;
-  return (
-    <button
-      type="button"
-      onClick={() => onChange(value)}
-      className={
-        "flex items-start gap-2 rounded-md px-2 py-1.5 text-left text-[12px] " +
-        (active ? "bg-[var(--color-brand-50)]" : "hover:bg-raised")
-      }
-    >
-      <span
-        className={
-          "mt-[3px] inline-block h-3 w-3 flex-shrink-0 rounded-full border-2 " +
-          (active
-            ? "border-[var(--color-brand-600)] bg-[var(--color-brand-500)]"
-            : "border-border bg-base")
-        }
+      <StashShareDialog
+        stash={stash}
+        workspaceName={workspaceName}
+        canManageAccess={canManageAccess}
+        open={open}
+        onClose={() => setOpen(false)}
+        onChanged={onChanged}
       />
-      <span className="min-w-0">
-        <span className="block font-medium text-foreground">{label}</span>
-        <span className="block text-[11px] text-muted">{hint}</span>
-      </span>
-    </button>
+    </>
   );
-}
-
-function absoluteUrl(path: string): string {
-  if (typeof window === "undefined") return path;
-  return `${window.location.origin}${path}`;
 }
 
 function groupStashItems(items: PublicStashItem[]): StashItemGroup {

@@ -184,8 +184,25 @@ class StashClient:
             },
         )
 
+    def update_stash_share(self, stash_id: str, **fields) -> dict:
+        return self._patch(f"/api/v1/stashes/{stash_id}/share", json=fields)
+
     def update_stash(self, stash_id: str, **fields) -> dict:
-        return self._patch(f"/api/v1/stashes/{stash_id}", json=fields)
+        share_fields = {}
+        for name in ("access", "discoverable"):
+            if name in fields:
+                share_fields[name] = fields.pop(name)
+
+        if not fields and not share_fields:
+            return self._patch(f"/api/v1/stashes/{stash_id}", json={})
+
+        stash = None
+        if fields:
+            stash = self._patch(f"/api/v1/stashes/{stash_id}", json=fields)
+        if share_fields:
+            share = self.update_stash_share(stash_id, **share_fields)
+            stash = share["stash"]
+        return stash
 
     def delete_stash(self, stash_id: str) -> None:
         self._delete(f"/api/v1/stashes/{stash_id}")

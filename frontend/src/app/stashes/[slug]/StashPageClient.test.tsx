@@ -61,12 +61,15 @@ vi.mock("../../../lib/api", () => ({
   addExternalStash: vi.fn(),
   createPage: vi.fn(),
   getPublicStash: vi.fn(),
+  getStashShare: vi.fn(),
   listAllPages: vi.fn(),
   listAllTables: vi.fn(),
   listFiles: vi.fn(),
   listMySessions: vi.fn(),
   updateStash: vi.fn(),
+  updateStashShare: vi.fn(),
   uploadFile: vi.fn(),
+  searchUsers: vi.fn(),
   getActivityTimeline: vi.fn(),
   getEmbeddingProjection: vi.fn(),
 }));
@@ -113,6 +116,7 @@ function stashDetail(
     workspace_name: "Demo Workspace",
     items: [],
     can_write: false,
+    can_manage_access: false,
   };
 }
 
@@ -156,7 +160,7 @@ describe("StashPageClient sharing", () => {
     expect(screen.getAllByRole("button", { name: "Share" })).toHaveLength(1);
 
     fireEvent.click(shareButton);
-    // Popover renders a "Copy" button for the public URL; click it.
+    // The share sheet renders a "Copy" button for the Stash URL.
     fireEvent.click(await screen.findByRole("button", { name: "Copy" }));
 
     await waitFor(() =>
