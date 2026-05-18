@@ -66,6 +66,16 @@ vi.mock("./StashInviteCenter", () => ({
   default: () => <button aria-label="Stash invites">Invites</button>,
 }));
 
+vi.mock("./MembersModal", () => ({
+  default: ({
+    open,
+    title,
+  }: {
+    open: boolean;
+    title?: string;
+  }) => (open ? <div role="dialog" aria-label={title}>Invite modal</div> : null),
+}));
+
 
 const user = {
   id: "user-1",
@@ -274,6 +284,26 @@ describe("AppShell sidebar collapse", () => {
     await waitFor(() => expect(home).toHaveAttribute("href", "/workspaces/ws-1"));
     expect(screen.queryByRole("button", { name: "Back" })).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "Demo Stash" })).not.toBeInTheDocument();
+  });
+
+  it("opens workspace invites from Share on the workspace home route", async () => {
+    nav.pathname = "/workspaces/ws-1";
+    mockWorkspaceCache();
+
+    render(
+      <ShareModalProvider>
+        <AppShell user={user} onLogout={vi.fn()}>
+          <div>Workspace content</div>
+        </AppShell>
+      </ShareModalProvider>
+    );
+
+    fireEvent.click(await screen.findByRole("button", { name: "Share" }));
+
+    expect(
+      await screen.findByRole("dialog", { name: "Invite people to Workspace" })
+    ).toBeInTheDocument();
+    expect(publishStash).not.toHaveBeenCalled();
   });
 
   it("renders breadcrumbs as a Home-rooted file path", async () => {

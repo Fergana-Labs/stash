@@ -12,6 +12,7 @@ import { useShareModal } from "../lib/shareModalContext";
 import { type Crumb, useBreadcrumbsValue } from "./BreadcrumbContext";
 import { getCachedWorkspaces, readCachedWorkspaces } from "../lib/stashNavigationCache";
 import { useEscapeKey } from "../hooks/useEscapeKey";
+import MembersModal from "./MembersModal";
 
 interface AppShellProps {
   user: User;
@@ -103,6 +104,10 @@ function inferDirectShareTarget(
   }
 
   return null;
+}
+
+function isWorkspaceHomePath(pathname: string): boolean {
+  return /^\/workspaces\/[^/?#]+\/?$/.test(pathname);
 }
 
 function inferSearchScope(
@@ -235,6 +240,7 @@ export default function AppShell({ user, onLogout, children }: AppShellProps) {
     () => readCachedWorkspaces(user.id)?.all ?? []
   );
   const [cmdkOpen, setCmdkOpen] = useState(false);
+  const [membersOpen, setMembersOpen] = useState(false);
   const [shareStatus, setShareStatus] = useState<ShareStatus>("idle");
   const [shareMessage, setShareMessage] = useState("");
 
@@ -276,6 +282,11 @@ export default function AppShell({ user, onLogout, children }: AppShellProps) {
 
   async function copyCurrentViewLink() {
     if (!activeWorkspaceId) return;
+
+    if (isWorkspaceHomePath(pathname)) {
+      setMembersOpen(true);
+      return;
+    }
 
     const target = directShareTarget;
     if (!target) {
@@ -407,6 +418,15 @@ export default function AppShell({ user, onLogout, children }: AppShellProps) {
         workspaceName={activeWorkspace?.name}
         searchScope={searchScope}
       />
+      {activeWorkspaceId && (
+        <MembersModal
+          workspaceId={activeWorkspaceId}
+          open={membersOpen}
+          onClose={() => setMembersOpen(false)}
+          title="Invite people to Workspace"
+          autoFocusInvite
+        />
+      )}
     </div>
   );
 }

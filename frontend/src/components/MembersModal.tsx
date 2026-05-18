@@ -16,6 +16,8 @@ interface MembersModalProps {
   workspaceId: string;
   open: boolean;
   onClose: () => void;
+  title?: string;
+  autoFocusInvite?: boolean;
 }
 
 const PALETTE = [
@@ -37,7 +39,13 @@ function roleLabel(role: string): string {
   return role;
 }
 
-export default function MembersModal({ workspaceId, open, onClose }: MembersModalProps) {
+export default function MembersModal({
+  workspaceId,
+  open,
+  onClose,
+  title = "Members",
+  autoFocusInvite = false,
+}: MembersModalProps) {
   const [members, setMembers] = useState<WorkspaceMember[]>([]);
   const [meId, setMeId] = useState<string | null>(null);
   const [username, setUsername] = useState("");
@@ -117,7 +125,7 @@ export default function MembersModal({ workspaceId, open, onClose }: MembersModa
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4" onClick={onClose}>
       <div className="w-full max-w-md rounded-2xl border border-border bg-base shadow-xl" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between border-b border-border px-5 py-3">
-          <h2 className="font-display text-[15px] font-semibold text-foreground">Members</h2>
+          <h2 className="font-display text-[15px] font-semibold text-foreground">{title}</h2>
           <button onClick={onClose} className="text-muted hover:text-foreground">✕</button>
         </div>
 
@@ -170,6 +178,7 @@ export default function MembersModal({ workspaceId, open, onClose }: MembersModa
               value={username}
               onChange={(e) => setUsername(e.target.value)}
               placeholder="Invite by username"
+              autoFocus={autoFocusInvite}
               className="flex-1 rounded-md border border-border bg-surface px-2.5 py-1.5 text-[12.5px] text-foreground placeholder:text-muted focus:border-[var(--color-brand-400)] focus:outline-none"
             />
             <button
