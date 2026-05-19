@@ -17,6 +17,7 @@ import {
   getPublicStash,
   listStashMembers,
   searchUsers,
+  updateStash,
   type PublicStashDetail,
 } from "../../../lib/api";
 
@@ -267,6 +268,34 @@ describe("StashPageClient sharing", () => {
 
     expect(title).toHaveTextContent("Shared Stash");
     expect(title).not.toHaveTextContent("workspace");
+  });
+
+  it("lets writers rename the Stash title inline", async () => {
+    const editable = {
+      ...stashDetail({ access: "workspace" }),
+      can_write: true,
+    };
+    vi.mocked(getPublicStash).mockResolvedValueOnce(editable);
+    vi.mocked(updateStash).mockResolvedValueOnce({
+      ...editable.stash,
+      title: "Renamed Stash",
+    });
+
+    render(<StashPageClient slug="shared-stash" />);
+
+    fireEvent.click(await screen.findByText("Shared Stash"));
+    const input = screen.getByDisplayValue("Shared Stash");
+    fireEvent.change(input, { target: { value: "Renamed Stash" } });
+    fireEvent.blur(input);
+
+    await waitFor(() =>
+      expect(updateStash).toHaveBeenCalledWith("stash-1", {
+        title: "Renamed Stash",
+      }),
+    );
+    expect(
+      await screen.findByRole("heading", { name: "Renamed Stash" }),
+    ).toBeInTheDocument();
   });
 
   it("shows the stash author in the detail header", async () => {

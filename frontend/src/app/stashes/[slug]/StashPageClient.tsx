@@ -19,6 +19,7 @@ import { PublicStashSkeleton, SkeletonBlock } from "../../../components/Skeleton
 import AddToStashModal from "../../../components/stash/AddToStashModal";
 import StashShareButton from "../../../components/stash/StashShareButton";
 import { SettingsIcon, StashIcon } from "../../../components/StashIcons";
+import EditableTitle from "../../../components/workspace/EditableTitle";
 import ContributorActivityTimeline from "../../../components/viz/ContributorActivityTimeline";
 import EmbeddingSpaceExplorer from "../../../components/viz/EmbeddingSpaceExplorer";
 import { useAuth } from "../../../hooks/useAuth";
@@ -31,7 +32,9 @@ import {
   uploadFile,
   type PublicStashDetail,
   type PublicStashItem,
+  type WorkspaceStash,
 } from "../../../lib/api";
+import { resetStashNavigationCache } from "../../../lib/stashNavigationCache";
 import type { ActivityTimeline, EmbeddingProjection } from "../../../lib/types";
 import AddToWorkspaceButton from "./AddToWorkspaceButton";
 
@@ -137,7 +140,13 @@ export default function StashPageClient({ slug }: { slug: string }) {
         />
       }
     >
-      <StashPageBody data={data} onRefresh={load} />
+      <StashPageBody
+        data={data}
+        onRefresh={load}
+        onStashChanged={(stash) => {
+          setData((current) => (current ? { ...current, stash } : current));
+        }}
+      />
     </StashChrome>
   );
 }
@@ -163,9 +172,11 @@ const COVER_GRADIENTS = [
 function StashPageBody({
   data,
   onRefresh,
+  onStashChanged,
 }: {
   data: PublicStashDetail;
   onRefresh: () => Promise<void>;
+  onStashChanged: (stash: WorkspaceStash) => void;
 }) {
   const { stash, workspace_name, items, can_write } = data;
   const groups = groupStashItems(items);
@@ -208,6 +219,13 @@ function StashPageBody({
   }));
   const author = stash.owner_display_name || stash.owner_name;
 
+  async function renameStashTitle(nextTitle: string) {
+    const updated = await updateStash(stash.id, { title: nextTitle });
+    resetStashNavigationCache();
+    onStashChanged(updated);
+    return updated.title;
+  }
+
   return (
     <div className="scroll-thin min-h-screen bg-background">
       {/* Cover banner — click to upload (when can_write). Mirrors the
@@ -234,7 +252,13 @@ function StashPageBody({
             />
             <div className="min-w-0">
               <h1 className="m-0 truncate font-display text-[20px] font-bold leading-tight tracking-[-0.015em] text-foreground">
-                {stash.title}
+                <EditableTitle
+                  value={stash.title}
+                  onSave={renameStashTitle}
+                  disabled={!can_write}
+                  className="inline-block max-w-full truncate"
+                  title={stash.title}
+                />
               </h1>
               <div className="mt-1 flex flex-wrap items-center gap-2 text-[12px] text-muted">
                 <span>by {author}</span>
