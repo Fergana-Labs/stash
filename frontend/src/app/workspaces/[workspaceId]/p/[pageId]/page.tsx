@@ -4,7 +4,12 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useBreadcrumbs } from "../../../../../components/BreadcrumbContext";
-import { downloadBlob } from "../../../../../components/DownloadMenu";
+import {
+  downloadBlob,
+  downloadRenderedPdf,
+  htmlToPdfBlocks,
+  markdownToPdfBlocks,
+} from "../../../../../components/DownloadMenu";
 import { DocumentPageSkeleton } from "../../../../../components/SkeletonStates";
 import { StashIcon } from "../../../../../components/StashIcons";
 import HtmlPageView, {
@@ -23,7 +28,6 @@ import {
   createCommentThread,
   deleteCommentMessage,
   deleteCommentThread,
-  fetchAuthed,
   getFolderContents,
   getPage,
   listCommentThreads,
@@ -39,6 +43,9 @@ import {
 import type { CommentThread, Page } from "../../../../../lib/types";
 
 function wrapHtml(title: string, body: string): string {
+  // HTML pages can be stored as a full document (when imported from .html
+  // uploads) — wrapping again would nest <html> inside <html>.
+  if (/^\s*(<!doctype|<html[\s>])/i.test(body)) return body;
   return `<!doctype html><html><head><meta charset="utf-8"><title>${escapeHtml(
     title
   )}</title><style>body{font-family:system-ui,sans-serif;max-width:720px;margin:2em auto;padding:0 1em;line-height:1.6;color:#1a1a1a}h1,h2,h3{line-height:1.25}pre{background:#f6f6f6;padding:1em;overflow:auto;border-radius:6px}code{background:#f6f6f6;padding:.1em .3em;border-radius:3px}</style></head><body>${body}</body></html>`;
@@ -48,72 +55,6 @@ function escapeHtml(s: string): string {
   return s.replace(/[&<>"']/g, (c) =>
     c === "&" ? "&amp;" : c === "<" ? "&lt;" : c === ">" ? "&gt;" : c === '"' ? "&quot;" : "&#39;"
   );
-}
-
-function normalizeInternalHref(href: string): string | null {
-  if (href.startsWith("/")) return href;
-  if (!/^https?:\/\//i.test(href)) return null;
-  if (typeof window === "undefined") return null;
-
-  let url: URL;
-  try {
-    url = new URL(href);
-  } catch {
-    return null;
-  }
-  const isCurrentOrigin = url.origin === window.location.origin;
-  const isStashHost = /^(app\.)?stash\.ac$/i.test(url.hostname);
-  if (!isCurrentOrigin && !isStashHost) return null;
-  return `${url.pathname}${url.search}${url.hash}`;
-}
-
-function isAppRoute(path: string): boolean {
-  return (
-    path.startsWith("/workspaces/") ||
-    path.startsWith("/stashes/") ||
-    path.startsWith("/tables/") ||
-    path.startsWith("/search") ||
-    path.startsWith("/settings")
-  );
-}
-
-function isWorkspaceFileDownloadPath(path: string): boolean {
-  return /^\/api\/v1\/workspaces\/[^/]+\/files\/[^/]+\/download(?:[?#].*)?$/i.test(path);
-}
-
-function isSafeExternalHref(href: string): boolean {
-  return /^(https?:|mailto:|tel:)/i.test(href);
-}
-
-async function downloadAuthedFile(path: string) {
-  const res = await fetchAuthed(path);
-  if (!res.ok) throw new Error(`Download failed (${res.status})`);
-  const blob = await res.blob();
-  const filename = filenameFromHeaders(res.headers) ?? filenameFromUrl(res.url) ?? "download";
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  URL.revokeObjectURL(url);
-}
-
-function filenameFromHeaders(headers: Headers): string | null {
-  const disposition = headers.get("content-disposition");
-  if (!disposition) return null;
-  const utf8 = disposition.match(/filename\*=UTF-8''([^;]+)/i);
-  if (utf8?.[1]) return decodeURIComponent(utf8[1]);
-  const ascii = disposition.match(/filename="?([^";]+)"?/i);
-  return ascii?.[1] ?? null;
-}
-
-function filenameFromUrl(url: string): string | null {
-  if (!url) return null;
-  const path = new URL(url, window.location.origin).pathname;
-  const name = path.split("/").filter(Boolean).pop();
-  return name ? decodeURIComponent(name) : null;
 }
 
 export default function StashPageView() {
@@ -128,6 +69,10 @@ export default function StashPageView() {
   const [containingStashes, setContainingStashes] = useState<WorkspaceStash[]>([]);
   const [saveStatus, setSaveStatus] = useState<SaveStatus>("saved");
   const [error, setError] = useState("");
+  // Save responses can arrive out of order if a fast save fires while a
+  // slow save is still in flight. Treat the most-recently-issued seq as
+  // the source of truth so older responses can't roll back the page.
+  const saveSeq = useRef(0);
 
   const [threads, setThreads] = useState<CommentThread[]>([]);
   const [activeThreadId, setActiveThreadId] = useState<string | null>(null);
@@ -205,9 +150,11 @@ export default function StashPageView() {
 
   const handleSave = useCallback(
     async (content: string) => {
+      const seq = saveSeq.current + 1;
+      saveSeq.current = seq;
       try {
         const updated = await updatePage(workspaceId, pageId, { content });
-        setPage(updated);
+        if (saveSeq.current === seq) setPage(updated);
         reconcileAfterSave(content, "markdown");
       } catch (e) {
         setError(e instanceof Error ? e.message : "Save failed");
@@ -335,31 +282,6 @@ export default function StashPageView() {
     [workspaceId, pageId, activeThreadId]
   );
 
-  const handleContentLink = useCallback(
-    (href: string) => {
-      const internalPath = normalizeInternalHref(href);
-      if (internalPath) {
-        if (isWorkspaceFileDownloadPath(internalPath)) {
-          downloadAuthedFile(internalPath).catch((e) => {
-            setError(e instanceof Error ? e.message : "Download failed");
-          });
-          return;
-        }
-        if (isAppRoute(internalPath)) {
-          router.push(internalPath);
-          return;
-        }
-        window.open(internalPath, "_blank", "noopener,noreferrer");
-        return;
-      }
-
-      if (isSafeExternalHref(href)) {
-        window.open(href, "_blank", "noopener,noreferrer");
-      }
-    },
-    [router]
-  );
-
   useEffect(() => {
     if (user) load();
   }, [user, load]);
@@ -382,7 +304,8 @@ export default function StashPageView() {
       })
     : null;
 
-  const baseName = page ? page.name.replace(/\.md$/i, "") : "";
+  const baseName = page ? page.name.replace(/\.(md|html)$/i, "") : "";
+  const pdfSubtitle = updatedAt ? `Last edited ${updatedAt}` : undefined;
   return (
     <div className="scroll-thin flex-1 overflow-y-auto">
       <FileViewerHeader
@@ -392,13 +315,13 @@ export default function StashPageView() {
         onRenameTitle={
           page
             ? async (next) => {
-                // Preserve the .md suffix on markdown pages so the
-                // backend's file kind detection keeps working.
-                const had = page.name.toLowerCase().endsWith(".md");
-                const newName = had && !next.toLowerCase().endsWith(".md") ? `${next}.md` : next;
+                // Preserve the file extension so the backend's kind
+                // detection (and the listing UI's icons) keep working.
+                const extension = page.content_type === "html" ? ".html" : ".md";
+                const newName = next.toLowerCase().endsWith(extension) ? next : `${next}${extension}`;
                 const updated = await updatePage(workspaceId, pageId, { name: newName });
                 setPage(updated);
-                return updated.name.replace(/\.md$/i, "");
+                return updated.name.replace(/\.(md|html)$/i, "");
               }
             : undefined
         }
@@ -419,25 +342,49 @@ export default function StashPageView() {
         downloadOptions={
           page
             ? [
-                {
-                  label: "Download as Markdown",
-                  onSelect: () =>
-                    downloadBlob(
-                      page.content_markdown ?? "",
-                      "text/markdown",
-                      `${baseName}.md`
-                    ),
-                },
-                {
-                  label: "Download as HTML",
-                  onSelect: () =>
-                    downloadBlob(
-                      isHtml ? page.content_html ?? "" : wrapHtml(page.name, page.content_html ?? ""),
-                      "text/html",
-                      `${baseName}.html`
-                    ),
-                },
-                { label: "Print as PDF", onSelect: () => window.print() },
+                ...(isHtml
+                  ? [
+                      {
+                        label: "HTML (.html)",
+                        onSelect: () =>
+                          downloadBlob(
+                            wrapHtml(baseName, page.content_html ?? ""),
+                            "text/html",
+                            `${baseName}.html`
+                          ),
+                      },
+                      {
+                        label: "PDF (.pdf)",
+                        onSelect: () =>
+                          downloadRenderedPdf({
+                            title: baseName,
+                            subtitle: pdfSubtitle,
+                            blocks: htmlToPdfBlocks(page.content_html ?? ""),
+                            filename: `${baseName}.pdf`,
+                          }),
+                      },
+                    ]
+                  : [
+                      {
+                        label: "Markdown (.md)",
+                        onSelect: () =>
+                          downloadBlob(
+                            page.content_markdown ?? "",
+                            "text/markdown",
+                            `${baseName}.md`
+                          ),
+                      },
+                      {
+                        label: "PDF (.pdf)",
+                        onSelect: () =>
+                          downloadRenderedPdf({
+                            title: baseName,
+                            subtitle: pdfSubtitle,
+                            blocks: markdownToPdfBlocks(page.content_markdown ?? ""),
+                            filename: `${baseName}.pdf`,
+                          }),
+                      },
+                    ]),
                 {
                   label: "Delete",
                   destructive: true,
@@ -478,7 +425,6 @@ export default function StashPageView() {
                     pendingWrapId={pendingWrapId}
                     onWrapComplete={() => setPendingWrapId(null)}
                     onHtmlMutated={handleHtmlMutated}
-                    onNavigateLink={handleContentLink}
                     stripCommentToken={stripCommentToken}
                     editable={htmlEditMode}
                   />
@@ -521,7 +467,7 @@ export default function StashPageView() {
                   file={page}
                   onSave={handleSave}
                   onSaveStatusChange={setSaveStatus}
-                  onNavigateInternal={handleContentLink}
+                  onNavigateInternal={(href) => router.push(href)}
                   onAddComment={handleAddCommentMarkdown}
                   onActivateThread={setActiveThreadId}
                   activeThreadId={activeThreadId}
@@ -530,16 +476,6 @@ export default function StashPageView() {
               )
             ) : null}
           </article>
-
-          {page && !isHtml && (
-            <div className="mt-6 flex items-center gap-2 rounded-lg border border-dashed border-border bg-surface px-3 py-2.5 text-[12.5px] text-muted">
-              <span className="font-mono text-dim">/</span>
-              <span>
-                press <KeyHint>/</KeyHint> for blocks · <KeyHint>@</KeyHint> for pages or
-                people · <KeyHint>⌘+J</KeyHint> to ask the workspace
-              </span>
-            </div>
-          )}
         </main>
 
         <div className="mt-20 hidden flex-col gap-4 lg:flex">
@@ -592,14 +528,6 @@ function StashAside({ stashes }: { stashes: WorkspaceStash[] }) {
         )}
       </div>
     </aside>
-  );
-}
-
-function KeyHint({ children }: { children: React.ReactNode }) {
-  return (
-    <span className="rounded-[3px] bg-raised px-[5px] font-mono text-[11px] text-dim">
-      {children}
-    </span>
   );
 }
 
