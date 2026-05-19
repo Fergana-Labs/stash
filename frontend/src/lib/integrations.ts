@@ -133,7 +133,9 @@ export async function importGoogleDrive(
 // --- Notion import ---
 
 export type NotionImportRequest = {
-  page_ids: string[];
+  /** URLs or bare IDs for Notion pages OR databases. The backend
+   * task auto-detects which kind and routes accordingly. */
+  urls: string[];
   folder_id?: string;
 };
 

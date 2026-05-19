@@ -105,7 +105,10 @@ async def import_google_drive(
 
 
 class NotionImportRequest(BaseModel):
-    page_ids: list[str]
+    # Accepts either page URLs or database URLs (or bare 32-hex / dashed
+    # UUIDs of either). The task probes pages first, falls back to
+    # databases on 404 — single endpoint, single dialog.
+    urls: list[str]
     folder_id: UUID | None = None
 
 
@@ -119,18 +122,21 @@ async def import_notion(
     body: NotionImportRequest,
     current_user: dict = Depends(get_current_user),
 ):
-    """One task per selected Notion page. URLs and bare UUIDs both work —
-    the task normalizes the page id."""
+    """One task per selected Notion resource (page or database).
+
+    Pages with subpages are imported recursively into a folder named
+    after the parent. Databases become tables. Each task auto-detects
+    which is which by probing the Notion API."""
     await _check_workspace_access(workspace_id, current_user["id"])
-    task_name = resolve_importer("notion", "page")
+    task_name = resolve_importer("notion", "resource")
     task_ids: list[str] = []
-    for pid in body.page_ids:
+    for url in body.urls:
         async_result = celery.send_task(
             task_name,
             kwargs={
                 "user_id": str(current_user["id"]),
                 "workspace_id": str(workspace_id),
-                "page_id": pid,
+                "resource_id": url,
                 "folder_id": str(body.folder_id) if body.folder_id else None,
             },
         )

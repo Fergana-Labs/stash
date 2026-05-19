@@ -36,19 +36,19 @@ export default function NotionImportDialog({
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
-    const page_ids = raw
+    const urls = raw
       .split(/\s+/)
       .map((s) => s.trim())
       .filter(Boolean);
-    if (page_ids.length === 0) {
-      setError("Enter at least one Notion page URL or id.");
+    if (urls.length === 0) {
+      setError("Enter at least one Notion page or database URL.");
       return;
     }
     setSubmitting(true);
     setStatuses([]);
     try {
       const { task_ids } = await importNotion(workspaceId, {
-        page_ids,
+        urls,
         folder_id: folderId || undefined,
       });
       const finals = await Promise.all(
@@ -99,8 +99,10 @@ export default function NotionImportDialog({
           Import from Notion
         </h2>
         <p style={{ fontSize: 13, color: "var(--muted, #6b7280)", marginBottom: 12 }}>
-          Paste one or more Notion page URLs or IDs (one per line). Each
-          becomes a markdown page in this workspace.
+          Paste one or more Notion <strong>page</strong> or{" "}
+          <strong>database</strong> URLs (one per line). Pages with
+          subpages are imported recursively into a folder; databases
+          become tables.
         </p>
         <p
           style={{
@@ -112,14 +114,14 @@ export default function NotionImportDialog({
             borderRadius: 6,
           }}
         >
-          Notion shares are per-page. Open each page in Notion → ⋯ → Add
-          connections → choose your Stash connection. Pages that aren't
-          shared will fail with a 404.
+          Notion shares are per-resource. Open each page or database in
+          Notion → ⋯ → Add connections → choose your Stash connection.
+          Anything not shared will fail with a 404.
         </p>
 
         <form onSubmit={onSubmit} style={{ display: "flex", flexDirection: "column", gap: 12 }}>
           <label style={{ fontSize: 13 }}>
-            Pages
+            Pages or databases
             <textarea
               required
               value={raw}
