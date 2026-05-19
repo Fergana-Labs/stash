@@ -5,12 +5,12 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   createFolder,
   createPage,
-  deleteFile,
-  deletePage,
   deleteFolder,
   getFolderContents,
   getWorkspaceTree,
   listFiles,
+  restoreItem,
+  trashItem,
   updateFile,
   updateFolder,
   updatePage,
@@ -70,6 +70,16 @@ export default function WorkspaceFileBrowser({ workspaceId, folderId }: Props) {
     }
   }
   const [error, setError] = useState("");
+  const [undo, setUndo] = useState<{ kind: "page" | "file"; id: string; name: string } | null>(
+    null,
+  );
+
+  // Auto-dismiss the Undo toast after 10s. Matches the gmail-style window.
+  useEffect(() => {
+    if (!undo) return;
+    const t = window.setTimeout(() => setUndo(null), 10000);
+    return () => window.clearTimeout(t);
+  }, [undo]);
 
   // Load workspace tree once per workspace; powers the Column view.
   const loadTree = useCallback(async () => {
@@ -261,15 +271,36 @@ export default function WorkspaceFileBrowser({ workspaceId, folderId }: Props) {
   }
 
   async function handleDelete(item: GridItem) {
-    const yes = window.confirm(`Delete "${item.name}"? This can't be undone.`);
-    if (!yes) return;
+    if (item.kind === "folder") {
+      const yes = window.confirm(`Delete folder "${item.name}"? This can't be undone.`);
+      if (!yes) return;
+      try {
+        await deleteFolder(workspaceId, item.id);
+        await refreshAll();
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Delete failed");
+      }
+      return;
+    }
+    const kind = item.kind === "page" || item.kind === "html" ? "page" : "file";
     try {
-      if (item.kind === "folder") await deleteFolder(workspaceId, item.id);
-      else if (item.kind === "page" || item.kind === "html") await deletePage(workspaceId, item.id);
-      else await deleteFile(workspaceId, item.id);
+      await trashItem(workspaceId, kind, item.id);
       await refreshAll();
+      setUndo({ kind, id: item.id, name: item.name });
     } catch (e) {
       setError(e instanceof Error ? e.message : "Delete failed");
+    }
+  }
+
+  async function handleUndoDelete() {
+    if (!undo) return;
+    const { kind, id } = undo;
+    setUndo(null);
+    try {
+      await restoreItem(workspaceId, kind, id);
+      await refreshAll();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Restore failed");
     }
   }
 
@@ -372,6 +403,28 @@ export default function WorkspaceFileBrowser({ workspaceId, folderId }: Props) {
           />
         )}
       </div>
+      {undo && (
+        <div className="pointer-events-none fixed inset-x-0 bottom-6 z-50 flex justify-center">
+          <div className="pointer-events-auto flex items-center gap-3 rounded-lg border border-border bg-foreground px-4 py-2 text-[13px] text-background shadow-lg">
+            <span>Moved &ldquo;{undo.name}&rdquo; to trash.</span>
+            <button
+              type="button"
+              onClick={handleUndoDelete}
+              className="rounded-md border border-background/40 px-2 py-0.5 text-[12px] font-semibold hover:bg-background/10"
+            >
+              Undo
+            </button>
+            <button
+              type="button"
+              onClick={() => setUndo(null)}
+              className="ml-1 text-[18px] leading-none text-background/70 hover:text-background"
+              aria-label="Dismiss"
+            >
+              ×
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

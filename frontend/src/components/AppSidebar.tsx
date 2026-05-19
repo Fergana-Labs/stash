@@ -41,6 +41,7 @@ import {
   SettingsIcon,
   StashIcon,
   TableIcon,
+  TrashIcon,
   WorkspaceIcon,
 } from "./StashIcons";
 
@@ -549,6 +550,14 @@ function WorkspaceTree({
           onUnpinAll={() => onUnpinAll(workspace.id)}
           onAddPage={() => onAddPage(workspace.id)}
         />
+
+        <Link
+          href={`/workspaces/${workspace.id}/trash`}
+          className="page-row flex items-center gap-1.5 rounded-md px-2 py-1 text-[13px] text-muted hover:bg-raised hover:text-foreground"
+        >
+          <span className="text-muted"><TrashIcon /></span>
+          <span className="flex-1 truncate">Trash</span>
+        </Link>
     </div>
   );
 }
