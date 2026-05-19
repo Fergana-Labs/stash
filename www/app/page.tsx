@@ -6,6 +6,11 @@ import ScrollLink from "./_components/ScrollLink";
 import VisualizationsShowcase from "./_components/VisualizationsShowcase";
 
 const INSTALL_COMMAND = `bash -c "$(curl -fsSL https://raw.githubusercontent.com/Fergana-Labs/stash/main/install.sh)"`;
+const HERO_PROOF_POINTS = [
+  "MIT licensed",
+  "Self-hostable",
+  "No manual plugin wiring",
+];
 
 export default function Page() {
   return (
@@ -249,7 +254,10 @@ function HeroFeed() {
             <span className="text-[12px] text-muted">/ sessions</span>
           </div>
           <span className="inline-flex items-center gap-2 font-mono text-[10px] font-medium uppercase tracking-[0.12em] text-dim">
-            Live
+            <span className="hidden sm:inline">Streaming</span>
+            <span className="rounded border border-border bg-background px-1.5 py-0.5 text-ink">
+              412/hr
+            </span>
           </span>
         </div>
         <div className="max-h-[420px] overflow-hidden py-1.5">
@@ -279,7 +287,7 @@ function HeroFeed() {
           ))}
         </div>
         <div className="flex items-center justify-between border-t border-border-subtle bg-surface px-4 py-2.5 font-mono text-[11px] uppercase tracking-[0.1em] text-muted">
-          <span>streaming · 412 events / hr</span>
+          <span>latest event · just now</span>
           <span className="text-ink">4 agents · 3 humans</span>
         </div>
       </div>
@@ -340,14 +348,12 @@ function Hero() {
               />
             </div>
             <div className="mt-3 flex flex-wrap gap-x-5 gap-y-2 font-mono text-[11px] uppercase tracking-[0.08em] text-muted">
-              <span className="inline-flex items-center gap-2">
-                <span className="h-[6px] w-[6px] rounded-full bg-current opacity-50" />
-                MIT licensed
-              </span>
-              <span className="inline-flex items-center gap-2">
-                <span className="h-[6px] w-[6px] rounded-full bg-current opacity-50" />
-                Self-hostable
-              </span>
+              {HERO_PROOF_POINTS.map((point) => (
+                <span key={point} className="inline-flex items-center gap-2">
+                  <span className="h-[6px] w-[6px] rounded-full bg-current opacity-50" />
+                  {point}
+                </span>
+              ))}
             </div>
           </div>
         </div>
