@@ -32,6 +32,8 @@ from .routers import (
     workspace_knowledge,
     workspaces,
 )
+from . import exports as _exports  # noqa: F401 — registers exporter Celery tasks
+from . import integrations as _integrations  # noqa: F401 — registers providers + importers
 from .integrations.router import router as integrations_router
 from .services.row_validation import RowValidationError
 
