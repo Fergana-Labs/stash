@@ -4,7 +4,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import AppShell from "./AppShell";
 import { BreadcrumbProvider, useBreadcrumbs } from "./BreadcrumbContext";
 import { ShareModalProvider } from "../lib/shareModalContext";
-import { getSessionDetail, publishStash } from "../lib/api";
+import {
+  apiFetch,
+  createInviteToken,
+  getMe,
+  getSessionDetail,
+  getWorkspaceMembers,
+  publishStash,
+} from "../lib/api";
 import {
   getCachedWorkspaces,
   readCachedWorkspaces,
@@ -43,7 +50,11 @@ vi.mock("../lib/stashNavigationCache", () => ({
 }));
 
 vi.mock("../lib/api", () => ({
+  apiFetch: vi.fn(),
+  createInviteToken: vi.fn(),
+  getMe: vi.fn(),
   getSessionDetail: vi.fn(),
+  getWorkspaceMembers: vi.fn(),
   publishStash: vi.fn(),
 }));
 
@@ -66,17 +77,6 @@ vi.mock("./StashInviteCenter", () => ({
   default: () => <button aria-label="Stash invites">Invites</button>,
 }));
 
-vi.mock("./MembersModal", () => ({
-  default: ({
-    open,
-    title,
-  }: {
-    open: boolean;
-    title?: string;
-  }) => (open ? <div role="dialog" aria-label={title}>Invite modal</div> : null),
-}));
-
-
 const user = {
   id: "user-1",
   name: "Henry",
@@ -95,6 +95,14 @@ const workspace = {
   created_at: "2026-05-11T00:00:00Z",
   updated_at: "2026-05-11T00:00:00Z",
   member_count: 1,
+};
+
+const workspaceMember = {
+  user_id: user.id,
+  name: user.name,
+  display_name: user.display_name,
+  role: "owner",
+  joined_at: "2026-05-11T00:00:00Z",
 };
 
 function BreadcrumbPage() {
@@ -131,6 +139,15 @@ describe("AppShell sidebar collapse", () => {
       value: { writeText: vi.fn().mockResolvedValue(undefined) },
     });
     vi.mocked(publishStash).mockResolvedValue(publishedStashResult("shared-link"));
+    vi.mocked(apiFetch).mockResolvedValue({});
+    vi.mocked(createInviteToken).mockResolvedValue({
+      id: "invite-1",
+      token: "invite-token",
+      workspace_id: "ws-1",
+      expires_at: "2026-05-18T00:00:00Z",
+    });
+    vi.mocked(getMe).mockResolvedValue(user);
+    vi.mocked(getWorkspaceMembers).mockResolvedValue([workspaceMember]);
     vi.mocked(readCachedWorkspaces).mockReturnValue({
       userId: user.id,
       all: [],
@@ -286,7 +303,7 @@ describe("AppShell sidebar collapse", () => {
     expect(screen.queryByRole("link", { name: "Demo Stash" })).not.toBeInTheDocument();
   });
 
-  it("opens workspace invites from Share on the workspace home route", async () => {
+  it("opens workspace sharing as a dropdown on the workspace home route", async () => {
     nav.pathname = "/workspaces/ws-1";
     mockWorkspaceCache();
 
@@ -300,8 +317,13 @@ describe("AppShell sidebar collapse", () => {
 
     fireEvent.click(await screen.findByRole("button", { name: "Share" }));
 
+    const dialog = await screen.findByRole("dialog", { name: "Share Demo Stash" });
+    expect(dialog).toBeInTheDocument();
+    await within(dialog).findByText("Henry");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Generate invite link" }));
+    await waitFor(() => expect(createInviteToken).toHaveBeenCalledWith("ws-1", 5, 7));
     expect(
-      await screen.findByRole("dialog", { name: "Invite people to Workspace" })
+      within(dialog).getByDisplayValue(`${window.location.origin}/join/invite-token`)
     ).toBeInTheDocument();
     expect(publishStash).not.toHaveBeenCalled();
   });
