@@ -12,7 +12,7 @@ import { useShareModal } from "../lib/shareModalContext";
 import { type Crumb, useBreadcrumbsValue } from "./BreadcrumbContext";
 import { getCachedWorkspaces, readCachedWorkspaces } from "../lib/stashNavigationCache";
 import { useEscapeKey } from "../hooks/useEscapeKey";
-import MembersModal from "./MembersModal";
+import WorkspaceShareButton from "./WorkspaceShareButton";
 
 interface AppShellProps {
   user: User;
@@ -250,7 +250,6 @@ export default function AppShell({
     () => readCachedWorkspaces(user.id)?.all ?? []
   );
   const [cmdkOpen, setCmdkOpen] = useState(false);
-  const [membersOpen, setMembersOpen] = useState(false);
   const [shareStatus, setShareStatus] = useState<ShareStatus>("idle");
   const [shareMessage, setShareMessage] = useState("");
 
@@ -296,11 +295,6 @@ export default function AppShell({
 
   async function copyCurrentViewLink() {
     if (!activeWorkspaceId) return;
-
-    if (isWorkspaceHomePath(pathname)) {
-      setMembersOpen(true);
-      return;
-    }
 
     const target = directShareTarget;
     if (!target) {
@@ -360,13 +354,24 @@ export default function AppShell({
           {shareMessage}
         </span>
       )}
-      <button
-        className="rounded-md bg-[var(--color-brand-600)] px-2.5 py-1 text-[12.5px] font-medium text-white hover:bg-[var(--color-brand-700)] disabled:opacity-50"
-        onClick={() => void copyCurrentViewLink()}
-        disabled={shareStatus === "creating"}
-      >
-        {shareStatus === "creating" ? "Creating..." : shareStatus === "copied" ? "Copied" : "Share"}
-      </button>
+      {isWorkspaceHomePath(pathname) ? (
+        <WorkspaceShareButton
+          workspaceId={activeWorkspaceId}
+          workspaceName={activeWorkspace?.name}
+        />
+      ) : (
+        <button
+          className="rounded-md bg-[var(--color-brand-600)] px-2.5 py-1 text-[12.5px] font-medium text-white hover:bg-[var(--color-brand-700)] disabled:opacity-50"
+          onClick={() => void copyCurrentViewLink()}
+          disabled={shareStatus === "creating"}
+        >
+          {shareStatus === "creating"
+            ? "Creating..."
+            : shareStatus === "copied"
+              ? "Copied"
+              : "Share"}
+        </button>
+      )}
     </div>
   ) : null;
 
@@ -434,15 +439,6 @@ export default function AppShell({
         workspaceName={activeWorkspace?.name}
         searchScope={searchScope}
       />
-      {activeWorkspaceId && (
-        <MembersModal
-          workspaceId={activeWorkspaceId}
-          open={membersOpen}
-          onClose={() => setMembersOpen(false)}
-          title="Invite people to Workspace"
-          autoFocusInvite
-        />
-      )}
     </div>
   );
 }
