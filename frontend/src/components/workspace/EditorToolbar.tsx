@@ -25,10 +25,29 @@ export default function EditorToolbar({
   const [uploading, setUploading] = useState(false);
   const [, forceRender] = useState(0);
   const [mounted, setMounted] = useState(false);
+  const [tableMenuOpen, setTableMenuOpen] = useState(false);
+  const tableBtnRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     setMounted(true);
   }, []);
+
+  // Close the table menu on outside click / Escape.
+  useEffect(() => {
+    if (!tableMenuOpen) return;
+    const onDown = (e: MouseEvent) => {
+      if (!tableBtnRef.current?.contains(e.target as Node)) setTableMenuOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setTableMenuOpen(false);
+    };
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [tableMenuOpen]);
 
   // Re-render on every editor transaction so active/disabled states stay
   // in sync with the editor state (selection change, history boundary,
@@ -43,6 +62,13 @@ export default function EditorToolbar({
       editor.off("selectionUpdate", onUpdate);
     };
   }, [editor]);
+
+  const inTable = editor?.isActive("table") ?? false;
+
+  // Close the table menu automatically when the caret leaves the table.
+  useEffect(() => {
+    if (tableMenuOpen && !inTable) setTableMenuOpen(false);
+  }, [tableMenuOpen, inTable]);
 
   if (!editor || !editor.isEditable || !mounted) return null;
 
@@ -187,14 +213,31 @@ export default function EditorToolbar({
 
       <Sep />
 
-      <Btn
-        title="Insert table"
-        onClick={() =>
-          editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()
-        }
-      >
-        <TableIcon />
-      </Btn>
+      <div ref={tableBtnRef} className="relative">
+        <Btn
+          title={inTable ? "Table options" : "Insert table"}
+          active={inTable && tableMenuOpen}
+          onClick={() => {
+            if (inTable) {
+              setTableMenuOpen((o) => !o);
+              return;
+            }
+            editor
+              .chain()
+              .focus()
+              .insertTable({ rows: 3, cols: 3, withHeaderRow: true })
+              .run();
+          }}
+        >
+          <TableIcon />
+        </Btn>
+        {tableMenuOpen && inTable && (
+          <TableMenu
+            editor={editor}
+            onClose={() => setTableMenuOpen(false)}
+          />
+        )}
+      </div>
       <Btn
         title={editor.isActive("link") ? "Edit link" : "Add link"}
         active={editor.isActive("link")}
@@ -277,6 +320,72 @@ function Btn({
 
 function Sep() {
   return <span className="mx-1 h-4 w-px bg-border" aria-hidden />;
+}
+
+function TableMenu({
+  editor,
+  onClose,
+}: {
+  editor: Editor;
+  onClose: () => void;
+}) {
+  function run(fn: () => void) {
+    return () => {
+      fn();
+      // Most table ops leave the menu logically obsolete (e.g. deleteTable
+      // moves the caret out, deleteRow may collapse). Close after every op
+      // so users don't fire stale commands against a now-different cell.
+      onClose();
+    };
+  }
+  return (
+    <div
+      className="absolute bottom-full left-1/2 z-50 mb-2 w-56 -translate-x-1/2 overflow-hidden rounded-md border border-border bg-surface py-1 text-[12.5px] shadow-[0_8px_24px_-6px_rgba(0,0,0,0.25)]"
+      onMouseDown={(e) => e.preventDefault()}
+    >
+      <Item onClick={run(() => editor.chain().focus().addRowBefore().run())}>Add row above</Item>
+      <Item onClick={run(() => editor.chain().focus().addRowAfter().run())}>Add row below</Item>
+      <Item onClick={run(() => editor.chain().focus().addColumnBefore().run())}>Add column left</Item>
+      <Item onClick={run(() => editor.chain().focus().addColumnAfter().run())}>Add column right</Item>
+      <Divider />
+      <Item onClick={run(() => editor.chain().focus().toggleHeaderRow().run())}>Toggle header row</Item>
+      <Item onClick={run(() => editor.chain().focus().toggleHeaderColumn().run())}>Toggle header column</Item>
+      <Item onClick={run(() => editor.chain().focus().mergeOrSplit().run())}>Merge / split cells</Item>
+      <Divider />
+      <Item destructive onClick={run(() => editor.chain().focus().deleteRow().run())}>Delete row</Item>
+      <Item destructive onClick={run(() => editor.chain().focus().deleteColumn().run())}>Delete column</Item>
+      <Item destructive onClick={run(() => editor.chain().focus().deleteTable().run())}>Delete table</Item>
+    </div>
+  );
+}
+
+function Item({
+  onClick,
+  destructive,
+  children,
+}: {
+  onClick: () => void;
+  destructive?: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={
+        "block w-full px-3 py-1.5 text-left transition " +
+        (destructive
+          ? "text-red-600 hover:bg-red-500/10"
+          : "text-foreground hover:bg-raised")
+      }
+    >
+      {children}
+    </button>
+  );
+}
+
+function Divider() {
+  return <div className="my-1 border-t border-border" />;
 }
 
 function HText({ n }: { n: 1 | 2 | 3 }) {
