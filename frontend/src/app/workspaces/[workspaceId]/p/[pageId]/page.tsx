@@ -29,6 +29,7 @@ import {
   reconcileCommentAnchors,
   replyToCommentThread,
   setCommentResolved,
+  trashItem,
   updatePage,
   type FolderBreadcrumb,
   type WorkspaceStash,
@@ -348,6 +349,19 @@ export default function StashPageView() {
                     ),
                 },
                 { label: "PDF (print)", onSelect: () => window.print() },
+                {
+                  label: "Delete",
+                  destructive: true,
+                  onSelect: async () => {
+                    if (!window.confirm(`Move "${page.name}" to trash?`)) return;
+                    try {
+                      await trashItem(workspaceId, "page", pageId);
+                      router.push(`/workspaces/${workspaceId}`);
+                    } catch (e) {
+                      setError(e instanceof Error ? e.message : "Delete failed");
+                    }
+                  },
+                },
               ]
             : undefined
         }

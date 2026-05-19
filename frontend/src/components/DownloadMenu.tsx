@@ -3,9 +3,12 @@
 import { useEffect, useRef, useState } from "react";
 import { useEscapeKey } from "../hooks/useEscapeKey";
 
-interface DownloadOption {
+export interface DownloadOption {
   label: string;
   onSelect: () => void;
+  // Destructive options render below a divider in red so a misplaced
+  // click on "Delete" doesn't land inside the routine download formats.
+  destructive?: boolean;
 }
 
 export default function DownloadMenu({ options }: { options: DownloadOption[] }) {
@@ -25,6 +28,9 @@ export default function DownloadMenu({ options }: { options: DownloadOption[] })
     };
   }, [open]);
 
+  const safe = options.filter((o) => !o.destructive);
+  const destructive = options.filter((o) => o.destructive);
+
   return (
     <div ref={ref} className="relative inline-block">
       <button
@@ -35,8 +41,8 @@ export default function DownloadMenu({ options }: { options: DownloadOption[] })
         Download ▾
       </button>
       {open && (
-        <div className="absolute right-0 top-full z-30 mt-1 w-40 overflow-hidden rounded-md border border-border bg-surface py-1 text-[12.5px] shadow-lg">
-          {options.map((o) => (
+        <div className="absolute right-0 top-full z-30 mt-1 w-44 overflow-hidden rounded-md border border-border bg-surface py-1 text-[12.5px] shadow-lg">
+          {safe.map((o) => (
             <button
               key={o.label}
               onClick={() => {
@@ -44,6 +50,21 @@ export default function DownloadMenu({ options }: { options: DownloadOption[] })
                 o.onSelect();
               }}
               className="block w-full px-3 py-1.5 text-left text-foreground hover:bg-raised"
+            >
+              {o.label}
+            </button>
+          ))}
+          {destructive.length > 0 && safe.length > 0 && (
+            <div className="my-1 border-t border-border" />
+          )}
+          {destructive.map((o) => (
+            <button
+              key={o.label}
+              onClick={() => {
+                setOpen(false);
+                o.onSelect();
+              }}
+              className="block w-full px-3 py-1.5 text-left text-red-600 hover:bg-red-500/10"
             >
               {o.label}
             </button>

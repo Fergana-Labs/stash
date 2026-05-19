@@ -11,6 +11,7 @@ import {
   getFolderContents,
   getPublicStash,
   ingestCsvFile,
+  trashItem,
   updateFile,
   type FolderBreadcrumb,
 } from "../../../../../lib/api";
@@ -212,7 +213,26 @@ function FileViewerPageInner() {
         meta={meta}
         downloadOptions={
           file?.url
-            ? [{ label: `Download ${file.name}`, onSelect: () => triggerDownload(file.url, file.name) }]
+            ? [
+                { label: `Download ${file.name}`, onSelect: () => triggerDownload(file.url, file.name) },
+                ...(readOnly
+                  ? []
+                  : [
+                      {
+                        label: "Delete",
+                        destructive: true,
+                        onSelect: async () => {
+                          if (!window.confirm(`Move "${file.name}" to trash?`)) return;
+                          try {
+                            await trashItem(workspaceId, "file", fileId);
+                            router.push(`/workspaces/${workspaceId}`);
+                          } catch (e) {
+                            setError(e instanceof Error ? e.message : "Delete failed");
+                          }
+                        },
+                      },
+                    ]),
+              ]
             : undefined
         }
       />
