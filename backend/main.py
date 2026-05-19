@@ -30,6 +30,7 @@ from .routers import (
     workspace_knowledge,
     workspaces,
 )
+from .integrations.router import router as integrations_router
 from .services.row_validation import RowValidationError
 
 logger = logging.getLogger("stash")
@@ -94,6 +95,7 @@ app.include_router(admin.router)
 app.include_router(sessions.router)
 app.include_router(publish.router)
 app.include_router(tasks.router)
+app.include_router(integrations_router)
 
 if settings.AUTH0_ENABLED:
     from backend.managed.auth0 import router as auth0_router
