@@ -1,10 +1,9 @@
 """Files router: workspace file upload/serve/delete.
 
 Text extraction runs out-of-band: uploads insert the file row with
-`extraction_status='pending'` and the dispatcher in backend/workers spawns a
-short-lived child per file to run pypdf under RLIMIT, keeping extraction
-off the request path.
-"""
+`extraction_status='pending'` and dispatch `extract_file_text.delay(file_id)`
+to a Celery worker, which spawns a short-lived child to run pypdf under
+RLIMIT_AS — keeping extraction off the request path and OOMs isolated."""
 
 import csv
 import io
@@ -149,6 +148,8 @@ async def upload_ws_file(
         current_user["id"],
         folder_id,
     )
+    from ..tasks.extraction import extract_file_text
+    extract_file_text.delay(str(row["id"]))
     return await _file_to_response(dict(row))
 
 

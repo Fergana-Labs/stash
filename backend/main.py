@@ -1,4 +1,3 @@
-import asyncio
 import logging
 from contextlib import asynccontextmanager
 
@@ -25,45 +24,26 @@ from .routers import (
     stash_invites,
     stashes,
     tables,
+    tasks,
     transcripts,
     users,
     workspace_knowledge,
     workspaces,
 )
 from .services.row_validation import RowValidationError
-from .workers import dispatcher as extraction_dispatcher
-from .workers import (
-    embedding_reconciler,
-    session_summarizer,
-    viz_precompute,
-)
 
 logger = logging.getLogger("stash")
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Background workers (file extraction, embedding reconcile, viz
+    # precompute, session summarizer) now run in the Celery `worker` and
+    # `beat` services — see backend/celery_app.py.
     await init_db()
-    dispatcher_task = asyncio.create_task(extraction_dispatcher.run())
-    reconciler_task = asyncio.create_task(embedding_reconciler.run())
-    viz_task = asyncio.create_task(viz_precompute.run())
-    summarizer_task = asyncio.create_task(session_summarizer.run())
-    tasks = (
-        dispatcher_task,
-        reconciler_task,
-        viz_task,
-        summarizer_task,
-    )
     try:
         yield
     finally:
-        for task in tasks:
-            task.cancel()
-        for task in tasks:
-            try:
-                await task
-            except (asyncio.CancelledError, Exception):
-                pass
         await close_db()
 
 
@@ -113,6 +93,7 @@ app.include_router(skill.router)
 app.include_router(admin.router)
 app.include_router(sessions.router)
 app.include_router(publish.router)
+app.include_router(tasks.router)
 
 if settings.AUTH0_ENABLED:
     from backend.managed.auth0 import router as auth0_router

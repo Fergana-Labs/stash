@@ -1,26 +1,24 @@
-"""Background precompute for dashboard visualizations.
+"""Viz precompute task.
 
-The knowledge-density query stems the full accessible corpus — fast after
-the LATERAL rewrite, but still not something we want blocking a page load.
-This worker walks users active in the last 7 days and refreshes their
-density cache every ~6 hours so the endpoint stays a pure read.
+Replaces `workers/viz_precompute.py`. Beat-scheduled (every 300s in
+`celery_app.py`).
 
-One worker per uvicorn process. A pg advisory lock gates each user so two
-workers can't recompute the same user concurrently."""
+Walks users active in the last 7 days whose knowledge_density_cache is
+older than 6 hours and recomputes their clusters.
+"""
 
 from __future__ import annotations
 
-import asyncio
 import logging
 from datetime import UTC, datetime, timedelta
 
+from ..celery_app import celery
 from ..database import get_pool
 from ..services import analytics_service
+from ._celery_helpers import run_async
 
 logger = logging.getLogger(__name__)
 
-TICK_SECONDS = 600.0
-ERROR_SLEEP_SECONDS = 60.0
 ACTIVE_WINDOW = timedelta(days=7)
 REFRESH_AFTER = timedelta(hours=6)
 BATCH_SIZE = 20
@@ -44,7 +42,7 @@ async def _recompute_one(user_id) -> None:
     )
 
 
-async def _tick() -> int:
+async def _precompute() -> int:
     pool = get_pool()
     active_since = datetime.now(UTC) - ACTIVE_WINDOW
     refresh_cutoff = datetime.now(UTC) - REFRESH_AFTER
@@ -74,21 +72,11 @@ async def _tick() -> int:
             done += 1
         except Exception:
             logger.exception("viz precompute failed for user %s", r["id"])
+    if done:
+        logger.info("viz precompute: refreshed %d user(s)", done)
     return done
 
 
-async def run() -> None:
-    """Run until cancelled. Safe to start from FastAPI lifespan."""
-    logger.info("viz precompute worker started")
-    while True:
-        try:
-            count = await _tick()
-            if count:
-                logger.info("viz precompute: refreshed %d user(s)", count)
-        except asyncio.CancelledError:
-            raise
-        except Exception:
-            logger.exception("viz precompute tick failed")
-            await asyncio.sleep(ERROR_SLEEP_SECONDS)
-            continue
-        await asyncio.sleep(TICK_SECONDS)
+@celery.task(name="backend.tasks.viz.precompute")
+def precompute() -> int:
+    return run_async(_precompute())

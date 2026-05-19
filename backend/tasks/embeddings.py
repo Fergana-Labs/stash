@@ -1,29 +1,27 @@
-"""Background reconciler for stale embeddings.
+"""Embedding reconciliation task.
 
-Fire-and-forget embeds can fail (provider 5xx, crash, etc.). When they
-do, the service layer flips `embed_stale=true` on the row. This worker
-periodically picks up those rows, re-embeds in batches through the
-shared semaphore, and clears the flag.
+Replaces `workers/embedding_reconciler.py`. Beat-scheduled (every 60s
+in `celery_app.py`).
 
-One reconciler per uvicorn worker. Query uses the partial indexes
-created in migration 0016, so the scan is cheap even at scale.
+Periodic batch reconciliation of rows where `embed_stale = TRUE`:
+pages, table_rows, history_events. Same queries as the original
+worker — only the loop has moved from in-process asyncio to Celery Beat.
 """
 
 from __future__ import annotations
 
-import asyncio
 import hashlib
 import logging
 
+from ..celery_app import celery
 from ..database import get_pool
 from ..services import embeddings as embedding_service
 from ..services.table_service import _build_embedding_text
+from ._celery_helpers import run_async
 
 logger = logging.getLogger(__name__)
 
 BATCH_SIZE = 32
-TICK_SECONDS = 30.0
-ERROR_SLEEP_SECONDS = 30.0
 
 
 def _text_hash(text: str) -> str:
@@ -101,27 +99,17 @@ async def _reconcile_history_events() -> int:
     return len(ids)
 
 
-async def _tick() -> int:
+async def _reconcile() -> int:
     if not embedding_service.is_configured():
         return 0
     done = 0
-    for reconcile in (_reconcile_pages, _reconcile_table_rows, _reconcile_history_events):
-        done += await reconcile()
+    for fn in (_reconcile_pages, _reconcile_table_rows, _reconcile_history_events):
+        done += await fn()
+    if done:
+        logger.info("embedding reconciler: refreshed %d row(s)", done)
     return done
 
 
-async def run() -> None:
-    """Run until cancelled. Safe to start from FastAPI lifespan."""
-    logger.info("embedding reconciler started")
-    while True:
-        try:
-            count = await _tick()
-            if count:
-                logger.info("embedding reconciler: refreshed %d row(s)", count)
-        except asyncio.CancelledError:
-            raise
-        except Exception:
-            logger.exception("embedding reconciler tick failed")
-            await asyncio.sleep(ERROR_SLEEP_SECONDS)
-            continue
-        await asyncio.sleep(TICK_SECONDS)
+@celery.task(name="backend.tasks.embeddings.reconcile")
+def reconcile() -> int:
+    return run_async(_reconcile())

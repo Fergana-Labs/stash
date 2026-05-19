@@ -22,7 +22,12 @@ celery = Celery(
     "stash",
     broker=settings.REDIS_URL,
     backend=settings.REDIS_URL,
-    include=[],
+    include=[
+        "backend.tasks.extraction",
+        "backend.tasks.embeddings",
+        "backend.tasks.viz",
+        "backend.tasks.summarize",
+    ],
 )
 
 celery.conf.update(
@@ -38,5 +43,22 @@ celery.conf.update(
     result_expires=86400,
     timezone="UTC",
     enable_utc=True,
-    beat_schedule={},
+    beat_schedule={
+        "embedding-reconcile": {
+            "task": "backend.tasks.embeddings.reconcile",
+            "schedule": 60.0,
+        },
+        "viz-precompute": {
+            "task": "backend.tasks.viz.precompute",
+            "schedule": 300.0,
+        },
+        "extraction-enqueue-pending": {
+            "task": "backend.tasks.extraction.enqueue_pending",
+            "schedule": 60.0,
+        },
+        "summarize-enqueue-pending": {
+            "task": "backend.tasks.summarize.enqueue_pending",
+            "schedule": 10.0,
+        },
+    },
 )

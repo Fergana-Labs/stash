@@ -63,6 +63,24 @@ async def init_db() -> None:
     )
 
 
+async def init_pool() -> None:
+    """Open the asyncpg pool without running migrations.
+
+    Used by Celery workers — the FastAPI backend process is the only one
+    that runs Alembic. Workers should wait for the backend's migrations,
+    but the pool itself can be opened independently.
+    """
+    global pool
+    if pool is not None:
+        return
+    pool = await asyncpg.create_pool(
+        settings.DATABASE_URL,
+        min_size=settings.DB_POOL_MIN,
+        max_size=settings.DB_POOL_MAX,
+        init=_init_connection,
+    )
+
+
 async def close_db() -> None:
     global pool
     if pool:
