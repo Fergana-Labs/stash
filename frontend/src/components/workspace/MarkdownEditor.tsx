@@ -28,7 +28,6 @@ interface MarkdownEditorProps {
   onSave: (content: string) => void;
   confirmSave?: () => boolean;
   onSaveStatusChange?: (status: SaveStatus) => void;
-  onRename?: (name: string) => void;
   /** Called on clicks to same-origin stash routes so the page
    *  can SPA-select the target instead of reloading. */
   onNavigateInternal?: (href: string) => void;
@@ -40,7 +39,6 @@ export default function MarkdownEditor({
   onSave,
   confirmSave,
   onSaveStatusChange,
-  onRename,
   onNavigateInternal,
 }: MarkdownEditorProps) {
   const [dirty, setDirty] = useState(false);
@@ -239,44 +237,11 @@ export default function MarkdownEditor({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [confirmSave, editor, onSave]);
 
-  const [title, setTitle] = useState(file.name);
-  const titleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const handleTitleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const newTitle = e.target.value;
-    setTitle(newTitle);
-    if (!onRename || !newTitle.trim()) return;
-    if (titleTimer.current) clearTimeout(titleTimer.current);
-    titleTimer.current = setTimeout(() => onRename(newTitle.trim()), AUTOSAVE_DEBOUNCE_MS);
-  };
-
-  const updatedLabel = file.updated_at
-    ? `Updated ${new Date(file.updated_at).toLocaleDateString(undefined, {
-        month: "short",
-        day: "numeric",
-        year: "numeric",
-      })}`
-    : "";
-
   return (
     <div className="flex h-full flex-col">
       <EditorToolbar editor={editor} workspaceId={workspaceId} />
       <div className="flex-1 overflow-y-auto bg-background">
         <div className="mx-auto w-full max-w-[820px] px-12 py-10">
-          <header className="mb-8">
-            {updatedLabel && (
-              <p className="mb-2 font-mono text-[11px] font-medium uppercase tracking-[0.12em] text-muted">
-                {updatedLabel}
-              </p>
-            )}
-            <input
-              type="text"
-              value={title}
-              onChange={handleTitleChange}
-              placeholder="Untitled"
-              className="w-full border-none bg-transparent font-display text-[40px] font-bold leading-[1.05] tracking-[-0.02em] text-foreground outline-none placeholder:text-muted/40"
-            />
-          </header>
           <EditorContent editor={editor} className="file-page-content" />
         </div>
       </div>
