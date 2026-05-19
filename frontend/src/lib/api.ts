@@ -1,4 +1,5 @@
 import {
+  CommentThread,
   FileInfo,
   Folder,
   Page,
@@ -356,6 +357,63 @@ export async function updatePage(
 
 export async function deletePage(workspaceId: string, pageId: string): Promise<void> {
   await apiFetch(`/api/v1/workspaces/${workspaceId}/pages/${pageId}`, { method: "DELETE" });
+}
+
+// --- Page comments ---
+
+export async function listCommentThreads(
+  workspaceId: string,
+  pageId: string,
+): Promise<{ threads: CommentThread[] }> {
+  return apiFetch(
+    `/api/v1/workspaces/${workspaceId}/pages/${pageId}/comments/threads`,
+  );
+}
+
+export async function createCommentThread(
+  workspaceId: string,
+  pageId: string,
+  data: { quoted_text: string; prefix: string; suffix: string; body: string },
+): Promise<CommentThread> {
+  return apiFetch(
+    `/api/v1/workspaces/${workspaceId}/pages/${pageId}/comments/threads`,
+    { method: "POST", body: JSON.stringify(data) },
+  );
+}
+
+export async function replyToCommentThread(
+  workspaceId: string,
+  pageId: string,
+  threadId: string,
+  body: string,
+): Promise<CommentThread> {
+  return apiFetch(
+    `/api/v1/workspaces/${workspaceId}/pages/${pageId}/comments/threads/${threadId}/messages`,
+    { method: "POST", body: JSON.stringify({ body }) },
+  );
+}
+
+export async function setCommentResolved(
+  workspaceId: string,
+  pageId: string,
+  threadId: string,
+  resolved: boolean,
+): Promise<CommentThread> {
+  return apiFetch(
+    `/api/v1/workspaces/${workspaceId}/pages/${pageId}/comments/threads/${threadId}`,
+    { method: "PATCH", body: JSON.stringify({ resolved }) },
+  );
+}
+
+export async function reconcileCommentAnchors(
+  workspaceId: string,
+  pageId: string,
+  presentIds: string[],
+): Promise<void> {
+  await apiFetch(
+    `/api/v1/workspaces/${workspaceId}/pages/${pageId}/comments/reconcile`,
+    { method: "POST", body: JSON.stringify({ present_ids: presentIds }) },
+  );
 }
 
 // --- Aggregate (cross-workspace) ---

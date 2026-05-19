@@ -15,12 +15,22 @@ import Image from "@tiptap/extension-image";
 import Placeholder from "@tiptap/extension-placeholder";
 import { Table, TableCell, TableHeader, TableRow } from "@tiptap/extension-table";
 import EditorToolbar from "./EditorToolbar";
+import CommentMark from "./CommentMark";
+import CommentComposerPopover from "./CommentComposerPopover";
 import { Page, FileInfo } from "../../lib/types";
 import { listFiles } from "../../lib/api";
 
 const AUTOSAVE_DEBOUNCE_MS = 1500;
+const ANCHOR_CONTEXT_CHARS = 32;
 
 export type SaveStatus = "saved" | "dirty" | "saving";
+
+export type AddCommentArgs = {
+  quoted_text: string;
+  prefix: string;
+  suffix: string;
+  body: string;
+};
 
 interface MarkdownEditorProps {
   workspaceId: string | null;
@@ -31,6 +41,15 @@ interface MarkdownEditorProps {
   /** Called on clicks to same-origin stash routes so the page
    *  can SPA-select the target instead of reloading. */
   onNavigateInternal?: (href: string) => void;
+  /** Adds a comment thread anchored to the current selection. Resolves
+   *  with the new thread id so we can paint the `comment` mark onto the
+   *  range. If the host doesn't pass this prop the "Comment" button is
+   *  hidden (e.g. read-only / public view). */
+  onAddComment?: (args: AddCommentArgs) => Promise<string | null>;
+  /** Click on an anchored span surfaces the thread in the sidebar. */
+  onActivateThread?: (threadId: string) => void;
+  /** Highlight the currently selected thread's anchor more strongly. */
+  activeThreadId?: string | null;
 }
 
 export default function MarkdownEditor({
@@ -40,11 +59,31 @@ export default function MarkdownEditor({
   confirmSave,
   onSaveStatusChange,
   onNavigateInternal,
+  onAddComment,
+  onActivateThread,
+  activeThreadId,
 }: MarkdownEditorProps) {
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastSaved = useRef<string>(file.content_markdown);
+  const scrollContainerRef = useRef<HTMLDivElement | null>(null);
+  const [commentPopover, setCommentPopover] = useState<{
+    top: number;
+    left: number;
+  } | null>(null);
+  // Holds the selection range alive while the composer is open — the
+  // <textarea> taking focus changes the editor's selection, so we capture
+  // the range up front and re-apply when we set the mark.
+  const [composerState, setComposerState] = useState<{
+    top: number;
+    left: number;
+    from: number;
+    to: number;
+    quoted_text: string;
+    prefix: string;
+    suffix: string;
+  } | null>(null);
 
   // Resolved markdown — relative image refs like ![](a69cb715b010.jpg) get
   // rewritten to absolute signed URLs if a matching workspace file exists.
@@ -126,6 +165,7 @@ export default function MarkdownEditor({
       TableHeader,
       TableCell,
       Placeholder.configure({ placeholder: "Start typing..." }),
+      CommentMark,
     ],
     editorProps: {
       attributes: {
@@ -134,6 +174,19 @@ export default function MarkdownEditor({
       handleDOMEvents: {
         click: (_view, event) => {
           const target = event.target as HTMLElement | null;
+
+          const commentEl = target?.closest?.("[data-comment-id]") as
+            | HTMLElement
+            | null;
+          if (commentEl && onActivateThread) {
+            const threadId = commentEl.getAttribute("data-comment-id");
+            if (threadId) {
+              event.preventDefault();
+              onActivateThread(threadId);
+              return true;
+            }
+          }
+
           const anchor = target?.closest?.("a");
           if (!anchor) return false;
           const href = anchor.getAttribute("href");
@@ -216,6 +269,101 @@ export default function MarkdownEditor({
     };
   }, [confirmSave, editor, onSave]);
 
+  // Selection-anchored "Comment" popover. Mounted at the selection's
+  // bottom-right, anchored to the scrolling container.
+  useEffect(() => {
+    if (!editor || !onAddComment) {
+      setCommentPopover(null);
+      return;
+    }
+    const update = () => {
+      // Don't move the button while the composer is open — that would
+      // make it look like a fresh selection cancelled the open thread.
+      if (composerState) return;
+      const { from, to, empty } = editor.state.selection;
+      if (empty || from === to) {
+        setCommentPopover(null);
+        return;
+      }
+      const container = scrollContainerRef.current;
+      if (!container) return;
+      const coords = editor.view.coordsAtPos(to);
+      const rect = container.getBoundingClientRect();
+      setCommentPopover({
+        top: coords.bottom - rect.top + container.scrollTop + 6,
+        left: Math.min(
+          coords.left - rect.left + container.scrollLeft,
+          rect.width - 140,
+        ),
+      });
+    };
+    editor.on("selectionUpdate", update);
+    editor.on("focus", update);
+    return () => {
+      editor.off("selectionUpdate", update);
+      editor.off("focus", update);
+    };
+  }, [editor, onAddComment, composerState]);
+
+  // Paint the active thread's anchor strongly. Toggles an `is-active`
+  // class on the matching span(s) via direct DOM ops — the editor's
+  // schema doesn't need to track presentation state.
+  useEffect(() => {
+    const container = scrollContainerRef.current;
+    if (!container) return;
+    const all = container.querySelectorAll<HTMLElement>("[data-comment-id]");
+    all.forEach((el) => {
+      el.classList.toggle(
+        "is-active",
+        !!activeThreadId && el.getAttribute("data-comment-id") === activeThreadId,
+      );
+    });
+  }, [activeThreadId, resolvedMarkdown]);
+
+  function openComposer() {
+    if (!editor || !commentPopover) return;
+    const { from, to, empty } = editor.state.selection;
+    if (empty) return;
+    const doc = editor.state.doc;
+    const quoted = doc.textBetween(from, to, "\n", "\n");
+    const prefixStart = Math.max(0, from - ANCHOR_CONTEXT_CHARS);
+    const suffixEnd = Math.min(doc.content.size, to + ANCHOR_CONTEXT_CHARS);
+    const prefix = doc.textBetween(prefixStart, from, "\n", "\n");
+    const suffix = doc.textBetween(to, suffixEnd, "\n", "\n");
+    setComposerState({
+      top: commentPopover.top,
+      left: commentPopover.left,
+      from,
+      to,
+      quoted_text: quoted,
+      prefix,
+      suffix,
+    });
+    setCommentPopover(null);
+  }
+
+  async function submitComposer(body: string) {
+    if (!editor || !onAddComment || !composerState) return;
+    const threadId = await onAddComment({
+      quoted_text: composerState.quoted_text,
+      prefix: composerState.prefix,
+      suffix: composerState.suffix,
+      body,
+    });
+    if (!threadId) {
+      setComposerState(null);
+      return;
+    }
+    editor
+      .chain()
+      .focus()
+      .setTextSelection({ from: composerState.from, to: composerState.to })
+      .setMark("comment", { id: threadId })
+      .setTextSelection(composerState.to)
+      .run();
+    setComposerState(null);
+  }
+
   // Ctrl/Cmd+S → flush immediately
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -240,10 +388,35 @@ export default function MarkdownEditor({
   return (
     <div className="flex h-full flex-col">
       <EditorToolbar editor={editor} workspaceId={workspaceId} />
-      <div className="flex-1 overflow-y-auto bg-background">
+      <div
+        ref={scrollContainerRef}
+        className="relative flex-1 overflow-y-auto bg-background"
+      >
         <div className="mx-auto w-full max-w-[820px] px-12 py-10">
           <EditorContent editor={editor} className="file-page-content" />
         </div>
+        {commentPopover && onAddComment && !composerState && (
+          <button
+            type="button"
+            onMouseDown={(e) => {
+              // Keep the editor selection alive across the click.
+              e.preventDefault();
+            }}
+            onClick={openComposer}
+            className="absolute z-30 rounded-md border border-border-subtle bg-raised px-3 py-1.5 text-sm font-medium text-foreground shadow-md hover:bg-raised-2"
+            style={{ top: commentPopover.top, left: commentPopover.left }}
+          >
+            Comment
+          </button>
+        )}
+        {composerState && onAddComment && (
+          <CommentComposerPopover
+            top={composerState.top}
+            left={composerState.left}
+            onCancel={() => setComposerState(null)}
+            onSubmit={submitComposer}
+          />
+        )}
       </div>
     </div>
   );
@@ -263,7 +436,42 @@ function isAbsoluteUrl(url: string): boolean {
   return /^https?:\/\//i.test(url);
 }
 
+const COMMENT_SPAN_RE = /<span\s+data-comment-id="([^"]+)">([\s\S]*?)<\/span>/g;
+
 function parseInlineMarkdown(text: string): JSONNode[] {
+  // Pre-pass: extract `<span data-comment-id="…">…</span>` wrappers (the
+  // round-trip form of the `comment` mark) BEFORE the inline regex runs,
+  // recurse on their inner content, then tag the resulting text nodes
+  // with the `comment` mark. The inner content keeps its bold/italic/
+  // link/etc. marks because parseInlineMarkdownInner handles them.
+  const out: JSONNode[] = [];
+  let lastIndex = 0;
+  let m: RegExpExecArray | null;
+  COMMENT_SPAN_RE.lastIndex = 0;
+  while ((m = COMMENT_SPAN_RE.exec(text)) !== null) {
+    if (m.index > lastIndex) {
+      out.push(...parseInlineMarkdownInner(text.slice(lastIndex, m.index)));
+    }
+    const id = m[1];
+    const innerNodes = parseInlineMarkdownInner(m[2]);
+    for (const node of innerNodes) {
+      if (node.type === "text") {
+        node.marks = [
+          ...(node.marks || []),
+          { type: "comment", attrs: { id } },
+        ];
+      }
+    }
+    out.push(...innerNodes);
+    lastIndex = m.index + m[0].length;
+  }
+  if (lastIndex < text.length) {
+    out.push(...parseInlineMarkdownInner(text.slice(lastIndex)));
+  }
+  return out.length > 0 ? out : [{ type: "text", text }];
+}
+
+function parseInlineMarkdownInner(text: string): JSONNode[] {
   // Inline grammar, ordered by priority:
   //   [[bracketed text]]       — plain text
   //   [![alt](src)](href)      — image inside a link (matched before plain image
@@ -338,7 +546,7 @@ function parseInlineMarkdown(text: string): JSONNode[] {
   return nodes.length > 0 ? nodes : [{ type: "text", text }];
 }
 
-function markdownToInitialJSON(markdown: string): JSONNode {
+export function markdownToInitialJSON(markdown: string): JSONNode {
   if (!markdown || !markdown.trim()) {
     return { type: "doc", content: [{ type: "paragraph" }] };
   }
@@ -502,7 +710,7 @@ function rewriteRelativeImages(markdown: string, urls: Map<string, string>): str
   });
 }
 
-function serializeMarkdown(doc: JSONNode | null | undefined, fallback: string): string {
+export function serializeMarkdown(doc: JSONNode | null | undefined, fallback: string): string {
   if (!doc || !doc.content) return fallback;
   return doc.content.map((node) => renderNode(node, 0)).join("").trim() || fallback;
 }
@@ -576,7 +784,12 @@ function renderListItem(node: JSONNode, depth: number, index: number | null): st
 }
 
 function applyMarks(text: string, marks: Array<{ type: string; attrs?: Record<string, string> }>): string {
-  return marks.reduce((value, mark) => {
+  // The `comment` mark must be the outermost wrapper so the round-trip
+  // produces `<span data-comment-id>**bold**</span>`, not
+  // `**<span>bold</span>**` (which would break our parser).
+  const commentMark = marks.find((m) => m.type === "comment");
+  const others = marks.filter((m) => m.type !== "comment");
+  const inner = others.reduce((value, mark) => {
     switch (mark.type) {
       case "bold":
         return `**${value}**`;
@@ -596,4 +809,17 @@ function applyMarks(text: string, marks: Array<{ type: string; attrs?: Record<st
         return value;
     }
   }, text);
+  const id = commentMark?.attrs?.id;
+  if (id) return `<span data-comment-id="${id}">${inner}</span>`;
+  return inner;
+}
+
+// Extract every `data-comment-id` value present in the saved content.
+// Used by the page route to reconcile orphans after each save.
+export function extractCommentIdsFromMarkdown(markdown: string): string[] {
+  const ids: string[] = [];
+  const re = /<span\s+data-comment-id="([^"]+)"/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(markdown)) !== null) ids.push(m[1]);
+  return Array.from(new Set(ids));
 }

@@ -2,23 +2,36 @@
 
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useBreadcrumbs } from "../../../../../components/BreadcrumbContext";
 import { downloadBlob } from "../../../../../components/DownloadMenu";
 import { StashIcon } from "../../../../../components/StashIcons";
-import HtmlPageView from "../../../../../components/workspace/HtmlPageView";
+import HtmlPageView, {
+  extractCommentIdsFromHtml,
+  type HtmlSelectionInfo,
+} from "../../../../../components/workspace/HtmlPageView";
 import FileViewerHeader from "../../../../../components/workspace/FileViewerHeader";
-import MarkdownEditor, { type SaveStatus } from "../../../../../components/workspace/MarkdownEditor";
+import MarkdownEditor, {
+  extractCommentIdsFromMarkdown,
+  type SaveStatus,
+} from "../../../../../components/workspace/MarkdownEditor";
+import CommentsSidebar from "../../../../../components/workspace/CommentsSidebar";
+import CommentComposerPopover from "../../../../../components/workspace/CommentComposerPopover";
 import { useAuth } from "../../../../../hooks/useAuth";
 import {
+  createCommentThread,
   getFolderContents,
   getPage,
+  listCommentThreads,
   listObjectStashes,
+  reconcileCommentAnchors,
+  replyToCommentThread,
+  setCommentResolved,
   updatePage,
   type FolderBreadcrumb,
   type WorkspaceStash,
 } from "../../../../../lib/api";
-import type { Page } from "../../../../../lib/types";
+import type { CommentThread, Page } from "../../../../../lib/types";
 
 function wrapHtml(title: string, body: string): string {
   return `<!doctype html><html><head><meta charset="utf-8"><title>${escapeHtml(
@@ -45,6 +58,24 @@ export default function StashPageView() {
   const [saveStatus, setSaveStatus] = useState<SaveStatus>("saved");
   const [error, setError] = useState("");
 
+  const [threads, setThreads] = useState<CommentThread[]>([]);
+  const [activeThreadId, setActiveThreadId] = useState<string | null>(null);
+  const [showComments, setShowComments] = useState(false);
+  const [htmlSelection, setHtmlSelection] = useState<HtmlSelectionInfo | null>(
+    null
+  );
+  const htmlSelectionRef = useRef<HtmlSelectionInfo | null>(null);
+  const [pendingWrapId, setPendingWrapId] = useState<string | null>(null);
+  const [htmlComposer, setHtmlComposer] = useState<{
+    top: number;
+    left: number;
+    selection: HtmlSelectionInfo;
+  } | null>(null);
+  const iframeBoxRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    htmlSelectionRef.current = htmlSelection;
+  }, [htmlSelection]);
+
   useBreadcrumbs(
     [
       ...folderChain.map((c) => ({
@@ -55,6 +86,15 @@ export default function StashPageView() {
     ],
     `${workspaceId}/page/${pageId}/${page?.name ?? ""}/${folderChain.map((c) => c.id).join(",")}`
   );
+
+  const refreshThreads = useCallback(async () => {
+    try {
+      const res = await listCommentThreads(workspaceId, pageId);
+      setThreads(res.threads);
+    } catch {
+      // Comments are non-critical — never block page rendering.
+    }
+  }, [workspaceId, pageId]);
 
   const load = useCallback(async () => {
     try {
@@ -67,19 +107,121 @@ export default function StashPageView() {
       } else {
         setFolderChain([]);
       }
+      await refreshThreads();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load page");
     }
-  }, [workspaceId, pageId]);
+  }, [workspaceId, pageId, refreshThreads]);
+
+  const reconcileAfterSave = useCallback(
+    (savedContent: string, contentType: "markdown" | "html") => {
+      const ids =
+        contentType === "html"
+          ? extractCommentIdsFromHtml(savedContent)
+          : extractCommentIdsFromMarkdown(savedContent);
+      reconcileCommentAnchors(workspaceId, pageId, ids)
+        .then(refreshThreads)
+        .catch(() => {});
+    },
+    [workspaceId, pageId, refreshThreads]
+  );
 
   const handleSave = useCallback(
     async (content: string) => {
       try {
         const updated = await updatePage(workspaceId, pageId, { content });
         setPage(updated);
+        reconcileAfterSave(content, "markdown");
       } catch (e) {
         setError(e instanceof Error ? e.message : "Save failed");
       }
+    },
+    [workspaceId, pageId, reconcileAfterSave]
+  );
+
+  const handleHtmlMutated = useCallback(
+    async (nextHtml: string) => {
+      try {
+        const updated = await updatePage(workspaceId, pageId, {
+          content_html: nextHtml,
+        });
+        setPage(updated);
+        reconcileAfterSave(nextHtml, "html");
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Save failed");
+      }
+    },
+    [workspaceId, pageId, reconcileAfterSave]
+  );
+
+  const handleAddCommentMarkdown = useCallback(
+    async (args: {
+      quoted_text: string;
+      prefix: string;
+      suffix: string;
+      body: string;
+    }) => {
+      try {
+        const created = await createCommentThread(workspaceId, pageId, args);
+        setShowComments(true);
+        setActiveThreadId(created.id);
+        setThreads((cur) => [...cur, created]);
+        return created.id;
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Failed to add comment");
+        return null;
+      }
+    },
+    [workspaceId, pageId]
+  );
+
+  const submitHtmlComment = useCallback(
+    async (body: string) => {
+      if (!htmlComposer) return;
+      try {
+        const created = await createCommentThread(workspaceId, pageId, {
+          quoted_text: htmlComposer.selection.quoted_text,
+          prefix: htmlComposer.selection.prefix,
+          suffix: htmlComposer.selection.suffix,
+          body,
+        });
+        setShowComments(true);
+        setActiveThreadId(created.id);
+        setThreads((cur) => [...cur, created]);
+        // Ask the iframe to wrap the (still-live) selection. The iframe
+        // posts back `stash:html-mutated`, which triggers handleHtmlMutated.
+        setPendingWrapId(created.id);
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Failed to add comment");
+      } finally {
+        setHtmlComposer(null);
+      }
+    },
+    [htmlComposer, workspaceId, pageId]
+  );
+
+  const handleReply = useCallback(
+    async (threadId: string, body: string) => {
+      const updated = await replyToCommentThread(
+        workspaceId,
+        pageId,
+        threadId,
+        body
+      );
+      setThreads((cur) => cur.map((t) => (t.id === threadId ? updated : t)));
+    },
+    [workspaceId, pageId]
+  );
+
+  const handleSetResolved = useCallback(
+    async (threadId: string, resolved: boolean) => {
+      const updated = await setCommentResolved(
+        workspaceId,
+        pageId,
+        threadId,
+        resolved
+      );
+      setThreads((cur) => cur.map((t) => (t.id === threadId ? updated : t)));
     },
     [workspaceId, pageId]
   );
@@ -107,6 +249,9 @@ export default function StashPageView() {
     : null;
 
   const baseName = page ? page.name.replace(/\.md$/i, "") : "";
+  const openThreadCount = threads.filter(
+    (t) => !t.resolved_at && !t.orphaned
+  ).length;
 
   return (
     <div className="scroll-thin flex-1 overflow-y-auto">
@@ -130,6 +275,26 @@ export default function StashPageView() {
         tags={isHtml ? [{ label: "html", tone: "brand" }] : undefined}
         meta={updatedAt ? [`Last edited ${updatedAt}`] : undefined}
         saveStatus={page && !isHtml ? saveStatus : null}
+        rightExtras={
+          page ? (
+            <button
+              type="button"
+              onClick={() => setShowComments((v) => !v)}
+              className={`rounded-md border px-2.5 py-1 text-[12px] font-medium ${
+                showComments
+                  ? "border-[var(--color-brand-600)] bg-[var(--color-brand-50)] text-[var(--color-brand-700)]"
+                  : "border-border-subtle bg-background text-foreground hover:bg-raised"
+              }`}
+            >
+              Comments
+              {openThreadCount > 0 && (
+                <span className="ml-1 rounded-sm bg-[var(--color-brand-600)] px-1 text-[11px] text-white">
+                  {openThreadCount}
+                </span>
+              )}
+            </button>
+          ) : undefined
+        }
         downloadOptions={
           page
             ? [
@@ -167,11 +332,50 @@ export default function StashPageView() {
           <article className="text-[15px] leading-relaxed text-foreground">
             {page ? (
               isHtml ? (
-                <HtmlPageView
-                  html={page.content_html || ""}
-                  title={page.name}
-                  layout={page.html_layout}
-                />
+                <div ref={iframeBoxRef} className="relative">
+                  <HtmlPageView
+                    html={page.content_html || ""}
+                    title={page.name}
+                    layout={page.html_layout}
+                    onSelection={setHtmlSelection}
+                    onActivateThread={(id) => {
+                      setShowComments(true);
+                      setActiveThreadId(id);
+                    }}
+                    activeThreadId={activeThreadId}
+                    pendingWrapId={pendingWrapId}
+                    onWrapComplete={() => setPendingWrapId(null)}
+                    onHtmlMutated={handleHtmlMutated}
+                  />
+                  {htmlSelection && !htmlComposer && (
+                    <button
+                      type="button"
+                      onMouseDown={(e) => e.preventDefault()}
+                      onClick={() =>
+                        setHtmlComposer({
+                          top: htmlSelection.endY + 6,
+                          left: Math.max(0, htmlSelection.endX - 40),
+                          selection: htmlSelection,
+                        })
+                      }
+                      className="absolute z-30 rounded-md border border-border-subtle bg-raised px-3 py-1.5 text-sm font-medium text-foreground shadow-md hover:bg-raised-2"
+                      style={{
+                        top: htmlSelection.endY + 6,
+                        left: Math.max(0, htmlSelection.endX - 40),
+                      }}
+                    >
+                      Comment
+                    </button>
+                  )}
+                  {htmlComposer && (
+                    <CommentComposerPopover
+                      top={htmlComposer.top}
+                      left={htmlComposer.left}
+                      onCancel={() => setHtmlComposer(null)}
+                      onSubmit={submitHtmlComment}
+                    />
+                  )}
+                </div>
               ) : (
                 <MarkdownEditor
                   workspaceId={workspaceId}
@@ -179,6 +383,12 @@ export default function StashPageView() {
                   onSave={handleSave}
                   onSaveStatusChange={setSaveStatus}
                   onNavigateInternal={(href) => router.push(href)}
+                  onAddComment={handleAddCommentMarkdown}
+                  onActivateThread={(id) => {
+                    setShowComments(true);
+                    setActiveThreadId(id);
+                  }}
+                  activeThreadId={activeThreadId}
                 />
               )
             ) : (
@@ -197,7 +407,18 @@ export default function StashPageView() {
           )}
         </main>
 
-        <StashAside stashes={containingStashes} />
+        {showComments ? (
+          <CommentsSidebar
+            threads={threads}
+            activeThreadId={activeThreadId}
+            currentUserId={user.id}
+            onActivate={setActiveThreadId}
+            onReply={handleReply}
+            onSetResolved={handleSetResolved}
+          />
+        ) : (
+          <StashAside stashes={containingStashes} />
+        )}
       </div>
     </div>
   );
