@@ -8,7 +8,7 @@
 
 import { apiFetch } from "./api";
 
-export type IntegrationProvider = "google" | "github";
+export type IntegrationProvider = "google" | "github" | "notion";
 
 export type IntegrationStatus = {
   provider: string;
@@ -116,6 +116,25 @@ export async function importGoogleDrive(
 ): Promise<GoogleDriveImportResponse> {
   return apiFetch<GoogleDriveImportResponse>(
     `/api/v1/workspaces/${workspaceId}/imports/google-drive`,
+    { method: "POST", body: JSON.stringify(body) },
+  );
+}
+
+// --- Notion import ---
+
+export type NotionImportRequest = {
+  page_ids: string[];
+  folder_id?: string;
+};
+
+export type NotionImportResponse = { task_ids: string[] };
+
+export async function importNotion(
+  workspaceId: string,
+  body: NotionImportRequest,
+): Promise<NotionImportResponse> {
+  return apiFetch<NotionImportResponse>(
+    `/api/v1/workspaces/${workspaceId}/imports/notion`,
     { method: "POST", body: JSON.stringify(body) },
   );
 }

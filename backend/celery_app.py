@@ -30,6 +30,7 @@ celery = Celery(
         "backend.integrations.github.importers.repo",
         "backend.integrations.google.importers.drive_file",
         "backend.integrations.google.exporters.slides",
+        "backend.integrations.notion.importers.page",
         "backend.exports.pdf",
         "backend.exports.pptx",
     ],

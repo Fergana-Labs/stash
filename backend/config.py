@@ -81,6 +81,15 @@ class Settings:
     GITHUB_OAUTH_CLIENT_SECRET: str | None = os.getenv("GITHUB_OAUTH_CLIENT_SECRET")
     GITHUB_OAUTH_REDIRECT_URI: str | None = os.getenv("GITHUB_OAUTH_REDIRECT_URI")
 
+    NOTION_OAUTH_CLIENT_ID: str | None = os.getenv("NOTION_OAUTH_CLIENT_ID")
+    NOTION_OAUTH_CLIENT_SECRET: str | None = os.getenv("NOTION_OAUTH_CLIENT_SECRET")
+    NOTION_OAUTH_REDIRECT_URI: str | None = os.getenv("NOTION_OAUTH_REDIRECT_URI")
+
+    # Browser API key for the Google Picker JS SDK (different from the
+    # OAuth client). Optional — Drive imports without the picker still
+    # work via direct file_ids.
+    GOOGLE_PICKER_API_KEY: str | None = os.getenv("GOOGLE_PICKER_API_KEY")
+
     # --- LLM (Anthropic) ---
     # Two tiers used across ask-the-stash and the server-side session summarizer.
     #   ANTHROPIC_MODEL      — quality tier (Sonnet): ask
