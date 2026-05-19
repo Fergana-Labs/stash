@@ -36,9 +36,15 @@ export default function DownloadMenu({ options }: { options: DownloadOption[] })
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
-        className="rounded-md border border-border bg-base px-2.5 py-1 text-[12px] text-muted hover:bg-raised hover:text-foreground"
+        className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-border bg-base text-muted hover:bg-raised hover:text-foreground"
+        aria-label="More actions"
+        title="More actions"
       >
-        Download ▾
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+          <circle cx="5" cy="12" r="1.7" />
+          <circle cx="12" cy="12" r="1.7" />
+          <circle cx="19" cy="12" r="1.7" />
+        </svg>
       </button>
       {open && (
         <div className="absolute right-0 top-full z-30 mt-1 w-44 overflow-hidden rounded-md border border-border bg-surface py-1 text-[12.5px] shadow-lg">

@@ -331,7 +331,7 @@ export default function StashPageView() {
           page
             ? [
                 {
-                  label: "Markdown (.md)",
+                  label: "Download as Markdown",
                   onSelect: () =>
                     downloadBlob(
                       page.content_markdown ?? "",
@@ -340,7 +340,7 @@ export default function StashPageView() {
                     ),
                 },
                 {
-                  label: "HTML (.html)",
+                  label: "Download as HTML",
                   onSelect: () =>
                     downloadBlob(
                       wrapHtml(page.name, page.content_html ?? ""),
@@ -348,7 +348,7 @@ export default function StashPageView() {
                       `${baseName}.html`
                     ),
                 },
-                { label: "PDF (print)", onSelect: () => window.print() },
+                { label: "Print as PDF", onSelect: () => window.print() },
                 {
                   label: "Delete",
                   destructive: true,

@@ -14,6 +14,9 @@ export interface GridItem {
   sizeBytes?: number;
   contentType?: string;
   linkedTableId?: string;
+  /** ISO timestamp. Renders as "Modified" in the Drive-style List view.
+   *  Not all rows have one — FolderContents.pages currently omits it. */
+  updatedAt?: string;
 }
 
 interface Props {

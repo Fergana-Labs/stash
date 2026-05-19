@@ -173,7 +173,7 @@ export default function SessionViewerPage() {
               <DownloadMenu
                 options={[
                   {
-                    label: "JSONL transcript",
+                    label: "Download transcript (.jsonl)",
                     onSelect: async () => {
                       const path = `/api/v1/workspaces/${workspaceId}/transcripts/${encodeURIComponent(
                         sessionId

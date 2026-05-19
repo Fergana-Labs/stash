@@ -214,7 +214,7 @@ function FileViewerPageInner() {
         downloadOptions={
           file?.url
             ? [
-                { label: `Download ${file.name}`, onSelect: () => triggerDownload(file.url, file.name) },
+                { label: "Download", onSelect: () => triggerDownload(file.url, file.name) },
                 ...(readOnly
                   ? []
                   : [

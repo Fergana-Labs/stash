@@ -129,6 +129,30 @@ export default function WorkspaceFileBrowser({ workspaceId, folderId }: Props) {
     loadContents();
   }, [loadContents]);
 
+  // Always-root projection of folders + pages + rootFiles. The Column view
+  // manages its own drill state, so it needs root regardless of the current
+  // folderId.
+  const rootItems: GridItem[] = useMemo(() => {
+    if (!tree) return [];
+    return [
+      ...tree.folders.map((sub) => ({
+        kind: "folder" as const,
+        id: sub.id,
+        name: sub.name,
+        subtitle: subtitleForFolder(sub.pages?.length ?? 0, 0),
+        updatedAt: sub.updated_at,
+      })),
+      ...tree.pages.map((p: PageSummary) => ({
+        kind: "page" as const,
+        id: p.id,
+        name: p.name.replace(/\.md$/, ""),
+        subtitle: p.name.toLowerCase().endsWith(".html") ? "html page" : "page",
+        updatedAt: p.updated_at,
+      })),
+      ...rootFiles,
+    ];
+  }, [tree, rootFiles]);
+
   const items: GridItem[] = useMemo(() => {
     if (folderId) {
       if (!contents) return [];
@@ -152,6 +176,7 @@ export default function WorkspaceFileBrowser({ workspaceId, folderId }: Props) {
             content_type: f.content_type,
             size_bytes: f.size_bytes,
             linked_table_id: f.linked_table_id ?? null,
+            created_at: f.created_at,
           })
         ),
       ];
@@ -167,12 +192,14 @@ export default function WorkspaceFileBrowser({ workspaceId, folderId }: Props) {
           // file count isn't returned in the tree; approximate as 0
           0
         ),
+        updatedAt: sub.updated_at,
       })),
       ...tree.pages.map((p: PageSummary) => ({
         kind: "page" as const,
         id: p.id,
         name: p.name.replace(/\.md$/, ""),
         subtitle: p.name.toLowerCase().endsWith(".html") ? "html page" : "page",
+        updatedAt: p.updated_at,
       })),
       ...rootFiles,
     ];
@@ -396,9 +423,7 @@ export default function WorkspaceFileBrowser({ workspaceId, folderId }: Props) {
           <ItemsColumns
             workspaceId={workspaceId}
             tree={tree}
-            activeFolderId={folderId}
-            currentContents={contents}
-            currentItems={items}
+            rootItems={rootItems}
             onNavigate={navigateTo}
             onReparent={reparent}
             onDelete={handleDelete}
@@ -465,6 +490,7 @@ function fileToGridItem(file: {
   content_type: string;
   size_bytes: number;
   linked_table_id?: string | null;
+  created_at?: string;
 }): GridItem {
   const isCsvLinked = !!(file.content_type.includes("csv") && file.linked_table_id);
   return {
@@ -475,6 +501,7 @@ function fileToGridItem(file: {
     sizeBytes: file.size_bytes,
     linkedTableId: file.linked_table_id ?? undefined,
     contentType: file.content_type,
+    updatedAt: file.created_at,
   };
 }
 
