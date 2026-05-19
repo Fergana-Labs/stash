@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { EditorContent, useEditor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import Heading from "@tiptap/extension-heading";
@@ -18,7 +18,7 @@ import EditorToolbar from "./EditorToolbar";
 import CommentMark from "./CommentMark";
 import CommentComposerPopover from "./CommentComposerPopover";
 import { Page, FileInfo } from "../../lib/types";
-import { listFiles } from "../../lib/api";
+import { listFiles, uploadFile } from "../../lib/api";
 
 const AUTOSAVE_DEBOUNCE_MS = 1500;
 const ANCHOR_CONTEXT_CHARS = 32;
@@ -35,7 +35,7 @@ export type AddCommentArgs = {
 interface MarkdownEditorProps {
   workspaceId: string | null;
   file: Page;
-  onSave: (content: string) => void;
+  onSave: (content: string) => void | Promise<void>;
   confirmSave?: () => boolean;
   onSaveStatusChange?: (status: SaveStatus) => void;
   /** Called on clicks to same-origin stash routes so the page
@@ -72,6 +72,15 @@ export default function MarkdownEditor({
   const [saving, setSaving] = useState(false);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastSaved = useRef<string>(file.content_markdown);
+  // Distinct from `lastSaved`: the markdown most recently *applied* to the
+  // editor (after resolvedMarkdown rehydration). Used to detect "user has
+  // typed since we loaded" so we don't blow away in-flight edits.
+  const appliedMarkdown = useRef<string>(file.content_markdown);
+  const loadedFileId = useRef<string>(file.id);
+  // Refs that closures inside `useEditor` / window listeners can call
+  // without re-creating the editor every render.
+  const saveMarkdownRef = useRef<(md: string) => void>(() => {});
+  const insertUploadedFilesRef = useRef<(files: FileList | File[]) => void>(() => {});
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
   // Holds the selection range alive while the composer is open — the
   // <textarea> taking focus changes the editor's selection, so we capture
@@ -86,6 +95,10 @@ export default function MarkdownEditor({
     suffix: string;
   } | null>(null);
 
+  // `sourceMarkdown` is the markdown we're currently resolving / showing.
+  // It diverges from `file.content_markdown` once the user types — the
+  // parent re-rendering with a stale prop must not yank the editor back.
+  const [sourceMarkdown, setSourceMarkdown] = useState<string>(file.content_markdown);
   // Resolved markdown — relative image refs like ![](a69cb715b010.jpg) get
   // rewritten to signed URLs if a matching workspace file exists.
   // While the lookup is in-flight, show the raw markdown so the page never
@@ -94,16 +107,16 @@ export default function MarkdownEditor({
 
   useEffect(() => {
     let cancelled = false;
-    setResolvedMarkdown(file.content_markdown);
+    setResolvedMarkdown(sourceMarkdown);
     if (!workspaceId) return;
-    const relativeNames = extractRelativeImageNames(file.content_markdown);
+    const relativeNames = extractRelativeImageNames(sourceMarkdown);
     if (relativeNames.size === 0) return;
     listFiles(workspaceId)
       .then((files) => {
         if (cancelled) return;
         const map = buildFileNameMap(files, relativeNames);
         if (map.size === 0) return;
-        setResolvedMarkdown(rewriteRelativeImages(file.content_markdown, map));
+        setResolvedMarkdown(rewriteRelativeImages(sourceMarkdown, map));
       })
       .catch(() => {
         // Network flake is non-fatal — the raw markdown is still visible.
@@ -111,7 +124,7 @@ export default function MarkdownEditor({
     return () => {
       cancelled = true;
     };
-  }, [workspaceId, file.content_markdown]);
+  }, [workspaceId, sourceMarkdown]);
 
   const initialContent = useMemo(
     () => markdownToInitialJSON(resolvedMarkdown),
@@ -173,6 +186,22 @@ export default function MarkdownEditor({
         class: "max-w-none min-h-[200px] focus:outline-none file-page-body",
       },
       handleDOMEvents: {
+        paste: (_view, event) => {
+          const files = event.clipboardData?.files;
+          if (!files || files.length === 0) return false;
+          const hasImage = Array.from(files).some((file) => file.type.startsWith("image/"));
+          if (!hasImage) return false;
+          event.preventDefault();
+          insertUploadedFilesRef.current(files);
+          return true;
+        },
+        drop: (_view, event) => {
+          const files = event.dataTransfer?.files;
+          if (!files || files.length === 0) return false;
+          event.preventDefault();
+          insertUploadedFilesRef.current(files);
+          return true;
+        },
         click: (_view, event) => {
           const target = event.target as HTMLElement | null;
 
@@ -223,26 +252,93 @@ export default function MarkdownEditor({
       setDirty(true);
       if (saveTimer.current) clearTimeout(saveTimer.current);
       saveTimer.current = setTimeout(() => {
-        if (confirmSave && !confirmSave()) return;
-        setSaving(true);
-        lastSaved.current = md;
-        onSave(md);
-        setDirty(false);
-        setSaving(false);
+        saveTimer.current = null;
+        saveMarkdownRef.current(md);
       }, AUTOSAVE_DEBOUNCE_MS);
     },
   });
 
-  // When the resolved markdown changes (e.g. after file lookup completes),
-  // replace the editor's content. We guard against unsaved user edits by
-  // only replacing when the editor is still showing the original content.
+  const saveMarkdown = useCallback(
+    async (md: string) => {
+      if (confirmSave && !confirmSave()) return;
+      setSaving(true);
+      await onSave(md);
+      // If the doc changed during the save (user kept typing), leave the
+      // dirty flag alone so the next debounce flushes — only clear it when
+      // what we saved is still what's on screen.
+      const currentMd = editor ? serializeMarkdown(editor.getJSON(), md) : md;
+      if (currentMd === md) {
+        lastSaved.current = md;
+        setDirty(false);
+      }
+      setSaving(false);
+    },
+    [confirmSave, editor, onSave]
+  );
+
+  const insertUploadedFiles = useCallback(
+    async (files: FileList | File[]) => {
+      if (!workspaceId || !editor) return;
+      for (const fileToUpload of Array.from(files)) {
+        const result = await uploadFile(workspaceId, fileToUpload);
+        // During the upload await, the resolvedMarkdown effect higher up
+        // can rehydrate the editor via `setContent(initialContent)`. A
+        // chain() built against the pre-rehydrate state would then throw
+        // "Applying a mismatched transaction" on .run(). Use
+        // `editor.commands.X` — each command builds a fresh transaction
+        // from the current state at dispatch time — and bail cleanly if
+        // the editor was destroyed mid-flight.
+        if (editor.isDestroyed) return;
+        if (result.content_type.startsWith("image/")) {
+          editor.commands.setImage({ src: result.url, alt: result.name });
+        } else {
+          editor.commands.insertContent({
+            type: "text",
+            text: result.name,
+            marks: [{ type: "link", attrs: { href: result.url } }],
+          });
+        }
+      }
+    },
+    [editor, workspaceId]
+  );
+
+  useEffect(() => {
+    saveMarkdownRef.current = (md: string) => {
+      void saveMarkdown(md);
+    };
+  }, [saveMarkdown]);
+
+  useEffect(() => {
+    insertUploadedFilesRef.current = (files: FileList | File[]) => {
+      void insertUploadedFiles(files);
+    };
+  }, [insertUploadedFiles]);
+
+  // Switching to a different page id: reset the editor's notion of what
+  // it has loaded. (Re-renders with the SAME id and same content_markdown
+  // are no-ops; we don't yank the editor out from under the user.)
   useEffect(() => {
     if (!editor) return;
-    const currentMd = serializeMarkdown(editor.getJSON(), lastSaved.current);
-    // Only reset if the editor's content still matches what we last loaded
-    // (i.e. user hasn't typed anything since).
-    if (currentMd !== lastSaved.current) return;
+    if (loadedFileId.current === file.id) return;
+    loadedFileId.current = file.id;
+    lastSaved.current = file.content_markdown;
+    appliedMarkdown.current = file.content_markdown;
+    setSourceMarkdown(file.content_markdown);
+    editor.commands.setContent(markdownToInitialJSON(file.content_markdown));
+    setDirty(false);
+    setSaving(false);
+  }, [editor, file.content_markdown, file.id]);
+
+  // Parent save responses for the same page are intentionally ignored —
+  // the editor is the local source of truth after mount. This avoids
+  // older save responses replacing newer in-progress typing.
+  useEffect(() => {
+    if (!editor) return;
+    const currentMd = serializeMarkdown(editor.getJSON(), appliedMarkdown.current);
+    if (currentMd !== appliedMarkdown.current) return;
     editor.commands.setContent(initialContent);
+    appliedMarkdown.current = resolvedMarkdown;
     lastSaved.current = resolvedMarkdown;
   }, [editor, initialContent, resolvedMarkdown]);
 
@@ -261,14 +357,12 @@ export default function MarkdownEditor({
         if (editor) {
           const md = serializeMarkdown(editor.getJSON(), lastSaved.current);
           if (md !== lastSaved.current) {
-            if (confirmSave && !confirmSave()) return;
-            lastSaved.current = md;
-            onSave(md);
+            saveMarkdownRef.current(md);
           }
         }
       }
     };
-  }, [confirmSave, editor, onSave]);
+  }, [editor]);
 
   // Paint the active thread's anchor strongly. Toggles an `is-active`
   // class on the matching span(s) via direct DOM ops — the editor's
@@ -369,15 +463,12 @@ export default function MarkdownEditor({
           saveTimer.current = null;
         }
         const md = serializeMarkdown(editor.getJSON(), lastSaved.current);
-        if (confirmSave && !confirmSave()) return;
-        lastSaved.current = md;
-        onSave(md);
-        setDirty(false);
+        saveMarkdownRef.current(md);
       }
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [confirmSave, editor, onSave]);
+  }, [editor]);
 
   return (
     <div className="flex h-full flex-col">

@@ -465,9 +465,9 @@ details > summary::-webkit-details-marker {
   line-height: 1.3;
 }
 
-.markdown-content h1 { font-size: 1.25em; }
-.markdown-content h2 { font-size: 1.15em; }
-.markdown-content h3 { font-size: 1.05em; }
+.markdown-content h1 { font-size: 1.5em; }
+.markdown-content h2 { font-size: 1.3em; }
+.markdown-content h3 { font-size: 1.15em; }
 
 .markdown-content strong {
   font-weight: 700;

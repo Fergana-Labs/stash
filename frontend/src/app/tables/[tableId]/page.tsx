@@ -4,11 +4,13 @@ import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import AppShell from "../../../components/AppShell";
 import CustomSelect from "../../../components/CustomSelect";
+import { downloadBlob } from "../../../components/DownloadMenu";
 import { useAuth } from "../../../hooks/useAuth";
 import { useEscapeKey } from "../../../hooks/useEscapeKey";
 import { useShareModal } from "../../../lib/shareModalContext";
 import { SkeletonBlock, TableEditorSkeleton } from "../../../components/SkeletonStates";
 import {
+  fetchAuthed,
   getPublicStash,
   getTable, updateTable,
   deleteTable, addTableColumn, updateTableColumn,
@@ -17,7 +19,6 @@ import {
   deleteTableRowsBatch, duplicateTableRow, summarizeTableRows,
   listAllTables, saveTableView, deleteTableView,
   setTableEmbeddingConfig, backfillTableEmbeddings,
-  getToken,
 } from "../../../lib/api";
 import type { Table, TableColumn, TableRow, TableView } from "../../../lib/types";
 import FileViewerHeader from "../../../components/workspace/FileViewerHeader";
@@ -448,24 +449,20 @@ function TableEditorPageInner() {
       await loadRows(); await loadTable();
     } catch (err) { setError(err instanceof Error ? err.message : "Failed to import"); }
   };
-  const handleCsvExport = () => {
+  const handleCsvExport = async () => {
     if (!table || !wsId) return;
     const base = `/api/v1/workspaces/${wsId}/tables`;
     const p = new URLSearchParams();
     if (sortBy) { p.set("sort_by", sortBy); p.set("sort_order", sortOrder); }
     if (filters.length > 0) p.set("filters", JSON.stringify(filters));
     const url = `${base}/${tableId}/export/csv${p.toString() ? "?" + p : ""}`;
-    const token = getToken();
-    if (!token) {
-      setError("Export requires sign-in");
+    const response = await fetchAuthed(url);
+    if (!response.ok) {
+      setError("Export failed");
       return;
     }
-    fetch(url, { headers: { Authorization: `Bearer ${token}` } }).then((r) => {
-      if (!r.ok) throw new Error("Export failed");
-      return r.blob();
-    }).then((blob) => {
-      const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = `${table.name.replace(/\s+/g, "_")}.csv`; a.click(); URL.revokeObjectURL(a.href);
-    }).catch(() => setError("Export failed"));
+    const blob = await response.blob();
+    downloadBlob(blob, "text/csv", `${table.name.replace(/\s+/g, "_")}.csv`);
   };
 
   // --- Selection ---
@@ -609,7 +606,7 @@ function TableEditorPageInner() {
           ].filter(Boolean)}
           downloadOptions={
             table && !readOnly && wsId
-              ? [{ label: "CSV (.csv)", onSelect: handleCsvExport }]
+              ? [{ label: "CSV (.csv)", onSelect: () => void handleCsvExport() }]
               : undefined
           }
         />
@@ -640,7 +637,6 @@ function TableEditorPageInner() {
             {!readOnly && wsId && <button onClick={() => setShowEmbeddings((p) => !p)} className={`text-xs px-2 py-1 rounded ${showEmbeddings ? "bg-brand/15 text-brand" : "text-muted hover:text-foreground hover:bg-raised"}`}>Embeddings</button>}
             <button onClick={() => setShowColVisibility((p) => !p)} className="text-xs text-muted hover:text-foreground px-2 py-1 rounded hover:bg-raised">Columns</button>
             <button onClick={() => setWrapCells((p) => !p)} className={`text-xs px-2 py-1 rounded ${wrapCells ? "bg-brand/15 text-brand" : "text-muted hover:text-foreground hover:bg-raised"}`}>{wrapCells ? "Wrap" : "Compact"}</button>
-            {!readOnly && <button onClick={handleCsvExport} className="text-xs text-muted hover:text-foreground px-2 py-1 rounded hover:bg-raised">Export</button>}
             {!readOnly && <button onClick={() => fileInputRef.current?.click()} className="text-xs text-muted hover:text-foreground px-2 py-1 rounded hover:bg-raised">Import</button>}
             {!readOnly && <input ref={fileInputRef} type="file" accept=".csv" className="hidden" onChange={(e) => { if (e.target.files?.[0]) handleCsvImport(e.target.files[0]); e.target.value = ""; }} />}
             {!readOnly && selectedRows.size > 0 && <button onClick={handleBulkDelete} className="text-xs text-red-400 hover:text-red-300 px-2 py-1">Delete {selectedRows.size}</button>}
