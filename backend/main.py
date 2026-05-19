@@ -26,6 +26,7 @@ from .routers import (
     stashes,
     tables,
     transcripts,
+    trash,
     users,
     workspace_knowledge,
     workspaces,
@@ -112,6 +113,7 @@ app.include_router(aggregate.router)
 app.include_router(skill.router)
 app.include_router(admin.router)
 app.include_router(sessions.router)
+app.include_router(trash.router)
 app.include_router(publish.router)
 
 if settings.AUTH0_ENABLED:

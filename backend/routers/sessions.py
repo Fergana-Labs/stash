@@ -177,6 +177,79 @@ async def get_workspace_session(
     return payload
 
 
+async def _check_session_write(
+    workspace_id: UUID,
+    session_row_id: UUID,
+    user_id: UUID,
+) -> dict:
+    """Resolve a session row that the user is allowed to mutate.
+
+    Returns the raw row (including trashed). The trash flows need to
+    operate on rows the live-only `get_session_by_id` won't return.
+    """
+    if not await workspace_service.can_write(workspace_id, user_id):
+        raise HTTPException(
+            status_code=403, detail="Viewers can read but not modify sessions"
+        )
+    pool = get_pool()
+    row = await pool.fetchrow(
+        "SELECT id, workspace_id FROM sessions WHERE id = $1",
+        session_row_id,
+    )
+    if not row or row["workspace_id"] != workspace_id:
+        raise HTTPException(status_code=404, detail="Session not found")
+    can_write = await permission_service.check_access(
+        "session",
+        session_row_id,
+        user_id,
+        workspace_id=workspace_id,
+        require_write=True,
+    )
+    if not can_write:
+        raise HTTPException(status_code=404, detail="Session not found")
+    return dict(row)
+
+
+@router.delete("/workspaces/{workspace_id}/sessions/{session_row_id}", status_code=204)
+async def delete_workspace_session(
+    workspace_id: UUID,
+    session_row_id: UUID,
+    current_user: dict = Depends(get_current_user),
+):
+    """Soft delete: stamps deleted_at + deleted_by."""
+    await _check_session_write(workspace_id, session_row_id, current_user["id"])
+    deleted = await session_service.delete_session(
+        session_row_id, workspace_id, current_user["id"]
+    )
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+
+@router.post("/workspaces/{workspace_id}/sessions/{session_row_id}/restore", status_code=204)
+async def restore_workspace_session(
+    workspace_id: UUID,
+    session_row_id: UUID,
+    current_user: dict = Depends(get_current_user),
+):
+    await _check_session_write(workspace_id, session_row_id, current_user["id"])
+    restored = await session_service.restore_session(session_row_id, workspace_id)
+    if not restored:
+        raise HTTPException(status_code=404, detail="Session not in trash")
+
+
+@router.delete("/workspaces/{workspace_id}/sessions/{session_row_id}/purge", status_code=204)
+async def purge_workspace_session(
+    workspace_id: UUID,
+    session_row_id: UUID,
+    current_user: dict = Depends(get_current_user),
+):
+    """Permanent delete — only callable on a session already in trash."""
+    await _check_session_write(workspace_id, session_row_id, current_user["id"])
+    purged = await session_service.purge_session(session_row_id, workspace_id)
+    if not purged:
+        raise HTTPException(status_code=404, detail="Session not in trash")
+
+
 @router.post("/workspaces/{workspace_id}/sessions/{session_row_id}/artifacts", status_code=201)
 async def upload_session_artifact(
     workspace_id: UUID,
@@ -292,7 +365,8 @@ async def materialize_session(
     # the display name format without orphaning previously-materialized pages.
     existing = await pool.fetchrow(
         "SELECT id FROM pages "
-        "WHERE workspace_id = $1 AND folder_id = $2 AND metadata->>'session_id' = $3 LIMIT 1",
+        "WHERE workspace_id = $1 AND folder_id = $2 AND metadata->>'session_id' = $3 "
+        "AND deleted_at IS NULL LIMIT 1",
         workspace_id,
         folder["id"],
         session_id,

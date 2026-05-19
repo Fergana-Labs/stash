@@ -1,102 +1,167 @@
 "use client";
 
-import Link from "next/link";
-import { useState, type DragEvent } from "react";
-import { FileIcon, FolderIcon, PageIcon, TableIcon } from "../../StashIcons";
-import type { FolderContents } from "../../../lib/api";
+import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent } from "react";
+import { getFolderContents, type FolderContents } from "../../../lib/api";
 import type { FolderTreeNode, WorkspaceTree } from "../../../lib/types";
-import { FB_DRAG_MIME, type FBDragPayload } from "./WorkspaceFileBrowser";
+import { FileIcon, FolderIcon, PageIcon, TableIcon } from "../../StashIcons";
 import type { GridItem, ItemKind } from "./FolderItemGrid";
-import { useParams } from "next/navigation";
+import { FB_DRAG_MIME, type FBDragPayload } from "./WorkspaceFileBrowser";
 
 interface Props {
   workspaceId: string;
   tree: WorkspaceTree | null;
-  activeFolderId: string | null;
-  currentContents: FolderContents | null;
-  currentItems: GridItem[];
+  rootItems: GridItem[];
   onNavigate: (item: GridItem) => void;
   onReparent: (payload: FBDragPayload, targetFolderId: string | null) => Promise<void>;
+  onDelete?: (item: GridItem) => Promise<void>;
 }
 
-// Column view: left column is the workspace folder tree (Finder's sidebar),
-// right column is the contents of the currently selected folder. Drag-drop
-// works in both — drop on a tree node to reparent, drop on a folder tile in
-// the right column to nest into it.
+// Finder-style column view: a stack of identical folder columns that grow
+// to the right as the user drills, plus a metadata-only preview panel for
+// the rightmost selected leaf. Each column has the same shape and behavior;
+// clicking a folder in column N opens its contents in column N+1, clicking
+// a non-folder selects it for the preview.
 export default function ItemsColumns({
   workspaceId,
   tree,
-  activeFolderId,
+  rootItems,
   onNavigate,
   onReparent,
-  currentItems,
+  onDelete,
 }: Props) {
+  // path: folder IDs of the drill trail. Empty array = root only.
+  const [path, setPath] = useState<string[]>([]);
+  const [cache, setCache] = useState<Map<string, FolderContents | null>>(new Map());
+  const [selected, setSelected] = useState<{ columnIdx: number; item: GridItem } | null>(
+    null
+  );
+  const containerRef = useRef<HTMLDivElement | null>(null);
+
+  // Fetch any missing folder contents along the current path.
+  useEffect(() => {
+    let cancelled = false;
+    async function ensure() {
+      const missing = path.filter((id) => !cache.has(id));
+      if (missing.length === 0) return;
+      const fetched = await Promise.all(
+        missing.map(async (id) => [id, await getFolderContents(workspaceId, id)] as const)
+      );
+      if (cancelled) return;
+      setCache((cur) => {
+        const next = new Map(cur);
+        for (const [id, contents] of fetched) next.set(id, contents);
+        return next;
+      });
+    }
+    void ensure();
+    return () => {
+      cancelled = true;
+    };
+  }, [path, cache, workspaceId]);
+
+  // Keep the rightmost column visible as the user drills.
+  useEffect(() => {
+    const el = containerRef.current;
+    if (el) el.scrollLeft = el.scrollWidth;
+  }, [path]);
+
+  function columnItemsAt(idx: number): GridItem[] {
+    if (idx === 0) return rootItems;
+    const folderId = path[idx - 1];
+    const contents = cache.get(folderId);
+    if (!contents) return [];
+    return folderContentsToItems(contents);
+  }
+
+  function handlePick(columnIdx: number, item: GridItem) {
+    if (item.kind === "folder") {
+      // Drill into folder: truncate path at this column and append.
+      setPath((cur) => [...cur.slice(0, columnIdx), item.id]);
+      setSelected({ columnIdx, item });
+      return;
+    }
+    // Leaf click: trim any deeper columns and surface in the preview panel.
+    setPath((cur) => cur.slice(0, columnIdx));
+    setSelected({ columnIdx, item });
+  }
+
+  function handleOpen(item: GridItem) {
+    if (item.kind === "folder") return; // drilling handled above
+    onNavigate(item);
+  }
+
+  // Build column data: root + one per element of path.
+  const columns = useMemo(() => {
+    const out: { idx: number; folderId: string | null; items: GridItem[] }[] = [
+      { idx: 0, folderId: null, items: columnItemsAt(0) },
+    ];
+    for (let i = 0; i < path.length; i++) {
+      out.push({ idx: i + 1, folderId: path[i], items: columnItemsAt(i + 1) });
+    }
+    return out;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [path, cache, rootItems]);
+
+  // The active id per column so each column highlights the drilled-into
+  // folder (or the previewed leaf).
+  function activeIdInColumn(columnIdx: number): string | null {
+    if (columnIdx < path.length) return path[columnIdx];
+    if (selected && selected.columnIdx === columnIdx) return selected.item.id;
+    return null;
+  }
+
   return (
-    <div className="grid min-h-0 flex-1 grid-cols-[260px_minmax(0,1fr)] divide-x divide-border">
-      <nav className="scroll-thin overflow-y-auto bg-surface/40 px-2 py-3 text-[13px]">
-        <RootRow
-          workspaceId={workspaceId}
-          active={activeFolderId === null}
-          onReparent={onReparent}
-        />
-        {tree?.folders.map((node) => (
-          <TreeRow
-            key={node.id}
-            node={node}
-            depth={0}
-            workspaceId={workspaceId}
-            activeFolderId={activeFolderId}
+    <div className="flex min-h-0 flex-1">
+      <div
+        ref={containerRef}
+        className="scroll-thin flex min-h-0 flex-1 overflow-x-auto"
+      >
+        {columns.map((col) => (
+          <Column
+            key={`${col.idx}-${col.folderId ?? "root"}`}
+            items={col.items}
+            activeId={activeIdInColumn(col.idx)}
+            onPick={(item) => handlePick(col.idx, item)}
+            onOpen={handleOpen}
             onReparent={onReparent}
+            onDelete={onDelete}
+            folderIdForDrop={col.folderId}
+            loading={col.idx > 0 && !cache.get(col.folderId!) }
           />
         ))}
-        {tree && tree.folders.length === 0 && (
-          <div className="px-2 py-2 text-[11.5px] italic text-muted">No folders yet.</div>
-        )}
-      </nav>
-      <div className="scroll-thin overflow-y-auto bg-base">
-        {currentItems.length === 0 ? (
-          <div className="flex items-center justify-center p-12">
-            <div className="rounded-lg border border-dashed border-border bg-surface/30 px-6 py-10 text-center text-[12.5px] text-muted">
-              Empty folder.
-            </div>
-          </div>
-        ) : (
-          <div className="divide-y divide-border-subtle">
-            {currentItems.map((item) => (
-              <ItemRow
-                key={`${item.kind}-${item.id}`}
-                item={item}
-                onNavigate={onNavigate}
-                onReparent={onReparent}
-              />
-            ))}
-          </div>
-        )}
       </div>
+      <PreviewPanel
+        selected={selected?.item ?? null}
+        tree={tree}
+        onOpen={() => selected && handleOpen(selected.item)}
+        onDelete={onDelete ? () => selected && onDelete(selected.item) : undefined}
+      />
     </div>
   );
 }
 
-function RootRow({
-  workspaceId,
-  active,
+function Column({
+  items,
+  activeId,
+  onPick,
+  onOpen,
   onReparent,
+  onDelete,
+  folderIdForDrop,
+  loading,
 }: {
-  workspaceId: string;
-  active: boolean;
+  items: GridItem[];
+  activeId: string | null;
+  onPick: (item: GridItem) => void;
+  onOpen: (item: GridItem) => void;
   onReparent: (payload: FBDragPayload, targetFolderId: string | null) => Promise<void>;
+  onDelete?: (item: GridItem) => Promise<void>;
+  folderIdForDrop: string | null;
+  loading: boolean;
 }) {
   const [over, setOver] = useState(false);
   return (
-    <Link
-      href={`/workspaces/${workspaceId}/files`}
-      className={
-        "mb-1 flex items-center gap-2 rounded-md px-2 py-1 " +
-        (active
-          ? "bg-[var(--color-brand-50)] text-[var(--color-brand-800)]"
-          : "text-dim hover:bg-raised hover:text-foreground") +
-        (over ? " ring-2 ring-[var(--color-brand-300)]" : "")
-      }
+    <div
       onDragOver={(e) => {
         if (!e.dataTransfer.types.includes(FB_DRAG_MIME)) return;
         e.preventDefault();
@@ -110,140 +175,64 @@ function RootRow({
         if (!raw) return;
         e.preventDefault();
         try {
-          onReparent(JSON.parse(raw) as FBDragPayload, null);
+          const payload = JSON.parse(raw) as FBDragPayload;
+          if (payload.kind === "folder" && payload.id === folderIdForDrop) return;
+          onReparent(payload, folderIdForDrop);
         } catch {
           /* malformed */
         }
       }}
+      className={
+        "scroll-thin flex h-full w-[240px] flex-shrink-0 flex-col overflow-y-auto border-r border-border bg-base " +
+        (over ? "bg-[var(--color-brand-50)]/40" : "")
+      }
     >
-      <FolderIcon />
-      <span className="font-medium">Files</span>
-    </Link>
-  );
-}
-
-function TreeRow({
-  node,
-  depth,
-  workspaceId,
-  activeFolderId,
-  onReparent,
-}: {
-  node: FolderTreeNode;
-  depth: number;
-  workspaceId: string;
-  activeFolderId: string | null;
-  onReparent: (payload: FBDragPayload, targetFolderId: string | null) => Promise<void>;
-}) {
-  const [open, setOpen] = useState(activeFolderId === node.id || depth === 0);
-  const [over, setOver] = useState(false);
-  const active = activeFolderId === node.id;
-  return (
-    <div>
-      <div
-        className={
-          "flex items-center gap-1 rounded-md px-1 py-0.5 " +
-          (active ? "bg-[var(--color-brand-50)] text-[var(--color-brand-800)]" : "hover:bg-raised") +
-          (over ? " ring-2 ring-[var(--color-brand-300)]" : "")
-        }
-        style={{ paddingLeft: 4 + depth * 12 }}
-        draggable
-        onDragStart={(e: DragEvent<HTMLDivElement>) => {
-          const payload: FBDragPayload = { kind: "folder", id: node.id };
-          e.dataTransfer.setData(FB_DRAG_MIME, JSON.stringify(payload));
-          e.dataTransfer.effectAllowed = "move";
-        }}
-        onDragOver={(e) => {
-          if (!e.dataTransfer.types.includes(FB_DRAG_MIME)) return;
-          e.preventDefault();
-          e.dataTransfer.dropEffect = "move";
-          setOver(true);
-        }}
-        onDragLeave={() => setOver(false)}
-        onDrop={(e) => {
-          const raw = e.dataTransfer.getData(FB_DRAG_MIME);
-          setOver(false);
-          if (!raw) return;
-          e.preventDefault();
-          try {
-            const p = JSON.parse(raw) as FBDragPayload;
-            if (p.kind === "folder" && p.id === node.id) return;
-            onReparent(p, node.id);
-          } catch {
-            /* malformed */
-          }
-        }}
-      >
-        <button
-          type="button"
-          onClick={(e) => {
-            e.preventDefault();
-            setOpen((o) => !o);
-          }}
-          className="flex h-4 w-4 items-center justify-center rounded text-muted hover:bg-base/60 hover:text-foreground"
-          aria-expanded={open}
-          aria-label={open ? "Collapse" : "Expand"}
-        >
-          {node.folders.length > 0 ? (
-            <svg
-              className={"h-3 w-3 transition-transform " + (open ? "rotate-90" : "")}
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2.5"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <polyline points="9 18 15 12 9 6" />
-            </svg>
-          ) : (
-            <span className="block h-1 w-1 rounded-full bg-muted/40" />
-          )}
-        </button>
-        <Link
-          href={`/workspaces/${workspaceId}/folders/${node.id}`}
-          className={
-            "flex min-w-0 flex-1 items-center gap-1.5 truncate " +
-            (active ? "font-medium" : "text-foreground")
-          }
-        >
-          <FolderIcon />
-          <span className="truncate">{node.name}</span>
-        </Link>
-      </div>
-      {open &&
-        node.folders.map((child) => (
-          <TreeRow
-            key={child.id}
-            node={child}
-            depth={depth + 1}
-            workspaceId={workspaceId}
-            activeFolderId={activeFolderId}
-            onReparent={onReparent}
-          />
-        ))}
+      {loading && (
+        <div className="px-3 py-2 text-[12px] text-muted">Loading…</div>
+      )}
+      {!loading && items.length === 0 && (
+        <div className="px-3 py-2 text-[12px] italic text-muted">Empty</div>
+      )}
+      {items.map((item) => (
+        <ColumnRow
+          key={`${item.kind}-${item.id}`}
+          item={item}
+          active={item.id === activeId}
+          onPick={() => onPick(item)}
+          onOpen={() => onOpen(item)}
+          onReparent={onReparent}
+          onDelete={onDelete}
+        />
+      ))}
     </div>
   );
 }
 
-function ItemRow({
+function ColumnRow({
   item,
-  onNavigate,
+  active,
+  onPick,
+  onOpen,
   onReparent,
+  onDelete,
 }: {
   item: GridItem;
-  onNavigate: (item: GridItem) => void;
+  active: boolean;
+  onPick: () => void;
+  onOpen: () => void;
   onReparent: (payload: FBDragPayload, targetFolderId: string | null) => Promise<void>;
+  onDelete?: (item: GridItem) => Promise<void>;
 }) {
   const [over, setOver] = useState(false);
   const isFolder = item.kind === "folder";
   return (
     <div
-      onClick={() => onNavigate(item)}
+      onClick={onPick}
+      onDoubleClick={onOpen}
       role="button"
       tabIndex={0}
       onKeyDown={(e) => {
-        if (e.key === "Enter") onNavigate(item);
+        if (e.key === "Enter") onOpen();
       }}
       draggable
       onDragStart={(e: DragEvent<HTMLDivElement>) => {
@@ -274,17 +263,144 @@ function ItemRow({
         }
       }}
       className={
-        "flex cursor-pointer select-none items-center gap-3 px-3 py-2 text-[13px] hover:bg-[var(--color-brand-50)]/30 " +
-        (over ? "ring-1 ring-inset ring-[var(--color-brand-300)]" : "")
+        "group flex cursor-pointer select-none items-center gap-2 px-3 py-1.5 text-[13px] " +
+        (active
+          ? "bg-[var(--color-brand-600)] text-white"
+          : "text-foreground hover:bg-[var(--color-brand-50)]/40") +
+        (over ? " ring-1 ring-inset ring-[var(--color-brand-300)]" : "")
       }
     >
-      <span className={tintFor(item)}>
+      <span className={"flex h-4 w-4 flex-shrink-0 items-center justify-center " + (active ? "" : tintFor(item))}>
         <KindIcon kind={item.kind} />
       </span>
-      <span className="min-w-0 flex-1 truncate font-medium text-foreground">{item.name}</span>
-      <span className="hidden text-[11.5px] text-muted sm:inline">{item.subtitle}</span>
+      <span className="min-w-0 flex-1 truncate font-medium">{item.name}</span>
+      {isFolder && (
+        <span className={"flex-shrink-0 text-[12px] " + (active ? "text-white/80" : "text-muted")}>›</span>
+      )}
+      {!isFolder && onDelete && (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            void onDelete(item);
+          }}
+          className={
+            "flex-shrink-0 rounded p-0.5 opacity-0 transition focus-visible:opacity-100 group-hover:opacity-100 " +
+            (active ? "text-white hover:bg-white/10" : "text-muted hover:bg-raised hover:text-red-600")
+          }
+          title="Delete"
+          aria-label="Delete"
+        >
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <polyline points="3 6 5 6 21 6" />
+            <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+          </svg>
+        </button>
+      )}
     </div>
   );
+}
+
+function PreviewPanel({
+  selected,
+  tree: _tree,
+  onOpen,
+  onDelete,
+}: {
+  selected: GridItem | null;
+  tree: WorkspaceTree | null;
+  onOpen: () => void;
+  onDelete?: () => void;
+}) {
+  if (!selected || selected.kind === "folder") {
+    return (
+      <aside className="hidden w-[280px] flex-shrink-0 flex-col border-l border-border bg-surface/40 p-4 text-[12.5px] text-muted lg:flex">
+        <div className="flex h-full items-center justify-center text-center">
+          Select an item to preview its details.
+        </div>
+      </aside>
+    );
+  }
+  return (
+    <aside className="hidden w-[280px] flex-shrink-0 flex-col border-l border-border bg-surface/40 lg:flex">
+      <div className="flex flex-1 flex-col gap-4 overflow-y-auto p-5">
+        <div className={"inline-flex h-12 w-12 items-center justify-center rounded-md border border-border bg-base " + tintFor(selected)}>
+          <KindIcon kind={selected.kind} />
+        </div>
+        <div>
+          <h3 className="break-words font-display text-[16px] font-semibold leading-snug text-foreground">
+            {selected.name}
+          </h3>
+          <p className="mt-0.5 text-[12px] text-muted">{kindLabel(selected)}</p>
+        </div>
+        <dl className="grid grid-cols-[80px_minmax(0,1fr)] gap-x-3 gap-y-1.5 text-[12px]">
+          {selected.sizeBytes != null && (
+            <>
+              <dt className="text-muted">Size</dt>
+              <dd className="text-foreground">{formatBytes(selected.sizeBytes)}</dd>
+            </>
+          )}
+          <dt className="text-muted">Modified</dt>
+          <dd className="text-foreground">{formatAbsolute(selected.updatedAt)}</dd>
+          {selected.contentType && (
+            <>
+              <dt className="text-muted">Type</dt>
+              <dd className="break-all text-foreground">{selected.contentType}</dd>
+            </>
+          )}
+        </dl>
+      </div>
+      <div className="flex items-center gap-2 border-t border-border bg-base/60 px-4 py-2.5">
+        <button
+          type="button"
+          onClick={onOpen}
+          className="flex-1 rounded-md border border-border bg-base px-3 py-1 text-[12px] font-medium text-foreground hover:bg-raised"
+        >
+          Open
+        </button>
+        {onDelete && (
+          <button
+            type="button"
+            onClick={onDelete}
+            className="rounded-md border border-red-300/60 bg-red-500/5 px-3 py-1 text-[12px] text-red-600 hover:bg-red-500/10"
+            title="Move to trash"
+          >
+            Delete
+          </button>
+        )}
+      </div>
+    </aside>
+  );
+}
+
+function folderContentsToItems(contents: FolderContents): GridItem[] {
+  return [
+    ...contents.subfolders.map<GridItem>((sub) => ({
+      kind: "folder",
+      id: sub.id,
+      name: sub.name,
+      subtitle: `${sub.page_count + sub.file_count} item${sub.page_count + sub.file_count === 1 ? "" : "s"}`,
+    })),
+    ...contents.pages.map<GridItem>((p) => ({
+      kind: "page",
+      id: p.id,
+      name: p.name.replace(/\.md$/, ""),
+      subtitle: p.name.toLowerCase().endsWith(".html") ? "html page" : "page",
+    })),
+    ...contents.files.map<GridItem>((f) => {
+      const isCsvLinked = !!(f.content_type.includes("csv") && f.linked_table_id);
+      return {
+        kind: isCsvLinked ? "table" : "file",
+        id: f.id,
+        name: f.name,
+        subtitle: `${f.content_type || "file"} · ${formatBytes(f.size_bytes)}`,
+        sizeBytes: f.size_bytes,
+        contentType: f.content_type,
+        linkedTableId: f.linked_table_id ?? undefined,
+        updatedAt: f.created_at,
+      };
+    }),
+  ];
 }
 
 function KindIcon({ kind }: { kind: ItemKind }) {
@@ -299,10 +415,38 @@ function tintFor(item: GridItem): string {
   if (item.kind === "html") return "text-[#D97706]";
   if (item.kind === "table") return "text-emerald-600";
   if (item.contentType?.includes("pdf")) return "text-rose-500";
-  if (item.contentType?.includes("image")) return "text-violet-600";
+  if (item.contentType?.startsWith("image/")) return "text-violet-500";
+  if (item.kind === "page") return "text-[var(--color-brand-600)]";
   return "text-muted";
 }
 
-// Suppress unused-import warning in some build configs (useParams reserved for
-// future deep-link behavior — keep import while not actively used).
-void useParams;
+function kindLabel(item: GridItem): string {
+  if (item.kind === "folder") return "Folder";
+  if (item.kind === "table") return "Table";
+  if (item.kind === "html") return "HTML page";
+  if (item.kind === "page") return "Page";
+  if (item.contentType?.includes("pdf")) return "PDF";
+  if (item.contentType?.includes("csv")) return "CSV";
+  if (item.contentType?.startsWith("image/")) {
+    return `Image · ${item.contentType.replace("image/", "").toUpperCase()}`;
+  }
+  return item.contentType || "File";
+}
+
+function formatBytes(bytes: number | undefined): string {
+  if (bytes == null) return "—";
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+}
+
+function formatAbsolute(iso: string | undefined): string {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "—";
+  return d.toLocaleDateString(undefined, {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+  });
+}

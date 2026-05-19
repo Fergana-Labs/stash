@@ -126,10 +126,10 @@ async def _partition_targets(conn, object_type: str, object_id: UUID) -> list[tu
             "SELECT 'folder' AS object_type, id AS object_id FROM subtree "
             "UNION ALL "
             "SELECT 'page' AS object_type, p.id AS object_id FROM pages p "
-            "WHERE p.folder_id IN (SELECT id FROM subtree) "
+            "WHERE p.folder_id IN (SELECT id FROM subtree) AND p.deleted_at IS NULL "
             "UNION ALL "
             "SELECT 'file' AS object_type, f.id AS object_id FROM files f "
-            "WHERE f.folder_id IN (SELECT id FROM subtree)",
+            "WHERE f.folder_id IN (SELECT id FROM subtree) AND f.deleted_at IS NULL",
             object_id,
         )
         targets.extend((row["object_type"], row["object_id"]) for row in rows)
@@ -237,14 +237,20 @@ async def _object_title(object_type: str, object_id: UUID) -> str:
     if object_type == "folder":
         row = await pool.fetchrow("SELECT name FROM folders WHERE id = $1", object_id)
     elif object_type == "page":
-        row = await pool.fetchrow("SELECT name FROM pages WHERE id = $1", object_id)
+        row = await pool.fetchrow(
+            "SELECT name FROM pages WHERE id = $1 AND deleted_at IS NULL", object_id
+        )
     elif object_type == "table":
         row = await pool.fetchrow("SELECT name FROM tables WHERE id = $1", object_id)
     elif object_type == "file":
-        row = await pool.fetchrow("SELECT name FROM files WHERE id = $1", object_id)
+        row = await pool.fetchrow(
+            "SELECT name FROM files WHERE id = $1 AND deleted_at IS NULL", object_id
+        )
     elif object_type == "session":
         row = await pool.fetchrow(
-            "SELECT session_id AS name FROM sessions WHERE id = $1", object_id
+            "SELECT session_id AS name FROM sessions "
+            "WHERE id = $1 AND deleted_at IS NULL",
+            object_id,
         )
     else:
         row = None
@@ -339,7 +345,8 @@ async def add_sessions_to_stash(
 
     rows = await pool.fetch(
         "SELECT id, session_id FROM sessions "
-        "WHERE workspace_id = $1 AND session_id = ANY($2::varchar[])",
+        "WHERE workspace_id = $1 AND session_id = ANY($2::varchar[]) "
+        "AND deleted_at IS NULL",
         workspace_id,
         session_ids,
     )
@@ -973,6 +980,7 @@ async def inline_items(stash: dict, viewer_id: UUID | None = None) -> list[dict]
                     "SELECT p.id, p.name, p.content_markdown, p.content_html, p.content_type, "
                     "p.html_layout, p.updated_at FROM pages p "
                     "WHERE p.folder_id IN (SELECT id FROM subtree) "
+                    "AND p.deleted_at IS NULL "
                     "ORDER BY p.created_at, p.name",
                     obj_id,
                 )
@@ -990,6 +998,7 @@ async def inline_items(stash: dict, viewer_id: UUID | None = None) -> list[dict]
                     ") "
                     "SELECT f.id, f.name, f.content_type, f.size_bytes, f.storage_key, f.created_at "
                     "FROM files f WHERE f.folder_id IN (SELECT id FROM subtree) "
+                    "AND f.deleted_at IS NULL "
                     "ORDER BY f.created_at, f.name",
                     obj_id,
                 )
@@ -1027,7 +1036,7 @@ async def inline_items(stash: dict, viewer_id: UUID | None = None) -> list[dict]
         elif obj_type == "page":
             p = await pool.fetchrow(
                 "SELECT id, name, content_markdown, content_html, content_type, "
-                "html_layout, updated_at FROM pages WHERE id = $1",
+                "html_layout, updated_at FROM pages WHERE id = $1 AND deleted_at IS NULL",
                 obj_id,
             )
             if p:
@@ -1061,7 +1070,8 @@ async def inline_items(stash: dict, viewer_id: UUID | None = None) -> list[dict]
                 }
         elif obj_type == "file":
             f = await pool.fetchrow(
-                "SELECT name, content_type, size_bytes, storage_key, created_at FROM files WHERE id = $1",
+                "SELECT name, content_type, size_bytes, storage_key, created_at "
+                "FROM files WHERE id = $1 AND deleted_at IS NULL",
                 obj_id,
             )
             if f:
@@ -1076,7 +1086,7 @@ async def inline_items(stash: dict, viewer_id: UUID | None = None) -> list[dict]
         elif obj_type == "session":
             s = await pool.fetchrow(
                 "SELECT id, session_id, agent_name, summary, summary_status, files_touched, started_at, "
-                "finished_at FROM sessions WHERE id = $1",
+                "finished_at FROM sessions WHERE id = $1 AND deleted_at IS NULL",
                 obj_id,
             )
             if s:

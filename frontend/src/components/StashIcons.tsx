@@ -1,3 +1,4 @@
+import DeleteOutlineOutlinedIcon from "@mui/icons-material/DeleteOutlineOutlined";
 import DescriptionOutlinedIcon from "@mui/icons-material/DescriptionOutlined";
 import ExploreOutlinedIcon from "@mui/icons-material/ExploreOutlined";
 import FolderOutlinedIcon from "@mui/icons-material/FolderOutlined";
@@ -113,4 +114,8 @@ export function NotificationsIcon(props: IconProps) {
 
 export function PersonIcon(props: IconProps) {
   return <MaterialIcon icon={PersonOutlineOutlinedIcon} {...props} />;
+}
+
+export function TrashIcon(props: IconProps) {
+  return <MaterialIcon icon={DeleteOutlineOutlinedIcon} {...props} />;
 }

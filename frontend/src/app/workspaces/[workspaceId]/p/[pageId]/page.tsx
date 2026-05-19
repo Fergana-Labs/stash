@@ -30,6 +30,7 @@ import {
   reconcileCommentAnchors,
   replyToCommentThread,
   setCommentResolved,
+  trashItem,
   updatePage,
   type FolderBreadcrumb,
   type WorkspaceStash,
@@ -327,7 +328,7 @@ export default function StashPageView() {
           page
             ? [
                 {
-                  label: "Markdown (.md)",
+                  label: "Download as Markdown",
                   onSelect: () =>
                     downloadBlob(
                       page.content_markdown ?? "",
@@ -336,7 +337,7 @@ export default function StashPageView() {
                     ),
                 },
                 {
-                  label: "HTML (.html)",
+                  label: "Download as HTML",
                   onSelect: () =>
                     downloadBlob(
                       wrapHtml(page.name, page.content_html ?? ""),
@@ -344,7 +345,20 @@ export default function StashPageView() {
                       `${baseName}.html`
                     ),
                 },
-                { label: "PDF (print)", onSelect: () => window.print() },
+                { label: "Print as PDF", onSelect: () => window.print() },
+                {
+                  label: "Delete",
+                  destructive: true,
+                  onSelect: async () => {
+                    if (!window.confirm(`Move "${page.name}" to trash?`)) return;
+                    try {
+                      await trashItem(workspaceId, "page", pageId);
+                      router.push(`/workspaces/${workspaceId}`);
+                    } catch (e) {
+                      setError(e instanceof Error ? e.message : "Delete failed");
+                    }
+                  },
+                },
               ]
             : undefined
         }

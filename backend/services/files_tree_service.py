@@ -18,7 +18,11 @@ from . import permission_service
 
 logger = logging.getLogger(__name__)
 
-_WORKSPACE_PAGE_FILTER = "COALESCE(metadata->>'shared_in_stash_id', '') = ''"
+# Workspace-owned page (excludes the read-only stash mirror rows).
+_OWNED_PAGE_PRED = "COALESCE(metadata->>'shared_in_stash_id', '') = ''"
+# All "live" reads filter both stash-mirror and trash. Every SELECT on
+# pages that wants the active set uses this.
+_WORKSPACE_PAGE_FILTER = f"{_OWNED_PAGE_PRED} AND deleted_at IS NULL"
 
 
 async def _filter_readable(
@@ -479,14 +483,54 @@ async def update_page(
     raise ConcurrentEditError(dict(fresh))
 
 
-async def delete_page(page_id: UUID, workspace_id: UUID) -> bool:
+async def delete_page(page_id: UUID, workspace_id: UUID, deleted_by: UUID) -> bool:
+    """Soft delete: stamps deleted_at + deleted_by. Restore via restore_page."""
     pool = get_pool()
     result = await pool.execute(
-        f"DELETE FROM pages WHERE id = $1 AND workspace_id = $2 AND {_WORKSPACE_PAGE_FILTER}",
+        "UPDATE pages SET deleted_at = NOW(), deleted_by = $3 "
+        f"WHERE id = $1 AND workspace_id = $2 AND {_OWNED_PAGE_PRED} "
+        "AND deleted_at IS NULL",
+        page_id,
+        workspace_id,
+        deleted_by,
+    )
+    return result == "UPDATE 1"
+
+
+async def restore_page(page_id: UUID, workspace_id: UUID) -> bool:
+    pool = get_pool()
+    result = await pool.execute(
+        "UPDATE pages SET deleted_at = NULL, deleted_by = NULL "
+        f"WHERE id = $1 AND workspace_id = $2 AND {_OWNED_PAGE_PRED} "
+        "AND deleted_at IS NOT NULL",
+        page_id,
+        workspace_id,
+    )
+    return result == "UPDATE 1"
+
+
+async def purge_page(page_id: UUID, workspace_id: UUID) -> bool:
+    """Permanent delete — only callable on a page already in trash."""
+    pool = get_pool()
+    result = await pool.execute(
+        f"DELETE FROM pages WHERE id = $1 AND workspace_id = $2 AND {_OWNED_PAGE_PRED} "
+        "AND deleted_at IS NOT NULL",
         page_id,
         workspace_id,
     )
     return result == "DELETE 1"
+
+
+async def list_trashed_pages(workspace_id: UUID) -> list[dict]:
+    pool = get_pool()
+    rows = await pool.fetch(
+        "SELECT id, workspace_id, folder_id, name, content_type, deleted_at, deleted_by "
+        f"FROM pages WHERE workspace_id = $1 AND {_OWNED_PAGE_PRED} "
+        "AND deleted_at IS NOT NULL "
+        "ORDER BY deleted_at DESC",
+        workspace_id,
+    )
+    return [dict(r) for r in rows]
 
 
 # --- Listings ---

@@ -14,6 +14,9 @@ export interface GridItem {
   sizeBytes?: number;
   contentType?: string;
   linkedTableId?: string;
+  /** ISO timestamp. Renders as "Modified" in the Drive-style List view.
+   *  Not all rows have one — FolderContents.pages currently omits it. */
+  updatedAt?: string;
 }
 
 interface Props {
@@ -22,6 +25,7 @@ interface Props {
   onSelect: (item: GridItem) => void;
   onNavigate: (item: GridItem) => void;
   onReparent: (payload: FBDragPayload, targetFolderId: string | null) => Promise<void>;
+  onDelete?: (item: GridItem) => Promise<void>;
 }
 
 export default function FolderItemGrid({
@@ -30,6 +34,7 @@ export default function FolderItemGrid({
   onSelect,
   onNavigate,
   onReparent,
+  onDelete,
 }: Props) {
   if (items.length === 0) {
     return (
@@ -52,6 +57,7 @@ export default function FolderItemGrid({
             onSelect={() => onSelect(item)}
             onNavigate={() => onNavigate(item)}
             onReparent={onReparent}
+            onDelete={onDelete}
           />
         ))}
       </div>
@@ -65,12 +71,14 @@ function Tile({
   onSelect,
   onNavigate,
   onReparent,
+  onDelete,
 }: {
   item: GridItem;
   selected: boolean;
   onSelect: () => void;
   onNavigate: () => void;
   onReparent: (payload: FBDragPayload, targetFolderId: string | null) => Promise<void>;
+  onDelete?: (item: GridItem) => Promise<void>;
 }) {
   const [over, setOver] = useState(false);
   const isFolder = item.kind === "folder";
@@ -131,6 +139,26 @@ function Tile({
         <div className="truncate text-[13.5px] font-semibold text-foreground">{item.name}</div>
         <div className="mt-0.5 truncate text-[11.5px] text-muted">{item.subtitle}</div>
       </div>
+      {onDelete && (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            void onDelete(item);
+          }}
+          className="rounded p-1 text-muted opacity-0 transition hover:bg-raised hover:text-red-600 focus-visible:opacity-100 group-hover:opacity-100"
+          title="Delete"
+          aria-label="Delete"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+            <polyline points="3 6 5 6 21 6" />
+            <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+            <path d="M10 11v6" />
+            <path d="M14 11v6" />
+            <path d="M9 6V4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2" />
+          </svg>
+        </button>
+      )}
     </div>
   );
 }

@@ -188,6 +188,7 @@ async def _tick() -> int:
             SELECT id FROM sessions
             WHERE summary IS NULL
               AND summary_status = 'need_summary'
+              AND deleted_at IS NULL
               AND summary_attempts < $1
               AND (
                     summary_last_attempt_at IS NULL

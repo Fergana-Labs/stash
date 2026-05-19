@@ -241,3 +241,21 @@ export interface UserSearchResult {
   name: string;
   display_name: string;
 }
+
+// --- Trash ---
+
+export type TrashKind = "page" | "file" | "session";
+
+export interface TrashEntry {
+  id: string;
+  name: string;
+  deleted_at: string;
+  deleted_by: string | null;
+  deleted_by_name: string | null;
+}
+
+export interface TrashListing {
+  pages: TrashEntry[];
+  files: TrashEntry[];
+  sessions: TrashEntry[];
+}
