@@ -28,6 +28,7 @@ celery = Celery(
         "backend.tasks.viz",
         "backend.tasks.summarize",
         "backend.integrations.github.importers.repo",
+        "backend.integrations.google.importers.drive_file",
     ],
 )
 

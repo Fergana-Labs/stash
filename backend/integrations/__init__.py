@@ -15,3 +15,4 @@ for a new provider — only the explicit list of providers grows.
 """
 
 from . import github  # noqa: F401 — import for side-effect (provider self-registration)
+from . import google  # noqa: F401
