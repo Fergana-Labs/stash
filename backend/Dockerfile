@@ -2,11 +2,16 @@ FROM python:3.12-slim
 
 # System deps for the Celery worker:
 #   - curl: healthcheck in compose
-#   - libreoffice: PPTX → PDF (used by future Drive PPTX importer)
+#   - libreoffice + poppler-utils: PPTX → PDF → PNG for the Drive PPTX importer
 #   - libnss3 / libnspr4 / etc.: required by Playwright Chromium
 # Chromium binary itself is downloaded by `playwright install` below.
+# libreoffice adds ~400 MB to the image but is the only sane PPTX
+# renderer that runs in a headless container; alternatives like
+# unoconv are libreoffice wrappers anyway.
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
+    libreoffice-impress libreoffice-core \
+    poppler-utils \
     libnss3 libnspr4 libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 \
     libxkbcommon0 libxcomposite1 libxdamage1 libxfixes3 libxrandr2 \
     libgbm1 libpango-1.0-0 libcairo2 libasound2 libatspi2.0-0 \

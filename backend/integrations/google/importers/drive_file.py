@@ -20,8 +20,13 @@ from uuid import UUID
 import asyncpg
 import httpx
 
+import csv
+import io
+import secrets
+
 from ....celery_app import celery
 from ....database import get_pool
+from ....services import table_service
 from ....tasks._celery_helpers import run_async
 from ...storage import get_valid_token
 
@@ -110,16 +115,98 @@ async def _import(
             )
 
         if mime == MIME_GOOGLE_SHEET:
-            raise RuntimeError(
-                "Sheets import is not yet implemented in this build"
+            return await _import_google_sheet(
+                client, workspace_id, folder_id, user_id, file_id, name
             )
 
         if mime == MIME_PPTX:
-            raise RuntimeError(
-                "PPTX import is not yet implemented in this build"
+            from .pptx import import_pptx_from_drive
+
+            return await import_pptx_from_drive(
+                client, workspace_id, folder_id, user_id, file_id, name
             )
 
         raise RuntimeError(f"Unsupported Drive MIME type: {mime}")
+
+
+async def _import_google_sheet(
+    client: httpx.AsyncClient,
+    workspace_id: UUID,
+    folder_id: UUID | None,
+    user_id: UUID,
+    file_id: str,
+    name: str,
+) -> dict:
+    """First-tab-only Sheets import.
+
+    Drive's CSV export already returns only the first sheet — that's
+    the v1 limitation. Header row becomes the column names (text type
+    for every column; the user can refine column types in the UI
+    later). Empty cells stay empty; we don't try to coerce types.
+    """
+    resp = await _drive_get(
+        client,
+        DRIVE_EXPORT_URL.format(file_id=file_id) + "?mimeType=text/csv",
+    )
+    text = resp.text
+    reader = csv.reader(io.StringIO(text))
+    rows = list(reader)
+    if not rows:
+        raise RuntimeError("sheet is empty")
+
+    header = rows[0]
+    if not any(h.strip() for h in header):
+        raise RuntimeError("sheet has no header row")
+
+    columns = []
+    seen_names: dict[str, int] = {}
+    for raw_name in header:
+        col_name = (raw_name or "").strip() or "column"
+        # Disambiguate duplicate headers — Sheets allows them, our column
+        # storage tolerates them, but the UI is friendlier when names differ.
+        if col_name in seen_names:
+            seen_names[col_name] += 1
+            col_name = f"{col_name} ({seen_names[col_name]})"
+        else:
+            seen_names[col_name] = 1
+        columns.append(
+            {
+                "id": f"col_{secrets.token_hex(6)}",
+                "name": col_name,
+                "type": "text",
+            }
+        )
+
+    table = await table_service.create_table(
+        workspace_id=workspace_id,
+        name=name,
+        description=f"Imported from Google Sheets ({file_id})",
+        columns=columns,
+        created_by=user_id,
+    )
+
+    data_rows: list[dict] = []
+    for row in rows[1:]:
+        record: dict = {}
+        for i, col in enumerate(columns):
+            value = row[i] if i < len(row) else ""
+            record[col["id"]] = value
+        data_rows.append(record)
+
+    if data_rows:
+        await table_service.create_rows_batch(
+            table_id=table["id"],
+            rows_data=data_rows,
+            created_by=user_id,
+        )
+
+    return {
+        "kind": "table",
+        "table_id": str(table["id"]),
+        "name": name,
+        "row_count": len(data_rows),
+        "column_count": len(columns),
+    }
 
 
 @celery.task(name="backend.integrations.google.importers.drive_file.import_drive_file")
