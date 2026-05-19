@@ -10,10 +10,13 @@ version: "3.9"
 #   POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_DB
 #   PUBLIC_URL                  (your public frontend URL, e.g. https://app.example.com)
 #   CORS_ORIGINS                (comma-separated allowed origins)
+#   INTEGRATIONS_ENCRYPTION_KEY (Fernet key for OAuth tokens — generate once, never rotate without re-auth)
 #
 # Optional (embeddings default to local sentence-transformers — no key needed):
 #   OPENAI_API_KEY or HF_TOKEN  (use hosted embedding provider instead of local)
 #   S3_ENDPOINT / S3_BUCKET / …  (enable file uploads)
+#   GOOGLE_OAUTH_CLIENT_ID / GOOGLE_OAUTH_CLIENT_SECRET / GOOGLE_OAUTH_REDIRECT_URI
+#   GITHUB_OAUTH_CLIENT_ID / GITHUB_OAUTH_CLIENT_SECRET / GITHUB_OAUTH_REDIRECT_URI
 
 services:
   postgres:
@@ -33,6 +36,21 @@ services:
       timeout: 5s
       retries: 5
 
+  redis:
+    image: redis:7-alpine
+    restart: always
+    expose:
+      - "6379"
+    volumes:
+      - redis_data:/data
+    # AOF persistence so in-flight tasks survive a Redis restart.
+    command: ["redis-server", "--appendonly", "yes"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   backend:
     image: ghcr.io/Fergana-Labs/stash-backend:latest
     restart: always
@@ -41,14 +59,45 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      redis:
+        condition: service_healthy
     env_file: .env
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      REDIS_URL: redis://redis:6379/0
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3456/health"]
       interval: 30s
       timeout: 10s
       retries: 3
+
+  worker:
+    image: ghcr.io/Fergana-Labs/stash-backend:latest
+    restart: always
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      REDIS_URL: redis://redis:6379/0
+    command: ["celery", "-A", "backend.celery_app", "worker", "--loglevel=info", "--concurrency=4"]
+
+  # Beat must run as exactly one instance. Multiple beat processes will
+  # fire the same scheduled task multiple times.
+  beat:
+    image: ghcr.io/Fergana-Labs/stash-backend:latest
+    restart: always
+    depends_on:
+      redis:
+        condition: service_healthy
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      REDIS_URL: redis://redis:6379/0
+    command: ["celery", "-A", "backend.celery_app", "beat", "--loglevel=info"]
 
   frontend:
     image: ghcr.io/Fergana-Labs/stash-frontend:latest
@@ -76,5 +125,6 @@ services:
 
 volumes:
   postgres_data:
+  redis_data:
   caddy_data:
   caddy_config:

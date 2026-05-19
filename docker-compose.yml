@@ -18,6 +18,20 @@ services:
       timeout: 5s
       retries: 5
 
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: ["redis-server", "--appendonly", "yes"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
   backend:
     build:
       context: .
@@ -28,10 +42,41 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      redis:
+        condition: service_healthy
     environment:
       DATABASE_URL: postgresql://stash:stash@postgres:5432/stash
+      REDIS_URL: redis://redis:6379/0
       PUBLIC_URL: http://localhost:3457
       CORS_ORIGINS: "http://localhost:3457,http://localhost:3456"
+
+  worker:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://stash:stash@postgres:5432/stash
+      REDIS_URL: redis://redis:6379/0
+    command: ["celery", "-A", "backend.celery_app", "worker", "--loglevel=info", "--concurrency=4"]
+
+  beat:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      redis:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://stash:stash@postgres:5432/stash
+      REDIS_URL: redis://redis:6379/0
+    command: ["celery", "-A", "backend.celery_app", "beat", "--loglevel=info"]
 
   frontend:
     build:
@@ -47,3 +92,4 @@ services:
 
 volumes:
   postgres_data:
+  redis_data:
