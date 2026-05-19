@@ -3,6 +3,7 @@
 import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Header from "../../components/Header";
+import { AuthPageSkeleton, SkeletonBlock } from "../../components/SkeletonStates";
 import { useAuth } from "../../hooks/useAuth";
 import { getToken, setToken, listMyWorkspaces } from "../../lib/api";
 
@@ -24,7 +25,7 @@ function formatApiError(detail: unknown, fallback: string): string {
 
 export default function LoginPage() {
   return (
-    <Suspense fallback={<div className="min-h-screen flex items-center justify-center text-muted">Loading...</div>}>
+    <Suspense fallback={<AuthPageSkeleton />}>
       <LoginPageInner />
     </Suspense>
   );
@@ -66,7 +67,7 @@ function LoginPageInner() {
   // Wait for useAuth to load before rendering — otherwise the signed-out form
   // flashes on every /login hit even for already-signed-in users.
   if (loading) {
-    return <div className="min-h-screen flex items-center justify-center text-muted">Loading...</div>;
+    return <AuthPageSkeleton />;
   }
 
   if (cliApproved) {
@@ -318,7 +319,10 @@ function Auth0LoginPanel({ user, logout, cliSession, onCliApproved }: Auth0Panel
 
   const body =
     hasSession === null ? (
-      <p className="text-sm text-muted text-center py-2">Loading…</p>
+      <div className="space-y-3">
+        <SkeletonBlock className="h-10 w-full rounded-lg" />
+        <SkeletonBlock className="h-10 w-full rounded-xl" />
+      </div>
     ) : hasSession ? (
       <Auth0Exchange cliSession={cliSession} onCliApproved={onCliApproved} />
     ) : (
@@ -358,7 +362,7 @@ function Auth0LoginButton(props: { cliSession: string | null }) {
   useEffect(() => {
     import("@managed/auth0/LoginButton").then((m) => setComp(() => m.default));
   }, []);
-  if (!Comp) return null;
+  if (!Comp) return <SkeletonBlock className="h-10 w-full rounded-xl" />;
   return <Comp cliSession={props.cliSession} />;
 }
 
@@ -370,7 +374,7 @@ function Auth0Exchange(props: { cliSession: string | null; onCliApproved: () => 
   useEffect(() => {
     import("@managed/auth0/ExchangeAndRedirect").then((m) => setComp(() => m.default));
   }, []);
-  if (!Comp) return null;
+  if (!Comp) return <SkeletonBlock className="h-10 w-full rounded-xl" />;
   return <Comp cliSession={props.cliSession} onCliApproved={props.onCliApproved} />;
 }
 

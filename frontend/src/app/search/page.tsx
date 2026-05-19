@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import AppShell from "../../components/AppShell";
 import CustomSelect from "../../components/CustomSelect";
+import { BasicPageSkeleton, SearchResultsSkeleton, SearchSkeleton } from "../../components/SkeletonStates";
 import { useAuth } from "../../hooks/useAuth";
 import {
   getWorkspaceSidebar,
@@ -56,7 +57,7 @@ function initialContentScope(value: string | null, sessionId: string): ContentSc
 export default function SearchPage() {
   return (
     <Suspense
-      fallback={<div className="flex min-h-screen items-center justify-center text-muted">Loading...</div>}
+      fallback={<BasicPageSkeleton />}
     >
       <SearchPageInner />
     </Suspense>
@@ -308,9 +309,16 @@ function SearchPageInner() {
   }, [fetching, handleSearch, searchParams]);
 
   if (loading) {
-    return <div className="flex min-h-screen items-center justify-center text-muted">Loading...</div>;
+    return <BasicPageSkeleton />;
   }
   if (!user) return null;
+  if (fetching) {
+    return (
+      <AppShell user={user} onLogout={logout}>
+        <SearchSkeleton />
+      </AppShell>
+    );
+  }
 
   return (
     <AppShell user={user} onLogout={logout}>
@@ -505,11 +513,7 @@ function SearchPageInner() {
               </div>
             )}
 
-            {searching && (
-              <p className="py-10 text-center text-[13px] text-muted">
-                Searching selected knowledge...
-              </p>
-            )}
+            {searching && <SearchResultsSkeleton />}
 
             {!searching && searchedQuery && results.length === 0 && !error && (
               <p className="py-10 text-center text-[13px] text-muted">

@@ -5,6 +5,11 @@ import { Suspense, useCallback, useEffect, useState } from "react";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { useBreadcrumbs } from "../../../../../components/BreadcrumbContext";
+import {
+  DocumentBodySkeleton,
+  FileViewerSkeleton,
+  SkeletonBlock,
+} from "../../../../../components/SkeletonStates";
 import { useAuth } from "../../../../../hooks/useAuth";
 import {
   getFile,
@@ -38,7 +43,7 @@ function isText(ct: string) {
 
 export default function FileViewerPage() {
   return (
-    <Suspense fallback={<div className="flex h-screen items-center justify-center text-muted">Loading…</div>}>
+    <Suspense fallback={<FileViewerSkeleton />}>
       <FileViewerPageInner />
     </Suspense>
   );
@@ -175,9 +180,9 @@ function FileViewerPageInner() {
     if (!readOnly && !loading && !user) router.push("/login");
   }, [readOnly, user, loading, router]);
 
-  if (loading && !readOnly)
-    return <div className="flex h-screen items-center justify-center text-muted">Loading…</div>;
+  if (loading && !readOnly) return <FileViewerSkeleton />;
   if (!user && !readOnly) return null;
+  if (!file && !error) return <FileViewerSkeleton />;
 
   const fileKindLabel = file ? kindLabel(file.content_type, file.name) : "";
   const updatedAt = file?.created_at
@@ -257,6 +262,7 @@ function FileBody({ file, text }: { file: FileInfo; text: string | null }) {
     );
   }
   if (isMarkdown(file.content_type, file.name)) {
+    if (text === null) return <DocumentBodySkeleton className="mx-auto mt-8 max-w-3xl" />;
     return (
       <article className="markdown-content mx-auto max-w-3xl px-12 py-8 text-[15px] leading-relaxed text-foreground">
         <Markdown remarkPlugins={[remarkGfm]}>{text || ""}</Markdown>
@@ -264,9 +270,18 @@ function FileBody({ file, text }: { file: FileInfo; text: string | null }) {
     );
   }
   if (isText(file.content_type)) {
+    if (text === null) {
+      return (
+        <div className="space-y-2 px-5 py-4">
+          {[0, 1, 2, 3, 4, 5, 6, 7].map((row) => (
+            <SkeletonBlock key={row} className="h-4 w-full max-w-4xl" />
+          ))}
+        </div>
+      );
+    }
     return (
       <pre className="scroll-thin h-full overflow-auto px-5 py-4 font-mono text-[12.5px] text-foreground">
-        {text || "Loading…"}
+        {text || ""}
       </pre>
     );
   }

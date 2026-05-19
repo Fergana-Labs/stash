@@ -5,6 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useBreadcrumbs } from "../../../../components/BreadcrumbContext";
 import SessionUpload from "../../../../components/SessionUpload";
+import { SessionsListSkeleton } from "../../../../components/SkeletonStates";
 import { SettingsIcon } from "../../../../components/StashIcons";
 import { useAuth } from "../../../../hooks/useAuth";
 import { listMySessions, type SessionSummary } from "../../../../lib/api";
@@ -85,9 +86,9 @@ export default function StashSessionsPage() {
     return copy;
   }, [sessions, sort]);
 
-  if (loading)
-    return <div className="flex h-screen items-center justify-center text-muted">Loading…</div>;
+  if (loading) return <SessionsListSkeleton />;
   if (!user) return null;
+  if (sorted === null) return <SessionsListSkeleton />;
 
   const total = sessions?.length ?? 0;
 

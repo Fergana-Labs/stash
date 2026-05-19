@@ -7,6 +7,7 @@ import CustomSelect from "../../../components/CustomSelect";
 import { useAuth } from "../../../hooks/useAuth";
 import { useEscapeKey } from "../../../hooks/useEscapeKey";
 import { useShareModal } from "../../../lib/shareModalContext";
+import { SkeletonBlock, TableEditorSkeleton } from "../../../components/SkeletonStates";
 import {
   getPublicStash,
   getTable, updateTable,
@@ -36,7 +37,7 @@ type SummaryData = { total_rows: number; columns: Record<string, { name: string;
 
 export default function TableEditorPage() {
   return (
-    <Suspense fallback={<div className="min-h-screen flex items-center justify-center text-muted">Loading...</div>}>
+    <Suspense fallback={<TableEditorSkeleton />}>
       <TableEditorPageInner />
     </Suspense>
   );
@@ -499,8 +500,22 @@ function TableEditorPageInner() {
   // Stash-scoped readers can be anonymous when the stash is public; only
   // redirect to /login in workspace mode.
   useEffect(() => { if (!readOnly && !loading && !user) router.push("/login"); }, [readOnly, user, loading, router]);
-  if (loading && !readOnly) return <div className="min-h-screen flex items-center justify-center text-muted">Loading...</div>;
+  if (loading && !readOnly) return <TableEditorSkeleton />;
   if (!user && !readOnly) return null;
+  if (!table && !error) {
+    if (!user) {
+      return (
+        <main className="flex min-h-screen flex-col bg-background">
+          <TableEditorSkeleton />
+        </main>
+      );
+    }
+    return (
+      <AppShell user={user} onLogout={logout}>
+        <TableEditorSkeleton />
+      </AppShell>
+    );
+  }
 
   // --- Render row ---
   const renderRow = (row: TableRow, idx: number) => (
@@ -567,7 +582,7 @@ function TableEditorPageInner() {
         <FileViewerHeader
           icon={<TableGlyph />}
           iconColor="#059669"
-          title={table?.name ?? "Loading…"}
+          title={table?.name ?? "Table"}
           onRenameTitle={
             table && !readOnly
               ? async (next) => {
@@ -841,7 +856,15 @@ function TableEditorPageInner() {
 
             {/* Add row + infinite scroll sentinel */}
             {!readOnly && <button onClick={handleAddRow} className="w-full py-2 text-sm text-muted hover:text-foreground hover:bg-raised border-b border-border/50 transition-colors text-left px-4">+ New row</button>}
-            {hasMore && <div ref={sentinelRef} className="py-4 text-center text-xs text-muted">{loadingMore ? "Loading..." : `${totalCount - offset} more rows`}</div>}
+            {hasMore && (
+              <div ref={sentinelRef} className="py-4 text-center text-xs text-muted">
+                {loadingMore ? (
+                  <SkeletonBlock className="mx-auto h-4 w-32" />
+                ) : (
+                  `${totalCount - offset} more rows`
+                )}
+              </div>
+            )}
           </div>
         )}
 

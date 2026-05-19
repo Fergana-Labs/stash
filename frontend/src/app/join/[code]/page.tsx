@@ -3,6 +3,7 @@
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import Header from "../../../components/Header";
+import { JoinWorkspaceSkeleton } from "../../../components/SkeletonStates";
 import { useAuth } from "../../../hooks/useAuth";
 import { joinWorkspace } from "../../../lib/api";
 
@@ -31,11 +32,7 @@ export default function JoinPage() {
   }, [code, user, loading, status, router]);
 
   if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center text-muted">
-        Loading...
-      </div>
-    );
+    return <JoinWorkspaceSkeleton />;
   }
 
   return (
@@ -56,7 +53,7 @@ export default function JoinPage() {
               </a>
             </div>
           ) : status === "joining" ? (
-            <p className="text-dim">Joining workspace...</p>
+            <JoinProgress />
           ) : status === "error" ? (
             <div>
               <p className="text-red-400 mb-4">{error}</p>
@@ -70,6 +67,16 @@ export default function JoinPage() {
           ) : null}
         </div>
       </main>
+    </div>
+  );
+}
+
+function JoinProgress() {
+  return (
+    <div className="w-[320px] rounded-lg border border-border bg-surface p-5">
+      <div className="mx-auto h-10 w-10 animate-pulse rounded-lg bg-raised" />
+      <div className="mx-auto mt-4 h-4 w-44 animate-pulse rounded bg-raised" />
+      <div className="mx-auto mt-3 h-3 w-56 animate-pulse rounded bg-raised" />
     </div>
   );
 }

@@ -11,6 +11,7 @@ import Italic from "@tiptap/extension-italic";
 import TiptapLink from "@tiptap/extension-link";
 import Placeholder from "@tiptap/extension-placeholder";
 import MembersModal from "../../../components/MembersModal";
+import { SkeletonBlock, WorkspaceHomeSkeleton } from "../../../components/SkeletonStates";
 import StashQuickAdd from "../../../components/StashQuickAdd";
 import { WorkspaceIcon } from "../../../components/StashIcons";
 import ContributorActivityTimeline from "../../../components/viz/ContributorActivityTimeline";
@@ -57,10 +58,12 @@ export default function WorkspaceHomePage() {
   const [projection, setProjection] = useState<EmbeddingProjection | null>(
     null,
   );
+  const [insightsLoaded, setInsightsLoaded] = useState(false);
   const [error, setError] = useState("");
   const [membersOpen, setMembersOpen] = useState(false);
 
   const load = useCallback(async () => {
+    setInsightsLoaded(false);
     const [w, m, t, p] = await Promise.allSettled([
       getWorkspace(workspaceId),
       getWorkspaceMembers(workspaceId),
@@ -75,6 +78,7 @@ export default function WorkspaceHomePage() {
     if (m.status === "fulfilled") setMembers(m.value);
     if (t.status === "fulfilled") setTimeline(t.value);
     if (p.status === "fulfilled") setProjection(p.value);
+    setInsightsLoaded(true);
   }, [workspaceId]);
 
   useEffect(() => {
@@ -98,13 +102,9 @@ export default function WorkspaceHomePage() {
     }
   }
 
-  if (loading)
-    return (
-      <div className="flex h-screen items-center justify-center text-muted">
-        Loading…
-      </div>
-    );
+  if (loading) return <WorkspaceHomeSkeleton />;
   if (!user) return null;
+  if (!workspace && !error) return <WorkspaceHomeSkeleton />;
 
   return (
     <>
@@ -216,7 +216,9 @@ export default function WorkspaceHomePage() {
           <section className="mt-8">
             <div className="sys-label mb-1.5">Human / agent commits — past year</div>
             <div className="card-soft overflow-x-auto p-3">
-              {timeline && timeline.contributors.length > 0 ? (
+              {!insightsLoaded ? (
+                <SkeletonBlock className="h-40 w-full" />
+              ) : timeline && timeline.contributors.length > 0 ? (
                 <ContributorActivityTimeline data={timeline} />
               ) : (
                 <div className="px-2 py-6 text-center text-[12.5px] text-muted">
@@ -232,7 +234,9 @@ export default function WorkspaceHomePage() {
               Embedding space — workspace knowledge map
             </div>
             <div className="card-soft p-3">
-              {projection && projection.points.length > 0 ? (
+              {!insightsLoaded ? (
+                <SkeletonBlock className="h-40 w-full" />
+              ) : projection && projection.points.length > 0 ? (
                 <EmbeddingSpaceExplorer data={projection} />
               ) : (
                 <div className="px-2 py-6 text-center text-[12.5px] text-muted">

@@ -7,6 +7,7 @@ import remarkGfm from "remark-gfm";
 
 import AppShell from "../../../../../../components/AppShell";
 import { useBreadcrumbs } from "../../../../../../components/BreadcrumbContext";
+import { StashItemSkeleton } from "../../../../../../components/SkeletonStates";
 import HtmlPageView from "../../../../../../components/workspace/HtmlPageView";
 import { useAuth } from "../../../../../../hooks/useAuth";
 import {
@@ -56,11 +57,7 @@ function Chrome({
     `stash-item/${data?.stash.id ?? "loading"}/${item?.object_id ?? "loading"}`
   );
   if (loading) {
-    return (
-      <main className="flex min-h-screen items-center justify-center bg-background text-muted">
-        Loading…
-      </main>
-    );
+    return <StashItemSkeleton />;
   }
   if (user) {
     return (
@@ -100,9 +97,7 @@ export default function StashItemClient({ slug, type, itemId }: Props) {
   if (loading) {
     return (
       <Chrome data={data} item={null}>
-        <div className="flex min-h-[50vh] items-center justify-center text-muted">
-          Loading…
-        </div>
+        <StashItemSkeleton />
       </Chrome>
     );
   }

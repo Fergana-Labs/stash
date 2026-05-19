@@ -2,6 +2,7 @@
 
 import { useParams } from "next/navigation";
 import { type FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { StashesGridSkeleton } from "../../../../components/SkeletonStates";
 import StashCard from "../../../../components/stash/StashCard";
 import { useShareModal } from "../../../../lib/shareModalContext";
 import { addExternalStash, ApiError, listStashes, type WorkspaceStash } from "../../../../lib/api";
@@ -73,7 +74,7 @@ export default function WorkspaceStashesPage() {
   );
 
   if (stashes === null) {
-    return <div className="flex h-screen items-center justify-center text-muted">Loading…</div>;
+    return <StashesGridSkeleton />;
   }
 
   return (

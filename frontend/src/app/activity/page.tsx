@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useMemo, useState } from "react";
 import AppShell from "../../components/AppShell";
+import { ActivitySkeleton, BasicPageSkeleton } from "../../components/SkeletonStates";
 import {
   FileIcon,
   PageIcon,
@@ -57,7 +58,7 @@ function relativeTime(iso: string): string {
 
 export default function ActivityPage() {
   return (
-    <Suspense fallback={<div className="flex h-screen items-center justify-center text-muted">Loading…</div>}>
+    <Suspense fallback={<BasicPageSkeleton />}>
       <ActivityPageInner />
     </Suspense>
   );
@@ -128,8 +129,15 @@ function ActivityPageInner() {
     return events;
   }, [events, filter]);
 
-  if (loading) return <div className="flex h-screen items-center justify-center text-muted">Loading…</div>;
+  if (loading) return <BasicPageSkeleton />;
   if (!user) return null;
+  if (fetching) {
+    return (
+      <AppShell user={user} onLogout={logout}>
+        <ActivitySkeleton />
+      </AppShell>
+    );
+  }
 
   return (
     <AppShell user={user} onLogout={logout}>
@@ -142,9 +150,7 @@ function ActivityPageInner() {
             : "Recent work across your workspaces."}
         </h1>
         <p className="mt-1 max-w-[620px] text-[14.5px] text-dim">
-          {fetching
-            ? "Loading…"
-            : `${stats.sessions24h} session${stats.sessions24h === 1 ? "" : "s"}, ${stats.pages24h} page edit${stats.pages24h === 1 ? "" : "s"}, and ${stats.files24h} file upload${stats.files24h === 1 ? "" : "s"} in the last 24 hours.`}
+          {`${stats.sessions24h} session${stats.sessions24h === 1 ? "" : "s"}, ${stats.pages24h} page edit${stats.pages24h === 1 ? "" : "s"}, and ${stats.files24h} file upload${stats.files24h === 1 ? "" : "s"} in the last 24 hours.`}
         </p>
 
         {/* Stat strip */}
@@ -181,11 +187,7 @@ function ActivityPageInner() {
 
         {/* Feed */}
         <div className="mt-3.5 flex flex-col gap-2.5">
-          {fetching ? (
-            <div className="rounded-[10px] border border-border bg-base px-4 py-6 text-center text-[13px] text-muted">
-              Loading…
-            </div>
-          ) : filtered.length === 0 ? (
+          {filtered.length === 0 ? (
             <div className="rounded-[10px] border border-border bg-base px-4 py-6 text-center text-[13px] text-muted">
               {events.length === 0
                 ? "No activity yet. Push a transcript, edit a page, or upload a file."

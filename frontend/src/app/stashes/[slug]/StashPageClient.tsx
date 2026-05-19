@@ -19,6 +19,7 @@ import Placeholder from "@tiptap/extension-placeholder";
 
 import AppShell from "../../../components/AppShell";
 import { useBreadcrumbs } from "../../../components/BreadcrumbContext";
+import { PublicStashSkeleton, SkeletonBlock } from "../../../components/SkeletonStates";
 import AddToStashModal from "../../../components/stash/AddToStashModal";
 import { StashIcon } from "../../../components/StashIcons";
 import ContributorActivityTimeline from "../../../components/viz/ContributorActivityTimeline";
@@ -66,11 +67,7 @@ function StashChrome({
     `stash/${data?.stash.id ?? "loading"}`,
   );
   if (loading) {
-    return (
-      <main className="flex min-h-screen items-center justify-center bg-background text-muted">
-        Loading Stash...
-      </main>
-    );
+    return <PublicStashSkeleton />;
   }
   if (user) {
     return (
@@ -111,9 +108,7 @@ export default function StashPageClient({ slug }: { slug: string }) {
   if (loading) {
     return (
       <StashChrome data={data}>
-        <div className="flex min-h-[50vh] items-center justify-center text-muted">
-          Loading Stash...
-        </div>
+        <PublicStashSkeleton />
       </StashChrome>
     );
   }
@@ -182,12 +177,14 @@ function StashPageBody({
   const [projection, setProjection] = useState<EmbeddingProjection | null>(
     null,
   );
+  const [insightsLoaded, setInsightsLoaded] = useState(false);
 
   useEffect(() => {
     // Visualizations are workspace-scoped — they show the owning workspace's
     // activity so the stash detail page has the same "knowledge map" feel
     // as the workspace home.
     let cancelled = false;
+    setInsightsLoaded(false);
     Promise.allSettled([
       getActivityTimeline(365, "day", stash.workspace_id),
       getEmbeddingProjection(500, undefined, stash.workspace_id),
@@ -195,6 +192,7 @@ function StashPageBody({
       if (cancelled) return;
       if (t.status === "fulfilled") setTimeline(t.value);
       if (p.status === "fulfilled") setProjection(p.value);
+      setInsightsLoaded(true);
     });
     return () => {
       cancelled = true;
@@ -338,7 +336,9 @@ function StashPageBody({
         <section className="mt-8">
           <div className="sys-label mb-1.5">Human / agent commits — past year</div>
           <div className="card-soft overflow-x-auto p-3">
-            {timeline && timeline.contributors.length > 0 ? (
+            {!insightsLoaded ? (
+              <SkeletonBlock className="h-40 w-full" />
+            ) : timeline && timeline.contributors.length > 0 ? (
               <ContributorActivityTimeline data={timeline} />
             ) : (
               <div className="px-2 py-6 text-center text-[12.5px] text-muted">
@@ -354,7 +354,9 @@ function StashPageBody({
             Embedding space — workspace knowledge map
           </div>
           <div className="card-soft p-3">
-            {projection && projection.points.length > 0 ? (
+            {!insightsLoaded ? (
+              <SkeletonBlock className="h-40 w-full" />
+            ) : projection && projection.points.length > 0 ? (
               <EmbeddingSpaceExplorer data={projection} />
             ) : (
               <div className="px-2 py-6 text-center text-[12.5px] text-muted">

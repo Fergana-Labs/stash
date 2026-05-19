@@ -7,6 +7,7 @@ import {
   listStashInvites,
   type StashInvite,
 } from "../lib/api";
+import { SkeletonBlock } from "./SkeletonStates";
 import { NotificationsIcon } from "./StashIcons";
 
 export default function StashInviteCenter() {
@@ -127,7 +128,15 @@ export default function StashInviteCenter() {
             ) : null}
 
             {loading ? (
-              <p className="px-2 py-8 text-center text-[12.5px] text-muted">Loading…</p>
+              <div className="space-y-2 px-1 py-1">
+                {[0, 1, 2].map((row) => (
+                  <div key={row} className="rounded-lg border border-border-subtle bg-surface p-3">
+                    <SkeletonBlock className="h-4 w-44" />
+                    <SkeletonBlock className="mt-2 h-3 w-full" />
+                    <SkeletonBlock className="mt-3 h-7 w-24" />
+                  </div>
+                ))}
+              </div>
             ) : invites.length === 0 ? (
               <p className="px-2 py-8 text-center text-[12.5px] text-muted">
                 No new Stash access.
