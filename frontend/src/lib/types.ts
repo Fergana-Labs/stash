@@ -96,7 +96,17 @@ export interface WorkspaceTree {
 export interface TableColumn {
   id: string;
   name: string;
-  type: "text" | "number" | "boolean" | "date" | "datetime" | "url" | "email" | "select" | "multiselect" | "json";
+  type:
+    | "text"
+    | "number"
+    | "boolean"
+    | "date"
+    | "datetime"
+    | "url"
+    | "email"
+    | "select"
+    | "multiselect"
+    | "json";
   order: number;
   required: boolean;
   default: string | number | boolean | string[] | null;
@@ -165,10 +175,13 @@ export interface Attachment {
 // --- Dashboard Visualizations ---
 
 export interface ActivityTimeline {
-  agents: string[];
+  contributors: string[];
   buckets: {
     date: string;
-    agents: Record<string, { total: number; by_type: Record<string, number> }>;
+    contributors: Record<
+      string,
+      { total: number; by_type: Record<string, number> }
+    >;
   }[];
 }
 

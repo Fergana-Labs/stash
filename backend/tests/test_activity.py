@@ -43,6 +43,59 @@ async def _event(client: AsyncClient, api_key: str, workspace_id: str, session_i
 
 
 @pytest.mark.asyncio
+async def test_activity_timeline_pivots_on_human_and_agent_sessions(client: AsyncClient):
+    register_resp = await client.post(
+        "/api/v1/users/register",
+        json={
+            "name": unique_name("activity_timeline"),
+            "display_name": "Timeline Human",
+            "password": "securepassword1",
+        },
+    )
+    assert register_resp.status_code == 201
+    api_key = register_resp.json()["api_key"]
+    workspace = await _workspace(client, api_key, "Timeline Workspace")
+
+    for content in ("first event", "second event"):
+        event_resp = await client.post(
+            f"/api/v1/workspaces/{workspace['id']}/sessions/events",
+            json={
+                "agent_name": "codex",
+                "event_type": "assistant_message",
+                "content": content,
+                "session_id": "same-session",
+            },
+            headers=_auth(api_key),
+        )
+        assert event_resp.status_code == 201
+
+    page_resp = await client.post(
+        f"/api/v1/workspaces/{workspace['id']}/pages/new",
+        json={"name": "Not a contributor", "content": "page content"},
+        headers=_auth(api_key),
+    )
+    assert page_resp.status_code == 201
+
+    resp = await client.get(
+        "/api/v1/me/activity-timeline",
+        params={"days": 365, "workspace_id": workspace["id"]},
+        headers=_auth(api_key),
+    )
+    assert resp.status_code == 200
+
+    timeline = resp.json()
+    assert timeline["contributors"] == ["Timeline Human / codex"]
+    assert "Pages" not in timeline["contributors"]
+
+    totals = [
+        contributor["total"]
+        for bucket in timeline["buckets"]
+        for contributor in bucket["contributors"].values()
+    ]
+    assert totals == [1]
+
+
+@pytest.mark.asyncio
 async def test_user_activity_is_scoped_to_accessible_workspaces(client: AsyncClient):
     owner_key = await _register(client, "activity_owner")
     other_key = await _register(client, "activity_other")

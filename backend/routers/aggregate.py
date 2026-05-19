@@ -185,7 +185,7 @@ async def activity_timeline(
     workspace_id: UUID | None = Query(None),
     current_user: dict = Depends(get_current_user),
 ):
-    """Agent activity bucketed by time for the dashboard timeline."""
+    """Human + coding-agent session commits bucketed by time for the dashboard timeline."""
     if workspace_id is not None:
         await _verify_workspace_access(workspace_id, current_user["id"])
     return await analytics_service.get_activity_timeline(
