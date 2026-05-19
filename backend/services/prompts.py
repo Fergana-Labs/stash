@@ -29,7 +29,8 @@ def render_session_summary_user(transcript: str, source_label: str = "transcript
         "3. Important decisions made\n"
         "4. Any unfinished work or known issues\n\n"
         "Keep the summary concise and useful for someone picking up "
-        "where this session left off.\n\n"
+        "where this session left off. Start with the concrete work, not a "
+        "generic heading. Do not include a markdown title like 'Session Summary'.\n\n"
         f"SESSION {source_label.upper()}:\n{transcript}"
     )
 

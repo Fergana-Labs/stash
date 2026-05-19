@@ -21,6 +21,7 @@ from ..auth import get_current_user
 from ..database import get_pool
 from ..models import FileListResponse, FileResponse, FileUpdateRequest, TableResponse
 from ..services import (
+    files_service,
     permission_service,
     storage_service,
     table_service,
@@ -162,7 +163,7 @@ async def list_ws_files(
     pool = get_pool()
     rows = await pool.fetch(
         "SELECT id, workspace_id, folder_id, name, content_type, size_bytes, storage_key, uploaded_by, created_at, linked_table_id "
-        "FROM files WHERE workspace_id = $1 ORDER BY created_at DESC",
+        "FROM files WHERE workspace_id = $1 AND deleted_at IS NULL ORDER BY created_at DESC",
         workspace_id,
     )
     readable_rows = []
@@ -183,7 +184,7 @@ async def get_ws_file(
     pool = get_pool()
     row = await pool.fetchrow(
         "SELECT id, workspace_id, folder_id, name, content_type, size_bytes, storage_key, uploaded_by, created_at, linked_table_id "
-        "FROM files WHERE id = $1 AND workspace_id = $2",
+        "FROM files WHERE id = $1 AND workspace_id = $2 AND deleted_at IS NULL",
         file_id,
         workspace_id,
     )
@@ -204,7 +205,8 @@ async def download_ws_file(
     await _check_member(workspace_id, current_user["id"])
     pool = get_pool()
     row = await pool.fetchrow(
-        "SELECT name, content_type, storage_key FROM files WHERE id = $1 AND workspace_id = $2",
+        "SELECT name, content_type, storage_key FROM files "
+        "WHERE id = $1 AND workspace_id = $2 AND deleted_at IS NULL",
         file_id,
         workspace_id,
     )
@@ -235,7 +237,7 @@ async def get_ws_file_text(
     pool = get_pool()
     row = await pool.fetchrow(
         "SELECT extracted_text, extraction_status, extraction_error "
-        "FROM files WHERE id = $1 AND workspace_id = $2",
+        "FROM files WHERE id = $1 AND workspace_id = $2 AND deleted_at IS NULL",
         file_id,
         workspace_id,
     )
@@ -263,7 +265,7 @@ async def update_ws_file(
     await _check_write(workspace_id, current_user["id"])
     pool = get_pool()
     file_row = await pool.fetchrow(
-        "SELECT * FROM files WHERE id = $1 AND workspace_id = $2",
+        "SELECT * FROM files WHERE id = $1 AND workspace_id = $2 AND deleted_at IS NULL",
         file_id,
         workspace_id,
     )
@@ -320,24 +322,48 @@ async def delete_ws_file(
     file_id: UUID,
     current_user: dict = Depends(get_current_user),
 ):
+    """Soft delete: stamps deleted_at + deleted_by. Object storage blob stays
+    so a restore is fully reversible. Use POST /restore to undo or DELETE
+    /purge to wipe permanently."""
     await _check_write(workspace_id, current_user["id"])
-    pool = get_pool()
-    row = await pool.fetchrow(
-        "SELECT storage_key FROM files WHERE id = $1 AND workspace_id = $2",
-        file_id,
-        workspace_id,
-    )
-    if not row:
-        raise HTTPException(status_code=404, detail="File not found")
     if not await _can_access_file(file_id, workspace_id, current_user["id"], require_write=True):
         raise HTTPException(status_code=404, detail="File not found")
-    try:
-        await storage_service.delete_file(row["storage_key"])
-    except Exception:
-        pass
-    await pool.execute(
-        "DELETE FROM files WHERE id = $1 AND workspace_id = $2", file_id, workspace_id
-    )
+    trashed = await files_service.delete_file(file_id, workspace_id, current_user["id"])
+    if not trashed:
+        raise HTTPException(status_code=404, detail="File not found")
+
+
+@ws_router.post("/{file_id}/restore", status_code=204)
+async def restore_ws_file(
+    workspace_id: UUID,
+    file_id: UUID,
+    current_user: dict = Depends(get_current_user),
+):
+    await _check_write(workspace_id, current_user["id"])
+    if not await _can_access_file(file_id, workspace_id, current_user["id"], require_write=True):
+        raise HTTPException(status_code=404, detail="File not found")
+    restored = await files_service.restore_file(file_id, workspace_id)
+    if not restored:
+        raise HTTPException(status_code=404, detail="File not in trash")
+
+
+@ws_router.delete("/{file_id}/purge", status_code=204)
+async def purge_ws_file(
+    workspace_id: UUID,
+    file_id: UUID,
+    current_user: dict = Depends(get_current_user),
+):
+    """Permanent delete — only callable on a file already in trash."""
+    await _check_write(workspace_id, current_user["id"])
+    if not await _can_access_file(file_id, workspace_id, current_user["id"], require_write=True):
+        raise HTTPException(status_code=404, detail="File not found")
+    row = await files_service.get_trashed_file(file_id, workspace_id)
+    if not row:
+        raise HTTPException(status_code=404, detail="File not in trash")
+    await storage_service.delete_file(row["storage_key"])
+    purged = await files_service.purge_file(file_id, workspace_id)
+    if not purged:
+        raise HTTPException(status_code=404, detail="File not in trash")
 
 
 # ===== CSV → Table ingest =====
@@ -407,7 +433,7 @@ async def ingest_csv_file(
     pool = get_pool()
     row = await pool.fetchrow(
         "SELECT id, workspace_id, name, content_type, storage_key, linked_table_id "
-        "FROM files WHERE id = $1 AND workspace_id = $2",
+        "FROM files WHERE id = $1 AND workspace_id = $2 AND deleted_at IS NULL",
         file_id,
         workspace_id,
     )

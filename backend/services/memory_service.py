@@ -242,6 +242,7 @@ def readable_session_event_condition(event_alias: str, user_arg: int) -> str:
             FROM sessions readable_session
             WHERE readable_session.workspace_id = {event_alias}.workspace_id
               AND readable_session.session_id = {event_alias}.session_id
+              AND readable_session.deleted_at IS NULL
               AND (
                 NOT EXISTS (
                   SELECT 1

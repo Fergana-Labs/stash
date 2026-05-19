@@ -186,19 +186,22 @@ async def get_folder_contents(
     subfolders = await pool.fetch(
         "SELECT id, name, "
         "       (SELECT COUNT(*) FROM pages p WHERE p.folder_id = f.id "
-        "        AND COALESCE(p.metadata->>'shared_in_stash_id', '') = '') AS page_count, "
-        "       (SELECT COUNT(*) FROM files fi WHERE fi.folder_id = f.id) AS file_count "
+        "        AND COALESCE(p.metadata->>'shared_in_stash_id', '') = '' "
+        "        AND p.deleted_at IS NULL) AS page_count, "
+        "       (SELECT COUNT(*) FROM files fi WHERE fi.folder_id = f.id "
+        "        AND fi.deleted_at IS NULL) AS file_count "
         "FROM folders f WHERE f.parent_folder_id = $1 ORDER BY name",
         folder_id,
     )
     pages = await pool.fetch(
         "SELECT id, name, content_type FROM pages WHERE folder_id = $1 "
-        "AND COALESCE(metadata->>'shared_in_stash_id', '') = '' ORDER BY name",
+        "AND COALESCE(metadata->>'shared_in_stash_id', '') = '' "
+        "AND deleted_at IS NULL ORDER BY name",
         folder_id,
     )
     files = await pool.fetch(
         "SELECT id, name, size_bytes, content_type, created_at, linked_table_id "
-        "FROM files WHERE folder_id = $1 ORDER BY created_at DESC",
+        "FROM files WHERE folder_id = $1 AND deleted_at IS NULL ORDER BY created_at DESC",
         folder_id,
     )
     subfolders = await files_tree_service._filter_readable(
@@ -222,11 +225,13 @@ async def get_folder_contents(
     for folder_row in subfolders:
         child_pages = await pool.fetch(
             "SELECT id FROM pages WHERE folder_id = $1 "
-            "AND COALESCE(metadata->>'shared_in_stash_id', '') = ''",
+            "AND COALESCE(metadata->>'shared_in_stash_id', '') = '' "
+            "AND deleted_at IS NULL",
             folder_row["id"],
         )
         child_files = await pool.fetch(
-            "SELECT id FROM files WHERE folder_id = $1", folder_row["id"]
+            "SELECT id FROM files WHERE folder_id = $1 AND deleted_at IS NULL",
+            folder_row["id"],
         )
         folder_row["page_count"] = len(
             await files_tree_service._filter_readable(
@@ -488,9 +493,40 @@ async def delete_page(
         current_user["id"],
         require_write=True,
     )
-    deleted = await files_tree_service.delete_page(page_id, workspace_id)
+    deleted = await files_tree_service.delete_page(page_id, workspace_id, current_user["id"])
     if not deleted:
         raise HTTPException(status_code=404, detail="Page not found")
+
+
+@router.post("/pages/{page_id}/restore", status_code=204)
+async def restore_page(
+    workspace_id: UUID,
+    page_id: UUID,
+    current_user: dict = Depends(get_current_user),
+):
+    await _check_ws_write(workspace_id, current_user["id"])
+    await _check_content_access(
+        "page", page_id, workspace_id, current_user["id"], require_write=True
+    )
+    restored = await files_tree_service.restore_page(page_id, workspace_id)
+    if not restored:
+        raise HTTPException(status_code=404, detail="Page not in trash")
+
+
+@router.delete("/pages/{page_id}/purge", status_code=204)
+async def purge_page(
+    workspace_id: UUID,
+    page_id: UUID,
+    current_user: dict = Depends(get_current_user),
+):
+    """Permanent delete — only callable on a page already in trash."""
+    await _check_ws_write(workspace_id, current_user["id"])
+    await _check_content_access(
+        "page", page_id, workspace_id, current_user["id"], require_write=True
+    )
+    purged = await files_tree_service.purge_page(page_id, workspace_id)
+    if not purged:
+        raise HTTPException(status_code=404, detail="Page not in trash")
 
 
 # --- Page comments ---
@@ -499,7 +535,7 @@ async def delete_page(
 async def _check_page_in_workspace(workspace_id: UUID, page_id: UUID) -> None:
     pool = get_pool()
     found = await pool.fetchval(
-        "SELECT 1 FROM pages WHERE id = $1 AND workspace_id = $2",
+        "SELECT 1 FROM pages WHERE id = $1 AND workspace_id = $2 AND deleted_at IS NULL",
         page_id,
         workspace_id,
     )

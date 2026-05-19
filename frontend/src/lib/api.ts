@@ -3,6 +3,8 @@ import {
   FileInfo,
   Folder,
   Page,
+  TrashKind,
+  TrashListing,
   WorkspaceTree,
   RegisterResponse,
   User,
@@ -353,10 +355,6 @@ export async function updatePage(
     method: "PATCH",
     body: JSON.stringify(data),
   });
-}
-
-export async function deletePage(workspaceId: string, pageId: string): Promise<void> {
-  await apiFetch(`/api/v1/workspaces/${workspaceId}/pages/${pageId}`, { method: "DELETE" });
 }
 
 // --- Page comments ---
@@ -758,10 +756,6 @@ export async function ingestCsvFile(workspaceId: string, fileId: string): Promis
   });
 }
 
-export async function deleteFile(workspaceId: string, fileId: string): Promise<void> {
-  await apiFetch(`/api/v1/workspaces/${workspaceId}/files/${fileId}`, { method: "DELETE" });
-}
-
 export async function updateFile(
   workspaceId: string,
   fileId: string,
@@ -815,6 +809,7 @@ export interface SessionDetail {
   id: string;
   workspace_id: string;
   session_id: string;
+  title: string;
   agent_name: string;
   cwd: string | null;
   summary: string | null;
@@ -1460,4 +1455,51 @@ export async function getFolderContents(
   return apiFetch(
     `/api/v1/workspaces/${workspaceId}/folders/${folderId}/contents`
   );
+}
+
+// --- Trash ---
+
+// All three flavors share the same URL shape (`/{kind}s/{id}`), so a single
+// helper covers trash/restore/purge instead of three near-identical pairs.
+const TRASH_KIND_PATH: Record<TrashKind, string> = {
+  page: "pages",
+  file: "files",
+  session: "sessions",
+};
+
+export async function trashItem(
+  workspaceId: string,
+  kind: TrashKind,
+  id: string,
+): Promise<void> {
+  await apiFetch(
+    `/api/v1/workspaces/${workspaceId}/${TRASH_KIND_PATH[kind]}/${id}`,
+    { method: "DELETE" },
+  );
+}
+
+export async function restoreItem(
+  workspaceId: string,
+  kind: TrashKind,
+  id: string,
+): Promise<void> {
+  await apiFetch(
+    `/api/v1/workspaces/${workspaceId}/${TRASH_KIND_PATH[kind]}/${id}/restore`,
+    { method: "POST" },
+  );
+}
+
+export async function purgeItem(
+  workspaceId: string,
+  kind: TrashKind,
+  id: string,
+): Promise<void> {
+  await apiFetch(
+    `/api/v1/workspaces/${workspaceId}/${TRASH_KIND_PATH[kind]}/${id}/purge`,
+    { method: "DELETE" },
+  );
+}
+
+export async function getTrash(workspaceId: string): Promise<TrashListing> {
+  return apiFetch(`/api/v1/workspaces/${workspaceId}/trash`);
 }

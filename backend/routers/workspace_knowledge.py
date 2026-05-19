@@ -16,6 +16,7 @@ from ..services import (
     ask_service,
     files_tree_service,
     memory_service,
+    session_title_service,
     skill_service,
     stash_service,
     workspace_service,
@@ -52,14 +53,10 @@ async def _list_sessions(workspace_id: UUID, user_id: UUID) -> list[dict]:
 
 
 def _auto_session_title(session: dict) -> str:
-    raw = (session.get("summary") or "").strip()
-    if not raw:
-        return session["session_id"]
-
-    first_sentence = raw.split(".")[0].strip()
-    if not first_sentence:
-        return session["session_id"]
-    return first_sentence[:80] if len(first_sentence) > 80 else first_sentence
+    return session_title_service.title_from_summary(
+        session.get("summary"),
+        session["session_id"],
+    )
 
 
 async def _files_tree(workspace_id: UUID, user_id: UUID) -> dict:
@@ -69,22 +66,27 @@ async def _files_tree(workspace_id: UUID, user_id: UUID) -> dict:
         pool.fetch(
             "SELECT f.id, f.name, f.parent_folder_id, "
             "       (SELECT COUNT(*) FROM pages p WHERE p.folder_id = f.id "
-            "        AND COALESCE(p.metadata->>'shared_in_stash_id', '') = '') AS page_count, "
-            "       (SELECT COUNT(*) FROM files fi WHERE fi.folder_id = f.id) AS file_count, "
+            "        AND COALESCE(p.metadata->>'shared_in_stash_id', '') = '' "
+            "        AND p.deleted_at IS NULL) AS page_count, "
+            "       (SELECT COUNT(*) FROM files fi WHERE fi.folder_id = f.id "
+            "        AND fi.deleted_at IS NULL) AS file_count, "
             "       EXISTS(SELECT 1 FROM pages p WHERE p.folder_id = f.id AND p.name = 'SKILL.md' "
-            "              AND COALESCE(p.metadata->>'shared_in_stash_id', '') = '') AS has_skill "
+            "              AND COALESCE(p.metadata->>'shared_in_stash_id', '') = '' "
+            "              AND p.deleted_at IS NULL) AS has_skill "
             "FROM folders f WHERE f.workspace_id = $1 ORDER BY f.name",
             workspace_id,
         ),
         pool.fetch(
             "SELECT id, name, content_type, folder_id FROM pages WHERE workspace_id = $1 "
-            "AND COALESCE(metadata->>'shared_in_stash_id', '') = '' ORDER BY name",
+            "AND COALESCE(metadata->>'shared_in_stash_id', '') = '' "
+            "AND deleted_at IS NULL ORDER BY name",
             workspace_id,
         ),
         pool.fetch(
             "SELECT id, name, folder_id, size_bytes, content_type, "
             "       created_at, linked_table_id "
-            "FROM files WHERE workspace_id = $1 ORDER BY created_at DESC",
+            "FROM files WHERE workspace_id = $1 AND deleted_at IS NULL "
+            "ORDER BY created_at DESC",
             workspace_id,
         ),
     )
@@ -298,11 +300,13 @@ async def _sidebar_etag(workspace_id: UUID, user_id: UUID) -> str:
         """
         SELECT
           (SELECT MAX(updated_at) FROM pages
-            WHERE workspace_id = $1 AND COALESCE(metadata->>'shared_in_stash_id', '') = '') AS p,
-          (SELECT MAX(created_at) FROM files WHERE workspace_id = $1)            AS f,
+            WHERE workspace_id = $1 AND COALESCE(metadata->>'shared_in_stash_id', '') = ''
+            AND deleted_at IS NULL) AS p,
+          (SELECT MAX(created_at) FROM files
+            WHERE workspace_id = $1 AND deleted_at IS NULL)                       AS f,
           (SELECT MAX(updated_at) FROM folders WHERE workspace_id = $1)          AS d,
           (SELECT MAX(GREATEST(finished_at, started_at)) FROM sessions
-            WHERE workspace_id = $1)                                              AS s,
+            WHERE workspace_id = $1 AND deleted_at IS NULL)                       AS s,
           (SELECT MAX(updated_at) FROM stashes WHERE workspace_id = $1)            AS st,
           (SELECT MAX(sm.created_at) FROM stash_members sm
            JOIN stashes s ON s.id = sm.stash_id

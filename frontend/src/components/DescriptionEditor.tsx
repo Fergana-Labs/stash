@@ -162,10 +162,7 @@ export default function DescriptionEditor({
       data-editable={canEdit ? "true" : "false"}
       onClick={handleEditorFrameClick}
       className={
-        "description-editor -mx-1 rounded-md px-1 py-0.5 " +
-        (canEdit
-          ? "cursor-text transition-colors hover:bg-raised/45 focus-within:bg-raised/45"
-          : "")
+        "description-editor -mx-1 px-1 py-0.5 " + (canEdit ? "cursor-text" : "")
       }
     >
       <EditorContent editor={editor} />

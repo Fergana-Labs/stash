@@ -236,6 +236,7 @@ async def _list_files(args: dict) -> dict:
     user_id = _current_user()
     rows = await get_pool().fetch(
         "SELECT id, name, content_type, size_bytes FROM files WHERE workspace_id = $1 "
+        "AND deleted_at IS NULL "
         "ORDER BY created_at DESC LIMIT 50",
         workspace_id,
     )
@@ -276,7 +277,8 @@ async def _read_file(args: dict) -> dict:
     user_id = _current_user()
     file_id = UUID(args["file_id"])
     row = await get_pool().fetchrow(
-        "SELECT name, extracted_text FROM files WHERE id = $1 AND workspace_id = $2",
+        "SELECT name, extracted_text FROM files "
+        "WHERE id = $1 AND workspace_id = $2 AND deleted_at IS NULL",
         file_id,
         workspace_id,
     )

@@ -3,31 +3,18 @@
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { useBreadcrumbs } from "../../../../components/BreadcrumbContext";
-import CustomSelect from "../../../../components/CustomSelect";
 import { WorkspaceSettingsSkeleton } from "../../../../components/SkeletonStates";
+import WorkspaceMembersPanel from "../../../../components/workspace/WorkspaceMembersPanel";
 import { useAuth } from "../../../../hooks/useAuth";
 import {
   deleteWorkspace,
   getWorkspace,
   getWorkspaceMembers,
-  kickWorkspaceMember,
-  setWorkspaceMemberRole,
   updateWorkspace,
   uploadFile,
 } from "../../../../lib/api";
 import { resetStashNavigationCache } from "../../../../lib/stashNavigationCache";
 import type { Workspace, WorkspaceMember } from "../../../../lib/types";
-
-const MEMBER_ROLE_OPTIONS = [
-  { value: "viewer", label: "Viewer" },
-  { value: "editor", label: "Editor" },
-  { value: "owner", label: "Admin" },
-];
-
-function roleLabel(role: string): string {
-  if (role === "owner") return "admin";
-  return role;
-}
 
 export default function StashSettingsPage() {
   const params = useParams();
@@ -67,11 +54,6 @@ export default function StashSettingsPage() {
   const myRole = members.find((m) => m.user_id === user.id)?.role;
   const isAdmin = myRole === "owner";
 
-  async function changeMemberRole(userId: string, role: "owner" | "editor" | "viewer") {
-    await setWorkspaceMemberRole(workspaceId, userId, role);
-    await load();
-  }
-
   async function uploadAndSet(file: File, field: "cover_image_url" | "icon_url") {
     if (!workspace) return;
     const uploaded = await uploadFile(workspace.id, file);
@@ -89,12 +71,6 @@ export default function StashSettingsPage() {
     if (!workspace) return;
     const updated = await updateWorkspace(workspace.id, { color_gradient: gradient });
     setWorkspace(updated);
-  }
-
-  async function removeMember(userId: string) {
-    if (!confirm("Remove this member from the workspace?")) return;
-    await kickWorkspaceMember(workspaceId, userId);
-    await load();
   }
 
   async function handleDelete() {
@@ -119,49 +95,14 @@ export default function StashSettingsPage() {
         )}
 
         <Section title="Members">
-          <ul className="flex flex-col gap-2">
-            {members.map((m) => (
-              <li
-                key={m.user_id}
-                className="flex items-center justify-between rounded-lg border border-border bg-base px-3 py-2"
-              >
-                <div className="min-w-0">
-                  <div className="truncate text-[13.5px] font-medium text-foreground">
-                    {m.display_name}
-                  </div>
-                  <div className="text-[11.5px] text-muted">@{m.name}</div>
-                </div>
-                <div className="flex items-center gap-2">
-                  {isAdmin && m.user_id !== user.id ? (
-                    <>
-                      <CustomSelect
-                        value={m.role}
-                        options={MEMBER_ROLE_OPTIONS}
-                        onChange={(next) =>
-                          changeMemberRole(
-                            m.user_id,
-                            next as "owner" | "editor" | "viewer"
-                          )
-                        }
-                        className="min-w-[82px] rounded border border-border bg-surface px-2 py-1 text-[12px]"
-                        align="right"
-                      />
-                      <button
-                        onClick={() => removeMember(m.user_id)}
-                        className="text-[11.5px] text-red-500 hover:underline"
-                      >
-                        Remove
-                      </button>
-                    </>
-                  ) : (
-                    <span className="rounded bg-raised px-2 py-0.5 text-[11.5px] text-muted">
-                      {roleLabel(m.role)}
-                    </span>
-                  )}
-                </div>
-              </li>
-            ))}
-          </ul>
+          <WorkspaceMembersPanel
+            workspaceId={workspaceId}
+            members={members}
+            currentUserId={user.id}
+            canManage={isAdmin}
+            onReload={load}
+            showInviteControls={false}
+          />
         </Section>
 
         <Section title="Branding">

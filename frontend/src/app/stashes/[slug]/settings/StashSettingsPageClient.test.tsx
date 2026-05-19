@@ -9,10 +9,7 @@ import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import StashSettingsPageClient from "./StashSettingsPageClient";
 import {
-  addStashMember,
   getPublicStash,
-  listStashMembers,
-  searchUsers,
   updateStash,
   type PublicStashDetail,
 } from "../../../../lib/api";
@@ -73,19 +70,8 @@ vi.mock("../../../../lib/stashNavigationCache", () => ({
 }));
 
 vi.mock("../../../../lib/api", () => ({
-  ApiError: class ApiError extends Error {
-    status: number;
-    constructor(status: number, message: string) {
-      super(message);
-      this.status = status;
-    }
-  },
-  addStashMember: vi.fn(),
   deleteStash: vi.fn(),
   getPublicStash: vi.fn(),
-  listStashMembers: vi.fn(),
-  removeStashMember: vi.fn(),
-  searchUsers: vi.fn(),
   updateStash: vi.fn(),
   uploadFile: vi.fn(),
 }));
@@ -126,45 +112,22 @@ describe("StashSettingsPageClient", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(getPublicStash).mockResolvedValue(stashDetail());
-    vi.mocked(listStashMembers).mockResolvedValue([
-      {
-        user_id: "user-2",
-        name: "sam",
-        display_name: "Sam",
-        permission: "write",
-        granted_by: "user-1",
-        created_at: "2026-05-12T00:00:00Z",
-      },
-    ]);
     vi.mocked(updateStash).mockImplementation(async (_stashId, updates) => ({
       ...stashDetail().stash,
       ...updates,
     }));
-    vi.mocked(searchUsers).mockResolvedValue([
-      { id: "user-3", name: "alex", display_name: "Alex" },
-    ]);
-    vi.mocked(addStashMember).mockResolvedValue({
-      user_id: "user-3",
-      name: "alex",
-      display_name: "Alex",
-      permission: "read",
-      granted_by: "user-1",
-      created_at: "2026-05-13T00:00:00Z",
-    });
   });
 
   afterEach(() => {
     cleanup();
   });
 
-  it("loads editable stash settings and explicit members", async () => {
+  it("loads editable stash settings", async () => {
     render(<StashSettingsPageClient slug="shared-stash" />);
 
     expect(await screen.findByRole("heading", { name: "Settings" })).toBeInTheDocument();
     expect(await screen.findByDisplayValue("Shared Stash")).toBeInTheDocument();
-    expect(screen.getByText("@henry")).toBeInTheDocument();
-    expect(screen.getByText("@sam")).toBeInTheDocument();
-    expect(listStashMembers).toHaveBeenCalledWith("stash-1");
+    expect(screen.queryByText("Members")).not.toBeInTheDocument();
   });
 
   it("saves title and visibility changes", async () => {
@@ -185,19 +148,4 @@ describe("StashSettingsPageClient", () => {
     expect(await screen.findByText("Saved.")).toBeInTheDocument();
   });
 
-  it("searches and adds a member", async () => {
-    render(<StashSettingsPageClient slug="shared-stash" />);
-
-    fireEvent.change(await screen.findByPlaceholderText("Search users"), {
-      target: { value: "alex" },
-    });
-    fireEvent.click(screen.getByRole("button", { name: "Search" }));
-
-    const addResult = await screen.findByRole("button", { name: /Alex/ });
-    fireEvent.click(addResult);
-
-    await waitFor(() =>
-      expect(addStashMember).toHaveBeenCalledWith("stash-1", "user-3", "read"),
-    );
-  });
 });

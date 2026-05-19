@@ -13,6 +13,7 @@ import {
   getSessionEvents,
   getWorkspaceSidebar,
   listObjectStashes,
+  trashItem,
   type SessionDetail,
   type SessionEvent,
   type WorkspaceStash,
@@ -173,7 +174,7 @@ export default function SessionViewerPage() {
               <DownloadMenu
                 options={[
                   {
-                    label: "JSONL transcript",
+                    label: "Download transcript (.jsonl)",
                     onSelect: async () => {
                       const path = `/api/v1/workspaces/${workspaceId}/transcripts/${encodeURIComponent(
                         sessionId
@@ -191,6 +192,30 @@ export default function SessionViewerPage() {
                       URL.revokeObjectURL(url);
                     },
                   },
+                  ...(sessionDetail
+                    ? [
+                        {
+                          label: "Delete",
+                          destructive: true,
+                          onSelect: async () => {
+                            if (
+                              !window.confirm(
+                                `Move session "${sessionId}" to trash?`
+                              )
+                            )
+                              return;
+                            try {
+                              await trashItem(workspaceId, "session", sessionDetail.id);
+                              router.push(`/workspaces/${workspaceId}/sessions`);
+                            } catch (e) {
+                              setError(
+                                e instanceof Error ? e.message : "Delete failed"
+                              );
+                            }
+                          },
+                        },
+                      ]
+                    : []),
                 ]}
               />
             </div>

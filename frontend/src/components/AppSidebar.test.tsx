@@ -457,6 +457,19 @@ describe("AppSidebar tree expansion", () => {
     );
   });
 
+  it("links sidebar members to the active workspace members page", async () => {
+    nav.pathname = "/workspaces/ws-1/sessions";
+
+    renderSidebar();
+
+    await screen.findByText("Sessions");
+
+    expect(screen.getByRole("link", { name: "Members" })).toHaveAttribute(
+      "href",
+      "/workspaces/ws-1/members"
+    );
+  });
+
   it("keeps deep-linked tree sections open by default", async () => {
     nav.pathname = "/workspaces/ws-1/p/page-1";
 

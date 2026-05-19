@@ -4,14 +4,19 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import StashPageClient from "./StashPageClient";
 import {
+  addStashMember,
   getActivityTimeline,
   getEmbeddingProjection,
+  getMe,
   getPublicStash,
+  listStashMembers,
+  searchUsers,
   type PublicStashDetail,
 } from "../../../lib/api";
 
@@ -65,12 +70,17 @@ vi.mock("../../../lib/api", () => ({
     }
   },
   addExternalStash: vi.fn(),
+  addStashMember: vi.fn(),
   createPage: vi.fn(),
+  getMe: vi.fn(),
   getPublicStash: vi.fn(),
   listAllPages: vi.fn(),
   listAllTables: vi.fn(),
   listFiles: vi.fn(),
   listMySessions: vi.fn(),
+  listStashMembers: vi.fn(),
+  removeStashMember: vi.fn(),
+  searchUsers: vi.fn(),
   updateStash: vi.fn(),
   uploadFile: vi.fn(),
   getActivityTimeline: vi.fn(),
@@ -149,7 +159,29 @@ describe("StashPageClient sharing", () => {
       stats: { total_embeddings: 0, projected: 0 },
       cached: false,
     });
+    vi.mocked(getMe).mockResolvedValue(authState.user!);
     vi.mocked(getPublicStash).mockResolvedValue(stashDetail());
+    vi.mocked(listStashMembers).mockResolvedValue([
+      {
+        user_id: "user-2",
+        name: "sam",
+        display_name: "Sam",
+        permission: "write",
+        granted_by: "user-1",
+        created_at: "2026-05-12T00:00:00Z",
+      },
+    ]);
+    vi.mocked(searchUsers).mockResolvedValue([
+      { id: "user-3", name: "alex", display_name: "Alex" },
+    ]);
+    vi.mocked(addStashMember).mockResolvedValue({
+      user_id: "user-3",
+      name: "alex",
+      display_name: "Alex",
+      permission: "read",
+      granted_by: "user-1",
+      created_at: "2026-05-13T00:00:00Z",
+    });
   });
 
   afterEach(() => {
@@ -173,6 +205,33 @@ describe("StashPageClient sharing", () => {
       ),
     );
     expect(screen.getByRole("button", { name: "Copied" })).toBeInTheDocument();
+  });
+
+  it("manages explicit Stash members from the Share dropdown", async () => {
+    vi.mocked(getPublicStash).mockResolvedValueOnce({
+      ...stashDetail({ access: "private" }),
+      can_write: true,
+    });
+
+    render(<StashPageClient slug="shared-stash" />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Share" }));
+    const dialog = await screen.findByRole("dialog", {
+      name: "Share Shared Stash",
+    });
+
+    expect(await within(dialog).findByText("@sam")).toBeInTheDocument();
+    expect(listStashMembers).toHaveBeenCalledWith("stash-1");
+
+    fireEvent.change(within(dialog).getByPlaceholderText("Search users"), {
+      target: { value: "alex" },
+    });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Search" }));
+    fireEvent.click(await within(dialog).findByRole("button", { name: /Alex/ }));
+
+    await waitFor(() =>
+      expect(addStashMember).toHaveBeenCalledWith("stash-1", "user-3", "read"),
+    );
   });
 
   it("keeps add/create flows behind the single Add things button", async () => {

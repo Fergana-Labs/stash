@@ -13,24 +13,15 @@ import {
 import AppShell from "../../../../components/AppShell";
 import { useBreadcrumbs } from "../../../../components/BreadcrumbContext";
 import CustomSelect from "../../../../components/CustomSelect";
-import { StashIcon } from "../../../../components/StashIcons";
 import { useAuth } from "../../../../hooks/useAuth";
 import {
-  addStashMember,
-  ApiError,
   deleteStash,
   getPublicStash,
-  listStashMembers,
-  removeStashMember,
-  searchUsers,
   updateStash,
   uploadFile,
   type PublicStashDetail,
-  type StashMember,
-  type StashMemberPermission,
 } from "../../../../lib/api";
 import { resetStashNavigationCache } from "../../../../lib/stashNavigationCache";
-import type { UserSearchResult } from "../../../../lib/types";
 
 type StashAccess = PublicStashDetail["stash"]["access"];
 
@@ -40,18 +31,10 @@ const ACCESS_OPTIONS = [
   { value: "public", label: "Public" },
 ];
 
-const PERMISSION_OPTIONS = [
-  { value: "read", label: "Read" },
-  { value: "write", label: "Write" },
-  { value: "admin", label: "Admin" },
-];
-
 export default function StashSettingsPageClient({ slug }: { slug: string }) {
   const router = useRouter();
   const { user, loading: authLoading, logout } = useAuth();
   const [data, setData] = useState<PublicStashDetail | null>(null);
-  const [members, setMembers] = useState<StashMember[]>([]);
-  const [canManageMembers, setCanManageMembers] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState("");
   const [error, setError] = useState("");
@@ -59,11 +42,6 @@ export default function StashSettingsPageClient({ slug }: { slug: string }) {
   const [title, setTitle] = useState("");
   const [access, setAccess] = useState<StashAccess>("workspace");
   const [discoverable, setDiscoverable] = useState(false);
-  const [userQuery, setUserQuery] = useState("");
-  const [userResults, setUserResults] = useState<UserSearchResult[]>([]);
-  const [newMemberPermission, setNewMemberPermission] =
-    useState<StashMemberPermission>("read");
-  const [memberMessage, setMemberMessage] = useState("");
 
   const stash = data?.stash ?? null;
 
@@ -86,24 +64,6 @@ export default function StashSettingsPageClient({ slug }: { slug: string }) {
     try {
       const nextData = await getPublicStash(slug);
       setData(nextData);
-
-      if (!nextData.can_write) {
-        setMembers([]);
-        setCanManageMembers(false);
-        return;
-      }
-
-      try {
-        setMembers(await listStashMembers(nextData.stash.id));
-        setCanManageMembers(true);
-      } catch (e) {
-        if (e instanceof ApiError && e.status === 403) {
-          setMembers([]);
-          setCanManageMembers(false);
-          return;
-        }
-        throw e;
-      }
     } catch (e) {
       setData(null);
       setError(e instanceof Error ? e.message : "Failed to load settings");
@@ -253,82 +213,6 @@ export default function StashSettingsPageClient({ slug }: { slug: string }) {
     }
   }
 
-  async function searchForUsers(e: FormEvent) {
-    e.preventDefault();
-    if (!userQuery.trim()) return;
-
-    setSaving("members");
-    setMemberMessage("");
-    try {
-      setUserResults(await searchUsers(userQuery.trim()));
-    } catch (e) {
-      setMemberMessage(e instanceof Error ? e.message : "Could not search users");
-    } finally {
-      setSaving("");
-    }
-  }
-
-  async function refreshMembers() {
-    if (!stash) return;
-    setMembers(await listStashMembers(stash.id));
-  }
-
-  async function addMember(userId: string) {
-    if (!stash) return;
-
-    setSaving("members");
-    setMemberMessage("");
-    try {
-      await addStashMember(stash.id, userId, newMemberPermission);
-      await refreshMembers();
-      setUserQuery("");
-      setUserResults([]);
-      setMemberMessage("Added.");
-      resetStashNavigationCache();
-    } catch (e) {
-      setMemberMessage(e instanceof Error ? e.message : "Could not add member");
-    } finally {
-      setSaving("");
-    }
-  }
-
-  async function changeMemberPermission(
-    userId: string,
-    permission: StashMemberPermission
-  ) {
-    if (!stash) return;
-
-    setSaving("members");
-    setMemberMessage("");
-    try {
-      await addStashMember(stash.id, userId, permission);
-      await refreshMembers();
-      setMemberMessage("Updated.");
-      resetStashNavigationCache();
-    } catch (e) {
-      setMemberMessage(e instanceof Error ? e.message : "Could not update member");
-    } finally {
-      setSaving("");
-    }
-  }
-
-  async function removeMember(userId: string) {
-    if (!stash) return;
-    if (!confirm("Remove this member from the Stash?")) return;
-
-    setSaving("members");
-    setMemberMessage("");
-    try {
-      await removeStashMember(stash.id, userId);
-      await refreshMembers();
-      resetStashNavigationCache();
-    } catch (e) {
-      setMemberMessage(e instanceof Error ? e.message : "Could not remove member");
-    } finally {
-      setSaving("");
-    }
-  }
-
   async function handleDelete() {
     if (!stash) return;
     if (!confirm(`Delete "${stash.title}"? This cannot be undone.`)) return;
@@ -344,8 +228,6 @@ export default function StashSettingsPageClient({ slug }: { slug: string }) {
       setSaving("");
     }
   }
-
-  const ownerLabel = stash.owner_display_name || stash.owner_name;
 
   return (
     <AppShell user={user} onLogout={logout} activeWorkspaceId={stash.workspace_id}>
@@ -452,139 +334,6 @@ export default function StashSettingsPageClient({ slug }: { slug: string }) {
               onClear={() => clearImage("icon_url")}
               previewClass="h-12 w-12 rounded-md object-cover"
             />
-          </Section>
-
-          <Section title="Members">
-            <div className="rounded-lg border border-border bg-base px-3 py-2">
-              <div className="flex items-center justify-between gap-3">
-                <div className="flex min-w-0 items-center gap-2">
-                  <span className="flex h-7 w-7 items-center justify-center rounded-md bg-[var(--color-brand-100)] text-[var(--color-brand-700)]">
-                    <StashIcon />
-                  </span>
-                  <div className="min-w-0">
-                    <div className="truncate text-[13.5px] font-medium text-foreground">
-                      {ownerLabel}
-                    </div>
-                    <div className="truncate text-[11.5px] text-muted">
-                      @{stash.owner_name}
-                    </div>
-                  </div>
-                </div>
-                <span className="rounded bg-raised px-2 py-0.5 text-[11.5px] text-muted">
-                  admin
-                </span>
-              </div>
-            </div>
-
-            {canManageMembers ? (
-              <>
-                <ul className="flex flex-col gap-2">
-                  {members.map((member) => (
-                    <li
-                      key={member.user_id}
-                      className="flex items-center justify-between gap-3 rounded-lg border border-border bg-base px-3 py-2"
-                    >
-                      <div className="min-w-0">
-                        <div className="truncate text-[13.5px] font-medium text-foreground">
-                          {member.display_name || member.name}
-                        </div>
-                        <div className="truncate text-[11.5px] text-muted">
-                          @{member.name}
-                        </div>
-                      </div>
-                      <div className="flex flex-shrink-0 items-center gap-2">
-                        <CustomSelect
-                          value={member.permission}
-                          options={PERMISSION_OPTIONS}
-                          onChange={(next) =>
-                            changeMemberPermission(
-                              member.user_id,
-                              next as StashMemberPermission
-                            )
-                          }
-                          ariaLabel={`Permission for ${member.name}`}
-                          className="min-w-[82px] rounded border border-border bg-surface px-2 py-1 text-[12px]"
-                          align="right"
-                        />
-                        {member.user_id !== user.id && (
-                          <button
-                            type="button"
-                            onClick={() => removeMember(member.user_id)}
-                            className="text-[11.5px] text-red-500 hover:underline"
-                          >
-                            Remove
-                          </button>
-                        )}
-                      </div>
-                    </li>
-                  ))}
-                </ul>
-
-                <form
-                  onSubmit={searchForUsers}
-                  className="rounded-lg border border-border bg-base px-3 py-3"
-                >
-                  <label className="block text-[12px] font-medium text-muted" htmlFor="member-search">
-                    Add member
-                  </label>
-                  <div className="mt-1 flex gap-2">
-                    <input
-                      id="member-search"
-                      value={userQuery}
-                      onChange={(e) => setUserQuery(e.target.value)}
-                      placeholder="Search users"
-                      className="min-w-0 flex-1 rounded-md border border-border bg-surface px-3 py-2 text-[13px] text-foreground outline-none focus:border-[var(--color-brand-400)]"
-                    />
-                    <CustomSelect
-                      value={newMemberPermission}
-                      options={PERMISSION_OPTIONS}
-                      onChange={(next) =>
-                        setNewMemberPermission(next as StashMemberPermission)
-                      }
-                      ariaLabel="New member permission"
-                      className="min-w-[86px] rounded-md border border-border bg-surface px-2 py-2 text-[12px]"
-                      align="right"
-                    />
-                    <button
-                      type="submit"
-                      disabled={saving === "members" || !userQuery.trim()}
-                      className="rounded-md border border-border bg-base px-3 py-2 text-[12.5px] font-medium text-foreground hover:bg-raised disabled:opacity-50"
-                    >
-                      Search
-                    </button>
-                  </div>
-                  {userResults.length > 0 && (
-                    <div className="mt-3 flex flex-col gap-1">
-                      {userResults.map((result) => (
-                        <button
-                          key={result.id}
-                          type="button"
-                          onClick={() => addMember(result.id)}
-                          className="flex items-center justify-between rounded-md px-2 py-1.5 text-left hover:bg-raised"
-                        >
-                          <span className="min-w-0">
-                            <span className="block truncate text-[13px] font-medium text-foreground">
-                              {result.display_name || result.name}
-                            </span>
-                            <span className="block truncate text-[11.5px] text-muted">
-                              @{result.name}
-                            </span>
-                          </span>
-                          <span className="text-[11.5px] text-muted">Add</span>
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                  {memberMessage && (
-                    <div className="mt-2 text-[12px] text-muted">{memberMessage}</div>
-                  )}
-                </form>
-              </>
-            ) : (
-              <div className="rounded-lg border border-border bg-base px-3 py-2 text-[13px] text-muted">
-                Only Stash admins can manage members.
-              </div>
-            )}
           </Section>
 
           <Section title="Danger zone">

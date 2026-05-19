@@ -3,16 +3,23 @@
 import { ReactNode, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { getSessionDetail, publishStash, type SessionDetail, type StashItemSpec } from "../lib/api";
+import {
+  getSessionDetail,
+  publishStash,
+  type SessionDetail,
+  type StashItemSpec,
+} from "../lib/api";
 import { User, Workspace } from "../lib/types";
 import AppSidebar from "./AppSidebar";
 import CommandPalette from "./CommandPalette";
 import StashInviteCenter from "./StashInviteCenter";
 import { useShareModal } from "../lib/shareModalContext";
 import { type Crumb, useBreadcrumbsValue } from "./BreadcrumbContext";
-import { getCachedWorkspaces, readCachedWorkspaces } from "../lib/stashNavigationCache";
+import {
+  getCachedWorkspaces,
+  readCachedWorkspaces,
+} from "../lib/stashNavigationCache";
 import { useEscapeKey } from "../hooks/useEscapeKey";
-import WorkspaceShareButton from "./WorkspaceShareButton";
 
 interface AppShellProps {
   user: User;
@@ -25,7 +32,14 @@ interface AppShellProps {
 const SIDEBAR_KEY = "stash_sidebar_collapsed";
 
 export interface SearchScope {
-  kind: "workspace" | "page" | "folder" | "session" | "stash" | "sessions" | "stashes";
+  kind:
+    | "workspace"
+    | "page"
+    | "folder"
+    | "session"
+    | "stash"
+    | "sessions"
+    | "stashes";
   label: string;
   detail: string;
   params: Record<string, string>;
@@ -47,12 +61,19 @@ function readBool(key: string): boolean {
 // through the picker.
 function inferShareInitial(pathname: string): StashItemSpec[] | undefined {
   const pageMatch = pathname.match(/^\/workspaces\/[^/]+\/p\/([^/?#]+)/);
-  if (pageMatch) return [{ object_type: "page", object_id: pageMatch[1], position: 0 }];
-  const folderMatch = pathname.match(/^\/workspaces\/[^/]+\/folders\/([^/?#]+)/);
-  if (folderMatch) return [{ object_type: "folder", object_id: folderMatch[1], position: 0 }];
+  if (pageMatch)
+    return [{ object_type: "page", object_id: pageMatch[1], position: 0 }];
+  const folderMatch = pathname.match(
+    /^\/workspaces\/[^/]+\/folders\/([^/?#]+)/,
+  );
+  if (folderMatch)
+    return [{ object_type: "folder", object_id: folderMatch[1], position: 0 }];
   const fileMatch = pathname.match(/^\/workspaces\/[^/]+\/f\/([^/?#]+)/);
-  if (fileMatch) return [{ object_type: "file", object_id: fileMatch[1], position: 0 }];
-  const sessionMatch = pathname.match(/^\/workspaces\/[^/]+\/sessions\/([^/?#]+)/);
+  if (fileMatch)
+    return [{ object_type: "file", object_id: fileMatch[1], position: 0 }];
+  const sessionMatch = pathname.match(
+    /^\/workspaces\/[^/]+\/sessions\/([^/?#]+)/,
+  );
   if (sessionMatch) {
     const sessionId = decodeURIComponent(sessionMatch[1]);
     return [
@@ -69,10 +90,18 @@ function inferShareInitial(pathname: string): StashItemSpec[] | undefined {
 
 function SidebarToggleIcon({ collapsed }: { collapsed: boolean }) {
   return (
-    <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+    <svg
+      className="h-4 w-4"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+    >
       <rect x="3" y="3" width="18" height="18" rx="2" />
       <path d="M9 3v18" />
-      {collapsed && <path d="M14 9l3 3-3 3" strokeLinecap="round" strokeLinejoin="round" />}
+      {collapsed && (
+        <path d="M14 9l3 3-3 3" strokeLinecap="round" strokeLinejoin="round" />
+      )}
     </svg>
   );
 }
@@ -84,7 +113,7 @@ function lastCrumbLabel(crumbs: Crumb[] | null): string | null {
 
 function inferDirectShareTarget(
   pathname: string,
-  breadcrumbs: Crumb[] | null
+  breadcrumbs: Crumb[] | null,
 ): DirectShareTarget | null {
   const pageMatch = pathname.match(/^\/workspaces\/([^/]+)\/p\/([^/?#]+)/);
   if (pageMatch) {
@@ -96,7 +125,9 @@ function inferDirectShareTarget(
     };
   }
 
-  const sessionMatch = pathname.match(/^\/workspaces\/([^/]+)\/sessions\/([^/?#]+)/);
+  const sessionMatch = pathname.match(
+    /^\/workspaces\/([^/]+)\/sessions\/([^/?#]+)/,
+  );
   if (sessionMatch) {
     return {
       kind: "session",
@@ -108,14 +139,10 @@ function inferDirectShareTarget(
   return null;
 }
 
-function isWorkspaceHomePath(pathname: string): boolean {
-  return /^\/workspaces\/[^/?#]+\/?$/.test(pathname);
-}
-
 function inferSearchScope(
   pathname: string,
   activeWorkspace: Workspace | undefined,
-  breadcrumbs: Crumb[] | null
+  breadcrumbs: Crumb[] | null,
 ): SearchScope | null {
   const stashMatch = pathname.match(/^\/stashes\/([^/?#]+)/);
   if (stashMatch) {
@@ -128,7 +155,9 @@ function inferSearchScope(
     };
   }
 
-  const sessionMatch = pathname.match(/^\/workspaces\/([^/]+)\/sessions\/([^/?#]+)/);
+  const sessionMatch = pathname.match(
+    /^\/workspaces\/([^/]+)\/sessions\/([^/?#]+)/,
+  );
   if (sessionMatch) {
     const sessionId = decodeURIComponent(sessionMatch[2]);
     return {
@@ -149,7 +178,9 @@ function inferSearchScope(
     };
   }
 
-  const folderMatch = pathname.match(/^\/workspaces\/([^/]+)\/folders\/([^/?#]+)/);
+  const folderMatch = pathname.match(
+    /^\/workspaces\/([^/]+)\/folders\/([^/?#]+)/,
+  );
   if (folderMatch) {
     return {
       kind: "folder",
@@ -159,7 +190,9 @@ function inferSearchScope(
     };
   }
 
-  const sessionsMatch = pathname.match(/^\/workspaces\/([^/]+)\/sessions(?:\/)?$/);
+  const sessionsMatch = pathname.match(
+    /^\/workspaces\/([^/]+)\/sessions(?:\/)?$/,
+  );
   if (sessionsMatch) {
     return {
       kind: "sessions",
@@ -169,7 +202,9 @@ function inferSearchScope(
     };
   }
 
-  const stashesMatch = pathname.match(/^\/workspaces\/([^/]+)\/stashes(?:\/)?$/);
+  const stashesMatch = pathname.match(
+    /^\/workspaces\/([^/]+)\/stashes(?:\/)?$/,
+  );
   if (stashesMatch) {
     return {
       kind: "stashes",
@@ -244,10 +279,10 @@ export default function AppShell({
   const shareModal = useShareModal();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [activeWorkspaceId, setActiveWorkspaceId] = useState<string | null>(
-    preferredWorkspaceId
+    preferredWorkspaceId,
   );
   const [workspaces, setWorkspaces] = useState<Workspace[]>(
-    () => readCachedWorkspaces(user.id)?.all ?? []
+    () => readCachedWorkspaces(user.id)?.all ?? [],
   );
   const [cmdkOpen, setCmdkOpen] = useState(false);
   const [shareStatus, setShareStatus] = useState<ShareStatus>("idle");
@@ -279,7 +314,8 @@ export default function AppShell({
         e.preventDefault();
         setSidebarCollapsed((c) => {
           const next = !c;
-          if (typeof window !== "undefined") localStorage.setItem(SIDEBAR_KEY, next ? "1" : "0");
+          if (typeof window !== "undefined")
+            localStorage.setItem(SIDEBAR_KEY, next ? "1" : "0");
           return next;
         });
       }
@@ -292,6 +328,7 @@ export default function AppShell({
   const searchScope = inferSearchScope(pathname, activeWorkspace, breadcrumbs);
   const initial = user.display_name[0].toUpperCase();
   const directShareTarget = inferDirectShareTarget(pathname, breadcrumbs);
+  const shareInitial = inferShareInitial(pathname);
 
   async function copyCurrentViewLink() {
     if (!activeWorkspaceId) return;
@@ -301,7 +338,7 @@ export default function AppShell({
       shareModal.open({
         workspaceId: activeWorkspaceId,
         workspaceName: activeWorkspace?.name,
-        initial: inferShareInitial(pathname),
+        initial: shareInitial,
       });
       return;
     }
@@ -322,7 +359,7 @@ export default function AppShell({
                   label_override: target.title,
                 },
               ],
-              { discoverable: false }
+              { discoverable: false },
             )
           : await publishSessionStash(target);
       await navigator.clipboard.writeText(result.url);
@@ -342,24 +379,19 @@ export default function AppShell({
     }
   }
 
-  const defaultShareAction = activeWorkspaceId ? (
-    <div className="mr-1 flex items-center gap-2">
-      {shareMessage && (
-        <span
-          className={
-            "max-w-[180px] truncate text-[11.5px] " +
-            (shareStatus === "error" ? "text-red-500" : "text-muted")
-          }
-        >
-          {shareMessage}
-        </span>
-      )}
-      {isWorkspaceHomePath(pathname) ? (
-        <WorkspaceShareButton
-          workspaceId={activeWorkspaceId}
-          workspaceName={activeWorkspace?.name}
-        />
-      ) : (
+  const defaultShareAction =
+    activeWorkspaceId && shareInitial ? (
+      <div className="mr-1 flex items-center gap-2">
+        {shareMessage && (
+          <span
+            className={
+              "max-w-[180px] truncate text-[11.5px] " +
+              (shareStatus === "error" ? "text-red-500" : "text-muted")
+            }
+          >
+            {shareMessage}
+          </span>
+        )}
         <button
           className="rounded-md bg-[var(--color-brand-600)] px-2.5 py-1 text-[12.5px] font-medium text-white hover:bg-[var(--color-brand-700)] disabled:opacity-50"
           onClick={() => void copyCurrentViewLink()}
@@ -371,9 +403,8 @@ export default function AppShell({
               ? "Copied"
               : "Share"}
         </button>
-      )}
-    </div>
-  ) : null;
+      </div>
+    ) : null;
 
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-base">
@@ -394,7 +425,10 @@ export default function AppShell({
           >
             <SidebarToggleIcon collapsed={sidebarCollapsed} />
           </button>
-          <Breadcrumb activeWorkspace={activeWorkspace} pageCrumbs={breadcrumbs} />
+          <Breadcrumb
+            activeWorkspace={activeWorkspace}
+            pageCrumbs={breadcrumbs}
+          />
         </div>
 
         <TopSearchButton
@@ -417,7 +451,9 @@ export default function AppShell({
       <div
         className="grid min-h-0 flex-1 overflow-hidden"
         style={{
-          gridTemplateColumns: sidebarCollapsed ? "minmax(0, 1fr)" : "260px minmax(0, 1fr)",
+          gridTemplateColumns: sidebarCollapsed
+            ? "minmax(0, 1fr)"
+            : "260px minmax(0, 1fr)",
         }}
       >
         {!sidebarCollapsed && (
@@ -443,7 +479,9 @@ export default function AppShell({
   );
 }
 
-async function publishSessionStash(target: Extract<DirectShareTarget, { kind: "session" }>) {
+async function publishSessionStash(
+  target: Extract<DirectShareTarget, { kind: "session" }>,
+) {
   const session = await getSessionDetail(target.workspaceId, target.sessionId);
   const title = sessionShareTitle(session);
   return publishStash(
@@ -457,11 +495,14 @@ async function publishSessionStash(target: Extract<DirectShareTarget, { kind: "s
         label_override: title,
       },
     ],
-    { discoverable: false }
+    { discoverable: false },
   );
 }
 
 function sessionShareTitle(session: SessionDetail): string {
+  const title = session.title?.trim();
+  if (title) return title;
+
   const summary = session.summary?.trim();
   if (summary) {
     const firstSentence = summary.split(".")[0]?.trim();
@@ -554,7 +595,10 @@ function Breadcrumb({
 
   let items: { label: string; href?: string }[] = [home];
   if (pageCrumbs && pageCrumbs.length > 0) {
-    items = [...items, ...pageCrumbs.map((c) => ({ label: c.label, href: c.href }))];
+    items = [
+      ...items,
+      ...pageCrumbs.map((c) => ({ label: c.label, href: c.href })),
+    ];
   }
 
   return (
@@ -569,7 +613,9 @@ function Breadcrumb({
                 {c.label}
               </Link>
             ) : (
-              <span className="truncate font-medium text-foreground">{c.label}</span>
+              <span className="truncate font-medium text-foreground">
+                {c.label}
+              </span>
             )}
           </span>
         );

@@ -1,17 +1,17 @@
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import AppShell from "./AppShell";
 import { BreadcrumbProvider, useBreadcrumbs } from "./BreadcrumbContext";
 import { ShareModalProvider } from "../lib/shareModalContext";
-import {
-  apiFetch,
-  createInviteToken,
-  getMe,
-  getSessionDetail,
-  getWorkspaceMembers,
-  publishStash,
-} from "../lib/api";
+import { getSessionDetail, publishStash } from "../lib/api";
 import {
   getCachedWorkspaces,
   readCachedWorkspaces,
@@ -22,7 +22,10 @@ const nav = vi.hoisted(() => ({
 }));
 
 const commandPaletteState = vi.hoisted(() => ({
-  props: null as { open: boolean; searchScope: { kind: string; label: string } | null } | null,
+  props: null as {
+    open: boolean;
+    searchScope: { kind: string; label: string } | null;
+  } | null,
 }));
 
 vi.mock("next/navigation", () => ({
@@ -50,11 +53,7 @@ vi.mock("../lib/stashNavigationCache", () => ({
 }));
 
 vi.mock("../lib/api", () => ({
-  apiFetch: vi.fn(),
-  createInviteToken: vi.fn(),
-  getMe: vi.fn(),
   getSessionDetail: vi.fn(),
-  getWorkspaceMembers: vi.fn(),
   publishStash: vi.fn(),
 }));
 
@@ -63,7 +62,10 @@ vi.mock("./AppSidebar", () => ({
 }));
 
 vi.mock("./CommandPalette", () => ({
-  default: (props: { open: boolean; searchScope: { kind: string; label: string } | null }) => {
+  default: (props: {
+    open: boolean;
+    searchScope: { kind: string; label: string } | null;
+  }) => {
     commandPaletteState.props = props;
     return props.open ? (
       <div data-testid="command-palette">
@@ -97,21 +99,13 @@ const workspace = {
   member_count: 1,
 };
 
-const workspaceMember = {
-  user_id: user.id,
-  name: user.name,
-  display_name: user.display_name,
-  role: "owner",
-  joined_at: "2026-05-11T00:00:00Z",
-};
-
 function BreadcrumbPage() {
   useBreadcrumbs(
     [
       { label: "Product", href: "/workspaces/ws-1/folders/folder-1" },
       { label: "Launch plan" },
     ],
-    "breadcrumb-page"
+    "breadcrumb-page",
   );
 
   return <div>Page content</div>;
@@ -138,16 +132,9 @@ describe("AppShell sidebar collapse", () => {
       configurable: true,
       value: { writeText: vi.fn().mockResolvedValue(undefined) },
     });
-    vi.mocked(publishStash).mockResolvedValue(publishedStashResult("shared-link"));
-    vi.mocked(apiFetch).mockResolvedValue({});
-    vi.mocked(createInviteToken).mockResolvedValue({
-      id: "invite-1",
-      token: "invite-token",
-      workspace_id: "ws-1",
-      expires_at: "2026-05-18T00:00:00Z",
-    });
-    vi.mocked(getMe).mockResolvedValue(user);
-    vi.mocked(getWorkspaceMembers).mockResolvedValue([workspaceMember]);
+    vi.mocked(publishStash).mockResolvedValue(
+      publishedStashResult("shared-link"),
+    );
     vi.mocked(readCachedWorkspaces).mockReturnValue({
       userId: user.id,
       all: [],
@@ -172,7 +159,7 @@ describe("AppShell sidebar collapse", () => {
         <AppShell user={user} onLogout={vi.fn()}>
           <div>Page content</div>
         </AppShell>
-      </ShareModalProvider>
+      </ShareModalProvider>,
     );
 
     fireEvent.click(screen.getByRole("button", { name: "Toggle sidebar" }));
@@ -193,12 +180,14 @@ describe("AppShell sidebar collapse", () => {
         <AppShell user={user} onLogout={vi.fn()}>
           <div>Session content</div>
         </AppShell>
-      </ShareModalProvider>
+      </ShareModalProvider>,
     );
 
     fireEvent.click(screen.getByRole("button", { name: "Search" }));
 
-    expect(screen.getByTestId("command-palette")).toHaveTextContent("session:this session");
+    expect(screen.getByTestId("command-palette")).toHaveTextContent(
+      "session:this session",
+    );
     expect(commandPaletteState.props?.searchScope?.kind).toBe("session");
   });
 
@@ -211,7 +200,7 @@ describe("AppShell sidebar collapse", () => {
         <AppShell user={user} onLogout={vi.fn()}>
           <div>Page content</div>
         </AppShell>
-      </ShareModalProvider>
+      </ShareModalProvider>,
     );
 
     fireEvent.click(await screen.findByRole("button", { name: "Share" }));
@@ -228,11 +217,11 @@ describe("AppShell sidebar collapse", () => {
             label_override: "Shared page",
           },
         ],
-        { discoverable: false }
-      )
+        { discoverable: false },
+      ),
     );
     expect(navigator.clipboard.writeText).toHaveBeenCalledWith(
-      "https://app.joinstash.ai/stashes/shared-link"
+      "https://app.joinstash.ai/stashes/shared-link",
     );
   });
 
@@ -243,6 +232,7 @@ describe("AppShell sidebar collapse", () => {
       id: "session-row-uuid",
       workspace_id: "ws-1",
       session_id: "session-route-id",
+      title: "Debug auth flow",
       agent_name: "codex",
       cwd: null,
       summary: "Debug auth flow. Confirm token expiry.",
@@ -259,7 +249,7 @@ describe("AppShell sidebar collapse", () => {
         <AppShell user={user} onLogout={vi.fn()}>
           <div>Session content</div>
         </AppShell>
-      </ShareModalProvider>
+      </ShareModalProvider>,
     );
 
     fireEvent.click(await screen.findByRole("button", { name: "Share" }));
@@ -276,12 +266,12 @@ describe("AppShell sidebar collapse", () => {
             label_override: "Debug auth flow",
           },
         ],
-        { discoverable: false }
-      )
+        { discoverable: false },
+      ),
     );
     expect(getSessionDetail).toHaveBeenCalledWith("ws-1", "session-route-id");
     expect(navigator.clipboard.writeText).toHaveBeenCalledWith(
-      "https://app.joinstash.ai/stashes/shared-link"
+      "https://app.joinstash.ai/stashes/shared-link",
     );
   });
 
@@ -294,16 +284,22 @@ describe("AppShell sidebar collapse", () => {
         <AppShell user={user} onLogout={vi.fn()}>
           <div>Workspace content</div>
         </AppShell>
-      </ShareModalProvider>
+      </ShareModalProvider>,
     );
 
     const home = screen.getByRole("link", { name: "Home" });
-    await waitFor(() => expect(home).toHaveAttribute("href", "/workspaces/ws-1"));
-    expect(screen.queryByRole("button", { name: "Back" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: "Demo Stash" })).not.toBeInTheDocument();
+    await waitFor(() =>
+      expect(home).toHaveAttribute("href", "/workspaces/ws-1"),
+    );
+    expect(
+      screen.queryByRole("button", { name: "Back" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("link", { name: "Demo Stash" }),
+    ).not.toBeInTheDocument();
   });
 
-  it("opens workspace sharing as a dropdown on the workspace home route", async () => {
+  it("hides the default Share action on the workspace home route", async () => {
     nav.pathname = "/workspaces/ws-1";
     mockWorkspaceCache();
 
@@ -312,20 +308,32 @@ describe("AppShell sidebar collapse", () => {
         <AppShell user={user} onLogout={vi.fn()}>
           <div>Workspace content</div>
         </AppShell>
-      </ShareModalProvider>
+      </ShareModalProvider>,
     );
 
-    fireEvent.click(await screen.findByRole("button", { name: "Share" }));
-
-    const dialog = await screen.findByRole("dialog", { name: "Share Demo Stash" });
-    expect(dialog).toBeInTheDocument();
-    await within(dialog).findByText("Henry");
-    fireEvent.click(within(dialog).getByRole("button", { name: "Generate invite link" }));
-    await waitFor(() => expect(createInviteToken).toHaveBeenCalledWith("ws-1", 5, 7));
+    await screen.findByText("Workspace content");
     expect(
-      within(dialog).getByDisplayValue(`${window.location.origin}/join/invite-token`)
-    ).toBeInTheDocument();
+      screen.queryByRole("button", { name: "Share" }),
+    ).not.toBeInTheDocument();
     expect(publishStash).not.toHaveBeenCalled();
+  });
+
+  it("hides the default Share action on the workspace members route", async () => {
+    nav.pathname = "/workspaces/ws-1/members";
+    mockWorkspaceCache();
+
+    render(
+      <ShareModalProvider>
+        <AppShell user={user} onLogout={vi.fn()}>
+          <div>Members content</div>
+        </AppShell>
+      </ShareModalProvider>,
+    );
+
+    await screen.findByText("Members content");
+    expect(
+      screen.queryByRole("button", { name: "Share" }),
+    ).not.toBeInTheDocument();
   });
 
   it("renders a custom header Share action outside workspace routes", async () => {
@@ -341,7 +349,7 @@ describe("AppShell sidebar collapse", () => {
         >
           <div>Stash content</div>
         </AppShell>
-      </ShareModalProvider>
+      </ShareModalProvider>,
     );
 
     const share = await screen.findByRole("button", { name: "Share" });
@@ -359,21 +367,24 @@ describe("AppShell sidebar collapse", () => {
             <BreadcrumbPage />
           </AppShell>
         </ShareModalProvider>
-      </BreadcrumbProvider>
+      </BreadcrumbProvider>,
     );
 
     const home = await screen.findByRole("link", { name: "Home" });
-    await waitFor(() => expect(home).toHaveAttribute("href", "/workspaces/ws-1"));
+    await waitFor(() =>
+      expect(home).toHaveAttribute("href", "/workspaces/ws-1"),
+    );
 
     const header = home.closest("header");
     expect(header).not.toBeNull();
-    expect(within(header!).getByRole("link", { name: "Product" })).toHaveAttribute(
-      "href",
-      "/workspaces/ws-1/folders/folder-1"
-    );
+    expect(
+      within(header!).getByRole("link", { name: "Product" }),
+    ).toHaveAttribute("href", "/workspaces/ws-1/folders/folder-1");
     expect(within(header!).getByText("Launch plan")).toBeInTheDocument();
     expect(within(header!).getAllByText("/")).toHaveLength(2);
-    expect(within(header!).queryByRole("link", { name: "Demo Stash" })).not.toBeInTheDocument();
+    expect(
+      within(header!).queryByRole("link", { name: "Demo Stash" }),
+    ).not.toBeInTheDocument();
   });
 });
 
