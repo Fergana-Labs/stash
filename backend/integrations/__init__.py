@@ -14,5 +14,4 @@ No changes to base.py, registry.py, storage.py, or router.py are needed
 for a new provider — only the explicit list of providers grows.
 """
 
-# Provider imports land in follow-up commits — each provider's __init__.py
-# self-registers when imported here.
+from . import github  # noqa: F401 — import for side-effect (provider self-registration)

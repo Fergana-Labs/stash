@@ -27,6 +27,7 @@ celery = Celery(
         "backend.tasks.embeddings",
         "backend.tasks.viz",
         "backend.tasks.summarize",
+        "backend.integrations.github.importers.repo",
     ],
 )
 
