@@ -186,7 +186,7 @@ export default function EditorToolbar({ editor, workspaceId, onStartComment }: E
               onClick={() => onStartComment()}
               title="Comment on selection"
             >
-              💬 Comment
+              Comment
             </ToolbarButton>
           </>
         )}

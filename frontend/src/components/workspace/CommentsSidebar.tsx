@@ -25,54 +25,49 @@ export default function CommentsSidebar({
   const orphaned = threads.filter((t) => !t.resolved_at && t.orphaned);
   const resolved = threads.filter((t) => t.resolved_at);
 
+  if (threads.length === 0) return null;
+
   return (
     <aside>
       <div className="card-soft max-h-[calc(100vh-6rem)] overflow-y-auto p-3.5">
         <div className="sys-label">Comments</div>
-        {threads.length === 0 ? (
-          <div className="mt-2 text-[12px] leading-relaxed text-muted">
-            Select text in the page and click <b>Comment</b> to start a thread.
-          </div>
-        ) : (
-          <div className="mt-3 flex flex-col gap-4">
+        <div className="mt-3 flex flex-col gap-4">
+          {open.length > 0 && (
             <Group
               label="Open"
               threads={open}
-              empty="No open threads."
               activeThreadId={activeThreadId}
               currentUserId={currentUserId}
               onActivate={onActivate}
               onReply={onReply}
               onSetResolved={onSetResolved}
             />
-            {orphaned.length > 0 && (
-              <Group
-                label="Orphaned"
-                threads={orphaned}
-                empty=""
-                activeThreadId={activeThreadId}
-                currentUserId={currentUserId}
-                onActivate={onActivate}
-                onReply={onReply}
-                onSetResolved={onSetResolved}
-                hint="The anchored text was deleted from the page. Resolve to clear."
-              />
-            )}
-            {resolved.length > 0 && (
-              <Group
-                label="Resolved"
-                threads={resolved}
-                empty=""
-                activeThreadId={activeThreadId}
-                currentUserId={currentUserId}
-                onActivate={onActivate}
-                onReply={onReply}
-                onSetResolved={onSetResolved}
-                collapsedByDefault
-              />
-            )}
-          </div>
-        )}
+          )}
+          {orphaned.length > 0 && (
+            <Group
+              label="Orphaned"
+              threads={orphaned}
+              activeThreadId={activeThreadId}
+              currentUserId={currentUserId}
+              onActivate={onActivate}
+              onReply={onReply}
+              onSetResolved={onSetResolved}
+              hint="The anchored text was deleted from the page. Resolve to clear."
+            />
+          )}
+          {resolved.length > 0 && (
+            <Group
+              label="Resolved"
+              threads={resolved}
+              activeThreadId={activeThreadId}
+              currentUserId={currentUserId}
+              onActivate={onActivate}
+              onReply={onReply}
+              onSetResolved={onSetResolved}
+              collapsedByDefault
+            />
+          )}
+        </div>
       </div>
     </aside>
   );
@@ -81,7 +76,6 @@ export default function CommentsSidebar({
 function Group({
   label,
   threads,
-  empty,
   activeThreadId,
   currentUserId,
   onActivate,
@@ -92,7 +86,6 @@ function Group({
 }: {
   label: string;
   threads: CommentThread[];
-  empty: string;
   activeThreadId: string | null;
   currentUserId: string;
   onActivate: (threadId: string) => void;
@@ -118,9 +111,6 @@ function Group({
       {expanded && (
         <div className="mt-2 flex flex-col gap-2">
           {hint && <div className="text-[11.5px] text-muted">{hint}</div>}
-          {threads.length === 0 && empty && (
-            <div className="text-[12px] text-muted">{empty}</div>
-          )}
           {threads.map((t) => (
             <ThreadCard
               key={t.id}
@@ -201,7 +191,7 @@ function ThreadCard({
         ))}
       </div>
       {!thread.resolved_at && (
-        <div className="mt-2 flex gap-2">
+        <div className="mt-2 flex flex-col gap-1.5">
           <input
             type="text"
             placeholder="Reply…"
@@ -215,7 +205,7 @@ function ThreadCard({
             }}
             onClick={(e) => e.stopPropagation()}
             disabled={submitting}
-            className="flex-1 rounded-sm border border-border-subtle bg-background px-2 py-1 text-[12px] text-foreground disabled:opacity-60"
+            className="w-full min-w-0 rounded-sm border border-border-subtle bg-background px-2 py-1 text-[12px] text-foreground disabled:opacity-60"
           />
           <button
             type="button"
@@ -223,7 +213,7 @@ function ThreadCard({
               e.stopPropagation();
               toggleResolved();
             }}
-            className="rounded-sm border border-border-subtle bg-background px-2 py-1 text-[11.5px] text-foreground hover:bg-raised"
+            className="self-end rounded-sm border border-border-subtle bg-background px-2 py-0.5 text-[11px] text-muted hover:bg-raised hover:text-foreground"
           >
             Resolve
           </button>
