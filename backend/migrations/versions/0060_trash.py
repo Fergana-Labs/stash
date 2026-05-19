@@ -5,15 +5,15 @@ reads filter `deleted_at IS NULL`; the dedicated trash listing is the
 only query that intentionally inverts that. No auto-purge — items stay
 in trash until manually purged.
 
-Revision ID: 0061
-Revises: 0060
+Revision ID: 0060
+Revises: 0059
 Create Date: 2026-05-19 00:00:00.000000
 """
 
 from alembic import op
 
-revision = "0061"
-down_revision = "0060"
+revision = "0060"
+down_revision = "0059"
 branch_labels = None
 depends_on = None
 
