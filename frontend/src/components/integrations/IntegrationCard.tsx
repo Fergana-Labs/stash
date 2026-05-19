@@ -5,8 +5,8 @@ import { useState } from "react";
 import {
   IntegrationProvider,
   IntegrationStatus,
-  connectUrl,
   disconnectIntegration,
+  startConnect,
 } from "@/lib/integrations";
 
 type Props = {
@@ -24,9 +24,14 @@ export default function IntegrationCard({ status, onChanged }: Props) {
   const [busy, setBusy] = useState(false);
 
   async function onConnect() {
-    // Top-window navigation so the OAuth redirect chain lands on the
-    // provider with its session cookies intact.
-    window.location.href = connectUrl(status.provider as IntegrationProvider);
+    setBusy(true);
+    try {
+      await startConnect(status.provider as IntegrationProvider);
+    } catch (e) {
+      setBusy(false);
+      alert(e instanceof Error ? e.message : String(e));
+    }
+    // On success we've navigated away; nothing more to do.
   }
 
   async function onDisconnect() {

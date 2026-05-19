@@ -319,9 +319,20 @@ async def import_page_recursive(
             name=title,
             created_by=user_id,
         )
+    elif child_page_ids:
+        # At the recursion cap: surface a clear marker rather than
+        # silently dropping the children. The user can re-import the
+        # subtree from a deeper page if they need it.
+        marker = (
+            f"\n\n---\n\n_{len(child_page_ids)} sub-page(s) were not imported "
+            f"(recursion depth limit of {MAX_RECURSION_DEPTH} reached). "
+            "Re-import from a deeper page to get them.)_"
+        )
+        markdown = (markdown + marker).strip()
+        target_folder_id = folder_id
+        child_page_ids = []
     else:
         target_folder_id = folder_id
-        child_page_ids = []  # depth-cap: stop recursing further
 
     page_row = await _insert_page(
         workspace_id, target_folder_id, user_id, title, markdown

@@ -30,16 +30,19 @@ export async function listIntegrations(): Promise<IntegrationsList> {
 }
 
 /**
- * Returns the absolute URL to redirect the browser to for OAuth consent.
- * We don't fetch this — the user must follow the redirect themselves so
- * the auth flow lands on the provider with its session cookies intact.
+ * Start the OAuth flow for a provider.
+ *
+ * The app authenticates with a Bearer token in localStorage — a plain
+ * `window.location.href = '/api/v1/.../connect'` navigation would NOT
+ * include that header, so the backend can't 302 us. Instead the backend
+ * returns `{authorize_url}` as JSON; we fetch it (Bearer carried by
+ * `apiFetch`), then navigate the top window to the provider's URL.
  */
-export function connectUrl(provider: IntegrationProvider): string {
-  // The browser hits /connect with the user's session cookie / token.
-  // The backend issues a 302 to the provider. We can't `fetch` and
-  // redirect because fetch follows cross-origin redirects opaquely.
-  // Instead, navigate the top window.
-  return `/api/v1/integrations/${provider}/connect`;
+export async function startConnect(provider: IntegrationProvider): Promise<void> {
+  const { authorize_url } = await apiFetch<{ authorize_url: string }>(
+    `/api/v1/integrations/${provider}/connect`,
+  );
+  window.location.href = authorize_url;
 }
 
 export async function disconnectIntegration(provider: IntegrationProvider): Promise<void> {
@@ -106,7 +109,7 @@ export async function importGitRepo(
 export type GooglePickerToken = {
   access_token: string;
   api_key: string | null;
-  client_id: string | null;
+  app_id: string | null;
 };
 
 export async function getGooglePickerToken(): Promise<GooglePickerToken> {

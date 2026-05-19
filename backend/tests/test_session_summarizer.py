@@ -1,4 +1,9 @@
-"""Tests for the session summarizer worker."""
+"""Tests for the session summarizer (now a Celery task).
+
+The previous in-process worker was migrated to `backend.tasks.summarize`
+in this branch — the test exercises the migrated function directly so
+the original behavior contract is still verified.
+"""
 
 from __future__ import annotations
 
@@ -7,7 +12,7 @@ from uuid import uuid4
 import pytest
 
 from backend.services import agent_runtime
-from backend.workers import session_summarizer
+from backend.tasks import summarize
 
 
 @pytest.mark.asyncio
@@ -59,9 +64,9 @@ async def test_summarize_one_claims_session_before_llm(pool, monkeypatch):
             terminated_by="end_turn",
         )
 
-    monkeypatch.setattr(session_summarizer.agent_runtime, "run_agent", fake_run_agent)
+    monkeypatch.setattr(summarize.agent_runtime, "run_agent", fake_run_agent)
 
-    ok = await session_summarizer.summarize_one(session_id, workspace_id, "session-1")
+    ok = await summarize._summarize_one(session_id)
 
     row = await pool.fetchrow(
         "SELECT summary_status, summary, summary_model, summary_input_tokens, "
@@ -69,8 +74,9 @@ async def test_summarize_one_claims_session_before_llm(pool, monkeypatch):
         session_id,
     )
     assert ok is True
-    # When the LLM runs, the worker has already claimed the row via the atomic
-    # UPDATE in _tick. summarize_one itself only runs after that claim.
+    # When the LLM runs, the task has already claimed the row via the
+    # atomic UPDATE inside _summarize_one. _claim_session flips the
+    # status to 'in_progress' before the LLM call.
     assert statuses_seen_by_llm == ["in_progress"]
     assert row["summary_status"] == "done"
     assert row["summary"] == "Implemented auth fix."

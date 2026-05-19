@@ -85,10 +85,13 @@ class Settings:
     NOTION_OAUTH_CLIENT_SECRET: str | None = os.getenv("NOTION_OAUTH_CLIENT_SECRET")
     NOTION_OAUTH_REDIRECT_URI: str | None = os.getenv("NOTION_OAUTH_REDIRECT_URI")
 
-    # Browser API key for the Google Picker JS SDK (different from the
-    # OAuth client). Optional — Drive imports without the picker still
-    # work via direct file_ids.
+    # Google Drive Picker requires TWO things distinct from the OAuth
+    # client: a browser API key (`PICKER_API_KEY`) and the GCP project
+    # number (`PICKER_APP_ID`). Both are visible in the Google Cloud
+    # Console — the project number is the numeric id shown on the
+    # project dashboard. The OAuth client_id is NOT the same thing.
     GOOGLE_PICKER_API_KEY: str | None = os.getenv("GOOGLE_PICKER_API_KEY")
+    GOOGLE_PICKER_APP_ID: str | None = os.getenv("GOOGLE_PICKER_APP_ID")
 
     # --- LLM (Anthropic) ---
     # Two tiers used across ask-the-stash and the server-side session summarizer.

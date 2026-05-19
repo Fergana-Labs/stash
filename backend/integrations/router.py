@@ -118,14 +118,25 @@ async def integration_status(
     return await storage.status(current_user["id"], provider)
 
 
-@router.get("/{provider}/connect")
+class ConnectStartResponse(BaseModel):
+    authorize_url: str
+
+
+@router.get("/{provider}/connect", response_model=ConnectStartResponse)
 async def integration_connect(
     provider: str,
     current_user: dict = Depends(get_current_user),
 ):
+    """Return the provider's OAuth authorize URL.
+
+    The app uses Bearer-token auth from localStorage — a top-window
+    navigation can't carry that header, so we can't 302 here. Instead
+    the frontend fetches this with the Bearer, gets the URL, and does
+    the navigation itself.
+    """
     p = get_provider(provider)
     state = _encode_state(current_user["id"], provider)
-    return RedirectResponse(url=p.authorize_url(state), status_code=302)
+    return ConnectStartResponse(authorize_url=p.authorize_url(state))
 
 
 @router.get("/{provider}/callback")
@@ -159,23 +170,20 @@ async def integration_disconnect(
 
 class GooglePickerTokenResponse(BaseModel):
     access_token: str
-    api_key: str | None
-    client_id: str | None
-    # The Picker SDK calls this `app_id` — Google's docs use the OAuth
-    # project number. We surface the OAuth client_id which works for the
-    # picker's developer-key validation.
+    api_key: str | None  # GOOGLE_PICKER_API_KEY (browser API key)
+    app_id: str | None   # GOOGLE_PICKER_APP_ID (GCP project number)
 
 
 @router.get("/google/picker-token", response_model=GooglePickerTokenResponse)
 async def google_picker_token(current_user: dict = Depends(get_current_user)):
-    """Hand the frontend a fresh Google access token + the Picker API
-    key so the user's browser can open the Drive Picker without exposing
-    our OAuth client secret. Throws 401 if the user hasn't connected
-    Google yet — the frontend should send them to /settings/integrations
-    first."""
+    """Hand the frontend a fresh Google access token plus the picker's
+    `api_key` and `app_id` so the user's browser can open the Drive
+    Picker without exposing our OAuth client secret. Throws 401 if the
+    user hasn't connected Google yet — the frontend should send them to
+    /settings/integrations first."""
     access_token = await storage.get_valid_token(current_user["id"], "google")
     return GooglePickerTokenResponse(
         access_token=access_token,
         api_key=settings.GOOGLE_PICKER_API_KEY,
-        client_id=settings.GOOGLE_OAUTH_CLIENT_ID,
+        app_id=settings.GOOGLE_PICKER_APP_ID,
     )

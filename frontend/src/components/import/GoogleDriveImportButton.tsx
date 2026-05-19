@@ -154,11 +154,14 @@ export default function GoogleDriveImportButton({
           [DRIVE_MIME_DOC, DRIVE_MIME_SHEET, DRIVE_MIME_PPTX].join(","),
         );
 
-      const picker = new ns.PickerBuilder()
+      const builder = new ns.PickerBuilder()
         .addView(view)
         .setOAuthToken(token.access_token)
-        .setDeveloperKey(token.api_key)
-        .setAppId(token.client_id || "")
+        .setDeveloperKey(token.api_key);
+      // app_id is the GCP project number. Optional — picker still
+      // works without it for many setups, but Google recommends it.
+      if (token.app_id) builder.setAppId(token.app_id);
+      const picker = builder
         .enableFeature("MULTISELECT_ENABLED")
         .setCallback(async (data) => {
           if (data.action !== ns.Action.PICKED) return;

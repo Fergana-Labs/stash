@@ -194,12 +194,23 @@ export default function HtmlPageView({
     );
   }, [isDeck, activeSlide, channel]);
 
-  // Keyboard nav (←/→) when the deck container is focused. Handled in
-  // the parent rather than the iframe so it works whether or not the
-  // iframe has focus.
+  // Keyboard nav (←/→) when the deck is on screen. We bail when the
+  // user is typing somewhere (any input/textarea/contenteditable),
+  // otherwise arrow keys would silently steal focus from the comment
+  // composer, share modal, page-title editor, etc.
   useEffect(() => {
     if (!isDeck) return;
+    function isTypingTarget(node: Element | null): boolean {
+      if (!node) return false;
+      const tag = node.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return true;
+      // contenteditable can be inherited; closest() walks ancestors.
+      if (node.closest?.("[contenteditable='true'], [contenteditable='']"))
+        return true;
+      return false;
+    }
     function onKey(e: KeyboardEvent) {
+      if (isTypingTarget(document.activeElement)) return;
       if (e.key === "ArrowRight") {
         setActiveSlide((s) => Math.min(slideCount - 1, s + 1));
       } else if (e.key === "ArrowLeft") {

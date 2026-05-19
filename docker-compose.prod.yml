@@ -79,6 +79,10 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      backend:
+        # Wait for Alembic — the backend's /health only returns 200
+        # after init_db() (which runs migrations) completes.
+        condition: service_healthy
     env_file: .env
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
@@ -92,6 +96,8 @@ services:
     restart: always
     depends_on:
       redis:
+        condition: service_healthy
+      backend:
         condition: service_healthy
     env_file: .env
     environment:
