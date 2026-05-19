@@ -2,23 +2,39 @@
 
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useBreadcrumbs } from "../../../../../components/BreadcrumbContext";
-import DownloadMenu, { downloadBlob } from "../../../../../components/DownloadMenu";
+import { downloadBlob } from "../../../../../components/DownloadMenu";
+import { DocumentPageSkeleton } from "../../../../../components/SkeletonStates";
 import { StashIcon } from "../../../../../components/StashIcons";
-import HtmlPageView from "../../../../../components/workspace/HtmlPageView";
-import EditableTitle from "../../../../../components/workspace/EditableTitle";
-import MarkdownEditor, { type SaveStatus } from "../../../../../components/workspace/MarkdownEditor";
+import HtmlPageView, {
+  extractCommentIdsFromHtml,
+  type HtmlSelectionInfo,
+} from "../../../../../components/workspace/HtmlPageView";
+import FileViewerHeader from "../../../../../components/workspace/FileViewerHeader";
+import MarkdownEditor, {
+  extractCommentIdsFromMarkdown,
+  type SaveStatus,
+} from "../../../../../components/workspace/MarkdownEditor";
+import CommentsSidebar from "../../../../../components/workspace/CommentsSidebar";
+import CommentComposerPopover from "../../../../../components/workspace/CommentComposerPopover";
 import { useAuth } from "../../../../../hooks/useAuth";
 import {
+  createCommentThread,
+  deleteCommentMessage,
+  deleteCommentThread,
   getFolderContents,
   getPage,
+  listCommentThreads,
   listObjectStashes,
+  reconcileCommentAnchors,
+  replyToCommentThread,
+  setCommentResolved,
   updatePage,
   type FolderBreadcrumb,
   type WorkspaceStash,
 } from "../../../../../lib/api";
-import type { Page } from "../../../../../lib/types";
+import type { CommentThread, Page } from "../../../../../lib/types";
 
 function wrapHtml(title: string, body: string): string {
   return `<!doctype html><html><head><meta charset="utf-8"><title>${escapeHtml(
@@ -45,6 +61,30 @@ export default function StashPageView() {
   const [saveStatus, setSaveStatus] = useState<SaveStatus>("saved");
   const [error, setError] = useState("");
 
+  const [threads, setThreads] = useState<CommentThread[]>([]);
+  const [activeThreadId, setActiveThreadId] = useState<string | null>(null);
+  // Strip-anchor pulse: bumping nonce tells the editor / iframe to remove
+  // the inline `<span data-comment-id>` wrapper for `id`.
+  const [stripCommentToken, setStripCommentToken] = useState<{
+    id: string;
+    nonce: number;
+  } | null>(null);
+  const [htmlSelection, setHtmlSelection] = useState<HtmlSelectionInfo | null>(
+    null
+  );
+  const htmlSelectionRef = useRef<HtmlSelectionInfo | null>(null);
+  const [pendingWrapId, setPendingWrapId] = useState<string | null>(null);
+  const [htmlComposer, setHtmlComposer] = useState<{
+    top: number;
+    left: number;
+    selection: HtmlSelectionInfo;
+  } | null>(null);
+  const [htmlEditMode, setHtmlEditMode] = useState(false);
+  const iframeBoxRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    htmlSelectionRef.current = htmlSelection;
+  }, [htmlSelection]);
+
   useBreadcrumbs(
     [
       ...folderChain.map((c) => ({
@@ -55,6 +95,15 @@ export default function StashPageView() {
     ],
     `${workspaceId}/page/${pageId}/${page?.name ?? ""}/${folderChain.map((c) => c.id).join(",")}`
   );
+
+  const refreshThreads = useCallback(async () => {
+    try {
+      const res = await listCommentThreads(workspaceId, pageId);
+      setThreads(res.threads);
+    } catch {
+      // Comments are non-critical — never block page rendering.
+    }
+  }, [workspaceId, pageId]);
 
   const load = useCallback(async () => {
     try {
@@ -67,21 +116,155 @@ export default function StashPageView() {
       } else {
         setFolderChain([]);
       }
+      await refreshThreads();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load page");
     }
-  }, [workspaceId, pageId]);
+  }, [workspaceId, pageId, refreshThreads]);
+
+  const reconcileAfterSave = useCallback(
+    (savedContent: string, contentType: "markdown" | "html") => {
+      const ids =
+        contentType === "html"
+          ? extractCommentIdsFromHtml(savedContent)
+          : extractCommentIdsFromMarkdown(savedContent);
+      reconcileCommentAnchors(workspaceId, pageId, ids)
+        .then(refreshThreads)
+        .catch(() => {});
+    },
+    [workspaceId, pageId, refreshThreads]
+  );
 
   const handleSave = useCallback(
     async (content: string) => {
       try {
         const updated = await updatePage(workspaceId, pageId, { content });
         setPage(updated);
+        reconcileAfterSave(content, "markdown");
       } catch (e) {
         setError(e instanceof Error ? e.message : "Save failed");
       }
     },
+    [workspaceId, pageId, reconcileAfterSave]
+  );
+
+  const handleHtmlMutated = useCallback(
+    async (nextHtml: string) => {
+      try {
+        const updated = await updatePage(workspaceId, pageId, {
+          content_html: nextHtml,
+        });
+        setPage(updated);
+        reconcileAfterSave(nextHtml, "html");
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Save failed");
+      }
+    },
+    [workspaceId, pageId, reconcileAfterSave]
+  );
+
+  const handleAddCommentMarkdown = useCallback(
+    async (args: {
+      quoted_text: string;
+      prefix: string;
+      suffix: string;
+      body: string;
+    }) => {
+      try {
+        const created = await createCommentThread(workspaceId, pageId, args);
+        setActiveThreadId(created.id);
+        setThreads((cur) => [...cur, created]);
+        return created.id;
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Failed to add comment");
+        return null;
+      }
+    },
     [workspaceId, pageId]
+  );
+
+  const submitHtmlComment = useCallback(
+    async (body: string) => {
+      if (!htmlComposer) return;
+      try {
+        const created = await createCommentThread(workspaceId, pageId, {
+          quoted_text: htmlComposer.selection.quoted_text,
+          prefix: htmlComposer.selection.prefix,
+          suffix: htmlComposer.selection.suffix,
+          body,
+        });
+        setActiveThreadId(created.id);
+        setThreads((cur) => [...cur, created]);
+        // Ask the iframe to wrap the (still-live) selection. The iframe
+        // posts back `stash:html-mutated`, which triggers handleHtmlMutated.
+        setPendingWrapId(created.id);
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Failed to add comment");
+      } finally {
+        setHtmlComposer(null);
+      }
+    },
+    [htmlComposer, workspaceId, pageId]
+  );
+
+  const handleReply = useCallback(
+    async (threadId: string, body: string) => {
+      const updated = await replyToCommentThread(
+        workspaceId,
+        pageId,
+        threadId,
+        body
+      );
+      setThreads((cur) => cur.map((t) => (t.id === threadId ? updated : t)));
+    },
+    [workspaceId, pageId]
+  );
+
+  const handleSetResolved = useCallback(
+    async (threadId: string, resolved: boolean) => {
+      const updated = await setCommentResolved(
+        workspaceId,
+        pageId,
+        threadId,
+        resolved
+      );
+      setThreads((cur) => cur.map((t) => (t.id === threadId ? updated : t)));
+    },
+    [workspaceId, pageId]
+  );
+
+  const handleDeleteThread = useCallback(
+    async (threadId: string) => {
+      try {
+        await deleteCommentThread(workspaceId, pageId, threadId);
+        setThreads((cur) => cur.filter((t) => t.id !== threadId));
+        if (activeThreadId === threadId) setActiveThreadId(null);
+        // Tell the active editor to strip the inline anchor wrapper.
+        setStripCommentToken({ id: threadId, nonce: Date.now() });
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Failed to delete comment");
+      }
+    },
+    [workspaceId, pageId, activeThreadId]
+  );
+
+  const handleDeleteMessage = useCallback(
+    async (threadId: string, messageId: string) => {
+      try {
+        const res = await deleteCommentMessage(workspaceId, pageId, messageId);
+        if (res.thread_deleted) {
+          setThreads((cur) => cur.filter((t) => t.id !== threadId));
+          if (activeThreadId === threadId) setActiveThreadId(null);
+          setStripCommentToken({ id: threadId, nonce: Date.now() });
+        } else if (res.thread) {
+          const updated = res.thread;
+          setThreads((cur) => cur.map((t) => (t.id === threadId ? updated : t)));
+        }
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Failed to delete comment");
+      }
+    },
+    [workspaceId, pageId, activeThreadId]
   );
 
   useEffect(() => {
@@ -92,9 +275,9 @@ export default function StashPageView() {
     if (!loading && !user) router.push("/login");
   }, [user, loading, router]);
 
-  if (loading)
-    return <div className="flex h-screen items-center justify-center text-muted">Loading…</div>;
+  if (loading) return <DocumentPageSkeleton />;
   if (!user) return null;
+  if (!page && !error) return <DocumentPageSkeleton />;
 
   const isHtml = page?.content_type === "html";
   const updatedAt = page?.updated_at
@@ -106,105 +289,125 @@ export default function StashPageView() {
       })
     : null;
 
+  const baseName = page ? page.name.replace(/\.md$/i, "") : "";
   return (
     <div className="scroll-thin flex-1 overflow-y-auto">
-      <div className="brand-banner" />
-      <div className="mx-auto -mt-[22px] grid max-w-[1100px] gap-7 px-12 pb-20 lg:grid-cols-[minmax(0,1fr)_240px]">
+      <FileViewerHeader
+        icon={isHtml ? <HtmlGlyph /> : <PageGlyph />}
+        iconColor={isHtml ? "var(--color-brand-600)" : "var(--text-muted)"}
+        title={baseName}
+        onRenameTitle={
+          page
+            ? async (next) => {
+                // Preserve the .md suffix on markdown pages so the
+                // backend's file kind detection keeps working.
+                const had = page.name.toLowerCase().endsWith(".md");
+                const newName = had && !next.toLowerCase().endsWith(".md") ? `${next}.md` : next;
+                const updated = await updatePage(workspaceId, pageId, { name: newName });
+                setPage(updated);
+                return updated.name.replace(/\.md$/i, "");
+              }
+            : undefined
+        }
+        tags={isHtml ? [{ label: "html", tone: "brand" }] : undefined}
+        meta={updatedAt ? [`Last edited ${updatedAt}`] : undefined}
+        saveStatus={page && !isHtml ? saveStatus : null}
+        rightExtras={
+          isHtml ? (
+            <button
+              type="button"
+              onClick={() => setHtmlEditMode((v) => !v)}
+              className="rounded-md border border-border-subtle bg-raised px-2.5 py-1 text-[12px] font-medium text-foreground hover:bg-raised-2"
+            >
+              {htmlEditMode ? "Done" : "Edit"}
+            </button>
+          ) : undefined
+        }
+        downloadOptions={
+          page
+            ? [
+                {
+                  label: "Markdown (.md)",
+                  onSelect: () =>
+                    downloadBlob(
+                      page.content_markdown ?? "",
+                      "text/markdown",
+                      `${baseName}.md`
+                    ),
+                },
+                {
+                  label: "HTML (.html)",
+                  onSelect: () =>
+                    downloadBlob(
+                      wrapHtml(page.name, page.content_html ?? ""),
+                      "text/html",
+                      `${baseName}.html`
+                    ),
+                },
+                { label: "PDF (print)", onSelect: () => window.print() },
+              ]
+            : undefined
+        }
+      />
+      <div className="mx-auto mt-6 grid max-w-[1100px] gap-7 px-12 pb-20 lg:grid-cols-[minmax(0,1fr)_240px]">
         <main className="min-w-0">
-          <span
-            className="inline-flex h-14 w-14 items-center justify-center rounded-[12px] border border-border bg-base"
-            style={{ color: isHtml ? "var(--color-brand-600)" : "var(--text-muted)" }}
-          >
-            {isHtml ? <HtmlGlyph /> : <PageGlyph />}
-          </span>
-          <h1 className="mb-1 mt-3 font-display text-[38px] font-bold leading-tight tracking-[-0.025em]">
-            {page ? (
-              <EditableTitle
-                value={(page.name || "").replace(/\.md$/, "")}
-                onSave={async (next) => {
-                  // Preserve the .md suffix when the underlying page name
-                  // was a markdown file. Tiptap docs are saved without
-                  // extension, html pages keep .html, so only restore .md.
-                  const had = page.name.toLowerCase().endsWith(".md");
-                  const newName = had && !next.toLowerCase().endsWith(".md") ? `${next}.md` : next;
-                  const updated = await updatePage(workspaceId, pageId, { name: newName });
-                  setPage(updated);
-                  return updated.name.replace(/\.md$/, "");
-                }}
-              />
-            ) : (
-              ""
-            )}
-          </h1>
-
-          <div className="flex items-center gap-2.5 text-[12px] text-muted">
-            {isHtml && <span className="tag tag-brand">html</span>}
-            {updatedAt && <span>Last edited {updatedAt}</span>}
-            {page && !isHtml && (
-              <>
-                <span>·</span>
-                <span
-                  className={
-                    saveStatus === "saving"
-                      ? "text-amber-500"
-                      : saveStatus === "dirty"
-                        ? "text-amber-600"
-                        : "text-emerald-600"
-                  }
-                >
-                  {saveStatus === "saving"
-                    ? "Saving…"
-                    : saveStatus === "dirty"
-                      ? "Unsaved"
-                      : "Saved"}
-                </span>
-              </>
-            )}
-            <span className="flex-1" />
-            {page && (
-              <DownloadMenu
-                options={[
-                  {
-                    label: "Markdown (.md)",
-                    onSelect: () =>
-                      downloadBlob(
-                        page.content_markdown ?? "",
-                        "text/markdown",
-                        `${page.name.replace(/\.md$/, "")}.md`
-                      ),
-                  },
-                  {
-                    label: "HTML (.html)",
-                    onSelect: () =>
-                      downloadBlob(
-                        wrapHtml(page.name, page.content_html ?? ""),
-                        "text/html",
-                        `${page.name.replace(/\.md$/, "")}.html`
-                      ),
-                  },
-                  {
-                    label: "PDF (print)",
-                    onSelect: () => window.print(),
-                  },
-                ]}
-              />
-            )}
-          </div>
-
           {error && (
-            <div className="mt-4 rounded-lg border border-red-300/40 bg-red-500/10 px-4 py-2 text-[13px] text-red-500">
+            <div className="mb-4 rounded-lg border border-red-300/40 bg-red-500/10 px-4 py-2 text-[13px] text-red-500">
               {error}
             </div>
           )}
 
-          <article className="mt-7 text-[15px] leading-relaxed text-foreground">
+          <article className="text-[15px] leading-relaxed text-foreground">
             {page ? (
               isHtml ? (
-                <HtmlPageView
-                  html={page.content_html || ""}
-                  title={page.name}
-                  layout={page.html_layout}
-                />
+                <div ref={iframeBoxRef} className="relative">
+                  <HtmlPageView
+                    key={page.id}
+                    html={page.content_html || ""}
+                    title={page.name}
+                    layout={page.html_layout}
+                    onSelection={setHtmlSelection}
+                    onActivateThread={setActiveThreadId}
+                    activeThreadId={activeThreadId}
+                    pendingWrapId={pendingWrapId}
+                    onWrapComplete={() => setPendingWrapId(null)}
+                    onHtmlMutated={handleHtmlMutated}
+                    stripCommentToken={stripCommentToken}
+                    editable={htmlEditMode}
+                  />
+                  {htmlSelection && !htmlComposer && !htmlEditMode && (
+                    <button
+                      type="button"
+                      onMouseDown={(e) => e.preventDefault()}
+                      onClick={() => {
+                        const r = htmlSelection.rect;
+                        setHtmlComposer({
+                          top: r.bottom + 10,
+                          left: Math.max(8, (r.left + r.right) / 2 - 130),
+                          selection: htmlSelection,
+                        });
+                      }}
+                      className="comment-anchor-pill absolute z-30 inline-flex -translate-x-1/2 -translate-y-full items-center gap-1.5 rounded-full bg-foreground px-3 py-1.5 text-[12px] font-medium text-background shadow-[0_6px_20px_-4px_rgba(0,0,0,0.35)] hover:bg-foreground/90"
+                      style={{
+                        top: htmlSelection.rect.top - 8,
+                        left: (htmlSelection.rect.left + htmlSelection.rect.right) / 2,
+                      }}
+                    >
+                      <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                        <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />
+                      </svg>
+                      Comment
+                    </button>
+                  )}
+                  {htmlComposer && (
+                    <CommentComposerPopover
+                      top={htmlComposer.top}
+                      left={htmlComposer.left}
+                      onCancel={() => setHtmlComposer(null)}
+                      onSubmit={submitHtmlComment}
+                    />
+                  )}
+                </div>
               ) : (
                 <MarkdownEditor
                   workspaceId={workspaceId}
@@ -212,11 +415,13 @@ export default function StashPageView() {
                   onSave={handleSave}
                   onSaveStatusChange={setSaveStatus}
                   onNavigateInternal={(href) => router.push(href)}
+                  onAddComment={handleAddCommentMarkdown}
+                  onActivateThread={setActiveThreadId}
+                  activeThreadId={activeThreadId}
+                  stripCommentToken={stripCommentToken}
                 />
               )
-            ) : (
-              <p className="text-muted">Loading…</p>
-            )}
+            ) : null}
           </article>
 
           {page && !isHtml && (
@@ -230,7 +435,19 @@ export default function StashPageView() {
           )}
         </main>
 
-        <StashAside stashes={containingStashes} />
+        <div className="mt-20 hidden flex-col gap-4 lg:flex">
+          <StashAside stashes={containingStashes} />
+          <CommentsSidebar
+            threads={threads}
+            activeThreadId={activeThreadId}
+            currentUserId={user.id}
+            onActivate={setActiveThreadId}
+            onReply={handleReply}
+            onSetResolved={handleSetResolved}
+            onDeleteThread={handleDeleteThread}
+            onDeleteMessage={handleDeleteMessage}
+          />
+        </div>
       </div>
     </div>
   );
@@ -238,8 +455,8 @@ export default function StashPageView() {
 
 function StashAside({ stashes }: { stashes: WorkspaceStash[] }) {
   return (
-    <aside className="mt-20 hidden lg:block">
-      <div className="card-soft sticky top-16 p-3.5">
+    <aside>
+      <div className="card-soft p-3.5">
         <div className="sys-label">In Stashes</div>
         {stashes.length > 0 ? (
           <div className="mt-2 flex flex-col gap-1.5">

@@ -204,6 +204,64 @@ details > summary::-webkit-details-marker {
   color: var(--text-dim);
 }
 
+/* Comment anchors — wraps the range that a comment thread is attached to.
+   Renders in both the Tiptap markdown editor and the read-only renderer. */
+.ProseMirror .comment-anchor,
+.ProseMirror [data-comment-id],
+.comment-anchor,
+[data-comment-id] {
+  background: rgba(254, 240, 138, 0.45);
+  border-radius: 2px;
+  cursor: pointer;
+}
+
+/* Floating "Comment" pill anchored above the user's HTML-page selection.
+   The ::after triangle visually ties the pill to the highlighted text. */
+.comment-anchor-pill {
+  animation: comment-anchor-pill-in 120ms ease-out;
+}
+.comment-anchor-pill::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 100%;
+  transform: translateX(-50%);
+  border-left: 5px solid transparent;
+  border-right: 5px solid transparent;
+  border-top: 5px solid var(--text-primary);
+}
+@keyframes comment-anchor-pill-in {
+  from { opacity: 0; transform: translate(-50%, calc(-100% + 4px)); }
+  to   { opacity: 1; transform: translate(-50%, -100%); }
+}
+
+.ProseMirror .comment-anchor.is-active,
+.ProseMirror [data-comment-id].is-active,
+.comment-anchor.is-active,
+[data-comment-id].is-active {
+  background: rgba(250, 204, 21, 0.7);
+  outline: 1px solid #ca8a04;
+}
+
+.description-editor-content {
+  min-height: 1.7em;
+}
+
+.ProseMirror.description-editor-content p {
+  margin: 0.25em 0;
+}
+
+.ProseMirror.description-editor-content p:first-child,
+.ProseMirror.description-editor-content h1:first-child,
+.ProseMirror.description-editor-content h2:first-child,
+.ProseMirror.description-editor-content h3:first-child {
+  margin-top: 0;
+}
+
+.ProseMirror.description-editor-content p:last-child {
+  margin-bottom: 0;
+}
+
 /* ProseMirror heading styles */
 .ProseMirror h1 {
   font-family: var(--font-display), sans-serif;

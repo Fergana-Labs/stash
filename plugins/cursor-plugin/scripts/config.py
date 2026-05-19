@@ -1,70 +1,30 @@
 """Cursor plugin config: reads from ~/.stash/config.json (CLI config).
 
 Cursor has no plugin-level userConfig surface, so we piggyback on the CLI
-config the user already set up with `stash login`.
+config the user already set up with `stash login`. Shared logic lives in
+`stashai.plugin.agent_config`; this module only supplies the per-agent
+constants.
 """
 
 from __future__ import annotations
 
-import json
-import os
-import sys
-from pathlib import Path
-
-from stashai.plugin.scope import find_manifest
+from stashai.plugin import agent_config
+from stashai.plugin.agent_config import get_stdin_data
 from stashai.plugin.stash_client import StashClient
 
-DATA_DIR = Path(os.environ.get(
-    "STASH_CURSOR_DATA",
-    Path.home() / ".stash/plugins/cursor",
-))
+_CLIENT = "cursor"
+DATA_DIR = agent_config.data_dir_from_env("STASH_CURSOR_DATA", ".stash/plugins/cursor")
 
-PRODUCTION_BASE_URL = "https://api.joinstash.ai"
-
-
-def get_stdin_data() -> dict:
-    try:
-        return json.loads(sys.stdin.read())
-    except Exception:
-        return {}
-
-
-def _read_json(path: Path) -> dict:
-    try:
-        return json.loads(path.read_text())
-    except Exception:
-        return {}
-
-
-def _cli_config() -> dict:
-    """User-scoped CLI config only. Repo config lives in the `.stash` manifest."""
-    user_path = Path.home() / ".stash" / "config.json"
-    if user_path.exists():
-        return _read_json(user_path)
-    return {}
+__all__ = ["DATA_DIR", "get_client", "get_config", "get_stdin_data", "is_configured"]
 
 
 def get_config() -> dict:
-    cli = _cli_config()
-    manifest = find_manifest(os.getcwd())
-    manifest_base = (manifest or {}).get("base_url")
-    user_base = cli.get("base_url", PRODUCTION_BASE_URL)
-    api_endpoint = manifest_base or user_base
-    api_key = cli.get("api_key", "") if api_endpoint == user_base else ""
-    return {
-        "api_endpoint": api_endpoint,
-        "api_key": api_key,
-        "agent_name": cli.get("username", ""),
-        "workspace_id": (manifest or {}).get("workspace_id", ""),
-        "client": "cursor",
-    }
+    return agent_config.get_config(_CLIENT)
 
 
 def get_client() -> StashClient:
-    cfg = get_config()
-    return StashClient(base_url=cfg["api_endpoint"], api_key=cfg["api_key"], data_dir=DATA_DIR)
+    return agent_config.get_client(_CLIENT, DATA_DIR)
 
 
 def is_configured() -> bool:
-    cfg = get_config()
-    return bool(cfg["api_key"] and cfg["agent_name"])
+    return agent_config.is_configured(_CLIENT)

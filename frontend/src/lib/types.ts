@@ -96,7 +96,17 @@ export interface WorkspaceTree {
 export interface TableColumn {
   id: string;
   name: string;
-  type: "text" | "number" | "boolean" | "date" | "datetime" | "url" | "email" | "select" | "multiselect" | "json";
+  type:
+    | "text"
+    | "number"
+    | "boolean"
+    | "date"
+    | "datetime"
+    | "url"
+    | "email"
+    | "select"
+    | "multiselect"
+    | "json";
   order: number;
   required: boolean;
   default: string | number | boolean | string[] | null;
@@ -165,10 +175,13 @@ export interface Attachment {
 // --- Dashboard Visualizations ---
 
 export interface ActivityTimeline {
-  agents: string[];
+  contributors: string[];
   buckets: {
     date: string;
-    agents: Record<string, { total: number; by_type: Record<string, number> }>;
+    contributors: Record<
+      string,
+      { total: number; by_type: Record<string, number> }
+    >;
   }[];
 }
 
@@ -194,6 +207,31 @@ export interface EmbeddingProjection {
   points: EmbeddingProjectionPoint[];
   stats: { total_embeddings: number; projected: number };
   cached: boolean;
+}
+
+// --- Page comments ---
+
+export interface CommentMessage {
+  id: string;
+  thread_id: string;
+  author_id: string;
+  author_name: string;
+  body: string;
+  created_at: string;
+}
+
+export interface CommentThread {
+  id: string;
+  page_id: string;
+  quoted_text: string;
+  prefix: string;
+  suffix: string;
+  created_by: string;
+  created_at: string;
+  resolved_at: string | null;
+  resolved_by: string | null;
+  orphaned: boolean;
+  messages: CommentMessage[];
 }
 
 // --- Search ---

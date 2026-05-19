@@ -9,15 +9,47 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
 from ..config import settings
 from ..database import get_pool
 from ..services import agent_runtime, memory_service, prompts
-from ._lock_helpers import advisory_lock
 
 logger = logging.getLogger(__name__)
+
+
+@asynccontextmanager
+async def _advisory_lock(namespace: int, resource: str):
+    """Yield the connection holding a pg advisory lock, or None if not acquired.
+
+    Advisory locks are connection-scoped, so we hold a dedicated connection
+    for the duration. `hashtext` returns int4, which pg_try_advisory_lock(int, int)
+    expects, so locks are keyed by (namespace, hashtext(resource)).
+    """
+    pool = get_pool()
+    async with pool.acquire() as conn:
+        got = await conn.fetchval(
+            "SELECT pg_try_advisory_lock($1, hashtext($2))",
+            namespace,
+            resource,
+        )
+        if not got:
+            yield None
+            return
+        try:
+            yield conn
+        finally:
+            try:
+                await conn.execute(
+                    "SELECT pg_advisory_unlock($1, hashtext($2))",
+                    namespace,
+                    resource,
+                )
+            except Exception:
+                pass
+
 
 TICK_SECONDS = 10.0
 ERROR_SLEEP_SECONDS = 30.0
@@ -176,7 +208,7 @@ async def _tick() -> int:
 
     done = 0
     for r in rows:
-        async with advisory_lock(LOCK_NAMESPACE, str(r["id"])) as conn:
+        async with _advisory_lock(LOCK_NAMESPACE, str(r["id"])) as conn:
             if conn is None:
                 continue
             try:

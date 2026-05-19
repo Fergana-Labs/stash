@@ -43,7 +43,7 @@ async def _create_page(client: AsyncClient, api_key: str, workspace_id: str, nam
 
 @pytest.mark.asyncio
 async def test_discover_lists_discoverable_public_product_stashes(client: AsyncClient):
-    api_key, _ = await _register(client)
+    api_key, user = await _register(client)
     workspace = await _create_workspace(client, api_key, "Discovery workspace")
     public_page = await _create_page(client, api_key, workspace["id"], "Public brief")
     private_page = await _create_page(client, api_key, workspace["id"], "Private brief")
@@ -79,7 +79,21 @@ async def test_discover_lists_discoverable_public_product_stashes(client: AsyncC
         headers=_auth(api_key),
     )
     assert published.status_code == 201
-    slug = published.json()["stash"]["slug"]
+    published_stash = published.json()["stash"]
+    slug = published_stash["slug"]
+    assert published_stash["owner_name"] == user["name"]
+    assert published_stash["owner_display_name"] == user["display_name"]
+
+    workspace_stashes = await client.get(
+        f"/api/v1/workspaces/{workspace['id']}/stashes",
+        headers=_auth(api_key),
+    )
+    assert workspace_stashes.status_code == 200
+    workspace_stash = next(
+        stash for stash in workspace_stashes.json()["stashes"] if stash["slug"] == slug
+    )
+    assert workspace_stash["owner_name"] == user["name"]
+    assert workspace_stash["owner_display_name"] == user["display_name"]
 
     catalog = await client.get("/api/v1/discover/stashes")
     assert catalog.status_code == 200
@@ -93,6 +107,8 @@ async def test_discover_lists_discoverable_public_product_stashes(client: AsyncC
     detail = await client.get(f"/api/v1/stashes/{slug}")
     assert detail.status_code == 200
     assert detail.json()["stash"]["discoverable"] is True
+    assert detail.json()["stash"]["owner_name"] == user["name"]
+    assert detail.json()["stash"]["owner_display_name"] == user["display_name"]
 
     unlisted_detail = await client.get(f"/api/v1/stashes/{public_unlisted.json()['stash']['slug']}")
     assert unlisted_detail.status_code == 200

@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import AppShell from "../../../components/AppShell";
+import { BasicPageSkeleton } from "../../../components/SkeletonStates";
 import { useAuth } from "../../../hooks/useAuth";
 import { createWorkspace } from "../../../lib/api";
 import { resetStashNavigationCache } from "../../../lib/stashNavigationCache";
@@ -15,7 +16,7 @@ export default function NewWorkspacePage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
-  if (loading) return <div className="flex h-screen items-center justify-center text-muted">Loading…</div>;
+  if (loading) return <BasicPageSkeleton />;
   if (!user) {
     if (typeof window !== "undefined") router.push("/login");
     return null;

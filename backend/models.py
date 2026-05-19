@@ -140,6 +140,8 @@ class StashResponse(BaseModel):
     title: str
     description: str
     owner_id: UUID
+    owner_name: str
+    owner_display_name: str | None = None
     access: str
     discoverable: bool
     cover_image_url: str | None = None
@@ -370,6 +372,55 @@ class WorkspaceTreeFolder(BaseModel):
 class WorkspaceTreeResponse(BaseModel):
     folders: list[WorkspaceTreeFolder]
     pages: list[PageSummary]
+
+
+# --- Page comments ---
+
+
+class CommentMessage(BaseModel):
+    id: UUID
+    thread_id: UUID
+    author_id: UUID
+    author_name: str
+    body: str
+    created_at: datetime
+
+
+class CommentThread(BaseModel):
+    id: UUID
+    page_id: UUID
+    quoted_text: str
+    prefix: str
+    suffix: str
+    created_by: UUID
+    created_at: datetime
+    resolved_at: datetime | None
+    resolved_by: UUID | None
+    orphaned: bool
+    messages: list[CommentMessage] = []
+
+
+class CommentThreadCreateRequest(BaseModel):
+    quoted_text: str = Field(..., min_length=1, max_length=8000)
+    prefix: str = Field("", max_length=128)
+    suffix: str = Field("", max_length=128)
+    body: str = Field(..., min_length=1, max_length=10000)
+
+
+class CommentReplyRequest(BaseModel):
+    body: str = Field(..., min_length=1, max_length=10000)
+
+
+class CommentResolveRequest(BaseModel):
+    resolved: bool
+
+
+class CommentReconcileRequest(BaseModel):
+    present_ids: list[UUID] = Field(default_factory=list)
+
+
+class CommentThreadListResponse(BaseModel):
+    threads: list[CommentThread]
 
 
 class WorkspacePageEntry(BaseModel):

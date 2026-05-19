@@ -2,18 +2,15 @@
 
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { useCallback, useEffect, useRef, useState } from "react";
-import { EditorContent, useEditor } from "@tiptap/react";
-import StarterKit from "@tiptap/starter-kit";
-import Heading from "@tiptap/extension-heading";
-import Bold from "@tiptap/extension-bold";
-import Italic from "@tiptap/extension-italic";
-import TiptapLink from "@tiptap/extension-link";
-import Placeholder from "@tiptap/extension-placeholder";
+import { useCallback, useEffect, useState } from "react";
+import DescriptionEditor, {
+  isBlankDescription,
+} from "../../../components/DescriptionEditor";
 import MembersModal from "../../../components/MembersModal";
+import { SkeletonBlock, WorkspaceHomeSkeleton } from "../../../components/SkeletonStates";
 import StashQuickAdd from "../../../components/StashQuickAdd";
 import { WorkspaceIcon } from "../../../components/StashIcons";
-import AgentActivityTimeline from "../../../components/viz/AgentActivityTimeline";
+import ContributorActivityTimeline from "../../../components/viz/ContributorActivityTimeline";
 import EmbeddingSpaceExplorer from "../../../components/viz/EmbeddingSpaceExplorer";
 import { useAuth } from "../../../hooks/useAuth";
 import {
@@ -30,8 +27,6 @@ import type {
   Workspace,
   WorkspaceMember,
 } from "../../../lib/types";
-
-const AUTOSAVE_MS = 1500;
 
 function relativeTime(iso: string): string {
   const ms = Date.now() - new Date(iso).getTime();
@@ -54,16 +49,20 @@ export default function WorkspaceHomePage() {
   const [workspace, setWorkspace] = useState<Workspace | null>(null);
   const [members, setMembers] = useState<WorkspaceMember[]>([]);
   const [timeline, setTimeline] = useState<ActivityTimeline | null>(null);
-  const [projection, setProjection] = useState<EmbeddingProjection | null>(null);
+  const [projection, setProjection] = useState<EmbeddingProjection | null>(
+    null,
+  );
+  const [insightsLoaded, setInsightsLoaded] = useState(false);
   const [error, setError] = useState("");
   const [membersOpen, setMembersOpen] = useState(false);
 
   const load = useCallback(async () => {
+    setInsightsLoaded(false);
     const [w, m, t, p] = await Promise.allSettled([
       getWorkspace(workspaceId),
       getWorkspaceMembers(workspaceId),
       // 365 days because seeded dev data is dated; for production the
-      // visualization remains legible at this window (1 row per agent × 365
+      // visualization remains legible at this window (1 row per contributor × 365
       // 14px cells = ~1.4kpx wide, fits with horizontal scroll).
       getActivityTimeline(365, "day", workspaceId),
       getEmbeddingProjection(500, undefined, workspaceId),
@@ -73,6 +72,7 @@ export default function WorkspaceHomePage() {
     if (m.status === "fulfilled") setMembers(m.value);
     if (t.status === "fulfilled") setTimeline(t.value);
     if (p.status === "fulfilled") setProjection(p.value);
+    setInsightsLoaded(true);
   }, [workspaceId]);
 
   useEffect(() => {
@@ -96,9 +96,9 @@ export default function WorkspaceHomePage() {
     }
   }
 
-  if (loading)
-    return <div className="flex h-screen items-center justify-center text-muted">Loading…</div>;
+  if (loading) return <WorkspaceHomeSkeleton />;
   if (!user) return null;
+  if (!workspace && !error) return <WorkspaceHomeSkeleton />;
 
   return (
     <>
@@ -122,7 +122,11 @@ export default function WorkspaceHomePage() {
               <span className="-mt-9 flex h-12 w-12 flex-shrink-0 items-center justify-center overflow-hidden rounded-[10px] border-2 border-base bg-base text-[28px] text-[var(--color-brand-700)] shadow-sm">
                 {workspace?.icon_url ? (
                   // eslint-disable-next-line @next/next/no-img-element
-                  <img src={workspace.icon_url} alt="" className="h-full w-full object-cover" />
+                  <img
+                    src={workspace.icon_url}
+                    alt=""
+                    className="h-full w-full object-cover"
+                  />
                 ) : (
                   <WorkspaceIcon />
                 )}
@@ -171,7 +175,9 @@ export default function WorkspaceHomePage() {
 
           {!isMember && workspace && (
             <div className="mt-4 flex items-center justify-between rounded-lg border border-border bg-surface px-4 py-3 text-[13px]">
-              <span className="text-muted">You aren&apos;t a member of this workspace.</span>
+              <span className="text-muted">
+                You aren&apos;t a member of this workspace.
+              </span>
               <button
                 onClick={handleJoin}
                 className="rounded-md bg-[var(--color-brand-600)] px-3 py-1.5 text-[12px] font-medium text-white hover:bg-[var(--color-brand-700)]"
@@ -181,50 +187,59 @@ export default function WorkspaceHomePage() {
             </div>
           )}
 
-          {/* Quick-add: paste URL or drop a file. .jsonl files route to
-              session-transcript upload; anything else uploads to Files. */}
-          {isMember && (
-            <section className="mt-6">
-              <div className="sys-label mb-1.5">Quick add — paste a URL, drop a file, drop a .jsonl transcript</div>
-              <StashQuickAdd workspaceId={workspaceId} onAdded={load} />
-            </section>
-          )}
-
           <WorkspaceDescriptionEditor
             workspace={workspace}
             canEdit={isMember}
             onSaved={(updated) => setWorkspace(updated)}
           />
 
-          {/* Visualizations: agent activity over time + 3D embedding view.
+          {/* Quick-add: paste URL or drop a file. .jsonl files route to
+              session-transcript upload; anything else uploads to Files. */}
+          {isMember && (
+            <section className="mt-6">
+              <div className="sys-label mb-1.5">
+                Quick add — paste a URL, drop a file, drop a .jsonl transcript
+              </div>
+              <StashQuickAdd workspaceId={workspaceId} onAdded={load} />
+            </section>
+          )}
+
+          {/* Visualizations: human/agent session activity + 3D embedding view.
               Section renders even when empty so users see the placeholder
               and know what's coming once data exists. */}
           <section className="mt-8">
-            <div className="sys-label mb-1.5">Agent activity — past year</div>
+            <div className="sys-label mb-1.5">Human / agent commits — past year</div>
             <div className="card-soft overflow-x-auto p-3">
-              {timeline && timeline.agents.length > 0 ? (
-                <AgentActivityTimeline data={timeline} />
+              {!insightsLoaded ? (
+                <SkeletonBlock className="h-40 w-full" />
+              ) : timeline && timeline.contributors.length > 0 ? (
+                <ContributorActivityTimeline data={timeline} />
               ) : (
                 <div className="px-2 py-6 text-center text-[12.5px] text-muted">
-                  No agent sessions yet. Push a transcript via Quick add or the CLI to populate this view.
+                  No agent session commits yet. Push a transcript via Quick add
+                  or the CLI to populate this view.
                 </div>
               )}
             </div>
           </section>
 
           <section className="mt-6">
-            <div className="sys-label mb-1.5">Embedding space — workspace knowledge map</div>
+            <div className="sys-label mb-1.5">
+              Embedding space — workspace knowledge map
+            </div>
             <div className="card-soft p-3">
-              {projection && projection.points.length > 0 ? (
+              {!insightsLoaded ? (
+                <SkeletonBlock className="h-40 w-full" />
+              ) : projection && projection.points.length > 0 ? (
                 <EmbeddingSpaceExplorer data={projection} />
               ) : (
                 <div className="px-2 py-6 text-center text-[12.5px] text-muted">
-                  No embeddings indexed yet. Pages, table rows, and session events get embedded as they&apos;re added.
+                  No embeddings indexed yet. Pages, table rows, and session
+                  events get embedded as they&apos;re added.
                 </div>
               )}
             </div>
           </section>
-
         </div>
       </div>
       <MembersModal
@@ -238,7 +253,16 @@ export default function WorkspaceHomePage() {
 
 function SettingsGlyph() {
   return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
       <circle cx="12" cy="12" r="3" />
       <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
     </svg>
@@ -262,90 +286,23 @@ function WorkspaceDescriptionEditor({
   canEdit: boolean;
   onSaved: (updated: Workspace) => void;
 }) {
-  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const lastSaved = useRef<string>("");
   const description = workspace?.description ?? "";
 
-  useEffect(() => {
-    lastSaved.current = description;
-  }, [description]);
-
-  const editor = useEditor({
-    immediatelyRender: false,
-    editable: canEdit,
-    content: description || "<p></p>",
-    extensions: [
-      StarterKit.configure({
-        blockquote: false,
-        codeBlock: false,
-        heading: false,
-        bold: false,
-        italic: false,
-        link: false,
-        underline: false,
-      }),
-      Heading.configure({ levels: [1, 2, 3] }),
-      Bold,
-      Italic,
-      TiptapLink.configure({ openOnClick: true, autolink: true }),
-      Placeholder.configure({ placeholder: "Describe this workspace…" }),
-    ],
-    editorProps: {
-      attributes: {
-        class: "min-h-[120px] focus:outline-none file-page-body",
-      },
-    },
-    onUpdate: ({ editor: ed }) => {
-      if (!workspace) return;
-      const html = ed.getHTML();
-      if (html === lastSaved.current) return;
-      if (saveTimer.current) clearTimeout(saveTimer.current);
-      saveTimer.current = setTimeout(async () => {
-        lastSaved.current = html;
-        const updated = await updateWorkspace(workspace.id, { description: html });
-        onSaved(updated);
-      }, AUTOSAVE_MS);
-    },
-  });
-
-  useEffect(() => {
-    if (!editor) return;
-    if (editor.getHTML() === description) return;
-    editor.commands.setContent(description || "<p></p>", { emitUpdate: false });
-    lastSaved.current = description;
-  }, [description, editor]);
-
-  // useEditor() captures `editable` at creation time. When membership loads
-  // after first paint, toggle it on the live editor so the description
-  // becomes typeable without a remount.
-  useEffect(() => {
-    if (!editor) return;
-    editor.setEditable(canEdit);
-  }, [editor, canEdit]);
-
-  useEffect(() => {
-    return () => {
-      if (saveTimer.current) clearTimeout(saveTimer.current);
-    };
-  }, []);
-
   if (!workspace) return null;
-  if (!canEdit && !description) return null;
+  if (!canEdit && isBlankDescription(description)) return null;
 
   return (
-    <section className="mt-6">
-      <div className="sys-label mb-1.5">About this workspace</div>
-      <div
-        onClick={() => editor?.commands.focus()}
-        className={
-          "rounded-[10px] border transition-colors " +
-          (canEdit
-            ? "border-dashed border-border bg-surface/40 px-[18px] py-[14px] cursor-text hover:border-[var(--color-brand-300)] hover:bg-[var(--color-brand-50)]/40 focus-within:border-[var(--color-brand-400)] focus-within:bg-base"
-            : "border-border bg-surface/40 px-[18px] py-[14px]")
-        }
-      >
-        <EditorContent editor={editor} />
-      </div>
+    <section className="mt-5">
+      <DescriptionEditor
+        value={description}
+        canEdit={canEdit}
+        placeholder="Describe this workspace…"
+        ariaLabel="Workspace description"
+        onSave={async (html) => {
+          const updated = await updateWorkspace(workspace.id, { description: html });
+          onSaved(updated);
+        }}
+      />
     </section>
   );
 }

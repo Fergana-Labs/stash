@@ -12,6 +12,8 @@ export interface StashCardData {
   title: string;
   description: string;
   cover_image_url: string | null;
+  owner_name?: string;
+  owner_display_name?: string | null;
   access?: "workspace" | "private" | "public";
   is_external?: boolean;
   updated_at?: string;
@@ -38,6 +40,7 @@ export default function StashCard({ stash, cover, badge, footer }: StashCardProp
   const itemCount = stash.item_count ?? stash.items?.length ?? 0;
   const visibility = stash.access;
   const dotColor = visibility ? VIS_COLOR[visibility] : null;
+  const author = authorName(stash);
 
   return (
     <Link
@@ -80,6 +83,7 @@ export default function StashCard({ stash, cover, badge, footer }: StashCardProp
           {stash.description || "No description."}
         </p>
         <div className="sys-label mt-2.5" style={{ fontSize: 10.5 }}>
+          {author && `by ${author} · `}
           {itemCount} item{itemCount === 1 ? "" : "s"}
           {stash.updated_at && ` · updated ${relativeTime(stash.updated_at)}`}
         </div>
@@ -92,6 +96,10 @@ export default function StashCard({ stash, cover, badge, footer }: StashCardProp
       </div>
     </Link>
   );
+}
+
+function authorName(stash: StashCardData): string {
+  return stash.owner_display_name || stash.owner_name || "";
 }
 
 function relativeTime(iso: string): string {

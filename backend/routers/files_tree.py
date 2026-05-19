@@ -7,6 +7,12 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from ..auth import get_current_user
 from ..database import get_pool
 from ..models import (
+    CommentReconcileRequest,
+    CommentReplyRequest,
+    CommentResolveRequest,
+    CommentThread,
+    CommentThreadCreateRequest,
+    CommentThreadListResponse,
     FolderCreateRequest,
     FolderListResponse,
     FolderResponse,
@@ -18,7 +24,12 @@ from ..models import (
     WorkspacePageListResponse,
     WorkspaceTreeResponse,
 )
-from ..services import files_tree_service, permission_service, workspace_service
+from ..services import (
+    comment_service,
+    files_tree_service,
+    permission_service,
+    workspace_service,
+)
 from ..services.files_tree_service import (
     DuplicateFolderName,
     DuplicatePageName,
@@ -477,3 +488,175 @@ async def delete_page(
     deleted = await files_tree_service.delete_page(page_id, workspace_id)
     if not deleted:
         raise HTTPException(status_code=404, detail="Page not found")
+
+
+# --- Page comments ---
+
+
+async def _check_page_in_workspace(workspace_id: UUID, page_id: UUID) -> None:
+    pool = get_pool()
+    found = await pool.fetchval(
+        "SELECT 1 FROM pages WHERE id = $1 AND workspace_id = $2",
+        page_id,
+        workspace_id,
+    )
+    if not found:
+        raise HTTPException(status_code=404, detail="Page not found")
+
+
+@router.get(
+    "/pages/{page_id}/comments/threads",
+    response_model=CommentThreadListResponse,
+)
+async def list_comment_threads(
+    workspace_id: UUID,
+    page_id: UUID,
+    current_user: dict = Depends(get_current_user),
+):
+    await _check_ws_access(workspace_id, current_user["id"])
+    await _check_content_access("page", page_id, workspace_id, current_user["id"])
+    await _check_page_in_workspace(workspace_id, page_id)
+    threads = await comment_service.list_threads(page_id)
+    return CommentThreadListResponse(threads=[CommentThread(**t) for t in threads])
+
+
+@router.post(
+    "/pages/{page_id}/comments/threads",
+    response_model=CommentThread,
+    status_code=201,
+)
+async def create_comment_thread(
+    workspace_id: UUID,
+    page_id: UUID,
+    req: CommentThreadCreateRequest,
+    current_user: dict = Depends(get_current_user),
+):
+    # Comments are read-level permission — any workspace member can comment.
+    await _check_ws_access(workspace_id, current_user["id"])
+    await _check_content_access("page", page_id, workspace_id, current_user["id"])
+    await _check_page_in_workspace(workspace_id, page_id)
+    thread = await comment_service.create_thread(
+        page_id,
+        quoted_text=req.quoted_text,
+        prefix=req.prefix,
+        suffix=req.suffix,
+        body=req.body,
+        created_by=current_user["id"],
+    )
+    return CommentThread(**thread)
+
+
+@router.post(
+    "/pages/{page_id}/comments/threads/{thread_id}/messages",
+    response_model=CommentThread,
+    status_code=201,
+)
+async def reply_to_thread(
+    workspace_id: UUID,
+    page_id: UUID,
+    thread_id: UUID,
+    req: CommentReplyRequest,
+    current_user: dict = Depends(get_current_user),
+):
+    await _check_ws_access(workspace_id, current_user["id"])
+    await _check_content_access("page", page_id, workspace_id, current_user["id"])
+    await _check_page_in_workspace(workspace_id, page_id)
+    thread = await comment_service.add_reply(thread_id, body=req.body, author_id=current_user["id"])
+    if thread is None:
+        raise HTTPException(status_code=404, detail="Thread not found")
+    return CommentThread(**thread)
+
+
+@router.patch(
+    "/pages/{page_id}/comments/threads/{thread_id}",
+    response_model=CommentThread,
+)
+async def update_thread_resolved(
+    workspace_id: UUID,
+    page_id: UUID,
+    thread_id: UUID,
+    req: CommentResolveRequest,
+    current_user: dict = Depends(get_current_user),
+):
+    await _check_ws_access(workspace_id, current_user["id"])
+    await _check_content_access("page", page_id, workspace_id, current_user["id"])
+    await _check_page_in_workspace(workspace_id, page_id)
+    thread = await comment_service.set_resolved(
+        thread_id, resolved=req.resolved, user_id=current_user["id"]
+    )
+    if thread is None:
+        raise HTTPException(status_code=404, detail="Thread not found")
+    return CommentThread(**thread)
+
+
+@router.delete(
+    "/pages/{page_id}/comments/threads/{thread_id}",
+    status_code=204,
+)
+async def delete_comment_thread(
+    workspace_id: UUID,
+    page_id: UUID,
+    thread_id: UUID,
+    current_user: dict = Depends(get_current_user),
+):
+    """Delete an entire thread. Only the thread creator is allowed."""
+    await _check_ws_access(workspace_id, current_user["id"])
+    await _check_content_access("page", page_id, workspace_id, current_user["id"])
+    await _check_page_in_workspace(workspace_id, page_id)
+    result = await comment_service.delete_thread(thread_id, user_id=current_user["id"])
+    if result == "not_found":
+        raise HTTPException(status_code=404, detail="Thread not found")
+    if result == "forbidden":
+        raise HTTPException(status_code=403, detail="Only the thread author can delete it")
+
+
+@router.delete(
+    "/pages/{page_id}/comments/messages/{message_id}",
+)
+async def delete_comment_message(
+    workspace_id: UUID,
+    page_id: UUID,
+    message_id: UUID,
+    current_user: dict = Depends(get_current_user),
+):
+    """Delete a single message. Author only. If the deleted message was
+    the last one in its thread, the thread is auto-deleted and the
+    response body's `thread` field is null — the frontend should then
+    strip the inline anchor from the page content.
+    """
+    await _check_ws_access(workspace_id, current_user["id"])
+    await _check_content_access("page", page_id, workspace_id, current_user["id"])
+    await _check_page_in_workspace(workspace_id, page_id)
+    status, thread = await comment_service.delete_message(message_id, user_id=current_user["id"])
+    if status == "not_found":
+        raise HTTPException(status_code=404, detail="Message not found")
+    if status == "forbidden":
+        raise HTTPException(status_code=403, detail="Only the author can delete this message")
+    if status == "ok_thread_gone":
+        return {"thread": None, "thread_deleted": True}
+    return {"thread": CommentThread(**thread), "thread_deleted": False}
+
+
+@router.post(
+    "/pages/{page_id}/comments/reconcile",
+    status_code=204,
+)
+async def reconcile_comment_anchors(
+    workspace_id: UUID,
+    page_id: UUID,
+    req: CommentReconcileRequest,
+    current_user: dict = Depends(get_current_user),
+):
+    """Mark threads whose inline anchor is missing as orphaned.
+
+    The editor posts the set of `data-comment-id` values that are still
+    present in the content right after each save. Threads not in the set
+    flip to orphaned = true; threads in the set flip back to false.
+    Resolved threads are left alone.
+    """
+    await _check_ws_write(workspace_id, current_user["id"])
+    await _check_content_access(
+        "page", page_id, workspace_id, current_user["id"], require_write=True
+    )
+    await _check_page_in_workspace(workspace_id, page_id)
+    await comment_service.reconcile_orphans(page_id, req.present_ids)

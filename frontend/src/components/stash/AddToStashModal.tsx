@@ -19,6 +19,7 @@ import {
 import type { TableWithWorkspace } from "../../lib/types";
 import { stashSlugFromInput } from "../../lib/stashLinks";
 import { useEscapeKey } from "../../hooks/useEscapeKey";
+import { SkeletonBlock } from "../SkeletonStates";
 
 interface Props {
   open: boolean;
@@ -336,7 +337,14 @@ export default function AddToStashModal({
             </div>
             <div className="scroll-thin max-h-[420px] overflow-y-auto px-2 py-2">
               {loading ? (
-                <div className="px-2 py-6 text-center text-[12.5px] text-muted">Loading…</div>
+                <div className="space-y-1.5 px-1 py-1">
+                  {[0, 1, 2, 3, 4].map((row) => (
+                    <div key={row} className="rounded-md border border-border-subtle bg-surface px-2.5 py-2">
+                      <SkeletonBlock className="h-4 w-48 max-w-full" />
+                      <SkeletonBlock className="mt-2 h-3 w-32" />
+                    </div>
+                  ))}
+                </div>
               ) : rows.length === 0 ? (
                 <div className="px-2 py-6 text-center text-[12.5px] text-muted">
                   {query.trim() ? "Nothing matches." : "No items in this workspace yet."}

@@ -5,22 +5,22 @@ import type { ActivityTimeline } from "../../lib/types";
 
 interface Props {
   data: ActivityTimeline;
-  onAgentClick?: (agent: string) => void;
+  onContributorClick?: (contributor: string) => void;
 }
 
 const CELL_SIZE = 14;
 const CELL_GAP = 2;
-const LABEL_WIDTH = 120;
+const LABEL_WIDTH = 180;
 const PADDING = 16;
 
 // Orange intensity scale matching brand color
 const INTENSITY_COLORS = [
-  "rgba(249, 115, 22, 0.0)",   // 0: transparent
-  "rgba(249, 115, 22, 0.15)",  // low
-  "rgba(249, 115, 22, 0.35)",  // medium-low
-  "rgba(249, 115, 22, 0.55)",  // medium
-  "rgba(249, 115, 22, 0.75)",  // medium-high
-  "rgba(249, 115, 22, 1.0)",   // high
+  "rgba(249, 115, 22, 0.0)", // 0: transparent
+  "rgba(249, 115, 22, 0.15)", // low
+  "rgba(249, 115, 22, 0.35)", // medium-low
+  "rgba(249, 115, 22, 0.55)", // medium
+  "rgba(249, 115, 22, 0.75)", // medium-high
+  "rgba(249, 115, 22, 1.0)", // high
 ];
 
 function getIntensity(count: number, maxCount: number): number {
@@ -37,22 +37,24 @@ function getIntensity(count: number, maxCount: number): number {
 interface TooltipInfo {
   x: number;
   y: number;
-  agent: string;
+  contributor: string;
   date: string;
   total: number;
   byType: Record<string, number>;
 }
 
-export default function AgentActivityTimeline({ data, onAgentClick }: Props) {
+export default function ContributorActivityTimeline({
+  data,
+  onContributorClick,
+}: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [tooltip, setTooltip] = useState<TooltipInfo | null>(null);
-  const [hoverAgent, setHoverAgent] = useState<string | null>(null);
+  const [hoverContributor, setHoverContributor] = useState<string | null>(null);
 
-  // Compute max count for intensity scaling
   const maxCount = data.buckets.reduce((max, b) => {
-    for (const agent of Object.values(b.agents)) {
-      if (agent.total > max) max = agent.total;
+    for (const contributor of Object.values(b.contributors)) {
+      if (contributor.total > max) max = contributor.total;
     }
     return max;
   }, 0);
@@ -64,11 +66,13 @@ export default function AgentActivityTimeline({ data, onAgentClick }: Props) {
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
-    const agents = data.agents;
+    const contributors = data.contributors;
     const buckets = data.buckets;
 
-    const totalWidth = LABEL_WIDTH + PADDING + buckets.length * (CELL_SIZE + CELL_GAP);
-    const totalHeight = PADDING + agents.length * (CELL_SIZE + CELL_GAP) + PADDING;
+    const totalWidth =
+      LABEL_WIDTH + PADDING + buckets.length * (CELL_SIZE + CELL_GAP);
+    const totalHeight =
+      PADDING + contributors.length * (CELL_SIZE + CELL_GAP) + PADDING;
 
     const dpr = window.devicePixelRatio || 2;
     canvas.width = totalWidth * dpr;
@@ -79,37 +83,36 @@ export default function AgentActivityTimeline({ data, onAgentClick }: Props) {
 
     ctx.clearRect(0, 0, totalWidth, totalHeight);
 
-    // Agent labels (violet)
     ctx.font = "500 11px 'JetBrains Mono', monospace";
     ctx.textAlign = "right";
     ctx.textBaseline = "middle";
     ctx.fillStyle = "#8B5CF6";
 
-    for (let i = 0; i < agents.length; i++) {
+    for (let i = 0; i < contributors.length; i++) {
       const y = PADDING + i * (CELL_SIZE + CELL_GAP) + CELL_SIZE / 2;
-      const label = agents[i].length > 10 ? agents[i].slice(0, 9) + "..." : agents[i];
+      const label =
+        contributors[i].length > 22
+          ? contributors[i].slice(0, 21) + "..."
+          : contributors[i];
       ctx.fillText(label, LABEL_WIDTH, y);
     }
 
-    // Grid cells
     for (let bi = 0; bi < buckets.length; bi++) {
       const bucket = buckets[bi];
       const x = LABEL_WIDTH + PADDING + bi * (CELL_SIZE + CELL_GAP);
 
-      for (let ai = 0; ai < agents.length; ai++) {
+      for (let ai = 0; ai < contributors.length; ai++) {
         const y = PADDING + ai * (CELL_SIZE + CELL_GAP);
-        const agentData = bucket.agents[agents[ai]];
-        const count = agentData?.total ?? 0;
+        const contributorData = bucket.contributors[contributors[ai]];
+        const count = contributorData?.total ?? 0;
         const intensity = getIntensity(count, maxCount);
 
-        // Cell background
         if (intensity === 0) {
           ctx.fillStyle = "rgba(148, 163, 184, 0.08)";
         } else {
           ctx.fillStyle = INTENSITY_COLORS[intensity];
         }
 
-        // Rounded rect
         const r = 2;
         ctx.beginPath();
         ctx.roundRect(x, y, CELL_SIZE, CELL_SIZE, r);
@@ -122,12 +125,23 @@ export default function AgentActivityTimeline({ data, onAgentClick }: Props) {
     const canvas = canvasRef.current;
     if (!canvas) return null;
     const rect = canvas.getBoundingClientRect();
-    const scaleX = canvas.clientWidth / (LABEL_WIDTH + PADDING + data.buckets.length * (CELL_SIZE + CELL_GAP));
+    const scaleX =
+      canvas.clientWidth /
+      (LABEL_WIDTH + PADDING + data.buckets.length * (CELL_SIZE + CELL_GAP));
     const mx = (e.clientX - rect.left) / scaleX;
     const my = (e.clientY - rect.top) / scaleX;
-    const bi = Math.floor((mx - LABEL_WIDTH - PADDING) / (CELL_SIZE + CELL_GAP));
+    const bi = Math.floor(
+      (mx - LABEL_WIDTH - PADDING) / (CELL_SIZE + CELL_GAP),
+    );
     const ai = Math.floor((my - PADDING) / (CELL_SIZE + CELL_GAP));
-    return { mx, my, bi, ai, clientX: e.clientX - rect.left, clientY: e.clientY - rect.top };
+    return {
+      mx,
+      my,
+      bi,
+      ai,
+      clientX: e.clientX - rect.left,
+      clientY: e.clientY - rect.top,
+    };
   };
 
   const handleMouseMove = (e: React.MouseEvent) => {
@@ -135,21 +149,22 @@ export default function AgentActivityTimeline({ data, onAgentClick }: Props) {
     if (!p) return;
     const { bi, ai, clientX, clientY } = p;
 
-    // Any hover over a valid row — the whole row is a click target for the agent filter
-    const agent = ai >= 0 && ai < data.agents.length ? data.agents[ai] : null;
-    setHoverAgent(agent);
+    // Any hover over a valid row makes the whole row clickable for filters.
+    const contributor =
+      ai >= 0 && ai < data.contributors.length ? data.contributors[ai] : null;
+    setHoverContributor(contributor);
 
-    if (bi >= 0 && bi < data.buckets.length && agent) {
+    if (bi >= 0 && bi < data.buckets.length && contributor) {
       const bucket = data.buckets[bi];
-      const agentData = bucket.agents[agent];
-      if (agentData && agentData.total > 0) {
+      const contributorData = bucket.contributors[contributor];
+      if (contributorData && contributorData.total > 0) {
         setTooltip({
           x: clientX,
           y: clientY,
-          agent,
+          contributor,
           date: bucket.date.split("T")[0],
-          total: agentData.total,
-          byType: agentData.by_type,
+          total: contributorData.total,
+          byType: contributorData.by_type,
         });
         return;
       }
@@ -158,13 +173,18 @@ export default function AgentActivityTimeline({ data, onAgentClick }: Props) {
   };
 
   const handleClick = (e: React.MouseEvent) => {
-    if (!onAgentClick) return;
+    if (!onContributorClick) return;
     const p = pointToCell(e);
     if (!p) return;
-    if (p.ai >= 0 && p.ai < data.agents.length) onAgentClick(data.agents[p.ai]);
+    if (p.ai >= 0 && p.ai < data.contributors.length) {
+      onContributorClick(data.contributors[p.ai]);
+    }
   };
 
-  const cursor = onAgentClick && hoverAgent ? "cursor-pointer" : "cursor-crosshair";
+  const cursor =
+    onContributorClick && hoverContributor
+      ? "cursor-pointer"
+      : "cursor-crosshair";
 
   return (
     <div ref={containerRef} className="relative overflow-x-auto">
@@ -172,7 +192,10 @@ export default function AgentActivityTimeline({ data, onAgentClick }: Props) {
         ref={canvasRef}
         className={cursor}
         onMouseMove={handleMouseMove}
-        onMouseLeave={() => { setTooltip(null); setHoverAgent(null); }}
+        onMouseLeave={() => {
+          setTooltip(null);
+          setHoverContributor(null);
+        }}
         onClick={handleClick}
       />
       {tooltip && (
@@ -181,16 +204,19 @@ export default function AgentActivityTimeline({ data, onAgentClick }: Props) {
           style={{ left: tooltip.x + 12, top: tooltip.y - 8 }}
         >
           <div className="text-xs font-medium text-foreground">
-            <span className="text-violet-400">{tooltip.agent}</span>
+            <span className="text-violet-400">{tooltip.contributor}</span>
             <span className="text-muted mx-1">&middot;</span>
             <span className="text-muted font-mono">{tooltip.date}</span>
           </div>
           <div className="text-[11px] text-muted mt-1">
-            {tooltip.total} events
+            {tooltip.total} session commit{tooltip.total === 1 ? "" : "s"}
           </div>
           <div className="mt-1 space-y-0.5">
             {Object.entries(tooltip.byType).map(([type, count]) => (
-              <div key={type} className="flex justify-between gap-4 text-[10px]">
+              <div
+                key={type}
+                className="flex justify-between gap-4 text-[10px]"
+              >
                 <span className="text-muted font-mono">{type}</span>
                 <span className="text-foreground">{count}</span>
               </div>

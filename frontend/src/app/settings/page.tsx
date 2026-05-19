@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Header from "../../components/Header";
+import { AccountSettingsSkeleton, ApiKeysSkeleton } from "../../components/SkeletonStates";
 import { useAuth } from "../../hooks/useAuth";
 import {
   ApiError,
@@ -26,9 +27,7 @@ export default function SettingsPage() {
   }, [loading, user, router]);
 
   if (loading || !user) {
-    return (
-      <div className="min-h-screen flex items-center justify-center text-muted">Loading...</div>
-    );
+    return <AccountSettingsSkeleton />;
   }
 
   return (
@@ -237,7 +236,7 @@ function ActiveSessions() {
 
       {error && <p className="text-xs text-error">{error}</p>}
       {keys === null ? (
-        <p className="text-sm text-muted">Loading…</p>
+        <ApiKeysSkeleton />
       ) : keys.length === 0 ? (
         <p className="text-sm text-muted">No active sessions.</p>
       ) : (

@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 
 import AppShell from "../../components/AppShell";
 import { useBreadcrumbs } from "../../components/BreadcrumbContext";
+import { BasicPageSkeleton, CardGridSkeleton } from "../../components/SkeletonStates";
 import StashCard from "../../components/stash/StashCard";
 import { useAuth } from "../../hooks/useAuth";
 import type { PublicStashCard } from "../../lib/api";
@@ -85,7 +86,7 @@ export default function DiscoverPage() {
       </div>
 
       {fetching ? (
-        <p className="mt-12 text-center text-[13px] text-muted">Loading…</p>
+        <CardGridLoading />
       ) : stashes.length === 0 ? (
         <EmptyState />
       ) : (
@@ -95,11 +96,7 @@ export default function DiscoverPage() {
   );
 
   if (loading) {
-    return (
-      <div className="flex h-screen items-center justify-center text-muted">
-        Loading…
-      </div>
-    );
+    return <BasicPageSkeleton />;
   }
 
   if (user) {
@@ -111,6 +108,10 @@ export default function DiscoverPage() {
   }
 
   return <main>{content}</main>;
+}
+
+function CardGridLoading() {
+  return <CardGridSkeleton className="mt-6" />;
 }
 
 function DiscoverGrid({

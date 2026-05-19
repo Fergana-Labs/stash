@@ -2,10 +2,14 @@
 
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useState } from "react";
-import Link from "next/link";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { useBreadcrumbs } from "../../../../../components/BreadcrumbContext";
+import {
+  DocumentBodySkeleton,
+  FileViewerSkeleton,
+  SkeletonBlock,
+} from "../../../../../components/SkeletonStates";
 import { useAuth } from "../../../../../hooks/useAuth";
 import {
   getFile,
@@ -16,13 +20,10 @@ import {
   type FolderBreadcrumb,
 } from "../../../../../lib/api";
 import type { FileInfo } from "../../../../../lib/types";
-import EditableTitle from "../../../../../components/workspace/EditableTitle";
+import FileViewerHeader from "../../../../../components/workspace/FileViewerHeader";
 
 function isCsv(ct: string) {
   return ct?.includes("csv") || ct === "text/csv";
-}
-function isHtml(ct: string) {
-  return ct?.includes("html");
 }
 function isPdf(ct: string) {
   return ct?.includes("pdf");
@@ -39,7 +40,7 @@ function isText(ct: string) {
 
 export default function FileViewerPage() {
   return (
-    <Suspense fallback={<div className="flex h-screen items-center justify-center text-muted">Loading…</div>}>
+    <Suspense fallback={<FileViewerSkeleton />}>
       <FileViewerPageInner />
     </Suspense>
   );
@@ -176,66 +177,50 @@ function FileViewerPageInner() {
     if (!readOnly && !loading && !user) router.push("/login");
   }, [readOnly, user, loading, router]);
 
-  if (loading && !readOnly)
-    return <div className="flex h-screen items-center justify-center text-muted">Loading…</div>;
+  if (loading && !readOnly) return <FileViewerSkeleton />;
   if (!user && !readOnly) return null;
+  if (!file && !error) return <FileViewerSkeleton />;
+
+  const fileKindLabel = file ? kindLabel(file.content_type, file.name) : "";
+  const updatedAt = file?.created_at
+    ? new Date(file.created_at).toLocaleString(undefined, {
+        month: "short",
+        day: "numeric",
+        hour: "numeric",
+        minute: "2-digit",
+      })
+    : null;
+  const tags = file ? [{ label: fileKindLabel, tone: "muted" as const }] : undefined;
+  const meta: string[] = [];
+  if (file) meta.push(formatBytes(file.size_bytes));
+  if (updatedAt) meta.push(`Uploaded ${updatedAt}`);
 
   return (
-    <div className="flex flex-1 min-h-0 flex-col overflow-hidden">
-      <div className="flex items-center justify-between border-b border-border px-5 py-2.5 text-[13px]">
-        <div className="flex min-w-0 items-center gap-2">
-          {readOnly && stashSlug && (
-            <Link
-              href={`/stashes/${stashSlug}`}
-              className="text-muted hover:text-foreground"
-              title={`Back to ${stashTitle ?? "Stash"}`}
-            >
-              ←
-            </Link>
-          )}
-          {file ? (
-            readOnly ? (
-              <span className="font-mono font-medium text-foreground truncate">{file.name}</span>
-            ) : (
-              <EditableTitle
-                value={file.name}
-                className="font-mono font-medium text-foreground"
-                onSave={async (next) => {
-                  const updated = await updateFile(workspaceId, file.id, { name: next });
-                  setFile(updated);
-                  return updated.name;
-                }}
-              />
-            )
-          ) : null}
-          {file && (
-            <span className="text-muted">
-              {file.content_type} · {formatBytes(file.size_bytes)}
-            </span>
-          )}
-        </div>
-        <div className="flex items-center gap-1">
-          {readOnly && (
-            <span className="rounded-md bg-surface px-2 py-1 text-[10.5px] font-medium uppercase tracking-wide text-muted">
-              read-only · via Stash
-            </span>
-          )}
-          {file?.url && (
-            <a
-              href={file.url}
-              target="_blank"
-              rel="noopener noreferrer"
-              download={file.name}
-              className="rounded-md p-1.5 text-muted hover:bg-raised"
-              title="Download"
-            >
-              <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3" />
-              </svg>
-            </a>
-          )}
-        </div>
-      </div>
+    <div className="scroll-thin flex flex-1 min-h-0 flex-col overflow-hidden">
+      <FileViewerHeader
+        icon={<KindGlyph contentType={file?.content_type ?? ""} name={file?.name ?? ""} />}
+        iconColor={kindIconColor(file?.content_type ?? "")}
+        title={file?.name ?? "File"}
+        onRenameTitle={
+          file
+            ? async (next) => {
+                const updated = await updateFile(workspaceId, file.id, { name: next });
+                setFile(updated);
+                return updated.name;
+              }
+            : undefined
+        }
+        readOnly={readOnly}
+        readOnlyLabel="read-only · via Stash"
+        backLink={readOnly && stashSlug ? { label: stashTitle ?? "Stash", href: `/stashes/${stashSlug}` } : undefined}
+        tags={tags}
+        meta={meta}
+        downloadOptions={
+          file?.url
+            ? [{ label: `Download ${file.name}`, onSelect: () => triggerDownload(file.url, file.name) }]
+            : undefined
+        }
+      />
 
       {error && (
         <div className="border-b border-red-300/40 bg-red-500/10 px-5 py-2 text-[13px] text-red-500">
@@ -263,17 +248,8 @@ function FileBody({ file, text }: { file: FileInfo; text: string | null }) {
       </div>
     );
   }
-  if (isHtml(file.content_type)) {
-    return (
-      <iframe
-        src={file.url}
-        className="h-full w-full bg-white"
-        sandbox="allow-scripts allow-same-origin"
-        title={file.name}
-      />
-    );
-  }
   if (isMarkdown(file.content_type, file.name)) {
+    if (text === null) return <DocumentBodySkeleton className="mx-auto mt-8 max-w-3xl" />;
     return (
       <article className="markdown-content mx-auto max-w-3xl px-12 py-8 text-[15px] leading-relaxed text-foreground">
         <Markdown remarkPlugins={[remarkGfm]}>{text || ""}</Markdown>
@@ -281,9 +257,18 @@ function FileBody({ file, text }: { file: FileInfo; text: string | null }) {
     );
   }
   if (isText(file.content_type)) {
+    if (text === null) {
+      return (
+        <div className="space-y-2 px-5 py-4">
+          {[0, 1, 2, 3, 4, 5, 6, 7].map((row) => (
+            <SkeletonBlock key={row} className="h-4 w-full max-w-4xl" />
+          ))}
+        </div>
+      );
+    }
     return (
       <pre className="scroll-thin h-full overflow-auto px-5 py-4 font-mono text-[12.5px] text-foreground">
-        {text || "Loading…"}
+        {text || ""}
       </pre>
     );
   }
@@ -307,4 +292,67 @@ function formatBytes(b: number): string {
   if (b < 1024) return `${b} B`;
   if (b < 1024 * 1024) return `${(b / 1024).toFixed(1)} KB`;
   return `${(b / 1024 / 1024).toFixed(1)} MB`;
+}
+
+function kindLabel(contentType: string, name: string): string {
+  if (isPdf(contentType)) return "pdf";
+  if (isImage(contentType)) return "image";
+  if (isMarkdown(contentType, name)) return "markdown";
+  if (isText(contentType)) return "text";
+  return "file";
+}
+
+function kindIconColor(contentType: string): string {
+  if (isPdf(contentType)) return "#E11D48";
+  if (isImage(contentType)) return "#7C3AED";
+  return "var(--text-muted)";
+}
+
+function triggerDownload(url: string, name: string) {
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = name;
+  a.target = "_blank";
+  a.rel = "noopener noreferrer";
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+}
+
+function KindGlyph({ contentType, name }: { contentType: string; name: string }) {
+  if (isPdf(contentType)) {
+    return (
+      <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" strokeWidth="1.6">
+        <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" />
+        <path d="M14 3v5h5" />
+        <path d="M9 14h6" />
+        <path d="M9 17h3" />
+      </svg>
+    );
+  }
+  if (isImage(contentType)) {
+    return (
+      <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" strokeWidth="1.6">
+        <rect x="3" y="4" width="18" height="16" rx="2" />
+        <circle cx="9" cy="9.5" r="1.4" />
+        <path d="M21 16l-5-5-9 9" />
+      </svg>
+    );
+  }
+  if (isMarkdown(contentType, name)) {
+    return (
+      <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" strokeWidth="1.6">
+        <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" />
+        <path d="M14 3v5h5" />
+        <path d="M9 13h6M9 17h4" />
+      </svg>
+    );
+  }
+  // generic file
+  return (
+    <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" strokeWidth="1.6">
+      <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" />
+      <path d="M14 3v5h5" />
+    </svg>
+  );
 }

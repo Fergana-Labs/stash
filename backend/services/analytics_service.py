@@ -100,7 +100,7 @@ async def get_activity_timeline(
     bucket: str = "day",
     workspace_id: UUID | None = None,
 ) -> dict:
-    """Agent activity bucketed by time for the timeline visualization."""
+    """Human + coding-agent session commits bucketed by time."""
     pool = get_pool()
     days = min(days, 365)
     if bucket not in ("hour", "day", "week"):
@@ -116,94 +116,62 @@ async def get_activity_timeline(
 
     rows = await pool.fetch(
         _accessible_events_cte(ws_idx=ws_idx) + """
+        , session_commits AS (
+            SELECT
+                me.workspace_id,
+                me.session_id,
+                DATE_TRUNC($2, MIN(me.created_at)) AS bucket_date,
+                (
+                    ARRAY_AGG(me.agent_name ORDER BY me.created_at)
+                    FILTER (WHERE me.agent_name IS NOT NULL AND me.agent_name != '')
+                )[1] AS agent_name,
+                (
+                    ARRAY_AGG(me.created_by ORDER BY me.created_at)
+                    FILTER (WHERE me.created_by IS NOT NULL)
+                )[1] AS actor_id
+            FROM history_events me
+            JOIN accessible_events a ON a.event_id = me.id
+            WHERE me.created_at >= $3
+              AND me.session_id IS NOT NULL
+            GROUP BY me.workspace_id, me.session_id
+        )
         SELECT
-            DATE_TRUNC($2, me.created_at) AS bucket_date,
-            me.agent_name,
-            me.event_type,
+            sc.bucket_date,
+            COALESCE(NULLIF(u.display_name, ''), u.name, 'Unknown human') AS human_name,
+            COALESCE(NULLIF(sc.agent_name, ''), 'unknown agent') AS agent_name,
             COUNT(*) AS cnt
-        FROM history_events me
-        JOIN accessible_events a ON a.event_id = me.id
-        WHERE me.created_at >= $3
-        GROUP BY bucket_date, me.agent_name, me.event_type
+        FROM session_commits sc
+        LEFT JOIN users u ON u.id = sc.actor_id
+        GROUP BY sc.bucket_date, human_name, agent_name
         ORDER BY bucket_date
         """,
         *args,
     )
 
-    # Build response shape
-    agents_set: set[str] = set()
+    contributors_set: set[str] = set()
     buckets_map: dict[str, dict] = {}
 
     for row in rows:
         date_str = row["bucket_date"].isoformat()
-        agent = row["agent_name"] or "unknown"
-        etype = row["event_type"] or "other"
+        contributor = f"{row['human_name']} / {row['agent_name']}"
         cnt = row["cnt"]
 
-        agents_set.add(agent)
+        contributors_set.add(contributor)
 
         if date_str not in buckets_map:
-            buckets_map[date_str] = {"date": date_str, "agents": {}}
+            buckets_map[date_str] = {"date": date_str, "contributors": {}}
 
         b = buckets_map[date_str]
-        if agent not in b["agents"]:
-            b["agents"][agent] = {"total": 0, "by_type": {}}
+        if contributor not in b["contributors"]:
+            b["contributors"][contributor] = {"total": 0, "by_type": {}}
 
-        b["agents"][agent]["total"] += cnt
-        b["agents"][agent]["by_type"][etype] = b["agents"][agent]["by_type"].get(etype, 0) + cnt
-
-    # Pages get their own pseudo-agent row so the GitHub-contribution-style
-    # timeline shows human page edits alongside agent session activity.
-    # Authorization: when scoped to a workspace, the caller has already been
-    # access-checked by the route; otherwise restrict to pages in workspaces
-    # the user is a member of.
-    if workspace_id is not None:
-        page_rows = await pool.fetch(
-            """
-            SELECT DATE_TRUNC($1, p.updated_at) AS bucket_date, COUNT(*) AS cnt
-            FROM pages p
-            WHERE p.updated_at >= $2 AND p.workspace_id = $3
-            GROUP BY bucket_date
-            ORDER BY bucket_date
-            """,
-            bucket,
-            cutoff,
-            workspace_id,
+        b["contributors"][contributor]["total"] += cnt
+        b["contributors"][contributor]["by_type"]["session.commit"] = (
+            b["contributors"][contributor]["by_type"].get("session.commit", 0) + cnt
         )
-    else:
-        page_rows = await pool.fetch(
-            """
-            SELECT DATE_TRUNC($1, p.updated_at) AS bucket_date, COUNT(*) AS cnt
-            FROM pages p
-            WHERE p.updated_at >= $2
-              AND p.workspace_id IN (
-                SELECT workspace_id FROM workspace_members WHERE user_id = $3
-              )
-            GROUP BY bucket_date
-            ORDER BY bucket_date
-            """,
-            bucket,
-            cutoff,
-            user_id,
-        )
-
-    if page_rows:
-        agents_set.add("Pages")
-        for row in page_rows:
-            date_str = row["bucket_date"].isoformat()
-            cnt = row["cnt"]
-            if date_str not in buckets_map:
-                buckets_map[date_str] = {"date": date_str, "agents": {}}
-            b = buckets_map[date_str]
-            if "Pages" not in b["agents"]:
-                b["agents"]["Pages"] = {"total": 0, "by_type": {}}
-            b["agents"]["Pages"]["total"] += cnt
-            b["agents"]["Pages"]["by_type"]["page.updated"] = (
-                b["agents"]["Pages"]["by_type"].get("page.updated", 0) + cnt
-            )
 
     return {
-        "agents": sorted(agents_set),
+        "contributors": sorted(contributors_set),
         "buckets": list(buckets_map.values()),
     }
 

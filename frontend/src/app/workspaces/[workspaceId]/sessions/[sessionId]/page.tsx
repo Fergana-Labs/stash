@@ -4,6 +4,7 @@ import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { useBreadcrumbs } from "../../../../../components/BreadcrumbContext";
 import DownloadMenu from "../../../../../components/DownloadMenu";
+import { SessionDetailSkeleton } from "../../../../../components/SkeletonStates";
 import { StashIcon } from "../../../../../components/StashIcons";
 import { useAuth } from "../../../../../hooks/useAuth";
 import {
@@ -135,9 +136,9 @@ export default function SessionViewerPage() {
     if (!loading && !user) router.push("/login");
   }, [user, loading, router]);
 
-  if (loading)
-    return <div className="flex h-screen items-center justify-center text-muted">Loading…</div>;
+  if (loading) return <SessionDetailSkeleton />;
   if (!user) return null;
+  if (!sessionDetail && turns.length === 0 && !error) return <SessionDetailSkeleton />;
 
   const sessionDate = turns.find((turn) => turn.dateLabel)?.dateLabel;
 
@@ -218,7 +219,7 @@ export default function SessionViewerPage() {
             })}
             {!error && turns.length === 0 && (
               <div className="rounded-lg border border-dashed border-border bg-surface/30 px-4 py-6 text-center text-[12.5px] text-muted">
-                Loading transcript…
+                No transcript events yet.
               </div>
             )}
           </div>

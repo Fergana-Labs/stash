@@ -13,12 +13,13 @@ import {
   type WorkspaceSidebar,
   type WorkspaceSidebarSession,
   type WorkspaceSidebarStash,
-  uploadFile,
+  uploadFileOrPage,
   uploadTranscript,
 } from "../lib/api";
 import { useShareModal } from "../lib/shareModalContext";
 import { useEscapeKey } from "../hooks/useEscapeKey";
 import { requireSessionUserName } from "../lib/sessionGrouping";
+import { SkeletonBlock } from "./SkeletonStates";
 import {
   getCachedFolderContents,
   getCachedWorkspaceSidebar,
@@ -1167,9 +1168,7 @@ function FolderTreeNode({
         </Link>
       </summary>
       <div className="ml-2.5 space-y-0.5 border-l border-border pl-2">
-        {contents === null && loaded && (
-          <div className="px-2 py-1 text-[11px] italic text-muted">loading…</div>
-        )}
+        {contents === null && loaded && <SkeletonBlock className="my-1 h-5 w-28" />}
         {contents?.subfolders
           .filter((sub) => !isFolderPinned(sub.id))
           .map((sub) => (
@@ -2004,7 +2003,7 @@ export default function AppSidebar({
         }
       } else {
         for (const file of list) {
-          await uploadFile(workspaceId, file);
+          await uploadFileOrPage(workspaceId, file);
         }
       }
       await refreshSidebar(workspaceId);

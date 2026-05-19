@@ -1,4 +1,10 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import StashPageClient from "./StashPageClient";
@@ -71,7 +77,7 @@ vi.mock("../../../lib/api", () => ({
   getEmbeddingProjection: vi.fn(),
 }));
 
-vi.mock("../../../components/viz/AgentActivityTimeline", () => ({
+vi.mock("../../../components/viz/ContributorActivityTimeline", () => ({
   default: () => null,
 }));
 vi.mock("../../../components/viz/EmbeddingSpaceExplorer", () => ({
@@ -87,7 +93,7 @@ vi.mock("./AddToWorkspaceButton", () => ({
 }));
 
 function stashDetail(
-  stash: Partial<PublicStashDetail["stash"]> = {}
+  stash: Partial<PublicStashDetail["stash"]> = {},
 ): PublicStashDetail {
   return {
     stash: {
@@ -97,6 +103,8 @@ function stashDetail(
       title: "Shared Stash",
       description: "",
       owner_id: "user-1",
+      owner_name: "henry",
+      owner_display_name: "Henry",
       access: "public",
       discoverable: false,
       cover_image_url: null,
@@ -133,7 +141,7 @@ describe("StashPageClient sharing", () => {
       value: { writeText: vi.fn().mockResolvedValue(undefined) },
     });
     vi.mocked(getActivityTimeline).mockResolvedValue({
-      agents: [],
+      contributors: [],
       buckets: [],
     });
     vi.mocked(getEmbeddingProjection).mockResolvedValue({
@@ -161,8 +169,8 @@ describe("StashPageClient sharing", () => {
 
     await waitFor(() =>
       expect(navigator.clipboard.writeText).toHaveBeenCalledWith(
-        `${window.location.origin}/stashes/shared-stash`
-      )
+        `${window.location.origin}/stashes/shared-stash`,
+      ),
     );
     expect(screen.getByRole("button", { name: "Copied" })).toBeInTheDocument();
   });
@@ -175,15 +183,19 @@ describe("StashPageClient sharing", () => {
 
     render(<StashPageClient slug="shared-stash" />);
 
-    expect(await screen.findByRole("button", { name: "+ Add things" })).toBeInTheDocument();
     expect(
-      screen.queryByPlaceholderText("Paste a link, type a note, or drop a file")
+      await screen.findByRole("button", { name: "+ Add things" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByPlaceholderText(
+        "Paste a link, type a note, or drop a file",
+      ),
     ).not.toBeInTheDocument();
   });
 
   it("does not render stash access as a title badge", async () => {
     vi.mocked(getPublicStash).mockResolvedValueOnce(
-      stashDetail({ access: "workspace" })
+      stashDetail({ access: "workspace" }),
     );
 
     render(<StashPageClient slug="shared-stash" />);
@@ -192,5 +204,15 @@ describe("StashPageClient sharing", () => {
 
     expect(title).toHaveTextContent("Shared Stash");
     expect(title).not.toHaveTextContent("workspace");
+  });
+
+  it("shows the stash author in the detail header", async () => {
+    vi.mocked(getPublicStash).mockResolvedValueOnce(
+      stashDetail({ owner_name: "sam", owner_display_name: "Sam" })
+    );
+
+    render(<StashPageClient slug="shared-stash" />);
+
+    expect(await screen.findByText("by Sam")).toBeInTheDocument();
   });
 });

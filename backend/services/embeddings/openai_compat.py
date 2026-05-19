@@ -10,8 +10,7 @@ import os
 import httpx
 import numpy as np
 
-from ._retry import TransientEmbeddingError
-from .base import BaseEmbedder
+from .base import BaseEmbedder, TransientEmbeddingError
 
 logger = logging.getLogger(__name__)
 

@@ -14,7 +14,7 @@ import {
   updateFile,
   updateFolder,
   updatePage,
-  uploadFile,
+  uploadFileOrPage,
   type FolderContents,
 } from "../../../lib/api";
 import type {
@@ -22,6 +22,7 @@ import type {
   PageSummary,
   WorkspaceTree,
 } from "../../../lib/types";
+import { FileBrowserSkeleton } from "../../SkeletonStates";
 import EditableTitle from "../EditableTitle";
 import FolderItemGrid, { type GridItem, type ItemKind } from "./FolderItemGrid";
 import ItemsList from "./ItemsList";
@@ -51,6 +52,7 @@ export default function WorkspaceFileBrowser({ workspaceId, folderId }: Props) {
 
   const [tree, setTree] = useState<WorkspaceTree | null>(null);
   const [contents, setContents] = useState<FolderContents | null>(null);
+  const [contentsLoaded, setContentsLoaded] = useState(false);
   const [rootFiles, setRootFiles] = useState<GridItem[]>([]);
   const [view, setView] = useState<View>("grid");
 
@@ -85,6 +87,7 @@ export default function WorkspaceFileBrowser({ workspaceId, folderId }: Props) {
   // /folders/{id}/contents. For the root view there's no such endpoint, so we
   // synthesize the contents from the tree + a list-files call.
   const loadContents = useCallback(async () => {
+    setContentsLoaded(false);
     if (folderId) {
       try {
         const c = await getFolderContents(workspaceId, folderId);
@@ -92,6 +95,8 @@ export default function WorkspaceFileBrowser({ workspaceId, folderId }: Props) {
         setRootFiles([]);
       } catch (e) {
         setError(e instanceof Error ? e.message : "Failed to load folder");
+      } finally {
+        setContentsLoaded(true);
       }
     } else {
       try {
@@ -107,6 +112,8 @@ export default function WorkspaceFileBrowser({ workspaceId, folderId }: Props) {
         setRootFiles(roots);
       } catch (e) {
         setError(e instanceof Error ? e.message : "Failed to load root");
+      } finally {
+        setContentsLoaded(true);
       }
     }
   }, [workspaceId, folderId]);
@@ -168,6 +175,8 @@ export default function WorkspaceFileBrowser({ workspaceId, folderId }: Props) {
     ];
   }, [folderId, contents, tree, rootFiles]);
 
+  const loadingItems = folderId ? contents === null : !contentsLoaded;
+
   async function refreshAll() {
     await Promise.all([loadTree(), loadContents()]);
   }
@@ -227,7 +236,11 @@ export default function WorkspaceFileBrowser({ workspaceId, folderId }: Props) {
       const file = input.files?.[0];
       if (!file) return;
       try {
-        await uploadFile(workspaceId, file, folderId ?? undefined);
+        const result = await uploadFileOrPage(workspaceId, file, folderId ?? undefined);
+        if (result.kind === "page") {
+          router.push(`/workspaces/${workspaceId}/p/${result.page.id}`);
+          return;
+        }
         await refreshAll();
       } catch (e) {
         setError(e instanceof Error ? e.message : "Upload failed");
@@ -290,6 +303,8 @@ export default function WorkspaceFileBrowser({ workspaceId, folderId }: Props) {
     await refreshAll();
     return updated.name;
   }
+
+  if (loadingItems && !error) return <FileBrowserSkeleton />;
 
   return (
     <div className="flex h-full min-h-0 flex-col">

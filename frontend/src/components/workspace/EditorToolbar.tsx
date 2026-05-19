@@ -8,6 +8,10 @@ import { uploadFile } from "../../lib/api";
 interface EditorToolbarProps {
   editor: Editor | null;
   workspaceId?: string | null;
+  /** When set, the bubble menu shows a "Comment" button that asks the
+   *  parent to open a comment composer anchored to the current
+   *  selection. The parent owns the composer + the server call. */
+  onStartComment?: () => void;
 }
 
 function ToolbarButton({
@@ -43,7 +47,7 @@ function Separator() {
   return <div className="w-px h-4 bg-white/20 mx-0.5" />;
 }
 
-export default function EditorToolbar({ editor, workspaceId }: EditorToolbarProps) {
+export default function EditorToolbar({ editor, workspaceId, onStartComment }: EditorToolbarProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
 
@@ -174,6 +178,18 @@ export default function EditorToolbar({ editor, workspaceId }: EditorToolbarProp
         >
           {uploading ? "..." : "Upload"}
         </ToolbarButton>
+
+        {onStartComment && (
+          <>
+            <Separator />
+            <ToolbarButton
+              onClick={() => onStartComment()}
+              title="Comment on selection"
+            >
+              Comment
+            </ToolbarButton>
+          </>
+        )}
         </div>
       </BubbleMenu>
 

@@ -3,6 +3,7 @@
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useBreadcrumbs } from "../../../../../components/BreadcrumbContext";
+import { FileBrowserSkeleton } from "../../../../../components/SkeletonStates";
 import WorkspaceFileBrowser from "../../../../../components/workspace/file-browser/WorkspaceFileBrowser";
 import { useAuth } from "../../../../../hooks/useAuth";
 import { getFolderContents } from "../../../../../lib/api";
@@ -52,8 +53,7 @@ export default function FolderDetailPage() {
     if (!loading && !user) router.push("/login");
   }, [user, loading, router]);
 
-  if (loading)
-    return <div className="flex h-screen items-center justify-center text-muted">Loading…</div>;
+  if (loading) return <FileBrowserSkeleton />;
   if (!user) return null;
 
   return <WorkspaceFileBrowser workspaceId={workspaceId} folderId={folderId} />;

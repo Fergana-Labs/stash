@@ -59,6 +59,8 @@ describe("StashShareModal session sharing", () => {
       title: "Debug auth flow",
       description: "",
       owner_id: "user-1",
+      owner_name: "henry",
+      owner_display_name: "Henry",
       access: "workspace",
       discoverable: false,
       cover_image_url: null,

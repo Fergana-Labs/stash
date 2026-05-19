@@ -4,6 +4,7 @@ import Link from "next/link";
 import { type FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import AppShell from "../components/AppShell";
+import { BasicPageSkeleton, HomeSkeleton } from "../components/SkeletonStates";
 import { useAuth } from "../hooks/useAuth";
 import { joinWorkspace, listMyWorkspaces } from "../lib/api";
 import { resetStashNavigationCache } from "../lib/stashNavigationCache";
@@ -86,7 +87,7 @@ export default function Home() {
   }, [loading, router, user]);
 
   if (loading || !user) {
-    return <div className="flex min-h-screen items-center justify-center text-muted">Loading...</div>;
+    return <BasicPageSkeleton />;
   }
 
   return <LoggedInHome user={user} logout={logout} />;
@@ -143,11 +144,19 @@ function LoggedInHome({
   }, [router]);
 
   if (loading) {
-    return <div className="flex min-h-screen items-center justify-center text-muted">Loading…</div>;
+    return (
+      <AppShell user={user} onLogout={logout}>
+        <HomeSkeleton />
+      </AppShell>
+    );
   }
 
   if (workspaces.length > 0) {
-    return <div className="flex min-h-screen items-center justify-center text-muted">Opening home...</div>;
+    return (
+      <AppShell user={user} onLogout={logout}>
+        <HomeSkeleton />
+      </AppShell>
+    );
   }
 
   async function handleJoin(event: FormEvent) {

@@ -4,7 +4,7 @@ import { useRef, useState, type DragEvent, type FormEvent } from "react";
 import {
   createPage,
   updateStash,
-  uploadFile,
+  uploadFileOrPage,
   uploadTranscript,
   type StashItemSpec,
 } from "../lib/api";
@@ -101,9 +101,13 @@ export default function StashQuickAdd({
           // .jsonl flows land in the workspace's sessions list; quick-add
           // doesn't auto-attach them to the host stash (use Add things).
         } else {
-          const uploaded = await uploadFile(workspaceId, f);
+          const result = await uploadFileOrPage(workspaceId, f);
           fileCount += 1;
-          newItems.push({ object_type: "file", object_id: uploaded.id });
+          if (result.kind === "page") {
+            newItems.push({ object_type: "page", object_id: result.page.id });
+          } else {
+            newItems.push({ object_type: "file", object_id: result.file.id });
+          }
         }
       }
       await appendToStash(newItems);

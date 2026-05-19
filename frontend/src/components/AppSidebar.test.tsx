@@ -9,7 +9,7 @@ import {
   getFolderContents,
   getWorkspaceSidebar,
   listMyWorkspaces,
-  uploadFile,
+  uploadFileOrPage,
   uploadTranscript,
 } from "../lib/api";
 
@@ -52,7 +52,7 @@ vi.mock("../lib/api", () => ({
   getFolderContents: vi.fn(),
   getWorkspaceSidebar: vi.fn(),
   listMyWorkspaces: vi.fn(),
-  uploadFile: vi.fn(),
+  uploadFileOrPage: vi.fn(),
   uploadTranscript: vi.fn(),
 }));
 
@@ -207,17 +207,20 @@ describe("AppSidebar tree expansion", () => {
       pages: [{ id: "page-child", name: "Roadmap" }],
       files: [],
     });
-    vi.mocked(uploadFile).mockResolvedValue({
-      id: "file-1",
-      workspace_id: "ws-1",
-      folder_id: null,
-      name: "brief.md",
-      content_type: "text/markdown",
-      size_bytes: 5,
-      url: "/files/file-1",
-      uploaded_by: "user-1",
-      created_at: "2026-05-11T00:00:00Z",
-      linked_table_id: null,
+    vi.mocked(uploadFileOrPage).mockResolvedValue({
+      kind: "file",
+      file: {
+        id: "file-1",
+        workspace_id: "ws-1",
+        folder_id: null,
+        name: "brief.md",
+        content_type: "text/markdown",
+        size_bytes: 5,
+        url: "/files/file-1",
+        uploaded_by: "user-1",
+        created_at: "2026-05-11T00:00:00Z",
+        linked_table_id: null,
+      },
     });
     vi.mocked(uploadTranscript).mockResolvedValue({
       session_id: "session-1",
@@ -529,7 +532,7 @@ describe("AppSidebar tree expansion", () => {
       dataTransfer: { types: ["Files"], files: [file] },
     });
 
-    await waitFor(() => expect(uploadFile).toHaveBeenCalledWith("ws-1", file));
+    await waitFor(() => expect(uploadFileOrPage).toHaveBeenCalledWith("ws-1", file));
     expect(await screen.findByText("1 file added.")).toBeTruthy();
   });
 });

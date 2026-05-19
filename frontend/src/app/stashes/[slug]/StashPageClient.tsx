@@ -9,19 +9,16 @@ import {
   type ReactNode,
   type ChangeEvent,
 } from "react";
-import { EditorContent, useEditor } from "@tiptap/react";
-import StarterKit from "@tiptap/starter-kit";
-import Heading from "@tiptap/extension-heading";
-import Bold from "@tiptap/extension-bold";
-import Italic from "@tiptap/extension-italic";
-import TiptapLink from "@tiptap/extension-link";
-import Placeholder from "@tiptap/extension-placeholder";
 
 import AppShell from "../../../components/AppShell";
 import { useBreadcrumbs } from "../../../components/BreadcrumbContext";
+import DescriptionEditor, {
+  isBlankDescription,
+} from "../../../components/DescriptionEditor";
+import { PublicStashSkeleton, SkeletonBlock } from "../../../components/SkeletonStates";
 import AddToStashModal from "../../../components/stash/AddToStashModal";
 import { StashIcon } from "../../../components/StashIcons";
-import AgentActivityTimeline from "../../../components/viz/AgentActivityTimeline";
+import ContributorActivityTimeline from "../../../components/viz/ContributorActivityTimeline";
 import EmbeddingSpaceExplorer from "../../../components/viz/EmbeddingSpaceExplorer";
 import { useAuth } from "../../../hooks/useAuth";
 import { useEscapeKey } from "../../../hooks/useEscapeKey";
@@ -38,11 +35,9 @@ import {
 import type { ActivityTimeline, EmbeddingProjection } from "../../../lib/types";
 import AddToWorkspaceButton from "./AddToWorkspaceButton";
 
-type StashItemGroup = Partial<Record<PublicStashItem["object_type"], PublicStashItem[]>>;
-
-// Same autosave window as workspace home — slow enough to coalesce
-// keystrokes, fast enough to feel near-realtime.
-const AUTOSAVE_MS = 1500;
+type StashItemGroup = Partial<
+  Record<PublicStashItem["object_type"], PublicStashItem[]>
+>;
 
 // Signed-in viewers see the Stash inside AppShell (sidebar + top bar) so
 // navigation context is preserved. Anonymous viewers see the raw page.
@@ -61,14 +56,10 @@ function StashChrome({
       { label: "Stashes", href: "/stashes" },
       { label: data?.stash.title ?? "Stash" },
     ],
-    `stash/${data?.stash.id ?? "loading"}`
+    `stash/${data?.stash.id ?? "loading"}`,
   );
   if (loading) {
-    return (
-      <main className="flex min-h-screen items-center justify-center bg-background text-muted">
-        Loading Stash...
-      </main>
-    );
+    return <PublicStashSkeleton />;
   }
   if (user) {
     return (
@@ -109,9 +100,7 @@ export default function StashPageClient({ slug }: { slug: string }) {
   if (loading) {
     return (
       <StashChrome data={data}>
-        <div className="flex min-h-[50vh] items-center justify-center text-muted">
-          Loading Stash...
-        </div>
+        <PublicStashSkeleton />
       </StashChrome>
     );
   }
@@ -120,9 +109,12 @@ export default function StashPageClient({ slug }: { slug: string }) {
     return (
       <StashChrome data={null}>
         <div className="mx-auto max-w-md py-24 text-center">
-          <h1 className="font-display text-[28px] font-bold text-foreground">Stash not found</h1>
+          <h1 className="font-display text-[28px] font-bold text-foreground">
+            Stash not found
+          </h1>
           <p className="mt-2 text-[14px] leading-relaxed text-dim">
-            {error || "This Stash is private, revoked, or unavailable to the current user."}
+            {error ||
+              "This Stash is private, revoked, or unavailable to the current user."}
           </p>
         </div>
       </StashChrome>
@@ -174,13 +166,17 @@ function StashPageBody({
   const groups = groupStashItems(items);
   const [addOpen, setAddOpen] = useState(false);
   const [timeline, setTimeline] = useState<ActivityTimeline | null>(null);
-  const [projection, setProjection] = useState<EmbeddingProjection | null>(null);
+  const [projection, setProjection] = useState<EmbeddingProjection | null>(
+    null,
+  );
+  const [insightsLoaded, setInsightsLoaded] = useState(false);
 
   useEffect(() => {
     // Visualizations are workspace-scoped — they show the owning workspace's
     // activity so the stash detail page has the same "knowledge map" feel
     // as the workspace home.
     let cancelled = false;
+    setInsightsLoaded(false);
     Promise.allSettled([
       getActivityTimeline(365, "day", stash.workspace_id),
       getEmbeddingProjection(500, undefined, stash.workspace_id),
@@ -188,6 +184,7 @@ function StashPageBody({
       if (cancelled) return;
       if (t.status === "fulfilled") setTimeline(t.value);
       if (p.status === "fulfilled") setProjection(p.value);
+      setInsightsLoaded(true);
     });
     return () => {
       cancelled = true;
@@ -204,6 +201,7 @@ function StashPageBody({
     position: i,
     label_override: it.label,
   }));
+  const author = stash.owner_display_name || stash.owner_name;
 
   return (
     <div className="scroll-thin min-h-screen bg-background">
@@ -234,6 +232,8 @@ function StashPageBody({
                 {stash.title}
               </h1>
               <div className="mt-1 flex flex-wrap items-center gap-2 text-[12px] text-muted">
+                <span>by {author}</span>
+                <span className="text-muted/60">·</span>
                 <span>
                   {items.length} item{items.length === 1 ? "" : "s"}
                 </span>
@@ -264,13 +264,14 @@ function StashPageBody({
             ) : (
               // Forking only makes sense when the viewer doesn't already have
               // write access to this stash in its own workspace.
-              <AddToWorkspaceButton slug={stash.slug} sourceWorkspaceId={stash.workspace_id} />
+              <AddToWorkspaceButton
+                slug={stash.slug}
+                sourceWorkspaceId={stash.workspace_id}
+              />
             )}
           </div>
         </div>
 
-        {/* About this Stash — inline editable for writers, read-only for
-            viewers. Mirrors the workspace home editor. */}
         <StashDescriptionEditor
           stashId={stash.id}
           description={stash.description}
@@ -320,29 +321,37 @@ function StashPageBody({
           )}
         </div>
 
-        {/* Visualizations: agent activity + 3D embedding view of the
+        {/* Visualizations: human/agent session activity + 3D embedding view of the
             owning workspace — same shape as workspace home. */}
         <section className="mt-8">
-          <div className="sys-label mb-1.5">Agent activity — past year</div>
+          <div className="sys-label mb-1.5">Human / agent commits — past year</div>
           <div className="card-soft overflow-x-auto p-3">
-            {timeline && timeline.agents.length > 0 ? (
-              <AgentActivityTimeline data={timeline} />
+            {!insightsLoaded ? (
+              <SkeletonBlock className="h-40 w-full" />
+            ) : timeline && timeline.contributors.length > 0 ? (
+              <ContributorActivityTimeline data={timeline} />
             ) : (
               <div className="px-2 py-6 text-center text-[12.5px] text-muted">
-                No agent sessions yet. Add a session to this Stash or push a transcript via the CLI.
+                No agent session commits yet. Add a session to this Stash or
+                push a transcript via the CLI.
               </div>
             )}
           </div>
         </section>
 
         <section className="mt-6">
-          <div className="sys-label mb-1.5">Embedding space — workspace knowledge map</div>
+          <div className="sys-label mb-1.5">
+            Embedding space — workspace knowledge map
+          </div>
           <div className="card-soft p-3">
-            {projection && projection.points.length > 0 ? (
+            {!insightsLoaded ? (
+              <SkeletonBlock className="h-40 w-full" />
+            ) : projection && projection.points.length > 0 ? (
               <EmbeddingSpaceExplorer data={projection} />
             ) : (
               <div className="px-2 py-6 text-center text-[12.5px] text-muted">
-                No embeddings indexed yet. Pages, table rows, and session events get embedded as they&apos;re added.
+                No embeddings indexed yet. Pages, table rows, and session events
+                get embedded as they&apos;re added.
               </div>
             )}
           </div>
@@ -414,7 +423,11 @@ function BannerImage({
     >
       <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/0 opacity-0 transition group-hover:bg-black/25 group-hover:opacity-100">
         <span className="rounded-md bg-black/60 px-2 py-1 text-[11.5px] font-medium text-white">
-          {uploading ? "Uploading…" : hasCustomCover ? "Change banner" : "Add banner"}
+          {uploading
+            ? "Uploading…"
+            : hasCustomCover
+              ? "Change banner"
+              : "Add banner"}
         </span>
       </div>
       <input
@@ -498,10 +511,6 @@ function StashIconUpload({
   );
 }
 
-// Inline-editable About section. Renders nothing for viewers when the
-// description is empty so the page stays uncluttered. Mirrors the
-// workspace home editor: TipTap + autosave-on-idle + click-to-focus
-// affordance with dashed border that goes solid on focus.
 function StashDescriptionEditor({
   stashId,
   description,
@@ -513,86 +522,20 @@ function StashDescriptionEditor({
   canEdit: boolean;
   onSaved: () => void;
 }) {
-  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const lastSaved = useRef<string>(description);
-
-  useEffect(() => {
-    lastSaved.current = description;
-  }, [description]);
-
-  const editor = useEditor({
-    immediatelyRender: false,
-    editable: canEdit,
-    content: description || "<p></p>",
-    extensions: [
-      StarterKit.configure({
-        blockquote: false,
-        codeBlock: false,
-        heading: false,
-        bold: false,
-        italic: false,
-        link: false,
-        underline: false,
-      }),
-      Heading.configure({ levels: [1, 2, 3] }),
-      Bold,
-      Italic,
-      TiptapLink.configure({ openOnClick: true, autolink: true }),
-      Placeholder.configure({ placeholder: "Describe this Stash…" }),
-    ],
-    editorProps: {
-      attributes: {
-        class: "min-h-[120px] focus:outline-none file-page-body",
-      },
-    },
-    onUpdate: ({ editor: ed }) => {
-      const html = ed.getHTML();
-      if (html === lastSaved.current) return;
-      if (saveTimer.current) clearTimeout(saveTimer.current);
-      saveTimer.current = setTimeout(async () => {
-        lastSaved.current = html;
-        await updateStash(stashId, { description: html });
-        onSaved();
-      }, AUTOSAVE_MS);
-    },
-  });
-
-  useEffect(() => {
-    if (!editor) return;
-    if (editor.getHTML() === description) return;
-    editor.commands.setContent(description || "<p></p>", { emitUpdate: false });
-    lastSaved.current = description;
-  }, [description, editor]);
-
-  // useEditor() captures `editable` at creation time. When permission
-  // info loads after first paint, toggle it on the live editor.
-  useEffect(() => {
-    if (!editor) return;
-    editor.setEditable(canEdit);
-  }, [editor, canEdit]);
-
-  useEffect(() => {
-    return () => {
-      if (saveTimer.current) clearTimeout(saveTimer.current);
-    };
-  }, []);
-
-  if (!canEdit && !description) return null;
+  if (!canEdit && isBlankDescription(description)) return null;
 
   return (
-    <section className="mt-6">
-      <div className="sys-label mb-1.5">About this Stash</div>
-      <div
-        onClick={() => editor?.commands.focus()}
-        className={
-          "rounded-[10px] border transition-colors " +
-          (canEdit
-            ? "border-dashed border-border bg-surface/40 px-[18px] py-[14px] cursor-text hover:border-[var(--color-brand-300)] hover:bg-[var(--color-brand-50)]/40 focus-within:border-[var(--color-brand-400)] focus-within:bg-base"
-            : "border-border bg-surface/40 px-[18px] py-[14px]")
-        }
-      >
-        <EditorContent editor={editor} />
-      </div>
+    <section className="mt-5">
+      <DescriptionEditor
+        value={description}
+        canEdit={canEdit}
+        placeholder="Describe this Stash…"
+        ariaLabel="Stash description"
+        onSave={async (html) => {
+          await updateStash(stashId, { description: html });
+          onSaved();
+        }}
+      />
     </section>
   );
 }
@@ -632,7 +575,10 @@ function ShareStashButton({
   useEffect(() => {
     if (!open) return;
     function onDown(e: globalThis.MouseEvent) {
-      if (popoverRef.current && !popoverRef.current.contains(e.target as Node)) {
+      if (
+        popoverRef.current &&
+        !popoverRef.current.contains(e.target as Node)
+      ) {
         setOpen(false);
       }
     }
@@ -642,7 +588,9 @@ function ShareStashButton({
 
   async function copyLink() {
     try {
-      await navigator.clipboard.writeText(absoluteUrl(`/stashes/${stash.slug}`));
+      await navigator.clipboard.writeText(
+        absoluteUrl(`/stashes/${stash.slug}`),
+      );
       setCopied(true);
       window.setTimeout(() => setCopied(false), 1600);
     } catch {
@@ -650,7 +598,9 @@ function ShareStashButton({
     }
   }
 
-  async function applyChanges(next: Partial<{ access: typeof vis; discoverable: boolean }>) {
+  async function applyChanges(
+    next: Partial<{ access: typeof vis; discoverable: boolean }>,
+  ) {
     setSaving(true);
     try {
       await updateStash(stash.id, next);
@@ -823,28 +773,47 @@ function StashItemSection({
   return (
     <section>
       <div className="mb-2 flex items-baseline gap-2 border-b border-border-subtle pb-1.5">
-        <h2 className="m-0 font-display text-[15px] font-semibold text-foreground">{title}</h2>
+        <h2 className="m-0 font-display text-[15px] font-semibold text-foreground">
+          {title}
+        </h2>
         <span className="sys-label" style={{ fontSize: 10.5 }}>
           {items.length}
         </span>
       </div>
       <div className="flex flex-col gap-1">
         {items.map((item) => (
-          <StashItemRow key={`${item.object_type}-${item.object_id}`} item={item} stashSlug={stashSlug} workspaceId={workspaceId} />
+          <StashItemRow
+            key={`${item.object_type}-${item.object_id}`}
+            item={item}
+            stashSlug={stashSlug}
+            workspaceId={workspaceId}
+          />
         ))}
       </div>
     </section>
   );
 }
 
-function StashItemRow({ item, stashSlug, workspaceId }: { item: PublicStashItem; stashSlug: string; workspaceId: string }) {
+function StashItemRow({
+  item,
+  stashSlug,
+  workspaceId,
+}: {
+  item: PublicStashItem;
+  stashSlug: string;
+  workspaceId: string;
+}) {
   const href = hrefForItem(item, stashSlug, workspaceId);
   const sub = subtitleForItem(item);
   const tint = tintForKind(item.object_type);
 
   const content = (
     <>
-      <span className={"flex h-5 w-5 flex-shrink-0 items-center justify-center " + tint}>
+      <span
+        className={
+          "flex h-5 w-5 flex-shrink-0 items-center justify-center " + tint
+        }
+      >
         <KindGlyph kind={item.object_type} />
       </span>
       <span className="min-w-0 flex-1">
@@ -856,7 +825,9 @@ function StashItemRow({ item, stashSlug, workspaceId }: { item: PublicStashItem;
         )}
       </span>
       {href && (
-        <span className="hidden text-[11.5px] text-muted sm:inline">Open →</span>
+        <span className="hidden text-[11.5px] text-muted sm:inline">
+          Open →
+        </span>
       )}
     </>
   );
@@ -885,7 +856,7 @@ function StashItemRow({ item, stashSlug, workspaceId }: { item: PublicStashItem;
 function hrefForItem(
   item: PublicStashItem,
   stashSlug: string,
-  workspaceId: string
+  workspaceId: string,
 ): string | null {
   if (item.object_type === "file") {
     return `/workspaces/${workspaceId}/f/${item.object_id}?stash=${encodeURIComponent(stashSlug)}`;
@@ -905,11 +876,21 @@ function hrefForItem(
 
 function subtitleForItem(item: PublicStashItem): string {
   if (item.object_type === "session") {
-    const s = item.inline?.session as { agent_name?: string; events?: unknown[] } | undefined;
-    if (s) return [s.agent_name, s.events?.length ? `${s.events.length} events` : null].filter(Boolean).join(" · ");
+    const s = item.inline?.session as
+      | { agent_name?: string; events?: unknown[] }
+      | undefined;
+    if (s)
+      return [
+        s.agent_name,
+        s.events?.length ? `${s.events.length} events` : null,
+      ]
+        .filter(Boolean)
+        .join(" · ");
   }
   if (item.object_type === "file") {
-    const f = item.inline as { content_type?: string; size_bytes?: number } | undefined;
+    const f = item.inline as
+      | { content_type?: string; size_bytes?: number }
+      | undefined;
     if (f?.content_type) return f.content_type;
   }
   if (item.object_type === "page") {
@@ -929,32 +910,67 @@ function tintForKind(kind: PublicStashItem["object_type"]): string {
 function KindGlyph({ kind }: { kind: PublicStashItem["object_type"] }) {
   if (kind === "folder")
     return (
-      <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.8">
+      <svg
+        viewBox="0 0 24 24"
+        width="14"
+        height="14"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.8"
+      >
         <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z" />
       </svg>
     );
   if (kind === "page")
     return (
-      <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.8">
+      <svg
+        viewBox="0 0 24 24"
+        width="14"
+        height="14"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.8"
+      >
         <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" />
         <path d="M14 3v5h5" />
       </svg>
     );
   if (kind === "session")
     return (
-      <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.8">
+      <svg
+        viewBox="0 0 24 24"
+        width="14"
+        height="14"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.8"
+      >
         <path d="M21 12c0 4.4-4 8-9 8-1.4 0-2.8-.3-4-.8L3 21l1.5-4C3.6 15.7 3 13.9 3 12c0-4.4 4-8 9-8s9 3.6 9 8z" />
       </svg>
     );
   if (kind === "table")
     return (
-      <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.8">
+      <svg
+        viewBox="0 0 24 24"
+        width="14"
+        height="14"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.8"
+      >
         <rect x="3" y="4" width="18" height="16" rx="2" />
         <path d="M3 10h18M3 16h18M9 4v16M15 4v16" />
       </svg>
     );
   return (
-    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.8">
+    <svg
+      viewBox="0 0 24 24"
+      width="14"
+      height="14"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+    >
       <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" />
       <path d="M14 3v5h5" />
     </svg>

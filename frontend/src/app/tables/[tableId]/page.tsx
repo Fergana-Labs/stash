@@ -7,6 +7,7 @@ import CustomSelect from "../../../components/CustomSelect";
 import { useAuth } from "../../../hooks/useAuth";
 import { useEscapeKey } from "../../../hooks/useEscapeKey";
 import { useShareModal } from "../../../lib/shareModalContext";
+import { SkeletonBlock, TableEditorSkeleton } from "../../../components/SkeletonStates";
 import {
   getPublicStash,
   getTable, updateTable,
@@ -18,9 +19,8 @@ import {
   setTableEmbeddingConfig, backfillTableEmbeddings,
 } from "../../../lib/api";
 import type { Table, TableColumn, TableRow, TableView } from "../../../lib/types";
-import Link from "next/link";
+import FileViewerHeader from "../../../components/workspace/FileViewerHeader";
 
-// --- Constants ---
 const TYPE_ICONS: Record<string, string> = {
   text: "Aa", number: "#", boolean: "\u2713", date: "\uD83D\uDCC5", datetime: "\uD83D\uDD53",
   url: "\uD83D\uDD17", email: "@", select: "\u25BC", multiselect: "\u2261", json: "{}",
@@ -36,7 +36,7 @@ type SummaryData = { total_rows: number; columns: Record<string, { name: string;
 
 export default function TableEditorPage() {
   return (
-    <Suspense fallback={<div className="min-h-screen flex items-center justify-center text-muted">Loading...</div>}>
+    <Suspense fallback={<TableEditorSkeleton />}>
       <TableEditorPageInner />
     </Suspense>
   );
@@ -62,8 +62,6 @@ function TableEditorPageInner() {
   const [rows, setRows] = useState<TableRow[]>([]);
   const [totalCount, setTotalCount] = useState(0);
   const [error, setError] = useState("");
-  const [editingName, setEditingName] = useState(false);
-  const [nameInput, setNameInput] = useState("");
 
   // Sort, filter, search
   const [sortBy, setSortBy] = useState("");
@@ -299,7 +297,6 @@ function TableEditorPageInner() {
     else { setSortBy(colId); setSortOrder("asc"); }
   };
 
-  // --- Filter ---
   const addFilter = () => {
     if (sortedColumns.length === 0) return;
     setFilters((prev) => [...prev, { column_id: sortedColumns[0].id, op: "eq", value: "" }]);
@@ -308,14 +305,6 @@ function TableEditorPageInner() {
   const updateFilter = (idx: number, field: keyof FilterDef, val: string) => setFilters((prev) => prev.map((f, i) => (i === idx ? { ...f, [field]: val } : f)));
   const removeFilter = (idx: number) => setFilters((prev) => prev.filter((_, i) => i !== idx));
 
-  // --- Table ops ---
-  const handleRename = async () => {
-    if (!table || !nameInput.trim()) return;
-    try {
-      const updated = await updateTable(resolvedWorkspaceId, tableId, { name: nameInput.trim() });
-      setTable(updated); setEditingName(false);
-    } catch (err) { setError(err instanceof Error ? err.message : "Failed to rename"); }
-  };
   const handleDelete = async () => {
     if (!confirm("Delete this table and all its data?")) return;
     try {
@@ -324,7 +313,6 @@ function TableEditorPageInner() {
     } catch (err) { setError(err instanceof Error ? err.message : "Failed to delete"); }
   };
 
-  // --- Column ops ---
   const handleAddColumn = async () => {
     if (!newColName.trim()) return;
     try {
@@ -355,7 +343,6 @@ function TableEditorPageInner() {
     try { setTable(await reorderTableColumns(wsId, tableId, ids)); } catch (err) { setError(err instanceof Error ? err.message : "Failed"); }
   };
 
-  // --- Row ops ---
   const handleAddRow = async () => {
     try { const row = await createTableRow(wsId, tableId, {}); setRows((prev) => [...prev, row]); setTotalCount((c) => c + 1); }
     catch (err) { setError(err instanceof Error ? err.message : "Failed to add row"); }
@@ -374,7 +361,6 @@ function TableEditorPageInner() {
     catch (err) { setError(err instanceof Error ? err.message : "Failed"); }
   };
 
-  // --- Cell editing ---
   const startEditing = (rowId: string, colId: string, currentValue: unknown) => {
     if (readOnly) return;
     setEditingCell({ rowId, colId }); setCellValue(currentValue != null ? String(currentValue) : "");
@@ -508,8 +494,22 @@ function TableEditorPageInner() {
   // Stash-scoped readers can be anonymous when the stash is public; only
   // redirect to /login in workspace mode.
   useEffect(() => { if (!readOnly && !loading && !user) router.push("/login"); }, [readOnly, user, loading, router]);
-  if (loading && !readOnly) return <div className="min-h-screen flex items-center justify-center text-muted">Loading...</div>;
+  if (loading && !readOnly) return <TableEditorSkeleton />;
   if (!user && !readOnly) return null;
+  if (!table && !error) {
+    if (!user) {
+      return (
+        <main className="flex min-h-screen flex-col bg-background">
+          <TableEditorSkeleton />
+        </main>
+      );
+    }
+    return (
+      <AppShell user={user} onLogout={logout}>
+        <TableEditorSkeleton />
+      </AppShell>
+    );
+  }
 
   // --- Render row ---
   const renderRow = (row: TableRow, idx: number) => (
@@ -562,42 +562,57 @@ function TableEditorPageInner() {
     </tr>
   );
 
+  const tableUpdatedAt = table?.updated_at
+    ? new Date(table.updated_at).toLocaleString(undefined, {
+        month: "short",
+        day: "numeric",
+        hour: "numeric",
+        minute: "2-digit",
+      })
+    : null;
+
   const tableContent = (
       <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
+        <FileViewerHeader
+          icon={<TableGlyph />}
+          iconColor="#059669"
+          title={table?.name ?? "Table"}
+          onRenameTitle={
+            table && !readOnly
+              ? async (next) => {
+                  const updated = await updateTable(resolvedWorkspaceId, tableId, { name: next });
+                  setTable(updated);
+                  return updated.name;
+                }
+              : undefined
+          }
+          readOnly={readOnly}
+          readOnlyLabel="read-only · via Stash"
+          backLink={
+            readOnly && stashSlug
+              ? { label: stashTitle ?? "Stash", href: `/stashes/${stashSlug}` }
+              : undefined
+          }
+          tags={[{ label: "table", tone: "muted" }]}
+          meta={[
+            `${visibleColumns.length}/${sortedColumns.length} cols`,
+            `${totalCount} rows`,
+            tableUpdatedAt ? `Updated ${tableUpdatedAt}` : "",
+          ].filter(Boolean)}
+          downloadOptions={
+            table && !readOnly && wsId
+              ? [{ label: "CSV (.csv)", onSelect: handleCsvExport }]
+              : undefined
+          }
+        />
         {/* Toolbar */}
-        <div className="flex items-center gap-2 px-4 py-2.5 border-b border-border bg-surface flex-shrink-0 flex-wrap">
-          {readOnly && stashSlug ? (
-            <Link
-              href={`/stashes/${stashSlug}`}
-              className="inline-flex items-center gap-1 text-sm text-muted hover:text-foreground"
-              aria-label={`Back to ${stashTitle ?? "Stash"}`}
-            >
-              &larr; {stashTitle ?? "Stash"}
-            </Link>
-          ) : (
-            <button
-              onClick={() => router.push(wsId ? `/workspaces/${wsId}` : "/")}
-              className="text-muted hover:text-foreground text-sm"
-              aria-label="Back to Files"
-            >
-              &larr;
-            </button>
-          )}
-          {readOnly ? (
-            <h1 className="text-lg font-bold font-display text-foreground">{table?.name || "Loading..."}</h1>
-          ) : editingName ? (
-            <input value={nameInput} onChange={(e) => setNameInput(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") handleRename(); if (e.key === "Escape") setEditingName(false); }} onBlur={handleRename} className="text-lg font-bold font-display bg-transparent border-b border-brand outline-none text-foreground" autoFocus />
-          ) : (
-            <h1 onClick={() => { setEditingName(true); setNameInput(table?.name || ""); }} className="text-lg font-bold font-display text-foreground cursor-pointer hover:text-brand transition-colors">{table?.name || "Loading..."}</h1>
-          )}
+        <div className="mt-2 flex items-center gap-2 px-4 py-2.5 border-y border-border bg-surface flex-shrink-0 flex-wrap">
           {/* Search */}
           <div className="flex-1 max-w-xs">
             <input value={searchQuery} onChange={(e) => { setSearchQuery(e.target.value); setIsSearching(true); }} placeholder="Search all columns..." className="w-full px-3 py-1.5 text-xs bg-raised border border-border rounded text-foreground outline-none focus:ring-1 focus:ring-brand" />
           </div>
           <div className="flex-1" />
           {table && <>
-            <span className="text-[11px] font-mono text-muted">{visibleColumns.length}/{sortedColumns.length} cols</span>
-            <span className="text-[11px] font-mono text-muted">{totalCount} rows</span>
             {!readOnly && <button onClick={addFilter} className="text-xs text-muted hover:text-foreground px-2 py-1 rounded hover:bg-raised">Filter</button>}
             {!readOnly && (filters.length > 0 || sortBy) && <button onClick={handleSaveLayout} className="text-xs text-muted hover:text-foreground px-2 py-1 rounded hover:bg-raised">Save layout</button>}
             {/* Group by */}
@@ -635,11 +650,6 @@ function TableEditorPageInner() {
               </button>
             )}
             {!readOnly && <button onClick={handleDelete} className="text-xs text-red-400 hover:text-red-300 px-2 py-1">Delete table</button>}
-            {readOnly && (
-              <span className="rounded-md bg-surface px-2 py-1 text-[10.5px] font-medium uppercase tracking-wide text-muted">
-                read-only &middot; via Stash
-              </span>
-            )}
           </>}
         </div>
 
@@ -840,7 +850,15 @@ function TableEditorPageInner() {
 
             {/* Add row + infinite scroll sentinel */}
             {!readOnly && <button onClick={handleAddRow} className="w-full py-2 text-sm text-muted hover:text-foreground hover:bg-raised border-b border-border/50 transition-colors text-left px-4">+ New row</button>}
-            {hasMore && <div ref={sentinelRef} className="py-4 text-center text-xs text-muted">{loadingMore ? "Loading..." : `${totalCount - offset} more rows`}</div>}
+            {hasMore && (
+              <div ref={sentinelRef} className="py-4 text-center text-xs text-muted">
+                {loadingMore ? (
+                  <SkeletonBlock className="mx-auto h-4 w-32" />
+                ) : (
+                  `${totalCount - offset} more rows`
+                )}
+              </div>
+            )}
           </div>
         )}
 
@@ -945,5 +963,14 @@ function TableEditorPageInner() {
     <AppShell user={user} onLogout={logout}>
       {tableContent}
     </AppShell>
+  );
+}
+
+function TableGlyph() {
+  return (
+    <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" strokeWidth="1.6">
+      <rect x="3" y="4" width="18" height="16" rx="2" />
+      <path d="M3 10h18M3 16h18M9 4v16M15 4v16" />
+    </svg>
   );
 }

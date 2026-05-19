@@ -1,7 +1,7 @@
-import ChatOutlinedIcon from "@mui/icons-material/ChatOutlined";
 import DescriptionOutlinedIcon from "@mui/icons-material/DescriptionOutlined";
 import ExploreOutlinedIcon from "@mui/icons-material/ExploreOutlined";
 import FolderOutlinedIcon from "@mui/icons-material/FolderOutlined";
+import ForumOutlinedIcon from "@mui/icons-material/ForumOutlined";
 import HelpOutlineOutlinedIcon from "@mui/icons-material/HelpOutlineOutlined";
 import InsertDriveFileOutlinedIcon from "@mui/icons-material/InsertDriveFileOutlined";
 import NotificationsNoneOutlinedIcon from "@mui/icons-material/NotificationsNoneOutlined";
@@ -72,7 +72,7 @@ export function WorkspaceIcon(props: IconProps) {
 }
 
 export function SessionsIcon(props: IconProps) {
-  return <MaterialIcon icon={ChatOutlinedIcon} {...props} />;
+  return <MaterialIcon icon={ForumOutlinedIcon} {...props} />;
 }
 
 export function FolderIcon(props: IconProps) {

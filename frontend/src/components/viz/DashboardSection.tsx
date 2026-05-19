@@ -1,6 +1,7 @@
 "use client";
 
 import { ReactNode } from "react";
+import { SkeletonBlock } from "../SkeletonStates";
 
 interface DashboardSectionProps {
   title: string;
@@ -25,8 +26,8 @@ export default function DashboardSection({
         </span>
       </div>
       {loading ? (
-        <div className="h-[200px] flex items-center justify-center">
-          <span className="text-xs text-muted">Loading...</span>
+        <div className="h-[200px] p-4">
+          <SkeletonBlock className="h-full w-full" />
         </div>
       ) : empty ? (
         <div className="h-[200px] flex items-center justify-center px-6">

@@ -1,4 +1,5 @@
 import {
+  CommentThread,
   FileInfo,
   Folder,
   Page,
@@ -358,6 +359,85 @@ export async function deletePage(workspaceId: string, pageId: string): Promise<v
   await apiFetch(`/api/v1/workspaces/${workspaceId}/pages/${pageId}`, { method: "DELETE" });
 }
 
+// --- Page comments ---
+
+export async function listCommentThreads(
+  workspaceId: string,
+  pageId: string,
+): Promise<{ threads: CommentThread[] }> {
+  return apiFetch(
+    `/api/v1/workspaces/${workspaceId}/pages/${pageId}/comments/threads`,
+  );
+}
+
+export async function createCommentThread(
+  workspaceId: string,
+  pageId: string,
+  data: { quoted_text: string; prefix: string; suffix: string; body: string },
+): Promise<CommentThread> {
+  return apiFetch(
+    `/api/v1/workspaces/${workspaceId}/pages/${pageId}/comments/threads`,
+    { method: "POST", body: JSON.stringify(data) },
+  );
+}
+
+export async function replyToCommentThread(
+  workspaceId: string,
+  pageId: string,
+  threadId: string,
+  body: string,
+): Promise<CommentThread> {
+  return apiFetch(
+    `/api/v1/workspaces/${workspaceId}/pages/${pageId}/comments/threads/${threadId}/messages`,
+    { method: "POST", body: JSON.stringify({ body }) },
+  );
+}
+
+export async function setCommentResolved(
+  workspaceId: string,
+  pageId: string,
+  threadId: string,
+  resolved: boolean,
+): Promise<CommentThread> {
+  return apiFetch(
+    `/api/v1/workspaces/${workspaceId}/pages/${pageId}/comments/threads/${threadId}`,
+    { method: "PATCH", body: JSON.stringify({ resolved }) },
+  );
+}
+
+export async function deleteCommentThread(
+  workspaceId: string,
+  pageId: string,
+  threadId: string,
+): Promise<void> {
+  await apiFetch(
+    `/api/v1/workspaces/${workspaceId}/pages/${pageId}/comments/threads/${threadId}`,
+    { method: "DELETE" },
+  );
+}
+
+export async function deleteCommentMessage(
+  workspaceId: string,
+  pageId: string,
+  messageId: string,
+): Promise<{ thread: CommentThread | null; thread_deleted: boolean }> {
+  return apiFetch(
+    `/api/v1/workspaces/${workspaceId}/pages/${pageId}/comments/messages/${messageId}`,
+    { method: "DELETE" },
+  );
+}
+
+export async function reconcileCommentAnchors(
+  workspaceId: string,
+  pageId: string,
+  presentIds: string[],
+): Promise<void> {
+  await apiFetch(
+    `/api/v1/workspaces/${workspaceId}/pages/${pageId}/comments/reconcile`,
+    { method: "POST", body: JSON.stringify({ present_ids: presentIds }) },
+  );
+}
+
 // --- Aggregate (cross-workspace) ---
 
 // Cross-workspace flat page list for page pickers and search surfaces.
@@ -633,6 +713,35 @@ export async function uploadFile(
   return resp.json();
 }
 
+// HTML is content, not a blob: it goes through the page-create path so it
+// gets the editable + commentable surface. Other types stay on uploadFile.
+export type UploadResult =
+  | { kind: "file"; file: FileInfo }
+  | { kind: "page"; page: Page };
+
+function isHtmlUpload(file: File): boolean {
+  if (file.type && file.type.toLowerCase().includes("html")) return true;
+  return /\.html?$/i.test(file.name);
+}
+
+export async function uploadFileOrPage(
+  workspaceId: string,
+  file: File,
+  folderId?: string | null
+): Promise<UploadResult> {
+  if (isHtmlUpload(file)) {
+    const text = await file.text();
+    const name = file.name.replace(/\.html?$/i, "") || file.name || "Untitled";
+    const page = await createPage(workspaceId, name, folderId ?? null, "", {
+      content_type: "html",
+      content_html: text,
+    });
+    return { kind: "page", page };
+  }
+  const f = await uploadFile(workspaceId, file, folderId);
+  return { kind: "file", file: f };
+}
+
 export async function listFiles(workspaceId: string): Promise<FileInfo[]> {
   const data = await apiFetch<{ files: FileInfo[] }>(`/api/v1/workspaces/${workspaceId}/files`);
   return data.files;
@@ -750,6 +859,8 @@ export interface CreatedStash {
   title: string;
   description: string;
   owner_id: string;
+  owner_name: string;
+  owner_display_name: string | null;
   access: "workspace" | "private" | "public";
   discoverable: boolean;
   cover_image_url: string | null;
@@ -825,6 +936,8 @@ export interface WorkspaceStash {
   title: string;
   description: string;
   owner_id: string;
+  owner_name: string;
+  owner_display_name: string | null;
   access: "workspace" | "private" | "public";
   discoverable: boolean;
   cover_image_url: string | null;

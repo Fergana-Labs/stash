@@ -4,6 +4,7 @@ import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { useBreadcrumbs } from "../../../../components/BreadcrumbContext";
 import CustomSelect from "../../../../components/CustomSelect";
+import { WorkspaceSettingsSkeleton } from "../../../../components/SkeletonStates";
 import { useAuth } from "../../../../hooks/useAuth";
 import {
   deleteWorkspace,
@@ -59,11 +60,8 @@ export default function StashSettingsPage() {
 
   if (!user) return null;
   if (!workspace) {
-    return (
-      <div className="mx-auto max-w-2xl px-8 py-12 text-muted">
-        {error || "Loading…"}
-      </div>
-    );
+    if (error) return <div className="mx-auto max-w-2xl px-8 py-12 text-muted">{error}</div>;
+    return <WorkspaceSettingsSkeleton />;
   }
 
   const myRole = members.find((m) => m.user_id === user.id)?.role;

@@ -28,18 +28,15 @@ def _content_hash(content: str) -> str:
     return hashlib.sha256(content.encode()).hexdigest()
 
 
-_STASH_SELECT = (
-    "SELECT v.id, v.workspace_id, v.slug, v.title, v.description, v.owner_id, "
-    "v.access, "
-    "v.discoverable, v.cover_image_url, v.icon_url, v.view_count, v.forked_from_stash_id, "
-    "v.created_at, v.updated_at FROM stashes v"
-)
 _STASH_COLS = (
     "v.id, v.workspace_id, v.slug, v.title, v.description, v.owner_id, "
+    "owner_user.name AS owner_name, owner_user.display_name AS owner_display_name, "
     "v.access, "
     "v.discoverable, v.cover_image_url, v.icon_url, v.view_count, v.forked_from_stash_id, "
     "v.created_at, v.updated_at"
 )
+_STASH_FROM = "FROM stashes v JOIN users owner_user ON owner_user.id = v.owner_id"
+_STASH_SELECT = f"SELECT {_STASH_COLS} {_STASH_FROM}"
 
 
 async def _attach_items(stash: dict) -> dict:
@@ -210,13 +207,11 @@ async def create_stash(
     async with pool.acquire() as conn:
         async with conn.transaction():
             await _validate_item_partition(conn, access, items, None)
-            row = await conn.fetchrow(
+            inserted = await conn.fetchrow(
                 "INSERT INTO stashes (workspace_id, slug, title, description, owner_id, "
                 "access, discoverable, cover_image_url, icon_url) "
                 "VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) "
-                "RETURNING id, workspace_id, slug, title, description, owner_id, "
-                "access, discoverable, cover_image_url, icon_url, view_count, "
-                "forked_from_stash_id, created_at, updated_at",
+                "RETURNING id",
                 workspace_id,
                 slug,
                 title,
@@ -227,7 +222,8 @@ async def create_stash(
                 cover_image_url,
                 icon_url,
             )
-            await _replace_items(conn, row["id"], items)
+            await _replace_items(conn, inserted["id"], items)
+    row = await pool.fetchrow(f"{_STASH_SELECT} WHERE v.id = $1", inserted["id"])
     out = dict(row)
     return await _attach_items(out)
 
@@ -791,14 +787,12 @@ async def add_external_stash(workspace_id: UUID, slug: str, added_by: UUID) -> d
 
     async with pool.acquire() as conn:
         async with conn.transaction():
-            fork = await conn.fetchrow(
+            inserted = await conn.fetchrow(
                 "INSERT INTO stashes "
                 "(workspace_id, slug, title, description, owner_id, access, discoverable, "
                 "cover_image_url, icon_url, forked_from_stash_id) "
                 "VALUES ($1, $2, $3, $4, $5, 'workspace', false, $6, $7, $8) "
-                "RETURNING id, workspace_id, slug, title, description, owner_id, access, "
-                "discoverable, cover_image_url, icon_url, view_count, forked_from_stash_id, "
-                "created_at, updated_at",
+                "RETURNING id",
                 workspace_id,
                 _slugify(stash["title"]),
                 stash["title"],
@@ -825,7 +819,7 @@ async def add_external_stash(workspace_id: UUID, slug: str, added_by: UUID) -> d
                         "label_override": item.get("label_override"),
                     }
                 )
-            await _replace_items(conn, fork["id"], forked_items)
+            await _replace_items(conn, inserted["id"], forked_items)
 
     from . import stash_invite_service
 
@@ -834,6 +828,7 @@ async def add_external_stash(workspace_id: UUID, slug: str, added_by: UUID) -> d
         user_id=added_by,
         workspace_id=workspace_id,
     )
+    fork = await pool.fetchrow(f"{_STASH_SELECT} WHERE v.id = $1", inserted["id"])
     return _mark_external(await _attach_items(dict(fork)), workspace_id)
 
 
@@ -861,7 +856,7 @@ async def list_object_stashes(
     rows = []
     for target_type, target_id in await _containing_targets(pool, object_type, object_id):
         target_rows = await pool.fetch(
-            f"SELECT {_STASH_COLS} FROM stashes v "
+            f"SELECT {_STASH_COLS} {_STASH_FROM} "
             "JOIN stash_items vi ON vi.stash_id = v.id "
             "WHERE v.workspace_id = $1 AND vi.object_type = $2 AND vi.object_id = $3 "
             "ORDER BY v.updated_at DESC",

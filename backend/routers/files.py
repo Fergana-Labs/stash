@@ -103,6 +103,15 @@ async def upload_ws_file(
     content_type = file.content_type or "application/octet-stream"
     filename = file.filename or "upload"
 
+    # HTML lives in the pages table, not the files table — they're the only
+    # editable+commentable surface. Frontend routes HTML uploads through
+    # createPage; reject here so CLI/API callers also get the one path.
+    if "html" in content_type.lower() or filename.lower().endswith((".html", ".htm")):
+        raise HTTPException(
+            status_code=400,
+            detail="Upload HTML as a page (POST /workspaces/{workspace_id}/pages/new with content_type='html')",
+        )
+
     storage_key = await storage_service.upload_file(
         str(workspace_id),
         filename,
@@ -319,7 +328,7 @@ async def delete_ws_file(
     try:
         await storage_service.delete_file(row["storage_key"])
     except Exception:
-        pass  # Best-effort S3 cleanup
+        pass
     await pool.execute(
         "DELETE FROM files WHERE id = $1 AND workspace_id = $2", file_id, workspace_id
     )

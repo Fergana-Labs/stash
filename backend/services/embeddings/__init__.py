@@ -21,13 +21,15 @@ Bring your own::
     set_embedder(MyEmbedder())
 """
 
+import asyncio
 import logging
+import os
+import random
 
 import numpy as np
 
-from ._retry import TransientEmbeddingError, with_retry
 from .auto import close_embedder, get_embedder, set_embedder
-from .base import BaseEmbedder
+from .base import BaseEmbedder, TransientEmbeddingError
 
 logger = logging.getLogger(__name__)
 
@@ -46,12 +48,64 @@ __all__ = [
 # transient (429 / 5xx / network) failures. Persistent failures become
 # `None` so callers can fall back to marking embed_stale.
 
+_MAX_ATTEMPTS = int(os.getenv("EMBEDDING_MAX_ATTEMPTS", "3"))
+_BASE_DELAY = float(os.getenv("EMBEDDING_RETRY_BASE_DELAY", "0.5"))
+_MAX_DELAY = float(os.getenv("EMBEDDING_RETRY_MAX_DELAY", "10.0"))
+
+_semaphore: asyncio.Semaphore | None = None
+
+
+def _get_semaphore() -> asyncio.Semaphore:
+    # Lazy init: bind the semaphore to whatever loop runs the first embed
+    # call, not the loop (if any) at import time.
+    global _semaphore
+    if _semaphore is None:
+        limit = int(os.getenv("EMBEDDING_CONCURRENCY", "8"))
+        _semaphore = asyncio.Semaphore(limit)
+    return _semaphore
+
+
+async def _with_retry(coro_factory):
+    """Run an async call with bounded concurrency + retry on transient errors.
+
+    `coro_factory` is a zero-arg callable returning a fresh coroutine each
+    attempt (since a coroutine can only be awaited once).
+    """
+    sem = _get_semaphore()
+    last_exc: Exception | None = None
+    for attempt in range(_MAX_ATTEMPTS):
+        async with sem:
+            try:
+                return await coro_factory()
+            except TransientEmbeddingError as exc:
+                last_exc = exc
+                if attempt == _MAX_ATTEMPTS - 1:
+                    break
+                delay = (
+                    exc.retry_after if exc.retry_after is not None else _BASE_DELAY * (2**attempt)
+                )
+                delay = min(delay, _MAX_DELAY)
+                delay += random.uniform(0, delay * 0.25)
+                logger.info(
+                    "Embedding provider transient failure (attempt %d/%d): %s — retrying in %.2fs",
+                    attempt + 1,
+                    _MAX_ATTEMPTS,
+                    exc,
+                    delay,
+                )
+        await asyncio.sleep(delay)
+    raise (
+        last_exc
+        if last_exc is not None
+        else RuntimeError("_with_retry exhausted with no exception captured")
+    )
+
 
 async def embed_text(text: str) -> np.ndarray | None:
     """Embed a single text string."""
     embedder = get_embedder()
     try:
-        return await with_retry(lambda: embedder.embed_text(text))
+        return await _with_retry(lambda: embedder.embed_text(text))
     except TransientEmbeddingError:
         logger.warning("Embedding provider failed after retries", exc_info=True)
         return None
@@ -92,7 +146,7 @@ async def embed_batch(texts: list[str]) -> list[np.ndarray] | None:
     try:
         for shard in shards:
             batch = [texts[i] for i in shard]
-            vecs = await with_retry(lambda b=batch: embedder.embed_batch(b))
+            vecs = await _with_retry(lambda b=batch: embedder.embed_batch(b))
             if vecs is None:
                 return None
             for idx, vec in zip(shard, vecs):
