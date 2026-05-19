@@ -137,6 +137,7 @@ async def get_file_url(key: str, expires_in: int = 3600) -> str:
     import hashlib
     import hmac
     from datetime import datetime
+
     now = datetime.now(UTC)
     date_stamp = now.strftime("%Y%m%d")
     amz_date = now.strftime("%Y%m%dT%H%M%SZ")
