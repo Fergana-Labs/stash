@@ -77,6 +77,7 @@ interface SidebarDropState {
 
 const OPEN_WORKSPACES_KEY = "stash_sidebar_open_workspaces";
 const OPEN_SECTIONS_KEY = "stash_sidebar_open_sections";
+const OPEN_STASHES_KEY = "stash_sidebar_open_stashes";
 const PINNED_FS_KEY = "stash_sidebar_pinned_files_folders";
 const PINNED_FS_LABELS_KEY = "stash_sidebar_pinned_files_folders_labels";
 const LAST_WORKSPACE_KEY = "stash_sidebar_last_workspace";
@@ -152,6 +153,10 @@ function writePinnedLabelMap(value: Record<string, PinnedLabels>) {
 
 function sectionKey(workspaceId: string, section: SidebarSection): string {
   return `${workspaceId}:${section}`;
+}
+
+function stashOpenKey(workspaceId: string, stashId: string): string {
+  return `${workspaceId}:${stashId}`;
 }
 
 function dropKey(workspaceId: string, section: DropSection): string {
@@ -904,14 +909,11 @@ function buildStashTreeItems(
     });
 }
 
-// Each stash row in the sidebar manages its own open/closed state. State is
-// intentionally local (and not persisted) so that the Stashes section follows
-// the same default-collapsed pattern as Files folders and Sessions user
-// folders — opening the Stashes section doesn't explode every stash's
-// contents on the user.
 function StashSidebarRow({
   workspaceId,
   stash,
+  open,
+  onOpenChange,
   foldersById,
   pagesById,
   filesById,
@@ -920,13 +922,14 @@ function StashSidebarRow({
 }: {
   workspaceId: string;
   stash: WorkspaceSidebarStash;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
   foldersById: Map<string, WorkspaceFolder>;
   pagesById: Map<string, WorkspacePage>;
   filesById: Map<string, WorkspaceFile>;
   sessionById: Map<string, WorkspaceSidebarSession>;
   sessionBySessionId: Map<string, WorkspaceSidebarSession>;
 }) {
-  const [open, setOpen] = useState(false);
   const pathname = usePathname();
   const href = `/stashes/${stash.slug}`;
   const active = pathname === href || pathname.startsWith(`${href}/`);
@@ -952,7 +955,7 @@ function StashSidebarRow({
         <ChevronToggle
           open={open}
           ariaLabel={`${open ? "Collapse" : "Expand"} ${stash.title}`}
-          onToggle={() => setOpen((current) => !current)}
+          onToggle={() => onOpenChange(!open)}
         />
         <span
           className={
@@ -964,6 +967,7 @@ function StashSidebarRow({
         </span>
         <Link
           href={href}
+          onClick={() => onOpenChange(true)}
           className={
             "flex-1 truncate " +
             (active
@@ -1509,6 +1513,18 @@ function StashesBlock({
 
   const nativeStashes = stashes.filter((stash) => !stash.forked_from_stash_id);
   const forkedStashes = stashes.filter((stash) => stash.forked_from_stash_id);
+  const [openStashes, setOpenStashes] = useState<Record<string, boolean>>(() =>
+    readBooleanMap(OPEN_STASHES_KEY)
+  );
+
+  function setStashOpen(stashId: string, nextOpen: boolean) {
+    const next = {
+      ...readBooleanMap(OPEN_STASHES_KEY),
+      [stashOpenKey(workspace.id, stashId)]: nextOpen,
+    };
+    writeBooleanMap(OPEN_STASHES_KEY, next);
+    setOpenStashes(next);
+  }
 
   function renderStashGroup(
     title: string | null,
@@ -1532,6 +1548,8 @@ function StashesBlock({
               key={`${title}-${stash.id}`}
               workspaceId={workspace.id}
               stash={stash}
+              open={openStashes[stashOpenKey(workspace.id, stash.id)] === true}
+              onOpenChange={(nextOpen) => setStashOpen(stash.id, nextOpen)}
               foldersById={foldersById}
               pagesById={pagesById}
               filesById={filesById}

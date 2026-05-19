@@ -137,6 +137,27 @@ const sidebarWithStash = {
   ],
 };
 
+const sidebarWithTwoStashes = {
+  ...sidebarWithStash,
+  stashes: [
+    ...sidebarWithStash.stashes,
+    {
+      ...sidebarWithStash.stashes[0],
+      id: "stash-2",
+      slug: "agent-handoffs",
+      title: "Agent Handoffs",
+      items: [
+        {
+          object_type: "session" as const,
+          object_id: "session-row-1",
+          label_override: "Handoff session",
+          position: 0,
+        },
+      ],
+    },
+  ],
+};
+
 const sidebarWithTree = {
   sessions: [
     {
@@ -469,7 +490,7 @@ describe("AppSidebar tree expansion", () => {
     expect(detailsFor("Sessions")).toHaveAttribute("open");
   });
 
-  it("starts each stash collapsed and does not persist its open state", async () => {
+  it("persists each stash open state across remounts", async () => {
     vi.mocked(getWorkspaceSidebar).mockResolvedValue(sidebarWithStash);
 
     const first = renderSidebar();
@@ -482,16 +503,38 @@ describe("AppSidebar tree expansion", () => {
     fireEvent.click(screen.getByLabelText("Expand Project Alpha"));
     expect(await screen.findByText("Launch session")).toBeTruthy();
 
-    // State is intentionally local to the row — nothing should land in
-    // localStorage under the legacy persisted-collapse key.
-    expect(localStorage.getItem("stash_sidebar_collapsed_stashes")).toBeNull();
+    expect(localStorage.getItem("stash_sidebar_open_stashes")).toBe(
+      JSON.stringify({ "ws-1:stash-1": true })
+    );
 
     first.unmount();
 
     renderSidebar();
     await screen.findByText("Project Alpha");
-    // Re-mount: back to collapsed, exactly as a fresh page load would be.
-    expect(screen.queryByText("Launch session")).toBeNull();
+    expect(await screen.findByText("Launch session")).toBeTruthy();
+  });
+
+  it("keeps an expanded stash open when another stash is opened", async () => {
+    vi.mocked(getWorkspaceSidebar).mockResolvedValue(sidebarWithTwoStashes);
+
+    const first = renderSidebar();
+
+    await screen.findByText("Project Alpha");
+    fireEvent.click(screen.getByLabelText("Expand Project Alpha"));
+    expect(await screen.findByText("Launch session")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("link", { name: "Agent Handoffs" }));
+    expect(await screen.findByText("Handoff session")).toBeTruthy();
+    expect(screen.getByText("Launch session")).toBeTruthy();
+    expect(localStorage.getItem("stash_sidebar_open_stashes")).toBe(
+      JSON.stringify({ "ws-1:stash-1": true, "ws-1:stash-2": true })
+    );
+
+    first.unmount();
+
+    renderSidebar();
+    expect(await screen.findByText("Launch session")).toBeTruthy();
+    expect(await screen.findByText("Handoff session")).toBeTruthy();
   });
 
   it("rejects non-jsonl files dropped on the Sessions section", async () => {
