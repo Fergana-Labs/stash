@@ -19,6 +19,7 @@ interface AppShellProps {
   onLogout: () => void;
   children: ReactNode;
   shareAction?: ReactNode;
+  activeWorkspaceId?: string | null;
 }
 
 const SIDEBAR_KEY = "stash_sidebar_collapsed";
@@ -231,12 +232,20 @@ function TopSearchButton({
   );
 }
 
-export default function AppShell({ user, onLogout, children, shareAction }: AppShellProps) {
+export default function AppShell({
+  user,
+  onLogout,
+  children,
+  shareAction,
+  activeWorkspaceId: preferredWorkspaceId = null,
+}: AppShellProps) {
   const pathname = usePathname();
   const breadcrumbs = useBreadcrumbsValue();
   const shareModal = useShareModal();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [activeWorkspaceId, setActiveWorkspaceId] = useState<string | null>(null);
+  const [activeWorkspaceId, setActiveWorkspaceId] = useState<string | null>(
+    preferredWorkspaceId
+  );
   const [workspaces, setWorkspaces] = useState<Workspace[]>(
     () => readCachedWorkspaces(user.id)?.all ?? []
   );
@@ -251,6 +260,10 @@ export default function AppShell({ user, onLogout, children, shareAction }: AppS
       .then((r) => setWorkspaces(r.all))
       .catch(() => {});
   }, [user.id]);
+
+  useEffect(() => {
+    if (preferredWorkspaceId) setActiveWorkspaceId(preferredWorkspaceId);
+  }, [preferredWorkspaceId]);
 
   useEffect(() => {
     const m = pathname.match(/^\/workspaces\/([^/]+)/);

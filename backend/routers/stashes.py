@@ -174,13 +174,7 @@ async def update_stash(
         stash = await stash_service.update_stash(
             stash_id,
             current_user["id"],
-            title=req.title,
-            description=req.description,
-            access=req.access,
-            discoverable=req.discoverable,
-            cover_image_url=req.cover_image_url,
-            icon_url=req.icon_url,
-            items=req.items,
+            req.model_dump(exclude_unset=True),
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))

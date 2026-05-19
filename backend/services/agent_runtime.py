@@ -470,17 +470,15 @@ async def _update_stash(args: dict) -> dict:
     if not await stash_service.user_can_manage(stash_id, user_id):
         return _text_result(json.dumps({"error": "not allowed"}))
 
-    items = None
+    updates = {
+        key: args[key] for key in ("title", "description", "access", "discoverable") if key in args
+    }
     if "items" in args:
-        items = await _parse_stash_items(args.get("items") or [], workspace_id)
+        updates["items"] = await _parse_stash_items(args.get("items") or [], workspace_id)
     stash = await stash_service.update_stash(
         stash_id,
         user_id,
-        title=args.get("title"),
-        description=args.get("description"),
-        access=args.get("access"),
-        discoverable=args.get("discoverable"),
-        items=items,
+        updates,
     )
     if not stash:
         return _text_result(json.dumps({"error": "not found"}))

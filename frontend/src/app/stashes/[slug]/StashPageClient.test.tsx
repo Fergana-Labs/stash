@@ -186,6 +186,10 @@ describe("StashPageClient sharing", () => {
     expect(
       await screen.findByRole("button", { name: "+ Add things" }),
     ).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Stash settings" })).toHaveAttribute(
+      "href",
+      "/stashes/shared-stash/settings",
+    );
     expect(
       screen.queryByPlaceholderText(
         "Paste a link, type a note, or drop a file",
