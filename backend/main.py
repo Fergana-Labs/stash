@@ -15,8 +15,10 @@ from .routers import (
     admin,
     aggregate,
     discover,
+    exports,
     files,
     files_tree,
+    imports,
     memory,
     publish,
     sessions,
@@ -96,6 +98,8 @@ app.include_router(sessions.router)
 app.include_router(publish.router)
 app.include_router(tasks.router)
 app.include_router(integrations_router)
+app.include_router(imports.router)
+app.include_router(exports.router)
 
 if settings.AUTH0_ENABLED:
     from backend.managed.auth0 import router as auth0_router

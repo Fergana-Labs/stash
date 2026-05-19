@@ -80,13 +80,25 @@ export default function HtmlPageView({
   // and trash the user's caret. Switching pages remounts this component, so
   // a new page picks up its own initial html cleanly.
   const [initialHtml] = useState(html);
-  const srcDoc = useMemo(
+
+  // Slide-deck detection: any fixed-aspect HTML page whose body contains
+  // <section class="slide"> elements gets prev/next navigation. Pages
+  // with zero such sections render exactly as before — single frame.
+  const slideCount = useMemo(
     () =>
-      layout === "responsive"
-        ? injectResizeBootstrap(initialHtml, channel)
-        : initialHtml,
-    [layout, channel, initialHtml],
+      layout === "fixed-aspect"
+        ? (initialHtml.match(/<section\b[^>]*\bclass\s*=\s*["'][^"']*\bslide\b/gi) ?? []).length
+        : 0,
+    [layout, initialHtml],
   );
+  const isDeck = slideCount > 0;
+  const [activeSlide, setActiveSlide] = useState(0);
+
+  const srcDoc = useMemo(() => {
+    if (layout === "responsive") return injectResizeBootstrap(initialHtml, channel);
+    if (isDeck) return injectSlideDeckBootstrap(initialHtml, channel);
+    return initialHtml;
+  }, [layout, channel, initialHtml, isDeck]);
 
   useEffect(() => {
     if (layout !== "responsive") return;
@@ -172,6 +184,32 @@ export default function HtmlPageView({
     );
   }, [editable, channel]);
 
+  // Push the active slide index to the iframe so the bootstrap shows
+  // just that section.
+  useEffect(() => {
+    if (!isDeck) return;
+    iframeRef.current?.contentWindow?.postMessage(
+      { type: "stash:slide-goto", channel, index: activeSlide },
+      "*",
+    );
+  }, [isDeck, activeSlide, channel]);
+
+  // Keyboard nav (←/→) when the deck container is focused. Handled in
+  // the parent rather than the iframe so it works whether or not the
+  // iframe has focus.
+  useEffect(() => {
+    if (!isDeck) return;
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "ArrowRight") {
+        setActiveSlide((s) => Math.min(slideCount - 1, s + 1));
+      } else if (e.key === "ArrowLeft") {
+        setActiveSlide((s) => Math.max(0, s - 1));
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [isDeck, slideCount]);
+
   function onIframeLoad() {
     if (layout !== "responsive") return;
     iframeRef.current?.contentWindow?.postMessage(
@@ -182,13 +220,70 @@ export default function HtmlPageView({
 
   if (layout === "fixed-aspect") {
     return (
-      <iframe
-        ref={iframeRef}
-        srcDoc={html}
-        sandbox="allow-scripts"
-        title={title}
-        style={{ width: "100%", aspectRatio: "16 / 9", border: 0, display: "block" }}
-      />
+      <div style={{ position: "relative", width: "100%" }}>
+        <iframe
+          ref={iframeRef}
+          srcDoc={srcDoc}
+          sandbox="allow-scripts"
+          title={title}
+          style={{ width: "100%", aspectRatio: "16 / 9", border: 0, display: "block" }}
+        />
+        {isDeck && (
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 12,
+              padding: "8px 0",
+              userSelect: "none",
+            }}
+          >
+            <button
+              type="button"
+              onClick={() => setActiveSlide((s) => Math.max(0, s - 1))}
+              disabled={activeSlide === 0}
+              aria-label="Previous slide"
+              style={{
+                padding: "4px 10px",
+                borderRadius: 6,
+                border: "1px solid var(--border, #ddd)",
+                background: "var(--surface, #fff)",
+                cursor: activeSlide === 0 ? "not-allowed" : "pointer",
+                opacity: activeSlide === 0 ? 0.5 : 1,
+              }}
+            >
+              ‹
+            </button>
+            <span
+              style={{
+                fontVariantNumeric: "tabular-nums",
+                fontSize: 13,
+                minWidth: 60,
+                textAlign: "center",
+              }}
+            >
+              {activeSlide + 1} / {slideCount}
+            </span>
+            <button
+              type="button"
+              onClick={() => setActiveSlide((s) => Math.min(slideCount - 1, s + 1))}
+              disabled={activeSlide >= slideCount - 1}
+              aria-label="Next slide"
+              style={{
+                padding: "4px 10px",
+                borderRadius: 6,
+                border: "1px solid var(--border, #ddd)",
+                background: "var(--surface, #fff)",
+                cursor: activeSlide >= slideCount - 1 ? "not-allowed" : "pointer",
+                opacity: activeSlide >= slideCount - 1 ? 0.5 : 1,
+              }}
+            >
+              ›
+            </button>
+          </div>
+        )}
+      </div>
     );
   }
 
@@ -386,4 +481,29 @@ export function extractCommentIdsFromHtml(html: string): string[] {
   let m: RegExpExecArray | null;
   while ((m = re.exec(html)) !== null) ids.push(m[1]);
   return Array.from(new Set(ids));
+}
+
+// Bootstrap injected into fixed-aspect slide decks. Listens for
+// `stash:slide-goto` from the parent and shows only that section.
+// Pages with zero `<section class="slide">` elements bypass this path.
+function injectSlideDeckBootstrap(html: string, channel: string): string {
+  const script = `<script>(function(){
+    var c=${JSON.stringify(channel)};
+    function applyIndex(idx){
+      var slides=document.querySelectorAll('body > section.slide');
+      if(!slides.length) return;
+      var i=Math.max(0, Math.min(slides.length-1, idx|0));
+      for(var k=0;k<slides.length;k++){
+        slides[k].style.display = (k===i) ? '' : 'none';
+      }
+    }
+    window.addEventListener('message', function(e){
+      var d=e.data;
+      if(!d||typeof d!=='object'||d.channel!==c) return;
+      if(d.type==='stash:slide-goto' && typeof d.index==='number') applyIndex(d.index);
+    });
+    applyIndex(0);
+  })();</script>`;
+  if (/<\/body\s*>/i.test(html)) return html.replace(/<\/body\s*>/i, script + "</body>");
+  return html + script;
 }
