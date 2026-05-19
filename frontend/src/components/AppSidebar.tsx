@@ -929,7 +929,7 @@ function StashSidebarRow({
   const [open, setOpen] = useState(false);
   const pathname = usePathname();
   const href = `/stashes/${stash.slug}`;
-  const active = pathname === href;
+  const active = pathname === href || pathname.startsWith(`${href}/`);
   const children = buildStashTreeItems(
     workspaceId,
     stash.items ?? [],
@@ -2214,6 +2214,21 @@ export default function AppSidebar({
           : null))) ||
     mine[0] ||
     (shared[0] ? { ...shared[0], shared: true } : null);
+  const activeStashSlug = pathname.match(/^\/stashes\/([^/?#]+)/)?.[1] ?? null;
+  const activeStash =
+    activeWorkspace && activeStashSlug
+      ? spines[activeWorkspace.id]?.stashes?.find((stash) => stash.slug === activeStashSlug)
+      : null;
+  const settingsHref = activeStash
+    ? `/stashes/${activeStash.slug}/settings`
+    : activeWorkspace
+      ? `/workspaces/${activeWorkspace.id}/settings`
+      : "";
+  const settingsActive = activeStash
+    ? pathname === `/stashes/${activeStash.slug}/settings`
+    : activeWorkspace
+      ? pathname === `/workspaces/${activeWorkspace.id}/settings`
+      : false;
 
   return (
     <>
@@ -2285,10 +2300,10 @@ export default function AppSidebar({
         <NavRow href="/docs" icon={<HelpIcon />} label="Docs" active={pathname.startsWith("/docs")} />
         {activeWorkspace ? (
           <NavRow
-            href={`/workspaces/${activeWorkspace.id}/settings`}
+            href={settingsHref}
             icon={<SettingsIcon />}
             label="Settings"
-            active={pathname === `/workspaces/${activeWorkspace.id}/settings`}
+            active={settingsActive}
           />
         ) : (
           <DisabledNavRow icon={<SettingsIcon />} label="Settings" />

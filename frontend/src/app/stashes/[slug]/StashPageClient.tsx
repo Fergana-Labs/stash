@@ -17,7 +17,7 @@ import DescriptionEditor, {
 } from "../../../components/DescriptionEditor";
 import { PublicStashSkeleton, SkeletonBlock } from "../../../components/SkeletonStates";
 import AddToStashModal from "../../../components/stash/AddToStashModal";
-import { StashIcon } from "../../../components/StashIcons";
+import { SettingsIcon, StashIcon } from "../../../components/StashIcons";
 import ContributorActivityTimeline from "../../../components/viz/ContributorActivityTimeline";
 import EmbeddingSpaceExplorer from "../../../components/viz/EmbeddingSpaceExplorer";
 import { useAuth } from "../../../hooks/useAuth";
@@ -63,7 +63,12 @@ function StashChrome({
   }
   if (user) {
     return (
-      <AppShell user={user} onLogout={logout} shareAction={shareAction}>
+      <AppShell
+        user={user}
+        onLogout={logout}
+        shareAction={shareAction}
+        activeWorkspaceId={data?.stash.workspace_id ?? null}
+      >
         {children}
       </AppShell>
     );
@@ -254,13 +259,23 @@ function StashPageBody({
           </div>
           <div className="flex flex-shrink-0 items-center gap-1.5 pt-1">
             {can_write ? (
-              <button
-                type="button"
-                onClick={() => setAddOpen(true)}
-                className="rounded-md bg-[var(--color-brand-600)] px-2.5 py-1.5 text-[12.5px] font-medium text-white hover:bg-[var(--color-brand-700)]"
-              >
-                + Add things
-              </button>
+              <>
+                <Link
+                  href={`/stashes/${stash.slug}/settings`}
+                  title="Stash settings"
+                  aria-label="Stash settings"
+                  className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted hover:bg-raised hover:text-foreground"
+                >
+                  <SettingsIcon />
+                </Link>
+                <button
+                  type="button"
+                  onClick={() => setAddOpen(true)}
+                  className="rounded-md bg-[var(--color-brand-600)] px-2.5 py-1.5 text-[12.5px] font-medium text-white hover:bg-[var(--color-brand-700)]"
+                >
+                  + Add things
+                </button>
+              </>
             ) : (
               // Forking only makes sense when the viewer doesn't already have
               // write access to this stash in its own workspace.

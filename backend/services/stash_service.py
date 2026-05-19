@@ -254,14 +254,7 @@ async def _object_title(object_type: str, object_id: UUID) -> str:
 async def update_stash(
     stash_id: UUID,
     user_id: UUID,
-    *,
-    title: str | None = None,
-    description: str | None = None,
-    access: str | None = None,
-    discoverable: bool | None = None,
-    cover_image_url: str | None = None,
-    icon_url: str | None = None,
-    items: list | None = None,
+    updates: dict,
 ) -> dict | None:
     pool = get_pool()
     stash = await pool.fetchrow(
@@ -269,27 +262,35 @@ async def update_stash(
     )
     if not stash or not await user_can_manage(stash_id, user_id):
         return None
+    access = updates.get("access")
+    discoverable = updates.get("discoverable")
+    items = updates.get("items") if "items" in updates else None
     next_access = access or stash["access"]
     if next_access not in {"workspace", "private", "public"}:
         raise ValueError("Unsupported Stash access")
     if discoverable and next_access != "public":
         raise ValueError("Discover Stashes must be public")
-    if access and access != "public" and discoverable is None:
-        discoverable = False
+    if access and access != "public" and updates.get("discoverable") is None:
+        updates["discoverable"] = False
 
     sets, args, idx = [], [], 1
-    for col, val in (
-        ("title", title),
-        ("description", description),
-        ("access", access),
-        ("discoverable", discoverable),
-        ("cover_image_url", cover_image_url),
-        ("icon_url", icon_url),
+    clearable_fields = {"cover_image_url", "icon_url"}
+    for col in (
+        "title",
+        "description",
+        "access",
+        "discoverable",
+        "cover_image_url",
+        "icon_url",
     ):
-        if val is not None:
-            sets.append(f"{col} = ${idx}")
-            args.append(val)
-            idx += 1
+        if col not in updates:
+            continue
+        val = updates[col]
+        if val is None and col not in clearable_fields:
+            continue
+        sets.append(f"{col} = ${idx}")
+        args.append(val)
+        idx += 1
 
     async with pool.acquire() as conn:
         async with conn.transaction():
