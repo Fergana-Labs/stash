@@ -101,7 +101,17 @@ export async function importGitRepo(
   );
 }
 
-// --- Google Drive import (Picker flow — UI lives in a follow-up) ---
+// --- Google Drive import (Picker flow) ---
+
+export type GooglePickerToken = {
+  access_token: string;
+  api_key: string | null;
+  client_id: string | null;
+};
+
+export async function getGooglePickerToken(): Promise<GooglePickerToken> {
+  return apiFetch<GooglePickerToken>("/api/v1/integrations/google/picker-token");
+}
 
 export type GoogleDriveImportRequest = {
   file_ids: string[];

@@ -155,3 +155,27 @@ async def integration_disconnect(
     get_provider(provider)  # 404 if unknown
     await storage.revoke_stored(current_user["id"], provider)
     return {"ok": True}
+
+
+class GooglePickerTokenResponse(BaseModel):
+    access_token: str
+    api_key: str | None
+    client_id: str | None
+    # The Picker SDK calls this `app_id` — Google's docs use the OAuth
+    # project number. We surface the OAuth client_id which works for the
+    # picker's developer-key validation.
+
+
+@router.get("/google/picker-token", response_model=GooglePickerTokenResponse)
+async def google_picker_token(current_user: dict = Depends(get_current_user)):
+    """Hand the frontend a fresh Google access token + the Picker API
+    key so the user's browser can open the Drive Picker without exposing
+    our OAuth client secret. Throws 401 if the user hasn't connected
+    Google yet — the frontend should send them to /settings/integrations
+    first."""
+    access_token = await storage.get_valid_token(current_user["id"], "google")
+    return GooglePickerTokenResponse(
+        access_token=access_token,
+        api_key=settings.GOOGLE_PICKER_API_KEY,
+        client_id=settings.GOOGLE_OAUTH_CLIENT_ID,
+    )

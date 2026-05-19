@@ -11,6 +11,7 @@ import HtmlPageView, {
   extractCommentIdsFromHtml,
   type HtmlSelectionInfo,
 } from "../../../../../components/workspace/HtmlPageView";
+import ExportDeckButton from "../../../../../components/export/ExportDeckButton";
 import FileViewerHeader from "../../../../../components/workspace/FileViewerHeader";
 import MarkdownEditor, {
   extractCommentIdsFromMarkdown,
@@ -314,13 +315,22 @@ export default function StashPageView() {
         saveStatus={page && !isHtml ? saveStatus : null}
         rightExtras={
           isHtml ? (
-            <button
-              type="button"
-              onClick={() => setHtmlEditMode((v) => !v)}
-              className="rounded-md border border-border-subtle bg-raised px-2.5 py-1 text-[12px] font-medium text-foreground hover:bg-raised-2"
-            >
-              {htmlEditMode ? "Done" : "Edit"}
-            </button>
+            <div className="flex items-center gap-2">
+              {page && (
+                <ExportDeckButton
+                  pageId={page.id}
+                  layout={page.html_layout}
+                  contentType={page.content_type}
+                />
+              )}
+              <button
+                type="button"
+                onClick={() => setHtmlEditMode((v) => !v)}
+                className="rounded-md border border-border-subtle bg-raised px-2.5 py-1 text-[12px] font-medium text-foreground hover:bg-raised-2"
+              >
+                {htmlEditMode ? "Done" : "Edit"}
+              </button>
+            </div>
           ) : undefined
         }
         downloadOptions={
