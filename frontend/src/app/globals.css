@@ -215,6 +215,26 @@ details > summary::-webkit-details-marker {
   cursor: pointer;
 }
 
+/* Floating "Comment" pill anchored above the user's HTML-page selection.
+   The ::after triangle visually ties the pill to the highlighted text. */
+.comment-anchor-pill {
+  animation: comment-anchor-pill-in 120ms ease-out;
+}
+.comment-anchor-pill::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 100%;
+  transform: translateX(-50%);
+  border-left: 5px solid transparent;
+  border-right: 5px solid transparent;
+  border-top: 5px solid var(--text-primary);
+}
+@keyframes comment-anchor-pill-in {
+  from { opacity: 0; transform: translate(-50%, calc(-100% + 4px)); }
+  to   { opacity: 1; transform: translate(-50%, -100%); }
+}
+
 .ProseMirror .comment-anchor.is-active,
 .ProseMirror [data-comment-id].is-active,
 .comment-anchor.is-active,
