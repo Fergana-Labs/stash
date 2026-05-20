@@ -1243,21 +1243,21 @@ function SessionUserFolder({
   }, [hasActiveSession]);
 
   return (
-    <details open={open} className="text-[12px]">
+    <details open={open} className="text-[12.5px]">
       <summary
         onClick={(e) => {
           e.preventDefault();
           e.stopPropagation();
           setOpen(true);
         }}
-        className="page-row flex items-center gap-1 rounded-md px-2 py-0.5 hover:bg-raised"
+        className="page-row flex items-center gap-1 rounded-md px-2 py-1 hover:bg-raised"
       >
         <ChevronToggle open={open} onToggle={() => setOpen((current) => !current)} />
-        <span className="flex h-4 w-4 items-center justify-center text-[13px] text-muted">
+        <span className="flex h-4 w-4 items-center justify-center text-[14px] text-muted">
           <PersonIcon />
         </span>
         <span className="flex-1 truncate text-muted">{bucket.user}</span>
-        <span className="text-[10px] text-muted">{bucket.sessions.length}</span>
+        <span className="text-[10.5px] text-muted">{bucket.sessions.length}</span>
       </summary>
       <div className="ml-2.5 space-y-0.5 border-l border-border pl-2">
         {visibleSessions.map((s) => (
