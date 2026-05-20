@@ -13,7 +13,7 @@ from rich.align import Align
 from rich.panel import Panel
 from rich.text import Text
 
-from .client import StashClient, StashError
+from .client import StashClient, StashError, stash_permissions_for_access
 from .config import (
     MANIFEST_FILE,
     PRODUCTION_BASE_URL,
@@ -1186,7 +1186,6 @@ def upload(
                 ws,
                 title=root_name,
                 description=f"Uploaded from {target.name}",
-                access="workspace",
                 items=stash_items,
             )
             stash_url = _stash_url(stash)
@@ -1290,7 +1289,6 @@ def stashes_create(
                     ws_id,
                     title=title,
                     description=description,
-                    access="workspace",
                     discoverable=False,
                     items=items,
                 )
@@ -1326,7 +1324,7 @@ def stashes_publish(
         try:
             stash = c.update_stash(
                 stash_id,
-                access=access,
+                **stash_permissions_for_access(access),
                 discoverable=False if access != "public" else discover,
             )
         except StashError as e:
@@ -1373,7 +1371,7 @@ def stashes_update(
         if access not in {"workspace", "private", "public"}:
             console.print("[red]--access must be workspace, private, or public.[/red]")
             raise typer.Exit(1)
-        fields["access"] = access
+        fields.update(stash_permissions_for_access(access))
     if discover is not None:
         fields["discoverable"] = discover
     if items_json is not None:
