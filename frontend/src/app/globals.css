@@ -262,125 +262,188 @@ details > summary::-webkit-details-marker {
   margin-bottom: 0;
 }
 
-/* ProseMirror heading styles */
-.ProseMirror h1 {
+/* ---------------------------------------------------------------
+ * Markdown typography — shared by the Tiptap editor (.ProseMirror)
+ * and the read-only react-markdown renderer (.markdown-content). One
+ * visual language: tight tracking on headings, generous breathing
+ * room between blocks, brand-orange accents on code + links.
+ * --------------------------------------------------------------- */
+
+.ProseMirror h1,
+.markdown-content h1 {
   font-family: var(--font-display), sans-serif;
-  font-size: 1.875rem;
+  font-size: 2rem;
   font-weight: 700;
-  margin-top: 2rem;
-  margin-bottom: 0.5rem;
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+  margin: 2.25rem 0 0.5rem;
   color: var(--text-primary);
-  letter-spacing: -0.01em;
 }
 
-.ProseMirror h2 {
+.ProseMirror h2,
+.markdown-content h2 {
   font-family: var(--font-display), sans-serif;
   font-size: 1.5rem;
-  font-weight: 600;
-  margin-top: 1.75rem;
-  margin-bottom: 0.5rem;
+  font-weight: 700;
+  line-height: 1.25;
+  letter-spacing: -0.015em;
+  margin: 2rem 0 0.5rem;
+  padding-bottom: 0.3rem;
+  border-bottom: 1px solid var(--border-subtle-color, rgba(0, 0, 0, 0.06));
   color: var(--text-primary);
-  letter-spacing: -0.01em;
 }
 
-.ProseMirror h3 {
+.ProseMirror h3,
+.markdown-content h3 {
   font-family: var(--font-display), sans-serif;
-  font-size: 1.25rem;
+  font-size: 1.2rem;
   font-weight: 600;
-  margin-top: 1.5rem;
-  margin-bottom: 0.375rem;
+  line-height: 1.3;
+  letter-spacing: -0.01em;
+  margin: 1.5rem 0 0.4rem;
   color: var(--text-primary);
 }
 
-/* ProseMirror list styles */
-.ProseMirror ul {
+/* First block after a heading hugs the heading — avoids a top-margin
+   collapse that leaves an awkward gap. */
+.ProseMirror h1 + *,
+.ProseMirror h2 + *,
+.ProseMirror h3 + *,
+.markdown-content h1 + *,
+.markdown-content h2 + *,
+.markdown-content h3 + * {
+  margin-top: 0.25rem;
+}
+
+.ProseMirror ul,
+.markdown-content ul {
   list-style-type: disc;
   padding-left: 1.5em;
-  margin: 0.5em 0;
-}
-
-.ProseMirror ol {
-  list-style-type: decimal;
-  padding-left: 1.5em;
-  margin: 0.5em 0;
-}
-
-.ProseMirror li {
-  margin: 0.15em 0;
-}
-
-.ProseMirror li > ul,
-.ProseMirror li > ol {
-  margin: 0;
-}
-
-/* ProseMirror blockquote styles */
-.ProseMirror blockquote {
-  border-left: 3px solid var(--border-color);
-  padding-left: 0.75em;
-  margin: 0.5em 0;
-  color: var(--text-muted);
-}
-
-/* ProseMirror horizontal rule */
-.ProseMirror hr {
-  border: none;
-  border-top: 1px solid var(--border-color);
   margin: 0.75em 0;
 }
 
-/* ProseMirror code styles */
-.ProseMirror code {
-  color: #F97316;
-  background: var(--bg-raised);
-  padding: 0.15em 0.35em;
+.ProseMirror ol,
+.markdown-content ol {
+  list-style-type: decimal;
+  padding-left: 1.5em;
+  margin: 0.75em 0;
+}
+
+.ProseMirror li,
+.markdown-content li {
+  margin: 0.2em 0;
+}
+.ProseMirror li::marker,
+.markdown-content li::marker {
+  color: var(--text-muted);
+}
+
+.ProseMirror li > ul,
+.ProseMirror li > ol,
+.markdown-content li > ul,
+.markdown-content li > ol {
+  margin: 0.2em 0 0.2em 0;
+}
+
+.ProseMirror blockquote,
+.markdown-content blockquote {
+  margin: 1em 0;
+  padding: 0.5em 1em;
+  border-left: 3px solid var(--color-brand-400, #fb923c);
+  background: rgba(249, 115, 22, 0.05);
+  border-radius: 0 6px 6px 0;
+  color: var(--text-dim);
+  font-style: italic;
+}
+.ProseMirror blockquote > p:first-child,
+.markdown-content blockquote > p:first-child {
+  margin-top: 0;
+}
+.ProseMirror blockquote > p:last-child,
+.markdown-content blockquote > p:last-child {
+  margin-bottom: 0;
+}
+
+.ProseMirror hr,
+.markdown-content hr {
+  border: none;
+  height: 1px;
+  background: linear-gradient(
+    to right,
+    transparent,
+    var(--border-color, rgba(0, 0, 0, 0.12)),
+    transparent
+  );
+  margin: 2rem 0;
+}
+
+.ProseMirror code,
+.markdown-content code {
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 0.88em;
+  color: #c2410c;
+  background: rgba(249, 115, 22, 0.08);
+  border: 1px solid rgba(249, 115, 22, 0.18);
+  padding: 0.1em 0.4em;
   border-radius: 4px;
-  font-size: 0.875em;
-  font-family: var(--font-mono), monospace;
 }
 
-.ProseMirror pre {
-  background: var(--bg-raised);
-  border: 1px solid var(--border-subtle-color);
+.ProseMirror pre,
+.markdown-content pre {
+  font-family: var(--font-mono), ui-monospace, monospace;
+  background: var(--bg-raised, #fafafa);
+  border: 1px solid var(--border-subtle-color, rgba(0, 0, 0, 0.08));
   border-radius: 8px;
-  padding: 0.75em 1em;
-  margin: 0.5em 0;
+  padding: 0.875em 1em;
+  margin: 1em 0;
   overflow-x: auto;
+  font-size: 0.88em;
+  line-height: 1.55;
 }
 
-.ProseMirror pre code {
+.ProseMirror pre code,
+.markdown-content pre code {
   background: none;
+  border: none;
   padding: 0;
   border-radius: 0;
   color: var(--text-dim);
+  font-size: inherit;
 }
 
-/* ProseMirror link styles */
-.ProseMirror a {
-  color: #F97316;
-  text-decoration: underline;
-  cursor: pointer;
-}
-
-.ProseMirror a:hover {
-  color: #EA580C;
-}
-
-/* ProseMirror paragraph spacing */
-.ProseMirror p {
-  margin: 0.5em 0;
+.ProseMirror p,
+.markdown-content p {
+  margin: 0.75em 0;
   color: var(--text-dim);
 }
 
-/* ProseMirror strong/em */
-.ProseMirror strong {
+.ProseMirror strong,
+.markdown-content strong {
   font-weight: 700;
   color: var(--text-primary);
 }
 
-.ProseMirror em {
+.ProseMirror em,
+.markdown-content em {
   font-style: italic;
-  color: var(--text-dim);
+}
+
+.ProseMirror s,
+.markdown-content s,
+.ProseMirror del,
+.markdown-content del {
+  text-decoration: line-through;
+  text-decoration-color: var(--text-muted);
+  color: var(--text-muted);
+}
+
+/* Images render inline, capped at content width with soft rounding. */
+.ProseMirror img,
+.markdown-content img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 6px;
+  margin: 1em 0;
 }
 
 /* Collaboration cursor styles */
@@ -579,25 +642,49 @@ details > summary::-webkit-details-marker {
 
 /* Tables in pages (GitHub-flavored pipe tables). */
 .ProseMirror table.file-page-table,
-.ProseMirror table {
-  border-collapse: collapse;
-  margin: 1em 0;
+.ProseMirror table,
+.markdown-content table {
+  border-collapse: separate;
+  border-spacing: 0;
+  margin: 1.25em 0;
   width: 100%;
-  font-size: 0.95em;
+  font-size: 0.93em;
+  border: 1px solid var(--border-subtle-color, rgba(0, 0, 0, 0.08));
+  border-radius: 8px;
+  overflow: hidden;
 }
 
 .ProseMirror table th,
-.ProseMirror table td {
-  border: 1px solid var(--border, #e5e7eb);
-  padding: 0.5rem 0.75rem;
+.ProseMirror table td,
+.markdown-content table th,
+.markdown-content table td {
+  border-right: 1px solid var(--border-subtle-color, rgba(0, 0, 0, 0.08));
+  border-bottom: 1px solid var(--border-subtle-color, rgba(0, 0, 0, 0.08));
+  padding: 0.55rem 0.85rem;
   text-align: left;
   vertical-align: top;
+  color: var(--text-dim);
 }
 
-.ProseMirror table th {
-  background: var(--bg-muted, #f8f8f7);
+.ProseMirror table th:last-child,
+.ProseMirror table td:last-child,
+.markdown-content table th:last-child,
+.markdown-content table td:last-child {
+  border-right: none;
+}
+
+.ProseMirror table tr:last-child td,
+.markdown-content table tr:last-child td {
+  border-bottom: none;
+}
+
+.ProseMirror table th,
+.markdown-content table th {
+  background: var(--bg-muted, #fafafa);
   font-weight: 600;
   color: var(--text-primary);
+  font-size: 0.86em;
+  letter-spacing: 0.01em;
 }
 
 /* Multi-cell selection — Tiptap/prosemirror-tables sets `.selectedCell`
