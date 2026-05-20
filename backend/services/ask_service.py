@@ -16,15 +16,15 @@ from . import agent_runtime, prompts
 async def stream_ask(
     workspace_id: UUID,
     workspace_name: str,
-    messages: list[dict],
+    prompt: str,
     user_id: UUID,
 ) -> AsyncIterator[str]:
     """Run the agent and yield SSE-encoded chunks.
 
-    The SDK takes a single prompt string; we flatten the chat history into
-    one user turn (consistent with how the previous hand-rolled loop seeded
-    `messages`)."""
-    prompt = _flatten_conversation(messages)
+    The ask endpoint is single-turn today: one user prompt in, one streamed
+    response out. When multi-turn follow-ups land, do them through the SDK's
+    native session resumption (`ClaudeAgentOptions(resume=session_id)`),
+    not by stuffing prior turns into the prompt string."""
     system = prompts.render_ask_system(workspace_name)
     async for chunk in agent_runtime.stream_agent(
         system=system,
@@ -33,19 +33,3 @@ async def stream_ask(
         user_id=user_id,
     ):
         yield chunk
-
-
-def _flatten_conversation(messages: list[dict]) -> str:
-    """Convert a [{role, content}] list to a single prompt. The SDK's
-    `query()` takes one user turn; multi-turn replay happens by tagging
-    each turn with its role inline."""
-    if not messages:
-        return ""
-    if len(messages) == 1 and messages[0].get("role") == "user":
-        return messages[0].get("content", "")
-    parts = []
-    for m in messages:
-        role = m.get("role") or "user"
-        content = m.get("content") or ""
-        parts.append(f"[{role}]\n{content}")
-    return "\n\n".join(parts)
