@@ -2,9 +2,7 @@
 // on first onboarding completion. The DescriptionEditor (Tiptap) accepts
 // standard HTML, so we author plain strings.
 //
-// Design intent: this is a *starter doc the user will delete*. Concise,
-// no marketing fluff, useful pointers grouped by what the user might
-// want to try next.
+// Design intent: a starter doc the user will delete. Concise, no fluff.
 
 import type { PathId, MigrantSource } from "./paths";
 
@@ -37,7 +35,7 @@ export function generateWelcomeHtml(inputs: WelcomeInputs): string {
     `<h1>Welcome to your workspace, ${escapeHtml(displayName)}</h1>`,
   );
   parts.push(
-    `<p>This is your About page. It&rsquo;s editable like any other doc — keep what&rsquo;s useful, delete the rest.</p>`,
+    `<p><em>This is your About page. It&rsquo;s editable like any other doc — keep what&rsquo;s useful, delete the rest.</em></p>`,
   );
 
   // What you just did — only show the bits that actually happened.
@@ -70,17 +68,32 @@ export function generateWelcomeHtml(inputs: WelcomeInputs): string {
     parts.push(`<ul>${wrap.map((w) => `<li>${w}</li>`).join("")}</ul>`);
   }
 
-  // Three things to try next — universal regardless of path.
-  parts.push(`<h2>Three things to try next</h2>`);
+  // What to try next — imports lead, then Discover, invite, CLI.
+  parts.push(`<h2>What to try next</h2>`);
   parts.push(
     `<ul>
-      <li><strong><a href="/discover">Discover &amp; install Stashes</a></strong> — browse what others have published; copy any of them into your workspace as a starting point.</li>
+      <li><strong><a href="/onboarding?path=migrant&amp;step=2&amp;source=notion">Import from Notion</a></strong> — pages, databases, and sub-pages.</li>
+      <li><strong><a href="/onboarding?path=migrant&amp;step=2&amp;source=github">Import from GitHub</a></strong> — markdown becomes pages, everything else lands in Files.</li>
+      <li><strong><a href="/onboarding?path=migrant&amp;step=2&amp;source=obsidian">Import from Obsidian</a></strong> — drop your vault folder; every note becomes a collaboratively-edited page.</li>
+      <li><strong><a href="/onboarding?path=migrant&amp;step=2&amp;source=drive">Import from Google Drive</a></strong> — folders, Docs, Sheets.</li>
+      <li><strong><a href="/discover">Discover &amp; install Stashes</a></strong> — browse what others have published; copy any of them into your workspace.</li>
       <li><strong>Invite a teammate</strong>${
         inviteLink
-          ? ` — share <a href="${escapeAttr(inviteLink)}">${escapeHtml(inviteLink)}</a> with anyone you want in. Two cursors on the same markdown page is a real thing here.`
-          : ` from workspace settings. Two cursors on the same markdown page is a real thing here.`
+          ? ` — share <a href="${escapeAttr(inviteLink)}">${escapeHtml(inviteLink)}</a>. Two cursors on the same markdown page is a real thing here.`
+          : ` from workspace settings.`
       }</li>
-      <li><strong><a href="/onboarding?path=sharing">Share with a coding agent</a></strong> — point Claude Code / Cursor / Codex at the publish endpoint and let it produce shareable artifacts for you.</li>
+      <li><strong>Install the CLI</strong> — let your coding agent use Stash directly: <code>npm i -g @joinstash/cli</code></li>
+    </ul>`,
+  );
+
+  // 3-layer mental model.
+  parts.push(`<h2>How Stash works</h2>`);
+  parts.push(
+    `<p>Three layers, top down:</p>
+    <ul>
+      <li><strong>Data</strong> — a hopper for everything your agent produces or consumes: <code>.jsonl</code> session transcripts, HTML pages, markdown docs, images, tables, raw files. Structured or not.</li>
+      <li><strong>Workspace</strong> — your private container. Everything you import or generate lands here; your agent reads from here.</li>
+      <li><strong>Stashes</strong> — virtual sub-workspaces. Bundle any subset of your workspace data into a Stash; share it with a public link (view or edit), or invite teammates to your workspace.</li>
     </ul>`,
   );
 
@@ -88,16 +101,11 @@ export function generateWelcomeHtml(inputs: WelcomeInputs): string {
   parts.push(`<h2>What this product does</h2>`);
   parts.push(
     `<ul>
-      <li>Imports from <strong>Notion, GitHub, Google Drive</strong>, plus agent transcripts and sessions.</li>
       <li>Real-time collaborative editing on every markdown page (two cursors at once).</li>
       <li>Ask questions about everything you&rsquo;ve imported — your agent is grounded on your stuff.</li>
       <li>Search across your full corpus.</li>
-      <li>CLI &amp; coding-agent integrations for power users.</li>
+      <li>CLI &amp; coding-agent integrations.</li>
     </ul>`,
-  );
-
-  parts.push(
-    `<p><em>This page is just content — edit it, or delete it when you&rsquo;re done.</em></p>`,
   );
 
   return parts.join("");
