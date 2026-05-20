@@ -53,8 +53,9 @@ export default function MemoryImportStep(ctx: StepCtx) {
           Give your agent something to remember
         </h1>
         <p className="text-sm text-dim max-w-md">
-          Memory works on what you&rsquo;ve imported. Bring in a source first —
-          we&rsquo;ll show you the magical bit in the next step.
+          Bring in past sessions, notes, or docs — anything your agent
+          should know about your work. Drop transcripts via the CLI, or
+          pull from a source below.
         </p>
       </div>
 

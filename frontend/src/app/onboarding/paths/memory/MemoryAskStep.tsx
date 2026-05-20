@@ -44,14 +44,14 @@ export default function MemoryAskStep({ workspaceId }: StepCtx) {
         const pages = (o.files?.pages ?? []).slice(0, 3);
         if (pages.length >= 2) {
           setSuggestions([
-            `Summarize ${pages[0].name}`,
-            `What does ${pages[1].name} say?`,
-            pages[2] ? `What's covered in ${pages[2].name}?` : `What are the key themes across what I imported?`,
+            `What was the last thing we worked on in ${pages[0].name}?`,
+            `Catch me up on ${pages[1].name}`,
+            pages[2] ? `What's the state of ${pages[2].name}?` : `What have we been working on?`,
           ]);
         } else {
           setSuggestions([
-            "What are the key themes across what I just imported?",
-            "What do I have about authentication?",
+            "What was the last thing we worked on?",
+            "Catch me up on this workspace",
           ]);
         }
       })
@@ -141,11 +141,12 @@ export default function MemoryAskStep({ workspaceId }: StepCtx) {
     <div className="space-y-6">
       <div className="space-y-2">
         <h1 className="font-display text-[28px] leading-[1.1] font-bold tracking-tight text-foreground">
-          Stop pasting context into every prompt
+          Pick up where you left off
         </h1>
         <p className="text-sm text-dim max-w-md">
-          Your agent now knows what you imported. Ask anything — it&rsquo;ll
-          look across your workspace and answer with receipts.
+          Your agent has memory of what you&rsquo;ve done before. Ask
+          anything — it&rsquo;ll look back at your sessions and answer with
+          receipts.
         </p>
       </div>
 
@@ -226,8 +227,8 @@ export default function MemoryAskStep({ workspaceId }: StepCtx) {
       </div>
 
       <p className="text-[11px] text-dim">
-        Attention saved, context retained. Your agent reads your imports so you
-        don&rsquo;t have to paste them.
+        Every conversation picks up where the last one left off. No more
+        re-explaining what you&rsquo;re doing.
       </p>
     </div>
   );
@@ -243,15 +244,15 @@ function BeforeAfter() {
         <pre className="font-mono text-[10.5px] text-muted leading-snug whitespace-pre-wrap">
           {`# Context
 
-You are helping with our API
-gateway. Here are the relevant
-docs:
+Last week I was working on the
+API gateway. Here's where I left
+off:
 
-[paste 2,400 chars of runbook]
-[paste 1,800 chars of config]
-[paste team conventions]
+[paste 3,200 chars of session]
+[re-explain the constraints]
+[re-list the open questions]
 
-Now, fix the rate limiting...`}
+OK, now keep going where we...`}
         </pre>
       </div>
       <div className="rounded-xl border border-brand bg-brand/5 p-4 min-h-[160px]">
@@ -260,11 +261,11 @@ Now, fix the rate limiting...`}
         </div>
         <div className="space-y-2">
           <div className="font-mono text-[12.5px] text-foreground">
-            Hey, fix the API gateway
+            Pick up where we left off on the gateway
           </div>
           <div className="inline-flex items-center gap-1.5 rounded-full bg-background/60 border border-border-subtle px-2 py-0.5 text-[10.5px] text-muted">
             <span className="w-1 h-1 rounded-full bg-brand" />
-            grounded on your workspace
+            remembers your past sessions
           </div>
         </div>
       </div>

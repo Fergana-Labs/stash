@@ -13,11 +13,11 @@ export default function MemorySearchStep({ workspaceId }: StepCtx) {
     <div className="space-y-6">
       <div className="space-y-2">
         <h1 className="font-display text-[28px] leading-[1.1] font-bold tracking-tight text-foreground">
-          Everything you just imported is searchable
+          Every past session, searchable
         </h1>
         <p className="text-sm text-dim max-w-md">
-          Full-text search across every page, file, table, and session in your
-          workspace.
+          Full-text search across every session transcript, page, file, and
+          table in your workspace.
         </p>
       </div>
 
