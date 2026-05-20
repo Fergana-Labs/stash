@@ -15,7 +15,6 @@ import contextvars
 import json
 import logging
 from collections.abc import AsyncIterator
-from enum import StrEnum
 from uuid import UUID
 
 from claude_agent_sdk import (
@@ -36,6 +35,7 @@ from . import (
     files_tree_service,
     memory_service,
     permission_service,
+    prompts,
     skill_service,
     stash_service,
     table_service,
@@ -49,17 +49,6 @@ _workspace_ctx: contextvars.ContextVar[UUID | None] = contextvars.ContextVar(
 _user_ctx: contextvars.ContextVar[UUID | None] = contextvars.ContextVar(
     "stash_user_id", default=None
 )
-
-
-class ModelTier(StrEnum):
-    QUALITY = "quality"
-    FAST = "fast"
-
-
-def _model_for(tier: ModelTier) -> str:
-    if tier is ModelTier.QUALITY:
-        return settings.ANTHROPIC_MODEL
-    return settings.ANTHROPIC_FAST_MODEL
 
 
 def _current_workspace() -> UUID:
@@ -529,21 +518,15 @@ _TOOLS_BY_NAME = {
 }
 
 
-def _build_options(
-    *,
-    system: str,
-    tool_set: tuple[str, ...],
-    model: str,
-    max_turns: int,
-) -> ClaudeAgentOptions:
-    tools = [_TOOLS_BY_NAME[name] for name in tool_set]
+def _build_options(*, system: str) -> ClaudeAgentOptions:
+    tools = [_TOOLS_BY_NAME[name] for name in prompts.STASH_TOOL_SET]
     mcp_server = create_sdk_mcp_server(name="stash", version="1.0.0", tools=tools)
     # The SDK exposes MCP tools as `mcp__{server}__{tool_name}` in allowed_tools.
-    allowed = [f"mcp__stash__{name}" for name in tool_set]
+    allowed = [f"mcp__stash__{name}" for name in prompts.STASH_TOOL_SET]
     return ClaudeAgentOptions(
         system_prompt=system,
-        model=model,
-        max_turns=max_turns,
+        model=settings.ANTHROPIC_MODEL,
+        max_turns=8,
         mcp_servers={"stash": mcp_server},
         allowed_tools=allowed,
         # No filesystem/Bash tools — purely the in-process MCP toolset.
@@ -563,30 +546,14 @@ def _sse(event: dict) -> str:
 
 async def stream_agent(
     *,
-    tier: ModelTier,
     system: str,
     prompt: str,
     workspace_id: UUID,
     user_id: UUID | None = None,
-    tool_set: tuple[str, ...],
-    max_turns: int = 8,
 ) -> AsyncIterator[str]:
-    """SSE generator for ask-the-workspace."""
-    if not settings.ANTHROPIC_API_KEY:
-        yield _sse(
-            {
-                "type": "text",
-                "delta": (
-                    "Ask-the-workspace needs ANTHROPIC_API_KEY set on the backend. "
-                    "Drop a key into backend/.env and restart."
-                ),
-            }
-        )
-        yield _sse({"type": "end"})
-        return
-
-    model = _model_for(tier)
-    options = _build_options(system=system, tool_set=tool_set, model=model, max_turns=max_turns)
+    """SSE generator for ask-the-workspace. Caller must verify
+    `settings.ANTHROPIC_API_KEY` is set before invoking."""
+    options = _build_options(system=system)
 
     workspace_token = _workspace_ctx.set(workspace_id)
     user_token = _user_ctx.set(user_id)

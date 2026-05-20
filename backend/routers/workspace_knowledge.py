@@ -11,6 +11,7 @@ from pydantic import BaseModel
 from starlette.responses import StreamingResponse
 
 from ..auth import get_current_user
+from ..config import settings
 from ..database import get_pool
 from ..services import (
     ask_service,
@@ -231,6 +232,11 @@ async def ask_workspace(
     workspace = await workspace_service.get_workspace(workspace_id)
     if not workspace:
         raise HTTPException(status_code=404, detail="Workspace not found")
+    if not settings.ANTHROPIC_API_KEY:
+        raise HTTPException(
+            status_code=503,
+            detail="Ask-the-workspace is not configured (ANTHROPIC_API_KEY unset).",
+        )
 
     convo = [{"role": m.role, "content": m.content} for m in req.messages]
 

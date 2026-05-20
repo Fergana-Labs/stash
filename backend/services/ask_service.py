@@ -18,7 +18,6 @@ async def stream_ask(
     workspace_name: str,
     messages: list[dict],
     user_id: UUID,
-    tool_set: tuple[str, ...] = prompts.STASH_TOOL_SET,
 ) -> AsyncIterator[str]:
     """Run the agent and yield SSE-encoded chunks.
 
@@ -28,12 +27,10 @@ async def stream_ask(
     prompt = _flatten_conversation(messages)
     system = prompts.render_ask_system(workspace_name)
     async for chunk in agent_runtime.stream_agent(
-        tier=agent_runtime.ModelTier.QUALITY,
         system=system,
         prompt=prompt,
         workspace_id=workspace_id,
         user_id=user_id,
-        tool_set=tool_set,
     ):
         yield chunk
 

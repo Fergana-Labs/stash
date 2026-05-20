@@ -36,4 +36,3 @@ STASH_TOOL_SET = (
     "update_stash",
     "delete_stash",
 )
-RECIPIENT_TOOL_SET = ("read_page", "grep_pages", "list_files", "read_file")
