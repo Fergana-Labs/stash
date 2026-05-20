@@ -10,6 +10,7 @@ import {
 function session(fields: Partial<SessionSummary> & { session_id: string }): SessionSummary {
   return {
     session_id: fields.session_id,
+    title: fields.title ?? fields.session_id,
     workspace_id: "ws-1",
     workspace_name: "Workspace",
     user_name: fields.user_name ?? "Test User",
@@ -17,7 +18,6 @@ function session(fields: Partial<SessionSummary> & { session_id: string }): Sess
     event_count: fields.event_count ?? 1,
     started_at: fields.started_at ?? "2026-05-14T09:00:00Z",
     last_event_at: fields.last_event_at ?? fields.started_at ?? "2026-05-14T09:00:00Z",
-    first_prompt_preview: fields.first_prompt_preview ?? null,
   };
 }
 

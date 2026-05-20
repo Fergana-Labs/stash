@@ -24,7 +24,16 @@ export async function generateMetadata({
     (it) => it.object_type === type && it.object_id === id
   );
   const itemLabel = item?.label ?? "Item";
-  return { title: `${itemLabel} · ${data.stash.title} · Stash` };
+  return {
+    title: `${itemLabel} · ${data.stash.title} · Stash`,
+    alternates: {
+      canonical: `/stashes/${slug}/items/${type}/${id}`,
+      types: {
+        "text/markdown": `/stashes/${slug}/items/${type}/${id}.md`,
+        "application/json": `/stashes/${slug}/items/${type}/${id}.json`,
+      },
+    },
+  };
 }
 
 export default async function StashItemPage({

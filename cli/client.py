@@ -333,6 +333,12 @@ class StashClient:
     def delete_page(self, workspace_id: str, page_id: str) -> None:
         self._delete(f"/api/v1/workspaces/{workspace_id}/pages/{page_id}")
 
+    def restore_page(self, workspace_id: str, page_id: str) -> None:
+        self._post(f"/api/v1/workspaces/{workspace_id}/pages/{page_id}/restore")
+
+    def purge_page(self, workspace_id: str, page_id: str) -> None:
+        self._delete(f"/api/v1/workspaces/{workspace_id}/pages/{page_id}/purge")
+
     # --- Session events ---
 
     def list_agent_names(self, workspace_id: str) -> list:
@@ -475,6 +481,12 @@ class StashClient:
     def delete_ws_file(self, workspace_id: str, file_id: str) -> None:
         self._delete(f"/api/v1/workspaces/{workspace_id}/files/{file_id}")
 
+    def restore_ws_file(self, workspace_id: str, file_id: str) -> None:
+        self._post(f"/api/v1/workspaces/{workspace_id}/files/{file_id}/restore")
+
+    def purge_ws_file(self, workspace_id: str, file_id: str) -> None:
+        self._delete(f"/api/v1/workspaces/{workspace_id}/files/{file_id}/purge")
+
     def update_ws_file(
         self,
         workspace_id: str,
@@ -575,6 +587,23 @@ class StashClient:
     def delete_table_column(self, workspace_id: str, table_id: str, column_id: str) -> dict:
         base = f"/api/v1/workspaces/{workspace_id}/tables"
         return self._request("DELETE", f"{base}/{table_id}/columns/{column_id}").json()
+
+    # --- Sessions ---
+
+    def delete_session(self, workspace_id: str, session_row_id: str) -> None:
+        self._delete(f"/api/v1/workspaces/{workspace_id}/sessions/{session_row_id}")
+
+    def restore_session(self, workspace_id: str, session_row_id: str) -> None:
+        self._post(f"/api/v1/workspaces/{workspace_id}/sessions/{session_row_id}/restore")
+
+    def purge_session(self, workspace_id: str, session_row_id: str) -> None:
+        self._delete(f"/api/v1/workspaces/{workspace_id}/sessions/{session_row_id}/purge")
+
+    # --- Trash ---
+
+    def get_trash(self, workspace_id: str) -> dict:
+        data = self._get(f"/api/v1/workspaces/{workspace_id}/trash")
+        return data if isinstance(data, dict) else {}
 
     def publish(
         self,

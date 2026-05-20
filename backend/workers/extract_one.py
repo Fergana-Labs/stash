@@ -55,7 +55,8 @@ async def _run(file_id: UUID) -> int:
     conn = await asyncpg.connect(settings.DATABASE_URL)
     try:
         row = await conn.fetchrow(
-            "SELECT id, storage_key, content_type, extraction_attempts " "FROM files WHERE id = $1",
+            "SELECT id, storage_key, content_type, extraction_attempts "
+            "FROM files WHERE id = $1 AND deleted_at IS NULL",
             file_id,
         )
         if not row:

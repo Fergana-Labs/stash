@@ -192,7 +192,8 @@ async def test_external_stash_is_workspace_fork(workspace: UUID, _db_pool):
         owner_id=owner_id,
         title="Fork source Stash",
         description="",
-        access="public",
+        workspace_permission="read",
+        public_permission="read",
         discoverable=False,
         cover_image_url=None,
         items=[

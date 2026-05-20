@@ -2343,6 +2343,94 @@ def hist_import(
             )
 
 
+@hist_app.command("delete")
+def hist_delete(
+    session_row_id: str = typer.Argument(..., help="Session row id (UUID), not session_id."),
+    workspace_id: str = typer.Option(None, "--ws"),
+    permanent: bool = typer.Option(False, "--permanent"),
+):
+    """Move a session to trash. Pass --permanent to wipe it without going through trash."""
+    ws = workspace_id or _resolve_workspace()
+    with _client() as c:
+        try:
+            c.delete_session(ws, session_row_id)
+            if permanent:
+                c.purge_session(ws, session_row_id)
+        except StashError as e:
+            _err(e)
+    console.print(
+        "[green]Session permanently deleted.[/green]"
+        if permanent
+        else "[green]Session moved to trash.[/green]"
+    )
+
+
+@hist_app.command("restore")
+def hist_restore(
+    session_row_id: str = typer.Argument(...),
+    workspace_id: str = typer.Option(None, "--ws"),
+):
+    """Restore a session from trash."""
+    ws = workspace_id or _resolve_workspace()
+    with _client() as c:
+        try:
+            c.restore_session(ws, session_row_id)
+        except StashError as e:
+            _err(e)
+    console.print("[green]Session restored.[/green]")
+
+
+@hist_app.command("purge")
+def hist_purge(
+    session_row_id: str = typer.Argument(...),
+    workspace_id: str = typer.Option(None, "--ws"),
+):
+    """Permanently delete a session already in trash."""
+    ws = workspace_id or _resolve_workspace()
+    with _client() as c:
+        try:
+            c.purge_session(ws, session_row_id)
+        except StashError as e:
+            _err(e)
+    console.print("[green]Session permanently deleted.[/green]")
+
+
+# ===========================================================================
+# Trash
+# ===========================================================================
+
+trash_app = typer.Typer(help="Trash — soft-deleted pages, files, and sessions.")
+app.add_typer(trash_app, name="trash")
+
+
+@trash_app.command("list")
+def trash_list(
+    workspace_id: str = typer.Option(None, "--ws"),
+    as_json: bool = typer.Option(False, "--json"),
+):
+    """List trashed pages, files, and sessions in this workspace."""
+    ws = workspace_id or _resolve_workspace()
+    with _client() as c:
+        try:
+            data = c.get_trash(ws)
+        except StashError as e:
+            _err(e)
+    if _use_json(as_json):
+        output_json(data)
+        return
+    for kind in ("pages", "files", "sessions"):
+        items = data.get(kind, [])
+        console.print(f"\n[bold]{kind.capitalize()} ({len(items)})[/bold]")
+        if not items:
+            console.print("  [dim]empty[/dim]")
+            continue
+        for item in items:
+            who = item.get("deleted_by_name") or "unknown"
+            console.print(
+                f"  {item['id']}  {item['name']}  [dim](deleted {item['deleted_at'][:19]} by {who})[/dim]"
+            )
+
+
 # ===========================================================================
 # Tables
 # ===========================================================================
@@ -2963,15 +3051,108 @@ def files_edit_file(
 def files_rm(
     file_id: str = typer.Argument(...),
     workspace_id: str = typer.Option(None, "--ws"),
+    permanent: bool = typer.Option(
+        False,
+        "--permanent",
+        help="Trash and then immediately purge — skips the recoverable trash window.",
+    ),
 ):
-    """Delete a file."""
+    """Move a file to trash. Pass --permanent to wipe it without going through trash."""
     ws = workspace_id or _resolve_workspace()
     with _client() as c:
         try:
             c.delete_ws_file(ws, file_id)
+            if permanent:
+                c.purge_ws_file(ws, file_id)
         except StashError as e:
             _err(e)
-    console.print("[green]File deleted.[/green]")
+    console.print(
+        "[green]File permanently deleted.[/green]"
+        if permanent
+        else "[green]File moved to trash.[/green]"
+    )
+
+
+@files_app.command("restore")
+def files_restore(
+    file_id: str = typer.Argument(...),
+    workspace_id: str = typer.Option(None, "--ws"),
+):
+    """Restore a file from trash."""
+    ws = workspace_id or _resolve_workspace()
+    with _client() as c:
+        try:
+            c.restore_ws_file(ws, file_id)
+        except StashError as e:
+            _err(e)
+    console.print("[green]File restored.[/green]")
+
+
+@files_app.command("purge")
+def files_purge(
+    file_id: str = typer.Argument(...),
+    workspace_id: str = typer.Option(None, "--ws"),
+):
+    """Permanently delete a file already in trash."""
+    ws = workspace_id or _resolve_workspace()
+    with _client() as c:
+        try:
+            c.purge_ws_file(ws, file_id)
+        except StashError as e:
+            _err(e)
+    console.print("[green]File permanently deleted.[/green]")
+
+
+@files_app.command("rm-page")
+def files_rm_page(
+    page_id: str = typer.Argument(...),
+    workspace_id: str = typer.Option(None, "--ws"),
+    permanent: bool = typer.Option(False, "--permanent"),
+):
+    """Move a page to trash. Pass --permanent to wipe it without going through trash."""
+    ws = workspace_id or _resolve_workspace()
+    with _client() as c:
+        try:
+            c.delete_page(ws, page_id)
+            if permanent:
+                c.purge_page(ws, page_id)
+        except StashError as e:
+            _err(e)
+    console.print(
+        "[green]Page permanently deleted.[/green]"
+        if permanent
+        else "[green]Page moved to trash.[/green]"
+    )
+
+
+@files_app.command("restore-page")
+def files_restore_page(
+    page_id: str = typer.Argument(...),
+    workspace_id: str = typer.Option(None, "--ws"),
+):
+    """Restore a page from trash."""
+    ws = workspace_id or _resolve_workspace()
+    with _client() as c:
+        try:
+            c.restore_page(ws, page_id)
+        except StashError as e:
+            _err(e)
+    console.print("[green]Page restored.[/green]")
+
+
+@files_app.command("purge-page")
+def files_purge_page(
+    page_id: str = typer.Argument(...),
+    workspace_id: str = typer.Option(None, "--ws"),
+):
+    """Permanently delete a page already in trash."""
+    ws = workspace_id or _resolve_workspace()
+    with _client() as c:
+        try:
+            c.purge_page(ws, page_id)
+        except StashError as e:
+            _err(e)
+    console.print("[green]Page permanently deleted.[/green]")
 
 
 @files_app.command("text")

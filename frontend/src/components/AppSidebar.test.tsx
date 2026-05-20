@@ -120,6 +120,8 @@ const sidebarWithStash = {
       title: "Project Alpha",
       description: "",
       access: "workspace" as const,
+      workspace_permission: "read" as const,
+      public_permission: "none" as const,
       discoverable: false,
       is_external: false,
       forked_from_stash_id: null,
@@ -133,6 +135,27 @@ const sidebarWithStash = {
         },
       ],
       updated_at: "2026-05-11T00:00:00Z",
+    },
+  ],
+};
+
+const sidebarWithTwoStashes = {
+  ...sidebarWithStash,
+  stashes: [
+    ...sidebarWithStash.stashes,
+    {
+      ...sidebarWithStash.stashes[0],
+      id: "stash-2",
+      slug: "agent-notes",
+      title: "Agent Notes",
+      items: [
+        {
+          object_type: "session" as const,
+          object_id: "session-row-1",
+          label_override: "Shared session",
+          position: 0,
+        },
+      ],
     },
   ],
 };
@@ -165,6 +188,7 @@ const sidebarWithTree = {
       {
         id: "page-root",
         name: "Overview",
+        content_type: "markdown" as const,
         folder_id: null,
       },
     ],
@@ -172,6 +196,74 @@ const sidebarWithTree = {
   },
   stashes: [],
 };
+
+function sidebarSession(
+  sessionId: string,
+  title: string,
+  userName: string,
+  lastAt: string
+) {
+  return {
+    id: `row-${sessionId}`,
+    session_id: sessionId,
+    title,
+    user_name: userName,
+    agent_name: "Claude",
+    size_bytes: 256,
+    last_at: lastAt,
+    updated_at: lastAt,
+  };
+}
+
+function sidebarWithSessions(sessions: ReturnType<typeof sidebarSession>[]) {
+  return {
+    sessions,
+    files: {
+      folders: [],
+      pages: [],
+      files: [],
+    },
+    stashes: [],
+  };
+}
+
+function sidebarWithFiles({
+  folderCount,
+  pages = [],
+  files = [],
+}: {
+  folderCount: number;
+  pages?: Array<{ id: string; name: string; folder_id: string | null }>;
+  files?: Array<{ id: string; name: string; folder_id: string | null }>;
+}) {
+  return {
+    sessions: [],
+    files: {
+      folders: Array.from({ length: folderCount }, (_, index) => ({
+        id: `folder-${index + 1}`,
+        name: `${String(index + 1).padStart(2, "0")} Root Folder`,
+        parent_folder_id: null,
+        page_count: 0,
+        file_count: 0,
+        has_skill: false,
+      })),
+      pages: pages.map((page) => ({
+        ...page,
+        content_type: "markdown" as const,
+      })),
+      files: files.map((file) => ({
+        ...file,
+        workspace_id: "ws-1",
+        size_bytes: 12,
+        content_type: "text/markdown",
+        url: null,
+        created_at: "2026-05-11T00:00:00Z",
+        linked_table_id: null,
+      })),
+    },
+    stashes: [],
+  };
+}
 
 function detailsFor(label: string): HTMLDetailsElement {
   const details = screen.getByText(label).closest("details");
@@ -204,7 +296,7 @@ describe("AppSidebar tree expansion", () => {
       folder: { id: "folder-1", name: "Product", parent_folder_id: null },
       breadcrumbs: [],
       subfolders: [],
-      pages: [{ id: "page-child", name: "Roadmap" }],
+      pages: [{ id: "page-child", name: "Roadmap", content_type: "markdown" }],
       files: [],
     });
     vi.mocked(uploadFileOrPage).mockResolvedValue({
@@ -342,6 +434,238 @@ describe("AppSidebar tree expansion", () => {
     expect(detailsFor(day.textContent ?? "")).toHaveAttribute("open");
   });
 
+  it("limits visible session periods and reveals more on demand", async () => {
+    vi.mocked(getWorkspaceSidebar).mockResolvedValue(
+      sidebarWithSessions(
+        Array.from({ length: 11 }, (_, index) =>
+          sidebarSession(
+            `period-${index}`,
+            `Period ${index}`,
+            "Henry",
+            `2026-05-${String(20 - index).padStart(2, "0")}T12:00:00Z`
+          )
+        )
+      )
+    );
+
+    renderSidebar();
+
+    expect(await screen.findByText("Period 0")).toBeTruthy();
+    expect(screen.queryByText("Period 10")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Show 1 more periods" }));
+
+    expect(screen.getByText("Period 10")).toBeTruthy();
+  });
+
+  it("limits visible users within a session period", async () => {
+    vi.mocked(getWorkspaceSidebar).mockResolvedValue(
+      sidebarWithSessions(
+        Array.from({ length: 11 }, (_, index) =>
+          sidebarSession(
+            `user-${index}`,
+            `User ${index} session`,
+            `User ${index}`,
+            `2026-05-20T${String(23 - index).padStart(2, "0")}:00:00Z`
+          )
+        )
+      )
+    );
+
+    renderSidebar();
+
+    expect(await screen.findByText("User 0")).toBeTruthy();
+    expect(screen.queryByText("User 10")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Show 1 more users" }));
+
+    expect(screen.getByText("User 10")).toBeTruthy();
+  });
+
+  it("limits visible sessions within a user bucket", async () => {
+    vi.mocked(getWorkspaceSidebar).mockResolvedValue(
+      sidebarWithSessions(
+        Array.from({ length: 11 }, (_, index) =>
+          sidebarSession(
+            `session-${index}`,
+            `Bucket session ${index}`,
+            "Henry",
+            `2026-05-20T12:${String(59 - index).padStart(2, "0")}:00Z`
+          )
+        )
+      )
+    );
+
+    renderSidebar();
+
+    expect(await screen.findByText("Bucket session 0")).toBeTruthy();
+    expect(screen.queryByText("Bucket session 10")).toBeNull();
+
+    fireEvent.click(screen.getByText("Henry"));
+    fireEvent.click(screen.getByRole("button", { name: "Show 1 more sessions" }));
+
+    expect(screen.getByText("Bucket session 10")).toBeTruthy();
+  });
+
+  it("searches hidden sidebar sessions", async () => {
+    vi.mocked(getWorkspaceSidebar).mockResolvedValue(
+      sidebarWithSessions(
+        Array.from({ length: 11 }, (_, index) =>
+          sidebarSession(
+            `search-${index}`,
+            index === 10 ? "Unique hidden decision" : `Search session ${index}`,
+            "Henry",
+            `2026-05-20T12:${String(59 - index).padStart(2, "0")}:00Z`
+          )
+        )
+      )
+    );
+
+    renderSidebar();
+
+    await screen.findByText("Search session 0");
+    expect(screen.queryByText("Unique hidden decision")).toBeNull();
+
+    fireEvent.change(screen.getByLabelText("Search sessions"), {
+      target: { value: "unique hidden" },
+    });
+
+    expect(screen.getByText("Unique hidden decision")).toBeTruthy();
+  });
+
+  it("pins sessions from the sidebar context menu", async () => {
+    vi.mocked(getWorkspaceSidebar).mockResolvedValue(sidebarWithTree);
+
+    renderSidebar();
+
+    fireEvent.click(await screen.findByText("Henry"));
+    const sessionLink = await screen.findByRole("link", { name: /Planning session/ });
+    fireEvent.contextMenu(sessionLink);
+    fireEvent.click(screen.getByRole("menuitem", { name: "Pin Planning session" }));
+
+    expect(screen.getByText("Pinned (1)")).toBeTruthy();
+    expect(JSON.parse(localStorage.getItem("stash_sidebar_pinned_items") ?? "{}")).toEqual({
+      "ws-1": {
+        sessions: ["session-1"],
+        folders: [],
+        files: [],
+      },
+    });
+  });
+
+  it("uses one combined show-more row for files", async () => {
+    vi.mocked(getWorkspaceSidebar).mockResolvedValue(
+      sidebarWithFiles({
+        folderCount: 11,
+        pages: [{ id: "root-page", name: "Root Page", folder_id: null }],
+        files: [{ id: "root-file", name: "Root File.md", folder_id: null }],
+      })
+    );
+
+    renderSidebar();
+
+    expect(await screen.findByText("01 Root Folder")).toBeTruthy();
+    expect(screen.queryByText("11 Root Folder")).toBeNull();
+    expect(screen.queryByText("Root Page")).toBeNull();
+    expect(screen.queryByRole("button", { name: /more folders/i })).toBeNull();
+    expect(screen.queryByRole("button", { name: /more pages/i })).toBeNull();
+    expect(screen.queryByRole("button", { name: /more files/i })).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Show 3 more items" }));
+
+    expect(screen.getByText("11 Root Folder")).toBeTruthy();
+    expect(screen.getByText("Root Page")).toBeTruthy();
+    expect(screen.getByText("Root File.md")).toBeTruthy();
+  });
+
+  it("keeps pinned folders expandable", async () => {
+    localStorage.setItem(
+      "stash_sidebar_pinned_items",
+      JSON.stringify({
+        "ws-1": { sessions: [], folders: ["folder-1"], files: [] },
+      })
+    );
+    localStorage.setItem(
+      "stash_sidebar_pinned_item_labels",
+      JSON.stringify({
+        "ws-1": { sessions: {}, folders: { "folder-1": "Product" }, files: {} },
+      })
+    );
+    vi.mocked(getWorkspaceSidebar).mockResolvedValue(sidebarWithTree);
+
+    renderSidebar();
+
+    await screen.findByText("Pinned (1)");
+    expect(detailsFor("Product")).not.toHaveAttribute("open");
+
+    fireEvent.click(screen.getByText("Product"));
+
+    expect(detailsFor("Product")).toHaveAttribute("open");
+    await waitFor(() =>
+      expect(getFolderContents).toHaveBeenCalledWith("ws-1", "folder-1")
+    );
+    expect(await screen.findByText("Roadmap")).toBeTruthy();
+  });
+
+  it("searches hidden sidebar files", async () => {
+    vi.mocked(getWorkspaceSidebar).mockResolvedValue({
+      sessions: [],
+      files: {
+        folders: [
+          {
+            id: "folder-parent",
+            name: "00 Huge Folder",
+            parent_folder_id: null,
+            page_count: 1,
+            file_count: 1,
+            has_skill: false,
+          },
+          ...Array.from({ length: 10 }, (_, index) => ({
+            id: `folder-${index + 1}`,
+            name: `${String(index + 1).padStart(2, "0")} Root Folder`,
+            parent_folder_id: null,
+            page_count: 0,
+            file_count: 0,
+            has_skill: false,
+          })),
+        ],
+        pages: [
+          {
+            id: "deep-page",
+            name: "Deep Search Page",
+            content_type: "markdown" as const,
+            folder_id: "folder-parent",
+          },
+        ],
+        files: [
+          {
+            id: "deep-file",
+            name: "Deep Search File.md",
+            folder_id: "folder-parent",
+            size_bytes: 12,
+            content_type: "text/markdown",
+            url: null,
+            created_at: "2026-05-11T00:00:00Z",
+            linked_table_id: null,
+          },
+        ],
+      },
+      stashes: [],
+    });
+
+    renderSidebar();
+
+    await screen.findByText("00 Huge Folder");
+    expect(screen.queryByText("00 Huge Folder/Deep Search File.md")).toBeNull();
+
+    fireEvent.change(screen.getByLabelText("Search files"), {
+      target: { value: "deep search" },
+    });
+
+    expect(screen.getByText("00 Huge Folder/Deep Search Page")).toBeTruthy();
+    expect(screen.getByText("00 Huge Folder/Deep Search File.md")).toBeTruthy();
+  });
+
   it("creates pages from the native sidebar modal", async () => {
     const promptSpy = vi.spyOn(window, "prompt");
     vi.mocked(getWorkspaceSidebar).mockResolvedValue(sidebarWithTree);
@@ -436,6 +760,19 @@ describe("AppSidebar tree expansion", () => {
     );
   });
 
+  it("links sidebar members to the active workspace members page", async () => {
+    nav.pathname = "/workspaces/ws-1/sessions";
+
+    renderSidebar();
+
+    await screen.findByText("Sessions");
+
+    expect(screen.getByRole("link", { name: "Members" })).toHaveAttribute(
+      "href",
+      "/workspaces/ws-1/members"
+    );
+  });
+
   it("keeps deep-linked tree sections open by default", async () => {
     nav.pathname = "/workspaces/ws-1/p/page-1";
 
@@ -469,7 +806,7 @@ describe("AppSidebar tree expansion", () => {
     expect(detailsFor("Sessions")).toHaveAttribute("open");
   });
 
-  it("starts each stash collapsed and does not persist its open state", async () => {
+  it("persists each stash open state across remounts", async () => {
     vi.mocked(getWorkspaceSidebar).mockResolvedValue(sidebarWithStash);
 
     const first = renderSidebar();
@@ -482,16 +819,38 @@ describe("AppSidebar tree expansion", () => {
     fireEvent.click(screen.getByLabelText("Expand Project Alpha"));
     expect(await screen.findByText("Launch session")).toBeTruthy();
 
-    // State is intentionally local to the row — nothing should land in
-    // localStorage under the legacy persisted-collapse key.
-    expect(localStorage.getItem("stash_sidebar_collapsed_stashes")).toBeNull();
+    expect(localStorage.getItem("stash_sidebar_open_stashes")).toBe(
+      JSON.stringify({ "ws-1:stash-1": true })
+    );
 
     first.unmount();
 
     renderSidebar();
     await screen.findByText("Project Alpha");
-    // Re-mount: back to collapsed, exactly as a fresh page load would be.
-    expect(screen.queryByText("Launch session")).toBeNull();
+    expect(await screen.findByText("Launch session")).toBeTruthy();
+  });
+
+  it("keeps an expanded stash open when another stash is clicked", async () => {
+    vi.mocked(getWorkspaceSidebar).mockResolvedValue(sidebarWithTwoStashes);
+
+    const first = renderSidebar();
+
+    await screen.findByText("Project Alpha");
+    fireEvent.click(screen.getByLabelText("Expand Project Alpha"));
+    expect(await screen.findByText("Launch session")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("link", { name: "Agent Notes" }));
+    expect(screen.getByText("Launch session")).toBeTruthy();
+    expect(screen.queryByText("Shared session")).toBeNull();
+    expect(localStorage.getItem("stash_sidebar_open_stashes")).toBe(
+      JSON.stringify({ "ws-1:stash-1": true })
+    );
+
+    first.unmount();
+
+    renderSidebar();
+    expect(await screen.findByText("Launch session")).toBeTruthy();
+    expect(screen.queryByText("Handoff session")).toBeNull();
   });
 
   it("rejects non-jsonl files dropped on the Sessions section", async () => {

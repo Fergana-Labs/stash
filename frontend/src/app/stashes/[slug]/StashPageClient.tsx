@@ -153,10 +153,10 @@ function coverIndexFor(id: string): number {
 
 const COVER_GRADIENTS = [
   "linear-gradient(135deg, #FED7AA, #FCA5A5)",
-  "linear-gradient(135deg, #DDD6FE, #BFDBFE)",
+  "linear-gradient(135deg, #BFDBFE, #A7F3D0)",
   "linear-gradient(135deg, #A7F3D0, #BAE6FD)",
   "linear-gradient(135deg, #FDE68A, #FECACA)",
-  "linear-gradient(135deg, #C7D2FE, #FBCFE8)",
+  "linear-gradient(135deg, #BAE6FD, #FED7AA)",
   "linear-gradient(135deg, #FECDD3, #FEF3C7)",
 ];
 
@@ -183,7 +183,7 @@ function StashPageBody({
     let cancelled = false;
     setInsightsLoaded(false);
     Promise.allSettled([
-      getActivityTimeline(365, "day", stash.workspace_id),
+      getActivityTimeline(30, "day", stash.workspace_id),
       getEmbeddingProjection(500, undefined, stash.workspace_id),
     ]).then(([t, p]) => {
       if (cancelled) return;
@@ -289,6 +289,7 @@ function StashPageBody({
 
         <StashDescriptionEditor
           stashId={stash.id}
+          workspaceId={stash.workspace_id}
           description={stash.description}
           canEdit={can_write}
           onSaved={() => {
@@ -339,7 +340,9 @@ function StashPageBody({
         {/* Visualizations: human/agent session activity + 3D embedding view of the
             owning workspace — same shape as workspace home. */}
         <section className="mt-8">
-          <div className="sys-label mb-1.5">Human / agent commits — past year</div>
+          <div className="sys-label mb-1.5">
+            Human / agent commits — last 30 days
+          </div>
           <div className="card-soft overflow-x-auto p-3">
             {!insightsLoaded ? (
               <SkeletonBlock className="h-40 w-full" />
@@ -528,11 +531,13 @@ function StashIconUpload({
 
 function StashDescriptionEditor({
   stashId,
+  workspaceId,
   description,
   canEdit,
   onSaved,
 }: {
   stashId: string;
+  workspaceId: string;
   description: string;
   canEdit: boolean;
   onSaved: () => void;
@@ -546,6 +551,7 @@ function StashDescriptionEditor({
         canEdit={canEdit}
         placeholder="Describe this Stash…"
         ariaLabel="Stash description"
+        workspaceId={workspaceId}
         onSave={async (html) => {
           await updateStash(stashId, { description: html });
           onSaved();

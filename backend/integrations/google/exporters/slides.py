@@ -24,7 +24,9 @@ from ...storage import get_valid_token
 
 logger = logging.getLogger(__name__)
 
-DRIVE_UPLOAD_URL = "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&supportsAllDrives=true"
+DRIVE_UPLOAD_URL = (
+    "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&supportsAllDrives=true"
+)
 DRIVE_FILE_URL = "https://www.googleapis.com/drive/v3/files/{file_id}?fields=id,webViewLink"
 
 
@@ -39,12 +41,16 @@ async def _export(user_id: UUID, page_id: UUID) -> dict:
 
     boundary = "stash-slides-upload-boundary"
     multipart = (
-        f"--{boundary}\r\n"
-        "Content-Type: application/json; charset=UTF-8\r\n\r\n"
-        f"{_json_dumps(metadata)}\r\n"
-        f"--{boundary}\r\n"
-        "Content-Type: application/vnd.openxmlformats-officedocument.presentationml.presentation\r\n\r\n"
-    ).encode("utf-8") + pptx_bytes + f"\r\n--{boundary}--\r\n".encode("utf-8")
+        (
+            f"--{boundary}\r\n"
+            "Content-Type: application/json; charset=UTF-8\r\n\r\n"
+            f"{_json_dumps(metadata)}\r\n"
+            f"--{boundary}\r\n"
+            "Content-Type: application/vnd.openxmlformats-officedocument.presentationml.presentation\r\n\r\n"
+        ).encode()
+        + pptx_bytes
+        + f"\r\n--{boundary}--\r\n".encode()
+    )
 
     headers = {
         "Authorization": f"Bearer {access_token}",

@@ -67,7 +67,7 @@ MSG
   exit 0
 fi
 
-# Stdin is a real terminal — hand off to the questionnaire. `stash login`
+# Stdin is a real terminal; launch the questionnaire. `stash login`
 # asks scope, managed-vs-self-host, browser sign-in, workspace, and the
 # Claude Code plugin install (when detected).
 exec stash login

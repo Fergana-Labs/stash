@@ -13,6 +13,7 @@ import {
   getSessionEvents,
   getWorkspaceSidebar,
   listObjectStashes,
+  trashItem,
   type SessionDetail,
   type SessionEvent,
   type WorkspaceStash,
@@ -68,11 +69,11 @@ function eventToTurn(ev: SessionEvent): MessageTurn {
 
 const AVATAR_PALETTE: { bg: string; fg: string }[] = [
   { bg: "bg-rose-200", fg: "text-rose-800" },
-  { bg: "bg-indigo-200", fg: "text-indigo-800" },
+  { bg: "bg-orange-200", fg: "text-orange-800" },
   { bg: "bg-emerald-200", fg: "text-emerald-800" },
   { bg: "bg-amber-200", fg: "text-amber-900" },
   { bg: "bg-sky-200", fg: "text-sky-800" },
-  { bg: "bg-fuchsia-200", fg: "text-fuchsia-800" },
+  { bg: "bg-teal-200", fg: "text-teal-800" },
 ];
 
 function avatarFor(name: string) {
@@ -173,7 +174,7 @@ export default function SessionViewerPage() {
               <DownloadMenu
                 options={[
                   {
-                    label: "JSONL transcript",
+                    label: "Download transcript (.jsonl)",
                     onSelect: async () => {
                       const path = `/api/v1/workspaces/${workspaceId}/transcripts/${encodeURIComponent(
                         sessionId
@@ -191,6 +192,30 @@ export default function SessionViewerPage() {
                       URL.revokeObjectURL(url);
                     },
                   },
+                  ...(sessionDetail
+                    ? [
+                        {
+                          label: "Delete",
+                          destructive: true,
+                          onSelect: async () => {
+                            if (
+                              !window.confirm(
+                                `Move session "${sessionId}" to trash?`
+                              )
+                            )
+                              return;
+                            try {
+                              await trashItem(workspaceId, "session", sessionDetail.id);
+                              router.push(`/workspaces/${workspaceId}/sessions`);
+                            } catch (e) {
+                              setError(
+                                e instanceof Error ? e.message : "Delete failed"
+                              );
+                            }
+                          },
+                        },
+                      ]
+                    : []),
                 ]}
               />
             </div>
@@ -379,7 +404,7 @@ function MessageRow({ turn, index }: { turn: MessageTurn; index: number }) {
               <span className="tag tag-human">human</span>
             )}
             {turn.toolName && (
-              <span className="rounded bg-indigo-50 px-1.5 py-0 font-mono text-[10.5px] text-indigo-700 ring-1 ring-indigo-200">
+              <span className="rounded bg-surface px-1.5 py-0 font-mono text-[10.5px] text-dim ring-1 ring-border">
                 {turn.toolName}
               </span>
             )}

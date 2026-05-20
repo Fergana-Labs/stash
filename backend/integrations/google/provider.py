@@ -118,11 +118,7 @@ class GoogleIntegration(Integration):
 
 def _payload_to_tokenset(payload: dict) -> TokenSet:
     expires_in = payload.get("expires_in")
-    expires_at = (
-        datetime.now(UTC) + timedelta(seconds=int(expires_in))
-        if expires_in
-        else None
-    )
+    expires_at = datetime.now(UTC) + timedelta(seconds=int(expires_in)) if expires_in else None
     scopes_raw = payload.get("scope") or ""
     scopes = [s for s in scopes_raw.split() if s]
     return TokenSet(

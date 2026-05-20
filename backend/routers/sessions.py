@@ -20,6 +20,7 @@ from ..services import (
     memory_service,
     permission_service,
     session_service,
+    session_title_service,
     storage_service,
     workspace_service,
 )
@@ -37,7 +38,7 @@ class SessionUpsertRequest(BaseModel):
     files_touched: list[str] = Field(default_factory=list)
 
 
-def _session_response(row: dict) -> dict:
+def _session_response(row: dict, title: str | None = None) -> dict:
     files_touched = row.get("files_touched") or []
     if isinstance(files_touched, str):
         files_touched = json.loads(files_touched)
@@ -45,10 +46,13 @@ def _session_response(row: dict) -> dict:
         "id": str(row["id"]),
         "workspace_id": str(row["workspace_id"]),
         "session_id": row["session_id"],
+        "title": title
+        or session_title_service.title_from_text(
+            row.get("title_source"),
+            row["session_id"],
+        ),
         "agent_name": row.get("agent_name") or "",
         "cwd": row.get("cwd"),
-        "summary": row.get("summary"),
-        "summary_status": row.get("summary_status"),
         "files_touched": files_touched,
         "started_at": row.get("started_at"),
         "finished_at": row.get("finished_at"),
@@ -83,6 +87,13 @@ async def list_my_sessions(
     timestamps, and a preview of the first prompt."""
     pool = get_pool()
     args: list = [current_user["id"]]
+    title_where = [
+        "he_title.session_id IS NOT NULL",
+        "(he_title.workspace_id IN (SELECT workspace_id FROM workspace_members WHERE user_id = $1) "
+        "OR he_title.created_by = $1)",
+        f"(he_title.workspace_id IS NULL OR {memory_service.readable_session_event_condition('he_title', 1)})",
+        "NULLIF(BTRIM(he_title.content), '') IS NOT NULL",
+    ]
     where = [
         "he.session_id IS NOT NULL",
         "(he.workspace_id IN (SELECT workspace_id FROM workspace_members WHERE user_id = $1) "
@@ -92,9 +103,28 @@ async def list_my_sessions(
     if workspace_id is not None:
         args.append(workspace_id)
         where.append(f"he.workspace_id = ${len(args)}")
+        title_where.append(f"he_title.workspace_id = ${len(args)}")
 
     rows = await pool.fetch(
         f"""
+        WITH title_sources AS (
+          SELECT DISTINCT ON (he_title.workspace_id, he_title.session_id)
+            he_title.workspace_id,
+            he_title.session_id,
+            LEFT(he_title.content, 240) AS title_source
+          FROM history_events he_title
+          WHERE {' AND '.join(title_where)}
+          ORDER BY
+            he_title.workspace_id,
+            he_title.session_id,
+            CASE
+              WHEN he_title.event_type IN ('user_message', 'user_prompt', 'prompt', 'message', 'user') THEN 0
+              WHEN he_title.event_type IN ('assistant_message', 'assistant') THEN 1
+              ELSE 2
+            END,
+            he_title.created_at,
+            he_title.id
+        )
         SELECT
           he.session_id,
           he.workspace_id,
@@ -102,22 +132,20 @@ async def list_my_sessions(
           (ARRAY_AGG(NULLIF(u.display_name, '') ORDER BY he.created_at)
            FILTER (WHERE NULLIF(u.display_name, '') IS NOT NULL))[1] AS user_name,
           MAX(he.agent_name) AS agent_name,
+          title_sources.title_source,
           COUNT(*)::INT AS event_count,
           MIN(he.created_at) AS started_at,
-          MAX(he.created_at) AS last_event_at,
-          (
-            SELECT LEFT(he2.content, 240) FROM history_events he2
-            WHERE he2.session_id = he.session_id
-              AND he2.workspace_id IS NOT DISTINCT FROM he.workspace_id
-              AND (he2.workspace_id IS NOT NULL OR he2.created_by = $1)
-              AND he2.event_type IN ('user_prompt', 'prompt', 'message')
-            ORDER BY he2.created_at LIMIT 1
-          ) AS first_prompt_preview
+          MAX(he.created_at) AS last_event_at
         FROM history_events he
+        LEFT JOIN title_sources ON title_sources.session_id = he.session_id
+          AND title_sources.workspace_id IS NOT DISTINCT FROM he.workspace_id
         LEFT JOIN workspaces w ON w.id = he.workspace_id
         LEFT JOIN users u ON u.id = he.created_by
+        LEFT JOIN sessions s ON s.workspace_id IS NOT DISTINCT FROM he.workspace_id
+          AND s.session_id = he.session_id
+          AND s.deleted_at IS NULL
         WHERE {' AND '.join(where)}
-        GROUP BY he.session_id, he.workspace_id, w.name
+        GROUP BY he.session_id, he.workspace_id, w.name, title_sources.title_source
         ORDER BY last_event_at DESC, user_name ASC, session_id ASC
         LIMIT {int(limit)}
         """,
@@ -127,6 +155,10 @@ async def list_my_sessions(
     for session in sessions:
         if not session["user_name"]:
             raise RuntimeError(f"Session {session['session_id']} has no author display_name")
+        session["title"] = session_title_service.title_from_text(
+            session.pop("title_source"),
+            session["session_id"],
+        )
     return {"sessions": sessions}
 
 
@@ -167,9 +199,82 @@ async def get_workspace_session(
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
 
-    payload = _session_response(session)
+    events = await memory_service.read_session_events(workspace_id, session_id, current_user["id"])
+    payload = _session_response(
+        session,
+        title=session_title_service.title_from_events(events, session_id),
+    )
     payload["artifacts"] = await _session_artifacts(session["id"])
     return payload
+
+
+async def _check_session_write(
+    workspace_id: UUID,
+    session_row_id: UUID,
+    user_id: UUID,
+) -> dict:
+    """Resolve a session row that the user is allowed to mutate.
+
+    Returns the raw row (including trashed). The trash flows need to
+    operate on rows the live-only `get_session_by_id` won't return.
+    """
+    if not await workspace_service.can_write(workspace_id, user_id):
+        raise HTTPException(status_code=403, detail="Viewers can read but not modify sessions")
+    pool = get_pool()
+    row = await pool.fetchrow(
+        "SELECT id, workspace_id FROM sessions WHERE id = $1",
+        session_row_id,
+    )
+    if not row or row["workspace_id"] != workspace_id:
+        raise HTTPException(status_code=404, detail="Session not found")
+    can_write = await permission_service.check_access(
+        "session",
+        session_row_id,
+        user_id,
+        workspace_id=workspace_id,
+        require_write=True,
+    )
+    if not can_write:
+        raise HTTPException(status_code=404, detail="Session not found")
+    return dict(row)
+
+
+@router.delete("/workspaces/{workspace_id}/sessions/{session_row_id}", status_code=204)
+async def delete_workspace_session(
+    workspace_id: UUID,
+    session_row_id: UUID,
+    current_user: dict = Depends(get_current_user),
+):
+    """Soft delete: stamps deleted_at + deleted_by."""
+    await _check_session_write(workspace_id, session_row_id, current_user["id"])
+    deleted = await session_service.delete_session(session_row_id, workspace_id, current_user["id"])
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+
+@router.post("/workspaces/{workspace_id}/sessions/{session_row_id}/restore", status_code=204)
+async def restore_workspace_session(
+    workspace_id: UUID,
+    session_row_id: UUID,
+    current_user: dict = Depends(get_current_user),
+):
+    await _check_session_write(workspace_id, session_row_id, current_user["id"])
+    restored = await session_service.restore_session(session_row_id, workspace_id)
+    if not restored:
+        raise HTTPException(status_code=404, detail="Session not in trash")
+
+
+@router.delete("/workspaces/{workspace_id}/sessions/{session_row_id}/purge", status_code=204)
+async def purge_workspace_session(
+    workspace_id: UUID,
+    session_row_id: UUID,
+    current_user: dict = Depends(get_current_user),
+):
+    """Permanent delete — only callable on a session already in trash."""
+    await _check_session_write(workspace_id, session_row_id, current_user["id"])
+    purged = await session_service.purge_session(session_row_id, workspace_id)
+    if not purged:
+        raise HTTPException(status_code=404, detail="Session not in trash")
 
 
 @router.post("/workspaces/{workspace_id}/sessions/{session_row_id}/artifacts", status_code=201)
@@ -287,7 +392,8 @@ async def materialize_session(
     # the display name format without orphaning previously-materialized pages.
     existing = await pool.fetchrow(
         "SELECT id FROM pages "
-        "WHERE workspace_id = $1 AND folder_id = $2 AND metadata->>'session_id' = $3 LIMIT 1",
+        "WHERE workspace_id = $1 AND folder_id = $2 AND metadata->>'session_id' = $3 "
+        "AND deleted_at IS NULL LIMIT 1",
         workspace_id,
         folder["id"],
         session_id,

@@ -114,7 +114,7 @@ export default function NotionImportDialog({
               Import from Notion
             </h2>
             <p className="mt-0.5 text-[12.5px] text-muted">
-              Pages you've shared with the integration appear below. Select one
+              Pages you&apos;ve shared with the integration appear below. Select one
               or more to convert to markdown pages.
             </p>
           </div>

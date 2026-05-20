@@ -31,7 +31,8 @@ def _text_hash(text: str) -> str:
 async def _reconcile_pages() -> int:
     pool = get_pool()
     rows = await pool.fetch(
-        "SELECT id, content_markdown FROM pages WHERE embed_stale LIMIT $1",
+        "SELECT id, content_markdown FROM pages "
+        "WHERE embed_stale AND deleted_at IS NULL LIMIT $1",
         BATCH_SIZE,
     )
     if not rows:

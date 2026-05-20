@@ -62,4 +62,12 @@ describe("MarkdownEditor markdown round-trip", () => {
   it("returns no ids on content without comment spans", () => {
     expect(extractCommentIdsFromMarkdown("plain **bold** *italic* text")).toEqual([]);
   });
+
+  it("preserves workspace file download image URLs", () => {
+    const md =
+      "![diagram](/api/v1/workspaces/ws-1/files/file-1/download)\n";
+    const doc = markdownToInitialJSON(md);
+    const out = serializeMarkdown(doc, md);
+    expect(out).toBe("![diagram](/api/v1/workspaces/ws-1/files/file-1/download)");
+  });
 });

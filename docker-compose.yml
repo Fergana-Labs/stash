@@ -146,6 +146,22 @@ services:
     depends_on:
       - backend
 
+  collab:
+    build:
+      context: ./collab
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "3458:3458"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      backend:
+        condition: service_started
+    environment:
+      DATABASE_URL: postgresql://stash:stash@postgres:5432/stash
+      BACKEND_URL: http://backend:3456
+
 volumes:
   postgres_data:
   redis_data:

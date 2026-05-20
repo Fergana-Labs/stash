@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useRef, useState, type DragEvent, type FormEvent, type MouseEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent, type FormEvent, type MouseEvent } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import {
   createPage,
@@ -33,16 +33,20 @@ import {
 import type { User, Workspace } from "../lib/types";
 import {
   ActivityIcon,
+  CloseIcon,
   DiscoverIcon,
   FileIcon,
   FolderIcon,
   HelpIcon,
   PageIcon,
   PersonIcon,
+  PinIcon,
+  SearchIcon,
   SessionsIcon,
   SettingsIcon,
   StashIcon,
   TableIcon,
+  TrashIcon,
   WorkspaceIcon,
 } from "./StashIcons";
 
@@ -78,16 +82,29 @@ interface SidebarDropState {
 
 const OPEN_WORKSPACES_KEY = "stash_sidebar_open_workspaces";
 const OPEN_SECTIONS_KEY = "stash_sidebar_open_sections";
-const PINNED_FS_KEY = "stash_sidebar_pinned_files_folders";
-const PINNED_FS_LABELS_KEY = "stash_sidebar_pinned_files_folders_labels";
+const OPEN_STASHES_KEY = "stash_sidebar_open_stashes";
+const PINNED_ITEMS_KEY = "stash_sidebar_pinned_items";
+const PINNED_ITEM_LABELS_KEY = "stash_sidebar_pinned_item_labels";
 const LAST_WORKSPACE_KEY = "stash_sidebar_last_workspace";
 const PREVIEW_ITEM_LIMIT = 10;
-const EMPTY_PIN_STATE = { folders: [], files: [] };
+const EMPTY_PIN_STATE: PinnedItems = { sessions: [], folders: [], files: [] };
+const EMPTY_PIN_LABELS: PinnedLabels = { sessions: {}, folders: {}, files: {} };
 
-type PinKind = "folder" | "file";
+type PinKind = "session" | "folder" | "file";
+type PinnedItems = {
+  sessions: string[];
+  folders: string[];
+  files: string[];
+};
 type PinnedLabels = {
+  sessions: Record<string, string>;
   folders: Record<string, string>;
   files: Record<string, string>;
+};
+const PIN_KEYS: Record<PinKind, keyof PinnedItems> = {
+  session: "sessions",
+  folder: "folders",
+  file: "files",
 };
 
 function readBooleanMap(key: string): Record<string, boolean> {
@@ -110,49 +127,53 @@ function writeBooleanMap(key: string, value: Record<string, boolean>) {
   window.localStorage.setItem(key, JSON.stringify(value));
 }
 
-function readPinnedMap(): Record<string, { folders: string[]; files: string[] }> {
+function readPinnedMap(): Record<string, PinnedItems> {
   if (typeof window === "undefined") return {};
 
-  const raw = window.localStorage.getItem(PINNED_FS_KEY);
+  const raw = window.localStorage.getItem(PINNED_ITEMS_KEY);
   if (!raw) return {};
 
   try {
     const parsed = JSON.parse(raw);
     return typeof parsed === "object" && parsed !== null ? parsed : {};
   } catch {
-    window.localStorage.removeItem(PINNED_FS_KEY);
+    window.localStorage.removeItem(PINNED_ITEMS_KEY);
     return {};
   }
 }
 
-function writePinnedMap(value: Record<string, { folders: string[]; files: string[] }>) {
+function writePinnedMap(value: Record<string, PinnedItems>) {
   if (typeof window === "undefined") return;
-  window.localStorage.setItem(PINNED_FS_KEY, JSON.stringify(value));
+  window.localStorage.setItem(PINNED_ITEMS_KEY, JSON.stringify(value));
 }
 
 function readPinnedLabelMap(): Record<string, PinnedLabels> {
   if (typeof window === "undefined") return {};
 
-  const raw = window.localStorage.getItem(PINNED_FS_LABELS_KEY);
+  const raw = window.localStorage.getItem(PINNED_ITEM_LABELS_KEY);
   if (!raw) return {};
 
   try {
     const parsed = JSON.parse(raw);
     return typeof parsed === "object" && parsed !== null ? parsed : {};
   } catch {
-    window.localStorage.removeItem(PINNED_FS_KEY);
-    window.localStorage.removeItem(PINNED_FS_LABELS_KEY);
+    window.localStorage.removeItem(PINNED_ITEMS_KEY);
+    window.localStorage.removeItem(PINNED_ITEM_LABELS_KEY);
     return {};
   }
 }
 
 function writePinnedLabelMap(value: Record<string, PinnedLabels>) {
   if (typeof window === "undefined") return;
-  window.localStorage.setItem(PINNED_FS_LABELS_KEY, JSON.stringify(value));
+  window.localStorage.setItem(PINNED_ITEM_LABELS_KEY, JSON.stringify(value));
 }
 
 function sectionKey(workspaceId: string, section: SidebarSection): string {
   return `${workspaceId}:${section}`;
+}
+
+function stashOpenKey(workspaceId: string, stashId: string): string {
+  return `${workspaceId}:${stashId}`;
 }
 
 function dropKey(workspaceId: string, section: DropSection): string {
@@ -277,10 +298,10 @@ function PinMenu({
   onTogglePin,
   menuRef,
 }: {
-      state: PinMenuState;
-      onClose: () => void;
-      onTogglePin: () => void;
-      menuRef: { current: HTMLDivElement | null };
+  state: PinMenuState;
+  onClose: () => void;
+  onTogglePin: () => void;
+  menuRef: { current: HTMLDivElement | null };
 }) {
   return (
     <div
@@ -424,11 +445,13 @@ function WorkspaceTree({
   dropState,
   onDropFiles,
   onDropHover,
+  pinnedSessions,
   pinnedFolders,
   pinnedFiles,
   pinnedLabels,
   onPinToggle,
-  onUnpinAll,
+  onUnpinSessions,
+  onUnpinFiles,
   onAddSession,
   onAddPage,
   onAddStash,
@@ -441,11 +464,13 @@ function WorkspaceTree({
   dropState: SidebarDropState;
   onDropFiles: (workspaceId: string, section: DropSection, files: FileList) => void;
   onDropHover: (workspaceId: string, section: DropSection, active: boolean) => void;
+  pinnedSessions: string[];
   pinnedFolders: string[];
   pinnedFiles: string[];
   pinnedLabels: PinnedLabels;
   onPinToggle: (kind: PinKind, workspaceId: string, id: string, label?: string) => void;
-  onUnpinAll: (workspaceId: string) => void;
+  onUnpinSessions: (workspaceId: string) => void;
+  onUnpinFiles: (workspaceId: string) => void;
   onAddSession: (workspaceId: string) => void;
   onAddPage: (workspaceId: string) => void;
   onAddStash: (workspaceId: string) => void;
@@ -471,7 +496,6 @@ function WorkspaceTree({
       onDropFiles(workspace.id, section, event.dataTransfer.files);
     },
   });
-  const sessionsDrop = dropState.key === dropKey(workspace.id, "sessions") ? dropState : null;
 
   // pathname kept in props for parity with active-row styling deeper in the tree.
   void pathname;
@@ -486,56 +510,19 @@ function WorkspaceTree({
         onAddStash={() => onAddStash(workspace.id)}
       />
 
-      <details
+      <SessionsBlock
+        workspace={workspace}
+        sessions={spine?.sessions ?? []}
         open={openSections.sessions}
-        onToggle={(e) => onSectionOpenChange("sessions", e.currentTarget.open)}
-        className="group/section text-[13px]"
-        {...dropProps("sessions")}
-        >
-          <summary
-            onClick={(e) => {
-              e.preventDefault();
-              onSectionOpenChange("sessions", true);
-            }}
-            className={
-              "page-row flex items-center gap-1.5 rounded-md px-2 py-1 hover:bg-raised " +
-              (sessionsDrop?.status === "over"
-                ? "bg-[var(--color-brand-50)] text-[var(--color-brand-800)] ring-1 ring-[var(--color-brand-300)]"
-                : "")
-            }
-          >
-            <Link
-              href={`/workspaces/${workspace.id}/sessions`}
-              onClick={(event) => {
-                event.stopPropagation();
-                onSectionOpenChange("sessions", true);
-              }}
-              className="flex-1 truncate text-[11px] font-semibold uppercase tracking-wide text-muted hover:text-foreground"
-            >
-              Sessions
-            </Link>
-            <ChevronToggle
-              open={openSections.sessions}
-              onToggle={() => onSectionOpenChange("sessions", !openSections.sessions)}
-              hoverOnly
-            />
-          </summary>
-        <div className="ml-3 space-y-0.5 border-l border-border pl-2">
-            {sessionsDrop?.message ? <DropMessage state={sessionsDrop} /> : null}
-            {groupSidebarSessions(spine?.sessions ?? []).map((group, index) => (
-              <SessionTreeDetails
-                key={group.dateKey}
-                workspaceId={workspace.id}
-                group={group}
-                initialOpen={index === 0}
-              />
-            ))}
-            {(!spine || spine.sessions.length === 0) && (
-              <div className="px-2 py-1 text-[11px] italic text-muted">empty</div>
-            )}
-            <SectionAddRow label="New session" onClick={() => onAddSession(workspace.id)} />
-          </div>
-        </details>
+        onOpenChange={(nextOpen) => onSectionOpenChange("sessions", nextOpen)}
+        dropState={dropState}
+        dropProps={dropProps("sessions")}
+        pinnedSessions={pinnedSessions}
+        pinnedLabels={pinnedLabels}
+        onPinToggle={(kind, id, label) => onPinToggle(kind, workspace.id, id, label)}
+        onUnpinAll={() => onUnpinSessions(workspace.id)}
+        onAddSession={() => onAddSession(workspace.id)}
+      />
 
         <FilesBlock
           workspace={workspace}
@@ -548,9 +535,17 @@ function WorkspaceTree({
           pinnedFiles={pinnedFiles}
           pinnedLabels={pinnedLabels}
           onPinToggle={(kind, id, label) => onPinToggle(kind, workspace.id, id, label)}
-          onUnpinAll={() => onUnpinAll(workspace.id)}
+          onUnpinAll={() => onUnpinFiles(workspace.id)}
           onAddPage={() => onAddPage(workspace.id)}
         />
+
+        <Link
+          href={`/workspaces/${workspace.id}/trash`}
+          className="page-row flex items-center gap-1.5 rounded-md px-2 py-1 text-[13px] text-muted hover:bg-raised hover:text-foreground"
+        >
+          <span className="text-muted"><TrashIcon /></span>
+          <span className="flex-1 truncate">Trash</span>
+        </Link>
     </div>
   );
 }
@@ -569,6 +564,42 @@ function sessionLabelForSidebar(session: WorkspaceSidebarSession): string {
 
 function displaySidebarSessionUser(raw: string | null | undefined): string {
   return requireSessionUserName(raw);
+}
+
+function sessionTimestamp(session: WorkspaceSidebarSession): number {
+  const date = sessionDate(session.last_at || session.updated_at);
+  return date ? date.getTime() : 0;
+}
+
+function sortSessionsByRecency(
+  sessions: WorkspaceSidebarSession[]
+): WorkspaceSidebarSession[] {
+  return [...sessions].sort((a, b) => {
+    const timeDiff = sessionTimestamp(b) - sessionTimestamp(a);
+    if (timeDiff !== 0) return timeDiff;
+    return sessionLabelForSidebar(a).localeCompare(sessionLabelForSidebar(b));
+  });
+}
+
+function searchSidebarSessions(
+  sessions: WorkspaceSidebarSession[],
+  query: string
+): WorkspaceSidebarSession[] {
+  const terms = query.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  if (terms.length === 0) return [];
+
+  return sortSessionsByRecency(sessions).filter((session) => {
+    const searchable = [
+      session.title,
+      session.session_id,
+      session.user_name,
+      session.agent_name,
+    ]
+      .filter(Boolean)
+      .join(" ")
+      .toLowerCase();
+    return terms.every((term) => searchable.includes(term));
+  });
 }
 
 type SessionTreeDayGroup = {
@@ -669,10 +700,16 @@ function groupSidebarSessions(sessions: WorkspaceSidebarSession[]): SessionTreeD
     })
     .map(([key, usersByName]) => {
       const users = Array.from(usersByName.entries())
-        .sort(([a], [b]) => a.localeCompare(b))
+        .sort(([a, aSessions], [b, bSessions]) => {
+          const timeDiff =
+            Math.max(...bSessions.map(sessionTimestamp)) -
+            Math.max(...aSessions.map(sessionTimestamp));
+          if (timeDiff !== 0) return timeDiff;
+          return a.localeCompare(b);
+        })
         .map(([user, sessionRows]) => ({
           user,
-          sessions: sessionRows,
+          sessions: sortSessionsByRecency(sessionRows),
         }));
       const total = users.reduce((sum, b) => sum + b.sessions.length, 0);
       return {
@@ -684,16 +721,371 @@ function groupSidebarSessions(sessions: WorkspaceSidebarSession[]): SessionTreeD
     });
 }
 
+function ShowMoreRow({
+  label,
+  onClick,
+}: {
+  label: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={(event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        onClick();
+      }}
+      className="flex w-full items-center rounded-md px-2 py-1 text-left text-[11px] font-medium text-[var(--color-brand-700)] hover:bg-[var(--color-brand-50)]"
+    >
+      {label}
+    </button>
+  );
+}
+
+function showMoreLabel(noun: string, hiddenCount: number): string {
+  return `Show ${Math.min(PREVIEW_ITEM_LIMIT, hiddenCount)} more ${noun}`;
+}
+
+function SidebarSearchField({
+  label,
+  value,
+  onChange,
+  placeholder,
+  onClear,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  placeholder: string;
+  onClear: () => void;
+}) {
+  return (
+    <div className="relative px-1 py-1">
+      <span className="pointer-events-none absolute left-3 top-1/2 flex h-4 w-4 -translate-y-1/2 items-center justify-center text-[14px] text-muted">
+        <SearchIcon />
+      </span>
+      <input
+        type="text"
+        aria-label={label}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        placeholder={placeholder}
+        className="w-full rounded-md border border-border bg-surface py-1 pl-7 pr-7 text-[12px] text-foreground outline-none placeholder:text-muted focus:border-[var(--color-brand-400)]"
+      />
+      {value ? (
+        <button
+          type="button"
+          aria-label={`Clear ${label.toLowerCase()}`}
+          onClick={onClear}
+          className="absolute right-2 top-1/2 flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded text-muted hover:bg-raised hover:text-foreground"
+        >
+          <CloseIcon className="text-[14px]" />
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
+function SessionNavRow({
+  workspaceId,
+  session,
+  onPinMenu,
+}: {
+  workspaceId: string;
+  session: WorkspaceSidebarSession;
+  onPinMenu?: (event: MouseEvent<HTMLAnchorElement>, session: WorkspaceSidebarSession) => void;
+}) {
+  const pathname = usePathname();
+  const href = `/workspaces/${workspaceId}/sessions/${encodeURIComponent(session.session_id)}`;
+  return (
+    <NavRow
+      href={href}
+      icon={<span className="text-muted"><SessionsIcon /></span>}
+      label={sessionLabelForSidebar(session)}
+      active={pathname === href}
+      onContextMenu={(event) => onPinMenu?.(event, session)}
+    />
+  );
+}
+
+function SessionsBlock({
+  workspace,
+  sessions,
+  open,
+  onOpenChange,
+  dropState,
+  dropProps,
+  pinnedSessions,
+  pinnedLabels,
+  onPinToggle,
+  onUnpinAll,
+  onAddSession,
+}: {
+  workspace: WorkspaceNode;
+  sessions: WorkspaceSidebarSession[];
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  dropState: SidebarDropState;
+  dropProps: {
+    onDragOver: (event: DragEvent<HTMLElement>) => void;
+    onDragLeave: (event: DragEvent<HTMLElement>) => void;
+    onDrop: (event: DragEvent<HTMLElement>) => void;
+  };
+  pinnedSessions: string[];
+  pinnedLabels: PinnedLabels;
+  onPinToggle: (kind: PinKind, id: string, label?: string) => void;
+  onUnpinAll: () => void;
+  onAddSession: () => void;
+}) {
+  const pathname = usePathname();
+  const [query, setQuery] = useState("");
+  const [visiblePeriodCount, setVisiblePeriodCount] = useState(PREVIEW_ITEM_LIMIT);
+  const [visibleSearchCount, setVisibleSearchCount] = useState(PREVIEW_ITEM_LIMIT);
+  const [pinMenu, setPinMenu] = useState<PinMenuState | null>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const sessionsDrop = dropState.key === dropKey(workspace.id, "sessions") ? dropState : null;
+  const pinnedSessionSet = useMemo(() => new Set(pinnedSessions), [pinnedSessions]);
+  const sessionById = useMemo(
+    () => new Map(sessions.map((session) => [session.session_id, session])),
+    [sessions]
+  );
+  const unpinnedSessions = useMemo(
+    () => sessions.filter((session) => !pinnedSessionSet.has(session.session_id)),
+    [sessions, pinnedSessionSet]
+  );
+  const groups = useMemo(() => groupSidebarSessions(unpinnedSessions), [unpinnedSessions]);
+  const searchResults = useMemo(
+    () => searchSidebarSessions(sessions, query),
+    [sessions, query]
+  );
+  const queryActive = query.trim().length > 0;
+  const visibleGroups = groups.slice(0, visiblePeriodCount);
+  const hiddenGroupCount = groups.length - visibleGroups.length;
+  const visibleSearchResults = searchResults.slice(0, visibleSearchCount);
+  const hiddenSearchCount = searchResults.length - visibleSearchResults.length;
+  const pinnedRows = pinnedSessions.map((sessionId) => {
+    const session = sessionById.get(sessionId);
+    return {
+      id: sessionId,
+      label: pinnedLabels.sessions[sessionId] ?? (session ? sessionLabelForSidebar(session) : "Session"),
+      href: `/workspaces/${workspace.id}/sessions/${encodeURIComponent(sessionId)}`,
+    };
+  });
+  const menuClamp =
+    pinMenu && typeof window !== "undefined"
+      ? {
+          x: Math.max(0, Math.min(pinMenu.x, window.innerWidth - 190)),
+          y: Math.max(0, Math.min(pinMenu.y, window.innerHeight - 72)),
+        }
+      : pinMenu;
+
+  useEscapeKey(!!pinMenu, () => setPinMenu(null));
+
+  useEffect(() => {
+    setVisibleSearchCount(PREVIEW_ITEM_LIMIT);
+  }, [query]);
+
+  useEffect(() => {
+    if (!pinMenu) return;
+
+    const onDown = (event: globalThis.MouseEvent) => {
+      if (menuRef.current && menuRef.current.contains(event.target as Node)) return;
+      setPinMenu(null);
+    };
+
+    document.addEventListener("mousedown", onDown);
+
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+    };
+  }, [pinMenu]);
+
+  function showSessionPinMenu(
+    event: MouseEvent<HTMLElement>,
+    sessionId: string,
+    label: string
+  ) {
+    event.preventDefault();
+    event.stopPropagation();
+    setPinMenu({
+      kind: "session",
+      id: sessionId,
+      label,
+      pinned: pinnedSessionSet.has(sessionId),
+      x: event.clientX,
+      y: event.clientY,
+    });
+  }
+
+  return (
+    <details
+      open={open}
+      onToggle={(event) => onOpenChange(event.currentTarget.open)}
+      className="group/section text-[13px]"
+      {...dropProps}
+    >
+      <summary
+        onClick={(event) => {
+          event.preventDefault();
+          onOpenChange(true);
+        }}
+        className={
+          "page-row flex items-center gap-1.5 rounded-md px-2 py-1 hover:bg-raised " +
+          (sessionsDrop?.status === "over"
+            ? "bg-[var(--color-brand-50)] text-[var(--color-brand-800)] ring-1 ring-[var(--color-brand-300)]"
+            : "")
+        }
+      >
+        <Link
+          href={`/workspaces/${workspace.id}/sessions`}
+          onClick={(event) => {
+            event.stopPropagation();
+            onOpenChange(true);
+          }}
+          className="flex-1 truncate text-[11px] font-semibold uppercase tracking-wide text-muted hover:text-foreground"
+        >
+          Sessions
+        </Link>
+        <ChevronToggle
+          open={open}
+          onToggle={() => onOpenChange(!open)}
+          hoverOnly
+        />
+      </summary>
+      <div className="ml-3 space-y-0.5 border-l border-border pl-2">
+        {sessionsDrop?.message ? <DropMessage state={sessionsDrop} /> : null}
+        <SidebarSearchField
+          label="Search sessions"
+          value={query}
+          onChange={setQuery}
+          placeholder="Search sessions"
+          onClear={() => setQuery("")}
+        />
+        {queryActive ? (
+          <div className="space-y-0.5">
+            {visibleSearchResults.map((session) => (
+              <SessionNavRow
+                key={session.session_id}
+                workspaceId={workspace.id}
+                session={session}
+                onPinMenu={(event, row) =>
+                  showSessionPinMenu(
+                    event,
+                    row.session_id,
+                    sessionLabelForSidebar(row)
+                  )
+                }
+              />
+            ))}
+            {hiddenSearchCount > 0 ? (
+              <ShowMoreRow
+                label={showMoreLabel("results", hiddenSearchCount)}
+                onClick={() =>
+                  setVisibleSearchCount((current) => current + PREVIEW_ITEM_LIMIT)
+                }
+              />
+            ) : null}
+            {searchResults.length === 0 ? (
+              <div className="px-2 py-1 text-[11px] italic text-muted">no matches</div>
+            ) : null}
+          </div>
+        ) : (
+          <>
+            {pinnedRows.length > 0 ? (
+              <div className="space-y-0.5">
+                <div className="flex items-center justify-between gap-2 px-2 py-0.5">
+                  <span className="flex min-w-0 items-center gap-1 text-[10px] uppercase tracking-wide text-muted">
+                    <PinIcon className="text-[12px]" />
+                    <span className="truncate">Pinned ({pinnedRows.length})</span>
+                  </span>
+                  <button
+                    type="button"
+                    onClick={(event) => {
+                      event.preventDefault();
+                      onUnpinAll();
+                    }}
+                    className="rounded px-1 py-0.5 text-[10px] text-[var(--color-brand-700)] hover:bg-[var(--color-brand-50)]"
+                    aria-label="Unpin all sessions"
+                  >
+                    Unpin all
+                  </button>
+                </div>
+                {pinnedRows.map((session) => (
+                  <NavRow
+                    key={`pinned-session-${session.id}`}
+                    href={session.href}
+                    icon={<span className="text-muted"><SessionsIcon /></span>}
+                    label={session.label}
+                    active={pathname === session.href}
+                    onContextMenu={(event) =>
+                      showSessionPinMenu(event, session.id, session.label)
+                    }
+                  />
+                ))}
+              </div>
+            ) : null}
+            {visibleGroups.map((group, index) => (
+              <SessionTreeDetails
+                key={group.dateKey}
+                workspaceId={workspace.id}
+                group={group}
+                initialOpen={index === 0}
+                onSessionPinMenu={(event, session) =>
+                  showSessionPinMenu(
+                    event,
+                    session.session_id,
+                    sessionLabelForSidebar(session)
+                  )
+                }
+              />
+            ))}
+            {hiddenGroupCount > 0 ? (
+              <ShowMoreRow
+                label={showMoreLabel("periods", hiddenGroupCount)}
+                onClick={() =>
+                  setVisiblePeriodCount((current) => current + PREVIEW_ITEM_LIMIT)
+                }
+              />
+            ) : null}
+            {sessions.length === 0 ? (
+              <div className="px-2 py-1 text-[11px] italic text-muted">empty</div>
+            ) : null}
+          </>
+        )}
+        <SectionAddRow label="New session" onClick={onAddSession} />
+        {pinMenu && menuClamp ? (
+          <PinMenu
+            state={{
+              ...pinMenu,
+              x: menuClamp.x,
+              y: menuClamp.y,
+            }}
+            onClose={() => setPinMenu(null)}
+            onTogglePin={() => onPinToggle(pinMenu.kind, pinMenu.id, pinMenu.label)}
+            menuRef={menuRef}
+          />
+        ) : null}
+      </div>
+    </details>
+  );
+}
+
 function SessionTreeDetails({
   workspaceId,
   group,
   initialOpen,
+  onSessionPinMenu,
 }: {
   workspaceId: string;
   group: SessionTreeDayGroup;
   initialOpen?: boolean;
+  onSessionPinMenu?: (event: MouseEvent<HTMLAnchorElement>, session: WorkspaceSidebarSession) => void;
 }) {
   const [open, setOpen] = useState(!!initialOpen);
+  const [visibleUserCount, setVisibleUserCount] = useState(PREVIEW_ITEM_LIMIT);
+  const visibleUsers = group.users.slice(0, visibleUserCount);
+  const hiddenUserCount = group.users.length - visibleUsers.length;
   return (
     <details open={open} className="text-[12.5px]">
       <summary
@@ -715,14 +1107,23 @@ function SessionTreeDetails({
         {group.users.length === 0 ? (
           <div className="px-2 py-1 text-[11px] italic text-muted">no sessions</div>
         ) : (
-          group.users.map((bucket) => (
+          visibleUsers.map((bucket) => (
             <SessionUserFolder
               key={`${group.dateKey}-${bucket.user}`}
               workspaceId={workspaceId}
               bucket={bucket}
+              onSessionPinMenu={onSessionPinMenu}
             />
           ))
         )}
+        {hiddenUserCount > 0 ? (
+          <ShowMoreRow
+            label={showMoreLabel("users", hiddenUserCount)}
+            onClick={() =>
+              setVisibleUserCount((current) => current + PREVIEW_ITEM_LIMIT)
+            }
+          />
+        ) : null}
       </div>
     </details>
   );
@@ -731,14 +1132,18 @@ function SessionTreeDetails({
 function SessionUserFolder({
   workspaceId,
   bucket,
+  onSessionPinMenu,
 }: {
   workspaceId: string;
   bucket: { user: string; sessions: WorkspaceSidebarSession[] };
+  onSessionPinMenu?: (event: MouseEvent<HTMLAnchorElement>, session: WorkspaceSidebarSession) => void;
 }) {
   // Default collapsed — opening a date bucket already reveals N user rows,
   // and auto-expanding each one explodes the whole tree on first paint.
   const [open, setOpen] = useState(false);
-  const pathname = usePathname();
+  const [visibleSessionCount, setVisibleSessionCount] = useState(PREVIEW_ITEM_LIMIT);
+  const visibleSessions = bucket.sessions.slice(0, visibleSessionCount);
+  const hiddenSessionCount = bucket.sessions.length - visibleSessions.length;
   return (
     <details open={open} className="text-[12px]">
       <summary
@@ -757,18 +1162,22 @@ function SessionUserFolder({
         <span className="text-[10px] text-muted">{bucket.sessions.length}</span>
       </summary>
       <div className="ml-2.5 space-y-0.5 border-l border-border pl-2">
-        {bucket.sessions.map((s) => {
-          const href = `/workspaces/${workspaceId}/sessions/${encodeURIComponent(s.session_id)}`;
-          return (
-            <NavRow
-              key={s.session_id}
-              href={href}
-              icon={<span className="text-muted"><SessionsIcon /></span>}
-              label={sessionLabelForSidebar(s)}
-              active={pathname === href}
-            />
-          );
-        })}
+        {visibleSessions.map((s) => (
+          <SessionNavRow
+            key={s.session_id}
+            workspaceId={workspaceId}
+            session={s}
+            onPinMenu={onSessionPinMenu}
+          />
+        ))}
+        {hiddenSessionCount > 0 ? (
+          <ShowMoreRow
+            label={showMoreLabel("sessions", hiddenSessionCount)}
+            onClick={() =>
+              setVisibleSessionCount((current) => current + PREVIEW_ITEM_LIMIT)
+            }
+          />
+        ) : null}
       </div>
     </details>
   );
@@ -905,14 +1314,11 @@ function buildStashTreeItems(
     });
 }
 
-// Each stash row in the sidebar manages its own open/closed state. State is
-// intentionally local (and not persisted) so that the Stashes section follows
-// the same default-collapsed pattern as Files folders and Sessions user
-// folders — opening the Stashes section doesn't explode every stash's
-// contents on the user.
 function StashSidebarRow({
   workspaceId,
   stash,
+  open,
+  onOpenChange,
   foldersById,
   pagesById,
   filesById,
@@ -921,13 +1327,14 @@ function StashSidebarRow({
 }: {
   workspaceId: string;
   stash: WorkspaceSidebarStash;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
   foldersById: Map<string, WorkspaceFolder>;
   pagesById: Map<string, WorkspacePage>;
   filesById: Map<string, WorkspaceFile>;
   sessionById: Map<string, WorkspaceSidebarSession>;
   sessionBySessionId: Map<string, WorkspaceSidebarSession>;
 }) {
-  const [open, setOpen] = useState(false);
   const pathname = usePathname();
   const href = `/stashes/${stash.slug}`;
   const active = pathname === href || pathname.startsWith(`${href}/`);
@@ -953,7 +1360,7 @@ function StashSidebarRow({
         <ChevronToggle
           open={open}
           ariaLabel={`${open ? "Collapse" : "Expand"} ${stash.title}`}
-          onToggle={() => setOpen((current) => !current)}
+          onToggle={() => onOpenChange(!open)}
         />
         <span
           className={
@@ -1069,6 +1476,219 @@ function DropMessage({ state }: { state: SidebarDropState }) {
   );
 }
 
+type FileDirectoryItem =
+  | { kind: "folder"; id: string; label: string }
+  | { kind: "page"; id: string; label: string; content_type?: "markdown" | "html" }
+  | {
+      kind: "file";
+      id: string;
+      label: string;
+      file: Pick<
+        WorkspaceFile,
+        "id" | "name" | "content_type" | "linked_table_id"
+      >;
+    };
+
+type FileSearchItem = FileDirectoryItem & {
+  hrefLabel: string;
+};
+
+function buildFileDirectoryItems(
+  folders: Array<{ id: string; name: string }>,
+  pages: Array<{ id: string; name: string; content_type?: "markdown" | "html" }>,
+  files: Array<
+    Pick<WorkspaceFile, "id" | "name" | "content_type" | "linked_table_id">
+  >
+): FileDirectoryItem[] {
+  return [
+    ...folders.map((folder) => ({
+      kind: "folder" as const,
+      id: folder.id,
+      label: folder.name,
+    })),
+    ...pages.map((page) => ({
+      kind: "page" as const,
+      id: page.id,
+      label: page.name,
+      content_type: page.content_type,
+    })),
+    ...files.map((file) => ({
+      kind: "file" as const,
+      id: file.id,
+      label: file.name,
+      file,
+    })),
+  ];
+}
+
+function searchFileItems(
+  folders: WorkspaceFolder[],
+  pages: WorkspacePage[],
+  files: WorkspaceFile[],
+  query: string
+): FileSearchItem[] {
+  const terms = query.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  if (terms.length === 0) return [];
+
+  const foldersById = new Map(folders.map((folder) => [folder.id, folder]));
+  const pathCache = new Map<string, string>();
+  const rows: FileSearchItem[] = [
+    ...folders.map((folder) => ({
+      kind: "folder" as const,
+      id: folder.id,
+      label: folder.name,
+      hrefLabel: resolveFolderPath(folder.id, foldersById, pathCache) || folder.name,
+    })),
+    ...pages.map((page) => {
+      const folderPath = resolveFolderPath(page.folder_id, foldersById, pathCache);
+      return {
+        kind: "page" as const,
+        id: page.id,
+        label: page.name,
+        content_type: page.content_type,
+        hrefLabel: folderPath ? `${folderPath}/${page.name}` : page.name,
+      };
+    }),
+    ...files.map((file) => {
+      const folderPath = resolveFolderPath(file.folder_id, foldersById, pathCache);
+      return {
+        kind: "file" as const,
+        id: file.id,
+        label: file.name,
+        file,
+        hrefLabel: folderPath ? `${folderPath}/${file.name}` : file.name,
+      };
+    }),
+  ];
+
+  return rows.filter((row) => {
+    const searchable = `${row.kind} ${row.label} ${row.hrefLabel}`.toLowerCase();
+    return terms.every((term) => searchable.includes(term));
+  });
+}
+
+function FileDirectoryItemRow({
+  workspaceId,
+  item,
+  isFolderPinned,
+  isFilePinned,
+  onPinMenu,
+  onPageClick,
+  onFileClick,
+}: {
+  workspaceId: string;
+  item: FileDirectoryItem;
+  isFolderPinned: (folderId: string) => boolean;
+  isFilePinned: (fileId: string) => boolean;
+  onPinMenu?: (
+    event: MouseEvent<HTMLElement>,
+    kind: PinKind,
+    id: string,
+    label: string,
+    pinned: boolean
+  ) => void;
+  onPageClick?: () => void;
+  onFileClick?: () => void;
+}) {
+  const pathname = usePathname();
+
+  if (item.kind === "folder") {
+    return (
+      <FolderTreeNode
+        workspaceId={workspaceId}
+        folderId={item.id}
+        name={item.label}
+        isFolderPinned={isFolderPinned}
+        isFilePinned={isFilePinned}
+        onPinMenu={onPinMenu}
+      />
+    );
+  }
+
+  if (item.kind === "page") {
+    const pageHref = `/workspaces/${workspaceId}/p/${item.id}`;
+    return (
+      <NavRow
+        href={pageHref}
+        icon={<PageIcon className="text-muted" />}
+        label={item.label}
+        active={pathname === pageHref}
+        onClick={onPageClick}
+      />
+    );
+  }
+
+  return (
+    <FileNavRow
+      workspaceId={workspaceId}
+      file={item.file}
+      label={item.label}
+      onClick={onFileClick}
+      onPinMenu={(event) =>
+        onPinMenu?.(event, "file", item.id, item.label, isFilePinned(item.id))
+      }
+    />
+  );
+}
+
+function FileSearchRow({
+  workspaceId,
+  item,
+  pinned,
+  onPinMenu,
+}: {
+  workspaceId: string;
+  item: FileSearchItem;
+  pinned: boolean;
+  onPinMenu: (
+    event: MouseEvent<HTMLElement>,
+    kind: PinKind,
+    id: string,
+    label: string,
+    pinned: boolean
+  ) => void;
+}) {
+  const pathname = usePathname();
+
+  if (item.kind === "folder") {
+    const href = `/workspaces/${workspaceId}/folders/${item.id}`;
+    return (
+      <NavRow
+        href={href}
+        icon={<FolderIcon />}
+        label={item.hrefLabel}
+        active={pathname === href}
+        onContextMenu={(event) =>
+          onPinMenu(event, "folder", item.id, item.label, pinned)
+        }
+      />
+    );
+  }
+
+  if (item.kind === "page") {
+    const href = `/workspaces/${workspaceId}/p/${item.id}`;
+    return (
+      <NavRow
+        href={href}
+        icon={<PageIcon className="text-muted" />}
+        label={item.hrefLabel}
+        active={pathname === href}
+      />
+    );
+  }
+
+  return (
+    <FileNavRow
+      workspaceId={workspaceId}
+      file={item.file}
+      label={item.hrefLabel}
+      onPinMenu={(event) =>
+        onPinMenu(event, "file", item.id, item.label, pinned)
+      }
+    />
+  );
+}
+
 function FolderTreeNode({
   workspaceId,
   folderId,
@@ -1082,15 +1702,28 @@ function FolderTreeNode({
   name: string;
   isFolderPinned: (folderId: string) => boolean;
   isFilePinned: (fileId: string) => boolean;
-  onPinMenu?: (event: MouseEvent<HTMLElement>, kind: PinKind, id: string, label: string, pinned: boolean) => void;
+  onPinMenu?: (
+    event: MouseEvent<HTMLElement>,
+    kind: PinKind,
+    id: string,
+    label: string,
+    pinned: boolean
+  ) => void;
 }) {
   const cachedContents = readCachedFolderContents(folderId);
   const [contents, setContents] = useState<FolderContents | null>(cachedContents);
   const [loaded, setLoaded] = useState(!!cachedContents);
   const [open, setOpen] = useState(false);
+  const [visibleItemCount, setVisibleItemCount] = useState(PREVIEW_ITEM_LIMIT);
   const pathname = usePathname();
   const folderHref = `/workspaces/${workspaceId}/folders/${folderId}`;
   const folderActive = pathname === folderHref;
+  const childFolders = (contents?.subfolders ?? []).filter((sub) => !isFolderPinned(sub.id));
+  const childPages = contents?.pages ?? [];
+  const childFiles = (contents?.files ?? []).filter((file) => !isFilePinned(file.id));
+  const childItems = buildFileDirectoryItems(childFolders, childPages, childFiles);
+  const visibleChildItems = childItems.slice(0, visibleItemCount);
+  const hiddenChildItemCount = childItems.length - visibleChildItems.length;
 
   const loadContents = useCallback(() => {
     if (loaded) return;
@@ -1170,44 +1803,24 @@ function FolderTreeNode({
       </summary>
       <div className="ml-2.5 space-y-0.5 border-l border-border pl-2">
         {contents === null && loaded && <SkeletonBlock className="my-1 h-5 w-28" />}
-        {contents?.subfolders
-          .filter((sub) => !isFolderPinned(sub.id))
-          .map((sub) => (
-            <FolderTreeNode
-              key={sub.id}
-              workspaceId={workspaceId}
-              folderId={sub.id}
-              name={sub.name}
-              isFolderPinned={isFolderPinned}
-              isFilePinned={isFilePinned}
-              onPinMenu={onPinMenu}
-            />
-          ))}
-        {contents?.pages.map((p) => {
-          const pageHref = `/workspaces/${workspaceId}/p/${p.id}`;
-          return (
-            <NavRow
-              key={p.id}
-              href={pageHref}
-              icon={<PageIcon className="text-muted" />}
-              label={p.name}
-              active={pathname === pageHref}
-            />
-          );
-        })}
-        {contents?.files
-          .filter((f) => !isFilePinned(f.id))
-          .map((f) => (
-            <FileNavRow
-              key={f.id}
-              workspaceId={workspaceId}
-              file={f}
-              label={f.name}
-              onPinMenu={(event) =>
-                onPinMenu?.(event, "file", f.id, f.name, isFilePinned(f.id))
-              }
-            />
+        {visibleChildItems.map((item) => (
+          <FileDirectoryItemRow
+            key={`${item.kind}-${item.id}`}
+            workspaceId={workspaceId}
+            item={item}
+            isFolderPinned={isFolderPinned}
+            isFilePinned={isFilePinned}
+            onPinMenu={onPinMenu}
+          />
         ))}
+        {hiddenChildItemCount > 0 ? (
+          <ShowMoreRow
+            label={showMoreLabel("items", hiddenChildItemCount)}
+            onClick={() =>
+              setVisibleItemCount((current) => current + PREVIEW_ITEM_LIMIT)
+            }
+          />
+        ) : null}
         {contents &&
           contents.subfolders.length === 0 &&
           contents.pages.length === 0 &&
@@ -1251,6 +1864,9 @@ function FilesBlock({
   onAddPage: () => void;
 }) {
   const pathname = usePathname();
+  const [query, setQuery] = useState("");
+  const [visibleRootItemCount, setVisibleRootItemCount] = useState(PREVIEW_ITEM_LIMIT);
+  const [visibleSearchCount, setVisibleSearchCount] = useState(PREVIEW_ITEM_LIMIT);
   const tree = spine?.files;
   const folders = tree?.folders ?? [];
   const pages = tree?.pages ?? [];
@@ -1262,18 +1878,15 @@ function FilesBlock({
   const rootFolders = visibleFolders.filter((f) => !f.parent_folder_id);
   const rootPages = pages.filter((p) => !p.folder_id);
   const rootFiles = visibleFiles.filter((f) => !f.folder_id);
+  const rootItems = buildFileDirectoryItems(rootFolders, rootPages, rootFiles);
+  const visibleRootItems = rootItems.slice(0, visibleRootItemCount);
+  const hiddenRootItemCount = rootItems.length - visibleRootItems.length;
+  const searchResults = searchFileItems(folders, pages, files, query);
+  const queryActive = query.trim().length > 0;
+  const visibleSearchResults = searchResults.slice(0, visibleSearchCount);
+  const hiddenSearchCount = searchResults.length - visibleSearchResults.length;
   const folderById = new Map((tree?.folders ?? []).map((folder) => [folder.id, folder]));
   const fileById = new Map((tree?.files ?? []).map((file) => [file.id, file]));
-  const pinnedFolderRows = pinnedFolders.map((id) => {
-    const folder = folderById.get(id);
-    const label = pinnedLabels.folders[id] ?? folder?.name ?? "Folder";
-    return {
-      id,
-      label,
-      href: `/workspaces/${workspace.id}/folders/${id}`,
-      icon: <FolderIcon />,
-    };
-  });
   const pinnedFileRows = pinnedFiles.map((id) => {
     const file = fileById.get(id);
     if (!file) {
@@ -1311,6 +1924,10 @@ function FilesBlock({
       : pinMenu;
 
   useEscapeKey(!!pinMenu, () => setPinMenu(null));
+
+  useEffect(() => {
+    setVisibleSearchCount(PREVIEW_ITEM_LIMIT);
+  }, [query]);
 
   useEffect(() => {
     if (!pinMenu) return;
@@ -1375,34 +1992,75 @@ function FilesBlock({
       </summary>
       <div className="ml-3 space-y-0.5 border-l border-border pl-2">
         {filesDrop?.message ? <DropMessage state={filesDrop} /> : null}
+        <SidebarSearchField
+          label="Search files"
+          value={query}
+          onChange={setQuery}
+          placeholder="Search files"
+          onClear={() => setQuery("")}
+        />
+        {queryActive ? (
+          <div className="space-y-0.5">
+            {visibleSearchResults.map((item) => (
+              <FileSearchRow
+                key={`${item.kind}-${item.id}`}
+                workspaceId={workspace.id}
+                item={item}
+                pinned={
+                  item.kind === "folder"
+                    ? pinnedFolderSet.has(item.id)
+                    : item.kind === "file"
+                      ? pinnedFileSet.has(item.id)
+                      : false
+                }
+                onPinMenu={showPinMenu}
+              />
+            ))}
+            {hiddenSearchCount > 0 ? (
+              <ShowMoreRow
+                label={showMoreLabel("results", hiddenSearchCount)}
+                onClick={() =>
+                  setVisibleSearchCount((current) => current + PREVIEW_ITEM_LIMIT)
+                }
+              />
+            ) : null}
+            {searchResults.length === 0 ? (
+              <div className="px-2 py-1 text-[11px] italic text-muted">no matches</div>
+            ) : null}
+          </div>
+        ) : (
+          <>
             {renderPinned ? (
               <div className="space-y-0.5">
                 <div className="flex items-center justify-between gap-2 px-2 py-0.5">
                   <span className="text-[10px] uppercase tracking-wide text-muted">
                     Pinned ({pinnedCount})
                   </span>
-              <button
-                type="button"
-                onClick={(event) => {
-                  event.preventDefault();
-                  onUnpinAll();
-                }}
-                className="rounded px-1 py-0.5 text-[10px] text-[var(--color-brand-700)] hover:bg-[var(--color-brand-50)]"
-                aria-label="Unpin all files and folders"
-              >
+                  <button
+                    type="button"
+                    onClick={(event) => {
+                      event.preventDefault();
+                      onUnpinAll();
+                    }}
+                    className="rounded px-1 py-0.5 text-[10px] text-[var(--color-brand-700)] hover:bg-[var(--color-brand-50)]"
+                    aria-label="Unpin all files and folders"
+                  >
                     Unpin all
                   </button>
                 </div>
-                {pinnedFolderRows.map((folder) => (
-                  <NavRow
-                    key={`pinned-folder-${folder.id}`}
-                    href={folder.href}
-                    icon={folder.icon}
-                    label={folder.label}
-                    active={pathname === folder.href}
-                    onContextMenu={(event) =>
-                      showPinMenu(event, "folder", folder.id, folder.label, true)
+                {pinnedFolders.map((folderId) => (
+                  <FolderTreeNode
+                    key={`pinned-folder-${folderId}`}
+                    workspaceId={workspace.id}
+                    folderId={folderId}
+                    name={
+                      pinnedLabels.folders[folderId] ??
+                      folderById.get(folderId)?.name ??
+                      "Folder"
                     }
+                    isFolderPinned={(id) => pinnedFolderSet.has(id)}
+                    isFilePinned={(id) => pinnedFileSet.has(id)}
+                    onPinMenu={showPinMenu}
                   />
                 ))}
                 {pinnedFileRows.map((file) => (
@@ -1419,45 +2077,31 @@ function FilesBlock({
                 ))}
               </div>
             ) : null}
-        {rootFolders.map((f) => (
-          <FolderTreeNode
-            key={f.id}
-            workspaceId={workspace.id}
-            folderId={f.id}
-            name={f.name}
-            isFolderPinned={(folderId) => pinnedFolderSet.has(folderId)}
-            isFilePinned={(fileId) => pinnedFileSet.has(fileId)}
-            onPinMenu={showPinMenu}
-          />
-        ))}
-        {rootPages.slice(0, PREVIEW_ITEM_LIMIT).map((p) => {
-          const pageHref = `/workspaces/${workspace.id}/p/${p.id}`;
-          return (
-            <NavRow
-              key={p.id}
-              href={pageHref}
-              icon={<PageIcon className="text-muted" />}
-              label={p.name}
-              active={pathname === pageHref}
-              onClick={() => onOpenChange(true)}
-            />
-          );
-        })}
-        {rootFiles.slice(0, PREVIEW_ITEM_LIMIT).map((f) => (
-          <FileNavRow
-            key={f.id}
-            workspaceId={workspace.id}
-            file={f}
-            label={f.name}
-            onClick={() => onOpenChange(true)}
-            onPinMenu={(event) =>
-              showPinMenu(event, "file", f.id, f.name, pinnedFileSet.has(f.id))
-            }
-          />
-        ))}
-        {!spine || total === 0 ? (
-          <div className="px-2 py-1 text-[11px] italic text-muted">empty</div>
-        ) : null}
+            {visibleRootItems.map((item) => (
+              <FileDirectoryItemRow
+                key={`${item.kind}-${item.id}`}
+                workspaceId={workspace.id}
+                item={item}
+                isFolderPinned={(folderId) => pinnedFolderSet.has(folderId)}
+                isFilePinned={(fileId) => pinnedFileSet.has(fileId)}
+                onPinMenu={showPinMenu}
+                onPageClick={() => onOpenChange(true)}
+                onFileClick={() => onOpenChange(true)}
+              />
+            ))}
+            {hiddenRootItemCount > 0 ? (
+              <ShowMoreRow
+                label={showMoreLabel("items", hiddenRootItemCount)}
+                onClick={() =>
+                  setVisibleRootItemCount((current) => current + PREVIEW_ITEM_LIMIT)
+                }
+              />
+            ) : null}
+            {!spine || total === 0 ? (
+              <div className="px-2 py-1 text-[11px] italic text-muted">empty</div>
+            ) : null}
+          </>
+        )}
         <SectionAddRow label="New page" onClick={onAddPage} />
         {pinMenu && menuClamp ? (
           <PinMenu
@@ -1510,6 +2154,18 @@ function StashesBlock({
 
   const nativeStashes = stashes.filter((stash) => !stash.forked_from_stash_id);
   const forkedStashes = stashes.filter((stash) => stash.forked_from_stash_id);
+  const [openStashes, setOpenStashes] = useState<Record<string, boolean>>(() =>
+    readBooleanMap(OPEN_STASHES_KEY)
+  );
+
+  function setStashOpen(stashId: string, nextOpen: boolean) {
+    const next = {
+      ...readBooleanMap(OPEN_STASHES_KEY),
+      [stashOpenKey(workspace.id, stashId)]: nextOpen,
+    };
+    writeBooleanMap(OPEN_STASHES_KEY, next);
+    setOpenStashes(next);
+  }
 
   function renderStashGroup(
     title: string | null,
@@ -1533,6 +2189,8 @@ function StashesBlock({
               key={`${title}-${stash.id}`}
               workspaceId={workspace.id}
               stash={stash}
+              open={openStashes[stashOpenKey(workspace.id, stash.id)] === true}
+              onOpenChange={(nextOpen) => setStashOpen(stash.id, nextOpen)}
               foldersById={foldersById}
               pagesById={pagesById}
               filesById={filesById}
@@ -1806,7 +2464,7 @@ export default function AppSidebar({
     status: "idle",
     message: "",
   });
-  const [pinnedState, setPinnedState] = useState<Record<string, { folders: string[]; files: string[] }>>(
+  const [pinnedState, setPinnedState] = useState<Record<string, PinnedItems>>(
     () => readPinnedMap()
   );
   const [pinnedLabelsState, setPinnedLabelsState] = useState<Record<string, PinnedLabels>>(
@@ -2043,118 +2701,70 @@ export default function AppSidebar({
   ) {
     setPinnedState((current) => {
       const workspacePins = current[workspaceId] ?? EMPTY_PIN_STATE;
-      if (kind === "folder") {
-        const isPinned = workspacePins.folders.includes(id);
-        const nextFolders = isPinned
-          ? workspacePins.folders.filter((value) => value !== id)
-          : [...workspacePins.folders, id];
-        const nextWorkspace = { ...workspacePins, folders: nextFolders };
-        const nextState = { ...current, [workspaceId]: nextWorkspace };
-        writePinnedMap(nextState);
-        if (!isPinned && label) {
-          setPinnedLabelsState((currentLabels) => {
-            const nextLabels = {
-              ...currentLabels,
-              [workspaceId]: {
-                ...(currentLabels[workspaceId] ?? { folders: {}, files: {} }),
-                folders: {
-                  ...(currentLabels[workspaceId]?.folders ?? {}),
-                  [id]: label,
-                },
-              },
-            };
-            writePinnedLabelMap(nextLabels);
-            return nextLabels;
-          });
-        }
-        if (isPinned) {
-          setPinnedLabelsState((currentLabels) => {
-            const workspaceLabels = currentLabels[workspaceId];
-            if (!workspaceLabels) return currentLabels;
-
-            const nextFolders = { ...workspaceLabels.folders };
-            delete nextFolders[id];
-            const nextLabels = {
-              ...currentLabels,
-              [workspaceId]: {
-                ...workspaceLabels,
-                folders: nextFolders,
-              },
-            };
-            writePinnedLabelMap(nextLabels);
-            return nextLabels;
-          });
-        }
-        return nextState;
-      }
-
-      const isPinned = workspacePins.files.includes(id);
-      const nextFiles = isPinned
-        ? workspacePins.files.filter((value) => value !== id)
-        : [...workspacePins.files, id];
-      const nextWorkspace = { ...workspacePins, files: nextFiles };
+      const pinKey = PIN_KEYS[kind];
+      const isPinned = workspacePins[pinKey].includes(id);
+      const nextIds = isPinned
+        ? workspacePins[pinKey].filter((value) => value !== id)
+        : [...workspacePins[pinKey], id];
+      const nextWorkspace = { ...workspacePins, [pinKey]: nextIds };
       const nextState = { ...current, [workspaceId]: nextWorkspace };
       writePinnedMap(nextState);
-      if (!isPinned && label) {
-        setPinnedLabelsState((currentLabels) => {
-          const nextLabels = {
-            ...currentLabels,
-            [workspaceId]: {
-              ...(currentLabels[workspaceId] ?? { folders: {}, files: {} }),
-              files: {
-                ...(currentLabels[workspaceId]?.files ?? {}),
-                [id]: label,
-              },
-            },
-          };
-          writePinnedLabelMap(nextLabels);
-          return nextLabels;
-        });
-      }
-        if (isPinned) {
-          setPinnedLabelsState((currentLabels) => {
-            const workspaceLabels = currentLabels[workspaceId];
-            if (!workspaceLabels) return currentLabels;
 
-            const nextFiles = { ...workspaceLabels.files };
-            delete nextFiles[id];
-            const nextLabels = {
-              ...currentLabels,
-              [workspaceId]: {
-                ...workspaceLabels,
-                files: nextFiles,
-              },
-            };
-            writePinnedLabelMap(nextLabels);
-            return nextLabels;
-          });
+      setPinnedLabelsState((currentLabels) => {
+        const workspaceLabels = currentLabels[workspaceId] ?? EMPTY_PIN_LABELS;
+        const nextKindLabels = { ...workspaceLabels[pinKey] };
+        if (isPinned) {
+          delete nextKindLabels[id];
+        } else if (label) {
+          nextKindLabels[id] = label;
         }
+        const nextLabels = {
+          ...currentLabels,
+          [workspaceId]: {
+            ...workspaceLabels,
+            [pinKey]: nextKindLabels,
+          },
+        };
+        writePinnedLabelMap(nextLabels);
+        return nextLabels;
+      });
+
       return nextState;
     });
   }
 
-  function handleUnpinAll(workspaceId: string) {
-      setPinnedState((current) => {
-        const workspacePins = current[workspaceId];
-        if (!workspacePins || (workspacePins.folders.length === 0 && workspacePins.files.length === 0)) {
-          return current;
-        }
-        const nextState = {
-          ...current,
-          [workspaceId]: { folders: [], files: [] },
-        };
-        writePinnedMap(nextState);
-        setPinnedLabelsState((currentLabels) => {
-          const workspaceLabels = currentLabels[workspaceId];
-          if (!workspaceLabels) return currentLabels;
+  function handleUnpinKinds(workspaceId: string, pinKeys: Array<keyof PinnedItems>) {
+    setPinnedState((current) => {
+      const workspacePins = current[workspaceId];
+      if (!workspacePins) return current;
 
-          const nextLabels = {
-            ...currentLabels,
-            [workspaceId]: { folders: {}, files: {} },
-          };
-          writePinnedLabelMap(nextLabels);
-          return nextLabels;
-        });
+      const hasPins = pinKeys.some((pinKey) => workspacePins[pinKey].length > 0);
+      if (!hasPins) return current;
+
+      const nextWorkspace = { ...workspacePins };
+      for (const pinKey of pinKeys) nextWorkspace[pinKey] = [];
+
+      const nextState = {
+        ...current,
+        [workspaceId]: nextWorkspace,
+      };
+      writePinnedMap(nextState);
+
+      setPinnedLabelsState((currentLabels) => {
+        const workspaceLabels = currentLabels[workspaceId];
+        if (!workspaceLabels) return currentLabels;
+
+        const nextWorkspaceLabels = { ...workspaceLabels };
+        for (const pinKey of pinKeys) nextWorkspaceLabels[pinKey] = {};
+
+        const nextLabels = {
+          ...currentLabels,
+          [workspaceId]: nextWorkspaceLabels,
+        };
+        writePinnedLabelMap(nextLabels);
+        return nextLabels;
+      });
+
       return nextState;
     });
   }
@@ -2165,14 +2775,27 @@ export default function AppSidebar({
       let changed = false;
 
       for (const [workspaceId, workspacePins] of Object.entries(pinnedState)) {
+        const sessions = spines[workspaceId]?.sessions ?? [];
         const tree = spines[workspaceId]?.files;
+        const sessionById = new Map(sessions.map((session) => [session.session_id, session]));
         const folderById = new Map((tree?.folders ?? []).map((folder) => [folder.id, folder]));
         const fileById = new Map((tree?.files ?? []).map((file) => [file.id, file]));
 
-        const workspaceLabels = nextLabels[workspaceId] ?? { folders: {}, files: {} };
+        const workspaceLabels = nextLabels[workspaceId] ?? EMPTY_PIN_LABELS;
         let workspaceChanged = false;
+        const nextWorkspaceSessions = { ...workspaceLabels.sessions };
         const nextWorkspaceFolders = { ...workspaceLabels.folders };
         const nextWorkspaceFiles = { ...workspaceLabels.files };
+
+        for (const sessionId of workspacePins.sessions) {
+          if (nextWorkspaceSessions[sessionId]) continue;
+
+          const session = sessionById.get(sessionId);
+          if (!session) continue;
+
+          nextWorkspaceSessions[sessionId] = sessionLabelForSidebar(session);
+          workspaceChanged = true;
+        }
 
         for (const folderId of workspacePins.folders) {
           if (nextWorkspaceFolders[folderId]) continue;
@@ -2197,6 +2820,7 @@ export default function AppSidebar({
         if (!workspaceChanged) continue;
 
         nextLabels[workspaceId] = {
+          sessions: nextWorkspaceSessions,
           folders: nextWorkspaceFolders,
           files: nextWorkspaceFiles,
         };
@@ -2259,6 +2883,14 @@ export default function AppSidebar({
               : pathname === "/"
           }
         />
+        {activeWorkspace ? (
+          <NavRow
+            href={`/workspaces/${activeWorkspace.id}/members`}
+            icon={<PersonIcon />}
+            label="Members"
+            active={pathname === `/workspaces/${activeWorkspace.id}/members`}
+          />
+        ) : null}
         <NavRow
           href="/discover"
           icon={<DiscoverIcon />}
@@ -2287,11 +2919,15 @@ export default function AppSidebar({
             dropState={dropState}
             onDropFiles={handleDropFiles}
             onDropHover={handleDropHover}
+            pinnedSessions={pinnedState[activeWorkspace.id]?.sessions ?? EMPTY_PIN_STATE.sessions}
             pinnedFolders={pinnedState[activeWorkspace.id]?.folders ?? EMPTY_PIN_STATE.folders}
             pinnedFiles={pinnedState[activeWorkspace.id]?.files ?? EMPTY_PIN_STATE.files}
-            pinnedLabels={pinnedLabelsState[activeWorkspace.id] ?? { folders: {}, files: {} }}
-            onPinToggle={(kind, id, label) => handlePinToggle(kind, activeWorkspace.id, id, label)}
-            onUnpinAll={handleUnpinAll}
+            pinnedLabels={pinnedLabelsState[activeWorkspace.id] ?? EMPTY_PIN_LABELS}
+            onPinToggle={(kind, workspaceId, id, label) =>
+              handlePinToggle(kind, workspaceId, id, label)
+            }
+            onUnpinSessions={(workspaceId) => handleUnpinKinds(workspaceId, ["sessions"])}
+            onUnpinFiles={(workspaceId) => handleUnpinKinds(workspaceId, ["folders", "files"])}
             onAddSession={handleAddSession}
             onAddPage={handleAddPage}
             onAddStash={handleAddStash}

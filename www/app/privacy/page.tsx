@@ -40,7 +40,7 @@ export default function PrivacyPage() {
       <p>
         <strong className="text-ink">Workspace content.</strong> To provide the
         Service, we store the content you and your agents send to Stash:
-        prompts, tool calls, session summaries, pages, tables, files, and
+        prompts, tool calls, assistant messages, pages, tables, files, and
         Stashes. Embeddings derived from this content
         are stored alongside it.
       </p>

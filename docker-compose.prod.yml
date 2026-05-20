@@ -17,6 +17,10 @@ version: "3.9"
 #   S3_ENDPOINT / S3_BUCKET / …  (enable file uploads)
 #   GOOGLE_OAUTH_CLIENT_ID / GOOGLE_OAUTH_CLIENT_SECRET / GOOGLE_OAUTH_REDIRECT_URI
 #   GITHUB_OAUTH_CLIENT_ID / GITHUB_OAUTH_CLIENT_SECRET / GITHUB_OAUTH_REDIRECT_URI
+#   NOTION_OAUTH_CLIENT_ID / NOTION_OAUTH_CLIENT_SECRET / NOTION_OAUTH_REDIRECT_URI
+#   GOOGLE_PICKER_API_KEY / GOOGLE_PICKER_APP_ID
+#   INTEGRATIONS_ENCRYPTION_KEY (Fernet key — encrypt OAuth tokens at rest)
+#   COLLAB_PUBLIC_URL           (WebSocket URL if collab is not routed under /collab)
 
 services:
   postgres:
@@ -114,6 +118,22 @@ services:
       - backend
     environment:
       NEXT_PUBLIC_API_URL: ${PUBLIC_URL}
+      NEXT_PUBLIC_COLLAB_URL: ${COLLAB_PUBLIC_URL:-}
+
+  collab:
+    image: ghcr.io/Fergana-Labs/stash-collab:latest
+    restart: always
+    expose:
+      - "3458"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      backend:
+        condition: service_started
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      BACKEND_URL: http://backend:3456
 
   caddy:
     image: caddy:2-alpine
@@ -128,6 +148,7 @@ services:
     depends_on:
       - backend
       - frontend
+      - collab
 
 volumes:
   postgres_data:

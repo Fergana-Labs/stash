@@ -3,7 +3,7 @@
 import Link from "next/link";
 import type { CSSProperties, ReactNode } from "react";
 
-import DownloadMenu from "../DownloadMenu";
+import DownloadMenu, { type DownloadOption } from "../DownloadMenu";
 import EditableTitle from "./EditableTitle";
 
 export type FileViewerSaveStatus = "saved" | "dirty" | "saving";
@@ -43,7 +43,7 @@ interface FileViewerHeaderProps {
   /** "saved" | "dirty" | "saving" — colored save-status text. Hidden in read-only mode. */
   saveStatus?: FileViewerSaveStatus | null;
   /** Right-aligned download menu options. Omit to hide. */
-  downloadOptions?: { label: string; onSelect: () => void }[];
+  downloadOptions?: DownloadOption[];
   /** Anything that should sit between the save-status and the download menu. */
   rightExtras?: ReactNode;
 }

@@ -22,7 +22,6 @@ from uuid import UUID
 
 import httpx
 
-from ....database import get_pool
 from ....services import table_service
 
 logger = logging.getLogger(__name__)
@@ -62,14 +61,14 @@ def _notion_prop_to_column(prop_name: str, prop_def: dict) -> dict:
     if notion_type == "email":
         return {**base, "type": "email"}
     if notion_type in ("select", "status"):
-        opts = ((prop_def.get(notion_type) or {}).get("options") or [])
+        opts = (prop_def.get(notion_type) or {}).get("options") or []
         return {
             **base,
             "type": "select",
             "options": [o.get("name", "") for o in opts if o.get("name")],
         }
     if notion_type == "multi_select":
-        opts = ((prop_def.get("multi_select") or {}).get("options") or [])
+        opts = (prop_def.get("multi_select") or {}).get("options") or []
         return {
             **base,
             "type": "multiselect",

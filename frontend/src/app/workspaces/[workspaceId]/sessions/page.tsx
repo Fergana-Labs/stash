@@ -423,10 +423,8 @@ function SessionTableRow({
 }
 
 function sessionTitle(s: SessionSummary): string {
-  const preview = (s.first_prompt_preview || "").trim().replace(/\s+/g, " ");
-  if (preview) return preview.length > 96 ? preview.slice(0, 96) + "…" : preview;
-  const id = s.session_id;
-  return id.replace(/^session[-_]/, "").replace(/[-_]+/g, " ") || id;
+  const title = s.title.trim().replace(/\s+/g, " ");
+  return title.length > 96 ? title.slice(0, 96) + "…" : title;
 }
 
 function sessionTime(session: SessionSummary): number {
@@ -436,11 +434,11 @@ function sessionTime(session: SessionSummary): number {
 
 const AVATAR_PALETTE: { bg: string; fg: string }[] = [
   { bg: "bg-rose-200", fg: "text-rose-800" },
-  { bg: "bg-indigo-200", fg: "text-indigo-800" },
+  { bg: "bg-orange-200", fg: "text-orange-800" },
   { bg: "bg-emerald-200", fg: "text-emerald-800" },
   { bg: "bg-amber-200", fg: "text-amber-900" },
   { bg: "bg-sky-200", fg: "text-sky-800" },
-  { bg: "bg-fuchsia-200", fg: "text-fuchsia-800" },
+  { bg: "bg-teal-200", fg: "text-teal-800" },
 ];
 
 function avatarFor(name: string) {

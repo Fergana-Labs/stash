@@ -144,7 +144,7 @@ export default function GitImportDialog({
           )}
           {repos && filtered.length === 0 && !loadError && (
             <div className="flex h-32 items-center justify-center text-[13px] text-muted">
-              No repos match "{query}".
+              No repos match &ldquo;{query}&rdquo;.
             </div>
           )}
           {filtered.map((r) => {

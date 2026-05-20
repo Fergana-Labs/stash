@@ -88,8 +88,7 @@ class IntegrationsListResponse(BaseModel):
 @router.get("", response_model=IntegrationsListResponse)
 async def list_integrations(current_user: dict = Depends(get_current_user)):
     user_connections = {
-        c["provider"]: c
-        for c in await storage.list_connections(current_user["id"])
+        c["provider"]: c for c in await storage.list_connections(current_user["id"])
     }
     items = []
     for p in list_providers():
@@ -173,7 +172,7 @@ async def integration_disconnect(
 class GooglePickerTokenResponse(BaseModel):
     access_token: str
     api_key: str | None  # GOOGLE_PICKER_API_KEY (browser API key)
-    app_id: str | None   # GOOGLE_PICKER_APP_ID (GCP project number)
+    app_id: str | None  # GOOGLE_PICKER_APP_ID (GCP project number)
 
 
 @router.get("/google/picker-token", response_model=GooglePickerTokenResponse)
@@ -216,7 +215,11 @@ async def github_list_repos(
     async with httpx.AsyncClient(timeout=30.0, headers=headers) as client:
         resp = await client.get(
             "https://api.github.com/user/repos",
-            params={"per_page": 100, "sort": "updated", "affiliation": "owner,collaborator,organization_member"},
+            params={
+                "per_page": 100,
+                "sort": "updated",
+                "affiliation": "owner,collaborator,organization_member",
+            },
         )
         resp.raise_for_status()
         repos = resp.json()

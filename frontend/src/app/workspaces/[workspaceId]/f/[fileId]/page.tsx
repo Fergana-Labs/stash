@@ -16,6 +16,7 @@ import {
   getFolderContents,
   getPublicStash,
   ingestCsvFile,
+  trashItem,
   updateFile,
   type FolderBreadcrumb,
 } from "../../../../../lib/api";
@@ -217,7 +218,26 @@ function FileViewerPageInner() {
         meta={meta}
         downloadOptions={
           file?.url
-            ? [{ label: `Download ${file.name}`, onSelect: () => triggerDownload(file.url, file.name) }]
+            ? [
+                { label: "Download", onSelect: () => triggerDownload(file.url, file.name) },
+                ...(readOnly
+                  ? []
+                  : [
+                      {
+                        label: "Delete",
+                        destructive: true,
+                        onSelect: async () => {
+                          if (!window.confirm(`Move "${file.name}" to trash?`)) return;
+                          try {
+                            await trashItem(workspaceId, "file", fileId);
+                            router.push(`/workspaces/${workspaceId}`);
+                          } catch (e) {
+                            setError(e instanceof Error ? e.message : "Delete failed");
+                          }
+                        },
+                      },
+                    ]),
+              ]
             : undefined
         }
       />
@@ -249,9 +269,9 @@ function FileBody({ file, text }: { file: FileInfo; text: string | null }) {
     );
   }
   if (isMarkdown(file.content_type, file.name)) {
-    if (text === null) return <DocumentBodySkeleton className="mx-auto mt-8 max-w-3xl" />;
+    if (text === null) return <DocumentBodySkeleton className="mx-auto mt-8 max-w-[920px]" />;
     return (
-      <article className="markdown-content mx-auto max-w-3xl px-12 py-8 text-[15px] leading-relaxed text-foreground">
+      <article className="prose prose-sm markdown-content mx-auto max-w-[920px] px-12 py-8 text-foreground">
         <Markdown remarkPlugins={[remarkGfm]}>{text || ""}</Markdown>
       </article>
     );
@@ -304,7 +324,7 @@ function kindLabel(contentType: string, name: string): string {
 
 function kindIconColor(contentType: string): string {
   if (isPdf(contentType)) return "#E11D48";
-  if (isImage(contentType)) return "#7C3AED";
+  if (isImage(contentType)) return "#EA580C";
   return "var(--text-muted)";
 }
 

@@ -77,8 +77,8 @@ export default function DriveImportDialog({
               Import from Google Drive
             </h2>
             <p className="mt-0.5 text-[12.5px] text-muted">
-              We'll open the Google file picker. Hold ⌘ or shift to select
-              multiple files.
+              We&apos;ll open the Google file picker. Hold ⌘ or shift to
+              select multiple files.
             </p>
           </div>
           <button

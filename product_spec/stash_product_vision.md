@@ -127,7 +127,7 @@ FAQ
     2. This isn’t the greatest thing ever, but 
 24. Is there a better name than workspace that we can use?
     1. No
-25. What about the handoff document? Is that in scope for v0?
+25. What about a generated orientation document? Is that in scope for v0?
     1. No
 26. What happens if you try to edit a page that is inside a published stash?
     1. You will be able to successfully edit the page, without any “be careful” warnings of any kind.
@@ -150,7 +150,7 @@ FAQ
 - Version history for the filesystem
 - Any integrations of any kind
   - Integrations should be a super fast follow though
-- A “Handoff” document
+- A generated orientation document
 - Onboarding
   - Our product says “Hey, paste this into your claude code” 
   - When it’s pasted, you see your session magically show up in stash OR it lets people upload an html and that will magically show up in your stash.

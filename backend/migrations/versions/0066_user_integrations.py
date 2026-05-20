@@ -1,13 +1,13 @@
 """User integrations (OAuth tokens for third-party providers).
 
-Revision ID: 0061
-Revises: 0060
+Revision ID: 0066
+Revises: 0065
 """
 
 from alembic import op
 
-revision = "0061"
-down_revision = "0060"
+revision = "0066"
+down_revision = "0065"
 branch_labels = None
 depends_on = None
 
@@ -16,8 +16,7 @@ def upgrade() -> None:
     # No CHECK constraint on `provider` — providers self-register at runtime
     # via backend/integrations/registry.py. Adding a new provider must not
     # require a migration.
-    op.execute(
-        """
+    op.execute("""
         CREATE TABLE user_integrations (
             user_id                 uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
             provider                text NOT NULL,
@@ -31,11 +30,8 @@ def upgrade() -> None:
             updated_at              timestamptz NOT NULL DEFAULT now(),
             PRIMARY KEY (user_id, provider)
         )
-        """
-    )
-    op.execute(
-        "CREATE INDEX user_integrations_provider_idx ON user_integrations (provider)"
-    )
+        """)
+    op.execute("CREATE INDEX user_integrations_provider_idx ON user_integrations (provider)")
 
 
 def downgrade() -> None:

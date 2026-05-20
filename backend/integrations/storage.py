@@ -106,9 +106,8 @@ async def get_valid_token(user_id: UUID, provider: str) -> str:
         )
 
     expires_at = row["expires_at"]
-    needs_refresh = (
-        expires_at is not None
-        and expires_at < datetime.now(UTC) + timedelta(seconds=60)
+    needs_refresh = expires_at is not None and expires_at < datetime.now(UTC) + timedelta(
+        seconds=60
     )
     if not needs_refresh:
         return _decrypt(row["access_token_encrypted"])  # type: ignore[return-value]

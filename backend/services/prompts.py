@@ -1,38 +1,10 @@
 """Centralised system prompts + tool schemas used by LLM features.
 
-Two call sites consume this module:
-- ask_service        : render_ask_system, STASH_TOOL_SET
-- session_summarizer : SESSION_SUMMARY_SYSTEM, render_session_summary_user
-
 Editing a prompt here changes behavior for every caller that uses it. The
 tool set is what ask-the-workspace can call to explore a Stash Workspace.
 """
 
 from __future__ import annotations
-
-# ---------------------------------------------------------------------------
-# Session summary (one-shot, Haiku tier)
-# ---------------------------------------------------------------------------
-
-SESSION_SUMMARY_SYSTEM = (
-    "You summarize coding agent sessions for a developer who's picking up "
-    "where the session left off. Be concrete and concise. Reference specific "
-    "files and decisions by name."
-)
-
-
-def render_session_summary_user(transcript: str, source_label: str = "transcript") -> str:
-    return (
-        f"Summarize this coding session {source_label}. Include:\n"
-        "1. What the session accomplished (1-2 sentences)\n"
-        "2. Key files modified or created\n"
-        "3. Important decisions made\n"
-        "4. Any unfinished work or known issues\n\n"
-        "Keep the summary concise and useful for someone picking up "
-        "where this session left off.\n\n"
-        f"SESSION {source_label.upper()}:\n{transcript}"
-    )
-
 
 # ---------------------------------------------------------------------------
 # Ask-the-workspace (streaming agent loop, Sonnet tier)

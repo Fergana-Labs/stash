@@ -7,8 +7,15 @@ import Heading from "@tiptap/extension-heading";
 import Bold from "@tiptap/extension-bold";
 import Italic from "@tiptap/extension-italic";
 import TiptapLink from "@tiptap/extension-link";
+import Underline from "@tiptap/extension-underline";
+import Subscript from "@tiptap/extension-subscript";
+import Superscript from "@tiptap/extension-superscript";
+import Typography from "@tiptap/extension-typography";
+import Image from "@tiptap/extension-image";
 import Placeholder from "@tiptap/extension-placeholder";
+import { Table, TableCell, TableHeader, TableRow } from "@tiptap/extension-table";
 import { shouldFocusEditorFrame } from "../lib/editorClick";
+import EditorToolbar from "./workspace/EditorToolbar";
 
 const AUTOSAVE_MS = 1500;
 
@@ -18,6 +25,8 @@ type DescriptionEditorProps = {
   placeholder: string;
   ariaLabel: string;
   onSave: (html: string) => Promise<void> | void;
+  /** Workspace ID for inline image uploads from the toolbar. */
+  workspaceId?: string | null;
 };
 
 export function isBlankDescription(value: string): boolean {
@@ -30,6 +39,7 @@ export default function DescriptionEditor({
   placeholder,
   ariaLabel,
   onSave,
+  workspaceId,
 }: DescriptionEditorProps) {
   const canEditRef = useRef(canEdit);
   const lastSaved = useRef(value);
@@ -75,9 +85,11 @@ export default function DescriptionEditor({
     editable: canEdit,
     content: value || "<p></p>",
     extensions: [
+      // Inline editor uses the same surface as the page editor — same
+      // toolbar, same supported blocks (lists, quote, code, hr, table).
+      // Heading/Bold/Italic/Link/Underline are configured separately so
+      // disable the StarterKit copies.
       StarterKit.configure({
-        blockquote: false,
-        codeBlock: false,
         heading: false,
         bold: false,
         italic: false,
@@ -87,6 +99,18 @@ export default function DescriptionEditor({
       Heading.configure({ levels: [1, 2, 3] }),
       Bold,
       Italic,
+      Underline,
+      Subscript,
+      Superscript,
+      Typography,
+      Image,
+      Table.configure({
+        resizable: true,
+        HTMLAttributes: { class: "file-page-table" },
+      }),
+      TableRow,
+      TableHeader,
+      TableCell,
       TiptapLink.configure({
         openOnClick: false,
         autolink: true,
@@ -97,7 +121,8 @@ export default function DescriptionEditor({
     editorProps: {
       attributes: {
         "aria-label": ariaLabel,
-        class: "description-editor-content focus:outline-none file-page-body",
+        class:
+          "prose prose-sm max-w-none description-editor-content focus:outline-none file-page-body",
       },
       handleDOMEvents: {
         blur: () => {
@@ -162,13 +187,17 @@ export default function DescriptionEditor({
       data-editable={canEdit ? "true" : "false"}
       onClick={handleEditorFrameClick}
       className={
-        "description-editor -mx-1 rounded-md px-1 py-0.5 " +
-        (canEdit
-          ? "cursor-text transition-colors hover:bg-raised/45 focus-within:bg-raised/45"
-          : "")
+        "description-editor -mx-1 px-1 py-0.5 " + (canEdit ? "cursor-text" : "")
       }
     >
       <EditorContent editor={editor} />
+      {canEdit && (
+        <EditorToolbar
+          editor={editor}
+          workspaceId={workspaceId ?? null}
+          visibility="when-focused"
+        />
+      )}
     </div>
   );
 }
@@ -183,4 +212,5 @@ function openHref(href: string) {
     window.open(href, "_blank", "noopener,noreferrer");
     return;
   }
+  window.open(`https://${href}`, "_blank", "noopener,noreferrer");
 }

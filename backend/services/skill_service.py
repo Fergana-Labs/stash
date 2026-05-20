@@ -51,9 +51,10 @@ async def list_skills(workspace_id: UUID, user_id: UUID) -> list[dict]:
     rows = await pool.fetch(
         "SELECT f.id AS folder_id, f.name AS folder_name, "
         "  p.id AS skill_md_id, p.content_markdown AS skill_md, p.updated_at, "
-        "  (SELECT COUNT(*) FROM pages p2 WHERE p2.folder_id = f.id) AS file_count "
+        "  (SELECT COUNT(*) FROM pages p2 WHERE p2.folder_id = f.id "
+        "   AND p2.deleted_at IS NULL) AS file_count "
         "FROM folders f "
-        "JOIN pages p ON p.folder_id = f.id AND p.name = 'SKILL.md' "
+        "JOIN pages p ON p.folder_id = f.id AND p.name = 'SKILL.md' AND p.deleted_at IS NULL "
         "WHERE f.workspace_id = $1 "
         "ORDER BY f.name",
         workspace_id,
@@ -112,7 +113,7 @@ async def read_skill(workspace_id: UUID, name: str, user_id: UUID) -> dict | Non
     folder_id = match["folder_id"]
     pages = await pool.fetch(
         "SELECT id, name, content_markdown, updated_at "
-        "FROM pages WHERE folder_id = $1 ORDER BY name",
+        "FROM pages WHERE folder_id = $1 AND deleted_at IS NULL ORDER BY name",
         UUID(folder_id),
     )
     readable_pages = []

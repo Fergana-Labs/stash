@@ -80,9 +80,7 @@ def resolve_archive_url(
             raise UnsupportedHostError("gitlab.com URL must include /owner/repo")
         encoded = quote(project, safe="")
         ref_q = f"?sha={quote(ref)}" if ref else ""
-        archive_url = (
-            f"https://gitlab.com/api/v4/projects/{encoded}/repository/archive.zip{ref_q}"
-        )
+        archive_url = f"https://gitlab.com/api/v4/projects/{encoded}/repository/archive.zip{ref_q}"
         headers = {}
         if pat:
             headers["PRIVATE-TOKEN"] = pat

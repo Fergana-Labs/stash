@@ -14,16 +14,15 @@ with a clear message rather than silently dropping content.
 
 from __future__ import annotations
 
+import csv
+import io
 import logging
 import re
+import secrets
 from uuid import UUID
 
 import asyncpg
 import httpx
-
-import csv
-import io
-import secrets
 
 from ....celery_app import celery
 from ....database import get_pool
@@ -33,7 +32,9 @@ from ...storage import get_valid_token
 
 logger = logging.getLogger(__name__)
 
-DRIVE_FILE_URL = "https://www.googleapis.com/drive/v3/files/{file_id}?fields=id,name,mimeType,parents"
+DRIVE_FILE_URL = (
+    "https://www.googleapis.com/drive/v3/files/{file_id}?fields=id,name,mimeType,parents"
+)
 DRIVE_EXPORT_URL = "https://www.googleapis.com/drive/v3/files/{file_id}/export"
 
 MIME_GOOGLE_DOC = "application/vnd.google-apps.document"
@@ -124,9 +125,7 @@ async def _import(
         name = meta.get("name") or "Imported file"
 
         if mime == MIME_GOOGLE_DOC:
-            return await _import_google_doc(
-                client, workspace_id, folder_id, user_id, file_id, name
-            )
+            return await _import_google_doc(client, workspace_id, folder_id, user_id, file_id, name)
 
         if mime == MIME_GOOGLE_SHEET:
             return await _import_google_sheet(

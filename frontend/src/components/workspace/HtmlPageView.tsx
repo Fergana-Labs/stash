@@ -32,6 +32,7 @@ type Props = {
   pendingWrapId?: string | null;
   onWrapComplete?: () => void;
   onHtmlMutated?: (nextHtml: string) => void;
+  onNavigateLink?: (href: string) => void;
   /** Highlight the currently selected thread's anchor span. */
   activeThreadId?: string | null;
   /** Strip the wrapper for the named thread (after the user deletes it).
@@ -67,6 +68,7 @@ export default function HtmlPageView({
   pendingWrapId,
   onWrapComplete,
   onHtmlMutated,
+  onNavigateLink,
   activeThreadId,
   stripCommentToken,
   editable = false,
@@ -95,18 +97,18 @@ export default function HtmlPageView({
   const [activeSlide, setActiveSlide] = useState(0);
 
   const srcDoc = useMemo(() => {
-    if (layout === "responsive") return injectResizeBootstrap(initialHtml, channel);
+    if (layout === "responsive")
+      return injectResizeBootstrap(initialHtml, channel, Boolean(onNavigateLink));
     if (isDeck) return injectSlideDeckBootstrap(initialHtml, channel);
     return initialHtml;
-  }, [layout, channel, initialHtml, isDeck]);
+  }, [layout, channel, initialHtml, isDeck, onNavigateLink]);
 
   useEffect(() => {
-    if (layout !== "responsive") return;
     function onMessage(e: MessageEvent) {
       const data = e.data;
       if (!data || typeof data !== "object" || data.channel !== channel) return;
       if (data.type === "stash:resize" && typeof data.height === "number") {
-        setHeight(Math.max(0, Math.ceil(data.height)));
+        if (layout === "responsive") setHeight(Math.max(0, Math.ceil(data.height)));
         return;
       }
       if (data.type === "stash:selection") {
@@ -137,6 +139,10 @@ export default function HtmlPageView({
         onWrapComplete?.();
         return;
       }
+      if (data.type === "stash:navigate" && typeof data.href === "string") {
+        onNavigateLink?.(data.href);
+        return;
+      }
     }
     window.addEventListener("message", onMessage);
     iframeRef.current?.contentWindow?.postMessage(
@@ -144,7 +150,15 @@ export default function HtmlPageView({
       "*",
     );
     return () => window.removeEventListener("message", onMessage);
-  }, [layout, channel, onSelection, onActivateThread, onHtmlMutated, onWrapComplete]);
+  }, [
+    layout,
+    channel,
+    onSelection,
+    onActivateThread,
+    onHtmlMutated,
+    onWrapComplete,
+    onNavigateLink,
+  ]);
 
   // Send `pendingWrapId` down to the iframe whenever it changes. Iframe
   // wraps its current selection in `<span data-comment-id="id">`, posts
@@ -222,7 +236,6 @@ export default function HtmlPageView({
   }, [isDeck, slideCount]);
 
   function onIframeLoad() {
-    if (layout !== "responsive") return;
     iframeRef.current?.contentWindow?.postMessage(
       { type: "stash:probe", channel },
       "*",
@@ -237,6 +250,7 @@ export default function HtmlPageView({
           srcDoc={srcDoc}
           sandbox="allow-scripts"
           title={title}
+          onLoad={onIframeLoad}
           style={{ width: "100%", aspectRatio: "16 / 9", border: 0, display: "block" }}
         />
         {isDeck && (
@@ -322,12 +336,18 @@ export default function HtmlPageView({
 //   - selection changes (to enable the parent's "Comment" button),
 //   - wrap requests (parent → iframe → re-serialize HTML back),
 //   - click on a `[data-comment-id]` span (focus the thread in the sidebar),
+//   - link clicks when the parent opts into routing them,
 //   - active thread highlight class,
 //   - edit mode: toggles `contenteditable` on body and debounces the
 //     "current HTML" round-trip so the parent can save while the user types.
-function injectResizeBootstrap(html: string, channel: string): string {
+function injectResizeBootstrap(
+  html: string,
+  channel: string,
+  bridgeLinks: boolean,
+): string {
   const script = `<script>(function(){
     var c=${JSON.stringify(channel)};
+    var BRIDGE_LINKS=${bridgeLinks ? "true" : "false"};
     var COMMENT_HIGHLIGHT_CSS = "[data-comment-id]{background:rgba(254,240,138,.45);cursor:pointer;}[data-comment-id].is-active{background:rgba(250,204,21,.7);outline:1px solid #ca8a04;}body[contenteditable=\\"true\\"]{outline:2px dashed rgba(59,130,246,.5);outline-offset:-4px;}body[contenteditable=\\"true\\"] *{cursor:text;}";
     var editable=false;
     var mutateTimer=null;
@@ -463,10 +483,25 @@ function injectResizeBootstrap(html: string, channel: string): string {
       var t=e.target;
       while(t && t!==document){
         if(t.getAttribute && t.getAttribute("data-comment-id")){
+          e.preventDefault();
           post({type:"stash:thread-click",id:t.getAttribute("data-comment-id")});
           return;
         }
         t=t.parentNode;
+      }
+      if(!BRIDGE_LINKS) return;
+      var a=e.target;
+      while(a && a!==document){
+        if(a.tagName && String(a.tagName).toLowerCase()==="a"){
+          var href=a.getAttribute("href");
+          if(href){
+            if(href.charAt(0)==="#") return;
+            e.preventDefault();
+            post({type:"stash:navigate",href:href});
+          }
+          return;
+        }
+        a=a.parentNode;
       }
     });
     window.addEventListener("message",function(e){

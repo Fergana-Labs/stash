@@ -153,9 +153,7 @@ async def fetch_block_tree(
         params: dict[str, Any] = {"page_size": 100}
         if cursor:
             params["start_cursor"] = cursor
-        resp = await client.get(
-            NOTION_BLOCKS_URL.format(block_id=block_id), params=params
-        )
+        resp = await client.get(NOTION_BLOCKS_URL.format(block_id=block_id), params=params)
         if resp.status_code == 404:
             raise RuntimeError(
                 "Notion block not found — make sure the page is shared with the integration"
@@ -334,9 +332,7 @@ async def import_page_recursive(
     else:
         target_folder_id = folder_id
 
-    page_row = await _insert_page(
-        workspace_id, target_folder_id, user_id, title, markdown
-    )
+    page_row = await _insert_page(workspace_id, target_folder_id, user_id, title, markdown)
     results.append(
         {
             "kind": "page",
@@ -374,4 +370,6 @@ def normalize_resource_id(raw: str) -> str:
     candidate = candidate.replace("-", "").strip()
     if len(candidate) != 32:
         raise RuntimeError(f"could not parse Notion id from {raw!r}")
-    return f"{candidate[0:8]}-{candidate[8:12]}-{candidate[12:16]}-{candidate[16:20]}-{candidate[20:]}"
+    return (
+        f"{candidate[0:8]}-{candidate[8:12]}-{candidate[12:16]}-{candidate[16:20]}-{candidate[20:]}"
+    )

@@ -77,6 +77,7 @@ export interface PageSummary {
   workspace_id: string;
   folder_id: string | null;
   name: string;
+  content_type: PageContentType;
   created_at: string;
   updated_at: string;
 }
@@ -240,4 +241,22 @@ export interface UserSearchResult {
   id: string;
   name: string;
   display_name: string;
+}
+
+// --- Trash ---
+
+export type TrashKind = "page" | "file" | "session";
+
+export interface TrashEntry {
+  id: string;
+  name: string;
+  deleted_at: string;
+  deleted_by: string | null;
+  deleted_by_name: string | null;
+}
+
+export interface TrashListing {
+  pages: TrashEntry[];
+  files: TrashEntry[];
+  sessions: TrashEntry[];
 }

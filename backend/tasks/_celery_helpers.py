@@ -15,7 +15,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import Any, Coroutine, TypeVar
+from collections.abc import Coroutine
+from typing import Any
 
 from celery.signals import worker_process_init, worker_process_shutdown
 
@@ -23,7 +24,6 @@ from ..database import close_db, init_pool
 
 logger = logging.getLogger(__name__)
 
-T = TypeVar("T")
 
 _loop: asyncio.AbstractEventLoop | None = None
 
@@ -49,7 +49,7 @@ def _on_worker_shutdown(**_: Any) -> None:
         _loop = None
 
 
-def run_async(coro: Coroutine[Any, Any, T]) -> T:
+def run_async[T](coro: Coroutine[Any, Any, T]) -> T:
     """Run an async coroutine on the worker's persistent event loop."""
     assert _loop is not None, "Celery worker loop not initialised"
     return _loop.run_until_complete(coro)

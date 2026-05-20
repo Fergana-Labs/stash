@@ -8,12 +8,16 @@ from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 from starlette.responses import JSONResponse
 
+from . import exports as _exports  # noqa: F401 — registers exporter Celery tasks
+from . import integrations as _integrations  # noqa: F401 — registers providers + importers
 from .config import settings
 from .database import close_db, init_db
+from .integrations.router import router as integrations_router
 from .middleware import limiter
 from .routers import (
     admin,
     aggregate,
+    collab,
     discover,
     exports,
     files,
@@ -28,13 +32,11 @@ from .routers import (
     tables,
     tasks,
     transcripts,
+    trash,
     users,
     workspace_knowledge,
     workspaces,
 )
-from . import exports as _exports  # noqa: F401 — registers exporter Celery tasks
-from . import integrations as _integrations  # noqa: F401 — registers providers + importers
-from .integrations.router import router as integrations_router
 from .services.row_validation import RowValidationError
 
 logger = logging.getLogger("stash")
@@ -82,6 +84,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 app.include_router(users.router)
+app.include_router(collab.router)
 app.include_router(workspaces.router)
 app.include_router(workspace_knowledge.router)
 app.include_router(discover.router)
@@ -97,6 +100,7 @@ app.include_router(aggregate.router)
 app.include_router(skill.router)
 app.include_router(admin.router)
 app.include_router(sessions.router)
+app.include_router(trash.router)
 app.include_router(publish.router)
 app.include_router(tasks.router)
 app.include_router(integrations_router)

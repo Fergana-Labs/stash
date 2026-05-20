@@ -24,7 +24,7 @@ See `DESIGN.md` in this directory. Inherits from repo-root `/DESIGN.md` (the Sta
 ## Environment variables
 
 The marketing site runs without any env vars by default. The `/connect-token`
-page (CLI sign-in handoff for Claude Code-driven setup) needs Auth0:
+page (CLI sign-in flow for Claude Code-driven setup) needs Auth0:
 
 | Var                          | Purpose                                                |
 | ---------------------------- | ------------------------------------------------------ |

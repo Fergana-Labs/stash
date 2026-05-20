@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 
 const SOURCE_COLORS: Record<string, string> = {
-  sessions: "#8B5CF6",
+  sessions: "#F97316",
   files: "#22C55E",
   table: "#3B82F6",
 };
@@ -143,7 +143,7 @@ export default function EmbeddingProjection3D() {
     >
       <div className="flex items-center justify-between border-b border-border-subtle bg-surface px-4 py-3">
         <div className="flex items-center gap-2.5">
-          <span className="h-2 w-2 rounded-full bg-[#8B5CF6]" />
+          <span className="h-2 w-2 rounded-full bg-[#F97316]" />
           <span className="text-[13px] font-semibold text-ink">
             embedding projection
           </span>

@@ -104,6 +104,7 @@ class WorkspaceListResponse(BaseModel):
 # --- Stashes (publishable subsets of a workspace) ---
 
 StashObjectType = str  # 'folder' | 'page' | 'table' | 'file' | 'session'
+StashGeneralPermission = str  # 'none' | 'read' | 'write'
 
 
 class StashItem(BaseModel):
@@ -116,7 +117,8 @@ class StashItem(BaseModel):
 class StashCreateRequest(BaseModel):
     title: str = Field(..., min_length=1, max_length=160)
     description: str = Field("", max_length=2000)
-    access: str = Field("workspace", pattern=r"^(workspace|private|public)$")
+    workspace_permission: StashGeneralPermission = Field("read", pattern=r"^(none|read|write)$")
+    public_permission: StashGeneralPermission = Field("none", pattern=r"^(none|read|write)$")
     discoverable: bool = False
     cover_image_url: str | None = None
     icon_url: str | None = None
@@ -126,7 +128,10 @@ class StashCreateRequest(BaseModel):
 class StashUpdateRequest(BaseModel):
     title: str | None = Field(None, min_length=1, max_length=160)
     description: str | None = Field(None, max_length=2000)
-    access: str | None = Field(None, pattern=r"^(workspace|private|public)$")
+    workspace_permission: StashGeneralPermission | None = Field(
+        None, pattern=r"^(none|read|write)$"
+    )
+    public_permission: StashGeneralPermission | None = Field(None, pattern=r"^(none|read|write)$")
     discoverable: bool | None = None
     cover_image_url: str | None = None
     icon_url: str | None = None
@@ -143,6 +148,8 @@ class StashResponse(BaseModel):
     owner_name: str
     owner_display_name: str | None = None
     access: str
+    workspace_permission: StashGeneralPermission
+    public_permission: StashGeneralPermission
     discoverable: bool
     cover_image_url: str | None = None
     icon_url: str | None = None
@@ -323,6 +330,7 @@ class PageUpdateRequest(BaseModel):
     name: str | None = Field(None, min_length=1, max_length=255)
     folder_id: UUID | None = None
     content: str | None = None
+    collab_projection: bool = False
     content_type: str | None = Field(None, pattern=r"^(markdown|html)$")
     content_html: str | None = None
     html_layout: str | None = Field(None, pattern=r"^(responsive|fixed-aspect)$")
@@ -351,6 +359,7 @@ class PageSummary(BaseModel):
 
     id: UUID
     name: str
+    content_type: str
     workspace_id: UUID
     folder_id: UUID | None = None
     created_at: datetime
@@ -434,6 +443,7 @@ class WorkspacePageEntry(BaseModel):
 
     id: UUID
     name: str
+    content_type: str
     workspace_id: UUID
     folder_id: UUID | None = None
     folder_path: list[str] = []
@@ -632,7 +642,8 @@ class PublishRequest(BaseModel):
     content: str = ""
     content_type: str = Field("markdown", pattern=r"^(markdown|html)$")
     html_layout: str = Field("responsive", pattern=r"^(responsive|fixed-aspect)$")
-    audience: str = Field("public", pattern=r"^(workspace|private|public)$")
+    workspace_permission: StashGeneralPermission = Field("read", pattern=r"^(none|read|write)$")
+    public_permission: StashGeneralPermission = Field("read", pattern=r"^(none|read|write)$")
     folder_id: UUID | None = None
 
 
@@ -641,6 +652,8 @@ class PublishResponse(BaseModel):
     folder_id: UUID | None
     workspace_id: UUID
     visibility: str
+    workspace_permission: StashGeneralPermission
+    public_permission: StashGeneralPermission
     url: str
     stash_id: UUID | None = None
     stash_slug: str | None = None

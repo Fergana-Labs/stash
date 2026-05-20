@@ -619,6 +619,52 @@ def stash_publish_markdown(
     )
 
 
+# ── Trash ─────────────────────────────────────────────────────────
+
+
+_TRASH_KINDS = {"page", "file", "session"}
+
+
+@mcp.tool()
+def list_trash(workspace_id: str = "") -> str:
+    """List soft-deleted pages, files, and sessions. Items can be restored or purged."""
+    client, default_ws = _client()
+    ws = _require_ws(workspace_id or default_ws)
+    return _json(client.get_trash(ws))
+
+
+@mcp.tool()
+def restore_object(kind: str, id: str, workspace_id: str = "") -> str:
+    """Restore a trashed page/file/session. `kind` is one of: page, file, session."""
+    if kind not in _TRASH_KINDS:
+        raise ValueError(f"kind must be one of {sorted(_TRASH_KINDS)}")
+    client, default_ws = _client()
+    ws = _require_ws(workspace_id or default_ws)
+    if kind == "page":
+        client.restore_page(ws, id)
+    elif kind == "file":
+        client.restore_ws_file(ws, id)
+    else:
+        client.restore_session(ws, id)
+    return _json({"ok": True, "kind": kind, "id": id})
+
+
+@mcp.tool()
+def purge_object(kind: str, id: str, workspace_id: str = "") -> str:
+    """Permanently delete a trashed page/file/session. Not reversible."""
+    if kind not in _TRASH_KINDS:
+        raise ValueError(f"kind must be one of {sorted(_TRASH_KINDS)}")
+    client, default_ws = _client()
+    ws = _require_ws(workspace_id or default_ws)
+    if kind == "page":
+        client.purge_page(ws, id)
+    elif kind == "file":
+        client.purge_ws_file(ws, id)
+    else:
+        client.purge_session(ws, id)
+    return _json({"ok": True, "kind": kind, "id": id})
+
+
 # ── Entry point ───────────────────────────────────────────────────
 
 

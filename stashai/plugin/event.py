@@ -1,7 +1,7 @@
 """Canonical hook event shape, shared across all agent plugins.
 
 Each per-agent plugin ships an adapt.py that turns its agent's raw stdin JSON
-into a HookEvent. Everything downstream (streaming, summarizing, injection)
+into a HookEvent. Everything downstream (streaming, tool previews, injection)
 operates on HookEvent only.
 """
 

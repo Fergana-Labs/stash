@@ -66,7 +66,9 @@ class GitHubIntegration(Integration):
             resp.raise_for_status()
             payload = resp.json()
         if "error" in payload:
-            raise RuntimeError(f"GitHub OAuth error: {payload.get('error_description') or payload['error']}")
+            raise RuntimeError(
+                f"GitHub OAuth error: {payload.get('error_description') or payload['error']}"
+            )
         return TokenSet(
             access_token=payload["access_token"],
             refresh_token=None,

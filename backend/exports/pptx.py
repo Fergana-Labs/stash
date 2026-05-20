@@ -136,9 +136,7 @@ async def _export(user_id: UUID, page_id: UUID) -> dict:
         workspace_id=workspace_id,
         filename=filename,
         content=pptx_bytes,
-        content_type=(
-            "application/vnd.openxmlformats-officedocument.presentationml.presentation"
-        ),
+        content_type=("application/vnd.openxmlformats-officedocument.presentationml.presentation"),
     )
     download_url = await storage_service.get_file_url(storage_key, expires_in=3600)
     return {

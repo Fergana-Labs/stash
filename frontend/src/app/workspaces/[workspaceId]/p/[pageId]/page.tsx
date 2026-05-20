@@ -4,7 +4,12 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useBreadcrumbs } from "../../../../../components/BreadcrumbContext";
-import { downloadBlob } from "../../../../../components/DownloadMenu";
+import {
+  downloadBlob,
+  downloadRenderedPdf,
+  htmlToPdfBlocks,
+  markdownToPdfBlocks,
+} from "../../../../../components/DownloadMenu";
 import { DocumentPageSkeleton } from "../../../../../components/SkeletonStates";
 import { StashIcon } from "../../../../../components/StashIcons";
 import HtmlPageView, {
@@ -31,6 +36,7 @@ import {
   reconcileCommentAnchors,
   replyToCommentThread,
   setCommentResolved,
+  trashItem,
   updatePage,
   type FolderBreadcrumb,
   type WorkspaceStash,
@@ -38,6 +44,9 @@ import {
 import type { CommentThread, Page } from "../../../../../lib/types";
 
 function wrapHtml(title: string, body: string): string {
+  // HTML pages can be stored as a full document (when imported from .html
+  // uploads) — wrapping again would nest <html> inside <html>.
+  if (/^\s*(<!doctype|<html[\s>])/i.test(body)) return body;
   return `<!doctype html><html><head><meta charset="utf-8"><title>${escapeHtml(
     title
   )}</title><style>body{font-family:system-ui,sans-serif;max-width:720px;margin:2em auto;padding:0 1em;line-height:1.6;color:#1a1a1a}h1,h2,h3{line-height:1.25}pre{background:#f6f6f6;padding:1em;overflow:auto;border-radius:6px}code{background:#f6f6f6;padding:.1em .3em;border-radius:3px}</style></head><body>${body}</body></html>`;
@@ -61,6 +70,10 @@ export default function StashPageView() {
   const [containingStashes, setContainingStashes] = useState<WorkspaceStash[]>([]);
   const [saveStatus, setSaveStatus] = useState<SaveStatus>("saved");
   const [error, setError] = useState("");
+  // Save responses can arrive out of order if a fast save fires while a
+  // slow save is still in flight. Treat the most-recently-issued seq as
+  // the source of truth so older responses can't roll back the page.
+  const saveSeq = useRef(0);
 
   const [threads, setThreads] = useState<CommentThread[]>([]);
   const [activeThreadId, setActiveThreadId] = useState<string | null>(null);
@@ -138,9 +151,14 @@ export default function StashPageView() {
 
   const handleSave = useCallback(
     async (content: string) => {
+      const seq = saveSeq.current + 1;
+      saveSeq.current = seq;
       try {
-        const updated = await updatePage(workspaceId, pageId, { content });
-        setPage(updated);
+        const updated = await updatePage(workspaceId, pageId, {
+          content,
+          collab_projection: true,
+        });
+        if (saveSeq.current === seq) setPage(updated);
         reconcileAfterSave(content, "markdown");
       } catch (e) {
         setError(e instanceof Error ? e.message : "Save failed");
@@ -290,7 +308,8 @@ export default function StashPageView() {
       })
     : null;
 
-  const baseName = page ? page.name.replace(/\.md$/i, "") : "";
+  const baseName = page ? page.name.replace(/\.(md|html)$/i, "") : "";
+  const pdfSubtitle = updatedAt ? `Last edited ${updatedAt}` : undefined;
   return (
     <div className="scroll-thin flex-1 overflow-y-auto">
       <FileViewerHeader
@@ -300,13 +319,13 @@ export default function StashPageView() {
         onRenameTitle={
           page
             ? async (next) => {
-                // Preserve the .md suffix on markdown pages so the
-                // backend's file kind detection keeps working.
-                const had = page.name.toLowerCase().endsWith(".md");
-                const newName = had && !next.toLowerCase().endsWith(".md") ? `${next}.md` : next;
+                // Preserve the file extension so the backend's kind
+                // detection (and the listing UI's icons) keep working.
+                const extension = page.content_type === "html" ? ".html" : ".md";
+                const newName = next.toLowerCase().endsWith(extension) ? next : `${next}${extension}`;
                 const updated = await updatePage(workspaceId, pageId, { name: newName });
                 setPage(updated);
-                return updated.name.replace(/\.md$/i, "");
+                return updated.name.replace(/\.(md|html)$/i, "");
               }
             : undefined
         }
@@ -336,30 +355,67 @@ export default function StashPageView() {
         downloadOptions={
           page
             ? [
+                ...(isHtml
+                  ? [
+                      {
+                        label: "HTML (.html)",
+                        onSelect: () =>
+                          downloadBlob(
+                            wrapHtml(baseName, page.content_html ?? ""),
+                            "text/html",
+                            `${baseName}.html`
+                          ),
+                      },
+                      {
+                        label: "PDF (.pdf)",
+                        onSelect: () =>
+                          downloadRenderedPdf({
+                            title: baseName,
+                            subtitle: pdfSubtitle,
+                            blocks: htmlToPdfBlocks(page.content_html ?? ""),
+                            filename: `${baseName}.pdf`,
+                          }),
+                      },
+                    ]
+                  : [
+                      {
+                        label: "Markdown (.md)",
+                        onSelect: () =>
+                          downloadBlob(
+                            page.content_markdown ?? "",
+                            "text/markdown",
+                            `${baseName}.md`
+                          ),
+                      },
+                      {
+                        label: "PDF (.pdf)",
+                        onSelect: () =>
+                          downloadRenderedPdf({
+                            title: baseName,
+                            subtitle: pdfSubtitle,
+                            blocks: markdownToPdfBlocks(page.content_markdown ?? ""),
+                            filename: `${baseName}.pdf`,
+                          }),
+                      },
+                    ]),
                 {
-                  label: "Markdown (.md)",
-                  onSelect: () =>
-                    downloadBlob(
-                      page.content_markdown ?? "",
-                      "text/markdown",
-                      `${baseName}.md`
-                    ),
+                  label: "Delete",
+                  destructive: true,
+                  onSelect: async () => {
+                    if (!window.confirm(`Move "${page.name}" to trash?`)) return;
+                    try {
+                      await trashItem(workspaceId, "page", pageId);
+                      router.push(`/workspaces/${workspaceId}`);
+                    } catch (e) {
+                      setError(e instanceof Error ? e.message : "Delete failed");
+                    }
+                  },
                 },
-                {
-                  label: "HTML (.html)",
-                  onSelect: () =>
-                    downloadBlob(
-                      wrapHtml(page.name, page.content_html ?? ""),
-                      "text/html",
-                      `${baseName}.html`
-                    ),
-                },
-                { label: "PDF (print)", onSelect: () => window.print() },
               ]
             : undefined
         }
       />
-      <div className="mx-auto mt-6 grid max-w-[1100px] gap-7 px-12 pb-20 lg:grid-cols-[minmax(0,1fr)_240px]">
+      <div className="mx-auto mt-6 grid max-w-[1200px] gap-7 px-12 pb-20 lg:grid-cols-[minmax(0,1fr)_240px]">
         <main className="min-w-0">
           {error && (
             <div className="mb-4 rounded-lg border border-red-300/40 bg-red-500/10 px-4 py-2 text-[13px] text-red-500">
@@ -423,6 +479,10 @@ export default function StashPageView() {
                   workspaceId={workspaceId}
                   file={page}
                   onSave={handleSave}
+                  collaborationUser={{
+                    id: user.id,
+                    name: user.display_name || user.name,
+                  }}
                   onSaveStatusChange={setSaveStatus}
                   onNavigateInternal={(href) => router.push(href)}
                   onAddComment={handleAddCommentMarkdown}
@@ -433,7 +493,6 @@ export default function StashPageView() {
               )
             ) : null}
           </article>
-
         </main>
 
         <div className="mt-20 hidden flex-col gap-4 lg:flex">

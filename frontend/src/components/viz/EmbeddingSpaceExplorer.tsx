@@ -9,7 +9,7 @@ interface Props {
 }
 
 const SOURCE_COLORS: Record<string, string> = {
-  history_events: "#8B5CF6",  // violet — agent
+  history_events: "#F97316",  // orange — sessions
   pages: "#22C55E",           // green — files
   table_rows: "#3B82F6",      // blue
 };

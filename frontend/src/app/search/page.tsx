@@ -858,7 +858,6 @@ function searchPublicSession(
       id?: string;
       session_id: string;
       agent_name?: string | null;
-      summary?: string | null;
       started_at?: string | null;
       finished_at?: string | null;
       events?: {
@@ -875,7 +874,7 @@ function searchPublicSession(
   const eventText = (session.events ?? [])
     .map((event) => [event.event_type, event.tool_name, event.content].filter(Boolean).join(" "))
     .join(" ");
-  if (!textIncludes(query, session.session_id, session.agent_name, session.summary, eventText)) {
+  if (!textIncludes(query, session.session_id, session.agent_name, eventText)) {
     return [];
   }
 
@@ -883,16 +882,15 @@ function searchPublicSession(
     {
       id: session.id || item.object_id,
       kind: "Session" as const,
-      title: session.summary || session.session_id,
+      title: sessionTitle(session),
       href: `/stashes/${detail.stash.slug}#item-${index}`,
       sourceName: detail.stash.title,
       detail: sessionSnippet(session),
       updatedAt: session.finished_at || session.started_at || detail.stash.updated_at,
       relevance: scoreValues(query, [
-        { value: session.summary, weight: 8 },
         { value: session.session_id, weight: 5 },
         { value: session.agent_name, weight: 2 },
-        { value: eventText, weight: 1 },
+        { value: eventText, weight: 3 },
         { value: detail.stash.title, weight: 1 },
       ]),
     },
@@ -916,13 +914,20 @@ function pageSnippet(markdown?: string | null, html?: string | null): string {
 
 function sessionSnippet(session: {
   agent_name?: string | null;
-  summary?: string | null;
   events?: { event_type: string; tool_name?: string | null; content: string }[];
 }): string {
-  if (session.summary?.trim()) return session.summary.slice(0, 220);
   const firstEvent = session.events?.find((event) => event.content.trim());
   if (!firstEvent) return `${session.agent_name || "Agent"} session in this Stash`;
   return firstEvent.content.slice(0, 220);
+}
+
+function sessionTitle(session: {
+  session_id: string;
+  events?: { content: string }[];
+}): string {
+  const firstEvent = session.events?.find((event) => event.content.trim());
+  if (!firstEvent) return session.session_id;
+  return firstEvent.content.split(/\r?\n/)[0]?.trim().slice(0, 80) || session.session_id;
 }
 
 function sortResults(results: SearchResult[]): SearchResult[] {

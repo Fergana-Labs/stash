@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import html as html_lib
 import json
 import re
 import secrets
@@ -13,6 +14,11 @@ from . import files_tree_service, permission_service, storage_service, workspace
 
 _SLUG_RE = re.compile(r"[^a-z0-9]+")
 _HTML_TAG_RE = re.compile(r"<[^>]+>")
+_HTML_BREAK_RE = re.compile(r"<br\s*/?>", re.IGNORECASE)
+_HTML_BLOCK_END_RE = re.compile(
+    r"</(article|body|div|footer|h[1-6]|header|li|main|p|section|td|th|tr)>",
+    re.IGNORECASE,
+)
 
 
 def _slugify(title: str) -> str:
@@ -24,6 +30,24 @@ def _strip_html(html: str) -> str:
     return _HTML_TAG_RE.sub(" ", html)
 
 
+def _html_to_text(content_html: str) -> str:
+    with_breaks = _HTML_BREAK_RE.sub("\n", content_html)
+    with_blocks = _HTML_BLOCK_END_RE.sub("\n", with_breaks)
+    text = html_lib.unescape(_HTML_TAG_RE.sub(" ", with_blocks))
+    lines = [" ".join(line.split()) for line in text.splitlines()]
+    return "\n".join(line for line in lines if line).strip()
+
+
+def _page_text(page: dict) -> str:
+    content_markdown = page.get("content_markdown") or ""
+    if content_markdown.strip():
+        return content_markdown.strip()
+    content_html = page.get("content_html") or ""
+    if content_html.strip():
+        return _html_to_text(content_html)
+    return ""
+
+
 def _content_hash(content: str) -> str:
     return hashlib.sha256(content.encode()).hexdigest()
 
@@ -31,12 +55,40 @@ def _content_hash(content: str) -> str:
 _STASH_COLS = (
     "v.id, v.workspace_id, v.slug, v.title, v.description, v.owner_id, "
     "owner_user.name AS owner_name, owner_user.display_name AS owner_display_name, "
-    "v.access, "
+    "CASE "
+    "WHEN v.public_permission != 'none' THEN 'public' "
+    "WHEN v.workspace_permission != 'none' THEN 'workspace' "
+    "ELSE 'private' "
+    "END AS access, "
+    "v.workspace_permission, v.public_permission, "
     "v.discoverable, v.cover_image_url, v.icon_url, v.view_count, v.forked_from_stash_id, "
     "v.created_at, v.updated_at"
 )
 _STASH_FROM = "FROM stashes v JOIN users owner_user ON owner_user.id = v.owner_id"
 _STASH_SELECT = f"SELECT {_STASH_COLS} {_STASH_FROM}"
+
+_GENERAL_PERMISSION_VALUES = {"none", "read", "write"}
+
+
+def _visibility_for_permissions(workspace_permission: str, public_permission: str) -> str:
+    if public_permission != "none":
+        return "public"
+    if workspace_permission != "none":
+        return "workspace"
+    return "private"
+
+
+def _validate_general_permissions(
+    workspace_permission: str,
+    public_permission: str,
+    discoverable: bool,
+) -> None:
+    if workspace_permission not in _GENERAL_PERMISSION_VALUES:
+        raise ValueError("Unsupported workspace Stash permission")
+    if public_permission not in _GENERAL_PERMISSION_VALUES:
+        raise ValueError("Unsupported public Stash permission")
+    if discoverable and public_permission == "none":
+        raise ValueError("Discover Stashes must be public")
 
 
 async def _attach_items(stash: dict) -> dict:
@@ -51,7 +103,7 @@ async def _attach_items(stash: dict) -> dict:
 
 
 async def _is_anonymously_readable(stash: dict) -> bool:
-    return stash["access"] == "public"
+    return stash["public_permission"] != "none"
 
 
 def _mark_native(stash: dict) -> dict:
@@ -94,7 +146,12 @@ async def _validate_item_partition(conn, access: str, items: list, stash_id: UUI
         rows = []
         for target_type, target_id in targets:
             target_rows = await conn.fetch(
-                "SELECT s.id, s.access FROM stashes s "
+                "SELECT s.id, CASE "
+                "WHEN s.public_permission != 'none' THEN 'public' "
+                "WHEN s.workspace_permission != 'none' THEN 'workspace' "
+                "ELSE 'private' "
+                "END AS access "
+                "FROM stashes s "
                 "JOIN stash_items si ON si.stash_id = s.id "
                 "WHERE si.object_type = $1 AND si.object_id = $2 "
                 "AND ($3::uuid IS NULL OR s.id != $3)",
@@ -126,10 +183,10 @@ async def _partition_targets(conn, object_type: str, object_id: UUID) -> list[tu
             "SELECT 'folder' AS object_type, id AS object_id FROM subtree "
             "UNION ALL "
             "SELECT 'page' AS object_type, p.id AS object_id FROM pages p "
-            "WHERE p.folder_id IN (SELECT id FROM subtree) "
+            "WHERE p.folder_id IN (SELECT id FROM subtree) AND p.deleted_at IS NULL "
             "UNION ALL "
             "SELECT 'file' AS object_type, f.id AS object_id FROM files f "
-            "WHERE f.folder_id IN (SELECT id FROM subtree)",
+            "WHERE f.folder_id IN (SELECT id FROM subtree) AND f.deleted_at IS NULL",
             object_id,
         )
         targets.extend((row["object_type"], row["object_id"]) for row in rows)
@@ -191,16 +248,15 @@ async def create_stash(
     owner_id: UUID,
     title: str,
     description: str,
-    access: str,
+    workspace_permission: str,
+    public_permission: str,
     discoverable: bool,
     cover_image_url: str | None,
     items: list,
     icon_url: str | None = None,
 ) -> dict:
-    if access not in {"workspace", "private", "public"}:
-        raise ValueError("Unsupported Stash access")
-    if discoverable and access != "public":
-        raise ValueError("Discover Stashes must be public")
+    _validate_general_permissions(workspace_permission, public_permission, discoverable)
+    access = _visibility_for_permissions(workspace_permission, public_permission)
 
     pool = get_pool()
     slug = _slugify(title)
@@ -209,15 +265,16 @@ async def create_stash(
             await _validate_item_partition(conn, access, items, None)
             inserted = await conn.fetchrow(
                 "INSERT INTO stashes (workspace_id, slug, title, description, owner_id, "
-                "access, discoverable, cover_image_url, icon_url) "
-                "VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) "
+                "workspace_permission, public_permission, discoverable, cover_image_url, icon_url) "
+                "VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) "
                 "RETURNING id",
                 workspace_id,
                 slug,
                 title,
                 description,
                 owner_id,
-                access,
+                workspace_permission,
+                public_permission,
                 discoverable,
                 cover_image_url,
                 icon_url,
@@ -237,14 +294,19 @@ async def _object_title(object_type: str, object_id: UUID) -> str:
     if object_type == "folder":
         row = await pool.fetchrow("SELECT name FROM folders WHERE id = $1", object_id)
     elif object_type == "page":
-        row = await pool.fetchrow("SELECT name FROM pages WHERE id = $1", object_id)
+        row = await pool.fetchrow(
+            "SELECT name FROM pages WHERE id = $1 AND deleted_at IS NULL", object_id
+        )
     elif object_type == "table":
         row = await pool.fetchrow("SELECT name FROM tables WHERE id = $1", object_id)
     elif object_type == "file":
-        row = await pool.fetchrow("SELECT name FROM files WHERE id = $1", object_id)
+        row = await pool.fetchrow(
+            "SELECT name FROM files WHERE id = $1 AND deleted_at IS NULL", object_id
+        )
     elif object_type == "session":
         row = await pool.fetchrow(
-            "SELECT session_id AS name FROM sessions WHERE id = $1", object_id
+            "SELECT session_id AS name FROM sessions " "WHERE id = $1 AND deleted_at IS NULL",
+            object_id,
         )
     else:
         row = None
@@ -258,19 +320,25 @@ async def update_stash(
 ) -> dict | None:
     pool = get_pool()
     stash = await pool.fetchrow(
-        "SELECT id, workspace_id, owner_id, access FROM stashes WHERE id = $1", stash_id
+        "SELECT id, workspace_id, owner_id, workspace_permission, public_permission "
+        "FROM stashes WHERE id = $1",
+        stash_id,
     )
     if not stash or not await user_can_manage(stash_id, user_id):
         return None
-    access = updates.get("access")
+    workspace_permission = updates.get("workspace_permission")
+    public_permission = updates.get("public_permission")
     discoverable = updates.get("discoverable")
     items = updates.get("items") if "items" in updates else None
-    next_access = access or stash["access"]
-    if next_access not in {"workspace", "private", "public"}:
-        raise ValueError("Unsupported Stash access")
-    if discoverable and next_access != "public":
-        raise ValueError("Discover Stashes must be public")
-    if access and access != "public" and updates.get("discoverable") is None:
+    next_workspace_permission = workspace_permission or stash["workspace_permission"]
+    next_public_permission = public_permission or stash["public_permission"]
+    _validate_general_permissions(
+        next_workspace_permission,
+        next_public_permission,
+        bool(discoverable),
+    )
+    next_access = _visibility_for_permissions(next_workspace_permission, next_public_permission)
+    if public_permission == "none" and updates.get("discoverable") is None:
         updates["discoverable"] = False
 
     sets, args, idx = [], [], 1
@@ -278,7 +346,8 @@ async def update_stash(
     for col in (
         "title",
         "description",
-        "access",
+        "workspace_permission",
+        "public_permission",
         "discoverable",
         "cover_image_url",
         "icon_url",
@@ -295,7 +364,9 @@ async def update_stash(
     async with pool.acquire() as conn:
         async with conn.transaction():
             partition_items = items
-            if partition_items is None and access is not None:
+            if partition_items is None and (
+                workspace_permission is not None or public_permission is not None
+            ):
                 partition_items = await conn.fetch(
                     "SELECT object_type, object_id FROM stash_items WHERE stash_id = $1",
                     stash_id,
@@ -339,7 +410,8 @@ async def add_sessions_to_stash(
 
     rows = await pool.fetch(
         "SELECT id, session_id FROM sessions "
-        "WHERE workspace_id = $1 AND session_id = ANY($2::varchar[])",
+        "WHERE workspace_id = $1 AND session_id = ANY($2::varchar[]) "
+        "AND deleted_at IS NULL",
         workspace_id,
         session_ids,
     )
@@ -381,7 +453,7 @@ async def list_public_stashes(
 ) -> list[dict]:
     """Catalog of Stashes whose every underlying item is anonymously readable."""
     pool = get_pool()
-    where = ["v.access = 'public'", "v.discoverable = true"]
+    where = ["v.public_permission != 'none'", "v.discoverable = true"]
     args: list = []
     idx = 1
     if query:
@@ -398,7 +470,11 @@ async def list_public_stashes(
 
     rows = await pool.fetch(
         f"SELECT v.id, v.workspace_id, v.slug, v.title, v.description, v.owner_id, "
-        f"v.access, v.discoverable, v.cover_image_url, v.icon_url, v.view_count, "
+        f"CASE WHEN v.public_permission != 'none' THEN 'public' "
+        f"WHEN v.workspace_permission != 'none' THEN 'workspace' "
+        f"ELSE 'private' END AS access, "
+        f"v.workspace_permission, v.public_permission, "
+        f"v.discoverable, v.cover_image_url, v.icon_url, v.view_count, "
         f"v.created_at, v.updated_at, "
         f"u.name AS owner_name, u.display_name AS owner_display_name, "
         f"w.name AS workspace_name "
@@ -419,6 +495,8 @@ async def list_public_stashes(
                     "title": stash["title"],
                     "description": stash["description"],
                     "access": stash["access"],
+                    "workspace_permission": stash["workspace_permission"],
+                    "public_permission": stash["public_permission"],
                     "discoverable": stash["discoverable"],
                     "cover_image_url": stash["cover_image_url"],
                     "view_count": stash["view_count"],
@@ -652,8 +730,8 @@ async def _fork_session(
     user_id: UUID,
 ) -> UUID:
     session = await conn.fetchrow(
-        "SELECT workspace_id, session_id, agent_name, cwd, summary, summary_status, files_touched, "
-        "started_at, finished_at, created_by FROM sessions WHERE id = $1",
+        "SELECT workspace_id, session_id, agent_name, cwd, files_touched, started_at, "
+        "finished_at, created_by FROM sessions WHERE id = $1",
         source_session_id,
     )
     if not session:
@@ -662,15 +740,13 @@ async def _fork_session(
     forked_session_id = f"{session['session_id']}-fork-{source_session_id.hex[:8]}"
     new_session = await conn.fetchrow(
         "INSERT INTO sessions "
-        "(workspace_id, session_id, agent_name, cwd, summary, summary_status, files_touched, "
-        "started_at, finished_at, created_by) "
-        "VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8, $9, $10) RETURNING id",
+        "(workspace_id, session_id, agent_name, cwd, files_touched, started_at, "
+        "finished_at, created_by) "
+        "VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7, $8) RETURNING id",
         workspace_id,
         forked_session_id,
         session["agent_name"],
         session["cwd"],
-        session["summary"],
-        session["summary_status"],
         session["files_touched"],
         session["started_at"],
         session["finished_at"],
@@ -790,9 +866,10 @@ async def add_external_stash(workspace_id: UUID, slug: str, added_by: UUID) -> d
         async with conn.transaction():
             inserted = await conn.fetchrow(
                 "INSERT INTO stashes "
-                "(workspace_id, slug, title, description, owner_id, access, discoverable, "
+                "(workspace_id, slug, title, description, owner_id, workspace_permission, "
+                "public_permission, discoverable, "
                 "cover_image_url, icon_url, forked_from_stash_id) "
-                "VALUES ($1, $2, $3, $4, $5, 'workspace', false, $6, $7, $8) "
+                "VALUES ($1, $2, $3, $4, $5, 'read', 'none', false, $6, $7, $8) "
                 "RETURNING id",
                 workspace_id,
                 _slugify(stash["title"]),
@@ -973,6 +1050,7 @@ async def inline_items(stash: dict, viewer_id: UUID | None = None) -> list[dict]
                     "SELECT p.id, p.name, p.content_markdown, p.content_html, p.content_type, "
                     "p.html_layout, p.updated_at FROM pages p "
                     "WHERE p.folder_id IN (SELECT id FROM subtree) "
+                    "AND p.deleted_at IS NULL "
                     "ORDER BY p.created_at, p.name",
                     obj_id,
                 )
@@ -990,6 +1068,7 @@ async def inline_items(stash: dict, viewer_id: UUID | None = None) -> list[dict]
                     ") "
                     "SELECT f.id, f.name, f.content_type, f.size_bytes, f.storage_key, f.created_at "
                     "FROM files f WHERE f.folder_id IN (SELECT id FROM subtree) "
+                    "AND f.deleted_at IS NULL "
                     "ORDER BY f.created_at, f.name",
                     obj_id,
                 )
@@ -1027,7 +1106,7 @@ async def inline_items(stash: dict, viewer_id: UUID | None = None) -> list[dict]
         elif obj_type == "page":
             p = await pool.fetchrow(
                 "SELECT id, name, content_markdown, content_html, content_type, "
-                "html_layout, updated_at FROM pages WHERE id = $1",
+                "html_layout, updated_at FROM pages WHERE id = $1 AND deleted_at IS NULL",
                 obj_id,
             )
             if p:
@@ -1061,7 +1140,8 @@ async def inline_items(stash: dict, viewer_id: UUID | None = None) -> list[dict]
                 }
         elif obj_type == "file":
             f = await pool.fetchrow(
-                "SELECT name, content_type, size_bytes, storage_key, created_at FROM files WHERE id = $1",
+                "SELECT name, content_type, size_bytes, storage_key, created_at "
+                "FROM files WHERE id = $1 AND deleted_at IS NULL",
                 obj_id,
             )
             if f:
@@ -1075,8 +1155,8 @@ async def inline_items(stash: dict, viewer_id: UUID | None = None) -> list[dict]
                 }
         elif obj_type == "session":
             s = await pool.fetchrow(
-                "SELECT id, session_id, agent_name, summary, summary_status, files_touched, started_at, "
-                "finished_at FROM sessions WHERE id = $1",
+                "SELECT id, session_id, agent_name, files_touched, started_at, finished_at "
+                "FROM sessions WHERE id = $1 AND deleted_at IS NULL",
                 obj_id,
             )
             if s:
@@ -1102,8 +1182,6 @@ async def inline_items(stash: dict, viewer_id: UUID | None = None) -> list[dict]
                         "id": str(s["id"]),
                         "session_id": s["session_id"],
                         "agent_name": s["agent_name"],
-                        "summary": s["summary"],
-                        "summary_status": s["summary_status"],
                         "files_touched": files_touched,
                         "started_at": s["started_at"].isoformat() if s["started_at"] else None,
                         "finished_at": s["finished_at"].isoformat() if s["finished_at"] else None,
@@ -1146,6 +1224,186 @@ async def inline_items(stash: dict, viewer_id: UUID | None = None) -> list[dict]
     return out
 
 
+def _agent_item_url(base_url: str, stash: dict, item: dict, suffix: str) -> str:
+    return (
+        f"{base_url}/stashes/{stash['slug']}/items/"
+        f"{item['object_type']}/{item['object_id']}.{suffix}"
+    )
+
+
+def _preview(text: str, limit: int = 260) -> str:
+    compact = " ".join(text.split())
+    if len(compact) <= limit:
+        return compact
+    return f"{compact[: limit - 1].rstrip()}..."
+
+
+def _item_summary(item: dict) -> str:
+    obj_type = item["object_type"]
+    label = item.get("label", "Item")
+    inline = item.get("inline", {})
+    if obj_type == "folder":
+        pages = inline.get("pages", [])
+        files = inline.get("files", [])
+        return f"{len(pages)} pages, {len(files)} files"
+    if obj_type == "page":
+        page = inline.get("page", {})
+        text = _page_text(page)
+        return _preview(text) if text else "Page"
+    if obj_type == "table":
+        columns = inline.get("columns", [])
+        rows = inline.get("rows", [])
+        return f"{len(columns)} columns, {len(rows)} rows"
+    if obj_type == "file":
+        size = inline.get("size_bytes")
+        content_type = inline.get("content_type", "unknown")
+        return f"{content_type}, {size} bytes" if size is not None else str(content_type)
+    if obj_type == "session":
+        session = inline.get("session", {})
+        summary = session.get("summary")
+        if summary:
+            return _preview(str(summary))
+        events = session.get("events", [])
+        agent_name = session.get("agent_name") or "agent"
+        return f"{agent_name} session, {len(events)} events"
+    return label
+
+
+def stash_to_text(stash: dict, workspace_name: str, items: list[dict], base_url: str) -> str:
+    """Render a public Stash as a small agent-readable homepage."""
+    base_url = base_url.rstrip("/")
+    parts = [f"# {stash['title']}"]
+    if stash.get("description"):
+        parts.append(str(stash["description"]))
+    if workspace_name:
+        parts.append(f"Workspace: {workspace_name}")
+
+    item_count = len(items)
+    type_counts: dict[str, int] = {}
+    for item in items:
+        type_counts[item["object_type"]] = type_counts.get(item["object_type"], 0) + 1
+    counts = ", ".join(
+        f"{count} {kind}{'' if count == 1 else 's'}" for kind, count in type_counts.items()
+    )
+    plural = "" if item_count == 1 else "s"
+    count_detail = f": {counts}" if counts else ""
+    parts.append(f"This is a public Stash with {item_count} item{plural}{count_detail}.")
+
+    parts.append(
+        "## Agent Navigation\n\n"
+        "This page is the Stash homepage. Open only the deeper links you need.\n\n"
+        f"- Markdown homepage: {base_url}/stashes/{stash['slug']}.md\n"
+        f"- Structured JSON: {base_url}/stashes/{stash['slug']}.json\n"
+        "- Item links below expose their own markdown and JSON views."
+    )
+
+    if items:
+        lines = ["## Contents"]
+        for index, item in enumerate(items, start=1):
+            label = item.get("label") or item["object_type"].title()
+            md_url = _agent_item_url(base_url, stash, item, "md")
+            json_url = _agent_item_url(base_url, stash, item, "json")
+            lines.append(
+                f"{index}. [{label}]({md_url})\n"
+                f"   Type: {item['object_type']}\n"
+                f"   Preview: {_item_summary(item)}\n"
+                f"   JSON: {json_url}"
+            )
+        parts.append("\n\n".join(lines))
+
+    parts.append(
+        "## Using Stash\n\n"
+        "If your human wants this repository connected to Stash, run:\n\n"
+        "```bash\n"
+        "curl -fsSL https://joinstash.ai/install | bash\n"
+        "```\n\n"
+        "If Stash is already installed, run:\n\n"
+        "```bash\n"
+        f"stash read {base_url}/stashes/{stash['slug']}\n"
+        "```"
+    )
+    return "\n\n".join(part for part in parts if part).strip() + "\n"
+
+
+def item_to_text(stash: dict, item: dict, base_url: str) -> str:
+    base_url = base_url.rstrip("/")
+    label = item.get("label") or item["object_type"].title()
+    parts = [
+        f"# {label}",
+        f"Stash: [{stash['title']}]({base_url}/stashes/{stash['slug']}.md)",
+        "## Agent Navigation\n\n"
+        f"- Back to Stash homepage: {base_url}/stashes/{stash['slug']}.md\n"
+        f"- This item as JSON: {_agent_item_url(base_url, stash, item, 'json')}",
+    ]
+
+    obj_type = item["object_type"]
+    inline = item.get("inline", {})
+    if obj_type == "folder":
+        pages = inline.get("pages", [])
+        files = inline.get("files", [])
+        lines = [f"Folder with {len(pages)} pages and {len(files)} files."]
+        for page in pages:
+            page_text = _page_text(page)
+            lines.append(f"## {page.get('name', 'Page')}")
+            if page_text:
+                lines.append(page_text)
+        for file in files:
+            lines.append(
+                f"- Attached file: {file.get('name', 'file')} "
+                f"({file.get('content_type', 'unknown')})"
+            )
+        parts.append("\n\n".join(lines))
+    elif obj_type == "page":
+        page = inline.get("page", {})
+        page_text = _page_text(page)
+        if page_text:
+            parts.append(page_text)
+    elif obj_type == "table":
+        cols = inline.get("columns", [])
+        rows = inline.get("rows", [])
+        if inline.get("description"):
+            parts.append(str(inline["description"]))
+        if cols:
+            header = " | ".join(c["name"] for c in cols)
+            sep = " | ".join("---" for _ in cols)
+            table_lines = [f"| {header} |", f"| {sep} |"]
+            for row in rows[:100]:
+                vals = " | ".join(str(row["data"].get(c["name"], "")) for c in cols)
+                table_lines.append(f"| {vals} |")
+            parts.append("\n".join(table_lines))
+    elif obj_type == "file":
+        parts.append(
+            f"Content type: {inline.get('content_type', 'unknown')}\n\n"
+            f"Size: {inline.get('size_bytes', 'unknown')} bytes\n\n"
+            f"Download URL: {inline.get('url', '')}"
+        )
+    elif obj_type == "session":
+        session = inline.get("session", {})
+        lines = [
+            f"Session ID: {session.get('session_id', label)}",
+            f"Agent: {session.get('agent_name', 'agent')}",
+        ]
+        if session.get("summary"):
+            lines.extend(["## Summary", str(session["summary"])])
+        files_touched = session.get("files_touched") or []
+        if files_touched:
+            lines.append("## Files Touched")
+            lines.extend(f"- {path}" for path in files_touched)
+        events = session.get("events", [])
+        if events:
+            lines.append("## Events")
+            for event in events:
+                content = event.get("content")
+                if content:
+                    lines.append(
+                        f"### {event.get('event_type', 'event')} "
+                        f"({event.get('agent_name', 'agent')})\n\n{content}"
+                    )
+        parts.append("\n\n".join(lines))
+
+    return "\n\n".join(part for part in parts if part).strip() + "\n"
+
+
 def items_to_text(title: str, items: list[dict]) -> str:
     """Flatten a Stash's inlined items into readable markdown text."""
     parts = [f"# {title}\n"]
@@ -1158,16 +1416,18 @@ def items_to_text(title: str, items: list[dict]) -> str:
 
         if obj_type == "folder":
             for page in inline.get("pages", []):
-                if page.get("content_markdown"):
-                    parts.append(page["content_markdown"])
+                page_text = _page_text(page)
+                if page_text:
+                    parts.append(page_text)
             for file in inline.get("files", []):
                 parts.append(
                     f"*Attached file: {file.get('name', label)} ({file.get('content_type', 'unknown')})*\n"
                 )
         elif obj_type == "page":
             page = inline.get("page", {})
-            if page.get("content_markdown"):
-                parts.append(page["content_markdown"])
+            page_text = _page_text(page)
+            if page_text:
+                parts.append(page_text)
         elif obj_type == "table":
             cols = inline.get("columns", [])
             rows = inline.get("rows", [])
@@ -1184,8 +1444,6 @@ def items_to_text(title: str, items: list[dict]) -> str:
         elif obj_type == "session":
             session = inline.get("session", {})
             parts.append(f"## Session {session.get('session_id', label)}")
-            if session.get("summary"):
-                parts.append(str(session["summary"]))
             for event in session.get("events", []):
                 content = event.get("content")
                 if content:
@@ -1290,9 +1548,13 @@ async def remove_member(stash_id: UUID, user_id: UUID) -> bool:
 
 
 async def user_can_write(stash_id: UUID, user_id: UUID) -> bool:
-    """Stash writes require owner/admin rights or explicit write access."""
+    """Stash writes require owner/admin, explicit write, or general edit access."""
     pool = get_pool()
-    row = await pool.fetchrow("SELECT workspace_id, owner_id FROM stashes WHERE id = $1", stash_id)
+    row = await pool.fetchrow(
+        "SELECT workspace_id, owner_id, workspace_permission, public_permission "
+        "FROM stashes WHERE id = $1",
+        stash_id,
+    )
     if not row:
         return False
     if row["owner_id"] == user_id:
@@ -1302,18 +1564,24 @@ async def user_can_write(stash_id: UUID, user_id: UUID) -> bool:
         stash_id,
         user_id,
     )
-    return bool(member and member["permission"] in ("write", "admin"))
+    if member and member["permission"] in ("write", "admin"):
+        return True
+    role = await workspace_service.get_member_role(row["workspace_id"], user_id)
+    if role is not None and row["workspace_permission"] == "write":
+        return True
+    return row["public_permission"] == "write"
 
 
 async def user_can_read(stash_id: UUID, user_id: UUID | None) -> bool:
     pool = get_pool()
     row = await pool.fetchrow(
-        "SELECT workspace_id, owner_id, access FROM stashes WHERE id = $1",
+        "SELECT workspace_id, owner_id, workspace_permission, public_permission "
+        "FROM stashes WHERE id = $1",
         stash_id,
     )
     if not row:
         return False
-    if row["access"] == "public":
+    if row["public_permission"] != "none":
         return True
     if user_id is None:
         return False
@@ -1327,6 +1595,6 @@ async def user_can_read(stash_id: UUID, user_id: UUID | None) -> bool:
     )
     if member is not None:
         return True
-    if row["access"] == "workspace":
+    if row["workspace_permission"] != "none":
         return role is not None
     return False

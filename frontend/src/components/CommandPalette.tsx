@@ -87,7 +87,7 @@ export default function CommandPalette({
             kind: "page",
             label: p.name.replace(/\.md$/, ""),
             href: `/workspaces/${workspaceId}/p/${p.id}`,
-            detail: "Page",
+            detail: p.content_type === "html" ? "HTML page" : "Page",
           });
       });
       spine.sessions.forEach((s) => {

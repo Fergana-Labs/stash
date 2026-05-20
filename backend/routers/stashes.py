@@ -25,6 +25,8 @@ from ..services import permission_service, stash_service, workspace_service
 ws_router = APIRouter(prefix="/api/v1/workspaces", tags=["stashes"])
 public_router = APIRouter(prefix="/api/v1/stashes", tags=["stashes"])
 
+_STASH_ITEM_TYPES = {"folder", "page", "table", "file", "session"}
+
 
 async def _require_can_share_item(workspace_id: UUID, item, user_id: UUID) -> None:
     item_workspace_id = await permission_service.resolve_workspace_id(
@@ -52,7 +54,7 @@ async def create_stash(
 ):
     if not await workspace_service.is_member(workspace_id, current_user["id"]):
         raise HTTPException(status_code=403, detail="Not a workspace member")
-    if req.discoverable and req.access != "public":
+    if req.discoverable and req.public_permission == "none":
         raise HTTPException(status_code=400, detail="Discover Stashes must be public")
     for item in req.items:
         await _require_can_share_item(workspace_id, item, current_user["id"])
@@ -62,7 +64,8 @@ async def create_stash(
             owner_id=current_user["id"],
             title=req.title,
             description=req.description,
-            access=req.access,
+            workspace_permission=req.workspace_permission,
+            public_permission=req.public_permission,
             discoverable=req.discoverable,
             cover_image_url=req.cover_image_url,
             icon_url=req.icon_url,
@@ -84,6 +87,8 @@ async def publish_stash(
         raise HTTPException(status_code=403, detail="Not a workspace member")
     if not req.items:
         raise HTTPException(status_code=400, detail="A shared bundle needs at least one item")
+    if req.public_permission == "none":
+        raise HTTPException(status_code=400, detail="Published Stashes must be public")
 
     for item in req.items:
         await _require_can_share_item(workspace_id, item, current_user["id"])
@@ -94,7 +99,8 @@ async def publish_stash(
             owner_id=current_user["id"],
             title=req.title,
             description=req.description,
-            access="public",
+            workspace_permission=req.workspace_permission,
+            public_permission=req.public_permission,
             discoverable=req.discoverable,
             cover_image_url=req.cover_image_url,
             icon_url=req.icon_url,
@@ -289,7 +295,12 @@ async def get_public_stash(
 
     if format == "text":
         return PlainTextResponse(
-            stash_service.items_to_text(stash["title"], items),
+            stash_service.stash_to_text(
+                stash,
+                stash.get("_workspace_name", ""),
+                items,
+                settings.PUBLIC_URL.rstrip(),
+            ),
             media_type="text/markdown",
         )
 
@@ -303,6 +314,53 @@ async def get_public_stash(
         items=items,
         can_write=can_write,
     )
+
+
+@public_router.get("/{slug}/items/{object_type}/{object_id}")
+async def get_public_stash_item(
+    slug: str,
+    object_type: str,
+    object_id: UUID,
+    format: str = Query(None, alias="format"),
+    current_user: dict | None = Depends(get_current_user_optional),
+):
+    if object_type not in _STASH_ITEM_TYPES:
+        raise HTTPException(status_code=404, detail="Stash item not found")
+
+    viewer_id = current_user["id"] if current_user else None
+    stash = await stash_service.get_public_stash(slug, viewer_id=viewer_id)
+    if not stash:
+        raise HTTPException(status_code=404, detail="Stash not found")
+
+    items = await stash_service.inline_items(stash, viewer_id=viewer_id)
+    item = next(
+        (
+            candidate
+            for candidate in items
+            if candidate["object_type"] == object_type
+            and str(candidate["object_id"]) == str(object_id)
+        ),
+        None,
+    )
+    if not item:
+        raise HTTPException(status_code=404, detail="Stash item not found")
+
+    if format == "text":
+        return PlainTextResponse(
+            stash_service.item_to_text(stash, item, settings.PUBLIC_URL.rstrip()),
+            media_type="text/markdown",
+        )
+
+    workspace_name = stash.pop("_workspace_name", "")
+    can_write = bool(
+        current_user and await stash_service.user_can_write(stash["id"], current_user["id"])
+    )
+    return {
+        "stash": StashResponse(**stash),
+        "workspace_name": workspace_name,
+        "item": item,
+        "can_write": can_write,
+    }
 
 
 @public_router.post("/{slug}/add-to-workspace", response_model=StashResponse, status_code=201)

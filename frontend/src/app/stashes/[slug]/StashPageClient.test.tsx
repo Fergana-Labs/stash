@@ -17,6 +17,7 @@ import {
   getPublicStash,
   listStashMembers,
   searchUsers,
+  updateStash,
   type PublicStashDetail,
 } from "../../../lib/api";
 
@@ -116,6 +117,8 @@ function stashDetail(
       owner_name: "henry",
       owner_display_name: "Henry",
       access: "public",
+      workspace_permission: "read",
+      public_permission: "read",
       discoverable: false,
       cover_image_url: null,
       icon_url: null,
@@ -174,6 +177,10 @@ describe("StashPageClient sharing", () => {
     vi.mocked(searchUsers).mockResolvedValue([
       { id: "user-3", name: "alex", display_name: "Alex" },
     ]);
+    vi.mocked(updateStash).mockImplementation(async (_stashId, updates) => ({
+      ...stashDetail().stash,
+      ...updates,
+    }));
     vi.mocked(addStashMember).mockResolvedValue({
       user_id: "user-3",
       name: "alex",
@@ -192,6 +199,9 @@ describe("StashPageClient sharing", () => {
     render(<StashPageClient slug="shared-stash" />);
 
     const shareButton = await screen.findByRole("button", { name: "Share" });
+    expect(
+      screen.getByRole("button", { name: "Copy agent handoff link" }),
+    ).toBeInTheDocument();
     expect(shareButton.closest("header")).not.toBeNull();
     expect(screen.getAllByRole("button", { name: "Share" })).toHaveLength(1);
 
@@ -207,9 +217,92 @@ describe("StashPageClient sharing", () => {
     expect(screen.getByRole("button", { name: "Copied" })).toBeInTheDocument();
   });
 
+  it("copies an agent-readable handoff link from the app header", async () => {
+    render(<StashPageClient slug="shared-stash" />);
+
+    const handoffButton = await screen.findByRole("button", {
+      name: "Copy agent handoff link",
+    });
+    fireEvent.click(handoffButton);
+
+    await waitFor(() =>
+      expect(navigator.clipboard.writeText).toHaveBeenCalledWith(
+        `${window.location.origin}/api/v1/stashes/shared-stash?format=text`,
+      ),
+    );
+    expect(
+      screen.getByRole("button", { name: "Copy agent handoff link" }),
+    ).toHaveTextContent("Copied");
+  });
+
+  it("makes private Stashes public and unlisted before copying an agent link", async () => {
+    vi.mocked(getPublicStash).mockResolvedValueOnce({
+      ...stashDetail({
+        access: "private",
+        workspace_permission: "none",
+        public_permission: "none",
+        discoverable: false,
+      }),
+      can_write: true,
+    });
+
+    render(<StashPageClient slug="shared-stash" />);
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Copy agent handoff link" }),
+    );
+
+    await waitFor(() =>
+      expect(updateStash).toHaveBeenCalledWith("stash-1", {
+        workspace_permission: "read",
+        public_permission: "read",
+        discoverable: false,
+      }),
+    );
+    expect(navigator.clipboard.writeText).toHaveBeenCalledWith(
+      `${window.location.origin}/api/v1/stashes/shared-stash?format=text`,
+    );
+    expect(
+      screen.getByRole("button", { name: "Copy agent handoff link" }),
+    ).toHaveTextContent("Copied");
+  });
+
+  it("can make the Stash private from the Share dropdown", async () => {
+    vi.mocked(getPublicStash).mockResolvedValueOnce({
+      ...stashDetail({
+        access: "public",
+        workspace_permission: "write",
+        public_permission: "read",
+      }),
+      can_write: true,
+    });
+
+    render(<StashPageClient slug="shared-stash" />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Share" }));
+    const dialog = await screen.findByRole("dialog", {
+      name: "Share Shared Stash",
+    });
+    fireEvent.change(within(dialog).getByLabelText("Visibility"), {
+      target: { value: "private" },
+    });
+
+    await waitFor(() =>
+      expect(updateStash).toHaveBeenCalledWith("stash-1", {
+        workspace_permission: "none",
+        public_permission: "none",
+        discoverable: false,
+      }),
+    );
+  });
+
   it("manages explicit Stash members from the Share dropdown", async () => {
     vi.mocked(getPublicStash).mockResolvedValueOnce({
-      ...stashDetail({ access: "private" }),
+      ...stashDetail({
+        access: "private",
+        workspace_permission: "none",
+        public_permission: "none",
+      }),
       can_write: true,
     });
 
@@ -236,7 +329,11 @@ describe("StashPageClient sharing", () => {
 
   it("keeps add/create flows behind the single Add things button", async () => {
     vi.mocked(getPublicStash).mockResolvedValueOnce({
-      ...stashDetail({ access: "workspace" }),
+      ...stashDetail({
+        access: "workspace",
+        workspace_permission: "read",
+        public_permission: "none",
+      }),
       can_write: true,
     });
 
@@ -258,7 +355,11 @@ describe("StashPageClient sharing", () => {
 
   it("does not render stash access as a title badge", async () => {
     vi.mocked(getPublicStash).mockResolvedValueOnce(
-      stashDetail({ access: "workspace" }),
+      stashDetail({
+        access: "workspace",
+        workspace_permission: "read",
+        public_permission: "none",
+      }),
     );
 
     render(<StashPageClient slug="shared-stash" />);
@@ -267,6 +368,21 @@ describe("StashPageClient sharing", () => {
 
     expect(title).toHaveTextContent("Shared Stash");
     expect(title).not.toHaveTextContent("workspace");
+  });
+
+  it("loads only recent activity for the commit graph", async () => {
+    render(<StashPageClient slug="shared-stash" />);
+
+    expect(
+      await screen.findByText("Human / agent commits — last 30 days"),
+    ).toBeInTheDocument();
+    await waitFor(() =>
+      expect(getActivityTimeline).toHaveBeenCalledWith(
+        30,
+        "day",
+        "workspace-1",
+      ),
+    );
   });
 
   it("shows the stash author in the detail header", async () => {

@@ -80,9 +80,9 @@ def readable_content_condition(object_type: str, object_alias: str, user_arg: in
              AND content_stash_member.user_id = ${user_arg}
             WHERE {target_condition}
               AND (
-                content_stash.access = 'public'
+                content_stash.public_permission != 'none'
                 OR (
-                  content_stash.access = 'workspace'
+                  content_stash.workspace_permission != 'none'
                   AND content_workspace_member.user_id IS NOT NULL
                 )
                 OR content_stash.owner_id = ${user_arg}
@@ -152,7 +152,8 @@ async def _containing_stashes(object_type: str, object_id: UUID) -> list[dict]:
     rows = []
     for target_type, target_id in await _object_targets(object_type, object_id):
         target_rows = await pool.fetch(
-            "SELECT s.id, s.workspace_id, s.owner_id, s.access "
+            "SELECT s.id, s.workspace_id, s.owner_id, "
+            "s.workspace_permission, s.public_permission "
             "FROM stashes s "
             "JOIN stash_items si ON si.stash_id = s.id "
             "WHERE si.object_type = $1 AND si.object_id = $2",
@@ -174,8 +175,9 @@ async def _stash_member_permission(stash_id: UUID, user_id: UUID) -> str | None:
 
 
 async def _stash_allows(stash: dict, user_id: UUID | None, require_write: bool) -> bool:
-    access = stash["access"]
-    if access == "public" and not require_write:
+    workspace_permission = stash["workspace_permission"]
+    public_permission = stash["public_permission"]
+    if public_permission != "none" and not require_write:
         return True
     if user_id is None:
         return False
@@ -184,14 +186,16 @@ async def _stash_allows(stash: dict, user_id: UUID | None, require_write: bool) 
 
     role = await get_workspace_role(stash["workspace_id"], user_id)
     permission = await _stash_member_permission(stash["id"], user_id)
-    if access == "workspace" and role is not None and not require_write:
+    if role is not None and workspace_permission != "none" and not require_write:
+        return True
+    if role is not None and workspace_permission == "write" and require_write:
+        return True
+    if require_write and public_permission == "write":
         return True
     if permission:
         if not require_write:
             return True
         return permission in ("write", "admin")
-    if access == "workspace":
-        return False
     return False
 
 
@@ -208,7 +212,8 @@ async def check_access(
     if object_type == "stash":
         pool = get_pool()
         row = await pool.fetchrow(
-            "SELECT id, workspace_id, owner_id, access FROM stashes WHERE id = $1",
+            "SELECT id, workspace_id, owner_id, workspace_permission, public_permission "
+            "FROM stashes WHERE id = $1",
             object_id,
         )
         if not row:
@@ -249,8 +254,11 @@ async def is_workspace_member(workspace_id: UUID, user_id: UUID) -> bool:
 
 async def get_visibility(object_type: str, object_id: UUID) -> str:
     stashes = await _containing_stashes(object_type, object_id)
-    if any(stash["access"] == "private" for stash in stashes):
+    if any(
+        stash["workspace_permission"] == "none" and stash["public_permission"] == "none"
+        for stash in stashes
+    ):
         return "private"
-    if any(stash["access"] == "public" for stash in stashes):
+    if any(stash["public_permission"] != "none" for stash in stashes):
         return "public"
     return "workspace"

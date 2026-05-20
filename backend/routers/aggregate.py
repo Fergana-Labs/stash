@@ -100,6 +100,7 @@ async def list_activity(
           FROM pages p
           JOIN accessible_workspaces aw ON aw.id = p.workspace_id
           WHERE COALESCE(p.metadata->>'shared_in_stash_id', '') = ''
+            AND p.deleted_at IS NULL
             AND """
         + permission_service.readable_content_condition("page", "p", 1)
         + """
@@ -115,7 +116,8 @@ async def list_activity(
                  aw.name AS workspace_name
           FROM files f
           JOIN accessible_workspaces aw ON aw.id = f.workspace_id
-          WHERE """
+          WHERE f.deleted_at IS NULL
+            AND """
         + permission_service.readable_content_condition("file", "f", 1)
         + """
         )

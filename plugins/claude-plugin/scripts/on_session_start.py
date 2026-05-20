@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
-"""SessionStart: save session_id, create a session record eagerly so the URL is known
-from the first turn, spawn a background watcher that fills in the summary +
-artifacts after the session ends, and inject context."""
+"""SessionStart: save session_id, create the session row, upload artifacts later,
+and inject context."""
 
 import json
 import os

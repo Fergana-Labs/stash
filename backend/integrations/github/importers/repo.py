@@ -30,13 +30,13 @@ from ....celery_app import celery
 from ....database import get_pool
 from ....services import files_tree_service, storage_service
 from ....tasks._celery_helpers import run_async
-from ..archive import UnsupportedHostError, resolve_archive_url
+from ..archive import UnsupportedHostError
 
 logger = logging.getLogger(__name__)
 
-MAX_ARCHIVE_BYTES = 100 * 1024 * 1024   # 100 MB
+MAX_ARCHIVE_BYTES = 100 * 1024 * 1024  # 100 MB
 MAX_FILES = 5000
-MAX_PER_FILE_BYTES = 10 * 1024 * 1024   # 10 MB
+MAX_PER_FILE_BYTES = 10 * 1024 * 1024  # 10 MB
 
 MARKDOWN_SUFFIXES = {".md", ".mdx"}
 SKIP_DIR_NAMES = {".git", "node_modules"}
@@ -195,6 +195,7 @@ async def _insert_file(
     )
     # Dispatch text extraction so PDF/txt/JSON become searchable.
     from ....tasks.extraction import extract_file_text
+
     extract_file_text.delay(str(row["id"]))
 
 
@@ -243,9 +244,7 @@ async def _import(
         with zipfile.ZipFile(archive_path) as zf:
             names = [n for n in zf.namelist() if not n.endswith("/")]
             if len(names) > MAX_FILES:
-                raise RuntimeError(
-                    f"archive has {len(names)} files; cap is {MAX_FILES}"
-                )
+                raise RuntimeError(f"archive has {len(names)} files; cap is {MAX_FILES}")
             top = _strip_top_level_prefix(zf.namelist())
 
             subpath_clean = (subpath or "").strip("/")
@@ -254,7 +253,7 @@ async def _import(
                 if top is not None:
                     if not rel.startswith(top + "/") and rel != top:
                         continue
-                    rel = rel[len(top) + 1:] if rel != top else ""
+                    rel = rel[len(top) + 1 :] if rel != top else ""
                 if not rel:
                     continue
                 if subpath_clean and not (
@@ -262,7 +261,7 @@ async def _import(
                 ):
                     continue
                 if subpath_clean:
-                    rel_inside_sub = rel[len(subpath_clean):].lstrip("/")
+                    rel_inside_sub = rel[len(subpath_clean) :].lstrip("/")
                 else:
                     rel_inside_sub = rel
                 rel_path = Path(rel_inside_sub)
@@ -273,7 +272,9 @@ async def _import(
                 info = zf.getinfo(member)
                 if info.file_size > MAX_PER_FILE_BYTES:
                     skipped += 1
-                    logger.info("git import: skip oversized file %s (%d bytes)", rel, info.file_size)
+                    logger.info(
+                        "git import: skip oversized file %s (%d bytes)", rel, info.file_size
+                    )
                     continue
 
                 with zf.open(info) as src:
@@ -288,7 +289,11 @@ async def _import(
                     page_name = rel_path.stem
                     try:
                         await _insert_page(
-                            workspace_id, leaf_folder, user_id, page_name, content.decode("utf-8", errors="replace")
+                            workspace_id,
+                            leaf_folder,
+                            user_id,
+                            page_name,
+                            content.decode("utf-8", errors="replace"),
                         )
                         pages_created += 1
                     except Exception:

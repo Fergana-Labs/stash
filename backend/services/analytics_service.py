@@ -116,33 +116,62 @@ async def get_activity_timeline(
 
     rows = await pool.fetch(
         _accessible_events_cte(ws_idx=ws_idx) + """
-        , session_commits AS (
+        , timeline_events AS (
             SELECT
                 me.workspace_id,
                 me.session_id,
-                DATE_TRUNC($2, MIN(me.created_at)) AS bucket_date,
-                (
-                    ARRAY_AGG(me.agent_name ORDER BY me.created_at)
-                    FILTER (WHERE me.agent_name IS NOT NULL AND me.agent_name != '')
-                )[1] AS agent_name,
-                (
-                    ARRAY_AGG(me.created_by ORDER BY me.created_at)
-                    FILTER (WHERE me.created_by IS NOT NULL)
-                )[1] AS actor_id
+                me.created_at,
+                me.agent_name,
+                me.created_by,
+                CASE NULLIF(me.metadata->>'client', '')
+                    WHEN 'claude_code' THEN 'claude'
+                    WHEN 'codex_cli' THEN 'codex'
+                    WHEN 'gemini_cli' THEN 'gemini'
+                    ELSE NULLIF(me.metadata->>'client', '')
+                END AS client_name
             FROM history_events me
             JOIN accessible_events a ON a.event_id = me.id
             WHERE me.created_at >= $3
               AND me.session_id IS NOT NULL
-            GROUP BY me.workspace_id, me.session_id
+        )
+        , session_commits AS (
+            SELECT
+                timeline_events.workspace_id,
+                timeline_events.session_id,
+                DATE_TRUNC($2, MIN(timeline_events.created_at)) AS bucket_date,
+                (
+                    ARRAY_AGG(timeline_events.client_name ORDER BY timeline_events.created_at)
+                    FILTER (WHERE timeline_events.client_name IS NOT NULL)
+                )[1] AS client_name,
+                (
+                    ARRAY_AGG(timeline_events.agent_name ORDER BY timeline_events.created_at)
+                    FILTER (
+                        WHERE timeline_events.agent_name IS NOT NULL
+                          AND timeline_events.agent_name != ''
+                    )
+                )[1] AS agent_name,
+                (
+                    ARRAY_AGG(timeline_events.created_by ORDER BY timeline_events.created_at)
+                    FILTER (WHERE timeline_events.created_by IS NOT NULL)
+                )[1] AS actor_id
+            FROM timeline_events
+            GROUP BY timeline_events.workspace_id, timeline_events.session_id
         )
         SELECT
             sc.bucket_date,
             COALESCE(NULLIF(u.display_name, ''), u.name, 'Unknown human') AS human_name,
-            COALESCE(NULLIF(sc.agent_name, ''), 'unknown agent') AS agent_name,
+            COALESCE(
+                sc.client_name,
+                CASE
+                    WHEN sc.agent_name = 'claude-subagent' THEN 'claude'
+                    ELSE NULLIF(sc.agent_name, '')
+                END,
+                'unknown agent'
+            ) AS agent_name,
             COUNT(*) AS cnt
         FROM session_commits sc
         LEFT JOIN users u ON u.id = sc.actor_id
-        GROUP BY sc.bucket_date, human_name, agent_name
+        GROUP BY sc.bucket_date, human_name, sc.client_name, sc.agent_name
         ORDER BY bucket_date
         """,
         *args,

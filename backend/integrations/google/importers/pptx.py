@@ -35,7 +35,9 @@ from ....database import get_pool
 
 logger = logging.getLogger(__name__)
 
-DRIVE_DOWNLOAD_URL = "https://www.googleapis.com/drive/v3/files/{file_id}?alt=media&supportsAllDrives=true"
+DRIVE_DOWNLOAD_URL = (
+    "https://www.googleapis.com/drive/v3/files/{file_id}?alt=media&supportsAllDrives=true"
+)
 PDFTOPPM_DPI = 144
 LIBREOFFICE_TIMEOUT = 180  # seconds
 
@@ -145,9 +147,7 @@ async def _convert_to_pdf(pptx_path: Path, out_dir: Path) -> Path:
 
 async def _render_pdf_to_pngs(pdf_path: Path, out_dir: Path) -> list[Path]:
     if shutil.which("pdftoppm") is None:
-        raise RuntimeError(
-            "pdftoppm (poppler-utils) is not installed in the worker image"
-        )
+        raise RuntimeError("pdftoppm (poppler-utils) is not installed in the worker image")
     prefix = out_dir / "slide"
     await _run(
         ["pdftoppm", "-r", str(PDFTOPPM_DPI), "-png", str(pdf_path), str(prefix)],
@@ -198,9 +198,9 @@ def _build_slide_html(deck_name: str, image_uris: list[str], slide_texts: list[s
         text = slide_texts[i] if i < len(slide_texts) else ""
         safe_text = html_mod.escape(text)
         sections.append(
-            "<section class=\"slide\">"
-            f"<img src=\"{uri}\" alt=\"slide {i + 1}\" />"
-            "<div class=\"slide-text\" aria-hidden=\"false\">"
+            '<section class="slide">'
+            f'<img src="{uri}" alt="slide {i + 1}" />'
+            '<div class="slide-text" aria-hidden="false">'
             f"{safe_text}"
             "</div>"
             "</section>"

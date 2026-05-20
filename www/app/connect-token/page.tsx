@@ -10,7 +10,7 @@ const AUTH0_ENABLED = process.env.NEXT_PUBLIC_AUTH0_ENABLED === "true";
 
 type Search = { session?: string; device?: string };
 
-// Server-side gate: confirm Auth0 session, then hand off to the client
+// Server-side gate: confirm Auth0 session, then render the client
 // component which shows an explicit "Authorize CLI" confirmation before
 // minting any token. We used to do the whole exchange+approve dance during
 // SSR, which silently handed the CLI a token just because a browser session

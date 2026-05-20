@@ -6,8 +6,10 @@ import { useCallback, useEffect, useState } from "react";
 import DescriptionEditor, {
   isBlankDescription,
 } from "../../../components/DescriptionEditor";
-import MembersModal from "../../../components/MembersModal";
-import { SkeletonBlock, WorkspaceHomeSkeleton } from "../../../components/SkeletonStates";
+import {
+  SkeletonBlock,
+  WorkspaceHomeSkeleton,
+} from "../../../components/SkeletonStates";
 import StashQuickAdd from "../../../components/StashQuickAdd";
 import DriveImportDialog from "../../../components/import/DriveImportDialog";
 import GitImportDialog from "../../../components/import/GitImportDialog";
@@ -68,8 +70,9 @@ export default function WorkspaceHomePage() {
   );
   const [insightsLoaded, setInsightsLoaded] = useState(false);
   const [error, setError] = useState("");
-  const [membersOpen, setMembersOpen] = useState(false);
-  const [openImport, setOpenImport] = useState<"git" | "notion" | "drive" | null>(null);
+  const [openImport, setOpenImport] = useState<"git" | "notion" | "drive" | null>(
+    null,
+  );
   const [integrationStatus, setIntegrationStatus] = useState<
     Record<string, IntegrationStatus | undefined>
   >({});
@@ -80,10 +83,7 @@ export default function WorkspaceHomePage() {
     const [w, m, t, p] = await Promise.allSettled([
       getWorkspace(workspaceId),
       getWorkspaceMembers(workspaceId),
-      // 365 days because seeded dev data is dated; for production the
-      // visualization remains legible at this window (1 row per contributor × 365
-      // 14px cells = ~1.4kpx wide, fits with horizontal scroll).
-      getActivityTimeline(365, "day", workspaceId),
+      getActivityTimeline(30, "day", workspaceId),
       getEmbeddingProjection(500, undefined, workspaceId),
     ]);
     if (w.status === "fulfilled") setWorkspace(w.value);
@@ -156,185 +156,186 @@ export default function WorkspaceHomePage() {
   if (!workspace && !error) return <WorkspaceHomeSkeleton />;
 
   return (
-    <>
-      <div className="scroll-thin flex-1 overflow-y-auto">
-        {/* Cover banner — workspace-customized image, color gradient, or default brand gradient */}
-        <div
-          className="h-[72px] w-full bg-gradient-to-r from-[var(--color-brand-200)] via-amber-100 to-rose-100 bg-cover bg-center"
-          style={
-            workspace?.cover_image_url
-              ? { backgroundImage: `url(${workspace.cover_image_url})` }
-              : workspace?.color_gradient
-                ? { backgroundImage: workspace.color_gradient }
-                : undefined
-          }
-        />
+    <div className="scroll-thin flex-1 overflow-y-auto">
+      {/* Cover banner — workspace-customized image, color gradient, or default brand gradient */}
+      <div
+        className="h-[72px] w-full bg-gradient-to-r from-[var(--color-brand-200)] via-amber-100 to-rose-100 bg-cover bg-center"
+        style={
+          workspace?.cover_image_url
+            ? { backgroundImage: `url(${workspace.cover_image_url})` }
+            : workspace?.color_gradient
+              ? { backgroundImage: workspace.color_gradient }
+              : undefined
+        }
+      />
 
-        <div className="mx-auto max-w-[920px] px-12 pb-20">
-          {/* Identity strip: icon + name + members preview + meta + actions */}
-          <div className="flex items-start justify-between gap-3 pt-4">
-            <div className="flex min-w-0 items-center gap-3">
-              <span className="-mt-9 flex h-12 w-12 flex-shrink-0 items-center justify-center overflow-hidden rounded-[10px] border-2 border-base bg-base text-[28px] text-[var(--color-brand-700)] shadow-sm">
-                {workspace?.icon_url ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    src={workspace.icon_url}
-                    alt=""
-                    className="h-full w-full object-cover"
-                  />
-                ) : (
-                  <WorkspaceIcon />
-                )}
-              </span>
-              <div className="min-w-0">
-                <h2 className="m-0 truncate font-display text-[20px] font-bold leading-tight tracking-[-0.015em] text-foreground">
-                  {workspace?.name || "Workspace"}
-                </h2>
-                <div className="mt-1 flex flex-wrap items-center gap-2 text-[12px] text-muted">
-                  <button
-                    type="button"
-                    onClick={() => setMembersOpen(true)}
-                    title="View members"
-                    className="inline-flex items-center gap-1 rounded px-1 py-0.5 hover:bg-raised"
-                  >
-                    <MemberCount members={members} />
-                  </button>
-                  {workspace?.updated_at && (
-                    <>
-                      <span className="text-muted/60">·</span>
-                      <span>updated {relativeTime(workspace.updated_at)}</span>
-                    </>
-                  )}
-                </div>
-              </div>
-            </div>
-            <div className="flex flex-shrink-0 items-center gap-1.5 pt-1">
-              {isMember && (
-                <Link
-                  href={`/workspaces/${workspaceId}/settings`}
-                  title="Workspace settings"
-                  aria-label="Workspace settings"
-                  className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted hover:bg-raised hover:text-foreground"
-                >
-                  <SettingsGlyph />
-                </Link>
+      <div className="mx-auto max-w-[920px] px-12 pb-20">
+        {/* Identity strip: icon + name + members preview + meta + actions */}
+        <div className="flex items-start justify-between gap-3 pt-4">
+          <div className="flex min-w-0 items-center gap-3">
+            <span className="-mt-9 flex h-12 w-12 flex-shrink-0 items-center justify-center overflow-hidden rounded-[10px] border-2 border-base bg-base text-[28px] text-[var(--color-brand-700)] shadow-sm">
+              {workspace?.icon_url ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={workspace.icon_url}
+                  alt=""
+                  className="h-full w-full object-cover"
+                />
+              ) : (
+                <WorkspaceIcon />
               )}
+            </span>
+            <div className="min-w-0">
+              <h2 className="m-0 truncate font-display text-[20px] font-bold leading-tight tracking-[-0.015em] text-foreground">
+                {workspace?.name || "Workspace"}
+              </h2>
+              <div className="mt-1 flex flex-wrap items-center gap-2 text-[12px] text-muted">
+                {members.length > 0 &&
+                  (isMember ? (
+                    <Link
+                      href={`/workspaces/${workspaceId}/members`}
+                      title="View members"
+                      className="inline-flex items-center gap-1 rounded px-1 py-0.5 hover:bg-raised"
+                    >
+                      <MemberCount members={members} />
+                    </Link>
+                  ) : (
+                    <span className="inline-flex items-center gap-1 px-1 py-0.5">
+                      <MemberCount members={members} />
+                    </span>
+                  ))}
+                {workspace?.updated_at && (
+                  <>
+                    <span className="text-muted/60">·</span>
+                    <span>updated {relativeTime(workspace.updated_at)}</span>
+                  </>
+                )}
+              </div>
             </div>
           </div>
-
-          {error && (
-            <div className="mt-4 rounded-lg border border-red-300/40 bg-red-500/10 px-4 py-2 text-[13px] text-red-500">
-              {error}
-            </div>
-          )}
-
-          {!isMember && workspace && (
-            <div className="mt-4 flex items-center justify-between rounded-lg border border-border bg-surface px-4 py-3 text-[13px]">
-              <span className="text-muted">
-                You aren&apos;t a member of this workspace.
-              </span>
-              <button
-                onClick={handleJoin}
-                className="rounded-md bg-[var(--color-brand-600)] px-3 py-1.5 text-[12px] font-medium text-white hover:bg-[var(--color-brand-700)]"
+          <div className="flex flex-shrink-0 items-center gap-1.5 pt-1">
+            {isMember && (
+              <Link
+                href={`/workspaces/${workspaceId}/settings`}
+                title="Workspace settings"
+                aria-label="Workspace settings"
+                className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted hover:bg-raised hover:text-foreground"
               >
-                Join workspace
-              </button>
-            </div>
-          )}
+                <SettingsGlyph />
+              </Link>
+            )}
+          </div>
+        </div>
 
-          <WorkspaceDescriptionEditor
-            workspace={workspace}
-            canEdit={isMember}
-            onSaved={(updated) => setWorkspace(updated)}
-          />
+        {error && (
+          <div className="mt-4 rounded-lg border border-red-300/40 bg-red-500/10 px-4 py-2 text-[13px] text-red-500">
+            {error}
+          </div>
+        )}
 
-          {/* Quick-add: paste URL or drop a file. .jsonl files route to
+        {!isMember && workspace && (
+          <div className="mt-4 flex items-center justify-between rounded-lg border border-border bg-surface px-4 py-3 text-[13px]">
+            <span className="text-muted">
+              You aren&apos;t a member of this workspace.
+            </span>
+            <button
+              onClick={handleJoin}
+              className="rounded-md bg-[var(--color-brand-600)] px-3 py-1.5 text-[12px] font-medium text-white hover:bg-[var(--color-brand-700)]"
+            >
+              Join workspace
+            </button>
+          </div>
+        )}
+
+        <WorkspaceDescriptionEditor
+          workspace={workspace}
+          canEdit={isMember}
+          onSaved={(updated) => setWorkspace(updated)}
+        />
+
+        {/* Quick-add: paste URL or drop a file. .jsonl files route to
               session-transcript upload; anything else uploads to Files. */}
-          {isMember && (
-            <section className="mt-6">
-              <div className="sys-label mb-1.5">
-                Quick add — paste a URL, drop a file, drop a .jsonl transcript
-              </div>
-              <StashQuickAdd workspaceId={workspaceId} onAdded={load} />
-            </section>
-          )}
-
-          {isMember && (
-            <WorkspaceImportRow
-              integrationStatus={integrationStatus}
-              onOpenGit={() => setOpenImport("git")}
-              onOpenDrive={() => setOpenImport("drive")}
-              onOpenNotion={() => setOpenImport("notion")}
-              pendingImports={pendingImports}
-            />
-          )}
-
-          {openImport === "git" && (
-            <GitImportDialog
-              workspaceId={workspaceId}
-              onDispatched={trackImport}
-              onClose={() => setOpenImport(null)}
-            />
-          )}
-          {openImport === "notion" && (
-            <NotionImportDialog
-              workspaceId={workspaceId}
-              onDispatched={trackImport}
-              onClose={() => setOpenImport(null)}
-            />
-          )}
-          {openImport === "drive" && (
-            <DriveImportDialog
-              workspaceId={workspaceId}
-              onDispatched={trackImport}
-              onClose={() => setOpenImport(null)}
-            />
-          )}
-
-          {/* Visualizations: human/agent session activity + 3D embedding view.
-              Section renders even when empty so users see the placeholder
-              and know what's coming once data exists. */}
-          <section className="mt-8">
-            <div className="sys-label mb-1.5">Human / agent commits — past year</div>
-            <div className="card-soft overflow-x-auto p-3">
-              {!insightsLoaded ? (
-                <SkeletonBlock className="h-40 w-full" />
-              ) : timeline && timeline.contributors.length > 0 ? (
-                <ContributorActivityTimeline data={timeline} />
-              ) : (
-                <div className="px-2 py-6 text-center text-[12.5px] text-muted">
-                  No agent session commits yet. Push a transcript via Quick add
-                  or the CLI to populate this view.
-                </div>
-              )}
-            </div>
-          </section>
-
+        {isMember && (
           <section className="mt-6">
             <div className="sys-label mb-1.5">
-              Embedding space — workspace knowledge map
+              Quick add — paste a URL, drop a file, drop a .jsonl transcript
             </div>
-            <div className="card-soft p-3">
-              {!insightsLoaded ? (
-                <SkeletonBlock className="h-40 w-full" />
-              ) : projection && projection.points.length > 0 ? (
-                <EmbeddingSpaceExplorer data={projection} />
-              ) : (
-                <div className="px-2 py-6 text-center text-[12.5px] text-muted">
-                  No embeddings indexed yet. Pages, table rows, and session
-                  events get embedded as they&apos;re added.
-                </div>
-              )}
-            </div>
+            <StashQuickAdd workspaceId={workspaceId} onAdded={load} />
           </section>
-        </div>
+        )}
+
+        {isMember && (
+          <WorkspaceImportRow
+            integrationStatus={integrationStatus}
+            onOpenGit={() => setOpenImport("git")}
+            onOpenDrive={() => setOpenImport("drive")}
+            onOpenNotion={() => setOpenImport("notion")}
+            pendingImports={pendingImports}
+          />
+        )}
+
+        {openImport === "git" && (
+          <GitImportDialog
+            workspaceId={workspaceId}
+            onDispatched={trackImport}
+            onClose={() => setOpenImport(null)}
+          />
+        )}
+        {openImport === "notion" && (
+          <NotionImportDialog
+            workspaceId={workspaceId}
+            onDispatched={trackImport}
+            onClose={() => setOpenImport(null)}
+          />
+        )}
+        {openImport === "drive" && (
+          <DriveImportDialog
+            workspaceId={workspaceId}
+            onDispatched={trackImport}
+            onClose={() => setOpenImport(null)}
+          />
+        )}
+
+        {/* Visualizations: human/agent session activity + 3D embedding view.
+              Section renders even when empty so users see the placeholder
+              and know what's coming once data exists. */}
+        <section className="mt-8">
+          <div className="sys-label mb-1.5">
+            Human / agent commits — last 30 days
+          </div>
+          <div className="card-soft overflow-x-auto p-3">
+            {!insightsLoaded ? (
+              <SkeletonBlock className="h-40 w-full" />
+            ) : timeline && timeline.contributors.length > 0 ? (
+              <ContributorActivityTimeline data={timeline} />
+            ) : (
+              <div className="px-2 py-6 text-center text-[12.5px] text-muted">
+                No agent session commits yet. Push a transcript via Quick add or
+                the CLI to populate this view.
+              </div>
+            )}
+          </div>
+        </section>
+
+        <section className="mt-6">
+          <div className="sys-label mb-1.5">
+            Embedding space — workspace knowledge map
+          </div>
+          <div className="card-soft p-3">
+            {!insightsLoaded ? (
+              <SkeletonBlock className="h-40 w-full" />
+            ) : projection && projection.points.length > 0 ? (
+              <EmbeddingSpaceExplorer data={projection} />
+            ) : (
+              <div className="px-2 py-6 text-center text-[12.5px] text-muted">
+                No embeddings indexed yet. Pages, table rows, and session events
+                get embedded as they&apos;re added.
+              </div>
+            )}
+          </div>
+        </section>
       </div>
-      <MembersModal
-        workspaceId={workspaceId}
-        open={membersOpen}
-        onClose={() => setMembersOpen(false)}
-      />
-    </>
+    </div>
   );
 }
 
@@ -385,8 +386,11 @@ function WorkspaceDescriptionEditor({
         canEdit={canEdit}
         placeholder="Describe this workspace…"
         ariaLabel="Workspace description"
+        workspaceId={workspace.id}
         onSave={async (html) => {
-          const updated = await updateWorkspace(workspace.id, { description: html });
+          const updated = await updateWorkspace(workspace.id, {
+            description: html,
+          });
           onSaved(updated);
         }}
       />

@@ -431,7 +431,6 @@ interface InlineSessionEvent {
 function SessionBody({ item }: { item: PublicStashItem }) {
   const s = (item.inline as {
     session?: {
-      summary?: string | null;
       agent_name?: string;
       started_at?: string | null;
       finished_at?: string | null;
@@ -448,9 +447,6 @@ function SessionBody({ item }: { item: PublicStashItem }) {
           {s.started_at && <span>started · {new Date(s.started_at).toLocaleString()}</span>}
           {s.finished_at && <span>ended · {new Date(s.finished_at).toLocaleString()}</span>}
         </div>
-        {s.summary && (
-          <p className="mt-2 whitespace-pre-wrap text-foreground">{s.summary}</p>
-        )}
       </div>
       <div className="space-y-2">
         {events.map((event, i) => (
