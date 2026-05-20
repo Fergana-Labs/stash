@@ -15,7 +15,7 @@ import numpy as np
 
 from ..database import get_pool
 from . import embeddings as embedding_service
-from . import permission_service, session_service
+from . import linear_ticket_service, permission_service, session_service
 
 logger = logging.getLogger(__name__)
 
@@ -130,13 +130,15 @@ async def push_event(
     if embedding_service.is_configured():
         _schedule_event_embed(event["id"], content, _text_hash(content))
     if workspace_id is not None and session_id:
-        await session_service.upsert_session(
+        session = await session_service.upsert_session(
             workspace_id,
             session_id,
             agent_name=agent_name,
             cwd=meta.get("cwd") if isinstance(meta.get("cwd"), str) else None,
             created_by=created_by,
         )
+        if linear_ticket_service.has_ticket_hint([content]):
+            await linear_ticket_service.sync_session_labels(workspace_id, session["id"], session_id)
     return event
 
 
@@ -224,13 +226,20 @@ async def _upsert_sessions_for_events(
         }
 
     for session_id, session in sessions.items():
-        await session_service.upsert_session(
+        row = await session_service.upsert_session(
             workspace_id,
             session_id,
             agent_name=session["agent_name"],
             cwd=session["cwd"],
             created_by=created_by,
         )
+        contents = [
+            event.get("content") or ""
+            for event in events
+            if event.get("session_id") == session_id
+        ]
+        if linear_ticket_service.has_ticket_hint(contents):
+            await linear_ticket_service.sync_session_labels(workspace_id, row["id"], session_id)
 
 
 def readable_session_event_condition(event_alias: str, user_arg: int) -> str:
@@ -334,6 +343,7 @@ async def list_workspace_sessions(workspace_id: UUID, user_id: UUID) -> list[dic
         ") "
         "SELECT h.session_id, "
         "       s.id::text AS id, "
+        f"       {linear_ticket_service.sql_json_agg('s')} AS linear_tickets, "
         "       MAX(h.agent_name) AS agent_name, "
         "       (ARRAY_AGG(NULLIF(u.display_name, '') ORDER BY h.created_at) "
         "        FILTER (WHERE NULLIF(u.display_name, '') IS NOT NULL))[1] AS user_name, "

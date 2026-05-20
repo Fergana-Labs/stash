@@ -18,16 +18,36 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.execute("ALTER TABLE stashes DROP CONSTRAINT IF EXISTS stashes_status_check")
-    op.execute(
-        "ALTER TABLE stashes ADD CONSTRAINT stashes_status_check "
-        "CHECK (status IN ('live', 'ready', 'failed'))"
-    )
+    op.execute("""
+        DO $$
+        BEGIN
+            IF EXISTS (
+                SELECT 1
+                FROM information_schema.columns
+                WHERE table_name = 'stashes'
+                  AND column_name = 'status'
+            ) THEN
+                ALTER TABLE stashes DROP CONSTRAINT IF EXISTS stashes_status_check;
+                ALTER TABLE stashes ADD CONSTRAINT stashes_status_check
+                    CHECK (status IN ('live', 'ready', 'failed'));
+            END IF;
+        END $$;
+    """)
 
 
 def downgrade() -> None:
-    op.execute("ALTER TABLE stashes DROP CONSTRAINT IF EXISTS stashes_status_check")
-    op.execute(
-        "ALTER TABLE stashes ADD CONSTRAINT stashes_status_check "
-        "CHECK (status IN ('live', 'summarizing', 'ready', 'failed'))"
-    )
+    op.execute("""
+        DO $$
+        BEGIN
+            IF EXISTS (
+                SELECT 1
+                FROM information_schema.columns
+                WHERE table_name = 'stashes'
+                  AND column_name = 'status'
+            ) THEN
+                ALTER TABLE stashes DROP CONSTRAINT IF EXISTS stashes_status_check;
+                ALTER TABLE stashes ADD CONSTRAINT stashes_status_check
+                    CHECK (status IN ('live', 'summarizing', 'ready', 'failed'));
+            END IF;
+        END $$;
+    """)

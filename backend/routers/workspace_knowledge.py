@@ -16,6 +16,7 @@ from ..database import get_pool
 from ..services import (
     ask_service,
     files_tree_service,
+    linear_ticket_service,
     memory_service,
     session_title_service,
     skill_service,
@@ -25,7 +26,7 @@ from ..services import (
 
 router = APIRouter(prefix="/api/v1/workspaces", tags=["workspaces"])
 
-SIDEBAR_ETAG_VERSION = "sidebar-event-title-v1"
+SIDEBAR_ETAG_VERSION = "sidebar-linear-ticket-v1"
 
 
 # ---------------------------------------------------------------------------
@@ -45,6 +46,7 @@ async def _list_sessions(workspace_id: UUID, user_id: UUID) -> list[dict]:
             "id": s["id"],
             "session_id": s["session_id"],
             "title": _auto_session_title(s),
+            "linear_tickets": linear_ticket_service.tickets_response(s.get("linear_tickets")),
             "user_name": s["user_name"],
             "agent_name": s["agent_name"] or "",
             "size_bytes": int(s["size_bytes"] or 0),

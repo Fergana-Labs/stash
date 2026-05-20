@@ -17,6 +17,7 @@ from ..auth import get_current_user
 from ..database import get_pool
 from ..services import (
     files_tree_service,
+    linear_ticket_service,
     memory_service,
     permission_service,
     session_service,
@@ -51,6 +52,7 @@ def _session_response(row: dict, title: str | None = None) -> dict:
             row.get("title_source"),
             row["session_id"],
         ),
+        "linear_tickets": linear_ticket_service.tickets_response(row.get("linear_tickets")),
         "agent_name": row.get("agent_name") or "",
         "cwd": row.get("cwd"),
         "files_touched": files_touched,
@@ -129,6 +131,7 @@ async def list_my_sessions(
           he.session_id,
           he.workspace_id,
           w.name AS workspace_name,
+          {linear_ticket_service.sql_json_agg('s')} AS linear_tickets,
           (ARRAY_AGG(NULLIF(u.display_name, '') ORDER BY he.created_at)
            FILTER (WHERE NULLIF(u.display_name, '') IS NOT NULL))[1] AS user_name,
           MAX(he.agent_name) AS agent_name,
@@ -145,7 +148,7 @@ async def list_my_sessions(
           AND s.session_id = he.session_id
           AND s.deleted_at IS NULL
         WHERE {' AND '.join(where)}
-        GROUP BY he.session_id, he.workspace_id, w.name, title_sources.title_source
+        GROUP BY he.session_id, he.workspace_id, w.name, s.id, title_sources.title_source
         ORDER BY last_event_at DESC, user_name ASC, session_id ASC
         LIMIT {int(limit)}
         """,
@@ -158,6 +161,9 @@ async def list_my_sessions(
         session["title"] = session_title_service.title_from_text(
             session.pop("title_source"),
             session["session_id"],
+        )
+        session["linear_tickets"] = linear_ticket_service.tickets_response(
+            session.get("linear_tickets")
         )
     return {"sessions": sessions}
 
@@ -204,6 +210,7 @@ async def get_workspace_session(
         session,
         title=session_title_service.title_from_events(events, session_id),
     )
+    payload["linear_tickets"] = await linear_ticket_service.list_session_labels(session["id"])
     payload["artifacts"] = await _session_artifacts(session["id"])
     return payload
 

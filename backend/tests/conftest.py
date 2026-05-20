@@ -103,6 +103,7 @@ _TRUNCATE_TABLES = [
     "pages",
     "folders",
     "table_rows",
+    "session_linear_tickets",
     "sessions",
     "workspace_members",
     "histories",

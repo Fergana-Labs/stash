@@ -592,6 +592,10 @@ function searchSidebarSessions(
     const searchable = [
       session.title,
       session.session_id,
+      ...session.linear_tickets.flatMap((ticket) => [
+        ticket.ticket_identifier,
+        ticket.ticket_title,
+      ]),
       session.user_name,
       session.agent_name,
     ]

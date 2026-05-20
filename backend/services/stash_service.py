@@ -10,7 +10,13 @@ import secrets
 from uuid import UUID
 
 from ..database import get_pool
-from . import files_tree_service, permission_service, storage_service, workspace_service
+from . import (
+    files_tree_service,
+    linear_ticket_service,
+    permission_service,
+    storage_service,
+    workspace_service,
+)
 
 _SLUG_RE = re.compile(r"[^a-z0-9]+")
 _HTML_TAG_RE = re.compile(r"<[^>]+>")
@@ -1155,7 +1161,8 @@ async def inline_items(stash: dict, viewer_id: UUID | None = None) -> list[dict]
                 }
         elif obj_type == "session":
             s = await pool.fetchrow(
-                "SELECT id, session_id, agent_name, files_touched, started_at, finished_at "
+                "SELECT id, session_id, agent_name, files_touched, started_at, finished_at, "
+                f"{linear_ticket_service.sql_json_agg('sessions')} AS linear_tickets "
                 "FROM sessions WHERE id = $1 AND deleted_at IS NULL",
                 obj_id,
             )
@@ -1182,6 +1189,9 @@ async def inline_items(stash: dict, viewer_id: UUID | None = None) -> list[dict]
                         "id": str(s["id"]),
                         "session_id": s["session_id"],
                         "agent_name": s["agent_name"],
+                        "linear_tickets": linear_ticket_service.tickets_response(
+                            s["linear_tickets"]
+                        ),
                         "files_touched": files_touched,
                         "started_at": s["started_at"].isoformat() if s["started_at"] else None,
                         "finished_at": s["finished_at"].isoformat() if s["finished_at"] else None,
@@ -1383,6 +1393,12 @@ def item_to_text(stash: dict, item: dict, base_url: str) -> str:
             f"Session ID: {session.get('session_id', label)}",
             f"Agent: {session.get('agent_name', 'agent')}",
         ]
+        linear_tickets = session.get("linear_tickets") or []
+        if linear_tickets:
+            lines.append(
+                "Linear Tickets: "
+                + ", ".join(ticket["ticket_identifier"] for ticket in linear_tickets)
+            )
         if session.get("summary"):
             lines.extend(["## Summary", str(session["summary"])])
         files_touched = session.get("files_touched") or []

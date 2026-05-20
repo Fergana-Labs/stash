@@ -205,6 +205,71 @@ async def test_workspace_sidebar_sessions_include_human_author(client: AsyncClie
 
 
 @pytest.mark.asyncio
+async def test_session_linear_ticket_labels_are_extracted(client: AsyncClient):
+    key = await _register(client)
+    ws = await _workspace(client, key)
+    headers = {"Authorization": f"Bearer {key}"}
+
+    linear_prompt = """You are working on a Linear ticket `FER-19`
+
+Issue context:
+Identifier: FER-19
+Title: We should be able to update the top background color gradient/image on the homepage of a Stash
+Current status: In Progress
+URL: https://linear.app/ferganalabs/issue/FER-19/we-should-be-able-to-update-the-top-background-color-gradientimage-on
+"""
+
+    pushed = await client.post(
+        f"/api/v1/workspaces/{ws}/sessions/events/batch",
+        json={
+            "events": [
+                {
+                    "agent_name": "codex",
+                    "event_type": "user_message",
+                    "content": linear_prompt,
+                    "session_id": "sess-linear",
+                }
+            ]
+        },
+        headers=headers,
+    )
+    assert pushed.status_code == 201
+
+    overview = await client.get(f"/api/v1/workspaces/{ws}/overview", headers=headers)
+    assert overview.status_code == 200
+    [overview_session] = overview.json()["sessions"]
+    assert overview_session["linear_tickets"] == [
+        {
+            "ticket_identifier": "FER-19",
+            "ticket_title": (
+                "We should be able to update the top background color gradient/image "
+                "on the homepage of a Stash"
+            ),
+            "ticket_url": (
+                "https://linear.app/ferganalabs/issue/FER-19/"
+                "we-should-be-able-to-update-the-top-background-color-gradientimage-on"
+            ),
+            "source": "linear_preamble",
+            "confidence": 1.0,
+        }
+    ]
+
+    detail = await client.get(
+        f"/api/v1/workspaces/{ws}/sessions/sess-linear",
+        headers=headers,
+    )
+    assert detail.status_code == 200
+    assert detail.json()["linear_tickets"][0]["ticket_identifier"] == "FER-19"
+
+    mine = await client.get(
+        f"/api/v1/me/sessions?workspace_id={ws}",
+        headers=headers,
+    )
+    assert mine.status_code == 200
+    assert mine.json()["sessions"][0]["linear_tickets"][0]["ticket_identifier"] == "FER-19"
+
+
+@pytest.mark.asyncio
 async def test_session_detail_returns_files_touched_and_artifacts_list(client: AsyncClient):
     key = await _register(client)
     ws = await _workspace(client, key)
