@@ -43,21 +43,20 @@ ${publishCurl(apiKey, apiUrl, "markdown")}
 INPUT: <edit this — either ./path/to/file.md, or a topic like "RFC: streaming token usage">`;
   }
 
-  // Session trace upload. Workspace ID fetched at runtime; user only edits
-  // the .jsonl path, session ID, and agent name at the bottom.
-  return `Upload my current session transcript to Stash so I can share it. Substitute the values at the bottom of this prompt into the curl and run it. Print the response.
+  // Session trace upload. Agent figures out its own transcript path and
+  // identity — nothing for the user to edit.
+  return `Upload your own current session transcript to Stash so I can share it.
+
+The transcript is the .jsonl file for this session — Claude Code stores them at \`~/.claude/projects/<cwd-slug>/<session-id>.jsonl\`; Cursor, Codex, and others have similar paths. Use that path, the session id (the filename without .jsonl), and your agent name when running:
 
 WORKSPACE_ID=\$(curl -sS ${apiUrl}/api/v1/workspaces/mine \\
   -H "Authorization: Bearer ${apiKey}" | python3 -c 'import json,sys;print(json.load(sys.stdin)["workspaces"][0]["id"])')
 
 curl -sS -X POST ${apiUrl}/api/v1/workspaces/\$WORKSPACE_ID/transcripts \\
   -H "Authorization: Bearer ${apiKey}" \\
-  -F "file=@<transcript_path>" \\
-  -F "session_id=<session_id>" \\
-  -F "agent_name=<agent_name>"
+  -F "file=@<your transcript path>" \\
+  -F "session_id=<session id from filename>" \\
+  -F "agent_name=<your agent, e.g. claude-code>"
 
----
-TRANSCRIPT_PATH: <edit this — e.g. ~/.claude/projects/myproj/abc-123.jsonl>
-SESSION_ID: <edit this — any unique id, e.g. session-2026-05-21>
-AGENT_NAME: claude-code`;
+Print the response.`;
 }
