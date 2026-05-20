@@ -52,7 +52,7 @@ async def create_stash(
 ):
     if not await workspace_service.is_member(workspace_id, current_user["id"]):
         raise HTTPException(status_code=403, detail="Not a workspace member")
-    if req.discoverable and req.access != "public":
+    if req.discoverable and req.public_permission == "none":
         raise HTTPException(status_code=400, detail="Discover Stashes must be public")
     for item in req.items:
         await _require_can_share_item(workspace_id, item, current_user["id"])
@@ -62,7 +62,8 @@ async def create_stash(
             owner_id=current_user["id"],
             title=req.title,
             description=req.description,
-            access=req.access,
+            workspace_permission=req.workspace_permission,
+            public_permission=req.public_permission,
             discoverable=req.discoverable,
             cover_image_url=req.cover_image_url,
             icon_url=req.icon_url,
@@ -84,6 +85,8 @@ async def publish_stash(
         raise HTTPException(status_code=403, detail="Not a workspace member")
     if not req.items:
         raise HTTPException(status_code=400, detail="A shared bundle needs at least one item")
+    if req.public_permission == "none":
+        raise HTTPException(status_code=400, detail="Published Stashes must be public")
 
     for item in req.items:
         await _require_can_share_item(workspace_id, item, current_user["id"])
@@ -94,7 +97,8 @@ async def publish_stash(
             owner_id=current_user["id"],
             title=req.title,
             description=req.description,
-            access="public",
+            workspace_permission=req.workspace_permission,
+            public_permission=req.public_permission,
             discoverable=req.discoverable,
             cover_image_url=req.cover_image_url,
             icon_url=req.icon_url,

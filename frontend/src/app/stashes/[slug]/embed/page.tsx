@@ -114,12 +114,11 @@ function ItemBody({ item }: { item: StashItemInlined }) {
   }
   if (item.object_type === "session") {
     const session = (item.inline as {
-      session?: { summary?: string | null; events?: { content: string; created_at: string }[] };
+      session?: { events?: { content: string; created_at: string }[] };
     }).session;
     if (!session) return null;
     return (
       <div className="space-y-3 text-[13px] leading-relaxed text-foreground">
-        {session.summary ? <p className="whitespace-pre-wrap">{session.summary}</p> : null}
         {(session.events ?? []).slice(0, 20).map((event, idx) => (
           <p key={`${event.created_at}-${idx}`} className="whitespace-pre-wrap">
             {event.content}

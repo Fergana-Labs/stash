@@ -12,7 +12,6 @@ import {
 } from "react";
 import AppShell from "../../../../components/AppShell";
 import { useBreadcrumbs } from "../../../../components/BreadcrumbContext";
-import CustomSelect from "../../../../components/CustomSelect";
 import { useAuth } from "../../../../hooks/useAuth";
 import {
   deleteStash,
@@ -23,14 +22,6 @@ import {
 } from "../../../../lib/api";
 import { resetStashNavigationCache } from "../../../../lib/stashNavigationCache";
 
-type StashAccess = PublicStashDetail["stash"]["access"];
-
-const ACCESS_OPTIONS = [
-  { value: "workspace", label: "Workspace" },
-  { value: "private", label: "Private" },
-  { value: "public", label: "Public" },
-];
-
 export default function StashSettingsPageClient({ slug }: { slug: string }) {
   const router = useRouter();
   const { user, loading: authLoading, logout } = useAuth();
@@ -40,8 +31,6 @@ export default function StashSettingsPageClient({ slug }: { slug: string }) {
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [title, setTitle] = useState("");
-  const [access, setAccess] = useState<StashAccess>("workspace");
-  const [discoverable, setDiscoverable] = useState(false);
 
   const stash = data?.stash ?? null;
 
@@ -85,8 +74,6 @@ export default function StashSettingsPageClient({ slug }: { slug: string }) {
   useEffect(() => {
     if (!stash) return;
     setTitle(stash.title);
-    setAccess(stash.access);
-    setDiscoverable(stash.discoverable);
   }, [stash]);
 
   if (authLoading || !user) {
@@ -163,14 +150,10 @@ export default function StashSettingsPageClient({ slug }: { slug: string }) {
     setError("");
     setMessage("");
     try {
-      const nextDiscoverable = access === "public" ? discoverable : false;
       const updated = await updateStash(stash.id, {
         title: trimmedTitle,
-        access,
-        discoverable: nextDiscoverable,
       });
       setData((current) => (current ? { ...current, stash: updated } : current));
-      setDiscoverable(updated.discoverable);
       resetStashNavigationCache();
       setMessage("Saved.");
     } catch (e) {
@@ -273,37 +256,6 @@ export default function StashSettingsPageClient({ slug }: { slug: string }) {
                 onChange={(e) => setTitle(e.target.value)}
                 className="mt-1 w-full rounded-md border border-border bg-surface px-3 py-2 text-[13.5px] text-foreground outline-none focus:border-[var(--color-brand-400)]"
               />
-
-              <div className="mt-4 grid gap-3 sm:grid-cols-[160px_minmax(0,1fr)]">
-                <div>
-                  <label className="block text-[12px] font-medium text-muted">
-                    Visibility
-                  </label>
-                  <CustomSelect
-                    value={access}
-                    options={ACCESS_OPTIONS}
-                    onChange={(next) => setAccess(next as StashAccess)}
-                    ariaLabel="Stash visibility"
-                    className="mt-1 w-full rounded-md border border-border bg-surface px-2.5 py-2 text-[12.5px]"
-                  />
-                </div>
-                <label
-                  className={
-                    "mt-5 flex items-center gap-2 rounded-md border border-border bg-surface px-3 py-2 text-[12.5px] " +
-                    (access === "public"
-                      ? "cursor-pointer text-foreground"
-                      : "cursor-not-allowed text-muted")
-                  }
-                >
-                  <input
-                    type="checkbox"
-                    checked={access === "public" && discoverable}
-                    disabled={access !== "public"}
-                    onChange={(e) => setDiscoverable(e.target.checked)}
-                  />
-                  <span>List on Discover</span>
-                </label>
-              </div>
 
               <div className="mt-4 flex items-center gap-3">
                 <button

@@ -47,19 +47,14 @@ Common reads (all support `--json`):
 ### LLM configuration (server-side)
 
 All LLM calls go through the backend via the Claude Agent SDK
-(`claude-agent-sdk`). The plugin no longer makes Anthropic calls — it
-only uploads transcripts; new sessions land in `summary_status='need_summary'`
-and the summarizer worker claims them atomically.
+(`claude-agent-sdk`). The plugin no longer makes Anthropic calls; it
+only uploads transcripts.
 
 Two model tiers, configured in `backend/.env`:
-- `ANTHROPIC_API_KEY` — required for ask and the session summarizer to run.
+- `ANTHROPIC_API_KEY` — required for ask-the-stash.
 - `ANTHROPIC_MODEL` — quality tier (default `claude-sonnet-4-6`). Used by
   ask-the-stash.
-- `ANTHROPIC_FAST_MODEL` — fast tier (default `claude-haiku-4-5`). Used by
-  the server-side session summarizer.
-
-Spend monitoring lives on per-row token counters such as
-`sessions.summary_input_tokens`.
+- `ANTHROPIC_FAST_MODEL` — fast tier (default `claude-haiku-4-5`).
 
 # CLAUDE.md — 12-rule template
 

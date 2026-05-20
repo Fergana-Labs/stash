@@ -21,6 +21,7 @@ import {
 
 const TOKEN_KEY = "stash_token";
 const API_BASE = "";
+const DEFAULT_LOCAL_COLLAB_URL = "ws://localhost:3458";
 
 // --- Token management (for CLI API key fallback) ---
 
@@ -35,6 +36,17 @@ export function setToken(token: string) {
 
 export function clearToken() {
   localStorage.removeItem(TOKEN_KEY);
+}
+
+export function getCollabUrl(): string {
+  const configured = process.env.NEXT_PUBLIC_COLLAB_URL?.trim();
+  if (configured) return configured.replace(/\/$/, "");
+  if (typeof window === "undefined") return DEFAULT_LOCAL_COLLAB_URL;
+  if (["localhost", "127.0.0.1"].includes(window.location.hostname)) {
+    return DEFAULT_LOCAL_COLLAB_URL;
+  }
+  const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+  return `${protocol}//${window.location.host}/collab`;
 }
 
 export class ApiError extends Error {
@@ -256,6 +268,9 @@ export interface PublicStashCard {
   slug: string;
   title: string;
   description: string;
+  access: StashVisibility;
+  workspace_permission: StashGeneralPermission;
+  public_permission: StashGeneralPermission;
   discoverable: boolean;
   cover_image_url: string | null;
   view_count: number;
@@ -345,6 +360,7 @@ export async function updatePage(
     name?: string;
     folder_id?: string | null;
     content?: string;
+    collab_projection?: boolean;
     content_type?: "markdown" | "html";
     content_html?: string;
     html_layout?: "responsive" | "fixed-aspect";
@@ -772,6 +788,7 @@ export async function updateFile(
 
 export interface SessionSummary {
   session_id: string;
+  title: string;
   workspace_id: string | null;
   workspace_name: string | null;
   user_name: string;
@@ -779,7 +796,6 @@ export interface SessionSummary {
   event_count: number;
   started_at: string;
   last_event_at: string;
-  first_prompt_preview: string | null;
 }
 
 export async function listMySessions(workspaceId?: string, limit = 50): Promise<SessionSummary[]> {
@@ -812,8 +828,6 @@ export interface SessionDetail {
   title: string;
   agent_name: string;
   cwd: string | null;
-  summary: string | null;
-  summary_status: string | null;
   files_touched: string[] | string;
   started_at: string | null;
   finished_at: string | null;
@@ -848,6 +862,9 @@ export interface StashItemSpec {
   label_override?: string | null;
 }
 
+export type StashVisibility = "workspace" | "private" | "public";
+export type StashGeneralPermission = "none" | "read" | "write";
+
 export interface CreatedStash {
   id: string;
   workspace_id: string;
@@ -857,7 +874,9 @@ export interface CreatedStash {
   owner_id: string;
   owner_name: string;
   owner_display_name: string | null;
-  access: "workspace" | "private" | "public";
+  access: StashVisibility;
+  workspace_permission: StashGeneralPermission;
+  public_permission: StashGeneralPermission;
   discoverable: boolean;
   cover_image_url: string | null;
   icon_url: string | null;
@@ -881,14 +900,20 @@ export async function createStash(
   workspaceId: string,
   title: string,
   items: StashItemSpec[],
-  opts: { description?: string; access?: "workspace" | "private" | "public"; discoverable?: boolean } = {}
+  opts: {
+    description?: string;
+    workspace_permission?: StashGeneralPermission;
+    public_permission?: StashGeneralPermission;
+    discoverable?: boolean;
+  } = {}
 ): Promise<CreatedStash> {
   return apiFetch(`/api/v1/workspaces/${workspaceId}/stashes`, {
     method: "POST",
     body: JSON.stringify({
       title,
       description: opts.description ?? "",
-      access: opts.access ?? "workspace",
+      workspace_permission: opts.workspace_permission ?? "read",
+      public_permission: opts.public_permission ?? "none",
       discoverable: opts.discoverable ?? false,
       cover_image_url: null,
       items: items.map((it, i) => ({
@@ -905,14 +930,20 @@ export async function publishStash(
   workspaceId: string,
   title: string,
   items: StashItemSpec[],
-  opts: { description?: string; discoverable?: boolean } = {}
+  opts: {
+    description?: string;
+    workspace_permission?: StashGeneralPermission;
+    public_permission?: Exclude<StashGeneralPermission, "none">;
+    discoverable?: boolean;
+  } = {}
 ): Promise<PublishedStashResult> {
   return apiFetch(`/api/v1/workspaces/${workspaceId}/stashes/publish`, {
     method: "POST",
     body: JSON.stringify({
       title,
       description: opts.description ?? "",
-      access: "public",
+      workspace_permission: opts.workspace_permission ?? "read",
+      public_permission: opts.public_permission ?? "read",
       discoverable: opts.discoverable ?? false,
       cover_image_url: null,
       items: items.map((it, i) => ({
@@ -934,7 +965,9 @@ export interface WorkspaceStash {
   owner_id: string;
   owner_name: string;
   owner_display_name: string | null;
-  access: "workspace" | "private" | "public";
+  access: StashVisibility;
+  workspace_permission: StashGeneralPermission;
+  public_permission: StashGeneralPermission;
   discoverable: boolean;
   cover_image_url: string | null;
   icon_url: string | null;
@@ -1000,7 +1033,8 @@ export async function updateStash(
   data: {
     title?: string;
     description?: string;
-    access?: "workspace" | "private" | "public";
+    workspace_permission?: StashGeneralPermission;
+    public_permission?: StashGeneralPermission;
     discoverable?: boolean;
     cover_image_url?: string | null;
     icon_url?: string | null;
@@ -1380,7 +1414,9 @@ export interface WorkspaceSidebarStash {
   slug: string;
   title: string;
   description: string;
-  access: "workspace" | "private" | "public";
+  access: StashVisibility;
+  workspace_permission: StashGeneralPermission;
+  public_permission: StashGeneralPermission;
   discoverable: boolean;
   is_external: boolean;
   forked_from_stash_id: string | null;

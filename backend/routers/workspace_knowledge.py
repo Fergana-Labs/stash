@@ -24,6 +24,8 @@ from ..services import (
 
 router = APIRouter(prefix="/api/v1/workspaces", tags=["workspaces"])
 
+SIDEBAR_ETAG_VERSION = "sidebar-event-title-v1"
+
 
 # ---------------------------------------------------------------------------
 # Overview + Sidebar — the per-workspace view shapes
@@ -53,8 +55,8 @@ async def _list_sessions(workspace_id: UUID, user_id: UUID) -> list[dict]:
 
 
 def _auto_session_title(session: dict) -> str:
-    return session_title_service.title_from_summary(
-        session.get("summary"),
+    return session_title_service.title_from_text(
+        session.get("title_source"),
         session["session_id"],
     )
 
@@ -159,6 +161,8 @@ async def _list_stashes(workspace_id: UUID, user_id: UUID) -> list[dict]:
             "title": stash["title"],
             "description": stash["description"],
             "access": stash["access"],
+            "workspace_permission": stash["workspace_permission"],
+            "public_permission": stash["public_permission"],
             "discoverable": stash["discoverable"],
             "is_external": stash["is_external"],
             "item_count": len(stash.get("items", [])),
@@ -297,7 +301,7 @@ async def _sidebar_etag(workspace_id: UUID, user_id: UUID) -> str:
     mutating tables."""
     pool = get_pool()
     row = await pool.fetchrow(
-        """
+        f"""
         SELECT
           (SELECT MAX(updated_at) FROM pages
             WHERE workspace_id = $1 AND COALESCE(metadata->>'shared_in_stash_id', '') = ''
@@ -305,8 +309,14 @@ async def _sidebar_etag(workspace_id: UUID, user_id: UUID) -> str:
           (SELECT MAX(created_at) FROM files
             WHERE workspace_id = $1 AND deleted_at IS NULL)                       AS f,
           (SELECT MAX(updated_at) FROM folders WHERE workspace_id = $1)          AS d,
-          (SELECT MAX(GREATEST(finished_at, started_at)) FROM sessions
+          (SELECT MAX(GREATEST(COALESCE(finished_at, started_at), started_at)) FROM sessions
             WHERE workspace_id = $1 AND deleted_at IS NULL)                       AS s,
+          (SELECT MAX(he.created_at) FROM history_events he
+            WHERE he.workspace_id = $1 AND he.session_id IS NOT NULL
+            AND {memory_service.readable_session_event_condition('he', 2)})        AS he,
+          (SELECT COUNT(*) FROM history_events he
+            WHERE he.workspace_id = $1 AND he.session_id IS NOT NULL
+            AND {memory_service.readable_session_event_condition('he', 2)})        AS hc,
           (SELECT MAX(updated_at) FROM stashes WHERE workspace_id = $1)            AS st,
           (SELECT MAX(sm.created_at) FROM stash_members sm
            JOIN stashes s ON s.id = sm.stash_id
@@ -316,7 +326,10 @@ async def _sidebar_etag(workspace_id: UUID, user_id: UUID) -> str:
         workspace_id,
         user_id,
     )
-    raw = "|".join(str(row[k] or "") for k in ("p", "f", "d", "s", "st", "sm", "w"))
+    raw = "|".join(
+        [SIDEBAR_ETAG_VERSION]
+        + [str(row[k] or "") for k in ("p", "f", "d", "s", "he", "hc", "st", "sm", "w")]
+    )
     return f'W/"{_short_hash(raw)}"'
 
 

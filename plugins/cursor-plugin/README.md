@@ -56,7 +56,7 @@ Override with env vars (set in Cursor's environment):
 | `beforeSubmitPrompt` | `user_message` | User's prompt text |
 | `postToolUse` | `tool_use` | Tool name, tool_input, tool_output preview |
 | `afterAgentResponse` | `assistant_message` | Final model text for the turn |
-| `stop` | `session_end` | Tool-count summary |
+| `stop` | `session_end` | Tool count and files changed |
 | `sessionEnd` | — (clears session state) | — |
 
 ## Commands

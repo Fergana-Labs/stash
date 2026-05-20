@@ -269,9 +269,9 @@ function FileBody({ file, text }: { file: FileInfo; text: string | null }) {
     );
   }
   if (isMarkdown(file.content_type, file.name)) {
-    if (text === null) return <DocumentBodySkeleton className="mx-auto mt-8 max-w-3xl" />;
+    if (text === null) return <DocumentBodySkeleton className="mx-auto mt-8 max-w-[920px]" />;
     return (
-      <article className="markdown-content mx-auto max-w-3xl px-12 py-8 text-[15px] leading-relaxed text-foreground">
+      <article className="prose prose-sm markdown-content mx-auto max-w-[920px] px-12 py-8 text-foreground">
         <Markdown remarkPlugins={[remarkGfm]}>{text || ""}</Markdown>
       </article>
     );

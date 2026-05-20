@@ -15,6 +15,7 @@ from .middleware import limiter
 from .routers import (
     admin,
     aggregate,
+    collab,
     discover,
     files,
     files_tree,
@@ -35,7 +36,6 @@ from .services.row_validation import RowValidationError
 from .workers import dispatcher as extraction_dispatcher
 from .workers import (
     embedding_reconciler,
-    session_summarizer,
     viz_precompute,
 )
 
@@ -48,12 +48,10 @@ async def lifespan(app: FastAPI):
     dispatcher_task = asyncio.create_task(extraction_dispatcher.run())
     reconciler_task = asyncio.create_task(embedding_reconciler.run())
     viz_task = asyncio.create_task(viz_precompute.run())
-    summarizer_task = asyncio.create_task(session_summarizer.run())
     tasks = (
         dispatcher_task,
         reconciler_task,
         viz_task,
-        summarizer_task,
     )
     try:
         yield
@@ -98,6 +96,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 app.include_router(users.router)
+app.include_router(collab.router)
 app.include_router(workspaces.router)
 app.include_router(workspace_knowledge.router)
 app.include_router(discover.router)

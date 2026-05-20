@@ -3,12 +3,6 @@
 Invoked by session_upload.spawn_session_upload(). Runs outside the hook
 timeout so large uploads don't block the agent.
 
-The session summary itself is generated server-side by
-`backend/workers/session_summarizer.py`. New sessions land in
-`summary_status='need_summary'` by default, so this script only has to
-upload the artifacts — the worker claims them atomically and owns the
-status transitions because it writes the summary.
-
 argv: script.py <session_row_id> <transcript_path> <cwd> <workspace_id>
                 <session_id> <agent_name> <base_url> <api_key>
 

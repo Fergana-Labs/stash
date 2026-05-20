@@ -51,7 +51,8 @@ async def test_stash_invite_grants_view_access_before_adding(client: AsyncClient
             f"/api/v1/workspaces/{source_workspace['id']}/stashes",
             json={
                 "title": "Partner Stash",
-                "access": "private",
+                "workspace_permission": "none",
+                "public_permission": "none",
                 "items": [{"object_type": "page", "object_id": page["id"]}],
             },
             headers=_auth(owner_key),
@@ -122,7 +123,8 @@ async def test_stash_invite_can_be_dismissed(client: AsyncClient):
             f"/api/v1/workspaces/{workspace['id']}/stashes",
             json={
                 "title": "Dismissable Stash",
-                "access": "private",
+                "workspace_permission": "none",
+                "public_permission": "none",
                 "items": [{"object_type": "page", "object_id": page["id"]}],
             },
             headers=_auth(owner_key),

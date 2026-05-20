@@ -176,7 +176,7 @@ def finalize_session_upload(
     event: HookEvent,
     data_dir: Path | None = None,
 ) -> bool:
-    """Start the detached upload + summary generation process for a session."""
+    """Start the detached artifact upload process for a session."""
     if not event.cwd and state.get("cwd"):
         event.cwd = state["cwd"]
 
@@ -309,7 +309,7 @@ def stream_assistant_message(
 def stream_session_end(
     client: StashClient, cfg: dict, state: dict, event: HookEvent,
 ) -> str | None:
-    """Push the session_end summary and upload transcript.
+    """Push the session_end event and upload transcript.
 
     Returns the stash URL if one was created, None otherwise.
     """

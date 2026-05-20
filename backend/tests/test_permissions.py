@@ -146,16 +146,26 @@ async def _make_history_event(
 
 
 async def _make_stash(workspace_id, owner_id, access, object_type, object_id):
+    workspace_permission, public_permission = _permissions_for_access(access)
     return await stash_service.create_stash(
         workspace_id=workspace_id,
         owner_id=owner_id,
         title=f"{access} Stash",
         description="",
-        access=access,
+        workspace_permission=workspace_permission,
+        public_permission=public_permission,
         discoverable=False,
         cover_image_url=None,
         items=[StashItem(object_type=object_type, object_id=object_id)],
     )
+
+
+def _permissions_for_access(access):
+    if access == "private":
+        return "none", "none"
+    if access == "public":
+        return "read", "read"
+    return "read", "none"
 
 
 async def _add_stash_member(pool, stash_id, user_id, granted_by, permission="read"):
@@ -277,7 +287,8 @@ async def test_private_stash_hides_member_content_from_workspace_admin(client: A
         f"/api/v1/workspaces/{workspace['id']}/stashes",
         json={
             "title": "Member private stash",
-            "access": "private",
+            "workspace_permission": "none",
+            "public_permission": "none",
             "items": [{"object_type": "page", "object_id": page["id"]}],
         },
         headers=_auth(member_key),
@@ -357,7 +368,8 @@ async def test_workspace_stash_content_requires_stash_write_permission(client: A
             f"/api/v1/workspaces/{workspace['id']}/stashes",
             json={
                 "title": "Workspace plan",
-                "access": "workspace",
+                "workspace_permission": "read",
+                "public_permission": "none",
                 "items": [{"object_type": "page", "object_id": page["id"]}],
             },
             headers=_auth(owner_key),
@@ -385,6 +397,60 @@ async def test_workspace_stash_content_requires_stash_write_permission(client: A
     )
     assert allowed.status_code == 200
     assert allowed.json()["content_markdown"] == "member edit"
+
+
+@pytest.mark.asyncio
+async def test_public_view_with_workspace_edit_permissions(pool):
+    owner_id = await _make_user(pool)
+    member_id = await _make_user(pool)
+    stranger_id = await _make_user(pool)
+    ws_id = await _make_workspace(pool, owner_id)
+    await _add_workspace_member(pool, ws_id, member_id)
+    page_id = await _make_page(pool, ws_id, owner_id)
+
+    await stash_service.create_stash(
+        workspace_id=ws_id,
+        owner_id=owner_id,
+        title="Public read workspace edit",
+        description="",
+        workspace_permission="write",
+        public_permission="read",
+        discoverable=False,
+        cover_image_url=None,
+        items=[StashItem(object_type="page", object_id=page_id)],
+    )
+
+    assert await permission_service.check_access("page", page_id, None)
+    assert await permission_service.check_access("page", page_id, member_id, require_write=True)
+    assert not await permission_service.check_access(
+        "page",
+        page_id,
+        stranger_id,
+        require_write=True,
+    )
+
+
+@pytest.mark.asyncio
+async def test_public_edit_permission_allows_authenticated_writer(pool):
+    owner_id = await _make_user(pool)
+    stranger_id = await _make_user(pool)
+    ws_id = await _make_workspace(pool, owner_id)
+    page_id = await _make_page(pool, ws_id, owner_id)
+
+    await stash_service.create_stash(
+        workspace_id=ws_id,
+        owner_id=owner_id,
+        title="Public edit",
+        description="",
+        workspace_permission="read",
+        public_permission="write",
+        discoverable=False,
+        cover_image_url=None,
+        items=[StashItem(object_type="page", object_id=page_id)],
+    )
+
+    assert await permission_service.check_access("page", page_id, None)
+    assert await permission_service.check_access("page", page_id, stranger_id, require_write=True)
 
 
 @pytest.mark.asyncio
@@ -418,7 +484,8 @@ async def test_invited_private_external_stash_can_be_added_to_workspace(client: 
             f"/api/v1/workspaces/{source_workspace['id']}/stashes",
             json={
                 "title": "Private external brief",
-                "access": "private",
+                "workspace_permission": "none",
+                "public_permission": "none",
                 "items": [{"object_type": "page", "object_id": page["id"]}],
             },
             headers=_auth(owner_key),
@@ -494,7 +561,8 @@ async def test_stash_member_api_grants_and_revokes_private_page_access(
         f"/api/v1/workspaces/{workspace['id']}/stashes",
         json={
             "title": "Private plan stash",
-            "access": "private",
+            "workspace_permission": "none",
+            "public_permission": "none",
             "items": [{"object_type": "page", "object_id": page["id"]}],
         },
         headers=_auth(owner_key),
@@ -577,7 +645,8 @@ async def test_stash_write_member_can_create_shared_page_outside_workspace_files
         f"/api/v1/workspaces/{workspace['id']}/stashes",
         json={
             "title": "Private edit stash",
-            "access": "private",
+            "workspace_permission": "none",
+            "public_permission": "none",
             "items": [{"object_type": "page", "object_id": page["id"]}],
         },
         headers=_auth(owner_key),

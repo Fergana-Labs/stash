@@ -263,9 +263,9 @@ def readable_session_event_condition(event_alias: str, user_arg: int) -> str:
                   WHERE session_stash_item.object_type = 'session'
                     AND session_stash_item.object_id = readable_session.id
                     AND (
-                      session_stash.access = 'public'
+                      session_stash.public_permission != 'none'
                       OR (
-                        session_stash.access = 'workspace'
+                        session_stash.workspace_permission != 'none'
                         AND session_workspace_member.user_id IS NOT NULL
                       )
                       OR session_stash.owner_id = ${user_arg}
@@ -317,22 +317,39 @@ async def list_workspace_sessions(workspace_id: UUID, user_id: UUID) -> list[dic
     list — replaces a SELECT against session_transcripts."""
     pool = get_pool()
     rows = await pool.fetch(
+        "WITH title_sources AS ( "
+        "  SELECT DISTINCT ON (ht.workspace_id, ht.session_id) "
+        "    ht.workspace_id, "
+        "    ht.session_id, "
+        "    LEFT(ht.content, 240) AS title_source "
+        "  FROM history_events ht "
+        "  WHERE ht.workspace_id = $1 "
+        "    AND ht.session_id IS NOT NULL "
+        "    AND NULLIF(BTRIM(ht.content), '') IS NOT NULL "
+        "  ORDER BY ht.workspace_id, ht.session_id, CASE "
+        "    WHEN ht.event_type IN ('user_message', 'user_prompt', 'prompt', 'message', 'user') THEN 0 "
+        "    WHEN ht.event_type IN ('assistant_message', 'assistant') THEN 1 "
+        "    ELSE 2 "
+        "  END, ht.created_at, ht.id "
+        ") "
         "SELECT h.session_id, "
         "       s.id::text AS id, "
         "       MAX(h.agent_name) AS agent_name, "
         "       (ARRAY_AGG(NULLIF(u.display_name, '') ORDER BY h.created_at) "
         "        FILTER (WHERE NULLIF(u.display_name, '') IS NOT NULL))[1] AS user_name, "
-        "       COALESCE(MAX(s.summary), '') AS summary, "
+        "       title_sources.title_source, "
         "       COUNT(*)::INT AS event_count, "
         "       SUM(LENGTH(h.content))::BIGINT AS size_bytes, "
         "       MIN(h.created_at) AS started_at, "
         "       MAX(h.created_at) AS last_at "
         "FROM history_events h "
         "JOIN sessions s ON s.workspace_id = h.workspace_id AND s.session_id = h.session_id "
+        "LEFT JOIN title_sources ON title_sources.workspace_id = h.workspace_id "
+        "  AND title_sources.session_id = h.session_id "
         "LEFT JOIN users u ON u.id = h.created_by "
         "WHERE h.workspace_id = $1 AND h.session_id IS NOT NULL "
         f"AND {readable_session_event_condition('h', 2)} "
-        "GROUP BY h.session_id, s.id "
+        "GROUP BY h.session_id, s.id, title_sources.title_source "
         "ORDER BY last_at DESC, user_name ASC, session_id ASC",
         workspace_id,
         user_id,

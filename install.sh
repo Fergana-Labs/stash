@@ -18,23 +18,6 @@ set -euo pipefail
 
 PACKAGE="${STASH_INSTALL_PACKAGE:-stashai}"
 
-require_tty() {
-  if [ -t 0 ]; then
-    return
-  fi
-
-  cat >&2 <<'MSG'
-stash needs an interactive terminal for setup.
-Re-run with this form:
-
-  bash -c "$(curl -fsSL https://raw.githubusercontent.com/Fergana-Labs/stash/main/install.sh)"
-
-MSG
-  exit 1
-}
-
-require_tty
-
 if command -v uv >/dev/null 2>&1; then
   INSTALLER="uv"
   INSTALL_CMD=(uv tool install --force --reinstall --refresh "$PACKAGE")
@@ -63,7 +46,28 @@ MSG
   exit 1
 fi
 
-# Stdin is a real terminal — hand off to the questionnaire. `stash login`
+# If stdin isn't a terminal, the user piped us via `curl … | bash`. The
+# /dev/tty redirect trick to recover interactivity hits a Python 3.14 +
+# macOS asyncio kqueue bug (OSError EINVAL on add_reader for the
+# redirected fd). The reliable fix is the `bash -c "$(curl ...)"` form
+# which keeps stdin as the natural terminal — surface the right command
+# instead of crashing inside questionary.
+if [ ! -t 0 ]; then
+  cat >&2 <<'MSG'
+stash is installed, but the setup wizard needs an interactive terminal.
+Re-run with this form (it keeps stdin attached to your shell):
+
+  bash -c "$(curl -fsSL https://raw.githubusercontent.com/Fergana-Labs/stash/main/install.sh)"
+
+Or just run it now:
+
+  stash login
+
+MSG
+  exit 0
+fi
+
+# Stdin is a real terminal; launch the questionnaire. `stash login`
 # asks scope, managed-vs-self-host, browser sign-in, workspace, and the
 # Claude Code plugin install (when detected).
 exec stash login

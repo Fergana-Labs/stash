@@ -1,5 +1,5 @@
 """Background watcher: waits for the Claude Code process to exit, then
-spawns session artifact upload + AI summary generation.
+spawns session artifact upload.
 
 The session row is created eagerly at session start so the URL is known
 immediately. Session content flows in live via hooks.push_event — this
@@ -81,7 +81,7 @@ def main() -> None:
     seed_path = initial_transcript_path or _state_transcript_path(data_dir)
 
     # Wait for the agent to exit. Events stream live via hooks.push_event; this
-    # watcher only needs to fire artifact upload + AI summary generation.
+    # watcher only needs to fire artifact upload.
     while _is_alive(agent_pid):
         if not transcript_path or not Path(transcript_path).is_file():
             transcript_path = _find_transcript(session_id, seed_path)
@@ -90,7 +90,7 @@ def main() -> None:
     if not transcript_path or not Path(transcript_path).is_file():
         transcript_path = _find_transcript(session_id, seed_path)
 
-    # Upload artifacts and generate summary in a separate process
+    # Upload artifacts in a separate process.
     stats_path = Path(data_dir) / "state.json"
     files_touched: list[str] = []
     if stats_path.is_file():

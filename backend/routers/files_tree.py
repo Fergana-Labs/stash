@@ -459,6 +459,7 @@ async def update_page(
             current_user["id"],
             require_write=True,
         )
+
     try:
         page = await files_tree_service.update_page(
             page_id,
@@ -471,11 +472,14 @@ async def update_page(
             content_html=req.content_html,
             html_layout=req.html_layout,
             move_to_root=req.move_to_root,
+            guard_content_hash=not (req.collab_projection and req.content is not None),
         )
     except DuplicatePageName as e:
         raise HTTPException(status_code=409, detail=str(e))
     if not page:
         raise HTTPException(status_code=404, detail="Page not found")
+    if req.content is not None and not req.collab_projection:
+        await files_tree_service.delete_page_collab_state(page_id, workspace_id)
     return PageResponse(**page)
 
 

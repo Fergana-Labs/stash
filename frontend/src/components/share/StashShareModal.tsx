@@ -5,6 +5,7 @@ import {
   createStash,
   publishStash,
   getWorkspaceSidebar,
+  type StashGeneralPermission,
   type WorkspaceSidebar,
   type StashItemSpec,
 } from "../../lib/api";
@@ -12,17 +13,28 @@ import { useShareModal } from "../../lib/shareModalContext";
 import { useEscapeKey } from "../../hooks/useEscapeKey";
 import CustomSelect from "../CustomSelect";
 
-type StashAccess = "workspace" | "private" | "public";
-
 type RowGroup = "Folders" | "Pages" | "Files" | "Tables";
 type GroupKey = "Sessions" | RowGroup;
+type StashVisibility = "private" | "workspace" | "public";
 
 const ROW_GROUP_ORDER: RowGroup[] = ["Folders", "Pages", "Files", "Tables"];
 
-const STASH_ACCESS_OPTIONS = [
-  { value: "workspace", label: "Everyone in this workspace" },
-  { value: "private", label: "Only invited people" },
-  { value: "public", label: "Public on the web" },
+const VISIBILITY_OPTIONS = [
+  { value: "private", label: "Private" },
+  { value: "workspace", label: "Workspace" },
+  { value: "public", label: "Public" },
+];
+
+const WORKSPACE_PERMISSION_OPTIONS = [
+  { value: "none", label: "No access" },
+  { value: "read", label: "Can view" },
+  { value: "write", label: "Can edit" },
+];
+
+const PUBLIC_PERMISSION_OPTIONS = [
+  { value: "none", label: "No access" },
+  { value: "read", label: "Can view" },
+  { value: "write", label: "Can edit" },
 ];
 
 interface SelectableRow {
@@ -53,6 +65,38 @@ function selectedCount(s: SelectedState): number {
   return s.rows.size + s.sessions.size;
 }
 
+function visibilityForPermissions(
+  workspacePermission: StashGeneralPermission,
+  publicPermission: StashGeneralPermission
+): StashVisibility {
+  if (publicPermission !== "none") return "public";
+  if (workspacePermission !== "none") return "workspace";
+  return "private";
+}
+
+function permissionsForVisibility(
+  visibility: StashVisibility,
+  workspacePermission: StashGeneralPermission,
+  publicPermission: StashGeneralPermission
+): {
+  workspacePermission: StashGeneralPermission;
+  publicPermission: StashGeneralPermission;
+} {
+  if (visibility === "private") {
+    return { workspacePermission: "none", publicPermission: "none" };
+  }
+  if (visibility === "workspace") {
+    return {
+      workspacePermission: workspacePermission === "none" ? "read" : workspacePermission,
+      publicPermission: "none",
+    };
+  }
+  return {
+    workspacePermission: workspacePermission === "none" ? "read" : workspacePermission,
+    publicPermission: publicPermission === "none" ? "read" : publicPermission,
+  };
+}
+
 export default function StashShareModal() {
   const { state, close, bumpVersion } = useShareModal();
   const { open, workspaceId, workspaceName, initial } = state;
@@ -61,7 +105,10 @@ export default function StashShareModal() {
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<SelectedState>(EMPTY_SELECTED);
   const [title, setTitle] = useState("");
-  const [access, setAccess] = useState<StashAccess>("workspace");
+  const [workspacePermission, setWorkspacePermission] =
+    useState<StashGeneralPermission>("read");
+  const [publicPermission, setPublicPermission] =
+    useState<StashGeneralPermission>("none");
   const [shareToDiscover, setShareToDiscover] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
@@ -78,7 +125,8 @@ export default function StashShareModal() {
     setSearch("");
     setError("");
     setTitle("");
-    setAccess("workspace");
+    setWorkspacePermission("read");
+    setPublicPermission("none");
     setShareToDiscover(false);
     setSelected(buildInitialSelection(initial, null));
     refresh();
@@ -98,6 +146,18 @@ export default function StashShareModal() {
     () => filterByLabel(sessions, search),
     [sessions, search]
   );
+  const visibility = visibilityForPermissions(workspacePermission, publicPermission);
+
+  function setVisibility(nextVisibility: StashVisibility) {
+    const next = permissionsForVisibility(
+      nextVisibility,
+      workspacePermission,
+      publicPermission
+    );
+    setWorkspacePermission(next.workspacePermission);
+    setPublicPermission(next.publicPermission);
+    if (next.publicPermission === "none") setShareToDiscover(false);
+  }
 
   const onToggleRow = (row: SelectableRow) => {
     setSelected((s) => {
@@ -200,11 +260,16 @@ export default function StashShareModal() {
       }
       const finalTitle = title.trim() || defaultTitle;
       const stash =
-        access === "public"
+        publicPermission !== "none"
           ? (await publishStash(workspaceId, finalTitle, items, {
+              workspace_permission: workspacePermission,
+              public_permission: publicPermission,
               discoverable: shareToDiscover,
             })).stash
-          : await createStash(workspaceId, finalTitle, items, { access });
+          : await createStash(workspaceId, finalTitle, items, {
+              workspace_permission: workspacePermission,
+              public_permission: publicPermission,
+            });
       if (stash.access === "public") {
         await navigator.clipboard.writeText(absoluteUrl(`/stashes/${stash.slug}`)).catch(() => {});
       }
@@ -253,10 +318,14 @@ export default function StashShareModal() {
           title={title}
           setTitle={setTitle}
           placeholderTitle={defaultTitle}
-          access={access}
-          setAccess={(next) => {
-            setAccess(next);
-            if (next !== "public") setShareToDiscover(false);
+          visibility={visibility}
+          setVisibility={setVisibility}
+          workspacePermission={workspacePermission}
+          setWorkspacePermission={setWorkspacePermission}
+          publicPermission={publicPermission}
+          setPublicPermission={(next) => {
+            setPublicPermission(next);
+            if (next === "none") setShareToDiscover(false);
           }}
           shareToDiscover={shareToDiscover}
           setShareToDiscover={setShareToDiscover}
@@ -285,8 +354,12 @@ function NewShareTab(props: {
   title: string;
   setTitle: (v: string) => void;
   placeholderTitle: string;
-  access: StashAccess;
-  setAccess: (v: StashAccess) => void;
+  visibility: StashVisibility;
+  setVisibility: (v: StashVisibility) => void;
+  workspacePermission: StashGeneralPermission;
+  setWorkspacePermission: (v: StashGeneralPermission) => void;
+  publicPermission: StashGeneralPermission;
+  setPublicPermission: (v: StashGeneralPermission) => void;
   shareToDiscover: boolean;
   setShareToDiscover: (v: boolean) => void;
   submitting: boolean;
@@ -309,8 +382,12 @@ function NewShareTab(props: {
     title,
     setTitle,
     placeholderTitle,
-    access,
-    setAccess,
+    visibility,
+    setVisibility,
+    workspacePermission,
+    setWorkspacePermission,
+    publicPermission,
+    setPublicPermission,
     shareToDiscover,
     setShareToDiscover,
     submitting,
@@ -437,7 +514,7 @@ function NewShareTab(props: {
       </div>
 
       <div className="border-t border-border-subtle px-5 py-3">
-        <div className="mb-2 grid grid-cols-2 gap-3 text-[12px]">
+        <div className="mb-2 grid grid-cols-1 gap-3 text-[12px] sm:grid-cols-2">
           <label className="flex flex-col gap-1">
             <span className="font-medium text-foreground">Title</span>
             <input
@@ -448,19 +525,41 @@ function NewShareTab(props: {
             />
           </label>
           <div className="flex flex-col gap-1">
-            <span className="font-medium text-foreground">Stash access</span>
+            <span className="font-medium text-foreground">Visibility</span>
             <CustomSelect
-              value={access}
-              options={STASH_ACCESS_OPTIONS}
-              onChange={(next) => setAccess(next as StashAccess)}
-              ariaLabel="Stash access"
+              value={visibility}
+              options={VISIBILITY_OPTIONS}
+              onChange={(next) => setVisibility(next as StashVisibility)}
+              ariaLabel="Visibility"
+              className="w-full rounded-md border border-border bg-surface px-2 py-1.5"
+              menuClassName="text-[12px]"
+            />
+          </div>
+          <div className="flex flex-col gap-1">
+            <span className="font-medium text-foreground">Workspace</span>
+            <CustomSelect
+              value={workspacePermission}
+              options={WORKSPACE_PERMISSION_OPTIONS}
+              onChange={(next) => setWorkspacePermission(next as StashGeneralPermission)}
+              ariaLabel="Workspace access"
+              className="w-full rounded-md border border-border bg-surface px-2 py-1.5"
+              menuClassName="text-[12px]"
+            />
+          </div>
+          <div className="flex flex-col gap-1">
+            <span className="font-medium text-foreground">Public</span>
+            <CustomSelect
+              value={publicPermission}
+              options={PUBLIC_PERMISSION_OPTIONS}
+              onChange={(next) => setPublicPermission(next as StashGeneralPermission)}
+              ariaLabel="Public access"
               className="w-full rounded-md border border-border bg-surface px-2 py-1.5"
               menuClassName="text-[12px]"
             />
           </div>
         </div>
 
-        {access === "public" && (
+        {publicPermission !== "none" && (
           <label className="mb-2 flex items-start gap-2 rounded-md border border-border-subtle bg-surface px-3 py-2 text-[12px]">
             <input
               type="checkbox"

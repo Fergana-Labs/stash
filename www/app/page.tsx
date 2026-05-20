@@ -629,7 +629,7 @@ function HowItWorks() {
       n: "01",
       pill: "Stream",
       title: "Every session flows into a shared store.",
-      body: "Prompts, tool calls, and session summaries push to your workspace’s Sessions as they happen. Nothing to remember to save.",
+      body: "Prompts, tool calls, assistant messages, and artifacts push to your workspace’s Sessions as they happen. Nothing to remember to save.",
       viz: <StreamViz />,
     },
     {

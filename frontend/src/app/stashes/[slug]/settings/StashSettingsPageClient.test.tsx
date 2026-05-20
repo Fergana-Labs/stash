@@ -90,6 +90,8 @@ function stashDetail(
       owner_name: "henry",
       owner_display_name: "Henry",
       access: "public",
+      workspace_permission: "read",
+      public_permission: "read",
       discoverable: false,
       cover_image_url: null,
       icon_url: null,
@@ -128,9 +130,13 @@ describe("StashSettingsPageClient", () => {
     expect(await screen.findByRole("heading", { name: "Settings" })).toBeInTheDocument();
     expect(await screen.findByDisplayValue("Shared Stash")).toBeInTheDocument();
     expect(screen.queryByText("Members")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Visibility")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Workspace access")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Public access")).not.toBeInTheDocument();
+    expect(screen.queryByText("List on Discover")).not.toBeInTheDocument();
   });
 
-  it("saves title and visibility changes", async () => {
+  it("saves title changes only", async () => {
     render(<StashSettingsPageClient slug="shared-stash" />);
 
     fireEvent.change(await screen.findByLabelText("Title"), {
@@ -141,11 +147,8 @@ describe("StashSettingsPageClient", () => {
     await waitFor(() =>
       expect(updateStash).toHaveBeenCalledWith("stash-1", {
         title: "Better Stash",
-        access: "public",
-        discoverable: false,
       }),
     );
     expect(await screen.findByText("Saved.")).toBeInTheDocument();
   });
-
 });

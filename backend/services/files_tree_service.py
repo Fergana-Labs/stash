@@ -343,6 +343,7 @@ async def update_page(
     html_layout: str | None = None,
     move_to_root: bool = False,
     metadata: dict | None = None,
+    guard_content_hash: bool = True,
     on_conflict: Callable[[dict], Awaitable[str]] | None = None,
 ) -> dict | None:
     """Update a page with optimistic concurrency on content_hash."""
@@ -421,7 +422,7 @@ async def update_page(
         args.append(page_id)
         args.append(workspace_id)
         where = f"id = ${idx} AND workspace_id = ${idx + 1} AND {_WORKSPACE_PAGE_FILTER}"
-        if expected_hash is not None:
+        if expected_hash is not None and guard_content_hash:
             args.append(expected_hash)
             where += f" AND content_hash = ${idx + 2}"
 
@@ -444,7 +445,7 @@ async def update_page(
                 _schedule_embed(page["id"], active)
             return page
 
-        if expected_hash is None:
+        if expected_hash is None or not guard_content_hash:
             return None
 
         fresh = await pool.fetchrow(
@@ -519,6 +520,15 @@ async def purge_page(page_id: UUID, workspace_id: UUID) -> bool:
         workspace_id,
     )
     return result == "DELETE 1"
+
+
+async def delete_page_collab_state(page_id: UUID, workspace_id: UUID) -> None:
+    pool = get_pool()
+    await pool.execute(
+        "DELETE FROM page_collab_documents WHERE page_id = $1 AND workspace_id = $2",
+        page_id,
+        workspace_id,
+    )
 
 
 async def list_trashed_pages(workspace_id: UUID) -> list[dict]:

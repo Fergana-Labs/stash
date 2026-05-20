@@ -62,6 +62,8 @@ describe("StashShareModal session sharing", () => {
       owner_name: "henry",
       owner_display_name: "Henry",
       access: "workspace",
+      workspace_permission: "read",
+      public_permission: "none",
       discoverable: false,
       cover_image_url: null,
       icon_url: null,
@@ -110,13 +112,46 @@ describe("StashShareModal session sharing", () => {
             label_override: "Debug auth flow",
           },
         ],
-        { access: "workspace" }
+        { workspace_permission: "read", public_permission: "none" }
       )
     );
     await waitFor(() =>
       expect(
         screen.queryByRole("heading", { name: "Share session as Stash" })
       ).not.toBeInTheDocument()
+    );
+  });
+
+  it("can create a private Stash", async () => {
+    render(
+      <ShareModalProvider>
+        <OpenSessionShareButton />
+        <StashShareModal />
+      </ShareModalProvider>
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Share session" }));
+
+    await screen.findByRole("heading", { name: "Share session as Stash" });
+    await screen.findByText("1 item selected");
+    fireEvent.click(screen.getByLabelText("Visibility"));
+    fireEvent.click(screen.getByRole("option", { name: /Private/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Create Stash" }));
+
+    await waitFor(() =>
+      expect(createStash).toHaveBeenCalledWith(
+        "workspace-1",
+        "Debug auth flow",
+        [
+          {
+            object_type: "session",
+            object_id: "session-row-uuid",
+            position: 0,
+            label_override: "Debug auth flow",
+          },
+        ],
+        { workspace_permission: "none", public_permission: "none" }
+      )
     );
   });
 

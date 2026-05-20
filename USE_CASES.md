@@ -14,7 +14,7 @@ Real-world scenarios for Stash, from solo developer to multi-agent team.
 3. Run `stash curate` to organize history into pages
 
 **What happens:**
-- Every Claude Code session auto-streams to Stash: tool calls, file edits, web searches, session summaries
+- Every Claude Code session auto-streams to Stash: prompts, assistant messages, tool calls, file edits, and artifacts
 - Run the `curate` tool to organize events into pages: "Authentication Patterns", "Database Migration Guide", "API Rate Limiting" — with Stashes and categories
 - A developer asks Claude: *"Check Stash — what did we learn about connection pooling last week?"* — gets an AI-synthesized answer with source events
 

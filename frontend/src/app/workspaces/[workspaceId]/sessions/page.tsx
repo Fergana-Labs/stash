@@ -423,10 +423,8 @@ function SessionTableRow({
 }
 
 function sessionTitle(s: SessionSummary): string {
-  const preview = (s.first_prompt_preview || "").trim().replace(/\s+/g, " ");
-  if (preview) return preview.length > 96 ? preview.slice(0, 96) + "…" : preview;
-  const id = s.session_id;
-  return id.replace(/^session[-_]/, "").replace(/[-_]+/g, " ") || id;
+  const title = s.title.trim().replace(/\s+/g, " ");
+  return title.length > 96 ? title.slice(0, 96) + "…" : title;
 }
 
 function sessionTime(session: SessionSummary): number {

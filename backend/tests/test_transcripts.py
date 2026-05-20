@@ -177,6 +177,31 @@ async def test_workspace_sidebar_sessions_include_human_author(client: AsyncClie
     [sidebar_session] = sidebar.json()["sessions"]
     assert sidebar_session["user_name"] == author
     assert sidebar_session["agent_name"] == "claude"
+    etag = sidebar.headers["etag"]
+
+    updated = await client.post(
+        f"/api/v1/workspaces/{ws}/sessions/events/batch",
+        json={
+            "events": [
+                {
+                    "agent_name": "claude",
+                    "event_type": "assistant_message",
+                    "content": "Release plan is ready",
+                    "session_id": "sess-human-author",
+                    "created_at": "2026-05-10T20:00:01Z",
+                }
+            ]
+        },
+        headers=headers,
+    )
+    assert updated.status_code == 201
+
+    refreshed = await client.get(
+        f"/api/v1/workspaces/{ws}/sidebar",
+        headers={**headers, "If-None-Match": etag},
+    )
+    assert refreshed.status_code == 200
+    assert refreshed.headers["etag"] != etag
 
 
 @pytest.mark.asyncio

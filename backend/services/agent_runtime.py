@@ -1,4 +1,4 @@
-"""Claude Agent SDK runtime for ask-the-workspace and the session summarizer.
+"""Claude Agent SDK runtime for ask-the-workspace.
 
 Replaces the old hand-rolled agent harness (`backend/services/llm.py`).
 The workspace tools are exposed as an in-process MCP server attached to
@@ -6,10 +6,7 @@ every call. Workspace scoping is handled through a ContextVar so each tool
 implementation can find the active Stash Workspace without threading the id
 through the SDK.
 
-Two call shapes:
-- `run_agent(...)` aggregates the full query stream into an `AgentResult`
-  (used by the session summarizer).
-- `stream_agent(...)` yields SSE-encoded chunks for the ask endpoint.
+`stream_agent(...)` yields SSE-encoded chunks for the ask endpoint.
 """
 
 from __future__ import annotations
@@ -18,7 +15,6 @@ import contextvars
 import json
 import logging
 from collections.abc import AsyncIterator
-from dataclasses import dataclass
 from enum import StrEnum
 from uuid import UUID
 
@@ -60,19 +56,10 @@ class ModelTier(StrEnum):
     FAST = "fast"
 
 
-class LLMNotConfiguredError(RuntimeError):
-    """Raised when an LLM call is attempted with ANTHROPIC_API_KEY unset."""
-
-
 def _model_for(tier: ModelTier) -> str:
     if tier is ModelTier.QUALITY:
         return settings.ANTHROPIC_MODEL
     return settings.ANTHROPIC_FAST_MODEL
-
-
-def _require_api_key() -> None:
-    if not settings.ANTHROPIC_API_KEY:
-        raise LLMNotConfiguredError("ANTHROPIC_API_KEY is not set")
 
 
 def _current_workspace() -> UUID:
@@ -110,6 +97,8 @@ def _stash_to_dict(stash: dict) -> dict:
         "title": stash["title"],
         "description": stash["description"],
         "access": stash["access"],
+        "workspace_permission": stash["workspace_permission"],
+        "public_permission": stash["public_permission"],
         "discoverable": bool(stash["discoverable"]),
         "view_count": stash["view_count"],
         "items": [_stash_item_to_dict(item) for item in stash.get("items", [])],
@@ -383,10 +372,15 @@ async def _list_stashes(args: dict) -> dict:
         "properties": {
             "title": {"type": "string"},
             "description": {"type": "string", "default": ""},
-            "access": {
+            "workspace_permission": {
                 "type": "string",
-                "enum": ["workspace", "private", "public"],
-                "default": "workspace",
+                "enum": ["none", "read", "write"],
+                "default": "read",
+            },
+            "public_permission": {
+                "type": "string",
+                "enum": ["none", "read", "write"],
+                "default": "none",
             },
             "discoverable": {"type": "boolean", "default": False},
             "items": {
@@ -413,9 +407,10 @@ async def _list_stashes(args: dict) -> dict:
 async def _create_stash(args: dict) -> dict:
     workspace_id = _current_workspace()
     user_id = _current_user()
-    access = args.get("access") or "workspace"
+    workspace_permission = args.get("workspace_permission") or "read"
+    public_permission = args.get("public_permission") or "none"
     discoverable = bool(args.get("discoverable", False))
-    if discoverable and access != "public":
+    if discoverable and public_permission == "none":
         return _text_result(json.dumps({"error": "Discover Stashes must be public"}))
     items = await _parse_stash_items(args.get("items") or [], workspace_id)
     stash = await stash_service.create_stash(
@@ -423,7 +418,8 @@ async def _create_stash(args: dict) -> dict:
         owner_id=user_id,
         title=args["title"],
         description=args.get("description") or "",
-        access=access,
+        workspace_permission=workspace_permission,
+        public_permission=public_permission,
         discoverable=discoverable,
         cover_image_url=None,
         items=items,
@@ -440,9 +436,13 @@ async def _create_stash(args: dict) -> dict:
             "stash_id": {"type": "string"},
             "title": {"type": "string"},
             "description": {"type": "string"},
-            "access": {
+            "workspace_permission": {
                 "type": "string",
-                "enum": ["workspace", "private", "public"],
+                "enum": ["none", "read", "write"],
+            },
+            "public_permission": {
+                "type": "string",
+                "enum": ["none", "read", "write"],
             },
             "discoverable": {"type": "boolean"},
             "items": {
@@ -473,7 +473,15 @@ async def _update_stash(args: dict) -> dict:
         return _text_result(json.dumps({"error": "not allowed"}))
 
     updates = {
-        key: args[key] for key in ("title", "description", "access", "discoverable") if key in args
+        key: args[key]
+        for key in (
+            "title",
+            "description",
+            "workspace_permission",
+            "public_permission",
+            "discoverable",
+        )
+        if key in args
     }
     if "items" in args:
         updates["items"] = await _parse_stash_items(args.get("items") or [], workspace_id)
@@ -549,92 +557,6 @@ def _build_options(
 # --- Public API ------------------------------------------------------------
 
 
-@dataclass(slots=True)
-class AgentResult:
-    text: str
-    input_tokens: int
-    output_tokens: int
-    turns_used: int
-    tool_calls_used: int
-    model: str
-    terminated_by: str  # 'end_turn' | 'max_turns' | 'error'
-
-
-def _extract_usage(msg) -> tuple[int, int]:
-    """Returns (input_tokens, output_tokens) from a ResultMessage or AssistantMessage."""
-    usage = getattr(msg, "usage", None) or {}
-    if isinstance(usage, dict):
-        return int(usage.get("input_tokens") or 0), int(usage.get("output_tokens") or 0)
-    return int(getattr(usage, "input_tokens", 0) or 0), int(getattr(usage, "output_tokens", 0) or 0)
-
-
-async def run_agent(
-    *,
-    tier: ModelTier,
-    system: str,
-    prompt: str,
-    workspace_id: UUID,
-    user_id: UUID | None = None,
-    tool_set: tuple[str, ...] = (),
-    max_turns: int = 8,
-    max_output_tokens: int = 4096,
-) -> AgentResult:
-    """Single-turn or multi-turn agent call. Aggregates the SDK message
-    stream into one result."""
-    _require_api_key()
-    model = _model_for(tier)
-    options = _build_options(system=system, tool_set=tool_set, model=model, max_turns=max_turns)
-
-    final_text = ""
-    input_tokens = 0
-    output_tokens = 0
-    turns = 0
-    tool_calls = 0
-    terminated_by = "end_turn"
-
-    workspace_token = _workspace_ctx.set(workspace_id)
-    user_token = _user_ctx.set(user_id)
-    try:
-        async for msg in query(prompt=prompt, options=options):
-            if isinstance(msg, AssistantMessage):
-                turns += 1
-                for block in msg.content:
-                    if isinstance(block, TextBlock):
-                        final_text = block.text
-                    elif isinstance(block, ToolUseBlock):
-                        tool_calls += 1
-                in_t, out_t = _extract_usage(msg)
-                input_tokens += in_t
-                output_tokens += out_t
-            elif isinstance(msg, ResultMessage):
-                if msg.is_error:
-                    terminated_by = msg.subtype or "error"
-                if msg.result:
-                    final_text = msg.result
-                if msg.usage:
-                    if msg.usage.get("input_tokens"):
-                        input_tokens = int(msg.usage["input_tokens"])
-                    if msg.usage.get("output_tokens"):
-                        output_tokens = int(msg.usage["output_tokens"])
-                if msg.num_turns:
-                    turns = msg.num_turns
-                if msg.subtype == "error_max_turns":
-                    terminated_by = "max_turns"
-    finally:
-        _user_ctx.reset(user_token)
-        _workspace_ctx.reset(workspace_token)
-
-    return AgentResult(
-        text=final_text,
-        input_tokens=input_tokens,
-        output_tokens=output_tokens,
-        turns_used=turns,
-        tool_calls_used=tool_calls,
-        model=model,
-        terminated_by=terminated_by,
-    )
-
-
 def _sse(event: dict) -> str:
     return f"data: {json.dumps(event)}\n\n"
 
@@ -649,8 +571,7 @@ async def stream_agent(
     tool_set: tuple[str, ...],
     max_turns: int = 8,
 ) -> AsyncIterator[str]:
-    """SSE generator for ask-the-workspace. Forwards assistant text deltas + a
-    summary line per tool call."""
+    """SSE generator for ask-the-workspace."""
     if not settings.ANTHROPIC_API_KEY:
         yield _sse(
             {

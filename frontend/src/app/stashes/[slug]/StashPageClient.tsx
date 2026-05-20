@@ -183,7 +183,7 @@ function StashPageBody({
     let cancelled = false;
     setInsightsLoaded(false);
     Promise.allSettled([
-      getActivityTimeline(365, "day", stash.workspace_id),
+      getActivityTimeline(30, "day", stash.workspace_id),
       getEmbeddingProjection(500, undefined, stash.workspace_id),
     ]).then(([t, p]) => {
       if (cancelled) return;
@@ -289,6 +289,7 @@ function StashPageBody({
 
         <StashDescriptionEditor
           stashId={stash.id}
+          workspaceId={stash.workspace_id}
           description={stash.description}
           canEdit={can_write}
           onSaved={() => {
@@ -339,7 +340,9 @@ function StashPageBody({
         {/* Visualizations: human/agent session activity + 3D embedding view of the
             owning workspace — same shape as workspace home. */}
         <section className="mt-8">
-          <div className="sys-label mb-1.5">Human / agent commits — past year</div>
+          <div className="sys-label mb-1.5">
+            Human / agent commits — last 30 days
+          </div>
           <div className="card-soft overflow-x-auto p-3">
             {!insightsLoaded ? (
               <SkeletonBlock className="h-40 w-full" />
@@ -528,11 +531,13 @@ function StashIconUpload({
 
 function StashDescriptionEditor({
   stashId,
+  workspaceId,
   description,
   canEdit,
   onSaved,
 }: {
   stashId: string;
+  workspaceId: string;
   description: string;
   canEdit: boolean;
   onSaved: () => void;
@@ -546,6 +551,7 @@ function StashDescriptionEditor({
         canEdit={canEdit}
         placeholder="Describe this Stash…"
         ariaLabel="Stash description"
+        workspaceId={workspaceId}
         onSave={async (html) => {
           await updateStash(stashId, { description: html });
           onSaved();

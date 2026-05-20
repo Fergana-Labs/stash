@@ -66,9 +66,9 @@ class Settings:
     ADMIN_PASSWORD: str | None = os.getenv("ADMIN_PASSWORD")
 
     # --- LLM (Anthropic) ---
-    # Two tiers used across ask-the-stash and the server-side session summarizer.
+    # Two tiers used across ask-the-stash and background workers.
     #   ANTHROPIC_MODEL      — quality tier (Sonnet): ask
-    #   ANTHROPIC_FAST_MODEL — fast tier (Haiku): session summary
+    #   ANTHROPIC_FAST_MODEL — fast tier (Haiku)
     ANTHROPIC_API_KEY: str | None = os.getenv("ANTHROPIC_API_KEY")
     ANTHROPIC_MODEL: str = os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-6")
     ANTHROPIC_FAST_MODEL: str = os.getenv("ANTHROPIC_FAST_MODEL", "claude-haiku-4-5")
