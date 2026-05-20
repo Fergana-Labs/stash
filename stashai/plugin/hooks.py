@@ -13,6 +13,7 @@ Never call `stream_session_end` from a per-turn hook — you'll emit a bogus
 
 from __future__ import annotations
 
+import shutil
 from pathlib import Path
 
 from stashai.plugin.event import HookEvent
@@ -40,6 +41,11 @@ _UPLOAD_WARNING_SESSION_KEY = "upload_warning_session_id"
 _UPLOAD_WARNING_MESSAGE = (
     "Stash uploads are failing; this conversation may not be visible to your team. "
     "Run `stash status` for details."
+)
+_UPLOADS_DISABLED_WARNING_SESSION_KEY = "uploads_disabled_warning_session_id"
+_UPLOADS_DISABLED_WARNING_MESSAGE = (
+    "Hey btw, Stash uploads aren't enabled. Run `stash connect` or `stash start` "
+    "to enable them."
 )
 _YELLOW = "\033[33m"
 _RESET = "\033[0m"
@@ -104,6 +110,35 @@ def _short_circuit(cfg: dict, event: HookEvent | None) -> tuple[bool, str | None
         return True, None
 
     return False, workspace_id
+
+
+def uploads_enabled(cfg: dict, event: HookEvent | None) -> bool:
+    if not cfg.get("api_key") or not cfg.get("agent_name"):
+        return False
+    skip, _ = _short_circuit(cfg, event)
+    return not skip
+
+
+def uploads_disabled_warning(
+    cfg: dict,
+    state: dict,
+    event: HookEvent | None,
+    data_dir: Path,
+) -> str | None:
+    """Return the once-per-session warning when Stash is installed but idle."""
+    if uploads_enabled(cfg, event):
+        return None
+    session_id = getattr(event, "session_id", "") if event is not None else ""
+    if not session_id:
+        return None
+    if state.get(_UPLOADS_DISABLED_WARNING_SESSION_KEY) == session_id:
+        return None
+    if shutil.which("stash") is None:
+        return None
+
+    state[_UPLOADS_DISABLED_WARNING_SESSION_KEY] = session_id
+    save_state(data_dir, state)
+    return _UPLOADS_DISABLED_WARNING_MESSAGE
 
 
 # --- Session lifecycle ---

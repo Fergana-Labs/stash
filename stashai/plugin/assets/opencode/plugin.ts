@@ -48,21 +48,29 @@ function cancelIdleEnd(): void {
   activeSessionId = "";
 }
 
-function runHook(script: string, payload: unknown): void {
+function runHook(script: string, payload: unknown, showOutput = false): void {
   // Fire-and-forget. We never want a flaky Stash backend to stall opencode.
   // detached + unref so the child belongs to its own process group and gets
   // reaped independently — otherwise zombies accumulate over long sessions.
   // _run.sh resolves the stashai venv's python so hooks work under pipx/uv.
   const hookName = script.replace(/\.py$/, "");
   try {
+    const stdio: ["pipe", "pipe", "pipe"] | ["pipe", "ignore", "ignore"] =
+      showOutput ? ["pipe", "pipe", "pipe"] : ["pipe", "ignore", "ignore"];
     const child = spawn("bash", [RUN_SH, hookName], {
-      stdio: ["pipe", "ignore", "ignore"],
-      detached: true,
+      stdio,
+      detached: !showOutput,
     });
     child.on("error", () => { /* bash missing / crash — swallow */ });
+    if (showOutput) {
+      child.stdout?.on("data", (chunk) => process.stderr.write(chunk));
+      child.stderr?.on("data", (chunk) => process.stderr.write(chunk));
+    }
     child.stdin?.write(JSON.stringify(payload));
     child.stdin?.end();
-    child.unref();
+    if (!showOutput) {
+      child.unref();
+    }
   } catch {
     // spawn failed synchronously — swallow
   }
@@ -127,7 +135,7 @@ export const StashPlugin = async ({
         case "session.created": {
           const info = event.properties?.info;
           const sid = info?.id ?? "";
-          runHook("on_session_start.py", { session_id: sid, cwd });
+          runHook("on_session_start.py", { session_id: sid, cwd }, true);
           scheduleIdleEnd(sid);
           break;
         }

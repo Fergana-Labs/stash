@@ -14,6 +14,7 @@ from rich.align import Align
 from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
+
 from stashai.plugin.upload_status import read_upload_status
 
 from .client import StashClient, StashError, stash_permissions_for_access

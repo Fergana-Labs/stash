@@ -1,22 +1,32 @@
 #!/usr/bin/env python3
 """Codex SessionStart: save session_id and create the session record."""
 
+import json
 import os
 
 from adapt import adapt_session_start
-from config import DATA_DIR, get_client, get_config, get_stdin_data, is_configured
+from config import DATA_DIR, get_client, get_config, get_stdin_data
 
-from stashai.plugin.hooks import create_session_record, reset_session_record_state
+from stashai.plugin.hooks import (
+    create_session_record,
+    reset_session_record_state,
+    uploads_disabled_warning,
+    uploads_enabled,
+)
 from stashai.plugin.session_upload import spawn_session_watcher
 from stashai.plugin.state import load_state, reset_stats, save_state
 
 
 def main():
-    if not is_configured():
-        return
     event = adapt_session_start(get_stdin_data())
     cfg = get_config()
     state = load_state(DATA_DIR)
+    if not uploads_enabled(cfg, event):
+        warning = uploads_disabled_warning(cfg, state, event, DATA_DIR)
+        if warning:
+            print(json.dumps({"systemMessage": warning}))
+        return
+
     reset_session_record_state(state)
     state["session_id"] = event.session_id
     save_state(DATA_DIR, state)
