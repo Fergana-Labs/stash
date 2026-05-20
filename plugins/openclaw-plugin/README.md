@@ -89,3 +89,7 @@ stash history search "<query>" --ws <id> --json
 stash whoami --json
 stash workspaces list --json
 ```
+
+For user-requested uploads, run `stash upload <path> --json` and return the
+response `url`. If you use `stash files upload <path> --json` for a raw file,
+return the response `app_url`.

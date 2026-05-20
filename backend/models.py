@@ -670,6 +670,7 @@ class FileResponse(BaseModel):
     content_type: str
     size_bytes: int
     url: str
+    app_url: str
     uploaded_by: UUID
     created_at: datetime
     linked_table_id: UUID | None = None

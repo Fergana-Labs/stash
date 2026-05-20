@@ -6,6 +6,8 @@ IMPORTANT: You have the `stash` CLI on your PATH. When the user mentions "Stash"
 
 Most things are plain `stash` CLI subcommands. Always use `--json` for machine-readable output when parsing results.
 
+When the user asks you to upload local files to Stash, use `stash upload <path> --json` and give the user the returned `url`. If you use `stash files upload <path> --json` for a raw file upload, give the user the returned `app_url`.
+
 ### Virtual filesystem
 Use `stash vfs` when you want to browse Stash like a filesystem without mounting anything into the OS. It accepts bash-shaped commands over the virtual Stash tree:
 ```bash

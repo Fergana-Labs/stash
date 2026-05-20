@@ -403,7 +403,7 @@ def stash_file_text(file_id: str, workspace_id: str = "") -> str:
 
 @mcp.tool()
 def stash_upload_file(file_path: str, workspace_id: str = "") -> str:
-    """Upload a local file to the workspace."""
+    """Upload a local file to the workspace. Returns a stable app_url for the user."""
     client, default_ws = _client()
     ws = _require_ws(workspace_id or default_ws)
     return _json(client.upload_ws_file(ws, file_path))
