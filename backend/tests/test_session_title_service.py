@@ -42,5 +42,21 @@ def test_title_from_events_falls_back_to_assistant_message():
     assert title == "Implemented auth checks"
 
 
+def test_title_from_text_uses_linear_issue_title():
+    title = title_from_text(
+        """
+        You are working on a Linear ticket `FER-19`
+
+        Issue context:
+        Identifier: FER-19
+        Title: Update the Stash homepage background
+        Current status: In Progress
+        """,
+        "session-1",
+    )
+
+    assert title == "Update the Stash homepage background"
+
+
 def test_title_from_text_falls_back_to_session_id_for_empty_text():
     assert title_from_text("", "session-1") == "session-1"

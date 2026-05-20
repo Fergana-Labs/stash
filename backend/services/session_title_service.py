@@ -42,10 +42,29 @@ def _title_from_first_matching_event(events: list[dict], event_types: tuple[str,
 
 
 def _title_from_content(content: str | None) -> str:
+    title = _title_from_structured_context(content)
+    if title:
+        return title
+
     for line in (content or "").splitlines():
         title = _title_from_line(line)
         if title:
             return title
+    return ""
+
+
+def _title_from_structured_context(content: str | None) -> str:
+    lines = (content or "").splitlines()
+    first_line = next((line.strip() for line in lines if line.strip()), "")
+    if not first_line.lower().startswith("you are working on a linear ticket"):
+        return ""
+
+    for line in lines:
+        match = re.match(r"^\s*Title:\s*(.+?)\s*$", line)
+        if not match:
+            continue
+        return _title_from_line(match.group(1))
+
     return ""
 
 
