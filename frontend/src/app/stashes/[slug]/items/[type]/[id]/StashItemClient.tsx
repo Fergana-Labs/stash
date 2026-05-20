@@ -61,7 +61,11 @@ function Chrome({
   }
   if (user) {
     return (
-      <AppShell user={user} onLogout={logout}>
+      <AppShell
+        user={user}
+        onLogout={logout}
+        activeWorkspaceId={data?.stash.workspace_id ?? null}
+      >
         {children}
       </AppShell>
     );

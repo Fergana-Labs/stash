@@ -853,6 +853,28 @@ describe("AppSidebar tree expansion", () => {
     expect(screen.queryByText("Handoff session")).toBeNull();
   });
 
+  it("opens and selects the active session on stash-scoped session item routes", async () => {
+    nav.pathname = "/stashes/project-alpha/items/session/session-row-1";
+    vi.mocked(getWorkspaceSidebar).mockResolvedValue(sidebarWithStash);
+
+    render(
+      <ShareModalProvider>
+        <AppSidebar
+          user={user}
+          activeWorkspaceId="ws-1"
+          onCmdkOpen={vi.fn()}
+        />
+      </ShareModalProvider>
+    );
+
+    const sessionLink = await screen.findByRole("link", {
+      name: /Planning session/,
+    });
+
+    expect(detailsFor("Henry")).toHaveAttribute("open");
+    expect(sessionLink).toHaveClass("bg-[var(--color-brand-50)]");
+  });
+
   it("rejects non-jsonl files dropped on the Sessions section", async () => {
     localStorage.setItem("stash_sidebar_open_workspaces", JSON.stringify({ "ws-1": true }));
     localStorage.setItem(

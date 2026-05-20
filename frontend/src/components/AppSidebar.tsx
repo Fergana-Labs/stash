@@ -601,6 +601,58 @@ function searchSidebarSessions(
   });
 }
 
+type ActiveSessionRef = {
+  workspaceId: string | null;
+  sessionId: string | null;
+  objectId: string | null;
+};
+
+function activeSessionRef(pathname: string): ActiveSessionRef {
+  const workspaceMatch = pathname.match(
+    /^\/workspaces\/([^/]+)\/sessions\/([^/?#]+)/,
+  );
+  if (workspaceMatch) {
+    return {
+      workspaceId: workspaceMatch[1],
+      sessionId: decodeURIComponent(workspaceMatch[2]),
+      objectId: null,
+    };
+  }
+
+  const stashItemMatch = pathname.match(
+    /^\/stashes\/[^/]+\/items\/session\/([^/?#]+)/,
+  );
+  if (stashItemMatch) {
+    return {
+      workspaceId: null,
+      sessionId: null,
+      objectId: decodeURIComponent(stashItemMatch[1]),
+    };
+  }
+
+  return { workspaceId: null, sessionId: null, objectId: null };
+}
+
+function sessionMatchesActive(
+  active: ActiveSessionRef,
+  workspaceId: string,
+  session: Pick<WorkspaceSidebarSession, "id" | "session_id">
+): boolean {
+  if (active.workspaceId && active.workspaceId !== workspaceId) return false;
+  if (active.sessionId && active.sessionId === session.session_id) return true;
+  return !!active.objectId && active.objectId === session.id;
+}
+
+function sessionBucketHasActiveSession(
+  active: ActiveSessionRef,
+  workspaceId: string,
+  sessions: WorkspaceSidebarSession[]
+): boolean {
+  return sessions.some((session) =>
+    sessionMatchesActive(active, workspaceId, session)
+  );
+}
+
 type SessionTreeDayGroup = {
   dateKey: string;
   label: string;
@@ -789,20 +841,21 @@ function SidebarSearchField({
 function SessionNavRow({
   workspaceId,
   session,
+  activeSession,
   onPinMenu,
 }: {
   workspaceId: string;
   session: WorkspaceSidebarSession;
+  activeSession: ActiveSessionRef;
   onPinMenu?: (event: MouseEvent<HTMLAnchorElement>, session: WorkspaceSidebarSession) => void;
 }) {
-  const pathname = usePathname();
   const href = `/workspaces/${workspaceId}/sessions/${encodeURIComponent(session.session_id)}`;
   return (
     <NavRow
       href={href}
       icon={<span className="text-muted"><SessionsIcon /></span>}
       label={sessionLabelForSidebar(session)}
-      active={pathname === href}
+      active={sessionMatchesActive(activeSession, workspaceId, session)}
       onContextMenu={(event) => onPinMenu?.(event, session)}
     />
   );
@@ -838,6 +891,7 @@ function SessionsBlock({
   onAddSession: () => void;
 }) {
   const pathname = usePathname();
+  const activeSession = activeSessionRef(pathname);
   const [query, setQuery] = useState("");
   const [visiblePeriodCount, setVisiblePeriodCount] = useState(PREVIEW_ITEM_LIMIT);
   const [visibleSearchCount, setVisibleSearchCount] = useState(PREVIEW_ITEM_LIMIT);
@@ -859,7 +913,13 @@ function SessionsBlock({
     [sessions, query]
   );
   const queryActive = query.trim().length > 0;
-  const visibleGroups = groups.slice(0, visiblePeriodCount);
+  const activeGroupIndex = groups.findIndex((group) =>
+    group.users.some((bucket) =>
+      sessionBucketHasActiveSession(activeSession, workspace.id, bucket.sessions)
+    )
+  );
+  const visiblePeriodLimit = Math.max(visiblePeriodCount, activeGroupIndex + 1);
+  const visibleGroups = groups.slice(0, visiblePeriodLimit);
   const hiddenGroupCount = groups.length - visibleGroups.length;
   const visibleSearchResults = searchResults.slice(0, visibleSearchCount);
   const hiddenSearchCount = searchResults.length - visibleSearchResults.length;
@@ -867,6 +927,7 @@ function SessionsBlock({
     const session = sessionById.get(sessionId);
     return {
       id: sessionId,
+      objectId: session?.id ?? null,
       label: pinnedLabels.sessions[sessionId] ?? (session ? sessionLabelForSidebar(session) : "Session"),
       href: `/workspaces/${workspace.id}/sessions/${encodeURIComponent(sessionId)}`,
     };
@@ -968,6 +1029,7 @@ function SessionsBlock({
                 key={session.session_id}
                 workspaceId={workspace.id}
                 session={session}
+                activeSession={activeSession}
                 onPinMenu={(event, row) =>
                   showSessionPinMenu(
                     event,
@@ -1016,7 +1078,10 @@ function SessionsBlock({
                     href={session.href}
                     icon={<span className="text-muted"><SessionsIcon /></span>}
                     label={session.label}
-                    active={pathname === session.href}
+                    active={sessionMatchesActive(activeSession, workspace.id, {
+                      id: session.objectId,
+                      session_id: session.id,
+                    })}
                     onContextMenu={(event) =>
                       showSessionPinMenu(event, session.id, session.label)
                     }
@@ -1030,6 +1095,7 @@ function SessionsBlock({
                 workspaceId={workspace.id}
                 group={group}
                 initialOpen={index === 0}
+                activeSession={activeSession}
                 onSessionPinMenu={(event, session) =>
                   showSessionPinMenu(
                     event,
@@ -1074,17 +1140,31 @@ function SessionTreeDetails({
   workspaceId,
   group,
   initialOpen,
+  activeSession,
   onSessionPinMenu,
 }: {
   workspaceId: string;
   group: SessionTreeDayGroup;
   initialOpen?: boolean;
+  activeSession: ActiveSessionRef;
   onSessionPinMenu?: (event: MouseEvent<HTMLAnchorElement>, session: WorkspaceSidebarSession) => void;
 }) {
-  const [open, setOpen] = useState(!!initialOpen);
+  const hasActiveSession = group.users.some((bucket) =>
+    sessionBucketHasActiveSession(activeSession, workspaceId, bucket.sessions)
+  );
+  const [open, setOpen] = useState(!!initialOpen || hasActiveSession);
   const [visibleUserCount, setVisibleUserCount] = useState(PREVIEW_ITEM_LIMIT);
-  const visibleUsers = group.users.slice(0, visibleUserCount);
+  const activeUserIndex = group.users.findIndex((bucket) =>
+    sessionBucketHasActiveSession(activeSession, workspaceId, bucket.sessions)
+  );
+  const visibleUserLimit = Math.max(visibleUserCount, activeUserIndex + 1);
+  const visibleUsers = group.users.slice(0, visibleUserLimit);
   const hiddenUserCount = group.users.length - visibleUsers.length;
+
+  useEffect(() => {
+    if (hasActiveSession) setOpen(true);
+  }, [hasActiveSession]);
+
   return (
     <details open={open} className="text-[12.5px]">
       <summary
@@ -1111,6 +1191,7 @@ function SessionTreeDetails({
               key={`${group.dateKey}-${bucket.user}`}
               workspaceId={workspaceId}
               bucket={bucket}
+              activeSession={activeSession}
               onSessionPinMenu={onSessionPinMenu}
             />
           ))
@@ -1131,18 +1212,35 @@ function SessionTreeDetails({
 function SessionUserFolder({
   workspaceId,
   bucket,
+  activeSession,
   onSessionPinMenu,
 }: {
   workspaceId: string;
   bucket: { user: string; sessions: WorkspaceSidebarSession[] };
+  activeSession: ActiveSessionRef;
   onSessionPinMenu?: (event: MouseEvent<HTMLAnchorElement>, session: WorkspaceSidebarSession) => void;
 }) {
-  // Default collapsed — opening a date bucket already reveals N user rows,
-  // and auto-expanding each one explodes the whole tree on first paint.
-  const [open, setOpen] = useState(false);
+  const hasActiveSession = sessionBucketHasActiveSession(
+    activeSession,
+    workspaceId,
+    bucket.sessions
+  );
+  const [open, setOpen] = useState(hasActiveSession);
   const [visibleSessionCount, setVisibleSessionCount] = useState(PREVIEW_ITEM_LIMIT);
-  const visibleSessions = bucket.sessions.slice(0, visibleSessionCount);
+  const activeSessionIndex = bucket.sessions.findIndex((session) =>
+    sessionMatchesActive(activeSession, workspaceId, session)
+  );
+  const visibleSessionLimit = Math.max(
+    visibleSessionCount,
+    activeSessionIndex + 1
+  );
+  const visibleSessions = bucket.sessions.slice(0, visibleSessionLimit);
   const hiddenSessionCount = bucket.sessions.length - visibleSessions.length;
+
+  useEffect(() => {
+    if (hasActiveSession) setOpen(true);
+  }, [hasActiveSession]);
+
   return (
     <details open={open} className="text-[12px]">
       <summary
@@ -1166,6 +1264,7 @@ function SessionUserFolder({
             key={s.session_id}
             workspaceId={workspaceId}
             session={s}
+            activeSession={activeSession}
             onPinMenu={onSessionPinMenu}
           />
         ))}
