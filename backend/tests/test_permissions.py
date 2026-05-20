@@ -78,13 +78,16 @@ async def _make_folder(pool, workspace_id, created_by, name="folder", parent_fol
     return row["id"]
 
 
-async def _make_page(pool, workspace_id, created_by, folder_id=None, name="page"):
+async def _make_page(
+    pool, workspace_id, created_by, folder_id=None, name="page", content="content"
+):
     row = await pool.fetchrow(
         "INSERT INTO pages (workspace_id, folder_id, name, content_markdown, created_by) "
-        "VALUES ($1, $2, $3, 'content', $4) RETURNING id",
+        "VALUES ($1, $2, $3, $4, $5) RETURNING id",
         workspace_id,
         folder_id,
         name,
+        content,
         created_by,
     )
     return row["id"]
@@ -1073,6 +1076,38 @@ async def test_folder_stash_inlines_folder_files(pool, monkeypatch):
     files = items[0]["inline"]["files"]
     assert [file["name"] for file in files] == ["brief.pdf"]
     assert files[0]["url"].startswith("https://files.test/")
+
+
+@pytest.mark.asyncio
+async def test_public_folder_stash_rewrites_readable_markdown_file_urls(pool, monkeypatch):
+    async def fake_file_url(storage_key, expires_in=3600):
+        return f"https://files.test/{storage_key}?expires={expires_in}"
+
+    monkeypatch.setattr(stash_service.storage_service, "get_file_url", fake_file_url)
+
+    owner_id = await _make_user(pool)
+    ws_id = await _make_workspace(pool, owner_id)
+    folder_id = await _make_folder(pool, ws_id, owner_id)
+    public_file_id = await _make_file(pool, ws_id, owner_id, folder_id=folder_id, name="shot.png")
+    private_file_id = await _make_file(pool, ws_id, owner_id, name="private.png")
+    public_url = f"/api/v1/workspaces/{ws_id}/files/{public_file_id}/download"
+    private_url = f"/api/v1/workspaces/{ws_id}/files/{private_file_id}/download"
+
+    await _make_page(
+        pool,
+        ws_id,
+        owner_id,
+        folder_id=folder_id,
+        content=f"![public]({public_url})\n![private]({private_url})",
+    )
+    stash = await _make_stash(ws_id, owner_id, "public", "folder", folder_id)
+
+    items = await stash_service.inline_items(stash, None)
+
+    content = items[0]["inline"]["pages"][0]["content_markdown"]
+    assert public_url not in content
+    assert private_url in content
+    assert "https://files.test/" in content
 
 
 @pytest.mark.asyncio
