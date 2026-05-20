@@ -26,7 +26,6 @@ celery = Celery(
         "backend.tasks.extraction",
         "backend.tasks.embeddings",
         "backend.tasks.viz",
-        "backend.tasks.summarize",
         "backend.integrations.github.importers.repo",
         "backend.integrations.google.importers.drive_file",
         "backend.integrations.google.exporters.slides",
@@ -61,10 +60,6 @@ celery.conf.update(
         "extraction-enqueue-pending": {
             "task": "backend.tasks.extraction.enqueue_pending",
             "schedule": 60.0,
-        },
-        "summarize-enqueue-pending": {
-            "task": "backend.tasks.summarize.enqueue_pending",
-            "schedule": 10.0,
         },
     },
 )
