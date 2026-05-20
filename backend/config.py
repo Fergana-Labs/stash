@@ -68,6 +68,10 @@ class Settings:
     # --- Background tasks (Celery + Redis) ---
     REDIS_URL: str = os.getenv("REDIS_URL", "redis://localhost:6379/0")
 
+    # --- Linear ---
+    LINEAR_API_KEY: str | None = os.getenv("LINEAR_API_KEY") or os.getenv("LINEAR_API_TOKEN")
+    LINEAR_API_URL: str = os.getenv("LINEAR_API_URL", "https://api.linear.app/graphql")
+
     # --- Integrations (OAuth + per-user token storage) ---
     # Fernet key for encrypting access/refresh tokens at rest.
     # Generate with: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"

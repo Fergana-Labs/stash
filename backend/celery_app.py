@@ -25,6 +25,7 @@ celery = Celery(
     include=[
         "backend.tasks.extraction",
         "backend.tasks.embeddings",
+        "backend.tasks.linear_tickets",
         "backend.tasks.session_titles",
         "backend.tasks.viz",
         "backend.integrations.github.importers.repo",
@@ -65,6 +66,10 @@ celery.conf.update(
         "session-title-reconcile": {
             "task": "backend.tasks.session_titles.reconcile_missing",
             "schedule": 60.0,
+        },
+        "linear-ticket-reconcile": {
+            "task": "backend.tasks.linear_tickets.reconcile",
+            "schedule": 300.0,
         },
     },
 )

@@ -23,6 +23,14 @@ def upgrade() -> None:
             ticket_url TEXT,
             source TEXT NOT NULL,
             confidence REAL NOT NULL,
+            linear_issue_id TEXT,
+            ticket_status TEXT,
+            ticket_assignee_name TEXT,
+            ticket_team_key TEXT,
+            ticket_team_name TEXT,
+            ticket_project_name TEXT,
+            linear_updated_at TIMESTAMPTZ,
+            enriched_at TIMESTAMPTZ,
             created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
             updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
             UNIQUE (session_row_id, ticket_identifier),
@@ -37,6 +45,10 @@ def upgrade() -> None:
     op.execute("""
         CREATE INDEX IF NOT EXISTS idx_session_linear_tickets_session
         ON session_linear_tickets(session_row_id)
+    """)
+    op.execute("""
+        CREATE INDEX IF NOT EXISTS idx_session_linear_tickets_enriched_at
+        ON session_linear_tickets(enriched_at)
     """)
 
     op.execute(r"""

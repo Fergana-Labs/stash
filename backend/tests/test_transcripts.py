@@ -251,6 +251,14 @@ URL: https://linear.app/ferganalabs/issue/FER-19/we-should-be-able-to-update-the
             ),
             "source": "linear_preamble",
             "confidence": 1.0,
+            "linear_issue_id": None,
+            "ticket_status": None,
+            "ticket_assignee_name": None,
+            "ticket_team_key": None,
+            "ticket_team_name": None,
+            "ticket_project_name": None,
+            "linear_updated_at": None,
+            "enriched_at": None,
         }
     ]
 

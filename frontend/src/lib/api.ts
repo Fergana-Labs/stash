@@ -805,6 +805,14 @@ export interface LinearTicketLabel {
   ticket_url: string | null;
   source: string;
   confidence: number;
+  linear_issue_id: string | null;
+  ticket_status: string | null;
+  ticket_assignee_name: string | null;
+  ticket_team_key: string | null;
+  ticket_team_name: string | null;
+  ticket_project_name: string | null;
+  linear_updated_at: string | null;
+  enriched_at: string | null;
 }
 
 export async function listMySessions(workspaceId?: string, limit = 50): Promise<SessionSummary[]> {

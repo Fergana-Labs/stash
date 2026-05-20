@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from uuid import UUID
 
 from ..database import get_pool
+from . import linear_api_service
 
 LINEAR_TICKET_ID = r"[A-Z][A-Z0-9]+-\d+"
 
@@ -42,6 +43,14 @@ class LinearTicketLabel:
     ticket_url: str | None
     source: str
     confidence: float
+    linear_issue_id: str | None = None
+    ticket_status: str | None = None
+    ticket_assignee_name: str | None = None
+    ticket_team_key: str | None = None
+    ticket_team_name: str | None = None
+    ticket_project_name: str | None = None
+    linear_updated_at: str | None = None
+    enriched_at: str | None = None
 
 
 def ticket_response(label: dict) -> dict:
@@ -51,6 +60,14 @@ def ticket_response(label: dict) -> dict:
         "ticket_url": label.get("ticket_url"),
         "source": label["source"],
         "confidence": float(label["confidence"]),
+        "linear_issue_id": label.get("linear_issue_id"),
+        "ticket_status": label.get("ticket_status"),
+        "ticket_assignee_name": label.get("ticket_assignee_name"),
+        "ticket_team_key": label.get("ticket_team_key"),
+        "ticket_team_name": label.get("ticket_team_name"),
+        "ticket_project_name": label.get("ticket_project_name"),
+        "linear_updated_at": _timestamp_response(label.get("linear_updated_at")),
+        "enriched_at": _timestamp_response(label.get("enriched_at")),
     }
 
 
@@ -124,12 +141,96 @@ async def sync_session_labels(
                     for label in labels
                 ],
             )
+    enqueue_session_enrichment(workspace_id, session_row_id)
+
+
+def enqueue_session_enrichment(workspace_id: UUID, session_row_id: UUID) -> None:
+    if not linear_api_service.is_configured():
+        return
+    from ..tasks.linear_tickets import enrich_session_linear_tickets
+
+    enrich_session_linear_tickets.delay(str(workspace_id), str(session_row_id))
+
+
+async def enrich_session_labels(session_row_id: UUID) -> int:
+    pool = get_pool()
+    rows = await pool.fetch(
+        "SELECT ticket_identifier FROM session_linear_tickets "
+        "WHERE session_row_id = $1 ORDER BY ticket_identifier",
+        session_row_id,
+    )
+
+    updated = 0
+    for row in rows:
+        issue = await linear_api_service.fetch_issue(row["ticket_identifier"])
+        if not issue:
+            await pool.execute(
+                "UPDATE session_linear_tickets SET enriched_at = now(), updated_at = now() "
+                "WHERE session_row_id = $1 AND ticket_identifier = $2",
+                session_row_id,
+                row["ticket_identifier"],
+            )
+            continue
+
+        await pool.execute(
+            """
+            UPDATE session_linear_tickets SET
+              linear_issue_id = $2,
+              ticket_title = $3,
+              ticket_url = $4,
+              ticket_status = $5,
+              ticket_assignee_name = $6,
+              ticket_team_key = $7,
+              ticket_team_name = $8,
+              ticket_project_name = $9,
+              linear_updated_at = $10,
+              enriched_at = now(),
+              updated_at = now()
+            WHERE session_row_id = $1 AND ticket_identifier = $11
+            """,
+            session_row_id,
+            issue.issue_id,
+            issue.title,
+            issue.url,
+            issue.status,
+            issue.assignee_name,
+            issue.team_key,
+            issue.team_name,
+            issue.project_name,
+            issue.updated_at,
+            row["ticket_identifier"],
+        )
+        updated += 1
+    return updated
+
+
+async def enrich_stale_sessions(limit: int) -> int:
+    pool = get_pool()
+    rows = await pool.fetch(
+        """
+        SELECT session_row_id
+        FROM session_linear_tickets
+        WHERE enriched_at IS NULL
+           OR enriched_at < now() - interval '6 hours'
+        GROUP BY session_row_id
+        ORDER BY MIN(COALESCE(enriched_at, created_at)) ASC
+        LIMIT $1
+        """,
+        limit,
+    )
+
+    updated = 0
+    for row in rows:
+        updated += await enrich_session_labels(row["session_row_id"])
+    return updated
 
 
 async def list_session_labels(session_row_id: UUID) -> list[dict]:
     pool = get_pool()
     rows = await pool.fetch(
-        "SELECT ticket_identifier, ticket_title, ticket_url, source, confidence "
+        "SELECT ticket_identifier, ticket_title, ticket_url, source, confidence, "
+        "linear_issue_id, ticket_status, ticket_assignee_name, ticket_team_key, "
+        "ticket_team_name, ticket_project_name, linear_updated_at, enriched_at "
         "FROM session_linear_tickets "
         "WHERE session_row_id = $1 "
         "ORDER BY ticket_identifier",
@@ -145,7 +246,15 @@ def sql_json_agg(table_alias: str = "s") -> str:
         "'ticket_title', slt.ticket_title, "
         "'ticket_url', slt.ticket_url, "
         "'source', slt.source, "
-        "'confidence', slt.confidence"
+        "'confidence', slt.confidence, "
+        "'linear_issue_id', slt.linear_issue_id, "
+        "'ticket_status', slt.ticket_status, "
+        "'ticket_assignee_name', slt.ticket_assignee_name, "
+        "'ticket_team_key', slt.ticket_team_key, "
+        "'ticket_team_name', slt.ticket_team_name, "
+        "'ticket_project_name', slt.ticket_project_name, "
+        "'linear_updated_at', slt.linear_updated_at, "
+        "'enriched_at', slt.enriched_at"
         ") ORDER BY slt.ticket_identifier) "
         "FROM session_linear_tickets slt "
         f"WHERE slt.session_row_id = {table_alias}.id), '[]'::jsonb)"
@@ -201,3 +310,9 @@ def _url_for(content: str, ticket_identifier: str) -> str | None:
     if not match:
         return None
     return match.group(0).rstrip(".,;]")
+
+
+def _timestamp_response(value):
+    if hasattr(value, "isoformat"):
+        return value.isoformat()
+    return value

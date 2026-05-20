@@ -595,6 +595,9 @@ function searchSidebarSessions(
       ...session.linear_tickets.flatMap((ticket) => [
         ticket.ticket_identifier,
         ticket.ticket_title,
+        ticket.ticket_status,
+        ticket.ticket_assignee_name,
+        ticket.ticket_project_name,
       ]),
       session.user_name,
       session.agent_name,

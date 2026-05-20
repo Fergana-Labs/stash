@@ -1395,10 +1395,13 @@ def item_to_text(stash: dict, item: dict, base_url: str) -> str:
         ]
         linear_tickets = session.get("linear_tickets") or []
         if linear_tickets:
-            lines.append(
-                "Linear Tickets: "
-                + ", ".join(ticket["ticket_identifier"] for ticket in linear_tickets)
-            )
+            ticket_labels = []
+            for ticket in linear_tickets:
+                parts = [ticket["ticket_identifier"]]
+                if ticket.get("ticket_status"):
+                    parts.append(ticket["ticket_status"])
+                ticket_labels.append(" · ".join(parts))
+            lines.append("Linear Tickets: " + ", ".join(ticket_labels))
         if session.get("summary"):
             lines.extend(["## Summary", str(session["summary"])])
         files_touched = session.get("files_touched") or []

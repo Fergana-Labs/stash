@@ -362,11 +362,19 @@ function LinearTicketAsideRow({
 }: {
   ticket: NonNullable<SessionDetail["linear_tickets"][number]>;
 }) {
+  const metadata = ticketMetadata(ticket);
   const content = (
     <>
       <LinearTicketPill ticket={ticket} />
-      <span className="min-w-0 flex-1 truncate text-[12.5px] font-medium text-foreground">
-        {ticket.ticket_title || ticket.ticket_identifier}
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-[12.5px] font-medium text-foreground">
+          {ticket.ticket_title || ticket.ticket_identifier}
+        </span>
+        {metadata && (
+          <span className="block truncate text-[11px] text-muted">
+            {metadata}
+          </span>
+        )}
       </span>
     </>
   );
@@ -385,6 +393,16 @@ function LinearTicketAsideRow({
       {content}
     </a>
   );
+}
+
+function ticketMetadata(ticket: NonNullable<SessionDetail["linear_tickets"][number]>): string {
+  return [
+    ticket.ticket_status,
+    ticket.ticket_assignee_name,
+    ticket.ticket_project_name,
+  ]
+    .filter(Boolean)
+    .join(" · ");
 }
 
 function LinearTicketPill({
