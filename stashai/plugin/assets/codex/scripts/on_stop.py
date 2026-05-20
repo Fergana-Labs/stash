@@ -15,6 +15,7 @@ from adapt import adapt_stop
 from config import DATA_DIR, get_client, get_config, get_stdin_data, is_configured
 
 from stashai.plugin.hooks import (
+    color_upload_health_warning,
     remember_transcript_path,
     stream_assistant_message,
     upload_health_warning,
@@ -48,7 +49,7 @@ def main():
     )
     warning = upload_health_warning(cfg, state, event, DATA_DIR)
     if warning:
-        print(json.dumps({"systemMessage": warning}))
+        print(json.dumps({"systemMessage": color_upload_health_warning(warning)}))
 
 
 if __name__ == "__main__":

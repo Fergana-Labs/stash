@@ -8,6 +8,7 @@ from adapt import adapt_session_start
 from config import DATA_DIR, get_client, get_config, get_stdin_data
 
 from stashai.plugin.hooks import (
+    color_upload_health_warning,
     create_session_record,
     reset_session_record_state,
     uploads_disabled_warning,
@@ -24,7 +25,7 @@ def main():
     if not uploads_enabled(cfg, event):
         warning = uploads_disabled_warning(cfg, state, event, DATA_DIR)
         if warning:
-            print(json.dumps({"systemMessage": warning}))
+            print(json.dumps({"systemMessage": color_upload_health_warning(warning)}))
         return
 
     reset_session_record_state(state)
