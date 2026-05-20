@@ -34,7 +34,6 @@ export type StepCtx = {
   sharedUrl: string | null;
   setSharedUrl: (url: string) => void;
   onContinue: () => void;
-  onSkip: () => void;
   onSkipAll: () => void;
 };
 

@@ -187,7 +187,6 @@ function OnboardingInner() {
     sharedUrl,
     setSharedUrl,
     onContinue: nextStep,
-    onSkip: nextStep,
     onSkipAll: skipToWorkspace,
   };
 
@@ -211,7 +210,6 @@ function OnboardingInner() {
               {renderStep(pathDef.steps[stepIdx], stepCtx)}
               <StepControls
                 onContinue={nextStep}
-                onSkip={nextStep}
                 onSkipAll={skipToWorkspace}
               />
             </>
@@ -289,11 +287,9 @@ function ProgressBar({
 
 function StepControls({
   onContinue,
-  onSkip,
   onSkipAll,
 }: {
   onContinue: () => void;
-  onSkip: () => void;
   onSkipAll: () => void;
 }) {
   return (
@@ -305,22 +301,13 @@ function StepControls({
       >
         Skip onboarding
       </button>
-      <div className="flex items-center gap-3">
-        <button
-          type="button"
-          onClick={onSkip}
-          className="text-[12px] text-muted hover:text-foreground transition-colors"
-        >
-          Skip this step
-        </button>
-        <button
-          type="button"
-          onClick={onContinue}
-          className="rounded-md bg-brand px-4 py-2 text-[12px] font-medium text-white hover:bg-brand-hover transition-colors"
-        >
-          Continue
-        </button>
-      </div>
+      <button
+        type="button"
+        onClick={onContinue}
+        className="rounded-md bg-brand px-4 py-2 text-[12px] font-medium text-white hover:bg-brand-hover transition-colors"
+      >
+        Continue
+      </button>
     </div>
   );
 }
