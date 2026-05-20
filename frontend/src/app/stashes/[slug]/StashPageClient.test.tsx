@@ -317,6 +317,21 @@ describe("StashPageClient sharing", () => {
     expect(title).not.toHaveTextContent("workspace");
   });
 
+  it("loads only recent activity for the commit graph", async () => {
+    render(<StashPageClient slug="shared-stash" />);
+
+    expect(
+      await screen.findByText("Human / agent commits — last 30 days"),
+    ).toBeInTheDocument();
+    await waitFor(() =>
+      expect(getActivityTimeline).toHaveBeenCalledWith(
+        30,
+        "day",
+        "workspace-1",
+      ),
+    );
+  });
+
   it("shows the stash author in the detail header", async () => {
     vi.mocked(getPublicStash).mockResolvedValueOnce(
       stashDetail({ owner_name: "sam", owner_display_name: "Sam" })

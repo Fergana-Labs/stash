@@ -62,10 +62,7 @@ export default function WorkspaceHomePage() {
     const [w, m, t, p] = await Promise.allSettled([
       getWorkspace(workspaceId),
       getWorkspaceMembers(workspaceId),
-      // 365 days because seeded dev data is dated; for production the
-      // visualization remains legible at this window (1 row per contributor × 365
-      // 14px cells = ~1.4kpx wide, fits with horizontal scroll).
-      getActivityTimeline(365, "day", workspaceId),
+      getActivityTimeline(30, "day", workspaceId),
       getEmbeddingProjection(500, undefined, workspaceId),
     ]);
     if (w.status === "fulfilled") setWorkspace(w.value);
@@ -215,7 +212,7 @@ export default function WorkspaceHomePage() {
               and know what's coming once data exists. */}
         <section className="mt-8">
           <div className="sys-label mb-1.5">
-            Human / agent commits — past year
+            Human / agent commits — last 30 days
           </div>
           <div className="card-soft overflow-x-auto p-3">
             {!insightsLoaded ? (
