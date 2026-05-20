@@ -102,6 +102,44 @@ async def test_activity_timeline_pivots_on_human_and_agent_sessions(client: Asyn
 
 
 @pytest.mark.asyncio
+async def test_activity_timeline_uses_client_name_for_agent_label(client: AsyncClient):
+    register_resp = await client.post(
+        "/api/v1/users/register",
+        json={
+            "name": unique_name("activity_client_label"),
+            "display_name": "Client Human",
+            "password": "securepassword1",
+        },
+    )
+    assert register_resp.status_code == 201
+    api_key = register_resp.json()["api_key"]
+    workspace = await _workspace(client, api_key, "Client Label Workspace")
+
+    event_resp = await client.post(
+        f"/api/v1/workspaces/{workspace['id']}/sessions/events",
+        json={
+            "agent_name": "user",
+            "event_type": "assistant_message",
+            "content": "done",
+            "session_id": "client-label-session",
+            "metadata": {"client": "codex_cli"},
+        },
+        headers=_auth(api_key),
+    )
+    assert event_resp.status_code == 201
+
+    resp = await client.get(
+        "/api/v1/me/activity-timeline",
+        params={"days": 365, "workspace_id": workspace["id"]},
+        headers=_auth(api_key),
+    )
+    assert resp.status_code == 200
+
+    timeline = resp.json()
+    assert timeline["contributors"] == ["Client Human / codex"]
+
+
+@pytest.mark.asyncio
 async def test_activity_timeline_counts_claude_subagents_as_claude(client: AsyncClient):
     register_resp = await client.post(
         "/api/v1/users/register",
