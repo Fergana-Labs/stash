@@ -253,8 +253,10 @@ export default function StashQuickAdd({
       const cached = folderCache.get(key);
       if (cached !== undefined) return cached || null;
 
-      const parentKey = path.slice(0, -1).join("/");
-      const parentId = folderCache.get(parentKey) || null;
+      // Recursively ensure every ancestor exists. Files visited in arbitrary
+      // order can hit deeply-nested paths first; without recursion we'd
+      // create the leaf folder at root and orphan it from its parent.
+      const parentId = await ensureFolder(path.slice(0, -1));
       const folder = await createFolder(workspaceId, path[path.length - 1], parentId);
       folderCache.set(key, folder.id);
       return folder.id;
