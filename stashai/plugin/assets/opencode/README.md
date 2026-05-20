@@ -60,9 +60,12 @@ Everything is a plain `stash` CLI subcommand — no opencode-specific slash comm
 
 ## Retrieval
 
-opencode agents have shell access. Point the agent at the `stash` CLI for reads mid-conversation — all commands support `--json`:
+opencode agents have shell access. Point the agent at the `stash` CLI for reads mid-conversation. Use `stash vfs` for filesystem-style browsing without an OS mount:
 
 ```
+stash vfs "find /workspaces -maxdepth 3 -type f"
+stash vfs "rg \"database migration\" /workspaces"
+stash vfs "cat '/workspaces/<workspace>/README.md' | sed -n '1,80p'"
 stash history query --ws <id> --limit 20 --json
 stash history search "<query>" --ws <id> --json
 stash whoami --json

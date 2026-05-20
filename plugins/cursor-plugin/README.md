@@ -77,9 +77,12 @@ Everything is a plain `stash` CLI subcommand — no Cursor-specific slash comman
 ## Retrieval
 
 Cursor's agent has shell access, so for reads mid-conversation just let it
-shell out to the `stash` CLI. All commands support `--json`:
+shell out to the `stash` CLI. Use `stash vfs` for filesystem-style browsing without an OS mount:
 
 ```
+stash vfs "find /workspaces -maxdepth 3 -type f"
+stash vfs "rg \"database migration\" /workspaces"
+stash vfs "cat '/workspaces/<workspace>/README.md' | sed -n '1,80p'"
 stash history query --ws <id> --limit 20 --json
 stash history search "<query>" --ws <id> --json
 stash whoami --json

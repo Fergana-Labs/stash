@@ -103,6 +103,9 @@ Everything is a `stash` CLI subcommand — there are no slash commands.
 The plugin also gives Claude access to the rest of the `stash` CLI. Key commands:
 
 ```bash
+stash vfs "find /workspaces -maxdepth 3 -type f"                 # Browse Stash like a filesystem without an OS mount
+stash vfs "rg \"database migration\" /workspaces"                # Search the virtual Stash tree
+stash vfs "cat '/workspaces/<workspace>/README.md' | sed -n '1,80p'"
 stash history search "database migration" --ws <workspace_id>   # Full-text search events
 stash history query --ws <workspace_id> --limit 20              # Recent events
 stash history query --all --limit 20                             # Cross-workspace events

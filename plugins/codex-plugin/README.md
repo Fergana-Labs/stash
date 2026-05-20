@@ -73,9 +73,12 @@ approval behavior.
 ## Retrieval
 
 Codex has shell access. For reads mid-conversation, have the agent invoke
-the `stash` CLI — all commands support `--json`:
+the `stash` CLI. Use `stash vfs` for filesystem-style browsing without an OS mount:
 
 ```
+stash vfs "find /workspaces -maxdepth 3 -type f"
+stash vfs "rg \"database migration\" /workspaces"
+stash vfs "cat '/workspaces/<workspace>/README.md' | sed -n '1,80p'"
 stash history query --ws <id> --limit 20 --json
 stash history search "<query>" --ws <id> --json
 stash whoami --json

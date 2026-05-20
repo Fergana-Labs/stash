@@ -3329,6 +3329,12 @@ Your coding agent has the `stash` CLI on its PATH. Run `stash --help` to see com
 why something was built a certain way, what's been tried before, or what teammates are working on,
 search Stash first — it has the full session record and human decisions across the team.
 
+Use `stash vfs` when you want to browse Stash like a filesystem without mounting anything into the OS:
+- `stash vfs ls /`
+- `stash vfs "find /workspaces -maxdepth 3 -type f"`
+- `stash vfs "rg \"query\" /workspaces"`
+- `stash vfs "cat '/workspaces/<workspace>/README.md' | sed -n '1,80p'"`
+
 Common reads (all support `--json`):
 - `stash sessions search "<query>"` — full-text search across transcripts
 - `stash sessions query --limit 20` — latest events
@@ -3823,6 +3829,7 @@ def _show_setup_complete_splash() -> None:
         "\n"
         f"{workspace_link_section}"
         "[bold]Commands your agent can now use[/bold]\n"
+        "  [#1e3a8a]stash vfs \"find /workspaces -maxdepth 3 -type f\"[/#1e3a8a]   browse Stash like a filesystem\n"
         '  [#1e3a8a]stash sessions search "<query>"[/#1e3a8a]   full-text search across transcripts\n'
         "  [#1e3a8a]stash sessions query --agent <name>[/#1e3a8a]   pull a specific agent's events\n"
         "\n"
