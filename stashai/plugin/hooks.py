@@ -21,7 +21,11 @@ from stashai.plugin.session_upload import spawn_session_upload
 from stashai.plugin.stash_client import StashClient
 from stashai.plugin.state import read_stats, record_tool_use, save_state
 from stashai.plugin.summarize import summarize_tool_use
-from stashai.plugin.upload_status import record_upload_failure, record_upload_success
+from stashai.plugin.upload_status import (
+    read_upload_status,
+    record_upload_failure,
+    record_upload_success,
+)
 
 _CONFIG_FILE = Path.home() / ".stash" / "config.json"
 
@@ -31,6 +35,14 @@ _CLIENT_TO_AGENT = {
     "codex_cli": "codex",
     "opencode": "opencode",
 }
+
+_UPLOAD_WARNING_SESSION_KEY = "upload_warning_session_id"
+_UPLOAD_WARNING_MESSAGE = (
+    "Stash uploads are failing; this conversation may not be visible to your team. "
+    "Run `stash status` for details."
+)
+_YELLOW = "\033[33m"
+_RESET = "\033[0m"
 
 
 def _read_user_config() -> dict:
@@ -306,6 +318,36 @@ def stream_assistant_message(
         )
     except Exception:
         pass
+
+
+def upload_health_warning(
+    cfg: dict,
+    state: dict,
+    event: HookEvent,
+    data_dir: Path,
+) -> str | None:
+    """Return the once-per-session local upload failure warning, if needed."""
+    skip, _ = _short_circuit(cfg, event)
+    if skip:
+        return None
+
+    session_id = event.session_id or state.get("session_id", "")
+    if not session_id:
+        return None
+    if state.get(_UPLOAD_WARNING_SESSION_KEY) == session_id:
+        return None
+
+    status = read_upload_status(data_dir)
+    if status.get("health") != "failing":
+        return None
+
+    state[_UPLOAD_WARNING_SESSION_KEY] = session_id
+    save_state(data_dir, state)
+    return _UPLOAD_WARNING_MESSAGE
+
+
+def color_upload_health_warning(message: str) -> str:
+    return f"{_YELLOW}{message}{_RESET}"
 
 
 # --- Session end (conversation over) ---

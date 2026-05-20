@@ -24,11 +24,11 @@ def test_upload_health_label_prefers_queued_failures(monkeypatch, tmp_path):
     assert main._upload_health_label(main._upload_health_snapshot()) == "Codex failing, 2 queued"
 
 
-def test_single_failure_is_visible_but_not_warning_worthy(monkeypatch, tmp_path):
+def test_single_failure_is_reported_as_failing(monkeypatch, tmp_path):
     record_upload_failure(tmp_path, "event", "temporary outage")
     monkeypatch.setattr(main, "PLUGIN_DATA_DIRS", {"codex": tmp_path})
 
     snapshot = main._upload_health_snapshot()
 
     assert snapshot[0]["health"] == "failing"
-    assert main._failing_upload_agents(snapshot) == []
+    assert main._failing_upload_agents(snapshot) == snapshot

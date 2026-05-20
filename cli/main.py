@@ -20,7 +20,6 @@ from .client import StashClient, StashError, stash_permissions_for_access
 from .config import (
     MANIFEST_FILE,
     PRODUCTION_BASE_URL,
-    USER_CONFIG_DIR,
     Manifest,
     clear_streaming,
     load_config,
@@ -41,7 +40,6 @@ app = typer.Typer(
 
 
 def _client() -> StashClient:
-    _maybe_warn_upload_health()
     cfg = load_config()
     return StashClient(base_url=cfg["base_url"], api_key=cfg.get("api_key", ""))
 
@@ -3907,9 +3905,6 @@ PLUGIN_DATA_DIRS = {
     "opencode": Path.home() / ".stash/plugins/opencode",
 }
 
-UPLOAD_WARNING_FILE = USER_CONFIG_DIR / "upload_status_warning.json"
-UPLOAD_WARNING_COOLDOWN_SECONDS = 24 * 60 * 60
-
 
 def _upload_health_snapshot() -> list[dict]:
     agents = []
@@ -3927,31 +3922,9 @@ def _upload_health_snapshot() -> list[dict]:
 def _failing_upload_agents(snapshot: list[dict]) -> list[dict]:
     failing = []
     for item in snapshot:
-        if item.get("queued_events", 0):
-            failing.append(item)
-            continue
-        if item.get("health") == "failing" and int(item.get("consecutive_failures") or 0) >= 3:
+        if item.get("health") == "failing":
             failing.append(item)
     return failing
-
-
-def _read_upload_warning_state() -> dict:
-    if not UPLOAD_WARNING_FILE.exists():
-        return {}
-    try:
-        data = json.loads(UPLOAD_WARNING_FILE.read_text())
-    except (json.JSONDecodeError, OSError):
-        return {}
-    return data if isinstance(data, dict) else {}
-
-
-def _write_upload_warning_state(signature: str) -> None:
-    data = {"last_warned_at": time.time(), "signature": signature}
-    try:
-        UPLOAD_WARNING_FILE.parent.mkdir(parents=True, exist_ok=True)
-        UPLOAD_WARNING_FILE.write_text(json.dumps(data, indent=2) + "\n")
-    except OSError:
-        pass
 
 
 def _format_age(timestamp: float | int | None) -> str:
@@ -3983,31 +3956,6 @@ def _upload_health_label(snapshot: list[dict]) -> str:
     if all(item.get("health") == "ok" for item in snapshot):
         return "ok"
     return "no upload attempts recorded yet"
-
-
-def _maybe_warn_upload_health() -> None:
-    args = sys.argv[1:]
-    if not args or not sys.stdout.isatty():
-        return
-    if "--json" in args or "--help" in args or "-h" in args:
-        return
-    if args[0] in {"auth", "login", "register", "settings", "signin", "status", "welcome"}:
-        return
-
-    failing = _failing_upload_agents(_upload_health_snapshot())
-    if not failing:
-        return
-
-    signature = ",".join(sorted(item["agent"] for item in failing))
-    warning_state = _read_upload_warning_state()
-    last_warned = float(warning_state.get("last_warned_at") or 0)
-    if warning_state.get("signature") == signature:
-        if time.time() - last_warned < UPLOAD_WARNING_COOLDOWN_SECONDS:
-            return
-
-    label = _upload_health_label(failing)
-    console.print(f"[yellow]Stash uploads need attention: {label}. Run `stash status`.[/yellow]")
-    _write_upload_warning_state(signature)
 
 
 @app.command("status")
