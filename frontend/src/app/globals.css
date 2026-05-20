@@ -391,6 +391,10 @@ details > summary::-webkit-details-marker {
   font-family: var(--font-mono), monospace;
 }
 
+.collaboration-selection {
+  border-radius: 2px;
+}
+
 /* Task list checkbox styles */
 .tiptap ul[data-type="taskList"] {
   list-style: none;

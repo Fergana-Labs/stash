@@ -1,0 +1,42 @@
+{
+  "name": "stash-collab",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx src/server.ts",
+    "build": "tsc",
+    "start": "node dist/server.js"
+  },
+  "dependencies": {
+    "@hocuspocus/server": "4.0.0",
+    "@hocuspocus/transformer": "4.0.0",
+    "@tiptap/core": "3.23.5",
+    "@tiptap/extension-bold": "3.23.5",
+    "@tiptap/extension-heading": "3.23.5",
+    "@tiptap/extension-image": "3.23.5",
+    "@tiptap/extension-italic": "3.23.5",
+    "@tiptap/extension-link": "3.23.5",
+    "@tiptap/extension-subscript": "3.23.5",
+    "@tiptap/extension-superscript": "3.23.5",
+    "@tiptap/extension-table": "3.23.5",
+    "@tiptap/extension-table-cell": "3.23.5",
+    "@tiptap/extension-table-header": "3.23.5",
+    "@tiptap/extension-table-row": "3.23.5",
+    "@tiptap/extension-typography": "3.23.5",
+    "@tiptap/extension-underline": "3.23.5",
+    "@tiptap/html": "3.23.5",
+    "@tiptap/starter-kit": "3.23.5",
+    "happy-dom": "20.8.9",
+    "markdown-it": "14.1.0",
+    "pg": "8.13.3",
+    "yjs": "13.6.23"
+  },
+  "devDependencies": {
+    "@types/markdown-it": "14.1.2",
+    "@types/node": "20.19.1",
+    "@types/pg": "8.11.11",
+    "tsx": "4.20.3",
+    "typescript": "5.8.3"
+  }
+}

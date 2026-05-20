@@ -14,6 +14,7 @@ version: "3.9"
 # Optional (embeddings default to local sentence-transformers — no key needed):
 #   OPENAI_API_KEY or HF_TOKEN  (use hosted embedding provider instead of local)
 #   S3_ENDPOINT / S3_BUCKET / …  (enable file uploads)
+#   COLLAB_PUBLIC_URL           (WebSocket URL if collab is not routed under /collab)
 
 services:
   postgres:
@@ -59,6 +60,22 @@ services:
       - backend
     environment:
       NEXT_PUBLIC_API_URL: ${PUBLIC_URL}
+      NEXT_PUBLIC_COLLAB_URL: ${COLLAB_PUBLIC_URL:-}
+
+  collab:
+    image: ghcr.io/Fergana-Labs/stash-collab:latest
+    restart: always
+    expose:
+      - "3458"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      backend:
+        condition: service_started
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      BACKEND_URL: http://backend:3456
 
   caddy:
     image: caddy:2-alpine
@@ -73,6 +90,7 @@ services:
     depends_on:
       - backend
       - frontend
+      - collab
 
 volumes:
   postgres_data:

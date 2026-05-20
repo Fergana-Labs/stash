@@ -4,9 +4,6 @@
 # Caddy automatically provisions and renews TLS certificates via Let's Encrypt.
 
 app.example.com {
-    # Frontend
-    reverse_proxy frontend:3457
-
     # Backend API
     handle /api/* {
         reverse_proxy backend:3456
@@ -14,5 +11,15 @@ app.example.com {
 
     handle /health {
         reverse_proxy backend:3456
+    }
+
+    # Yjs collaboration WebSocket
+    handle /collab* {
+        reverse_proxy collab:3458
+    }
+
+    # Frontend
+    handle {
+        reverse_proxy frontend:3457
     }
 }

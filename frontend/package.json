@@ -14,8 +14,11 @@
     "@auth0/nextjs-auth0": "^4.17.0",
     "@emotion/react": "^11.14.0",
     "@emotion/styled": "^11.14.1",
+    "@hocuspocus/provider": "^4.0.0",
     "@mui/icons-material": "^9.0.1",
     "@mui/material": "^9.0.1",
+    "@tiptap/extension-collaboration": "^3.6.6",
+    "@tiptap/extension-collaboration-caret": "^3.6.6",
     "@tiptap/extension-image": "^3.22.2",
     "@tiptap/extension-link": "3.6.6",
     "@tiptap/extension-placeholder": "3.6.6",
@@ -31,6 +34,7 @@
     "@tiptap/react": "3.6.6",
     "@tiptap/starter-kit": "3.6.6",
     "@tiptap/suggestion": "^3.22.2",
+    "@tiptap/y-tiptap": "^3.0.3",
     "d3-drag": "^3.0.0",
     "d3-force": "^3.0.0",
     "d3-selection": "^3.0.0",
@@ -41,7 +45,9 @@
     "react-markdown": "^10.1.0",
     "rehype-raw": "^7.0.0",
     "remark-gfm": "^4.0.1",
-    "tippy.js": "^6.3.7"
+    "tippy.js": "^6.3.7",
+    "y-protocols": "^1.0.6",
+    "yjs": "^13.6.23"
   },
   "devDependencies": {
     "@playwright/test": "^1.60.0",

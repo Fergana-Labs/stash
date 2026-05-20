@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { EditorContent, useEditor } from "@tiptap/react";
+import Collaboration from "@tiptap/extension-collaboration";
+import CollaborationCaret from "@tiptap/extension-collaboration-caret";
 import StarterKit from "@tiptap/starter-kit";
 import Heading from "@tiptap/extension-heading";
 import Bold from "@tiptap/extension-bold";
@@ -14,11 +16,13 @@ import Typography from "@tiptap/extension-typography";
 import Image from "@tiptap/extension-image";
 import Placeholder from "@tiptap/extension-placeholder";
 import { Table, TableCell, TableHeader, TableRow } from "@tiptap/extension-table";
+import { HocuspocusProvider } from "@hocuspocus/provider";
+import * as Y from "yjs";
 import EditorToolbar from "./EditorToolbar";
 import CommentMark from "./CommentMark";
 import CommentComposerPopover from "./CommentComposerPopover";
-import { Page, FileInfo } from "../../lib/types";
-import { listFiles, uploadFile } from "../../lib/api";
+import { Page } from "../../lib/types";
+import { getCollabUrl, getToken, uploadFile } from "../../lib/api";
 
 const AUTOSAVE_DEBOUNCE_MS = 1500;
 const ANCHOR_CONTEXT_CHARS = 32;
@@ -32,10 +36,21 @@ export type AddCommentArgs = {
   body: string;
 };
 
+type CollaborationUser = {
+  id: string;
+  name: string;
+};
+
+type CollaborationState = {
+  document: Y.Doc;
+  provider: HocuspocusProvider;
+};
+
 interface MarkdownEditorProps {
   workspaceId: string | null;
   file: Page;
   onSave: (content: string) => void | Promise<void>;
+  collaborationUser: CollaborationUser;
   confirmSave?: () => boolean;
   onSaveStatusChange?: (status: SaveStatus) => void;
   /** Called on clicks to same-origin stash routes so the page
@@ -60,6 +75,7 @@ export default function MarkdownEditor({
   workspaceId,
   file,
   onSave,
+  collaborationUser,
   confirmSave,
   onSaveStatusChange,
   onNavigateInternal,
@@ -72,11 +88,8 @@ export default function MarkdownEditor({
   const [saving, setSaving] = useState(false);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastSaved = useRef<string>(file.content_markdown);
-  // Distinct from `lastSaved`: the markdown most recently *applied* to the
-  // editor (after resolvedMarkdown rehydration). Used to detect "user has
-  // typed since we loaded" so we don't blow away in-flight edits.
-  const appliedMarkdown = useRef<string>(file.content_markdown);
-  const loadedFileId = useRef<string>(file.id);
+  const [collabError, setCollabError] = useState("");
+  const [readOnly, setReadOnly] = useState(false);
   // Refs that closures inside `useEditor` / window listeners can call
   // without re-creating the editor every render.
   const saveMarkdownRef = useRef<(md: string) => void>(() => {});
@@ -95,45 +108,56 @@ export default function MarkdownEditor({
     suffix: string;
   } | null>(null);
 
-  // `sourceMarkdown` is the markdown we're currently resolving / showing.
-  // It diverges from `file.content_markdown` once the user types — the
-  // parent re-rendering with a stale prop must not yank the editor back.
-  const [sourceMarkdown, setSourceMarkdown] = useState<string>(file.content_markdown);
-  // Resolved markdown — relative image refs like ![](a69cb715b010.jpg) get
-  // rewritten to signed URLs if a matching workspace file exists.
-  // While the lookup is in-flight, show the raw markdown so the page never
-  // flashes empty.
-  const [resolvedMarkdown, setResolvedMarkdown] = useState<string>(file.content_markdown);
+  const [collaboration, setCollaboration] = useState<CollaborationState | null>(
+    null
+  );
 
   useEffect(() => {
-    let cancelled = false;
-    setResolvedMarkdown(sourceMarkdown);
-    if (!workspaceId) return;
-    const relativeNames = extractRelativeImageNames(sourceMarkdown);
-    if (relativeNames.size === 0) return;
-    listFiles(workspaceId)
-      .then((files) => {
-        if (cancelled) return;
-        const map = buildFileNameMap(files, relativeNames);
-        if (map.size === 0) return;
-        setResolvedMarkdown(rewriteRelativeImages(sourceMarkdown, map));
-      })
-      .catch(() => {
-        // Network flake is non-fatal — the raw markdown is still visible.
-      });
+    if (!workspaceId || typeof window === "undefined") {
+      setCollaboration(null);
+      return;
+    }
+    let active = true;
+    setCollabError("");
+    setReadOnly(false);
+    const document = new Y.Doc();
+    const provider = new HocuspocusProvider({
+      url: getCollabUrl(),
+      name: `workspace:${workspaceId}:page:${file.id}`,
+      document,
+      sessionAwareness: true,
+      token: () => getToken() ?? "",
+      onAuthenticated: ({ scope }) => {
+        if (!active) return;
+        setReadOnly(scope === "readonly");
+        setCollabError("");
+      },
+      onAuthenticationFailed: ({ reason }) => {
+        if (!active) return;
+        setCollabError(reason || "Live editing authentication failed");
+      },
+      onClose: ({ event }) => {
+        if (!active) return;
+        if (event.code === 1000) return;
+        setCollabError("Live editing connection closed");
+      },
+    });
+    setCollaboration({ document, provider });
     return () => {
-      cancelled = true;
+      active = false;
+      provider.destroy();
+      document.destroy();
     };
-  }, [workspaceId, sourceMarkdown]);
+  }, [file.id, workspaceId]);
 
-  const initialContent = useMemo(
-    () => markdownToInitialJSON(resolvedMarkdown),
-    [resolvedMarkdown]
+  const collaborationUserColor = useMemo(
+    () => colorFromId(collaborationUser.id),
+    [collaborationUser.id],
   );
 
   const editor = useEditor({
     immediatelyRender: false,
-    content: initialContent,
+    editable: !!collaboration && !readOnly,
     extensions: [
       StarterKit.configure({
         blockquote: false,
@@ -146,6 +170,7 @@ export default function MarkdownEditor({
         // avoid the "Duplicate extension names" warning + drift.
         link: false,
         underline: false,
+        undoRedo: false,
       }),
       Heading.configure({ levels: [1, 2, 3] }),
       Bold,
@@ -180,6 +205,39 @@ export default function MarkdownEditor({
       TableCell,
       Placeholder.configure({ placeholder: "Start typing..." }),
       CommentMark,
+      ...(collaboration
+        ? [
+            Collaboration.configure({
+              document: collaboration.document,
+              provider: collaboration.provider,
+            }),
+            CollaborationCaret.configure({
+              provider: collaboration.provider,
+              user: {
+                name: collaborationUser.name,
+                color: collaborationUserColor,
+              },
+              render: (user) => {
+                const cursor = document.createElement("span");
+                cursor.classList.add("collaboration-cursor__caret");
+                cursor.style.borderColor = user.color;
+
+                const label = document.createElement("span");
+                label.classList.add("collaboration-cursor__label");
+                label.style.backgroundColor = user.color;
+                label.textContent = user.name;
+
+                cursor.append(label);
+                return cursor;
+              },
+              selectionRender: (user) => ({
+                nodeName: "span",
+                class: "collaboration-selection",
+                style: `background-color: ${user.color}33`,
+              }),
+            }),
+          ]
+        : []),
     ],
     editorProps: {
       attributes: {
@@ -248,6 +306,7 @@ export default function MarkdownEditor({
       },
     },
     onUpdate: ({ editor }) => {
+      if (readOnly) return;
       const md = serializeMarkdown(editor.getJSON(), lastSaved.current);
       if (md === lastSaved.current) return;
       setDirty(true);
@@ -257,24 +316,27 @@ export default function MarkdownEditor({
         saveMarkdownRef.current(md);
       }, AUTOSAVE_DEBOUNCE_MS);
     },
-  });
+  }, [collaboration, collaborationUser.name, collaborationUserColor, readOnly]);
 
   const saveMarkdown = useCallback(
     async (md: string) => {
-      if (confirmSave && !confirmSave()) return;
+      if (readOnly || (confirmSave && !confirmSave())) return;
       setSaving(true);
-      await onSave(md);
-      // If the doc changed during the save (user kept typing), leave the
-      // dirty flag alone so the next debounce flushes — only clear it when
-      // what we saved is still what's on screen.
-      const currentMd = editor ? serializeMarkdown(editor.getJSON(), md) : md;
-      if (currentMd === md) {
-        lastSaved.current = md;
-        setDirty(false);
+      try {
+        await onSave(md);
+        // If the doc changed during the save (user kept typing), leave the
+        // dirty flag alone so the next debounce flushes — only clear it when
+        // what we saved is still what's on screen.
+        const currentMd = editor ? serializeMarkdown(editor.getJSON(), md) : md;
+        if (currentMd === md) {
+          lastSaved.current = md;
+          setDirty(false);
+        }
+      } finally {
+        setSaving(false);
       }
-      setSaving(false);
     },
-    [confirmSave, editor, onSave]
+    [confirmSave, editor, onSave, readOnly]
   );
 
   const insertUploadedFiles = useCallback(
@@ -282,13 +344,9 @@ export default function MarkdownEditor({
       if (!workspaceId || !editor) return;
       for (const fileToUpload of Array.from(files)) {
         const result = await uploadFile(workspaceId, fileToUpload);
-        // During the upload await, the resolvedMarkdown effect higher up
-        // can rehydrate the editor via `setContent(initialContent)`. A
-        // chain() built against the pre-rehydrate state would then throw
-        // "Applying a mismatched transaction" on .run(). Use
-        // `editor.commands.X` — each command builds a fresh transaction
-        // from the current state at dispatch time — and bail cleanly if
-        // the editor was destroyed mid-flight.
+        // Build each insertion from the current editor state. Uploads can
+        // overlap with remote Yjs updates, so old transactions may no longer
+        // match the document by the time the upload finishes.
         if (editor.isDestroyed) return;
         if (result.content_type.startsWith("image/")) {
           editor.commands.setImage({ src: result.url, alt: result.name });
@@ -316,32 +374,11 @@ export default function MarkdownEditor({
     };
   }, [insertUploadedFiles]);
 
-  // Switching to a different page id: reset the editor's notion of what
-  // it has loaded. (Re-renders with the SAME id and same content_markdown
-  // are no-ops; we don't yank the editor out from under the user.)
   useEffect(() => {
-    if (!editor) return;
-    if (loadedFileId.current === file.id) return;
-    loadedFileId.current = file.id;
     lastSaved.current = file.content_markdown;
-    appliedMarkdown.current = file.content_markdown;
-    setSourceMarkdown(file.content_markdown);
-    editor.commands.setContent(markdownToInitialJSON(file.content_markdown));
     setDirty(false);
     setSaving(false);
-  }, [editor, file.content_markdown, file.id]);
-
-  // Parent save responses for the same page are intentionally ignored —
-  // the editor is the local source of truth after mount. This avoids
-  // older save responses replacing newer in-progress typing.
-  useEffect(() => {
-    if (!editor) return;
-    const currentMd = serializeMarkdown(editor.getJSON(), appliedMarkdown.current);
-    if (currentMd !== appliedMarkdown.current) return;
-    editor.commands.setContent(initialContent);
-    appliedMarkdown.current = resolvedMarkdown;
-    lastSaved.current = resolvedMarkdown;
-  }, [editor, initialContent, resolvedMarkdown]);
+  }, [file.content_markdown, file.id]);
 
   // Bubble save status to parent
   useEffect(() => {
@@ -378,7 +415,7 @@ export default function MarkdownEditor({
         !!activeThreadId && el.getAttribute("data-comment-id") === activeThreadId,
       );
     });
-  }, [activeThreadId, resolvedMarkdown]);
+  }, [activeThreadId, file.id]);
 
   // When the parent reports a deleted thread, walk the doc and strip the
   // `comment` mark from every text node that carried this id. Dispatching
@@ -458,7 +495,7 @@ export default function MarkdownEditor({
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === "s") {
         e.preventDefault();
-        if (!editor) return;
+        if (!editor || readOnly) return;
         if (saveTimer.current) {
           clearTimeout(saveTimer.current);
           saveTimer.current = null;
@@ -469,15 +506,25 @@ export default function MarkdownEditor({
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [editor]);
+  }, [editor, readOnly]);
 
   return (
     <div className="flex h-full flex-col">
       <EditorToolbar
         editor={editor}
         workspaceId={workspaceId}
-        onStartComment={onAddComment ? openComposer : undefined}
+        onStartComment={!readOnly && onAddComment ? openComposer : undefined}
       />
+      {collabError && (
+        <div className="border-b border-red-300/40 bg-red-500/10 px-4 py-2 text-[13px] text-red-500">
+          {collabError}
+        </div>
+      )}
+      {readOnly && !collabError && (
+        <div className="border-b border-border-subtle bg-raised px-4 py-2 text-[12px] text-muted">
+          Read-only live view
+        </div>
+      )}
       <div
         ref={scrollContainerRef}
         className="relative flex-1 overflow-y-auto bg-background"
@@ -496,6 +543,21 @@ export default function MarkdownEditor({
       </div>
     </div>
   );
+}
+
+const CARET_COLORS = [
+  "#2563eb",
+  "#059669",
+  "#dc2626",
+  "#7c3aed",
+  "#c2410c",
+  "#0891b2",
+];
+
+function colorFromId(id: string): string {
+  let hash = 0;
+  for (const char of id) hash = (hash * 31 + char.charCodeAt(0)) >>> 0;
+  return CARET_COLORS[hash % CARET_COLORS.length];
 }
 
 type JSONNode = {
@@ -750,42 +812,6 @@ function parseTableBlock(block: string): JSONNode | null {
     });
 
   return { type: "table", content: [headerRow, ...bodyRows] };
-}
-
-// --- Relative image resolution ---
-
-function extractRelativeImageNames(markdown: string): Set<string> {
-  const names = new Set<string>();
-  const re = /!\[[^\]]*\]\(([^)]+)\)/g;
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(markdown)) !== null) {
-    const src = m[1].trim();
-    if (/^https?:\/\//i.test(src) || src.startsWith("/") || src.startsWith("data:")) continue;
-    // Strip any fragment / querystring — storage keys are filename-only.
-    const cleaned = src.split(/[?#]/)[0];
-    if (cleaned) names.add(cleaned);
-  }
-  return names;
-}
-
-function buildFileNameMap(files: FileInfo[], wanted: Set<string>): Map<string, string> {
-  const map = new Map<string, string>();
-  const byName = new Map<string, string>();
-  for (const f of files) byName.set(f.name, f.url);
-  for (const want of wanted) {
-    const url = byName.get(want) ?? byName.get(want.split("/").pop() || want);
-    if (url) map.set(want, url);
-  }
-  return map;
-}
-
-function rewriteRelativeImages(markdown: string, urls: Map<string, string>): string {
-  return markdown.replace(/(!\[[^\]]*\]\()([^)]+)(\))/g, (full, pre, src, post) => {
-    const trimmed = src.trim();
-    const cleaned = trimmed.split(/[?#]/)[0];
-    const url = urls.get(cleaned);
-    return url ? `${pre}${url}${post}` : full;
-  });
 }
 
 export function serializeMarkdown(doc: JSONNode | null | undefined, fallback: string): string {

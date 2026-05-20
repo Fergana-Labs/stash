@@ -153,7 +153,10 @@ export default function StashPageView() {
       const seq = saveSeq.current + 1;
       saveSeq.current = seq;
       try {
-        const updated = await updatePage(workspaceId, pageId, { content });
+        const updated = await updatePage(workspaceId, pageId, {
+          content,
+          collab_projection: true,
+        });
         if (saveSeq.current === seq) setPage(updated);
         reconcileAfterSave(content, "markdown");
       } catch (e) {
@@ -466,6 +469,10 @@ export default function StashPageView() {
                   workspaceId={workspaceId}
                   file={page}
                   onSave={handleSave}
+                  collaborationUser={{
+                    id: user.id,
+                    name: user.display_name || user.name,
+                  }}
                   onSaveStatusChange={setSaveStatus}
                   onNavigateInternal={(href) => router.push(href)}
                   onAddComment={handleAddCommentMarkdown}

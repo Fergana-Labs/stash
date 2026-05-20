@@ -330,6 +330,7 @@ class PageUpdateRequest(BaseModel):
     name: str | None = Field(None, min_length=1, max_length=255)
     folder_id: UUID | None = None
     content: str | None = None
+    collab_projection: bool = False
     content_type: str | None = Field(None, pattern=r"^(markdown|html)$")
     content_html: str | None = None
     html_layout: str | None = Field(None, pattern=r"^(responsive|fixed-aspect)$")
