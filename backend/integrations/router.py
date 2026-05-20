@@ -152,8 +152,10 @@ async def integration_callback(
     account = await p.fetch_account(token.access_token)
     await storage.store_token(user_id, provider, token, account)
 
-    # Send the user back to the frontend integrations settings page.
-    redirect_target = f"{settings.PUBLIC_URL.rstrip('/')}/settings/integrations"
+    # Send the user back to /settings — the Integrations section is
+    # embedded there. The query param triggers the panel to re-fetch
+    # connection state.
+    redirect_target = f"{settings.PUBLIC_URL.rstrip('/')}/settings"
     query = urlencode({"connected": provider})
     return RedirectResponse(url=f"{redirect_target}?{query}", status_code=302)
 

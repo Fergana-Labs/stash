@@ -1,9 +1,8 @@
-import IntegrationsSettings from "@/components/integrations/IntegrationsSettings";
+import { redirect } from "next/navigation";
 
-export const metadata = {
-  title: "Integrations · Stash",
-};
-
-export default function IntegrationsSettingsPage() {
-  return <IntegrationsSettings />;
+// The Integrations panel lives inline on /settings. Keep this path
+// alive as a deep-link target (anything that linked here historically
+// still resolves), but bounce through to the canonical location.
+export default function IntegrationsRedirect() {
+  redirect("/settings");
 }

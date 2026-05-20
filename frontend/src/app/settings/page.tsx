@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Header from "../../components/Header";
+import IntegrationsSettings from "../../components/integrations/IntegrationsSettings";
 import { AccountSettingsSkeleton, ApiKeysSkeleton } from "../../components/SkeletonStates";
 import { useAuth } from "../../hooks/useAuth";
 import {
@@ -49,6 +50,7 @@ export default function SettingsPage() {
             </p>
           </div>
           <Profile user={user} onUpdated={refresh} />
+          <IntegrationsSettings embedded />
           <ActiveSessions />
           {!AUTH0_ENABLED && <ChangePassword />}
         </div>

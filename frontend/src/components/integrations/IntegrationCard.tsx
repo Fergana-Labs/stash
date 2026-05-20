@@ -46,67 +46,51 @@ export default function IntegrationCard({ status, onChanged }: Props) {
   }
 
   return (
-    <div
-      style={{
-        border: "1px solid var(--border, #e5e7eb)",
-        borderRadius: 8,
-        padding: 16,
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "space-between",
-        gap: 16,
-      }}
-    >
-      <div style={{ minWidth: 0, flex: 1 }}>
-        <div style={{ fontWeight: 600, fontSize: 15 }}>{status.display_name}</div>
+    <div className="rounded-xl border border-border bg-background p-4 flex items-center gap-4">
+      <div className="min-w-0 flex-1">
+        <div className="text-sm font-semibold text-foreground">{status.display_name}</div>
         {status.connected ? (
-          <div style={{ fontSize: 13, color: "var(--muted, #6b7280)", marginTop: 4 }}>
+          <div className="text-xs text-muted mt-0.5">
             Connected as{" "}
-            <strong>{status.account_display_name || status.account_email || "—"}</strong>
+            <span className="font-medium text-foreground">
+              {status.account_display_name || status.account_email || "—"}
+            </span>
             {status.account_email && status.account_display_name ? (
-              <span> ({status.account_email})</span>
+              <span className="text-muted"> ({status.account_email})</span>
             ) : null}
           </div>
         ) : (
-          <div style={{ fontSize: 13, color: "var(--muted, #6b7280)", marginTop: 4 }}>
-            Not connected · scopes: {status.scopes.join(", ") || "(none)"}
+          <div className="text-xs text-muted mt-0.5">
+            Not connected
+            {status.scopes.length > 0 ? (
+              <>
+                {" "}
+                · scopes:{" "}
+                <span className="font-mono">{status.scopes.join(", ")}</span>
+              </>
+            ) : null}
           </div>
         )}
       </div>
-      <div>
-        {status.connected ? (
-          <button
-            type="button"
-            onClick={onDisconnect}
-            disabled={busy}
-            style={{
-              padding: "6px 12px",
-              border: "1px solid var(--border, #e5e7eb)",
-              borderRadius: 6,
-              background: "transparent",
-              cursor: busy ? "wait" : "pointer",
-            }}
-          >
-            Disconnect
-          </button>
-        ) : (
-          <button
-            type="button"
-            onClick={onConnect}
-            disabled={busy}
-            style={{
-              padding: "6px 12px",
-              borderRadius: 6,
-              border: "1px solid var(--border, #2563eb)",
-              background: "var(--accent, #2563eb)",
-              color: "white",
-              cursor: busy ? "wait" : "pointer",
-            }}
-          >
-            Connect
-          </button>
-        )}
-      </div>
+      {status.connected ? (
+        <button
+          type="button"
+          onClick={onDisconnect}
+          disabled={busy}
+          className="text-xs font-medium px-3 py-1.5 rounded-md border border-border hover:bg-raised disabled:opacity-50 transition-colors"
+        >
+          {busy ? "…" : "Disconnect"}
+        </button>
+      ) : (
+        <button
+          type="button"
+          onClick={onConnect}
+          disabled={busy}
+          className="text-xs font-semibold px-3 py-1.5 rounded-md bg-brand hover:bg-brand-hover text-white disabled:opacity-60 transition-colors"
+        >
+          {busy ? "…" : "Connect"}
+        </button>
+      )}
     </div>
   );
 }
