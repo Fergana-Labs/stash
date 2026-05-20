@@ -204,11 +204,6 @@ function SharePanel({
         <div className="text-[11px] font-mono uppercase tracking-wider text-muted">
           Public link
         </div>
-        <p className="text-[11.5px] text-muted leading-relaxed">
-          Anyone with the link gets access. No account needed.
-        </p>
-
-        <PermToggle perm={perm} busy={busy} onChange={onChangePerm} />
 
         {publicUrl ? (
           <CopyableUrl url={publicUrl} />
@@ -217,11 +212,14 @@ function SharePanel({
             type="button"
             onClick={onCreatePublicLink}
             disabled={busy}
-            className="rounded-md bg-brand px-3 py-1.5 text-[12px] font-medium text-white hover:bg-brand-hover disabled:opacity-60"
+            className="w-full rounded-md bg-brand px-3 py-2 text-[12px] font-medium text-white hover:bg-brand-hover disabled:opacity-60"
           >
             {busy ? "Creating…" : "Get a public link"}
           </button>
         )}
+
+        <AccessRow perm={perm} busy={busy} onChange={onChangePerm} />
+
         {shareError && <p className="text-[11px] text-error">{shareError}</p>}
       </section>
 
@@ -242,7 +240,7 @@ function SharePanel({
   );
 }
 
-function PermToggle({
+function AccessRow({
   perm,
   busy,
   onChange,
@@ -251,36 +249,19 @@ function PermToggle({
   busy: boolean;
   onChange: (p: PublicPerm) => void;
 }) {
-  const opts: { id: PublicPerm; label: string }[] = [
-    { id: "read", label: "View only" },
-    { id: "write", label: "Can edit" },
-  ];
   return (
-    <div
-      role="radiogroup"
-      aria-label="Public link permission"
-      className="inline-flex rounded-md border border-border-subtle bg-background/40 p-0.5"
-    >
-      {opts.map((o) => {
-        const active = o.id === perm;
-        return (
-          <button
-            key={o.id}
-            type="button"
-            role="radio"
-            aria-checked={active}
-            onClick={() => onChange(o.id)}
-            disabled={busy}
-            className={`px-2.5 py-1 text-[11.5px] font-medium rounded transition-colors disabled:opacity-60 ${
-              active
-                ? "bg-brand text-white"
-                : "text-muted hover:text-foreground"
-            }`}
-          >
-            {o.label}
-          </button>
-        );
-      })}
+    <div className="flex items-center justify-between text-[11.5px] text-muted">
+      <span>Anyone with the link</span>
+      <select
+        aria-label="Public link permission"
+        value={perm}
+        disabled={busy}
+        onChange={(e) => onChange(e.target.value as PublicPerm)}
+        className="rounded-md border border-border-subtle bg-background/40 px-2 py-1 text-[11.5px] text-foreground focus:border-brand focus:outline-none disabled:opacity-60"
+      >
+        <option value="read">can view</option>
+        <option value="write">can edit</option>
+      </select>
     </div>
   );
 }
