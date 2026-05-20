@@ -21,14 +21,8 @@ router = APIRouter(prefix="/api/v1/workspaces/{workspace_id}/imports", tags=["im
 
 
 async def _check_workspace_access(workspace_id: UUID, user_id: UUID) -> None:
-    can_write = await permission_service.check_access(
-        "workspace",
-        workspace_id,
-        user_id,
-        workspace_id=workspace_id,
-        require_write=True,
-    )
-    if not can_write:
+    role = await permission_service.get_workspace_role(workspace_id, user_id)
+    if role not in ("owner", "admin", "editor"):
         raise HTTPException(status_code=404, detail="Workspace not found")
 
 
