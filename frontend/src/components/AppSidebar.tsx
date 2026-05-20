@@ -1178,7 +1178,7 @@ function SessionTreeDetails({
       >
         <ChevronToggle open={open} onToggle={() => setOpen((current) => !current)} />
         <span className="flex h-4 w-4 items-center justify-center text-[14px] text-muted">
-          <FolderIcon />
+          <SessionsIcon />
         </span>
         <span className="flex-1 truncate text-foreground">{group.label}</span>
         <span className="text-[10.5px] text-muted">{group.total}</span>
