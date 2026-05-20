@@ -356,7 +356,7 @@ export default function StashShareButton({
           ? "Copying"
           : handoffStatus === "copied"
             ? "Copied"
-            : "Hand off"}
+            : "Agent Handoff"}
       </button>
       <button
         type="button"
