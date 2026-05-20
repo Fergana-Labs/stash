@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import errno
+import hashlib
 import json
 import os
 import posixpath
@@ -133,6 +134,9 @@ class StashVfsModel:
         return {
             "st_mode": node.mode,
             "st_nlink": 2 if node.is_dir else 1,
+            "st_ino": _inode_for_path(node.path),
+            "st_uid": os.getuid(),
+            "st_gid": os.getgid(),
             "st_size": size or 0,
             "st_ctime": node.created_at,
             "st_mtime": node.updated_at,
@@ -399,8 +403,24 @@ class StashFuseOperations:
     def __init__(self, model: StashVfsModel):
         self.model = model
         self.handles: dict[int, OpenFile] = {}
+        self.dir_handles: dict[int, str] = {}
         self.next_handle = 1
         self.lock = threading.Lock()
+
+    def __call__(self, op: str, *args):
+        handler = getattr(self, op, None)
+        if handler is None:
+            raise _fuse_error(errno.EFAULT)
+        return handler(*args)
+
+    def access(self, path: str, amode: int):
+        if not self.model.exists(path):
+            raise _fuse_error(errno.ENOENT)
+        if amode & os.W_OK:
+            node = self.model._get_node(path)
+            if node.is_dir or node.writer is None:
+                raise _fuse_error(errno.EROFS)
+        return 0
 
     def getattr(self, path: str, fh=None):
         try:
@@ -410,11 +430,37 @@ class StashFuseOperations:
 
     def readdir(self, path: str, fh):
         try:
-            return [".", "..", *self.model.list_dir(path)]
+            path = self.model._clean_path(path)
+            # fusepy does not expose the kernel readdir offset to this high-level operation.
+            # FUSE-T's NFS bridge expects this shape to finish in one pass.
+            entries = [
+                (".", self.model.getattr(path), 0),
+                ("..", self.model.getattr(posixpath.dirname(path) or "/"), 0),
+            ]
+            for name in self.model.list_dir(path):
+                child_path = posixpath.join(path, name)
+                entries.append((name, self.model.getattr(child_path), 0))
+            return entries
         except FileNotFoundError:
             raise _fuse_error(errno.ENOENT)
         except NotADirectoryError:
             raise _fuse_error(errno.ENOTDIR)
+
+    def opendir(self, path: str):
+        if not self.model.exists(path):
+            raise _fuse_error(errno.ENOENT)
+        node = self.model._get_node(path)
+        if not node.is_dir:
+            raise _fuse_error(errno.ENOTDIR)
+        with self.lock:
+            handle = self.next_handle
+            self.next_handle += 1
+            self.dir_handles[handle] = self.model._clean_path(path)
+            return handle
+
+    def releasedir(self, path: str, fh: int):
+        self.dir_handles.pop(fh, None)
+        return 0
 
     def open(self, path: str, flags: int):
         if not self.model.exists(path):
@@ -482,7 +528,46 @@ class StashFuseOperations:
             raise _fuse_error(errno.ENOENT)
         return 0
 
+    def init(self, path: str):
+        return None
+
+    def destroy(self, path: str):
+        return None
+
+    def fsyncdir(self, path: str, fdatasync: bool, fh: int):
+        return 0
+
+    def statfs(self, path: str):
+        return {
+            "f_bsize": 4096,
+            "f_frsize": 4096,
+            "f_blocks": 1024 * 1024,
+            "f_bavail": 1024 * 1024,
+            "f_bfree": 1024 * 1024,
+            "f_files": len(self.model.nodes) + 1024,
+            "f_ffree": 1024 * 1024,
+            "f_favail": 1024 * 1024,
+        }
+
+    def listxattr(self, path: str):
+        return []
+
+    def getxattr(self, path: str, name: str, position=0):
+        raise _fuse_error(_enotsup())
+
+    def setxattr(self, path: str, name: str, value: bytes, options: int, position=0):
+        raise _fuse_error(_enotsup())
+
+    def removexattr(self, path: str, name: str):
+        raise _fuse_error(_enotsup())
+
+    def readlink(self, path: str):
+        raise _fuse_error(errno.ENOENT)
+
     def create(self, path: str, mode: int, fi=None):
+        raise _fuse_error(errno.EROFS)
+
+    def mknod(self, path: str, mode: int, dev: int):
         raise _fuse_error(errno.EROFS)
 
     def mkdir(self, path: str, mode: int):
@@ -497,11 +582,20 @@ class StashFuseOperations:
     def rename(self, old: str, new: str):
         raise _fuse_error(errno.EROFS)
 
+    def link(self, target: str, source: str):
+        raise _fuse_error(errno.EROFS)
+
+    def symlink(self, target: str, source: str):
+        raise _fuse_error(errno.EROFS)
+
     def chmod(self, path: str, mode: int):
         raise _fuse_error(errno.EROFS)
 
     def chown(self, path: str, uid: int, gid: int):
         raise _fuse_error(errno.EROFS)
+
+    def ioctl(self, path: str, cmd: int, arg, fip, flags: int, data):
+        raise _fuse_error(errno.ENOTTY)
 
     def _commit_handle(self, fh: int) -> None:
         opened = self.handles.get(fh)
@@ -517,7 +611,15 @@ def mount_stash(client: StashClient, mountpoint: Path, workspace_id: str | None 
     model = StashVfsModel(client, workspace_id=workspace_id)
     model.refresh()
     try:
-        FUSE(StashFuseOperations(model), str(mountpoint), foreground=True, nothreads=True)
+        FUSE(
+            StashFuseOperations(model),
+            str(mountpoint),
+            foreground=True,
+            nothreads=True,
+            nonamedattr=True,
+            noattrcache=True,
+            volname="Stash",
+        )
     except (OSError, RuntimeError) as e:
         raise StashMountError(f"Stash mount failed: {e}") from e
 
@@ -566,6 +668,17 @@ def _fuse_error(err: int) -> OSError:
         return FuseOSError(err)
     except (ImportError, OSError):
         return OSError(err, os.strerror(err))
+
+
+def _enotsup() -> int:
+    return getattr(errno, "ENOTSUP", 45)
+
+
+def _inode_for_path(path: str) -> int:
+    if path == "/":
+        return 1
+    digest = hashlib.sha256(path.encode("utf-8")).digest()
+    return int.from_bytes(digest[:8], "big") & 0x7FFFFFFFFFFFFFFF
 
 
 def _safe_name(value: str) -> str:

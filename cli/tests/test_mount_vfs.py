@@ -185,3 +185,19 @@ def test_fuse_operations_commit_page_writes_on_flush():
             {"content": "# Edited through FUSE\n"},
         )
     ]
+
+
+def test_fuse_operations_support_fusepy_dispatch():
+    model = _model()
+    workspace_name = model.list_dir("/workspaces")[0]
+    workspace_path = f"/workspaces/{workspace_name}"
+    ops = StashFuseOperations(model)
+
+    assert ops("getattr", "/")["st_nlink"] == 2
+    assert "files" in [entry[0] for entry in ops("readdir", workspace_path, None)]
+    dir_handle = ops("opendir", workspace_path)
+    assert dir_handle > 0
+    assert ops("releasedir", workspace_path, dir_handle) == 0
+    assert ops("access", f"{workspace_path}/README.md", os.R_OK) == 0
+    assert ops("listxattr", workspace_path) == []
+    assert ops("statfs", workspace_path)["f_bsize"] == 4096
