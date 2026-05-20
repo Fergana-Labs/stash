@@ -156,13 +156,13 @@ install_fuse_provider
 
 if command -v uv >/dev/null 2>&1; then
   INSTALLER="uv"
-  INSTALL_CMD=(uv tool install "$PACKAGE" --force)
+  INSTALL_CMD=(uv tool install --force --reinstall --refresh "$PACKAGE")
 else
   printf '→ Installing uv (manages Python for you)…\n'
   curl -LsSf https://astral.sh/uv/install.sh | sh >/dev/null 2>&1
   export PATH="$HOME/.local/bin:$PATH"
   INSTALLER="uv"
-  INSTALL_CMD=(uv tool install "$PACKAGE" --force)
+  INSTALL_CMD=(uv tool install --force --reinstall --refresh "$PACKAGE")
 fi
 
 printf '→ Installing %s via %s…\n' "$PACKAGE" "$INSTALLER"
