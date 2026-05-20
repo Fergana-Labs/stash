@@ -1,6 +1,12 @@
 import os
+from pathlib import Path
 
-from cli.mount import StashFuseOperations, StashVfsModel
+from cli.mount import (
+    StashFuseOperations,
+    StashMountError,
+    StashVfsModel,
+    _require_macos_fskit_mountpoint,
+)
 
 
 class FakeClient:
@@ -201,3 +207,14 @@ def test_fuse_operations_support_fusepy_dispatch():
     assert ops("access", f"{workspace_path}/README.md", os.R_OK) == 0
     assert ops("listxattr", workspace_path) == []
     assert ops("statfs", workspace_path)["f_bsize"] == 4096
+
+
+def test_macos_fskit_mountpoints_must_live_under_volumes():
+    _require_macos_fskit_mountpoint(Path("/Volumes/Stash"))
+
+    try:
+        _require_macos_fskit_mountpoint(Path("~/StashMount"))
+    except StashMountError as e:
+        assert "/Volumes/Stash" in str(e)
+    else:
+        raise AssertionError("expected a mountpoint error")

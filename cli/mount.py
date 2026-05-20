@@ -6,6 +6,7 @@ import errno
 import hashlib
 import json
 import os
+import platform
 import posixpath
 import re
 import stat
@@ -614,11 +615,7 @@ def mount_stash(client: StashClient, mountpoint: Path, workspace_id: str | None 
         FUSE(
             StashFuseOperations(model),
             str(mountpoint),
-            foreground=True,
-            nothreads=True,
-            nonamedattr=True,
-            noattrcache=True,
-            volname="Stash",
+            **_fuse_mount_options(mountpoint),
         )
     except (OSError, RuntimeError) as e:
         raise StashMountError(f"Stash mount failed: {e}") from e
@@ -626,6 +623,7 @@ def mount_stash(client: StashClient, mountpoint: Path, workspace_id: str | None 
 
 def check_fuse_runtime() -> None:
     _load_fuse_class()
+    _validate_fuse_provider()
 
 
 def _load_fuse_class():
@@ -644,9 +642,68 @@ def _configure_fuse_library_path() -> None:
     if os.environ.get("FUSE_LIBRARY_PATH") or sys.platform != "darwin":
         return
 
-    fuse_t_path = Path("/usr/local/lib/libfuse-t.dylib")
-    if fuse_t_path.is_file():
-        os.environ["FUSE_LIBRARY_PATH"] = str(fuse_t_path)
+    macfuse_path = Path("/usr/local/lib/libfuse.2.dylib")
+    if macfuse_path.is_file():
+        os.environ["FUSE_LIBRARY_PATH"] = str(macfuse_path)
+
+
+def _fuse_mount_options(mountpoint: Path) -> dict:
+    options = {
+        "foreground": True,
+        "nothreads": True,
+        "volname": "Stash",
+    }
+    if sys.platform != "darwin":
+        return options
+
+    _validate_fuse_provider()
+    _require_macos_fskit_mountpoint(mountpoint)
+    options["backend"] = "fskit"
+    return options
+
+
+def _validate_fuse_provider() -> None:
+    if sys.platform != "darwin":
+        return
+    if _active_macos_fuse_provider() != "macfuse":
+        raise StashMountError(
+            "Stash mount on macOS requires macFUSE 5 FSKit. Re-run the Stash installer."
+        )
+    if not _macos_supports_fskit():
+        raise StashMountError("Stash mount on macOS requires macOS 15.4 or later.")
+
+
+def _active_macos_fuse_provider() -> str:
+    path = os.environ.get("FUSE_LIBRARY_PATH", "")
+    if "libfuse-t" in path:
+        return "fuse-t"
+    if Path("/usr/local/lib/libfuse.2.dylib").is_file():
+        return "macfuse"
+    return ""
+
+
+def _macos_supports_fskit() -> bool:
+    version = platform.mac_ver()[0]
+    parts = version.split(".")
+    if len(parts) < 2:
+        return False
+    try:
+        major = int(parts[0])
+        minor = int(parts[1])
+    except ValueError:
+        return False
+    return (major, minor) >= (15, 4)
+
+
+def _require_macos_fskit_mountpoint(mountpoint: Path) -> None:
+    absolute = mountpoint.expanduser().absolute()
+    volumes = Path("/Volumes")
+    if absolute == volumes or volumes in absolute.parents:
+        return
+    raise StashMountError(
+        "Stash mount on macOS uses macFUSE FSKit, which requires a mount point under "
+        "/Volumes. Re-run with: stash mount /Volumes/Stash"
+    )
 
 
 def _flags_request_write(flags: int) -> bool:

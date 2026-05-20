@@ -4041,7 +4041,7 @@ def disconnect_cmd():
 def mount_command(
     mountpoint: str | None = typer.Argument(
         None,
-        help="Directory where Stash should be mounted.",
+        help="Directory where Stash should be mounted. Defaults to /Volumes/Stash on macOS.",
     ),
     workspace_id: str = typer.Option(
         None,
@@ -4065,6 +4065,9 @@ def mount_command(
             raise typer.Exit(1)
         console.print("[green]FUSE runtime available.[/green]")
         return
+
+    if mountpoint is None and sys.platform == "darwin":
+        mountpoint = "/Volumes/Stash"
 
     if mountpoint is None:
         console.print("[red]MOUNTPOINT is required unless --check is set.[/red]")

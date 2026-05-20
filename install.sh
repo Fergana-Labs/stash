@@ -17,12 +17,16 @@
 set -euo pipefail
 
 PACKAGE="${STASH_INSTALL_PACKAGE:-stashai}"
-FUSE_T_VERSION="1.2.6"
-FUSE_T_SHA256="fcfd95e4c09fb1f90efa134ef9b328b5757c59b43d6c7c23384a6a7001db4eb3"
-FUSE_T_PKG_URL="https://github.com/macos-fuse-t/fuse-t/releases/download/${FUSE_T_VERSION}/fuse-t-macos-installer-${FUSE_T_VERSION}.pkg"
+MACFUSE_VERSION="5.2.0"
+MACFUSE_SHA256="09a4b4c23c1930af45335fc119696797da41562dec1630602d2db637f4804f27"
+MACFUSE_DMG_URL="https://github.com/macfuse/macfuse/releases/download/macfuse-${MACFUSE_VERSION}/macfuse-${MACFUSE_VERSION}.dmg"
 STASH_INSTALL_TMP_DIRS=()
+STASH_INSTALL_MOUNTPOINTS=()
 
 cleanup() {
+  for mountpoint in "${STASH_INSTALL_MOUNTPOINTS[@]}"; do
+    hdiutil detach "$mountpoint" >/dev/null 2>&1 || true
+  done
   for dir in "${STASH_INSTALL_TMP_DIRS[@]}"; do
     rm -rf "$dir"
   done
@@ -58,32 +62,45 @@ ensure_sudo() {
 }
 
 have_macos_fuse_provider() {
-  pkgutil --pkgs | grep -Eq '^org\.fuse-t\.' &&
-    [ -f /usr/local/lib/libfuse-t.dylib ]
+  pkgutil --pkgs | grep -q '^io\.macfuse\.installer\.components\.core$' &&
+    [ -f /usr/local/lib/libfuse.2.dylib ] &&
+    [ -x /Library/Filesystems/macfuse.fs/Contents/Resources/mount_macfuse ]
+}
+
+prepare_macos_mountpoint() {
+  ensure_sudo
+  sudo mkdir -p /Volumes/Stash
+  sudo chown "$(id -u):$(id -g)" /Volumes/Stash
 }
 
 install_macos_fuse_provider() {
   if have_macos_fuse_provider; then
     printf '→ Stash filesystem provider already installed.\n'
+    prepare_macos_mountpoint
     return
   fi
 
   ensure_sudo
   tmp_dir="$(mktemp -d)"
   STASH_INSTALL_TMP_DIRS+=("$tmp_dir")
-  pkg_path="${tmp_dir}/fuse-t.pkg"
+  dmg_path="${tmp_dir}/macfuse.dmg"
+  dmg_mount="${tmp_dir}/macfuse"
+  mkdir -p "$dmg_mount"
 
   printf '→ Installing Stash filesystem provider for macOS…\n'
-  curl -fsSL "$FUSE_T_PKG_URL" -o "$pkg_path"
-  actual_sha="$(shasum -a 256 "$pkg_path" | awk '{print $1}')"
-  if [ "$actual_sha" != "$FUSE_T_SHA256" ]; then
-    fail "FUSE-T package checksum mismatch"
+  curl -fsSL "$MACFUSE_DMG_URL" -o "$dmg_path"
+  actual_sha="$(shasum -a 256 "$dmg_path" | awk '{print $1}')"
+  if [ "$actual_sha" != "$MACFUSE_SHA256" ]; then
+    fail "macFUSE package checksum mismatch"
   fi
-  sudo installer -pkg "$pkg_path" -target / >/dev/null
+  hdiutil attach "$dmg_path" -nobrowse -readonly -mountpoint "$dmg_mount" >/dev/null
+  STASH_INSTALL_MOUNTPOINTS+=("$dmg_mount")
+  sudo installer -pkg "$dmg_mount/Extras/macFUSE ${MACFUSE_VERSION}.pkg" -target / >/dev/null
 
   if ! have_macos_fuse_provider; then
-    fail "FUSE-T installation completed, but libfuse-t.dylib was not found"
+    fail "macFUSE installation completed, but libfuse.2.dylib was not found"
   fi
+  prepare_macos_mountpoint
 }
 
 have_linux_fuse_provider() {
