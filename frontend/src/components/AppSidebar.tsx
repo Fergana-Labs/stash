@@ -746,6 +746,46 @@ function showMoreLabel(noun: string, hiddenCount: number): string {
   return `Show ${Math.min(PREVIEW_ITEM_LIMIT, hiddenCount)} more ${noun}`;
 }
 
+function SidebarSearchField({
+  label,
+  value,
+  onChange,
+  placeholder,
+  onClear,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  placeholder: string;
+  onClear: () => void;
+}) {
+  return (
+    <div className="relative px-1 py-1">
+      <span className="pointer-events-none absolute left-3 top-1/2 flex h-4 w-4 -translate-y-1/2 items-center justify-center text-[14px] text-muted">
+        <SearchIcon />
+      </span>
+      <input
+        type="text"
+        aria-label={label}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        placeholder={placeholder}
+        className="w-full rounded-md border border-border bg-surface py-1 pl-7 pr-7 text-[12px] text-foreground outline-none placeholder:text-muted focus:border-[var(--color-brand-400)]"
+      />
+      {value ? (
+        <button
+          type="button"
+          aria-label={`Clear ${label.toLowerCase()}`}
+          onClick={onClear}
+          className="absolute right-2 top-1/2 flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded text-muted hover:bg-raised hover:text-foreground"
+        >
+          <CloseIcon className="text-[14px]" />
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
 function SessionNavRow({
   workspaceId,
   session,
@@ -914,29 +954,13 @@ function SessionsBlock({
       </summary>
       <div className="ml-3 space-y-0.5 border-l border-border pl-2">
         {sessionsDrop?.message ? <DropMessage state={sessionsDrop} /> : null}
-        <div className="relative px-1 py-1">
-          <span className="pointer-events-none absolute left-3 top-1/2 flex h-4 w-4 -translate-y-1/2 items-center justify-center text-[14px] text-muted">
-            <SearchIcon />
-          </span>
-          <input
-            type="text"
-            aria-label="Search sessions"
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder="Search sessions"
-            className="w-full rounded-md border border-border bg-surface py-1 pl-7 pr-7 text-[12px] text-foreground outline-none placeholder:text-muted focus:border-[var(--color-brand-400)]"
-          />
-          {query ? (
-            <button
-              type="button"
-              aria-label="Clear session search"
-              onClick={() => setQuery("")}
-              className="absolute right-2 top-1/2 flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded text-muted hover:bg-raised hover:text-foreground"
-            >
-              <CloseIcon className="text-[14px]" />
-            </button>
-          ) : null}
-        </div>
+        <SidebarSearchField
+          label="Search sessions"
+          value={query}
+          onChange={setQuery}
+          placeholder="Search sessions"
+          onClear={() => setQuery("")}
+        />
         {queryActive ? (
           <div className="space-y-0.5">
             {visibleSearchResults.map((session) => (
@@ -1451,6 +1475,219 @@ function DropMessage({ state }: { state: SidebarDropState }) {
   );
 }
 
+type FileDirectoryItem =
+  | { kind: "folder"; id: string; label: string }
+  | { kind: "page"; id: string; label: string; content_type?: "markdown" | "html" }
+  | {
+      kind: "file";
+      id: string;
+      label: string;
+      file: Pick<
+        WorkspaceFile,
+        "id" | "name" | "content_type" | "linked_table_id"
+      >;
+    };
+
+type FileSearchItem = FileDirectoryItem & {
+  hrefLabel: string;
+};
+
+function buildFileDirectoryItems(
+  folders: Array<{ id: string; name: string }>,
+  pages: Array<{ id: string; name: string; content_type?: "markdown" | "html" }>,
+  files: Array<
+    Pick<WorkspaceFile, "id" | "name" | "content_type" | "linked_table_id">
+  >
+): FileDirectoryItem[] {
+  return [
+    ...folders.map((folder) => ({
+      kind: "folder" as const,
+      id: folder.id,
+      label: folder.name,
+    })),
+    ...pages.map((page) => ({
+      kind: "page" as const,
+      id: page.id,
+      label: page.name,
+      content_type: page.content_type,
+    })),
+    ...files.map((file) => ({
+      kind: "file" as const,
+      id: file.id,
+      label: file.name,
+      file,
+    })),
+  ];
+}
+
+function searchFileItems(
+  folders: WorkspaceFolder[],
+  pages: WorkspacePage[],
+  files: WorkspaceFile[],
+  query: string
+): FileSearchItem[] {
+  const terms = query.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  if (terms.length === 0) return [];
+
+  const foldersById = new Map(folders.map((folder) => [folder.id, folder]));
+  const pathCache = new Map<string, string>();
+  const rows: FileSearchItem[] = [
+    ...folders.map((folder) => ({
+      kind: "folder" as const,
+      id: folder.id,
+      label: folder.name,
+      hrefLabel: resolveFolderPath(folder.id, foldersById, pathCache) || folder.name,
+    })),
+    ...pages.map((page) => {
+      const folderPath = resolveFolderPath(page.folder_id, foldersById, pathCache);
+      return {
+        kind: "page" as const,
+        id: page.id,
+        label: page.name,
+        content_type: page.content_type,
+        hrefLabel: folderPath ? `${folderPath}/${page.name}` : page.name,
+      };
+    }),
+    ...files.map((file) => {
+      const folderPath = resolveFolderPath(file.folder_id, foldersById, pathCache);
+      return {
+        kind: "file" as const,
+        id: file.id,
+        label: file.name,
+        file,
+        hrefLabel: folderPath ? `${folderPath}/${file.name}` : file.name,
+      };
+    }),
+  ];
+
+  return rows.filter((row) => {
+    const searchable = `${row.kind} ${row.label} ${row.hrefLabel}`.toLowerCase();
+    return terms.every((term) => searchable.includes(term));
+  });
+}
+
+function FileDirectoryItemRow({
+  workspaceId,
+  item,
+  isFolderPinned,
+  isFilePinned,
+  onPinMenu,
+  onPageClick,
+  onFileClick,
+}: {
+  workspaceId: string;
+  item: FileDirectoryItem;
+  isFolderPinned: (folderId: string) => boolean;
+  isFilePinned: (fileId: string) => boolean;
+  onPinMenu?: (
+    event: MouseEvent<HTMLElement>,
+    kind: PinKind,
+    id: string,
+    label: string,
+    pinned: boolean
+  ) => void;
+  onPageClick?: () => void;
+  onFileClick?: () => void;
+}) {
+  const pathname = usePathname();
+
+  if (item.kind === "folder") {
+    return (
+      <FolderTreeNode
+        workspaceId={workspaceId}
+        folderId={item.id}
+        name={item.label}
+        isFolderPinned={isFolderPinned}
+        isFilePinned={isFilePinned}
+        onPinMenu={onPinMenu}
+      />
+    );
+  }
+
+  if (item.kind === "page") {
+    const pageHref = `/workspaces/${workspaceId}/p/${item.id}`;
+    return (
+      <NavRow
+        href={pageHref}
+        icon={<PageIcon className="text-muted" />}
+        label={item.label}
+        active={pathname === pageHref}
+        onClick={onPageClick}
+      />
+    );
+  }
+
+  return (
+    <FileNavRow
+      workspaceId={workspaceId}
+      file={item.file}
+      label={item.label}
+      onClick={onFileClick}
+      onPinMenu={(event) =>
+        onPinMenu?.(event, "file", item.id, item.label, isFilePinned(item.id))
+      }
+    />
+  );
+}
+
+function FileSearchRow({
+  workspaceId,
+  item,
+  pinned,
+  onPinMenu,
+}: {
+  workspaceId: string;
+  item: FileSearchItem;
+  pinned: boolean;
+  onPinMenu: (
+    event: MouseEvent<HTMLElement>,
+    kind: PinKind,
+    id: string,
+    label: string,
+    pinned: boolean
+  ) => void;
+}) {
+  const pathname = usePathname();
+
+  if (item.kind === "folder") {
+    const href = `/workspaces/${workspaceId}/folders/${item.id}`;
+    return (
+      <NavRow
+        href={href}
+        icon={<FolderIcon />}
+        label={item.hrefLabel}
+        active={pathname === href}
+        onContextMenu={(event) =>
+          onPinMenu(event, "folder", item.id, item.label, pinned)
+        }
+      />
+    );
+  }
+
+  if (item.kind === "page") {
+    const href = `/workspaces/${workspaceId}/p/${item.id}`;
+    return (
+      <NavRow
+        href={href}
+        icon={<PageIcon className="text-muted" />}
+        label={item.hrefLabel}
+        active={pathname === href}
+      />
+    );
+  }
+
+  return (
+    <FileNavRow
+      workspaceId={workspaceId}
+      file={item.file}
+      label={item.hrefLabel}
+      onPinMenu={(event) =>
+        onPinMenu(event, "file", item.id, item.label, pinned)
+      }
+    />
+  );
+}
+
 function FolderTreeNode({
   workspaceId,
   folderId,
@@ -1464,24 +1701,28 @@ function FolderTreeNode({
   name: string;
   isFolderPinned: (folderId: string) => boolean;
   isFilePinned: (fileId: string) => boolean;
-  onPinMenu?: (event: MouseEvent<HTMLElement>, kind: PinKind, id: string, label: string, pinned: boolean) => void;
+  onPinMenu?: (
+    event: MouseEvent<HTMLElement>,
+    kind: PinKind,
+    id: string,
+    label: string,
+    pinned: boolean
+  ) => void;
 }) {
   const cachedContents = readCachedFolderContents(folderId);
   const [contents, setContents] = useState<FolderContents | null>(cachedContents);
   const [loaded, setLoaded] = useState(!!cachedContents);
   const [open, setOpen] = useState(false);
-  const [visibleFolderCount, setVisibleFolderCount] = useState(PREVIEW_ITEM_LIMIT);
-  const [visiblePageCount, setVisiblePageCount] = useState(PREVIEW_ITEM_LIMIT);
-  const [visibleFileCount, setVisibleFileCount] = useState(PREVIEW_ITEM_LIMIT);
+  const [visibleItemCount, setVisibleItemCount] = useState(PREVIEW_ITEM_LIMIT);
   const pathname = usePathname();
   const folderHref = `/workspaces/${workspaceId}/folders/${folderId}`;
   const folderActive = pathname === folderHref;
   const childFolders = (contents?.subfolders ?? []).filter((sub) => !isFolderPinned(sub.id));
   const childPages = contents?.pages ?? [];
   const childFiles = (contents?.files ?? []).filter((file) => !isFilePinned(file.id));
-  const visibleChildFolders = childFolders.slice(0, visibleFolderCount);
-  const visibleChildPages = childPages.slice(0, visiblePageCount);
-  const visibleChildFiles = childFiles.slice(0, visibleFileCount);
+  const childItems = buildFileDirectoryItems(childFolders, childPages, childFiles);
+  const visibleChildItems = childItems.slice(0, visibleItemCount);
+  const hiddenChildItemCount = childItems.length - visibleChildItems.length;
 
   const loadContents = useCallback(() => {
     if (loaded) return;
@@ -1561,61 +1802,21 @@ function FolderTreeNode({
       </summary>
       <div className="ml-2.5 space-y-0.5 border-l border-border pl-2">
         {contents === null && loaded && <SkeletonBlock className="my-1 h-5 w-28" />}
-        {visibleChildFolders.map((sub) => (
-            <FolderTreeNode
-              key={sub.id}
-              workspaceId={workspaceId}
-              folderId={sub.id}
-              name={sub.name}
-              isFolderPinned={isFolderPinned}
-              isFilePinned={isFilePinned}
-              onPinMenu={onPinMenu}
-            />
-          ))}
-        {childFolders.length > visibleChildFolders.length ? (
-          <ShowMoreRow
-            label={showMoreLabel("folders", childFolders.length - visibleChildFolders.length)}
-            onClick={() =>
-              setVisibleFolderCount((current) => current + PREVIEW_ITEM_LIMIT)
-            }
+        {visibleChildItems.map((item) => (
+          <FileDirectoryItemRow
+            key={`${item.kind}-${item.id}`}
+            workspaceId={workspaceId}
+            item={item}
+            isFolderPinned={isFolderPinned}
+            isFilePinned={isFilePinned}
+            onPinMenu={onPinMenu}
           />
-        ) : null}
-        {visibleChildPages.map((p) => {
-          const pageHref = `/workspaces/${workspaceId}/p/${p.id}`;
-          return (
-            <NavRow
-              key={p.id}
-              href={pageHref}
-              icon={<PageIcon className="text-muted" />}
-              label={p.name}
-              active={pathname === pageHref}
-            />
-          );
-        })}
-        {childPages.length > visibleChildPages.length ? (
-          <ShowMoreRow
-            label={showMoreLabel("pages", childPages.length - visibleChildPages.length)}
-            onClick={() =>
-              setVisiblePageCount((current) => current + PREVIEW_ITEM_LIMIT)
-            }
-          />
-        ) : null}
-        {visibleChildFiles.map((f) => (
-            <FileNavRow
-              key={f.id}
-              workspaceId={workspaceId}
-              file={f}
-              label={f.name}
-              onPinMenu={(event) =>
-                onPinMenu?.(event, "file", f.id, f.name, isFilePinned(f.id))
-              }
-            />
         ))}
-        {childFiles.length > visibleChildFiles.length ? (
+        {hiddenChildItemCount > 0 ? (
           <ShowMoreRow
-            label={showMoreLabel("files", childFiles.length - visibleChildFiles.length)}
+            label={showMoreLabel("items", hiddenChildItemCount)}
             onClick={() =>
-              setVisibleFileCount((current) => current + PREVIEW_ITEM_LIMIT)
+              setVisibleItemCount((current) => current + PREVIEW_ITEM_LIMIT)
             }
           />
         ) : null}
@@ -1662,9 +1863,9 @@ function FilesBlock({
   onAddPage: () => void;
 }) {
   const pathname = usePathname();
-  const [visibleRootFolderCount, setVisibleRootFolderCount] = useState(PREVIEW_ITEM_LIMIT);
-  const [visibleRootPageCount, setVisibleRootPageCount] = useState(PREVIEW_ITEM_LIMIT);
-  const [visibleRootFileCount, setVisibleRootFileCount] = useState(PREVIEW_ITEM_LIMIT);
+  const [query, setQuery] = useState("");
+  const [visibleRootItemCount, setVisibleRootItemCount] = useState(PREVIEW_ITEM_LIMIT);
+  const [visibleSearchCount, setVisibleSearchCount] = useState(PREVIEW_ITEM_LIMIT);
   const tree = spine?.files;
   const folders = tree?.folders ?? [];
   const pages = tree?.pages ?? [];
@@ -1676,9 +1877,13 @@ function FilesBlock({
   const rootFolders = visibleFolders.filter((f) => !f.parent_folder_id);
   const rootPages = pages.filter((p) => !p.folder_id);
   const rootFiles = visibleFiles.filter((f) => !f.folder_id);
-  const visibleRootFolders = rootFolders.slice(0, visibleRootFolderCount);
-  const visibleRootPages = rootPages.slice(0, visibleRootPageCount);
-  const visibleRootFiles = rootFiles.slice(0, visibleRootFileCount);
+  const rootItems = buildFileDirectoryItems(rootFolders, rootPages, rootFiles);
+  const visibleRootItems = rootItems.slice(0, visibleRootItemCount);
+  const hiddenRootItemCount = rootItems.length - visibleRootItems.length;
+  const searchResults = searchFileItems(folders, pages, files, query);
+  const queryActive = query.trim().length > 0;
+  const visibleSearchResults = searchResults.slice(0, visibleSearchCount);
+  const hiddenSearchCount = searchResults.length - visibleSearchResults.length;
   const folderById = new Map((tree?.folders ?? []).map((folder) => [folder.id, folder]));
   const fileById = new Map((tree?.files ?? []).map((file) => [file.id, file]));
   const pinnedFolderRows = pinnedFolders.map((id) => {
@@ -1728,6 +1933,10 @@ function FilesBlock({
       : pinMenu;
 
   useEscapeKey(!!pinMenu, () => setPinMenu(null));
+
+  useEffect(() => {
+    setVisibleSearchCount(PREVIEW_ITEM_LIMIT);
+  }, [query]);
 
   useEffect(() => {
     if (!pinMenu) return;
@@ -1792,21 +2001,59 @@ function FilesBlock({
       </summary>
       <div className="ml-3 space-y-0.5 border-l border-border pl-2">
         {filesDrop?.message ? <DropMessage state={filesDrop} /> : null}
+        <SidebarSearchField
+          label="Search files"
+          value={query}
+          onChange={setQuery}
+          placeholder="Search files"
+          onClear={() => setQuery("")}
+        />
+        {queryActive ? (
+          <div className="space-y-0.5">
+            {visibleSearchResults.map((item) => (
+              <FileSearchRow
+                key={`${item.kind}-${item.id}`}
+                workspaceId={workspace.id}
+                item={item}
+                pinned={
+                  item.kind === "folder"
+                    ? pinnedFolderSet.has(item.id)
+                    : item.kind === "file"
+                      ? pinnedFileSet.has(item.id)
+                      : false
+                }
+                onPinMenu={showPinMenu}
+              />
+            ))}
+            {hiddenSearchCount > 0 ? (
+              <ShowMoreRow
+                label={showMoreLabel("results", hiddenSearchCount)}
+                onClick={() =>
+                  setVisibleSearchCount((current) => current + PREVIEW_ITEM_LIMIT)
+                }
+              />
+            ) : null}
+            {searchResults.length === 0 ? (
+              <div className="px-2 py-1 text-[11px] italic text-muted">no matches</div>
+            ) : null}
+          </div>
+        ) : (
+          <>
             {renderPinned ? (
               <div className="space-y-0.5">
                 <div className="flex items-center justify-between gap-2 px-2 py-0.5">
                   <span className="text-[10px] uppercase tracking-wide text-muted">
                     Pinned ({pinnedCount})
                   </span>
-              <button
-                type="button"
-                onClick={(event) => {
-                  event.preventDefault();
-                  onUnpinAll();
-                }}
-                className="rounded px-1 py-0.5 text-[10px] text-[var(--color-brand-700)] hover:bg-[var(--color-brand-50)]"
-                aria-label="Unpin all files and folders"
-              >
+                  <button
+                    type="button"
+                    onClick={(event) => {
+                      event.preventDefault();
+                      onUnpinAll();
+                    }}
+                    className="rounded px-1 py-0.5 text-[10px] text-[var(--color-brand-700)] hover:bg-[var(--color-brand-50)]"
+                    aria-label="Unpin all files and folders"
+                  >
                     Unpin all
                   </button>
                 </div>
@@ -1836,69 +2083,31 @@ function FilesBlock({
                 ))}
               </div>
             ) : null}
-        {visibleRootFolders.map((f) => (
-          <FolderTreeNode
-            key={f.id}
-            workspaceId={workspace.id}
-            folderId={f.id}
-            name={f.name}
-            isFolderPinned={(folderId) => pinnedFolderSet.has(folderId)}
-            isFilePinned={(fileId) => pinnedFileSet.has(fileId)}
-            onPinMenu={showPinMenu}
-          />
-        ))}
-        {rootFolders.length > visibleRootFolders.length ? (
-          <ShowMoreRow
-            label={showMoreLabel("folders", rootFolders.length - visibleRootFolders.length)}
-            onClick={() =>
-              setVisibleRootFolderCount((current) => current + PREVIEW_ITEM_LIMIT)
-            }
-          />
-        ) : null}
-        {visibleRootPages.map((p) => {
-          const pageHref = `/workspaces/${workspace.id}/p/${p.id}`;
-          return (
-            <NavRow
-              key={p.id}
-              href={pageHref}
-              icon={<PageIcon className="text-muted" />}
-              label={p.name}
-              active={pathname === pageHref}
-              onClick={() => onOpenChange(true)}
-            />
-          );
-        })}
-        {rootPages.length > visibleRootPages.length ? (
-          <ShowMoreRow
-            label={showMoreLabel("pages", rootPages.length - visibleRootPages.length)}
-            onClick={() =>
-              setVisibleRootPageCount((current) => current + PREVIEW_ITEM_LIMIT)
-            }
-          />
-        ) : null}
-        {visibleRootFiles.map((f) => (
-          <FileNavRow
-            key={f.id}
-            workspaceId={workspace.id}
-            file={f}
-            label={f.name}
-            onClick={() => onOpenChange(true)}
-            onPinMenu={(event) =>
-              showPinMenu(event, "file", f.id, f.name, pinnedFileSet.has(f.id))
-            }
-          />
-        ))}
-        {rootFiles.length > visibleRootFiles.length ? (
-          <ShowMoreRow
-            label={showMoreLabel("files", rootFiles.length - visibleRootFiles.length)}
-            onClick={() =>
-              setVisibleRootFileCount((current) => current + PREVIEW_ITEM_LIMIT)
-            }
-          />
-        ) : null}
-        {!spine || total === 0 ? (
-          <div className="px-2 py-1 text-[11px] italic text-muted">empty</div>
-        ) : null}
+            {visibleRootItems.map((item) => (
+              <FileDirectoryItemRow
+                key={`${item.kind}-${item.id}`}
+                workspaceId={workspace.id}
+                item={item}
+                isFolderPinned={(folderId) => pinnedFolderSet.has(folderId)}
+                isFilePinned={(fileId) => pinnedFileSet.has(fileId)}
+                onPinMenu={showPinMenu}
+                onPageClick={() => onOpenChange(true)}
+                onFileClick={() => onOpenChange(true)}
+              />
+            ))}
+            {hiddenRootItemCount > 0 ? (
+              <ShowMoreRow
+                label={showMoreLabel("items", hiddenRootItemCount)}
+                onClick={() =>
+                  setVisibleRootItemCount((current) => current + PREVIEW_ITEM_LIMIT)
+                }
+              />
+            ) : null}
+            {!spine || total === 0 ? (
+              <div className="px-2 py-1 text-[11px] italic text-muted">empty</div>
+            ) : null}
+          </>
+        )}
         <SectionAddRow label="New page" onClick={onAddPage} />
         {pinMenu && menuClamp ? (
           <PinMenu

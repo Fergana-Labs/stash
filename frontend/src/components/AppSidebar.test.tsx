@@ -224,6 +224,44 @@ function sidebarWithSessions(sessions: ReturnType<typeof sidebarSession>[]) {
   };
 }
 
+function sidebarWithFiles({
+  folderCount,
+  pages = [],
+  files = [],
+}: {
+  folderCount: number;
+  pages?: Array<{ id: string; name: string; folder_id: string | null }>;
+  files?: Array<{ id: string; name: string; folder_id: string | null }>;
+}) {
+  return {
+    sessions: [],
+    files: {
+      folders: Array.from({ length: folderCount }, (_, index) => ({
+        id: `folder-${index + 1}`,
+        name: `${String(index + 1).padStart(2, "0")} Root Folder`,
+        parent_folder_id: null,
+        page_count: 0,
+        file_count: 0,
+        has_skill: false,
+      })),
+      pages: pages.map((page) => ({
+        ...page,
+        content_type: "markdown" as const,
+      })),
+      files: files.map((file) => ({
+        ...file,
+        workspace_id: "ws-1",
+        size_bytes: 12,
+        content_type: "text/markdown",
+        url: null,
+        created_at: "2026-05-11T00:00:00Z",
+        linked_table_id: null,
+      })),
+    },
+    stashes: [],
+  };
+}
+
 function detailsFor(label: string): HTMLDetailsElement {
   const details = screen.getByText(label).closest("details");
   if (!details) throw new Error(`No details element for ${label}`);
@@ -510,6 +548,91 @@ describe("AppSidebar tree expansion", () => {
         files: [],
       },
     });
+  });
+
+  it("uses one combined show-more row for files", async () => {
+    vi.mocked(getWorkspaceSidebar).mockResolvedValue(
+      sidebarWithFiles({
+        folderCount: 11,
+        pages: [{ id: "root-page", name: "Root Page", folder_id: null }],
+        files: [{ id: "root-file", name: "Root File.md", folder_id: null }],
+      })
+    );
+
+    renderSidebar();
+
+    expect(await screen.findByText("01 Root Folder")).toBeTruthy();
+    expect(screen.queryByText("11 Root Folder")).toBeNull();
+    expect(screen.queryByText("Root Page")).toBeNull();
+    expect(screen.queryByRole("button", { name: /more folders/i })).toBeNull();
+    expect(screen.queryByRole("button", { name: /more pages/i })).toBeNull();
+    expect(screen.queryByRole("button", { name: /more files/i })).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Show 3 more items" }));
+
+    expect(screen.getByText("11 Root Folder")).toBeTruthy();
+    expect(screen.getByText("Root Page")).toBeTruthy();
+    expect(screen.getByText("Root File.md")).toBeTruthy();
+  });
+
+  it("searches hidden sidebar files", async () => {
+    vi.mocked(getWorkspaceSidebar).mockResolvedValue({
+      sessions: [],
+      files: {
+        folders: [
+          {
+            id: "folder-parent",
+            name: "00 Huge Folder",
+            parent_folder_id: null,
+            page_count: 1,
+            file_count: 1,
+            has_skill: false,
+          },
+          ...Array.from({ length: 10 }, (_, index) => ({
+            id: `folder-${index + 1}`,
+            name: `${String(index + 1).padStart(2, "0")} Root Folder`,
+            parent_folder_id: null,
+            page_count: 0,
+            file_count: 0,
+            has_skill: false,
+          })),
+        ],
+        pages: [
+          {
+            id: "deep-page",
+            name: "Deep Search Page",
+            content_type: "markdown" as const,
+            folder_id: "folder-parent",
+          },
+        ],
+        files: [
+          {
+            id: "deep-file",
+            workspace_id: "ws-1",
+            name: "Deep Search File.md",
+            folder_id: "folder-parent",
+            size_bytes: 12,
+            content_type: "text/markdown",
+            url: null,
+            created_at: "2026-05-11T00:00:00Z",
+            linked_table_id: null,
+          },
+        ],
+      },
+      stashes: [],
+    });
+
+    renderSidebar();
+
+    await screen.findByText("00 Huge Folder");
+    expect(screen.queryByText("00 Huge Folder/Deep Search File.md")).toBeNull();
+
+    fireEvent.change(screen.getByLabelText("Search files"), {
+      target: { value: "deep search" },
+    });
+
+    expect(screen.getByText("00 Huge Folder/Deep Search Page")).toBeTruthy();
+    expect(screen.getByText("00 Huge Folder/Deep Search File.md")).toBeTruthy();
   });
 
   it("creates pages from the native sidebar modal", async () => {
