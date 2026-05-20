@@ -62,13 +62,13 @@ export const PATHS: Record<PathId, PathDef> = {
   },
   memory: {
     id: "memory",
-    label: "AI memory",
+    label: "Agent memory",
     steps: [MemoryImportStep, MemoryAskStep, MemorySearchStep, wrapInvite(InviteStep)],
     doneStep: DoneStep,
   },
   sharing: {
     id: "sharing",
-    label: "Share files",
+    label: "Artifacts",
     steps: [SharingDropStep, SharingBrowseStep, SharingHandoffStep],
     doneStep: DoneStep,
   },

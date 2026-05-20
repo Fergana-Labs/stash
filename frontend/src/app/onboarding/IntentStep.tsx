@@ -31,16 +31,16 @@ const OPTIONS: Option[] = [
   {
     id: "memory",
     Icon: PsychologyOutlinedIcon,
-    title: "I want better AI memory",
+    title: "I want better memory for my AI agents",
     blurb:
-      "Import your knowledge once and stop pasting context into every prompt. Your agent remembers.",
+      "Bring in your past agent sessions so the next conversation isn't starting from scratch. Your agent remembers what you've worked on.",
   },
   {
     id: "sharing",
     Icon: IosShareOutlinedIcon,
-    title: "I want to share files and artifacts",
+    title: "I want to collaborate on agent artifacts",
     blurb:
-      "Drag, drop, share. No setup, no CLI. Authorize a coding agent if you want it to publish for you.",
+      "Share session transcripts, agent-generated HTML, markdown — anyone with the link can view. No setup, no CLI.",
   },
 ];
 
@@ -48,10 +48,17 @@ export default function IntentStep({ onPick }: Props) {
   return (
     <div className="min-h-[70vh] flex flex-col items-center justify-center px-4 py-12">
       <div className="w-full max-w-3xl space-y-10">
-        <div className="space-y-2 text-center">
-          <div className="inline-flex items-center gap-2 px-2.5 py-1 rounded-full bg-surface border border-border text-[10px] font-mono uppercase tracking-[0.18em] text-muted">
-            <span className="w-1 h-1 rounded-full bg-brand animate-pulse" />
-            Welcome
+        <div className="space-y-3 text-center">
+          <div className="flex flex-col items-center gap-2">
+            {/* eslint-disable-next-line @next/next/no-img-element -- raw SVG, no need for next/image optimization */}
+            <img
+              src="/octopus.svg"
+              alt="Stash"
+              className="h-14 w-14"
+            />
+            <div className="text-[12px] font-mono uppercase tracking-[0.18em] text-muted">
+              Welcome to Stash
+            </div>
           </div>
           <h1 className="font-display text-[36px] leading-[1.05] font-bold tracking-tight text-foreground">
             What brought you here?
