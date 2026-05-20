@@ -2,8 +2,10 @@
 
 import { useEffect, useState } from "react";
 
-import { apiFetch, getWorkspace, publishStash } from "@/lib/api";
+import { apiFetch, getWorkspace, publishStash, updateStash } from "@/lib/api";
 import type { StepCtx } from "@/lib/onboarding/paths";
+
+type PublicPerm = "read" | "write";
 
 type Page = { id: string; name: string; content_type: string };
 type FileRow = { id: string; name: string };
@@ -101,27 +103,48 @@ function ItemRow({
   workspaceId: string;
   inviteUrl: string | null;
 }) {
-  const [open, setOpen] = useState(false);
   const [publicUrl, setPublicUrl] = useState<string | null>(null);
-  const [creating, setCreating] = useState(false);
+  const [publicStashId, setPublicStashId] = useState<string | null>(null);
+  const [perm, setPerm] = useState<PublicPerm>("read");
+  const [busy, setBusy] = useState(false);
   const [shareError, setShareError] = useState<string | null>(null);
 
   async function createPublicLink() {
-    if (publicUrl || creating) return;
-    setCreating(true);
+    if (publicUrl || busy) return;
+    setBusy(true);
     setShareError(null);
     try {
       const result = await publishStash(
         workspaceId,
         item.name,
         [{ object_type: item.kind, object_id: item.id }],
-        { public_permission: "read" },
+        { public_permission: perm },
       );
       setPublicUrl(result.url);
+      setPublicStashId(result.stash_id);
     } catch (e) {
       setShareError(e instanceof Error ? e.message : String(e));
     } finally {
-      setCreating(false);
+      setBusy(false);
+    }
+  }
+
+  async function changePerm(next: PublicPerm) {
+    if (next === perm || busy) return;
+    if (!publicStashId) {
+      // Not created yet — just update local intent. Creation will pick it up.
+      setPerm(next);
+      return;
+    }
+    setBusy(true);
+    setShareError(null);
+    try {
+      await updateStash(publicStashId, { public_permission: next });
+      setPerm(next);
+    } catch (e) {
+      setShareError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
     }
   }
 
@@ -129,8 +152,8 @@ function ItemRow({
   const tag = item.kind === "file" ? "file" : item.contentType ?? "page";
 
   return (
-    <div>
-      <div className="flex items-center justify-between gap-3 px-4 py-3">
+    <div className="px-4 py-4 space-y-3">
+      <div className="flex items-center justify-between gap-3">
         <a
           href={item.kind === "file" ? `/files/${item.id}` : `/pages/${item.id}`}
           className="flex items-center gap-3 min-w-0 hover:underline"
@@ -140,67 +163,63 @@ function ItemRow({
           </span>
           <span className="text-[13px] text-foreground truncate">{item.name}</span>
         </a>
-        <div className="flex items-center gap-3 shrink-0">
-          <span className="text-[10px] font-mono uppercase tracking-wider text-muted">
-            {tag}
-          </span>
-          <button
-            type="button"
-            onClick={() => setOpen((v) => !v)}
-            className="rounded-md border border-border-subtle bg-background/40 px-2.5 py-1 text-[11.5px] font-medium text-foreground hover:bg-raised"
-          >
-            {open ? "Close" : "Share"}
-          </button>
-        </div>
+        <span className="text-[10px] font-mono uppercase tracking-wider text-muted shrink-0">
+          {tag}
+        </span>
       </div>
 
-      {open && (
-        <div className="px-4 pb-4 -mt-1 space-y-3 bg-background/40">
-          <SharePanel
-            publicUrl={publicUrl}
-            creating={creating}
-            shareError={shareError}
-            inviteUrl={inviteUrl}
-            onCreatePublicLink={createPublicLink}
-          />
-        </div>
-      )}
+      <SharePanel
+        publicUrl={publicUrl}
+        perm={perm}
+        busy={busy}
+        shareError={shareError}
+        inviteUrl={inviteUrl}
+        onCreatePublicLink={createPublicLink}
+        onChangePerm={changePerm}
+      />
     </div>
   );
 }
 
 function SharePanel({
   publicUrl,
-  creating,
+  perm,
+  busy,
   shareError,
   inviteUrl,
   onCreatePublicLink,
+  onChangePerm,
 }: {
   publicUrl: string | null;
-  creating: boolean;
+  perm: PublicPerm;
+  busy: boolean;
   shareError: string | null;
   inviteUrl: string | null;
   onCreatePublicLink: () => void;
+  onChangePerm: (p: PublicPerm) => void;
 }) {
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-3">
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
       <section className="rounded-xl border border-border-subtle bg-surface p-3 space-y-2">
         <div className="text-[11px] font-mono uppercase tracking-wider text-muted">
           Public link
         </div>
         <p className="text-[11.5px] text-muted leading-relaxed">
-          Anyone with this link can view this item. No account needed.
+          Anyone with the link gets access. No account needed.
         </p>
+
+        <PermToggle perm={perm} busy={busy} onChange={onChangePerm} />
+
         {publicUrl ? (
           <CopyableUrl url={publicUrl} />
         ) : (
           <button
             type="button"
             onClick={onCreatePublicLink}
-            disabled={creating}
+            disabled={busy}
             className="rounded-md bg-brand px-3 py-1.5 text-[12px] font-medium text-white hover:bg-brand-hover disabled:opacity-60"
           >
-            {creating ? "Creating…" : "Get a public link"}
+            {busy ? "Creating…" : "Get a public link"}
           </button>
         )}
         {shareError && <p className="text-[11px] text-error">{shareError}</p>}
@@ -211,8 +230,7 @@ function SharePanel({
           Invite to workspace
         </div>
         <p className="text-[11.5px] text-muted leading-relaxed">
-          Anyone who joins via this link can see — and collaborate on —
-          everything in your workspace.
+          Anyone who joins via this link becomes an editor in your workspace.
         </p>
         {inviteUrl ? (
           <CopyableUrl url={inviteUrl} />
@@ -220,6 +238,49 @@ function SharePanel({
           <p className="text-[11.5px] text-muted">Loading invite link…</p>
         )}
       </section>
+    </div>
+  );
+}
+
+function PermToggle({
+  perm,
+  busy,
+  onChange,
+}: {
+  perm: PublicPerm;
+  busy: boolean;
+  onChange: (p: PublicPerm) => void;
+}) {
+  const opts: { id: PublicPerm; label: string }[] = [
+    { id: "read", label: "View only" },
+    { id: "write", label: "Can edit" },
+  ];
+  return (
+    <div
+      role="radiogroup"
+      aria-label="Public link permission"
+      className="inline-flex rounded-md border border-border-subtle bg-background/40 p-0.5"
+    >
+      {opts.map((o) => {
+        const active = o.id === perm;
+        return (
+          <button
+            key={o.id}
+            type="button"
+            role="radio"
+            aria-checked={active}
+            onClick={() => onChange(o.id)}
+            disabled={busy}
+            className={`px-2.5 py-1 text-[11.5px] font-medium rounded transition-colors disabled:opacity-60 ${
+              active
+                ? "bg-brand text-white"
+                : "text-muted hover:text-foreground"
+            }`}
+          >
+            {o.label}
+          </button>
+        );
+      })}
     </div>
   );
 }
