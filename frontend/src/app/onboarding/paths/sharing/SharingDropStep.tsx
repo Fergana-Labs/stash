@@ -257,10 +257,8 @@ function DropPanel({ workspaceId }: { workspaceId: string }) {
       )}
 
       <p className="text-[11px] text-muted leading-relaxed">
-        <code className="text-foreground">.jsonl</code> becomes a session,{" "}
-        <code className="text-foreground">.html</code> becomes a published
-        page, <code className="text-foreground">.md</code> becomes a
-        markdown page.
+        Upload a <code className="text-foreground">.jsonl</code> of a
+        session, an HTML page, or a markdown doc.
       </p>
     </div>
   );
