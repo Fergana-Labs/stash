@@ -1,3 +1,8 @@
+from uuid import UUID
+
+import pytest
+
+from backend.services import session_title_service
 from backend.services.session_title_service import title_from_events, title_from_text
 
 
@@ -60,3 +65,57 @@ def test_title_from_text_uses_linear_issue_title():
 
 def test_title_from_text_falls_back_to_session_id_for_empty_text():
     assert title_from_text("", "session-1") == "session-1"
+
+
+@pytest.mark.asyncio
+async def test_titles_for_sessions_prefers_generated_cache(monkeypatch):
+    class Pool:
+        async def fetch(self, *args):
+            return [
+                {
+                    "session_id": "s1",
+                    "title": "Fix Authentication Flow",
+                    "source_hash": "stale",
+                }
+            ]
+
+    monkeypatch.setattr(session_title_service, "get_pool", lambda: Pool())
+
+    titles = await session_title_service.titles_for_sessions(
+        UUID("00000000-0000-0000-0000-000000000001"),
+        [
+            {
+                "session_id": "s1",
+                "title_source": "can you fix auth?",
+                "event_count": 2,
+                "last_at": "2026-05-20T00:00:00Z",
+            }
+        ],
+        enqueue_missing=False,
+    )
+
+    assert titles == {"s1": "Fix Authentication Flow"}
+
+
+@pytest.mark.asyncio
+async def test_titles_for_sessions_falls_back_while_title_is_missing(monkeypatch):
+    class Pool:
+        async def fetch(self, *args):
+            return []
+
+    monkeypatch.setattr(session_title_service, "get_pool", lambda: Pool())
+
+    titles = await session_title_service.titles_for_sessions(
+        UUID("00000000-0000-0000-0000-000000000001"),
+        [
+            {
+                "session_id": "s1",
+                "title_source": "can you fix auth?",
+                "event_count": 2,
+                "last_at": "2026-05-20T00:00:00Z",
+            }
+        ],
+        enqueue_missing=False,
+    )
+
+    assert titles == {"s1": "Fix auth"}

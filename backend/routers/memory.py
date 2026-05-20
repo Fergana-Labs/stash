@@ -10,6 +10,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from ..auth import get_current_user
+from ..config import settings
 from ..models import (
     HistoryEventBatchRequest,
     HistoryEventCreateRequest,
@@ -17,8 +18,11 @@ from ..models import (
     HistoryEventResponse,
 )
 from ..services import memory_service, stash_service, workspace_service
+from ..tasks.session_titles import generate_session_title
 
 ws_router = APIRouter(prefix="/api/v1/workspaces/{workspace_id}/sessions", tags=["sessions"])
+
+_TITLE_EVENT_TYPES = {"user_message", "user_prompt", "prompt", "assistant_message", "session_end"}
 
 
 # --- Shared auth helpers ---
@@ -62,6 +66,8 @@ async def push_ws_event(
             )
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e))
+    if settings.ANTHROPIC_API_KEY and req.session_id and req.event_type in _TITLE_EVENT_TYPES:
+        generate_session_title.delay(str(workspace_id), req.session_id)
     return HistoryEventResponse(**event)
 
 
@@ -85,6 +91,16 @@ async def push_ws_events_batch(
             )
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e))
+    title_session_ids = sorted(
+        {
+            event.session_id
+            for event in req.events
+            if event.session_id and event.event_type in _TITLE_EVENT_TYPES
+        }
+    )
+    if settings.ANTHROPIC_API_KEY:
+        for session_id in title_session_ids:
+            generate_session_title.delay(str(workspace_id), session_id)
     return [HistoryEventResponse(**e) for e in events]
 
 

@@ -155,10 +155,17 @@ async def list_my_sessions(
     for session in sessions:
         if not session["user_name"]:
             raise RuntimeError(f"Session {session['session_id']} has no author display_name")
-        session["title"] = session_title_service.title_from_text(
-            session.pop("title_source"),
-            session["session_id"],
+    sessions_by_workspace: dict[UUID, list[dict]] = {}
+    for session in sessions:
+        sessions_by_workspace.setdefault(session["workspace_id"], []).append(session)
+    for session_group in sessions_by_workspace.values():
+        titles = await session_title_service.titles_for_sessions(
+            session_group[0]["workspace_id"],
+            session_group,
         )
+        for session in session_group:
+            session["title"] = titles[session["session_id"]]
+            session.pop("title_source", None)
     return {"sessions": sessions}
 
 
@@ -202,7 +209,7 @@ async def get_workspace_session(
     events = await memory_service.read_session_events(workspace_id, session_id, current_user["id"])
     payload = _session_response(
         session,
-        title=session_title_service.title_from_events(events, session_id),
+        title=await session_title_service.title_for_events(workspace_id, session_id, events),
     )
     payload["artifacts"] = await _session_artifacts(session["id"])
     return payload

@@ -25,7 +25,7 @@ from ..services import (
 
 router = APIRouter(prefix="/api/v1/workspaces", tags=["workspaces"])
 
-SIDEBAR_ETAG_VERSION = "sidebar-event-title-v1"
+SIDEBAR_ETAG_VERSION = "sidebar-generated-title-v1"
 
 
 # ---------------------------------------------------------------------------
@@ -40,11 +40,12 @@ SIDEBAR_ETAG_VERSION = "sidebar-event-title-v1"
 async def _list_sessions(workspace_id: UUID, user_id: UUID) -> list[dict]:
     """Sessions in this workspace, sourced from history_events rows."""
     sessions = await memory_service.list_workspace_sessions(workspace_id, user_id)
+    titles = await session_title_service.titles_for_sessions(workspace_id, sessions)
     return [
         {
             "id": s["id"],
             "session_id": s["session_id"],
-            "title": _auto_session_title(s),
+            "title": titles[s["session_id"]],
             "user_name": s["user_name"],
             "agent_name": s["agent_name"] or "",
             "size_bytes": int(s["size_bytes"] or 0),
@@ -53,13 +54,6 @@ async def _list_sessions(workspace_id: UUID, user_id: UUID) -> list[dict]:
         }
         for s in sessions
     ]
-
-
-def _auto_session_title(session: dict) -> str:
-    return session_title_service.title_from_text(
-        session.get("title_source"),
-        session["session_id"],
-    )
 
 
 async def _files_tree(workspace_id: UUID, user_id: UUID) -> dict:
