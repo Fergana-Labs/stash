@@ -38,9 +38,13 @@ export async function listIntegrations(): Promise<IntegrationsList> {
  * returns `{authorize_url}` as JSON; we fetch it (Bearer carried by
  * `apiFetch`), then navigate the top window to the provider's URL.
  */
-export async function startConnect(provider: IntegrationProvider): Promise<void> {
+export async function startConnect(
+  provider: IntegrationProvider,
+  returnTo?: string,
+): Promise<void> {
+  const query = returnTo ? `?return_to=${encodeURIComponent(returnTo)}` : "";
   const { authorize_url } = await apiFetch<{ authorize_url: string }>(
-    `/api/v1/integrations/${provider}/connect`,
+    `/api/v1/integrations/${provider}/connect${query}`,
   );
   window.location.href = authorize_url;
 }

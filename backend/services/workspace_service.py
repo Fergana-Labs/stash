@@ -10,8 +10,14 @@ async def create_workspace(
     name: str,
     description: str,
     creator_id: UUID,
+    is_primary: bool = False,
 ) -> dict:
-    """Create a workspace with the creator as owner."""
+    """Create a workspace with the creator as owner.
+
+    Pass is_primary=True to mark the creator's membership as their primary
+    workspace — used by /publish as the fallback target when no workspace_id
+    is supplied. Only the auto-provisioned signup workspace should pass this.
+    """
     pool = get_pool()
     invite_code = ""
     for _ in range(5):
@@ -35,12 +41,25 @@ async def create_workspace(
     )
     ws = dict(row)
     await pool.execute(
-        "INSERT INTO workspace_members (workspace_id, user_id, role) VALUES ($1, $2, 'owner')",
+        "INSERT INTO workspace_members (workspace_id, user_id, role, is_primary) "
+        "VALUES ($1, $2, 'owner', $3)",
         ws["id"],
         creator_id,
+        is_primary,
     )
     ws["member_count"] = 1
     return ws
+
+
+async def get_primary_for_user(user_id: UUID) -> UUID | None:
+    """Return the workspace id the user has marked primary, or None."""
+    pool = get_pool()
+    row = await pool.fetchrow(
+        "SELECT workspace_id FROM workspace_members "
+        "WHERE user_id = $1 AND is_primary LIMIT 1",
+        user_id,
+    )
+    return row["workspace_id"] if row else None
 
 
 async def get_workspace(workspace_id: UUID) -> dict | None:

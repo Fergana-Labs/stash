@@ -13,6 +13,7 @@ import { GitHubIcon, GoogleDriveIcon, NotionIcon } from "./BrandIcons";
 type Props = {
   status: IntegrationStatus;
   onChanged?: () => void;
+  returnTo?: string;
 };
 
 function ProviderIcon({ provider }: { provider: string }) {
@@ -28,13 +29,13 @@ function ProviderIcon({ provider }: { provider: string }) {
  * features (picker buttons, etc.) compose this for the auth state but
  * own their own resource UI.
  */
-export default function IntegrationCard({ status, onChanged }: Props) {
+export default function IntegrationCard({ status, onChanged, returnTo }: Props) {
   const [busy, setBusy] = useState(false);
 
   async function onConnect() {
     setBusy(true);
     try {
-      await startConnect(status.provider as IntegrationProvider);
+      await startConnect(status.provider as IntegrationProvider, returnTo);
     } catch (e) {
       setBusy(false);
       alert(e instanceof Error ? e.message : String(e));

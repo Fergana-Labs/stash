@@ -47,19 +47,20 @@ def _get_state_fernet() -> Fernet:
     return Fernet(settings.INTEGRATIONS_ENCRYPTION_KEY.encode())
 
 
-def _encode_state(user_id: UUID, provider: str) -> str:
+def _encode_state(user_id: UUID, provider: str, return_to: str | None = None) -> str:
     payload = json.dumps(
         {
             "u": str(user_id),
             "p": provider,
             "n": secrets.token_urlsafe(16),
             "t": datetime.now(UTC).isoformat(),
+            "r": return_to,
         }
     )
     return _get_state_fernet().encrypt(payload.encode()).decode()
 
 
-def _decode_state(state: str, expected_provider: str) -> UUID:
+def _decode_state(state: str, expected_provider: str) -> tuple[UUID, str | None]:
     try:
         raw = _get_state_fernet().decrypt(state.encode(), ttl=int(STATE_TTL.total_seconds()))
     except InvalidToken:
@@ -67,7 +68,14 @@ def _decode_state(state: str, expected_provider: str) -> UUID:
     payload = json.loads(raw)
     if payload.get("p") != expected_provider:
         raise HTTPException(status_code=400, detail="provider mismatch in state")
-    return UUID(payload["u"])
+    return UUID(payload["u"]), payload.get("r")
+
+
+def _safe_return_to(return_to: str | None) -> str | None:
+    """Only honor relative same-origin paths; blocks open-redirect."""
+    if not return_to or not return_to.startswith("/") or return_to.startswith("//"):
+        return None
+    return return_to
 
 
 class ProviderListItem(BaseModel):
@@ -124,6 +132,7 @@ class ConnectStartResponse(BaseModel):
 @router.get("/{provider}/connect", response_model=ConnectStartResponse)
 async def integration_connect(
     provider: str,
+    return_to: str | None = Query(None),
     current_user: dict = Depends(get_current_user),
 ):
     """Return the provider's OAuth authorize URL.
@@ -132,9 +141,13 @@ async def integration_connect(
     navigation can't carry that header, so we can't 302 here. Instead
     the frontend fetches this with the Bearer, gets the URL, and does
     the navigation itself.
+
+    `return_to`, if a relative same-origin path, is round-tripped through
+    the encrypted state so the callback can land the user back where they
+    started (e.g. /onboarding) instead of /settings.
     """
     p = get_provider(provider)
-    state = _encode_state(current_user["id"], provider)
+    state = _encode_state(current_user["id"], provider, _safe_return_to(return_to))
     return ConnectStartResponse(authorize_url=p.authorize_url(state))
 
 
@@ -145,18 +158,19 @@ async def integration_callback(
     state: str = Query(...),
 ):
     p = get_provider(provider)
-    user_id = _decode_state(state, expected_provider=provider)
+    user_id, return_to = _decode_state(state, expected_provider=provider)
 
     token = await p.exchange_code(code)
     account = await p.fetch_account(token.access_token)
     await storage.store_token(user_id, provider, token, account)
 
-    # Send the user back to /settings — the Integrations section is
-    # embedded there. The query param triggers the panel to re-fetch
-    # connection state.
-    redirect_target = f"{settings.PUBLIC_URL.rstrip('/')}/settings"
-    query = urlencode({"connected": provider})
-    return RedirectResponse(url=f"{redirect_target}?{query}", status_code=302)
+    base = settings.PUBLIC_URL.rstrip("/")
+    target = _safe_return_to(return_to) or "/settings"
+    sep = "&" if "?" in target else "?"
+    return RedirectResponse(
+        url=f"{base}{target}{sep}{urlencode({'connected': provider})}",
+        status_code=302,
+    )
 
 
 @router.post("/{provider}/disconnect")

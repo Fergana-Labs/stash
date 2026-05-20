@@ -637,7 +637,7 @@ class PublishRequest(BaseModel):
     Stash, and return the Stash URL. Folder is optional; defaults to a
     workspace's "AI Drafts" folder that's auto-created on first use."""
 
-    workspace_id: UUID
+    workspace_id: UUID | None = None
     title: str = Field(..., min_length=1, max_length=255)
     content: str = ""
     content_type: str = Field("markdown", pattern=r"^(markdown|html)$")

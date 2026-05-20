@@ -43,10 +43,16 @@ function LoginPageInner() {
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [cliApproved, setCliApproved] = useState(false);
+  const [justRegistered, setJustRegistered] = useState(false);
 
   // Normal redirect for non-CLI logins
   useEffect(() => {
     if (loading || !user || cliSession) return;
+
+    if (justRegistered) {
+      router.push("/onboarding");
+      return;
+    }
 
     if (nextPath) {
       router.push(nextPath);
@@ -62,7 +68,7 @@ function LoginPageInner() {
     }).catch(() => {
       router.push("/");
     });
-  }, [user, loading, cliSession, nextPath, router]);
+  }, [user, loading, cliSession, nextPath, router, justRegistered]);
 
   // Wait for useAuth to load before rendering — otherwise the signed-out form
   // flashes on every /login hit even for already-signed-in users.
@@ -111,6 +117,9 @@ function LoginPageInner() {
 
       const data = await res.json();
       setToken(data.api_key);
+      if (mode === "register" && !cliSession) {
+        setJustRegistered(true);
+      }
 
       if (cliSession) {
         const approveRes = await fetch(

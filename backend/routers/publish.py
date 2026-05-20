@@ -17,21 +17,30 @@ async def publish(
     req: PublishRequest,
     current_user: dict = Depends(get_current_user),
 ):
-    if not await workspace_service.is_member(req.workspace_id, current_user["id"]):
-        raise HTTPException(status_code=403, detail="Not a workspace member")
+    if req.workspace_id is None:
+        workspace_id = await workspace_service.get_primary_for_user(current_user["id"])
+        if workspace_id is None:
+            raise HTTPException(
+                status_code=400,
+                detail="No primary workspace; pass workspace_id explicitly",
+            )
+    else:
+        workspace_id = req.workspace_id
+        if not await workspace_service.is_member(workspace_id, current_user["id"]):
+            raise HTTPException(status_code=403, detail="Not a workspace member")
 
     if req.folder_id is not None:
         folder = await files_tree_service.get_folder(req.folder_id)
-        if not folder or folder["workspace_id"] != req.workspace_id:
+        if not folder or folder["workspace_id"] != workspace_id:
             raise HTTPException(status_code=404, detail="Folder not found in this workspace")
         target_folder = folder
     else:
         target_folder = await files_tree_service.find_or_create_root_folder(
-            req.workspace_id, AI_DRAFTS_FOLDER_NAME, current_user["id"]
+            workspace_id, AI_DRAFTS_FOLDER_NAME, current_user["id"]
         )
 
     page = await files_tree_service.create_page(
-        workspace_id=req.workspace_id,
+        workspace_id=workspace_id,
         name=req.title,
         created_by=current_user["id"],
         folder_id=target_folder["id"],
@@ -43,7 +52,7 @@ async def publish(
 
     try:
         stash = await stash_service.create_stash(
-            workspace_id=req.workspace_id,
+            workspace_id=workspace_id,
             owner_id=current_user["id"],
             title=req.title,
             description="",
@@ -60,7 +69,7 @@ async def publish(
     return PublishResponse(
         page_id=page["id"],
         folder_id=target_folder["id"],
-        workspace_id=req.workspace_id,
+        workspace_id=workspace_id,
         visibility=stash["access"],
         workspace_permission=stash["workspace_permission"],
         public_permission=stash["public_permission"],
