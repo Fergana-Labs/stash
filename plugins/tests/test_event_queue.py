@@ -12,6 +12,7 @@ import json
 import pytest
 
 from stashai.plugin.stash_client import QUEUE_FILENAME, StashClient
+from stashai.plugin.upload_status import read_upload_status
 
 
 class _Recorder:
@@ -59,6 +60,12 @@ def test_failed_push_enqueues(tmp_path):
     assert len(queued) == 1
     assert queued[0]["body"]["event_type"] == "tool_use"
     assert queued[0]["body"]["content"] == "x"
+    status = read_upload_status(tmp_path)
+    assert status["health"] == "failing"
+    assert status["queued_events"] == 1
+    assert status["consecutive_failures"] == 1
+    assert status["last_failure_operation"] == "event"
+    assert "simulated network failure" in status["last_error"]
 
 
 def test_successful_push_drains_backlog(tmp_path):
@@ -77,6 +84,11 @@ def test_successful_push_drains_backlog(tmp_path):
     assert _queue_lines(tmp_path) == []
     # 2 failed attempts + 1 successful + 2 drained backlog = 5 total POSTs recorded.
     assert len(client._http.calls) == 5
+    status = read_upload_status(tmp_path)
+    assert status["health"] == "ok"
+    assert status["queued_events"] == 0
+    assert status["consecutive_failures"] == 0
+    assert status["last_success_operation"] == "event"
 
 
 def test_drain_stops_on_first_failure(tmp_path):

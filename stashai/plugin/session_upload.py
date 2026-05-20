@@ -8,6 +8,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+from stashai.plugin.upload_status import record_upload_failure
+
 
 def spawn_session_watcher(
     agent_pid: int,
@@ -51,17 +53,19 @@ def spawn_session_upload(
     agent_name: str,
     base_url: str,
     api_key: str,
+    data_dir: Path | None = None,
 ) -> bool:
     script = Path(__file__).parent / "_do_session_upload.py"
     env = os.environ.copy()
     env["SESSION_FILES_TOUCHED"] = json.dumps(files_touched)
+    upload_status_dir = str(data_dir or "")
 
     try:
         subprocess.Popen(
             [
                 sys.executable, str(script),
                 session_row_id, transcript_path, cwd, workspace_id, session_id,
-                agent_name, base_url, api_key,
+                agent_name, base_url, api_key, upload_status_dir,
             ],
             env=env,
             stdin=subprocess.DEVNULL,
@@ -70,6 +74,7 @@ def spawn_session_upload(
             start_new_session=True,
             close_fds=True,
         )
-    except Exception:
+    except Exception as e:
+        record_upload_failure(data_dir, "artifact_spawn", e)
         return False
     return True

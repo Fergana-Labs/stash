@@ -21,6 +21,7 @@ from stashai.plugin.session_upload import spawn_session_upload
 from stashai.plugin.stash_client import StashClient
 from stashai.plugin.state import read_stats, record_tool_use, save_state
 from stashai.plugin.summarize import summarize_tool_use
+from stashai.plugin.upload_status import record_upload_failure, record_upload_success
 
 _CONFIG_FILE = Path.home() / ".stash" / "config.json"
 
@@ -155,8 +156,10 @@ def create_session_record(
             cwd=event.cwd,
             files_touched=read_stats(state)["files_touched"],
         )
-    except Exception:
+    except Exception as e:
+        record_upload_failure(data_dir, "session", e)
         return None
+    record_upload_success(data_dir, "session")
 
     state["session_row_id"] = str(session["id"])
     state["session_url"] = f"{cfg['api_endpoint'].rstrip('/')}/workspaces/{workspace_id}/sessions/{sid}"
@@ -213,6 +216,7 @@ def finalize_session_upload(
         agent_name=cfg["agent_name"],
         base_url=cfg["api_endpoint"],
         api_key=cfg["api_key"],
+        data_dir=data_dir,
     )
     if data_dir is not None:
         save_state(data_dir, state)

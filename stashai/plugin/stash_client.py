@@ -17,6 +17,12 @@ from pathlib import Path
 
 import httpx
 
+from stashai.plugin.upload_status import (
+    record_upload_attempt,
+    record_upload_failure,
+    record_upload_success,
+)
+
 QUEUE_FILENAME = "event_queue.jsonl"
 QUEUE_MAX_ENTRIES = 1000  # cap so a long backend outage doesn't fill the disk
 DRAIN_BATCH = 50          # how many backlog rows to flush per successful push
@@ -121,13 +127,16 @@ class StashClient:
             body["metadata"] = merged_meta
 
         path = self._events_path(workspace_id)
+        record_upload_attempt(self._data_dir, "event")
         try:
             result = self._post(path, json=body)
-        except Exception:
+        except Exception as e:
             self._enqueue(path, body)
+            record_upload_failure(self._data_dir, "event", e)
             raise
         # Backend reachable — try to flush some of the backlog while we're here.
-        self._drain_queue()
+        if self._drain_queue():
+            record_upload_success(self._data_dir, "event")
         return result
 
     # --- Failed-event queue ---
@@ -173,17 +182,18 @@ class StashClient:
         except Exception:
             pass
 
-    def _drain_queue(self) -> None:
+    def _drain_queue(self) -> bool:
         qp = self._queue_path()
         if not qp or not qp.exists():
-            return
+            return True
+        drained = True
         try:
             with open(qp, "r+") as f:
                 fcntl.flock(f.fileno(), fcntl.LOCK_EX)
                 try:
                     lines = f.read().splitlines()
                     if not lines:
-                        return
+                        return True
                     remaining: list[str] = []
                     sent = 0
                     for line in lines:
@@ -194,9 +204,11 @@ class StashClient:
                             entry = json.loads(line)
                             self._post(entry["path"], json=entry["body"])
                             sent += 1
-                        except Exception:
+                        except Exception as e:
                             # Backend still unhappy. Stop now; keep this and the rest.
                             remaining.append(line)
+                            record_upload_failure(self._data_dir, "event_queue", e)
+                            drained = False
                             # Don't try further entries — likely all will fail.
                             sent = DRAIN_BATCH
                     f.seek(0)
@@ -206,7 +218,8 @@ class StashClient:
                 finally:
                     fcntl.flock(f.fileno(), fcntl.LOCK_UN)
         except Exception:
-            pass
+            return False
+        return drained
 
     def query_events(
         self, workspace_id: str | None,
@@ -249,16 +262,22 @@ class StashClient:
         if not name.endswith(".gz"):
             name = name + ".gz"
 
-        resp = self._http.request(
-            "POST",
-            f"/api/v1/workspaces/{workspace_id}/transcripts",
-            headers=self._headers(),
-            data={"session_id": session_id, "agent_name": agent_name, "cwd": cwd or ""},
-            files={"file": (name, body, "application/gzip")},
-            timeout=httpx.Timeout(60.0, connect=5.0),
-        )
-        if not resp.is_success:
-            raise StashError(resp.status_code, resp.text)
+        record_upload_attempt(self._data_dir, "transcript")
+        try:
+            resp = self._http.request(
+                "POST",
+                f"/api/v1/workspaces/{workspace_id}/transcripts",
+                headers=self._headers(),
+                data={"session_id": session_id, "agent_name": agent_name, "cwd": cwd or ""},
+                files={"file": (name, body, "application/gzip")},
+                timeout=httpx.Timeout(60.0, connect=5.0),
+            )
+            if not resp.is_success:
+                raise StashError(resp.status_code, resp.text)
+        except Exception as e:
+            record_upload_failure(self._data_dir, "transcript", e)
+            raise
+        record_upload_success(self._data_dir, "transcript")
         return resp.json()
 
     # --- Sessions ---
@@ -281,16 +300,22 @@ class StashClient:
         self, workspace_id: str, session_row_id: str, file_path: str, content: bytes,
     ) -> dict:
         """Upload a file the agent touched during a session."""
-        resp = self._http.request(
-            "POST",
-            f"/api/v1/workspaces/{workspace_id}/sessions/{session_row_id}/artifacts",
-            headers=self._headers(),
-            data={"file_path": file_path},
-            files={"file": (file_path.split("/")[-1], content, "application/octet-stream")},
-            timeout=httpx.Timeout(30.0, connect=5.0),
-        )
-        if not resp.is_success:
-            raise StashError(resp.status_code, resp.text)
+        record_upload_attempt(self._data_dir, "artifact")
+        try:
+            resp = self._http.request(
+                "POST",
+                f"/api/v1/workspaces/{workspace_id}/sessions/{session_row_id}/artifacts",
+                headers=self._headers(),
+                data={"file_path": file_path},
+                files={"file": (file_path.split("/")[-1], content, "application/octet-stream")},
+                timeout=httpx.Timeout(30.0, connect=5.0),
+            )
+            if not resp.is_success:
+                raise StashError(resp.status_code, resp.text)
+        except Exception as e:
+            record_upload_failure(self._data_dir, "artifact", e)
+            raise
+        record_upload_success(self._data_dir, "artifact")
         return resp.json()
 
     # --- Cross-workspace aggregate (optional) ---
