@@ -1,8 +1,8 @@
 """Stashes: shareable archive of a coding session.
 
 A stash captures the full context of an agent session: transcript,
-artifacts (files touched), and an AI-generated summary. Stashes are served
-at /b/{slug} for humans and ?format=text for agent consumption.
+and artifacts. Stashes are served at /b/{slug} for humans and ?format=text
+for agent consumption.
 
 Revision ID: 0030
 Revises: 0029
@@ -30,7 +30,6 @@ def upgrade() -> None:
             cwd TEXT,
             status TEXT NOT NULL DEFAULT 'uploading'
                 CHECK (status IN ('uploading', 'summarizing', 'ready', 'failed')),
-            summary TEXT,
             files_touched JSONB NOT NULL DEFAULT '[]',
             transcript_storage_key TEXT,
             created_by UUID NOT NULL REFERENCES users(id),

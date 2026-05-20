@@ -1,6 +1,6 @@
 # Stash Plugin for Claude Code
 
-Turn any Claude Code session into an Stash agent. Every prompt, tool use, and session summary streams to your workspace's shared history.
+Turn any Claude Code session into an Stash agent. Every prompt, tool use, assistant message, and artifact streams to your workspace's shared history.
 
 ## Quick Start (5 minutes)
 
@@ -43,7 +43,7 @@ After this, every session streams directly to that workspace's memory.
 Every Claude Code session now automatically:
 - Streams the user's prompts to the workspace history
 - Streams tool usage (edits, commands, writes) to the workspace history
-- Pushes a session summary when you stop
+- Uploads the assistant message, transcript, and artifacts when you stop
 
 **This is set-and-forget.** Config persists — new sessions work automatically with no re-configuration.
 
@@ -85,7 +85,7 @@ UserPromptSubmit ──→ Push user_message event to workspace history
 PostToolUse ────→ (async) Push tool_use event to workspace history
                   (Read, Glob, Grep excluded — too noisy)
 
-Stop ───────────→ Push session_end summary (tool count, files changed)
+Stop ───────────→ Push session_end event (tool count, files changed)
 ```
 
 ---

@@ -1,68 +1,46 @@
-from backend.services.session_title_service import title_from_summary
+from backend.services.session_title_service import title_from_events, title_from_text
 
 
-def test_title_from_summary_skips_generic_markdown_heading():
-    title = title_from_summary(
-        "## Session Summary\n\nAdded a new API route for members. Updated tests.",
+def test_title_from_text_uses_first_non_empty_line():
+    title = title_from_text(
+        "\n\ncan you read this PRD for Stash - does it contradict itself anywhere?\n\nhttps://example.com",
         "session-1",
     )
 
-    assert title == "Added a new API route for members"
+    assert title == "Read this PRD for Stash - does it contradict itself anywhere"
 
 
-def test_title_from_summary_strips_inline_generic_label():
-    title = title_from_summary(
-        "**Session Summary:** Added member invitations to the API. Documented the route.",
+def test_title_from_events_prefers_user_prompt():
+    title = title_from_events(
+        [
+            {
+                "event_type": "assistant_message",
+                "content": "I read the PRD and found contradictions.",
+            },
+            {
+                "event_type": "user_message",
+                "content": "Find contradictions in the Stash PRD.",
+            },
+        ],
         "session-1",
     )
 
-    assert title == "Added member invitations to the API"
+    assert title == "Find contradictions in the Stash PRD"
 
 
-def test_title_from_summary_skips_generic_section_heading():
-    title = title_from_summary(
-        "## Session Summary\n\n### What changed\n\n- Added member invitation routes.",
+def test_title_from_events_falls_back_to_assistant_message():
+    title = title_from_events(
+        [
+            {
+                "event_type": "assistant_message",
+                "content": "Implemented auth checks. Updated tests.",
+            },
+        ],
         "session-1",
     )
 
-    assert title == "Added member invitation routes"
+    assert title == "Implemented auth checks"
 
 
-def test_title_from_summary_skips_what_happened_heading():
-    title = title_from_summary(
-        "## What Happened?\n\nInvestigated API gateway latency and added tracing.",
-        "session-1",
-    )
-
-    assert title == "Investigated API gateway latency and added tracing"
-
-
-def test_title_from_summary_skips_empty_accomplishment_heading():
-    title = title_from_summary(
-        "Accomplishment:\nImplemented session title display in the sidebar.",
-        "session-1",
-    )
-
-    assert title == "Implemented session title display in the sidebar"
-
-
-def test_title_from_summary_skips_generic_status_line():
-    title = title_from_summary(
-        "Status: This session is waiting for tests.\nUpdated the session title parser.",
-        "session-1",
-    )
-
-    assert title == "Updated the session title parser"
-
-
-def test_title_from_summary_strips_this_session_lead_in():
-    title = title_from_summary(
-        "This session investigated API gateway latency and added tracing.",
-        "session-1",
-    )
-
-    assert title == "Investigated API gateway latency and added tracing"
-
-
-def test_title_from_summary_falls_back_to_session_id_for_empty_summary():
-    assert title_from_summary("## Session Summary", "session-1") == "session-1"
+def test_title_from_text_falls_back_to_session_id_for_empty_text():
+    assert title_from_text("", "session-1") == "session-1"

@@ -136,7 +136,7 @@ def test_finalize_session_upload_spawns_history_fallback_without_transcript(monk
     assert calls[0]["workspace_id"] == "ws1"
 
 
-def test_do_session_uploads_artifacts_without_setting_summary_status(monkeypatch, tmp_path):
+def test_do_session_uploads_artifacts(monkeypatch, tmp_path):
     from stashai.plugin import _do_session_upload
 
     artifact = tmp_path / "app.py"

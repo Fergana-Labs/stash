@@ -5,9 +5,9 @@ audit:
 
 - **stash = workspace** in both code and product. The thing the user
   sees as their top-level container.
-- **session_shares are the renamed `stashes` table.** Files-touched and
-  AI summaries live on a new lightweight `sessions` table; the share
-  link itself lives in `share_links` with a polymorphic target.
+- **session_shares are the renamed `stashes` table.** Files-touched metadata
+  lives on a new lightweight `sessions` table; the share link itself lives in
+  `share_links` with a polymorphic target.
 - **session_artifacts replaces stash_artifacts.**
 - **One visibility table.** Drop `workspaces.is_public`, `views.is_public`,
   `pages.public_in_share`, `files.public_in_share`; everything goes
@@ -50,9 +50,6 @@ def upgrade() -> None:
             session_id TEXT NOT NULL,
             agent_name TEXT NOT NULL DEFAULT '',
             cwd TEXT,
-            summary TEXT,
-            status TEXT NOT NULL DEFAULT 'live'
-                CHECK (status IN ('live', 'summarizing', 'ready', 'failed')),
             files_touched JSONB NOT NULL DEFAULT '[]',
             started_at TIMESTAMPTZ NOT NULL DEFAULT now(),
             finished_at TIMESTAMPTZ,
@@ -86,12 +83,7 @@ def upgrade() -> None:
     # Copy session-level metadata from any existing stashes rows.
     op.execute("""
         UPDATE sessions s
-        SET summary = COALESCE(s.summary, st.summary),
-            status = CASE
-                WHEN st.status IN ('live','summarizing','ready','failed') THEN st.status
-                ELSE s.status
-            END,
-            files_touched = CASE
+        SET files_touched = CASE
                 WHEN s.files_touched = '[]'::jsonb THEN st.files_touched
                 ELSE s.files_touched
             END,
@@ -294,7 +286,6 @@ def downgrade() -> None:
             agent_name TEXT NOT NULL DEFAULT '',
             cwd TEXT,
             status TEXT NOT NULL DEFAULT 'live',
-            summary TEXT,
             files_touched JSONB NOT NULL DEFAULT '[]',
             created_by UUID NOT NULL REFERENCES users(id),
             created_at TIMESTAMPTZ NOT NULL DEFAULT now(),

@@ -24,7 +24,7 @@ from ..services import (
 
 router = APIRouter(prefix="/api/v1/workspaces", tags=["workspaces"])
 
-SIDEBAR_ETAG_VERSION = "sidebar-session-title-v2"
+SIDEBAR_ETAG_VERSION = "sidebar-event-title-v1"
 
 
 # ---------------------------------------------------------------------------
@@ -55,8 +55,8 @@ async def _list_sessions(workspace_id: UUID, user_id: UUID) -> list[dict]:
 
 
 def _auto_session_title(session: dict) -> str:
-    return session_title_service.title_from_summary(
-        session.get("summary"),
+    return session_title_service.title_from_text(
+        session.get("title_source"),
         session["session_id"],
     )
 
@@ -309,11 +309,7 @@ async def _sidebar_etag(workspace_id: UUID, user_id: UUID) -> str:
           (SELECT MAX(created_at) FROM files
             WHERE workspace_id = $1 AND deleted_at IS NULL)                       AS f,
           (SELECT MAX(updated_at) FROM folders WHERE workspace_id = $1)          AS d,
-          (SELECT MAX(GREATEST(
-            COALESCE(finished_at, started_at),
-            started_at,
-            COALESCE(summary_last_attempt_at, started_at)
-          )) FROM sessions
+          (SELECT MAX(GREATEST(COALESCE(finished_at, started_at), started_at)) FROM sessions
             WHERE workspace_id = $1 AND deleted_at IS NULL)                       AS s,
           (SELECT MAX(updated_at) FROM stashes WHERE workspace_id = $1)            AS st,
           (SELECT MAX(sm.created_at) FROM stash_members sm

@@ -1,11 +1,4 @@
-"""Sessions: lightweight metadata table for an agent's coding session.
-
-Replaces the session-bundle bits that used to live on the `stashes`
-table (which was overloaded with the workspace "stash" naming).
-
-`summary_status` (need_summary | in_progress | failed | done) is purely
-about the summarizer worker's progress on this session.
-"""
+"""Sessions: lightweight metadata table for an agent's coding session."""
 
 from __future__ import annotations
 
@@ -14,8 +7,8 @@ from uuid import UUID
 from ..database import get_pool
 
 _SELECT_COLS = (
-    "id, workspace_id, session_id, agent_name, cwd, summary, summary_status, "
-    "files_touched, started_at, finished_at, created_by"
+    "id, workspace_id, session_id, agent_name, cwd, files_touched, "
+    "started_at, finished_at, created_by"
 )
 
 
@@ -30,8 +23,6 @@ async def upsert_session(
     """Idempotent: return the session row, creating it if missing.
 
     The CLI calls this lazily — first event for a session writes the row.
-    New rows land in summary_status='need_summary' by default, eligible
-    for the summarizer worker on its next tick.
     """
     pool = get_pool()
     row = await pool.fetchrow(
@@ -69,17 +60,6 @@ async def get_session_by_id(session_row_id: UUID) -> dict | None:
         session_row_id,
     )
     return dict(row) if row else None
-
-
-async def set_summary(session_row_id: UUID, summary: str) -> None:
-    pool = get_pool()
-    await pool.execute(
-        "UPDATE sessions SET summary = $1, summary_status = 'done', "
-        "finished_at = COALESCE(finished_at, now()) "
-        "WHERE id = $2",
-        summary,
-        session_row_id,
-    )
 
 
 async def set_files_touched(session_row_id: UUID, files: list[str]) -> None:
@@ -129,8 +109,8 @@ async def purge_session(session_row_id: UUID, workspace_id: UUID) -> bool:
 async def list_trashed_sessions(workspace_id: UUID) -> list[dict]:
     pool = get_pool()
     rows = await pool.fetch(
-        "SELECT id, workspace_id, session_id, agent_name, summary, "
-        "started_at, finished_at, deleted_at, deleted_by "
+        "SELECT id, workspace_id, session_id, agent_name, started_at, "
+        "finished_at, deleted_at, deleted_by "
         "FROM sessions WHERE workspace_id = $1 AND deleted_at IS NOT NULL "
         "ORDER BY deleted_at DESC",
         workspace_id,

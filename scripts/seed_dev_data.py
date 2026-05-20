@@ -101,7 +101,7 @@ SAMPLE_PAGES = [
     {
         "name": "Team Working Agreement",
         "folder": "Product / Roadmap",
-        "content": "# Team Working Agreement\n\nPairing windows, shared context, and explicit handoffs.",
+        "content": "# Team Working Agreement\n\nPairing windows, shared context, and explicit status updates.",
     },
     {
         "name": "API Design Notes",
@@ -154,7 +154,7 @@ SAMPLE_TABLES = [
                 "Owner": "aria",
                 "Probability": 0.09,
                 "Impact": "Rework duplicated effort",
-                "Mitigation": "Enforce session summaries and stashes",
+                "Mitigation": "Keep session transcripts easy to browse",
                 "Resolved": True,
             },
         ],
@@ -178,7 +178,7 @@ SAMPLE_TABLES = [
                 "Target Date": "2026-06-10",
             },
             {
-                "Feature": "Session summary quality",
+                "Feature": "Session title quality",
                 "Priority": 2,
                 "Status": "Planned",
                 "Owner": "maya",
@@ -208,7 +208,6 @@ SAMPLE_SESSIONS = [
         "agent_name": "claude",
         "cwd": "/workspace/product",
         "created_by": "demo_aria",
-        "summary": "Drafted architecture and rollout guardrails for the release.",
         "files_touched": ["docs/architecture.md", "product/vision.md"],
         "events": [
             ("prompt", "I need a production-safe rollout plan for this UI change."),
@@ -222,7 +221,6 @@ SAMPLE_SESSIONS = [
         "agent_name": "copilot",
         "cwd": "/workspace/frontend",
         "created_by": "demo_maya",
-        "summary": "Refined sidebar behavior and added richer grouping for files and sessions.",
         "files_touched": ["frontend/src/AppSidebar.tsx", "frontend/src/styles.css"],
         "events": [
             ("prompt", "Please implement a cleaner sidebar with fewer duplicates."),
@@ -236,7 +234,6 @@ SAMPLE_SESSIONS = [
         "agent_name": "assistant",
         "cwd": "/workspace/backend",
         "created_by": "demo_devon",
-        "summary": "Validated storage pipeline and improved extraction fallback handling.",
         "files_touched": ["backend/routers/files.py", "backend/services/files_tree_service.py"],
         "events": [
             ("prompt", "Can we improve local file ingest reliability?"),
@@ -249,13 +246,12 @@ SAMPLE_SESSIONS = [
         "agent_name": "agent",
         "cwd": "/workspace/backend",
         "created_by": "demo_aria",
-        "summary": "Checked session listing query shape and made sure latest activity is shown.",
         "files_touched": ["backend/services/memory_service.py", "backend/routers/workspace_knowledge.py"],
         "events": [
             ("prompt", "We need stable session list rendering with minimal payload."),
             ("assistant", "I aligned list query order by most recent activity."),
             ("assistant", "I verified count and size calculations still render quickly."),
-            ("assistant", "I added summary fallback when no final answer exists."),
+            ("assistant", "I added title fallback when no final answer exists."),
         ],
     },
     {
@@ -263,7 +259,6 @@ SAMPLE_SESSIONS = [
         "agent_name": "claude",
         "cwd": "/workspace/backend",
         "created_by": "demo_devon",
-        "summary": "Reviewed workspace visibility rules for shared and private stash behavior.",
         "files_touched": ["backend/services/permission_service.py", "backend/services/stash_service.py"],
         "events": [
             ("prompt", "Can we test workspace/private/public access rules for stashes?"),
@@ -277,7 +272,6 @@ SAMPLE_SESSIONS = [
         "agent_name": "assistant",
         "cwd": "/workspace/docs",
         "created_by": "demo_maya",
-        "summary": "Added practical onboarding and dev workflow notes.",
         "files_touched": ["README.md", "docs/notes.md", "notes/session-ops.md"],
         "events": [
             ("prompt", "Write practical onboarding notes for this project."),
@@ -290,7 +284,6 @@ SAMPLE_SESSIONS = [
         "agent_name": "copilot",
         "cwd": "/workspace/backend",
         "created_by": "demo_aria",
-        "summary": "Benchmarked query paths and improved visibility for overview payload.",
         "files_touched": ["backend/routers/workspace_knowledge.py", "backend/services/memory_service.py"],
         "events": [
             ("prompt", "Any index changes needed for history session queries?"),
@@ -304,7 +297,6 @@ SAMPLE_SESSIONS = [
         "agent_name": "assistant",
         "cwd": "/workspace/ops",
         "created_by": "demo_devon",
-        "summary": "Set up sample incident checks and postmortem notes for reliability drills.",
         "files_touched": ["ops/checks.md", "ops/incident-template.md"],
         "events": [
             ("prompt", "Draft incident response playbook for a failed uploader."),
@@ -317,7 +309,6 @@ SAMPLE_SESSIONS = [
         "agent_name": "claude",
         "cwd": "/workspace/tests",
         "created_by": "demo_maya",
-        "summary": "Added a lightweight set of QA checks for seeded workflows.",
         "files_touched": ["backend/tests/test_history.py", "frontend/src/components/AppSidebar.tsx"],
         "events": [
             ("prompt", "What are the riskiest regressions in this area?"),
@@ -330,7 +321,6 @@ SAMPLE_SESSIONS = [
         "agent_name": "assistant",
         "cwd": "/workspace/product",
         "created_by": "demo_aria",
-        "summary": "Captured user feedback themes and translated into next actions.",
         "files_touched": ["product/feedback.md", "docs/roadmap.md"],
         "events": [
             ("prompt", "Summarize recurring feedback from internal users."),
@@ -343,10 +333,9 @@ SAMPLE_SESSIONS = [
         "agent_name": "agent",
         "cwd": "/workspace/ops",
         "created_by": "demo_devon",
-        "summary": "Built a sample on-call playbook and duty handoff steps.",
-        "files_touched": ["ops/oncall.md", "ops/handoff-template.md"],
+        "files_touched": ["ops/oncall.md", "ops/status-template.md"],
         "events": [
-            ("prompt", "Draft a standard handoff format for on-call shifts."),
+            ("prompt", "Draft a standard status update format for on-call shifts."),
             ("assistant", "I proposed a concise update template with risks and next actions."),
             ("assistant", "I included checkboxes for validation and unresolved items."),
         ],
@@ -356,7 +345,6 @@ SAMPLE_SESSIONS = [
         "agent_name": "assistant",
         "cwd": "/workspace/backend",
         "created_by": "demo_maya",
-        "summary": "Triage plan for release blockers and cross-team sync points.",
         "files_touched": ["backend/routers/sessions.py", "backend/services/stash_service.py"],
         "events": [
             ("prompt", "Create a release triage list with top three blockers."),
@@ -652,7 +640,6 @@ async def _ensure_sessions(workspace_id: UUID, users: dict[str, dict], folders: 
         row = await session_service.get_session(workspace_id, spec["session_id"])
         if row:
             await session_service.set_files_touched(row["id"], spec["files_touched"])
-            await session_service.set_summary(row["id"], spec["summary"])
             created[spec["session_id"]] = row
         else:
             log.warning("Could not load session after seeding: %s", spec["session_id"])

@@ -706,8 +706,8 @@ async def _fork_session(
     user_id: UUID,
 ) -> UUID:
     session = await conn.fetchrow(
-        "SELECT workspace_id, session_id, agent_name, cwd, summary, summary_status, files_touched, "
-        "started_at, finished_at, created_by FROM sessions WHERE id = $1",
+        "SELECT workspace_id, session_id, agent_name, cwd, files_touched, started_at, "
+        "finished_at, created_by FROM sessions WHERE id = $1",
         source_session_id,
     )
     if not session:
@@ -716,15 +716,13 @@ async def _fork_session(
     forked_session_id = f"{session['session_id']}-fork-{source_session_id.hex[:8]}"
     new_session = await conn.fetchrow(
         "INSERT INTO sessions "
-        "(workspace_id, session_id, agent_name, cwd, summary, summary_status, files_touched, "
-        "started_at, finished_at, created_by) "
-        "VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8, $9, $10) RETURNING id",
+        "(workspace_id, session_id, agent_name, cwd, files_touched, started_at, "
+        "finished_at, created_by) "
+        "VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7, $8) RETURNING id",
         workspace_id,
         forked_session_id,
         session["agent_name"],
         session["cwd"],
-        session["summary"],
-        session["summary_status"],
         session["files_touched"],
         session["started_at"],
         session["finished_at"],
@@ -1133,8 +1131,8 @@ async def inline_items(stash: dict, viewer_id: UUID | None = None) -> list[dict]
                 }
         elif obj_type == "session":
             s = await pool.fetchrow(
-                "SELECT id, session_id, agent_name, summary, summary_status, files_touched, started_at, "
-                "finished_at FROM sessions WHERE id = $1 AND deleted_at IS NULL",
+                "SELECT id, session_id, agent_name, files_touched, started_at, finished_at "
+                "FROM sessions WHERE id = $1 AND deleted_at IS NULL",
                 obj_id,
             )
             if s:
@@ -1160,8 +1158,6 @@ async def inline_items(stash: dict, viewer_id: UUID | None = None) -> list[dict]
                         "id": str(s["id"]),
                         "session_id": s["session_id"],
                         "agent_name": s["agent_name"],
-                        "summary": s["summary"],
-                        "summary_status": s["summary_status"],
                         "files_touched": files_touched,
                         "started_at": s["started_at"].isoformat() if s["started_at"] else None,
                         "finished_at": s["finished_at"].isoformat() if s["finished_at"] else None,
@@ -1242,8 +1238,6 @@ def items_to_text(title: str, items: list[dict]) -> str:
         elif obj_type == "session":
             session = inline.get("session", {})
             parts.append(f"## Session {session.get('session_id', label)}")
-            if session.get("summary"):
-                parts.append(str(session["summary"]))
             for event in session.get("events", []):
                 content = event.get("content")
                 if content:

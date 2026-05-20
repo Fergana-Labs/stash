@@ -56,8 +56,7 @@ approval behavior.
 
 1. **Bash-only tool hooks.** Codex's `PostToolUse` today only fires for Bash.
    Edit/read/write won't stream until OpenAI expands hook coverage. The
-   `on_stop.py` session summary captures turn-level stats even without
-   per-tool hooks.
+   `on_stop.py` captures the final assistant message even without per-tool hooks.
 2. **Windows.** Codex hook support is disabled on Windows in current builds.
 3. **No SessionEnd event.** Codex only exposes `Stop`, so the plugin uploads the assistant message and transcript there.
 

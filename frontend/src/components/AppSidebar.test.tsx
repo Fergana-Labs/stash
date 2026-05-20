@@ -146,13 +146,13 @@ const sidebarWithTwoStashes = {
     {
       ...sidebarWithStash.stashes[0],
       id: "stash-2",
-      slug: "agent-handoffs",
-      title: "Agent Handoffs",
+      slug: "agent-notes",
+      title: "Agent Notes",
       items: [
         {
           object_type: "session" as const,
           object_id: "session-row-1",
-          label_override: "Handoff session",
+          label_override: "Shared session",
           position: 0,
         },
       ],
@@ -839,9 +839,9 @@ describe("AppSidebar tree expansion", () => {
     fireEvent.click(screen.getByLabelText("Expand Project Alpha"));
     expect(await screen.findByText("Launch session")).toBeTruthy();
 
-    fireEvent.click(screen.getByRole("link", { name: "Agent Handoffs" }));
+    fireEvent.click(screen.getByRole("link", { name: "Agent Notes" }));
     expect(screen.getByText("Launch session")).toBeTruthy();
-    expect(screen.queryByText("Handoff session")).toBeNull();
+    expect(screen.queryByText("Shared session")).toBeNull();
     expect(localStorage.getItem("stash_sidebar_open_stashes")).toBe(
       JSON.stringify({ "ws-1:stash-1": true })
     );

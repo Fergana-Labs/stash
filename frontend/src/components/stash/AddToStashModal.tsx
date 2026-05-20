@@ -125,7 +125,7 @@ export default function AddToStashModal({
       out.push({
         kind: "session",
         key: `session:${s.session_id}`,
-        label: s.first_prompt_preview?.slice(0, 80) || s.session_id,
+        label: s.title,
         sub: `${s.agent_name || "agent"} · ${s.event_count} events`,
         spec: { object_type: "session", object_id: s.session_id, position: 0 },
       });

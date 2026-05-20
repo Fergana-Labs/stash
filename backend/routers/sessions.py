@@ -38,7 +38,7 @@ class SessionUpsertRequest(BaseModel):
     files_touched: list[str] = Field(default_factory=list)
 
 
-def _session_response(row: dict) -> dict:
+def _session_response(row: dict, title: str | None = None) -> dict:
     files_touched = row.get("files_touched") or []
     if isinstance(files_touched, str):
         files_touched = json.loads(files_touched)
@@ -46,14 +46,12 @@ def _session_response(row: dict) -> dict:
         "id": str(row["id"]),
         "workspace_id": str(row["workspace_id"]),
         "session_id": row["session_id"],
-        "title": session_title_service.title_from_summary(
-            row.get("summary"),
+        "title": title or session_title_service.title_from_text(
+            row.get("title_source"),
             row["session_id"],
         ),
         "agent_name": row.get("agent_name") or "",
         "cwd": row.get("cwd"),
-        "summary": row.get("summary"),
-        "summary_status": row.get("summary_status"),
         "files_touched": files_touched,
         "started_at": row.get("started_at"),
         "finished_at": row.get("finished_at"),
@@ -107,18 +105,20 @@ async def list_my_sessions(
           (ARRAY_AGG(NULLIF(u.display_name, '') ORDER BY he.created_at)
            FILTER (WHERE NULLIF(u.display_name, '') IS NOT NULL))[1] AS user_name,
           MAX(he.agent_name) AS agent_name,
-          COALESCE(MAX(s.summary), '') AS summary,
+          (
+            ARRAY_AGG(he.content ORDER BY
+              CASE
+                WHEN he.event_type IN ('user_message', 'user_prompt', 'prompt', 'message', 'user') THEN 0
+                WHEN he.event_type IN ('assistant_message', 'assistant') THEN 1
+                ELSE 2
+              END,
+              he.created_at,
+              he.id
+            ) FILTER (WHERE NULLIF(BTRIM(he.content), '') IS NOT NULL)
+          )[1] AS title_source,
           COUNT(*)::INT AS event_count,
           MIN(he.created_at) AS started_at,
-          MAX(he.created_at) AS last_event_at,
-          (
-            SELECT LEFT(he2.content, 240) FROM history_events he2
-            WHERE he2.session_id = he.session_id
-              AND he2.workspace_id IS NOT DISTINCT FROM he.workspace_id
-              AND (he2.workspace_id IS NOT NULL OR he2.created_by = $1)
-              AND he2.event_type IN ('user_prompt', 'prompt', 'message')
-            ORDER BY he2.created_at LIMIT 1
-          ) AS first_prompt_preview
+          MAX(he.created_at) AS last_event_at
         FROM history_events he
         LEFT JOIN workspaces w ON w.id = he.workspace_id
         LEFT JOIN users u ON u.id = he.created_by
@@ -136,8 +136,8 @@ async def list_my_sessions(
     for session in sessions:
         if not session["user_name"]:
             raise RuntimeError(f"Session {session['session_id']} has no author display_name")
-        session["title"] = session_title_service.title_from_summary(
-            session.pop("summary"),
+        session["title"] = session_title_service.title_from_text(
+            session.pop("title_source"),
             session["session_id"],
         )
     return {"sessions": sessions}
@@ -180,7 +180,11 @@ async def get_workspace_session(
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
 
-    payload = _session_response(session)
+    events = await memory_service.read_session_events(workspace_id, session_id, current_user["id"])
+    payload = _session_response(
+        session,
+        title=session_title_service.title_from_events(events, session_id),
+    )
     payload["artifacts"] = await _session_artifacts(session["id"])
     return payload
 

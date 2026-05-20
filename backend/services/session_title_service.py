@@ -1,8 +1,4 @@
-"""Readable titles for sessions.
-
-Session summaries are longer prose. Navigation needs a short title, so derive
-one from the first useful summary line and ignore generic markdown wrappers.
-"""
+"""Readable titles for sessions."""
 
 from __future__ import annotations
 
@@ -10,33 +6,47 @@ import re
 
 MAX_TITLE_LENGTH = 80
 
-_GENERIC_PREFIXES = (
-    "session summary",
-    "summary of changes",
-    "summary",
-    "what changed",
-    "what happened",
-    "what the session accomplished",
-    "what was accomplished",
-    "accomplishment",
-    "accomplishments",
-    "status",
-    "session status",
-    "key files modified or created",
-    "key files",
-    "important decisions made",
-    "important decisions",
-    "unfinished work or known issues",
-    "known issues",
+_USER_EVENT_TYPES = (
+    "user_message",
+    "user_prompt",
+    "prompt",
+    "message",
+    "user",
 )
+_ASSISTANT_EVENT_TYPES = ("assistant_message", "assistant")
 
 
-def title_from_summary(summary: str | None, session_id: str) -> str:
-    for line in (summary or "").splitlines():
-        title = _title_from_line(line)
+def title_from_text(text: str | None, session_id: str) -> str:
+    title = _title_from_content(text)
+    if title:
+        return _truncate(title)
+    return session_id
+
+
+def title_from_events(events: list[dict], session_id: str) -> str:
+    for event_type in (_USER_EVENT_TYPES, _ASSISTANT_EVENT_TYPES):
+        title = _title_from_first_matching_event(events, event_type)
         if title:
             return _truncate(title)
     return session_id
+
+
+def _title_from_first_matching_event(events: list[dict], event_types: tuple[str, ...]) -> str:
+    for event in events:
+        if event.get("event_type") not in event_types:
+            continue
+        title = _title_from_content(event.get("content"))
+        if title:
+            return title
+    return ""
+
+
+def _title_from_content(content: str | None) -> str:
+    for line in (content or "").splitlines():
+        title = _title_from_line(line)
+        if title:
+            return title
+    return ""
 
 
 def _title_from_line(line: str) -> str:
@@ -44,15 +54,11 @@ def _title_from_line(line: str) -> str:
     if not text:
         return ""
 
-    text = _strip_generic_prefix(text)
+    text = _strip_lead_in(text)
     if not text:
         return ""
 
-    text = _strip_generic_lead_in(text)
-    if not text:
-        return ""
-
-    return _first_sentence(text)
+    return _first_clause(text)
 
 
 def _strip_markdown(line: str) -> str:
@@ -63,29 +69,20 @@ def _strip_markdown(line: str) -> str:
     return text.strip(" \t*_")
 
 
-def _strip_generic_prefix(text: str) -> str:
-    normalized = _normalize(text)
-    for prefix in _GENERIC_PREFIXES:
-        if normalized == prefix:
-            return ""
-
-    lower = text.lower()
-    for prefix in _GENERIC_PREFIXES:
-        if not lower.startswith(prefix):
-            continue
-
-        rest = text[len(prefix) :].lstrip(" :-–—")
-        return rest.strip()
-
-    return text
-
-
-def _first_sentence(text: str) -> str:
+def _first_clause(text: str) -> str:
     one_line = re.sub(r"\s+", " ", text).strip()
-    sentence, separator, _ = one_line.partition(".")
-    if separator:
-        return sentence.strip()
+    match = re.match(r"(.+?)[.!?](?:\s|$)", one_line)
+    if match:
+        return match.group(1).strip()
     return one_line
+
+
+def _strip_lead_in(text: str) -> str:
+    lower = text.lower()
+    for phrase in ("please ", "can you ", "could you "):
+        if lower.startswith(phrase):
+            return _capitalize_first(text[len(phrase) :].strip())
+    return text
 
 
 def _truncate(title: str) -> str:
@@ -94,21 +91,7 @@ def _truncate(title: str) -> str:
     return title[:MAX_TITLE_LENGTH]
 
 
-def _strip_generic_lead_in(text: str) -> str:
-    lower = text.lower()
-    for phrase in ("this session just ", "this session is ", "this session was "):
-        if lower.startswith(phrase):
-            return ""
-    if lower.startswith("this session "):
-        return _capitalize_first(text[len("this session ") :].strip())
-    return text
-
-
 def _capitalize_first(text: str) -> str:
     if not text:
         return text
     return text[0].upper() + text[1:]
-
-
-def _normalize(text: str) -> str:
-    return re.sub(r"[^a-z0-9]+", " ", text.lower()).strip()

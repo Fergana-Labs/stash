@@ -235,8 +235,6 @@ describe("AppShell sidebar collapse", () => {
       title: "Debug auth flow",
       agent_name: "codex",
       cwd: null,
-      summary: "Debug auth flow. Confirm token expiry.",
-      summary_status: "done",
       files_touched: [],
       started_at: null,
       finished_at: null,

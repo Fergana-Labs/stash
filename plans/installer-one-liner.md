@@ -49,7 +49,7 @@ if ! command -v stash >/dev/null; then
   exit 1
 fi
 
-# 5. Hand off to the questionnaire
+# 5. Launch the questionnaire
 if [ -n "$ENDPOINT_FLAG" ]; then
   exec stash connect --endpoint "$ENDPOINT_FLAG"  # skips the managed-vs-self prompt
 else
