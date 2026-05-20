@@ -1,7 +1,6 @@
 "use client";
 
 import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
-import TerminalOutlinedIcon from "@mui/icons-material/TerminalOutlined";
 import { useEscapeKey } from "../../hooks/useEscapeKey";
 import {
   addStashMember,
@@ -351,9 +350,8 @@ export default function StashShareButton({
         disabled={handoffStatus === "copying"}
         aria-label="Copy agent handoff link"
         title="Copy an agent-readable public link"
-        className="inline-flex min-w-[86px] items-center justify-center gap-1.5 rounded-md border border-border bg-surface px-2.5 py-1 text-[12.5px] font-medium text-dim hover:bg-raised hover:text-foreground disabled:opacity-50"
+        className="inline-flex min-w-[72px] items-center justify-center rounded-md bg-surface px-2.5 py-1 text-[12.5px] font-medium text-dim ring-1 ring-inset ring-border hover:bg-raised hover:text-foreground disabled:opacity-50"
       >
-        <TerminalOutlinedIcon aria-hidden="true" className="text-[14px]" />
         {handoffStatus === "copying"
           ? "Copying"
           : handoffStatus === "copied"
