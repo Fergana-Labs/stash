@@ -38,14 +38,10 @@ export default function SharingDropStep({ apiKey, workspaceId }: StepCtx) {
 
   return (
     <div className="space-y-6">
-      <div className="space-y-2">
+      <div>
         <h1 className="font-display text-[28px] leading-[1.1] font-bold tracking-tight text-foreground">
-          How do you want to share?
+          What do you want to share?
         </h1>
-        <p className="text-sm text-dim max-w-md">
-          Either gets you a shareable link. Pick whichever&rsquo;s closer to
-          where your content lives right now.
-        </p>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-[220px_1fr] gap-4">
