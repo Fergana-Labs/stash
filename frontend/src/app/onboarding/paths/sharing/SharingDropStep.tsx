@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { type DragEvent, useRef, useState } from "react";
 
-import StashQuickAdd from "@/components/StashQuickAdd";
+import { createPage, uploadFileOrPage, uploadTranscript } from "@/lib/api";
 import type { StepCtx } from "@/lib/onboarding/paths";
 import { buildPrompt, type ShareKind } from "@/app/onboarding/prompts";
 
@@ -90,13 +90,172 @@ export default function SharingDropStep({ apiKey, workspaceId }: StepCtx) {
   );
 }
 
+type DropStatus =
+  | { kind: "idle" }
+  | { kind: "busy"; message: string }
+  | { kind: "done"; message: string }
+  | { kind: "error"; message: string };
+
+const ACCEPT_EXTS = [".jsonl", ".html", ".md"] as const;
+const ACCEPT_ATTR = ACCEPT_EXTS.join(",");
+
 function DropPanel({ workspaceId }: { workspaceId: string }) {
+  const [dragActive, setDragActive] = useState(false);
+  const [status, setStatus] = useState<DropStatus>({ kind: "idle" });
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const dragDepth = useRef(0);
+
+  async function handleFiles(list: FileList | File[]) {
+    const files = Array.from(list);
+    if (!files.length) return;
+
+    const accepted: File[] = [];
+    const rejected: string[] = [];
+    for (const f of files) {
+      if (matchesAllowed(f.name)) accepted.push(f);
+      else rejected.push(f.name);
+    }
+
+    if (!accepted.length) {
+      setStatus({
+        kind: "error",
+        message: `Only .jsonl, .html, and .md are accepted. Skipped: ${rejected.join(", ")}`,
+      });
+      return;
+    }
+
+    setStatus({
+      kind: "busy",
+      message:
+        accepted.length === 1
+          ? `Uploading ${accepted[0].name}…`
+          : `Uploading ${accepted.length} files…`,
+    });
+
+    try {
+      for (const f of accepted) {
+        const lower = f.name.toLowerCase();
+        if (lower.endsWith(".jsonl")) {
+          const sessionId = f.name.replace(/\.jsonl$/i, "").trim() || "session";
+          await uploadTranscript(workspaceId, f, sessionId, "manual-upload");
+        } else if (lower.endsWith(".html") || lower.endsWith(".htm")) {
+          await uploadFileOrPage(workspaceId, f);
+        } else if (lower.endsWith(".md")) {
+          const text = await f.text();
+          const name = f.name.replace(/\.md$/i, "") || f.name;
+          await createPage(workspaceId, name, null, text, {
+            content_type: "markdown",
+          });
+        }
+      }
+    } catch (e) {
+      setStatus({
+        kind: "error",
+        message: e instanceof Error ? e.message : "Upload failed",
+      });
+      return;
+    }
+
+    const parts: string[] = [];
+    if (accepted.length) parts.push(`${accepted.length} added`);
+    if (rejected.length) parts.push(`${rejected.length} skipped (unsupported)`);
+    setStatus({ kind: "done", message: parts.join(" · ") });
+  }
+
+  function isFilesDrag(e: DragEvent) {
+    return Array.from(e.dataTransfer.types).includes("Files");
+  }
+
+  function onDragEnter(e: DragEvent) {
+    if (!isFilesDrag(e)) return;
+    e.preventDefault();
+    e.stopPropagation();
+    dragDepth.current += 1;
+    setDragActive(true);
+  }
+
+  function onDragLeave(e: DragEvent) {
+    if (!isFilesDrag(e)) return;
+    e.preventDefault();
+    e.stopPropagation();
+    dragDepth.current = Math.max(0, dragDepth.current - 1);
+    if (dragDepth.current === 0) setDragActive(false);
+  }
+
+  function onDragOver(e: DragEvent) {
+    if (!isFilesDrag(e)) return;
+    e.preventDefault();
+    e.stopPropagation();
+    e.dataTransfer.dropEffect = "copy";
+  }
+
+  function onDrop(e: DragEvent) {
+    if (!isFilesDrag(e)) return;
+    e.preventDefault();
+    e.stopPropagation();
+    dragDepth.current = 0;
+    setDragActive(false);
+    void handleFiles(e.dataTransfer.files);
+  }
+
   return (
     <div className="space-y-3">
       <div className="text-[11px] font-mono uppercase tracking-wider text-muted">
         Drag &amp; drop
       </div>
-      <StashQuickAdd workspaceId={workspaceId} />
+
+      <button
+        type="button"
+        onClick={() => fileInputRef.current?.click()}
+        onDragEnter={onDragEnter}
+        onDragLeave={onDragLeave}
+        onDragOver={onDragOver}
+        onDrop={onDrop}
+        className={`w-full flex flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed px-6 py-10 text-center transition-colors ${
+          dragActive
+            ? "border-brand bg-brand/10"
+            : "border-border bg-background/40 hover:border-brand hover:bg-raised"
+        }`}
+      >
+        <div className="text-[24px] leading-none" aria-hidden>
+          ⬆
+        </div>
+        <div className="text-[13px] font-medium text-foreground">
+          {dragActive ? "Release to upload" : "Drop a file, or click to pick one"}
+        </div>
+        <div className="text-[11px] text-muted">
+          <code className="text-foreground">.jsonl</code> ·{" "}
+          <code className="text-foreground">.html</code> ·{" "}
+          <code className="text-foreground">.md</code>
+        </div>
+      </button>
+
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept={ACCEPT_ATTR}
+        multiple
+        className="hidden"
+        onChange={(e) => {
+          if (e.target.files?.length) void handleFiles(e.target.files);
+          if (fileInputRef.current) fileInputRef.current.value = "";
+        }}
+      />
+
+      {status.kind !== "idle" && (
+        <p
+          className={`text-[11.5px] ${
+            status.kind === "error"
+              ? "text-error"
+              : status.kind === "done"
+                ? "text-brand"
+                : "text-muted"
+          }`}
+        >
+          {status.message}
+        </p>
+      )}
+
       <p className="text-[11px] text-muted leading-relaxed">
         <code className="text-foreground">.jsonl</code> becomes a session,{" "}
         <code className="text-foreground">.html</code> becomes a published
@@ -104,6 +263,16 @@ function DropPanel({ workspaceId }: { workspaceId: string }) {
         markdown page.
       </p>
     </div>
+  );
+}
+
+function matchesAllowed(name: string): boolean {
+  const lower = name.toLowerCase();
+  return (
+    lower.endsWith(".jsonl") ||
+    lower.endsWith(".html") ||
+    lower.endsWith(".htm") ||
+    lower.endsWith(".md")
   );
 }
 
