@@ -38,10 +38,10 @@ export default function SettingsPage() {
         <div className="w-full max-w-2xl mx-auto space-y-8">
           <button
             type="button"
-            onClick={() => (window.history.length > 1 ? router.back() : router.push("/"))}
+            onClick={() => router.push("/")}
             className="text-sm text-muted hover:text-foreground inline-flex items-center gap-1.5"
           >
-            <span aria-hidden>←</span> Back
+            <span aria-hidden>←</span> Home
           </button>
           <div>
             <h1 className="text-2xl font-semibold text-foreground">Account settings</h1>

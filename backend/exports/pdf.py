@@ -25,6 +25,15 @@ from ..tasks._celery_helpers import run_async
 
 logger = logging.getLogger(__name__)
 
+
+def _safe_stem(name: str) -> str:
+    """S3-safe filename stem. SigV4 signing breaks on spaces and parens
+    in object keys when the URL gets percent-encoded, so we collapse any
+    non-word character to an underscore."""
+    stem = re.sub(r"[^\w.-]+", "_", name).strip("_")
+    return stem or "slides"
+
+
 # Default deck size — 16:9 at 1920x1080 logical. PDF resolution is
 # derived by Playwright at 96dpi which is fine for screen reading;
 # raise width/height for print quality.
@@ -91,7 +100,7 @@ async def _export(user_id: UUID, page_id: UUID) -> dict:
     html = _inject_paged_css(source_html)
     pdf_bytes = await _render_pdf(html)
 
-    filename = f"{page_row['name'] or 'slides'}-{uuid4().hex[:8]}.pdf"
+    filename = f"{_safe_stem(page_row['name'] or 'slides')}-{uuid4().hex[:8]}.pdf"
     storage_key = await storage_service.upload_file(
         workspace_id=page_row["workspace_id"],
         filename=filename,

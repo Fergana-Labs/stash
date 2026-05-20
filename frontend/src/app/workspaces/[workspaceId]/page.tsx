@@ -9,6 +9,20 @@ import DescriptionEditor, {
 import MembersModal from "../../../components/MembersModal";
 import { SkeletonBlock, WorkspaceHomeSkeleton } from "../../../components/SkeletonStates";
 import StashQuickAdd from "../../../components/StashQuickAdd";
+import DriveImportDialog from "../../../components/import/DriveImportDialog";
+import GitImportDialog from "../../../components/import/GitImportDialog";
+import NotionImportDialog from "../../../components/import/NotionImportDialog";
+import {
+  GitHubIcon,
+  GoogleDriveIcon,
+  NotionIcon,
+} from "../../../components/integrations/BrandIcons";
+import {
+  IntegrationStatus,
+  listIntegrations,
+  waitForTask,
+} from "../../../lib/integrations";
+import { refreshWorkspaceSidebar } from "../../../lib/stashNavigationCache";
 import { WorkspaceIcon } from "../../../components/StashIcons";
 import ContributorActivityTimeline from "../../../components/viz/ContributorActivityTimeline";
 import EmbeddingSpaceExplorer from "../../../components/viz/EmbeddingSpaceExplorer";
@@ -55,6 +69,11 @@ export default function WorkspaceHomePage() {
   const [insightsLoaded, setInsightsLoaded] = useState(false);
   const [error, setError] = useState("");
   const [membersOpen, setMembersOpen] = useState(false);
+  const [openImport, setOpenImport] = useState<"git" | "notion" | "drive" | null>(null);
+  const [integrationStatus, setIntegrationStatus] = useState<
+    Record<string, IntegrationStatus | undefined>
+  >({});
+  const [pendingImports, setPendingImports] = useState<number>(0);
 
   const load = useCallback(async () => {
     setInsightsLoaded(false);
@@ -84,7 +103,43 @@ export default function WorkspaceHomePage() {
     if (!loading && !user) router.push("/login");
   }, [user, loading, router]);
 
+  useEffect(() => {
+    if (!user) return;
+    let cancelled = false;
+    listIntegrations()
+      .then((r) => {
+        if (cancelled) return;
+        const map: Record<string, IntegrationStatus> = {};
+        for (const s of r.providers) map[s.provider] = s;
+        setIntegrationStatus(map);
+      })
+      .catch(() => {
+        // Non-fatal: cards will just show as "not connected".
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [user]);
+
   const isMember = !!user && members.some((m) => m.user_id === user.id);
+
+  const trackImport = useCallback(
+    (taskIds: string[]) => {
+      if (taskIds.length === 0) return;
+      setPendingImports((n) => n + taskIds.length);
+      for (const tid of taskIds) {
+        waitForTask(tid, undefined, 2000)
+          .then(() => {
+            refreshWorkspaceSidebar(workspaceId).catch(() => {});
+            load();
+          })
+          .finally(() => {
+            setPendingImports((n) => Math.max(0, n - 1));
+          });
+      }
+    },
+    [workspaceId, load],
+  );
 
   async function handleJoin() {
     if (!workspace) return;
@@ -204,6 +259,38 @@ export default function WorkspaceHomePage() {
             </section>
           )}
 
+          {isMember && (
+            <WorkspaceImportRow
+              integrationStatus={integrationStatus}
+              onOpenGit={() => setOpenImport("git")}
+              onOpenDrive={() => setOpenImport("drive")}
+              onOpenNotion={() => setOpenImport("notion")}
+              pendingImports={pendingImports}
+            />
+          )}
+
+          {openImport === "git" && (
+            <GitImportDialog
+              workspaceId={workspaceId}
+              onDispatched={trackImport}
+              onClose={() => setOpenImport(null)}
+            />
+          )}
+          {openImport === "notion" && (
+            <NotionImportDialog
+              workspaceId={workspaceId}
+              onDispatched={trackImport}
+              onClose={() => setOpenImport(null)}
+            />
+          )}
+          {openImport === "drive" && (
+            <DriveImportDialog
+              workspaceId={workspaceId}
+              onDispatched={trackImport}
+              onClose={() => setOpenImport(null)}
+            />
+          )}
+
           {/* Visualizations: human/agent session activity + 3D embedding view.
               Section renders even when empty so users see the placeholder
               and know what's coming once data exists. */}
@@ -304,5 +391,120 @@ function WorkspaceDescriptionEditor({
         }}
       />
     </section>
+  );
+}
+
+function WorkspaceImportRow({
+  integrationStatus,
+  onOpenGit,
+  onOpenDrive,
+  onOpenNotion,
+  pendingImports,
+}: {
+  integrationStatus: Record<string, IntegrationStatus | undefined>;
+  onOpenGit: () => void;
+  onOpenDrive: () => void;
+  onOpenNotion: () => void;
+  pendingImports: number;
+}) {
+  return (
+    <section className="mt-6">
+      <div className="mb-1.5 flex items-center justify-between">
+        <span className="sys-label">Import from</span>
+        {pendingImports > 0 && (
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-brand-50 px-2.5 py-0.5 text-[11.5px] font-medium text-[var(--color-brand-700)]">
+            <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-brand" />
+            {pendingImports === 1
+              ? "1 import running"
+              : `${pendingImports} imports running`}
+          </span>
+        )}
+      </div>
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+        <ImportCard
+          connected={!!integrationStatus.github?.connected}
+          provider="GitHub"
+          icon={<GitHubIcon size={20} className="text-foreground" />}
+          onClick={onOpenGit}
+        />
+        <ImportCard
+          connected={!!integrationStatus.google?.connected}
+          provider="Google Drive"
+          icon={<GoogleDriveIcon size={20} />}
+          onClick={onOpenDrive}
+        />
+        <ImportCard
+          connected={!!integrationStatus.notion?.connected}
+          provider="Notion"
+          icon={<NotionIcon size={20} className="text-foreground" />}
+          onClick={onOpenNotion}
+        />
+      </div>
+    </section>
+  );
+}
+
+function ImportCard({
+  connected,
+  provider,
+  icon,
+  hint,
+  busy,
+  onClick,
+}: {
+  connected: boolean;
+  provider: string;
+  icon: React.ReactNode;
+  hint?: string;
+  busy?: boolean;
+  onClick: () => void;
+}) {
+  const baseClasses =
+    "group relative flex items-center gap-3 rounded-lg border px-3 py-2.5 text-left transition cursor-pointer";
+
+  if (!connected) {
+    return (
+      <Link
+        href="/settings"
+        title={`Connect ${provider} in Settings → Integrations`}
+        className={`${baseClasses} border-dashed border-border bg-base/40 hover:bg-raised`}
+      >
+        <span className="relative flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-raised grayscale opacity-60 group-hover:grayscale-0 group-hover:opacity-100 transition">
+          {icon}
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="text-[13px] font-medium text-muted group-hover:text-foreground transition">
+            {provider}
+          </span>
+          <span className="block truncate text-[11.5px] text-muted">
+            Not connected — click to set up
+          </span>
+        </span>
+        <span className="ml-auto rounded-md bg-brand px-2 py-0.5 text-[11px] font-semibold text-white opacity-0 group-hover:opacity-100 transition">
+          Connect →
+        </span>
+      </Link>
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={busy ? undefined : onClick}
+      disabled={busy}
+      className={`${baseClasses} border-border bg-surface hover:bg-raised hover:shadow-sm ${
+        busy ? "cursor-wait" : ""
+      }`}
+    >
+      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-raised">
+        {icon}
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="text-[13px] font-medium text-foreground">{provider}</span>
+        <span className="block truncate text-[11.5px] text-muted">
+          {busy ? "Opening picker…" : hint || "Import pages, files, or data"}
+        </span>
+      </span>
+    </button>
   );
 }

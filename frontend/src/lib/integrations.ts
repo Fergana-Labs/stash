@@ -49,6 +49,32 @@ export async function disconnectIntegration(provider: IntegrationProvider): Prom
   await apiFetch(`/api/v1/integrations/${provider}/disconnect`, { method: "POST" });
 }
 
+export type GitHubRepoSummary = {
+  full_name: string;
+  description: string | null;
+  private: boolean;
+  html_url: string;
+  updated_at: string | null;
+};
+
+export async function listGitHubRepos(q: string = ""): Promise<GitHubRepoSummary[]> {
+  const query = q.trim() ? `?q=${encodeURIComponent(q.trim())}` : "";
+  return apiFetch<GitHubRepoSummary[]>(`/api/v1/integrations/github/repos${query}`);
+}
+
+export type NotionPageSummary = {
+  id: string;
+  title: string;
+  url: string;
+  icon: string | null;
+  last_edited_time: string | null;
+};
+
+export async function listNotionPages(q: string = ""): Promise<NotionPageSummary[]> {
+  const query = q.trim() ? `?q=${encodeURIComponent(q.trim())}` : "";
+  return apiFetch<NotionPageSummary[]>(`/api/v1/integrations/notion/pages${query}`);
+}
+
 // --- Task polling ---
 
 export type TaskStatus = {

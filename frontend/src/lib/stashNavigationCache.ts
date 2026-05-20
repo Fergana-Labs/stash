@@ -76,9 +76,21 @@ export async function getCachedWorkspaceSidebar(workspaceId: string): Promise<Wo
   return promise;
 }
 
+type SidebarSubscriber = (workspaceId: string, sidebar: WorkspaceSidebar) => void;
+const sidebarSubscribers = new Set<SidebarSubscriber>();
+
+export function subscribeToSidebarRefresh(cb: SidebarSubscriber): () => void {
+  sidebarSubscribers.add(cb);
+  return () => {
+    sidebarSubscribers.delete(cb);
+  };
+}
+
 export async function refreshWorkspaceSidebar(workspaceId: string): Promise<WorkspaceSidebar> {
   const sidebar = await getWorkspaceSidebar(workspaceId);
   sidebarCache[workspaceId] = sidebar;
+  // Notify anyone listening (e.g. AppSidebar) so they can re-render.
+  for (const cb of sidebarSubscribers) cb(workspaceId, sidebar);
   return sidebar;
 }
 

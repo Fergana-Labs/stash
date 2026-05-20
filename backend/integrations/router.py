@@ -189,3 +189,111 @@ async def google_picker_token(current_user: dict = Depends(get_current_user)):
         api_key=settings.GOOGLE_PICKER_API_KEY,
         app_id=settings.GOOGLE_PICKER_APP_ID,
     )
+
+
+class GitHubRepoSummary(BaseModel):
+    full_name: str
+    description: str | None
+    private: bool
+    html_url: str
+    updated_at: str | None
+
+
+@router.get("/github/repos", response_model=list[GitHubRepoSummary])
+async def github_list_repos(
+    current_user: dict = Depends(get_current_user),
+    q: str = Query("", description="Substring filter on repo full_name"),
+):
+    """List the user's GitHub repos (most-recently-updated first) so the
+    frontend can render a picker instead of asking the user to paste a URL."""
+    import httpx
+
+    access_token = await storage.get_valid_token(current_user["id"], "github")
+    headers = {
+        "Authorization": f"Bearer {access_token}",
+        "Accept": "application/vnd.github+json",
+    }
+    async with httpx.AsyncClient(timeout=30.0, headers=headers) as client:
+        resp = await client.get(
+            "https://api.github.com/user/repos",
+            params={"per_page": 100, "sort": "updated", "affiliation": "owner,collaborator,organization_member"},
+        )
+        resp.raise_for_status()
+        repos = resp.json()
+
+    q_lower = q.lower().strip()
+    out: list[GitHubRepoSummary] = []
+    for r in repos:
+        if q_lower and q_lower not in r["full_name"].lower():
+            continue
+        out.append(
+            GitHubRepoSummary(
+                full_name=r["full_name"],
+                description=r.get("description"),
+                private=r.get("private", False),
+                html_url=r["html_url"],
+                updated_at=r.get("updated_at"),
+            )
+        )
+    return out
+
+
+class NotionPageSummary(BaseModel):
+    id: str
+    title: str
+    url: str
+    icon: str | None
+    last_edited_time: str | None
+
+
+@router.get("/notion/pages", response_model=list[NotionPageSummary])
+async def notion_list_pages(
+    current_user: dict = Depends(get_current_user),
+    q: str = Query("", description="Substring search across page titles"),
+):
+    """Search Notion pages the integration has access to. Notion only
+    returns pages the user has explicitly shared with the integration —
+    this matches Notion's own behavior."""
+    import httpx
+
+    access_token = await storage.get_valid_token(current_user["id"], "notion")
+    headers = {
+        "Authorization": f"Bearer {access_token}",
+        "Notion-Version": "2022-06-28",
+        "Content-Type": "application/json",
+    }
+    body: dict = {
+        "filter": {"property": "object", "value": "page"},
+        "sort": {"direction": "descending", "timestamp": "last_edited_time"},
+        "page_size": 50,
+    }
+    if q.strip():
+        body["query"] = q.strip()
+    async with httpx.AsyncClient(timeout=30.0, headers=headers) as client:
+        resp = await client.post("https://api.notion.com/v1/search", json=body)
+        resp.raise_for_status()
+        results = resp.json().get("results", [])
+
+    out: list[NotionPageSummary] = []
+    for p in results:
+        # Title can live in properties.title (DB pages) or properties.Name (workspace pages).
+        title = ""
+        props = p.get("properties", {})
+        for prop in props.values():
+            if prop.get("type") == "title":
+                title = "".join(t.get("plain_text", "") for t in prop.get("title", []))
+                break
+        if not title:
+            title = "(untitled)"
+        icon_obj = p.get("icon") or {}
+        icon = icon_obj.get("emoji") if icon_obj.get("type") == "emoji" else None
+        out.append(
+            NotionPageSummary(
+                id=p["id"],
+                title=title,
+                url=p.get("url", ""),
+                icon=icon,
+                last_edited_time=p.get("last_edited_time"),
+            )
+        )
+    return out

@@ -1,71 +1,97 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
+import { createFolder } from "@/lib/api";
 import {
-  TaskStatus,
+  NotionPageSummary,
   importNotion,
-  waitForTask,
+  listNotionPages,
 } from "@/lib/integrations";
+import { NotionIcon } from "@/components/integrations/BrandIcons";
 
 type Props = {
   workspaceId: string;
   folderId?: string | null;
-  onDone?: (statuses: TaskStatus[]) => void;
+  onDispatched?: (taskIds: string[]) => void;
   onClose: () => void;
 };
 
-/**
- * Modal form for Notion page imports. Accepts URLs OR bare page IDs,
- * one per line. The backend task normalizes either form. Requires the
- * user to have connected Notion in /settings/integrations AND shared
- * each page with the integration in Notion's UI — we surface a
- * helpful inline reminder rather than trying to bypass it.
- */
 export default function NotionImportDialog({
   workspaceId,
   folderId,
-  onDone,
+  onDispatched,
   onClose,
 }: Props) {
-  const [raw, setRaw] = useState("");
+  const [pages, setPages] = useState<NotionPageSummary[] | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [query, setQuery] = useState("");
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [makeFolder, setMakeFolder] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [statuses, setStatuses] = useState<TaskStatus[]>([]);
   const [error, setError] = useState<string | null>(null);
 
-  async function onSubmit(e: React.FormEvent) {
-    e.preventDefault();
+  useEffect(() => {
+    let cancelled = false;
+    setLoadError(null);
+    listNotionPages()
+      .then((p) => {
+        if (!cancelled) setPages(p);
+      })
+      .catch((e) => {
+        if (cancelled) return;
+        const msg = e instanceof Error ? e.message : String(e);
+        if (msg.toLowerCase().includes("not connected")) {
+          setLoadError("Connect Notion in Settings → Integrations to see your pages.");
+        } else {
+          setLoadError(msg);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const filtered = useMemo(() => {
+    if (!pages) return [];
+    const q = query.trim().toLowerCase();
+    if (!q) return pages;
+    return pages.filter((p) => p.title.toLowerCase().includes(q));
+  }, [pages, query]);
+
+  function toggle(id: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  async function startImport() {
+    if (selectedIds.size === 0 || !pages) return;
     setError(null);
-    const urls = raw
-      .split(/\s+/)
-      .map((s) => s.trim())
-      .filter(Boolean);
-    if (urls.length === 0) {
-      setError("Enter at least one Notion page or database URL.");
-      return;
-    }
     setSubmitting(true);
-    setStatuses([]);
     try {
+      let importFolderId = folderId ?? undefined;
+      if (makeFolder) {
+        const today = new Date().toISOString().slice(0, 10);
+        const folder = await createFolder(
+          workspaceId,
+          `Notion import — ${today}`,
+          folderId ?? undefined,
+        );
+        importFolderId = folder.id;
+      }
+      const urls = pages.filter((p) => selectedIds.has(p.id)).map((p) => p.url);
       const { task_ids } = await importNotion(workspaceId, {
         urls,
-        folder_id: folderId || undefined,
+        folder_id: importFolderId,
       });
-      const finals = await Promise.all(
-        task_ids.map((tid) =>
-          waitForTask(tid, (s) => {
-            setStatuses((prev) => {
-              const next = [...prev];
-              next[task_ids.indexOf(tid)] = s;
-              return next;
-            });
-          }),
-        ),
-      );
-      onDone?.(finals);
+      onDispatched?.(task_ids);
+      onClose();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
-    } finally {
       setSubmitting(false);
     }
   }
@@ -74,146 +100,157 @@ export default function NotionImportDialog({
     <div
       role="dialog"
       aria-modal="true"
-      style={{
-        position: "fixed",
-        inset: 0,
-        background: "rgba(0,0,0,0.45)",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        zIndex: 1000,
-      }}
+      className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/45"
       onClick={onClose}
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        style={{
-          width: "min(560px, 92vw)",
-          background: "var(--surface, white)",
-          borderRadius: 12,
-          padding: 24,
-          boxShadow: "0 24px 48px rgba(0,0,0,0.18)",
-        }}
+        className="flex w-[min(640px,92vw)] max-h-[80vh] flex-col rounded-xl bg-surface shadow-[0_24px_48px_rgba(0,0,0,0.18)]"
       >
-        <h2 style={{ fontSize: 18, fontWeight: 700, marginBottom: 6 }}>
-          Import from Notion
-        </h2>
-        <p style={{ fontSize: 13, color: "var(--muted, #6b7280)", marginBottom: 12 }}>
-          Paste one or more Notion <strong>page</strong> or{" "}
-          <strong>database</strong> URLs (one per line). Pages with
-          subpages are imported recursively into a folder; databases
-          become tables.
-        </p>
-        <p
-          style={{
-            fontSize: 12,
-            color: "var(--muted, #6b7280)",
-            marginBottom: 16,
-            padding: 8,
-            background: "var(--info-bg, rgba(37,99,235,0.06))",
-            borderRadius: 6,
-          }}
-        >
-          Notion shares are per-resource. Open each page or database in
-          Notion → ⋯ → Add connections → choose your Stash connection.
-          Anything not shared will fail with a 404.
-        </p>
+        <div className="flex items-start gap-3 border-b border-border px-6 py-4">
+          <NotionIcon size={24} className="mt-0.5 text-foreground" />
+          <div className="flex-1">
+            <h2 className="text-[15px] font-semibold text-foreground">
+              Import from Notion
+            </h2>
+            <p className="mt-0.5 text-[12.5px] text-muted">
+              Pages you've shared with the integration appear below. Select one
+              or more to convert to markdown pages.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={submitting}
+            className="rounded-md p-1 text-muted hover:bg-raised hover:text-foreground"
+            aria-label="Close"
+          >
+            ✕
+          </button>
+        </div>
 
-        <form onSubmit={onSubmit} style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-          <label style={{ fontSize: 13 }}>
-            Pages or databases
-            <textarea
-              required
-              value={raw}
-              onChange={(e) => setRaw(e.target.value)}
-              placeholder="https://www.notion.so/My-Page-abcdef123…"
-              rows={6}
-              disabled={submitting}
-              style={{
-                display: "block",
-                width: "100%",
-                marginTop: 4,
-                padding: "8px 10px",
-                borderRadius: 6,
-                border: "1px solid var(--border, #d1d5db)",
-                fontFamily: "var(--font-mono, monospace)",
-                fontSize: 12,
-              }}
-            />
-          </label>
+        <div className="px-6 pt-4">
+          <input
+            type="search"
+            placeholder="Search pages…"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            disabled={!pages || submitting}
+            className="w-full rounded-md border border-border bg-base px-3 py-2 text-[13px] text-foreground placeholder:text-muted focus:border-brand focus:outline-none"
+          />
+        </div>
 
-          {statuses.length > 0 && (
-            <div
-              style={{
-                fontSize: 13,
-                padding: 8,
-                borderRadius: 6,
-                background: "var(--info-bg, rgba(37,99,235,0.08))",
-                maxHeight: 180,
-                overflow: "auto",
-              }}
-            >
-              {statuses.map((s, i) =>
-                s ? (
-                  <div key={i}>
-                    #{i + 1}: <strong>{s.state}</strong>
-                    {s.error ? <span> — {s.error}</span> : null}
-                  </div>
-                ) : (
-                  <div key={i}>
-                    #{i + 1}: pending…
-                  </div>
-                ),
-              )}
+        <div className="min-h-0 flex-1 overflow-y-auto px-3 py-2">
+          {loadError && (
+            <div className="m-3 rounded-md bg-red-50 px-3 py-2 text-[13px] text-red-700">
+              {loadError}
             </div>
           )}
+          {!pages && !loadError && (
+            <div className="flex h-32 items-center justify-center text-[13px] text-muted">
+              Loading your Notion pages…
+            </div>
+          )}
+          {pages && filtered.length === 0 && !loadError && (
+            <div className="flex h-32 items-center justify-center px-6 text-center text-[13px] text-muted">
+              {query
+                ? `No pages match "${query}".`
+                : "No pages found. In Notion, share the pages you want to import with this integration."}
+            </div>
+          )}
+          {filtered.map((p) => {
+            const isSelected = selectedIds.has(p.id);
+            return (
+              <button
+                key={p.id}
+                type="button"
+                onClick={() => toggle(p.id)}
+                disabled={submitting}
+                className={`flex w-full items-center gap-3 rounded-md px-3 py-2 text-left transition ${
+                  isSelected ? "bg-brand-50 ring-1 ring-brand" : "hover:bg-raised"
+                }`}
+              >
+                <input
+                  type="checkbox"
+                  checked={isSelected}
+                  readOnly
+                  className="h-4 w-4"
+                  style={{ accentColor: "var(--color-brand)" }}
+                />
+                <span className="text-base">{p.icon || "📄"}</span>
+                <div className="min-w-0 flex-1">
+                  <div className="truncate text-[13px] font-medium text-foreground">
+                    {p.title}
+                  </div>
+                  {p.last_edited_time && (
+                    <div className="text-[11.5px] text-muted">
+                      Edited{" "}
+                      {new Date(p.last_edited_time).toLocaleDateString(undefined, {
+                        month: "short",
+                        day: "numeric",
+                        year: "numeric",
+                      })}
+                    </div>
+                  )}
+                </div>
+              </button>
+            );
+          })}
+        </div>
 
+        <div className="border-t border-border px-6 py-3">
           {error && (
-            <div
-              style={{
-                fontSize: 13,
-                padding: 8,
-                borderRadius: 6,
-                background: "rgba(220,38,38,0.08)",
-                color: "rgb(185,28,28)",
-              }}
-            >
+            <div className="mb-2 rounded-md bg-red-50 px-3 py-2 text-[12.5px] text-red-700">
               {error}
             </div>
           )}
-
-          <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 4 }}>
-            <button
-              type="button"
-              onClick={onClose}
+          <label className="mb-3 flex cursor-pointer items-center gap-2 text-[12.5px] text-foreground">
+            <input
+              type="checkbox"
+              checked={makeFolder}
+              onChange={(e) => setMakeFolder(e.target.checked)}
               disabled={submitting}
-              style={{
-                padding: "8px 14px",
-                borderRadius: 6,
-                border: "1px solid var(--border, #d1d5db)",
-                background: "transparent",
-                cursor: submitting ? "wait" : "pointer",
-              }}
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={submitting || !raw.trim()}
-              style={{
-                padding: "8px 14px",
-                borderRadius: 6,
-                border: "1px solid var(--accent, #2563eb)",
-                background: "var(--accent, #2563eb)",
-                color: "white",
-                cursor: submitting ? "wait" : !raw.trim() ? "not-allowed" : "pointer",
-                opacity: !raw.trim() ? 0.6 : 1,
-              }}
-            >
-              {submitting ? "Importing…" : "Import"}
-            </button>
+              className="h-3.5 w-3.5"
+              style={{ accentColor: "var(--color-brand)" }}
+            />
+            <span>
+              Put inside a new folder{" "}
+              <span className="text-muted">named</span>{" "}
+              <span className="font-mono text-muted">
+                Notion import — {new Date().toISOString().slice(0, 10)}
+              </span>
+            </span>
+          </label>
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-[12px] text-muted">
+              {selectedIds.size === 0
+                ? "Select one or more pages"
+                : `${selectedIds.size} selected`}
+            </span>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={onClose}
+                disabled={submitting}
+                className="rounded-md border border-border bg-base px-3 py-1.5 text-[12.5px] font-medium text-foreground hover:bg-raised disabled:cursor-wait disabled:opacity-60"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={startImport}
+                disabled={selectedIds.size === 0 || submitting}
+                className="rounded-md bg-brand px-3 py-1.5 text-[12.5px] font-medium text-white hover:bg-brand-hover disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {submitting
+                  ? "Starting…"
+                  : selectedIds.size > 1
+                    ? `Import ${selectedIds.size} pages`
+                    : "Import"}
+              </button>
+            </div>
           </div>
-        </form>
+        </div>
       </div>
     </div>
   );

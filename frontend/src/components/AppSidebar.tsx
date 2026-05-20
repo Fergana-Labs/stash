@@ -28,6 +28,7 @@ import {
   readCachedSidebars,
   readCachedWorkspaces,
   refreshWorkspaceSidebar,
+  subscribeToSidebarRefresh,
 } from "../lib/stashNavigationCache";
 import type { User, Workspace } from "../lib/types";
 import {
@@ -1853,6 +1854,12 @@ export default function AppSidebar({
           .catch(() => {});
       });
   }, [activeTreeWorkspaceId, mine, shared, openWorkspaces, spines]);
+
+  useEffect(() => {
+    return subscribeToSidebarRefresh((workspaceId, sidebar) => {
+      setSpines((all) => ({ ...all, [workspaceId]: sidebar }));
+    });
+  }, []);
 
   function sectionOpen(workspaceId: string, section: SidebarSection): boolean {
     // Explicit user preference (open or closed) wins. Otherwise default open.

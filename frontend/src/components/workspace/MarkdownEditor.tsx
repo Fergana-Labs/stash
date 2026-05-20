@@ -423,11 +423,10 @@ function isAbsoluteUrl(url: string): boolean {
 const COMMENT_SPAN_RE = /<span\s+data-comment-id="([^"]+)">([\s\S]*?)<\/span>/g;
 
 function parseInlineMarkdown(text: string): JSONNode[] {
-  // Pre-pass: extract `<span data-comment-id="…">…</span>` wrappers (the
-  // round-trip form of the `comment` mark) BEFORE the inline regex runs,
-  // recurse on their inner content, then tag the resulting text nodes
-  // with the `comment` mark. The inner content keeps its bold/italic/
-  // link/etc. marks because parseInlineMarkdownInner handles them.
+  // Empty inputs (e.g. a bullet line that's just "-   " from a Google Doc
+  // export) must not produce a {type: "text", text: ""} node — prosemirror
+  // rejects empty text nodes and the whole document fails to render.
+  if (!text) return [];
   const out: JSONNode[] = [];
   let lastIndex = 0;
   let m: RegExpExecArray | null;
@@ -452,7 +451,11 @@ function parseInlineMarkdown(text: string): JSONNode[] {
   if (lastIndex < text.length) {
     out.push(...parseInlineMarkdownInner(text.slice(lastIndex)));
   }
-  return out.length > 0 ? out : [{ type: "text", text }];
+  const filtered = out.filter(
+    (n) => n.type !== "text" || (typeof n.text === "string" && n.text.length > 0),
+  );
+  if (filtered.length > 0) return filtered;
+  return text ? [{ type: "text", text }] : [];
 }
 
 function parseInlineMarkdownInner(text: string): JSONNode[] {
@@ -595,7 +598,10 @@ function parseListBlock(block: string): JSONNode | null {
       }
       continue;
     }
-    const body = isBullet ? m[2] : m[1];
+    const body = (isBullet ? m[2] : m[1]).trim();
+    // Skip bullets with no content (e.g. "-   " from Google Doc exports) —
+    // they'd become empty list items that crash the prosemirror renderer.
+    if (!body) continue;
     items.push({
       type: "listItem",
       content: [
@@ -606,6 +612,7 @@ function parseListBlock(block: string): JSONNode | null {
       ],
     });
   }
+  if (items.length === 0) return null;
   return {
     type: isBullet ? "bulletList" : "orderedList",
     content: items,

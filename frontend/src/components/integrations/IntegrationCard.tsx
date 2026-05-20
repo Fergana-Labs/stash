@@ -8,11 +8,19 @@ import {
   disconnectIntegration,
   startConnect,
 } from "@/lib/integrations";
+import { GitHubIcon, GoogleDriveIcon, NotionIcon } from "./BrandIcons";
 
 type Props = {
   status: IntegrationStatus;
   onChanged?: () => void;
 };
+
+function ProviderIcon({ provider }: { provider: string }) {
+  if (provider === "github") return <GitHubIcon size={22} className="text-foreground" />;
+  if (provider === "google") return <GoogleDriveIcon size={22} />;
+  if (provider === "notion") return <NotionIcon size={22} className="text-foreground" />;
+  return null;
+}
 
 /**
  * Generic card for any registered integration. Renders the provider's
@@ -47,6 +55,9 @@ export default function IntegrationCard({ status, onChanged }: Props) {
 
   return (
     <div className="rounded-xl border border-border bg-background p-4 flex items-center gap-4">
+      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-raised">
+        <ProviderIcon provider={status.provider} />
+      </span>
       <div className="min-w-0 flex-1">
         <div className="text-sm font-semibold text-foreground">{status.display_name}</div>
         {status.connected ? (
@@ -60,16 +71,7 @@ export default function IntegrationCard({ status, onChanged }: Props) {
             ) : null}
           </div>
         ) : (
-          <div className="text-xs text-muted mt-0.5">
-            Not connected
-            {status.scopes.length > 0 ? (
-              <>
-                {" "}
-                · scopes:{" "}
-                <span className="font-mono">{status.scopes.join(", ")}</span>
-              </>
-            ) : null}
-          </div>
+          <div className="text-xs text-muted mt-0.5">Not connected</div>
         )}
       </div>
       {status.connected ? (

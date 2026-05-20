@@ -15,6 +15,7 @@ with a clear message rather than silently dropping content.
 from __future__ import annotations
 
 import logging
+import re
 from uuid import UUID
 
 import asyncpg
@@ -39,6 +40,19 @@ MIME_GOOGLE_DOC = "application/vnd.google-apps.document"
 MIME_GOOGLE_SHEET = "application/vnd.google-apps.spreadsheet"
 MIME_PPTX = "application/vnd.openxmlformats-officedocument.presentationml.presentation"
 
+# Google's markdown export emits literal "- " / "* " / "1. " lines with no
+# content. Tiptap's prosemirror schema rejects empty text nodes when loading
+# the doc, which crashes the whole page render. Strip them at import time so
+# the stored markdown is valid wherever it's later parsed.
+_EMPTY_BULLET_RE = re.compile(r"^[ \t]*[-*+][ \t]*$\n?", re.MULTILINE)
+_EMPTY_NUMBERED_RE = re.compile(r"^[ \t]*\d+\.[ \t]*$\n?", re.MULTILINE)
+
+
+def _sanitize_drive_markdown(md: str) -> str:
+    md = _EMPTY_BULLET_RE.sub("", md)
+    md = _EMPTY_NUMBERED_RE.sub("", md)
+    return md
+
 
 async def _drive_get(client: httpx.AsyncClient, url: str) -> httpx.Response:
     resp = await client.get(url)
@@ -60,7 +74,7 @@ async def _import_google_doc(
         client,
         DRIVE_EXPORT_URL.format(file_id=file_id) + "?mimeType=text/markdown",
     )
-    markdown = resp.text
+    markdown = _sanitize_drive_markdown(resp.text)
     pool = get_pool()
     try:
         row = await pool.fetchrow(

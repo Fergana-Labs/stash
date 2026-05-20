@@ -25,12 +25,12 @@ USERINFO_URL = "https://www.googleapis.com/oauth2/v3/userinfo"
 class GoogleIntegration(Integration):
     name = "google"
     display_name = "Google"
-    # drive.readonly: read Docs/Sheets/PPTX for import
-    # drive.file: create files in user's Drive for Slides export
+    # drive.file is the minimal Drive scope — it only grants access to files
+    # the user explicitly selects through the Drive Picker (for import) or
+    # files our app creates (for Slides export). Avoids the scary
+    # "read all your Drive files" consent screen.
     scopes = [
-        "https://www.googleapis.com/auth/drive.readonly",
         "https://www.googleapis.com/auth/drive.file",
-        "https://www.googleapis.com/auth/spreadsheets.readonly",
         "openid",
         "email",
         "profile",

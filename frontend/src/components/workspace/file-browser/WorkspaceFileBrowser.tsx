@@ -22,6 +22,7 @@ import type {
   PageSummary,
   WorkspaceTree,
 } from "../../../lib/types";
+import { refreshWorkspaceSidebar } from "../../../lib/stashNavigationCache";
 import { FileBrowserSkeleton } from "../../SkeletonStates";
 import EditableTitle from "../EditableTitle";
 import FolderItemGrid, { type GridItem, type ItemKind } from "./FolderItemGrid";
@@ -252,6 +253,7 @@ export default function WorkspaceFileBrowser({ workspaceId, folderId }: Props) {
   async function handleNewPage() {
     try {
       const p = await createPage(workspaceId, "Untitled", folderId ?? undefined);
+      refreshWorkspaceSidebar(workspaceId).catch(() => {});
       router.push(`/workspaces/${workspaceId}/p/${p.id}`);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to create page");
@@ -264,6 +266,7 @@ export default function WorkspaceFileBrowser({ workspaceId, folderId }: Props) {
     try {
       await createFolder(workspaceId, name.trim(), folderId ?? undefined);
       await refreshAll();
+      refreshWorkspaceSidebar(workspaceId).catch(() => {});
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to create folder");
     }

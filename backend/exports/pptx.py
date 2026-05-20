@@ -128,7 +128,10 @@ async def _export(user_id: UUID, page_id: UUID) -> dict:
     pool = get_pool()
     workspace_id = await pool.fetchval("SELECT workspace_id FROM pages WHERE id = $1", page_id)
     stem, pptx_bytes = await build_pptx_bytes_for_page(page_id)
-    filename = f"{stem}-{uuid4().hex[:8]}.pptx"
+    # SigV4 signing breaks on spaces / parens / other punctuation in S3 keys
+    # once the URL gets percent-encoded. Collapse to an alnum-safe stem.
+    safe_stem = re.sub(r"[^\w.-]+", "_", stem).strip("_") or "slides"
+    filename = f"{safe_stem}-{uuid4().hex[:8]}.pptx"
     storage_key = await storage_service.upload_file(
         workspace_id=workspace_id,
         filename=filename,

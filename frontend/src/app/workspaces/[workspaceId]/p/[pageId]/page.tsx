@@ -434,15 +434,6 @@ export default function StashPageView() {
             ) : null}
           </article>
 
-          {page && !isHtml && (
-            <div className="mt-6 flex items-center gap-2 rounded-lg border border-dashed border-border bg-surface px-3 py-2.5 text-[12.5px] text-muted">
-              <span className="font-mono text-dim">/</span>
-              <span>
-                press <KeyHint>/</KeyHint> for blocks · <KeyHint>@</KeyHint> for pages or
-                people · <KeyHint>⌘+J</KeyHint> to ask the workspace
-              </span>
-            </div>
-          )}
         </main>
 
         <div className="mt-20 hidden flex-col gap-4 lg:flex">
@@ -495,14 +486,6 @@ function StashAside({ stashes }: { stashes: WorkspaceStash[] }) {
         )}
       </div>
     </aside>
-  );
-}
-
-function KeyHint({ children }: { children: React.ReactNode }) {
-  return (
-    <span className="rounded-[3px] bg-raised px-[5px] font-mono text-[11px] text-dim">
-      {children}
-    </span>
   );
 }
 
