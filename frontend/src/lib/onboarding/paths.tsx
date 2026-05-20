@@ -41,7 +41,9 @@ export type PathDef = {
   id: PathId;
   label: string;
   steps: ComponentType<StepCtx>[];
-  doneStep: ComponentType<{ workspaceId: string | null }>;
+  // Optional. When omitted, finishing the last step seeds the welcome
+  // page and redirects to /workspaces/{id} — no Done UI shown.
+  doneStep?: ComponentType<{ workspaceId: string | null }>;
 };
 
 // Each path's tail (Invite + Done) is shared. The existing InviteStep
@@ -69,7 +71,6 @@ export const PATHS: Record<PathId, PathDef> = {
     id: "sharing",
     label: "Artifacts",
     steps: [SharingDropStep, SharingBrowseStep, SharingHandoffStep],
-    doneStep: DoneStep,
   },
 };
 

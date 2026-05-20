@@ -3,18 +3,8 @@
 import { useEffect, useRef } from "react";
 import Link from "next/link";
 
-import { isBlankDescription } from "@/components/DescriptionEditor";
-import {
-  getWorkspace,
-  getWorkspaceOverview,
-  updateWorkspace,
-} from "@/lib/api";
 import { useAuth } from "@/hooks/useAuth";
-import { generateWelcomeHtml } from "@/lib/onboarding/welcomeContent";
-import type { MigrantSource, PathId } from "@/lib/onboarding/paths";
-
-const PATH_STORAGE_KEY = "stash_onboarding_path";
-const SHARED_URL_KEY = "stash_onboarding_shared_url";
+import { seedWelcomePage } from "@/lib/onboarding/seedWelcome";
 
 type Props = {
   workspaceId: string | null;
@@ -88,63 +78,3 @@ export default function DoneStep({ workspaceId }: Props) {
   );
 }
 
-async function seedWelcomePage(args: {
-  workspaceId: string;
-  displayName: string;
-}) {
-  const { workspaceId, displayName } = args;
-
-  const [workspace, overview] = await Promise.all([
-    getWorkspace(workspaceId),
-    getWorkspaceOverview(workspaceId),
-  ]);
-
-  // Don't clobber an edited description — only seed if it's empty.
-  if (!isBlankDescription(workspace.description ?? "")) return;
-
-  const path = readPath();
-  const source = readSource();
-  const sharedUrl = readSharedUrl();
-  const inviteLink =
-    typeof window !== "undefined" && workspace.invite_code
-      ? `${window.location.origin}/join/${workspace.invite_code}`
-      : null;
-
-  const html = generateWelcomeHtml({
-    path,
-    source,
-    displayName,
-    inviteLink,
-    sharedUrl,
-    counts: {
-      pages: overview.files?.pages?.length ?? 0,
-      files: overview.files?.files?.length ?? 0,
-      sessions: overview.sessions?.length ?? 0,
-    },
-  });
-
-  await updateWorkspace(workspaceId, { description: html });
-  if (typeof window !== "undefined") {
-    window.localStorage.removeItem(SHARED_URL_KEY);
-  }
-}
-
-function readPath(): PathId | null {
-  if (typeof window === "undefined") return null;
-  const v = window.localStorage.getItem(PATH_STORAGE_KEY);
-  if (v === "migrant" || v === "memory" || v === "sharing") return v;
-  return null;
-}
-
-function readSource(): MigrantSource | null {
-  if (typeof window === "undefined") return null;
-  const params = new URLSearchParams(window.location.search);
-  const v = params.get("source");
-  if (v === "notion" || v === "obsidian" || v === "github") return v;
-  return null;
-}
-
-function readSharedUrl(): string | null {
-  if (typeof window === "undefined") return null;
-  return window.localStorage.getItem(SHARED_URL_KEY);
-}

@@ -13,6 +13,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import Header from "../../components/Header";
 import { useAuth } from "../../hooks/useAuth";
 import { getToken, listMyWorkspaces } from "../../lib/api";
+import { seedWelcomePage } from "../../lib/onboarding/seedWelcome";
 
 import IntentStep from "./IntentStep";
 import {
@@ -169,10 +170,30 @@ function OnboardingInner() {
   const totalSteps = pathDef.steps.length;
   const isDone = stepIdx >= totalSteps;
 
+  async function finishAndExit() {
+    if (workspaceId && user) {
+      try {
+        await seedWelcomePage({
+          workspaceId,
+          displayName: user.display_name || user.name,
+        });
+      } catch {
+        // Seeding is best-effort. If it fails (network, permission),
+        // still redirect — the user can edit the description anytime.
+      }
+    }
+    skipToWorkspace();
+  }
+
   function nextStep() {
     if (stepIdx + 1 >= totalSteps) {
-      // Past the last regular step — advance to done.
-      goToStep(totalSteps);
+      if (pathDef.doneStep) {
+        // Path has a Done UI — render it.
+        goToStep(totalSteps);
+      } else {
+        // No Done UI — seed the welcome page and redirect to workspace.
+        void finishAndExit();
+      }
     } else {
       goToStep(stepIdx + 1);
     }
@@ -201,9 +222,10 @@ function OnboardingInner() {
             stepIdx={stepIdx}
             onJump={goToStep}
             isDone={isDone}
+            showDone={!!pathDef.doneStep}
           />
 
-          {isDone ? (
+          {isDone && pathDef.doneStep ? (
             <pathDef.doneStep workspaceId={workspaceId} />
           ) : (
             <>
@@ -233,15 +255,17 @@ function ProgressBar({
   stepIdx,
   onJump,
   isDone,
+  showDone,
 }: {
   path: PathId;
   totalSteps: number;
   stepIdx: number;
   onJump: (idx: number) => void;
   isDone: boolean;
+  showDone: boolean;
 }) {
   const labels = Array.from({ length: totalSteps }, (_, i) => `Step ${i + 1}`);
-  labels.push("Done");
+  if (showDone) labels.push("Done");
   const currentIdx = isDone ? totalSteps : stepIdx;
 
   return (
