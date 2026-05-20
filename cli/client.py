@@ -289,6 +289,9 @@ class StashClient:
     def get_workspace_tree(self, workspace_id: str) -> dict:
         return self._get(f"/api/v1/workspaces/{workspace_id}/tree")
 
+    def get_workspace_overview(self, workspace_id: str) -> dict:
+        return self._get(f"/api/v1/workspaces/{workspace_id}/overview")
+
     # --- Pages (workspace-scoped) ---
 
     def create_page(
@@ -511,6 +514,12 @@ class StashClient:
     def get_ws_file_text(self, workspace_id: str, file_id: str) -> dict:
         return self._get(f"/api/v1/workspaces/{workspace_id}/files/{file_id}/text")
 
+    def download_ws_file(self, workspace_id: str, file_id: str) -> bytes:
+        return self._request(
+            "GET",
+            f"/api/v1/workspaces/{workspace_id}/files/{file_id}/download",
+        ).content
+
     # --- Tables ---
 
     def create_table(
@@ -592,6 +601,16 @@ class StashClient:
 
     def delete_session(self, workspace_id: str, session_row_id: str) -> None:
         self._delete(f"/api/v1/workspaces/{workspace_id}/sessions/{session_row_id}")
+
+    def get_transcript_events(self, workspace_id: str, session_id: str) -> list:
+        data = self._get(f"/api/v1/workspaces/{workspace_id}/transcripts/{session_id}/events")
+        return data.get("events", []) if isinstance(data, dict) else data
+
+    def export_transcript_jsonl(self, workspace_id: str, session_id: str) -> str:
+        return self._request(
+            "GET",
+            f"/api/v1/workspaces/{workspace_id}/transcripts/{session_id}/export.jsonl",
+        ).text
 
     def restore_session(self, workspace_id: str, session_row_id: str) -> None:
         self._post(f"/api/v1/workspaces/{workspace_id}/sessions/{session_row_id}/restore")

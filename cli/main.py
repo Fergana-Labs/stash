@@ -4037,6 +4037,35 @@ def disconnect_cmd():
     console.print(f"  [green]✓[/green] Removed [cyan]{MANIFEST_FILE}[/cyan] — repo disconnected.")
 
 
+@app.command("mount")
+def mount_command(
+    mountpoint: str = typer.Argument(..., help="Directory where Stash should be mounted."),
+    workspace_id: str = typer.Option(
+        None,
+        "--ws",
+        help="Mount one workspace by id. By default every accessible workspace is exposed.",
+    ),
+):
+    """Mount Stash as a local FUSE filesystem."""
+    from .mount import StashMountError, mount_stash
+
+    cfg = load_config()
+    if not cfg.get("api_key"):
+        console.print("[red]Not signed in. Run [bold]stash signin[/bold] first.[/red]")
+        raise typer.Exit(1)
+
+    client = StashClient(base_url=cfg["base_url"], api_key=cfg["api_key"])
+    try:
+        console.print(f"[green]Mounting Stash at {mountpoint}[/green]")
+        console.print("[dim]Press Ctrl-C to unmount.[/dim]")
+        mount_stash(client, Path(mountpoint).expanduser(), workspace_id=workspace_id)
+    except StashMountError as e:
+        console.print(f"[red]{e}[/red]")
+        raise typer.Exit(1)
+    finally:
+        client.close()
+
+
 # ===========================================================================
 # Config
 # ===========================================================================
