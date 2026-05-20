@@ -1,15 +1,11 @@
-"""Drop 'summarizing' from stashes.status CHECK constraint.
+"""Reserved cleanup revision for removed session-bundle stash status.
 
-The Celery summarize task was removed in #369, so no code path ever sets
-`stashes.status = 'summarizing'` anymore. The status column itself is
-basically vestigial — only 'live' is ever set — but we keep the column
-for now and just narrow the allowed values.
+The old session-bundle `stashes.status` column is gone from the current
+product Stash schema, so there is no status constraint left to narrow.
 
 Revision ID: 0068
 Revises: 0067
 """
-
-from alembic import op
 
 revision = "0068"
 down_revision = "0067"
@@ -18,36 +14,8 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.execute("""
-        DO $$
-        BEGIN
-            IF EXISTS (
-                SELECT 1
-                FROM information_schema.columns
-                WHERE table_name = 'stashes'
-                  AND column_name = 'status'
-            ) THEN
-                ALTER TABLE stashes DROP CONSTRAINT IF EXISTS stashes_status_check;
-                ALTER TABLE stashes ADD CONSTRAINT stashes_status_check
-                    CHECK (status IN ('live', 'ready', 'failed'));
-            END IF;
-        END $$;
-    """)
+    pass
 
 
 def downgrade() -> None:
-    op.execute("""
-        DO $$
-        BEGIN
-            IF EXISTS (
-                SELECT 1
-                FROM information_schema.columns
-                WHERE table_name = 'stashes'
-                  AND column_name = 'status'
-            ) THEN
-                ALTER TABLE stashes DROP CONSTRAINT IF EXISTS stashes_status_check;
-                ALTER TABLE stashes ADD CONSTRAINT stashes_status_check
-                    CHECK (status IN ('live', 'summarizing', 'ready', 'failed'));
-            END IF;
-        END $$;
-    """)
+    pass

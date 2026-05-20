@@ -96,6 +96,7 @@ class Settings:
     # --- LLM (Anthropic) ---
     ANTHROPIC_API_KEY: str | None = os.getenv("ANTHROPIC_API_KEY")
     ANTHROPIC_MODEL: str = os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-6")
+    ANTHROPIC_FAST_MODEL: str = os.getenv("ANTHROPIC_FAST_MODEL", "claude-haiku-4-5")
 
 
 settings = Settings()
