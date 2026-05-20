@@ -3829,7 +3829,7 @@ def _show_setup_complete_splash() -> None:
         "\n"
         f"{workspace_link_section}"
         "[bold]Commands your agent can now use[/bold]\n"
-        "  [#1e3a8a]stash vfs \"find /workspaces -maxdepth 3 -type f\"[/#1e3a8a]   browse Stash like a filesystem\n"
+        '  [#1e3a8a]stash vfs "find /workspaces -maxdepth 3 -type f"[/#1e3a8a]   browse Stash like a filesystem\n'
         '  [#1e3a8a]stash sessions search "<query>"[/#1e3a8a]   full-text search across transcripts\n'
         "  [#1e3a8a]stash sessions query --agent <name>[/#1e3a8a]   pull a specific agent's events\n"
         "\n"

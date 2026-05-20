@@ -190,7 +190,9 @@ class StashVfsModel:
 
         for page in tree.get("pages", []):
             page_id = str(page["id"])
-            parent_path = folder_path(str(page["folder_id"])) if page.get("folder_id") else root_path
+            parent_path = (
+                folder_path(str(page["folder_id"])) if page.get("folder_id") else root_path
+            )
             content_type = page.get("content_type") or "markdown"
             extension = ".html" if content_type == "html" else ".md"
             name = _object_file_name(page.get("name") or "page", page_id, extension)
@@ -208,7 +210,9 @@ class StashVfsModel:
 
         for file in tree.get("files", []):
             file_id = str(file["id"])
-            parent_path = folder_path(str(file["folder_id"])) if file.get("folder_id") else root_path
+            parent_path = (
+                folder_path(str(file["folder_id"])) if file.get("folder_id") else root_path
+            )
             name = _object_file_name(file.get("name") or "file", file_id, "")
             self._add_file(
                 f"{parent_path}/{name}",
@@ -273,7 +277,9 @@ class StashVfsModel:
             )
             self._add_file(
                 f"{table_path}/schema.json",
-                loader=lambda ws=workspace_id, tid=table_id: _json_bytes(self.client.get_table(ws, tid)),
+                loader=lambda ws=workspace_id, tid=table_id: _json_bytes(
+                    self.client.get_table(ws, tid)
+                ),
             )
             self._add_file(
                 f"{table_path}/rows.json",
@@ -294,7 +300,9 @@ class StashVfsModel:
             return _text_bytes(page.get("content_html") or "")
         return _text_bytes(page.get("content_markdown") or "")
 
-    def _write_page(self, workspace_id: str, page_id: str, content_type: str, content: bytes) -> None:
+    def _write_page(
+        self, workspace_id: str, page_id: str, content_type: str, content: bytes
+    ) -> None:
         text = content.decode("utf-8")
         if content_type == "html":
             self.client.update_page(workspace_id, page_id, content_type="html", content_html=text)
@@ -351,9 +359,11 @@ class StashVfsModel:
             loader=loader,
             writer=writer,
             content=content,
-            size_hint=size_hint
-            if size_hint is not None
-            else (len(content) if content is not None else None),
+            size_hint=(
+                size_hint
+                if size_hint is not None
+                else (len(content) if content is not None else None)
+            ),
         )
         self.nodes[parent].children[name] = path
         return path

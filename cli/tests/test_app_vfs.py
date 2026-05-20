@@ -66,9 +66,13 @@ def _shell(client=None):
 def _page_path(shell: StashAppVfsShell) -> str:
     workspace_name = shell.model.list_dir("/workspaces")[0]
     files_path = f"/workspaces/{workspace_name}/files"
-    folder_name = next(name for name in shell.model.list_dir(files_path) if name.startswith("Notes--"))
+    folder_name = next(
+        name for name in shell.model.list_dir(files_path) if name.startswith("Notes--")
+    )
     folder_path = f"{files_path}/{folder_name}"
-    page_name = next(name for name in shell.model.list_dir(folder_path) if name.startswith("Plan--"))
+    page_name = next(
+        name for name in shell.model.list_dir(folder_path) if name.startswith("Plan--")
+    )
     return f"{folder_path}/{page_name}"
 
 
