@@ -4039,15 +4039,36 @@ def disconnect_cmd():
 
 @app.command("mount")
 def mount_command(
-    mountpoint: str = typer.Argument(..., help="Directory where Stash should be mounted."),
+    mountpoint: str | None = typer.Argument(
+        None,
+        help="Directory where Stash should be mounted.",
+    ),
     workspace_id: str = typer.Option(
         None,
         "--ws",
         help="Mount one workspace by id. By default every accessible workspace is exposed.",
     ),
+    check: bool = typer.Option(
+        False,
+        "--check",
+        help="Verify the local FUSE runtime is available, then exit.",
+    ),
 ):
     """Mount Stash as a local FUSE filesystem."""
-    from .mount import StashMountError, mount_stash
+    from .mount import StashMountError, check_fuse_runtime, mount_stash
+
+    if check:
+        try:
+            check_fuse_runtime()
+        except StashMountError as e:
+            console.print(f"[red]{e}[/red]")
+            raise typer.Exit(1)
+        console.print("[green]FUSE runtime available.[/green]")
+        return
+
+    if mountpoint is None:
+        console.print("[red]MOUNTPOINT is required unless --check is set.[/red]")
+        raise typer.Exit(1)
 
     cfg = load_config()
     if not cfg.get("api_key"):

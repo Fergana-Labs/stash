@@ -8,6 +8,7 @@ import os
 import posixpath
 import re
 import stat
+import sys
 import threading
 import time
 from collections.abc import Callable
@@ -511,14 +512,7 @@ class StashFuseOperations:
 
 
 def mount_stash(client: StashClient, mountpoint: Path, workspace_id: str | None = None) -> None:
-    try:
-        from fuse import FUSE
-    except (ImportError, OSError) as e:
-        raise StashMountError(
-            "Stash mount requires the FUSE runtime. Install Stash from the platform installer "
-            "so the filesystem provider is installed with the CLI."
-        ) from e
-
+    FUSE = _load_fuse_class()
     mountpoint.mkdir(parents=True, exist_ok=True)
     model = StashVfsModel(client, workspace_id=workspace_id)
     model.refresh()
@@ -526,6 +520,31 @@ def mount_stash(client: StashClient, mountpoint: Path, workspace_id: str | None 
         FUSE(StashFuseOperations(model), str(mountpoint), foreground=True, nothreads=True)
     except (OSError, RuntimeError) as e:
         raise StashMountError(f"Stash mount failed: {e}") from e
+
+
+def check_fuse_runtime() -> None:
+    _load_fuse_class()
+
+
+def _load_fuse_class():
+    _configure_fuse_library_path()
+    try:
+        from fuse import FUSE
+    except (ImportError, OSError) as e:
+        raise StashMountError(
+            "Stash mount requires the FUSE runtime. Install Stash from the platform installer "
+            "so the filesystem provider is installed with the CLI."
+        ) from e
+    return FUSE
+
+
+def _configure_fuse_library_path() -> None:
+    if os.environ.get("FUSE_LIBRARY_PATH") or sys.platform != "darwin":
+        return
+
+    fuse_t_path = Path("/usr/local/lib/libfuse-t.dylib")
+    if fuse_t_path.is_file():
+        os.environ["FUSE_LIBRARY_PATH"] = str(fuse_t_path)
 
 
 def _flags_request_write(flags: int) -> bool:
