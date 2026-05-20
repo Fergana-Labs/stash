@@ -286,13 +286,22 @@ export default function EditorToolbar({
       {onStartComment && (
         <>
           <Sep />
-          <Btn
-            title={selectionEmpty ? "Select text to comment" : "Comment on selection"}
-            disabled={selectionEmpty}
+          <button
+            type="button"
+            onMouseDown={(e) => e.preventDefault()}
             onClick={() => onStartComment()}
+            disabled={selectionEmpty}
+            title={selectionEmpty ? "Select text to comment" : "Comment on selection"}
+            className={
+              "inline-flex h-7 items-center gap-1.5 rounded-md px-2.5 text-[12.5px] font-medium transition " +
+              (selectionEmpty
+                ? "cursor-not-allowed text-muted/40"
+                : "text-foreground hover:bg-raised")
+            }
           >
             <CommentIcon />
-          </Btn>
+            Comment
+          </button>
         </>
       )}
 

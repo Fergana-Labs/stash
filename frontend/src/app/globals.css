@@ -600,6 +600,42 @@ details > summary::-webkit-details-marker {
   color: var(--text-primary);
 }
 
+/* Multi-cell selection — Tiptap/prosemirror-tables sets `.selectedCell`
+   on each cell in a drag-selected range. We render the highlight via a
+   pseudo-element so the cell's own text/styles stay untouched. */
+.ProseMirror table td,
+.ProseMirror table th {
+  position: relative;
+}
+.ProseMirror table td.selectedCell::after,
+.ProseMirror table th.selectedCell::after {
+  background: rgba(249, 115, 22, 0.18);
+  content: "";
+  inset: 0;
+  pointer-events: none;
+  position: absolute;
+  z-index: 2;
+}
+
+/* Column resize handle (Table.configure({ resizable: true })). */
+.ProseMirror .tableWrapper {
+  overflow-x: auto;
+  margin: 1em 0;
+}
+.ProseMirror .column-resize-handle {
+  background-color: var(--color-brand-400, #fb923c);
+  bottom: -2px;
+  pointer-events: none;
+  position: absolute;
+  right: -2px;
+  top: 0;
+  width: 4px;
+  z-index: 20;
+}
+.ProseMirror.resize-cursor {
+  cursor: col-resize;
+}
+
 /* =============================================================
  * Links — one visual language for markdown links.
  *
