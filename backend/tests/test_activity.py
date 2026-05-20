@@ -27,11 +27,17 @@ async def _workspace(client: AsyncClient, api_key: str, name: str) -> dict:
     return resp.json()
 
 
-async def _event(client: AsyncClient, api_key: str, workspace_id: str, session_id: str) -> None:
+async def _event(
+    client: AsyncClient,
+    api_key: str,
+    workspace_id: str,
+    session_id: str,
+    agent_name: str = "tester",
+) -> None:
     resp = await client.post(
         f"/api/v1/workspaces/{workspace_id}/sessions/events",
         json={
-            "agent_name": "tester",
+            "agent_name": agent_name,
             "event_type": "assistant_message",
             "content": session_id,
             "session_id": session_id,
@@ -93,6 +99,41 @@ async def test_activity_timeline_pivots_on_human_and_agent_sessions(client: Asyn
         for contributor in bucket["contributors"].values()
     ]
     assert totals == [1]
+
+
+@pytest.mark.asyncio
+async def test_activity_timeline_counts_claude_subagents_as_claude(client: AsyncClient):
+    register_resp = await client.post(
+        "/api/v1/users/register",
+        json={
+            "name": unique_name("activity_claude_subagents"),
+            "display_name": "Claude Human",
+            "password": "securepassword1",
+        },
+    )
+    assert register_resp.status_code == 201
+    api_key = register_resp.json()["api_key"]
+    workspace = await _workspace(client, api_key, "Claude Activity")
+
+    await _event(client, api_key, workspace["id"], "claude-parent", "claude")
+    await _event(client, api_key, workspace["id"], "claude-child", "claude-subagent")
+
+    resp = await client.get(
+        "/api/v1/me/activity-timeline",
+        params={"days": 365, "workspace_id": workspace["id"]},
+        headers=_auth(api_key),
+    )
+    assert resp.status_code == 200
+
+    timeline = resp.json()
+    assert timeline["contributors"] == ["Claude Human / claude"]
+
+    totals = [
+        contributor["total"]
+        for bucket in timeline["buckets"]
+        for contributor in bucket["contributors"].values()
+    ]
+    assert totals == [2]
 
 
 @pytest.mark.asyncio
