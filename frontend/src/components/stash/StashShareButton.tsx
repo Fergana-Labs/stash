@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
+import TerminalOutlinedIcon from "@mui/icons-material/TerminalOutlined";
 import { useEscapeKey } from "../../hooks/useEscapeKey";
 import {
   addStashMember,
@@ -19,6 +20,7 @@ import { resetStashNavigationCache } from "../../lib/stashNavigationCache";
 import type { UserSearchResult } from "../../lib/types";
 
 type StashVisibility = "private" | "workspace" | "public";
+type HandoffStatus = "idle" | "copying" | "copied" | "error";
 
 const PERMISSION_OPTIONS: { value: StashMemberPermission; label: string }[] = [
   { value: "read", label: "Read" },
@@ -103,6 +105,8 @@ export default function StashShareButton({
   const [discoverable, setDiscoverable] = useState(stash.discoverable);
   const [saving, setSaving] = useState(false);
   const [shareMessage, setShareMessage] = useState("");
+  const [handoffStatus, setHandoffStatus] = useState<HandoffStatus>("idle");
+  const [handoffMessage, setHandoffMessage] = useState("");
   const [members, setMembers] = useState<StashMember[]>([]);
   const [meId, setMeId] = useState<string | null>(null);
   const [membersLoading, setMembersLoading] = useState(false);
@@ -177,6 +181,40 @@ export default function StashShareButton({
       window.setTimeout(() => setCopied(false), 1600);
     } catch {
       setShareMessage("Failed to copy link.");
+    }
+  }
+
+  async function copyAgentHandoffLink() {
+    setOpen(false);
+    setHandoffStatus("copying");
+    setHandoffMessage("");
+    try {
+      if (publicPermission === "none") {
+        if (!canWrite) {
+          throw new Error("Only Stash editors can create public agent links.");
+        }
+        const updated = await updateStash(stash.id, {
+          workspace_permission:
+            workspacePermission === "none" ? "read" : workspacePermission,
+          public_permission: "read",
+          discoverable: false,
+        });
+        setWorkspacePermission(updated.workspace_permission);
+        setPublicPermission(updated.public_permission);
+        setDiscoverable(updated.discoverable);
+        resetStashNavigationCache();
+      }
+
+      await navigator.clipboard.writeText(agentHandoffUrl(stash.slug));
+      setHandoffStatus("copied");
+      window.setTimeout(() => setHandoffStatus("idle"), 1600);
+    } catch (e) {
+      setHandoffStatus("error");
+      setHandoffMessage(e instanceof Error ? e.message : "Could not copy agent link.");
+      window.setTimeout(() => {
+        setHandoffStatus("idle");
+        setHandoffMessage("");
+      }, 3000);
     }
   }
 
@@ -306,7 +344,22 @@ export default function StashShareButton({
   }
 
   return (
-    <div ref={popoverRef} className="relative">
+    <div ref={popoverRef} className="relative flex items-center gap-1.5">
+      <button
+        type="button"
+        onClick={() => void copyAgentHandoffLink()}
+        disabled={handoffStatus === "copying"}
+        aria-label="Copy agent handoff link"
+        title="Copy an agent-readable public link"
+        className="inline-flex min-w-[86px] items-center justify-center gap-1.5 rounded-md border border-[var(--color-agent)] bg-[var(--color-agent-muted)] px-2.5 py-1 text-[12.5px] font-medium text-[var(--color-agent)] hover:bg-raised disabled:opacity-50"
+      >
+        <TerminalOutlinedIcon aria-hidden="true" className="text-[14px]" />
+        {handoffStatus === "copying"
+          ? "Copying"
+          : handoffStatus === "copied"
+            ? "Copied"
+            : "Hand off"}
+      </button>
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
@@ -316,6 +369,11 @@ export default function StashShareButton({
       >
         Share
       </button>
+      {handoffMessage && !open && (
+        <div className="absolute right-0 top-full z-40 mt-1.5 max-w-[280px] rounded-md border border-border bg-base px-2 py-1.5 text-[12px] text-muted shadow-lg">
+          {handoffMessage}
+        </div>
+      )}
       {open && (
         <div
           role="dialog"
@@ -684,4 +742,8 @@ function initials(label: string): string {
 function absoluteUrl(path: string): string {
   if (typeof window === "undefined") return path;
   return `${window.location.origin}${path}`;
+}
+
+function agentHandoffUrl(slug: string): string {
+  return absoluteUrl(`/api/v1/stashes/${slug}?format=text`);
 }

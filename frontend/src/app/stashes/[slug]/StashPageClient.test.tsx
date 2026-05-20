@@ -199,6 +199,9 @@ describe("StashPageClient sharing", () => {
     render(<StashPageClient slug="shared-stash" />);
 
     const shareButton = await screen.findByRole("button", { name: "Share" });
+    expect(
+      screen.getByRole("button", { name: "Copy agent handoff link" }),
+    ).toBeInTheDocument();
     expect(shareButton.closest("header")).not.toBeNull();
     expect(screen.getAllByRole("button", { name: "Share" })).toHaveLength(1);
 
@@ -212,6 +215,56 @@ describe("StashPageClient sharing", () => {
       ),
     );
     expect(screen.getByRole("button", { name: "Copied" })).toBeInTheDocument();
+  });
+
+  it("copies an agent-readable handoff link from the app header", async () => {
+    render(<StashPageClient slug="shared-stash" />);
+
+    const handoffButton = await screen.findByRole("button", {
+      name: "Copy agent handoff link",
+    });
+    fireEvent.click(handoffButton);
+
+    await waitFor(() =>
+      expect(navigator.clipboard.writeText).toHaveBeenCalledWith(
+        `${window.location.origin}/api/v1/stashes/shared-stash?format=text`,
+      ),
+    );
+    expect(
+      screen.getByRole("button", { name: "Copy agent handoff link" }),
+    ).toHaveTextContent("Copied");
+  });
+
+  it("makes private Stashes public and unlisted before copying an agent link", async () => {
+    vi.mocked(getPublicStash).mockResolvedValueOnce({
+      ...stashDetail({
+        access: "private",
+        workspace_permission: "none",
+        public_permission: "none",
+        discoverable: false,
+      }),
+      can_write: true,
+    });
+
+    render(<StashPageClient slug="shared-stash" />);
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Copy agent handoff link" }),
+    );
+
+    await waitFor(() =>
+      expect(updateStash).toHaveBeenCalledWith("stash-1", {
+        workspace_permission: "read",
+        public_permission: "read",
+        discoverable: false,
+      }),
+    );
+    expect(navigator.clipboard.writeText).toHaveBeenCalledWith(
+      `${window.location.origin}/api/v1/stashes/shared-stash?format=text`,
+    );
+    expect(
+      screen.getByRole("button", { name: "Copy agent handoff link" }),
+    ).toHaveTextContent("Copied");
   });
 
   it("can make the Stash private from the Share dropdown", async () => {
