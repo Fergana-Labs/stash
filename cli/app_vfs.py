@@ -26,18 +26,20 @@ class StashAppVfsShell:
         self._require_dir(self.cwd)
 
     def run(self, script: str) -> VfsCommandResult:
-        stdout = ""
+        stdout_parts = []
         for command in _split_unquoted(script, "&&"):
             for part in _split_unquoted(command, ";"):
                 part = part.strip()
                 if not part:
                     continue
                 result = self._run_pipeline(part)
+                if result.stdout:
+                    stdout_parts.append(result.stdout)
                 if result.exit_code != 0:
+                    result.stdout = "".join(stdout_parts)
                     result.cwd = self.cwd
                     return result
-                stdout = result.stdout
-        return VfsCommandResult(stdout=stdout, cwd=self.cwd)
+        return VfsCommandResult(stdout="".join(stdout_parts), cwd=self.cwd)
 
     def _run_pipeline(self, script: str) -> VfsCommandResult:
         stdin = ""
@@ -64,6 +66,8 @@ class StashAppVfsShell:
                 self._write_output(path, output, append)
                 output = ""
             return VfsCommandResult(stdout=output, cwd=self.cwd)
+        except VfsShellExit as e:
+            return VfsCommandResult(exit_code=e.exit_code, cwd=self.cwd)
         except VfsShellError as e:
             return VfsCommandResult(stderr=f"{name}: {e}\n", exit_code=e.exit_code, cwd=self.cwd)
         except (FileNotFoundError, NotADirectoryError, IsADirectoryError, PermissionError) as e:
@@ -309,7 +313,10 @@ class StashAppVfsShell:
             raise VfsShellError(str(e)) from e
 
         if stdin is not None and not paths:
-            return _grep_text(regex, stdin, "", show_line_numbers=False, prefix_path=False)
+            output = _grep_text(regex, stdin, "", show_line_numbers=False, prefix_path=False)
+            if not output:
+                raise VfsShellExit(1)
+            return output
 
         if not paths:
             paths = ["."]
@@ -331,7 +338,10 @@ class StashAppVfsShell:
                         prefix_path=len(file_paths) > 1 or recursive,
                     )
                 )
-        return "".join(matches)
+        output = "".join(matches)
+        if not output:
+            raise VfsShellExit(1)
+        return output
 
     def _sed(self, args: list[str], stdin: str | None) -> str:
         if not args:
@@ -395,10 +405,22 @@ class StashAppVfsShell:
     def _printf(self, args: list[str]) -> str:
         if not args:
             return ""
-        text = args[0].encode("utf-8").decode("unicode_escape")
-        if len(args) > 1:
-            text += " ".join(args[1:])
-        return text
+        template = args[0].encode("utf-8").decode("unicode_escape")
+        values = args[1:]
+        if "%" not in template:
+            return template
+        if not values:
+            return _render_printf_template(template, [])[0]
+
+        output = []
+        value_index = 0
+        while value_index < len(values):
+            rendered, used = _render_printf_template(template, values[value_index:])
+            output.append(rendered)
+            if used == 0:
+                break
+            value_index += used
+        return "".join(output)
 
     def _tee(self, args: list[str], stdin: str | None) -> str:
         append = False
@@ -471,6 +493,42 @@ class VfsShellError(Exception):
     def __init__(self, message: str, exit_code: int = 1):
         super().__init__(message)
         self.exit_code = exit_code
+
+
+class VfsShellExit(Exception):
+    def __init__(self, exit_code: int):
+        self.exit_code = exit_code
+        super().__init__(exit_code)
+
+
+def _render_printf_template(template: str, values: list[str]) -> tuple[str, int]:
+    output = []
+    used = 0
+    index = 0
+    while index < len(template):
+        char = template[index]
+        if char != "%":
+            output.append(char)
+            index += 1
+            continue
+
+        if index + 1 >= len(template):
+            raise VfsShellError("unsupported printf format: trailing %", exit_code=2)
+
+        specifier = template[index + 1]
+        if specifier == "%":
+            output.append("%")
+            index += 2
+            continue
+        if specifier != "s":
+            raise VfsShellError(f"unsupported printf format: %{specifier}", exit_code=2)
+
+        output.append(values[used] if used < len(values) else "")
+        if used < len(values):
+            used += 1
+        index += 2
+
+    return "".join(output), used
 
 
 def _grep_text(

@@ -109,6 +109,35 @@ def test_app_vfs_pipes_cat_to_sed_and_grep():
     assert "transcript.md:" in shell.run("rg -n hello /workspaces").stdout
 
 
+def test_app_vfs_grep_no_match_stops_and_chain():
+    shell, _client = _shell()
+
+    result = shell.run("rg missing-sentinel /workspaces && echo found")
+
+    assert result.exit_code == 1
+    assert result.stdout == ""
+    assert result.stderr == ""
+
+
+def test_app_vfs_printf_supports_string_formats():
+    shell, _client = _shell()
+
+    result = shell.run("printf '%s\\n' first second")
+
+    assert result.exit_code == 0
+    assert result.stdout == "first\nsecond\n"
+    assert shell.run("printf '100%%\\n'").stdout == "100%\n"
+
+
+def test_app_vfs_command_chaining_preserves_all_stdout():
+    shell, _client = _shell()
+
+    result = shell.run("printf 'one\\n'; printf 'two\\n'")
+
+    assert result.exit_code == 0
+    assert result.stdout == "one\ntwo\n"
+
+
 def test_app_vfs_writes_existing_writable_pages_with_redirect():
     shell, client = _shell()
     page_path = _page_path(shell)
