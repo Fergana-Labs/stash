@@ -348,7 +348,12 @@ function injectResizeBootstrap(
   const script = `<script>(function(){
     var c=${JSON.stringify(channel)};
     var BRIDGE_LINKS=${bridgeLinks ? "true" : "false"};
-    var COMMENT_HIGHLIGHT_CSS = "[data-comment-id]{background:rgba(254,240,138,.45);cursor:pointer;}[data-comment-id].is-active{background:rgba(250,204,21,.7);outline:1px solid #ca8a04;}body[contenteditable=\\"true\\"]{outline:2px dashed rgba(59,130,246,.5);outline-offset:-4px;}body[contenteditable=\\"true\\"] *{cursor:text;}";
+    // Slide-deck HTML (e.g. responsive layout with `<section class="slide">` +
+    // `.slide{display:none}.slide.active{display:flex}` styling) only renders
+    // one slide at a time. In edit mode we override that so every slide
+    // becomes visible and editable; without this the user can only edit the
+    // single currently-active slide.
+    var COMMENT_HIGHLIGHT_CSS = "[data-comment-id]{background:rgba(254,240,138,.45);cursor:pointer;}[data-comment-id].is-active{background:rgba(250,204,21,.7);outline:1px solid #ca8a04;}body[contenteditable=\\"true\\"]{outline:2px dashed rgba(59,130,246,.5);outline-offset:-4px;}body[contenteditable=\\"true\\"] *{cursor:text;}body[contenteditable=\\"true\\"] section.slide{display:flex !important;position:relative !important;inset:auto !important;margin-bottom:24px !important;}";
     var editable=false;
     var mutateTimer=null;
     function post(o){parent.postMessage(Object.assign({channel:c},o),"*");}
@@ -535,18 +540,65 @@ export function extractCommentIdsFromHtml(html: string): string[] {
 function injectSlideDeckBootstrap(html: string, channel: string): string {
   const script = `<script>(function(){
     var c=${JSON.stringify(channel)};
+    var editable=false;
+    var currentIdx=0;
+    // Visual feedback for edit mode: dashed outline on the body, text caret
+    // on all descendants, and let slides flow normally so the user can scroll
+    // and click between them.
+    var EDIT_CSS = "body[contenteditable=\\"true\\"]{outline:2px dashed rgba(59,130,246,.5);outline-offset:-4px;}body[contenteditable=\\"true\\"] *{cursor:text;}body[contenteditable=\\"true\\"] section.slide{display:flex !important;position:relative !important;inset:auto !important;margin-bottom:24px !important;}";
+    (function injectStyle(){
+      var s=document.createElement('style');
+      s.textContent=EDIT_CSS;
+      (document.head||document.documentElement).appendChild(s);
+    })();
     function applyIndex(idx){
       var slides=document.querySelectorAll('body > section.slide');
       if(!slides.length) return;
-      var i=Math.max(0, Math.min(slides.length-1, idx|0));
+      currentIdx=Math.max(0, Math.min(slides.length-1, idx|0));
+      // In edit mode, show every slide so the user can edit all of them.
+      // The deck nav still tracks currentIdx for when edit mode is exited.
+      if(editable){
+        for(var k=0;k<slides.length;k++) slides[k].style.display='';
+        return;
+      }
       for(var k=0;k<slides.length;k++){
-        slides[k].style.display = (k===i) ? '' : 'none';
+        slides[k].style.display = (k===currentIdx) ? '' : 'none';
       }
     }
+    var mutateTimer=null;
+    function post(o){parent.postMessage(Object.assign({channel:c},o),'*');}
+    function scheduleMutate(){
+      if(!editable) return;
+      if(mutateTimer) clearTimeout(mutateTimer);
+      mutateTimer=setTimeout(function(){
+        mutateTimer=null;
+        post({type:'stash:html-mutated',html:document.documentElement.outerHTML});
+      },500);
+    }
+    document.addEventListener('input',scheduleMutate);
     window.addEventListener('message', function(e){
       var d=e.data;
       if(!d||typeof d!=='object'||d.channel!==c) return;
       if(d.type==='stash:slide-goto' && typeof d.index==='number') applyIndex(d.index);
+      else if(d.type==='stash:set-editable'){
+        editable=!!d.enabled;
+        if(document.body){
+          if(editable){
+            document.body.setAttribute('contenteditable','true');
+            document.body.setAttribute('spellcheck','true');
+          } else {
+            document.body.removeAttribute('contenteditable');
+            document.body.removeAttribute('spellcheck');
+            // Flush any pending edit before leaving edit mode.
+            if(mutateTimer){
+              clearTimeout(mutateTimer);
+              mutateTimer=null;
+              post({type:'stash:html-mutated',html:document.documentElement.outerHTML});
+            }
+          }
+        }
+        applyIndex(currentIdx);
+      }
     });
     applyIndex(0);
   })();</script>`;
