@@ -325,8 +325,7 @@ async def _sidebar_etag(workspace_id: UUID, user_id: UUID) -> str:
         user_id,
     )
     raw = "|".join(
-        [SIDEBAR_ETAG_VERSION]
-        + [str(row[k] or "") for k in ("p", "f", "d", "s", "st", "sm", "w")]
+        [SIDEBAR_ETAG_VERSION] + [str(row[k] or "") for k in ("p", "f", "d", "s", "st", "sm", "w")]
     )
     return f'W/"{_short_hash(raw)}"'
 
