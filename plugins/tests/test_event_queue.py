@@ -57,6 +57,7 @@ def test_failed_push_enqueues(tmp_path):
         )
     queued = _queue_lines(tmp_path)
     assert len(queued) == 1
+    assert queued[0]["path"] == "/api/v1/workspaces/ws-1/sessions/events"
     assert queued[0]["body"]["event_type"] == "tool_use"
     assert queued[0]["body"]["content"] == "x"
 

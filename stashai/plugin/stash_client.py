@@ -94,14 +94,11 @@ class StashClient:
         return self._list(path, "workspaces")
 
     # --- Events ---
-    #
-    # workspace_id=None targets the personal store (/api/v1/memory/events).
-    # A non-empty workspace_id scopes to that workspace.
 
     def _events_path(self, workspace_id: str | None) -> str:
-        if workspace_id:
-            return f"/api/v1/workspaces/{workspace_id}/memory/events"
-        return "/api/v1/memory/events"
+        if not workspace_id:
+            raise ValueError("workspace_id is required for session events")
+        return f"/api/v1/workspaces/{workspace_id}/sessions/events"
 
     def push_event(
         self, workspace_id: str | None,

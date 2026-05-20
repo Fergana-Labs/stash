@@ -154,6 +154,7 @@ def test_push_event_stamps_client_into_metadata():
         workspace_id="ws1", agent_name="henry", event_type="tool_use",
         content="...", tool_name="edit", metadata={"cwd": "/tmp"}, client="cursor",
     )
+    assert calls[-1][0] == "/api/v1/workspaces/ws1/sessions/events"
     body = calls[-1][1]["json"]
     assert body["metadata"] == {"cwd": "/tmp", "client": "cursor"}
 
@@ -169,6 +170,19 @@ def test_push_event_stamps_client_into_metadata():
     )
     body = calls[-1][1]["json"]
     assert "metadata" not in body
+
+
+def test_push_event_requires_workspace_id():
+    from stashai.plugin.stash_client import StashClient
+
+    client = StashClient(base_url="http://x", api_key="k")
+    with pytest.raises(ValueError):
+        client.push_event(
+            workspace_id=None,
+            agent_name="henry",
+            event_type="user_message",
+            content="hi",
+        )
 
 
 def test_tool_name_normalization():
