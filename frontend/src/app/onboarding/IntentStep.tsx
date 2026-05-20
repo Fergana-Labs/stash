@@ -1,5 +1,10 @@
 "use client";
 
+import IosShareOutlinedIcon from "@mui/icons-material/IosShareOutlined";
+import MenuBookOutlinedIcon from "@mui/icons-material/MenuBookOutlined";
+import PsychologyOutlinedIcon from "@mui/icons-material/PsychologyOutlined";
+import type { ComponentType } from "react";
+
 import type { PathId } from "@/lib/onboarding/paths";
 
 type Props = {
@@ -8,7 +13,7 @@ type Props = {
 
 type Option = {
   id: PathId;
-  emoji: string;
+  Icon: ComponentType<{ className?: string; fontSize?: "inherit" }>;
   title: string;
   blurb: string;
   examples?: string;
@@ -17,22 +22,22 @@ type Option = {
 const OPTIONS: Option[] = [
   {
     id: "migrant",
-    emoji: "📚",
+    Icon: MenuBookOutlinedIcon,
     title: "I already use a knowledge base",
     blurb:
       "Bring your existing docs over and see how they work better here, alongside your agent sessions.",
-    examples: "Notion · Obsidian · GitHub",
+    examples: "Notion · Obsidian · GitHub · Google Drive",
   },
   {
     id: "memory",
-    emoji: "🧠",
+    Icon: PsychologyOutlinedIcon,
     title: "I want better AI memory",
     blurb:
       "Import your knowledge once and stop pasting context into every prompt. Your agent remembers.",
   },
   {
     id: "sharing",
-    emoji: "📎",
+    Icon: IosShareOutlinedIcon,
     title: "I want to share files and artifacts",
     blurb:
       "Drag, drop, share. No setup, no CLI. Authorize a coding agent if you want it to publish for you.",
@@ -65,9 +70,12 @@ export default function IntentStep({ onPick }: Props) {
               onClick={() => onPick(opt.id)}
               className="text-left rounded-2xl border border-border bg-surface p-5 hover:bg-raised hover:border-brand transition-colors flex flex-col gap-3"
             >
-              <div className="text-2xl" aria-hidden>
-                {opt.emoji}
-              </div>
+              <span
+                aria-hidden
+                className="flex h-9 w-9 items-center justify-center rounded-lg bg-brand/10 text-brand text-[22px]"
+              >
+                <opt.Icon fontSize="inherit" />
+              </span>
               <div className="text-[14px] font-semibold text-foreground leading-snug">
                 {opt.title}
               </div>

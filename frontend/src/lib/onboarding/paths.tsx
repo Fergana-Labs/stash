@@ -14,7 +14,7 @@ import DoneStep from "@/app/onboarding/steps/DoneStep";
 
 export type PathId = "migrant" | "memory" | "sharing";
 
-export type MigrantSource = "notion" | "obsidian" | "github";
+export type MigrantSource = "notion" | "obsidian" | "github" | "drive";
 
 export type StepCtx = {
   apiKey: string;

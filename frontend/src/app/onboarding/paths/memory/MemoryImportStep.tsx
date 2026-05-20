@@ -75,9 +75,10 @@ function SourcePickerInline({ onPick }: { onPick: (s: MigrantSource) => void }) 
     { id: "notion", title: "Notion", pitch: "Pages, databases, sub-pages." },
     { id: "obsidian", title: "Obsidian", pitch: "Drop your vault folder." },
     { id: "github", title: "GitHub", pitch: "A repo's worth of markdown." },
+    { id: "drive", title: "Google Drive", pitch: "Folders, Docs, Sheets." },
   ];
   return (
-    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
       {CARDS.map((c) => (
         <button
           key={c.id}

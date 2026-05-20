@@ -24,7 +24,7 @@ import {
 
 const PATH_STORAGE_KEY = "stash_onboarding_path";
 const VALID_PATHS: PathId[] = ["migrant", "memory", "sharing"];
-const VALID_SOURCES: MigrantSource[] = ["notion", "obsidian", "github"];
+const VALID_SOURCES: MigrantSource[] = ["notion", "obsidian", "github", "drive"];
 
 function useStashToken(): string | null {
   return useSyncExternalStore(

@@ -18,6 +18,7 @@ export default function MigrantDemoStep({ source }: StepCtx) {
       {source === "notion" && <NotionDemo />}
       {source === "obsidian" && <ObsidianDemo />}
       {source === "github" && <GithubDemo />}
+      {source === "drive" && <DriveDemo />}
       {!source && (
         <div className="text-sm text-muted">No source picked — skip ahead.</div>
       )}
@@ -127,6 +128,45 @@ function ObsidianDemo() {
         </div>
       }
       tagline="What you can't do in Obsidian."
+    />
+  );
+}
+
+function DriveDemo() {
+  return (
+    <DemoFrame
+      leftTitle="In Drive"
+      leftBody={
+        <div className="space-y-1.5">
+          <ul className="font-mono text-[11.5px] leading-snug space-y-0.5">
+            <li>📁 Team docs</li>
+            <li className="pl-4">📄 Q2 strategy (Google Doc)</li>
+            <li className="pl-4">📊 Roadmap (Sheet)</li>
+            <li>📁 Engineering</li>
+            <li className="pl-4">📄 Architecture overview</li>
+          </ul>
+          <div className="text-[11px] text-muted italic mt-2">
+            Search is brittle. Sharing is per-link. Your agent can&rsquo;t read any
+            of it.
+          </div>
+        </div>
+      }
+      rightTitle="Here, fully indexed"
+      rightBody={
+        <div className="space-y-2">
+          <ul className="font-mono text-[11.5px] leading-snug space-y-0.5">
+            <li>📁 team-docs/</li>
+            <li className="pl-4">📄 q2-strategy.md</li>
+            <li className="pl-4">📊 roadmap (Table)</li>
+            <li>📁 engineering/</li>
+            <li className="pl-4">📄 architecture-overview.md</li>
+          </ul>
+          <div className="text-[11px] text-muted italic">
+            Full-text search. Agent-readable. Same content, useful.
+          </div>
+        </div>
+      }
+      tagline="Drive content your agent can actually use."
     />
   );
 }

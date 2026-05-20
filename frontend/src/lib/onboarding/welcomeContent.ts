@@ -25,6 +25,7 @@ const SOURCE_LABELS: Record<MigrantSource, string> = {
   notion: "Notion",
   obsidian: "Obsidian",
   github: "GitHub",
+  drive: "Google Drive",
 };
 
 export function generateWelcomeHtml(inputs: WelcomeInputs): string {

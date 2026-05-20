@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 
 import IntegrationCard from "@/components/integrations/IntegrationCard";
+import DriveImportDialog from "@/components/import/DriveImportDialog";
 import GitImportDialog from "@/components/import/GitImportDialog";
 import NotionImportDialog from "@/components/import/NotionImportDialog";
 import StashQuickAdd from "@/components/StashQuickAdd";
@@ -24,17 +25,42 @@ export default function MigrantImportStep({ source, workspaceId }: StepCtx) {
   return <ProviderBlock source={source} workspaceId={workspaceId} />;
 }
 
+type ProviderSource = "notion" | "github" | "drive";
+
+const PROVIDER_COPY: Record<
+  ProviderSource,
+  { heading: string; subhead: string; integrationKey: string }
+> = {
+  notion: {
+    heading: "Bring your Notion pages in",
+    subhead: "Connect Notion, then pick which pages and databases to import.",
+    integrationKey: "notion",
+  },
+  github: {
+    heading: "Bring your repo in",
+    subhead:
+      "Connect GitHub, then pick a repo. Markdown becomes pages, everything else lands in Files.",
+    integrationKey: "github",
+  },
+  drive: {
+    heading: "Bring your Drive in",
+    subhead:
+      "Connect Google, then pick files or folders. Google Docs become pages, everything else lands in Files.",
+    integrationKey: "google",
+  },
+};
+
 function ProviderBlock({
   source,
   workspaceId,
 }: {
-  source: "notion" | "github";
+  source: ProviderSource;
   workspaceId: string | null;
 }) {
   const [providers, setProviders] = useState<IntegrationStatus[] | null>(null);
   const [showDialog, setShowDialog] = useState(false);
 
-  const providerKey = source === "notion" ? "notion" : "github";
+  const { heading, subhead, integrationKey } = PROVIDER_COPY[source];
 
   const refresh = useCallback(async () => {
     const r = await listIntegrations();
@@ -56,15 +82,8 @@ function ProviderBlock({
     }
   }, [refresh]);
 
-  const provider = providers?.find((p) => p.provider === providerKey);
+  const provider = providers?.find((p) => p.provider === integrationKey);
   const isConnected = provider?.connected ?? false;
-
-  const heading =
-    source === "notion" ? "Bring your Notion pages in" : "Bring your repo in";
-  const subhead =
-    source === "notion"
-      ? "Connect Notion, then pick which pages and databases to import."
-      : "Connect GitHub, then pick a repo. Markdown becomes pages, everything else lands in Files.";
 
   return (
     <div className="space-y-6">
@@ -98,6 +117,13 @@ function ProviderBlock({
       )}
       {showDialog && workspaceId && source === "github" && (
         <GitImportDialog
+          workspaceId={workspaceId}
+          onDispatched={() => setShowDialog(false)}
+          onClose={() => setShowDialog(false)}
+        />
+      )}
+      {showDialog && workspaceId && source === "drive" && (
+        <DriveImportDialog
           workspaceId={workspaceId}
           onDispatched={() => setShowDialog(false)}
           onClose={() => setShowDialog(false)}

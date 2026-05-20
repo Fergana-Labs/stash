@@ -27,6 +27,12 @@ const CARDS: Card[] = [
     pitch:
       "We import your repo. No commands. Searchable, editable, with a better editor.",
   },
+  {
+    id: "drive",
+    title: "Drive, but searchable",
+    pitch:
+      "Pull in your Drive folders and files. Searchable, askable, agent-readable.",
+  },
 ];
 
 export default function MigrantSourceStep({ pickSource }: StepCtx) {
@@ -46,7 +52,7 @@ export default function MigrantSourceStep({ pickSource }: StepCtx) {
         </p>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {CARDS.map((c) => (
           <button
             key={c.id}
