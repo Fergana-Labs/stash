@@ -19,13 +19,6 @@ _HTML_BLOCK_END_RE = re.compile(
     r"</(article|body|div|footer|h[1-6]|header|li|main|p|section|td|th|tr)>",
     re.IGNORECASE,
 )
-_WORKSPACE_FILE_DOWNLOAD_RE = re.compile(
-    r"/api/v1/workspaces/"
-    r"(?P<workspace_id>[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})"
-    r"/files/"
-    r"(?P<file_id>[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})"
-    r"/download(?:[?#][^\s)\"']*)?"
-)
 
 
 def _slugify(title: str) -> str:
@@ -57,45 +50,6 @@ def _page_text(page: dict) -> str:
 
 def _content_hash(content: str) -> str:
     return hashlib.sha256(content.encode()).hexdigest()
-
-
-async def _rewrite_workspace_file_download_urls(
-    content: str | None,
-    viewer_id: UUID | None,
-) -> str:
-    if not content or "/api/v1/workspaces/" not in content:
-        return content or ""
-
-    replacements: dict[str, str] = {}
-    pool = get_pool()
-    for match in _WORKSPACE_FILE_DOWNLOAD_RE.finditer(content):
-        original_url = match.group(0)
-        if original_url in replacements:
-            continue
-
-        workspace_id = UUID(match.group("workspace_id"))
-        file_id = UUID(match.group("file_id"))
-        if not await permission_service.check_access(
-            "file",
-            file_id,
-            viewer_id,
-            workspace_id=workspace_id,
-        ):
-            continue
-
-        row = await pool.fetchrow(
-            "SELECT storage_key FROM files "
-            "WHERE id = $1 AND workspace_id = $2 AND deleted_at IS NULL",
-            file_id,
-            workspace_id,
-        )
-        if row:
-            replacements[original_url] = await storage_service.get_file_url(row["storage_key"])
-
-    rewritten = content
-    for original_url, signed_url in replacements.items():
-        rewritten = rewritten.replace(original_url, signed_url)
-    return rewritten
 
 
 _STASH_COLS = (
@@ -1124,27 +1078,19 @@ async def inline_items(stash: dict, viewer_id: UUID | None = None) -> list[dict]
                         "file", f["id"], viewer_id, workspace_id=stash["workspace_id"]
                     ):
                         visible_files.append(f)
-                page_payloads = []
-                for p in visible_pages:
-                    page_payloads.append(
+                inline = {
+                    "pages": [
                         {
                             "id": str(p["id"]),
                             "name": p["name"],
                             "content_type": p["content_type"],
-                            "content_markdown": await _rewrite_workspace_file_download_urls(
-                                p["content_markdown"],
-                                viewer_id,
-                            ),
-                            "content_html": await _rewrite_workspace_file_download_urls(
-                                p["content_html"],
-                                viewer_id,
-                            ),
+                            "content_markdown": p["content_markdown"],
+                            "content_html": p["content_html"],
                             "html_layout": p["html_layout"],
                             "updated_at": p["updated_at"].isoformat(),
                         }
-                    )
-                inline = {
-                    "pages": page_payloads,
+                        for p in visible_pages
+                    ],
                     "files": [
                         {
                             "id": str(f["id"]),
@@ -1170,14 +1116,8 @@ async def inline_items(stash: dict, viewer_id: UUID | None = None) -> list[dict]
                         "id": str(p["id"]),
                         "name": p["name"],
                         "content_type": p["content_type"],
-                        "content_markdown": await _rewrite_workspace_file_download_urls(
-                            p["content_markdown"],
-                            viewer_id,
-                        ),
-                        "content_html": await _rewrite_workspace_file_download_urls(
-                            p["content_html"],
-                            viewer_id,
-                        ),
+                        "content_markdown": p["content_markdown"],
+                        "content_html": p["content_html"],
                         "html_layout": p["html_layout"],
                         "updated_at": p["updated_at"].isoformat(),
                     }
