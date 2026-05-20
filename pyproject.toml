@@ -22,7 +22,6 @@ dependencies = [
     "rich>=13.0.0",
     "questionary>=2.0.0",
     "mcp>=1.0.0",
-    "fusepy>=3.0.1",
 ]
 
 [project.urls]

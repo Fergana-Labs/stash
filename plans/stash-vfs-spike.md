@@ -14,6 +14,7 @@ landed on is an app-level virtual filesystem shell:
 
 ```bash
 stash vfs ls /
+stash vfs "tree /workspaces -L 2"
 stash vfs "find /workspaces -maxdepth 3 -type f"
 stash vfs "rg \"query\" /workspaces"
 stash vfs "cat '/workspaces/<workspace>/README.md' | sed -n '1,80p'"
@@ -186,15 +187,16 @@ stash vfs ...
 
 Supported shell-shaped operations:
 
-- Navigation: `pwd`, `cd`, `ls`, `find`, `stat`
+- Navigation: `pwd`, `cd`, `ls`, `find`, `tree`, `stat`
 - Reads: `cat`, `head`, `tail`, `sed -n`, `wc`
-- Search: `rg`, `grep`
+- Search: `rg`, `grep`, including common `-n`, `-i`, and recursive forms
 - Writes to existing writable files: `echo`, `printf`, `tee`, `>`, `>>`
 - Composition: pipes with `|`, command chaining with `&&` and `;`
 
 Example:
 
 ```bash
+stash vfs "tree /workspaces -L 2"
 stash vfs "find /workspaces -maxdepth 4 -type f | head -n 20"
 stash vfs "rg \"memory leak\" /workspaces | head -n 20"
 stash vfs "cat '/workspaces/<workspace>/files/<page>.md' | sed -n '1,80p'"
@@ -216,6 +218,15 @@ We updated the instruction surfaces that Stash already installs for agents:
 
 The important behavior is that agents are taught to reach for `stash vfs` when
 they want to browse Stash like a filesystem.
+
+## Productionization Decision
+
+The production path is `stash vfs`, not OS-level mounting:
+
+- The default installer installs the Stash CLI and agent hooks only.
+- The default installer does not install any filesystem provider.
+- `fusepy` is not a default package dependency.
+- `stash mount` remains hidden experimental spike code for future research.
 
 ## Why This Is Better For The First Product Version
 

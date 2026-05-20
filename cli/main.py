@@ -4044,7 +4044,7 @@ def disconnect_cmd():
     console.print(f"  [green]✓[/green] Removed [cyan]{MANIFEST_FILE}[/cyan] — repo disconnected.")
 
 
-@app.command("mount")
+@app.command("mount", hidden=True)
 def mount_command(
     mountpoint: str | None = typer.Argument(
         None,
@@ -4058,10 +4058,10 @@ def mount_command(
     check: bool = typer.Option(
         False,
         "--check",
-        help="Verify the local FUSE runtime is available, then exit.",
+        help="Verify the local experimental FUSE runtime is available, then exit.",
     ),
 ):
-    """Mount Stash as a local FUSE filesystem."""
+    """Experimentally mount Stash as a local FUSE filesystem."""
     from .mount import StashMountError, check_fuse_runtime, mount_stash
 
     if check:

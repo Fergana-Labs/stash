@@ -74,6 +74,15 @@ Then try it: ask your coding agent if it has access to Stash.
   <img src="docs/assets/agent-access.png" alt="Coding agent confirming access to the Stash CLI" width="900" />
 </p>
 
+Agents can browse Stash with an app-level virtual filesystem shell:
+
+```bash
+stash vfs ls /
+stash vfs "tree /workspaces -L 2"
+stash vfs "find /workspaces -maxdepth 3 -type f | head -n 20"
+stash vfs "rg \"database migration\" /workspaces"
+```
+
 ## Integrations
 
 Stash supports the following coding agents:

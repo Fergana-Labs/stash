@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import fnmatch
 import posixpath
 import re
 import shlex
@@ -82,6 +83,8 @@ class StashAppVfsShell:
             return self._cat(args)
         if name == "find":
             return self._find(args)
+        if name == "tree":
+            return self._tree(args)
         if name in ("grep", "rg"):
             return self._grep(name, args, stdin)
         if name == "sed":
@@ -152,6 +155,8 @@ class StashAppVfsShell:
     def _find(self, args: list[str]) -> str:
         path = "."
         maxdepth: int | None = None
+        name_pattern = ""
+        ignore_name_case = False
         type_filter = ""
         index = 0
         if args and not args[0].startswith("-"):
@@ -174,6 +179,12 @@ class StashAppVfsShell:
                 type_filter = args[index]
                 if type_filter not in ("f", "d"):
                     raise VfsShellError("-type supports only f or d", exit_code=2)
+            elif option in ("-name", "-iname"):
+                if index + 1 >= len(args):
+                    raise VfsShellError(f"{option} requires a value", exit_code=2)
+                index += 1
+                name_pattern = args[index]
+                ignore_name_case = option == "-iname"
             else:
                 raise VfsShellError(f"unsupported find option: {option}")
             index += 1
@@ -189,8 +200,69 @@ class StashAppVfsShell:
                 continue
             if type_filter == "d" and not node.is_dir:
                 continue
+            if name_pattern and not _name_matches(node_path, name_pattern, ignore_name_case):
+                continue
             rows.append(node_path)
         return "\n".join(rows) + ("\n" if rows else "")
+
+    def _tree(self, args: list[str]) -> str:
+        max_depth: int | None = None
+        path = "."
+        index = 0
+        while index < len(args):
+            arg = args[index]
+            if arg == "-L":
+                if index + 1 >= len(args):
+                    raise VfsShellError("-L requires a value", exit_code=2)
+                index += 1
+                try:
+                    max_depth = int(args[index])
+                except ValueError as e:
+                    raise VfsShellError("-L value must be an integer", exit_code=2) from e
+            elif arg.startswith("-"):
+                if arg != "-a":
+                    raise VfsShellError(f"unsupported tree option: {arg}", exit_code=2)
+            else:
+                path = arg
+            index += 1
+
+        root = self._resolve_path(path)
+        self.model._get_node(root)
+        lines = [root]
+        lines.extend(self._tree_lines(root, prefix="", depth=1, max_depth=max_depth))
+        return "\n".join(lines) + "\n"
+
+    def _tree_lines(
+        self,
+        path: str,
+        *,
+        prefix: str,
+        depth: int,
+        max_depth: int | None,
+    ) -> list[str]:
+        if max_depth is not None and depth > max_depth:
+            return []
+        node = self.model._get_node(path)
+        if node.is_file:
+            return []
+
+        names = self.model.list_dir(path)
+        rows = []
+        for index, name in enumerate(names):
+            child_path = posixpath.join(path, name)
+            is_last = index == len(names) - 1
+            connector = "`-- " if is_last else "|-- "
+            rows.append(f"{prefix}{connector}{name}")
+            child_prefix = f"{prefix}{'    ' if is_last else '|   '}"
+            rows.extend(
+                self._tree_lines(
+                    child_path,
+                    prefix=child_prefix,
+                    depth=depth + 1,
+                    max_depth=max_depth,
+                )
+            )
+        return rows
 
     def _grep(self, name: str, args: list[str], stdin: str | None) -> str:
         ignore_case = False
@@ -203,9 +275,26 @@ class StashAppVfsShell:
                 options_done = True
                 continue
             if not options_done and arg.startswith("-"):
-                ignore_case = ignore_case or "i" in arg
-                recursive = recursive or "r" in arg or "R" in arg
-                show_line_numbers = show_line_numbers or "n" in arg
+                if arg.startswith("--"):
+                    if arg in ("--ignore-case", "--smart-case"):
+                        ignore_case = True
+                    elif arg == "--line-number":
+                        show_line_numbers = True
+                    elif arg == "--recursive":
+                        recursive = True
+                    else:
+                        raise VfsShellError(f"unsupported {name} option: {arg}", exit_code=2)
+                    continue
+                flags = arg[1:]
+                unsupported = sorted(set(flags) - set("inrR"))
+                if unsupported:
+                    raise VfsShellError(
+                        f"unsupported {name} option: -{unsupported[0]}",
+                        exit_code=2,
+                    )
+                ignore_case = ignore_case or "i" in flags
+                recursive = recursive or "r" in flags or "R" in flags
+                show_line_numbers = show_line_numbers or "n" in flags
                 continue
             values.append(arg)
         if not values:
@@ -456,8 +545,15 @@ def _help_text() -> str:
     return "\n".join(
         [
             "Supported commands:",
-            "  pwd, cd, ls, cat, find, rg, grep, sed -n, head, tail, wc, echo, printf, tee, stat",
+            "  pwd, cd, ls, cat, find, tree, rg, grep, sed -n, head, tail, wc, echo, printf, tee, stat",
             "  pipes with |, command chaining with && or ;, and > / >> writes to existing writable files",
             "",
         ]
     )
+
+
+def _name_matches(path: str, pattern: str, ignore_case: bool) -> bool:
+    name = posixpath.basename(path)
+    if ignore_case:
+        return fnmatch.fnmatchcase(name.lower(), pattern.lower())
+    return fnmatch.fnmatchcase(name, pattern)

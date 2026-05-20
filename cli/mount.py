@@ -71,7 +71,7 @@ class StashVfsModel:
                 [
                     "# Stash",
                     "",
-                    "This is a live FUSE mount over Stash.",
+                    "This is a virtual filesystem view over Stash.",
                     "",
                     "- `workspaces/*/files` exposes folders, pages, and uploaded files.",
                     "- Markdown and HTML pages are writable; saves sync back to Stash.",
@@ -433,7 +433,6 @@ class StashFuseOperations:
         try:
             path = self.model._clean_path(path)
             # fusepy does not expose the kernel readdir offset to this high-level operation.
-            # FUSE-T's NFS bridge expects this shape to finish in one pass.
             entries = [
                 (".", self.model.getattr(path), 0),
                 ("..", self.model.getattr(posixpath.dirname(path) or "/"), 0),
@@ -632,8 +631,8 @@ def _load_fuse_class():
         from fuse import FUSE
     except (ImportError, OSError) as e:
         raise StashMountError(
-            "Stash mount requires the FUSE runtime. Install Stash from the platform installer "
-            "so the filesystem provider is installed with the CLI."
+            "Stash mount is experimental and requires a local FUSE runtime plus fusepy. "
+            "Use `stash vfs` for the supported app-level virtual filesystem."
         ) from e
     return FUSE
 
@@ -667,7 +666,8 @@ def _validate_fuse_provider() -> None:
         return
     if _active_macos_fuse_provider() != "macfuse":
         raise StashMountError(
-            "Stash mount on macOS requires macFUSE 5 FSKit. Re-run the Stash installer."
+            "Stash mount is experimental on macOS and requires macFUSE 5 FSKit. "
+            "Use `stash vfs` for the supported app-level virtual filesystem."
         )
     if not _macos_supports_fskit():
         raise StashMountError("Stash mount on macOS requires macOS 15.4 or later.")
