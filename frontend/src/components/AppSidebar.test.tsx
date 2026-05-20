@@ -507,7 +507,7 @@ describe("AppSidebar tree expansion", () => {
     expect(screen.getByText("Bucket session 10")).toBeTruthy();
   });
 
-  it("searches hidden sidebar sessions", async () => {
+  it("filters hidden sidebar sessions", async () => {
     vi.mocked(getWorkspaceSidebar).mockResolvedValue(
       sidebarWithSessions(
         Array.from({ length: 11 }, (_, index) =>
@@ -526,7 +526,7 @@ describe("AppSidebar tree expansion", () => {
     await screen.findByText("Search session 0");
     expect(screen.queryByText("Unique hidden decision")).toBeNull();
 
-    fireEvent.change(screen.getByLabelText("Search sessions"), {
+    fireEvent.change(screen.getByLabelText("Filter sessions"), {
       target: { value: "unique hidden" },
     });
 
@@ -607,7 +607,7 @@ describe("AppSidebar tree expansion", () => {
     expect(await screen.findByText("Roadmap")).toBeTruthy();
   });
 
-  it("searches hidden sidebar files", async () => {
+  it("filters hidden sidebar files", async () => {
     vi.mocked(getWorkspaceSidebar).mockResolvedValue({
       sessions: [],
       files: {
@@ -658,7 +658,7 @@ describe("AppSidebar tree expansion", () => {
     await screen.findByText("00 Huge Folder");
     expect(screen.queryByText("00 Huge Folder/Deep Search File.md")).toBeNull();
 
-    fireEvent.change(screen.getByLabelText("Search files"), {
+    fireEvent.change(screen.getByLabelText("Filter files"), {
       target: { value: "deep search" },
     });
 

@@ -1017,10 +1017,10 @@ function SessionsBlock({
       <div className="ml-3 space-y-0.5 border-l border-border pl-2">
         {sessionsDrop?.message ? <DropMessage state={sessionsDrop} /> : null}
         <SidebarSearchField
-          label="Search sessions"
+          label="Filter sessions"
           value={query}
           onChange={setQuery}
-          placeholder="Search sessions"
+          placeholder="Filter sessions"
           onClear={() => setQuery("")}
         />
         {queryActive ? (
@@ -2092,10 +2092,10 @@ function FilesBlock({
       <div className="ml-3 space-y-0.5 border-l border-border pl-2">
         {filesDrop?.message ? <DropMessage state={filesDrop} /> : null}
         <SidebarSearchField
-          label="Search files"
+          label="Filter files"
           value={query}
           onChange={setQuery}
-          placeholder="Search files"
+          placeholder="Filter files"
           onClear={() => setQuery("")}
         />
         {queryActive ? (
