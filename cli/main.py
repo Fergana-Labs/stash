@@ -1787,6 +1787,12 @@ def files_add_page(
     html_file: str = typer.Option(
         None, "--html-file", help="Local HTML file to load as content for an html page."
     ),
+    layout: str = typer.Option(
+        None,
+        "--layout",
+        help="HTML layout: 'responsive' (default) or 'fixed-aspect' for 16:9 slide decks.",
+        case_sensitive=False,
+    ),
     attach: list[str] = typer.Option(
         None, "--attach", help="Local file path to upload and embed (repeatable)."
     ),
@@ -1797,6 +1803,16 @@ def files_add_page(
     if page_type not in ("markdown", "html"):
         console.print(f"[red]--type must be 'markdown' or 'html', got: {page_type}[/red]")
         raise typer.Exit(1)
+    if layout is not None:
+        layout = layout.lower()
+        if layout not in ("responsive", "fixed-aspect"):
+            console.print(
+                f"[red]--layout must be 'responsive' or 'fixed-aspect', got: {layout}[/red]"
+            )
+            raise typer.Exit(1)
+        if page_type != "html":
+            console.print("[yellow]--layout only applies to html pages; ignoring[/yellow]")
+            layout = None
     if page_type == "html" and html_file:
         if not Path(html_file).is_file():
             console.print(f"[red]Not a file: {html_file}[/red]")
@@ -1828,6 +1844,7 @@ def files_add_page(
                 folder_id=folder,
                 content_type=page_type,
                 content_html=html_body,
+                html_layout=layout,
             )
         except StashError as e:
             _err(e)
@@ -1875,6 +1892,12 @@ def files_edit_page(
     html_file: str = typer.Option(
         None, "--html-file", help="Local HTML file to load as content_html."
     ),
+    layout: str = typer.Option(
+        None,
+        "--layout",
+        help="Switch HTML layout: 'responsive' or 'fixed-aspect' (16:9 slide decks).",
+        case_sensitive=False,
+    ),
     attach: list[str] = typer.Option(
         None, "--attach", help="Local file path to upload and prepend (repeatable)."
     ),
@@ -1893,6 +1916,13 @@ def files_edit_page(
         page_type = page_type.lower()
         if page_type not in ("markdown", "html"):
             console.print(f"[red]--type must be 'markdown' or 'html', got: {page_type}[/red]")
+            raise typer.Exit(1)
+    if layout is not None:
+        layout = layout.lower()
+        if layout not in ("responsive", "fixed-aspect"):
+            console.print(
+                f"[red]--layout must be 'responsive' or 'fixed-aspect', got: {layout}[/red]"
+            )
             raise typer.Exit(1)
     if html_body is not None and page_type is None:
         page_type = "html"
@@ -1925,6 +1955,8 @@ def files_edit_page(
                 kwargs["content_type"] = page_type
             if html_body is not None:
                 kwargs["content_html"] = html_body
+            if layout is not None:
+                kwargs["html_layout"] = layout
             data = c.update_page(ws, page_id, **kwargs)
         except StashError as e:
             _err(e)

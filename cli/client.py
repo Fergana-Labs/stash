@@ -302,6 +302,7 @@ class StashClient:
         folder_id: str | None = None,
         content_type: str = "markdown",
         content_html: str = "",
+        html_layout: str | None = None,
     ) -> dict:
         body: dict = {
             "name": name,
@@ -311,6 +312,8 @@ class StashClient:
         }
         if folder_id:
             body["folder_id"] = folder_id
+        if html_layout:
+            body["html_layout"] = html_layout
         return self._post(f"/api/v1/workspaces/{workspace_id}/pages/new", json=body)
 
     def list_pages(self, workspace_id: str) -> list:
