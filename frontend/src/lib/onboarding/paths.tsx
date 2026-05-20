@@ -21,7 +21,10 @@ export type StepCtx = {
   workspaceId: string | null;
   // Sub-source on the migrant path, threaded via ?source=. null elsewhere.
   source: MigrantSource | null;
-  setSource: (s: MigrantSource) => void;
+  // Picks a source AND advances one step in a single navigation. Using two
+  // separate router.pushes (set source, then continue) loses the source —
+  // the second push reads a stale searchParams closure.
+  pickSource: (s: MigrantSource) => void;
   // Set by SharingDropStep / FirstShareStep when /publish returns a URL —
   // surfaces in DoneStep + welcome page.
   sharedUrl: string | null;

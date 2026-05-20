@@ -113,10 +113,12 @@ function OnboardingInner() {
     [router],
   );
 
-  const setSource = useCallback(
+  const pickSource = useCallback(
     (s: MigrantSource) => {
       const params = new URLSearchParams(searchParams.toString());
       params.set("source", s);
+      const current = parseInt(params.get("step") ?? "1", 10) || 1;
+      params.set("step", String(current + 1));
       router.push(`/onboarding?${params.toString()}`);
     },
     [router, searchParams],
@@ -171,7 +173,7 @@ function OnboardingInner() {
     apiKey,
     workspaceId,
     source,
-    setSource,
+    pickSource,
     sharedUrl,
     setSharedUrl,
     onContinue: nextStep,

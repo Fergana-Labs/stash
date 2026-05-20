@@ -29,10 +29,9 @@ const CARDS: Card[] = [
   },
 ];
 
-export default function MigrantSourceStep({ setSource, onContinue }: StepCtx) {
+export default function MigrantSourceStep({ pickSource }: StepCtx) {
   function pick(id: MigrantSource) {
-    setSource(id);
-    onContinue();
+    pickSource(id);
   }
 
   return (
