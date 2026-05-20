@@ -7,6 +7,9 @@ import HelpOutlineOutlinedIcon from "@mui/icons-material/HelpOutlineOutlined";
 import InsertDriveFileOutlinedIcon from "@mui/icons-material/InsertDriveFileOutlined";
 import NotificationsNoneOutlinedIcon from "@mui/icons-material/NotificationsNoneOutlined";
 import PersonOutlineOutlinedIcon from "@mui/icons-material/PersonOutlineOutlined";
+import CloseOutlinedIcon from "@mui/icons-material/CloseOutlined";
+import PushPinOutlinedIcon from "@mui/icons-material/PushPinOutlined";
+import SearchOutlinedIcon from "@mui/icons-material/SearchOutlined";
 import ScheduleOutlinedIcon from "@mui/icons-material/ScheduleOutlined";
 import SettingsOutlinedIcon from "@mui/icons-material/SettingsOutlined";
 import TableChartOutlinedIcon from "@mui/icons-material/TableChartOutlined";
@@ -118,4 +121,16 @@ export function PersonIcon(props: IconProps) {
 
 export function TrashIcon(props: IconProps) {
   return <MaterialIcon icon={DeleteOutlineOutlinedIcon} {...props} />;
+}
+
+export function CloseIcon(props: IconProps) {
+  return <MaterialIcon icon={CloseOutlinedIcon} {...props} />;
+}
+
+export function PinIcon(props: IconProps) {
+  return <MaterialIcon icon={PushPinOutlinedIcon} {...props} />;
+}
+
+export function SearchIcon(props: IconProps) {
+  return <MaterialIcon icon={SearchOutlinedIcon} {...props} />;
 }
