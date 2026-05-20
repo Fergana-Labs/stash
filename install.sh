@@ -16,7 +16,7 @@
 # package manager will upgrade it to the latest version.
 set -euo pipefail
 
-PACKAGE="stashai"
+PACKAGE="${STASH_INSTALL_PACKAGE:-stashai}"
 FUSE_T_VERSION="1.2.6"
 FUSE_T_SHA256="fcfd95e4c09fb1f90efa134ef9b328b5757c59b43d6c7c23384a6a7001db4eb3"
 FUSE_T_PKG_URL="https://github.com/macos-fuse-t/fuse-t/releases/download/${FUSE_T_VERSION}/fuse-t-macos-installer-${FUSE_T_VERSION}.pkg"
