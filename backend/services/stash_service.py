@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import html as html_lib
 import json
 import re
 import secrets
@@ -13,6 +14,11 @@ from . import files_tree_service, permission_service, storage_service, workspace
 
 _SLUG_RE = re.compile(r"[^a-z0-9]+")
 _HTML_TAG_RE = re.compile(r"<[^>]+>")
+_HTML_BREAK_RE = re.compile(r"<br\s*/?>", re.IGNORECASE)
+_HTML_BLOCK_END_RE = re.compile(
+    r"</(article|body|div|footer|h[1-6]|header|li|main|p|section|td|th|tr)>",
+    re.IGNORECASE,
+)
 
 
 def _slugify(title: str) -> str:
@@ -22,6 +28,24 @@ def _slugify(title: str) -> str:
 
 def _strip_html(html: str) -> str:
     return _HTML_TAG_RE.sub(" ", html)
+
+
+def _html_to_text(content_html: str) -> str:
+    with_breaks = _HTML_BREAK_RE.sub("\n", content_html)
+    with_blocks = _HTML_BLOCK_END_RE.sub("\n", with_breaks)
+    text = html_lib.unescape(_HTML_TAG_RE.sub(" ", with_blocks))
+    lines = [" ".join(line.split()) for line in text.splitlines()]
+    return "\n".join(line for line in lines if line).strip()
+
+
+def _page_text(page: dict) -> str:
+    content_markdown = page.get("content_markdown") or ""
+    if content_markdown.strip():
+        return content_markdown.strip()
+    content_html = page.get("content_html") or ""
+    if content_html.strip():
+        return _html_to_text(content_html)
+    return ""
 
 
 def _content_hash(content: str) -> str:
@@ -1204,6 +1228,186 @@ async def inline_items(stash: dict, viewer_id: UUID | None = None) -> list[dict]
     return out
 
 
+def _agent_item_url(base_url: str, stash: dict, item: dict, suffix: str) -> str:
+    return (
+        f"{base_url}/stashes/{stash['slug']}/items/"
+        f"{item['object_type']}/{item['object_id']}.{suffix}"
+    )
+
+
+def _preview(text: str, limit: int = 260) -> str:
+    compact = " ".join(text.split())
+    if len(compact) <= limit:
+        return compact
+    return f"{compact[: limit - 1].rstrip()}..."
+
+
+def _item_summary(item: dict) -> str:
+    obj_type = item["object_type"]
+    label = item.get("label", "Item")
+    inline = item.get("inline", {})
+    if obj_type == "folder":
+        pages = inline.get("pages", [])
+        files = inline.get("files", [])
+        return f"{len(pages)} pages, {len(files)} files"
+    if obj_type == "page":
+        page = inline.get("page", {})
+        text = _page_text(page)
+        return _preview(text) if text else "Page"
+    if obj_type == "table":
+        columns = inline.get("columns", [])
+        rows = inline.get("rows", [])
+        return f"{len(columns)} columns, {len(rows)} rows"
+    if obj_type == "file":
+        size = inline.get("size_bytes")
+        content_type = inline.get("content_type", "unknown")
+        return f"{content_type}, {size} bytes" if size is not None else str(content_type)
+    if obj_type == "session":
+        session = inline.get("session", {})
+        summary = session.get("summary")
+        if summary:
+            return _preview(str(summary))
+        events = session.get("events", [])
+        agent_name = session.get("agent_name") or "agent"
+        return f"{agent_name} session, {len(events)} events"
+    return label
+
+
+def stash_to_text(stash: dict, workspace_name: str, items: list[dict], base_url: str) -> str:
+    """Render a public Stash as a small agent-readable homepage."""
+    base_url = base_url.rstrip("/")
+    parts = [f"# {stash['title']}"]
+    if stash.get("description"):
+        parts.append(str(stash["description"]))
+    if workspace_name:
+        parts.append(f"Workspace: {workspace_name}")
+
+    item_count = len(items)
+    type_counts: dict[str, int] = {}
+    for item in items:
+        type_counts[item["object_type"]] = type_counts.get(item["object_type"], 0) + 1
+    counts = ", ".join(
+        f"{count} {kind}{'' if count == 1 else 's'}" for kind, count in type_counts.items()
+    )
+    plural = "" if item_count == 1 else "s"
+    count_detail = f": {counts}" if counts else ""
+    parts.append(f"This is a public Stash with {item_count} item{plural}{count_detail}.")
+
+    parts.append(
+        "## Agent Navigation\n\n"
+        "This page is the Stash homepage. Open only the deeper links you need.\n\n"
+        f"- Markdown homepage: {base_url}/stashes/{stash['slug']}.md\n"
+        f"- Structured JSON: {base_url}/stashes/{stash['slug']}.json\n"
+        "- Item links below expose their own markdown and JSON views."
+    )
+
+    if items:
+        lines = ["## Contents"]
+        for index, item in enumerate(items, start=1):
+            label = item.get("label") or item["object_type"].title()
+            md_url = _agent_item_url(base_url, stash, item, "md")
+            json_url = _agent_item_url(base_url, stash, item, "json")
+            lines.append(
+                f"{index}. [{label}]({md_url})\n"
+                f"   Type: {item['object_type']}\n"
+                f"   Preview: {_item_summary(item)}\n"
+                f"   JSON: {json_url}"
+            )
+        parts.append("\n\n".join(lines))
+
+    parts.append(
+        "## Using Stash\n\n"
+        "If your human wants this repository connected to Stash, run:\n\n"
+        "```bash\n"
+        "curl -fsSL https://joinstash.ai/install | bash\n"
+        "```\n\n"
+        "If Stash is already installed, run:\n\n"
+        "```bash\n"
+        f"stash read {base_url}/stashes/{stash['slug']}\n"
+        "```"
+    )
+    return "\n\n".join(part for part in parts if part).strip() + "\n"
+
+
+def item_to_text(stash: dict, item: dict, base_url: str) -> str:
+    base_url = base_url.rstrip("/")
+    label = item.get("label") or item["object_type"].title()
+    parts = [
+        f"# {label}",
+        f"Stash: [{stash['title']}]({base_url}/stashes/{stash['slug']}.md)",
+        "## Agent Navigation\n\n"
+        f"- Back to Stash homepage: {base_url}/stashes/{stash['slug']}.md\n"
+        f"- This item as JSON: {_agent_item_url(base_url, stash, item, 'json')}",
+    ]
+
+    obj_type = item["object_type"]
+    inline = item.get("inline", {})
+    if obj_type == "folder":
+        pages = inline.get("pages", [])
+        files = inline.get("files", [])
+        lines = [f"Folder with {len(pages)} pages and {len(files)} files."]
+        for page in pages:
+            page_text = _page_text(page)
+            lines.append(f"## {page.get('name', 'Page')}")
+            if page_text:
+                lines.append(page_text)
+        for file in files:
+            lines.append(
+                f"- Attached file: {file.get('name', 'file')} "
+                f"({file.get('content_type', 'unknown')})"
+            )
+        parts.append("\n\n".join(lines))
+    elif obj_type == "page":
+        page = inline.get("page", {})
+        page_text = _page_text(page)
+        if page_text:
+            parts.append(page_text)
+    elif obj_type == "table":
+        cols = inline.get("columns", [])
+        rows = inline.get("rows", [])
+        if inline.get("description"):
+            parts.append(str(inline["description"]))
+        if cols:
+            header = " | ".join(c["name"] for c in cols)
+            sep = " | ".join("---" for _ in cols)
+            table_lines = [f"| {header} |", f"| {sep} |"]
+            for row in rows[:100]:
+                vals = " | ".join(str(row["data"].get(c["name"], "")) for c in cols)
+                table_lines.append(f"| {vals} |")
+            parts.append("\n".join(table_lines))
+    elif obj_type == "file":
+        parts.append(
+            f"Content type: {inline.get('content_type', 'unknown')}\n\n"
+            f"Size: {inline.get('size_bytes', 'unknown')} bytes\n\n"
+            f"Download URL: {inline.get('url', '')}"
+        )
+    elif obj_type == "session":
+        session = inline.get("session", {})
+        lines = [
+            f"Session ID: {session.get('session_id', label)}",
+            f"Agent: {session.get('agent_name', 'agent')}",
+        ]
+        if session.get("summary"):
+            lines.extend(["## Summary", str(session["summary"])])
+        files_touched = session.get("files_touched") or []
+        if files_touched:
+            lines.append("## Files Touched")
+            lines.extend(f"- {path}" for path in files_touched)
+        events = session.get("events", [])
+        if events:
+            lines.append("## Events")
+            for event in events:
+                content = event.get("content")
+                if content:
+                    lines.append(
+                        f"### {event.get('event_type', 'event')} "
+                        f"({event.get('agent_name', 'agent')})\n\n{content}"
+                    )
+        parts.append("\n\n".join(lines))
+
+    return "\n\n".join(part for part in parts if part).strip() + "\n"
+
+
 def items_to_text(title: str, items: list[dict]) -> str:
     """Flatten a Stash's inlined items into readable markdown text."""
     parts = [f"# {title}\n"]
@@ -1216,16 +1420,18 @@ def items_to_text(title: str, items: list[dict]) -> str:
 
         if obj_type == "folder":
             for page in inline.get("pages", []):
-                if page.get("content_markdown"):
-                    parts.append(page["content_markdown"])
+                page_text = _page_text(page)
+                if page_text:
+                    parts.append(page_text)
             for file in inline.get("files", []):
                 parts.append(
                     f"*Attached file: {file.get('name', label)} ({file.get('content_type', 'unknown')})*\n"
                 )
         elif obj_type == "page":
             page = inline.get("page", {})
-            if page.get("content_markdown"):
-                parts.append(page["content_markdown"])
+            page_text = _page_text(page)
+            if page_text:
+                parts.append(page_text)
         elif obj_type == "table":
             cols = inline.get("columns", [])
             rows = inline.get("rows", [])
