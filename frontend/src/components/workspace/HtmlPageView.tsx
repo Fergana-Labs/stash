@@ -348,8 +348,8 @@ function injectResizeBootstrap(
   const script = `<script>(function(){
     var c=${JSON.stringify(channel)};
     var BRIDGE_LINKS=${bridgeLinks ? "true" : "false"};
-    // Slide-deck HTML (e.g. responsive layout with `<section class="slide">` +
-    // `.slide{display:none}.slide.active{display:flex}` styling) only renders
+    // Slide-deck HTML (responsive layout with section.slide elements +
+    // .slide{display:none}.slide.active{display:flex} styling) only renders
     // one slide at a time. In edit mode we override that so every slide
     // becomes visible and editable; without this the user can only edit the
     // single currently-active slide.
