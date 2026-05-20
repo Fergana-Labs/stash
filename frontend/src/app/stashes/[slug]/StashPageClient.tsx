@@ -153,10 +153,10 @@ function coverIndexFor(id: string): number {
 
 const COVER_GRADIENTS = [
   "linear-gradient(135deg, #FED7AA, #FCA5A5)",
-  "linear-gradient(135deg, #DDD6FE, #BFDBFE)",
+  "linear-gradient(135deg, #BFDBFE, #A7F3D0)",
   "linear-gradient(135deg, #A7F3D0, #BAE6FD)",
   "linear-gradient(135deg, #FDE68A, #FECACA)",
-  "linear-gradient(135deg, #C7D2FE, #FBCFE8)",
+  "linear-gradient(135deg, #BAE6FD, #FED7AA)",
   "linear-gradient(135deg, #FECDD3, #FEF3C7)",
 ];
 

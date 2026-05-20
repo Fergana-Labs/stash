@@ -30,12 +30,12 @@ const FILTERS: { key: FilterKey; label: string }[] = [
 
 const AVATAR_CLASSES = [
   "av-rose",
-  "av-indigo",
+  "av-orange",
   "av-emerald",
   "av-amber",
   "av-sky",
-  "av-fuchsia",
-  "av-violet",
+  "av-teal",
+  "av-lime",
 ];
 
 function avatarClassFor(name: string): string {

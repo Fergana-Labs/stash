@@ -48,11 +48,11 @@ const PUBLIC_PERMISSION_OPTIONS: { value: StashGeneralPermission; label: string 
 
 const PALETTE = [
   { bg: "bg-rose-200", fg: "text-rose-800" },
-  { bg: "bg-indigo-200", fg: "text-indigo-800" },
+  { bg: "bg-orange-200", fg: "text-orange-800" },
   { bg: "bg-emerald-200", fg: "text-emerald-800" },
   { bg: "bg-amber-200", fg: "text-amber-900" },
   { bg: "bg-sky-200", fg: "text-sky-800" },
-  { bg: "bg-fuchsia-200", fg: "text-fuchsia-800" },
+  { bg: "bg-teal-200", fg: "text-teal-800" },
 ];
 
 function visibilityForPermissions(
@@ -351,7 +351,7 @@ export default function StashShareButton({
         disabled={handoffStatus === "copying"}
         aria-label="Copy agent handoff link"
         title="Copy an agent-readable public link"
-        className="inline-flex min-w-[86px] items-center justify-center gap-1.5 rounded-md border border-[var(--color-agent)] bg-[var(--color-agent-muted)] px-2.5 py-1 text-[12.5px] font-medium text-[var(--color-agent)] hover:bg-raised disabled:opacity-50"
+        className="inline-flex min-w-[86px] items-center justify-center gap-1.5 rounded-md border border-border bg-surface px-2.5 py-1 text-[12.5px] font-medium text-dim hover:bg-raised hover:text-foreground disabled:opacity-50"
       >
         <TerminalOutlinedIcon aria-hidden="true" className="text-[14px]" />
         {handoffStatus === "copying"

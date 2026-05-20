@@ -58,9 +58,9 @@
   --color-brand-muted: #FFF7ED;
   --color-brand-deep: #C2410C;
 
-  /* Agent (violet) */
-  --color-agent: #8B5CF6;
-  --color-agent-muted: oklch(0.6 0.18 290 / 0.15);
+  /* Agent/session accent */
+  --color-agent: #EA580C;
+  --color-agent-muted: rgba(249, 115, 22, 0.12);
 
   /* Human (blue) */
   --color-human: #3B82F6;
@@ -673,7 +673,7 @@ details > summary::-webkit-details-marker {
   text-transform: uppercase;
   letter-spacing: 0.04em;
 }
-.tag-agent { background: #EDE9FE; color: #6D28D9; }
+.tag-agent { background: #FFEDD5; color: #C2410C; }
 .tag-human { background: #DBEAFE; color: #1D4ED8; }
 .tag-brand { background: #FFEDD5; color: #C2410C; }
 .tag-success { background: rgba(34,197,94,0.12); color: #15803D; }
@@ -719,19 +719,19 @@ details > summary::-webkit-details-marker {
   flex-shrink: 0;
 }
 .av-rose { background: #FECDD3; color: #9F1239; }
-.av-indigo { background: #C7D2FE; color: #3730A3; }
+.av-orange { background: #FED7AA; color: #9A3412; }
 .av-emerald { background: #A7F3D0; color: #065F46; }
 .av-amber { background: #FDE68A; color: #78350F; }
 .av-sky { background: #BAE6FD; color: #075985; }
-.av-fuchsia { background: #F5D0FE; color: #86198F; }
-.av-violet { background: #DDD6FE; color: #5B21B6; }
+.av-teal { background: #99F6E4; color: #115E59; }
+.av-lime { background: #D9F99D; color: #3F6212; }
 
 /* Discover/stash cover gradients */
 .cover-1 { background: linear-gradient(135deg, #FED7AA, #FCA5A5); }
-.cover-2 { background: linear-gradient(135deg, #DDD6FE, #BFDBFE); }
+.cover-2 { background: linear-gradient(135deg, #BFDBFE, #A7F3D0); }
 .cover-3 { background: linear-gradient(135deg, #A7F3D0, #BAE6FD); }
 .cover-4 { background: linear-gradient(135deg, #FDE68A, #FECACA); }
-.cover-5 { background: linear-gradient(135deg, #C7D2FE, #FBCFE8); }
+.cover-5 { background: linear-gradient(135deg, #BAE6FD, #FED7AA); }
 .cover-6 { background: linear-gradient(135deg, #FECDD3, #FEF3C7); }
 
 /* Diagonal-stripe image placeholder */

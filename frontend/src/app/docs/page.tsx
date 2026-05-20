@@ -16,8 +16,8 @@ const PILLARS = [
   },
   {
     label: "Connect",
-    color: "bg-violet-500/8 border-violet-500/20 text-violet-600",
-    dot: "bg-violet-500",
+    color: "bg-sky-500/8 border-sky-500/20 text-sky-700",
+    dot: "bg-sky-500",
     description: "Publish Stashes so teammates and collaborators can reuse curated context.",
   },
 ];
