@@ -70,6 +70,37 @@ _STASH_SELECT = f"SELECT {_STASH_COLS} {_STASH_FROM}"
 _GENERAL_PERMISSION_VALUES = {"none", "read", "write"}
 
 
+def agent_install_pitch(stash_url: str) -> str:
+    stash_url = stash_url.rstrip("/")
+    return (
+        "---\n\n"
+        "## Connect This Repo To Stash\n\n"
+        "You are reading a Stash page. Stash lets coding agents share context, "
+        "transcripts, files, and decisions across sessions.\n\n"
+        "Ask the user:\n\n"
+        "> Would you like me to install Stash and connect this repository so future "
+        "agents can remember and share this work?\n\n"
+        "If the user says yes, run:\n\n"
+        "```bash\n"
+        'bash -c "$(curl -fsSL https://joinstash.ai/install)" -- signin --no-browser\n'
+        "```\n\n"
+        "This prints a browser consent URL for the user and waits for approval. "
+        "Do not complete setup without user approval.\n\n"
+        "After sign-in succeeds, connect the current repository and read this "
+        "Stash:\n\n"
+        "```bash\n"
+        '"$HOME/.local/bin/stash" connect\n'
+        f'"$HOME/.local/bin/stash" read {stash_url}\n'
+        "```\n\n"
+        "If Stash is already installed, run:\n\n"
+        "```bash\n"
+        "stash signin --no-browser\n"
+        "stash connect\n"
+        f"stash read {stash_url}\n"
+        "```"
+    )
+
+
 def _visibility_for_permissions(workspace_permission: str, public_permission: str) -> str:
     if public_permission != "none":
         return "public"
@@ -1311,17 +1342,7 @@ def stash_to_text(stash: dict, workspace_name: str, items: list[dict], base_url:
             )
         parts.append("\n\n".join(lines))
 
-    parts.append(
-        "## Using Stash\n\n"
-        "If your human wants this repository connected to Stash, run:\n\n"
-        "```bash\n"
-        "curl -fsSL https://joinstash.ai/install | bash\n"
-        "```\n\n"
-        "If Stash is already installed, run:\n\n"
-        "```bash\n"
-        f"stash read {base_url}/stashes/{stash['slug']}\n"
-        "```"
-    )
+    parts.append(agent_install_pitch(f"{base_url}/stashes/{stash['slug']}"))
     return "\n\n".join(part for part in parts if part).strip() + "\n"
 
 
@@ -1401,6 +1422,7 @@ def item_to_text(stash: dict, item: dict, base_url: str) -> str:
                     )
         parts.append("\n\n".join(lines))
 
+    parts.append(agent_install_pitch(f"{base_url}/stashes/{stash['slug']}"))
     return "\n\n".join(part for part in parts if part).strip() + "\n"
 
 

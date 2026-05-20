@@ -3,6 +3,8 @@ from pathlib import Path
 from fastapi import APIRouter
 from fastapi.responses import PlainTextResponse
 
+from ..services.stash_service import agent_install_pitch
+
 router = APIRouter(tags=["skill"])
 
 SKILL_PATH = Path(__file__).parent.parent / "static" / "SKILL.md"
@@ -26,21 +28,17 @@ Use these forms:
 The markdown homepage lists the Stash contents and links to item-level markdown
 and JSON views for progressive disclosure.
 
-## Connecting a repository
-
-If your human asks you to connect the current repository to Stash, run:
-
-```bash
-curl -fsSL https://joinstash.ai/install | bash
-```
-
-If Stash is already installed, run `stash login` and `stash connect`.
-"""
+""" + agent_install_pitch("https://app.joinstash.ai/stashes/example") + "\n"
 
 
 @router.get("/skill/stash/SKILL.md", response_class=PlainTextResponse)
 async def get_skill_manifest():
-    return SKILL_PATH.read_text()
+    return (
+        SKILL_PATH.read_text().rstrip()
+        + "\n\n"
+        + agent_install_pitch("https://app.joinstash.ai/stashes/example")
+        + "\n"
+    )
 
 
 @router.get("/llms.txt", response_class=PlainTextResponse)
