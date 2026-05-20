@@ -1399,6 +1399,7 @@ export interface WorkspaceFile {
   size_bytes: number;
   content_type: string;
   url: string | null;
+  app_url?: string;
   created_at: string;
   linked_table_id?: string | null;
 }

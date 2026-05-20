@@ -116,6 +116,7 @@ function FileViewerPageInner() {
           content_type: inline.content_type ?? "",
           size_bytes: inline.size_bytes ?? 0,
           url: inline.url ?? "",
+          app_url: `/workspaces/${stash.stash.workspace_id}/f/${fileId}?stash=${stashSlug}`,
           uploaded_by: "",
           created_at: inline.created_at ?? "",
         };

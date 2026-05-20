@@ -664,6 +664,10 @@ def _web_app_url() -> str:
     return api
 
 
+def _stash_url(stash: dict) -> str:
+    return f"{_web_app_url()}/stashes/{stash['slug']}"
+
+
 @app.command("browse")
 def browse(
     query: str = typer.Argument("", help="Optional search query."),
@@ -1176,6 +1180,7 @@ def upload(
                 items=stash_items,
             )
             stash = bundle["stash"]
+            stash_url = bundle["url"]
         else:
             stash = c.create_stash(
                 ws,
@@ -1184,17 +1189,15 @@ def upload(
                 access="workspace",
                 items=stash_items,
             )
+            stash_url = _stash_url(stash)
 
-    result = {"folder": root_folder, "stash": stash}
+    result = {"folder": root_folder, "stash": stash, "url": stash_url}
     if _use_json(as_json):
         output_json(result)
         return
-    if public:
-        public_url = f"{_web_app_url()}/stashes/{stash['slug']}"
-        console.print(f"\n[green bold]Uploaded![/green bold]  {public_url}")
-        return
     console.print(
-        f"\n[green bold]Uploaded![/green bold]  Folder: {root_folder['id']}  Stash: {stash['id']}"
+        f"\n[green bold]Uploaded![/green bold]  {result['url']}\n"
+        f"[dim]Folder: {root_folder['id']}  Stash: {stash['id']}[/dim]"
     )
 
 
@@ -3019,7 +3022,7 @@ def files_upload(
         output_json(data)
     else:
         console.print(f"[green]Uploaded[/green] {data['name']}  [dim]{data['id']}[/dim]")
-        console.print(data["url"])
+        console.print(data["app_url"])
 
 
 @files_app.command("list")

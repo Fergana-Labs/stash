@@ -17,6 +17,7 @@ from fastapi import APIRouter, Depends, Form, HTTPException, UploadFile
 from fastapi.responses import Response
 
 from ..auth import get_current_user
+from ..config import settings
 from ..database import get_pool
 from ..models import FileListResponse, FileResponse, FileUpdateRequest, TableResponse
 from ..services import (
@@ -67,6 +68,10 @@ async def _can_access_file(
     return False
 
 
+def _file_app_url(row: dict) -> str:
+    return f"{settings.PUBLIC_URL.rstrip('/')}/workspaces/{row['workspace_id']}/f/{row['id']}"
+
+
 async def _file_to_response(row: dict) -> FileResponse:
     url = await storage_service.get_file_url(row["storage_key"])
     return FileResponse(
@@ -77,6 +82,7 @@ async def _file_to_response(row: dict) -> FileResponse:
         content_type=row["content_type"],
         size_bytes=row["size_bytes"],
         url=url,
+        app_url=_file_app_url(row),
         uploaded_by=row["uploaded_by"],
         created_at=row["created_at"],
         linked_table_id=row.get("linked_table_id"),
