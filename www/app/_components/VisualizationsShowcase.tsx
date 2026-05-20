@@ -56,7 +56,7 @@ function PageGraphMock() {
   const nodeColor = (degree: number) => {
     if (degree >= 5) return "#F97316";
     if (degree >= 3) return "#EA7C1F";
-    if (degree === 0) return "#8B5CF6";
+    if (degree === 0) return "#F97316";
     return "#64748B";
   };
 

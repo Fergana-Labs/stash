@@ -175,6 +175,6 @@ function tintFor(item: GridItem): string {
   if (item.kind === "html") return "text-[#D97706]";
   if (item.kind === "table") return "text-emerald-600";
   if (item.contentType?.includes("pdf")) return "text-rose-500";
-  if (item.contentType?.includes("image")) return "text-violet-600";
+  if (item.contentType?.includes("image")) return "text-[var(--color-brand-600)]";
   return "text-muted";
 }

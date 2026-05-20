@@ -27,11 +27,11 @@ const MEMBER_ROLE_OPTIONS = [
 
 const PALETTE = [
   { bg: "bg-rose-200", fg: "text-rose-800" },
-  { bg: "bg-indigo-200", fg: "text-indigo-800" },
+  { bg: "bg-orange-200", fg: "text-orange-800" },
   { bg: "bg-emerald-200", fg: "text-emerald-800" },
   { bg: "bg-amber-200", fg: "text-amber-900" },
   { bg: "bg-sky-200", fg: "text-sky-800" },
-  { bg: "bg-fuchsia-200", fg: "text-fuchsia-800" },
+  { bg: "bg-teal-200", fg: "text-teal-800" },
 ];
 
 export default function WorkspaceMembersPanel({

@@ -324,7 +324,7 @@ function kindLabel(contentType: string, name: string): string {
 
 function kindIconColor(contentType: string): string {
   if (isPdf(contentType)) return "#E11D48";
-  if (isImage(contentType)) return "#7C3AED";
+  if (isImage(contentType)) return "#EA580C";
   return "var(--text-muted)";
 }
 

@@ -86,7 +86,7 @@ export default function ContributorActivityTimeline({
     ctx.font = "500 11px 'JetBrains Mono', monospace";
     ctx.textAlign = "right";
     ctx.textBaseline = "middle";
-    ctx.fillStyle = "#8B5CF6";
+    ctx.fillStyle = "#C2410C";
 
     for (let i = 0; i < contributors.length; i++) {
       const y = PADDING + i * (CELL_SIZE + CELL_GAP) + CELL_SIZE / 2;
@@ -204,7 +204,7 @@ export default function ContributorActivityTimeline({
           style={{ left: tooltip.x + 12, top: tooltip.y - 8 }}
         >
           <div className="text-xs font-medium text-foreground">
-            <span className="text-violet-400">{tooltip.contributor}</span>
+            <span className="text-[var(--color-brand-600)]">{tooltip.contributor}</span>
             <span className="text-muted mx-1">&middot;</span>
             <span className="text-muted font-mono">{tooltip.date}</span>
           </div>

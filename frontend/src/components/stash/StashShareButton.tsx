@@ -19,6 +19,7 @@ import { resetStashNavigationCache } from "../../lib/stashNavigationCache";
 import type { UserSearchResult } from "../../lib/types";
 
 type StashVisibility = "private" | "workspace" | "public";
+type HandoffStatus = "idle" | "copying" | "copied" | "error";
 
 const PERMISSION_OPTIONS: { value: StashMemberPermission; label: string }[] = [
   { value: "read", label: "Read" },
@@ -46,11 +47,11 @@ const PUBLIC_PERMISSION_OPTIONS: { value: StashGeneralPermission; label: string 
 
 const PALETTE = [
   { bg: "bg-rose-200", fg: "text-rose-800" },
-  { bg: "bg-indigo-200", fg: "text-indigo-800" },
+  { bg: "bg-orange-200", fg: "text-orange-800" },
   { bg: "bg-emerald-200", fg: "text-emerald-800" },
   { bg: "bg-amber-200", fg: "text-amber-900" },
   { bg: "bg-sky-200", fg: "text-sky-800" },
-  { bg: "bg-fuchsia-200", fg: "text-fuchsia-800" },
+  { bg: "bg-teal-200", fg: "text-teal-800" },
 ];
 
 function visibilityForPermissions(
@@ -103,6 +104,8 @@ export default function StashShareButton({
   const [discoverable, setDiscoverable] = useState(stash.discoverable);
   const [saving, setSaving] = useState(false);
   const [shareMessage, setShareMessage] = useState("");
+  const [handoffStatus, setHandoffStatus] = useState<HandoffStatus>("idle");
+  const [handoffMessage, setHandoffMessage] = useState("");
   const [members, setMembers] = useState<StashMember[]>([]);
   const [meId, setMeId] = useState<string | null>(null);
   const [membersLoading, setMembersLoading] = useState(false);
@@ -177,6 +180,40 @@ export default function StashShareButton({
       window.setTimeout(() => setCopied(false), 1600);
     } catch {
       setShareMessage("Failed to copy link.");
+    }
+  }
+
+  async function copyAgentHandoffLink() {
+    setOpen(false);
+    setHandoffStatus("copying");
+    setHandoffMessage("");
+    try {
+      if (publicPermission === "none") {
+        if (!canWrite) {
+          throw new Error("Only Stash editors can create public agent links.");
+        }
+        const updated = await updateStash(stash.id, {
+          workspace_permission:
+            workspacePermission === "none" ? "read" : workspacePermission,
+          public_permission: "read",
+          discoverable: false,
+        });
+        setWorkspacePermission(updated.workspace_permission);
+        setPublicPermission(updated.public_permission);
+        setDiscoverable(updated.discoverable);
+        resetStashNavigationCache();
+      }
+
+      await navigator.clipboard.writeText(agentHandoffUrl(stash.slug));
+      setHandoffStatus("copied");
+      window.setTimeout(() => setHandoffStatus("idle"), 1600);
+    } catch (e) {
+      setHandoffStatus("error");
+      setHandoffMessage(e instanceof Error ? e.message : "Could not copy agent link.");
+      window.setTimeout(() => {
+        setHandoffStatus("idle");
+        setHandoffMessage("");
+      }, 3000);
     }
   }
 
@@ -306,7 +343,21 @@ export default function StashShareButton({
   }
 
   return (
-    <div ref={popoverRef} className="relative">
+    <div ref={popoverRef} className="relative flex items-center gap-1.5">
+      <button
+        type="button"
+        onClick={() => void copyAgentHandoffLink()}
+        disabled={handoffStatus === "copying"}
+        aria-label="Copy agent handoff link"
+        title="Copy an agent-readable public link"
+        className="inline-flex min-w-[72px] items-center justify-center rounded-md bg-surface px-2.5 py-1 text-[12.5px] font-medium text-dim ring-1 ring-inset ring-border hover:bg-raised hover:text-foreground disabled:opacity-50"
+      >
+        {handoffStatus === "copying"
+          ? "Copying"
+          : handoffStatus === "copied"
+            ? "Copied"
+            : "Agent Handoff"}
+      </button>
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
@@ -316,6 +367,11 @@ export default function StashShareButton({
       >
         Share
       </button>
+      {handoffMessage && !open && (
+        <div className="absolute right-0 top-full z-40 mt-1.5 max-w-[280px] rounded-md border border-border bg-base px-2 py-1.5 text-[12px] text-muted shadow-lg">
+          {handoffMessage}
+        </div>
+      )}
       {open && (
         <div
           role="dialog"
@@ -684,4 +740,8 @@ function initials(label: string): string {
 function absoluteUrl(path: string): string {
   if (typeof window === "undefined") return path;
   return `${window.location.origin}${path}`;
+}
+
+function agentHandoffUrl(slug: string): string {
+  return absoluteUrl(`/api/v1/stashes/${slug}?format=text`);
 }
