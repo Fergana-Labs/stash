@@ -4090,6 +4090,59 @@ def mount_command(
         client.close()
 
 
+@app.command("vfs", context_settings={"allow_extra_args": True, "ignore_unknown_options": True})
+def vfs_command(
+    ctx: typer.Context,
+    workspace_id: str = typer.Option(
+        None,
+        "--ws",
+        help="Use one workspace by id. By default every accessible workspace is exposed.",
+    ),
+    cwd: str = typer.Option("/", "--cwd", help="Virtual working directory."),
+):
+    """Run bash-shaped commands against Stash without mounting a filesystem."""
+    from .app_vfs import StashAppVfsShell
+    from .mount import StashMountError, StashVfsModel
+
+    cfg = load_config()
+    if not cfg.get("api_key"):
+        console.print("[red]Not signed in. Run [bold]stash signin[/bold] first.[/red]")
+        raise typer.Exit(1)
+
+    client = StashClient(base_url=cfg["base_url"], api_key=cfg["api_key"])
+    try:
+        model = StashVfsModel(client, workspace_id=workspace_id)
+        model.refresh()
+        shell = StashAppVfsShell(model, cwd=cwd)
+
+        command = " ".join(ctx.args).strip()
+        if command:
+            result = shell.run(command)
+            sys.stdout.write(result.stdout)
+            sys.stderr.write(result.stderr)
+            if result.exit_code:
+                raise typer.Exit(result.exit_code)
+            return
+
+        while True:
+            try:
+                command = input(f"stash:{shell.cwd}$ ").strip()
+            except EOFError:
+                return
+            if command in ("exit", "quit"):
+                return
+            if not command:
+                continue
+            result = shell.run(command)
+            sys.stdout.write(result.stdout)
+            sys.stderr.write(result.stderr)
+    except StashMountError as e:
+        console.print(f"[red]{e}[/red]")
+        raise typer.Exit(1)
+    finally:
+        client.close()
+
+
 # ===========================================================================
 # Config
 # ===========================================================================
