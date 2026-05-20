@@ -1,35 +1,56 @@
 "use client";
 
-import { type DragEvent, useRef, useState } from "react";
+import { type DragEvent, type ReactNode, useRef, useState } from "react";
 
 import { createPage, uploadFileOrPage, uploadTranscript } from "@/lib/api";
 import type { StepCtx } from "@/lib/onboarding/paths";
 import { buildPrompt, type ShareKind } from "@/app/onboarding/prompts";
 
+function Ext({ children }: { children: string }) {
+  return <code className="text-foreground">{children}</code>;
+}
+
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3456";
 
 type OptionId = "drop" | "html" | "markdown" | "session";
 
-const OPTIONS: { id: OptionId; title: string; blurb: string }[] = [
+const OPTIONS: { id: OptionId; title: string; blurb: ReactNode }[] = [
   {
     id: "drop",
     title: "Drag & drop a file",
-    blurb: "A .jsonl session transcript, an HTML page, or a markdown doc.",
+    blurb: (
+      <>
+        A <Ext>.jsonl</Ext> session, <Ext>.html</Ext> page, or <Ext>.md</Ext>{" "}
+        doc from your machine.
+      </>
+    ),
   },
   {
     id: "html",
     title: "Agent → HTML page",
-    blurb: "Your coding agent generates an information-dense HTML page.",
+    blurb: (
+      <>
+        Have your agent publish a new or existing <Ext>.html</Ext> page.
+      </>
+    ),
   },
   {
     id: "markdown",
     title: "Agent → Markdown doc",
-    blurb: "Research note, spec, or writeup — published as markdown.",
+    blurb: (
+      <>
+        Have your agent publish a new or existing <Ext>.md</Ext> doc.
+      </>
+    ),
   },
   {
     id: "session",
     title: "Agent → Session trace",
-    blurb: "Your agent uploads its own .jsonl transcript to share.",
+    blurb: (
+      <>
+        Have your agent upload its current <Ext>.jsonl</Ext> transcript.
+      </>
+    ),
   },
 ];
 
@@ -253,8 +274,8 @@ function DropPanel({ workspaceId }: { workspaceId: string }) {
       )}
 
       <p className="text-[11px] text-muted leading-relaxed">
-        Upload a <code className="text-foreground">.jsonl</code> of a
-        session, an HTML page, or a markdown doc.
+        Upload a <Ext>.jsonl</Ext> of a session, an <Ext>.html</Ext> page,
+        or a <Ext>.md</Ext> doc.
       </p>
     </div>
   );
