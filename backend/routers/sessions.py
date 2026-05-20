@@ -87,6 +87,13 @@ async def list_my_sessions(
     timestamps, and a preview of the first prompt."""
     pool = get_pool()
     args: list = [current_user["id"]]
+    title_where = [
+        "he_title.session_id IS NOT NULL",
+        "(he_title.workspace_id IN (SELECT workspace_id FROM workspace_members WHERE user_id = $1) "
+        "OR he_title.created_by = $1)",
+        f"(he_title.workspace_id IS NULL OR {memory_service.readable_session_event_condition('he_title', 1)})",
+        "NULLIF(BTRIM(he_title.content), '') IS NOT NULL",
+    ]
     where = [
         "he.session_id IS NOT NULL",
         "(he.workspace_id IN (SELECT workspace_id FROM workspace_members WHERE user_id = $1) "
@@ -96,9 +103,28 @@ async def list_my_sessions(
     if workspace_id is not None:
         args.append(workspace_id)
         where.append(f"he.workspace_id = ${len(args)}")
+        title_where.append(f"he_title.workspace_id = ${len(args)}")
 
     rows = await pool.fetch(
         f"""
+        WITH title_sources AS (
+          SELECT DISTINCT ON (he_title.workspace_id, he_title.session_id)
+            he_title.workspace_id,
+            he_title.session_id,
+            LEFT(he_title.content, 240) AS title_source
+          FROM history_events he_title
+          WHERE {' AND '.join(title_where)}
+          ORDER BY
+            he_title.workspace_id,
+            he_title.session_id,
+            CASE
+              WHEN he_title.event_type IN ('user_message', 'user_prompt', 'prompt', 'message', 'user') THEN 0
+              WHEN he_title.event_type IN ('assistant_message', 'assistant') THEN 1
+              ELSE 2
+            END,
+            he_title.created_at,
+            he_title.id
+        )
         SELECT
           he.session_id,
           he.workspace_id,
@@ -106,28 +132,20 @@ async def list_my_sessions(
           (ARRAY_AGG(NULLIF(u.display_name, '') ORDER BY he.created_at)
            FILTER (WHERE NULLIF(u.display_name, '') IS NOT NULL))[1] AS user_name,
           MAX(he.agent_name) AS agent_name,
-          (
-            ARRAY_AGG(he.content ORDER BY
-              CASE
-                WHEN he.event_type IN ('user_message', 'user_prompt', 'prompt', 'message', 'user') THEN 0
-                WHEN he.event_type IN ('assistant_message', 'assistant') THEN 1
-                ELSE 2
-              END,
-              he.created_at,
-              he.id
-            ) FILTER (WHERE NULLIF(BTRIM(he.content), '') IS NOT NULL)
-          )[1] AS title_source,
+          title_sources.title_source,
           COUNT(*)::INT AS event_count,
           MIN(he.created_at) AS started_at,
           MAX(he.created_at) AS last_event_at
         FROM history_events he
+        LEFT JOIN title_sources ON title_sources.session_id = he.session_id
+          AND title_sources.workspace_id IS NOT DISTINCT FROM he.workspace_id
         LEFT JOIN workspaces w ON w.id = he.workspace_id
         LEFT JOIN users u ON u.id = he.created_by
         LEFT JOIN sessions s ON s.workspace_id IS NOT DISTINCT FROM he.workspace_id
           AND s.session_id = he.session_id
           AND s.deleted_at IS NULL
         WHERE {' AND '.join(where)}
-        GROUP BY he.session_id, he.workspace_id, w.name
+        GROUP BY he.session_id, he.workspace_id, w.name, title_sources.title_source
         ORDER BY last_event_at DESC, user_name ASC, session_id ASC
         LIMIT {int(limit)}
         """,
