@@ -1,0 +1,77 @@
+import type { ComponentType } from "react";
+
+import MigrantSourceStep from "@/app/onboarding/paths/migrant/MigrantSourceStep";
+import MigrantImportStep from "@/app/onboarding/paths/migrant/MigrantImportStep";
+import MigrantDemoStep from "@/app/onboarding/paths/migrant/MigrantDemoStep";
+import MemoryImportStep from "@/app/onboarding/paths/memory/MemoryImportStep";
+import MemoryAskStep from "@/app/onboarding/paths/memory/MemoryAskStep";
+import MemorySearchStep from "@/app/onboarding/paths/memory/MemorySearchStep";
+import SharingDropStep from "@/app/onboarding/paths/sharing/SharingDropStep";
+import SharingBrowseStep from "@/app/onboarding/paths/sharing/SharingBrowseStep";
+import SharingHandoffStep from "@/app/onboarding/paths/sharing/SharingHandoffStep";
+import InviteStep from "@/app/onboarding/steps/InviteStep";
+import DoneStep from "@/app/onboarding/steps/DoneStep";
+
+export type PathId = "migrant" | "memory" | "sharing";
+
+export type MigrantSource = "notion" | "obsidian" | "github";
+
+export type StepCtx = {
+  apiKey: string;
+  workspaceId: string | null;
+  // Sub-source on the migrant path, threaded via ?source=. null elsewhere.
+  source: MigrantSource | null;
+  setSource: (s: MigrantSource) => void;
+  // Set by SharingDropStep / FirstShareStep when /publish returns a URL —
+  // surfaces in DoneStep + welcome page.
+  sharedUrl: string | null;
+  setSharedUrl: (url: string) => void;
+  onContinue: () => void;
+  onSkip: () => void;
+  onSkipAll: () => void;
+};
+
+export type PathDef = {
+  id: PathId;
+  label: string;
+  steps: ComponentType<StepCtx>[];
+  doneStep: ComponentType<{ workspaceId: string | null }>;
+};
+
+// Each path's tail (Invite + Done) is shared. The existing InviteStep
+// component takes its own props shape, so paths.ts wraps it to match
+// StepCtx in the page.tsx renderer.
+export const PATHS: Record<PathId, PathDef> = {
+  migrant: {
+    id: "migrant",
+    label: "Knowledge base",
+    steps: [
+      MigrantSourceStep,
+      MigrantImportStep,
+      MigrantDemoStep,
+      wrapInvite(InviteStep),
+    ],
+    doneStep: DoneStep,
+  },
+  memory: {
+    id: "memory",
+    label: "AI memory",
+    steps: [MemoryImportStep, MemoryAskStep, MemorySearchStep, wrapInvite(InviteStep)],
+    doneStep: DoneStep,
+  },
+  sharing: {
+    id: "sharing",
+    label: "Share files",
+    steps: [SharingDropStep, SharingBrowseStep, SharingHandoffStep],
+    doneStep: DoneStep,
+  },
+};
+
+// InviteStep takes {workspaceId} only — wrap to satisfy the path step contract.
+function wrapInvite(Step: ComponentType<{ workspaceId: string | null }>) {
+  const Wrapped: ComponentType<StepCtx> = ({ workspaceId }) => (
+    <Step workspaceId={workspaceId} />
+  );
+  Wrapped.displayName = "InviteStepWrapped";
+  return Wrapped;
+}

@@ -2,6 +2,7 @@
 
 import { useRef, useState, type DragEvent, type FormEvent } from "react";
 import {
+  createFolder,
   createPage,
   updateStash,
   uploadFileOrPage,
@@ -22,6 +23,22 @@ type Status = "idle" | "saving" | "saved" | "error";
 
 const URL_RE = /^https?:\/\/\S+$/i;
 
+// createReader().readEntries only returns a batch at a time — keep reading
+// until it returns empty so we capture every entry in a wide directory.
+async function readAllEntries(
+  reader: FileSystemDirectoryReader,
+): Promise<FileSystemEntry[]> {
+  const all: FileSystemEntry[] = [];
+  for (;;) {
+    const batch = await new Promise<FileSystemEntry[]>((resolve, reject) =>
+      reader.readEntries(resolve, reject),
+    );
+    if (!batch.length) break;
+    all.push(...batch);
+  }
+  return all;
+}
+
 export default function StashQuickAdd({
   workspaceId,
   onAdded,
@@ -33,6 +50,7 @@ export default function StashQuickAdd({
   const [dragActive, setDragActive] = useState(false);
   const [hint, setHint] = useState<string>("");
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const folderInputRef = useRef<HTMLInputElement>(null);
   // Track nested dragenter/leave so we don't flicker when crossing children
   const dragDepth = useRef(0);
 
@@ -159,7 +177,123 @@ export default function StashQuickAdd({
     e.stopPropagation();
     dragDepth.current = 0;
     setDragActive(false);
+
+    // If any dropped item is a directory entry, walk the tree so we preserve
+    // folder structure. Otherwise fall back to the flat-file path.
+    const items = e.dataTransfer.items ? Array.from(e.dataTransfer.items) : [];
+    const entries = items
+      .filter((it) => it.kind === "file")
+      .map((it) => it.webkitGetAsEntry?.())
+      .filter((e): e is FileSystemEntry => !!e);
+    const hasDirectory = entries.some((entry) => entry.isDirectory);
+
+    if (hasDirectory) {
+      void handleEntries(entries);
+      return;
+    }
     if (e.dataTransfer.files?.length) handleFiles(e.dataTransfer.files);
+  }
+
+  // Walk an array of FileSystemEntry (mix of files + dirs) into a flat list
+  // of {file, path[]} where path is the folder chain from drop root.
+  async function flattenEntries(
+    entries: FileSystemEntry[],
+    prefix: string[] = [],
+  ): Promise<{ file: File; path: string[] }[]> {
+    const out: { file: File; path: string[] }[] = [];
+    for (const entry of entries) {
+      if (entry.isFile) {
+        const file = await new Promise<File>((resolve, reject) =>
+          (entry as FileSystemFileEntry).file(resolve, reject),
+        );
+        out.push({ file, path: prefix });
+      } else if (entry.isDirectory) {
+        const reader = (entry as FileSystemDirectoryEntry).createReader();
+        const children: FileSystemEntry[] = await readAllEntries(reader);
+        const nested = await flattenEntries(children, [...prefix, entry.name]);
+        out.push(...nested);
+      }
+    }
+    return out;
+  }
+
+  async function handleEntries(entries: FileSystemEntry[]) {
+    const items = await flattenEntries(entries);
+    await uploadWithPaths(items);
+  }
+
+  async function handleDirectoryInput(files: FileList) {
+    // webkitdirectory input gives us a FileList where each file's
+    // .webkitRelativePath is "rootDir/subDir/.../name". Split into path
+    // segments (drop the filename, last segment) and feed the same uploader.
+    const items: { file: File; path: string[] }[] = [];
+    for (const file of Array.from(files)) {
+      const rel = (file as File & { webkitRelativePath?: string })
+        .webkitRelativePath;
+      const parts = rel ? rel.split("/").slice(0, -1) : [];
+      items.push({ file, path: parts });
+    }
+    await uploadWithPaths(items);
+  }
+
+  // Create the folder hierarchy on demand, then upload each file into its
+  // resolved parent. Folders are created depth-first so each level finds
+  // its parent in the cache. Cache key is the joined path.
+  async function uploadWithPaths(items: { file: File; path: string[] }[]) {
+    if (!items.length || status === "saving") return;
+    setStatus("saving");
+    flashHint(`Uploading ${items.length} file${items.length === 1 ? "" : "s"}…`, 8000);
+
+    const folderCache = new Map<string, string>();
+    folderCache.set("", ""); // root sentinel
+
+    async function ensureFolder(path: string[]): Promise<string | null> {
+      if (path.length === 0) return null;
+      const key = path.join("/");
+      const cached = folderCache.get(key);
+      if (cached !== undefined) return cached || null;
+
+      const parentKey = path.slice(0, -1).join("/");
+      const parentId = folderCache.get(parentKey) || null;
+      const folder = await createFolder(workspaceId, path[path.length - 1], parentId);
+      folderCache.set(key, folder.id);
+      return folder.id;
+    }
+
+    const newItems: StashItemSpec[] = [];
+    let fileCount = 0;
+    let sessionCount = 0;
+    try {
+      for (const { file, path } of items) {
+        const folderId = await ensureFolder(path);
+        if (file.name.toLowerCase().endsWith(".jsonl")) {
+          const sessionId = file.name.replace(/\.jsonl$/i, "").trim() || "session";
+          await uploadTranscript(workspaceId, file, sessionId, "manual-upload");
+          sessionCount += 1;
+        } else {
+          const result = await uploadFileOrPage(workspaceId, file, folderId);
+          fileCount += 1;
+          if (result.kind === "page") {
+            newItems.push({ object_type: "page", object_id: result.page.id });
+          } else {
+            newItems.push({ object_type: "file", object_id: result.file.id });
+          }
+        }
+      }
+      await appendToStash(newItems);
+    } catch {
+      setStatus("error");
+      flashHint("Upload failed — try again", 2500);
+      window.setTimeout(() => setStatus("idle"), 2500);
+      return;
+    }
+    setStatus("saved");
+    const parts: string[] = [];
+    if (sessionCount > 0) parts.push(`${sessionCount} session${sessionCount === 1 ? "" : "s"}`);
+    if (fileCount > 0) parts.push(`${fileCount} file${fileCount === 1 ? "" : "s"}`);
+    flashHint(parts.length ? `Added ${parts.join(" + ")}` : "Added");
+    onAdded?.();
+    window.setTimeout(() => setStatus("idle"), 1500);
   }
 
   const statusText =
@@ -213,15 +347,26 @@ export default function StashQuickAdd({
             {status === "saving" ? "Adding…" : "Add"}
           </button>
         ) : (
-          <button
-            type="button"
-            onClick={() => fileInputRef.current?.click()}
-            disabled={status === "saving"}
-            className="rounded-md border border-border bg-surface px-2.5 py-1 text-[12px] text-muted hover:bg-raised hover:text-foreground disabled:opacity-60"
-            title="Choose a file to upload"
-          >
-            Upload file
-          </button>
+          <div className="flex items-center gap-1.5">
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={status === "saving"}
+              className="rounded-md border border-border bg-surface px-2.5 py-1 text-[12px] text-muted hover:bg-raised hover:text-foreground disabled:opacity-60"
+              title="Choose a file to upload"
+            >
+              Upload file
+            </button>
+            <button
+              type="button"
+              onClick={() => folderInputRef.current?.click()}
+              disabled={status === "saving"}
+              className="rounded-md border border-border bg-surface px-2.5 py-1 text-[12px] text-muted hover:bg-raised hover:text-foreground disabled:opacity-60"
+              title="Choose a folder to upload (preserves structure)"
+            >
+              Upload folder
+            </button>
+          </div>
         )}
         <input
           ref={fileInputRef}
@@ -231,6 +376,19 @@ export default function StashQuickAdd({
           onChange={(e) => {
             if (e.target.files?.length) handleFiles(e.target.files);
             if (fileInputRef.current) fileInputRef.current.value = "";
+          }}
+        />
+        <input
+          ref={folderInputRef}
+          type="file"
+          multiple
+          // Non-standard attrs for directory selection — supported by Chromium
+          // and Safari/Firefox. React types don't include them.
+          {...({ webkitdirectory: "", directory: "" } as Record<string, string>)}
+          className="hidden"
+          onChange={(e) => {
+            if (e.target.files?.length) void handleDirectoryInput(e.target.files);
+            if (folderInputRef.current) folderInputRef.current.value = "";
           }}
         />
       </form>

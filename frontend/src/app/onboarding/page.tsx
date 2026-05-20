@@ -1,20 +1,31 @@
 "use client";
 
-import { Suspense, useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import {
+  Suspense,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 
 import Header from "../../components/Header";
 import { useAuth } from "../../hooks/useAuth";
-import { addExternalStash, getToken, listMyWorkspaces } from "../../lib/api";
+import { getToken, listMyWorkspaces } from "../../lib/api";
 
-import FirstShareStep from "./steps/FirstShareStep";
-import TemplatesStep from "./steps/TemplatesStep";
-import ImportsStep from "./steps/ImportsStep";
-import InviteStep from "./steps/InviteStep";
-import DoneStep from "./steps/DoneStep";
+import IntentStep from "./IntentStep";
+import {
+  PATHS,
+  type MigrantSource,
+  type PathId,
+  type StepCtx,
+} from "../../lib/onboarding/paths";
 
-// Read the token from localStorage in an SSR-safe way. useSyncExternalStore
-// gives us the right value on first client render without setState-in-effect.
+const PATH_STORAGE_KEY = "stash_onboarding_path";
+const VALID_PATHS: PathId[] = ["migrant", "memory", "sharing"];
+const VALID_SOURCES: MigrantSource[] = ["notion", "obsidian", "github"];
+
 function useStashToken(): string | null {
   return useSyncExternalStore(
     (cb) => {
@@ -26,24 +37,23 @@ function useStashToken(): string | null {
   );
 }
 
-const STEPS = ["1", "2", "3", "4", "done"] as const;
-type Step = (typeof STEPS)[number];
+function isPathId(v: string | null): v is PathId {
+  return !!v && (VALID_PATHS as string[]).includes(v);
+}
 
-const STEP_LABELS: Record<Step, string> = {
-  "1": "Share",
-  "2": "Templates",
-  "3": "Sources",
-  "4": "Invite",
-  done: "Done",
-};
-
-function parseStep(raw: string | null): Step {
-  return STEPS.includes(raw as Step) ? (raw as Step) : "1";
+function isMigrantSource(v: string | null): v is MigrantSource {
+  return !!v && (VALID_SOURCES as string[]).includes(v);
 }
 
 export default function OnboardingPage() {
   return (
-    <Suspense fallback={<div className="min-h-screen flex items-center justify-center text-muted">Loading…</div>}>
+    <Suspense
+      fallback={
+        <div className="min-h-screen flex items-center justify-center text-muted">
+          Loading…
+        </div>
+      }
+    >
       <OnboardingInner />
     </Suspense>
   );
@@ -55,8 +65,28 @@ function OnboardingInner() {
   const { user, loading, logout } = useAuth();
   const apiKey = useStashToken();
   const [workspaceId, setWorkspaceId] = useState<string | null>(null);
+  const [sharedUrl, setSharedUrl] = useState<string | null>(null);
 
-  const step = parseStep(searchParams.get("step"));
+  const path = useMemo<PathId | null>(() => {
+    const q = searchParams.get("path");
+    if (isPathId(q)) return q;
+    if (typeof window !== "undefined") {
+      const stored = window.localStorage.getItem(PATH_STORAGE_KEY);
+      if (isPathId(stored)) return stored;
+    }
+    return null;
+  }, [searchParams]);
+
+  const source = useMemo<MigrantSource | null>(() => {
+    const q = searchParams.get("source");
+    return isMigrantSource(q) ? q : null;
+  }, [searchParams]);
+
+  const stepIdx = useMemo(() => {
+    const raw = searchParams.get("step");
+    const parsed = raw ? parseInt(raw, 10) : 1;
+    return Number.isFinite(parsed) && parsed > 0 ? parsed - 1 : 0;
+  }, [searchParams]);
 
   useEffect(() => {
     if (!loading && apiKey === null) {
@@ -73,21 +103,38 @@ function OnboardingInner() {
       .catch(() => {});
   }, [apiKey]);
 
-  function gotoStep(next: Step) {
-    const params = new URLSearchParams(searchParams.toString());
-    params.set("step", next);
-    router.push(`/onboarding?${params.toString()}`);
-  }
+  const pickPath = useCallback(
+    (next: PathId) => {
+      if (typeof window !== "undefined") {
+        window.localStorage.setItem(PATH_STORAGE_KEY, next);
+      }
+      router.push(`/onboarding?path=${next}&step=1`);
+    },
+    [router],
+  );
 
-  function nextStep() {
-    const i = STEPS.indexOf(step);
-    gotoStep(STEPS[Math.min(i + 1, STEPS.length - 1)]);
-  }
+  const setSource = useCallback(
+    (s: MigrantSource) => {
+      const params = new URLSearchParams(searchParams.toString());
+      params.set("source", s);
+      router.push(`/onboarding?${params.toString()}`);
+    },
+    [router, searchParams],
+  );
 
-  function skipToWorkspace() {
+  const goToStep = useCallback(
+    (idx: number) => {
+      const params = new URLSearchParams(searchParams.toString());
+      params.set("step", String(idx + 1));
+      router.push(`/onboarding?${params.toString()}`);
+    },
+    [router, searchParams],
+  );
+
+  const skipToWorkspace = useCallback(() => {
     if (workspaceId) router.push(`/workspaces/${workspaceId}`);
     else router.push("/");
-  }
+  }, [router, workspaceId]);
 
   if (loading || !apiKey) {
     return (
@@ -97,84 +144,133 @@ function OnboardingInner() {
     );
   }
 
+  // No path picked yet — show the chooser.
+  if (!path) {
+    return (
+      <div className="min-h-screen flex flex-col">
+        <Header user={user} onLogout={logout} />
+        <IntentStep onPick={pickPath} />
+      </div>
+    );
+  }
+
+  const pathDef = PATHS[path];
+  const totalSteps = pathDef.steps.length;
+  const isDone = stepIdx >= totalSteps;
+
+  function nextStep() {
+    if (stepIdx + 1 >= totalSteps) {
+      // Past the last regular step — advance to done.
+      goToStep(totalSteps);
+    } else {
+      goToStep(stepIdx + 1);
+    }
+  }
+
+  const stepCtx: StepCtx = {
+    apiKey,
+    workspaceId,
+    source,
+    setSource,
+    sharedUrl,
+    setSharedUrl,
+    onContinue: nextStep,
+    onSkip: nextStep,
+    onSkipAll: skipToWorkspace,
+  };
+
   return (
     <div className="min-h-screen flex flex-col">
       <Header user={user} onLogout={logout} />
       <main className="flex-1 px-4 py-10">
         <div className="mx-auto w-full max-w-2xl space-y-8">
-          <ProgressBar step={step} onJump={gotoStep} />
-          <StepBody
-            step={step}
-            apiKey={apiKey}
-            workspaceId={workspaceId}
-            onContinue={nextStep}
-            onSkip={step === "done" ? skipToWorkspace : nextStep}
-            onSkipAll={skipToWorkspace}
+          <ProgressBar
+            path={path}
+            totalSteps={totalSteps}
+            stepIdx={stepIdx}
+            onJump={goToStep}
+            isDone={isDone}
           />
+
+          {isDone ? (
+            <pathDef.doneStep workspaceId={workspaceId} />
+          ) : (
+            <>
+              {renderStep(pathDef.steps[stepIdx], stepCtx)}
+              <StepControls
+                onContinue={nextStep}
+                onSkip={nextStep}
+                onSkipAll={skipToWorkspace}
+              />
+            </>
+          )}
         </div>
       </main>
     </div>
   );
 }
 
-function ProgressBar({ step, onJump }: { step: Step; onJump: (s: Step) => void }) {
-  const currentIndex = STEPS.indexOf(step);
-  return (
-    <div className="flex items-center gap-2">
-      {STEPS.map((s, i) => {
-        const reached = i <= currentIndex;
-        const isCurrent = s === step;
-        return (
-          <button
-            key={s}
-            type="button"
-            onClick={() => onJump(s)}
-            disabled={i > currentIndex}
-            className={`flex items-center gap-1.5 text-[10px] font-mono uppercase tracking-[0.18em] transition-colors ${
-              isCurrent ? "text-foreground" : reached ? "text-muted hover:text-foreground" : "text-muted/50"
-            }`}
-          >
-            <span
-              className={`h-1.5 w-1.5 rounded-full ${
-                isCurrent ? "bg-brand" : reached ? "bg-foreground/40" : "bg-border"
-              }`}
-            />
-            {STEP_LABELS[s]}
-          </button>
-        );
-      })}
-    </div>
-  );
+function renderStep(
+  Step: React.ComponentType<StepCtx>,
+  ctx: StepCtx,
+): React.ReactNode {
+  return <Step {...ctx} />;
 }
 
-function StepBody({
-  step,
-  apiKey,
-  workspaceId,
-  onContinue,
-  onSkip,
-  onSkipAll,
+function ProgressBar({
+  path,
+  totalSteps,
+  stepIdx,
+  onJump,
+  isDone,
 }: {
-  step: Step;
-  apiKey: string;
-  workspaceId: string | null;
-  onContinue: () => void;
-  onSkip: () => void;
-  onSkipAll: () => void;
+  path: PathId;
+  totalSteps: number;
+  stepIdx: number;
+  onJump: (idx: number) => void;
+  isDone: boolean;
 }) {
-  return (
-    <div className="space-y-8">
-      {step === "1" && <FirstShareStep apiKey={apiKey} />}
-      {step === "2" && (
-        <TemplatesStepContainer workspaceId={workspaceId} onContinue={onContinue} onSkip={onSkip} />
-      )}
-      {step === "3" && <ImportsStep workspaceId={workspaceId} />}
-      {step === "4" && <InviteStep workspaceId={workspaceId} />}
-      {step === "done" && <DoneStep workspaceId={workspaceId} />}
+  const labels = Array.from({ length: totalSteps }, (_, i) => `Step ${i + 1}`);
+  labels.push("Done");
+  const currentIdx = isDone ? totalSteps : stepIdx;
 
-      {step !== "2" && step !== "done" && (
-        <StepControls onContinue={onContinue} onSkip={onSkip} onSkipAll={onSkipAll} />
-      )}
+  return (
+    <div className="flex items-center gap-3">
+      <div className="text-[10px] font-mono uppercase tracking-[0.18em] text-muted">
+        {PATHS[path].label}
+      </div>
+      <div className="flex items-center gap-2">
+        {labels.map((label, i) => {
+          const reached = i <= currentIdx;
+          const isCurrent = i === currentIdx;
+          return (
+            <button
+              key={label}
+              type="button"
+              onClick={() => onJump(i)}
+              disabled={i > currentIdx}
+              className={`flex items-center gap-1.5 text-[10px] font-mono uppercase tracking-[0.18em] transition-colors ${
+                isCurrent
+                  ? "text-foreground"
+                  : reached
+                    ? "text-muted hover:text-foreground"
+                    : "text-muted/50"
+              }`}
+            >
+              <span
+                className={`h-1.5 w-1.5 rounded-full ${
+                  isCurrent
+                    ? "bg-brand"
+                    : reached
+                      ? "bg-foreground/40"
+                      : "bg-border"
+                }`}
+              />
+              {label}
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -183,14 +279,10 @@ function StepControls({
   onContinue,
   onSkip,
   onSkipAll,
-  continuing,
-  continueLabel = "Continue",
 }: {
   onContinue: () => void;
   onSkip: () => void;
   onSkipAll: () => void;
-  continuing?: boolean;
-  continueLabel?: string;
 }) {
   return (
     <div className="flex items-center justify-between pt-2">
@@ -212,73 +304,11 @@ function StepControls({
         <button
           type="button"
           onClick={onContinue}
-          disabled={continuing}
-          className="rounded-md bg-brand px-4 py-2 text-[12px] font-medium text-white hover:bg-brand-hover disabled:opacity-60 transition-colors"
+          className="rounded-md bg-brand px-4 py-2 text-[12px] font-medium text-white hover:bg-brand-hover transition-colors"
         >
-          {continuing ? "…" : continueLabel}
+          Continue
         </button>
       </div>
     </div>
-  );
-}
-
-// Templates step owns its own continue handler (it has to fork selected stashes
-// before advancing), so we wrap it here with its own controls.
-function TemplatesStepContainer({
-  workspaceId,
-  onContinue,
-  onSkip,
-}: {
-  workspaceId: string | null;
-  onContinue: () => void;
-  onSkip: () => void;
-}) {
-  const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  function toggle(slug: string) {
-    setSelected((prev) => {
-      const next = new Set(prev);
-      if (next.has(slug)) next.delete(slug);
-      else next.add(slug);
-      return next;
-    });
-  }
-
-  const continueLabel = useMemo(() => {
-    if (selected.size === 0) return "Continue";
-    return `Add ${selected.size} and continue`;
-  }, [selected.size]);
-
-  async function handleContinue() {
-    if (selected.size === 0 || !workspaceId) {
-      onContinue();
-      return;
-    }
-    setBusy(true);
-    setError(null);
-    try {
-      for (const slug of selected) {
-        await addExternalStash(slug, workspaceId);
-      }
-      onContinue();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-      setBusy(false);
-    }
-  }
-
-  return (
-    <>
-      <TemplatesStep selected={selected} onToggle={toggle} busy={busy} error={error} />
-      <StepControls
-        onContinue={handleContinue}
-        onSkip={onSkip}
-        onSkipAll={onSkip}
-        continuing={busy}
-        continueLabel={continueLabel}
-      />
-    </>
   );
 }

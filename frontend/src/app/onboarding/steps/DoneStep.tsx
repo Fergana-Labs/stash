@@ -1,12 +1,39 @@
 "use client";
 
+import { useEffect, useRef } from "react";
 import Link from "next/link";
+
+import { isBlankDescription } from "@/components/DescriptionEditor";
+import {
+  getWorkspace,
+  getWorkspaceOverview,
+  updateWorkspace,
+} from "@/lib/api";
+import { useAuth } from "@/hooks/useAuth";
+import { generateWelcomeHtml } from "@/lib/onboarding/welcomeContent";
+import type { MigrantSource, PathId } from "@/lib/onboarding/paths";
+
+const PATH_STORAGE_KEY = "stash_onboarding_path";
+const SHARED_URL_KEY = "stash_onboarding_shared_url";
 
 type Props = {
   workspaceId: string | null;
 };
 
 export default function DoneStep({ workspaceId }: Props) {
+  const { user } = useAuth();
+  // Guard so we don't fire twice in dev-mode strict-mode double-invocations.
+  const seededRef = useRef(false);
+
+  useEffect(() => {
+    if (!workspaceId || !user || seededRef.current) return;
+    seededRef.current = true;
+    void seedWelcomePage({
+      workspaceId,
+      displayName: user.display_name || user.name,
+    });
+  }, [workspaceId, user]);
+
   return (
     <div className="space-y-6">
       <div className="space-y-2">
@@ -14,7 +41,8 @@ export default function DoneStep({ workspaceId }: Props) {
           You&rsquo;re set up
         </h1>
         <p className="text-sm text-dim max-w-md">
-          Two things you might want next.
+          We dropped a welcome page into your workspace&rsquo;s About — open
+          it, keep what&rsquo;s useful, delete the rest.
         </p>
       </div>
 
@@ -44,8 +72,8 @@ export default function DoneStep({ workspaceId }: Props) {
           Go to your workspace
         </div>
         <p className="text-[12px] text-muted leading-relaxed">
-          Open the workspace home — anything you shared, imported, or copied
-          in is already there.
+          Open the workspace home — your welcome page and everything you
+          imported is already there.
         </p>
         {workspaceId && (
           <Link
@@ -58,4 +86,65 @@ export default function DoneStep({ workspaceId }: Props) {
       </div>
     </div>
   );
+}
+
+async function seedWelcomePage(args: {
+  workspaceId: string;
+  displayName: string;
+}) {
+  const { workspaceId, displayName } = args;
+
+  const [workspace, overview] = await Promise.all([
+    getWorkspace(workspaceId),
+    getWorkspaceOverview(workspaceId),
+  ]);
+
+  // Don't clobber an edited description — only seed if it's empty.
+  if (!isBlankDescription(workspace.description ?? "")) return;
+
+  const path = readPath();
+  const source = readSource();
+  const sharedUrl = readSharedUrl();
+  const inviteLink =
+    typeof window !== "undefined" && workspace.invite_code
+      ? `${window.location.origin}/join/${workspace.invite_code}`
+      : null;
+
+  const html = generateWelcomeHtml({
+    path,
+    source,
+    displayName,
+    inviteLink,
+    sharedUrl,
+    counts: {
+      pages: overview.files?.pages?.length ?? 0,
+      files: overview.files?.files?.length ?? 0,
+      sessions: overview.sessions?.length ?? 0,
+    },
+  });
+
+  await updateWorkspace(workspaceId, { description: html });
+  if (typeof window !== "undefined") {
+    window.localStorage.removeItem(SHARED_URL_KEY);
+  }
+}
+
+function readPath(): PathId | null {
+  if (typeof window === "undefined") return null;
+  const v = window.localStorage.getItem(PATH_STORAGE_KEY);
+  if (v === "migrant" || v === "memory" || v === "sharing") return v;
+  return null;
+}
+
+function readSource(): MigrantSource | null {
+  if (typeof window === "undefined") return null;
+  const params = new URLSearchParams(window.location.search);
+  const v = params.get("source");
+  if (v === "notion" || v === "obsidian" || v === "github") return v;
+  return null;
+}
+
+function readSharedUrl(): string | null {
+  if (typeof window === "undefined") return null;
+  return window.localStorage.getItem(SHARED_URL_KEY);
 }
