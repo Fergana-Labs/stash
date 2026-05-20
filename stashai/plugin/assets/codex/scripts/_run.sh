@@ -11,11 +11,26 @@ set -euo pipefail
 
 SCRIPT="$1"
 shift
-TARGET="$(dirname "$0")/$SCRIPT.py"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+TARGET="$SCRIPT_DIR/$SCRIPT.py"
+
+REPO_ROOT=""
+case "$SCRIPT_DIR" in
+  */stashai/plugin/assets/*/scripts)
+    REPO_ROOT="$(cd "$SCRIPT_DIR/../../../../.." && pwd)"
+    ;;
+  */plugins/*-plugin/scripts)
+    REPO_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
+    ;;
+esac
+if [ -n "$REPO_ROOT" ] && [ -d "$REPO_ROOT/stashai" ] && [ -d "$REPO_ROOT/cli" ]; then
+  export PYTHONPATH="$REPO_ROOT${PYTHONPATH:+:$PYTHONPATH}"
+fi
 
 PY=""
 if command -v stash >/dev/null 2>&1; then
-  STASH_REAL="$(python3 -c "import os, shutil; print(os.path.realpath(shutil.which('stash')))" 2>/dev/null || true)"
+  STASH_BIN="$(command -v stash)"
+  STASH_REAL="$(python3 -c "import os, sys; print(os.path.realpath(sys.argv[1]))" "$STASH_BIN" 2>/dev/null || true)"
   if [ -n "$STASH_REAL" ]; then
     CANDIDATE="$(dirname "$STASH_REAL")/python"
     if [ -x "$CANDIDATE" ]; then
