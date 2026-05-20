@@ -55,8 +55,7 @@ async def get_primary_for_user(user_id: UUID) -> UUID | None:
     """Return the workspace id the user has marked primary, or None."""
     pool = get_pool()
     row = await pool.fetchrow(
-        "SELECT workspace_id FROM workspace_members "
-        "WHERE user_id = $1 AND is_primary LIMIT 1",
+        "SELECT workspace_id FROM workspace_members " "WHERE user_id = $1 AND is_primary LIMIT 1",
         user_id,
     )
     return row["workspace_id"] if row else None
