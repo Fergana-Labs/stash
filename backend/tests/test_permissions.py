@@ -1122,9 +1122,14 @@ async def test_public_folder_stash_file_download_url_works_anonymously(client, p
     assert public_url in content
     assert private_url in content
 
+    stale_token_resp = await client.get(
+        f"/api/v1/stashes/{stash['slug']}",
+        headers={"Authorization": "Bearer mc_invalid"},
+    )
     public_resp = await client.get(public_url)
     private_resp = await client.get(private_url)
 
+    assert stale_token_resp.status_code == 200
     assert public_resp.status_code == 200
     assert public_resp.content.startswith(b"bytes from test/")
     assert public_resp.headers["content-type"] == "image/png"
