@@ -138,7 +138,10 @@ async def get_activity_timeline(
         SELECT
             sc.bucket_date,
             COALESCE(NULLIF(u.display_name, ''), u.name, 'Unknown human') AS human_name,
-            COALESCE(NULLIF(sc.agent_name, ''), 'unknown agent') AS agent_name,
+            CASE
+                WHEN sc.agent_name = 'claude-subagent' THEN 'claude'
+                ELSE COALESCE(NULLIF(sc.agent_name, ''), 'unknown agent')
+            END AS agent_name,
             COUNT(*) AS cnt
         FROM session_commits sc
         LEFT JOIN users u ON u.id = sc.actor_id
