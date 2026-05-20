@@ -34,6 +34,8 @@ _TICKET_PATTERNS: tuple[tuple[re.Pattern[str], str, float], ...] = (
         0.95,
     ),
 )
+_BARE_TICKET_PATTERN = re.compile(rf"\b(?P<ticket>{LINEAR_TICKET_ID})\b", re.IGNORECASE)
+_DIRECT_SOURCES = ("linear_preamble", "linear_url", "identifier")
 
 
 @dataclass
@@ -96,8 +98,75 @@ def extract_labels(contents: list[str]) -> list[LinearTicketLabel]:
     return [labels[key] for key in sorted(labels)]
 
 
+def extract_ticket_mentions(contents: list[tuple[str, str, float]]) -> list[LinearTicketLabel]:
+    labels: dict[str, LinearTicketLabel] = {}
+    for content, source, confidence in contents:
+        for match in _BARE_TICKET_PATTERN.finditer(content):
+            ticket_identifier = match.group("ticket").upper()
+            next_label = LinearTicketLabel(
+                ticket_identifier=ticket_identifier,
+                ticket_title=None,
+                ticket_url=_url_for(content, ticket_identifier),
+                source=source,
+                confidence=confidence,
+            )
+            labels[ticket_identifier] = _merge_label(
+                labels.get(ticket_identifier),
+                next_label,
+            )
+
+    return [labels[key] for key in sorted(labels)]
+
+
 def has_ticket_hint(contents: list[str]) -> bool:
     return bool(extract_labels(contents))
+
+
+async def upsert_session_labels(
+    workspace_id: UUID,
+    session_row_id: UUID,
+    labels: list[LinearTicketLabel],
+) -> None:
+    if not labels:
+        return
+
+    pool = get_pool()
+    await pool.executemany(
+        """
+        INSERT INTO session_linear_tickets (
+          workspace_id,
+          session_row_id,
+          ticket_identifier,
+          ticket_title,
+          ticket_url,
+          source,
+          confidence
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7)
+        ON CONFLICT (session_row_id, ticket_identifier) DO UPDATE SET
+          ticket_title = COALESCE(session_linear_tickets.ticket_title, EXCLUDED.ticket_title),
+          ticket_url = COALESCE(session_linear_tickets.ticket_url, EXCLUDED.ticket_url),
+          source = CASE
+            WHEN EXCLUDED.confidence > session_linear_tickets.confidence
+            THEN EXCLUDED.source
+            ELSE session_linear_tickets.source
+          END,
+          confidence = GREATEST(session_linear_tickets.confidence, EXCLUDED.confidence),
+          updated_at = now()
+        """,
+        [
+            (
+                workspace_id,
+                session_row_id,
+                label.ticket_identifier,
+                label.ticket_title,
+                label.ticket_url,
+                label.source,
+                label.confidence,
+            )
+            for label in labels
+        ],
+    )
 
 
 async def sync_session_labels(
@@ -118,29 +187,14 @@ async def sync_session_labels(
     async with pool.acquire() as conn:
         async with conn.transaction():
             await conn.execute(
-                "DELETE FROM session_linear_tickets WHERE session_row_id = $1",
+                "DELETE FROM session_linear_tickets "
+                "WHERE session_row_id = $1 AND source = ANY($2::text[])",
                 session_row_id,
+                list(_DIRECT_SOURCES),
             )
-            if not labels:
-                return
-            await conn.executemany(
-                "INSERT INTO session_linear_tickets "
-                "(workspace_id, session_row_id, ticket_identifier, ticket_title, "
-                "ticket_url, source, confidence) "
-                "VALUES ($1, $2, $3, $4, $5, $6, $7)",
-                [
-                    (
-                        workspace_id,
-                        session_row_id,
-                        label.ticket_identifier,
-                        label.ticket_title,
-                        label.ticket_url,
-                        label.source,
-                        label.confidence,
-                    )
-                    for label in labels
-                ],
-            )
+    await upsert_session_labels(workspace_id, session_row_id, labels)
+    if not labels:
+        return
     enqueue_session_enrichment(workspace_id, session_row_id)
 
 
@@ -283,8 +337,14 @@ def _merge_label(
 
 def _source_rank(source: str) -> int:
     if source == "linear_preamble":
-        return 3
+        return 6
     if source == "linear_url":
+        return 5
+    if source in ("github_pr_branch", "github_pr_title"):
+        return 4
+    if source == "github_pr_body":
+        return 3
+    if source == "github_pr_commit":
         return 2
     return 1
 

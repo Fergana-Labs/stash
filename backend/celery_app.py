@@ -71,5 +71,9 @@ celery.conf.update(
             "task": "backend.tasks.linear_tickets.reconcile",
             "schedule": 300.0,
         },
+        "github-pr-linear-ticket-reconcile": {
+            "task": "backend.tasks.linear_tickets.reconcile_github_prs",
+            "schedule": 300.0,
+        },
     },
 )

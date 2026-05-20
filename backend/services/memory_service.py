@@ -15,7 +15,7 @@ import numpy as np
 
 from ..database import get_pool
 from . import embeddings as embedding_service
-from . import linear_ticket_service, permission_service, session_service
+from . import github_pr_service, linear_ticket_service, permission_service, session_service
 
 logger = logging.getLogger(__name__)
 
@@ -139,6 +139,8 @@ async def push_event(
         )
         if linear_ticket_service.has_ticket_hint([content]):
             await linear_ticket_service.sync_session_labels(workspace_id, session["id"], session_id)
+        if github_pr_service.has_pull_request_hint([content]):
+            github_pr_service.enqueue_session_discovery(session["id"])
     return event
 
 
@@ -240,6 +242,8 @@ async def _upsert_sessions_for_events(
         ]
         if linear_ticket_service.has_ticket_hint(contents):
             await linear_ticket_service.sync_session_labels(workspace_id, row["id"], session_id)
+        if github_pr_service.has_pull_request_hint(contents):
+            github_pr_service.enqueue_session_discovery(row["id"])
 
 
 def readable_session_event_condition(event_alias: str, user_arg: int) -> str:
