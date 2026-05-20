@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 
 import MigrantImportStep from "../migrant/MigrantImportStep";
-import type { StepCtx } from "@/lib/onboarding/paths";
+import type { MigrantSource, StepCtx } from "@/lib/onboarding/paths";
 import { apiFetch } from "@/lib/api";
 
 type Overview = {
@@ -58,7 +58,37 @@ export default function MemoryImportStep(ctx: StepCtx) {
         </p>
       </div>
 
-      <MigrantImportStep {...ctx} />
+      {ctx.source ? (
+        <MigrantImportStep {...ctx} />
+      ) : (
+        <SourcePickerInline onPick={ctx.setSource} />
+      )}
+    </div>
+  );
+}
+
+// Mini-picker used inside the memory path's import gate. Doesn't advance
+// the step — just sets ?source= so the same step re-renders with the
+// matching import surface (MigrantImportStep dispatches on source).
+function SourcePickerInline({ onPick }: { onPick: (s: MigrantSource) => void }) {
+  const CARDS: { id: MigrantSource; title: string; pitch: string }[] = [
+    { id: "notion", title: "Notion", pitch: "Pages, databases, sub-pages." },
+    { id: "obsidian", title: "Obsidian", pitch: "Drop your vault folder." },
+    { id: "github", title: "GitHub", pitch: "A repo's worth of markdown." },
+  ];
+  return (
+    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+      {CARDS.map((c) => (
+        <button
+          key={c.id}
+          type="button"
+          onClick={() => onPick(c.id)}
+          className="text-left rounded-2xl border border-border bg-surface p-4 hover:bg-raised hover:border-brand transition-colors space-y-1.5"
+        >
+          <div className="text-[13px] font-semibold text-foreground">{c.title}</div>
+          <div className="text-[12px] text-muted">{c.pitch}</div>
+        </button>
+      ))}
     </div>
   );
 }

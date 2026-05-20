@@ -25,6 +25,10 @@ export type StepCtx = {
   // separate router.pushes (set source, then continue) loses the source —
   // the second push reads a stale searchParams closure.
   pickSource: (s: MigrantSource) => void;
+  // Sets the source without changing step — used by paths that have no
+  // dedicated source-picker step but still need to branch on source
+  // (e.g. memory path's import gate).
+  setSource: (s: MigrantSource) => void;
   // Set by SharingDropStep / FirstShareStep when /publish returns a URL —
   // surfaces in DoneStep + welcome page.
   sharedUrl: string | null;
