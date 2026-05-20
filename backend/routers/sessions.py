@@ -46,7 +46,8 @@ def _session_response(row: dict, title: str | None = None) -> dict:
         "id": str(row["id"]),
         "workspace_id": str(row["workspace_id"]),
         "session_id": row["session_id"],
-        "title": title or session_title_service.title_from_text(
+        "title": title
+        or session_title_service.title_from_text(
             row.get("title_source"),
             row["session_id"],
         ),
