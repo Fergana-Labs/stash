@@ -91,18 +91,19 @@ def _apply_gradient_fill(background, gradient: GradientModel) -> None:
     gf = background.fill_format.gradient_format
     if gradient.type == "linear":
         gf.gradient_shape = slides.GradientShape.LINEAR
-        # CSS angles: 0° = up, 90° = right. Aspose `gradient_direction`
-        # only has 8 cardinal values; for arbitrary angles we set
-        # linear_gradient_angle which is degrees clockwise from up.
-        gf.linear_gradient_angle = float(gradient.angle) % 360
+        # CSS uses 0° = "to top" (gradient travels upward), measured clockwise.
+        # OOXML uses 0° = "left to right", clockwise. So OOXML = (CSS - 90) mod 360.
+        gf.linear_gradient_angle = (float(gradient.angle) - 90.0) % 360
     else:  # radial
         gf.gradient_shape = slides.GradientShape.RECTANGLE
-    # Replace default stops with ours.
-    while gf.gradient_stops.count > 0:
+    # Aspose Python bindings are inconsistent — IGradientStopCollection
+    # exposes `count` as a method while IParagraphCollection exposes it
+    # as a property. Also `.add()` only takes preset colors; for arbitrary
+    # RGB we have to call `add_pixel_stop()`.
+    while gf.gradient_stops.count() > 0:
         gf.gradient_stops.remove_at(0)
     for stop in gradient.stops:
-        # Aspose's add() takes a position percent 0-100 and color.
-        gf.gradient_stops.add(float(stop.offset) * 100.0, _hex_to_color(stop.color))
+        gf.gradient_stops.add_pixel_stop(float(stop.offset) * 100.0, _hex_to_color(stop.color))
 
 
 def _set_canvas_size(pres: slides.Presentation, width_px: float, height_px: float) -> None:
