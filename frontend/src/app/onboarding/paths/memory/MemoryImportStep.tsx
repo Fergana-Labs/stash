@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 
 import { apiFetch } from "@/lib/api";
 import type { StepCtx } from "@/lib/onboarding/paths";
@@ -10,19 +10,16 @@ type Overview = {
 };
 
 const POLL_INTERVAL_MS = 4000;
-const AUTO_ADVANCE_DELAY_MS = 1500;
 
-// Step 1: install the CLI and wait for the first session to land. The CLI
-// auto-pushes session transcripts to /workspaces/{id}/transcripts on first
-// run, so we poll the workspace overview until sessions appear, then auto-
-// advance. User can bypass with the "Skip — show me how it works" link.
+// Step 1: install the CLI and wait for sessions to land. The CLI auto-pushes
+// session transcripts to /workspaces/{id}/transcripts (including a backfill
+// of past sessions on first run), so we poll the workspace overview and
+// surface the live count. User clicks Continue when they're ready — we
+// don't auto-advance, since backfill can take a while and we can't reliably
+// tell when it's "done."
 export default function MemoryImportStep(ctx: StepCtx) {
   const [sessionCount, setSessionCount] = useState<number | null>(null);
-  const [skipping, setSkipping] = useState(false);
-  const advanceTimer = useRef<number | null>(null);
 
-  // Polling: hit /overview every 4s while we have a workspace and no
-  // sessions detected yet. Stops as soon as sessions > 0 or step unmounts.
   useEffect(() => {
     if (!ctx.workspaceId) return;
     let cancelled = false;
@@ -33,8 +30,7 @@ export default function MemoryImportStep(ctx: StepCtx) {
           `/api/v1/workspaces/${ctx.workspaceId}/overview`,
         );
         if (cancelled) return;
-        const n = o.sessions?.length ?? 0;
-        setSessionCount(n);
+        setSessionCount(o.sessions?.length ?? 0);
       } catch {
         // Transient errors: try again next tick.
       }
@@ -47,28 +43,6 @@ export default function MemoryImportStep(ctx: StepCtx) {
       window.clearInterval(id);
     };
   }, [ctx.workspaceId]);
-
-  // Auto-advance once sessions are detected — unless the user explicitly
-  // skipped, in which case onContinue already fired.
-  useEffect(() => {
-    if (skipping) return;
-    if (sessionCount !== null && sessionCount > 0) {
-      advanceTimer.current = window.setTimeout(() => {
-        ctx.onContinue();
-      }, AUTO_ADVANCE_DELAY_MS);
-    }
-    return () => {
-      if (advanceTimer.current !== null) {
-        window.clearTimeout(advanceTimer.current);
-        advanceTimer.current = null;
-      }
-    };
-  }, [sessionCount, skipping, ctx]);
-
-  function handleSkip() {
-    setSkipping(true);
-    ctx.onContinue();
-  }
 
   const detected = sessionCount !== null && sessionCount > 0;
 
@@ -99,12 +73,22 @@ export default function MemoryImportStep(ctx: StepCtx) {
         </p>
       </div>
 
-      <StatusPanel detected={detected} sessionCount={sessionCount ?? 0} />
+      <StatusPanel detected={detected} sessionCount={sessionCount} />
+
+      {detected && (
+        <button
+          type="button"
+          onClick={ctx.onContinue}
+          className="w-full rounded-md bg-brand px-4 py-2.5 text-[13px] font-medium text-white hover:bg-brand-hover"
+        >
+          Continue
+        </button>
+      )}
 
       <div>
         <button
           type="button"
-          onClick={handleSkip}
+          onClick={ctx.onContinue}
           className="text-[12px] text-muted hover:text-foreground transition-colors underline"
         >
           Skip — show me how it works anyway
@@ -119,21 +103,31 @@ function StatusPanel({
   sessionCount,
 }: {
   detected: boolean;
-  sessionCount: number;
+  sessionCount: number | null;
 }) {
-  if (detected) {
+  if (detected && sessionCount !== null) {
     return (
-      <div className="rounded-xl border border-brand bg-brand/5 px-4 py-3 flex items-center gap-3">
-        <span
-          className="flex h-6 w-6 items-center justify-center rounded-full bg-brand text-white text-[12px] font-bold"
-          aria-hidden
-        >
-          ✓
-        </span>
-        <div className="text-[12.5px] text-foreground">
-          Detected {sessionCount} session{sessionCount === 1 ? "" : "s"} from
-          your CLI — your agent has memory now.
+      <div className="rounded-xl border border-brand bg-brand/5 px-4 py-3 space-y-1.5">
+        <div className="flex items-center gap-2">
+          <span
+            className="flex h-5 w-5 items-center justify-center rounded-full bg-brand text-white text-[10px] font-bold"
+            aria-hidden
+          >
+            ✓
+          </span>
+          <div className="text-[12.5px] text-foreground">
+            Your CLI is connected.{" "}
+            <strong>
+              {sessionCount} session{sessionCount === 1 ? "" : "s"} uploaded
+            </strong>{" "}
+            so far.
+          </div>
         </div>
+        <p className="text-[11.5px] text-muted pl-7">
+          If you started a backfill, wait until it finishes before continuing
+          — your agent&rsquo;s memory is only as good as what&rsquo;s up
+          here.
+        </p>
       </div>
     );
   }
@@ -145,7 +139,7 @@ function StatusPanel({
         <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-brand" />
       </span>
       <div className="text-[12.5px] text-muted">
-        Waiting for your first session…
+        Waiting for the CLI to connect…
       </div>
     </div>
   );
