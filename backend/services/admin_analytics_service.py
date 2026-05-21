@@ -97,8 +97,7 @@ async def get_path_mix(*, days: int = 30, bucket: str = "day") -> dict:
         "days": days,
         "bucket": bucket,
         "rows": [
-            {"ts": r["ts"].isoformat(), "path": r["path"], "count": int(r["n"])}
-            for r in rows
+            {"ts": r["ts"].isoformat(), "path": r["path"], "count": int(r["n"])} for r in rows
         ],
         "generated_at": datetime.now(UTC).isoformat(),
     }
@@ -198,9 +197,7 @@ async def get_summary(*, days: int = 7) -> dict:
     pool = get_pool()
     since = datetime.now(UTC) - timedelta(days=days)
 
-    signups = await pool.fetchval(
-        "SELECT COUNT(*) FROM users WHERE created_at >= $1", since
-    )
+    signups = await pool.fetchval("SELECT COUNT(*) FROM users WHERE created_at >= $1", since)
     completed = await pool.fetchval(
         """
         SELECT COUNT(DISTINCT user_id) FROM analytics_events

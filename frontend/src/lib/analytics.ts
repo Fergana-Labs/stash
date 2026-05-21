@@ -19,7 +19,7 @@ type Event = {
 const FLUSH_MS = 1000;
 const MAX_BATCH = 20;
 
-let queue: Event[] = [];
+const queue: Event[] = [];
 let timer: ReturnType<typeof setTimeout> | null = null;
 
 function flush() {

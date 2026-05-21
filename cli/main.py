@@ -17,6 +17,7 @@ from rich.text import Text
 
 from stashai.plugin.upload_status import read_upload_status
 
+from . import telemetry
 from .client import StashClient, StashError, stash_permissions_for_access
 from .config import (
     MANIFEST_FILE,
@@ -33,7 +34,6 @@ from .config import (
     write_manifest,
 )
 from .formatting import console, output_json, print_members, print_user, print_workspaces
-from . import telemetry
 
 app = typer.Typer(
     name="stash",

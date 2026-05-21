@@ -6,8 +6,6 @@ Covers:
 - Admin endpoints reflect inserted rows (summary, funnel, top events).
 """
 
-import os
-
 import pytest
 from httpx import AsyncClient
 
@@ -53,8 +51,16 @@ async def test_ingest_records_events(client: AsyncClient):
         "/api/v1/analytics/events",
         json={
             "events": [
-                {"surface": "web", "event_name": "onboarding.viewed", "properties": {"has_path": False}},
-                {"surface": "web", "event_name": "onboarding.path_selected", "properties": {"path": "migrant"}},
+                {
+                    "surface": "web",
+                    "event_name": "onboarding.viewed",
+                    "properties": {"has_path": False},
+                },
+                {
+                    "surface": "web",
+                    "event_name": "onboarding.path_selected",
+                    "properties": {"path": "migrant"},
+                },
             ]
         },
         headers=_auth(key),
@@ -84,14 +90,46 @@ async def test_ingest_accepts_round_2_event_names(client: AsyncClient):
         "/api/v1/analytics/events",
         json={
             "events": [
-                {"surface": "web", "event_name": "web.file_uploaded", "properties": {"size_bucket": "lt_1mb"}},
-                {"surface": "web", "event_name": "web.stash_created", "properties": {"kind": "manual"}},
-                {"surface": "web", "event_name": "web.page_edited", "properties": {"page_id": "p1"}},
-                {"surface": "web", "event_name": "web.search_query", "properties": {"has_results": True}},
-                {"surface": "web", "event_name": "auth.signed_up", "properties": {"via_cli": False}},
-                {"surface": "cli", "event_name": "cli.command_invoked", "properties": {"command": "history.push"}},
-                {"surface": "cli", "event_name": "cli.command_invoked", "properties": {"command": "history.query"}},
-                {"surface": "cli", "event_name": "cli.command_invoked", "properties": {"command": "history.search"}},
+                {
+                    "surface": "web",
+                    "event_name": "web.file_uploaded",
+                    "properties": {"size_bucket": "lt_1mb"},
+                },
+                {
+                    "surface": "web",
+                    "event_name": "web.stash_created",
+                    "properties": {"kind": "manual"},
+                },
+                {
+                    "surface": "web",
+                    "event_name": "web.page_edited",
+                    "properties": {"page_id": "p1"},
+                },
+                {
+                    "surface": "web",
+                    "event_name": "web.search_query",
+                    "properties": {"has_results": True},
+                },
+                {
+                    "surface": "web",
+                    "event_name": "auth.signed_up",
+                    "properties": {"via_cli": False},
+                },
+                {
+                    "surface": "cli",
+                    "event_name": "cli.command_invoked",
+                    "properties": {"command": "history.push"},
+                },
+                {
+                    "surface": "cli",
+                    "event_name": "cli.command_invoked",
+                    "properties": {"command": "history.query"},
+                },
+                {
+                    "surface": "cli",
+                    "event_name": "cli.command_invoked",
+                    "properties": {"command": "history.search"},
+                },
             ]
         },
         headers=_auth(key),
@@ -143,10 +181,26 @@ async def test_funnel_reflects_recorded_events(client: AsyncClient):
         "/api/v1/analytics/events",
         json={
             "events": [
-                {"surface": "web", "event_name": "onboarding.viewed", "properties": {"has_path": False}},
-                {"surface": "web", "event_name": "onboarding.path_selected", "properties": {"path": "memory"}},
-                {"surface": "web", "event_name": "onboarding.step_viewed", "properties": {"path": "memory", "step_idx": 0, "step_name": "install"}},
-                {"surface": "web", "event_name": "onboarding.completed", "properties": {"path": "memory", "total_steps": 3}},
+                {
+                    "surface": "web",
+                    "event_name": "onboarding.viewed",
+                    "properties": {"has_path": False},
+                },
+                {
+                    "surface": "web",
+                    "event_name": "onboarding.path_selected",
+                    "properties": {"path": "memory"},
+                },
+                {
+                    "surface": "web",
+                    "event_name": "onboarding.step_viewed",
+                    "properties": {"path": "memory", "step_idx": 0, "step_name": "install"},
+                },
+                {
+                    "surface": "web",
+                    "event_name": "onboarding.completed",
+                    "properties": {"path": "memory", "total_steps": 3},
+                },
             ]
         },
         headers=_auth(key),
@@ -172,8 +226,16 @@ async def test_summary_counts_signups_and_cli_active(client: AsyncClient):
         "/api/v1/analytics/events",
         json={
             "events": [
-                {"surface": "cli", "event_name": "cli.command_invoked", "properties": {"command": "connect"}},
-                {"surface": "cli", "event_name": "cli.command_invoked", "properties": {"command": "share"}},
+                {
+                    "surface": "cli",
+                    "event_name": "cli.command_invoked",
+                    "properties": {"command": "connect"},
+                },
+                {
+                    "surface": "cli",
+                    "event_name": "cli.command_invoked",
+                    "properties": {"command": "share"},
+                },
             ]
         },
         headers=_auth(key),
