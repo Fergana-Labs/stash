@@ -126,6 +126,9 @@ docker compose -f docker-compose.prod.yml up -d
 ```
 Set `EMBEDDING_PROVIDER` to use a third-party embedding provider (otherwise we'll just use local `sentence-transformers`). Set `S3_ENDPOINT`, `S3_BUCKET`, and `S3_ACCESS_KEY` to use S3-compatible object storage (R2, S3, MinIO) for file uploads.
 
+Before onboarding a self-hosted user, run the clean-machine validation in
+[docs/clean-mac-self-hosting-runbook.md](docs/clean-mac-self-hosting-runbook.md).
+
 > Local development? Use `docker compose up -d` (no `-f` flag) — simple setup with hardcoded dev credentials.
 
 ### Local seed data
