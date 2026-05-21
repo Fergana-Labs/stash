@@ -172,6 +172,63 @@ def _accessible_tables_cte(
     """
 
 
+def _accessible_files_cte(
+    ws_idx: int | None = None,
+    user_idx: int = 1,
+    stash_idx: int | None = None,
+) -> str:
+    readable_files = permission_service.readable_content_condition("file", "f", user_idx)
+    if stash_idx is not None:
+        # Same folder-expansion pattern as pages: a stash can list files
+        # directly, or wrap them in a folder, so walk descendant folders.
+        return f"""
+        WITH RECURSIVE stash_folder_descendants AS (
+            SELECT object_id::uuid AS folder_id
+            FROM stash_items
+            WHERE stash_id = ${stash_idx}
+              AND object_type = 'folder'
+            UNION
+            SELECT fld.id
+            FROM folders fld
+            JOIN stash_folder_descendants d
+              ON fld.parent_folder_id = d.folder_id
+        ),
+        accessible_files AS (
+            SELECT f.id AS file_id
+            FROM files f
+            WHERE f.deleted_at IS NULL
+              AND {readable_files}
+              AND (
+                f.id IN (
+                    SELECT object_id::uuid FROM stash_items
+                    WHERE stash_id = ${stash_idx}
+                      AND object_type = 'file'
+                )
+                OR f.folder_id IN (SELECT folder_id FROM stash_folder_descendants)
+              )
+        )
+        """
+    if ws_idx is not None:
+        return f"""
+        WITH accessible_files AS (
+            SELECT f.id AS file_id
+            FROM files f
+            WHERE f.workspace_id = ${ws_idx}
+              AND f.deleted_at IS NULL
+              AND {readable_files}
+        )
+        """
+    return f"""
+    WITH accessible_files AS (
+        SELECT f.id AS file_id
+        FROM files f
+        WHERE f.workspace_id IN (SELECT workspace_id FROM workspace_members WHERE user_id = $1)
+          AND f.deleted_at IS NULL
+          AND {readable_files}
+    )
+    """
+
+
 async def get_activity_timeline(
     user_id: UUID,
     days: int = 30,
@@ -780,6 +837,18 @@ async def get_embedding_projection(
         )
         total_count += row or 0
 
+    if source is None or source == "files":
+        row = await pool.fetchval(
+            _accessible_files_cte(ws_idx=content_count_ws_idx, stash_idx=content_count_stash_idx)
+            + """
+            SELECT COUNT(*) FROM files f
+            WHERE f.id IN (SELECT file_id FROM accessible_files)
+              AND f.embedding IS NOT NULL
+            """,
+            *content_count_args,
+        )
+        total_count += row or 0
+
     # Check if cache is still valid
     one_hour_ago = datetime.now(UTC) - timedelta(hours=1)
     if cache and cache["computed_at"] > one_hour_ago:
@@ -794,9 +863,10 @@ async def get_embedding_projection(
     if total_count == 0:
         return {"points": [], "stats": {"total_embeddings": 0, "projected": 0}, "cached": False}
 
-    # Fetch embeddings from each source
+    # Fetch embeddings from each source. Divide by the number of sources
+    # so the union doesn't exceed max_points by much.
     all_items: list[dict] = []
-    per_source_limit = max_points if source else max_points // 3
+    per_source_limit = max_points if source else max(max_points // 4, 1)
     content_fetch_args = [user_id, per_source_limit]
     content_fetch_ws_idx = None
     content_fetch_stash_idx = None
@@ -883,6 +953,30 @@ async def get_embedding_projection(
                     "id": str(r["id"]),
                     "label": f"{r['agent_name'] or 'agent'}: {r['event_type'] or 'event'}",
                     "source": "history_events",
+                    "created_at": r["created_at"].isoformat() if r["created_at"] else None,
+                    "embedding": np.array(r["embedding"]),
+                }
+            )
+
+    if source is None or source == "files":
+        rows = await pool.fetch(
+            _accessible_files_cte(ws_idx=content_fetch_ws_idx, stash_idx=content_fetch_stash_idx)
+            + """
+            SELECT f.id, f.name AS label, f.embedding, f.created_at
+            FROM files f
+            WHERE f.id IN (SELECT file_id FROM accessible_files)
+              AND f.embedding IS NOT NULL
+            ORDER BY f.created_at DESC
+            LIMIT $2
+            """,
+            *content_fetch_args,
+        )
+        for r in rows:
+            all_items.append(
+                {
+                    "id": str(r["id"]),
+                    "label": r["label"],
+                    "source": "files",
                     "created_at": r["created_at"].isoformat() if r["created_at"] else None,
                     "embedding": np.array(r["embedding"]),
                 }

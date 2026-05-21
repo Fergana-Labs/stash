@@ -75,12 +75,15 @@ async def _run(file_id: UUID) -> int:
         if text and len(text) > MAX_EXTRACTED_TEXT:
             text = text[:MAX_EXTRACTED_TEXT] + "\n\n[truncated]"
 
+        # embed_stale flips on if there's text to embed. The reconciler
+        # in backend/tasks/embeddings.py picks files up from there.
         await conn.execute(
             "UPDATE files SET "
             "extracted_text = $2, "
             "extraction_status = 'done', "
             "extraction_error = NULL, "
-            "locked_at = NULL "
+            "locked_at = NULL, "
+            "embed_stale = CASE WHEN $2 IS NOT NULL AND $2 <> '' THEN TRUE ELSE embed_stale END "
             "WHERE id = $1",
             file_id,
             text,
