@@ -1137,9 +1137,11 @@ def upload(
     with _client() as c:
         root_folder = c.create_folder(ws, root_name)
         folder_cache: dict[tuple[str, str], str] = {}
-        stash_items: list[dict] = [
-            {"object_type": "folder", "object_id": root_folder["id"], "position": 0},
-        ]
+        stash_items: list[dict] = []
+        if target.is_dir():
+            stash_items.append(
+                {"object_type": "folder", "object_id": root_folder["id"], "position": 0}
+            )
 
         for file_path in files:
             relative_path = (
@@ -1155,7 +1157,16 @@ def upload(
 
             if _is_upload_text_file(file_path):
                 content = file_path.read_text(errors="replace")
-                c.create_page(ws, file_path.name, content=content, folder_id=folder_id)
+                page = c.create_page(ws, file_path.name, content=content, folder_id=folder_id)
+                if target.is_file():
+                    stash_items.append(
+                        {
+                            "object_type": "page",
+                            "object_id": page["id"],
+                            "position": len(stash_items),
+                            "label_override": str(relative_path),
+                        }
+                    )
                 console.print(f"  [dim]Page: {relative_path}[/dim]")
                 continue
 

@@ -28,3 +28,94 @@ def test_file_app_url_points_to_workspace_file_viewer(monkeypatch) -> None:
         _file_app_url({"workspace_id": workspace_id, "id": file_id})
         == f"https://app.example/workspaces/{workspace_id}/f/{file_id}"
     )
+
+
+def test_single_blob_upload_publishes_only_the_file_item(monkeypatch, tmp_path) -> None:
+    uploaded = tmp_path / "shot.png"
+    uploaded.write_bytes(b"png")
+    published_items = []
+
+    class FakeClient:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return None
+
+        def create_folder(self, _workspace_id, name, parent_folder_id=None):
+            assert parent_folder_id is None
+            return {"id": "folder-1", "name": name}
+
+        def upload_ws_file(self, _workspace_id, path):
+            assert path == str(uploaded)
+            return {"id": "file-1", "name": uploaded.name, "url": "https://files.test/shot.png"}
+
+        def create_page(self, *_args, **_kwargs):
+            return {"id": "page-1"}
+
+        def publish_stash(self, _workspace_id, title, description, items):
+            published_items.extend(items)
+            return {
+                "stash": {"id": "stash-1", "slug": "shot"},
+                "url": "https://app.example/stashes/shot",
+            }
+
+    monkeypatch.setattr(main, "_require_auth", lambda: None)
+    monkeypatch.setattr(main, "_resolve_workspace", lambda: "workspace-1")
+    monkeypatch.setattr(main, "_client", lambda: FakeClient())
+
+    main.upload(str(uploaded), name="", workspace_id=None, public=True, as_json=False)
+
+    assert published_items == [
+        {
+            "object_type": "file",
+            "object_id": "file-1",
+            "position": 0,
+            "label_override": "shot.png",
+        }
+    ]
+
+
+def test_single_text_upload_publishes_only_the_page_item(monkeypatch, tmp_path) -> None:
+    uploaded = tmp_path / "notes.md"
+    uploaded.write_text("# Notes")
+    published_items = []
+
+    class FakeClient:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return None
+
+        def create_folder(self, _workspace_id, name, parent_folder_id=None):
+            assert parent_folder_id is None
+            return {"id": "folder-1", "name": name}
+
+        def create_page(self, _workspace_id, name, content, folder_id):
+            assert name == "notes.md"
+            assert content == "# Notes"
+            assert folder_id == "folder-1"
+            return {"id": "page-1"}
+
+        def publish_stash(self, _workspace_id, title, description, items):
+            published_items.extend(items)
+            return {
+                "stash": {"id": "stash-1", "slug": "notes"},
+                "url": "https://app.example/stashes/notes",
+            }
+
+    monkeypatch.setattr(main, "_require_auth", lambda: None)
+    monkeypatch.setattr(main, "_resolve_workspace", lambda: "workspace-1")
+    monkeypatch.setattr(main, "_client", lambda: FakeClient())
+
+    main.upload(str(uploaded), name="", workspace_id=None, public=True, as_json=False)
+
+    assert published_items == [
+        {
+            "object_type": "page",
+            "object_id": "page-1",
+            "position": 0,
+            "label_override": "notes.md",
+        }
+    ]

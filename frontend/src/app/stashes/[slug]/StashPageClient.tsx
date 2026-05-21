@@ -39,6 +39,14 @@ type StashItemGroup = Partial<
   Record<PublicStashItem["object_type"], PublicStashItem[]>
 >;
 
+type InlineFile = {
+  name?: string;
+  content_type?: string;
+  size_bytes?: number;
+  url?: string;
+  created_at?: string;
+};
+
 // Signed-in viewers see the Stash inside AppShell (sidebar + top bar) so
 // navigation context is preserved. Anonymous viewers see the raw page.
 function StashChrome({
@@ -169,6 +177,8 @@ function StashPageBody({
 }) {
   const { stash, workspace_name, items, can_write } = data;
   const groups = groupStashItems(items);
+  const primaryFile = primaryFileItemForStash(data);
+  const displayedItemCount = primaryFile ? 1 : items.length;
   const [addOpen, setAddOpen] = useState(false);
   const [timeline, setTimeline] = useState<ActivityTimeline | null>(null);
   const [projection, setProjection] = useState<EmbeddingProjection | null>(
@@ -177,6 +187,13 @@ function StashPageBody({
   const [insightsLoaded, setInsightsLoaded] = useState(false);
 
   useEffect(() => {
+    if (primaryFile) {
+      setTimeline(null);
+      setProjection(null);
+      setInsightsLoaded(true);
+      return;
+    }
+
     // Visualizations are workspace-scoped — they show the owning workspace's
     // activity so the stash detail page has the same "knowledge map" feel
     // as the workspace home.
@@ -194,7 +211,7 @@ function StashPageBody({
     return () => {
       cancelled = true;
     };
-  }, [stash.workspace_id]);
+  }, [primaryFile, stash.workspace_id]);
 
   const cover = stash.cover_image_url
     ? { backgroundImage: `url(${stash.cover_image_url})` }
@@ -240,7 +257,8 @@ function StashPageBody({
                 <span>by {author}</span>
                 <span className="text-muted/60">·</span>
                 <span>
-                  {items.length} item{items.length === 1 ? "" : "s"}
+                  {displayedItemCount} item
+                  {displayedItemCount === 1 ? "" : "s"}
                 </span>
                 {stash.updated_at && (
                   <>
@@ -297,83 +315,89 @@ function StashPageBody({
           }}
         />
 
-        {/* Compact item lists by kind. Items deep-link to the editor /
-            viewer in the owning workspace — no inline rendering. */}
-        <div className="mt-6 flex flex-col gap-6">
-          {/* Two high-level taxonomies: Files (folders + pages + files +
-              tables — anything you could drop into Drive) and Sessions
-              (agent transcripts). Tables are a structured kind of file,
-              so they live under Files rather than as a separate section. */}
-          <StashItemSection
-            title="Files"
-            items={[
-              ...(groups.folder ?? []),
-              ...(groups.page ?? []),
-              ...(groups.file ?? []),
-              ...(groups.table ?? []),
-            ]}
-            stashSlug={stash.slug}
-            workspaceId={stash.workspace_id}
-          />
-          <StashItemSection
-            title="Sessions"
-            items={groups.session ?? []}
-            stashSlug={stash.slug}
-            workspaceId={stash.workspace_id}
-          />
-          {items.length === 0 && (
-            <div className="rounded-lg border border-dashed border-border bg-surface/30 px-4 py-10 text-center text-[13px] text-muted">
-              No items yet.{" "}
-              {can_write && (
-                <button
-                  type="button"
-                  onClick={() => setAddOpen(true)}
-                  className="font-medium text-[var(--color-brand-700)] hover:underline"
-                >
-                  Add things →
-                </button>
+        {primaryFile ? (
+          <SingleFilePreview item={primaryFile} />
+        ) : (
+          <>
+            {/* Compact item lists by kind. Items deep-link to the editor /
+                viewer in the owning workspace — no inline rendering. */}
+            <div className="mt-6 flex flex-col gap-6">
+              {/* Two high-level taxonomies: Files (folders + pages + files +
+                  tables — anything you could drop into Drive) and Sessions
+                  (agent transcripts). Tables are a structured kind of file,
+                  so they live under Files rather than as a separate section. */}
+              <StashItemSection
+                title="Files"
+                items={[
+                  ...(groups.folder ?? []),
+                  ...(groups.page ?? []),
+                  ...(groups.file ?? []),
+                  ...(groups.table ?? []),
+                ]}
+                stashSlug={stash.slug}
+                workspaceId={stash.workspace_id}
+              />
+              <StashItemSection
+                title="Sessions"
+                items={groups.session ?? []}
+                stashSlug={stash.slug}
+                workspaceId={stash.workspace_id}
+              />
+              {items.length === 0 && (
+                <div className="rounded-lg border border-dashed border-border bg-surface/30 px-4 py-10 text-center text-[13px] text-muted">
+                  No items yet.{" "}
+                  {can_write && (
+                    <button
+                      type="button"
+                      onClick={() => setAddOpen(true)}
+                      className="font-medium text-[var(--color-brand-700)] hover:underline"
+                    >
+                      Add things →
+                    </button>
+                  )}
+                </div>
               )}
             </div>
-          )}
-        </div>
 
-        {/* Visualizations: human/agent session activity + 3D embedding view of the
-            owning workspace — same shape as workspace home. */}
-        <section className="mt-8">
-          <div className="sys-label mb-1.5">
-            Human / agent commits — last 30 days
-          </div>
-          <div className="card-soft overflow-x-auto p-3">
-            {!insightsLoaded ? (
-              <SkeletonBlock className="h-40 w-full" />
-            ) : timeline && timeline.contributors.length > 0 ? (
-              <ContributorActivityTimeline data={timeline} />
-            ) : (
-              <div className="px-2 py-6 text-center text-[12.5px] text-muted">
-                No agent session commits yet. Add a session to this Stash or
-                push a transcript via the CLI.
+            {/* Visualizations: human/agent session activity + 3D embedding view of the
+                owning workspace — same shape as workspace home. */}
+            <section className="mt-8">
+              <div className="sys-label mb-1.5">
+                Human / agent commits — last 30 days
               </div>
-            )}
-          </div>
-        </section>
+              <div className="card-soft overflow-x-auto p-3">
+                {!insightsLoaded ? (
+                  <SkeletonBlock className="h-40 w-full" />
+                ) : timeline && timeline.contributors.length > 0 ? (
+                  <ContributorActivityTimeline data={timeline} />
+                ) : (
+                  <div className="px-2 py-6 text-center text-[12.5px] text-muted">
+                    No agent session commits yet. Add a session to this Stash or
+                    push a transcript via the CLI.
+                  </div>
+                )}
+              </div>
+            </section>
 
-        <section className="mt-6">
-          <div className="sys-label mb-1.5">
-            Embedding space — workspace knowledge map
-          </div>
-          <div className="card-soft p-3">
-            {!insightsLoaded ? (
-              <SkeletonBlock className="h-40 w-full" />
-            ) : projection && projection.points.length > 0 ? (
-              <EmbeddingSpaceExplorer data={projection} />
-            ) : (
-              <div className="px-2 py-6 text-center text-[12.5px] text-muted">
-                No embeddings indexed yet. Pages, table rows, and session events
-                get embedded as they&apos;re added.
+            <section className="mt-6">
+              <div className="sys-label mb-1.5">
+                Embedding space — workspace knowledge map
               </div>
-            )}
-          </div>
-        </section>
+              <div className="card-soft p-3">
+                {!insightsLoaded ? (
+                  <SkeletonBlock className="h-40 w-full" />
+                ) : projection && projection.points.length > 0 ? (
+                  <EmbeddingSpaceExplorer data={projection} />
+                ) : (
+                  <div className="px-2 py-6 text-center text-[12.5px] text-muted">
+                    No embeddings indexed yet. Pages, table rows, and session
+                    events get embedded as they&apos;re added.
+                  </div>
+                )}
+              </div>
+            </section>
+          </>
+        )}
       </div>
 
       {can_write && (
@@ -390,6 +414,83 @@ function StashPageBody({
       )}
     </div>
   );
+}
+
+function primaryFileItemForStash(data: PublicStashDetail): PublicStashItem | null {
+  const fileItems = data.items.filter((item) => item.object_type === "file");
+  if (fileItems.length !== 1) return null;
+  if (data.items.length === 1) return fileItems[0];
+
+  const onlyFileAndUploadFolder = data.items.every((item) =>
+    item.object_type === "file" || item.object_type === "folder"
+  );
+  if (!onlyFileAndUploadFolder) return null;
+  if (!data.stash.description.includes("Uploaded from ")) return null;
+  return fileItems[0];
+}
+
+function SingleFilePreview({ item }: { item: PublicStashItem }) {
+  const file = item.inline as InlineFile;
+  const name = file.name || item.label || "Uploaded file";
+  const contentType = file.content_type || "file";
+  const size = formatFileSize(file.size_bytes ?? 0);
+  const isImage = contentType.startsWith("image/");
+  const isPdf = contentType.includes("pdf");
+
+  return (
+    <section className="mt-6">
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+        <div className="min-w-0">
+          <h2 className="m-0 truncate font-display text-[16px] font-semibold text-foreground">
+            {name}
+          </h2>
+          <div className="mt-0.5 text-[12px] text-muted">
+            {contentType} · {size}
+          </div>
+        </div>
+        {file.url && (
+          <a
+            href={file.url}
+            target="_blank"
+            rel="noreferrer"
+            className="rounded-md border border-border bg-base px-3 py-1.5 text-[12.5px] font-medium text-foreground hover:bg-raised"
+          >
+            Download ↗
+          </a>
+        )}
+      </div>
+
+      {!file.url && (
+        <div className="rounded-lg border border-dashed border-border bg-surface/30 px-4 py-10 text-center text-[13px] text-muted">
+          This file is no longer available.
+        </div>
+      )}
+      {file.url && isImage && (
+        <div className="overflow-auto rounded-lg border border-border bg-surface">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={file.url} alt={name} className="mx-auto h-auto max-w-full" />
+        </div>
+      )}
+      {file.url && isPdf && (
+        <iframe
+          src={file.url}
+          title={name}
+          className="h-[78vh] w-full rounded-lg border border-border bg-base"
+        />
+      )}
+      {file.url && !isImage && !isPdf && (
+        <div className="rounded-lg border border-border bg-base px-5 py-10 text-center text-[13px] text-muted">
+          No inline preview for this file type.
+        </div>
+      )}
+    </section>
+  );
+}
+
+function formatFileSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 }
 
 // Clickable banner. Writers see a faint "Change banner" hint on hover and
