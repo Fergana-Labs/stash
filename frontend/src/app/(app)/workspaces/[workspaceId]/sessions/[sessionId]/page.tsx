@@ -567,3 +567,35 @@ function MessageRow({ turn, index }: { turn: MessageTurn; index: number }) {
     </div>
   );
 }
+
+function StashFallbackSessionView({
+  stashSlug,
+  stashTitle,
+  item,
+}: {
+  stashSlug: string;
+  stashTitle: string;
+  item: PublicStashItem;
+}) {
+  return (
+    <div className="scroll-thin flex-1 overflow-y-auto">
+      <div className="mx-auto max-w-[920px] px-12 pb-20 pt-6">
+        <Link
+          href={`/stashes/${stashSlug}`}
+          className="inline-flex items-center gap-1 text-[12.5px] text-muted hover:text-foreground"
+        >
+          ← {stashTitle}
+        </Link>
+        <h1 className="mt-3 m-0 font-display text-[22px] font-bold leading-tight tracking-[-0.015em] text-foreground">
+          {item.label || "(untitled session)"}
+        </h1>
+        <div className="mt-1 text-[11.5px] uppercase tracking-wide text-muted">
+          session · read-only via Stash
+        </div>
+        <div className="mt-6">
+          <SessionBody item={item} />
+        </div>
+      </div>
+    </div>
+  );
+}
