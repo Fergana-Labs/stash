@@ -1,6 +1,7 @@
 "use client";
 
-import { useParams, useRouter } from "next/navigation";
+import Link from "next/link";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { useBreadcrumbs } from "../../../../../../components/BreadcrumbContext";
 import DownloadMenu from "../../../../../../components/DownloadMenu";
@@ -8,16 +9,20 @@ import { SessionDetailSkeleton } from "../../../../../../components/SkeletonStat
 import { StashIcon } from "../../../../../../components/StashIcons";
 import { useAuth } from "../../../../../../hooks/useAuth";
 import {
+  ApiError,
   fetchAuthed,
+  getPublicStash,
   getSessionDetail,
   getSessionEvents,
   getWorkspaceSidebar,
   listObjectStashes,
   trashItem,
+  type PublicStashItem,
   type SessionDetail,
   type SessionEvent,
   type WorkspaceStash,
 } from "../../../../../../lib/api";
+import { SessionBody } from "../../../../stashes/[slug]/StashItemBodies";
 
 interface MessageTurn {
   kind: "message";
@@ -95,14 +100,19 @@ function initials(name: string): string {
 export default function SessionViewerPage() {
   const params = useParams();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const workspaceId = params.workspaceId as string;
   const sessionId = decodeURIComponent(params.sessionId as string);
   const { user, loading } = useAuth();
+  const stashSlug = searchParams.get("stash");
 
   const [agentName, setAgentName] = useState("");
   const [sessionDetail, setSessionDetail] = useState<SessionDetail | null>(null);
   const [turns, setTurns] = useState<MessageTurn[]>([]);
   const [containingStashes, setContainingStashes] = useState<WorkspaceStash[]>([]);
+  const [stashFallback, setStashFallback] = useState<
+    { stash: WorkspaceStash; item: PublicStashItem } | null
+  >(null);
   const [error, setError] = useState("");
 
   useBreadcrumbs(

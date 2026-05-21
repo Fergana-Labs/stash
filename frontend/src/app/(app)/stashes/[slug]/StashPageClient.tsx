@@ -401,41 +401,20 @@ type PrimaryItem =
   | { kind: "page"; item: PublicStashItem }
   | { kind: "session"; item: PublicStashItem };
 
-// "Single-content" stashes — the whole stash is really one artifact — open
-// straight to that artifact's viewer instead of the bundle chrome + viz
-// section. Three shapes count:
+// "Single-content" stashes — exactly one file, one page, or one session in
+// the stash, nothing else — open straight to the artifact instead of the
+// bundle chrome + viz section.
 //
-//   1. Exactly one item that is the artifact.
-//   2. One artifact + one folder, when the description starts with
-//      "Uploaded from " — this is what `stash upload <single>` and
-//      `stash publish <single>` produce; the folder is incidental
-//      packaging, not content.
-//   3. (sessions only) Always strict — a session-share is already
-//      a single item; we don't wrap it in a folder today.
+// Folders are intentionally NOT treated as incidental packaging. A folder
+// is an open container the user may keep adding to; promising "this stash
+// IS the page inside that folder" only stays true until the next upload.
 function primaryItemForStash(data: PublicStashDetail): PrimaryItem | null {
-  const single = singleOfKindWithOptionalFolder(data, "file");
-  if (single) return { kind: "file", item: single };
-  const singlePage = singleOfKindWithOptionalFolder(data, "page");
-  if (singlePage) return { kind: "page", item: singlePage };
-  if (data.items.length === 1 && data.items[0].object_type === "session") {
-    return { kind: "session", item: data.items[0] };
-  }
+  if (data.items.length !== 1) return null;
+  const only = data.items[0];
+  if (only.object_type === "file") return { kind: "file", item: only };
+  if (only.object_type === "page") return { kind: "page", item: only };
+  if (only.object_type === "session") return { kind: "session", item: only };
   return null;
-}
-
-function singleOfKindWithOptionalFolder(
-  data: PublicStashDetail,
-  kind: "file" | "page",
-): PublicStashItem | null {
-  const matches = data.items.filter((item) => item.object_type === kind);
-  if (matches.length !== 1) return null;
-  if (data.items.length === 1) return matches[0];
-  const onlyKindAndFolder = data.items.every(
-    (item) => item.object_type === kind || item.object_type === "folder",
-  );
-  if (!onlyKindAndFolder) return null;
-  if (!data.stash.description.includes("Uploaded from ")) return null;
-  return matches[0];
 }
 
 function SingleFilePreview({ item }: { item: PublicStashItem }) {
@@ -769,31 +748,34 @@ function StashItemRow({
   );
 }
 
-// Stash-scoped item URLs. Files and tables route to their canonical
-// viewer pages with a `?stash=<slug>` hint so the viewer fetches via
-// the public stash payload (no workspace membership required). Folders,
-// pages, and sessions use the stash-scoped fallback viewer which
-// renders the inlined content from the stash payload.
-//
-// Either way the only authorization is the backend's stash readability
-// check inside getPublicStash — workspace-scoped endpoints stay strict.
+// Stash item URLs are workspace-native routes. The `?stash=<slug>` query
+// param is a backref hint: the viewer tries the workspace endpoint first
+// (full permissions), and falls back to reading through the public stash
+// payload when the user isn't a workspace member.
 function hrefForItem(
   item: PublicStashItem,
   stashSlug: string,
   workspaceId: string,
 ): string | null {
+  const stash = encodeURIComponent(stashSlug);
   if (item.object_type === "file") {
-    return `/workspaces/${workspaceId}/f/${item.object_id}?stash=${encodeURIComponent(stashSlug)}`;
+    return `/workspaces/${workspaceId}/f/${item.object_id}?stash=${stash}`;
+  }
+  if (item.object_type === "page") {
+    return `/workspaces/${workspaceId}/p/${item.object_id}?stash=${stash}`;
+  }
+  if (item.object_type === "folder") {
+    return `/workspaces/${workspaceId}/folders/${item.object_id}?stash=${stash}`;
+  }
+  if (item.object_type === "session") {
+    // Session URLs are keyed on the human-readable session_id, not the
+    // row UUID. The string lives in inline.session.session_id.
+    const sessionRow = (item.inline as { session?: { session_id?: string } }).session;
+    if (!sessionRow?.session_id) return null;
+    return `/workspaces/${workspaceId}/sessions/${encodeURIComponent(sessionRow.session_id)}?stash=${stash}`;
   }
   if (item.object_type === "table") {
-    return `/tables/${item.object_id}?stash=${encodeURIComponent(stashSlug)}&workspaceId=${workspaceId}`;
-  }
-  if (
-    item.object_type === "page" ||
-    item.object_type === "folder" ||
-    item.object_type === "session"
-  ) {
-    return `/stashes/${stashSlug}/items/${item.object_type}/${item.object_id}`;
+    return `/tables/${item.object_id}?stash=${stash}&workspaceId=${workspaceId}`;
   }
   return null;
 }

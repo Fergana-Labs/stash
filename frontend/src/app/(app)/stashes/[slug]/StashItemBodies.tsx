@@ -6,13 +6,11 @@ import remarkGfm from "remark-gfm";
 import HtmlPageView from "../../../../components/workspace/HtmlPageView";
 import type { PublicStashItem } from "../../../../lib/api";
 
-// Inline body renderers shared between two surfaces:
-//   1. The /stashes/[slug]/items/[type]/[id] viewer (one item, full page).
-//   2. The /stashes/[slug] detail page when the stash contains a single
-//      page or single session — we render the content inline instead of
-//      making the user click through.
-// Files are not here yet because the existing SingleFilePreview lives in
-// StashPageClient and renders a viewer (image/PDF) rather than markdown.
+// Inline body renderers used on the /stashes/[slug] detail page when the
+// stash contains a single page or single session — we render the content
+// inline (read-only) instead of making the user click through. Multi-item
+// tiles route to the native workspace viewer, which handles permissions
+// and edit affordances natively.
 
 interface InlineSessionEvent {
   agent_name?: string;
