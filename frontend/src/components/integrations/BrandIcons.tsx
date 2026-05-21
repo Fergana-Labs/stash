@@ -36,6 +36,23 @@ export function GoogleDriveIcon({ className, size = defaultSize }: Props) {
   );
 }
 
+export function ObsidianIcon({ className, size = defaultSize }: Props) {
+  // Renders the official Obsidian logo SVG asset from /public.
+  // Tip: use plain <img> here — next/image's optimizer would re-encode
+  // away the gradients and look worse.
+  return (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src="/obsidian-logo.svg"
+      alt=""
+      width={size}
+      height={size}
+      className={className}
+      aria-hidden
+    />
+  );
+}
+
 export function NotionIcon({ className, size = defaultSize }: Props) {
   return (
     <svg
