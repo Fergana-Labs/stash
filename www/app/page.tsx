@@ -1,11 +1,10 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 
-import CopyButton from "./_components/CopyButton";
 import ScrollLink from "./_components/ScrollLink";
 import VisualizationsShowcase from "./_components/VisualizationsShowcase";
 
-const INSTALL_COMMAND = `bash -c "$(curl -fsSL https://raw.githubusercontent.com/Fergana-Labs/stash/main/install.sh)"`;
+const APP_URL = "https://app.joinstash.ai";
 
 export default function Page() {
   return (
@@ -13,12 +12,14 @@ export default function Page() {
       <Nav />
       <Hero />
       <Logos />
-      <InstallSlab />
       <Problem />
+      <Comparisons />
       <HowItWorks />
+      <KarpathyQuote />
       <VisualizationsShowcase />
-      <SearchDemo />
-      <Features />
+      <HumansAndAgents />
+      <DiscoverGrid />
+      <CliAndPlugin />
       <ClosingCTA />
       <Footer />
     </main>
@@ -75,12 +76,6 @@ function Nav() {
           >
             How it works
           </ScrollLink>
-          <ScrollLink
-            to="#features"
-            className="hidden rounded-md px-3 py-2 transition hover:bg-raised hover:text-ink sm:inline-flex"
-          >
-            Features
-          </ScrollLink>
           <Link
             href="/discover"
             className="rounded-md px-3 py-2 transition hover:bg-raised hover:text-ink"
@@ -121,6 +116,12 @@ function Nav() {
           >
             Sign in
           </Link>
+          <Link
+            href={APP_URL}
+            className="hidden h-10 items-center rounded-lg bg-brand px-[18px] text-[14px] font-medium text-white shadow-sm transition hover:bg-brand-hover sm:inline-flex"
+          >
+            Start free
+          </Link>
         </nav>
       </div>
     </header>
@@ -140,12 +141,12 @@ const HERO_FEED: FeedRow[] = [
   {
     role: "agent",
     name: "rex",
-    action: "updated",
-    target: "auth/session_refresh.py",
+    action: "wrote",
+    target: "files/auth-patterns/session-refresh.md",
     detail: (
       <>
-        fixed 401 race on concurrent refresh, linked to{" "}
-        <span className="font-mono text-[11.5px] text-brand">auth patterns</span>
+        durable note from a debugging run on{" "}
+        <span className="font-mono text-[11.5px] text-brand">401 race</span>
       </>
     ),
     time: "just now",
@@ -153,20 +154,20 @@ const HERO_FEED: FeedRow[] = [
   {
     role: "human",
     name: "sam",
-    action: "opened",
-    target: "backend/gateway/",
-    detail: "reviewing rate-limit bump from the rex debug session",
+    action: "added",
+    target: "auth-patterns → Stash",
+    detail: "promoted folder into the Auth Patterns Stash",
     time: "2m",
   },
   {
     role: "agent",
     name: "scout",
-    action: "queried",
-    target: "stash search",
+    action: "uploaded",
+    target: "session · rate-limit-investigation",
     detail: (
       <>
-        &ldquo;why was the{" "}
-        <span className="font-mono text-[11.5px] text-brand">rate limit</span> raised to 500?&rdquo; · 8 sources
+        transcript + plan.md, linked to{" "}
+        <span className="font-mono text-[11.5px] text-brand">gateway-limits</span>
       </>
     ),
     time: "4m",
@@ -175,16 +176,16 @@ const HERO_FEED: FeedRow[] = [
     role: "agent",
     name: "nova",
     action: "updated",
-    target: "files · memory-leak-v2",
-    detail: "4 pages organized, 12 session sources attached",
+    target: "tables/experiments",
+    detail: "added row · model=opus-4.7, score=0.87",
     time: "9m",
   },
   {
     role: "human",
     name: "ari",
-    action: "commented",
-    target: "files/api-gateway",
-    detail: "keeping this open; will re-use the worker-pool pattern next week",
+    action: "published",
+    target: "Stash · Auth Patterns · Q2",
+    detail: "made public for the partner-eng review",
     time: "22m",
   },
 ];
@@ -226,6 +227,133 @@ function RoleTag({ role }: { role: "agent" | "human" }) {
 
 function HeroFeed() {
   return (
+    <div
+      className="overflow-hidden rounded-[14px] border border-border bg-background"
+      style={{ boxShadow: "var(--shadow-card)" }}
+    >
+      <div className="flex items-center justify-between border-b border-border-subtle bg-surface px-4 py-2.5">
+        <div className="flex items-center gap-2.5">
+          <span
+            className="h-2 w-2 rounded-full bg-[#22C55E]"
+            style={{ animation: "live-pulse 2s ease-out infinite" }}
+          />
+          <span className="text-[12.5px] font-semibold text-ink">workspace · fergana</span>
+          <span className="text-[11.5px] text-muted">/ activity</span>
+        </div>
+        <span className="inline-flex items-center gap-2 font-mono text-[10px] font-medium uppercase tracking-[0.12em] text-dim">
+          Live
+        </span>
+      </div>
+      <div className="max-h-[300px] overflow-hidden py-1">
+        {HERO_FEED.map((r, i) => (
+          <div
+            key={i}
+            className="grid grid-cols-[20px_1fr_auto] items-start gap-2.5 border-b border-border-subtle px-4 py-2.5 last:border-b-0"
+          >
+            <Avatar role={r.role} size={20}>
+              {r.name[0].toUpperCase()}
+            </Avatar>
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2 text-[12.5px]">
+                <span className="font-semibold text-ink">{r.name}</span>
+                <RoleTag role={r.role} />
+                <span className="text-dim">{r.action}</span>
+                <span className="truncate rounded bg-raised px-1.5 py-px font-mono text-[11.5px] text-ink">
+                  {r.target}
+                </span>
+              </div>
+              <div className="mt-0.5 text-[12px] leading-[1.5] text-dim">{r.detail}</div>
+            </div>
+            <span className="whitespace-nowrap pt-0.5 font-mono text-[10px] tracking-[0.06em] text-muted">
+              {r.time}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+type StashItem = { kind: "page" | "session" | "table"; label: string; meta: string };
+const HERO_STASH_ITEMS: StashItem[] = [
+  { kind: "page", label: "session-refresh 401 race", meta: "md · rex" },
+  { kind: "page", label: "rate-limits · 500/min", meta: "md · sam" },
+  { kind: "page", label: "worker-pool pattern", meta: "html · nova" },
+  { kind: "session", label: "rate-limit-investigation", meta: "scout · 14:02" },
+  { kind: "session", label: "auth refresh debug", meta: "rex · tue" },
+];
+
+function StashKindTag({ kind }: { kind: StashItem["kind"] }) {
+  const palette: Record<StashItem["kind"], { bg: string; fg: string }> = {
+    page: { bg: "rgba(249,115,22,0.10)", fg: "var(--brand)" },
+    session: { bg: "var(--agent-soft)", fg: "var(--agent)" },
+    table: { bg: "var(--human-soft)", fg: "var(--human)" },
+  };
+  return (
+    <span
+      className="inline-flex items-center rounded px-1.5 py-0.5 font-mono text-[9.5px] font-medium uppercase leading-none tracking-[0.12em]"
+      style={{ background: palette[kind].bg, color: palette[kind].fg }}
+    >
+      {kind}
+    </span>
+  );
+}
+
+function HeroStashCard() {
+  return (
+    <div
+      className="overflow-hidden rounded-[14px] border border-border bg-background"
+      style={{ boxShadow: "var(--shadow-card)" }}
+    >
+      <div className="flex items-center justify-between border-b border-border-subtle bg-surface px-4 py-2.5">
+        <div className="flex items-center gap-2.5">
+          <span
+            className="inline-flex h-5 w-5 items-center justify-center rounded font-mono text-[10px] font-bold text-white"
+            style={{ background: "var(--brand)" }}
+          >
+            S
+          </span>
+          <span className="text-[12.5px] font-semibold text-ink">Auth Patterns · Q2</span>
+          <span
+            className="rounded px-1.5 py-0.5 font-mono text-[9.5px] font-medium uppercase tracking-[0.12em]"
+            style={{ background: "var(--brand-soft)", color: "var(--brand)" }}
+          >
+            Public
+          </span>
+        </div>
+        <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-muted">
+          stash · 5 items
+        </span>
+      </div>
+      <div className="px-4 py-2.5">
+        {HERO_STASH_ITEMS.map((it, i) => (
+          <div
+            key={i}
+            className="flex items-center gap-3 border-b border-border-subtle py-2 last:border-b-0"
+          >
+            <StashKindTag kind={it.kind} />
+            <span className="flex-1 truncate text-[12.5px] text-ink">{it.label}</span>
+            <span className="whitespace-nowrap font-mono text-[10.5px] text-muted">{it.meta}</span>
+          </div>
+        ))}
+      </div>
+      <div className="flex items-center justify-between border-t border-border-subtle bg-surface px-4 py-2.5">
+        <span className="truncate font-mono text-[11px] text-dim">
+          joinstash.ai/v/auth-patterns-q2
+        </span>
+        <span
+          className="inline-flex h-7 items-center rounded-md px-2.5 text-[11px] font-medium text-white"
+          style={{ background: "var(--brand)" }}
+        >
+          Add to my workspace
+        </span>
+      </div>
+    </div>
+  );
+}
+
+function HeroSplit() {
+  return (
     <div className="relative">
       <div
         aria-hidden
@@ -235,54 +363,27 @@ function HeroFeed() {
             "radial-gradient(ellipse at center, rgba(15,23,42,0.08), transparent 70%)",
         }}
       />
-      <div
-        className="overflow-hidden rounded-[14px] border border-border bg-background"
-        style={{ boxShadow: "var(--shadow-card)" }}
-      >
-        <div className="flex items-center justify-between border-b border-border-subtle bg-surface px-4 py-3">
-          <div className="flex items-center gap-2.5">
-            <span
-              className="h-2 w-2 rounded-full bg-[#22C55E]"
-              style={{ animation: "live-pulse 2s ease-out infinite" }}
-            />
-            <span className="text-[13px] font-semibold text-ink">team · fergana</span>
-            <span className="text-[12px] text-muted">/ sessions</span>
-          </div>
-          <span className="inline-flex items-center gap-2 font-mono text-[10px] font-medium uppercase tracking-[0.12em] text-dim">
-            Live
-          </span>
-        </div>
-        <div className="max-h-[420px] overflow-hidden py-1.5">
-          {HERO_FEED.map((r, i) => (
-            <div
-              key={i}
-              className="grid grid-cols-[24px_1fr_auto] items-start gap-3 border-b border-border-subtle px-4 py-3 transition-colors last:border-b-0 hover:bg-surface"
-            >
-              <Avatar role={r.role} size={24}>
-                {r.name[0].toUpperCase()}
-              </Avatar>
-              <div className="min-w-0">
-                <div className="flex flex-wrap items-center gap-2 text-[13px]">
-                  <span className="font-semibold text-ink">{r.name}</span>
-                  <RoleTag role={r.role} />
-                  <span className="text-dim">{r.action}</span>
-                  <span className="rounded bg-raised px-1.5 py-px font-mono text-[12px] text-ink">
-                    {r.target}
-                  </span>
-                </div>
-                <div className="mt-1 text-[12.5px] leading-[1.55] text-dim">{r.detail}</div>
-              </div>
-              <span className="whitespace-nowrap pt-0.5 font-mono text-[10.5px] tracking-[0.06em] text-muted">
-                {r.time}
-              </span>
-            </div>
-          ))}
-        </div>
-        <div className="flex items-center justify-between border-t border-border-subtle bg-surface px-4 py-2.5 font-mono text-[11px] uppercase tracking-[0.1em] text-muted">
-          <span>streaming · 412 events / hr</span>
-          <span className="text-ink">4 agents · 3 humans</span>
-        </div>
+      <HeroFeed />
+      <div className="my-3 flex items-center gap-3 pl-3">
+        <span
+          aria-hidden
+          className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-border bg-background font-mono text-[10px] text-brand"
+        >
+          ↓
+        </span>
+        <span className="font-mono text-[10.5px] uppercase tracking-[0.14em] text-muted">
+          crystallizes into
+        </span>
+        <span
+          aria-hidden
+          className="h-px flex-1"
+          style={{
+            background:
+              "linear-gradient(to right, var(--border) 0, transparent 100%)",
+          }}
+        />
       </div>
+      <HeroStashCard />
     </div>
   );
 }
@@ -300,58 +401,43 @@ function Hero() {
       />
       <div className="relative z-10 mx-auto grid max-w-[1200px] grid-cols-1 gap-12 px-7 pb-8 pt-20 lg:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)] lg:items-center lg:gap-16 lg:pb-16 lg:pt-28">
         <div>
-          <ScrollLink
-            to="#install"
-            className="inline-flex items-center gap-2.5 rounded-full border border-border bg-white/70 py-[5px] pl-[5px] pr-3.5 text-[12px] text-dim shadow-sm transition hover:border-brand/40 hover:text-ink"
-          >
-            <span className="rounded-full bg-brand px-2 py-0.5 font-mono text-[10px] font-bold uppercase tracking-[0.12em] text-white">
-              New
-            </span>
-            <span>Now works with Openclaw</span>
-            <span className="font-mono text-muted">→</span>
-          </ScrollLink>
-
-          <h1 className="mt-7 text-balance font-display text-[clamp(44px,6.2vw,80px)] font-black leading-[0.95] tracking-[-0.045em] text-ink">
-            Your team&apos;s self-improving
+          <h1 className="text-balance font-display text-[clamp(44px,6.2vw,80px)] font-black leading-[0.95] tracking-[-0.045em] text-ink">
+            Knowledge bases for
             <br />
-            <span className="text-brand">memory.</span>
+            the <span className="text-brand">agent era.</span>
           </h1>
 
-          <p className="mt-7 max-w-[520px] text-[18px] leading-[1.55] text-foreground">
-            Most teams run AI individually, so the work resets every session.
-            Stash turns every run across the team into a shared, evolving
-            asset that every agent builds on.
+          <p className="mt-7 max-w-[540px] text-[18px] leading-[1.55] text-foreground">
+            Built for the era where your agents write more than your team does.
+            Files, sessions, and Stashes. A company brain humans and agents
+            both write into.
           </p>
 
-          <div className="mt-8 max-w-[520px]">
-            <p className="mb-2 font-mono text-[10.5px] font-medium uppercase tracking-[0.14em] text-muted">
-              One-command install
-            </p>
-            <div className="flex items-center gap-2 rounded-lg border border-border bg-surface px-3 py-2.5 shadow-sm">
-              <span className="select-none font-mono text-[13px] text-brand">$</span>
-              <code className="flex-1 overflow-x-auto whitespace-nowrap font-mono text-[12.5px] text-ink">
-                {INSTALL_COMMAND}
-              </code>
-              <CopyButton
-                value={INSTALL_COMMAND}
-                label="copy"
-                copiedLabel="copied ✓"
-                className="inline-flex h-7 shrink-0 items-center rounded-md border border-border bg-background px-2.5 font-mono text-[10.5px] uppercase tracking-[0.1em] text-dim transition hover:border-ink hover:text-ink data-[copied=true]:border-[rgba(34,197,94,0.5)] data-[copied=true]:text-[#16A34A]"
-              />
-            </div>
-            <div className="mt-3 flex flex-wrap gap-x-5 gap-y-2 font-mono text-[11px] uppercase tracking-[0.08em] text-muted">
-              <span className="inline-flex items-center gap-2">
-                <span className="h-[6px] w-[6px] rounded-full bg-current opacity-50" />
-                MIT licensed
-              </span>
-              <span className="inline-flex items-center gap-2">
-                <span className="h-[6px] w-[6px] rounded-full bg-current opacity-50" />
-                Self-hostable
-              </span>
-            </div>
+          <div className="mt-9 flex flex-wrap items-center gap-3">
+            <Link
+              href={APP_URL}
+              className="inline-flex h-11 items-center rounded-lg bg-brand px-5 text-[14px] font-medium text-white shadow-sm transition hover:bg-brand-hover"
+            >
+              Start free →
+            </Link>
+            <Link
+              href="/contact-sales"
+              className="inline-flex h-11 items-center rounded-lg border border-border bg-background px-5 text-[14px] font-medium text-ink transition hover:border-ink"
+            >
+              Talk to us
+            </Link>
+            <Link
+              href="https://github.com/Fergana-Labs/stash"
+              className="inline-flex h-11 items-center gap-2 rounded-lg border border-border bg-background px-4 text-[14px] font-medium text-ink transition hover:border-ink"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+                <path d="M12 .5C5.65.5.5 5.65.5 12a11.5 11.5 0 0 0 7.86 10.92c.57.11.78-.25.78-.55v-1.94c-3.2.7-3.87-1.54-3.87-1.54-.52-1.33-1.28-1.69-1.28-1.69-1.04-.71.08-.7.08-.7 1.16.08 1.77 1.19 1.77 1.19 1.03 1.77 2.7 1.26 3.36.96.1-.75.4-1.26.73-1.55-2.55-.29-5.24-1.28-5.24-5.68 0-1.26.45-2.29 1.19-3.1-.12-.29-.52-1.47.11-3.07 0 0 .97-.31 3.18 1.18a11 11 0 0 1 5.79 0c2.21-1.49 3.18-1.18 3.18-1.18.63 1.6.23 2.78.12 3.07.74.81 1.19 1.84 1.19 3.1 0 4.41-2.69 5.38-5.26 5.67.41.35.77 1.05.77 2.12v3.14c0 .3.21.67.79.55A11.5 11.5 0 0 0 23.5 12C23.5 5.65 18.35.5 12 .5Z" />
+              </svg>
+              Open source
+            </Link>
           </div>
         </div>
-        <HeroFeed />
+        <HeroSplit />
       </div>
     </section>
   );
@@ -369,7 +455,7 @@ function Logos() {
     <div className="border-y border-border-subtle bg-surface">
       <div className="mx-auto flex max-w-[1200px] flex-wrap items-center gap-8 px-7 py-6">
         <span className="shrink-0 font-mono text-[11px] uppercase tracking-[0.14em] text-muted">
-          Works with
+          Plugs into
         </span>
         <div className="flex flex-wrap items-center gap-x-10 gap-y-4 text-dim">
           {tools.map((t) => (
@@ -393,146 +479,110 @@ function Logos() {
   );
 }
 
-function InstallSlab() {
+function Problem() {
   return (
-    <section id="install" className="border-b border-border-subtle">
-      <div className="mx-auto max-w-[1200px] px-7 py-24">
-        <div className="grid grid-cols-1 items-center gap-10 md:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] md:gap-[72px]">
-          <div>
-            <EyebrowDot>Install</EyebrowDot>
-            <h2 className="mt-4 font-display text-[clamp(28px,3.2vw,40px)] font-bold leading-[1.1] tracking-[-0.02em] text-ink">
-              One command.
-            </h2>
-            <p className="mt-4 max-w-[440px] text-[16px] leading-[1.6] text-foreground">
-              Automatic setup. No yaml, no manual plugin wiring. The CLI detects
-              your agents and wires them up for you.
-            </p>
-            <p className="mt-4 max-w-[440px] text-[16px] leading-[1.6] text-foreground">
-              Use our managed service and be streaming in a minute, or self-host
-              on your own infra if you&apos;d rather keep every session in your
-              own Postgres.
-            </p>
-          </div>
-          <div
-            className="overflow-hidden rounded-[14px] border border-white/5 bg-inverted"
-            style={{ boxShadow: "var(--shadow-terminal)" }}
-          >
-            <div className="flex items-center justify-between border-b border-white/5 px-3.5 py-2.5">
-              <div className="flex items-center gap-3">
-                <div className="flex gap-1.5">
-                  <span className="h-2.5 w-2.5 rounded-full bg-white/10" />
-                  <span className="h-2.5 w-2.5 rounded-full bg-white/10" />
-                  <span className="h-2.5 w-2.5 rounded-full bg-white/10" />
-                </div>
-                <span className="font-mono text-[11px] font-medium uppercase tracking-[0.14em] text-on-inverted-dim">
-                  install.sh
-                </span>
-              </div>
-              <CopyButton
-                value={INSTALL_COMMAND}
-                label="copy"
-                copiedLabel="copied ✓"
-                className="inline-flex h-[26px] items-center rounded-md border border-white/10 bg-transparent px-2.5 font-mono text-[10.5px] uppercase tracking-[0.1em] text-on-inverted-dim transition hover:border-white/30 hover:text-white data-[copied=true]:border-[rgba(34,197,94,0.5)] data-[copied=true]:text-[#22C55E]"
-              />
-            </div>
-            <div className="overflow-x-auto px-5 py-6 font-mono text-[14px] leading-[1.75] text-on-inverted">
-              <div className="whitespace-pre">
-                <span className="mr-2.5 select-none text-brand">$</span>
-                <span className="text-white">{INSTALL_COMMAND}</span>
-              </div>
-              <div className="whitespace-pre text-on-inverted-dim">
-                » installing stash cli
-              </div>
-              <div className="whitespace-pre">
-                <span className="text-on-inverted-dim">» scope      </span>
-                <span className="text-[#22C55E]">✓ team/fergana</span>
-              </div>
-              <div className="whitespace-pre">
-                <span className="text-on-inverted-dim">» sign-in    </span>
-                <span className="text-[#22C55E]">✓ sam@fergana.dev</span>
-              </div>
-              <div className="whitespace-pre">
-                <span className="text-on-inverted-dim">» workspace  </span>
-                <span className="text-[#22C55E]">✓ backend-api</span>
-              </div>
-              <div className="whitespace-pre">
-                <span className="text-on-inverted-dim">» plugin     </span>
-                <span style={{ color: "var(--agent)" }}>claude-code</span>
-                <span className="text-on-inverted-dim"> · </span>
-                <span style={{ color: "var(--agent)" }}>cursor</span>
-                <span className="text-on-inverted-dim"> · </span>
-                <span style={{ color: "var(--agent)" }}>codex</span>
-              </div>
-              <div className="whitespace-pre">
-                <span className="text-[#22C55E]">✓ ready.</span>
-                <span className="text-on-inverted-dim"> your team&apos;s memory is streaming.</span>
-              </div>
-              <div className="whitespace-pre">
-                <span className="mr-2.5 select-none text-brand">$</span>
-                <span
-                  className="inline-block h-[15px] w-2 align-[-2px] bg-brand"
-                  style={{ animation: "cursor-blink 1.2s steps(2) infinite" }}
-                />
-              </div>
-            </div>
-          </div>
+    <section className="border-b border-border-subtle py-24 md:py-32">
+      <div className="mx-auto max-w-[1200px] px-7">
+        <EyebrowDot>The shape of work is changing</EyebrowDot>
+        <h2 className="mt-4 max-w-[980px] text-balance font-display text-[clamp(40px,5.2vw,68px)] font-black leading-[1.02] tracking-[-0.04em] text-ink">
+          Your agents are about to{" "}
+          <span className="text-brand">out-produce</span>{" "}
+          your team.
+        </h2>
+        <div className="mt-12 grid grid-cols-1 gap-8 text-[17px] leading-[1.6] text-foreground md:grid-cols-2 md:gap-14">
+          <p>
+            Every Claude, Cursor, or Codex run already generates pages of
+            output — transcripts, plans, scratch tables, half-finished
+            documents, dashboards your agent made on its own. Most of it
+            evaporates the moment the session closes.
+          </p>
+          <p>
+            Stash is the company brain built for that flow. Sessions stream in as they happen. Files give
+            your team and your agents a real filesystem to write into. Stashes
+            turn any slice of that work into a link you can publish or fork
+            into another workspace.
+          </p>
         </div>
       </div>
     </section>
   );
 }
 
-function Problem() {
-  const asks = [
-    { i: "01", q: "“Why did Sam bump the rate limit from 100 to 500?”", by: "rex · agent" },
-    { i: "02", q: "“Has anyone already tried fixing the memory leak in auth?”", by: "scout · agent" },
-    { i: "03", q: "“Is anyone else currently working on the API gateway?”", by: "nova · agent" },
-    { i: "04", q: "“What pattern did we land on for background workers last sprint?”", by: "rex · agent" },
-  ];
-  return (
-    <section className="border-b border-border-subtle py-24 md:py-32">
-      <div className="mx-auto max-w-[1200px] px-7">
-        <EyebrowDot>Why teams plateau on AI</EyebrowDot>
-        <h2 className="mt-4 max-w-[980px] text-balance font-display text-[clamp(40px,5.2vw,68px)] font-black leading-[1.02] tracking-[-0.04em] text-ink">
-          Individual AI usage doesn&apos;t{" "}
-          <span className="relative inline-block">
-            compound.
-            <span
-              aria-hidden
-              className="pointer-events-none absolute left-[-4px] right-[-4px] top-[54%] h-[0.16em] -skew-y-[2deg] bg-brand"
-            />
-          </span>
-        </h2>
-        <div className="mt-12 grid grid-cols-1 gap-8 text-[17px] leading-[1.6] text-foreground md:grid-cols-2 md:gap-14">
-          <p>
-            Every engineer is running Claude, Cursor, or Codex on the same
-            repo. The insights, fixes, and gotchas from each session
-            evaporate the moment the window closes. Next week, someone
-            re-asks what was already answered.
-          </p>
-          <p>
-            Stash captures every run across the team and turns it into a
-            shared layer your agents can query. The second time a question
-            comes up, an agent answers it from the team&apos;s own sessions
-            instead of starting from scratch. Call it a hive mind for your
-            agents.
-          </p>
-        </div>
+type Comparison = { tool: string; theyDo: string; stashAdds: string };
+const COMPARISONS: Comparison[] = [
+  {
+    tool: "Obsidian",
+    theyDo:
+      "A single-user Markdown vault. No real collaboration, and nothing richer than .md.",
+    stashAdds:
+      "Real-time editing across humans and agents, with HTML, tables, PDFs, and any file type.",
+  },
+  {
+    tool: "Notion",
+    theyDo: "Pages for humans. Agents can't browse it like a real filesystem.",
+    stashAdds:
+      "A virtual filesystem the CLI and MCP expose to agents natively.",
+  },
+  {
+    tool: "Google Drive",
+    theyDo: "Files for humans. No structure agents can reason over.",
+    stashAdds: "An agent-readable shell over your files, pages, and sessions.",
+  },
+  {
+    tool: "GitHub",
+    theyDo:
+      "Editing a doc means a clone, a branch, a PR. Fine for source code, painful for anything else.",
+    stashAdds:
+      "Edit pages in the browser. Agents read and write them directly.",
+  },
+  {
+    tool: "Observability tools",
+    theyDo:
+      "Built to monitor production agents and improve them. The output is traces and dashboards, not work product.",
+    stashAdds:
+      "Where the agent's output is the work product, not telemetry to watch.",
+  },
+  {
+    tool: "AI memory tools",
+    theyDo:
+      "Per-agent memory in a black box. Doesn't help the human or agent next to you.",
+    stashAdds: "A shared workspace humans can read and edit, in real time.",
+  },
+];
 
-        <div className="mt-20 border-t border-border">
-          <p className="py-6 font-mono text-[11px] uppercase tracking-[0.14em] text-muted">
-            Questions your agent can now ask, and answer
-          </p>
-          {asks.map((a) => (
-            <div
-              key={a.i}
-              className="grid grid-cols-[auto_1fr_auto] items-baseline gap-6 border-b border-border py-7"
-            >
-              <span className="font-mono text-[11px] tracking-[0.14em] text-muted">{a.i}</span>
-              <span className="font-display text-[clamp(20px,2.2vw,28px)] font-medium leading-[1.3] tracking-[-0.02em] text-ink">
-                {a.q}
-              </span>
-              <span className="font-mono text-[11px] text-dim">{a.by}</span>
+function Comparisons() {
+  return (
+    <section className="border-b border-border-subtle bg-surface py-24 md:py-32">
+      <div className="mx-auto max-w-[1200px] px-7">
+        <div className="flex max-w-[880px] flex-col gap-4">
+          <EyebrowDot>Where Stash fits</EyebrowDot>
+          <h2 className="font-display text-[clamp(32px,4.2vw,52px)] font-bold leading-[1.05] tracking-[-0.03em] text-ink text-balance">
+            Built where your current tools stop.
+            <br />
+            <span className="font-medium text-dim">
+              Each does part of the job. None gives humans and agents the same
+              workspace.
+            </span>
+          </h2>
+        </div>
+        <div className="mt-14 grid grid-cols-1 gap-px overflow-hidden rounded-[14px] border border-border bg-border sm:grid-cols-2 lg:grid-cols-3">
+          {COMPARISONS.map((c) => (
+            <div key={c.tool} className="flex flex-col gap-3 bg-background p-6">
+              <div className="flex items-center justify-between">
+                <span className="font-display text-[16px] font-bold tracking-[-0.01em] text-ink">
+                  {c.tool}
+                </span>
+                <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-muted">
+                  vs stash
+                </span>
+              </div>
+              <p className="text-[13.5px] leading-[1.55] text-dim">{c.theyDo}</p>
+              <p className="mt-auto border-t border-border-subtle pt-3 text-[13.5px] leading-[1.55] text-ink">
+                <span className="mr-1.5 font-mono text-[10px] uppercase tracking-[0.12em] text-brand">
+                  Stash adds
+                </span>
+                {c.stashAdds}
+              </p>
             </div>
           ))}
         </div>
@@ -544,9 +594,9 @@ function Problem() {
 function StreamViz() {
   const lines: { r: "agent" | "human"; t: string; a: string; l: string; new?: boolean }[] = [
     { r: "agent", t: "14:02", a: "tool_call", l: "read_file(auth.py)" },
-    { r: "agent", t: "14:02", a: "edit", l: "session_refresh.py" },
+    { r: "agent", t: "14:02", a: "wrote", l: "plan.md" },
     { r: "human", t: "14:03", a: "review", l: "pr/#482" },
-    { r: "agent", t: "14:04", a: "test", l: "pytest auth/", new: true },
+    { r: "agent", t: "14:04", a: "session", l: "uploaded · 312 events", new: true },
   ];
   return (
     <div className="flex flex-col gap-1.5 font-mono text-[11px]">
@@ -572,53 +622,64 @@ function FilesViz() {
   return (
     <div className="flex flex-col gap-1.5">
       <div className="flex items-center justify-between rounded-md border border-border bg-background px-2 py-1.5 text-[11.5px] text-ink">
-        auth-patterns
-        <span
-          className="rounded px-1.5 py-px font-mono text-[9.5px] uppercase tracking-[0.08em] text-brand"
-          style={{ background: "var(--brand-soft)" }}
-        >
-          root
+        auth-patterns/
+        <span className="font-mono text-[9.5px] uppercase tracking-[0.08em] text-muted">
+          folder
         </span>
       </div>
       <div className="relative ml-4 flex items-center rounded-md border border-border bg-background px-2 py-1.5 text-[11.5px] text-ink before:absolute before:left-[-10px] before:top-1/2 before:h-px before:w-2 before:bg-border">
-        session-refresh 401 race
+        session-refresh.md
       </div>
       <div className="relative ml-4 flex items-center rounded-md border border-border bg-background px-2 py-1.5 text-[11.5px] text-ink before:absolute before:left-[-10px] before:top-1/2 before:h-px before:w-2 before:bg-border">
-        rate-limits · 500/min
+        rate-limits.html
       </div>
       <div className="flex items-center justify-between rounded-md border border-border bg-background px-2 py-1.5 text-[11.5px] text-ink">
-        memory-leak-v2
+        experiments
         <span
-          className="rounded px-1.5 py-px font-mono text-[9.5px] uppercase tracking-[0.08em] text-brand"
-          style={{ background: "var(--brand-soft)" }}
+          className="rounded px-1.5 py-px font-mono text-[9.5px] uppercase tracking-[0.08em]"
+          style={{ background: "var(--human-soft)", color: "var(--human)" }}
         >
-          new
+          table
         </span>
       </div>
     </div>
   );
 }
 
-function SearchViz() {
-  const sources: [string, string][] = [
-    ["sessions/rex:14:02", "62%"],
-    ["files/auth-patterns", "21%"],
-    ["files/gateway.py", "11%"],
+function StashViz() {
+  const items: [StashItem["kind"], string][] = [
+    ["page", "session-refresh.md"],
+    ["page", "rate-limits.html"],
+    ["session", "rate-limit-investigation"],
   ];
   return (
-    <div className="flex flex-col gap-2">
-      <div className="flex items-center gap-2 rounded-md border border-border bg-background px-2.5 py-1.5 text-[11.5px] text-ink">
-        <span className="font-mono text-[11px] text-brand">/stash</span>
-        why was the rate-limit raised?
+    <div className="flex flex-col gap-1.5">
+      <div className="flex items-center justify-between rounded-md border border-border bg-background px-2 py-1.5 text-[11.5px] text-ink">
+        <span className="flex items-center gap-2">
+          <span
+            className="inline-flex h-4 w-4 items-center justify-center rounded font-mono text-[9px] font-bold text-white"
+            style={{ background: "var(--brand)" }}
+          >
+            S
+          </span>
+          Auth Patterns · Q2
+        </span>
+        <span
+          className="rounded px-1.5 py-px font-mono text-[9.5px] uppercase tracking-[0.08em] text-brand"
+          style={{ background: "var(--brand-soft)" }}
+        >
+          public
+        </span>
       </div>
-      <div className="flex flex-col gap-1 font-mono text-[10.5px] text-dim">
-        {sources.map(([p, pct]) => (
-          <div key={p} className="flex justify-between">
-            <span className="text-ink">{p}</span>
-            <span className="text-brand">{pct}</span>
-          </div>
-        ))}
-      </div>
+      {items.map(([kind, label]) => (
+        <div
+          key={label}
+          className="relative ml-4 flex items-center gap-2 rounded-md border border-border bg-background px-2 py-1.5 text-[11.5px] text-ink before:absolute before:left-[-10px] before:top-1/2 before:h-px before:w-2 before:bg-border"
+        >
+          <StashKindTag kind={kind} />
+          <span className="truncate">{label}</span>
+        </div>
+      ))}
     </div>
   );
 }
@@ -627,24 +688,24 @@ function HowItWorks() {
   const steps = [
     {
       n: "01",
-      pill: "Stream",
-      title: "Every session flows into a shared store.",
-      body: "Prompts, tool calls, assistant messages, and artifacts push to your workspace’s Sessions as they happen. Nothing to remember to save.",
+      pill: "Sessions",
+      title: "The unstructured stream.",
+      body: "Every agent run flows in automatically — prompts, tool calls, artifacts, plan files. Nothing to remember to save.",
       viz: <StreamViz />,
     },
     {
       n: "02",
       pill: "Files",
-      title: "Teams shape durable pages.",
-      body: "Pages, uploads, and folders stay in Files. Sessions remain searchable sessions, and useful outputs can be promoted into durable pages.",
+      title: "The structured layer.",
+      body: "Markdown, HTML, tables, folders. Humans and agents both write here. Agents navigate it as a real filesystem through the CLI and MCP.",
       viz: <FilesViz />,
     },
     {
       n: "03",
-      pill: "Search",
-      title: "Every agent queries the whole team's work.",
-      body: "stash search runs a cross-resource agentic loop over files, sessions, pages, tables, and Stashes. Your agent answers with sources, not hallucinations.",
-      viz: <SearchViz />,
+      pill: "Stashes",
+      title: "The shareable slice.",
+      body: "Bundle pages and sessions into one link. Publish to the world, share with collaborators, or fork an external Stash into your own workspace.",
+      viz: <StashViz />,
     },
   ];
   return (
@@ -653,9 +714,9 @@ function HowItWorks() {
         <div className="flex max-w-[880px] flex-col gap-4">
           <EyebrowDot>How it works</EyebrowDot>
           <h2 className="font-display text-[clamp(32px,4.2vw,52px)] font-bold leading-[1.05] tracking-[-0.03em] text-ink text-balance">
-            Sessions. Files. Search.
+            Sessions. Files. Stashes.
             <br />
-            <span className="font-medium text-dim">The asset builds itself.</span>
+            <span className="font-medium text-dim">One workspace, two kinds of writer.</span>
           </h2>
         </div>
         <div className="mt-16 grid grid-cols-1 gap-5 lg:grid-cols-3">
@@ -673,7 +734,7 @@ function HowItWorks() {
                   {s.pill}
                 </span>
               </div>
-              <div className="mb-5 min-h-[150px] shrink-0 rounded-[10px] border border-border-subtle bg-raised p-3.5">
+              <div className="mb-5 flex h-[176px] shrink-0 flex-col justify-center rounded-[10px] border border-border-subtle bg-raised p-3.5">
                 {s.viz}
               </div>
               <h3 className="font-display text-[20px] font-bold tracking-[-0.015em] text-ink">
@@ -688,76 +749,130 @@ function HowItWorks() {
   );
 }
 
-function SearchDemo() {
-  const steps = [
-    { t: "scanned team sessions", ms: "42ms" },
-    { t: "queried files tree", ms: "81ms" },
-    { t: "pulled gateway.py blame", ms: "104ms" },
-    { t: "reranked 8 sources", ms: "22ms" },
-  ];
+function KarpathyQuote() {
   return (
-    <section id="search" className="border-b border-border-subtle py-24 md:py-32">
-      <div className="mx-auto max-w-[1200px] px-7">
-        <div className="flex max-w-[880px] flex-col gap-4">
-          <EyebrowDot>One query, every source</EyebrowDot>
-          <h2 className="font-display text-[clamp(32px,4.2vw,52px)] font-bold leading-[1.05] tracking-[-0.03em] text-ink text-balance">
-            <span className="font-medium text-dim">Your agent asks.</span>
-            <br />
-            Stash answers with receipts.
-          </h2>
-          <p className="max-w-[620px] text-[18px] leading-[1.55] text-dim">
-            stash search runs an agentic loop across files, sessions, pages,
-            tables, and Stashes. Every answer arrives with sources attached.
-          </p>
+    <section className="border-b border-border-subtle py-28 md:py-36">
+      <div className="mx-auto max-w-[1100px] px-7">
+        <EyebrowDot>The case for this category</EyebrowDot>
+        <figure className="mt-8">
+          <blockquote className="font-display text-[clamp(26px,3.4vw,42px)] font-medium leading-[1.25] tracking-[-0.02em] text-ink">
+            <span className="text-dim">“raw data from a number of sources is collected, then compiled by an LLM into a .md knowledge base, then operated on by various CLIs by the LLM to do Q&amp;A and to incrementally enhance it… </span>
+            <span className="text-ink">I think there is room here for an incredible new product instead of a hacky collection of scripts.”</span>
+          </blockquote>
+          <figcaption className="mt-8 flex items-center gap-3 font-mono text-[12px] uppercase tracking-[0.14em] text-muted">
+            <span className="h-px w-8 bg-border" />
+            Andrej Karpathy · on LLM knowledge bases
+          </figcaption>
+        </figure>
+        <p className="mt-10 max-w-[680px] text-[18px] leading-[1.6] text-foreground">
+          Stash is that product. A personal knowledge base for the humans on
+          your team, a company brain for the agents working alongside them —
+          one workspace for the structured and unstructured information you
+          produce together, not a stack of shell scripts wrapped around a
+          folder of markdown.
+        </p>
+      </div>
+    </section>
+  );
+}
+
+function HumanAgentRow({
+  side,
+  name,
+  role,
+  action,
+  detail,
+}: {
+  side: "human" | "agent";
+  name: string;
+  role: "human" | "agent";
+  action: string;
+  detail: string;
+}) {
+  return (
+    <div className="grid grid-cols-[24px_1fr] items-start gap-3 border-b border-border-subtle px-4 py-3 last:border-b-0">
+      <Avatar role={side} size={24}>
+        {name[0].toUpperCase()}
+      </Avatar>
+      <div className="min-w-0">
+        <div className="flex flex-wrap items-center gap-2 text-[13px]">
+          <span className="font-semibold text-ink">{name}</span>
+          <RoleTag role={role} />
+          <span className="text-dim">{action}</span>
         </div>
-        <div
-          className="mt-12 overflow-hidden rounded-2xl border border-white/5 bg-inverted"
-          style={{ boxShadow: "var(--shadow-terminal)" }}
-        >
-          <div className="flex items-center gap-3.5 border-b border-white/5 px-5 py-3.5">
-            <div className="flex items-center gap-2.5 font-mono text-[13px] text-white">
-              <span className="text-brand">›</span>
-              <span>stash search</span>
-            </div>
-            <span className="ml-auto font-mono text-[10px] uppercase tracking-[0.14em] text-on-inverted-dim">
-              agentic loop · 5 resources
-            </span>
-          </div>
-          <div className="px-5 py-5 md:px-6">
-            <p className="mb-6 font-display text-[clamp(22px,2.6vw,30px)] font-bold leading-[1.25] tracking-[-0.02em] text-white">
-              &ldquo;Why did we raise the gateway rate-limit from 100 to 500?&rdquo;
+        <div className="mt-1 text-[12.5px] leading-[1.5] text-dim">{detail}</div>
+      </div>
+    </div>
+  );
+}
+
+function HumansAndAgents() {
+  return (
+    <section className="border-b border-border-subtle py-24 md:py-32">
+      <div className="mx-auto max-w-[1200px] px-7">
+        <div className="grid grid-cols-1 gap-12 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)] lg:items-center lg:gap-20">
+          <div>
+            <EyebrowDot>Same workspace, two kinds of writer</EyebrowDot>
+            <h2 className="mt-4 font-display text-[clamp(32px,4.2vw,52px)] font-bold leading-[1.05] tracking-[-0.03em] text-ink text-balance">
+              Humans and agents
+              <br />
+              <span className="font-medium text-dim">write into the same place.</span>
+            </h2>
+            <p className="mt-6 max-w-[500px] text-[16.5px] leading-[1.6] text-foreground">
+              Stash is built for humans <em className="not-italic font-semibold text-ink">and</em>{" "}
+              agents from the ground up. Your team gets a clean UI. Your
+              agents get a CLI and MCP server with the same powers — read
+              files, write pages, query sessions, build Stashes. Anything a
+              human can do in the app, an agent can do from a terminal.
             </p>
-            <div className="grid grid-cols-1 gap-2.5 font-mono text-[12px] sm:grid-cols-2 sm:gap-x-8 sm:gap-y-2.5">
-              {steps.map((s, i) => (
-                <div
-                  key={i}
-                  className="grid grid-cols-[14px_1fr_auto] items-baseline gap-2.5 border-b border-dashed border-white/5 py-2 text-on-inverted-dim"
-                >
-                  <span className="text-[#22C55E]">✓</span>
-                  <span className="text-on-inverted">{s.t}</span>
-                  <span className="text-[10.5px] tracking-[0.08em] text-muted">{s.ms}</span>
-                </div>
-              ))}
+            <p className="mt-4 max-w-[500px] text-[16.5px] leading-[1.6] text-foreground">
+              Both sides edit in real time. When an agent writes a page, your
+              teammate sees it appear. When a human edits a folder, every
+              agent in that workspace sees the new structure on its next
+              query. Notion, Drive, GitHub, and the AI-memory tools don't do
+              this — they're built for one side or the other, never both.
+            </p>
+          </div>
+          <div
+            className="overflow-hidden rounded-[14px] border border-border bg-background"
+            style={{ boxShadow: "var(--shadow-card)" }}
+          >
+            <div className="flex items-center justify-between border-b border-border-subtle bg-surface px-4 py-3">
+              <span className="text-[13px] font-semibold text-ink">
+                files/auth-patterns/
+              </span>
+              <span className="font-mono text-[10.5px] uppercase tracking-[0.12em] text-muted">
+                7 contributors · 4 agents · 3 humans
+              </span>
             </div>
-            <div
-              className="mt-6 rounded-[10px] border p-5"
-              style={{
-                background: "rgba(249,115,22,0.06)",
-                borderColor: "rgba(249,115,22,0.2)",
-              }}
-            >
-              <p className="mb-2 font-mono text-[10px] uppercase tracking-[0.14em] text-brand">
-                Answer
-              </p>
-              <p className="text-[15px] leading-[1.6] text-white">
-                Sam raised it on Tue to unblock the batch-import flow. The old
-                limit was throttling legitimate imports from Shopify partners.
-                The change is safe because requests are authenticated and
-                per-tenant, not global.{" "}
-                <span className="font-mono text-[11.5px] text-brand">sessions/sam:tue-14:22</span>,{" "}
-                <span className="font-mono text-[11.5px] text-brand">files/gateway-limits</span>
-              </p>
-            </div>
+            <HumanAgentRow
+              side="human"
+              name="sam"
+              role="human"
+              action="edited session-refresh.md"
+              detail="rewrote the intro section with the partner-eng review notes"
+            />
+            <HumanAgentRow
+              side="agent"
+              name="rex"
+              role="agent"
+              action="created rate-limits.html"
+              detail="agent-generated dashboard from the latest rate-limit-investigation session"
+            />
+            <HumanAgentRow
+              side="human"
+              name="ari"
+              role="human"
+              action="moved worker-pool.md → auth-patterns/"
+              detail="reorganized the folder after the Tuesday review"
+            />
+            <HumanAgentRow
+              side="agent"
+              name="nova"
+              role="agent"
+              action="appended row to experiments"
+              detail="logged the opus-4.7 long-context result · score=0.87"
+            />
           </div>
         </div>
       </div>
@@ -765,90 +880,245 @@ function SearchDemo() {
   );
 }
 
-function Features() {
-  const items = [
-    {
-      i: "H",
-      h: "Shared sessions",
-      p: "Every prompt and tool call streams to a team-wide session log. Searchable, filterable, attributable.",
-      tags: ["events", "per-agent", "replay"],
-    },
-    {
-      i: "W",
-      h: "Files",
-      p: "Rich collaborative pages with Stashes, file tree, and pgvector semantic search.",
-      tags: ["Stashes", "tree", "semantic"],
-    },
-    {
-      i: "S",
-      h: "Agentic search",
-      p: "stash search runs a cross-resource loop over every surface in the workspace. One query, every source, with receipts.",
-      tags: ["cross-source", "cited", "streaming"],
-    },
-    {
-      i: "V",
-      h: "Visualizations",
-      p: "See your team's memory as it forms: embedding projections, file trees, activity timelines, and knowledge-density maps you can actually look at.",
-      tags: ["embeddings", "tree", "timeline"],
-    },
-    {
-      i: "R",
-      h: "Stashes",
-      p: "Publish sessions, pages, and files together as a polished link anyone can inspect.",
-      tags: ["publish", "sessions", "files"],
-    },
-    {
-      i: "P",
-      h: "HTML pages",
-      p: "Store agent-made reports, dashboards, and documents as first-class pages.",
-      tags: ["html", "reports", "dashboards"],
-    },
-  ];
+type DiscoverMock = {
+  title: string;
+  workspace: string;
+  blurb: string;
+  pages: number;
+  sessions: number;
+  views: string;
+  accent: string;
+};
+const DISCOVER_MOCKS: DiscoverMock[] = [
+  {
+    title: "RAG over a million PDFs",
+    workspace: "indexlab",
+    blurb:
+      "End-to-end notes from a month of agentic experiments on long-context retrieval. Includes chunking ablations and the evaluator harness.",
+    pages: 12,
+    sessions: 31,
+    views: "4.2k",
+    accent: "rgba(249,115,22,0.22)",
+  },
+  {
+    title: "Auth patterns · Q2",
+    workspace: "fergana",
+    blurb:
+      "How we converged on per-tenant rate limits, refresh-token rotation, and the worker-pool pattern after three debugging sessions.",
+    pages: 6,
+    sessions: 9,
+    views: "1.8k",
+    accent: "rgba(139,92,246,0.22)",
+  },
+  {
+    title: "Voice-agent onboarding playbook",
+    workspace: "mockingbird",
+    blurb:
+      "Live playbook the design + eng team uses when shipping a new voice flow. Updated weekly by the agents that run the user tests.",
+    pages: 18,
+    sessions: 14,
+    views: "3.1k",
+    accent: "rgba(59,130,246,0.22)",
+  },
+  {
+    title: "Claude vs Opus on long-context",
+    workspace: "stash-research",
+    blurb:
+      "Benchmarks, transcripts, and the table of results from a head-to-head on 100k+ token documents. Forked by 47 workspaces.",
+    pages: 9,
+    sessions: 22,
+    views: "5.6k",
+    accent: "rgba(34,197,94,0.22)",
+  },
+  {
+    title: "Open-source release runbook",
+    workspace: "fergana",
+    blurb:
+      "The exact Stash we follow every Friday — changelog drafting, blog post, social, the whole flow. Fork and adapt for your team.",
+    pages: 7,
+    sessions: 4,
+    views: "920",
+    accent: "rgba(234,179,8,0.22)",
+  },
+  {
+    title: "Customer support deflection memory",
+    workspace: "kindred",
+    blurb:
+      "Live customer-support knowledge base our triage agent reads on every ticket. Adds three new pages a day on average.",
+    pages: 84,
+    sessions: 210,
+    views: "2.4k",
+    accent: "rgba(239,68,68,0.22)",
+  },
+];
+
+function DiscoverCard({ s }: { s: DiscoverMock }) {
   return (
-    <section id="features" className="border-b border-border-subtle py-24 md:py-32">
-      <div className="mx-auto max-w-[1200px] px-7">
-        <div className="flex max-w-[880px] flex-col gap-4">
-          <EyebrowDot>What&apos;s inside</EyebrowDot>
-          <h2 className="font-display text-[clamp(32px,4.2vw,52px)] font-bold leading-[1.05] tracking-[-0.03em] text-ink text-balance">
-            One team&apos;s work,
-            <br />
-            <span className="font-medium text-dim">every agent&apos;s context.</span>
-          </h2>
+    <div className="group flex h-full flex-col rounded-[14px] border border-border bg-background transition-colors hover:border-brand">
+      <div
+        aria-hidden
+        className="h-[88px] rounded-t-[14px] border-b border-border-subtle"
+        style={{
+          background: `linear-gradient(135deg, ${s.accent}, transparent 70%), var(--surface)`,
+        }}
+      />
+      <div className="flex flex-1 flex-col p-5">
+        <div className="flex items-center justify-between">
+          <span className="font-mono text-[10.5px] uppercase tracking-[0.14em] text-muted">
+            {s.workspace}
+          </span>
+          <span className="font-mono text-[10.5px] text-muted">{s.views} views</span>
         </div>
-        <div className="mt-16 grid grid-cols-1 border-t border-border sm:grid-cols-2 lg:grid-cols-3">
-          {items.map((f, i) => {
-            const col = i % 3;
-            const isLastCol = col === 2;
-            return (
-              <div
-                key={f.h}
-                className={
-                  "flex min-h-[200px] flex-col gap-2.5 border-b border-border py-8 " +
-                  (isLastCol ? "lg:border-r-0" : "lg:border-r") +
-                  " " +
-                  (i % 2 === 1 ? "sm:border-r-0 sm:pl-8" : "sm:border-r sm:pr-8") +
-                  " lg:px-8 lg:first:pl-0 " +
-                  (col === 0 ? "lg:pl-0" : "") +
-                  (isLastCol ? " lg:pr-0" : "")
-                }
+        <h3 className="mt-2 font-display text-[18px] font-bold leading-[1.25] tracking-[-0.015em] text-ink">
+          {s.title}
+        </h3>
+        <p className="mt-2 text-[13.5px] leading-[1.55] text-dim">{s.blurb}</p>
+        <div className="mt-auto flex items-center gap-3 pt-4 font-mono text-[10.5px] uppercase tracking-[0.1em] text-muted">
+          <span>{s.pages} pages</span>
+          <span className="h-1 w-1 rounded-full bg-border" />
+          <span>{s.sessions} sessions</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function DiscoverGrid() {
+  return (
+    <section className="border-b border-border-subtle bg-surface py-24 md:py-32">
+      <div className="mx-auto max-w-[1200px] px-7">
+        <div className="flex flex-wrap items-end justify-between gap-6">
+          <div className="max-w-[680px]">
+            <EyebrowDot>From the Discover feed</EyebrowDot>
+            <h2 className="mt-4 font-display text-[clamp(32px,4.2vw,52px)] font-bold leading-[1.05] tracking-[-0.03em] text-ink text-balance">
+              Some Stashes
+              <br />
+              <span className="font-medium text-dim">teams are publishing.</span>
+            </h2>
+            <p className="mt-5 max-w-[560px] text-[16.5px] leading-[1.6] text-foreground">
+              A published Stash is a focused slice of a workspace — sessions,
+              pages, and tables — anyone can open. Fork one into your own
+              workspace and it stays live with the source.
+            </p>
+          </div>
+          <Link
+            href="/discover"
+            className="inline-flex h-11 items-center rounded-lg border border-border bg-background px-5 text-[14px] font-medium text-ink transition hover:border-ink"
+          >
+            Browse all →
+          </Link>
+        </div>
+
+        <div className="mt-12 grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
+          {DISCOVER_MOCKS.map((s) => (
+            <DiscoverCard key={s.title} s={s} />
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function CliAndPlugin() {
+  return (
+    <section className="border-b border-border-subtle py-24 md:py-32">
+      <div className="mx-auto max-w-[1200px] px-7">
+        <div className="grid grid-cols-1 gap-10 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] md:gap-16">
+          <div>
+            <EyebrowDot>Agent-native</EyebrowDot>
+            <h2 className="mt-4 font-display text-[clamp(28px,3.4vw,42px)] font-bold leading-[1.1] tracking-[-0.02em] text-ink">
+              Designed so an agent can actually use it.
+            </h2>
+            <p className="mt-5 max-w-[500px] text-[16px] leading-[1.6] text-foreground">
+              Pages are real Markdown, HTML, CSV, PDF — formats your agent
+              already reads and writes. The whole workspace mounts as a
+              virtual filesystem an agent can <code className="rounded bg-raised px-1.5 py-0.5 font-mono text-[12px] text-ink">ls</code>,{" "}
+              <code className="rounded bg-raised px-1.5 py-0.5 font-mono text-[12px] text-ink">find</code>, and{" "}
+              <code className="rounded bg-raised px-1.5 py-0.5 font-mono text-[12px] text-ink">rg</code>{" "}
+              through the CLI and MCP server.
+            </p>
+            <p className="mt-4 max-w-[500px] text-[16px] leading-[1.6] text-foreground">
+              Plugins for Claude Code, Cursor, Codex, OpenCode, and Openclaw
+              stream every session in automatically — no manual upload, no
+              copy-paste.
+            </p>
+            <div className="mt-7 flex flex-wrap gap-3">
+              <Link
+                href="/docs/quickstart"
+                className="inline-flex h-10 items-center rounded-lg border border-border bg-background px-4 text-[13.5px] font-medium text-ink transition hover:border-ink"
               >
-                <span className="mb-1 grid h-7 w-7 place-items-center rounded-md bg-raised font-mono text-[12px] font-bold text-ink">
-                  {f.i}
-                </span>
-                <h3 className="font-display text-[19px] font-bold tracking-[-0.01em] text-ink">
-                  {f.h}
-                </h3>
-                <p className="text-[14.5px] leading-[1.6] text-dim">{f.p}</p>
-                <div className="mt-auto flex flex-wrap gap-1.5 pt-3 font-mono text-[10.5px] uppercase tracking-[0.08em] text-muted">
-                  {f.tags.map((t) => (
-                    <span key={t} className="rounded bg-raised px-1.5 py-0.5">
-                      {t}
-                    </span>
-                  ))}
+                Quickstart →
+              </Link>
+              <Link
+                href="/docs/cli"
+                className="inline-flex h-10 items-center rounded-lg border border-border bg-background px-4 text-[13.5px] font-medium text-ink transition hover:border-ink"
+              >
+                CLI reference
+              </Link>
+              <Link
+                href="/docs/self-hosting"
+                className="inline-flex h-10 items-center rounded-lg px-2 text-[13.5px] font-medium text-dim transition hover:text-ink"
+              >
+                Self-host docs →
+              </Link>
+            </div>
+          </div>
+
+          <div
+            className="overflow-hidden rounded-[14px] border border-white/5 bg-inverted"
+            style={{ boxShadow: "var(--shadow-terminal)" }}
+          >
+            <div className="flex items-center justify-between border-b border-white/5 px-3.5 py-2.5">
+              <div className="flex items-center gap-3">
+                <div className="flex gap-1.5">
+                  <span className="h-2.5 w-2.5 rounded-full bg-white/10" />
+                  <span className="h-2.5 w-2.5 rounded-full bg-white/10" />
+                  <span className="h-2.5 w-2.5 rounded-full bg-white/10" />
                 </div>
+                <span className="font-mono text-[11px] font-medium uppercase tracking-[0.14em] text-on-inverted-dim">
+                  agent · claude-code
+                </span>
               </div>
-            );
-          })}
+              <span className="font-mono text-[10.5px] uppercase tracking-[0.12em] text-on-inverted-dim">
+                stash mcp
+              </span>
+            </div>
+            <div className="overflow-x-auto px-5 py-6 font-mono text-[13px] leading-[1.75] text-on-inverted">
+              <div className="whitespace-pre">
+                <span className="mr-2.5 select-none text-brand">›</span>
+                <span className="text-white">stash vfs</span>
+                <span className="text-on-inverted-dim"> &quot;tree /workspaces -L 2&quot;</span>
+              </div>
+              <div className="whitespace-pre text-on-inverted-dim">
+                » fergana/ ├ files/ ├ sessions/ ├ stashes/ ├ tables/
+              </div>
+              <div className="whitespace-pre">
+                <span className="mr-2.5 select-none text-brand">›</span>
+                <span className="text-white">stash vfs</span>
+                <span className="text-on-inverted-dim"> &quot;rg &apos;rate-limit&apos; /workspaces/fergana&quot;</span>
+              </div>
+              <div className="whitespace-pre">
+                <span className="text-[#22C55E]">✓ 8 hits</span>
+                <span className="text-on-inverted-dim"> · files/gateway-limits.md · sessions/sam:tue-14:22</span>
+              </div>
+              <div className="whitespace-pre">
+                <span className="mr-2.5 select-none text-brand">›</span>
+                <span className="text-white">stash stashes create</span>
+                <span className="text-on-inverted-dim"> &quot;Auth Patterns · Q2&quot; --public</span>
+              </div>
+              <div className="whitespace-pre">
+                <span className="text-[#22C55E]">✓ published</span>
+                <span className="text-on-inverted-dim"> joinstash.ai/v/auth-patterns-q2</span>
+              </div>
+              <div className="whitespace-pre">
+                <span className="mr-2.5 select-none text-brand">›</span>
+                <span
+                  className="inline-block h-[14px] w-2 align-[-2px] bg-brand"
+                  style={{ animation: "cursor-blink 1.2s steps(2) infinite" }}
+                />
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </section>
@@ -860,30 +1130,30 @@ function ClosingCTA() {
     <section className="border-b border-border-subtle bg-surface py-32 text-center">
       <div className="mx-auto max-w-[1200px] px-7">
         <h2 className="text-balance font-display text-[clamp(44px,5.4vw,80px)] font-black leading-[0.98] tracking-[-0.045em] text-ink">
-          Compound your team&apos;s
+          Give your agents somewhere
           <br />
-          <span className="text-brand">AI work.</span>
+          <span className="text-brand">to put their work.</span>
         </h2>
-        <p className="mx-auto mt-6 max-w-[520px] text-[17px] text-dim">
-          Your team is already running agents. Stash turns those runs into a
-          shared advantage that grows every day.
+        <p className="mx-auto mt-6 max-w-[540px] text-[17px] text-dim">
+          Start free in the managed app, or run the whole thing on your own
+          Postgres. Open source, MIT licensed.
         </p>
         <div className="mt-9 flex flex-wrap justify-center gap-3">
-          <ScrollLink
-            to="#install"
-            className="inline-flex h-10 items-center rounded-lg bg-brand px-[18px] text-[14px] font-medium text-white shadow-sm transition hover:bg-brand-hover"
-          >
-            Install Stash →
-          </ScrollLink>
           <Link
-            href="/docs/quickstart"
-            className="inline-flex h-10 items-center rounded-lg border border-border bg-transparent px-[18px] text-[14px] font-medium text-ink transition hover:border-ink"
+            href={APP_URL}
+            className="inline-flex h-11 items-center rounded-lg bg-brand px-5 text-[14px] font-medium text-white shadow-sm transition hover:bg-brand-hover"
           >
-            Read the quickstart
+            Start free →
+          </Link>
+          <Link
+            href="/contact-sales"
+            className="inline-flex h-11 items-center rounded-lg border border-border bg-background px-5 text-[14px] font-medium text-ink transition hover:border-ink"
+          >
+            Talk to us
           </Link>
         </div>
         <p className="mx-auto mt-8 font-mono text-[11.5px] uppercase tracking-[0.1em] text-muted">
-          MIT · Self-hostable
+          MIT · Self-hostable · No vendor lock-in
         </p>
       </div>
     </section>
@@ -895,16 +1165,18 @@ function Footer() {
     {
       h: "Product",
       links: [
-        ["Install", "#install"],
         ["How it works", "#how"],
-        ["Features", "#features"],
+        ["Discover", "/discover"],
+        ["Docs", "/docs"],
       ],
     },
     {
       h: "Resources",
       links: [
-        ["Docs", "/docs"],
         ["Quickstart", "/docs/quickstart"],
+        ["CLI reference", "/docs/cli"],
+        ["Self-hosting", "/docs/self-hosting"],
+        ["Blog", "/blog"],
       ],
     },
     {
@@ -932,8 +1204,8 @@ function Footer() {
             stash
           </div>
           <p className="mt-3 max-w-[320px] text-[13.5px] leading-[1.55] text-dim">
-            Turn your team&apos;s AI work into a compounding asset. Open
-            source, MIT licensed, self-hostable.
+            The knowledge base for the agent era. Open source, MIT licensed,
+            self-hostable.
           </p>
         </div>
         {columns.map((col) => (
