@@ -182,30 +182,32 @@ function StashKindTag({ kind }: { kind: StashItem["kind"] }) {
 }
 
 function FunnelCard({
+  icon,
   tag,
-  meta,
   children,
   style,
 }: {
+  icon: ReactNode;
   tag: string;
-  meta: string;
   children: ReactNode;
   style: React.CSSProperties;
 }) {
   return (
     <div
       aria-hidden
-      className="absolute w-[240px] rounded-[12px] border border-border bg-background p-3.5"
+      className="absolute w-[230px] rounded-[12px] border border-border bg-background p-3.5"
       style={{
         boxShadow: "var(--shadow-card)",
         filter: "blur(2.5px)",
-        opacity: 0.85,
+        opacity: 0.9,
         ...style,
       }}
     >
-      <div className="flex items-center justify-between gap-2 border-b border-border-subtle pb-2 font-mono text-[9.5px] uppercase tracking-[0.14em] text-muted">
-        <span className="truncate">{tag}</span>
-        <span className="shrink-0 text-dim">{meta}</span>
+      <div className="flex items-center gap-2 border-b border-border-subtle pb-2">
+        <span className="text-[13px] leading-none text-dim">{icon}</span>
+        <span className="truncate font-mono text-[9.5px] uppercase tracking-[0.14em] text-muted">
+          {tag}
+        </span>
       </div>
       <div className="mt-2 space-y-1.5 text-[11.5px] leading-[1.45] text-dim">
         {children}
@@ -214,74 +216,104 @@ function FunnelCard({
   );
 }
 
+const FUNNEL_SOURCES: { icon: string; label: string }[] = [
+  { icon: "💬", label: "#beta-feedback" },
+  { icon: "◐", label: "kara · interview" },
+  { icon: "📄", label: "onboarding-march.md" },
+  { icon: "🖼", label: "retention" },
+  { icon: "▦", label: "nps-march" },
+];
+
 function HeroFunnel() {
   return (
-    <div className="relative h-[560px] overflow-hidden lg:h-[600px]">
+    <div className="relative h-[780px] lg:h-[820px]">
       <div
         aria-hidden
         className="pointer-events-none absolute inset-0 -z-10"
         style={{
           background:
-            "radial-gradient(ellipse 60% 50% at 55% 35%, rgba(249,115,22,0.10), transparent 70%)",
+            "radial-gradient(ellipse 60% 50% at 55% 30%, rgba(249,115,22,0.10), transparent 70%)",
         }}
       />
 
       <FunnelCard
-        tag="user · post-mortem"
-        meta="kindred"
-        style={{ top: 8, left: -28, transform: "rotate(-13deg)", zIndex: 1 }}
+        icon="💬"
+        tag="slack · #beta-feedback"
+        style={{ top: 20, left: -50, transform: "rotate(-13deg)", zIndex: 1 }}
       >
         <p>
-          <span className="font-semibold text-ink">kindred</span> · day-7 drop
+          <span className="font-semibold text-ink">kara · kindred</span>
         </p>
-        <p>“loved the setup, but not enough to keep people on day one”</p>
-        <p className="text-muted">followups: 3 · still open</p>
+        <p>“loving it, but we keep losing people on day two”</p>
+        <p>
+          <span className="font-semibold text-ink">sam</span>
+        </p>
+        <p>is it the project setup step?</p>
+        <p>
+          <span className="font-semibold text-ink">kara · kindred</span>
+        </p>
+        <p>yes, half my team gives up there</p>
       </FunnelCard>
 
       <FunnelCard
-        tag="interview · user-founder"
-        meta="scout"
-        style={{ top: -4, left: 92, transform: "rotate(-4deg)", zIndex: 2 }}
+        icon="◐"
+        tag="interview · kara, founder"
+        style={{ top: -6, left: 80, transform: "rotate(-5deg)", zIndex: 2 }}
       >
-        <p>“the pricing page didn't scare me. The first ten minutes did.”</p>
-        <p>wanted to try it on a real project before inviting the team.</p>
+        <div className="flex gap-2">
+          <span className="shrink-0 pt-0.5 font-mono text-[9.5px] text-muted">04:12</span>
+          <span>“The pricing page didn't scare me. The first ten minutes did.”</span>
+        </div>
+        <div className="flex gap-2">
+          <span className="shrink-0 pt-0.5 font-mono text-[9.5px] text-muted">06:48</span>
+          <span>Wanted to try it on a real project before inviting the team.</span>
+        </div>
+        <div className="flex gap-2">
+          <span className="shrink-0 pt-0.5 font-mono text-[9.5px] text-muted">11:30</span>
+          <span>“If I could skip setup and just paste a doc in, I would've stayed.”</span>
+        </div>
       </FunnelCard>
 
       <FunnelCard
+        icon="🖼"
         tag="dashboard · retention"
-        meta="march"
-        style={{ top: 6, left: 220, transform: "rotate(3deg)", zIndex: 1 }}
+        style={{ top: 0, left: 218, transform: "rotate(2deg)", zIndex: 1 }}
       >
-        <svg viewBox="0 0 200 56" className="h-12 w-full" aria-hidden>
+        <svg viewBox="0 0 200 50" className="h-10 w-full" aria-hidden>
           <path
-            d="M0 46 L40 38 L80 28 L120 32 L160 18 L200 22"
+            d="M0 12 L40 14 L70 18 L80 38 L120 40 L160 42 L200 44"
             stroke="var(--brand)"
             strokeWidth="2"
             fill="none"
           />
-          <path
-            d="M0 52 L40 48 L80 46 L120 48 L160 42 L200 40"
-            stroke="var(--border)"
-            strokeWidth="1.5"
-            fill="none"
-          />
+          <line x1="78" y1="0" x2="78" y2="50" stroke="var(--border)" strokeDasharray="2 2" />
         </svg>
         <p className="font-mono text-[9.5px] text-muted">
-          d1 62% · d7 41% · d30 28%
+          d1 → d2 drop · −78% cohort avg
         </p>
       </FunnelCard>
 
       <FunnelCard
-        tag="user · march"
-        meta="kindred"
-        style={{ top: 16, left: 332, transform: "rotate(12deg)", zIndex: 1 }}
+        icon="▦"
+        tag="nps · march"
+        style={{ top: 22, left: 348, transform: "rotate(11deg)", zIndex: 1 }}
       >
-        <p>“half my team's stuck — no one to invite”</p>
-        <p>asked twice for a starter doc</p>
+        <div className="flex items-center justify-between">
+          <span>setup is too long</span>
+          <span className="font-mono text-[10px] font-bold text-ink">34</span>
+        </div>
+        <div className="flex items-center justify-between">
+          <span>need team invites</span>
+          <span className="font-mono text-[10px] font-bold text-ink">18</span>
+        </div>
+        <div className="flex items-center justify-between">
+          <span>want a starter doc</span>
+          <span className="font-mono text-[10px] font-bold text-ink">12</span>
+        </div>
       </FunnelCard>
 
       <article
-        className="absolute left-[24px] right-[24px] top-[210px] overflow-hidden rounded-[14px] border border-border bg-background"
+        className="absolute left-[10px] top-[200px] w-[410px] overflow-hidden rounded-[14px] border border-border bg-background"
         style={{ boxShadow: "var(--shadow-card)", zIndex: 10 }}
       >
         <div className="flex items-center justify-between gap-3 border-b border-border-subtle bg-surface px-4 py-2.5">
@@ -336,6 +368,27 @@ function HeroFunnel() {
             What they want isn't another feature — it's confidence that what's
             there won't change next week.
           </blockquote>
+          <p className="mt-4 text-[13.5px] leading-[1.6] text-foreground">
+            We froze the API shape, rebuilt onboarding around a paste-in flow,
+            and shipped it to the first cohort. Two-week retention went from
+            22% to 41% in a single release.
+          </p>
+        </div>
+        <div className="border-t border-border-subtle bg-surface px-6 py-3.5">
+          <div className="mb-2 font-mono text-[10px] uppercase tracking-[0.14em] text-muted">
+            distilled from
+          </div>
+          <div className="flex flex-wrap gap-1.5">
+            {FUNNEL_SOURCES.map((s) => (
+              <span
+                key={s.label}
+                className="inline-flex items-center gap-1.5 rounded-md border border-border-subtle bg-background px-2 py-1 text-[11px] text-dim"
+              >
+                <span className="text-[12px] leading-none">{s.icon}</span>
+                <span>{s.label}</span>
+              </span>
+            ))}
+          </div>
         </div>
       </article>
     </div>
