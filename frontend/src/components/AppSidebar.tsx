@@ -651,9 +651,9 @@ function SessionRowTimestamp({
       title={title}
       aria-label={title}
       className={
-        "shrink-0 font-mono text-[9.5px] leading-none tabular-nums " +
+        "shrink-0 font-mono text-[9.5px] leading-none opacity-0 transition-opacity tabular-nums group-hover/nav:opacity-100 group-focus-within/nav:opacity-100 " +
         (active
-          ? "text-[var(--color-brand-700)] opacity-70"
+          ? "text-[var(--color-brand-700)]"
           : "text-muted/70 group-hover/nav:text-muted")
       }
     >
@@ -1645,10 +1645,10 @@ function StashTreeRow({ row }: { row: StashTreeItem }) {
   const pathname = usePathname();
   if (!row.href) {
     return (
-      <div className="page-row flex items-center gap-2 rounded-md px-2 py-0.5 text-[12.5px] text-muted">
+      <div className="page-row group/nav flex items-center gap-2 rounded-md px-2 py-0.5 text-[12.5px] text-muted">
         <span className="flex h-4 w-4 items-center justify-center text-[14px]">{row.icon}</span>
         <span className="min-w-0 flex-1 truncate">{row.label}</span>
-        {row.session ? <SessionRowTimestamp session={row.session} /> : null}
+        {row.session ? <SessionRowTrailing session={row.session} /> : null}
       </div>
     );
   }

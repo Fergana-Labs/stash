@@ -472,7 +472,7 @@ describe("AppSidebar tree expansion", () => {
     expect(detailsFor(day.textContent ?? "")).toHaveAttribute("open");
   });
 
-  it("shows compact timestamps on session rows", async () => {
+  it("reveals compact timestamps from session rows on hover", async () => {
     const lastAt = "2026-05-20T12:59:00";
     vi.mocked(getWorkspaceSidebar).mockResolvedValue(
       sidebarWithSessions([
@@ -486,6 +486,9 @@ describe("AppSidebar tree expansion", () => {
     const timestamp = screen.getByText(expectedSidebarTimestamp(lastAt, false));
     expect(timestamp.tagName).toBe("TIME");
     expect(timestamp).toHaveAttribute("dateTime", lastAt);
+    expect(timestamp).toHaveClass("opacity-0");
+    expect(timestamp).toHaveClass("group-hover/nav:opacity-100");
+    expect(timestamp).toHaveClass("group-focus-within/nav:opacity-100");
 
     fireEvent.change(screen.getByLabelText("Filter sessions"), {
       target: { value: "timestamped" },
