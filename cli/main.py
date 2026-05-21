@@ -17,6 +17,7 @@ from rich.text import Text
 
 from stashai.plugin.upload_status import read_upload_status
 
+from . import telemetry
 from .client import StashClient, StashError, stash_permissions_for_access
 from .config import (
     MANIFEST_FILE,
@@ -910,6 +911,7 @@ def share_session(
     transcript, and any attached files as a single public Stash.
     """
     _require_auth()
+    telemetry.record("share")
     ws = workspace_id or _resolve_workspace()
 
     # Resolve session ID
@@ -1120,6 +1122,7 @@ def upload(
 ):
     """Upload local files into workspace pages and publish them as a Stash."""
     _require_auth()
+    telemetry.record("upload")
     target = Path(path)
     if not target.exists():
         console.print(f"[red]Not found: {path}[/red]")
@@ -2059,6 +2062,7 @@ def hist_push(
     as_json: bool = typer.Option(False, "--json"),
 ):
     """Push an event to the workspace session stream."""
+    telemetry.record("history.push")
     ws = workspace_id or _resolve_workspace()
     with _client() as c:
         try:
@@ -2107,6 +2111,7 @@ def hist_query(
     as_json: bool = typer.Option(False, "--json"),
 ):
     """Query events (newest first by default). --all for cross-workspace."""
+    telemetry.record("history.query")
     with _client() as c:
         try:
             if all_:
@@ -2149,6 +2154,7 @@ def hist_search(
     as_json: bool = typer.Option(False, "--json"),
 ):
     """Full-text search on events in a workspace."""
+    telemetry.record("history.search")
     ws = workspace_id or _resolve_workspace()
     with _client() as c:
         try:
@@ -3586,6 +3592,7 @@ def login_cmd():
 def connect_cmd():
     """Connect this repo to a Stash workspace."""
     cfg = _require_auth()
+    telemetry.record("connect")
 
     repo_root = _git_toplevel()
     if not repo_root:
@@ -4208,6 +4215,7 @@ def mount_command(
     """Experimentally mount Stash as a local FUSE filesystem."""
     from .mount import StashMountError, check_fuse_runtime, mount_stash
 
+    telemetry.record("mount")
     if check:
         try:
             check_fuse_runtime()

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import { track } from "@/lib/analytics";
 import { apiFetch, getToken } from "@/lib/api";
 import type { StepCtx } from "@/lib/onboarding/paths";
 
@@ -36,6 +37,12 @@ export default function MemoryAskStep({ workspaceId }: StepCtx) {
   const [citations, setCitations] = useState<Citation[]>([]);
   const [error, setError] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
+  // Read inside the streaming callback's finally block without restarting it
+  // on every citation update.
+  const citationsRef = useRef<Citation[]>([]);
+  useEffect(() => {
+    citationsRef.current = citations;
+  }, [citations]);
 
   useEffect(() => {
     if (!workspaceId) return;
@@ -143,6 +150,12 @@ export default function MemoryAskStep({ workspaceId }: StepCtx) {
       } finally {
         setStreaming(false);
         abortRef.current = null;
+        // Fire after the stream finishes so has_results reflects what we
+        // actually rendered, not whether the request started.
+        track("web.ask_stash", {
+          workspace_id: workspaceId,
+          has_results: citationsRef.current.length > 0,
+        });
       }
     },
     [workspaceId, streaming],

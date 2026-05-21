@@ -171,15 +171,25 @@ async def get_engagement_cohorts(
     if events_filter not in ("all", "active"):
         raise ValueError(f"unknown events_filter: {events_filter}")
     pool = get_pool()
-    join_filter = f"AND {_ACTIVE_EVENTS_PREDICATE}" if events_filter == "active" else ""
+    # Pull from both event tables. history_events is the agent-transcript log;
+    # analytics_events is product telemetry. UNION ALL lets web-only users
+    # (who never trigger an agent session) show up in cohorts.
+    he_filter = f"AND {_ACTIVE_EVENTS_PREDICATE}" if events_filter == "active" else ""
     sql = f"""
-        SELECT u.id, u.created_at AS signup_at,
-               he.created_at AS event_at
+        WITH user_events AS (
+            SELECT he.created_by AS user_id, he.created_at AS event_at
+            FROM history_events he
+            WHERE he.created_by IS NOT NULL
+              {he_filter}
+            UNION ALL
+            SELECT ae.user_id, ae.created_at AS event_at
+            FROM analytics_events ae
+            WHERE ae.user_id IS NOT NULL
+        )
+        SELECT u.id, u.created_at AS signup_at, ue.event_at
         FROM users u
-        LEFT JOIN history_events he
-            ON he.created_by = u.id
-            {join_filter}
-        ORDER BY u.id, he.created_at NULLS FIRST
+        LEFT JOIN user_events ue ON ue.user_id = u.id
+        ORDER BY u.id, ue.event_at NULLS FIRST
     """
     rows = await pool.fetch(sql)
     out = compute_engagement_cohorts(

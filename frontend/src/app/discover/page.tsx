@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import AppShell from "../../components/AppShell";
 import { useBreadcrumbs } from "../../components/BreadcrumbContext";
 import { BasicPageSkeleton, CardGridSkeleton } from "../../components/SkeletonStates";
+import ForkStashCardButton from "../../components/stash/ForkStashCardButton";
 import StashCard from "../../components/stash/StashCard";
 import { useAuth } from "../../hooks/useAuth";
 import type { PublicStashCard } from "../../lib/api";
@@ -149,6 +150,12 @@ function DiscoverGrid({
                   ↗ trending
                 </span>
               ) : undefined
+            }
+            cornerAction={
+              <ForkStashCardButton
+                slug={stash.slug}
+                sourceWorkspaceId={stash.workspace_id}
+              />
             }
             footer={
               <>

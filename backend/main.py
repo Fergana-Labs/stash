@@ -17,6 +17,7 @@ from .middleware import limiter
 from .routers import (
     admin,
     aggregate,
+    analytics,
     collab,
     discover,
     exports,
@@ -99,6 +100,7 @@ app.include_router(transcripts.router)
 app.include_router(aggregate.router)
 app.include_router(skill.router)
 app.include_router(admin.router)
+app.include_router(analytics.router)
 app.include_router(sessions.router)
 app.include_router(trash.router)
 app.include_router(publish.router)

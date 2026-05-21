@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import Header from "../../components/Header";
 import { AuthPageSkeleton, SkeletonBlock } from "../../components/SkeletonStates";
 import { useAuth } from "../../hooks/useAuth";
+import { track } from "../../lib/analytics";
 import { getToken, setToken, listMyWorkspaces } from "../../lib/api";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3456";
@@ -117,6 +118,9 @@ function LoginPageInner() {
 
       const data = await res.json();
       setToken(data.api_key);
+      if (mode === "register") {
+        track("auth.signed_up", { via_cli: !!cliSession });
+      }
       if (mode === "register" && !cliSession) {
         setJustRegistered(true);
       }

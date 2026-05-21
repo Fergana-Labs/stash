@@ -7,6 +7,7 @@ import AppShell from "../../components/AppShell";
 import CustomSelect from "../../components/CustomSelect";
 import { BasicPageSkeleton, SearchResultsSkeleton, SearchSkeleton } from "../../components/SkeletonStates";
 import { useAuth } from "../../hooks/useAuth";
+import { track } from "../../lib/analytics";
 import {
   getWorkspaceSidebar,
   getPublicStash,
@@ -25,6 +26,16 @@ import {
 import type { Page, Workspace } from "../../lib/types";
 
 type ContentScope = "all" | "sessions" | "pages" | "stashes";
+
+// Coarse buckets for analytics — actual counts have high cardinality
+// and add no signal beyond "no results / few / many."
+function bucketCount(n: number): string {
+  if (n === 0) return "0";
+  if (n < 5) return "1-4";
+  if (n < 20) return "5-19";
+  if (n < 100) return "20-99";
+  return "100+";
+}
 
 interface SearchResult {
   id: string;
@@ -281,6 +292,11 @@ function SearchPageInner() {
       }
 
       setResults(sortResults(nextResults));
+      track("web.search_query", {
+        scope: contentScope,
+        has_results: nextResults.length > 0,
+        result_count_bucket: bucketCount(nextResults.length),
+      });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Search failed");
       setResults([]);

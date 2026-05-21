@@ -12,6 +12,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 
 import Header from "../../components/Header";
 import { useAuth } from "../../hooks/useAuth";
+import { track } from "../../lib/analytics";
 import { getToken, listMyWorkspaces } from "../../lib/api";
 import { seedWelcomePage } from "../../lib/onboarding/seedWelcome";
 
@@ -126,6 +127,25 @@ function OnboardingInner() {
     setCanContinue(true);
   }, [stepIdx]);
 
+  // Onboarding.viewed once per page entry, after we know whether a path
+  // is already locked in (returning user vs. fresh chooser).
+  useEffect(() => {
+    if (loading || !apiKey) return;
+    track("onboarding.viewed", { has_path: !!path });
+  }, [loading, apiKey, path]);
+
+  // Step view fires per step transition, including step 0 of a fresh path.
+  useEffect(() => {
+    if (!path) return;
+    const stepName = PATHS[path].stepNames[stepIdx];
+    if (!stepName) return;
+    track("onboarding.step_viewed", {
+      path,
+      step_idx: stepIdx,
+      step_name: stepName,
+    });
+  }, [path, stepIdx]);
+
   // Canonicalize the URL after an OAuth callback. If we inferred source
   // from ?connected= but the URL doesn't have ?source= explicitly, write
   // it in and strip ?connected= in the same replace. Without this, the
@@ -147,6 +167,7 @@ function OnboardingInner() {
       if (typeof window !== "undefined" && userId) {
         window.localStorage.setItem(pathStorageKey(userId), next);
       }
+      track("onboarding.path_selected", { path: next });
       router.push(`/onboarding?path=${next}&step=1`);
     },
     [router, userId],
@@ -181,10 +202,17 @@ function OnboardingInner() {
     [router, searchParams],
   );
 
-  const skipToWorkspace = useCallback(() => {
+  const exitToWorkspace = useCallback(() => {
     if (workspaceId) router.push(`/workspaces/${workspaceId}`);
     else router.push("/");
   }, [router, workspaceId]);
+
+  const skipToWorkspace = useCallback(() => {
+    if (path) {
+      track("onboarding.skipped", { path, step_idx: stepIdx });
+    }
+    exitToWorkspace();
+  }, [exitToWorkspace, path, stepIdx]);
 
   if (loading || !apiKey) {
     return (
@@ -209,6 +237,12 @@ function OnboardingInner() {
   const isDone = stepIdx >= totalSteps;
 
   async function finishAndExit() {
+    if (path) {
+      track("onboarding.completed", {
+        path,
+        total_steps: PATHS[path].steps.length,
+      });
+    }
     if (workspaceId && user) {
       try {
         await seedWelcomePage({
@@ -221,7 +255,7 @@ function OnboardingInner() {
         // still redirect — the user can edit the description anytime.
       }
     }
-    skipToWorkspace();
+    exitToWorkspace();
   }
 
   function nextStep() {

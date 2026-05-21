@@ -5,6 +5,7 @@ import { useState } from "react";
 import AppShell from "../../../components/AppShell";
 import { BasicPageSkeleton } from "../../../components/SkeletonStates";
 import { useAuth } from "../../../hooks/useAuth";
+import { track } from "../../../lib/analytics";
 import { createWorkspace } from "../../../lib/api";
 import { resetStashNavigationCache } from "../../../lib/stashNavigationCache";
 
@@ -29,6 +30,7 @@ export default function NewWorkspacePage() {
     setError("");
     try {
       const ws = await createWorkspace(name.trim(), description.trim());
+      track("web.workspace_created", { workspace_id: ws.id });
       resetStashNavigationCache();
       router.push(`/workspaces/${ws.id}`);
     } catch (err) {
