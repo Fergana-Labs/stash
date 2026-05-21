@@ -163,14 +163,13 @@ function StashPageBody({
       return;
     }
 
-    // Visualizations are workspace-scoped — they show the owning workspace's
-    // activity so the stash detail page has the same "knowledge map" feel
-    // as the workspace home.
+    // Visualizations are scoped to this Stash's items — the sessions and
+    // pages bundled into the Stash, not the owning workspace's full activity.
     let cancelled = false;
     setInsightsLoaded(false);
     Promise.allSettled([
-      getActivityTimeline(30, "day", stash.workspace_id),
-      getEmbeddingProjection(500, undefined, stash.workspace_id),
+      getActivityTimeline(30, "day", undefined, stash.id),
+      getEmbeddingProjection(500, undefined, undefined, stash.id),
     ]).then(([t, p]) => {
       if (cancelled) return;
       if (t.status === "fulfilled") setTimeline(t.value);
@@ -180,7 +179,7 @@ function StashPageBody({
     return () => {
       cancelled = true;
     };
-  }, [primaryFile, stash.workspace_id]);
+  }, [primaryFile, stash.id]);
 
   const cover = stash.cover_image_url
     ? { backgroundImage: `url(${stash.cover_image_url})` }
@@ -328,11 +327,11 @@ function StashPageBody({
               )}
             </div>
 
-            {/* Visualizations: human/agent session activity + 3D embedding view of the
-                owning workspace — same shape as workspace home. */}
+            {/* Visualizations: human/agent session activity + 3D embedding
+                view scoped to this Stash's items. */}
             <section className="mt-8">
               <div className="sys-label mb-1.5">
-                Human / agent commits — last 30 days
+                Activity in this Stash — last 30 days
               </div>
               <div className="card-soft overflow-x-auto p-3">
                 {!insightsLoaded ? (
@@ -341,8 +340,8 @@ function StashPageBody({
                   <ContributorActivityTimeline data={timeline} />
                 ) : (
                   <div className="px-2 py-6 text-center text-[12.5px] text-muted">
-                    No agent session commits yet. Add a session to this Stash or
-                    push a transcript via the CLI.
+                    No session activity in this Stash yet. Add a session to
+                    surface its agent commits here.
                   </div>
                 )}
               </div>
@@ -350,7 +349,7 @@ function StashPageBody({
 
             <section className="mt-6">
               <div className="sys-label mb-1.5">
-                Embedding space — workspace knowledge map
+                Embedding map for this Stash
               </div>
               <div className="card-soft p-3">
                 {!insightsLoaded ? (
@@ -359,8 +358,8 @@ function StashPageBody({
                   <EmbeddingSpaceExplorer data={projection} />
                 ) : (
                   <div className="px-2 py-6 text-center text-[12.5px] text-muted">
-                    No embeddings indexed yet. Pages, table rows, and session
-                    events get embedded as they&apos;re added.
+                    No embeddings in this Stash yet. Pages, table rows, and
+                    session events get embedded as they&apos;re added.
                   </div>
                 )}
               </div>

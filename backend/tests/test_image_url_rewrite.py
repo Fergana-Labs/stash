@@ -31,16 +31,14 @@ def test_rewrite_swaps_presigned_r2_for_proxy_url():
 
     def lookup(storage_key: str) -> str:
         assert (
-            storage_key
-            == "24a2d68b-a549-436b-9091-96c0a32acc56/4584cc7269c3/"
+            storage_key == "24a2d68b-a549-436b-9091-96c0a32acc56/4584cc7269c3/"
             "human-agent-commits-timeline.png"
         )
         return fid
 
     rewritten = mig._rewrite_body(body, lookup)
     expected = (
-        "![cap](/api/v1/workspaces/24a2d68b-a549-436b-9091-96c0a32acc56/"
-        f"files/{fid}/download)"
+        "![cap](/api/v1/workspaces/24a2d68b-a549-436b-9091-96c0a32acc56/" f"files/{fid}/download)"
     )
     assert rewritten == expected
 
@@ -75,6 +73,8 @@ def test_rewrite_leaves_url_alone_when_file_not_found():
 
 def test_rewrite_ignores_non_r2_urls():
     mig = _load_migration()
-    body = "![ok](/api/v1/workspaces/ws/files/abc/download) and ![cdn](https://cdn.example.com/x.png)"
+    body = (
+        "![ok](/api/v1/workspaces/ws/files/abc/download) and ![cdn](https://cdn.example.com/x.png)"
+    )
     rewritten = mig._rewrite_body(body, lookup_file_id=lambda _k: "should-not-be-called")
     assert rewritten == body

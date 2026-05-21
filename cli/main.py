@@ -1126,10 +1126,32 @@ def upload(
     path: str = typer.Argument(..., help="Directory or file to upload."),
     name: str = typer.Option("", "--name", "-n", help="Name for the uploaded folder."),
     workspace_id: str = typer.Option(None, "--ws"),
-    public: bool = typer.Option(True, "--public/--private", help="Publish a shareable Stash."),
+    stash: str = typer.Option(
+        "",
+        "--stash",
+        help=(
+            "Also bundle the upload into a new Stash with this title. Omit "
+            "for a workspace-only upload (the common case)."
+        ),
+    ),
+    public: bool = typer.Option(
+        True,
+        "--public/--private",
+        help="Stash visibility (only meaningful with --stash).",
+    ),
     as_json: bool = typer.Option(False, "--json"),
 ):
-    """Upload local files into workspace pages and publish them as a Stash."""
+    """Upload local files into a workspace folder.
+
+    Default: upload only — files land in a workspace folder, and the
+    returned ``app_url`` is the workspace link your teammates can already
+    follow. **No Stash is created.**
+
+    Pass ``--stash <title>`` to *also* bundle the upload into a shareable
+    Stash. Use a Stash when you're publishing a curated bundle of related
+    artifacts (a project writeup with its supporting files, a research
+    thread with its sources) — not as a wrapper around every single
+    upload."""
     _require_auth()
     telemetry.record("upload")
     target = Path(path)
@@ -1143,6 +1165,8 @@ def upload(
         raise typer.Exit(1)
 
     root_name = name or (target.stem if target.is_file() else target.name)
+    stash_title = stash.strip() or root_name
+    create_stash = bool(stash)
     ws = workspace_id or _resolve_workspace()
     console.print(f"[dim]Uploading {len(files)} file(s) as '{root_name}'...[/dim]")
 
@@ -1199,32 +1223,44 @@ def upload(
             )
             console.print(f"  [dim]File: {relative_path}[/dim]")
 
-        if public:
-            bundle = c.publish_stash(
-                ws,
-                title=root_name,
-                description=f"Uploaded from {target.name}",
-                items=stash_items,
-            )
-            stash = bundle["stash"]
-            stash_url = bundle["url"]
-        else:
-            stash = c.create_stash(
-                ws,
-                title=root_name,
-                description=f"Uploaded from {target.name}",
-                items=stash_items,
-            )
-            stash_url = _stash_url(stash)
+        folder_url = f"{_web_app_url()}/workspaces/{ws}/folders/{root_folder['id']}"
+        result: dict = {"folder": root_folder, "app_url": folder_url}
 
-    result = {"folder": root_folder, "stash": stash, "url": stash_url}
+        if create_stash:
+            if public:
+                bundle = c.publish_stash(
+                    ws,
+                    title=stash_title,
+                    description=f"Uploaded from {target.name}",
+                    items=stash_items,
+                )
+                stash_row = bundle["stash"]
+                stash_url = bundle["url"]
+            else:
+                stash_row = c.create_stash(
+                    ws,
+                    title=stash_title,
+                    description=f"Uploaded from {target.name}",
+                    items=stash_items,
+                )
+                stash_url = _stash_url(stash_row)
+            result["stash"] = stash_row
+            result["url"] = stash_url
+
     if _use_json(as_json):
         output_json(result)
         return
-    console.print(
-        f"\n[green bold]Uploaded![/green bold]  {result['url']}\n"
-        f"[dim]Folder: {root_folder['id']}  Stash: {stash['id']}[/dim]"
-    )
+    if create_stash:
+        console.print(
+            f"\n[green bold]Uploaded![/green bold]  {result['url']}\n"
+            f"[dim]Folder: {root_folder['id']}  Stash: {result['stash']['id']}[/dim]"
+        )
+    else:
+        console.print(
+            f"\n[green bold]Uploaded![/green bold]  {folder_url}\n"
+            f"[dim]Folder: {root_folder['id']}  "
+            f"(pass --stash <title> to also bundle into a shareable Stash)[/dim]"
+        )
 
 
 def _parse_stash_slug(url_or_slug: str) -> str:
@@ -3392,6 +3428,26 @@ Your coding agent has the `stash` CLI on its PATH. Run `stash --help` to see com
 why something was built a certain way, what's been tried before, or what teammates are working on,
 search Stash first — it has the full session record and human decisions across the team.
 
+### What a Stash is
+
+A Stash is a *named, curated bundle of related artifacts* (pages, files, sessions, tables) with
+its own access control and an optional public URL. Use one when you're publishing a *collection*
+of related things together — a project writeup with its supporting files, a research thread with
+its sources, a session transcript plus the files it produced.
+
+A Stash is **not** a wrapper to slap on every single file you happen to share. One-item Stashes
+clutter Discover and defeat the model. Pick the right tool:
+
+- Internal share of a single file → `stash files upload <path> --json`, hand over `app_url`.
+- Upload a folder/project → `stash upload <path> --json` (returns `app_url`, no Stash).
+- Publishing a curated bundle → `stash upload <path> --stash "<title>" --json`.
+- Composing from existing items → `stash stashes create "<title>" --items '<json>' --json`.
+- Share a coding session → `stash share <session_id>`.
+
+Run `stash prompts agent-guidance` to reprint this rule mid-session.
+
+### Browsing Stash
+
 Use `stash vfs` when you want to browse Stash like a filesystem without mounting anything into the OS:
 - `stash vfs ls /`
 - `stash vfs "find /workspaces -maxdepth 3 -type f"`
@@ -4466,6 +4522,75 @@ def skill_add(
     except StashError as e:
         _err(e)
     console.print(f"[green]Added skill '{folder_name}' to workspace {workspace_id}.[/green]")
+
+
+# ===========================================================================
+# Prompts — reusable agent-facing prompts the CLI can hand back as text
+# ===========================================================================
+
+prompts_app = typer.Typer(help="Print reusable stash agent prompts.")
+app.add_typer(prompts_app, name="prompts")
+
+
+# Canonical explanation of what a Stash is and when to create one. Shared
+# verbatim by the SessionStart hooks, the plugin CLAUDE.md, and this command,
+# so every agent surface tells the same story.
+AGENT_GUIDANCE_PROMPT = """\
+What a Stash is
+===============
+
+A Stash is a named, curated bundle of related workspace artifacts (pages,
+files, tables, sessions) with its own access control and an optional public
+URL. Use one when you're publishing a bundle of related things together — a
+project writeup with its supporting files, a research thread with its
+sources, a session transcript with its outputs.
+
+When to create a Stash
+----------------------
+
+Create a Stash when:
+- You're publishing a curated collection of related artifacts that belong
+  together as one share.
+- You want a single shareable URL with its own access control (public,
+  workspace-only, or private).
+
+Do NOT create a Stash when:
+- The user just wants to share one file or page internally. Workspace
+  members can already see it — give them the workspace `app_url`.
+- You're emitting incidental artifacts (logs, intermediate outputs).
+  Upload them with `stash files upload` and pass the `app_url` back.
+
+Commands to reach for
+---------------------
+
+- `stash files upload <path> --json` — raw file into workspace storage,
+  returns `app_url`. No Stash created. This is the default for "share this
+  one file with my team."
+- `stash upload <path> --json` — upload files/pages into a workspace
+  folder, returns the folder's `app_url`. No Stash created.
+- `stash upload <path> --stash "<title>" --json` — same as above AND
+  bundle the upload into a Stash with the given title. Use only when
+  you're producing a shareable bundle.
+- `stash stashes create "<title>" --items '<json>' --json` — create a
+  Stash that bundles existing workspace artifacts you've already
+  produced. Use this to compose a Stash from many sources.
+- `stash share <session_id>` — wrap a coding session (transcript + the
+  files it touched) into a Stash. Sessions are inherently a bundle, so
+  this is the right unit.
+
+Anti-pattern: minting one Stash per file you happen to share. Stashes
+exist to group related things; one item per Stash defeats the model and
+clutters Discover.
+"""
+
+
+@prompts_app.command("agent-guidance")
+def prompts_agent_guidance():
+    """Print the canonical 'what is a Stash + when to create one' prompt.
+
+    Intended for coding agents (Claude Code, Codex, Cursor, etc.) to
+    re-inject when they want to remember the model mid-session."""
+    console.print(AGENT_GUIDANCE_PROMPT)
 
 
 if __name__ == "__main__":
