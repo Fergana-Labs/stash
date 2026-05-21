@@ -3416,9 +3416,13 @@ def _auto_connect_repo(repo_root: Path, cfg: dict) -> None:
                 return
             except StashError as e:
                 if e.status_code in (403, 404):
-                    _handle_not_member(ws_id)
-                    return
-                raise
+                    console.print(
+                        f"  [yellow]Workspace {ws_id[:8]}… not found — "
+                        f"replacing stale .stash[/yellow]"
+                    )
+                    manifest_path.unlink()
+                else:
+                    raise
 
         repo_name = repo_root.name
         my_workspaces = c.list_workspaces()
