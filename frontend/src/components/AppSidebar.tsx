@@ -262,7 +262,7 @@ function NavRow({
     <Link
       href={href}
       className={
-        "page-row flex items-center gap-2 rounded-md px-2 py-1 text-[13px] transition-colors " +
+        "group/navrow page-row flex items-center gap-2 rounded-md px-2 py-1 text-[13px] transition-colors " +
         (active
           ? "bg-[var(--color-brand-50)] text-[var(--color-brand-800)]"
           : "text-dim hover:bg-raised hover:text-foreground")
@@ -271,7 +271,7 @@ function NavRow({
       onContextMenu={onContextMenu}
     >
       <span className="flex h-4 w-4 items-center justify-center text-[14px]">{icon}</span>
-      <span className="flex-1 truncate">{label}</span>
+      <span className="min-w-0 flex-1 truncate">{label}</span>
       {trailing}
     </Link>
   );
@@ -560,6 +560,32 @@ function fileIconClass(contentType: string | undefined): string {
 function sessionLabelForSidebar(session: WorkspaceSidebarSession): string {
   const raw = (session.title || session.session_id).trim();
   return raw.length > 26 ? `${raw.slice(0, 26)}…` : raw;
+}
+
+function primarySessionTicket(session: WorkspaceSidebarSession) {
+  return session.linear_tickets[0] ?? null;
+}
+
+function SessionTicketPill({
+  ticket,
+}: {
+  ticket: WorkspaceSidebarSession["linear_tickets"][number] | null;
+}) {
+  if (!ticket) return null;
+
+  const title = ticket.ticket_title
+    ? `${ticket.ticket_identifier}: ${ticket.ticket_title}`
+    : ticket.ticket_identifier;
+
+  return (
+    <span
+      title={title}
+      aria-label={`Linear ticket ${title}`}
+      className="pointer-events-none inline-flex h-4 max-w-[74px] shrink-0 items-center truncate rounded border border-[var(--color-brand-200)] bg-[var(--color-brand-50)] px-1.5 text-[10px] font-semibold leading-none text-[var(--color-brand-700)] opacity-0 transition-opacity group-hover/navrow:opacity-100 group-focus-within/navrow:opacity-100"
+    >
+      {ticket.ticket_identifier}
+    </span>
+  );
 }
 
 function displaySidebarSessionUser(raw: string | null | undefined): string {
@@ -865,6 +891,7 @@ function SessionNavRow({
       label={sessionLabelForSidebar(session)}
       active={sessionMatchesActive(activeSession, workspaceId, session)}
       onContextMenu={(event) => onPinMenu?.(event, session)}
+      trailing={<SessionTicketPill ticket={primarySessionTicket(session)} />}
     />
   );
 }
@@ -938,6 +965,7 @@ function SessionsBlock({
       objectId: session?.id ?? null,
       label: pinnedLabels.sessions[sessionId] ?? (session ? sessionLabelForSidebar(session) : "Session"),
       href: `/workspaces/${workspace.id}/sessions/${encodeURIComponent(sessionId)}`,
+      ticket: session ? primarySessionTicket(session) : null,
     };
   });
   const menuClamp =
@@ -1093,6 +1121,7 @@ function SessionsBlock({
                     onContextMenu={(event) =>
                       showSessionPinMenu(event, session.id, session.label)
                     }
+                    trailing={<SessionTicketPill ticket={session.ticket} />}
                   />
                 ))}
               </div>
@@ -1297,6 +1326,7 @@ type StashTreeItem = {
   href?: string;
   label: string;
   icon: React.ReactNode;
+  ticket?: WorkspaceSidebarSession["linear_tickets"][number] | null;
 };
 
 function resolveFolderPath(
@@ -1341,6 +1371,7 @@ function buildStashTreeItems(
           href: session ? `/workspaces/${workspaceId}/sessions/${encodeURIComponent(session.session_id)}` : undefined,
           icon: <span className="text-muted"><SessionsIcon /></span>,
           label: item.label_override ?? (session ? session.title || session.session_id : fallback),
+          ticket: session ? primarySessionTicket(session) : null,
         };
       }
 
@@ -1522,6 +1553,9 @@ function StashTreeRow({ row }: { row: StashTreeItem }) {
       icon={row.icon}
       label={row.label}
       active={pathname === row.href}
+      trailing={
+        row.kind === "session" ? <SessionTicketPill ticket={row.ticket ?? null} /> : undefined
+      }
     />
   );
 }
