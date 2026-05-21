@@ -8,6 +8,7 @@ import {
   NotionIcon,
   ObsidianIcon,
 } from "@/components/integrations/BrandIcons";
+import { track } from "@/lib/analytics";
 import type { MigrantSource, StepCtx } from "@/lib/onboarding/paths";
 
 type Card = {
@@ -56,6 +57,7 @@ const CARDS: Card[] = [
 
 export default function MigrantSourceStep({ pickSource }: StepCtx) {
   function pick(id: MigrantSource) {
+    track("onboarding.source_selected", { source: id });
     pickSource(id);
   }
 

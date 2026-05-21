@@ -99,6 +99,7 @@ _TRUNCATE_TABLES = [
     "stash_members",
     "stash_items",
     "stashes",
+    "analytics_events",
     "history_events",
     "pages",
     "folders",

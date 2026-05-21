@@ -9,6 +9,7 @@ import {
   type SessionDetail,
   type StashItemSpec,
 } from "../lib/api";
+import { track } from "../lib/analytics";
 import { User, Workspace } from "../lib/types";
 import AppSidebar from "./AppSidebar";
 import CommandPalette from "./CommandPalette";
@@ -362,6 +363,10 @@ export default function AppShell({
               { discoverable: false },
             )
           : await publishSessionStash(target);
+      track("web.session_shared", {
+        workspace_id: target.workspaceId,
+        stash_id: result.stash_id,
+      });
       await navigator.clipboard.writeText(result.url);
       setShareStatus("copied");
       setShareMessage("Link copied");

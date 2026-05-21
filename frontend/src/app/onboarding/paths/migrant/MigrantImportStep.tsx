@@ -6,6 +6,7 @@ import IntegrationCard from "@/components/integrations/IntegrationCard";
 import DriveImportDialog from "@/components/import/DriveImportDialog";
 import GitImportDialog from "@/components/import/GitImportDialog";
 import NotionImportDialog from "@/components/import/NotionImportDialog";
+import { track } from "@/lib/analytics";
 import { createFolder, uploadFileOrPage } from "@/lib/api";
 import { IntegrationStatus, listIntegrations } from "@/lib/integrations";
 import type { MigrantSource, StepCtx } from "@/lib/onboarding/paths";
@@ -27,6 +28,10 @@ export default function MigrantImportStep(ctx: StepCtx) {
   }, [setCanContinue]);
 
   function markImported() {
+    track("onboarding.import_dispatched", {
+      source,
+      import_type: source === "obsidian" ? "vault_upload" : "oauth_dialog",
+    });
     setCanContinue(true);
   }
 

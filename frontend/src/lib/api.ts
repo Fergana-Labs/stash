@@ -21,6 +21,16 @@ import {
 
 const TOKEN_KEY = "stash_token";
 const API_BASE = "";
+
+// Local trampoline so api.ts can fire analytics without importing analytics.ts
+// (which would create a cycle — analytics.ts reads the auth token).
+function trackEvent(
+  event: string,
+  properties?: Record<string, unknown>,
+): void {
+  if (typeof window === "undefined") return;
+  void import("./analytics").then((m) => m.track(event, properties));
+}
 const DEFAULT_LOCAL_COLLAB_URL = "ws://localhost:3458";
 
 // --- Token management (for CLI API key fallback) ---
@@ -336,7 +346,7 @@ export async function createPage(
     html_layout?: "responsive" | "fixed-aspect";
   }
 ): Promise<Page> {
-  return apiFetch(`/api/v1/workspaces/${workspaceId}/pages/new`, {
+  const page = await apiFetch<Page>(`/api/v1/workspaces/${workspaceId}/pages/new`, {
     method: "POST",
     body: JSON.stringify({
       name,
@@ -347,6 +357,8 @@ export async function createPage(
       html_layout: options?.html_layout ?? "responsive",
     }),
   });
+  trackEvent("web.page_created", { workspace_id: workspaceId });
+  return page;
 }
 
 export async function getPage(workspaceId: string, pageId: string): Promise<Page> {

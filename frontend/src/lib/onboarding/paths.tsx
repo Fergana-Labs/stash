@@ -48,6 +48,10 @@ export type PathDef = {
   id: PathId;
   label: string;
   steps: ComponentType<StepCtx>[];
+  // Parallel to `steps`. Stable, snake_case identifiers used for
+  // onboarding.step_viewed telemetry — keep in sync with the component
+  // order above.
+  stepNames: string[];
   // Optional. When omitted, finishing the last step seeds the welcome
   // page and redirects to /workspaces/{id} — no Done UI shown.
   doneStep?: ComponentType<{ workspaceId: string | null }>;
@@ -66,17 +70,20 @@ export const PATHS: Record<PathId, PathDef> = {
       MigrantDemoStep,
       wrapInvite(InviteStep),
     ],
+    stepNames: ["source", "import", "demo", "invite"],
     doneStep: DoneStep,
   },
   memory: {
     id: "memory",
     label: "Agent memory",
     steps: [MemoryImportStep, MemoryDemoStep, MemoryAskStep],
+    stepNames: ["install", "demo", "ask"],
   },
   sharing: {
     id: "sharing",
     label: "Artifacts",
     steps: [SharingDropStep, SharingBrowseStep, SharingHandoffStep],
+    stepNames: ["drop", "browse", "handoff"],
   },
 };
 

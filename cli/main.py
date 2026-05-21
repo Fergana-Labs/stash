@@ -33,6 +33,7 @@ from .config import (
     write_manifest,
 )
 from .formatting import console, output_json, print_members, print_user, print_workspaces
+from . import telemetry
 
 app = typer.Typer(
     name="stash",
@@ -910,6 +911,7 @@ def share_session(
     transcript, and any attached files as a single public Stash.
     """
     _require_auth()
+    telemetry.record("share")
     ws = workspace_id or _resolve_workspace()
 
     # Resolve session ID
@@ -1120,6 +1122,7 @@ def upload(
 ):
     """Upload local files into workspace pages and publish them as a Stash."""
     _require_auth()
+    telemetry.record("upload")
     target = Path(path)
     if not target.exists():
         console.print(f"[red]Not found: {path}[/red]")
@@ -3586,6 +3589,7 @@ def login_cmd():
 def connect_cmd():
     """Connect this repo to a Stash workspace."""
     cfg = _require_auth()
+    telemetry.record("connect")
 
     repo_root = _git_toplevel()
     if not repo_root:
@@ -4208,6 +4212,7 @@ def mount_command(
     """Experimentally mount Stash as a local FUSE filesystem."""
     from .mount import StashMountError, check_fuse_runtime, mount_stash
 
+    telemetry.record("mount")
     if check:
         try:
             check_fuse_runtime()

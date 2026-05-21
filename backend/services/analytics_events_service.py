@@ -1,0 +1,85 @@
+"""Product telemetry: insert + read analytics_events rows.
+
+This is the lightweight, structured-properties log. Separate from history_events,
+which is the agent-transcript log (content-heavy, embedded).
+"""
+
+import json
+import logging
+from collections.abc import Iterable
+from uuid import UUID
+
+from ..database import get_pool
+
+logger = logging.getLogger(__name__)
+
+# Surfaces an event can come from. 'system' is reserved for backend-emitted
+# rows (e.g. a future signup hook); for now only 'web' and 'cli' are accepted.
+ALLOWED_SURFACES = {"web", "cli", "system"}
+
+# Closed set of event names we accept from clients. Adding a new event means
+# adding a row here AND wiring the call site — keeps the dashboard honest.
+ALLOWED_EVENT_NAMES = {
+    # Onboarding funnel
+    "onboarding.viewed",
+    "onboarding.path_selected",
+    "onboarding.step_viewed",
+    "onboarding.source_selected",
+    "onboarding.import_dispatched",
+    "onboarding.skipped",
+    "onboarding.completed",
+    # Web actions
+    "web.workspace_created",
+    "web.page_created",
+    "web.session_shared",
+    "web.ask_stash",
+    # CLI commands
+    "cli.command_invoked",
+}
+
+
+async def record_event(
+    *,
+    user_id: UUID | str | None,
+    surface: str,
+    event_name: str,
+    properties: dict | None = None,
+    session_anon: str | None = None,
+) -> None:
+    pool = get_pool()
+    await pool.execute(
+        """
+        INSERT INTO analytics_events (user_id, surface, event_name, properties, session_anon)
+        VALUES ($1, $2, $3, $4::jsonb, $5)
+        """,
+        user_id,
+        surface,
+        event_name,
+        json.dumps(properties or {}),
+        session_anon,
+    )
+
+
+async def record_events_batch(rows: Iterable[dict]) -> int:
+    """Bulk insert. Each row must have surface, event_name; user_id/properties/session_anon optional."""
+    payload = [
+        (
+            r.get("user_id"),
+            r["surface"],
+            r["event_name"],
+            json.dumps(r.get("properties") or {}),
+            r.get("session_anon"),
+        )
+        for r in rows
+    ]
+    if not payload:
+        return 0
+    pool = get_pool()
+    await pool.executemany(
+        """
+        INSERT INTO analytics_events (user_id, surface, event_name, properties, session_anon)
+        VALUES ($1, $2, $3, $4::jsonb, $5)
+        """,
+        payload,
+    )
+    return len(payload)

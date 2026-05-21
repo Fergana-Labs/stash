@@ -32,5 +32,5 @@ export async function adminLogin(
     path: "/admin",
     maxAge: SESSION_TTL_SECONDS,
   });
-  redirect("/admin/cohorts");
+  redirect("/admin/analytics");
 }
