@@ -15,6 +15,7 @@ from ..database import get_pool
 from ..services import (
     ask_service,
     files_tree_service,
+    llm,
     memory_service,
     session_title_service,
     skill_service,
@@ -239,6 +240,118 @@ async def ask_workspace(
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
+
+
+# ---------------------------------------------------------------------------
+# Memory-demo: tailored before/after copy for the Memory onboarding path
+# ---------------------------------------------------------------------------
+
+
+class MemoryDemoResponse(BaseModel):
+    topic: str
+    before_steps: list[str]
+    after_step: str
+    real: bool  # true if grounded on an actual session; false for fallback
+
+
+_FALLBACK_DEMO = MemoryDemoResponse(
+    topic="the API gateway refactor",
+    before_steps=[
+        "Paste 3,200 chars from last week's session",
+        "Restate the open questions",
+        "List the constraints again",
+        "Recap what we tried and what didn't work",
+        "“OK, now keep going on the API gateway refactor.”",
+    ],
+    after_step="“Pick up where we left off on the API gateway refactor.”",
+    real=False,
+)
+
+
+@router.post("/{workspace_id}/memory-demo", response_model=MemoryDemoResponse)
+async def memory_demo(
+    workspace_id: UUID,
+    current_user: dict = Depends(get_current_user),
+):
+    """Generate a personalized before/after demo for the Memory onboarding
+    step. If the workspace has session(s), summon Claude (FAST tier) with
+    the most recent session's title + a short snippet of its first events;
+    otherwise return a canned fallback."""
+    if not await workspace_service.is_member(workspace_id, current_user["id"]):
+        raise HTTPException(status_code=403, detail="Not a workspace member")
+
+    sessions = await memory_service.list_workspace_sessions(
+        workspace_id, current_user["id"]
+    )
+    if not sessions:
+        return _FALLBACK_DEMO
+
+    newest = max(sessions, key=lambda s: s.get("last_at") or "")
+    title = session_title_service.title_from_text(
+        newest.get("title_source"), newest["session_id"]
+    )
+    agent = newest.get("agent_name") or "your agent"
+
+    snippet = ""
+    events = await memory_service.read_session_events(
+        workspace_id, newest["session_id"], current_user["id"]
+    )
+    user_event_types = {"user_message", "user_prompt", "prompt", "message", "user"}
+    if events:
+        first_user_prompts = [
+            (e.get("content") or "")
+            for e in events
+            if e.get("event_type") in user_event_types
+        ][:2]
+        snippet = "\n---\n".join(p[:800] for p in first_user_prompts if p)
+
+    system_prompt = (
+        "You write 2-column before/after demo copy for an onboarding screen. "
+        "The user has imported their agent session transcripts. The left column "
+        "(\"Without memory\") is a 4–6 step list showing the tedious context-"
+        "establishing dance the user would do every time they restart their "
+        "agent: pasting context, restating constraints, recapping dead ends. "
+        "Each step is one short sentence. The right column (\"With Stash\") is "
+        "a single short, casual request that references the topic — no "
+        "re-explanation. Tone: concrete, dry, no marketing fluff."
+    )
+    user_prompt = (
+        f"Most recent session title: {title}\n"
+        f"Agent: {agent}\n"
+        f"Recent prompts from this session (truncated):\n{snippet or '(none available)'}\n\n"
+        "Return JSON only, matching this shape exactly:\n"
+        "{\n"
+        '  "topic": "<short noun phrase describing what was being worked on>",\n'
+        '  "before_steps": ["step 1", "step 2", ...],\n'
+        '  "after_step": "<one short request, in quotes if dialogue>"\n'
+        "}"
+    )
+
+    try:
+        payload = await llm.complete_json(
+            prompt=user_prompt, system=system_prompt, max_tokens=600
+        )
+        topic = str(payload.get("topic") or title)
+        before_steps = [str(s) for s in payload.get("before_steps") or []]
+        after_step = str(payload.get("after_step") or "")
+        if not before_steps or not after_step:
+            raise ValueError("missing fields in LLM response")
+        return MemoryDemoResponse(
+            topic=topic,
+            before_steps=before_steps,
+            after_step=after_step,
+            real=True,
+        )
+    except Exception:
+        # Either Anthropic call failed or JSON shape was wrong. Fall back
+        # to the canned demo but seed the topic with the real session
+        # title so it still feels somewhat personal.
+        return MemoryDemoResponse(
+            topic=title,
+            before_steps=[s.replace("the API gateway refactor", title) for s in _FALLBACK_DEMO.before_steps],
+            after_step=_FALLBACK_DEMO.after_step.replace("the API gateway refactor", title),
+            real=False,
+        )
 
 
 @router.get("/{workspace_id}/overview")
