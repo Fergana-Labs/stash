@@ -229,7 +229,35 @@ The renamed `stash sessions *` group (replacing dead `stash history *`) is the c
 
 ---
 
-## 🔴 BONUS FINDING — uncovered during Phase 3 boot
+## 🔴 BONUS FINDINGS — uncovered after Phase 3 / during PR review
+
+### F14. Markdown / HTML uploads were inconsistently routed across surfaces
+
+Five upload paths, four different behaviors:
+
+| Surface | `.md` | `.html` |
+|---|---|---|
+| Frontend drag-drop (`uploadFileOrPage` in `lib/api.ts`) | → page (client-side conversion) | → page (client-side conversion) |
+| `stash upload` top-level (CLI) | → page (via `_UPLOAD_TEXT_EXTENSIONS`) | → page |
+| `stash files upload` (CLI grouped) | → **binary file** ❌ | backend **400** ❌ |
+| `stash_upload_file` (MCP) | → **binary file** ❌ | backend **400** ❌ |
+| Backend `POST /workspaces/<id>/files` | accepted as binary ❌ | hard-rejected with 400 telling caller to use the pages endpoint |
+
+Client-side conversion duplicated in two places, skipped in two more, inconsistent backend behavior — worst-of-all-worlds.
+
+**Fix applied**: moved the routing into the backend, single source of truth.
+- New `UploadResponse` model with `kind: "file" | "page"` discriminator + common fields (`id`, `name`, `app_url`, `created_at`) + kind-specific fields.
+- `POST /workspaces/<id>/files` detects markdown (`text/markdown` or .md/.markdown/.mdx) and HTML (`html` content-type or .html/.htm) and routes to `files_tree_service.create_page` with the right `content_type`. Everything else takes the existing S3 path.
+- Removed the HTML 400 rejection — the endpoint now does what it told callers to do.
+- Frontend `uploadFileOrPage` deleted its `isMarkdownUpload`/`isHtmlUpload` detection; thin call to the new endpoint that branches on `result.kind`. `uploadFile` (binary-only callers — icons, covers, editor images) asserts the server didn't return a page.
+- CLI `stash files upload` and MCP `stash_upload_file` automatically get the right behavior because they hit the same backend endpoint. CLI prints "Uploaded as page" when `kind === "page"`.
+
+Verified end-to-end against the audit stack:
+- `.md` upload → 201 with `kind: "page"`, `content_markdown` populated, `app_url` → `/workspaces/<id>/p/<id>`
+- `.html` upload → 201 with `kind: "page"`, `content_html` populated, `content_type: "html"`
+- `.bin` upload → 201 with `kind: "file"` (when S3 configured) — page path doesn't require S3, so md/html work without object storage
+- Duplicate page name → clean 409 with helpful message
+- The resulting page is fully editable in the app, indexed by semantic search, and addressable via the same `/p/<id>` URL the rest of the product uses
 
 ### F13. Frontend SSR + rewrites use the *public* API URL inside the container
 Self-host boot exposed a real runtime bug. The public `/stashes/{slug}` page returned **500** on first boot because:

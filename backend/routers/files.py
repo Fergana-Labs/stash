@@ -19,9 +19,16 @@ from fastapi.responses import Response
 from ..auth import get_current_user, get_current_user_optional
 from ..config import settings
 from ..database import get_pool
-from ..models import FileListResponse, FileResponse, FileUpdateRequest, TableResponse
+from ..models import (
+    FileListResponse,
+    FileResponse,
+    FileUpdateRequest,
+    TableResponse,
+    UploadResponse,
+)
 from ..services import (
     files_service,
+    files_tree_service,
     permission_service,
     storage_service,
     table_service,
@@ -72,6 +79,35 @@ def _file_app_url(row: dict) -> str:
     return f"{settings.PUBLIC_URL.rstrip('/')}/workspaces/{row['workspace_id']}/f/{row['id']}"
 
 
+def _page_app_url(workspace_id: UUID, page_id: UUID) -> str:
+    return f"{settings.PUBLIC_URL.rstrip('/')}/workspaces/{workspace_id}/p/{page_id}"
+
+
+_MD_EXTS = (".md", ".markdown", ".mdx")
+_HTML_EXTS = (".html", ".htm")
+
+
+def _detect_page_kind(filename: str, content_type: str) -> str | None:
+    """Return 'markdown' or 'html' if the upload should become a page,
+    else None (treat as a binary file). Mirrors the frontend's
+    isMarkdownUpload / isHtmlUpload."""
+    name = filename.lower()
+    ct = (content_type or "").lower()
+    if ct == "text/markdown" or name.endswith(_MD_EXTS):
+        return "markdown"
+    if "html" in ct or name.endswith(_HTML_EXTS):
+        return "html"
+    return None
+
+
+def _strip_ext(filename: str, exts: tuple[str, ...]) -> str:
+    lower = filename.lower()
+    for ext in exts:
+        if lower.endswith(ext):
+            return filename[: -len(ext)] or filename
+    return filename
+
+
 async def _file_to_response(row: dict) -> FileResponse:
     url = await storage_service.get_file_url(row["storage_key"])
     return FileResponse(
@@ -92,7 +128,7 @@ async def _file_to_response(row: dict) -> FileResponse:
 # ===== Workspace file endpoints =====
 
 
-@ws_router.post("", response_model=FileResponse, status_code=201)
+@ws_router.post("", response_model=UploadResponse, status_code=201)
 async def upload_ws_file(
     workspace_id: UUID,
     file: UploadFile,
@@ -100,8 +136,6 @@ async def upload_ws_file(
     current_user: dict = Depends(get_current_user),
 ):
     await _check_write(workspace_id, current_user["id"])
-    if not storage_service.is_configured():
-        raise HTTPException(status_code=503, detail="File storage is not configured")
 
     content = await file.read()
     if len(content) > MAX_FILE_SIZE:
@@ -110,14 +144,59 @@ async def upload_ws_file(
     content_type = file.content_type or "application/octet-stream"
     filename = file.filename or "upload"
 
-    # HTML lives in the pages table, not the files table — they're the only
-    # editable+commentable surface. Frontend routes HTML uploads through
-    # createPage; reject here so CLI/API callers also get the one path.
-    if "html" in content_type.lower() or filename.lower().endswith((".html", ".htm")):
-        raise HTTPException(
-            status_code=400,
-            detail="Upload HTML as a page (POST /workspaces/{workspace_id}/pages/new with content_type='html')",
+    # Markdown and HTML belong in the pages table — they're editable in-app,
+    # support comments, and live in the same VFS tree as binary files.
+    # Anything else is a binary upload (S3-backed file row). Frontend, CLI,
+    # and MCP all hit this single endpoint and get the routing for free.
+    page_kind = _detect_page_kind(filename, content_type)
+    if page_kind is not None:
+        if folder_id is not None:
+            pool = get_pool()
+            owns = await pool.fetchval(
+                "SELECT 1 FROM folders WHERE id = $1 AND workspace_id = $2",
+                folder_id,
+                workspace_id,
+            )
+            if not owns:
+                raise HTTPException(
+                    status_code=400,
+                    detail="folder_id does not belong to workspace",
+                )
+
+        text = content.decode("utf-8", errors="replace")
+        exts = _MD_EXTS if page_kind == "markdown" else _HTML_EXTS
+        name = _strip_ext(filename, exts)
+
+        try:
+            page = await files_tree_service.create_page(
+                workspace_id=workspace_id,
+                name=name,
+                created_by=current_user["id"],
+                folder_id=folder_id,
+                content=text if page_kind == "markdown" else "",
+                content_html=text if page_kind == "html" else "",
+                content_type=page_kind,
+            )
+        except files_tree_service.DuplicatePageName as e:
+            raise HTTPException(status_code=409, detail=str(e)) from e
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e)) from e
+        return UploadResponse(
+            kind="page",
+            id=page["id"],
+            workspace_id=page["workspace_id"],
+            folder_id=page.get("folder_id"),
+            name=page["name"],
+            content_type=page["content_type"],
+            app_url=_page_app_url(page["workspace_id"], page["id"]),
+            created_at=page["created_at"],
+            content_markdown=page.get("content_markdown") or None,
+            content_html=page.get("content_html") or None,
+            created_by=page["created_by"],
         )
+
+    if not storage_service.is_configured():
+        raise HTTPException(status_code=503, detail="File storage is not configured")
 
     # HEIC is unsupported in every browser except Safari, so an iPhone
     # photo dropped onto a page renders as a broken image. Convert to
@@ -168,7 +247,22 @@ async def upload_ws_file(
     from ..tasks.extraction import extract_file_text
 
     extract_file_text.delay(str(row["id"]))
-    return await _file_to_response(dict(row))
+    row_dict = dict(row)
+    url = await storage_service.get_file_url(row_dict["storage_key"])
+    return UploadResponse(
+        kind="file",
+        id=row_dict["id"],
+        workspace_id=row_dict["workspace_id"],
+        folder_id=row_dict.get("folder_id"),
+        name=row_dict["name"],
+        content_type=row_dict["content_type"],
+        app_url=_file_app_url(row_dict),
+        created_at=row_dict["created_at"],
+        size_bytes=row_dict["size_bytes"],
+        url=url,
+        uploaded_by=row_dict["uploaded_by"],
+        linked_table_id=row_dict.get("linked_table_id"),
+    )
 
 
 @ws_router.get("", response_model=FileListResponse)

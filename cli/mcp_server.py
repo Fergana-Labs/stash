@@ -403,7 +403,13 @@ def stash_file_text(file_id: str, workspace_id: str = "") -> str:
 
 @mcp.tool()
 def stash_upload_file(file_path: str, workspace_id: str = "") -> str:
-    """Upload a local file to the workspace. Returns a stable app_url for the user."""
+    """Upload a local file to the workspace.
+
+    Markdown (.md/.markdown/.mdx) and HTML (.html/.htm) become editable
+    pages; everything else becomes a binary file. Response shape:
+    `{kind: "file"|"page", id, name, app_url, ...}` — branch on `kind` if
+    you care, otherwise `app_url` is the link to hand back to the user.
+    """
     client, default_ws = _client()
     ws = _require_ws(workspace_id or default_ws)
     return _json(client.upload_ws_file(ws, file_path))

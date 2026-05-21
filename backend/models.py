@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, Field
@@ -684,6 +685,33 @@ class FileUpdateRequest(BaseModel):
     folder_id: UUID | None = None
     move_to_root: bool = False
     name: str | None = None
+
+
+class UploadResponse(BaseModel):
+    """Result of POST /workspaces/{id}/files.
+
+    Polymorphic: markdown and HTML uploads become pages (editable in-app);
+    everything else becomes a binary file in S3. Callers branch on `kind`;
+    common fields `id` / `name` / `app_url` work either way.
+    """
+
+    kind: Literal["file", "page"]
+    id: UUID
+    workspace_id: UUID
+    folder_id: UUID | None = None
+    name: str
+    content_type: str
+    app_url: str
+    created_at: datetime
+    # File-only
+    size_bytes: int | None = None
+    url: str | None = None
+    uploaded_by: UUID | None = None
+    linked_table_id: UUID | None = None
+    # Page-only
+    content_markdown: str | None = None
+    content_html: str | None = None
+    created_by: UUID | None = None
 
 
 class SessionTranscriptResponse(BaseModel):

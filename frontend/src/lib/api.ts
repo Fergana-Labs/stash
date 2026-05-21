@@ -743,11 +743,32 @@ export function workspaceFileDownloadUrl(workspaceId: string, fileId: string): s
   return `/api/v1/workspaces/${workspaceId}/files/${fileId}/download`;
 }
 
-export async function uploadFile(
+// Raw response shape from POST /workspaces/<id>/files. Polymorphic: the
+// server routes .md/.html to the pages table (editable, commentable) and
+// everything else to the files table (S3 blob). Discriminated by `kind`.
+type UploadApiResponse = {
+  kind: "file" | "page";
+  id: string;
+  workspace_id: string;
+  folder_id: string | null;
+  name: string;
+  content_type: string;
+  app_url: string;
+  created_at: string;
+  size_bytes?: number;
+  url?: string;
+  uploaded_by?: string;
+  linked_table_id?: string | null;
+  content_markdown?: string;
+  content_html?: string;
+  created_by?: string;
+};
+
+async function uploadAny(
   workspaceId: string,
   file: File,
   folderId?: string | null
-): Promise<FileInfo> {
+): Promise<UploadApiResponse> {
   const token = getToken();
   const formData = new FormData();
   formData.append("file", file);
@@ -764,13 +785,44 @@ export async function uploadFile(
     const detail = await resp.json().then((d) => d.detail).catch(() => resp.statusText);
     throw new Error(detail);
   }
-  const result = (await resp.json()) as FileInfo;
+  const result = (await resp.json()) as UploadApiResponse;
   trackEvent("web.file_uploaded", {
     workspace_id: workspaceId,
     mime_type: file.type || "unknown",
     size_bucket: bucketSize(file.size),
+    upload_kind: result.kind,
   });
   return result;
+}
+
+// Binary-only upload (icons, covers, editor images). Callers that
+// already know the file is a blob and want a FileInfo back — asserts the
+// server didn't route it to the pages table.
+export async function uploadFile(
+  workspaceId: string,
+  file: File,
+  folderId?: string | null
+): Promise<FileInfo> {
+  const result = await uploadAny(workspaceId, file, folderId);
+  if (result.kind === "page") {
+    throw new Error(
+      `uploadFile got a page back from the server (${file.name}); ` +
+        `use uploadFileOrPage for content that may be markdown or HTML.`
+    );
+  }
+  return {
+    id: result.id,
+    workspace_id: result.workspace_id,
+    folder_id: result.folder_id,
+    name: result.name,
+    content_type: result.content_type,
+    size_bytes: result.size_bytes ?? 0,
+    url: result.url ?? "",
+    app_url: result.app_url,
+    uploaded_by: result.uploaded_by ?? "",
+    created_at: result.created_at,
+    linked_table_id: result.linked_table_id ?? null,
+  };
 }
 
 // Coarse size buckets keep the property cardinality small while still
@@ -783,49 +835,49 @@ function bucketSize(bytes: number): string {
   return "gte_100mb";
 }
 
-// HTML is content, not a blob: it goes through the page-create path so it
-// gets the editable + commentable surface. Other types stay on uploadFile.
+// Polymorphic upload: the server creates a page row for .md/.html and a
+// file row for everything else. Use this for drag-drop and Quick Add
+// flows where the user might be giving us either content or a binary.
 export type UploadResult =
   | { kind: "file"; file: FileInfo }
   | { kind: "page"; page: Page };
-
-function isHtmlUpload(file: File): boolean {
-  if (file.type && file.type.toLowerCase().includes("html")) return true;
-  return /\.html?$/i.test(file.name);
-}
-
-// Markdown gets the same page-create treatment as HTML — it's content,
-// not a blob. Without this routing, .md uploads land as Files and the
-// user can't edit them.
-function isMarkdownUpload(file: File): boolean {
-  if (file.type === "text/markdown") return true;
-  return /\.(md|markdown|mdx)$/i.test(file.name);
-}
 
 export async function uploadFileOrPage(
   workspaceId: string,
   file: File,
   folderId?: string | null
 ): Promise<UploadResult> {
-  if (isHtmlUpload(file)) {
-    const text = await file.text();
-    const name = file.name.replace(/\.html?$/i, "") || file.name || "Untitled";
-    const page = await createPage(workspaceId, name, folderId ?? null, "", {
-      content_type: "html",
-      content_html: text,
-    });
+  const result = await uploadAny(workspaceId, file, folderId);
+  if (result.kind === "page") {
+    const page: Page = {
+      id: result.id,
+      workspace_id: result.workspace_id,
+      folder_id: result.folder_id,
+      name: result.name,
+      content_type: result.content_type === "html" ? "html" : "markdown",
+      content_markdown: result.content_markdown ?? "",
+      content_html: result.content_html ?? "",
+      html_layout: "responsive",
+      created_by: result.created_by ?? "",
+      updated_by: null,
+      created_at: result.created_at,
+      updated_at: result.created_at,
+    };
     return { kind: "page", page };
   }
-  if (isMarkdownUpload(file)) {
-    const text = await file.text();
-    const name =
-      file.name.replace(/\.(md|markdown|mdx)$/i, "") || file.name || "Untitled";
-    const page = await createPage(workspaceId, name, folderId ?? null, text, {
-      content_type: "markdown",
-    });
-    return { kind: "page", page };
-  }
-  const f = await uploadFile(workspaceId, file, folderId);
+  const f: FileInfo = {
+    id: result.id,
+    workspace_id: result.workspace_id,
+    folder_id: result.folder_id,
+    name: result.name,
+    content_type: result.content_type,
+    size_bytes: result.size_bytes ?? 0,
+    url: result.url ?? "",
+    app_url: result.app_url,
+    uploaded_by: result.uploaded_by ?? "",
+    created_at: result.created_at,
+    linked_table_id: result.linked_table_id ?? null,
+  };
   return { kind: "file", file: f };
 }
 

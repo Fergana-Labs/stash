@@ -3111,7 +3111,12 @@ def files_upload(
     workspace_id: str = typer.Option(None, "--ws"),
     as_json: bool = typer.Option(False, "--json"),
 ):
-    """Upload a file to a workspace."""
+    """Upload a file to a workspace.
+
+    Markdown (.md/.markdown/.mdx) and HTML (.html/.htm) become editable
+    pages; everything else becomes a binary file. The server does the
+    routing, so the returned object's `kind` tells you what landed where.
+    """
     ws = workspace_id or _resolve_workspace()
     with _client() as c:
         try:
@@ -3121,7 +3126,9 @@ def files_upload(
     if _use_json(as_json):
         output_json(data)
     else:
-        console.print(f"[green]Uploaded[/green] {data['name']}  [dim]{data['id']}[/dim]")
+        kind = data.get("kind", "file")
+        label = "Uploaded as page" if kind == "page" else "Uploaded"
+        console.print(f"[green]{label}[/green] {data['name']}  [dim]{data['id']}[/dim]")
         console.print(data["app_url"])
 
 
