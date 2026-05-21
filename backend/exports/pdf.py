@@ -22,6 +22,7 @@ from ..celery_app import celery
 from ..database import get_pool
 from ..services import storage_service
 from ..tasks._celery_helpers import run_async
+from .constants import SLIDE_HEIGHT_PX, SLIDE_WIDTH_PX
 
 logger = logging.getLogger(__name__)
 
@@ -34,16 +35,11 @@ def _safe_stem(name: str) -> str:
     return stem or "slides"
 
 
-# Default deck size — 16:9 at 1920x1080 logical. PDF resolution is
-# derived by Playwright at 96dpi which is fine for screen reading;
-# raise width/height for print quality.
-DEFAULT_WIDTH_PX = 1920
-DEFAULT_HEIGHT_PX = 1080
-
-
+# `@page size` accepts px; Chromium converts at 96dpi.
+# Text in the resulting PDF is vector (selectable, searchable).
 PAGED_CSS = """
   @page {{ size: {w}px {h}px; margin: 0; }}
-  html, body {{ margin: 0; padding: 0; }}
+  html, body {{ margin: 0; padding: 0; overflow: hidden; }}
   body > section.slide {{
     width: {w}px;
     height: {h}px;
@@ -57,7 +53,7 @@ PAGED_CSS = """
 
 
 def _inject_paged_css(html: str) -> str:
-    css = "<style>" + PAGED_CSS.format(w=DEFAULT_WIDTH_PX, h=DEFAULT_HEIGHT_PX) + "</style>"
+    css = "<style>" + PAGED_CSS.format(w=SLIDE_WIDTH_PX, h=SLIDE_HEIGHT_PX) + "</style>"
     if re.search(r"</head\s*>", html, flags=re.I):
         return re.sub(r"</head\s*>", css + "</head>", html, count=1, flags=re.I)
     return css + html
@@ -68,12 +64,16 @@ async def _render_pdf(html: str) -> bytes:
         browser = await p.chromium.launch()
         try:
             page = await browser.new_page(
-                viewport={"width": DEFAULT_WIDTH_PX, "height": DEFAULT_HEIGHT_PX},
+                viewport={"width": SLIDE_WIDTH_PX, "height": SLIDE_HEIGHT_PX},
             )
             await page.set_content(html, wait_until="networkidle")
+            # `prefer_css_page_size=True` honours the injected @page block;
+            # this keeps slide dims locked to the shared constants instead
+            # of relying on the width/height args (which Chromium otherwise
+            # uses as a fallback).
             pdf = await page.pdf(
-                width=f"{DEFAULT_WIDTH_PX}px",
-                height=f"{DEFAULT_HEIGHT_PX}px",
+                width=f"{SLIDE_WIDTH_PX}px",
+                height=f"{SLIDE_HEIGHT_PX}px",
                 print_background=True,
                 prefer_css_page_size=True,
             )

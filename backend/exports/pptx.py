@@ -1,9 +1,11 @@
-"""PPTX export — rasterized slides.
+"""PPTX export — rasterized slides + invisible text overlay.
 
-Uses Playwright to screenshot each `<section class="slide">` as a PNG,
-then assembles a 16:9 deck with one slide per image (full-bleed). Text
-is not editable in the resulting PPTX — this is intentional; extracting
-Tiptap structure into PPTX shapes is a rabbit hole.
+Uses Playwright to screenshot each `<section class="slide">` as a PNG
+at 2x device scale, then assembles a 16:9 deck with one image per
+slide and a transparent text layer harvested from the rendered DOM.
+The text layer makes the exported PPTX selectable, copyable, and
+searchable in PowerPoint / Keynote / Google Slides, without trying to
+reconstruct native shapes (which would be a rabbit hole).
 
 Reused by the Google Slides exporter (uploads the same PPTX to Drive
 with `convertTo=true`).
@@ -18,26 +20,32 @@ from uuid import UUID, uuid4
 
 from playwright.async_api import async_playwright
 from pptx import Presentation
-from pptx.util import Emu
+from pptx.dml.color import RGBColor
+from pptx.util import Emu, Pt
 
 from ..celery_app import celery
 from ..database import get_pool
 from ..services import storage_service
 from ..tasks._celery_helpers import run_async
+from .constants import (
+    EXPORT_DEVICE_SCALE_FACTOR,
+    SLIDE_HEIGHT_EMU,
+    SLIDE_HEIGHT_PX,
+    SLIDE_WIDTH_EMU,
+    SLIDE_WIDTH_PX,
+)
 
 logger = logging.getLogger(__name__)
-
-SLIDE_WIDTH_PX = 1920
-SLIDE_HEIGHT_PX = 1080
-# python-pptx uses EMU (English Metric Units). 1 inch = 914400 EMU.
-# 16:9 at 13.33 in x 7.5 in is the standard widescreen size.
-PPTX_SLIDE_WIDTH = Emu(12192000)  # 13.333"
-PPTX_SLIDE_HEIGHT = Emu(6858000)  # 7.5"
 
 SECTION_RE = re.compile(
     r"<section\b[^>]*\bclass\s*=\s*[\"'][^\"']*\bslide\b[^\"']*[\"'][^>]*>",
     re.IGNORECASE,
 )
+
+# Text elements we harvest into the invisible PPTX text overlay. Limited
+# to leaf-ish content elements — picking up <div> would double-count text
+# because divs commonly wrap other elements we already capture.
+TEXT_SELECTOR = "h1, h2, h3, h4, h5, h6, p, li, td, th, blockquote, figcaption"
 
 
 def _count_slides(html: str) -> int:
@@ -46,8 +54,6 @@ def _count_slides(html: str) -> int:
 
 def _build_single_slide_html(source_html: str, slide_index: int) -> str:
     """Return HTML showing only the Nth <section class="slide">."""
-    # Inject a bootstrap that hides every other section. Cheaper than
-    # splitting the source HTML server-side.
     script = (
         "<script>(function(){var s=document.querySelectorAll('body > section.slide');"
         + f"var i={slide_index};"
@@ -58,43 +64,164 @@ def _build_single_slide_html(source_html: str, slide_index: int) -> str:
     return source_html + script
 
 
-async def _screenshot_slides(html: str, count: int) -> list[bytes]:
+# JS executed inside the Playwright page to collect (text, bounds, size)
+# tuples for the active slide. Bounds are in CSS px relative to the
+# slide section so we can map them into PPTX EMUs by ratio.
+_TEXT_HARVEST_JS = """
+() => {
+  const slide = document.querySelector('body > section.slide:not([style*="display: none"])')
+            || document.querySelector('body > section.slide');
+  if (!slide) return [];
+  const slideRect = slide.getBoundingClientRect();
+  const sel = "{SEL}";
+  const out = [];
+  slide.querySelectorAll(sel).forEach(el => {
+    const text = el.innerText.trim();
+    if (!text) return;
+    const r = el.getBoundingClientRect();
+    if (r.width < 4 || r.height < 4) return;
+    const style = getComputedStyle(el);
+    out.push({
+      text,
+      x: r.left - slideRect.left,
+      y: r.top - slideRect.top,
+      w: r.width,
+      h: r.height,
+      fontSize: parseFloat(style.fontSize) || 16,
+      bold: parseInt(style.fontWeight, 10) >= 600,
+      italic: style.fontStyle === 'italic',
+    });
+  });
+  return out;
+}
+""".replace("{SEL}", TEXT_SELECTOR)
+
+
+async def _capture_slide(page, slide_index: int, html: str) -> tuple[bytes, list[dict]]:
+    """Render one slide, return (png_bytes, text_blocks).
+
+    `text_blocks` are CSS-px coordinates relative to the slide section's
+    top-left; the caller maps them to EMUs.
+    """
+    slide_html = _build_single_slide_html(html, slide_index)
+    await page.set_content(slide_html, wait_until="networkidle")
+    png = await page.screenshot(
+        type="png",
+        full_page=False,
+        clip={"x": 0, "y": 0, "width": SLIDE_WIDTH_PX, "height": SLIDE_HEIGHT_PX},
+    )
+    try:
+        text_blocks = await page.evaluate(_TEXT_HARVEST_JS)
+    except Exception:
+        logger.warning("text harvest failed for slide %s; export will lack selectable text", slide_index)
+        text_blocks = []
+    return png, text_blocks
+
+
+async def _capture_all_slides(html: str, count: int) -> list[tuple[bytes, list[dict]]]:
     async with async_playwright() as p:
         browser = await p.chromium.launch()
         try:
-            shots: list[bytes] = []
-            for i in range(count):
-                page = await browser.new_page(
-                    viewport={"width": SLIDE_WIDTH_PX, "height": SLIDE_HEIGHT_PX},
-                )
-                slide_html = _build_single_slide_html(html, i)
-                await page.set_content(slide_html, wait_until="networkidle")
-                png = await page.screenshot(
-                    type="png",
-                    full_page=False,
-                    clip={"x": 0, "y": 0, "width": SLIDE_WIDTH_PX, "height": SLIDE_HEIGHT_PX},
-                )
-                shots.append(png)
-                await page.close()
-            return shots
+            results: list[tuple[bytes, list[dict]]] = []
+            context = await browser.new_context(
+                viewport={"width": SLIDE_WIDTH_PX, "height": SLIDE_HEIGHT_PX},
+                device_scale_factor=EXPORT_DEVICE_SCALE_FACTOR,
+            )
+            try:
+                for i in range(count):
+                    page = await context.new_page()
+                    try:
+                        results.append(await _capture_slide(page, i, html))
+                    finally:
+                        await page.close()
+            finally:
+                await context.close()
+            return results
         finally:
             await browser.close()
 
 
-def _build_pptx(shots: list[bytes]) -> bytes:
+def _px_to_emu(px: float, total_px: int, total_emu: int) -> int:
+    """Convert CSS px in a `total_px`-wide canvas to EMU in a
+    `total_emu`-wide slide. Clamps to slide bounds so a stray
+    out-of-bounds element doesn't produce a negative offset."""
+    if total_px <= 0:
+        return 0
+    emu = int(px * total_emu / total_px)
+    return max(0, min(total_emu, emu))
+
+
+def _add_invisible_text(slide, text_blocks: list[dict]) -> None:
+    """Add transparent text boxes positioned over the slide image so the
+    text is selectable, copyable, and searchable in the export viewers."""
+    for block in text_blocks:
+        left = _px_to_emu(block["x"], SLIDE_WIDTH_PX, int(SLIDE_WIDTH_EMU))
+        top = _px_to_emu(block["y"], SLIDE_HEIGHT_PX, int(SLIDE_HEIGHT_EMU))
+        width = _px_to_emu(block["w"], SLIDE_WIDTH_PX, int(SLIDE_WIDTH_EMU))
+        height = _px_to_emu(block["h"], SLIDE_HEIGHT_PX, int(SLIDE_HEIGHT_EMU))
+        if width <= 0 or height <= 0:
+            continue
+        box = slide.shapes.add_textbox(Emu(left), Emu(top), Emu(width), Emu(height))
+        tf = box.text_frame
+        tf.margin_left = tf.margin_right = tf.margin_top = tf.margin_bottom = 0
+        tf.word_wrap = True
+        p = tf.paragraphs[0]
+        run = p.add_run()
+        run.text = block["text"]
+        font = run.font
+        # CSS px ≈ Pt * 96/72; the rendered image already encodes the
+        # visual size, so this is purely for selection-rectangle sizing.
+        font.size = Pt(max(6, int(block.get("fontSize", 16) * 72 / 96)))
+        font.bold = bool(block.get("bold"))
+        font.italic = bool(block.get("italic"))
+        # Make the text invisible: matching white fill is fragile across
+        # themes, so we drop alpha to 0 via the underlying XML. python-pptx
+        # doesn't expose alpha directly on color, but the run's solid fill
+        # accepts an `<a:alpha>` child via XML.
+        font.color.rgb = RGBColor(0xFF, 0xFF, 0xFF)
+        _set_run_alpha(run, 0)
+
+
+def _set_run_alpha(run, alpha_pct: int) -> None:
+    """Set the alpha channel of a run's font color via the OOXML
+    `<a:alpha val="..."/>` child. `alpha_pct` is in thousandths of a
+    percent: 0 = fully transparent, 100000 = opaque."""
+    from pptx.oxml.ns import qn
+
+    rPr = run._r.get_or_add_rPr()
+    solid = rPr.find(qn("a:solidFill"))
+    if solid is None:
+        # Color hasn't been written yet — touch it so python-pptx emits
+        # the <a:solidFill> element, then re-find.
+        run.font.color.rgb = RGBColor(0xFF, 0xFF, 0xFF)
+        solid = rPr.find(qn("a:solidFill"))
+    srgb = solid.find(qn("a:srgbClr")) if solid is not None else None
+    if srgb is None:
+        return
+    # Drop any existing alpha child, then add a fresh one.
+    for existing in srgb.findall(qn("a:alpha")):
+        srgb.remove(existing)
+    from lxml import etree
+
+    alpha = etree.SubElement(srgb, qn("a:alpha"))
+    alpha.set("val", str(int(alpha_pct * 1000)))
+
+
+def _build_pptx(captures: list[tuple[bytes, list[dict]]]) -> bytes:
     prs = Presentation()
-    prs.slide_width = PPTX_SLIDE_WIDTH
-    prs.slide_height = PPTX_SLIDE_HEIGHT
+    prs.slide_width = SLIDE_WIDTH_EMU
+    prs.slide_height = SLIDE_HEIGHT_EMU
     blank = prs.slide_layouts[6]  # blank layout
-    for png in shots:
+    for png, text_blocks in captures:
         slide = prs.slides.add_slide(blank)
         slide.shapes.add_picture(
             io.BytesIO(png),
             left=0,
             top=0,
-            width=PPTX_SLIDE_WIDTH,
-            height=PPTX_SLIDE_HEIGHT,
+            width=SLIDE_WIDTH_EMU,
+            height=SLIDE_HEIGHT_EMU,
         )
+        _add_invisible_text(slide, text_blocks)
     buf = io.BytesIO()
     prs.save(buf)
     return buf.getvalue()
@@ -119,8 +246,8 @@ async def build_pptx_bytes_for_page(page_id: UUID) -> tuple[str, bytes]:
 
     source_html = page_row["content_html"] or ""
     count = _count_slides(source_html)
-    shots = await _screenshot_slides(source_html, count)
-    pptx_bytes = _build_pptx(shots)
+    captures = await _capture_all_slides(source_html, count)
+    pptx_bytes = _build_pptx(captures)
     return page_row["name"] or "slides", pptx_bytes
 
 
