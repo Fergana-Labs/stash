@@ -27,8 +27,7 @@ class TestInferColumnType:
 
     def test_datetime_when_every_value_has_T(self):
         assert (
-            infer_column_type(["2026-01-01T10:00:00Z", "2026-05-21T00:00:00+00:00"])
-            == "datetime"
+            infer_column_type(["2026-01-01T10:00:00Z", "2026-05-21T00:00:00+00:00"]) == "datetime"
         )
 
     def test_mixed_falls_back_to_text(self):
@@ -68,10 +67,7 @@ class TestCoerceValue:
 
     def test_datetime_with_z_suffix(self):
         # Z gets rewritten to +00:00 so Python's fromisoformat can parse it.
-        assert (
-            coerce_value("2026-05-21T10:00:00Z", "datetime")
-            == "2026-05-21T10:00:00+00:00"
-        )
+        assert coerce_value("2026-05-21T10:00:00Z", "datetime") == "2026-05-21T10:00:00+00:00"
 
     def test_text_passes_through(self):
         assert coerce_value("hello", "text") == "hello"
