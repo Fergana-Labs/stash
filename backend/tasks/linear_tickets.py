@@ -33,4 +33,6 @@ def reconcile() -> int:
 
 @celery.task(name="backend.tasks.linear_tickets.reconcile_github_prs")
 def reconcile_github_prs() -> int:
-    return run_async(github_pr_service.discover_unprocessed_sessions(GITHUB_PR_RECONCILE_BATCH_SIZE))
+    return run_async(
+        github_pr_service.discover_unprocessed_sessions(GITHUB_PR_RECONCILE_BATCH_SIZE)
+    )

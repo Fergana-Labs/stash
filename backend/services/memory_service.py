@@ -236,9 +236,7 @@ async def _upsert_sessions_for_events(
             created_by=created_by,
         )
         contents = [
-            event.get("content") or ""
-            for event in events
-            if event.get("session_id") == session_id
+            event.get("content") or "" for event in events if event.get("session_id") == session_id
         ]
         if linear_ticket_service.has_ticket_hint(contents):
             await linear_ticket_service.sync_session_labels(workspace_id, row["id"], session_id)
