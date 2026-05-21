@@ -72,10 +72,11 @@ bind another repo to a workspace.
 <summary>Prefer a one-liner?</summary>
 
 ```bash
-bash -c "$(curl -fsSL https://raw.githubusercontent.com/Fergana-Labs/stash/main/install.sh)"
+bash -c "$(curl -fsSL https://joinstash.ai/install)"
 ```
 
-The installer just runs `uv tool install stashai` and then `stash login`.
+The installer uses `uv` to install or update `stashai`, bootstrapping `uv`
+when needed, and then runs `stash login`.
 Use this when you don't already have a Python toolchain on your machine.
 
 </details>
@@ -109,7 +110,7 @@ Stash supports the following coding agents:
 - **Gemini CLI**
 - **Openclaw** 
 
-Stash supports opt in per-coding agent. Mix and match — different teammates can use different agents against the same shared brain.
+Stash supports opt in per-coding agent. `stash login` can auto-install hooks for Claude Code, Cursor, Codex, and OpenCode; Gemini CLI and Openclaw are available in `plugins/` and are installed manually. Mix and match — different teammates can use different agents against the same shared brain.
 
 ## CLI Reference
 
@@ -162,14 +163,14 @@ skipped with a warning.
 
 Stash is built for engineering teams working in private repos.
 
-- **No LLM calls from the server.** Search runs inside your agent (Claude Code, Cursor, etc.) using the keys it already has. The Stash backend itself makes no model calls.
+- **LLM calls are optional and scoped.** When an Anthropic API key is configured, the server uses it for ask-the-workspace answers and auto-generated session titles. No key means those features are unavailable — the rest of Stash works without any LLM.
 - **Permissioned workspaces.** Only invited members can access a workspace. Public visibility is controlled by Product Stashes.
-- **Transcripts are opt-in.** If you don't want to share your agent trasncripts, you can give your agent shared *read* access to the workspace's memory without uploading any of your own session data.
+- **Transcripts are opt-in.** If you don't want to share your agent transcripts, you can give your agent shared *read* access to the workspace's memory without uploading any of your own session data.
   
 ## FAQ
 
 **What LLMs does Stash use?**
-None on the server. Agents can use the CLI and MCP server to search sessions, write pages, and create Product Stashes, but there is no background page-writing agent in v0.
+When an Anthropic API key is provided, the server calls Claude for ask-the-workspace (quality tier) and session title generation (fast tier). Both are optional — without the key, Stash works but those features are disabled. There is no background page-writing agent.
 
 **Can I use this without Claude Code?**
 Yes. You can use the CLI with anything, and Stash has native plugins for Cursor, Codex, Opencode, Gemini CLI, and more.
