@@ -52,8 +52,7 @@ def test_labels_for_pull_request_reads_branch_title_body_and_commits():
     )
 
     labels = {
-        label.ticket_identifier: label
-        for label in github_pr_service.labels_for_pull_request(pr)
+        label.ticket_identifier: label for label in github_pr_service.labels_for_pull_request(pr)
     }
 
     assert labels["FER-19"].source == "github_pr_title"

@@ -26,7 +26,7 @@ from ..services import (
 
 router = APIRouter(prefix="/api/v1/workspaces", tags=["workspaces"])
 
-SIDEBAR_ETAG_VERSION = "sidebar-generated-title-linear-ticket-v1"
+SIDEBAR_ETAG_VERSION = "sidebar-generated-title-linear-ticket-v2"
 
 
 # ---------------------------------------------------------------------------
@@ -326,6 +326,20 @@ async def _sidebar_etag(workspace_id: UUID, user_id: UUID) -> str:
           (SELECT COUNT(*) FROM history_events he
             WHERE he.workspace_id = $1 AND he.session_id IS NOT NULL
             AND {memory_service.readable_session_event_condition('he', 2)})        AS hc,
+          (SELECT MAX(stt.updated_at) FROM session_titles stt
+           JOIN sessions stt_session
+             ON stt_session.workspace_id = stt.workspace_id
+            AND stt_session.session_id = stt.session_id
+           WHERE stt.workspace_id = $1
+             AND stt_session.deleted_at IS NULL
+             AND {memory_service.readable_session_event_condition('stt_session', 2)}) AS tt,
+          (SELECT COUNT(*) FROM session_titles stt
+           JOIN sessions stt_session
+             ON stt_session.workspace_id = stt.workspace_id
+            AND stt_session.session_id = stt.session_id
+           WHERE stt.workspace_id = $1
+             AND stt_session.deleted_at IS NULL
+             AND {memory_service.readable_session_event_condition('stt_session', 2)}) AS tc,
           (SELECT MAX(updated_at) FROM stashes WHERE workspace_id = $1)            AS st,
           (SELECT MAX(sm.created_at) FROM stash_members sm
            JOIN stashes s ON s.id = sm.stash_id
@@ -337,7 +351,7 @@ async def _sidebar_etag(workspace_id: UUID, user_id: UUID) -> str:
     )
     raw = "|".join(
         [SIDEBAR_ETAG_VERSION]
-        + [str(row[k] or "") for k in ("p", "f", "d", "s", "he", "hc", "st", "sm", "w")]
+        + [str(row[k] or "") for k in ("p", "f", "d", "s", "he", "hc", "tt", "tc", "st", "sm", "w")]
     )
     return f'W/"{_short_hash(raw)}"'
 

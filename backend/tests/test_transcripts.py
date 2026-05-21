@@ -7,6 +7,7 @@ endpoint in the shape the session viewer can parse.
 
 import io
 import json
+from uuid import UUID
 
 import pytest
 from httpx import AsyncClient
@@ -275,6 +276,59 @@ URL: https://linear.app/ferganalabs/issue/FER-19/we-should-be-able-to-update-the
     )
     assert mine.status_code == 200
     assert mine.json()["sessions"][0]["linear_tickets"][0]["ticket_identifier"] == "FER-19"
+
+
+@pytest.mark.asyncio
+async def test_workspace_sidebar_etag_changes_after_generated_title(
+    client: AsyncClient,
+    pool,
+):
+    key = await _register(client)
+    ws = await _workspace(client, key)
+    headers = {"Authorization": f"Bearer {key}"}
+
+    pushed = await client.post(
+        f"/api/v1/workspaces/{ws}/sessions/events/batch",
+        json={
+            "events": [
+                {
+                    "agent_name": "codex",
+                    "event_type": "user_message",
+                    "content": "Please make the release checklist easier to scan.",
+                    "session_id": "sess-generated-title",
+                    "created_at": "2026-05-10T20:00:00Z",
+                }
+            ]
+        },
+        headers=headers,
+    )
+    assert pushed.status_code == 201
+
+    sidebar = await client.get(f"/api/v1/workspaces/{ws}/sidebar", headers=headers)
+    assert sidebar.status_code == 200
+    etag = sidebar.headers["etag"]
+    [fallback_session] = sidebar.json()["sessions"]
+    assert fallback_session["title"] == "Make the release checklist easier to scan"
+
+    await pool.execute(
+        """
+        INSERT INTO session_titles (workspace_id, session_id, title, source_hash)
+        VALUES ($1, $2, $3, $4)
+        """,
+        UUID(ws),
+        "sess-generated-title",
+        "Release Checklist Readability",
+        "test-source-hash",
+    )
+
+    refreshed = await client.get(
+        f"/api/v1/workspaces/{ws}/sidebar",
+        headers={**headers, "If-None-Match": etag},
+    )
+    assert refreshed.status_code == 200
+    assert refreshed.headers["etag"] != etag
+    [generated_session] = refreshed.json()["sessions"]
+    assert generated_session["title"] == "Release Checklist Readability"
 
 
 @pytest.mark.asyncio

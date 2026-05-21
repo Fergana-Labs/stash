@@ -23,9 +23,7 @@ _PULL_REQUEST_URL = re.compile(
     r"pull/(?P<number>\d+)",
     re.IGNORECASE,
 )
-_SQL_PULL_REQUEST_URL = (
-    r"https?://github\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+/pull/[0-9]+"
-)
+_SQL_PULL_REQUEST_URL = r"https?://github\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+/pull/[0-9]+"
 
 
 @dataclass(frozen=True)
@@ -73,8 +71,7 @@ def labels_for_pull_request(pr: GitHubPullRequest) -> list[linear_ticket_service
         (pr.body, "github_pr_body", 0.85),
     ]
     sources.extend(
-        (message, "github_pr_commit", 0.8)
-        for message in pr.commit_messages[:MAX_COMMIT_MESSAGES]
+        (message, "github_pr_commit", 0.8) for message in pr.commit_messages[:MAX_COMMIT_MESSAGES]
     )
     return linear_ticket_service.extract_ticket_mentions(sources)
 
