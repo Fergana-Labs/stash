@@ -222,6 +222,43 @@ async def get_workspace_session(
     return payload
 
 
+class SessionTitleRequest(BaseModel):
+    title: str = Field(..., min_length=1, max_length=200)
+
+
+@router.patch("/workspaces/{workspace_id}/sessions/{session_id}/title")
+async def rename_workspace_session(
+    workspace_id: UUID,
+    session_id: str,
+    body: SessionTitleRequest,
+    current_user: dict = Depends(get_current_user),
+):
+    if not await workspace_service.can_write(workspace_id, current_user["id"]):
+        raise HTTPException(status_code=403, detail="Viewers can read but not modify sessions")
+    if not await memory_service.can_read_session(workspace_id, session_id, current_user["id"]):
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    session = await session_service.get_session(workspace_id, session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    can_write = await permission_service.check_access(
+        "session",
+        session["id"],
+        current_user["id"],
+        workspace_id=workspace_id,
+        require_write=True,
+    )
+    if not can_write:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    try:
+        title = await session_title_service.set_user_title(workspace_id, session_id, body.title)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    return {"title": title}
+
+
 async def _check_session_write(
     workspace_id: UUID,
     session_row_id: UUID,

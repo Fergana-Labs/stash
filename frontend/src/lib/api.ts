@@ -984,6 +984,21 @@ export async function getSessionDetail(
   return apiFetch(`/api/v1/workspaces/${workspaceId}/sessions/${encodeURIComponent(sessionId)}`);
 }
 
+export async function renameSession(
+  workspaceId: string,
+  sessionId: string,
+  title: string
+): Promise<{ title: string }> {
+  return apiFetch(
+    `/api/v1/workspaces/${workspaceId}/sessions/${encodeURIComponent(sessionId)}/title`,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ title }),
+    }
+  );
+}
+
 export async function materializeSession(
   workspaceId: string,
   sessionId: string

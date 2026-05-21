@@ -16,13 +16,16 @@ import {
   getSessionEvents,
   getWorkspaceSidebar,
   listObjectStashes,
+  renameSession,
   trashItem,
   type PublicStashItem,
   type SessionDetail,
   type SessionEvent,
   type WorkspaceStash,
 } from "../../../../../../lib/api";
+import { refreshWorkspaceSidebar } from "../../../../../../lib/stashNavigationCache";
 import { SessionBody } from "../../../../stashes/[slug]/StashItemBodies";
+import EditableTitle from "../../../../../../components/workspace/EditableTitle";
 
 interface MessageTurn {
   kind: "message";
@@ -235,7 +238,15 @@ export default function SessionViewerPage() {
                 ))}
               </div>
               <h1 className="mt-1.5 font-display text-[28px] font-bold leading-tight tracking-[-0.02em]">
-                {sessionHeading(sessionDetail, sessionId)}
+                <EditableTitle
+                  value={sessionHeading(sessionDetail, sessionId)}
+                  onSave={async (next) => {
+                    const { title } = await renameSession(workspaceId, sessionId, next);
+                    setSessionDetail((prev) => (prev ? { ...prev, title } : prev));
+                    refreshWorkspaceSidebar(workspaceId).catch(() => {});
+                    return title;
+                  }}
+                />
               </h1>
               {turns.length > 0 && (
                 <div className="mt-1.5 flex flex-wrap items-center gap-2.5 text-[12px] text-muted">
