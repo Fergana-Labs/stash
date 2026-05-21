@@ -17,7 +17,7 @@ TARGET="$(dirname "$0")/$SCRIPT.py"
 # plugin cache never drifts from the source repo.
 if [ "$SCRIPT" = "on_session_start" ] && [ -n "${CLAUDE_PLUGIN_ROOT:-}" ]; then
   git -C "$CLAUDE_PLUGIN_ROOT" pull --ff-only origin main >/dev/null 2>&1 &
-  command -v uv >/dev/null 2>&1 && uv tool upgrade --quiet stashai >/dev/null 2>&1 &
+  command -v uv >/dev/null 2>&1 && uv tool install --quiet stashai@latest >/dev/null 2>&1 &
 fi
 
 PY=""

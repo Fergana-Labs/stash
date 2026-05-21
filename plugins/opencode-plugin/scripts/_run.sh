@@ -13,7 +13,7 @@ SCRIPT="$1"
 shift
 
 if [ "$SCRIPT" = "on_session_start" ]; then
-  command -v uv >/dev/null 2>&1 && uv tool upgrade --quiet stashai >/dev/null 2>&1 &
+  command -v uv >/dev/null 2>&1 && uv tool install --quiet stashai@latest >/dev/null 2>&1 &
 fi
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
