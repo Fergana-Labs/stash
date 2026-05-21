@@ -23,6 +23,42 @@ _DENSITY_CACHE_TTL = timedelta(hours=24)
 _DENSITY_SIGNATURE_TOLERANCE = 0.1
 
 
+def _truncate_activity_bucket(value: datetime, bucket: str) -> datetime:
+    if bucket == "hour":
+        return value.replace(minute=0, second=0, microsecond=0)
+    if bucket == "week":
+        day = value.replace(hour=0, minute=0, second=0, microsecond=0)
+        return day - timedelta(days=day.weekday())
+    return value.replace(hour=0, minute=0, second=0, microsecond=0)
+
+
+def _activity_bucket_dates(days: int, bucket: str, now: datetime) -> list[datetime]:
+    end = _truncate_activity_bucket(now, bucket)
+    if bucket == "hour":
+        start = end - timedelta(hours=days * 24 - 1)
+    elif bucket == "week":
+        first_day = _truncate_activity_bucket(now, "day") - timedelta(days=days - 1)
+        start = _truncate_activity_bucket(first_day, "week")
+    else:
+        start = end - timedelta(days=days - 1)
+
+    step = _activity_bucket_step(bucket)
+    dates = []
+    current = start
+    while current <= end:
+        dates.append(current)
+        current += step
+    return dates
+
+
+def _activity_bucket_step(bucket: str) -> timedelta:
+    if bucket == "hour":
+        return timedelta(hours=1)
+    if bucket == "week":
+        return timedelta(weeks=1)
+    return timedelta(days=1)
+
+
 # Shared CTE for workspace / stash access filtering on history_events.
 # Exactly one of ws_idx and stash_idx may be passed (caller responsibility):
 #   ws_idx    -> narrow to a single workspace's events (caller has already
@@ -246,17 +282,19 @@ async def get_activity_timeline(
     if bucket not in ("hour", "day", "week"):
         bucket = "day"
 
-    cutoff = datetime.now(UTC) - timedelta(days=days)
+    bucket_dates = _activity_bucket_dates(days, bucket, datetime.now(UTC))
+    cutoff = bucket_dates[0]
+    end_exclusive = bucket_dates[-1] + _activity_bucket_step(bucket)
 
-    args: list = [user_id, bucket, cutoff]
+    args: list = [user_id, bucket, cutoff, end_exclusive]
     ws_idx = None
     stash_idx = None
     if stash_id is not None:
         args.append(stash_id)
-        stash_idx = 4
+        stash_idx = 5
     elif workspace_id is not None:
         args.append(workspace_id)
-        ws_idx = 4
+        ws_idx = 5
 
     rows = await pool.fetch(
         _accessible_events_cte(ws_idx=ws_idx, stash_idx=stash_idx) + """
@@ -276,6 +314,7 @@ async def get_activity_timeline(
             FROM history_events me
             JOIN accessible_events a ON a.event_id = me.id
             WHERE me.created_at >= $3
+              AND me.created_at < $4
               AND me.session_id IS NOT NULL
         )
         , session_commits AS (
@@ -323,7 +362,9 @@ async def get_activity_timeline(
     )
 
     contributors_set: set[str] = set()
-    buckets_map: dict[str, dict] = {}
+    buckets_map: dict[str, dict] = {
+        date.isoformat(): {"date": date.isoformat(), "contributors": {}} for date in bucket_dates
+    }
 
     for row in rows:
         date_str = row["bucket_date"].isoformat()
@@ -331,9 +372,6 @@ async def get_activity_timeline(
         cnt = row["cnt"]
 
         contributors_set.add(contributor)
-
-        if date_str not in buckets_map:
-            buckets_map[date_str] = {"date": date_str, "contributors": {}}
 
         b = buckets_map[date_str]
         if contributor not in b["contributors"]:

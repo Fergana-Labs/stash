@@ -1,3 +1,5 @@
+from datetime import UTC, datetime, time, timedelta
+
 import pytest
 from httpx import AsyncClient
 
@@ -33,6 +35,7 @@ async def _event(
     workspace_id: str,
     session_id: str,
     agent_name: str = "tester",
+    created_at: str = "2026-01-02T00:00:00Z",
 ) -> None:
     resp = await client.post(
         f"/api/v1/workspaces/{workspace_id}/sessions/events",
@@ -41,7 +44,7 @@ async def _event(
             "event_type": "assistant_message",
             "content": session_id,
             "session_id": session_id,
-            "created_at": "2026-01-02T00:00:00Z",
+            "created_at": created_at,
         },
         headers=_auth(api_key),
     )
@@ -99,6 +102,111 @@ async def test_activity_timeline_pivots_on_human_and_agent_sessions(client: Asyn
         for contributor in bucket["contributors"].values()
     ]
     assert totals == [1]
+
+
+@pytest.mark.asyncio
+async def test_activity_timeline_includes_blank_day_buckets(client: AsyncClient):
+    api_key = await _register(client, "activity_blank_days")
+    workspace = await _workspace(client, api_key, "Blank Day Activity")
+    event_day = datetime.now(UTC).date() - timedelta(days=1)
+    event_at = datetime.combine(event_day, time(hour=12), tzinfo=UTC)
+
+    await _event(
+        client,
+        api_key,
+        workspace["id"],
+        "middle-day-session",
+        created_at=event_at.isoformat(),
+    )
+
+    resp = await client.get(
+        "/api/v1/me/activity-timeline",
+        params={"days": 3, "bucket": "day", "workspace_id": workspace["id"]},
+        headers=_auth(api_key),
+    )
+    assert resp.status_code == 200
+
+    buckets = resp.json()["buckets"]
+    assert len(buckets) == 3
+
+    active_buckets = [bucket for bucket in buckets if bucket["contributors"]]
+    assert len(active_buckets) == 1
+    assert datetime.fromisoformat(active_buckets[0]["date"]).date() == event_day
+
+    blank_buckets = [bucket for bucket in buckets if not bucket["contributors"]]
+    assert len(blank_buckets) == 2
+
+
+@pytest.mark.asyncio
+async def test_activity_timeline_can_scope_blank_day_buckets_to_stash(client: AsyncClient):
+    api_key = await _register(client, "activity_stash_blank_days")
+    workspace = await _workspace(client, api_key, "Stash Blank Day Activity")
+    event_day = datetime.now(UTC).date() - timedelta(days=1)
+    event_at = datetime.combine(event_day, time(hour=12), tzinfo=UTC).isoformat()
+
+    included_session_resp = await client.post(
+        f"/api/v1/workspaces/{workspace['id']}/sessions",
+        json={"session_id": "included-session", "agent_name": "tester"},
+        headers=_auth(api_key),
+    )
+    assert included_session_resp.status_code == 201
+
+    hidden_session_resp = await client.post(
+        f"/api/v1/workspaces/{workspace['id']}/sessions",
+        json={"session_id": "hidden-session", "agent_name": "tester"},
+        headers=_auth(api_key),
+    )
+    assert hidden_session_resp.status_code == 201
+
+    await _event(
+        client,
+        api_key,
+        workspace["id"],
+        "included-session",
+        created_at=event_at,
+    )
+    await _event(
+        client,
+        api_key,
+        workspace["id"],
+        "hidden-session",
+        created_at=event_at,
+    )
+
+    stash_resp = await client.post(
+        f"/api/v1/workspaces/{workspace['id']}/stashes",
+        json={
+            "title": "Timeline Stash",
+            "items": [
+                {
+                    "object_type": "session",
+                    "object_id": included_session_resp.json()["id"],
+                }
+            ],
+        },
+        headers=_auth(api_key),
+    )
+    assert stash_resp.status_code == 201
+
+    resp = await client.get(
+        "/api/v1/me/activity-timeline",
+        params={"days": 3, "bucket": "day", "stash_id": stash_resp.json()["id"]},
+        headers=_auth(api_key),
+    )
+    assert resp.status_code == 200
+
+    buckets = resp.json()["buckets"]
+    assert len(buckets) == 3
+
+    totals = [
+        contributor["total"]
+        for bucket in buckets
+        for contributor in bucket["contributors"].values()
+    ]
+    assert totals == [1]
+
+    blank_buckets = [bucket for bucket in buckets if not bucket["contributors"]]
+    assert len(blank_buckets) == 2
 
 
 @pytest.mark.asyncio
