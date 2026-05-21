@@ -41,46 +41,43 @@ def send_welcome_email(user_email: str, first_name: str | None = None) -> None:
     if not user_email:
         return
 
-    base = settings.PUBLIC_URL.rstrip("/")
-    install_url = f"{base}/docs/quickstart"
-    repo_install_url = f"{base}/docs/cli"
-    workspaces_url = f"{base}/workspaces"
+    app_url = settings.PUBLIC_URL.rstrip("/")
 
     greeting = f"Hey {first_name}," if first_name else "Hey,"
 
     html = f"""
 <p>{greeting}</p>
 
-<p>Thanks for signing up for Stash. You just joined a workspace where every Claude Code, Cursor, and Codex session your team runs becomes shared, queryable context.</p>
+<p>Thanks for signing up for Stash. Your workspace is a shared hopper for everything your agents produce or consume &mdash; session transcripts, markdown docs, HTML pages, images, tables, raw files. Structured or not.</p>
 
-<p><strong>Get to your first "aha" in ~2 minutes:</strong></p>
-
-<ol>
-  <li><a href="{install_url}"><strong>Install Stash</strong></a> on the machine where you run your coding agent. One line in your terminal.</li>
-  <li><strong>During install, we'll offer to import your existing Claude Code and Cursor history.</strong> Say yes. It means your workspace is useful from day one instead of starting empty.</li>
-  <li><strong>Run a coding agent like you normally would.</strong> Stash captures the session in the background.</li>
-  <li><strong>Ask the agent something only Stash would know.</strong></li>
-</ol>
-
-<p><strong>What teams use Stash for:</strong></p>
+<p>It&rsquo;s organized into three things:</p>
 
 <ul>
-  <li>Live docs for an engineering team, kept in sync with a GitHub repo.</li>
-  <li>A shared repository of papers and blog posts, so the team stays up to date without re-sending links.</li>
-  <li>Shared workspace context for marketing, sales, and content. Every brief, draft, and customer quote in one place.</li>
-  <li>Onboarding context for new hires: the decisions, dead-ends, and "why we did X" that never made it into the README.</li>
-  <li>Customer research and call notes pooled across PM, design, and GTM.</li>
-  <li>On-call runbooks and incident retros, queryable by the next person paged.</li>
+  <li><strong>Stashes</strong> &mdash; virtual sub-workspaces. Bundle any subset of your workspace into a Stash, share it publicly, or keep it private. Use them for teams, workstreams, or projects (LinkedIn marketing, backend infra, kernel reading group).</li>
+  <li><strong>Files</strong> &mdash; a filesystem for documents (markdown, HTML, PDF, CSV, images). Built so agents can read and edit it natively.</li>
+  <li><strong>Sessions</strong> &mdash; every conversation between you and your coding agent (Claude Code, Codex, OpenCode), automatically pushed and indexed.</li>
+</ul>
+
+<p><strong>Three ways to get to a first &ldquo;aha&rdquo;:</strong></p>
+
+<ol>
+  <li><a href="{app_url}"><strong>Bring your existing knowledge base in</strong></a> &mdash; one-click import from Notion, Obsidian, GitHub, or Google Drive. Your workspace is useful from day one instead of starting empty.</li>
+  <li><a href="{app_url}"><strong>Give your agent memory</strong></a> &mdash; install the CLI, run a coding agent like you normally would, then ask it something only Stash would know.</li>
+  <li><a href="{app_url}"><strong>Publish your first artifact</strong></a> &mdash; drop a doc or deck, get a shareable link. Sharing is a first-class feature here, not an afterthought.</li>
+</ol>
+
+<p><strong>A few things that make Stash different:</strong></p>
+
+<ul>
+  <li><strong>Real-time collaborative editing</strong> on every markdown page (two cursors at once).</li>
+  <li><strong>Agent-native by default</strong> &mdash; markdown, HTML, virtual filesystems. The formats agents are already fluent in.</li>
+  <li><strong>Search and ask across everything you&rsquo;ve added</strong> &mdash; your agent is grounded on your stuff, not just the pretty docs.</li>
+  <li><a href="{app_url}"><strong>Discover &amp; install Stashes</strong></a> &mdash; browse skills and knowledge others have published; copy into your workspace in one click.</li>
 </ul>
 
 <p><strong>Bring your team in.</strong> One person using Stash is a personal log. A team using Stash is a shared brain.</p>
 
-<ul>
-  <li><a href="{repo_install_url}"><strong>Connect Stash to a GitHub repo</strong></a>. Adds a <code>stash.json</code> manifest and a Stash block to <code>CLAUDE.md</code>. Anyone running a coding agent in that repo is auto-connected, and the <code>CLAUDE.md</code> block is a live doc their agent reads to learn how to query the workspace.</li>
-  <li><a href="{workspaces_url}"><strong>Invite a teammate by email</strong></a>.</li>
-</ul>
-
-<p>Hit reply if anything's broken or confusing. It lands in my inbox directly.</p>
+<p>Hit reply if anything&rsquo;s broken or confusing. It lands in my inbox directly.</p>
 
 <p>Sam<br>CEO, Stash</p>
 """.strip()
@@ -90,7 +87,7 @@ def send_welcome_email(user_email: str, first_name: str | None = None) -> None:
             "From": FOUNDER_FROM,
             "To": user_email,
             "ReplyTo": "sam@joinstash.ai",
-            "Subject": "Welcome to Stash, let's get your first session captured",
+            "Subject": "Welcome to Stash — your knowledge base is ready",
             "HtmlBody": html,
         }
     )
