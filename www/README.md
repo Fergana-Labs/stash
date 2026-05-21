@@ -19,7 +19,7 @@ npm run dev    # http://localhost:3100
 
 ## Design
 
-See `DESIGN.md` in this directory. Inherits from repo-root `/DESIGN.md` (the Stash product design system) with landing-specific extensions.
+See `DESIGN.md` in this directory. Inherits from `/docs/design-system.md` (the Stash product design system) with landing-specific extensions.
 
 ## Environment variables
 

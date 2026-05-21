@@ -1,6 +1,6 @@
 # Design System — Stash landing (`www/`)
 
-Extends the main Stash design system at `/DESIGN.md`. Only the landing-specific deltas live here.
+Extends the main Stash design system at `/docs/design-system.md`. Only the landing-specific deltas live here.
 
 ## Inherited (do not override)
 
