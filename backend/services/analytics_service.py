@@ -83,16 +83,34 @@ def _accessible_pages_cte(
 ) -> str:
     readable_pages = permission_service.readable_content_condition("page", "p", user_idx)
     if stash_idx is not None:
+        # Stash items can be direct pages OR folders that contain pages. The
+        # recursive CTE expands every folder in the stash to all descendant
+        # folders, so any page anywhere underneath counts as "in the stash."
         return f"""
-        WITH accessible_pages AS (
+        WITH RECURSIVE stash_folder_descendants AS (
+            SELECT object_id::uuid AS folder_id
+            FROM stash_items
+            WHERE stash_id = ${stash_idx}
+              AND object_type = 'folder'
+            UNION
+            SELECT f.id
+            FROM folders f
+            JOIN stash_folder_descendants d
+              ON f.parent_folder_id = d.folder_id
+        ),
+        accessible_pages AS (
             SELECT p.id AS page_id
             FROM pages p
-            JOIN stash_items si
-              ON si.object_type = 'page'
-             AND si.object_id = p.id
-            WHERE si.stash_id = ${stash_idx}
-              AND COALESCE(p.metadata->>'shared_in_stash_id', '') = ''
+            WHERE COALESCE(p.metadata->>'shared_in_stash_id', '') = ''
               AND {readable_pages}
+              AND (
+                p.id IN (
+                    SELECT object_id::uuid FROM stash_items
+                    WHERE stash_id = ${stash_idx}
+                      AND object_type = 'page'
+                )
+                OR p.folder_id IN (SELECT folder_id FROM stash_folder_descendants)
+              )
         )
         """
     if ws_idx is not None:
