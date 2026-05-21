@@ -50,12 +50,14 @@ export default function DoneStep({ workspaceId }: Props) {
         <pre className="rounded-md border border-border-subtle bg-background/40 px-3 py-2 text-[12px] font-mono text-foreground overflow-x-auto">
           npm i -g @joinstash/cli
         </pre>
-        <Link
-          href="/docs/cli"
+        <a
+          href="https://joinstash.ai/docs/cli"
+          target="_blank"
+          rel="noopener noreferrer"
           className="inline-block text-[12px] font-medium text-brand hover:text-brand-hover"
         >
           CLI docs →
-        </Link>
+        </a>
       </div>
 
       <div className="rounded-2xl border border-border bg-surface p-5 space-y-2">
