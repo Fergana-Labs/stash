@@ -66,6 +66,36 @@ def _count_slides(html: str) -> int:
     return max(1, len(SECTION_RE.findall(html or "")))
 
 
+def _strip_body_state(html: str) -> str:
+    """Remove inline body attributes the viewer bootstrap leaves behind:
+    `style="zoom: …"` from applyCanvasZoom, and `contenteditable` /
+    `spellcheck` from the WYSIWYG. Legacy pages saved before this strip
+    was added still have these baked in — without removing them, the
+    export viewport renders the body shrunk to ~835px on a 1920px
+    canvas, leaving the rest as body bg."""
+    return re.sub(
+        r"<body([^>]*)>",
+        lambda m: "<body" + _clean_body_attrs(m.group(1)) + ">",
+        html,
+        count=1,
+        flags=re.I,
+    )
+
+
+def _clean_body_attrs(attrs: str) -> str:
+    # Drop contenteditable + spellcheck attributes entirely.
+    attrs = re.sub(r"\s*contenteditable\s*=\s*\"[^\"]*\"", "", attrs, flags=re.I)
+    attrs = re.sub(r"\s*spellcheck\s*=\s*\"[^\"]*\"", "", attrs, flags=re.I)
+
+    # Drop `zoom: …;` from inline style. If style becomes empty, drop the attr.
+    def _strip_zoom(m: re.Match) -> str:
+        css = re.sub(r"\s*zoom\s*:\s*[^;\"]*;?", "", m.group(1), flags=re.I).strip()
+        return "" if not css else f' style="{css}"'
+
+    attrs = re.sub(r"\s*style\s*=\s*\"([^\"]*)\"", _strip_zoom, attrs, count=1, flags=re.I)
+    return attrs
+
+
 def _build_single_slide_html(source_html: str, slide_index: int) -> str:
     """Return HTML showing only the Nth <section class="slide"> with the
     canvas-enforcing CSS injected so the section fills the slide canvas
@@ -76,7 +106,7 @@ def _build_single_slide_html(source_html: str, slide_index: int) -> str:
         + f"var i={slide_index};"
         + "for(var k=0;k<s.length;k++){s[k].style.display=(k===i)?'':'none';}})();</script>"
     )
-    html = source_html
+    html = _strip_body_state(source_html)
     if re.search(r"</head\s*>", html, flags=re.I):
         html = re.sub(r"</head\s*>", css + "</head>", html, count=1, flags=re.I)
     else:

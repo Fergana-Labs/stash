@@ -696,6 +696,20 @@ function injectSlideDeckBootstrap(html: string, channel: string): string {
     var c=${JSON.stringify(channel)};
     var editable=false;
     var currentIdx=0;
+    // Strip any inline body state left over from a previous edit session.
+    // applyCanvasZoom sets body.style.zoom, and edit mode toggles
+    // contenteditable + spellcheck on body — earlier versions of
+    // serializeClean baked those into content_html on save. Without this
+    // strip, a saved zoom=0.4 leaves the body rendering at ~835px in a
+    // 1920px export viewport, with body bg filling the rest. serializeClean
+    // also strips on save now, but legacy decks already have the pollution.
+    (function stripBodyState(){
+      if(!document.body) return;
+      document.body.style.removeProperty('zoom');
+      if(document.body.getAttribute('style')==='') document.body.removeAttribute('style');
+      document.body.removeAttribute('contenteditable');
+      document.body.removeAttribute('spellcheck');
+    })();
     // Canvas-enforcing CSS: every slide is a 1920x1080 box that clips its own
     // overflow. Body is sized to 1920px so the slide design space is fixed;
     // applyCanvasZoom() (below) sets document.body.style.zoom so the visual
@@ -756,13 +770,26 @@ function injectSlideDeckBootstrap(html: string, channel: string): string {
     var mutateTimer=null;
     function post(o){parent.postMessage(Object.assign({channel:c},o),'*');}
     // Serialize the document without our injected bootstrap so saved HTML
-    // doesn't accumulate copies of the script/style on every edit.
+    // doesn't accumulate copies of the script/style on every edit. Also
+    // strip the bits that only exist while the bootstrap is live:
+    //   - body.style.zoom set by applyCanvasZoom — if it bakes into the
+    //     saved html the export renders the body shrunk to ~835px on a
+    //     1920px viewport, leaving the rest of the slide as body bg.
+    //   - contenteditable / spellcheck on body — set when entering edit
+    //     mode and not meaningful in the persisted page.
     function serializeClean(){
       var clone=document.documentElement.cloneNode(true);
       var nodes=clone.querySelectorAll('#__stash_slide_css__, #__stash_slide_script__');
       for(var i=0;i<nodes.length;i++){
         var n=nodes[i];
         if(n.parentNode) n.parentNode.removeChild(n);
+      }
+      var cb=clone.querySelector('body');
+      if(cb){
+        cb.style.removeProperty('zoom');
+        if(cb.getAttribute('style')==='') cb.removeAttribute('style');
+        cb.removeAttribute('contenteditable');
+        cb.removeAttribute('spellcheck');
       }
       return clone.outerHTML;
     }

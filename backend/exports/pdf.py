@@ -53,6 +53,12 @@ PAGED_CSS = """
 
 
 def _inject_paged_css(html: str) -> str:
+    # Strip leaked viewer state from <body> first (see pptx._strip_body_state
+    # for why). Imported lazily because pdf.py predates the pptx module's
+    # body-strip helper.
+    from .pptx import _strip_body_state
+
+    html = _strip_body_state(html)
     css = "<style>" + PAGED_CSS.format(w=SLIDE_WIDTH_PX, h=SLIDE_HEIGHT_PX) + "</style>"
     if re.search(r"</head\s*>", html, flags=re.I):
         return re.sub(r"</head\s*>", css + "</head>", html, count=1, flags=re.I)

@@ -48,6 +48,35 @@ def test_pptx_export_injects_canvas_css():
     assert f"height: {constants.SLIDE_HEIGHT_PX}px" in rendered
 
 
+def test_strip_body_state_removes_viewer_pollution():
+    """Legacy decks have <body style="zoom: …" contenteditable="true" ...>
+    baked into their HTML from the WYSIWYG editor saving the live DOM.
+    The export must strip those before rendering or the screenshot
+    captures a shrunken body."""
+    html = (
+        "<!DOCTYPE html><html><body "
+        'style="zoom: 0.4354; background: black;" '
+        'contenteditable="true" spellcheck="true">'
+        '<section class="slide">x</section></body></html>'
+    )
+    cleaned = pptx._strip_body_state(html)
+    assert "zoom" not in cleaned, cleaned
+    assert "contenteditable" not in cleaned, cleaned
+    assert "spellcheck" not in cleaned, cleaned
+    # Preserves other inline body styles.
+    assert "background: black" in cleaned, cleaned
+    assert "<section" in cleaned
+
+
+def test_strip_body_state_handles_only_zoom_style():
+    """If style=zoom was the only inline style, the entire style attr
+    should disappear instead of leaving an empty one."""
+    html = '<body style="zoom: 0.4;"><p>x</p></body>'
+    cleaned = pptx._strip_body_state(html)
+    assert 'style=""' not in cleaned
+    assert "zoom" not in cleaned
+
+
 def test_no_hardcoded_canvas_dims_in_exporters():
     """Catch a future regression where someone re-introduces 1920 or
     1080 as a literal in an exporter instead of importing the constant.
