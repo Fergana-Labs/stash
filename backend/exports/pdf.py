@@ -61,7 +61,10 @@ def _inject_paged_css(html: str) -> str:
 
 async def _render_pdf(html: str) -> bytes:
     async with async_playwright() as p:
-        browser = await p.chromium.launch()
+        # See pptx.py for why these args matter in the Render worker.
+        browser = await p.chromium.launch(
+            args=["--no-sandbox", "--disable-dev-shm-usage"],
+        )
         try:
             page = await browser.new_page(
                 viewport={"width": SLIDE_WIDTH_PX, "height": SLIDE_HEIGHT_PX},

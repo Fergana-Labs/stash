@@ -122,7 +122,15 @@ async def _capture_slide(page, slide_index: int, html: str) -> tuple[bytes, list
 
 async def _capture_all_slides(html: str, count: int) -> list[tuple[bytes, list[dict]]]:
     async with async_playwright() as p:
-        browser = await p.chromium.launch()
+        # `--no-sandbox` is required because the worker container runs as a
+        # non-root user without the capabilities Chromium's sandbox needs.
+        # `--disable-dev-shm-usage` makes Chromium fall back to /tmp instead
+        # of /dev/shm — Render containers ship with a 64 MB /dev/shm which
+        # is too small for 2x-DPI screenshots and Chromium will crash hard
+        # enough that Render's supervisor restarts the whole worker.
+        browser = await p.chromium.launch(
+            args=["--no-sandbox", "--disable-dev-shm-usage"],
+        )
         try:
             results: list[tuple[bytes, list[dict]]] = []
             context = await browser.new_context(
