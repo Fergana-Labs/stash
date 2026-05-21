@@ -81,14 +81,44 @@ def test_uploads_disabled_warning_is_once_per_session(monkeypatch, tmp_path):
     warning = uploads_disabled_warning(cfg, state, _event("s1"), tmp_path)
 
     assert warning == (
-        "Hey btw, Stash uploads aren't enabled. Run `stash connect` or `stash start` "
-        "to enable them."
+        "Stash is connected to this repo, but uploads aren't set up on this machine. "
+        "Run `stash connect` to finish setup."
     )
     assert load_state(tmp_path)["uploads_disabled_warning_session_id"] == "s1"
     assert uploads_disabled_warning(cfg, state, _event("s1"), tmp_path) is None
 
     assert uploads_disabled_warning(cfg, state, _event("s2"), tmp_path)
     assert load_state(tmp_path)["uploads_disabled_warning_session_id"] == "s2"
+
+
+def test_uploads_disabled_warning_skips_unconnected_repo(monkeypatch, tmp_path):
+    monkeypatch.setattr(hooks.shutil, "which", lambda name: "/usr/local/bin/stash")
+    monkeypatch.setattr(hooks, "_read_user_config", lambda: {})
+    monkeypatch.setattr(hooks, "find_manifest", lambda cwd: None)
+
+    cfg = {**_cfg(), "workspace_id": "", "api_key": ""}
+
+    warning = uploads_disabled_warning(cfg, {}, _event("s1"), tmp_path)
+
+    assert warning is None
+
+
+def test_uploads_disabled_warning_skips_disabled_agent(monkeypatch, tmp_path):
+    monkeypatch.setattr(hooks.shutil, "which", lambda name: "/usr/local/bin/stash")
+    monkeypatch.setattr(hooks, "_read_user_config", lambda: {"enabled_agents": ["claude"]})
+
+    warning = uploads_disabled_warning(_cfg(), {}, _event("s1"), tmp_path)
+
+    assert warning is None
+
+
+def test_uploads_disabled_warning_skips_stopped_workspace(monkeypatch, tmp_path):
+    monkeypatch.setattr(hooks.shutil, "which", lambda name: "/usr/local/bin/stash")
+    monkeypatch.setattr(hooks, "_read_user_config", lambda: {"stopped_streaming": ["ws1"]})
+
+    warning = uploads_disabled_warning(_cfg(), {}, _event("s1"), tmp_path)
+
+    assert warning is None
 
 
 def test_uploads_disabled_warning_requires_stash_cli(monkeypatch, tmp_path):

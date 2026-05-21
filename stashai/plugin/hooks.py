@@ -44,8 +44,8 @@ _UPLOAD_WARNING_MESSAGE = (
 )
 _UPLOADS_DISABLED_WARNING_SESSION_KEY = "uploads_disabled_warning_session_id"
 _UPLOADS_DISABLED_WARNING_MESSAGE = (
-    "Hey btw, Stash uploads aren't enabled. Run `stash connect` or `stash start` "
-    "to enable them."
+    "Stash is connected to this repo, but uploads aren't set up on this machine. "
+    "Run `stash connect` to finish setup."
 )
 _YELLOW = "\033[33m"
 _RESET = "\033[0m"
@@ -125,7 +125,7 @@ def uploads_disabled_warning(
     event: HookEvent | None,
     data_dir: Path,
 ) -> str | None:
-    """Return the once-per-session warning when Stash is installed but idle."""
+    """Return the once-per-session warning for a connected repo missing setup."""
     if uploads_enabled(cfg, event):
         return None
     session_id = getattr(event, "session_id", "") if event is not None else ""
@@ -134,6 +134,10 @@ def uploads_disabled_warning(
     if state.get(_UPLOADS_DISABLED_WARNING_SESSION_KEY) == session_id:
         return None
     if shutil.which("stash") is None:
+        return None
+    if not _resolve_workspace(cfg, event):
+        return None
+    if cfg.get("api_key") and cfg.get("agent_name"):
         return None
 
     state[_UPLOADS_DISABLED_WARNING_SESSION_KEY] = session_id
