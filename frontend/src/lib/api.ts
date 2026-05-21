@@ -704,6 +704,10 @@ export async function deleteTableView(
 
 // --- Files ---
 
+export function workspaceFileDownloadUrl(workspaceId: string, fileId: string): string {
+  return `/api/v1/workspaces/${workspaceId}/files/${fileId}/download`;
+}
+
 export async function uploadFile(
   workspaceId: string,
   file: File,

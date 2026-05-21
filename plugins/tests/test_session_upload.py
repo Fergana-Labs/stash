@@ -109,6 +109,7 @@ def test_finalize_session_upload_spawns_upload_with_transcript(monkeypatch, tmp_
             "agent_name": "alice-agent",
             "base_url": "https://joinstash.ai",
             "api_key": "key",
+            "data_dir": tmp_path,
         }
     ]
 
@@ -145,7 +146,11 @@ def test_do_session_uploads_artifacts(monkeypatch, tmp_path):
 
     class FakeClient:
         def __init__(self, **kwargs):
-            assert kwargs == {"base_url": "https://joinstash.ai", "api_key": "key"}
+            assert kwargs == {
+                "base_url": "https://joinstash.ai",
+                "api_key": "key",
+                "data_dir": str(tmp_path),
+            }
 
         def __enter__(self):
             return self
@@ -172,6 +177,7 @@ def test_do_session_uploads_artifacts(monkeypatch, tmp_path):
             "alice-agent",
             "https://joinstash.ai",
             "key",
+            str(tmp_path),
         ],
     )
 

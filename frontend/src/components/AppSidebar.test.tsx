@@ -253,6 +253,18 @@ function sidebarWithSessions(sessions: ReturnType<typeof sidebarSession>[]) {
   };
 }
 
+function expectedSidebarTimestamp(iso: string, includeDate = true): string {
+  const date = new Date(iso);
+  const hour24 = date.getHours();
+  const hour = hour24 % 12 || 12;
+  const minutes = String(date.getMinutes()).padStart(2, "0");
+  const suffix = hour24 >= 12 ? "p" : "a";
+  const time = `${hour}:${minutes}${suffix}`;
+
+  if (!includeDate) return time;
+  return `${date.getMonth() + 1}/${date.getDate()} ${time}`;
+}
+
 function sidebarWithFiles({
   folderCount,
   pages = [],
@@ -460,6 +472,27 @@ describe("AppSidebar tree expansion", () => {
     expect(detailsFor(day.textContent ?? "")).toHaveAttribute("open");
   });
 
+  it("shows compact timestamps on session rows", async () => {
+    const lastAt = "2026-05-20T12:59:00";
+    vi.mocked(getWorkspaceSidebar).mockResolvedValue(
+      sidebarWithSessions([
+        sidebarSession("timestamped", "Timestamped session", "Henry", lastAt),
+      ])
+    );
+
+    renderSidebar();
+
+    expect(await screen.findByText("Timestamped session")).toBeTruthy();
+    const timestamp = screen.getByText(expectedSidebarTimestamp(lastAt, false));
+    expect(timestamp.tagName).toBe("TIME");
+    expect(timestamp).toHaveAttribute("dateTime", lastAt);
+
+    fireEvent.change(screen.getByLabelText("Filter sessions"), {
+      target: { value: "timestamped" },
+    });
+    expect(screen.getByText(expectedSidebarTimestamp(lastAt))).toBeTruthy();
+  });
+
   it("limits visible session periods and reveals more on demand", async () => {
     vi.mocked(getWorkspaceSidebar).mockResolvedValue(
       sidebarWithSessions(
@@ -551,7 +584,7 @@ describe("AppSidebar tree expansion", () => {
     const pill = await screen.findByText("FER-19");
     expect(pill).toHaveAttribute("title", "FER-19: Label sessions from PRs");
     expect(pill).toHaveClass("opacity-0");
-    expect(pill).toHaveClass("group-hover/navrow:opacity-100");
+    expect(pill).toHaveClass("group-hover/nav:opacity-100");
   });
 
   it("filters hidden sidebar sessions", async () => {

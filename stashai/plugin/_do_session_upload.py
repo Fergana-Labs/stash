@@ -4,7 +4,7 @@ Invoked by session_upload.spawn_session_upload(). Runs outside the hook
 timeout so large uploads don't block the agent.
 
 argv: script.py <session_row_id> <transcript_path> <cwd> <workspace_id>
-                <session_id> <agent_name> <base_url> <api_key>
+                <session_id> <agent_name> <base_url> <api_key> <data_dir>
 
 env: SESSION_FILES_TOUCHED = JSON list of file paths from the session
 """
@@ -96,10 +96,10 @@ def _resolve_paths(files_touched: list[str], cwd: str) -> list[str]:
 
 
 def main() -> None:
-    _, session_row_id, _, cwd, workspace_id, _, _, base_url, api_key = sys.argv
+    _, session_row_id, _, cwd, workspace_id, _, _, base_url, api_key, data_dir = sys.argv
     files_touched = json.loads(os.environ.get("SESSION_FILES_TOUCHED", "[]"))
 
-    with StashClient(base_url=base_url, api_key=api_key) as client:
+    with StashClient(base_url=base_url, api_key=api_key, data_dir=data_dir) as client:
         all_paths = _resolve_paths(files_touched, cwd)
         for fp in all_paths:
             if _should_skip(fp):

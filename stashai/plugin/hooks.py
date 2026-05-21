@@ -13,6 +13,7 @@ Never call `stream_session_end` from a per-turn hook — you'll emit a bogus
 
 from __future__ import annotations
 
+import shutil
 from pathlib import Path
 
 from stashai.plugin.event import HookEvent
@@ -21,6 +22,11 @@ from stashai.plugin.session_upload import spawn_session_upload
 from stashai.plugin.stash_client import StashClient
 from stashai.plugin.state import read_stats, record_tool_use, save_state
 from stashai.plugin.summarize import summarize_tool_use
+from stashai.plugin.upload_status import (
+    read_upload_status,
+    record_upload_failure,
+    record_upload_success,
+)
 
 _CONFIG_FILE = Path.home() / ".stash" / "config.json"
 
@@ -30,6 +36,19 @@ _CLIENT_TO_AGENT = {
     "codex_cli": "codex",
     "opencode": "opencode",
 }
+
+_UPLOAD_WARNING_SESSION_KEY = "upload_warning_session_id"
+_UPLOAD_WARNING_MESSAGE = (
+    "Stash uploads are failing; this conversation may not be visible to your team. "
+    "Run `stash status` for details."
+)
+_UPLOADS_DISABLED_WARNING_SESSION_KEY = "uploads_disabled_warning_session_id"
+_UPLOADS_DISABLED_WARNING_MESSAGE = (
+    "Hey btw, Stash uploads aren't enabled. Run `stash connect` or `stash start` "
+    "to enable them."
+)
+_YELLOW = "\033[33m"
+_RESET = "\033[0m"
 
 
 def _read_user_config() -> dict:
@@ -91,6 +110,35 @@ def _short_circuit(cfg: dict, event: HookEvent | None) -> tuple[bool, str | None
         return True, None
 
     return False, workspace_id
+
+
+def uploads_enabled(cfg: dict, event: HookEvent | None) -> bool:
+    if not cfg.get("api_key") or not cfg.get("agent_name"):
+        return False
+    skip, _ = _short_circuit(cfg, event)
+    return not skip
+
+
+def uploads_disabled_warning(
+    cfg: dict,
+    state: dict,
+    event: HookEvent | None,
+    data_dir: Path,
+) -> str | None:
+    """Return the once-per-session warning when Stash is installed but idle."""
+    if uploads_enabled(cfg, event):
+        return None
+    session_id = getattr(event, "session_id", "") if event is not None else ""
+    if not session_id:
+        return None
+    if state.get(_UPLOADS_DISABLED_WARNING_SESSION_KEY) == session_id:
+        return None
+    if shutil.which("stash") is None:
+        return None
+
+    state[_UPLOADS_DISABLED_WARNING_SESSION_KEY] = session_id
+    save_state(data_dir, state)
+    return _UPLOADS_DISABLED_WARNING_MESSAGE
 
 
 # --- Session lifecycle ---
@@ -155,8 +203,10 @@ def create_session_record(
             cwd=event.cwd,
             files_touched=read_stats(state)["files_touched"],
         )
-    except Exception:
+    except Exception as e:
+        record_upload_failure(data_dir, "session", e)
         return None
+    record_upload_success(data_dir, "session")
 
     state["session_row_id"] = str(session["id"])
     state["session_url"] = f"{cfg['api_endpoint'].rstrip('/')}/workspaces/{workspace_id}/sessions/{sid}"
@@ -213,6 +263,7 @@ def finalize_session_upload(
         agent_name=cfg["agent_name"],
         base_url=cfg["api_endpoint"],
         api_key=cfg["api_key"],
+        data_dir=data_dir,
     )
     if data_dir is not None:
         save_state(data_dir, state)
@@ -302,6 +353,36 @@ def stream_assistant_message(
         )
     except Exception:
         pass
+
+
+def upload_health_warning(
+    cfg: dict,
+    state: dict,
+    event: HookEvent,
+    data_dir: Path,
+) -> str | None:
+    """Return the once-per-session local upload failure warning, if needed."""
+    skip, _ = _short_circuit(cfg, event)
+    if skip:
+        return None
+
+    session_id = event.session_id or state.get("session_id", "")
+    if not session_id:
+        return None
+    if state.get(_UPLOAD_WARNING_SESSION_KEY) == session_id:
+        return None
+
+    status = read_upload_status(data_dir)
+    if status.get("health") != "failing":
+        return None
+
+    state[_UPLOAD_WARNING_SESSION_KEY] = session_id
+    save_state(data_dir, state)
+    return _UPLOAD_WARNING_MESSAGE
+
+
+def color_upload_health_warning(message: str) -> str:
+    return f"{_YELLOW}{message}{_RESET}"
 
 
 # --- Session end (conversation over) ---

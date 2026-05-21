@@ -22,7 +22,12 @@ import EditorToolbar from "./EditorToolbar";
 import CommentMark from "./CommentMark";
 import CommentComposerPopover from "./CommentComposerPopover";
 import { Page } from "../../lib/types";
-import { getCollabUrl, getToken, uploadFile } from "../../lib/api";
+import {
+  getCollabUrl,
+  getToken,
+  uploadFile,
+  workspaceFileDownloadUrl,
+} from "../../lib/api";
 
 const AUTOSAVE_DEBOUNCE_MS = 1500;
 const ANCHOR_CONTEXT_CHARS = 32;
@@ -348,13 +353,14 @@ export default function MarkdownEditor({
         // overlap with remote Yjs updates, so old transactions may no longer
         // match the document by the time the upload finishes.
         if (editor.isDestroyed) return;
+        const href = workspaceFileDownloadUrl(workspaceId, result.id);
         if (result.content_type.startsWith("image/")) {
-          editor.commands.setImage({ src: result.url, alt: result.name });
+          editor.commands.setImage({ src: href, alt: result.name });
         } else {
           editor.commands.insertContent({
             type: "text",
             text: result.name,
-            marks: [{ type: "link", attrs: { href: result.url } }],
+            marks: [{ type: "link", attrs: { href } }],
           });
         }
       }

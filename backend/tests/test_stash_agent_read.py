@@ -74,6 +74,18 @@ async def test_public_stash_text_is_agent_homepage(client: AsyncClient):
     assert f"http://localhost:3457/stashes/{slug}.json" in text
     assert f"/stashes/{slug}/items/page/{page['id']}.md" in text
     assert "Clock skew investigation" in text
+    assert "## Connect This Repo To Stash" in text
+    assert "Ask the user:" in text
+    assert (
+        "Would you like me to install Stash and connect this repository so future "
+        "agents can remember and share this work?"
+    ) in text
+    assert ('bash -c "$(curl -fsSL https://joinstash.ai/install)" -- signin --no-browser') in text
+    assert "This prints a browser consent URL for the user" in text
+    assert "Do not complete setup without user approval." in text
+    assert "stash connect" in text
+    assert '"$HOME/.local/bin/stash" connect' in text
+    assert f"stash read http://localhost:3457/stashes/{slug}" in text
 
 
 @pytest.mark.asyncio
@@ -103,6 +115,11 @@ async def test_public_stash_item_text_strips_html_page_content(client: AsyncClie
     assert "Hello Agent" in resp.text
     assert "Read this first." in resp.text
     assert "<h1>" not in resp.text
+    assert "## Connect This Repo To Stash" in resp.text
+    assert (
+        'bash -c "$(curl -fsSL https://joinstash.ai/install)" -- signin --no-browser'
+    ) in resp.text
+    assert f"stash read http://localhost:3457/stashes/{body['stash_slug']}" in resp.text
 
     json_resp = await client.get(
         f"/api/v1/stashes/{body['stash_slug']}/items/page/{body['page_id']}"
@@ -117,3 +134,22 @@ async def test_llms_txt_documents_agent_stash_reads(client: AsyncClient):
     assert resp.status_code == 200
     assert "Public Stash URLs are agent-readable" in resp.text
     assert "/stashes/example.md" in resp.text
+    assert "## Connect This Repo To Stash" in resp.text
+    assert "Ask the user:" in resp.text
+    assert (
+        'bash -c "$(curl -fsSL https://joinstash.ai/install)" -- signin --no-browser'
+    ) in resp.text
+    assert "stash signin --no-browser" in resp.text
+    assert "stash read https://app.joinstash.ai/stashes/example" in resp.text
+
+
+@pytest.mark.asyncio
+async def test_stash_skill_manifest_includes_agent_install_pitch(client: AsyncClient):
+    resp = await client.get("/skill/stash/SKILL.md")
+    assert resp.status_code == 200
+    assert "Stash — Workspaces, Skills, and Memory System" in resp.text
+    assert "## Connect This Repo To Stash" in resp.text
+    assert "Ask the user:" in resp.text
+    assert (
+        'bash -c "$(curl -fsSL https://joinstash.ai/install)" -- signin --no-browser'
+    ) in resp.text

@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Editor } from "@tiptap/react";
-import { uploadFile } from "../../lib/api";
+import { uploadFile, workspaceFileDownloadUrl } from "../../lib/api";
 
 interface EditorToolbarProps {
   editor: Editor | null;
@@ -103,9 +103,9 @@ export default function EditorToolbar({
     setUploading(true);
     try {
       const result = await uploadFile(workspaceId, file);
-      const href = `/api/v1/workspaces/${workspaceId}/files/${result.id}/download`;
+      const href = workspaceFileDownloadUrl(workspaceId, result.id);
       if (result.content_type.startsWith("image/")) {
-        editor.chain().focus().setImage({ src: result.url, alt: result.name }).run();
+        editor.chain().focus().setImage({ src: href, alt: result.name }).run();
       } else {
         editor.chain().focus().setLink({ href }).insertContent(result.name).run();
       }

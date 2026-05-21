@@ -146,4 +146,9 @@ async def get_current_user_optional(
 ) -> dict | None:
     if credentials is None:
         return None
-    return await get_current_user(credentials)
+    try:
+        return await get_current_user(credentials)
+    except HTTPException as e:
+        if e.status_code == status.HTTP_401_UNAUTHORIZED:
+            return None
+        raise

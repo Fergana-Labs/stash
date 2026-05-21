@@ -262,7 +262,7 @@ function NavRow({
     <Link
       href={href}
       className={
-        "group/navrow page-row flex items-center gap-2 rounded-md px-2 py-1 text-[13px] transition-colors " +
+        "page-row group/nav flex min-w-0 items-center gap-2 rounded-md px-2 py-1 text-[13px] transition-colors " +
         (active
           ? "bg-[var(--color-brand-50)] text-[var(--color-brand-800)]"
           : "text-dim hover:bg-raised hover:text-foreground")
@@ -581,7 +581,7 @@ function SessionTicketPill({
     <span
       title={title}
       aria-label={`Linear ticket ${title}`}
-      className="pointer-events-none inline-flex h-4 max-w-[74px] shrink-0 items-center truncate rounded border border-[var(--color-brand-200)] bg-[var(--color-brand-50)] px-1.5 text-[10px] font-semibold leading-none text-[var(--color-brand-700)] opacity-0 transition-opacity group-hover/navrow:opacity-100 group-focus-within/navrow:opacity-100"
+      className="pointer-events-none inline-flex h-4 max-w-[74px] shrink-0 items-center truncate rounded border border-[var(--color-brand-200)] bg-[var(--color-brand-50)] px-1.5 text-[10px] font-semibold leading-none text-[var(--color-brand-700)] opacity-0 transition-opacity group-hover/nav:opacity-100 group-focus-within/nav:opacity-100"
     >
       {ticket.ticket_identifier}
     </span>
@@ -595,6 +595,88 @@ function displaySidebarSessionUser(raw: string | null | undefined): string {
 function sessionTimestamp(session: WorkspaceSidebarSession): number {
   const date = sessionDate(session.last_at || session.updated_at);
   return date ? date.getTime() : 0;
+}
+
+type SessionTimestampMode = "time" | "dateTime";
+
+function formatSessionSidebarTimestamp(
+  session: WorkspaceSidebarSession,
+  mode: SessionTimestampMode
+): string {
+  const date = sessionDate(session.last_at || session.updated_at);
+  if (!date) return "";
+
+  const month = date.getMonth() + 1;
+  const day = date.getDate();
+  const hour24 = date.getHours();
+  const hour = hour24 % 12 || 12;
+  const minutes = String(date.getMinutes()).padStart(2, "0");
+  const suffix = hour24 >= 12 ? "p" : "a";
+  const time = `${hour}:${minutes}${suffix}`;
+
+  if (mode === "time") return time;
+  return `${month}/${day} ${time}`;
+}
+
+function formatSessionSidebarTimestampTitle(session: WorkspaceSidebarSession): string {
+  const date = sessionDate(session.last_at || session.updated_at);
+  if (!date) return "";
+
+  return date.toLocaleString(undefined, {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
+function SessionRowTimestamp({
+  session,
+  active,
+  mode = "dateTime",
+}: {
+  session: WorkspaceSidebarSession;
+  active?: boolean;
+  mode?: SessionTimestampMode;
+}) {
+  const compact = formatSessionSidebarTimestamp(session, mode);
+  if (!compact) return null;
+
+  const title = formatSessionSidebarTimestampTitle(session);
+
+  return (
+    <time
+      dateTime={session.last_at || session.updated_at}
+      title={title}
+      aria-label={title}
+      className={
+        "shrink-0 font-mono text-[9.5px] leading-none tabular-nums " +
+        (active
+          ? "text-[var(--color-brand-700)] opacity-70"
+          : "text-muted/70 group-hover/nav:text-muted")
+      }
+    >
+      {compact}
+    </time>
+  );
+}
+
+function SessionRowTrailing({
+  session,
+  active,
+  timestampMode = "dateTime",
+}: {
+  session: WorkspaceSidebarSession;
+  active?: boolean;
+  timestampMode?: SessionTimestampMode;
+}) {
+  return (
+    <span className="ml-1 flex shrink-0 items-center gap-1">
+      <SessionTicketPill ticket={primarySessionTicket(session)} />
+      <SessionRowTimestamp session={session} active={active} mode={timestampMode} />
+    </span>
+  );
 }
 
 function sortSessionsByRecency(
@@ -690,6 +772,7 @@ function sessionBucketHasActiveSession(
 type SessionTreeDayGroup = {
   dateKey: string;
   label: string;
+  bucket: SessionBucket;
   total: number;
   users: Array<{ user: string; sessions: WorkspaceSidebarSession[] }>;
 };
@@ -800,6 +883,7 @@ function groupSidebarSessions(sessions: WorkspaceSidebarSession[]): SessionTreeD
       return {
         dateKey: key,
         label: formatBucketLabel(key, bucket),
+        bucket,
         total,
         users,
       };
@@ -877,21 +961,30 @@ function SessionNavRow({
   session,
   activeSession,
   onPinMenu,
+  timestampMode = "dateTime",
 }: {
   workspaceId: string;
   session: WorkspaceSidebarSession;
   activeSession: ActiveSessionRef;
   onPinMenu?: (event: MouseEvent<HTMLAnchorElement>, session: WorkspaceSidebarSession) => void;
+  timestampMode?: SessionTimestampMode;
 }) {
   const href = `/workspaces/${workspaceId}/sessions/${encodeURIComponent(session.session_id)}`;
+  const active = sessionMatchesActive(activeSession, workspaceId, session);
   return (
     <NavRow
       href={href}
       icon={<span className="text-muted"><SessionsIcon /></span>}
       label={sessionLabelForSidebar(session)}
-      active={sessionMatchesActive(activeSession, workspaceId, session)}
+      active={active}
       onContextMenu={(event) => onPinMenu?.(event, session)}
-      trailing={<SessionTicketPill ticket={primarySessionTicket(session)} />}
+      trailing={
+        <SessionRowTrailing
+          session={session}
+          active={active}
+          timestampMode={timestampMode}
+        />
+      }
     />
   );
 }
@@ -965,7 +1058,7 @@ function SessionsBlock({
       objectId: session?.id ?? null,
       label: pinnedLabels.sessions[sessionId] ?? (session ? sessionLabelForSidebar(session) : "Session"),
       href: `/workspaces/${workspace.id}/sessions/${encodeURIComponent(sessionId)}`,
-      ticket: session ? primarySessionTicket(session) : null,
+      session,
     };
   });
   const menuClamp =
@@ -1108,22 +1201,28 @@ function SessionsBlock({
                     Unpin all
                   </button>
                 </div>
-                {pinnedRows.map((session) => (
-                  <NavRow
-                    key={`pinned-session-${session.id}`}
-                    href={session.href}
-                    icon={<span className="text-muted"><SessionsIcon /></span>}
-                    label={session.label}
-                    active={sessionMatchesActive(activeSession, workspace.id, {
-                      id: session.objectId,
-                      session_id: session.id,
-                    })}
-                    onContextMenu={(event) =>
-                      showSessionPinMenu(event, session.id, session.label)
-                    }
-                    trailing={<SessionTicketPill ticket={session.ticket} />}
-                  />
-                ))}
+                {pinnedRows.map((row) => {
+                  const active = sessionMatchesActive(activeSession, workspace.id, {
+                    id: row.objectId,
+                    session_id: row.id,
+                  });
+
+                  return (
+                    <NavRow
+                      key={`pinned-session-${row.id}`}
+                      href={row.href}
+                      icon={<span className="text-muted"><SessionsIcon /></span>}
+                      label={row.label}
+                      active={active}
+                      onContextMenu={(event) =>
+                        showSessionPinMenu(event, row.id, row.label)
+                      }
+                      trailing={
+                        row.session ? <SessionRowTrailing session={row.session} active={active} /> : null
+                      }
+                    />
+                  );
+                })}
               </div>
             ) : null}
             {visibleGroups.map((group, index) => (
@@ -1197,6 +1296,8 @@ function SessionTreeDetails({
   const visibleUserLimit = Math.max(visibleUserCount, activeUserIndex + 1);
   const visibleUsers = group.users.slice(0, visibleUserLimit);
   const hiddenUserCount = group.users.length - visibleUsers.length;
+  const timestampMode: SessionTimestampMode =
+    group.bucket === "day" ? "time" : "dateTime";
 
   useEffect(() => {
     if (hasActiveSession) setOpen(true);
@@ -1230,6 +1331,7 @@ function SessionTreeDetails({
               bucket={bucket}
               activeSession={activeSession}
               onSessionPinMenu={onSessionPinMenu}
+              timestampMode={timestampMode}
             />
           ))
         )}
@@ -1251,11 +1353,13 @@ function SessionUserFolder({
   bucket,
   activeSession,
   onSessionPinMenu,
+  timestampMode,
 }: {
   workspaceId: string;
   bucket: { user: string; sessions: WorkspaceSidebarSession[] };
   activeSession: ActiveSessionRef;
   onSessionPinMenu?: (event: MouseEvent<HTMLAnchorElement>, session: WorkspaceSidebarSession) => void;
+  timestampMode: SessionTimestampMode;
 }) {
   const hasActiveSession = sessionBucketHasActiveSession(
     activeSession,
@@ -1303,6 +1407,7 @@ function SessionUserFolder({
             session={s}
             activeSession={activeSession}
             onPinMenu={onSessionPinMenu}
+            timestampMode={timestampMode}
           />
         ))}
         {hiddenSessionCount > 0 ? (
@@ -1326,7 +1431,7 @@ type StashTreeItem = {
   href?: string;
   label: string;
   icon: React.ReactNode;
-  ticket?: WorkspaceSidebarSession["linear_tickets"][number] | null;
+  session?: WorkspaceSidebarSession;
 };
 
 function resolveFolderPath(
@@ -1371,7 +1476,7 @@ function buildStashTreeItems(
           href: session ? `/workspaces/${workspaceId}/sessions/${encodeURIComponent(session.session_id)}` : undefined,
           icon: <span className="text-muted"><SessionsIcon /></span>,
           label: item.label_override ?? (session ? session.title || session.session_id : fallback),
-          ticket: session ? primarySessionTicket(session) : null,
+          session,
         };
       }
 
@@ -1542,19 +1647,21 @@ function StashTreeRow({ row }: { row: StashTreeItem }) {
     return (
       <div className="page-row flex items-center gap-2 rounded-md px-2 py-0.5 text-[12.5px] text-muted">
         <span className="flex h-4 w-4 items-center justify-center text-[14px]">{row.icon}</span>
-        <span className="flex-1 truncate">{row.label}</span>
+        <span className="min-w-0 flex-1 truncate">{row.label}</span>
+        {row.session ? <SessionRowTimestamp session={row.session} /> : null}
       </div>
     );
   }
 
+  const active = pathname === row.href;
   return (
     <NavRow
       href={row.href}
       icon={row.icon}
       label={row.label}
-      active={pathname === row.href}
+      active={active}
       trailing={
-        row.kind === "session" ? <SessionTicketPill ticket={row.ticket ?? null} /> : undefined
+        row.session ? <SessionRowTrailing session={row.session} active={active} /> : null
       }
     />
   );

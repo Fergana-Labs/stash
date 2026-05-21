@@ -78,13 +78,16 @@ async def _make_folder(pool, workspace_id, created_by, name="folder", parent_fol
     return row["id"]
 
 
-async def _make_page(pool, workspace_id, created_by, folder_id=None, name="page"):
+async def _make_page(
+    pool, workspace_id, created_by, folder_id=None, name="page", content="content"
+):
     row = await pool.fetchrow(
         "INSERT INTO pages (workspace_id, folder_id, name, content_markdown, created_by) "
-        "VALUES ($1, $2, $3, 'content', $4) RETURNING id",
+        "VALUES ($1, $2, $3, $4, $5) RETURNING id",
         workspace_id,
         folder_id,
         name,
+        content,
         created_by,
     )
     return row["id"]
@@ -111,14 +114,17 @@ async def _make_table(pool, workspace_id, created_by, name="table"):
     return row["id"]
 
 
-async def _make_file(pool, workspace_id, uploaded_by, folder_id=None, name="file.txt"):
+async def _make_file(
+    pool, workspace_id, uploaded_by, folder_id=None, name="file.txt", content_type="text/plain"
+):
     row = await pool.fetchrow(
         "INSERT INTO files "
         "(workspace_id, folder_id, name, content_type, size_bytes, storage_key, uploaded_by) "
-        "VALUES ($1, $2, $3, 'text/plain', 12, $4, $5) RETURNING id",
+        "VALUES ($1, $2, $3, $4, 12, $5, $6) RETURNING id",
         workspace_id,
         folder_id,
         name,
+        content_type,
         f"test/{uuid.uuid4().hex}.txt",
         uploaded_by,
     )
@@ -1073,6 +1079,62 @@ async def test_folder_stash_inlines_folder_files(pool, monkeypatch):
     files = items[0]["inline"]["files"]
     assert [file["name"] for file in files] == ["brief.pdf"]
     assert files[0]["url"].startswith("https://files.test/")
+
+
+@pytest.mark.asyncio
+async def test_public_folder_stash_file_download_url_works_anonymously(client, pool, monkeypatch):
+    async def fake_download_file(storage_key):
+        return f"bytes from {storage_key}".encode()
+
+    async def fake_file_url(storage_key, expires_in=3600):
+        return f"https://files.test/{storage_key}?expires={expires_in}"
+
+    monkeypatch.setattr(stash_service.storage_service, "get_file_url", fake_file_url)
+    monkeypatch.setattr("backend.routers.files.storage_service.download_file", fake_download_file)
+
+    owner_id = await _make_user(pool)
+    ws_id = await _make_workspace(pool, owner_id)
+    folder_id = await _make_folder(pool, ws_id, owner_id)
+    public_file_id = await _make_file(
+        pool,
+        ws_id,
+        owner_id,
+        folder_id=folder_id,
+        name="shot.png",
+        content_type="image/png",
+    )
+    private_file_id = await _make_file(pool, ws_id, owner_id, name="private.png")
+    public_url = f"/api/v1/workspaces/{ws_id}/files/{public_file_id}/download"
+    private_url = f"/api/v1/workspaces/{ws_id}/files/{private_file_id}/download"
+
+    await _make_page(
+        pool,
+        ws_id,
+        owner_id,
+        folder_id=folder_id,
+        content=f"![public]({public_url})\n![private]({private_url})",
+    )
+    stash = await _make_stash(ws_id, owner_id, "public", "folder", folder_id)
+
+    items = await stash_service.inline_items(stash, None)
+
+    content = items[0]["inline"]["pages"][0]["content_markdown"]
+    assert public_url in content
+    assert private_url in content
+
+    stale_token_resp = await client.get(
+        f"/api/v1/stashes/{stash['slug']}",
+        headers={"Authorization": "Bearer mc_invalid"},
+    )
+    public_resp = await client.get(public_url)
+    private_resp = await client.get(private_url)
+
+    assert stale_token_resp.status_code == 200
+    assert public_resp.status_code == 200
+    assert public_resp.content.startswith(b"bytes from test/")
+    assert public_resp.headers["content-type"] == "image/png"
+    assert public_resp.headers["content-disposition"].startswith("inline;")
+    assert private_resp.status_code == 404
 
 
 @pytest.mark.asyncio
