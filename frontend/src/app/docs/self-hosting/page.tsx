@@ -1,4 +1,4 @@
-import { Code, CodeBlock, H3, P, ParamTable, Title, Subtitle } from "../components";
+import { Callout, Code, CodeBlock, H3, P, ParamTable, Title, Subtitle } from "../components";
 
 export default function SelfHostingPage() {
   return (
@@ -112,11 +112,7 @@ S3_REGION=us-east-1`}</CodeBlock>
         {[
           { item: "Change default Postgres credentials", detail: "Set POSTGRES_USER, POSTGRES_PASSWORD, and POSTGRES_DB in your .env before first run. Docker Compose and DATABASE_URL both pick them up automatically." },
           { item: "Configure CORS_ORIGINS", detail: "Set to your production frontend domain(s) only." },
-<<<<<<< Updated upstream
-          { item: "Set PUBLIC_URL", detail: "Set to your production frontend URL so invite links and Stash URLs resolve correctly." },
-=======
           { item: "Set PUBLIC_URL", detail: "Set to your production frontend URL so invite links and share links resolve correctly." },
->>>>>>> Stashed changes
           { item: "Point Caddy at your domain", detail: "Edit Caddyfile: replace app.example.com with your real domain. Caddy auto-provisions Let's Encrypt certificates on first start." },
           { item: "Tune DB_POOL_MAX", detail: "Raise to 50–100 for production load. Ensure your Postgres max_connections is higher." },
           { item: "External Postgres", detail: "For production, use a managed database (RDS, Supabase) with pgvector enabled. Remove the postgres service from docker-compose.prod.yml and set DATABASE_URL directly." },
@@ -128,15 +124,12 @@ S3_REGION=us-east-1`}</CodeBlock>
         ))}
       </div>
 
-<<<<<<< Updated upstream
-=======
       <Callout type="info">
         The backend exposes an interactive OpenAPI spec at <Code>/docs</Code> (e.g.{" "}
         <Code>http://localhost:3456/docs</Code>). For production, block the path at your
         reverse proxy (Caddy) rather than exposing the schema publicly.
       </Callout>
 
->>>>>>> Stashed changes
       <H3>Upgrading</H3>
       <CodeBlock>{`git pull
 docker compose build
