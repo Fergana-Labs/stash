@@ -96,11 +96,10 @@ def _apply_gradient_fill(background, gradient: GradientModel) -> None:
         gf.linear_gradient_angle = (float(gradient.angle) - 90.0) % 360
     else:  # radial
         gf.gradient_shape = slides.GradientShape.RECTANGLE
-    # Aspose Python bindings are inconsistent — IGradientStopCollection
-    # exposes `count` as a method while IParagraphCollection exposes it
-    # as a property. Also `.add()` only takes preset colors; for arbitrary
-    # RGB we have to call `add_pixel_stop()`.
-    while gf.gradient_stops.count() > 0:
+    # Aspose's IGradientStopCollection: `count(item)` is list.count-style
+    # (takes an arg), `len()` works for sizing. `.add()` is preset colors
+    # only; arbitrary RGB needs `.add_pixel_stop()`.
+    while len(gf.gradient_stops) > 0:
         gf.gradient_stops.remove_at(0)
     for stop in gradient.stops:
         gf.gradient_stops.add_pixel_stop(float(stop.offset) * 100.0, _hex_to_color(stop.color))
