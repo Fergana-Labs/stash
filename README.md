@@ -123,10 +123,12 @@ Run Stash locally with Docker Compose:
 git clone https://github.com/Fergana-Labs/stash.git
 cd stash
 docker compose up -d
+curl http://localhost:3456/health
 ```
 
 The local UI runs at `http://localhost:3457` and the API runs at
-`http://localhost:3456`.
+`http://localhost:3456`. Continue once the health check prints
+`{"status":"ok"}`.
 
 Install the CLI in the repo you want to connect. The CLI package is the same
 for managed and self-hosted Stash; `base_url` tells it to use your local API.
