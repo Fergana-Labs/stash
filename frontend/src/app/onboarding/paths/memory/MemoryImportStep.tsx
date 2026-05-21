@@ -92,6 +92,11 @@ export default function MemoryImportStep(ctx: StepCtx) {
         <pre className="rounded-md border border-border-subtle bg-background/40 px-3 py-2 text-[12px] font-mono text-foreground overflow-x-auto">
           npm i -g @joinstash/cli
         </pre>
+        <p className="text-[11.5px] text-muted leading-relaxed">
+          On first run the CLI offers to <strong>backfill all your past
+          sessions</strong> — so your agent has memory of work it&rsquo;s
+          already done, not just what comes next.
+        </p>
       </div>
 
       <StatusPanel detected={detected} sessionCount={sessionCount ?? 0} />
