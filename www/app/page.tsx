@@ -185,31 +185,48 @@ function FunnelCard({
   icon,
   tag,
   children,
-  style,
+  width,
+  top,
+  left,
+  rotate,
+  blur,
+  opacity,
+  zIndex,
 }: {
   icon: ReactNode;
   tag: string;
   children: ReactNode;
-  style: React.CSSProperties;
+  width: number;
+  top: number;
+  left: number;
+  rotate: number;
+  blur: number;
+  opacity: number;
+  zIndex: number;
 }) {
   return (
     <div
       aria-hidden
-      className="absolute w-[230px] rounded-[12px] border border-border bg-background p-3.5"
+      className="absolute rounded-[12px] border border-border bg-background p-3"
       style={{
-        boxShadow: "var(--shadow-card)",
-        filter: "blur(2.5px)",
-        opacity: 0.9,
-        ...style,
+        width,
+        top,
+        left,
+        transform: `rotate(${rotate}deg)`,
+        filter: `blur(${blur}px)`,
+        opacity,
+        zIndex,
+        boxShadow:
+          "rgba(15, 23, 42, 0.04) 0px 1px 2px 0px, rgba(15, 23, 42, 0.22) 0px 10px 24px -16px",
       }}
     >
-      <div className="flex items-center gap-2 border-b border-border-subtle pb-2">
-        <span className="text-[13px] leading-none text-dim">{icon}</span>
-        <span className="truncate font-mono text-[9.5px] uppercase tracking-[0.14em] text-muted">
+      <div className="flex items-center gap-1.5 border-b border-border-subtle pb-1.5">
+        <span className="text-[11px] leading-none">{icon}</span>
+        <span className="truncate font-mono text-[8.5px] uppercase tracking-[0.12em] text-muted">
           {tag}
         </span>
       </div>
-      <div className="mt-2 space-y-1.5 text-[11.5px] leading-[1.45] text-dim">
+      <div className="mt-1.5 space-y-1 text-[10px] leading-[1.4] text-dim">
         {children}
       </div>
     </div>
@@ -226,20 +243,26 @@ const FUNNEL_SOURCES: { icon: string; label: string }[] = [
 
 function HeroFunnel() {
   return (
-    <div className="relative h-[780px] lg:h-[820px]">
+    <div className="relative h-[760px] w-full max-w-[565px] lg:h-[820px]">
       <div
         aria-hidden
         className="pointer-events-none absolute inset-0 -z-10"
         style={{
           background:
-            "radial-gradient(ellipse 60% 50% at 55% 30%, rgba(249,115,22,0.10), transparent 70%)",
+            "radial-gradient(ellipse 70% 50% at 45% 25%, rgba(249,115,22,0.10), transparent 70%)",
         }}
       />
 
       <FunnelCard
         icon="💬"
         tag="slack · #beta-feedback"
-        style={{ top: 20, left: -50, transform: "rotate(-13deg)", zIndex: 1 }}
+        width={175}
+        top={8}
+        left={-22}
+        rotate={-7}
+        blur={1.4}
+        opacity={0.9}
+        zIndex={2}
       >
         <p>
           <span className="font-semibold text-ink">kara · kindred</span>
@@ -258,26 +281,38 @@ function HeroFunnel() {
       <FunnelCard
         icon="◐"
         tag="interview · kara, founder"
-        style={{ top: -6, left: 80, transform: "rotate(-5deg)", zIndex: 2 }}
+        width={168}
+        top={0}
+        left={140}
+        rotate={-2}
+        blur={1.6}
+        opacity={0.88}
+        zIndex={3}
       >
-        <div className="flex gap-2">
-          <span className="shrink-0 pt-0.5 font-mono text-[9.5px] text-muted">04:12</span>
+        <div className="flex gap-1.5">
+          <span className="shrink-0 pt-0.5 font-mono text-[8.5px] text-muted">04:12</span>
           <span>“The pricing page didn't scare me. The first ten minutes did.”</span>
         </div>
-        <div className="flex gap-2">
-          <span className="shrink-0 pt-0.5 font-mono text-[9.5px] text-muted">06:48</span>
+        <div className="flex gap-1.5">
+          <span className="shrink-0 pt-0.5 font-mono text-[8.5px] text-muted">06:48</span>
           <span>Wanted to try it on a real project before inviting the team.</span>
         </div>
-        <div className="flex gap-2">
-          <span className="shrink-0 pt-0.5 font-mono text-[9.5px] text-muted">11:30</span>
-          <span>“If I could skip setup and just paste a doc in, I would've stayed.”</span>
+        <div className="flex gap-1.5">
+          <span className="shrink-0 pt-0.5 font-mono text-[8.5px] text-muted">11:30</span>
+          <span>“If I could skip setup and just paste a doc in.”</span>
         </div>
       </FunnelCard>
 
       <FunnelCard
         icon="🖼"
         tag="dashboard · retention"
-        style={{ top: 0, left: 218, transform: "rotate(2deg)", zIndex: 1 }}
+        width={168}
+        top={16}
+        left={290}
+        rotate={3}
+        blur={1.5}
+        opacity={0.9}
+        zIndex={2}
       >
         <svg viewBox="0 0 200 50" className="h-10 w-full" aria-hidden>
           <path
@@ -288,7 +323,7 @@ function HeroFunnel() {
           />
           <line x1="78" y1="0" x2="78" y2="50" stroke="var(--border)" strokeDasharray="2 2" />
         </svg>
-        <p className="font-mono text-[9.5px] text-muted">
+        <p className="font-mono text-[8.5px] text-muted">
           d1 → d2 drop · −78% cohort avg
         </p>
       </FunnelCard>
@@ -296,25 +331,56 @@ function HeroFunnel() {
       <FunnelCard
         icon="▦"
         tag="nps · march"
-        style={{ top: 22, left: 348, transform: "rotate(11deg)", zIndex: 1 }}
+        width={162}
+        top={14}
+        left={403}
+        rotate={7}
+        blur={1.4}
+        opacity={0.88}
+        zIndex={1}
       >
         <div className="flex items-center justify-between">
           <span>setup is too long</span>
-          <span className="font-mono text-[10px] font-bold text-ink">34</span>
+          <span className="font-mono text-[9px] font-bold text-ink">34</span>
         </div>
         <div className="flex items-center justify-between">
           <span>need team invites</span>
-          <span className="font-mono text-[10px] font-bold text-ink">18</span>
+          <span className="font-mono text-[9px] font-bold text-ink">18</span>
         </div>
         <div className="flex items-center justify-between">
           <span>want a starter doc</span>
-          <span className="font-mono text-[10px] font-bold text-ink">12</span>
+          <span className="font-mono text-[9px] font-bold text-ink">12</span>
         </div>
       </FunnelCard>
 
+      <FunnelCard
+        icon="✉"
+        tag="sales call · mockingbird"
+        width={160}
+        top={156}
+        left={335}
+        rotate={2.5}
+        blur={2}
+        opacity={0.82}
+        zIndex={2}
+      >
+        <p className="font-semibold text-ink">
+          “Would pay double if onboarding were easier”
+        </p>
+        <p>jamie · mockingbird</p>
+        <p>three of four eng folks dropped off in the first session.</p>
+      </FunnelCard>
+
       <article
-        className="absolute left-[10px] top-[200px] w-[410px] overflow-hidden rounded-[14px] border border-border bg-background"
-        style={{ boxShadow: "var(--shadow-card)", zIndex: 10 }}
+        className="absolute overflow-hidden rounded-[14px] border border-border bg-background"
+        style={{
+          top: 230,
+          left: 80,
+          width: 362,
+          zIndex: 6,
+          boxShadow:
+            "rgba(15, 23, 42, 0.04) 0px 1px 2px 0px, rgba(15, 23, 42, 0.22) 0px 10px 24px -16px",
+        }}
       >
         <div className="flex items-center justify-between gap-3 border-b border-border-subtle bg-surface px-4 py-2.5">
           <div className="flex items-center gap-2.5">
@@ -443,18 +509,6 @@ function Hero() {
               Open source
             </Link>
           </div>
-
-          <figure className="mt-8 max-w-[480px] border-l-2 border-border-subtle pl-3.5">
-            <blockquote className="font-mono text-[12.5px] leading-[1.55] text-dim">
-              <span className="mr-1.5 text-brand">★★★★★</span>
-              “Finally, somewhere to put my <span className="text-ink">plan.md</span>{" "}
-              files where they survive past <span className="text-ink">/clear</span>.
-              Beats <span className="text-ink">/tmp</span> by a country mile.”
-            </blockquote>
-            <figcaption className="mt-1.5 font-mono text-[10.5px] uppercase tracking-[0.14em] text-muted">
-              — Claude, in a session you'll never read
-            </figcaption>
-          </figure>
         </div>
         <HeroFunnel />
       </div>
