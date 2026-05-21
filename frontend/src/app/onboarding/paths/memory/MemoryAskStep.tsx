@@ -8,14 +8,12 @@ import type { StepCtx } from "@/lib/onboarding/paths";
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3456";
 
 type Overview = {
+  sessions: { session_id?: string; name?: string }[];
   files: {
     pages: { id: string; name: string }[];
   };
 };
 
-// Tool events the agent emits when it reads workspace material. We surface
-// these as citations — "Looked at: X, Y" — so the user sees real receipts
-// that the answer was grounded on their imports.
 const READ_TOOLS = new Set([
   "read_page",
   "grep_pages",
@@ -23,44 +21,60 @@ const READ_TOOLS = new Set([
   "search_history",
 ]);
 
-type Citation = {
-  tool: string;
-  label: string;
-};
+type Citation = { tool: string; label: string };
 
+// Step 3: one live agentic search. Show a few personalized suggestions
+// (or let user type their own), stream the answer with citations, then
+// the wizard's "Continue" hands off to /workspaces/{id}. Single question
+// by design — this is the demo, not the workspace itself.
 export default function MemoryAskStep({ workspaceId }: StepCtx) {
+  const [suggestions, setSuggestions] = useState<string[]>([]);
   const [question, setQuestion] = useState("");
+  const [submitted, setSubmitted] = useState(false);
   const [streaming, setStreaming] = useState(false);
   const [answer, setAnswer] = useState("");
   const [citations, setCitations] = useState<Citation[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [suggestions, setSuggestions] = useState<string[]>([]);
   const abortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     if (!workspaceId) return;
     apiFetch<Overview>(`/api/v1/workspaces/${workspaceId}/overview`)
       .then((o) => {
-        const pages = (o.files?.pages ?? []).slice(0, 3);
-        if (pages.length >= 2) {
-          setSuggestions([
-            `What was the last thing we worked on in ${pages[0].name}?`,
-            `Catch me up on ${pages[1].name}`,
-            pages[2] ? `What's the state of ${pages[2].name}?` : `What have we been working on?`,
-          ]);
-        } else {
-          setSuggestions([
-            "What was the last thing we worked on?",
-            "Catch me up on this workspace",
-          ]);
+        const pages = (o.files?.pages ?? []).slice(0, 2);
+        const sessions = (o.sessions ?? []).slice(0, 1);
+        const out: string[] = [];
+        if (sessions.length > 0) {
+          const s = sessions[0];
+          const label = s.name || s.session_id || "the last session";
+          out.push(`What was I working on in ${label}?`);
         }
+        if (pages.length > 0) {
+          out.push(`Catch me up on ${pages[0].name}`);
+        }
+        if (pages.length > 1) {
+          out.push(`What's the state of ${pages[1].name}?`);
+        }
+        if (out.length === 0) {
+          out.push(
+            "What's the last thing I worked on?",
+            "Catch me up on this workspace",
+          );
+        }
+        setSuggestions(out.slice(0, 3));
       })
-      .catch(() => {});
+      .catch(() => {
+        setSuggestions([
+          "What's the last thing I worked on?",
+          "Catch me up on this workspace",
+        ]);
+      });
   }, [workspaceId]);
 
   const ask = useCallback(
     async (q: string) => {
       if (!workspaceId || !q.trim() || streaming) return;
+      setSubmitted(true);
       setStreaming(true);
       setAnswer("");
       setCitations([]);
@@ -118,8 +132,7 @@ export default function MemoryAskStep({ workspaceId }: StepCtx) {
                 }
               }
             } catch {
-              // Ignore malformed lines — the SDK can emit partial chunks
-              // we resume on next loop.
+              // Partial chunks — resume on next loop.
             }
           }
         }
@@ -141,139 +154,104 @@ export default function MemoryAskStep({ workspaceId }: StepCtx) {
     <div className="space-y-6">
       <div className="space-y-2">
         <h1 className="font-display text-[28px] leading-[1.1] font-bold tracking-tight text-foreground">
-          Pick up where you left off
+          Ask your agent anything
         </h1>
         <p className="text-sm text-dim max-w-md">
-          Your agent has memory of what you&rsquo;ve done before. Ask
-          anything — it&rsquo;ll look back at your sessions and answer with
-          receipts.
+          This is what your agent can do anytime — when it codes, when it
+          runs a task, when you just want to know where you left off. Try
+          one question to see it.
         </p>
       </div>
 
-      <BeforeAfter />
-
-      <div className="rounded-2xl border border-border bg-surface p-4 space-y-3">
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            void ask(question);
-          }}
-          className="flex items-start gap-2"
-        >
-          <textarea
-            value={question}
-            onChange={(e) => setQuestion(e.target.value)}
-            placeholder="Ask anything about your workspace…"
-            rows={2}
-            disabled={streaming}
-            className="flex-1 rounded-md border border-border bg-base px-3 py-2 text-[13px] text-foreground placeholder:text-muted focus:border-brand focus:outline-none resize-none"
-          />
-          <button
-            type="submit"
-            disabled={streaming || !question.trim()}
-            className="rounded-md bg-brand px-4 py-2 text-[13px] font-medium text-white hover:bg-brand-hover disabled:opacity-60"
-          >
-            {streaming ? "Asking…" : "Ask"}
-          </button>
-        </form>
-
-        {suggestions.length > 0 && !answer && !streaming && (
-          <div className="flex flex-wrap gap-2">
-            {suggestions.map((s) => (
-              <button
-                key={s}
-                type="button"
-                onClick={() => {
-                  setQuestion(s);
-                  void ask(s);
-                }}
-                className="rounded-full border border-border-subtle bg-background/40 px-3 py-1 text-[11.5px] text-muted hover:text-foreground hover:border-brand"
-              >
-                {s}
-              </button>
-            ))}
-          </div>
-        )}
-
-        {error && (
-          <div className="text-[12px] text-error rounded-lg border border-error/30 bg-error/10 px-3 py-2">
-            {error}
-          </div>
-        )}
-
-        {(answer || citations.length > 0) && (
-          <div className="rounded-xl border border-border-subtle bg-background/40 p-4 space-y-3">
-            <div className="text-[13px] text-foreground whitespace-pre-wrap leading-relaxed">
-              {answer}
-              {streaming && (
-                <span className="inline-block w-1.5 h-3 bg-brand ml-0.5 align-baseline animate-pulse" />
-              )}
+      {!submitted && (
+        <div className="space-y-3">
+          {suggestions.length > 0 && (
+            <div className="flex flex-wrap gap-2">
+              {suggestions.map((s) => (
+                <button
+                  key={s}
+                  type="button"
+                  onClick={() => {
+                    setQuestion(s);
+                    void ask(s);
+                  }}
+                  className="rounded-full border border-border bg-surface px-3 py-1.5 text-[12px] text-foreground hover:bg-raised hover:border-brand"
+                >
+                  {s}
+                </button>
+              ))}
             </div>
-            {citations.length > 0 && (
-              <div className="border-t border-border-subtle pt-3 text-[11.5px] text-muted">
-                <span className="font-medium text-foreground">
-                  Grounded on:
-                </span>{" "}
-                {citations.map((c, i) => (
-                  <span key={`${c.tool}-${c.label}-${i}`}>
-                    {i > 0 && ", "}
-                    <span className="font-mono">{c.label}</span>
-                  </span>
-                ))}
+          )}
+
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              void ask(question);
+            }}
+            className="flex items-start gap-2"
+          >
+            <textarea
+              value={question}
+              onChange={(e) => setQuestion(e.target.value)}
+              placeholder="Or write your own…"
+              rows={2}
+              className="flex-1 rounded-md border border-border bg-base px-3 py-2 text-[13px] text-foreground placeholder:text-muted focus:border-brand focus:outline-none resize-none"
+            />
+            <button
+              type="submit"
+              disabled={!question.trim()}
+              className="rounded-md bg-brand px-4 py-2 text-[13px] font-medium text-white hover:bg-brand-hover disabled:opacity-60"
+            >
+              Ask
+            </button>
+          </form>
+        </div>
+      )}
+
+      {submitted && (
+        <div className="rounded-2xl border border-border bg-surface p-4 space-y-3">
+          <div className="text-[12px] text-muted italic">{question}</div>
+          {error ? (
+            <div className="text-[12px] text-error rounded-lg border border-error/30 bg-error/10 px-3 py-2">
+              {error}
+            </div>
+          ) : (
+            <>
+              <div className="text-[13px] text-foreground whitespace-pre-wrap leading-relaxed min-h-[60px]">
+                {answer}
+                {streaming && (
+                  <span className="inline-block w-1.5 h-3 bg-brand ml-0.5 align-baseline animate-pulse" />
+                )}
               </div>
-            )}
-          </div>
-        )}
-      </div>
+              {citations.length > 0 && (
+                <div className="border-t border-border-subtle pt-3 text-[11.5px] text-muted">
+                  <span className="font-medium text-foreground">
+                    Grounded on:
+                  </span>{" "}
+                  {citations.map((c, i) => (
+                    <span key={`${c.tool}-${c.label}-${i}`}>
+                      {i > 0 && ", "}
+                      <span className="font-mono">{c.label}</span>
+                    </span>
+                  ))}
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      )}
 
       <p className="text-[11px] text-dim">
-        Every conversation picks up where the last one left off. No more
-        re-explaining what you&rsquo;re doing.
+        This is the same memory your agent uses when it codes for you.
       </p>
     </div>
   );
 }
 
-function BeforeAfter() {
-  return (
-    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-      <div className="rounded-xl border border-border-subtle bg-background/40 p-4 opacity-60 min-h-[160px]">
-        <div className="text-[10px] font-mono uppercase tracking-wider text-muted mb-2">
-          Before
-        </div>
-        <pre className="font-mono text-[10.5px] text-muted leading-snug whitespace-pre-wrap">
-          {`# Context
-
-Last week I was working on the
-API gateway. Here's where I left
-off:
-
-[paste 3,200 chars of session]
-[re-explain the constraints]
-[re-list the open questions]
-
-OK, now keep going where we...`}
-        </pre>
-      </div>
-      <div className="rounded-xl border border-brand bg-brand/5 p-4 min-h-[160px]">
-        <div className="text-[10px] font-mono uppercase tracking-wider text-brand mb-2">
-          After
-        </div>
-        <div className="space-y-2">
-          <div className="font-mono text-[12.5px] text-foreground">
-            Pick up where we left off on the gateway
-          </div>
-          <div className="inline-flex items-center gap-1.5 rounded-full bg-background/60 border border-border-subtle px-2 py-0.5 text-[10.5px] text-muted">
-            <span className="w-1 h-1 rounded-full bg-brand" />
-            remembers your past sessions
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function describeToolCall(name: string, args: Record<string, unknown> | undefined): string {
+function describeToolCall(
+  name: string,
+  args: Record<string, unknown> | undefined,
+): string {
   if (!args) return name;
   if (name === "read_page" && typeof args.page_id === "string") {
     return `page ${shortId(args.page_id)}`;
@@ -281,7 +259,10 @@ function describeToolCall(name: string, args: Record<string, unknown> | undefine
   if (name === "read_file" && typeof args.file_id === "string") {
     return `file ${shortId(args.file_id)}`;
   }
-  if ((name === "grep_pages" || name === "search_history") && typeof args.query === "string") {
+  if (
+    (name === "grep_pages" || name === "search_history") &&
+    typeof args.query === "string"
+  ) {
     return `search "${args.query.slice(0, 40)}"`;
   }
   return name;

@@ -4,8 +4,8 @@ import MigrantSourceStep from "@/app/onboarding/paths/migrant/MigrantSourceStep"
 import MigrantImportStep from "@/app/onboarding/paths/migrant/MigrantImportStep";
 import MigrantDemoStep from "@/app/onboarding/paths/migrant/MigrantDemoStep";
 import MemoryImportStep from "@/app/onboarding/paths/memory/MemoryImportStep";
+import MemoryDemoStep from "@/app/onboarding/paths/memory/MemoryDemoStep";
 import MemoryAskStep from "@/app/onboarding/paths/memory/MemoryAskStep";
-import MemorySearchStep from "@/app/onboarding/paths/memory/MemorySearchStep";
 import SharingDropStep from "@/app/onboarding/paths/sharing/SharingDropStep";
 import SharingBrowseStep from "@/app/onboarding/paths/sharing/SharingBrowseStep";
 import SharingHandoffStep from "@/app/onboarding/paths/sharing/SharingHandoffStep";
@@ -64,8 +64,7 @@ export const PATHS: Record<PathId, PathDef> = {
   memory: {
     id: "memory",
     label: "Agent memory",
-    steps: [MemoryImportStep, MemoryAskStep, MemorySearchStep, wrapInvite(InviteStep)],
-    doneStep: DoneStep,
+    steps: [MemoryImportStep, MemoryDemoStep, MemoryAskStep],
   },
   sharing: {
     id: "sharing",
