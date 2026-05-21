@@ -90,8 +90,8 @@ export default function MigrantSourceStep({ pickSource }: StepCtx) {
       </div>
 
       <p className="text-[11.5px] text-dim">
-        Pick one to start — you&rsquo;ll also have a chance to bring in your
-        agent transcripts in a later step.
+        Pick one to start — your agent transcripts flow in automatically
+        once you install the CLI at the end.
       </p>
     </div>
   );
