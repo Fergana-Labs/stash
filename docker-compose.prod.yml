@@ -4,6 +4,9 @@
 #   cp .env.example .env        # fill in required values
 #   docker compose -f docker-compose.prod.yml up -d --build
 #
+# Backend and collab use pre-built images from GHCR (fast).
+# Frontend builds locally because NEXT_PUBLIC_API_URL must match your domain.
+#
 # Required env vars in .env:
 #   POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_DB
 #   PUBLIC_URL                  (your public frontend URL, e.g. https://app.example.com)
@@ -49,9 +52,7 @@ services:
       retries: 5
 
   backend:
-    build:
-      context: .
-      dockerfile: backend/Dockerfile
+    image: ghcr.io/fergana-labs/stash-backend:latest
     restart: always
     expose:
       - "3456"
@@ -72,9 +73,7 @@ services:
       start_period: 30s
 
   worker:
-    build:
-      context: .
-      dockerfile: backend/Dockerfile
+    image: ghcr.io/fergana-labs/stash-backend:latest
     restart: always
     depends_on:
       postgres:
@@ -90,9 +89,7 @@ services:
     command: ["celery", "-A", "backend.celery_app", "worker", "--loglevel=info", "--concurrency=4"]
 
   beat:
-    build:
-      context: .
-      dockerfile: backend/Dockerfile
+    image: ghcr.io/fergana-labs/stash-backend:latest
     restart: always
     depends_on:
       redis:
@@ -123,9 +120,7 @@ services:
       NEXT_PUBLIC_COLLAB_URL: ${COLLAB_PUBLIC_URL:-}
 
   collab:
-    build:
-      context: ./collab
-      dockerfile: Dockerfile
+    image: ghcr.io/fergana-labs/stash-collab:latest
     restart: always
     expose:
       - "3458"
