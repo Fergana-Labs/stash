@@ -9,6 +9,7 @@ import {
   type WorkspaceSidebar,
   type StashItemSpec,
 } from "../../lib/api";
+import { refreshWorkspaceSidebar } from "../../lib/stashNavigationCache";
 import { useShareModal } from "../../lib/shareModalContext";
 import { useEscapeKey } from "../../hooks/useEscapeKey";
 import CustomSelect from "../CustomSelect";
@@ -276,6 +277,10 @@ export default function StashShareModal() {
       setSelected(EMPTY_SELECTED);
       setTitle("");
       setShareToDiscover(false);
+      // Re-fetch the workspace sidebar so the new Stash shows up without
+      // requiring a page reload. refreshWorkspaceSidebar hits the API,
+      // updates the cache, and notifies AppSidebar's subscriber.
+      refreshWorkspaceSidebar(workspaceId).catch(() => {});
       bumpVersion();
       close();
     } catch (e) {
