@@ -18,6 +18,7 @@ from ..models import (
     WorkspaceResponse,
     WorkspaceUpdateRequest,
 )
+from ..config import settings
 from ..services import invite_token_service, workspace_service
 
 router = APIRouter(prefix="/api/v1/workspaces", tags=["workspaces"])
@@ -28,7 +29,11 @@ async def _serialize_workspace_for_viewer(
 ) -> WorkspaceResponse:
     is_member = bool(viewer_id and await workspace_service.is_member(workspace["id"], viewer_id))
     if not is_member:
-        raise HTTPException(status_code=404, detail="Workspace not found")
+        # Self-hosted (password auth): auto-join authenticated users to any workspace.
+        if viewer_id and not settings.AUTH0_ENABLED:
+            await workspace_service.join_workspace(workspace["id"], viewer_id)
+        else:
+            raise HTTPException(status_code=404, detail="Workspace not found")
 
     data = dict(workspace)
     return WorkspaceResponse(**data)
