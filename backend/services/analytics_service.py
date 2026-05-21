@@ -124,7 +124,7 @@ async def get_activity_timeline(
                 me.agent_name,
                 me.created_by,
                 CASE NULLIF(me.metadata->>'client', '')
-                    WHEN 'claude_code' THEN 'claude'
+                    WHEN 'claude_code' THEN 'claude code'
                     WHEN 'codex_cli' THEN 'codex'
                     WHEN 'gemini_cli' THEN 'gemini'
                     ELSE NULLIF(me.metadata->>'client', '')
@@ -163,7 +163,8 @@ async def get_activity_timeline(
             COALESCE(
                 sc.client_name,
                 CASE
-                    WHEN sc.agent_name = 'claude-subagent' THEN 'claude'
+                    WHEN sc.agent_name IN ('claude', 'claude-subagent') THEN 'claude code'
+                    WHEN sc.agent_name LIKE '%claude-code%' THEN 'claude code'
                     ELSE NULLIF(sc.agent_name, '')
                 END,
                 'unknown agent'
@@ -182,7 +183,7 @@ async def get_activity_timeline(
 
     for row in rows:
         date_str = row["bucket_date"].isoformat()
-        contributor = f"{row['human_name']} / {row['agent_name']}"
+        contributor = f"{row['human_name']} ({row['agent_name']})"
         cnt = row["cnt"]
 
         contributors_set.add(contributor)
