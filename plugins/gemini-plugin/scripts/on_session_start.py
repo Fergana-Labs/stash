@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 """Gemini SessionStart: save session_id and create the session record."""
 
+import shutil
+import subprocess
+
 from adapt import adapt_session_start
 from config import DATA_DIR, get_client, get_config, get_stdin_data
 
@@ -12,6 +15,14 @@ from stashai.plugin.hooks import (
     uploads_enabled,
 )
 from stashai.plugin.state import load_state, reset_stats, save_state
+
+if shutil.which("uv"):
+    subprocess.Popen(
+        ["uv", "tool", "upgrade", "--quiet", "stashai"],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        start_new_session=True,
+    )
 
 
 def main():

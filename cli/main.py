@@ -17,7 +17,7 @@ from rich.text import Text
 
 from stashai.plugin.upload_status import read_upload_status
 
-from . import telemetry
+from . import __version__, telemetry
 from .client import StashClient, StashError, stash_permissions_for_access
 from .config import (
     MANIFEST_FILE,
@@ -41,13 +41,49 @@ app = typer.Typer(
 )
 
 
+def _version_callback(value: bool) -> None:
+    if value:
+        typer.echo(f"stash {__version__}")
+        raise typer.Exit()
+
+
 @app.callback(invoke_without_command=True)
-def root(ctx: typer.Context) -> None:
+def root(
+    ctx: typer.Context,
+    version: bool = typer.Option(
+        False,
+        "--version",
+        "-v",
+        is_eager=True,
+        callback=_version_callback,
+        help="Print the installed stash CLI version and exit.",
+    ),
+) -> None:
     if ctx.invoked_subcommand is not None:
         return
 
     typer.echo(ctx.get_help())
     raise typer.Exit()
+
+
+@app.command()
+def upgrade() -> None:
+    """Upgrade the stash CLI to the latest version on PyPI."""
+    import shutil
+    import subprocess
+
+    if not shutil.which("uv"):
+        typer.echo(
+            "uv is not on PATH. Re-run the installer: "
+            'bash -c "$(curl -fsSL https://joinstash.ai/install)"',
+            err=True,
+        )
+        raise typer.Exit(1)
+    typer.echo(f"Upgrading stashai from {__version__}…")
+    result = subprocess.run(
+        ["uv", "tool", "install", "--force", "--reinstall", "--refresh", "stashai"]
+    )
+    raise typer.Exit(result.returncode)
 
 
 def _client() -> StashClient:

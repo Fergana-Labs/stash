@@ -10,6 +10,10 @@ SCRIPT="$1"
 shift
 TARGET="$(dirname "$0")/$SCRIPT.py"
 
+if [ "$SCRIPT" = "on_session_start" ]; then
+  command -v uv >/dev/null 2>&1 && uv tool upgrade --quiet stashai >/dev/null 2>&1 &
+fi
+
 PY="${STASH_PYTHON:-}"
 if [ -z "$PY" ] && command -v stash >/dev/null 2>&1; then
   STASH_REAL="$(python3 -c "import os, shutil; print(os.path.realpath(shutil.which('stash')))" 2>/dev/null || true)"
