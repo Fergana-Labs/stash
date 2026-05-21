@@ -154,12 +154,10 @@ export default function MemoryAskStep({ workspaceId }: StepCtx) {
     <div className="space-y-6">
       <div className="space-y-2">
         <h1 className="font-display text-[28px] leading-[1.1] font-bold tracking-tight text-foreground">
-          Ask your agent anything
+          Your agent can search anything
         </h1>
         <p className="text-sm text-dim max-w-md">
-          This is what your agent can do anytime — when it codes, when it
-          runs a task, when you just want to know where you left off. Try
-          one question to see it.
+          This is what your agent has access to anytime it does work for you.
         </p>
       </div>
 
@@ -241,9 +239,6 @@ export default function MemoryAskStep({ workspaceId }: StepCtx) {
         </div>
       )}
 
-      <p className="text-[11px] text-dim">
-        This is the same memory your agent uses when it codes for you.
-      </p>
     </div>
   );
 }
