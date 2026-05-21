@@ -74,13 +74,15 @@ async def build_pptx(
     of background fallbacks and image fetching."""
     fetcher = image_fetcher or ImageFetcher()
 
-    # Pre-resolve every raster target in one Playwright pass.
+    # Pre-resolve every raster target in one Playwright pass. python-pptx
+    # falls back to raster for svg/chart shapes (no native support), so
+    # queue their selectors too.
     raster_targets: list[tuple[int, str]] = []
     for spec in specs:
         if spec.bg_raster_selector:
             raster_targets.append((spec.index, spec.bg_raster_selector))
         for sh in _walk_shapes(spec.shapes):
-            if sh.kind == "raster" and sh.raster_selector:
+            if sh.kind in ("raster", "svg", "chart") and sh.raster_selector:
                 raster_targets.append((spec.index, sh.raster_selector))
     rasters = await rasterize_targets(html, raster_targets)
 
@@ -130,7 +132,10 @@ def _emit_slide_background(slide, spec: SlideSpec, rasters: dict[tuple[int, str]
 
 
 async def _emit_shape(slide, sh: ShapeSpec, rasters, fetcher: ImageFetcher, slide_idx: int) -> None:
-    if sh.kind == "raster":
+    # python-pptx has no native svg/chart shape; the probe leaves the
+    # raster_selector populated so we can fall back to a screenshot of
+    # the source element. Aspose ignores raster_selector for these.
+    if sh.kind in ("raster", "svg", "chart"):
         png = rasters.get((slide_idx, sh.raster_selector or ""))
         if png:
             left, top, w, h = _bbox_emu(sh.bbox)

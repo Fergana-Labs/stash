@@ -19,10 +19,12 @@ from . import builder
 from .models import (
     AddSlideRequest,
     AddSlideResponse,
+    ChartShapeRequest,
     CreateSessionRequest,
     CreateSessionResponse,
     ImageShapeRequest,
     ShapeResponse,
+    SvgShapeRequest,
     TableShapeRequest,
     TextShapeRequest,
 )
@@ -81,7 +83,7 @@ def delete_session(session_id: str) -> dict:
           dependencies=[Depends(_check_token)])
 def add_slide(session_id: str, req: AddSlideRequest) -> AddSlideResponse:
     pres = _get_presentation(session_id)
-    index = builder.add_blank_slide(pres, req.bg_color)
+    index = builder.add_blank_slide(pres, req.bg_color, req.bg_gradient)
     return AddSlideResponse(slide_index=index)
 
 
@@ -123,6 +125,26 @@ def add_table(session_id: str, slide_index: int, req: TableShapeRequest) -> Shap
     pres = _get_presentation(session_id)
     cw, ch = _get_canvas(session_id)
     idx = builder.add_table_shape(pres, slide_index, req, cw, ch)
+    return ShapeResponse(shape_index=idx)
+
+
+@app.post("/sessions/{session_id}/slides/{slide_index}/svg",
+          response_model=ShapeResponse,
+          dependencies=[Depends(_check_token)])
+def add_svg(session_id: str, slide_index: int, req: SvgShapeRequest) -> ShapeResponse:
+    pres = _get_presentation(session_id)
+    cw, ch = _get_canvas(session_id)
+    idx = builder.add_svg_shape(pres, slide_index, req, cw, ch)
+    return ShapeResponse(shape_index=idx)
+
+
+@app.post("/sessions/{session_id}/slides/{slide_index}/chart",
+          response_model=ShapeResponse,
+          dependencies=[Depends(_check_token)])
+def add_chart(session_id: str, slide_index: int, req: ChartShapeRequest) -> ShapeResponse:
+    pres = _get_presentation(session_id)
+    cw, ch = _get_canvas(session_id)
+    idx = builder.add_chart_shape(pres, slide_index, req, cw, ch)
     return ShapeResponse(shape_index=idx)
 
 

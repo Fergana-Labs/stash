@@ -53,11 +53,20 @@ async def _load_page(page_id: UUID) -> tuple[str, str]:
 
 
 async def main_async(args: argparse.Namespace) -> None:
-    await database.init_db()
+    used_db = False
+    if args.html_file:
+        path = Path(args.html_file)
+        html = path.read_text()
+        name = path.stem
+        log.info("loaded %s — %d bytes (from file)", path, len(html))
+    else:
+        if not args.page_id:
+            raise SystemExit("page_id or --html-file is required")
+        await database.init_db()
+        used_db = True
+        name, html = await _load_page(UUID(args.page_id))
+        log.info("loaded %s — %d bytes (from db)", name, len(html))
     try:
-        page_id = UUID(args.page_id)
-        name, html = await _load_page(page_id)
-        log.info("loaded %s — %d bytes", name, len(html))
 
         specs = await probe(html)
         log.info("probed %d slide(s)", len(specs))
@@ -87,13 +96,21 @@ async def main_async(args: argparse.Namespace) -> None:
         out_path.write_bytes(pptx_bytes)
         log.info("wrote %s (%d bytes)", out_path, len(pptx_bytes))
     finally:
-        await database.close_db()
+        if used_db:
+            await database.close_db()
 
 
 def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     parser = argparse.ArgumentParser(description="Native-shape PPTX export sandbox driver.")
-    parser.add_argument("page_id", help="UUID of a fixed-aspect HTML slide page")
+    parser.add_argument(
+        "page_id", nargs="?",
+        help="UUID of a fixed-aspect HTML slide page (omit if using --html-file)",
+    )
+    parser.add_argument(
+        "--html-file",
+        help="run against a local HTML file (bypasses DB)",
+    )
     parser.add_argument("--out", help="output .pptx path (default: /tmp/<name>-native.pptx)")
     parser.add_argument(
         "--spec", action="store_true", help="dump SlideSpec JSON to stdout instead of writing PPTX"

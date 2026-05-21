@@ -23,7 +23,17 @@ from ..constants import (
     SLIDE_WIDTH_PX,
 )
 from ..pptx import _build_single_slide_html, _count_slides, _strip_body_state
-from .spec import BBox, Paragraph, ShapeSpec, SlideSpec, TextRun
+from .spec import (
+    BBox,
+    ChartDataset,
+    ChartSpec,
+    Gradient,
+    GradientStop,
+    Paragraph,
+    ShapeSpec,
+    SlideSpec,
+    TextRun,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -112,6 +122,122 @@ _PROBE_JS = r"""
     const img = style.backgroundImage;
     if (img && img !== 'none') return true;  // gradient or url()
     return false;
+  }
+
+  // Parse a CSS linear/radial gradient string into {type, angle, stops}.
+  // Returns null if we can't recognise the syntax — caller falls back to raster.
+  function parseGradient(bgImage) {
+    if (!bgImage || bgImage === 'none') return null;
+    // First gradient layer only — CSS allows stacked layers but Aspose's
+    // gradient fill is single-stop-list, so we pick the most prominent.
+    let type, body;
+    if (bgImage.startsWith('linear-gradient(')) {
+      type = 'linear'; body = bgImage.slice('linear-gradient('.length);
+    } else if (bgImage.startsWith('radial-gradient(')) {
+      type = 'radial'; body = bgImage.slice('radial-gradient('.length);
+    } else {
+      return null;
+    }
+    // Find the matching close paren, respecting nested rgb(...) etc.
+    let depth = 1, end = -1;
+    for (let i = 0; i < body.length; i++) {
+      const c = body[i];
+      if (c === '(') depth++;
+      else if (c === ')') { depth--; if (depth === 0) { end = i; break; } }
+    }
+    if (end === -1) return null;
+    const raw = body.slice(0, end);
+
+    // Split on commas at depth 0 (avoid splitting inside rgba(...)).
+    const parts = [];
+    depth = 0;
+    let buf = '';
+    for (const ch of raw) {
+      if (ch === '(') depth++;
+      if (ch === ')') depth--;
+      if (ch === ',' && depth === 0) { parts.push(buf.trim()); buf = ''; }
+      else buf += ch;
+    }
+    if (buf.trim()) parts.push(buf.trim());
+
+    let angle = 180;  // CSS default for linear is "to bottom" = 180deg
+    let first = 0;
+    if (type === 'linear' && parts.length) {
+      const angleMatch = parts[0].match(/^(-?\d+(?:\.\d+)?)deg$/);
+      const toMatch = parts[0].match(/^to\s+(top|bottom|left|right)(?:\s+(top|bottom|left|right))?$/);
+      if (angleMatch) { angle = parseFloat(angleMatch[1]); first = 1; }
+      else if (toMatch) {
+        const dirs = {top: 0, right: 90, bottom: 180, left: 270};
+        angle = dirs[toMatch[1]] ?? 180;
+        first = 1;
+      }
+    } else if (type === 'radial' && parts.length) {
+      // Skip the shape/position prefix if present ("circle at center", "ellipse 30% 50%", etc).
+      if (!/rgba?\(|^#|^[a-z]+$/i.test(parts[0])) first = 1;
+    }
+
+    const stops = [];
+    const total = parts.length - first;
+    parts.slice(first).forEach((p, i) => {
+      // Each stop: "<color> [<offset%>]"
+      const m = p.match(/^(rgba?\([^)]+\)|#[0-9a-f]+|[a-z]+)(?:\s+(-?\d+(?:\.\d+)?)(%|px)?)?$/i);
+      if (!m) return;
+      const color = colorToHex(m[1]) || m[1];
+      let offset;
+      if (m[2] && m[3] === '%') offset = parseFloat(m[2]) / 100;
+      else if (m[2] === undefined) offset = total > 1 ? i / (total - 1) : 0;
+      else offset = parseFloat(m[2]) / 100;
+      stops.push({ offset: Math.max(0, Math.min(1, offset)), color });
+    });
+    if (stops.length < 2) return null;
+    return { type, angle, stops };
+  }
+
+  // Extract Chart.js config from a canvas element. Requires Chart.js to
+  // be loaded and rendered; returns null for vanilla <canvas> elements.
+  function extractChartJs(el) {
+    try {
+      // Chart.getChart was added in Chart.js v3+. Earlier versions exposed
+      // Chart.instances; we don't support those.
+      if (typeof window.Chart !== 'function' || typeof window.Chart.getChart !== 'function') return null;
+      const inst = window.Chart.getChart(el);
+      if (!inst) return null;
+      const cfg = inst.config;
+      const type = cfg.type;
+      // Map Chart.js types to PPTX-supported families.
+      const typeMap = { bar: 'bar', line: 'line', pie: 'pie', doughnut: 'doughnut', area: 'area' };
+      const mapped = typeMap[type];
+      if (!mapped) return null;
+      const labels = (cfg.data.labels || []).map(String);
+      const datasets = (cfg.data.datasets || []).map(d => ({
+        label: String(d.label || ''),
+        data: (d.data || []).map(v => Number(v) || 0),
+        color: colorToHex(
+          typeof d.backgroundColor === 'string' ? d.backgroundColor
+          : typeof d.borderColor === 'string' ? d.borderColor
+          : null
+        ),
+      }));
+      const title = (cfg.options && cfg.options.plugins && cfg.options.plugins.title && cfg.options.plugins.title.text) || '';
+      return { type: mapped, labels, datasets, title: String(title || '') };
+    } catch (e) { return null; }
+  }
+
+  // Pull SVG bytes either from an <img src="data:image/svg+xml,..."> or
+  // an inline <svg>. Returned as raw markup so Aspose can ingest it.
+  function extractSvg(el) {
+    if (el.tagName === 'IMG') {
+      const src = el.getAttribute('src') || '';
+      if (!src.startsWith('data:image/svg+xml')) return null;
+      try {
+        if (src.includes(';base64,')) {
+          return atob(src.split(';base64,')[1]);
+        }
+        return decodeURIComponent(src.split(',')[1] || '');
+      } catch (e) { return null; }
+    }
+    if (el.tagName === 'SVG') return el.outerHTML;
+    return null;
   }
 
   // Build a CSS selector that uniquely identifies an element relative
@@ -226,6 +352,8 @@ _PROBE_JS = r"""
       cells: [],
       raster_selector: null,
       raster_reason: null,
+      svg: null,
+      chart: null,
     };
   }
 
@@ -241,6 +369,46 @@ _PROBE_JS = r"""
       cells: [],
       raster_selector: null,
       raster_reason: null,
+      svg: null,
+      chart: null,
+    };
+  }
+
+  function svgShape(el, svgMarkup) {
+    return {
+      kind: 'svg',
+      bbox: relRect(el),
+      z: 0,
+      paragraphs: [],
+      bg_color: null,
+      padding_px: [0, 0, 0, 0],
+      src: null,
+      cells: [],
+      // raster_selector is kept populated so the python-pptx builder
+      // (which doesn't know svg/chart kinds) can still fall back to
+      // a screenshot. The aspose builder ignores it when svg/chart
+      // is present.
+      raster_selector: selectorFor(el),
+      raster_reason: 'svg',
+      svg: svgMarkup,
+      chart: null,
+    };
+  }
+
+  function chartShape(el, chartCfg) {
+    return {
+      kind: 'chart',
+      bbox: relRect(el),
+      z: 0,
+      paragraphs: [],
+      bg_color: null,
+      padding_px: [0, 0, 0, 0],
+      src: null,
+      cells: [],
+      raster_selector: selectorFor(el),
+      raster_reason: 'chart',
+      svg: null,
+      chart: chartCfg,
     };
   }
 
@@ -256,6 +424,8 @@ _PROBE_JS = r"""
       cells: [],
       raster_selector: selectorFor(el),
       raster_reason: reason,
+      svg: null,
+      chart: null,
     };
   }
 
@@ -279,6 +449,8 @@ _PROBE_JS = r"""
       cells: [],
       raster_selector: null,
       raster_reason: null,
+      svg: null,
+      chart: null,
     };
   }
 
@@ -295,6 +467,7 @@ _PROBE_JS = r"""
           bg_color: colorToHex(cs.backgroundColor),
           padding_px: [0,0,0,0], src: null, cells: [],
           raster_selector: null, raster_reason: null,
+          svg: null, chart: null,
         });
       }
       rows.push(cells);
@@ -310,6 +483,8 @@ _PROBE_JS = r"""
       cells: rows,
       raster_selector: null,
       raster_reason: null,
+      svg: null,
+      chart: null,
     };
   }
 
@@ -320,7 +495,21 @@ _PROBE_JS = r"""
     const style = getComputedStyle(el);
     if (!isVisible(el, style)) return;
 
-    if (el.tagName === 'IMG') { shapes.push(imageShape(el)); return; }
+    if (el.tagName === 'IMG') {
+      // Inline-SVG data URIs can be passed through as vector — they're
+      // editable in PowerPoint and stay crisp at any zoom.
+      const svg = extractSvg(el);
+      if (svg) { shapes.push(svgShape(el, svg)); return; }
+      shapes.push(imageShape(el)); return;
+    }
+    if (el.tagName === 'CANVAS') {
+      const chartCfg = extractChartJs(el);
+      if (chartCfg) { shapes.push(chartShape(el, chartCfg)); return; }
+      shapes.push(rasterShape(el, 'canvas')); return;
+    }
+    if (el.tagName === 'SVG') {
+      shapes.push(svgShape(el, el.outerHTML)); return;
+    }
     if (RASTER_TAGS.has(el.tagName)) { shapes.push(rasterShape(el, el.tagName.toLowerCase())); return; }
     if (el.dataset && el.dataset.exportRaster !== undefined) {
       shapes.push(rasterShape(el, 'data-export-raster')); return;
@@ -369,9 +558,11 @@ _PROBE_JS = r"""
   }
 
   const slideStyle = getComputedStyle(slide);
+  const bgGradient = parseGradient(slideStyle.backgroundImage);
   return {
     bg_color: colorToHex(slideStyle.backgroundColor),
     bg_complex: bgIsComplex(slideStyle),
+    bg_gradient: bgGradient,
     shapes,
   };
 }
@@ -414,19 +605,59 @@ async def probe(html: str) -> list[SlideSpec]:
 def _raw_to_spec(index: int, raw: dict) -> SlideSpec:
     shapes_raw = raw.get("shapes") or []
     shapes = [_shape_from_raw(s) for s in shapes_raw]
+
+    bg_gradient = _gradient_from_raw(raw.get("bg_gradient"))
+    # Keep the raster selector populated whenever the background is non-trivial.
+    # python-pptx has no native gradient path, so it falls back to raster.
+    # aspose_builder ignores bg_raster_selector when bg_gradient is set.
+    bg_raster = None
+    if raw.get("bg_complex"):
+        # `_build_single_slide_html` sets display:none on every section
+        # except the active one. Without the :not() filter Playwright's
+        # screenshot retries against the first match (slide 0, hidden)
+        # until the 30 s timeout.
+        bg_raster = 'body > section.slide:not([style*="display: none"])'
+
     return SlideSpec(
         index=index,
         bg_color=raw.get("bg_color"),
-        bg_raster_selector=(
-            # `_build_single_slide_html` sets display:none on every section
-            # except the active one. Without the :not() filter Playwright's
-            # screenshot retries against the first match (slide 0, hidden)
-            # until the 30 s timeout.
-            'body > section.slide:not([style*="display: none"])'
-            if raw.get("bg_complex")
-            else None
-        ),
+        bg_gradient=bg_gradient,
+        bg_raster_selector=bg_raster,
         shapes=shapes,
+    )
+
+
+def _gradient_from_raw(raw: dict | None) -> Gradient | None:
+    if not raw:
+        return None
+    stops = [
+        GradientStop(offset=float(s.get("offset", 0.0)), color=str(s.get("color", "#000000")))
+        for s in (raw.get("stops") or [])
+    ]
+    if len(stops) < 2:
+        return None
+    return Gradient(
+        type=raw.get("type") or "linear",
+        angle=float(raw.get("angle") or 0.0),
+        stops=stops,
+    )
+
+
+def _chart_from_raw(raw: dict | None) -> ChartSpec | None:
+    if not raw:
+        return None
+    return ChartSpec(
+        type=raw.get("type") or "bar",
+        labels=[str(x) for x in (raw.get("labels") or [])],
+        datasets=[
+            ChartDataset(
+                label=str(d.get("label") or ""),
+                data=[float(v) for v in (d.get("data") or [])],
+                color=d.get("color"),
+            )
+            for d in (raw.get("datasets") or [])
+        ],
+        title=str(raw.get("title") or ""),
     )
 
 
@@ -453,6 +684,8 @@ def _shape_from_raw(s: dict) -> ShapeSpec:
         cells=cells,
         raster_selector=s.get("raster_selector"),
         raster_reason=s.get("raster_reason"),
+        svg=s.get("svg"),
+        chart=_chart_from_raw(s.get("chart")),
     )
 
 

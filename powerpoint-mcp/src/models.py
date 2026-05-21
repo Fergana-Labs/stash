@@ -43,8 +43,20 @@ class CreateSessionResponse(BaseModel):
     session_id: str
 
 
+class GradientStopModel(BaseModel):
+    offset: float  # 0.0 → 1.0
+    color: str
+
+
+class GradientModel(BaseModel):
+    type: Literal["linear", "radial"] = "linear"
+    angle: float = 0.0  # CSS degrees
+    stops: list[GradientStopModel] = Field(default_factory=list)
+
+
 class AddSlideRequest(BaseModel):
     bg_color: str | None = None  # hex like "#ffffff"; None → white
+    bg_gradient: GradientModel | None = None  # native gradient fill
 
 
 class AddSlideResponse(BaseModel):
@@ -69,6 +81,26 @@ class TableShapeRequest(BaseModel):
     bbox: BBoxModel
     # rows × cols of cell text content (each cell is a single paragraph)
     cells: list[list[ParagraphModel]] = Field(default_factory=list)
+
+
+class SvgShapeRequest(BaseModel):
+    bbox: BBoxModel
+    # raw SVG markup, not base64 — Aspose ingests it directly
+    svg: str
+
+
+class ChartDatasetModel(BaseModel):
+    label: str = ""
+    data: list[float] = Field(default_factory=list)
+    color: str | None = None
+
+
+class ChartShapeRequest(BaseModel):
+    bbox: BBoxModel
+    type: Literal["bar", "line", "pie", "doughnut", "area"] = "bar"
+    labels: list[str] = Field(default_factory=list)
+    datasets: list[ChartDatasetModel] = Field(default_factory=list)
+    title: str = ""
 
 
 class ShapeResponse(BaseModel):

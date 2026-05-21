@@ -136,8 +136,16 @@ def _b64(png: bytes) -> str:
 
 
 async def main_async(args: argparse.Namespace) -> None:
-    await database.init_db()
-    try:
+    html: str
+    name: str
+    slug: str
+    if args.html_file:
+        path = Path(args.html_file)
+        html = path.read_text()
+        name = path.stem
+        slug = path.stem
+    else:
+        await database.init_db()
         pool = database.get_pool()
         row = await pool.fetchrow(
             "SELECT name, content_html FROM pages WHERE id = $1", UUID(args.page_id)
@@ -146,6 +154,9 @@ async def main_async(args: argparse.Namespace) -> None:
             raise SystemExit("page not found")
         name = row["name"] or "slides"
         html = row["content_html"] or ""
+        slug = args.page_id
+
+    try:
 
         log.info("rendering original screenshots…")
         screenshot_pngs = await _render_slides(html)
@@ -171,11 +182,12 @@ async def main_async(args: argparse.Namespace) -> None:
             aspose_pngs = _pptx_to_pngs(aspose_pptx)
 
         out = _render_diff_html(name, html, screenshot_pngs, native_pngs, aspose_pngs)
-        out_path = Path(f"/tmp/diff-{args.page_id}.html")
+        out_path = Path(f"/tmp/diff-{slug}.html")
         out_path.write_text(out)
         log.info("wrote %s (open in your browser)", out_path)
     finally:
-        await database.close_db()
+        if not args.html_file:
+            await database.close_db()
 
 
 def _render_diff_html(
@@ -193,7 +205,7 @@ def _render_diff_html(
         native = _b64(natives[i]) if i < len(natives) else ""
         aspose = _b64(asposes[i]) if i < len(asposes) else ""
         cells = [
-            f"<td><iframe srcdoc='{_iframe_doc(html, i)}' style='width:540px;height:304px;border:1px solid #ccc;'></iframe></td>",
+            f"<td><div style='width:540px;height:304px;overflow:hidden;border:1px solid #ccc;'><iframe srcdoc='{_iframe_doc(html, i)}' style='width:1920px;height:1080px;border:0;transform:scale(0.28125);transform-origin:top left;'></iframe></div></td>",
             f"<td>{f'<img src=\"{shot}\" style=\"width:540px;height:auto;\">' if shot else '(missing)'}</td>",
             f"<td>{f'<img src=\"{native}\" style=\"width:540px;height:auto;\">' if native else '(install libreoffice + poppler)'}</td>",
         ]
@@ -244,7 +256,14 @@ def main() -> None:
     parser = argparse.ArgumentParser(
         description="Diff: HTML render vs screenshot export vs native export."
     )
-    parser.add_argument("page_id", help="UUID of a fixed-aspect HTML slide page")
+    parser.add_argument(
+        "page_id", nargs="?",
+        help="UUID of a fixed-aspect HTML slide page (omit if using --html-file)",
+    )
+    parser.add_argument(
+        "--html-file",
+        help="diff against a local HTML file (bypasses DB; used for fixtures)",
+    )
     parser.add_argument(
         "--aspose",
         action="store_true",

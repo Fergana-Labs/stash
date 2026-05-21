@@ -90,14 +90,17 @@ async def _post_slide(
     rasters: dict[tuple[int, str], bytes],
     fetcher: ImageFetcher,
 ) -> None:
-    resp = await client.post(
-        f"/sessions/{session_id}/slides",
-        json={"bg_color": spec.bg_color},
-    )
+    slide_body: dict = {"bg_color": spec.bg_color}
+    if spec.bg_gradient and spec.bg_gradient.stops:
+        slide_body["bg_gradient"] = asdict(spec.bg_gradient)
+
+    resp = await client.post(f"/sessions/{session_id}/slides", json=slide_body)
     resp.raise_for_status()
     slide_index = resp.json()["slide_index"]
 
-    if spec.bg_raster_selector:
+    # Background raster is now a last-resort fallback for bgs we couldn't
+    # parse as a gradient (image url, multi-layer, conic, etc).
+    if spec.bg_raster_selector and not spec.bg_gradient:
         png = rasters.get((spec.index, spec.bg_raster_selector))
         if png:
             await _post_raster(
@@ -119,6 +122,14 @@ async def _post_shape(
     rasters: dict[tuple[int, str], bytes],
     fetcher: ImageFetcher,
 ) -> None:
+    if sh.kind == "svg" and sh.svg:
+        await _post_svg(client, session_id, slide_index, sh)
+        return
+
+    if sh.kind == "chart" and sh.chart:
+        await _post_chart(client, session_id, slide_index, sh)
+        return
+
     if sh.kind == "raster":
         png = rasters.get((src_slide_idx, sh.raster_selector or ""))
         if png:
@@ -137,6 +148,35 @@ async def _post_shape(
         return
 
     await _post_text(client, session_id, slide_index, sh)
+
+
+async def _post_svg(
+    client: httpx.AsyncClient, session_id: str, slide_index: int, sh: ShapeSpec,
+) -> None:
+    resp = await client.post(
+        f"/sessions/{session_id}/slides/{slide_index}/svg",
+        json={"bbox": asdict(sh.bbox), "svg": sh.svg},
+    )
+    resp.raise_for_status()
+
+
+async def _post_chart(
+    client: httpx.AsyncClient, session_id: str, slide_index: int, sh: ShapeSpec,
+) -> None:
+    chart = sh.chart
+    if chart is None:
+        return
+    resp = await client.post(
+        f"/sessions/{session_id}/slides/{slide_index}/chart",
+        json={
+            "bbox": asdict(sh.bbox),
+            "type": chart.type,
+            "labels": chart.labels,
+            "datasets": [asdict(d) for d in chart.datasets],
+            "title": chart.title,
+        },
+    )
+    resp.raise_for_status()
 
 
 async def _post_text(

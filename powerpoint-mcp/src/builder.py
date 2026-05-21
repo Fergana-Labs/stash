@@ -18,8 +18,11 @@ from aspose.pydrawing import Color
 
 from .models import (
     BBoxModel,
+    ChartShapeRequest,
+    GradientModel,
     ImageShapeRequest,
     ParagraphModel,
+    SvgShapeRequest,
     TableShapeRequest,
     TextRunModel,
     TextShapeRequest,
@@ -55,9 +58,13 @@ def _hex_to_color(hex_str: str) -> Color:
     return Color.from_argb(255, r, g, b)
 
 
-def add_blank_slide(pres: slides.Presentation, bg_color: str | None) -> int:
-    """Append a blank slide; return its 0-based index."""
-    # Find the blank layout — every default Aspose presentation has it.
+def add_blank_slide(
+    pres: slides.Presentation,
+    bg_color: str | None,
+    bg_gradient: GradientModel | None = None,
+) -> int:
+    """Append a blank slide; return its 0-based index. Gradient wins
+    over solid color when both are provided."""
     blank_layout = None
     for layout in pres.layout_slides:
         if layout.layout_type == slides.SlideLayoutType.BLANK:
@@ -68,12 +75,34 @@ def add_blank_slide(pres: slides.Presentation, bg_color: str | None) -> int:
 
     slide = pres.slides.add_empty_slide(blank_layout)
 
-    if bg_color:
+    if bg_gradient and bg_gradient.stops:
+        _apply_gradient_fill(slide.background, bg_gradient)
+    elif bg_color:
         slide.background.type = slides.BackgroundType.OWN_BACKGROUND
         slide.background.fill_format.fill_type = slides.FillType.SOLID
         slide.background.fill_format.solid_fill_color.color = _hex_to_color(bg_color)
 
     return pres.slides.index_of(slide)
+
+
+def _apply_gradient_fill(background, gradient: GradientModel) -> None:
+    background.type = slides.BackgroundType.OWN_BACKGROUND
+    background.fill_format.fill_type = slides.FillType.GRADIENT
+    gf = background.fill_format.gradient_format
+    if gradient.type == "linear":
+        gf.gradient_shape = slides.GradientShape.LINEAR
+        # CSS angles: 0° = up, 90° = right. Aspose `gradient_direction`
+        # only has 8 cardinal values; for arbitrary angles we set
+        # linear_gradient_angle which is degrees clockwise from up.
+        gf.linear_gradient_angle = float(gradient.angle) % 360
+    else:  # radial
+        gf.gradient_shape = slides.GradientShape.RECTANGLE
+    # Replace default stops with ours.
+    while gf.gradient_stops.count > 0:
+        gf.gradient_stops.remove_at(0)
+    for stop in gradient.stops:
+        # Aspose's add() takes a position percent 0-100 and color.
+        gf.gradient_stops.add(float(stop.offset) * 100.0, _hex_to_color(stop.color))
 
 
 def _set_canvas_size(pres: slides.Presentation, width_px: float, height_px: float) -> None:
@@ -225,6 +254,98 @@ def add_table_shape(
 
 def _equal_split(total: float, n: int) -> list[float]:
     return [total / n] * n
+
+
+def add_svg_shape(
+    pres: slides.Presentation,
+    slide_index: int,
+    req: SvgShapeRequest,
+    canvas_w_px: float,
+    canvas_h_px: float,
+) -> int:
+    """Add an SVG as a native vector picture frame (Aspose decodes it to
+    a MetaShape; stays editable + crisp at any zoom)."""
+    slide = pres.slides[slide_index]
+    slide_w_pt = float(pres.slide_size.size.width)
+    slide_h_pt = float(pres.slide_size.size.height)
+
+    x, y, w, h = _bbox_to_pt(req.bbox, canvas_w_px, canvas_h_px, slide_w_pt, slide_h_pt)
+    svg_image = pres.images.add_image(req.svg.encode("utf-8"))
+    pic = slide.shapes.add_picture_frame(slides.ShapeType.RECTANGLE, x, y, w, h, svg_image)
+    pic.line_format.fill_format.fill_type = slides.FillType.NO_FILL
+    return slide.shapes.index_of(pic)
+
+
+_CHART_TYPE_MAP = {
+    "bar": slides.charts.ChartType.CLUSTERED_COLUMN,
+    "line": slides.charts.ChartType.LINE,
+    "pie": slides.charts.ChartType.PIE,
+    "doughnut": slides.charts.ChartType.DOUGHNUT,
+    "area": slides.charts.ChartType.AREA,
+}
+
+
+def add_chart_shape(
+    pres: slides.Presentation,
+    slide_index: int,
+    req: ChartShapeRequest,
+    canvas_w_px: float,
+    canvas_h_px: float,
+) -> int:
+    """Build a native PPTX chart from a Chart.js-shaped config — series
+    data lands in the chart's worksheet so PowerPoint's right-click Edit
+    Data flow works."""
+    slide = pres.slides[slide_index]
+    slide_w_pt = float(pres.slide_size.size.width)
+    slide_h_pt = float(pres.slide_size.size.height)
+
+    x, y, w, h = _bbox_to_pt(req.bbox, canvas_w_px, canvas_h_px, slide_w_pt, slide_h_pt)
+    chart_type = _CHART_TYPE_MAP.get(req.type, slides.charts.ChartType.CLUSTERED_COLUMN)
+    chart = slide.shapes.add_chart(chart_type, x, y, w, h)
+
+    wb = chart.chart_data.chart_data_workbook
+    # Wipe the default sample data Aspose seeds (2 series × 4 categories).
+    chart.chart_data.series.clear()
+    chart.chart_data.categories.clear()
+
+    # Categories (labels) in column A.
+    for i, label in enumerate(req.labels):
+        chart.chart_data.categories.add(wb.get_cell(0, i + 1, 0, str(label)))
+
+    # Each chart family takes a different add_data_point method on Aspose's
+    # Python bindings — dispatch by type so line/pie don't 500.
+    add_dp = {
+        "bar": lambda s, cell: s.data_points.add_data_point_for_bar_series(cell),
+        "line": lambda s, cell: s.data_points.add_data_point_for_line_series(cell),
+        "pie": lambda s, cell: s.data_points.add_data_point_for_pie_series(cell),
+        "doughnut": lambda s, cell: s.data_points.add_data_point_for_pie_series(cell),
+        "area": lambda s, cell: s.data_points.add_data_point_for_area_series(cell),
+    }[req.type]
+
+    # One series per dataset. Series labels in row 0; values down each column.
+    for col, ds in enumerate(req.datasets, start=1):
+        series_cell = wb.get_cell(0, 0, col, ds.label or f"Series {col}")
+        series = chart.chart_data.series.add(series_cell, chart_type)
+        for row, value in enumerate(ds.data, start=1):
+            data_cell = wb.get_cell(0, row, col, float(value))
+            add_dp(series, data_cell)
+        if ds.color:
+            series.format.fill.fill_type = slides.FillType.SOLID
+            series.format.fill.solid_fill_color.color = _hex_to_color(ds.color)
+            if req.type in ("line", "area"):
+                series.format.line.fill_format.fill_type = slides.FillType.SOLID
+                series.format.line.fill_format.solid_fill_color.color = _hex_to_color(ds.color)
+
+    chart.has_title = bool(req.title)
+    if req.title:
+        chart.chart_title.add_text_frame_for_overriding(req.title)
+
+    # Hide the legend for single-series charts to match Chart.js default
+    # when legend.display=false (most fixtures).
+    if len(req.datasets) <= 1:
+        chart.has_legend = False
+
+    return slide.shapes.index_of(chart)
 
 
 def save_presentation_bytes(pres: slides.Presentation) -> bytes:

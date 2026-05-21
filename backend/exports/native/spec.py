@@ -14,8 +14,10 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Literal
 
-ShapeKind = Literal["text", "image", "table", "raster"]
+ShapeKind = Literal["text", "image", "table", "raster", "svg", "chart"]
 TextAlign = Literal["left", "center", "right", "justify"]
+GradientType = Literal["linear", "radial"]
+ChartType = Literal["bar", "line", "pie", "doughnut", "area"]
 
 
 @dataclass
@@ -60,6 +62,40 @@ class BBox:
 
 
 @dataclass
+class GradientStop:
+    offset: float  # 0.0 → 1.0
+    color: str  # hex
+
+
+@dataclass
+class Gradient:
+    """Parsed CSS gradient. Aspose translates this to a native gradient
+    fill so the bg stays vector instead of a stretched PNG."""
+
+    type: GradientType = "linear"
+    angle: float = 0.0  # CSS degrees, 0 = bottom-to-top
+    stops: list[GradientStop] = field(default_factory=list)
+
+
+@dataclass
+class ChartDataset:
+    label: str = ""
+    data: list[float] = field(default_factory=list)
+    color: str | None = None  # series fill / line color, hex
+
+
+@dataclass
+class ChartSpec:
+    """Extracted from `Chart.getChart(canvas).config` so Aspose can
+    re-emit a native PPTX chart instead of embedding a canvas PNG."""
+
+    type: ChartType = "bar"
+    labels: list[str] = field(default_factory=list)
+    datasets: list[ChartDataset] = field(default_factory=list)
+    title: str = ""
+
+
+@dataclass
 class ShapeSpec:
     """One PPTX shape. Discriminated by `kind`."""
 
@@ -82,6 +118,12 @@ class ShapeSpec:
     raster_selector: str | None = None  # CSS selector inside the slide
     raster_reason: str | None = None
 
+    # svg: serialized <svg> outerHTML (vector passthrough to Aspose)
+    svg: str | None = None
+
+    # chart: parsed Chart.js config for native PPTX chart emission
+    chart: ChartSpec | None = None
+
 
 @dataclass
 class SlideSpec:
@@ -89,5 +131,6 @@ class SlideSpec:
 
     index: int
     bg_color: str | None = None  # solid background; if None, builder defaults to white
-    bg_raster_selector: str | None = None  # set when background is a gradient / image
+    bg_gradient: Gradient | None = None  # native gradient — preferred over raster
+    bg_raster_selector: str | None = None  # set when bg is image/pattern we can't parse
     shapes: list[ShapeSpec] = field(default_factory=list)
