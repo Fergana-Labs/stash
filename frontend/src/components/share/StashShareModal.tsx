@@ -333,6 +333,7 @@ export default function StashShareModal() {
           onSubmit={onSubmit}
           total={total}
           error={error}
+          singleInitial={singleInitialLabel(initial, spine)}
         />
       </div>
     </div>
@@ -366,6 +367,7 @@ function NewShareTab(props: {
   onSubmit: () => void;
   total: number;
   error: string;
+  singleInitial: { type: string; name: string | null } | null;
 }) {
   const {
     search,
@@ -394,6 +396,7 @@ function NewShareTab(props: {
     onSubmit,
     total,
     error,
+    singleInitial,
   } = props;
 
   // Default: every group collapsed. Users expand the groups they care about
@@ -431,6 +434,26 @@ function NewShareTab(props: {
 
   return (
     <>
+      {singleInitial && (
+        <div className="border-b border-border-subtle bg-[var(--color-brand-50)] px-5 py-2.5">
+          <div className="text-[12.5px] text-foreground leading-snug">
+            <span className="font-medium">
+              Sharing just this {singleInitial.type}
+              {singleInitial.name ? (
+                <>
+                  : <span className="font-mono">{singleInitial.name}</span>
+                </>
+              ) : (
+                <>.</>
+              )}
+            </span>
+            <span className="block text-[11.5px] text-muted mt-0.5">
+              Add more from this workspace below if you want to share them in
+              the same Stash.
+            </span>
+          </div>
+        </div>
+      )}
       <div className="border-b border-border-subtle px-5 py-3">
         <input
           autoFocus
@@ -891,4 +914,35 @@ function modalTitle(initial: StashItemSpec[] | undefined, workspaceName: string 
   if (type === "file") return "Share file as Stash";
   if (type === "table") return "Share table as Stash";
   return "Share as Stash";
+}
+
+// "Looking up the friendly name of the one thing we're about to share so the
+// banner can read 'Sharing <name>'." Returns null when initial is missing,
+// multi-item, or the spine doesn't have a matching row (yet).
+function singleInitialLabel(
+  initial: StashItemSpec[] | undefined,
+  spine: WorkspaceSidebar | null,
+): { type: string; name: string | null } | null {
+  if (!initial || initial.length !== 1) return null;
+  const item = initial[0];
+  if (!spine) return { type: item.object_type, name: null };
+  if (item.object_type === "session") {
+    const s = spine.sessions.find(
+      (x) => x.id === item.object_id || x.session_id === item.object_id,
+    );
+    return { type: "session", name: s?.title ?? null };
+  }
+  if (item.object_type === "page") {
+    const p = spine.files.pages.find((x) => x.id === item.object_id);
+    return { type: "page", name: p?.name ?? null };
+  }
+  if (item.object_type === "file") {
+    const f = spine.files.files.find((x) => x.id === item.object_id);
+    return { type: "file", name: f?.name ?? null };
+  }
+  if (item.object_type === "folder") {
+    const f = spine.files.folders.find((x) => x.id === item.object_id);
+    return { type: "folder", name: f?.name ?? null };
+  }
+  return { type: item.object_type, name: null };
 }
