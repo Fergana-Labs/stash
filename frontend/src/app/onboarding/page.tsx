@@ -125,6 +125,22 @@ function OnboardingInner() {
     setCanContinue(true);
   }, [stepIdx]);
 
+  // Canonicalize the URL after an OAuth callback. If we inferred source
+  // from ?connected= but the URL doesn't have ?source= explicitly, write
+  // it in and strip ?connected= in the same replace. Without this, the
+  // first re-render works (inference catches it) but subsequent URL
+  // mutations downstream lose the source signal.
+  useEffect(() => {
+    if (!source) return;
+    const sourceInUrl = searchParams.get("source") === source;
+    const connectedInUrl = searchParams.has("connected");
+    if (sourceInUrl && !connectedInUrl) return;
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("source", source);
+    params.delete("connected");
+    router.replace(`/onboarding?${params.toString()}`);
+  }, [source, searchParams, router]);
+
   const pickPath = useCallback(
     (next: PathId) => {
       if (typeof window !== "undefined" && user?.id) {

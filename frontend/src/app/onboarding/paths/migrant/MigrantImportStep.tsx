@@ -100,15 +100,13 @@ function ProviderBlock({
     void refresh();
   }, [refresh]);
 
+  // Re-fetch integrations when the URL carries a fresh OAuth callback.
+  // URL cleanup (stripping ?connected=, writing ?source=) is handled at
+  // the page level — we just need to know to refresh.
   useEffect(() => {
     if (typeof window === "undefined") return;
     const params = new URLSearchParams(window.location.search);
-    if (params.get("connected")) {
-      void refresh();
-      const url = new URL(window.location.href);
-      url.searchParams.delete("connected");
-      window.history.replaceState({}, "", url.pathname + url.search);
-    }
+    if (params.get("connected")) void refresh();
   }, [refresh]);
 
   const provider = providers?.find((p) => p.provider === integrationKey);
