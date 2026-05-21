@@ -145,15 +145,17 @@ async def get_folder(folder_id: UUID) -> dict | None:
 
 async def list_folders(workspace_id: UUID, user_id: UUID | None = None) -> list[dict]:
     pool = get_pool()
+    args: list = [workspace_id]
+    where = "f.workspace_id = $1"
+    if user_id is not None:
+        args.append(user_id)
+        where += " AND " + permission_service.readable_content_condition("folder", "f", 2)
     rows = await pool.fetch(
         "SELECT id, workspace_id, parent_folder_id, name, created_by, created_at, updated_at "
-        "FROM folders WHERE workspace_id = $1 ORDER BY name",
-        workspace_id,
+        f"FROM folders f WHERE {where} ORDER BY name",
+        *args,
     )
-    folders = [dict(r) for r in rows]
-    if user_id is None:
-        return folders
-    return await _filter_readable(folders, "folder", user_id, workspace_id)
+    return [dict(r) for r in rows]
 
 
 async def update_folder(
@@ -549,6 +551,15 @@ async def list_trashed_pages(workspace_id: UUID) -> list[dict]:
 async def list_workspace_pages(workspace_id: UUID, user_id: UUID | None = None) -> list[dict]:
     """Flat list of every page in a workspace with its folder path."""
     pool = get_pool()
+    args: list = [workspace_id]
+    where = (
+        "p.workspace_id = $1 "
+        "AND COALESCE(p.metadata->>'shared_in_stash_id', '') = '' "
+        "AND p.deleted_at IS NULL"
+    )
+    if user_id is not None:
+        args.append(user_id)
+        where += " AND " + permission_service.readable_content_condition("page", "p", 2)
     rows = await pool.fetch(
         "WITH RECURSIVE chain AS ("
         "  SELECT id, parent_folder_id, name, ARRAY[name]::text[] AS path "
@@ -561,24 +572,24 @@ async def list_workspace_pages(workspace_id: UUID, user_id: UUID | None = None) 
         "SELECT p.id, p.name, p.content_type, p.workspace_id, p.folder_id, "
         "COALESCE(c.path, ARRAY[]::text[]) AS folder_path, p.updated_at "
         "FROM pages p LEFT JOIN chain c ON c.id = p.folder_id "
-        "WHERE p.workspace_id = $1 "
-        "AND COALESCE(p.metadata->>'shared_in_stash_id', '') = '' "
+        f"WHERE {where} "
         "ORDER BY c.path NULLS FIRST, p.name",
-        workspace_id,
+        *args,
     )
-    pages = [dict(r) for r in rows]
-    if user_id is None:
-        return pages
-    return await _filter_readable(pages, "page", user_id, workspace_id)
+    return [dict(r) for r in rows]
 
 
 async def list_user_pages(user_id: UUID) -> list[dict]:
     """Flat list of every page across every workspace the user is a member of."""
     pool = get_pool()
+    readable_page = permission_service.readable_content_condition("page", "p", 1)
     rows = await pool.fetch(
-        "WITH RECURSIVE chain AS ("
+        "WITH RECURSIVE member_workspaces AS ("
+        "  SELECT workspace_id FROM workspace_members WHERE user_id = $1"
+        "), chain AS ("
         "  SELECT id, parent_folder_id, name, ARRAY[name]::text[] AS path, workspace_id "
-        "  FROM folders WHERE parent_folder_id IS NULL"
+        "  FROM folders WHERE parent_folder_id IS NULL "
+        "  AND workspace_id IN (SELECT workspace_id FROM member_workspaces)"
         "  UNION ALL"
         "  SELECT f.id, f.parent_folder_id, f.name, c.path || f.name, f.workspace_id "
         "  FROM folders f JOIN chain c ON f.parent_folder_id = c.id"
@@ -587,30 +598,37 @@ async def list_user_pages(user_id: UUID) -> list[dict]:
         "COALESCE(c.path, ARRAY[]::text[]) AS folder_path, "
         "w.name AS workspace_name, p.updated_at "
         "FROM pages p "
+        "JOIN member_workspaces mw ON mw.workspace_id = p.workspace_id "
         "JOIN workspaces w ON w.id = p.workspace_id "
-        "JOIN workspace_members wm ON wm.workspace_id = p.workspace_id "
         "LEFT JOIN chain c ON c.id = p.folder_id "
-        "WHERE wm.user_id = $1 "
-        "AND COALESCE(p.metadata->>'shared_in_stash_id', '') = '' "
+        "WHERE COALESCE(p.metadata->>'shared_in_stash_id', '') = '' "
+        "AND p.deleted_at IS NULL "
+        f"AND {readable_page} "
         "ORDER BY w.name, c.path NULLS FIRST, p.name",
         user_id,
     )
-    return await _filter_readable([dict(r) for r in rows], "page", user_id)
+    return [dict(r) for r in rows]
 
 
 async def list_workspace_tree(workspace_id: UUID, user_id: UUID | None = None) -> dict:
     """Nested folder tree with pages attached at each level."""
     folders = await list_folders(workspace_id, user_id)
     pool = get_pool()
+    args: list = [workspace_id]
+    where = (
+        "p.workspace_id = $1 "
+        "AND COALESCE(p.metadata->>'shared_in_stash_id', '') = '' "
+        "AND p.deleted_at IS NULL"
+    )
+    if user_id is not None:
+        args.append(user_id)
+        where += " AND " + permission_service.readable_content_condition("page", "p", 2)
     page_rows = await pool.fetch(
         "SELECT id, workspace_id, folder_id, name, content_type, created_at, updated_at "
-        f"FROM pages WHERE workspace_id = $1 AND {_WORKSPACE_PAGE_FILTER} ORDER BY name",
-        workspace_id,
+        f"FROM pages p WHERE {where} ORDER BY name",
+        *args,
     )
-
     pages = [dict(row) for row in page_rows]
-    if user_id is not None:
-        pages = await _filter_readable(pages, "page", user_id, workspace_id)
 
     folder_by_id: dict[UUID, dict] = {}
     for f in folders:

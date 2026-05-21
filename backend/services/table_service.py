@@ -36,6 +36,12 @@ def _schedule_row_embed(row_id: UUID, text: str, text_hash: str) -> None:
 # --- Table CRUD ---
 
 
+_TABLE_FIELDS = (
+    "id, workspace_id, name, description, columns, views, "
+    "created_by, updated_by, created_at, updated_at"
+)
+
+
 async def create_table(
     workspace_id: UUID | None,
     name: str,
@@ -68,12 +74,17 @@ async def create_table(
 async def get_table(table_id: UUID) -> dict | None:
     pool = get_pool()
     row = await pool.fetchrow(
-        "SELECT t.id, t.workspace_id, t.name, t.description, t.columns, t.views, "
-        "t.created_by, t.updated_by, t.created_at, t.updated_at, "
+        f"SELECT t.{_TABLE_FIELDS.replace(', ', ', t.')}, "
         "(SELECT COUNT(*) FROM table_rows tr WHERE tr.table_id = t.id) AS row_count "
         "FROM tables t WHERE t.id = $1",
         table_id,
     )
+    return dict(row) if row else None
+
+
+async def get_table_metadata(table_id: UUID) -> dict | None:
+    pool = get_pool()
+    row = await pool.fetchrow(f"SELECT {_TABLE_FIELDS} FROM tables WHERE id = $1", table_id)
     return dict(row) if row else None
 
 
@@ -124,12 +135,17 @@ async def delete_table(table_id: UUID) -> bool:
 async def list_tables(workspace_id: UUID | None, user_id: UUID | None = None) -> list[dict]:
     pool = get_pool()
     if workspace_id is not None:
+        args: list = [workspace_id]
+        where = "t.workspace_id = $1"
+        if user_id is not None:
+            args.append(user_id)
+            where += " AND " + permission_service.readable_content_condition("table", "t", 2)
         rows = await pool.fetch(
             "SELECT t.id, t.workspace_id, t.name, t.description, t.columns, "
             "t.created_by, t.updated_by, t.created_at, t.updated_at, "
             "(SELECT COUNT(*) FROM table_rows tr WHERE tr.table_id = t.id) AS row_count "
-            "FROM tables t WHERE t.workspace_id = $1 ORDER BY t.updated_at DESC",
-            workspace_id,
+            f"FROM tables t WHERE {where} ORDER BY t.updated_at DESC",
+            *args,
         )
     else:
         rows = await pool.fetch(
@@ -140,25 +156,13 @@ async def list_tables(workspace_id: UUID | None, user_id: UUID | None = None) ->
             "ORDER BY t.updated_at DESC",
             user_id,
         )
-    tables = [dict(r) for r in rows]
-    if workspace_id is None or user_id is None:
-        return tables
-
-    readable = []
-    for table in tables:
-        if await permission_service.check_access(
-            "table",
-            table["id"],
-            user_id,
-            workspace_id=workspace_id,
-        ):
-            readable.append(table)
-    return readable
+    return [dict(r) for r in rows]
 
 
 async def list_all_user_tables(user_id: UUID) -> list[dict]:
     """All tables from workspaces user is member of + personal."""
     pool = get_pool()
+    readable_table = permission_service.readable_content_condition("table", "t", 1)
     rows = await pool.fetch(
         "SELECT t.id, t.workspace_id, t.name, t.description, t.columns, t.views, "
         "t.created_by, t.updated_by, t.created_at, t.updated_at, "
@@ -166,24 +170,18 @@ async def list_all_user_tables(user_id: UUID) -> list[dict]:
         "(SELECT COUNT(*) FROM table_rows tr WHERE tr.table_id = t.id) AS row_count "
         "FROM tables t "
         "LEFT JOIN workspaces w ON w.id = t.workspace_id "
-        "WHERE t.workspace_id IN ("
-        "  SELECT workspace_id FROM workspace_members WHERE user_id = $1"
+        "WHERE ("
+        "  t.workspace_id IS NOT NULL "
+        "  AND EXISTS ("
+        "    SELECT 1 FROM workspace_members wm "
+        "    WHERE wm.workspace_id = t.workspace_id AND wm.user_id = $1"
+        "  ) "
+        f"  AND {readable_table}"
         ") OR (t.workspace_id IS NULL AND t.created_by = $1) "
         "ORDER BY t.updated_at DESC",
         user_id,
     )
-    readable = []
-    for row in rows:
-        table = dict(row)
-        workspace_id = table.get("workspace_id")
-        if workspace_id is None or await permission_service.check_access(
-            "table",
-            table["id"],
-            user_id,
-            workspace_id=workspace_id,
-        ):
-            readable.append(table)
-    return readable
+    return [dict(row) for row in rows]
 
 
 # --- Column Management ---
@@ -356,10 +354,8 @@ async def create_rows_batch(table_id: UUID, rows_data: list[dict], created_by: U
     columns = await _get_columns(table_id)
     validated_rows = _validate_batch(columns, rows_data, partial=False)
     pool = get_pool()
-    results = []
     async with pool.acquire() as conn:
         async with conn.transaction():
-            # Lock the parent table row to prevent concurrent row_order conflicts
             await conn.fetchval(
                 "SELECT id FROM tables WHERE id = $1 FOR UPDATE",
                 table_id,
@@ -368,18 +364,23 @@ async def create_rows_batch(table_id: UUID, rows_data: list[dict], created_by: U
                 "SELECT COALESCE(MAX(row_order), -1) FROM table_rows WHERE table_id = $1",
                 table_id,
             )
-            for i, data in enumerate(validated_rows):
-                row = await conn.fetchrow(
-                    "INSERT INTO table_rows (table_id, data, row_order, created_by, updated_by) "
-                    "VALUES ($1, $2, $3, $4, $4) "
-                    "RETURNING id, table_id, data, row_order, created_by, updated_by, created_at, updated_at",
-                    table_id,
-                    data,
-                    max_order + 1 + i,
-                    created_by,
-                )
-                results.append(dict(row))
-    return results
+            rows = await conn.fetch(
+                "WITH payload AS ("
+                "  SELECT data, ordinality::int AS row_offset "
+                "  FROM jsonb_array_elements($2::jsonb) "
+                "  WITH ORDINALITY AS payload(data, ordinality)"
+                ") "
+                "INSERT INTO table_rows (table_id, data, row_order, created_by, updated_by) "
+                "SELECT $1, data, $3 + row_offset, $4, $4 "
+                "FROM payload "
+                "ORDER BY row_offset "
+                "RETURNING id, table_id, data, row_order, created_by, updated_by, created_at, updated_at",
+                table_id,
+                validated_rows,
+                max_order,
+                created_by,
+            )
+    return [dict(row) for row in rows]
 
 
 async def get_row(row_id: UUID) -> dict | None:
@@ -448,22 +449,29 @@ async def update_rows_batch(table_id: UUID, updates: list[dict], updated_by: UUI
     columns = await _get_columns(table_id)
     validated_payloads = _validate_batch(columns, [u["data"] for u in updates], partial=True)
     pool = get_pool()
-    results = []
-    async with pool.acquire() as conn:
-        async with conn.transaction():
-            for item, validated in zip(updates, validated_payloads):
-                row = await conn.fetchrow(
-                    "UPDATE table_rows SET data = data || $1, updated_by = $2, updated_at = now() "
-                    "WHERE id = $3 AND table_id = $4 "
-                    "RETURNING id, table_id, data, row_order, created_by, updated_by, created_at, updated_at",
-                    validated,
-                    updated_by,
-                    item["row_id"],
-                    table_id,
-                )
-                if row:
-                    results.append(dict(row))
-    return results
+    payload = [
+        {"row_id": str(item["row_id"]), "data": validated}
+        for item, validated in zip(updates, validated_payloads)
+    ]
+    rows = await pool.fetch(
+        "WITH payload AS ("
+        "  SELECT (item->>'row_id')::uuid AS row_id, item->'data' AS data, ordinality "
+        "  FROM jsonb_array_elements($1::jsonb) WITH ORDINALITY AS payload(item, ordinality)"
+        "), updated AS ("
+        "  UPDATE table_rows tr "
+        "  SET data = tr.data || payload.data, updated_by = $2, updated_at = now() "
+        "  FROM payload "
+        "  WHERE tr.id = payload.row_id AND tr.table_id = $3 "
+        "  RETURNING tr.id, tr.table_id, tr.data, tr.row_order, tr.created_by, tr.updated_by, "
+        "            tr.created_at, tr.updated_at, payload.ordinality"
+        ") "
+        "SELECT id, table_id, data, row_order, created_by, updated_by, created_at, updated_at "
+        "FROM updated ORDER BY ordinality",
+        payload,
+        updated_by,
+        table_id,
+    )
+    return [dict(row) for row in rows]
 
 
 async def delete_rows_batch(table_id: UUID, row_ids: list[UUID]) -> int:
@@ -509,7 +517,7 @@ async def list_rows(
     pool = get_pool()
 
     # Fetch table schema to validate column IDs against injection
-    table = await get_table(table_id)
+    table = await get_table_metadata(table_id)
     if not table:
         return [], 0
     valid_col_ids = {c["id"] for c in table["columns"]}
@@ -554,23 +562,25 @@ async def list_rows(
 
     where = " AND ".join(where_clauses)
 
-    # Count
-    total = await pool.fetchval(f"SELECT COUNT(*) FROM table_rows WHERE {where}", *args)
-
     # Sort — validate sort_by against schema
     order = "row_order ASC"
     if sort_by and sort_by in valid_col_ids:
         direction = "DESC" if sort_order == "desc" else "ASC"
         order = f"data->>'{sort_by}' {direction}, row_order ASC"
 
-    # Fetch
-    rows = await pool.fetch(
+    total_query = pool.fetchval(f"SELECT COUNT(*) FROM table_rows WHERE {where}", *args)
+    if limit == 0:
+        total = await total_query
+        return [], total
+
+    rows_query = pool.fetch(
         f"SELECT id, table_id, data, row_order, created_by, updated_by, created_at, updated_at "
         f"FROM table_rows WHERE {where} ORDER BY {order} LIMIT ${idx} OFFSET ${idx + 1}",
         *args,
         limit,
         offset,
     )
+    total, rows = await asyncio.gather(total_query, rows_query)
     return [dict(r) for r in rows], total
 
 
@@ -662,7 +672,7 @@ async def search_rows(
 ) -> tuple[list[dict], int]:
     """Search across all text/email/url columns using ILIKE."""
     pool = get_pool()
-    table = await get_table(table_id)
+    table = await get_table_metadata(table_id)
     if not table:
         return [], 0
     # Build OR clauses for all text-like columns
@@ -672,10 +682,13 @@ async def search_rows(
     or_clauses = " OR ".join(f"data->>'{c['id']}' ILIKE $2" for c in text_cols)
     where = f"table_id = $1 AND ({or_clauses})"
     like_val = f"%{query}%"
-    total = await pool.fetchval(
+    total_query = pool.fetchval(
         f"SELECT COUNT(*) FROM table_rows WHERE {where}", table_id, like_val
     )
-    rows = await pool.fetch(
+    if limit == 0:
+        total = await total_query
+        return [], total
+    rows_query = pool.fetch(
         f"SELECT id, table_id, data, row_order, created_by, updated_by, created_at, updated_at "
         f"FROM table_rows WHERE {where} ORDER BY row_order ASC LIMIT $3 OFFSET $4",
         table_id,
@@ -683,6 +696,7 @@ async def search_rows(
         limit,
         offset,
     )
+    total, rows = await asyncio.gather(total_query, rows_query)
     return [dict(r) for r in rows], total
 
 
@@ -692,7 +706,7 @@ async def summarize_rows(
 ) -> dict:
     """Compute aggregates per column: count, sum, avg, min, max for numbers; count for all."""
     pool = get_pool()
-    table = await get_table(table_id)
+    table = await get_table_metadata(table_id)
     if not table:
         return {}
     # Get total count (reuse existing logic)

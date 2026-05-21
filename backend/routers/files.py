@@ -169,16 +169,16 @@ async def list_ws_files(
 ):
     await _check_member(workspace_id, current_user["id"])
     pool = get_pool()
+    readable_file = permission_service.readable_content_condition("file", "f", 2)
     rows = await pool.fetch(
         "SELECT id, workspace_id, folder_id, name, content_type, size_bytes, storage_key, uploaded_by, created_at, linked_table_id "
-        "FROM files WHERE workspace_id = $1 AND deleted_at IS NULL ORDER BY created_at DESC",
+        "FROM files f WHERE f.workspace_id = $1 AND f.deleted_at IS NULL "
+        f"AND {readable_file} "
+        "ORDER BY created_at DESC",
         workspace_id,
+        current_user["id"],
     )
-    readable_rows = []
-    for row in rows:
-        if await _can_access_file(row["id"], workspace_id, current_user["id"]):
-            readable_rows.append(dict(row))
-    files = [await _file_to_response(r) for r in readable_rows]
+    files = [await _file_to_response(dict(row)) for row in rows]
     return FileListResponse(files=files)
 
 
@@ -190,15 +190,16 @@ async def get_ws_file(
 ):
     await _check_member(workspace_id, current_user["id"])
     pool = get_pool()
+    readable_file = permission_service.readable_content_condition("file", "f", 3)
     row = await pool.fetchrow(
         "SELECT id, workspace_id, folder_id, name, content_type, size_bytes, storage_key, uploaded_by, created_at, linked_table_id "
-        "FROM files WHERE id = $1 AND workspace_id = $2 AND deleted_at IS NULL",
+        "FROM files f WHERE f.id = $1 AND f.workspace_id = $2 AND f.deleted_at IS NULL "
+        f"AND {readable_file}",
         file_id,
         workspace_id,
+        current_user["id"],
     )
     if not row:
-        raise HTTPException(status_code=404, detail="File not found")
-    if not await _can_access_file(file_id, workspace_id, current_user["id"]):
         raise HTTPException(status_code=404, detail="File not found")
     return await _file_to_response(dict(row))
 
@@ -244,15 +245,16 @@ async def get_ws_file_text(
 ):
     await _check_member(workspace_id, current_user["id"])
     pool = get_pool()
+    readable_file = permission_service.readable_content_condition("file", "f", 3)
     row = await pool.fetchrow(
         "SELECT extracted_text, extraction_status, extraction_error "
-        "FROM files WHERE id = $1 AND workspace_id = $2 AND deleted_at IS NULL",
+        "FROM files f WHERE f.id = $1 AND f.workspace_id = $2 AND f.deleted_at IS NULL "
+        f"AND {readable_file}",
         file_id,
         workspace_id,
+        current_user["id"],
     )
     if not row:
-        raise HTTPException(status_code=404, detail="File not found")
-    if not await _can_access_file(file_id, workspace_id, current_user["id"]):
         raise HTTPException(status_code=404, detail="File not found")
     return {
         "text": row["extracted_text"],

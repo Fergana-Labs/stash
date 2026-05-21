@@ -52,9 +52,17 @@ async def _check_read(workspace_id: UUID, user_id: UUID) -> None:
         raise HTTPException(status_code=403, detail="Not a workspace member")
 
 
-async def _check_ws_table(workspace_id: UUID, table_id: UUID) -> dict:
+async def _check_ws_table(
+    workspace_id: UUID,
+    table_id: UUID,
+    *,
+    with_row_count: bool = False,
+) -> dict:
     """Verify table exists and belongs to the given workspace."""
-    table = await table_service.get_table(table_id)
+    if with_row_count:
+        table = await table_service.get_table(table_id)
+    else:
+        table = await table_service.get_table_metadata(table_id)
     if not table or table.get("workspace_id") != workspace_id:
         raise HTTPException(status_code=404, detail="Table not found")
     return table
@@ -137,7 +145,7 @@ async def get_ws_table(
     current_user: dict = Depends(get_current_user),
 ):
     await _check_read(workspace_id, current_user["id"])
-    table = await _check_ws_table(workspace_id, table_id)
+    table = await _check_ws_table(workspace_id, table_id, with_row_count=True)
     await _check_table_access(workspace_id, table_id, current_user["id"])
     return TableResponse(**table)
 

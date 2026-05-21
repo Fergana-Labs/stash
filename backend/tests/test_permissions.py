@@ -852,7 +852,7 @@ async def test_private_stash_hides_session_surfaces_until_user_is_added(
         headers=_auth(member_key),
     )
     assert timeline_resp.status_code == 200
-    assert timeline_resp.json()["contributors"] == ["session_privacy_owner / agent"]
+    assert timeline_resp.json()["contributors"] == ["session_privacy_owner (agent)"]
 
 
 @pytest.mark.asyncio

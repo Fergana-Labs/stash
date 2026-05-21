@@ -183,72 +183,55 @@ async def get_folder_contents(
     )
     breadcrumbs = [{"id": str(r["id"]), "name": r["name"]} for r in ancestry_rows]
 
+    readable_folder = permission_service.readable_content_condition("folder", "f", 3)
+    readable_page = permission_service.readable_content_condition("page", "p", 3)
+    readable_file = permission_service.readable_content_condition("file", "fi", 3)
     subfolders = await pool.fetch(
         "SELECT id, name, "
-        "       (SELECT COUNT(*) FROM pages p WHERE p.folder_id = f.id "
-        "        AND COALESCE(p.metadata->>'shared_in_stash_id', '') = '' "
-        "        AND p.deleted_at IS NULL) AS page_count, "
-        "       (SELECT COUNT(*) FROM files fi WHERE fi.folder_id = f.id "
-        "        AND fi.deleted_at IS NULL) AS file_count "
-        "FROM folders f WHERE f.parent_folder_id = $1 ORDER BY name",
+        "       ("
+        "         SELECT COUNT(*) FROM pages p WHERE p.folder_id = f.id "
+        "         AND p.workspace_id = $2 "
+        "         AND COALESCE(p.metadata->>'shared_in_stash_id', '') = '' "
+        "         AND p.deleted_at IS NULL "
+        f"         AND {readable_page}"
+        "       ) AS page_count, "
+        "       ("
+        "         SELECT COUNT(*) FROM files fi WHERE fi.folder_id = f.id "
+        "         AND fi.workspace_id = $2 "
+        "         AND fi.deleted_at IS NULL "
+        f"         AND {readable_file}"
+        "       ) AS file_count "
+        "FROM folders f WHERE f.parent_folder_id = $1 AND f.workspace_id = $2 "
+        f"AND {readable_folder} "
+        "ORDER BY name",
         folder_id,
+        workspace_id,
+        current_user["id"],
     )
     pages = await pool.fetch(
-        "SELECT id, name, content_type FROM pages WHERE folder_id = $1 "
-        "AND COALESCE(metadata->>'shared_in_stash_id', '') = '' "
-        "AND deleted_at IS NULL ORDER BY name",
+        "SELECT id, name, content_type FROM pages p WHERE p.folder_id = $1 "
+        "AND p.workspace_id = $2 "
+        "AND COALESCE(p.metadata->>'shared_in_stash_id', '') = '' "
+        "AND p.deleted_at IS NULL "
+        f"AND {readable_page} "
+        "ORDER BY name",
         folder_id,
+        workspace_id,
+        current_user["id"],
     )
     files = await pool.fetch(
         "SELECT id, name, size_bytes, content_type, created_at, linked_table_id "
-        "FROM files WHERE folder_id = $1 AND deleted_at IS NULL ORDER BY created_at DESC",
+        "FROM files fi WHERE fi.folder_id = $1 AND fi.workspace_id = $2 "
+        "AND fi.deleted_at IS NULL "
+        f"AND {readable_file} "
+        "ORDER BY created_at DESC",
         folder_id,
-    )
-    subfolders = await files_tree_service._filter_readable(
-        [dict(r) for r in subfolders],
-        "folder",
-        current_user["id"],
         workspace_id,
-    )
-    pages = await files_tree_service._filter_readable(
-        [dict(r) for r in pages],
-        "page",
         current_user["id"],
-        workspace_id,
     )
-    files = await files_tree_service._filter_readable(
-        [dict(r) for r in files],
-        "file",
-        current_user["id"],
-        workspace_id,
-    )
-    for folder_row in subfolders:
-        child_pages = await pool.fetch(
-            "SELECT id FROM pages WHERE folder_id = $1 "
-            "AND COALESCE(metadata->>'shared_in_stash_id', '') = '' "
-            "AND deleted_at IS NULL",
-            folder_row["id"],
-        )
-        child_files = await pool.fetch(
-            "SELECT id FROM files WHERE folder_id = $1 AND deleted_at IS NULL",
-            folder_row["id"],
-        )
-        folder_row["page_count"] = len(
-            await files_tree_service._filter_readable(
-                [dict(row) for row in child_pages],
-                "page",
-                current_user["id"],
-                workspace_id,
-            )
-        )
-        folder_row["file_count"] = len(
-            await files_tree_service._filter_readable(
-                [dict(row) for row in child_files],
-                "file",
-                current_user["id"],
-                workspace_id,
-            )
-        )
+    subfolders = [dict(r) for r in subfolders]
+    pages = [dict(r) for r in pages]
+    files = [dict(r) for r in files]
 
     file_payload = [
         {
