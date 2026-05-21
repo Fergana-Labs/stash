@@ -555,10 +555,19 @@ function injectSlideDeckBootstrap(html: string, channel: string): string {
     var editable=false;
     var currentIdx=0;
     // Canvas-enforcing CSS: every slide is a 1920x1080 box that clips its own
-    // overflow. body is zoomed to fit the responsive iframe width — 100vw/1920
-    // is 1 during export (Playwright viewport is 1920) and <1 during viewing,
-    // so what authors see in the viewer matches the export pixel-for-pixel.
-    var CANVAS_CSS = "html,body{margin:0;padding:0;overflow-x:hidden;}body{width:1920px;zoom:calc(100vw / 1920);}section.slide{width:1920px;height:1080px;overflow:hidden;position:relative;box-sizing:border-box;display:block;}";
+    // overflow. Body is sized to 1920px so the slide design space is fixed;
+    // applyCanvasZoom() (below) sets document.body.style.zoom so the visual
+    // shrinks to the iframe width. CSS zoom:calc(100vw / 1920) evaluates
+    // to 1 in Chromium, so we drive zoom from JS instead.
+    var CANVAS_CSS = "html,body{margin:0;padding:0;overflow-x:hidden;}body{width:1920px;}section.slide{width:1920px;height:1080px;overflow:hidden;position:relative;box-sizing:border-box;display:block;}";
+    function applyCanvasZoom(){
+      if(!document.body) return;
+      // During export (Playwright @ 1920 viewport) ratio is 1 — pixel-perfect
+      // with author intent. In the viewer's responsive iframe ratio < 1.
+      var ratio = window.innerWidth / 1920;
+      document.body.style.zoom = ratio > 0 ? String(ratio) : "1";
+    }
+    window.addEventListener('resize', applyCanvasZoom);
     // Visual feedback for edit mode: dashed outline on the body, text caret
     // on all descendants, and let slides flow normally so the user can scroll
     // and click between them.
@@ -573,6 +582,7 @@ function injectSlideDeckBootstrap(html: string, channel: string): string {
       s.textContent=CANVAS_CSS+EDIT_CSS;
       (document.head||document.documentElement).appendChild(s);
     })();
+    applyCanvasZoom();
     function applyIndex(idx){
       var slides=document.querySelectorAll('body > section.slide');
       if(!slides.length) return;
