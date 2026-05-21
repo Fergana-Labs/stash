@@ -1,0 +1,91 @@
+"""Sandbox CLI for the native-shape exporter.
+
+Usage:
+    python -m backend.exports.native.cli <page_id> [--out file.pptx]
+    python -m backend.exports.native.cli <page_id> --spec      # dump SlideSpec JSON to stdout
+
+The page_id is whatever's in the `pages` table. Requires DATABASE_URL
+(reads `.env` automatically via the dotenv loader).
+"""
+
+from __future__ import annotations
+
+import argparse
+import asyncio
+import json
+import logging
+import sys
+from dataclasses import asdict
+from pathlib import Path
+from uuid import UUID
+
+from dotenv import load_dotenv
+
+REPO_ROOT = Path(__file__).resolve().parents[3]
+load_dotenv(REPO_ROOT / ".env")
+load_dotenv(REPO_ROOT / "backend" / ".env")
+
+sys.path.insert(0, str(REPO_ROOT))
+
+from backend import database  # noqa: E402
+from backend.exports.native.layout_probe import probe  # noqa: E402
+from backend.exports.native.pptx_builder import build_pptx  # noqa: E402
+
+log = logging.getLogger("native-export")
+
+
+async def _load_page(page_id: UUID) -> tuple[str, str]:
+    pool = database.get_pool()
+    row = await pool.fetchrow(
+        "SELECT name, content_html, content_type, html_layout " "FROM pages WHERE id = $1",
+        page_id,
+    )
+    if not row:
+        raise SystemExit(f"page {page_id} not found")
+    if row["content_type"] != "html" or row["html_layout"] != "fixed-aspect":
+        raise SystemExit(
+            f"page {page_id} is not a fixed-aspect HTML deck "
+            f"(content_type={row['content_type']!r}, html_layout={row['html_layout']!r})"
+        )
+    return row["name"] or "slides", row["content_html"] or ""
+
+
+async def main_async(args: argparse.Namespace) -> None:
+    await database.init_db()
+    try:
+        page_id = UUID(args.page_id)
+        name, html = await _load_page(page_id)
+        log.info("loaded %s — %d bytes", name, len(html))
+
+        specs = await probe(html)
+        log.info("probed %d slide(s)", len(specs))
+
+        if args.spec:
+            json.dump([asdict(s) for s in specs], sys.stdout, indent=2)
+            sys.stdout.write("\n")
+            return
+
+        pptx_bytes = await build_pptx(specs, html)
+        out_path = (
+            Path(args.out) if args.out else Path(f"/tmp/{name.replace(' ', '_')}-native.pptx")
+        )
+        out_path.write_bytes(pptx_bytes)
+        log.info("wrote %s (%d bytes)", out_path, len(pptx_bytes))
+    finally:
+        await database.close_db()
+
+
+def main() -> None:
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+    parser = argparse.ArgumentParser(description="Native-shape PPTX export sandbox driver.")
+    parser.add_argument("page_id", help="UUID of a fixed-aspect HTML slide page")
+    parser.add_argument("--out", help="output .pptx path (default: /tmp/<name>-native.pptx)")
+    parser.add_argument(
+        "--spec", action="store_true", help="dump SlideSpec JSON to stdout instead of writing PPTX"
+    )
+    args = parser.parse_args()
+    asyncio.run(main_async(args))
+
+
+if __name__ == "__main__":
+    main()
