@@ -21,6 +21,7 @@ import argparse
 import asyncio
 import base64
 import logging
+import os
 import subprocess
 import sys
 import tempfile
@@ -38,6 +39,7 @@ sys.path.insert(0, str(REPO_ROOT))
 
 from backend import database  # noqa: E402
 from backend.exports.constants import SLIDE_HEIGHT_PX, SLIDE_WIDTH_PX  # noqa: E402
+from backend.exports.native.aspose_builder import build_pptx_via_aspose  # noqa: E402
 from backend.exports.native.layout_probe import probe  # noqa: E402
 from backend.exports.native.pptx_builder import build_pptx  # noqa: E402
 from backend.exports.pptx import (  # noqa: E402
@@ -155,7 +157,20 @@ async def main_async(args: argparse.Namespace) -> None:
         log.info("rasterising native pptx via libreoffice…")
         native_pngs = _pptx_to_pngs(pptx_bytes)
 
-        out = _render_diff_html(name, html, screenshot_pngs, native_pngs)
+        aspose_pngs: list[bytes] = []
+        if args.aspose:
+            base_url = os.environ.get("ASPOSE_PPTX_URL")
+            if not base_url:
+                raise SystemExit("--aspose requires ASPOSE_PPTX_URL to be set")
+            token = os.environ.get("ASPOSE_PPTX_TOKEN")
+            log.info("running aspose builder against %s…", base_url)
+            aspose_pptx = await build_pptx_via_aspose(
+                specs, html, base_url=base_url, token=token,
+            )
+            log.info("rasterising aspose pptx via libreoffice…")
+            aspose_pngs = _pptx_to_pngs(aspose_pptx)
+
+        out = _render_diff_html(name, html, screenshot_pngs, native_pngs, aspose_pngs)
         out_path = Path(f"/tmp/diff-{args.page_id}.html")
         out_path.write_text(out)
         log.info("wrote %s (open in your browser)", out_path)
@@ -163,19 +178,36 @@ async def main_async(args: argparse.Namespace) -> None:
         await database.close_db()
 
 
-def _render_diff_html(name: str, html: str, screenshots: list[bytes], natives: list[bytes]) -> str:
+def _render_diff_html(
+    name: str,
+    html: str,
+    screenshots: list[bytes],
+    natives: list[bytes],
+    asposes: list[bytes],
+) -> str:
+    show_aspose = bool(asposes)
     rows = []
-    n = max(len(screenshots), len(natives), 1)
+    n = max(len(screenshots), len(natives), len(asposes), 1)
     for i in range(n):
         shot = _b64(screenshots[i]) if i < len(screenshots) else ""
         native = _b64(natives[i]) if i < len(natives) else ""
-        rows.append(f"""
-            <tr>
-              <td><iframe srcdoc='{_iframe_doc(html, i)}' style='width:540px;height:304px;border:1px solid #ccc;'></iframe></td>
-              <td>{f'<img src=\"{shot}\" style=\"width:540px;height:auto;\">' if shot else '(missing)'}</td>
-              <td>{f'<img src=\"{native}\" style=\"width:540px;height:auto;\">' if native else '(install libreoffice + poppler)'}</td>
-            </tr>
-            """)
+        aspose = _b64(asposes[i]) if i < len(asposes) else ""
+        cells = [
+            f"<td><iframe srcdoc='{_iframe_doc(html, i)}' style='width:540px;height:304px;border:1px solid #ccc;'></iframe></td>",
+            f"<td>{f'<img src=\"{shot}\" style=\"width:540px;height:auto;\">' if shot else '(missing)'}</td>",
+            f"<td>{f'<img src=\"{native}\" style=\"width:540px;height:auto;\">' if native else '(install libreoffice + poppler)'}</td>",
+        ]
+        if show_aspose:
+            cells.append(
+                f"<td>{f'<img src=\"{aspose}\" style=\"width:540px;height:auto;\">' if aspose else '(missing)'}</td>"
+            )
+        rows.append(f"<tr>{''.join(cells)}</tr>")
+
+    headers = ["HTML render", "Screenshot export", "Native export (PPTX→PDF→PNG)"]
+    if show_aspose:
+        headers.append("Aspose export (PPTX→PDF→PNG)")
+    header_row = "".join(f"<th>{h}</th>" for h in headers)
+
     return f"""<!doctype html>
 <html><head><meta charset=utf-8><title>diff — {name}</title>
 <style>
@@ -189,7 +221,7 @@ def _render_diff_html(name: str, html: str, screenshots: list[bytes], natives: l
 </head><body>
 <h1>{name} — diff</h1>
 <table>
-<thead><tr><th>HTML render</th><th>Screenshot export</th><th>Native export (PPTX→PDF→PNG)</th></tr></thead>
+<thead><tr>{header_row}</tr></thead>
 <tbody>
 {''.join(rows)}
 </tbody></table>
@@ -213,6 +245,12 @@ def main() -> None:
         description="Diff: HTML render vs screenshot export vs native export."
     )
     parser.add_argument("page_id", help="UUID of a fixed-aspect HTML slide page")
+    parser.add_argument(
+        "--aspose",
+        action="store_true",
+        help="also build via the remote aspose-pptx service "
+             "(requires ASPOSE_PPTX_URL + optional ASPOSE_PPTX_TOKEN)",
+    )
     args = parser.parse_args()
     asyncio.run(main_async(args))
 

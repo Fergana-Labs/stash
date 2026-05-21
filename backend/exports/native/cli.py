@@ -14,6 +14,7 @@ import argparse
 import asyncio
 import json
 import logging
+import os
 import sys
 from dataclasses import asdict
 from pathlib import Path
@@ -28,6 +29,7 @@ load_dotenv(REPO_ROOT / "backend" / ".env")
 sys.path.insert(0, str(REPO_ROOT))
 
 from backend import database  # noqa: E402
+from backend.exports.native.aspose_builder import build_pptx_via_aspose  # noqa: E402
 from backend.exports.native.layout_probe import probe  # noqa: E402
 from backend.exports.native.pptx_builder import build_pptx  # noqa: E402
 
@@ -65,9 +67,22 @@ async def main_async(args: argparse.Namespace) -> None:
             sys.stdout.write("\n")
             return
 
-        pptx_bytes = await build_pptx(specs, html)
+        if args.builder == "aspose":
+            base_url = os.environ.get("ASPOSE_PPTX_URL")
+            if not base_url:
+                raise SystemExit("ASPOSE_PPTX_URL must be set when --builder=aspose")
+            token = os.environ.get("ASPOSE_PPTX_TOKEN")
+            pptx_bytes = await build_pptx_via_aspose(
+                specs, html, base_url=base_url, token=token,
+            )
+            suffix = "aspose"
+        else:
+            pptx_bytes = await build_pptx(specs, html)
+            suffix = "native"
+
         out_path = (
-            Path(args.out) if args.out else Path(f"/tmp/{name.replace(' ', '_')}-native.pptx")
+            Path(args.out) if args.out
+            else Path(f"/tmp/{name.replace(' ', '_')}-{suffix}.pptx")
         )
         out_path.write_bytes(pptx_bytes)
         log.info("wrote %s (%d bytes)", out_path, len(pptx_bytes))
@@ -82,6 +97,13 @@ def main() -> None:
     parser.add_argument("--out", help="output .pptx path (default: /tmp/<name>-native.pptx)")
     parser.add_argument(
         "--spec", action="store_true", help="dump SlideSpec JSON to stdout instead of writing PPTX"
+    )
+    parser.add_argument(
+        "--builder",
+        choices=["python-pptx", "aspose"],
+        default="python-pptx",
+        help="which builder to use; aspose hits the remote REST service "
+             "and requires ASPOSE_PPTX_URL (+ optional ASPOSE_PPTX_TOKEN)",
     )
     args = parser.parse_args()
     asyncio.run(main_async(args))

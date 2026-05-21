@@ -1,0 +1,23 @@
+# Render blueprint for the Aspose.Slides REST service that the native-export
+# sandbox (backend/exports/native/) talks to for per-element PPTX construction.
+#
+# This is the only Render-managed piece of the repo today — the rest of
+# moltchat still deploys via docker-compose.prod.yml. The sandbox CLI hits
+# the public URL of this service directly.
+services:
+  - type: web
+    name: aspose-pptx
+    runtime: docker
+    rootDir: powerpoint-mcp
+    plan: starter
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /healthz
+    envVars:
+      - key: ASPOSE_LICENSE_DATA
+        sync: false  # base64 of Aspose.SlidesforPythonvia.NET.lic; set in dashboard
+      - key: ASPOSE_PPTX_TOKEN
+        generateValue: true  # shared bearer; copy to ASPOSE_PPTX_TOKEN on the caller
+      - key: MAX_SESSIONS
+        value: "3"
+      - key: SESSION_TIMEOUT_MINUTES
+        value: "60"
