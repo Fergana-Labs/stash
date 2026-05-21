@@ -31,9 +31,15 @@ ALLOWED_EVENT_NAMES = {
     # Web actions
     "web.workspace_created",
     "web.page_created",
+    "web.page_edited",
+    "web.file_uploaded",
+    "web.stash_created",
     "web.session_shared",
+    "web.search_query",
     "web.ask_stash",
-    # CLI commands
+    # Auth lifecycle
+    "auth.signed_up",
+    # CLI commands (one event per invocation; properties.command is the sub-axis)
     "cli.command_invoked",
 }
 

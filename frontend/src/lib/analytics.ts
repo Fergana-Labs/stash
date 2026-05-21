@@ -45,11 +45,25 @@ function schedule() {
   timer = setTimeout(flush, FLUSH_MS);
 }
 
+// Per-page edit autosave fires this on every PATCH. Dedupe to one row
+// per (event_name, dedupeKey) per dedupeMs window so the firehose doesn't
+// drown the dashboard.
+const dedupeSeen = new Map<string, number>();
+
 export function track(
   event: string,
   properties?: Record<string, unknown>,
+  opts?: { dedupeKey?: string; dedupeMs?: number },
 ): void {
   if (typeof window === "undefined") return;
+  if (opts?.dedupeKey) {
+    const k = `${event}:${opts.dedupeKey}`;
+    const now = Date.now();
+    const ttl = opts.dedupeMs ?? 5 * 60 * 1000;
+    const last = dedupeSeen.get(k);
+    if (last !== undefined && now - last < ttl) return;
+    dedupeSeen.set(k, now);
+  }
   queue.push({ surface: "web", event_name: event, properties });
   if (queue.length >= MAX_BATCH) flush();
   else schedule();

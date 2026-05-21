@@ -76,6 +76,31 @@ async def test_ingest_rejects_unknown_event(client: AsyncClient):
 
 
 @pytest.mark.asyncio
+async def test_ingest_accepts_round_2_event_names(client: AsyncClient):
+    """The second batch of events (file_uploaded, stash_created, page_edited,
+    search_query, signed_up, plus CLI history.*) must all pass the allowlist."""
+    key = await _register(client)
+    resp = await client.post(
+        "/api/v1/analytics/events",
+        json={
+            "events": [
+                {"surface": "web", "event_name": "web.file_uploaded", "properties": {"size_bucket": "lt_1mb"}},
+                {"surface": "web", "event_name": "web.stash_created", "properties": {"kind": "manual"}},
+                {"surface": "web", "event_name": "web.page_edited", "properties": {"page_id": "p1"}},
+                {"surface": "web", "event_name": "web.search_query", "properties": {"has_results": True}},
+                {"surface": "web", "event_name": "auth.signed_up", "properties": {"via_cli": False}},
+                {"surface": "cli", "event_name": "cli.command_invoked", "properties": {"command": "history.push"}},
+                {"surface": "cli", "event_name": "cli.command_invoked", "properties": {"command": "history.query"}},
+                {"surface": "cli", "event_name": "cli.command_invoked", "properties": {"command": "history.search"}},
+            ]
+        },
+        headers=_auth(key),
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json() == {"recorded": 8}
+
+
+@pytest.mark.asyncio
 async def test_ingest_rejects_unknown_surface(client: AsyncClient):
     key = await _register(client)
     resp = await client.post(

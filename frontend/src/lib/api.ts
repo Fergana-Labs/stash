@@ -27,9 +27,10 @@ const API_BASE = "";
 function trackEvent(
   event: string,
   properties?: Record<string, unknown>,
+  opts?: { dedupeKey?: string; dedupeMs?: number },
 ): void {
   if (typeof window === "undefined") return;
-  void import("./analytics").then((m) => m.track(event, properties));
+  void import("./analytics").then((m) => m.track(event, properties, opts));
 }
 const DEFAULT_LOCAL_COLLAB_URL = "ws://localhost:3458";
 
@@ -379,10 +380,24 @@ export async function updatePage(
     move_to_root?: boolean;
   }
 ): Promise<Page> {
-  return apiFetch(`/api/v1/workspaces/${workspaceId}/pages/${pageId}`, {
-    method: "PATCH",
-    body: JSON.stringify(data),
-  });
+  const result = await apiFetch<Page>(
+    `/api/v1/workspaces/${workspaceId}/pages/${pageId}`,
+    { method: "PATCH", body: JSON.stringify(data) },
+  );
+  // Only count actual content/title changes as "edits." Folder moves,
+  // collab_projection passes, and pure layout flips are uninteresting.
+  const isContentEdit =
+    data.content !== undefined ||
+    data.content_html !== undefined ||
+    data.name !== undefined;
+  if (isContentEdit) {
+    trackEvent(
+      "web.page_edited",
+      { workspace_id: workspaceId, page_id: pageId },
+      { dedupeKey: `${workspaceId}:${pageId}`, dedupeMs: 5 * 60 * 1000 },
+    );
+  }
+  return result;
 }
 
 // --- Page comments ---
@@ -741,7 +756,23 @@ export async function uploadFile(
     const detail = await resp.json().then((d) => d.detail).catch(() => resp.statusText);
     throw new Error(detail);
   }
-  return resp.json();
+  const result = (await resp.json()) as FileInfo;
+  trackEvent("web.file_uploaded", {
+    workspace_id: workspaceId,
+    mime_type: file.type || "unknown",
+    size_bucket: bucketSize(file.size),
+  });
+  return result;
+}
+
+// Coarse size buckets keep the property cardinality small while still
+// letting "uploads under 1MB vs 100MB+" comparisons happen.
+function bucketSize(bytes: number): string {
+  if (bytes < 100 * 1024) return "lt_100kb";
+  if (bytes < 1024 * 1024) return "lt_1mb";
+  if (bytes < 10 * 1024 * 1024) return "lt_10mb";
+  if (bytes < 100 * 1024 * 1024) return "lt_100mb";
+  return "gte_100mb";
 }
 
 // HTML is content, not a blob: it goes through the page-create path so it
@@ -958,23 +989,33 @@ export async function createStash(
     discoverable?: boolean;
   } = {}
 ): Promise<CreatedStash> {
-  return apiFetch(`/api/v1/workspaces/${workspaceId}/stashes`, {
-    method: "POST",
-    body: JSON.stringify({
-      title,
-      description: opts.description ?? "",
-      workspace_permission: opts.workspace_permission ?? "read",
-      public_permission: opts.public_permission ?? "none",
-      discoverable: opts.discoverable ?? false,
-      cover_image_url: null,
-      items: items.map((it, i) => ({
-        object_type: it.object_type,
-        object_id: it.object_id,
-        position: it.position ?? i,
-        label_override: it.label_override ?? null,
-      })),
-    }),
+  const stash = await apiFetch<CreatedStash>(
+    `/api/v1/workspaces/${workspaceId}/stashes`,
+    {
+      method: "POST",
+      body: JSON.stringify({
+        title,
+        description: opts.description ?? "",
+        workspace_permission: opts.workspace_permission ?? "read",
+        public_permission: opts.public_permission ?? "none",
+        discoverable: opts.discoverable ?? false,
+        cover_image_url: null,
+        items: items.map((it, i) => ({
+          object_type: it.object_type,
+          object_id: it.object_id,
+          position: it.position ?? i,
+          label_override: it.label_override ?? null,
+        })),
+      }),
+    },
+  );
+  trackEvent("web.stash_created", {
+    workspace_id: workspaceId,
+    item_count: items.length,
+    public: (opts.public_permission ?? "none") !== "none",
+    kind: "manual",
   });
+  return stash;
 }
 
 export async function publishStash(
@@ -988,23 +1029,34 @@ export async function publishStash(
     discoverable?: boolean;
   } = {}
 ): Promise<PublishedStashResult> {
-  return apiFetch(`/api/v1/workspaces/${workspaceId}/stashes/publish`, {
-    method: "POST",
-    body: JSON.stringify({
-      title,
-      description: opts.description ?? "",
-      workspace_permission: opts.workspace_permission ?? "read",
-      public_permission: opts.public_permission ?? "read",
-      discoverable: opts.discoverable ?? false,
-      cover_image_url: null,
-      items: items.map((it, i) => ({
-        object_type: it.object_type,
-        object_id: it.object_id,
-        position: it.position ?? i,
-        label_override: it.label_override ?? null,
-      })),
-    }),
+  const result = await apiFetch<PublishedStashResult>(
+    `/api/v1/workspaces/${workspaceId}/stashes/publish`,
+    {
+      method: "POST",
+      body: JSON.stringify({
+        title,
+        description: opts.description ?? "",
+        workspace_permission: opts.workspace_permission ?? "read",
+        public_permission: opts.public_permission ?? "read",
+        discoverable: opts.discoverable ?? false,
+        cover_image_url: null,
+        items: items.map((it, i) => ({
+          object_type: it.object_type,
+          object_id: it.object_id,
+          position: it.position ?? i,
+          label_override: it.label_override ?? null,
+        })),
+      }),
+    },
+  );
+  trackEvent("web.stash_created", {
+    workspace_id: workspaceId,
+    item_count: items.length,
+    public: true,
+    discoverable: opts.discoverable ?? false,
+    kind: "publish",
   });
+  return result;
 }
 
 export interface WorkspaceStash {

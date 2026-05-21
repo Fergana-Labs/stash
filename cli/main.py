@@ -2062,6 +2062,7 @@ def hist_push(
     as_json: bool = typer.Option(False, "--json"),
 ):
     """Push an event to the workspace session stream."""
+    telemetry.record("history.push")
     ws = workspace_id or _resolve_workspace()
     with _client() as c:
         try:
@@ -2110,6 +2111,7 @@ def hist_query(
     as_json: bool = typer.Option(False, "--json"),
 ):
     """Query events (newest first by default). --all for cross-workspace."""
+    telemetry.record("history.query")
     with _client() as c:
         try:
             if all_:
@@ -2152,6 +2154,7 @@ def hist_search(
     as_json: bool = typer.Option(False, "--json"),
 ):
     """Full-text search on events in a workspace."""
+    telemetry.record("history.search")
     ws = workspace_id or _resolve_workspace()
     with _client() as c:
         try:
