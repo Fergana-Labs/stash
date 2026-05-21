@@ -493,6 +493,25 @@ describe("AppSidebar tree expansion", () => {
     expect(screen.getByText(expectedSidebarTimestamp(lastAt))).toBeTruthy();
   });
 
+  it("keeps full cleaned session titles in the sidebar row", async () => {
+    vi.mocked(getWorkspaceSidebar).mockResolvedValue(
+      sidebarWithSessions([
+        sidebarSession(
+          "generated-title",
+          "# Integrate Stash VFS with Agent Environments",
+          "Henry",
+          "2026-05-20T12:00:00Z"
+        ),
+      ])
+    );
+
+    renderSidebar();
+
+    const title = await screen.findByText("Integrate Stash VFS with Agent Environments");
+    expect(title).toHaveAttribute("title", "Integrate Stash VFS with Agent Environments");
+    expect(screen.queryByText("# Integrate Stash VFS with")).toBeNull();
+  });
+
   it("limits visible session periods and reveals more on demand", async () => {
     vi.mocked(getWorkspaceSidebar).mockResolvedValue(
       sidebarWithSessions(
