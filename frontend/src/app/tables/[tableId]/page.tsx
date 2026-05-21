@@ -22,6 +22,7 @@ import {
 } from "../../../lib/api";
 import type { Table, TableColumn, TableRow, TableView } from "../../../lib/types";
 import FileViewerHeader from "../../../components/workspace/FileViewerHeader";
+import { parseCsv, inferColumnType } from "../../../lib/csv";
 
 const TYPE_ICONS: Record<string, string> = {
   text: "Aa", number: "#", boolean: "\u2713", date: "\uD83D\uDCC5", datetime: "\uD83D\uDD53",
@@ -430,22 +431,46 @@ function TableEditorPageInner() {
   const handleCsvImport = async (file: File) => {
     try {
       const text = await file.text();
-      const lines = text.split("\n").filter((l) => l.trim());
-      if (lines.length < 2) { setError("CSV needs header + data"); return; }
-      const headers = lines[0].split(",").map((h) => h.trim().replace(/^"|"$/g, ""));
+      const rows = parseCsv(text);
+      if (rows.length < 2) { setError("CSV needs header + data"); return; }
+      const headers = rows[0];
+      const dataRows = rows.slice(1);
+
       const existingNames = new Set(sortedColumns.map((c) => c.name));
       let currentTable = table!;
-      for (const h of headers) { if (!existingNames.has(h)) currentTable = await addTableColumn(wsId, tableId, { name: h, type: "text" }); }
-      setTable(currentTable);
-      const colMap: Record<string, string> = {}; for (const col of currentTable.columns) colMap[col.name] = col.id;
-      const rowsData: Record<string, unknown>[] = [];
-      for (let i = 1; i < lines.length; i++) {
-        const values = lines[i].match(/(".*?"|[^,]+)/g)?.map((v) => v.trim().replace(/^"|"$/g, "")) || [];
-        const data: Record<string, unknown> = {};
-        headers.forEach((h, idx) => { if (colMap[h] && idx < values.length) data[colMap[h]] = values[idx]; });
-        rowsData.push(data);
+      for (let ci = 0; ci < headers.length; ci++) {
+        const name = headers[ci];
+        if (!name || existingNames.has(name)) continue;
+        const samples = dataRows.slice(0, 50).map((r) => r[ci] ?? "");
+        const colType = inferColumnType(samples);
+        currentTable = await addTableColumn(wsId, tableId, { name, type: colType });
+        existingNames.add(name);
       }
-      for (let i = 0; i < rowsData.length; i += 5000) { await createTableRowsBatch(wsId, tableId, rowsData.slice(i, i + 5000).map((d) => ({ data: d }))); }
+      setTable(currentTable);
+
+      const colIdByHeader: Record<string, string> = {};
+      for (const col of currentTable.columns) colIdByHeader[col.name] = col.id;
+
+      const payload: Record<string, unknown>[] = [];
+      for (const r of dataRows) {
+        const data: Record<string, unknown> = {};
+        headers.forEach((h, idx) => {
+          const colId = colIdByHeader[h];
+          if (!colId) return;
+          const raw = r[idx] ?? "";
+          // Server coerces raw strings per column type; empty cells become NULL.
+          data[colId] = raw === "" ? null : raw;
+        });
+        payload.push(data);
+      }
+
+      for (let i = 0; i < payload.length; i += 5000) {
+        await createTableRowsBatch(
+          wsId,
+          tableId,
+          payload.slice(i, i + 5000).map((d) => ({ data: d })),
+        );
+      }
       await loadRows(); await loadTable();
     } catch (err) { setError(err instanceof Error ? err.message : "Failed to import"); }
   };

@@ -4,12 +4,9 @@ The API endpoint dispatches this task once per selected Drive file ID.
 The task itself reads the file's MIME, then routes:
 
 - application/vnd.google-apps.document     → markdown page (native MD export)
-- application/vnd.google-apps.spreadsheet  → table (not implemented yet)
+- application/vnd.google-apps.spreadsheet  → table (first sheet only)
 - application/vnd.openxmlformats-officedocument.presentationml.presentation
-                                            → fixed-aspect slide page (not implemented yet)
-
-Sheet + PPTX importers are stubbed for follow-up work — they fail loud
-with a clear message rather than silently dropping content.
+                                            → fixed-aspect slide page
 """
 
 from __future__ import annotations
@@ -27,6 +24,7 @@ import httpx
 from ....celery_app import celery
 from ....database import get_pool
 from ....services import table_service
+from ....services.csv_inference import coerce_value, infer_column_type
 from ....tasks._celery_helpers import run_async
 from ...storage import get_valid_token
 
@@ -153,9 +151,10 @@ async def _import_google_sheet(
     """First-tab-only Sheets import.
 
     Drive's CSV export already returns only the first sheet — that's
-    the v1 limitation. Header row becomes the column names (text type
-    for every column; the user can refine column types in the UI
-    later). Empty cells stay empty; we don't try to coerce types.
+    the v1 limitation. Header row becomes the column names; column
+    types are inferred from the first 50 data rows (same logic as the
+    CSV ingest endpoint) so numeric/date/boolean columns aren't all
+    forced to text.
     """
     resp = await _drive_get(
         client,
@@ -171,9 +170,12 @@ async def _import_google_sheet(
     if not any(h.strip() for h in header):
         raise RuntimeError("sheet has no header row")
 
+    data_rows = rows[1:]
+    sample = data_rows[:50]
+
     columns = []
     seen_names: dict[str, int] = {}
-    for raw_name in header:
+    for ci, raw_name in enumerate(header):
         col_name = (raw_name or "").strip() or "column"
         # Disambiguate duplicate headers — Sheets allows them, our column
         # storage tolerates them, but the UI is friendlier when names differ.
@@ -182,11 +184,12 @@ async def _import_google_sheet(
             col_name = f"{col_name} ({seen_names[col_name]})"
         else:
             seen_names[col_name] = 1
+        samples = [(r[ci] if ci < len(r) else "") for r in sample]
         columns.append(
             {
                 "id": f"col_{secrets.token_hex(6)}",
                 "name": col_name,
-                "type": "text",
+                "type": infer_column_type(samples),
             }
         )
 
@@ -198,18 +201,18 @@ async def _import_google_sheet(
         created_by=user_id,
     )
 
-    data_rows: list[dict] = []
-    for row in rows[1:]:
+    records: list[dict] = []
+    for row in data_rows:
         record: dict = {}
         for i, col in enumerate(columns):
-            value = row[i] if i < len(row) else ""
-            record[col["id"]] = value
-        data_rows.append(record)
+            raw = row[i] if i < len(row) else ""
+            record[col["id"]] = coerce_value(raw, col["type"])
+        records.append(record)
 
-    if data_rows:
+    if records:
         await table_service.create_rows_batch(
             table_id=table["id"],
-            rows_data=data_rows,
+            rows_data=records,
             created_by=user_id,
         )
 

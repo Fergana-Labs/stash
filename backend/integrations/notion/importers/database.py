@@ -194,6 +194,7 @@ async def import_database(
 
     rows: list[dict] = []
     cursor: str | None = None
+    truncated = False
     while True:
         body: dict[str, Any] = {"page_size": 100}
         if cursor:
@@ -205,17 +206,18 @@ async def import_database(
         resp.raise_for_status()
         payload = resp.json()
         for entry in payload.get("results", []):
+            if len(rows) >= MAX_ROWS_PER_IMPORT:
+                # Bail at the cap instead of raising — the user gets the
+                # first N rows in a usable table with a clear note in the
+                # description rather than an empty stub + a confusing error.
+                truncated = True
+                break
             entry_props = entry.get("properties", {}) or {}
             row: dict[str, Any] = {}
             for prop_name, col_id in prop_id_to_col_id.items():
                 row[col_id] = _notion_value_to_stash(entry_props.get(prop_name) or {})
             rows.append(row)
-            if len(rows) >= MAX_ROWS_PER_IMPORT:
-                raise RuntimeError(
-                    f"database exceeded {MAX_ROWS_PER_IMPORT}-row cap; "
-                    "filter the source database or import in slices"
-                )
-        if not payload.get("has_more"):
+        if truncated or not payload.get("has_more"):
             break
         cursor = payload.get("next_cursor")
 
@@ -226,10 +228,21 @@ async def import_database(
             created_by=user_id,
         )
 
+    if truncated:
+        await table_service.update_table(
+            table_id=table["id"],
+            description=(
+                f"Imported from Notion database ({database_id}) — "
+                f"truncated at {MAX_ROWS_PER_IMPORT} rows"
+            ),
+            updated_by=user_id,
+        )
+
     return {
         "kind": "table",
         "table_id": str(table["id"]),
         "name": title,
         "row_count": len(rows),
         "column_count": len(columns),
+        "truncated": truncated,
     }
