@@ -896,6 +896,15 @@ export async function ingestCsvFile(workspaceId: string, fileId: string): Promis
   });
 }
 
+export async function ingestXlsxFile(
+  workspaceId: string,
+  fileId: string,
+): Promise<{ tables: Table[] }> {
+  return apiFetch(`/api/v1/workspaces/${workspaceId}/files/${fileId}/ingest-xlsx`, {
+    method: "POST",
+  });
+}
+
 export async function updateFile(
   workspaceId: string,
   fileId: string,

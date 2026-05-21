@@ -11,6 +11,7 @@ import {
   getFolderContents,
   getPublicStash,
   ingestCsvFile,
+  ingestXlsxFile,
   trashItem,
   updateFile,
   type FolderBreadcrumb,
@@ -26,6 +27,15 @@ import FileViewerHeader from "../../../../../../components/workspace/FileViewerH
 
 function isCsv(ct: string) {
   return ct?.includes("csv") || ct === "text/csv";
+}
+
+const XLSX_CONTENT_TYPES = new Set([
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  "application/vnd.ms-excel",
+]);
+
+function isXlsx(ct: string, name: string) {
+  return XLSX_CONTENT_TYPES.has(ct) || /\.xlsx?$/i.test(name);
 }
 
 export default function FileViewerPage() {
@@ -146,6 +156,25 @@ function FileViewerPageInner() {
             router.replace(`/tables/${table.id}?workspaceId=${workspaceId}`);
           } catch (e) {
             setError(e instanceof Error ? e.message : "CSV ingest failed");
+          }
+        }
+        return;
+      }
+      // XLSX: same shape, but one table per sheet. Redirect to the first
+      // sheet's table; the others appear in the workspace sidebar.
+      if (isXlsx(f.content_type, f.name)) {
+        if (f.linked_table_id) {
+          router.replace(`/tables/${f.linked_table_id}?workspaceId=${workspaceId}`);
+        } else {
+          try {
+            const { tables } = await ingestXlsxFile(workspaceId, fileId);
+            if (tables.length === 0) {
+              setError("Workbook had no readable sheets");
+            } else {
+              router.replace(`/tables/${tables[0].id}?workspaceId=${workspaceId}`);
+            }
+          } catch (e) {
+            setError(e instanceof Error ? e.message : "XLSX ingest failed");
           }
         }
         return;

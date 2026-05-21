@@ -4,18 +4,17 @@ The API endpoint dispatches this task once per selected Drive file ID.
 The task itself reads the file's MIME, then routes:
 
 - application/vnd.google-apps.document     → markdown page (native MD export)
-- application/vnd.google-apps.spreadsheet  → table (first sheet only)
+- application/vnd.google-apps.spreadsheet  → one table per visible tab
+                                              (via Drive's XLSX export +
+                                              the shared xlsx_ingest service)
 - application/vnd.openxmlformats-officedocument.presentationml.presentation
                                             → fixed-aspect slide page
 """
 
 from __future__ import annotations
 
-import csv
-import io
 import logging
 import re
-import secrets
 from uuid import UUID
 
 import asyncpg
@@ -23,8 +22,7 @@ import httpx
 
 from ....celery_app import celery
 from ....database import get_pool
-from ....services import table_service
-from ....services.csv_inference import coerce_value, infer_column_type
+from ....services.xlsx_ingest import ingest_xlsx_bytes
 from ....tasks._celery_helpers import run_async
 from ...storage import get_valid_token
 
@@ -140,88 +138,47 @@ async def _import(
         raise RuntimeError(f"Unsupported Drive MIME type: {mime}")
 
 
+_XLSX_EXPORT_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
+
 async def _import_google_sheet(
     client: httpx.AsyncClient,
     workspace_id: UUID,
-    folder_id: UUID | None,
+    folder_id: UUID | None,  # noqa: ARG001 — kept for signature parity with other importers
     user_id: UUID,
     file_id: str,
     name: str,
 ) -> dict:
-    """First-tab-only Sheets import.
+    """Multi-tab Sheets import via Drive's XLSX export.
 
-    Drive's CSV export already returns only the first sheet — that's
-    the v1 limitation. Header row becomes the column names; column
-    types are inferred from the first 50 data rows (same logic as the
-    CSV ingest endpoint) so numeric/date/boolean columns aren't all
-    forced to text.
+    Drive can export a Google Sheet as a real .xlsx workbook on a single
+    HTTP call, so we don't need the Sheets API (or its extra OAuth
+    scope) just to enumerate tabs. We hand the bytes to the same
+    `ingest_xlsx_bytes` service the upload endpoint uses — one Stash
+    table per visible sheet, types inferred per sheet.
     """
     resp = await _drive_get(
         client,
-        DRIVE_EXPORT_URL.format(file_id=file_id) + "?mimeType=text/csv",
+        DRIVE_EXPORT_URL.format(file_id=file_id) + f"?mimeType={_XLSX_EXPORT_MIME}",
     )
-    text = resp.text
-    reader = csv.reader(io.StringIO(text))
-    rows = list(reader)
-    if not rows:
-        raise RuntimeError("sheet is empty")
-
-    header = rows[0]
-    if not any(h.strip() for h in header):
-        raise RuntimeError("sheet has no header row")
-
-    data_rows = rows[1:]
-    sample = data_rows[:50]
-
-    columns = []
-    seen_names: dict[str, int] = {}
-    for ci, raw_name in enumerate(header):
-        col_name = (raw_name or "").strip() or "column"
-        # Disambiguate duplicate headers — Sheets allows them, our column
-        # storage tolerates them, but the UI is friendlier when names differ.
-        if col_name in seen_names:
-            seen_names[col_name] += 1
-            col_name = f"{col_name} ({seen_names[col_name]})"
-        else:
-            seen_names[col_name] = 1
-        samples = [(r[ci] if ci < len(r) else "") for r in sample]
-        columns.append(
-            {
-                "id": f"col_{secrets.token_hex(6)}",
-                "name": col_name,
-                "type": infer_column_type(samples),
-            }
-        )
-
-    table = await table_service.create_table(
+    created = await ingest_xlsx_bytes(
         workspace_id=workspace_id,
-        name=name,
-        description=f"Imported from Google Sheets ({file_id})",
-        columns=columns,
-        created_by=user_id,
+        user_id=user_id,
+        content=resp.content,
+        base_name=name,
+        description_template=(f"Imported from Google Sheets ({file_id}) — sheet: {{sheet}}"),
     )
+    if not created:
+        raise RuntimeError("sheet had no visible tabs with data")
 
-    records: list[dict] = []
-    for row in data_rows:
-        record: dict = {}
-        for i, col in enumerate(columns):
-            raw = row[i] if i < len(row) else ""
-            record[col["id"]] = coerce_value(raw, col["type"])
-        records.append(record)
-
-    if records:
-        await table_service.create_rows_batch(
-            table_id=table["id"],
-            rows_data=records,
-            created_by=user_id,
-        )
-
+    first = created[0]
     return {
         "kind": "table",
-        "table_id": str(table["id"]),
-        "name": name,
-        "row_count": len(data_rows),
-        "column_count": len(columns),
+        "table_id": str(first["id"]),
+        "name": first["name"],
+        "row_count": first.get("row_count"),
+        "column_count": len(first.get("columns") or []),
+        "sheet_count": len(created),
     }
 
 

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { parseCsv, inferColumnType } from "./csv";
+import { parseCsv, inferColumnType, detectDelimiter } from "./csv";
 
 describe("parseCsv", () => {
   it("handles empty cells without column shift", () => {
@@ -53,6 +53,37 @@ describe("parseCsv", () => {
       ["a", "b"],
       ["", ""],
     ]);
+  });
+});
+
+describe("parseCsv with delimiter", () => {
+  it("parses TSV when given a tab delimiter", () => {
+    expect(parseCsv("a\tb\tc\n1\t2\t3", "\t")).toEqual([
+      ["a", "b", "c"],
+      ["1", "2", "3"],
+    ]);
+  });
+
+  it("preserves commas in TSV values", () => {
+    expect(parseCsv("name\tquote\nAlice\tHello, world", "\t")).toEqual([
+      ["name", "quote"],
+      ["Alice", "Hello, world"],
+    ]);
+  });
+});
+
+describe("detectDelimiter", () => {
+  it("picks tab when the first line has more tabs than commas", () => {
+    expect(detectDelimiter("a\tb\tc\n1\t2\t3")).toBe("\t");
+  });
+
+  it("picks comma by default (including ties)", () => {
+    expect(detectDelimiter("a,b,c\n1,2,3")).toBe(",");
+    expect(detectDelimiter("a\tb,c")).toBe(",");
+  });
+
+  it("handles single-column pastes", () => {
+    expect(detectDelimiter("hello\nworld")).toBe(",");
   });
 });
 

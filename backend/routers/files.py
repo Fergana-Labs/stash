@@ -22,6 +22,7 @@ from ..models import (
     FileListResponse,
     FileResponse,
     FileUpdateRequest,
+    TableListResponse,
     TableResponse,
     UploadResponse,
 )
@@ -34,6 +35,7 @@ from ..services import (
     workspace_service,
 )
 from ..services.csv_inference import coerce_value, infer_column_type
+from ..services.xlsx_ingest import ingest_xlsx_bytes
 
 logger = logging.getLogger(__name__)
 
@@ -568,6 +570,77 @@ async def ingest_csv_file(
 
     refreshed = await table_service.get_table(table["id"])
     return TableResponse(**(refreshed or table))
+
+
+_XLSX_CONTENT_TYPES = {
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "application/vnd.ms-excel",
+}
+
+
+@ws_router.post("/{file_id}/ingest-xlsx", response_model=TableListResponse)
+async def ingest_xlsx_file(
+    workspace_id: UUID,
+    file_id: UUID,
+    current_user: dict = Depends(get_current_user),
+):
+    """Parse an .xlsx file into one table per sheet.
+
+    Idempotent on the file's `linked_table_id` field, which points at the
+    first sheet's table — re-running won't create duplicates, but it also
+    won't re-discover sheets added to the workbook after the first
+    ingest. (Re-import as a new file if the source workbook changes
+    sheets.)
+    """
+    await _check_write(workspace_id, current_user["id"])
+    pool = get_pool()
+    row = await pool.fetchrow(
+        "SELECT id, workspace_id, name, content_type, storage_key, linked_table_id "
+        "FROM files WHERE id = $1 AND workspace_id = $2 AND deleted_at IS NULL",
+        file_id,
+        workspace_id,
+    )
+    if not row:
+        raise HTTPException(status_code=404, detail="File not found")
+    if not await _can_access_file(file_id, workspace_id, current_user["id"], require_write=True):
+        raise HTTPException(status_code=404, detail="File not found")
+
+    ct = (row["content_type"] or "").lower()
+    if not (ct in _XLSX_CONTENT_TYPES or row["name"].lower().endswith((".xlsx", ".xls"))):
+        raise HTTPException(status_code=400, detail="File is not an Excel workbook")
+
+    if row["linked_table_id"]:
+        existing = await table_service.get_table(row["linked_table_id"])
+        if existing:
+            return TableListResponse(tables=[TableResponse(**existing)])
+
+    try:
+        content = await storage_service.download_file(row["storage_key"])
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"S3 download failed: {e}")
+
+    base_name = row["name"].rsplit(".", 1)[0] or row["name"]
+    try:
+        created = await ingest_xlsx_bytes(
+            workspace_id=workspace_id,
+            user_id=current_user["id"],
+            content=content,
+            base_name=base_name,
+            description_template=(f"Imported from {row['name']} (sheet: {{sheet}})"),
+        )
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Could not read workbook: {e}")
+
+    if not created:
+        raise HTTPException(status_code=400, detail="Workbook had no visible sheets with data")
+
+    await pool.execute(
+        "UPDATE files SET linked_table_id = $1 WHERE id = $2",
+        created[0]["id"],
+        file_id,
+    )
+
+    return TableListResponse(tables=[TableResponse(**t) for t in created])
 
 
 def _slugify(s: str) -> str:

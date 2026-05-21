@@ -15,7 +15,7 @@ export type InferredType =
   | "datetime"
   | "text";
 
-export function parseCsv(text: string): string[][] {
+export function parseCsv(text: string, delimiter: string = ","): string[][] {
   if (text.charCodeAt(0) === 0xfeff) text = text.slice(1);
 
   const rows: string[][] = [];
@@ -45,7 +45,7 @@ export function parseCsv(text: string): string[][] {
       i++;
       continue;
     }
-    if (ch === ",") {
+    if (ch === delimiter) {
       row.push(field);
       field = "";
       i++;
@@ -98,6 +98,19 @@ const BOOL_VALUES = new Set([
   "0",
   "1",
 ]);
+
+/**
+ * Pick the delimiter for a pasted blob. Anything copied out of a
+ * spreadsheet uses tabs; anything saved as a .csv uses commas. Decide
+ * based on whichever character is more common in the first line, with
+ * a tie going to comma (the more conservative default).
+ */
+export function detectDelimiter(text: string): "," | "\t" {
+  const firstLine = text.split(/\r?\n/, 1)[0] ?? "";
+  const tabs = (firstLine.match(/\t/g) || []).length;
+  const commas = (firstLine.match(/,/g) || []).length;
+  return tabs > commas ? "\t" : ",";
+}
 
 export function inferColumnType(samples: string[]): InferredType {
   const nonempty = samples.filter((s) => s !== "");
