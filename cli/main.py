@@ -5,15 +5,19 @@ from __future__ import annotations
 import json
 import sys
 import textwrap
+import time
 from pathlib import Path
 
 import questionary
 import typer
 from rich.align import Align
 from rich.panel import Panel
+from rich.table import Table
 from rich.text import Text
 
-from .client import StashClient, StashError
+from stashai.plugin.upload_status import read_upload_status
+
+from .client import StashClient, StashError, stash_permissions_for_access
 from .config import (
     MANIFEST_FILE,
     PRODUCTION_BASE_URL,
@@ -664,6 +668,10 @@ def _web_app_url() -> str:
     return api
 
 
+def _stash_url(stash: dict) -> str:
+    return f"{_web_app_url()}/stashes/{stash['slug']}"
+
+
 @app.command("browse")
 def browse(
     query: str = typer.Argument("", help="Optional search query."),
@@ -1129,9 +1137,11 @@ def upload(
     with _client() as c:
         root_folder = c.create_folder(ws, root_name)
         folder_cache: dict[tuple[str, str], str] = {}
-        stash_items: list[dict] = [
-            {"object_type": "folder", "object_id": root_folder["id"], "position": 0},
-        ]
+        stash_items: list[dict] = []
+        if target.is_dir():
+            stash_items.append(
+                {"object_type": "folder", "object_id": root_folder["id"], "position": 0}
+            )
 
         for file_path in files:
             relative_path = (
@@ -1147,7 +1157,16 @@ def upload(
 
             if _is_upload_text_file(file_path):
                 content = file_path.read_text(errors="replace")
-                c.create_page(ws, file_path.name, content=content, folder_id=folder_id)
+                page = c.create_page(ws, file_path.name, content=content, folder_id=folder_id)
+                if target.is_file():
+                    stash_items.append(
+                        {
+                            "object_type": "page",
+                            "object_id": page["id"],
+                            "position": len(stash_items),
+                            "label_override": str(relative_path),
+                        }
+                    )
                 console.print(f"  [dim]Page: {relative_path}[/dim]")
                 continue
 
@@ -1176,25 +1195,23 @@ def upload(
                 items=stash_items,
             )
             stash = bundle["stash"]
+            stash_url = bundle["url"]
         else:
             stash = c.create_stash(
                 ws,
                 title=root_name,
                 description=f"Uploaded from {target.name}",
-                access="workspace",
                 items=stash_items,
             )
+            stash_url = _stash_url(stash)
 
-    result = {"folder": root_folder, "stash": stash}
+    result = {"folder": root_folder, "stash": stash, "url": stash_url}
     if _use_json(as_json):
         output_json(result)
         return
-    if public:
-        public_url = f"{_web_app_url()}/stashes/{stash['slug']}"
-        console.print(f"\n[green bold]Uploaded![/green bold]  {public_url}")
-        return
     console.print(
-        f"\n[green bold]Uploaded![/green bold]  Folder: {root_folder['id']}  Stash: {stash['id']}"
+        f"\n[green bold]Uploaded![/green bold]  {result['url']}\n"
+        f"[dim]Folder: {root_folder['id']}  Stash: {stash['id']}[/dim]"
     )
 
 
@@ -1287,7 +1304,6 @@ def stashes_create(
                     ws_id,
                     title=title,
                     description=description,
-                    access="workspace",
                     discoverable=False,
                     items=items,
                 )
@@ -1323,7 +1339,7 @@ def stashes_publish(
         try:
             stash = c.update_stash(
                 stash_id,
-                access=access,
+                **stash_permissions_for_access(access),
                 discoverable=False if access != "public" else discover,
             )
         except StashError as e:
@@ -1370,7 +1386,7 @@ def stashes_update(
         if access not in {"workspace", "private", "public"}:
             console.print("[red]--access must be workspace, private, or public.[/red]")
             raise typer.Exit(1)
-        fields["access"] = access
+        fields.update(stash_permissions_for_access(access))
     if discover is not None:
         fields["discoverable"] = discover
     if items_json is not None:
@@ -3019,7 +3035,7 @@ def files_upload(
         output_json(data)
     else:
         console.print(f"[green]Uploaded[/green] {data['name']}  [dim]{data['id']}[/dim]")
-        console.print(data["url"])
+        console.print(data["app_url"])
 
 
 @files_app.command("list")
@@ -3902,6 +3918,100 @@ PLUGIN_DATA_DIRS = {
 }
 
 
+def _upload_health_snapshot() -> list[dict]:
+    agents = []
+    for agent, data_dir in PLUGIN_DATA_DIRS.items():
+        if not data_dir.exists():
+            continue
+        status = read_upload_status(data_dir)
+        status["agent"] = agent
+        status["label"] = _AGENT_LABEL.get(agent, agent)
+        status["data_dir"] = str(data_dir)
+        agents.append(status)
+    return agents
+
+
+def _failing_upload_agents(snapshot: list[dict]) -> list[dict]:
+    failing = []
+    for item in snapshot:
+        if item.get("health") == "failing":
+            failing.append(item)
+    return failing
+
+
+def _format_age(timestamp: float | int | None) -> str:
+    if not timestamp:
+        return "never"
+    seconds = max(0, int(time.time() - float(timestamp)))
+    if seconds < 60:
+        return f"{seconds}s ago"
+    minutes = seconds // 60
+    if minutes < 60:
+        return f"{minutes}m ago"
+    hours = minutes // 60
+    if hours < 48:
+        return f"{hours}h ago"
+    return f"{hours // 24}d ago"
+
+
+def _upload_health_label(snapshot: list[dict]) -> str:
+    if not snapshot:
+        return "(none detected)"
+    failing = _failing_upload_agents(snapshot)
+    if failing:
+        labels = []
+        for item in failing:
+            queued = int(item.get("queued_events") or 0)
+            suffix = f", {queued} queued" if queued else ""
+            labels.append(f"{item['label']} failing{suffix}")
+        return "; ".join(labels)
+    if all(item.get("health") == "ok" for item in snapshot):
+        return "ok"
+    return "no upload attempts recorded yet"
+
+
+@app.command("status")
+def status_cmd(as_json: bool = typer.Option(False, "--json")):
+    """Show local Stash upload health."""
+    snapshot = _upload_health_snapshot()
+    if _use_json(as_json):
+        output_json({"upload_health": snapshot})
+        return
+
+    console.print("[bold]Stash upload status[/bold]\n")
+    if not snapshot:
+        console.print("[dim]No installed Stash agent plugins found on this machine.[/dim]")
+        return
+
+    table = Table(show_header=True, header_style="bold")
+    table.add_column("Agent")
+    table.add_column("Health")
+    table.add_column("Queued")
+    table.add_column("Last success")
+    table.add_column("Last failure")
+    table.add_column("Last error")
+
+    for item in snapshot:
+        health = str(item.get("health") or "unknown")
+        if health == "ok":
+            health_label = "[green]ok[/green]"
+        elif health == "failing":
+            health_label = "[red]failing[/red]"
+        else:
+            health_label = "[dim]unknown[/dim]"
+        table.add_row(
+            item["label"],
+            health_label,
+            str(item.get("queued_events") or 0),
+            _format_age(item.get("last_success_at")),
+            _format_age(item.get("last_failure_at")),
+            str(item.get("last_error") or ""),
+        )
+
+    console.print(table)
+    console.print("\n[dim]Status is local to this machine and updates when agent hooks run.[/dim]")
+
+
 def _render_settings_header(cfg: dict) -> None:
     """Print the read-only portion of the settings page."""
     console.clear()
@@ -3930,6 +4040,7 @@ def _render_settings_header(cfg: dict) -> None:
 
     plugins_seen = [name for name, d in PLUGIN_DATA_DIRS.items() if d.exists()]
     row(f"{'Plugins:':<14}", ", ".join(plugins_seen) or "(none detected)")
+    row(f"{'Uploads:':<14}", _upload_health_label(_upload_health_snapshot()))
     console.print()
 
 
@@ -3948,6 +4059,7 @@ def settings_cmd(as_json: bool = typer.Option(False, "--json")):
                 "config": display_cfg,
                 "enabled_agents": load_enabled_agents(),
                 "plugins_installed": [name for name, d in PLUGIN_DATA_DIRS.items() if d.exists()],
+                "upload_health": _upload_health_snapshot(),
             }
         )
         return

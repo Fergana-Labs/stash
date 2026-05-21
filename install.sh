@@ -6,7 +6,7 @@
 # Recommended invocation (keeps stdin attached to your terminal so the
 # questionnaire's interactive picker works):
 #
-#   bash -c "$(curl -fsSL https://raw.githubusercontent.com/Fergana-Labs/stash/main/install.sh)"
+#   bash -c "$(curl -fsSL https://joinstash.ai/install)"
 #
 # If no Python toolchain is present, the script
 # bootstraps `uv` (a single Rust binary) which downloads the right Python
@@ -32,18 +32,27 @@ fi
 printf '→ Installing %s via %s…\n' "$PACKAGE" "$INSTALLER"
 "${INSTALL_CMD[@]}" >/dev/null 2>&1
 
-# uv puts binaries in ~/.local/bin. If the shell hasn't picked up PATH yet,
-# surface the fix instead of silently failing.
-if ! command -v stash >/dev/null 2>&1; then
+STASH_BIN="$(command -v stash || true)"
+if [ -z "$STASH_BIN" ] && [ -x "$HOME/.local/bin/stash" ]; then
+  STASH_BIN="$HOME/.local/bin/stash"
+fi
+
+if [ -z "$STASH_BIN" ]; then
   cat >&2 <<'MSG'
 stash installed, but it isn't on PATH yet. Add this to your shell rc and
 re-open the terminal (or `source` your rc):
 
   export PATH="$HOME/.local/bin:$PATH"
 
-Then re-run: curl -fsSL https://joinstash.ai/install | bash
+Then re-run:
+
+  bash -c "$(curl -fsSL https://joinstash.ai/install)"
 MSG
   exit 1
+fi
+
+if [ "$#" -gt 0 ]; then
+  exec "$STASH_BIN" "$@"
 fi
 
 # If stdin isn't a terminal, the user piped us via `curl … | bash`. The
@@ -57,7 +66,7 @@ if [ ! -t 0 ]; then
 stash is installed, but the setup wizard needs an interactive terminal.
 Re-run with this form (it keeps stdin attached to your shell):
 
-  bash -c "$(curl -fsSL https://raw.githubusercontent.com/Fergana-Labs/stash/main/install.sh)"
+  bash -c "$(curl -fsSL https://joinstash.ai/install)"
 
 Or just run it now:
 
@@ -70,4 +79,4 @@ fi
 # Stdin is a real terminal; launch the questionnaire. `stash login`
 # asks scope, managed-vs-self-host, browser sign-in, workspace, and the
 # Claude Code plugin install (when detected).
-exec stash login
+exec "$STASH_BIN" login

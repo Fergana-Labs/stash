@@ -68,6 +68,10 @@ class Settings:
     # --- Background tasks (Celery + Redis) ---
     REDIS_URL: str = os.getenv("REDIS_URL", "redis://localhost:6379/0")
 
+    # --- Linear ---
+    LINEAR_API_KEY: str | None = os.getenv("LINEAR_API_KEY") or os.getenv("LINEAR_API_TOKEN")
+    LINEAR_API_URL: str = os.getenv("LINEAR_API_URL", "https://api.linear.app/graphql")
+
     # --- Integrations (OAuth + per-user token storage) ---
     # Fernet key for encrypting access/refresh tokens at rest.
     # Generate with: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
@@ -94,13 +98,9 @@ class Settings:
     GOOGLE_PICKER_APP_ID: str | None = os.getenv("GOOGLE_PICKER_APP_ID")
 
     # --- LLM (Anthropic) ---
-    # Two tiers used across ask-the-stash and background workers.
-    #   ANTHROPIC_MODEL      — quality tier (Sonnet): ask
-    #   ANTHROPIC_FAST_MODEL — fast tier (Haiku)
     ANTHROPIC_API_KEY: str | None = os.getenv("ANTHROPIC_API_KEY")
     ANTHROPIC_MODEL: str = os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-6")
     ANTHROPIC_FAST_MODEL: str = os.getenv("ANTHROPIC_FAST_MODEL", "claude-haiku-4-5")
-    ASK_MAX_TURNS: int = int(os.getenv("ASK_MAX_TURNS", "8"))
 
 
 settings = Settings()

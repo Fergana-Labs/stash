@@ -453,7 +453,7 @@ export default function AppShell({
         style={{
           gridTemplateColumns: sidebarCollapsed
             ? "minmax(0, 1fr)"
-            : "260px minmax(0, 1fr)",
+            : "300px minmax(0, 1fr)",
         }}
       >
         {!sidebarCollapsed && (

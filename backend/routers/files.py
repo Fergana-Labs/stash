@@ -16,7 +16,8 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, Form, HTTPException, UploadFile
 from fastapi.responses import Response
 
-from ..auth import get_current_user
+from ..auth import get_current_user, get_current_user_optional
+from ..config import settings
 from ..database import get_pool
 from ..models import FileListResponse, FileResponse, FileUpdateRequest, TableResponse
 from ..services import (
@@ -52,7 +53,7 @@ async def _check_write(workspace_id: UUID, user_id: UUID) -> None:
 async def _can_access_file(
     file_id: UUID,
     workspace_id: UUID,
-    user_id: UUID,
+    user_id: UUID | None,
     *,
     require_write: bool = False,
 ) -> bool:
@@ -67,6 +68,10 @@ async def _can_access_file(
     return False
 
 
+def _file_app_url(row: dict) -> str:
+    return f"{settings.PUBLIC_URL.rstrip('/')}/workspaces/{row['workspace_id']}/f/{row['id']}"
+
+
 async def _file_to_response(row: dict) -> FileResponse:
     url = await storage_service.get_file_url(row["storage_key"])
     return FileResponse(
@@ -77,6 +82,7 @@ async def _file_to_response(row: dict) -> FileResponse:
         content_type=row["content_type"],
         size_bytes=row["size_bytes"],
         url=url,
+        app_url=_file_app_url(row),
         uploaded_by=row["uploaded_by"],
         created_at=row["created_at"],
         linked_table_id=row.get("linked_table_id"),
@@ -201,10 +207,9 @@ async def get_ws_file(
 async def download_ws_file(
     workspace_id: UUID,
     file_id: UUID,
-    current_user: dict = Depends(get_current_user),
+    current_user: dict | None = Depends(get_current_user_optional),
 ):
     """Permanent workspace URL for file links embedded in wiki pages."""
-    await _check_member(workspace_id, current_user["id"])
     pool = get_pool()
     row = await pool.fetchrow(
         "SELECT name, content_type, storage_key FROM files "
@@ -214,17 +219,19 @@ async def download_ws_file(
     )
     if not row:
         raise HTTPException(status_code=404, detail="File not found")
-    if not await _can_access_file(file_id, workspace_id, current_user["id"]):
+    viewer_id = current_user["id"] if current_user else None
+    if not await _can_access_file(file_id, workspace_id, viewer_id):
         raise HTTPException(status_code=404, detail="File not found")
     try:
         content = await storage_service.download_file(row["storage_key"])
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"S3 download failed: {e}")
+    disposition = "inline" if (row["content_type"] or "").startswith("image/") else "attachment"
     return Response(
         content=content,
         media_type=row["content_type"] or "application/octet-stream",
         headers={
-            "Content-Disposition": f"attachment; filename*=UTF-8''{quote(row['name'])}",
+            "Content-Disposition": f"{disposition}; filename*=UTF-8''{quote(row['name'])}",
         },
     )
 

@@ -8,7 +8,12 @@ assistant_message here; session_end lives in on_session_end.py.
 from adapt import adapt_stop
 from config import DATA_DIR, get_client, get_config, get_stdin_data, is_configured
 
-from stashai.plugin.hooks import remember_transcript_path, stream_assistant_message
+from stashai.plugin.hooks import (
+    color_upload_health_warning,
+    remember_transcript_path,
+    stream_assistant_message,
+    upload_health_warning,
+)
 from stashai.plugin.state import load_state
 
 
@@ -24,6 +29,9 @@ def main():
             stream_assistant_message(client, cfg, state, event)
     except Exception:
         pass
+    warning = upload_health_warning(cfg, state, event, DATA_DIR)
+    if warning:
+        print(color_upload_health_warning(warning))
 
 
 if __name__ == "__main__":

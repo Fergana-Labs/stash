@@ -55,6 +55,3 @@ ASK_TOOL_SET = (
     "read_skill",
     "list_stashes",
 )
-
-# Even narrower — for surfaces where only documents matter.
-RECIPIENT_TOOL_SET = ("read_page", "grep_pages", "list_files", "read_file")

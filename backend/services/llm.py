@@ -11,6 +11,7 @@ Single source of truth for the Anthropic Python SDK across the backend.
 
 from __future__ import annotations
 
+import enum
 import json
 import logging
 import re
@@ -18,9 +19,29 @@ import re
 from anthropic import AsyncAnthropic
 
 from ..config import settings
-from .agent_runtime import ModelTier, _model_for
 
 logger = logging.getLogger(__name__)
+
+
+class ModelTier(enum.Enum):
+    """Two-tier model selection for non-agent Claude calls.
+
+    QUALITY = Sonnet (settings.ANTHROPIC_MODEL). Use for reasoning, the
+    ask-the-workspace loop, anything user-facing where accuracy matters.
+
+    FAST = Haiku (settings.ANTHROPIC_FAST_MODEL). Use for short
+    classification / synthesis / structured-output tasks where speed
+    and cost matter and Sonnet would be overkill."""
+
+    QUALITY = "quality"
+    FAST = "fast"
+
+
+def _model_for(tier: ModelTier) -> str:
+    if tier == ModelTier.QUALITY:
+        return settings.ANTHROPIC_MODEL
+    return settings.ANTHROPIC_FAST_MODEL
+
 
 _client: AsyncAnthropic | None = None
 
@@ -68,9 +89,7 @@ async def complete_json(
 
     Strips markdown code fences if present, then json.loads. Raises
     json.JSONDecodeError if the response can't be parsed."""
-    text = await complete_text(
-        prompt=prompt, system=system, tier=tier, max_tokens=max_tokens
-    )
+    text = await complete_text(prompt=prompt, system=system, tier=tier, max_tokens=max_tokens)
     m = _JSON_FENCE.search(text)
     payload = (m.group(1) if m else text).strip()
     return json.loads(payload)

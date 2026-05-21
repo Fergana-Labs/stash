@@ -27,6 +27,9 @@ x-stash-env: &stash-env
   ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
   ANTHROPIC_MODEL: ${ANTHROPIC_MODEL:-claude-sonnet-4-6}
   ANTHROPIC_FAST_MODEL: ${ANTHROPIC_FAST_MODEL:-claude-haiku-4-5}
+  # Linear ticket enrichment
+  LINEAR_API_KEY: ${LINEAR_API_KEY:-}
+  LINEAR_API_URL: ${LINEAR_API_URL:-https://api.linear.app/graphql}
   # Integrations — Fernet key + per-provider OAuth credentials.
   INTEGRATIONS_ENCRYPTION_KEY: ${INTEGRATIONS_ENCRYPTION_KEY:-}
   GOOGLE_OAUTH_CLIENT_ID: ${GOOGLE_OAUTH_CLIENT_ID:-}

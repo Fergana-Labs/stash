@@ -1,10 +1,17 @@
-"""Readable titles for sessions."""
+"""AI-generated and fallback readable titles for sessions."""
 
 from __future__ import annotations
 
+import hashlib
 import re
+from datetime import datetime
+from uuid import UUID
+
+from ..config import settings
+from ..database import get_pool
 
 MAX_TITLE_LENGTH = 80
+ENQUEUE_MISSING_LIMIT = 40
 
 _USER_EVENT_TYPES = (
     "user_message",
@@ -14,6 +21,78 @@ _USER_EVENT_TYPES = (
     "user",
 )
 _ASSISTANT_EVENT_TYPES = ("assistant_message", "assistant")
+
+
+def source_hash(session: dict) -> str:
+    last_at = session.get("last_at") or session.get("last_event_at") or session.get("updated_at")
+    if isinstance(last_at, datetime):
+        last_at = last_at.isoformat()
+    raw = f"{session['session_id']}|{session.get('event_count')}|{last_at or ''}"
+    return hashlib.sha256(raw.encode()).hexdigest()
+
+
+async def titles_for_sessions(
+    workspace_id: UUID,
+    sessions: list[dict],
+    *,
+    enqueue_missing: bool = True,
+) -> dict[str, str]:
+    if not sessions:
+        return {}
+
+    pool = get_pool()
+    session_ids = [s["session_id"] for s in sessions]
+    rows = await pool.fetch(
+        "SELECT session_id, title, source_hash FROM session_titles "
+        "WHERE workspace_id = $1 AND session_id = ANY($2::text[])",
+        workspace_id,
+        session_ids,
+    )
+    cached = {r["session_id"]: dict(r) for r in rows}
+
+    titles: dict[str, str] = {}
+    stale_session_ids: list[str] = []
+    for session in sessions:
+        session_id = session["session_id"]
+        title_row = cached.get(session_id)
+        session_source_hash = source_hash(session)
+        if title_row:
+            titles[session_id] = title_row["title"]
+        else:
+            titles[session_id] = title_from_text(session.get("title_source"), session_id)
+
+        if title_row and title_row["source_hash"] == session_source_hash:
+            continue
+        stale_session_ids.append(session_id)
+
+    if enqueue_missing and stale_session_ids:
+        _enqueue_title_generation(workspace_id, stale_session_ids[:ENQUEUE_MISSING_LIMIT])
+
+    return titles
+
+
+async def title_for_events(workspace_id: UUID, session_id: str, events: list[dict]) -> str:
+    pool = get_pool()
+    row = await pool.fetchrow(
+        "SELECT title FROM session_titles WHERE workspace_id = $1 AND session_id = $2",
+        workspace_id,
+        session_id,
+    )
+    if row:
+        return row["title"]
+
+    _enqueue_title_generation(workspace_id, [session_id])
+    return title_from_events(events, session_id)
+
+
+def _enqueue_title_generation(workspace_id: UUID, session_ids: list[str]) -> None:
+    if not settings.ANTHROPIC_API_KEY:
+        return
+
+    from ..tasks.session_titles import generate_session_title
+
+    for session_id in session_ids:
+        generate_session_title.delay(str(workspace_id), session_id)
 
 
 def title_from_text(text: str | None, session_id: str) -> str:
@@ -31,6 +110,15 @@ def title_from_events(events: list[dict], session_id: str) -> str:
     return session_id
 
 
+def clean_generated_title(text: str) -> str:
+    title = re.sub(r"\s+", " ", text).strip("`\"' ")
+    title = re.sub(r"^\s*title:\s*", "", title, flags=re.IGNORECASE)
+    title = _strip_markdown(title)
+    if not title:
+        return ""
+    return _truncate(_first_clause(title))
+
+
 def _title_from_first_matching_event(events: list[dict], event_types: tuple[str, ...]) -> str:
     for event in events:
         if event.get("event_type") not in event_types:
@@ -42,10 +130,29 @@ def _title_from_first_matching_event(events: list[dict], event_types: tuple[str,
 
 
 def _title_from_content(content: str | None) -> str:
+    title = _title_from_structured_context(content)
+    if title:
+        return title
+
     for line in (content or "").splitlines():
         title = _title_from_line(line)
         if title:
             return title
+    return ""
+
+
+def _title_from_structured_context(content: str | None) -> str:
+    lines = (content or "").splitlines()
+    first_line = next((line.strip() for line in lines if line.strip()), "")
+    if not first_line.lower().startswith("you are working on a linear ticket"):
+        return ""
+
+    for line in lines:
+        match = re.match(r"^\s*Title:\s*(.+?)\s*$", line)
+        if not match:
+            continue
+        return _title_from_line(match.group(1))
+
     return ""
 
 

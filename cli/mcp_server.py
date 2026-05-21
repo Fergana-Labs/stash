@@ -4,7 +4,7 @@ import json
 
 from mcp.server.fastmcp import FastMCP
 
-from cli.client import StashClient
+from cli.client import StashClient, stash_permissions_for_access
 from cli.config import load_config, load_manifest
 
 mcp = FastMCP("stash", instructions="Stash — shared memory for AI coding agents")
@@ -403,7 +403,7 @@ def stash_file_text(file_id: str, workspace_id: str = "") -> str:
 
 @mcp.tool()
 def stash_upload_file(file_path: str, workspace_id: str = "") -> str:
-    """Upload a local file to the workspace."""
+    """Upload a local file to the workspace. Returns a stable app_url for the user."""
     client, default_ws = _client()
     ws = _require_ws(workspace_id or default_ws)
     return _json(client.upload_ws_file(ws, file_path))
@@ -479,7 +479,7 @@ def stash_create_stash(
             ws,
             title,
             description=description,
-            access=access,
+            **stash_permissions_for_access(access),
             discoverable=discoverable,
             items=item_list,
         )
@@ -503,7 +503,7 @@ def stash_update_stash(
     if description:
         fields["description"] = description
     if access:
-        fields["access"] = access
+        fields.update(stash_permissions_for_access(access))
     if discoverable:
         fields["discoverable"] = discoverable.lower() in {"1", "true", "yes", "on"}
     if items:

@@ -11,10 +11,12 @@ from pydantic import BaseModel
 from starlette.responses import StreamingResponse
 
 from ..auth import get_current_user
+from ..config import settings
 from ..database import get_pool
 from ..services import (
     ask_service,
     files_tree_service,
+    linear_ticket_service,
     llm,
     memory_service,
     session_title_service,
@@ -25,7 +27,7 @@ from ..services import (
 
 router = APIRouter(prefix="/api/v1/workspaces", tags=["workspaces"])
 
-SIDEBAR_ETAG_VERSION = "sidebar-event-title-v1"
+SIDEBAR_ETAG_VERSION = "sidebar-generated-title-linear-ticket-v2"
 
 
 # ---------------------------------------------------------------------------
@@ -40,11 +42,13 @@ SIDEBAR_ETAG_VERSION = "sidebar-event-title-v1"
 async def _list_sessions(workspace_id: UUID, user_id: UUID) -> list[dict]:
     """Sessions in this workspace, sourced from history_events rows."""
     sessions = await memory_service.list_workspace_sessions(workspace_id, user_id)
+    titles = await session_title_service.titles_for_sessions(workspace_id, sessions)
     return [
         {
             "id": s["id"],
             "session_id": s["session_id"],
-            "title": _auto_session_title(s),
+            "title": titles[s["session_id"]],
+            "linear_tickets": linear_ticket_service.tickets_response(s.get("linear_tickets")),
             "user_name": s["user_name"],
             "agent_name": s["agent_name"] or "",
             "size_bytes": int(s["size_bytes"] or 0),
@@ -53,13 +57,6 @@ async def _list_sessions(workspace_id: UUID, user_id: UUID) -> list[dict]:
         }
         for s in sessions
     ]
-
-
-def _auto_session_title(session: dict) -> str:
-    return session_title_service.title_from_text(
-        session.get("title_source"),
-        session["session_id"],
-    )
 
 
 async def _files_tree(workspace_id: UUID, user_id: UUID) -> dict:
@@ -232,11 +229,23 @@ async def ask_workspace(
     workspace = await workspace_service.get_workspace(workspace_id)
     if not workspace:
         raise HTTPException(status_code=404, detail="Workspace not found")
-
-    convo = [{"role": m.role, "content": m.content} for m in req.messages]
+    if not settings.ANTHROPIC_API_KEY:
+        raise HTTPException(
+            status_code=503,
+            detail="Ask-the-workspace is not configured (ANTHROPIC_API_KEY unset).",
+        )
+    # Single-turn only. Multi-turn ask should ship as session resumption
+    # (ClaudeAgentOptions.resume), not as conversation replay through this
+    # request shape — see ask_service.stream_ask.
+    if len(req.messages) != 1 or req.messages[0].role != "user":
+        raise HTTPException(
+            status_code=400,
+            detail="Ask currently accepts exactly one user message per request.",
+        )
+    prompt = req.messages[0].content
 
     return StreamingResponse(
-        ask_service.stream_ask(workspace_id, workspace["name"], convo, current_user["id"]),
+        ask_service.stream_ask(workspace_id, workspace["name"], prompt, current_user["id"]),
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
@@ -280,16 +289,12 @@ async def memory_demo(
     if not await workspace_service.is_member(workspace_id, current_user["id"]):
         raise HTTPException(status_code=403, detail="Not a workspace member")
 
-    sessions = await memory_service.list_workspace_sessions(
-        workspace_id, current_user["id"]
-    )
+    sessions = await memory_service.list_workspace_sessions(workspace_id, current_user["id"])
     if not sessions:
         return _FALLBACK_DEMO
 
     newest = max(sessions, key=lambda s: s.get("last_at") or "")
-    title = session_title_service.title_from_text(
-        newest.get("title_source"), newest["session_id"]
-    )
+    title = session_title_service.title_from_text(newest.get("title_source"), newest["session_id"])
     agent = newest.get("agent_name") or "your agent"
 
     snippet = ""
@@ -299,19 +304,17 @@ async def memory_demo(
     user_event_types = {"user_message", "user_prompt", "prompt", "message", "user"}
     if events:
         first_user_prompts = [
-            (e.get("content") or "")
-            for e in events
-            if e.get("event_type") in user_event_types
+            (e.get("content") or "") for e in events if e.get("event_type") in user_event_types
         ][:2]
         snippet = "\n---\n".join(p[:800] for p in first_user_prompts if p)
 
     system_prompt = (
         "You write 2-column before/after demo copy for an onboarding screen. "
         "The user has imported their agent session transcripts. The left column "
-        "(\"Without memory\") is a 4–6 step list showing the tedious context-"
+        '("Without memory") is a 4–6 step list showing the tedious context-'
         "establishing dance the user would do every time they restart their "
         "agent: pasting context, restating constraints, recapping dead ends. "
-        "Each step is one short sentence. The right column (\"With Stash\") is "
+        'Each step is one short sentence. The right column ("With Stash") is '
         "a single short, casual request that references the topic — no "
         "re-explanation. Tone: concrete, dry, no marketing fluff."
     )
@@ -328,9 +331,7 @@ async def memory_demo(
     )
 
     try:
-        payload = await llm.complete_json(
-            prompt=user_prompt, system=system_prompt, max_tokens=600
-        )
+        payload = await llm.complete_json(prompt=user_prompt, system=system_prompt, max_tokens=600)
         topic = str(payload.get("topic") or title)
         before_steps = [str(s) for s in payload.get("before_steps") or []]
         after_step = str(payload.get("after_step") or "")
@@ -348,7 +349,9 @@ async def memory_demo(
         # title so it still feels somewhat personal.
         return MemoryDemoResponse(
             topic=title,
-            before_steps=[s.replace("the API gateway refactor", title) for s in _FALLBACK_DEMO.before_steps],
+            before_steps=[
+                s.replace("the API gateway refactor", title) for s in _FALLBACK_DEMO.before_steps
+            ],
             after_step=_FALLBACK_DEMO.after_step.replace("the API gateway refactor", title),
             real=False,
         )
@@ -430,6 +433,20 @@ async def _sidebar_etag(workspace_id: UUID, user_id: UUID) -> str:
           (SELECT COUNT(*) FROM history_events he
             WHERE he.workspace_id = $1 AND he.session_id IS NOT NULL
             AND {memory_service.readable_session_event_condition('he', 2)})        AS hc,
+          (SELECT MAX(stt.updated_at) FROM session_titles stt
+           JOIN sessions stt_session
+             ON stt_session.workspace_id = stt.workspace_id
+            AND stt_session.session_id = stt.session_id
+           WHERE stt.workspace_id = $1
+             AND stt_session.deleted_at IS NULL
+             AND {memory_service.readable_session_event_condition('stt_session', 2)}) AS tt,
+          (SELECT COUNT(*) FROM session_titles stt
+           JOIN sessions stt_session
+             ON stt_session.workspace_id = stt.workspace_id
+            AND stt_session.session_id = stt.session_id
+           WHERE stt.workspace_id = $1
+             AND stt_session.deleted_at IS NULL
+             AND {memory_service.readable_session_event_condition('stt_session', 2)}) AS tc,
           (SELECT MAX(updated_at) FROM stashes WHERE workspace_id = $1)            AS st,
           (SELECT MAX(sm.created_at) FROM stash_members sm
            JOIN stashes s ON s.id = sm.stash_id
@@ -441,7 +458,7 @@ async def _sidebar_etag(workspace_id: UUID, user_id: UUID) -> str:
     )
     raw = "|".join(
         [SIDEBAR_ETAG_VERSION]
-        + [str(row[k] or "") for k in ("p", "f", "d", "s", "he", "hc", "st", "sm", "w")]
+        + [str(row[k] or "") for k in ("p", "f", "d", "s", "he", "hc", "tt", "tc", "st", "sm", "w")]
     )
     return f'W/"{_short_hash(raw)}"'
 

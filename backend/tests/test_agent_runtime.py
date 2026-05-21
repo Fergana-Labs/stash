@@ -22,16 +22,10 @@ from backend.services import agent_runtime, prompts, stash_service
 
 
 def test_tool_catalog_matches_prompts_set():
-    """`prompts.STASH_TOOL_SET` is the source of truth for what tools each
-    LLM call site can use; agent_runtime must implement every name."""
+    """`prompts.STASH_TOOL_SET` is the source of truth for what tools the
+    ask-the-workspace agent can use; agent_runtime must implement every name."""
     missing = [name for name in prompts.STASH_TOOL_SET if name not in agent_runtime._TOOLS_BY_NAME]
     assert missing == [], f"agent_runtime missing tool impls: {missing}"
-
-
-def test_recipient_tool_set_is_subset_of_full():
-    """Recipient tool set is intentionally narrower than the full stash toolset."""
-    for name in prompts.RECIPIENT_TOOL_SET:
-        assert name in prompts.STASH_TOOL_SET
 
 
 @pytest.mark.asyncio

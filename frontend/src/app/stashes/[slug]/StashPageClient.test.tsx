@@ -394,4 +394,52 @@ describe("StashPageClient sharing", () => {
 
     expect(await screen.findByText("by Sam")).toBeInTheDocument();
   });
+
+  it("opens single uploaded file stashes directly on the file preview", async () => {
+    const detail = stashDetail({
+      description: "<p>Uploaded from shot.png</p>",
+    });
+    detail.items = [
+      {
+        object_type: "folder",
+        object_id: "folder-1",
+        position: 0,
+        label: "shot",
+        inline: {
+          pages: [],
+          files: [
+            {
+              id: "file-1",
+              name: "shot.png",
+              content_type: "image/png",
+              size_bytes: 1234,
+              url: "https://files.test/shot.png",
+            },
+          ],
+        },
+      },
+      {
+        object_type: "file",
+        object_id: "file-1",
+        position: 1,
+        label: "shot.png",
+        inline: {
+          name: "shot.png",
+          content_type: "image/png",
+          size_bytes: 1234,
+          url: "https://files.test/shot.png",
+        },
+      },
+    ];
+    vi.mocked(getPublicStash).mockResolvedValueOnce(detail);
+
+    render(<StashPageClient slug="shared-stash" />);
+
+    const image = await screen.findByRole("img", { name: "shot.png" });
+    expect(image).toHaveAttribute("src", "https://files.test/shot.png");
+    expect(screen.getByText("1 item")).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Files" })).not.toBeInTheDocument();
+    expect(getActivityTimeline).not.toHaveBeenCalled();
+    expect(getEmbeddingProjection).not.toHaveBeenCalled();
+  });
 });

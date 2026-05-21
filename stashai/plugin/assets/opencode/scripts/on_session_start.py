@@ -8,14 +8,17 @@ session_end for the stale id first, then save the new one.
 """
 
 from adapt import adapt_session_start
-from config import DATA_DIR, get_client, get_config, get_stdin_data, is_configured
+from config import DATA_DIR, get_client, get_config, get_stdin_data
 
 from stashai.plugin.event import HookEvent
 from stashai.plugin.hooks import (
+    color_upload_health_warning,
     create_session_record,
     finalize_session_upload,
     reset_session_record_state,
     stream_session_end,
+    uploads_disabled_warning,
+    uploads_enabled,
 )
 from stashai.plugin.state import load_state, reset_stats, save_state
 
@@ -31,11 +34,16 @@ def _flush_stale_session(prior_sid: str, state: dict) -> None:
     except Exception:
         pass
 
+
 def main():
-    if not is_configured():
-        return
     event = adapt_session_start(get_stdin_data())
+    cfg = get_config()
     state = load_state(DATA_DIR)
+    if not uploads_enabled(cfg, event):
+        warning = uploads_disabled_warning(cfg, state, event, DATA_DIR)
+        if warning:
+            print(color_upload_health_warning(warning))
+        return
 
     prior_sid = state.get("session_id", "")
     if prior_sid and prior_sid != event.session_id:
@@ -47,7 +55,6 @@ def main():
     reset_stats(DATA_DIR)
     state = load_state(DATA_DIR)
 
-    cfg = get_config()
     try:
         with get_client() as client:
             create_session_record(client, cfg, state, event, DATA_DIR)

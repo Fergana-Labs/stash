@@ -162,6 +162,7 @@ export interface FileInfo {
   content_type: string;
   size_bytes: number;
   url: string;
+  app_url: string;
   uploaded_by: string;
   created_at: string;
   linked_table_id?: string | null;

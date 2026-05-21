@@ -72,9 +72,10 @@ function findManifest(): StashManifest | null {
 }
 
 function eventsPath(workspaceId: string): string {
-  return workspaceId
-    ? `/api/v1/workspaces/${workspaceId}/memory/events`
-    : `/api/v1/memory/events`;
+  if (!workspaceId) {
+    throw new Error("workspaceId is required for session events");
+  }
+  return `/api/v1/workspaces/${workspaceId}/sessions/events`;
 }
 
 function extractText(content: unknown): string {

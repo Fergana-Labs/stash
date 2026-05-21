@@ -73,16 +73,17 @@ function OnboardingInner() {
   const [workspaceId, setWorkspaceId] = useState<string | null>(null);
   const [sharedUrl, setSharedUrl] = useState<string | null>(null);
   const [canContinue, setCanContinue] = useState(true);
+  const userId = user?.id;
 
   const path = useMemo<PathId | null>(() => {
     const q = searchParams.get("path");
     if (isPathId(q)) return q;
-    if (typeof window !== "undefined" && user?.id) {
-      const stored = window.localStorage.getItem(pathStorageKey(user.id));
+    if (typeof window !== "undefined" && userId) {
+      const stored = window.localStorage.getItem(pathStorageKey(userId));
       if (isPathId(stored)) return stored;
     }
     return null;
-  }, [searchParams, user?.id]);
+  }, [searchParams, userId]);
 
   const source = useMemo<MigrantSource | null>(() => {
     const q = searchParams.get("source");
@@ -143,12 +144,12 @@ function OnboardingInner() {
 
   const pickPath = useCallback(
     (next: PathId) => {
-      if (typeof window !== "undefined" && user?.id) {
-        window.localStorage.setItem(pathStorageKey(user.id), next);
+      if (typeof window !== "undefined" && userId) {
+        window.localStorage.setItem(pathStorageKey(userId), next);
       }
       router.push(`/onboarding?path=${next}&step=1`);
     },
-    [router, user?.id],
+    [router, userId],
   );
 
   const pickSource = useCallback(

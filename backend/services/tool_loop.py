@@ -28,13 +28,8 @@ from uuid import UUID
 from anthropic import AsyncAnthropic
 
 from ..config import settings
-from .agent_runtime import (
-    ModelTier,
-    _TOOLS_BY_NAME,
-    _model_for,
-    _user_ctx,
-    _workspace_ctx,
-)
+from .agent_runtime import _TOOLS_BY_NAME, _user_ctx, _workspace_ctx
+from .llm import ModelTier, _model_for
 
 logger = logging.getLogger(__name__)
 
@@ -196,9 +191,7 @@ async def stream_tool_loop(
                     raw = await executor.handler(use["input"])
                     text = _tool_text(raw)
                 except Exception:
-                    logger.exception(
-                        "tool %s failed (args=%r)", use["name"], use["input"]
-                    )
+                    logger.exception("tool %s failed (args=%r)", use["name"], use["input"])
                     tool_results.append(
                         {
                             "type": "tool_result",

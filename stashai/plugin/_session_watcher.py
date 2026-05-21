@@ -113,6 +113,7 @@ def main() -> None:
         agent_name=agent_name,
         base_url=base_url,
         api_key=api_key,
+        data_dir=Path(data_dir),
     )
 
 

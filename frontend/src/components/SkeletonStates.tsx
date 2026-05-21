@@ -83,7 +83,7 @@ export function AppShellSkeleton({
       <HeaderSkeleton />
       <div
         className="grid min-h-0 flex-1 overflow-hidden"
-        style={{ gridTemplateColumns: sidebar ? "260px minmax(0, 1fr)" : "minmax(0, 1fr)" }}
+        style={{ gridTemplateColumns: sidebar ? "300px minmax(0, 1fr)" : "minmax(0, 1fr)" }}
       >
         {sidebar && <SidebarSkeleton />}
         <main className="min-w-0 overflow-y-auto bg-base">

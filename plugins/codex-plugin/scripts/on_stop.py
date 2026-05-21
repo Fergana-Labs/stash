@@ -9,10 +9,17 @@ Transcript upload is spawned as a detached background process (so it doesn't
 block the hook timeout) with a 60s cooldown between uploads per session.
 """
 
+import json
+
 from adapt import adapt_stop
 from config import DATA_DIR, get_client, get_config, get_stdin_data, is_configured
 
-from stashai.plugin.hooks import remember_transcript_path, stream_assistant_message
+from stashai.plugin.hooks import (
+    color_upload_health_warning,
+    remember_transcript_path,
+    stream_assistant_message,
+    upload_health_warning,
+)
 from stashai.plugin.state import load_state
 from stashai.plugin.transcript_upload import spawn_transcript_upload
 
@@ -40,6 +47,9 @@ def main():
         base_url=cfg["api_endpoint"],
         api_key=cfg["api_key"],
     )
+    warning = upload_health_warning(cfg, state, event, DATA_DIR)
+    if warning:
+        print(json.dumps({"systemMessage": color_upload_health_warning(warning)}))
 
 
 if __name__ == "__main__":

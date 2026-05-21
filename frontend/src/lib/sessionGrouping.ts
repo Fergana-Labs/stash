@@ -94,6 +94,15 @@ export function groupSessionsByAgent(sessions: SessionSummary[]): SessionFlatGro
   return groupBy(sessions, (s) => (s.agent_name || "").trim() || "Unknown agent");
 }
 
+export function groupSessionsByLinearTicket(sessions: SessionSummary[]): SessionFlatGroup[] {
+  return groupBy(sessions, (s) => {
+    const ticket = s.linear_tickets[0];
+    if (!ticket) return "Unlabeled";
+    if (ticket.ticket_title) return `${ticket.ticket_identifier}: ${ticket.ticket_title}`;
+    return ticket.ticket_identifier;
+  });
+}
+
 // Groups + sorts: largest groups first, sessions inside groups reverse-chronological.
 function groupBy(
   sessions: SessionSummary[],

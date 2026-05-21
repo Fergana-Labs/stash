@@ -11,6 +11,7 @@ import {
   listMyWorkspaces,
   uploadFileOrPage,
   uploadTranscript,
+  type WorkspaceSidebarSession,
 } from "../lib/api";
 
 const nav = vi.hoisted(() => ({
@@ -100,6 +101,7 @@ const sidebarWithStash = {
       id: "session-row-1",
       session_id: "session-1",
       title: "Planning session",
+      linear_tickets: [],
       user_name: "Henry",
       agent_name: "Claude",
       size_bytes: 256,
@@ -166,6 +168,7 @@ const sidebarWithTree = {
       id: "session-row-1",
       session_id: "session-1",
       title: "Planning session",
+      linear_tickets: [],
       user_name: "Henry",
       agent_name: "Claude",
       size_bytes: 256,
@@ -201,17 +204,40 @@ function sidebarSession(
   sessionId: string,
   title: string,
   userName: string,
-  lastAt: string
+  lastAt: string,
+  linearTickets: WorkspaceSidebarSession["linear_tickets"] = []
 ) {
   return {
     id: `row-${sessionId}`,
     session_id: sessionId,
     title,
+    linear_tickets: linearTickets,
     user_name: userName,
     agent_name: "Claude",
     size_bytes: 256,
     last_at: lastAt,
     updated_at: lastAt,
+  };
+}
+
+function linearTicket(
+  identifier: string,
+  title: string | null = null
+): WorkspaceSidebarSession["linear_tickets"][number] {
+  return {
+    ticket_identifier: identifier,
+    ticket_title: title,
+    ticket_url: null,
+    source: "github_pr_title",
+    confidence: 0.9,
+    linear_issue_id: null,
+    ticket_status: null,
+    ticket_assignee_name: null,
+    ticket_team_key: null,
+    ticket_team_name: null,
+    ticket_project_name: null,
+    linear_updated_at: null,
+    enriched_at: null,
   };
 }
 
@@ -225,6 +251,18 @@ function sidebarWithSessions(sessions: ReturnType<typeof sidebarSession>[]) {
     },
     stashes: [],
   };
+}
+
+function expectedSidebarTimestamp(iso: string, includeDate = true): string {
+  const date = new Date(iso);
+  const hour24 = date.getHours();
+  const hour = hour24 % 12 || 12;
+  const minutes = String(date.getMinutes()).padStart(2, "0");
+  const suffix = hour24 >= 12 ? "p" : "a";
+  const time = `${hour}:${minutes}${suffix}`;
+
+  if (!includeDate) return time;
+  return `${date.getMonth() + 1}/${date.getDate()} ${time}`;
 }
 
 function sidebarWithFiles({
@@ -309,6 +347,7 @@ describe("AppSidebar tree expansion", () => {
         content_type: "text/markdown",
         size_bytes: 5,
         url: "/files/file-1",
+        app_url: "/files/file-1",
         uploaded_by: "user-1",
         created_at: "2026-05-11T00:00:00Z",
         linked_table_id: null,
@@ -434,6 +473,49 @@ describe("AppSidebar tree expansion", () => {
     expect(detailsFor(day.textContent ?? "")).toHaveAttribute("open");
   });
 
+  it("reveals compact timestamps from session rows on hover", async () => {
+    const lastAt = "2026-05-20T12:59:00";
+    vi.mocked(getWorkspaceSidebar).mockResolvedValue(
+      sidebarWithSessions([
+        sidebarSession("timestamped", "Timestamped session", "Henry", lastAt),
+      ])
+    );
+
+    renderSidebar();
+
+    expect(await screen.findByText("Timestamped session")).toBeTruthy();
+    const timestamp = screen.getByText(expectedSidebarTimestamp(lastAt, false));
+    expect(timestamp.tagName).toBe("TIME");
+    expect(timestamp).toHaveAttribute("dateTime", lastAt);
+    expect(timestamp).toHaveClass("opacity-0");
+    expect(timestamp).toHaveClass("group-hover/nav:opacity-100");
+    expect(timestamp).toHaveClass("group-focus-within/nav:opacity-100");
+
+    fireEvent.change(screen.getByLabelText("Filter sessions"), {
+      target: { value: "timestamped" },
+    });
+    expect(screen.getByText(expectedSidebarTimestamp(lastAt))).toBeTruthy();
+  });
+
+  it("keeps full cleaned session titles in the sidebar row", async () => {
+    vi.mocked(getWorkspaceSidebar).mockResolvedValue(
+      sidebarWithSessions([
+        sidebarSession(
+          "generated-title",
+          "# Integrate Stash VFS with Agent Environments",
+          "Henry",
+          "2026-05-20T12:00:00Z"
+        ),
+      ])
+    );
+
+    renderSidebar();
+
+    const title = await screen.findByText("Integrate Stash VFS with Agent Environments");
+    expect(title).toHaveAttribute("title", "Integrate Stash VFS with Agent Environments");
+    expect(screen.queryByText("# Integrate Stash VFS with")).toBeNull();
+  });
+
   it("limits visible session periods and reveals more on demand", async () => {
     vi.mocked(getWorkspaceSidebar).mockResolvedValue(
       sidebarWithSessions(
@@ -507,7 +589,28 @@ describe("AppSidebar tree expansion", () => {
     expect(screen.getByText("Bucket session 10")).toBeTruthy();
   });
 
-  it("searches hidden sidebar sessions", async () => {
+  it("renders Linear ticket pills for session rows", async () => {
+    vi.mocked(getWorkspaceSidebar).mockResolvedValue(
+      sidebarWithSessions([
+        sidebarSession(
+          "ticket-session",
+          "Ticketed sidebar work",
+          "Henry",
+          "2026-05-20T12:00:00Z",
+          [linearTicket("FER-19", "Label sessions from PRs")]
+        ),
+      ])
+    );
+
+    renderSidebar();
+
+    const pill = await screen.findByText("FER-19");
+    expect(pill).toHaveAttribute("title", "FER-19: Label sessions from PRs");
+    expect(pill).toHaveClass("opacity-0");
+    expect(pill).toHaveClass("group-hover/nav:opacity-100");
+  });
+
+  it("filters hidden sidebar sessions", async () => {
     vi.mocked(getWorkspaceSidebar).mockResolvedValue(
       sidebarWithSessions(
         Array.from({ length: 11 }, (_, index) =>
@@ -526,7 +629,7 @@ describe("AppSidebar tree expansion", () => {
     await screen.findByText("Search session 0");
     expect(screen.queryByText("Unique hidden decision")).toBeNull();
 
-    fireEvent.change(screen.getByLabelText("Search sessions"), {
+    fireEvent.change(screen.getByLabelText("Filter sessions"), {
       target: { value: "unique hidden" },
     });
 
@@ -607,7 +710,7 @@ describe("AppSidebar tree expansion", () => {
     expect(await screen.findByText("Roadmap")).toBeTruthy();
   });
 
-  it("searches hidden sidebar files", async () => {
+  it("filters hidden sidebar files", async () => {
     vi.mocked(getWorkspaceSidebar).mockResolvedValue({
       sessions: [],
       files: {
@@ -658,7 +761,7 @@ describe("AppSidebar tree expansion", () => {
     await screen.findByText("00 Huge Folder");
     expect(screen.queryByText("00 Huge Folder/Deep Search File.md")).toBeNull();
 
-    fireEvent.change(screen.getByLabelText("Search files"), {
+    fireEvent.change(screen.getByLabelText("Filter files"), {
       target: { value: "deep search" },
     });
 

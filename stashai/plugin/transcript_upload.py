@@ -17,6 +17,8 @@ import sys
 import time
 from pathlib import Path
 
+from stashai.plugin.upload_status import record_upload_failure
+
 UPLOAD_COOLDOWN_SECONDS = 60
 
 
@@ -69,6 +71,7 @@ def spawn_transcript_upload(
             [
                 sys.executable, str(script),
                 str(path), session_id, workspace_id, agent_name, cwd, base_url, api_key,
+                str(data_dir),
             ],
             env=env,
             stdin=subprocess.DEVNULL,
@@ -77,7 +80,8 @@ def spawn_transcript_upload(
             start_new_session=True,
             close_fds=True,
         )
-    except Exception:
+    except Exception as e:
+        record_upload_failure(data_dir, "transcript_spawn", e)
         return False
 
     return True

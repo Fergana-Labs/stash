@@ -236,6 +236,7 @@ describe("AppShell sidebar collapse", () => {
       agent_name: "codex",
       cwd: null,
       files_touched: [],
+      linear_tickets: [],
       started_at: null,
       finished_at: null,
       created_by: "user-1",
