@@ -15,9 +15,7 @@ Cross-surface audit of the product: **UI vs CLI vs MCP vs Backend API vs Plugins
 | Workspace | Workspaces | sidebar switcher; `/workspaces/[id]` |
 | Stash | Stashes | shareable bundles; `/stashes/[slug]`, sidebar group |
 | Session | Sessions | agent transcripts; sidebar group |
-| Page | Pages | markdown/HTML documents; `/p/[id]` |
-| Folder | Folders | tree container for pages+files |
-| File | Files | uploaded blobs; `/f/[id]` |
+| Files | Files | the workspace's virtual filesystem: nested folders containing pages (markdown/HTML docs) and uploads (blobs). One tree — `stash files tree` / `stash vfs ls /` / sidebar all see the same nodes. Pages and folders and uploads are *kinds of files*, not separate concepts. |
 | Table | Tables | structured rows; `/tables/[id]` |
 
 **Cross-cutting**: Activity (`/activity`), Discover (`/discover`), Search (`/search`), Trash (per-workspace), Comments (page-level), Integrations (GitHub / Google Drive / Notion / Obsidian).
@@ -108,12 +106,10 @@ Initial reading flagged `stash share / publish / upload / browse / read` as dupl
 
 **Resolution: keep both, no changes.** The top-level forms exist for the muscle-memory verbs that match UI buttons; the grouped forms are the explicit / lower-level variants. Documenting the distinction is the docs/cli page's job (see F3 fix — the page now lists them separately under "Sessions", "Stashes", and "Uploaded files" sections).
 
-#### F10. `concepts` page omits **Stashes**, Folders, Discover, Activity, Trash, Skills, Comments
-`frontend/src/app/docs/concepts/page.tsx` lists six concepts: Workspace, Sessions, Files, Table, File, Search. **Stashes are missing** — the eponymous concept of the product. Also missing Folders (parent of pages) and the cross-cutting concepts.
+#### F10. `concepts` page omits Stashes, Discover, Activity, and splits Files into three peers
+`frontend/src/app/docs/concepts/page.tsx` previously listed six concepts: Workspace, Sessions, Files (badge "Pages"), Table, File (badge "Attachment"), Search. **Stashes were missing** — the eponymous concept of the product. The "Files / File" split also fragmented one concept into two, suggesting pages and uploads were separate things rather than two kinds of file in the same VFS.
 
-Add Stashes (with publish + share + fork). Add Folders. Decide whether to add Activity / Discover / Trash / Skills / Comments (these are first-class in UI nav).
-
-Also: "Files" and "File" are listed as separate concepts with the same green badge — confusing. Pick one name: Files = the collection (pages, folders, files inside), File = the individual upload. Or rename "Files" → "Pages" since the description is mostly about pages.
+**Resolution**: Concepts page now lists Workspace, Stash, Session, **Files** (the workspace's virtual filesystem — nested folders containing pages and uploads, all one tree visible via `stash files tree`, `stash vfs ls /`, and the sidebar), Table, plus cross-cutting Discover, Activity, Search. Pages, folders, and uploads are explicitly described as *kinds of files*, not separate concepts — matching the CLI's `stash files` umbrella and the sidebar's "Files" group.
 
 #### F11. README install command still references the curl install
 `README.md` Quick Start:

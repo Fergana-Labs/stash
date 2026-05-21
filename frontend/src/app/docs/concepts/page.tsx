@@ -20,22 +20,20 @@ const CONCEPTS: { name: string; badge: string; badgeColor: string; desc: React.R
     desc: "Append-only event log scoped to a workspace. Every tool call, message, and agent event is recorded with timestamps, agent name, and metadata. Sessions are grouped by day and user for a conversation-like reader, and are searchable via full-text + semantic search.",
   },
   {
-    name: "Page",
-    badge: "Document",
+    name: "Files",
+    badge: "Filesystem",
     badgeColor: "bg-green-500/10 text-green-600",
-    desc: "Markdown or HTML document inside a workspace folder. Rich-text editor with autosave, inline comments, and live multi-user collaboration via the collab service.",
-  },
-  {
-    name: "Folder",
-    badge: "Tree",
-    badgeColor: "bg-green-500/10 text-green-600",
-    desc: "Nested directory holding pages and files. Folder trees appear in the sidebar and on the workspace home; pages and files can be moved between folders.",
-  },
-  {
-    name: "File",
-    badge: "Upload",
-    badgeColor: "bg-muted/20 text-muted",
-    desc: "Images, PDFs, and documents stored in S3-compatible object storage (Cloudflare R2, AWS S3, or MinIO). Uploadable via Quick Add, drag-drop, or the API. Text-extractable via the CLI/MCP file_text tool.",
+    desc: (
+      <>
+        The workspace&apos;s virtual filesystem — nested folders containing
+        pages (markdown / HTML documents with autosave + live collaboration)
+        and uploads (images, PDFs, docs in S3-compatible storage). Everything
+        lives in one tree: <code className="font-mono text-[13px]">stash files tree</code>,{" "}
+        <code className="font-mono text-[13px]">stash vfs ls /</code>, and the
+        sidebar all see the same nodes. Pages, folders, and uploads are kinds
+        of files — not separate concepts.
+      </>
+    ),
   },
   {
     name: "Table",
