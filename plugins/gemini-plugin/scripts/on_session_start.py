@@ -4,6 +4,16 @@
 import shutil
 import subprocess
 
+# Fire the background CLI upgrade before any `stashai` import so a broken /
+# missing install can still self-heal on the next session start.
+if shutil.which("uv"):
+    subprocess.Popen(
+        ["uv", "tool", "upgrade", "--quiet", "stashai"],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        start_new_session=True,
+    )
+
 from adapt import adapt_session_start
 from config import DATA_DIR, get_client, get_config, get_stdin_data
 
@@ -15,14 +25,6 @@ from stashai.plugin.hooks import (
     uploads_enabled,
 )
 from stashai.plugin.state import load_state, reset_stats, save_state
-
-if shutil.which("uv"):
-    subprocess.Popen(
-        ["uv", "tool", "upgrade", "--quiet", "stashai"],
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-        start_new_session=True,
-    )
 
 
 def main():
