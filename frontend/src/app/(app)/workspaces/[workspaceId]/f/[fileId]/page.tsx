@@ -6,6 +6,7 @@ import { useBreadcrumbs } from "../../../../../../components/BreadcrumbContext";
 import { FileViewerSkeleton } from "../../../../../../components/SkeletonStates";
 import { useAuth } from "../../../../../../hooks/useAuth";
 import {
+  ApiError,
   getFile,
   getFolderContents,
   getPublicStash,
@@ -41,12 +42,11 @@ function FileViewerPageInner() {
   const searchParams = useSearchParams();
   const workspaceId = params.workspaceId as string;
   const fileId = params.fileId as string;
-  // When ?stash=<slug> is present, the viewer reads through the public
-  // stash payload instead of the workspace endpoint. This lets non-members
-  // of the owning workspace open files that the stash owner has shared,
-  // with the stash's permission gate the only authorization check.
+  // ?stash=<slug> is a back-link hint AND a permission fallback. We try
+  // the workspace endpoint first so workspace members get the full editor
+  // chrome (rename / move / trash / CSV ingest). Non-members fall back to
+  // the public-stash payload, read-only.
   const stashSlug = searchParams.get("stash");
-  const readOnly = !!stashSlug;
   const { user, loading, logout: _logout } = useAuth();
   // logout isn't used here; kept for parity with other workspace pages.
   void _logout;
@@ -55,6 +55,10 @@ function FileViewerPageInner() {
   const [folderChain, setFolderChain] = useState<FolderBreadcrumb[]>([]);
   const [error, setError] = useState("");
   const [stashTitle, setStashTitle] = useState<string | null>(null);
+  // readOnly flips on only when we fall back to the stash payload — i.e.
+  // the viewer can't reach the workspace endpoint. Workspace members who
+  // arrive via ?stash= still get full edit affordances.
+  const [readOnly, setReadOnly] = useState(false);
 
   useBreadcrumbs(
     readOnly
