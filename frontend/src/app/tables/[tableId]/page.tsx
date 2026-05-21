@@ -285,7 +285,16 @@ function TableEditorPageInner() {
 
   useEffect(() => {
     if (!colMenu) return;
-    const handler = () => setColMenu(null);
+    // React's onClick stopPropagation runs in the synthetic event system,
+    // but this listener is on the native event chain — so without an
+    // explicit "is the click inside the menu?" check the listener fires
+    // for clicks on the menu's own items and tears the menu down before
+    // the inline submenu (e.g. Change type ›) can render.
+    const handler = (e: MouseEvent) => {
+      const menuEl = document.querySelector("[data-colmenu]");
+      if (menuEl && menuEl.contains(e.target as Node)) return;
+      setColMenu(null);
+    };
     document.addEventListener("click", handler);
     return () => document.removeEventListener("click", handler);
   }, [colMenu]);
@@ -968,7 +977,7 @@ function TableEditorPageInner() {
 
         {/* Column context menu */}
         {colMenu && (
-          <div className="fixed z-50 bg-surface border border-border rounded-lg shadow-lg py-1 min-w-[180px]" style={{ left: colMenu.x, top: colMenu.y }} onClick={(e) => e.stopPropagation()}>
+          <div data-colmenu className="fixed z-50 bg-surface border border-border rounded-lg shadow-lg py-1 min-w-[180px]" style={{ left: colMenu.x, top: colMenu.y }} onClick={(e) => e.stopPropagation()}>
             {!colMenuTypeOpen ? (
               <>
                 <button onClick={() => { handleSort(colMenu.colId); setColMenu(null); }} className="w-full text-left px-3 py-1.5 text-sm text-foreground hover:bg-raised">Sort {sortBy === colMenu.colId && sortOrder === "asc" ? "descending" : "ascending"}</button>
