@@ -23,3 +23,5 @@ google-auth-oauthlib>=1.2
 google-api-python-client>=2.140
 python-pptx>=1.0
 playwright>=1.49
+Pillow>=10.0
+pillow-heif>=0.19

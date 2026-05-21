@@ -119,6 +119,15 @@ async def upload_ws_file(
             detail="Upload HTML as a page (POST /workspaces/{workspace_id}/pages/new with content_type='html')",
         )
 
+    # HEIC is unsupported in every browser except Safari, so an iPhone
+    # photo dropped onto a page renders as a broken image. Convert to
+    # JPEG before storage.
+    from ..services import image_transcode
+
+    content, filename, content_type = await image_transcode.maybe_transcode_heic(
+        content, filename, content_type
+    )
+
     storage_key = await storage_service.upload_file(
         str(workspace_id),
         filename,
