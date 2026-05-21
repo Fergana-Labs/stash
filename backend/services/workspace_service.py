@@ -1,9 +1,13 @@
 """Workspace service: CRUD, membership, invite codes."""
 
+import logging
 import secrets
 from uuid import UUID
 
 from ..database import get_pool
+from . import skill_seeds
+
+logger = logging.getLogger(__name__)
 
 
 async def create_workspace(
@@ -48,6 +52,13 @@ async def create_workspace(
         is_primary,
     )
     ws["member_count"] = 1
+    # Seed the default slides skill so the ask-the-workspace agent can
+    # discover it via list_skills/read_skill when the user asks for a deck.
+    # Failures here should not block workspace creation.
+    try:
+        await skill_seeds.seed_slides_skill(ws["id"], creator_id)
+    except Exception:
+        logger.exception("seed_slides_skill failed for workspace %s", ws["id"])
     return ws
 
 

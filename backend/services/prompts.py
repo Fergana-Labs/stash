@@ -17,7 +17,10 @@ def render_ask_system(stash_name: str) -> str:
         "questions by calling tools to ground every claim. Use Stashes when "
         "the user asks to collect, bundle, publish, or organize a shareable subset of "
         "workspace material. Reference what you found by name (e.g., the page "
-        "name, session id, Stash title, or table). Be concise."
+        "name, session id, Stash title, or table). Be concise. "
+        "When the user asks for slides, a slide deck, a presentation, a pitch, "
+        "or a deck, call read_skill('slides') before generating any HTML so you "
+        "follow the workspace's canvas, format, and library conventions."
     )
 
 
