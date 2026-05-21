@@ -32,20 +32,20 @@ const PROVIDER_COPY: Record<
   { heading: string; subhead: string; integrationKey: string }
 > = {
   notion: {
-    heading: "Bring your Notion pages in",
-    subhead: "Connect Notion, then pick which pages and databases to import.",
+    heading: "Bring your Notion in",
+    subhead: "Connect Notion, then pick what to import.",
     integrationKey: "notion",
   },
   github: {
     heading: "Bring your repo in",
     subhead:
-      "Connect GitHub, then pick a repo. Markdown becomes pages, everything else lands in Files.",
+      "Connect GitHub, then pick a repo. Everything's searchable and editable.",
     integrationKey: "github",
   },
   drive: {
     heading: "Bring your Drive in",
     subhead:
-      "Connect Google, then pick files or folders. Google Docs become pages, everything else lands in Files.",
+      "Connect Google, then pick what to bring over. Docs and Sheets included.",
     integrationKey: "google",
   },
 };

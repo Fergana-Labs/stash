@@ -24,7 +24,7 @@ const CARDS: Card[] = [
     id: "notion",
     title: "Notion, agent-native",
     pitch:
-      "Your pages stay HTML + markdown, in a folder tree your agent can walk directly.",
+      "Your content stays HTML + markdown, in a folder tree your agent can walk directly.",
     Icon: NotionIcon,
     iconClass: "bg-foreground/5 text-foreground",
   },
@@ -32,7 +32,7 @@ const CARDS: Card[] = [
     id: "obsidian",
     title: "Your vault, collaboratively",
     pitch:
-      "Drop your vault — every note becomes a page two people can edit in real time.",
+      "Drop your vault — every note becomes collaboratively editable in real time.",
     Icon: ObsidianIcon,
     iconClass: "bg-violet-500/10",
   },
@@ -48,7 +48,7 @@ const CARDS: Card[] = [
     id: "drive",
     title: "Drive, but searchable",
     pitch:
-      "Pull in your Drive folders and files. Searchable, askable, agent-readable.",
+      "Pull in your Drive folders and docs. Searchable, askable, agent-readable.",
     Icon: GoogleDriveIcon,
     iconClass: "bg-blue-500/10",
   },
