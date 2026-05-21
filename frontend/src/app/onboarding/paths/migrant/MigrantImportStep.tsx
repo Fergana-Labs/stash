@@ -8,11 +8,28 @@ import GitImportDialog from "@/components/import/GitImportDialog";
 import NotionImportDialog from "@/components/import/NotionImportDialog";
 import { createFolder, uploadFileOrPage } from "@/lib/api";
 import { IntegrationStatus, listIntegrations } from "@/lib/integrations";
-import type { StepCtx } from "@/lib/onboarding/paths";
+import type { MigrantSource, StepCtx } from "@/lib/onboarding/paths";
 
-const RETURN_TO = "/onboarding?path=migrant&step=2";
+function returnToForSource(source: MigrantSource): string {
+  // OAuth callback redirects here. Must carry source through, otherwise the
+  // step boots into "Pick a source first."
+  return `/onboarding?path=migrant&step=2&source=${source}`;
+}
 
-export default function MigrantImportStep({ source, workspaceId }: StepCtx) {
+export default function MigrantImportStep(ctx: StepCtx) {
+  const { source, workspaceId, setCanContinue } = ctx;
+
+  // Continue stays disabled until the user has dispatched an import (or
+  // finished a vault upload). The wizard resets canContinue=true on each
+  // step transition; we re-disable here as long as no import has fired.
+  useEffect(() => {
+    setCanContinue(false);
+  }, [setCanContinue]);
+
+  function markImported() {
+    setCanContinue(true);
+  }
+
   if (!source) {
     return (
       <div className="text-sm text-muted">
@@ -21,8 +38,17 @@ export default function MigrantImportStep({ source, workspaceId }: StepCtx) {
     );
   }
 
-  if (source === "obsidian") return <ObsidianBlock workspaceId={workspaceId} />;
-  return <ProviderBlock source={source} workspaceId={workspaceId} />;
+  if (source === "obsidian")
+    return (
+      <ObsidianBlock workspaceId={workspaceId} onUploaded={markImported} />
+    );
+  return (
+    <ProviderBlock
+      source={source}
+      workspaceId={workspaceId}
+      onDispatched={markImported}
+    />
+  );
 }
 
 type ProviderSource = "notion" | "github" | "drive";
@@ -53,12 +79,15 @@ const PROVIDER_COPY: Record<
 function ProviderBlock({
   source,
   workspaceId,
+  onDispatched,
 }: {
   source: ProviderSource;
   workspaceId: string | null;
+  onDispatched: () => void;
 }) {
   const [providers, setProviders] = useState<IntegrationStatus[] | null>(null);
   const [showDialog, setShowDialog] = useState(false);
+  const returnTo = returnToForSource(source);
 
   const { heading, subhead, integrationKey } = PROVIDER_COPY[source];
 
@@ -95,7 +124,7 @@ function ProviderBlock({
       </div>
 
       {provider && (
-        <IntegrationCard status={provider} onChanged={refresh} returnTo={RETURN_TO} />
+        <IntegrationCard status={provider} onChanged={refresh} returnTo={returnTo} />
       )}
 
       {isConnected && workspaceId && (
@@ -111,21 +140,30 @@ function ProviderBlock({
       {showDialog && workspaceId && source === "notion" && (
         <NotionImportDialog
           workspaceId={workspaceId}
-          onDispatched={() => setShowDialog(false)}
+          onDispatched={() => {
+            setShowDialog(false);
+            onDispatched();
+          }}
           onClose={() => setShowDialog(false)}
         />
       )}
       {showDialog && workspaceId && source === "github" && (
         <GitImportDialog
           workspaceId={workspaceId}
-          onDispatched={() => setShowDialog(false)}
+          onDispatched={() => {
+            setShowDialog(false);
+            onDispatched();
+          }}
           onClose={() => setShowDialog(false)}
         />
       )}
       {showDialog && workspaceId && source === "drive" && (
         <DriveImportDialog
           workspaceId={workspaceId}
-          onDispatched={() => setShowDialog(false)}
+          onDispatched={() => {
+            setShowDialog(false);
+            onDispatched();
+          }}
           onClose={() => setShowDialog(false)}
         />
       )}
@@ -133,7 +171,13 @@ function ProviderBlock({
   );
 }
 
-function ObsidianBlock({ workspaceId }: { workspaceId: string | null }) {
+function ObsidianBlock({
+  workspaceId,
+  onUploaded,
+}: {
+  workspaceId: string | null;
+  onUploaded: () => void;
+}) {
   return (
     <div className="space-y-6">
       <div className="space-y-2">
@@ -147,7 +191,9 @@ function ObsidianBlock({ workspaceId }: { workspaceId: string | null }) {
         </p>
       </div>
 
-      {workspaceId && <VaultDropZone workspaceId={workspaceId} />}
+      {workspaceId && (
+        <VaultDropZone workspaceId={workspaceId} onUploaded={onUploaded} />
+      )}
 
       <div className="rounded-xl border border-border-subtle bg-background/40 p-4 space-y-2 text-[12px] text-muted leading-relaxed">
         <div className="font-medium text-foreground">
@@ -187,7 +233,13 @@ type VaultStatus =
   | { kind: "done"; message: string }
   | { kind: "error"; message: string };
 
-function VaultDropZone({ workspaceId }: { workspaceId: string }) {
+function VaultDropZone({
+  workspaceId,
+  onUploaded,
+}: {
+  workspaceId: string;
+  onUploaded: () => void;
+}) {
   const [dragActive, setDragActive] = useState(false);
   const [status, setStatus] = useState<VaultStatus>({ kind: "idle" });
   const folderInputRef = useRef<HTMLInputElement>(null);
@@ -268,6 +320,7 @@ function VaultDropZone({ workspaceId }: { workspaceId: string }) {
       kind: "done",
       message: `Uploaded ${uploaded} file${uploaded === 1 ? "" : "s"} from your vault.`,
     });
+    if (uploaded > 0) onUploaded();
   }
 
   async function handleDrop(e: DragEvent) {

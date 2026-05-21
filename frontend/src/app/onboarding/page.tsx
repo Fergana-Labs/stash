@@ -72,6 +72,7 @@ function OnboardingInner() {
   const apiKey = useStashToken();
   const [workspaceId, setWorkspaceId] = useState<string | null>(null);
   const [sharedUrl, setSharedUrl] = useState<string | null>(null);
+  const [canContinue, setCanContinue] = useState(true);
 
   const path = useMemo<PathId | null>(() => {
     const q = searchParams.get("path");
@@ -108,6 +109,12 @@ function OnboardingInner() {
       })
       .catch(() => {});
   }, [apiKey]);
+
+  // Reset the per-step canContinue gate on every step transition. Steps
+  // that want to block call setCanContinue(false) in their own effects.
+  useEffect(() => {
+    setCanContinue(true);
+  }, [stepIdx]);
 
   const pickPath = useCallback(
     (next: PathId) => {
@@ -215,6 +222,8 @@ function OnboardingInner() {
     setSharedUrl,
     onContinue: nextStep,
     onSkipAll: skipToWorkspace,
+    canContinue,
+    setCanContinue,
   };
 
   return (
@@ -239,6 +248,7 @@ function OnboardingInner() {
               <StepControls
                 onContinue={nextStep}
                 onSkipAll={skipToWorkspace}
+                canContinue={canContinue}
               />
             </>
           )}
@@ -318,9 +328,11 @@ function ProgressBar({
 function StepControls({
   onContinue,
   onSkipAll,
+  canContinue,
 }: {
   onContinue: () => void;
   onSkipAll: () => void;
+  canContinue: boolean;
 }) {
   return (
     <div className="flex items-center justify-between pt-2">
@@ -334,7 +346,8 @@ function StepControls({
       <button
         type="button"
         onClick={onContinue}
-        className="rounded-md bg-brand px-4 py-2 text-[12px] font-medium text-white hover:bg-brand-hover transition-colors"
+        disabled={!canContinue}
+        className="rounded-md bg-brand px-4 py-2 text-[12px] font-medium text-white hover:bg-brand-hover transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-brand"
       >
         Continue
       </button>

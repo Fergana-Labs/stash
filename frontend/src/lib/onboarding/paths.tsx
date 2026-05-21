@@ -35,6 +35,13 @@ export type StepCtx = {
   setSharedUrl: (url: string) => void;
   onContinue: () => void;
   onSkipAll: () => void;
+  // Steps that need the user to finish an action before advancing call
+  // setCanContinue(false) on mount and setCanContinue(true) when ready.
+  // The wizard's Continue button is disabled while canContinue is false.
+  // Default per step is true; the wizard resets it to true on every
+  // step transition.
+  canContinue: boolean;
+  setCanContinue: (v: boolean) => void;
 };
 
 export type PathDef = {
