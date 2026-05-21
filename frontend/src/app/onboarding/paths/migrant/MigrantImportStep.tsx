@@ -148,6 +148,30 @@ function ObsidianBlock({ workspaceId }: { workspaceId: string | null }) {
       </div>
 
       {workspaceId && <VaultDropZone workspaceId={workspaceId} />}
+
+      <div className="rounded-xl border border-border-subtle bg-background/40 p-4 space-y-2 text-[12px] text-muted leading-relaxed">
+        <div className="font-medium text-foreground">
+          Don&rsquo;t know where your vault is?
+        </div>
+        <ul className="list-disc pl-5 space-y-1">
+          <li>
+            In Obsidian: <strong>File</strong> menu → <strong>Show in
+            system explorer</strong> (or right-click any note in the
+            sidebar → <strong>Reveal in Finder/Explorer</strong>) opens
+            the vault folder.
+          </li>
+          <li>
+            Common default locations:{" "}
+            <code>~/Documents/</code>,{" "}
+            <code>~/iCloud Drive/Obsidian/</code>, or{" "}
+            <code>~/Obsidian/</code>.
+          </li>
+          <li>
+            The vault is the folder containing your{" "}
+            <code>.md</code> notes — drop that whole folder.
+          </li>
+        </ul>
+      </div>
     </div>
   );
 }
