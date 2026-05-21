@@ -3,10 +3,12 @@
   <a href="https://joinstash.ai"><img src="docs/assets/logo.svg" alt="Stash" width="320" /></a>
 </p>
 
-<h3 align="center">Sessions, files, and Product Stashes for agent work.</h3>
+<h3 align="center">Knowledge bases for the agent era.</h3>
 
 <p align="center">
-  Stash is a workspace for coding-agent sessions, pages, and publishable Product Stashes. <br> It captures every coding-agent run across your team and makes <br> the important work easy to search, organize, and share.
+  Built for the era where your agents write more than your team does. <br>
+  Sessions, files, and Stashes — a company brain humans and agents both <br>
+  write into, query semantically, and publish from.
 </p>
 
 
@@ -35,9 +37,10 @@
 
 ## How it works
 
-- Stash installs a hook for your coding agents that automatically uploads session transcripts to a shared store.
-- It exposes a CLI, MCP server, and app-level virtual filesystem shell that let humans and agents query sessions with bash-shaped commands.
-- It allows your to easily share bundles of information created by a unit of work (eg one session and all of the artifacts created in that session). Just ask your agent to run `stash upload`.
+- **Sessions stream in automatically.** A hook for your coding agent pushes every transcript — prompts, tool calls, artifacts — to a shared workspace.
+- **Files and sessions live side by side.** Markdown, HTML, tables, PDFs. Humans and agents both write here; both sides see edits in real time.
+- **Agents query it like a filesystem.** A CLI, MCP server, and virtual-filesystem shell expose the workspace to any agent. Semantic and keyword search across pages, sessions, and tables.
+- **Stashes are the shareable slice.** Bundle pages and sessions into one link. Publish to the world, share with collaborators, or fork an external Stash into your own workspace.
 
 ## Why shared beats individual
 
@@ -54,7 +57,18 @@ With Stash, every agent on the repo has context about every session created from
 >
 > — Andrej Karpathy, *LLM Knowledge Bases*
 
-**Stash is that product. For teams of coding agents working on the same repo.** Your agents' streamed sessions are the raw data. Files is where humans and agents write durable pages. Product Stashes are the publishable bundles you share with collaborators or add back into a workspace. AI usage becomes a shared, searchable asset, not individual effort.
+**Stash is that product.** A company brain humans and agents both write into — not a stack of shell scripts wrapped around a folder of markdown.
+
+Built for —
+
+| Use case | What teams put in it |
+|---|---|
+| **Engineering live docs** | coding-agent plans, ADRs, and design notes that stay current |
+| **Company brain** | the shared context every agent and teammate reads from |
+| **Research knowledge base** | long-running PKBs with sources, transcripts, and tables |
+| **Ops playbooks** | release runbooks and on-call procedures |
+| **Brand voice** | editorial guidelines and copy standards agents write to |
+| **Personal knowledge management** | notes, drafts, and scratch files for a single operator |
 
 ## Quick Start
 

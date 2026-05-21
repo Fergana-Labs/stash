@@ -13,11 +13,11 @@ export default function Page() {
       <Hero />
       <Logos />
       <Problem />
-      <Comparisons />
       <HowItWorks />
       <KarpathyQuote />
+      <Comparisons />
       <VisualizationsShowcase />
-      <HumansAndAgents />
+      <Features />
       <DiscoverGrid />
       <CliAndPlugin />
       <ClosingCTA />
@@ -75,6 +75,12 @@ function Nav() {
             className="hidden rounded-md px-3 py-2 transition hover:bg-raised hover:text-ink sm:inline-flex"
           >
             How it works
+          </ScrollLink>
+          <ScrollLink
+            to="#features"
+            className="hidden rounded-md px-3 py-2 transition hover:bg-raised hover:text-ink sm:inline-flex"
+          >
+            Features
           </ScrollLink>
           <Link
             href="/discover"
@@ -586,116 +592,138 @@ function KarpathyQuote() {
           </figcaption>
         </figure>
         <p className="mt-10 max-w-[680px] text-[18px] leading-[1.6] text-foreground">
-          Stash is that product. A personal knowledge base for the humans on
-          your team, a company brain for the agents working alongside them —
-          one workspace for the structured and unstructured information you
-          produce together, not a stack of shell scripts wrapped around a
-          folder of markdown.
+          Stash is that product. A company brain humans and agents both write
+          into — not a stack of shell scripts wrapped around a folder of
+          markdown.
         </p>
+        <div className="mt-16 border-t border-border-subtle pt-12">
+          <EyebrowDot>Use cases</EyebrowDot>
+          <h3 className="mt-4 font-display text-[clamp(24px,2.8vw,36px)] font-bold tracking-[-0.02em] text-ink">
+            Built for —
+          </h3>
+          <ul className="mt-8 flex flex-col gap-5 font-mono text-[14.5px] leading-[1.55]">
+            {[
+              ["Engineering live docs", "coding-agent plans, ADRs, and design notes that stay current"],
+              ["Company brain", "the shared context every agent and teammate reads from"],
+              ["Research knowledge base", "long-running PKBs with sources, transcripts, and tables"],
+              ["Ops playbooks", "release runbooks and on-call procedures"],
+              ["Brand voice", "editorial guidelines and copy standards agents write to"],
+              ["Personal knowledge management", "notes, drafts, and scratch files for a single operator"],
+            ].map(([who, what]) => (
+              <li
+                key={who}
+                className="grid grid-cols-1 items-baseline gap-1 md:grid-cols-[320px_auto_minmax(0,1fr)] md:gap-4"
+              >
+                <span className="font-semibold text-ink">{who}</span>
+                <span className="hidden text-brand md:inline">→</span>
+                <span className="text-foreground">{what}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
       </div>
     </section>
   );
 }
 
-function HumanAgentRow({
-  side,
-  name,
-  role,
-  action,
-  detail,
-}: {
-  side: "human" | "agent";
-  name: string;
-  role: "human" | "agent";
-  action: string;
-  detail: string;
-}) {
-  return (
-    <div className="grid grid-cols-[24px_1fr] items-start gap-3 border-b border-border-subtle px-4 py-3 last:border-b-0">
-      <Avatar role={side} size={24}>
-        {name[0].toUpperCase()}
-      </Avatar>
-      <div className="min-w-0">
-        <div className="flex flex-wrap items-center gap-2 text-[13px]">
-          <span className="font-semibold text-ink">{name}</span>
-          <RoleTag role={role} />
-          <span className="text-dim">{action}</span>
-        </div>
-        <div className="mt-1 text-[12.5px] leading-[1.5] text-dim">{detail}</div>
-      </div>
-    </div>
-  );
-}
+type Feature = { label: string; body: ReactNode };
+const FEATURES: Feature[] = [
+  {
+    label: "VFS",
+    body: (
+      <>
+        The whole workspace mounts as a virtual filesystem an agent can{" "}
+        <code className="rounded bg-raised px-1.5 py-0.5 font-mono text-[12.5px] text-ink">ls</code>,{" "}
+        <code className="rounded bg-raised px-1.5 py-0.5 font-mono text-[12.5px] text-ink">find</code>, and{" "}
+        <code className="rounded bg-raised px-1.5 py-0.5 font-mono text-[12.5px] text-ink">rg</code>{" "}
+        through the CLI and MCP server. Pages, sessions, and tables — one
+        addressable tree.
+      </>
+    ),
+  },
+  {
+    label: "Sessions + files",
+    body: (
+      <>
+        Agent transcripts get pushed automatically — every prompt, tool call,
+        and artifact — and live alongside the files, tables, and data your
+        team writes. One workspace, two layers, both first-class.
+      </>
+    ),
+  },
+  {
+    label: "Real-time",
+    body: (
+      <>
+        Humans and agents edit the same files at the same time. No PR flow,
+        no merge conflicts, no per-agent black-box memory. When an agent
+        writes a page, your teammate sees it appear.
+      </>
+    ),
+  },
+  {
+    label: "Agentic search",
+    body: (
+      <>
+        Semantic and keyword search across pages, sessions, and tables. Agents
+        query the workspace by meaning, not just filename — and follow links
+        between transcripts and the files that came out of them.
+      </>
+    ),
+  },
+  {
+    label: "BYO agent",
+    body: (
+      <>
+        Plugins for Claude Code, Cursor, Codex, OpenCode, and Openclaw stream
+        sessions in automatically. Any agent that speaks MCP can read pages,
+        query sessions, and publish Stashes from a terminal.
+      </>
+    ),
+  },
+  {
+    label: "Native formats",
+    body: (
+      <>
+        Markdown, HTML, CSV, PDF, tables — formats agents already read and
+        write. No proprietary doc format to wrap around, no schema to learn.
+      </>
+    ),
+  },
+  {
+    label: "Open source",
+    body: (
+      <>
+        MIT licensed, self-hostable on your own Postgres. No vendor lock-in,
+        no opaque memory store. Run the same thing we run.
+      </>
+    ),
+  },
+];
 
-function HumansAndAgents() {
+function Features() {
   return (
-    <section className="border-b border-border-subtle py-24 md:py-32">
-      <div className="mx-auto max-w-[1200px] px-7">
-        <div className="grid grid-cols-1 gap-12 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)] lg:items-center lg:gap-20">
-          <div>
-            <EyebrowDot>Same workspace, two kinds of writer</EyebrowDot>
-            <h2 className="mt-4 font-display text-[clamp(32px,4.2vw,52px)] font-bold leading-[1.05] tracking-[-0.03em] text-ink text-balance">
-              Humans and agents
-              <br />
-              <span className="font-medium text-dim">write into the same place.</span>
-            </h2>
-            <p className="mt-6 max-w-[500px] text-[16.5px] leading-[1.6] text-foreground">
-              Stash is built for humans <em className="not-italic font-semibold text-ink">and</em>{" "}
-              agents from the ground up. Your team gets a clean UI. Your
-              agents get a CLI and MCP server with the same powers — read
-              files, write pages, query sessions, build Stashes. Anything a
-              human can do in the app, an agent can do from a terminal.
-            </p>
-            <p className="mt-4 max-w-[500px] text-[16.5px] leading-[1.6] text-foreground">
-              Both sides edit in real time. When an agent writes a page, your
-              teammate sees it appear. When a human edits a folder, every
-              agent in that workspace sees the new structure on its next
-              query. Notion, Drive, GitHub, and the AI-memory tools don't do
-              this — they're built for one side or the other, never both.
-            </p>
-          </div>
-          <div
-            className="overflow-hidden rounded-[14px] border border-border bg-background"
-            style={{ boxShadow: "var(--shadow-card)" }}
-          >
-            <div className="flex items-center justify-between border-b border-border-subtle bg-surface px-4 py-3">
-              <span className="text-[13px] font-semibold text-ink">
-                files/auth-patterns/
-              </span>
-              <span className="font-mono text-[10.5px] uppercase tracking-[0.12em] text-muted">
-                7 contributors · 4 agents · 3 humans
-              </span>
+    <section id="features" className="border-b border-border-subtle py-24 md:py-32">
+      <div className="mx-auto max-w-[920px] px-7">
+        <EyebrowDot>Features</EyebrowDot>
+        <h2 className="mt-4 font-display text-[clamp(32px,4.2vw,52px)] font-bold leading-[1.05] tracking-[-0.03em] text-ink text-balance">
+          A workspace shaped like the tools
+          <br />
+          <span className="font-medium text-dim">agents already use.</span>
+        </h2>
+        <dl className="mt-12 border-t border-border-subtle">
+          {FEATURES.map((f) => (
+            <div
+              key={f.label}
+              className="grid grid-cols-1 gap-2 border-b border-border-subtle py-6 md:grid-cols-[180px_minmax(0,1fr)] md:gap-8 md:py-7"
+            >
+              <dt className="font-mono text-[12px] font-medium uppercase tracking-[0.14em] text-brand md:pt-1">
+                {f.label}
+              </dt>
+              <dd className="text-[16px] leading-[1.6] text-foreground">{f.body}</dd>
             </div>
-            <HumanAgentRow
-              side="human"
-              name="sam"
-              role="human"
-              action="edited session-refresh.md"
-              detail="rewrote the intro section with the partner-eng review notes"
-            />
-            <HumanAgentRow
-              side="agent"
-              name="rex"
-              role="agent"
-              action="created rate-limits.html"
-              detail="agent-generated dashboard from the latest rate-limit-investigation session"
-            />
-            <HumanAgentRow
-              side="human"
-              name="ari"
-              role="human"
-              action="moved worker-pool.md → auth-patterns/"
-              detail="reorganized the folder after the Tuesday review"
-            />
-            <HumanAgentRow
-              side="agent"
-              name="nova"
-              role="agent"
-              action="appended row to experiments"
-              detail="logged the opus-4.7 long-context result · score=0.87"
-            />
-          </div>
-        </div>
+          ))}
+        </dl>
       </div>
     </section>
   );
@@ -931,7 +959,15 @@ function CliAndPlugin() {
                 <span className="text-[#22C55E]">✓ published</span>
                 <span className="text-on-inverted-dim"> joinstash.ai/v/auth-patterns-q2</span>
               </div>
-              <div className="whitespace-pre">
+              <div className="mt-3 whitespace-pre text-on-inverted-dim">
+                # claude · self-eval
+              </div>
+              <div className="whitespace-pre text-on-inverted-dim">
+                <span className="text-brand">“</span>
+                <span className="italic text-on-inverted">finally — a place to put my receipts.</span>
+                <span className="text-brand">”</span>
+              </div>
+              <div className="mt-3 whitespace-pre">
                 <span className="mr-2.5 select-none text-brand">›</span>
                 <span
                   className="inline-block h-[14px] w-2 align-[-2px] bg-brand"
