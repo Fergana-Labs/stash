@@ -123,12 +123,8 @@ function Column({
               aria-hidden
             />
             <span
-              className={`text-[12.5px] leading-relaxed ${
-                step.emphasis
-                  ? "text-foreground font-medium"
-                  : isBrand
-                    ? "text-foreground"
-                    : "text-muted"
+              className={`text-[12.5px] leading-relaxed text-foreground ${
+                step.emphasis ? "font-medium" : ""
               }`}
             >
               {step.text}
