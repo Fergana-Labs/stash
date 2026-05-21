@@ -406,33 +406,18 @@ describe("StashPageClient sharing", () => {
     expect(await screen.findByText("by Sam")).toBeInTheDocument();
   });
 
-  it("opens single uploaded file stashes directly on the file preview", async () => {
+  it("opens single-file stashes directly on the file preview", async () => {
+    // The primary-item shortcut only fires for a stash with exactly one
+    // item. A folder wrapper means "open container" — could grow — so we
+    // render bundle chrome for it. This test pins the strict shape.
     const detail = stashDetail({
-      description: "<p>Uploaded from shot.png</p>",
+      description: "<p>One screenshot.</p>",
     });
     detail.items = [
       {
-        object_type: "folder",
-        object_id: "folder-1",
-        position: 0,
-        label: "shot",
-        inline: {
-          pages: [],
-          files: [
-            {
-              id: "file-1",
-              name: "shot.png",
-              content_type: "image/png",
-              size_bytes: 1234,
-              url: "https://files.test/shot.png",
-            },
-          ],
-        },
-      },
-      {
         object_type: "file",
         object_id: "file-1",
-        position: 1,
+        position: 0,
         label: "shot.png",
         inline: {
           name: "shot.png",
@@ -452,5 +437,41 @@ describe("StashPageClient sharing", () => {
     expect(screen.queryByRole("heading", { name: "Files" })).not.toBeInTheDocument();
     expect(getActivityTimeline).not.toHaveBeenCalled();
     expect(getEmbeddingProjection).not.toHaveBeenCalled();
+  });
+
+  it("shows bundle chrome for a file-plus-folder stash (no primary shortcut)", async () => {
+    // The folder is an open container — adding more items would invalidate
+    // any "this stash IS the file" promise — so we render the bundle list
+    // and the viz section, not the file preview.
+    const detail = stashDetail({
+      description: "<p>Uploaded from shot.png</p>",
+    });
+    detail.items = [
+      {
+        object_type: "folder",
+        object_id: "folder-1",
+        position: 0,
+        label: "shot",
+        inline: { pages: [], files: [] },
+      },
+      {
+        object_type: "file",
+        object_id: "file-1",
+        position: 1,
+        label: "shot.png",
+        inline: {
+          name: "shot.png",
+          content_type: "image/png",
+          size_bytes: 1234,
+          url: "https://files.test/shot.png",
+        },
+      },
+    ];
+    vi.mocked(getPublicStash).mockResolvedValueOnce(detail);
+
+    renderStash(<StashPageClient slug="shared-stash" />);
+
+    expect(await screen.findByText("2 items")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Files" })).toBeInTheDocument();
   });
 });

@@ -1,9 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useBreadcrumbs } from "../../../../../../components/BreadcrumbContext";
+import { PageBody } from "../../../../stashes/[slug]/StashItemBodies";
 import {
   downloadBlob,
   downloadRenderedPdf,
@@ -26,11 +27,13 @@ import CommentsSidebar from "../../../../../../components/workspace/CommentsSide
 import CommentComposerPopover from "../../../../../../components/workspace/CommentComposerPopover";
 import { useAuth } from "../../../../../../hooks/useAuth";
 import {
+  ApiError,
   createCommentThread,
   deleteCommentMessage,
   deleteCommentThread,
   getFolderContents,
   getPage,
+  getPublicStash,
   listCommentThreads,
   listObjectStashes,
   reconcileCommentAnchors,
@@ -39,6 +42,7 @@ import {
   trashItem,
   updatePage,
   type FolderBreadcrumb,
+  type PublicStashItem,
   type WorkspaceStash,
 } from "../../../../../../lib/api";
 import type { CommentThread, Page } from "../../../../../../lib/types";
@@ -61,13 +65,21 @@ function escapeHtml(s: string): string {
 export default function StashPageView() {
   const params = useParams();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const workspaceId = params.workspaceId as string;
   const pageId = params.pageId as string;
   const { user, loading } = useAuth();
+  // When ?stash=<slug> is present, the page is viewed through a stash —
+  // the viewer might not be a workspace member, so we fall back to the
+  // public-stash payload for read-only rendering.
+  const stashSlug = searchParams.get("stash");
 
   const [page, setPage] = useState<Page | null>(null);
   const [folderChain, setFolderChain] = useState<FolderBreadcrumb[]>([]);
   const [containingStashes, setContainingStashes] = useState<WorkspaceStash[]>([]);
+  const [stashFallback, setStashFallback] = useState<
+    { stash: WorkspaceStash; item: PublicStashItem } | null
+  >(null);
   const [saveStatus, setSaveStatus] = useState<SaveStatus>("saved");
   const [error, setError] = useState("");
   // Save responses can arrive out of order if a fast save fires while a
@@ -119,10 +131,31 @@ export default function StashPageView() {
     }
   }, [workspaceId, pageId]);
 
+  const loadStashFallback = useCallback(async () => {
+    if (!stashSlug) return false;
+    try {
+      const data = await getPublicStash(stashSlug);
+      const item = data.items.find(
+        (it) => it.object_type === "page" && it.object_id === pageId,
+      );
+      if (!item) {
+        setError("This page isn't part of the linked Stash.");
+        return false;
+      }
+      setStashFallback({ stash: data.stash, item });
+      setError("");
+      return true;
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Stash not found");
+      return false;
+    }
+  }, [stashSlug, pageId]);
+
   const load = useCallback(async () => {
     try {
       const p = await getPage(workspaceId, pageId);
       setPage(p);
+      setStashFallback(null);
       setContainingStashes(await listObjectStashes(workspaceId, "page", pageId));
       if (p.folder_id) {
         const contents = await getFolderContents(workspaceId, p.folder_id);
@@ -132,9 +165,19 @@ export default function StashPageView() {
       }
       await refreshThreads();
     } catch (e) {
+      // Non-members of the workspace fall back to the stash payload when
+      // a ?stash=<slug> hint is present. The stash's readability check is
+      // the only authorization in that path.
+      if (
+        stashSlug &&
+        e instanceof ApiError &&
+        (e.status === 401 || e.status === 403 || e.status === 404)
+      ) {
+        if (await loadStashFallback()) return;
+      }
       setError(e instanceof Error ? e.message : "Failed to load page");
     }
-  }, [workspaceId, pageId, refreshThreads]);
+  }, [workspaceId, pageId, refreshThreads, stashSlug, loadStashFallback]);
 
   const reconcileAfterSave = useCallback(
     (savedContent: string, contentType: "markdown" | "html") => {
@@ -287,15 +330,40 @@ export default function StashPageView() {
   );
 
   useEffect(() => {
+    // Anonymous viewers can load this page when ?stash=<slug> is set —
+    // the stash payload is the read source. Authenticated viewers always
+    // try the workspace endpoint first.
     if (user) load();
-  }, [user, load]);
+    else if (!loading && stashSlug) void loadStashFallback();
+  }, [user, loading, load, loadStashFallback, stashSlug]);
 
   useEffect(() => {
-    if (!loading && !user) router.push("/login");
-  }, [user, loading, router]);
+    // Only bounce to login if there's no stash fallback path available.
+    if (!loading && !user && !stashSlug) router.push("/login");
+  }, [user, loading, router, stashSlug]);
 
   if (loading) return <DocumentPageSkeleton />;
-  if (!user) return null;
+  if (stashFallback) {
+    return (
+      <StashFallbackPageView
+        stashSlug={stashSlug ?? ""}
+        stashTitle={stashFallback.stash.title}
+        item={stashFallback.item}
+      />
+    );
+  }
+  if (!user) {
+    // Login bounce is already firing for the no-stash case.
+    if (!stashSlug) return null;
+    // Stash mode: waiting on the fallback to land, or it failed.
+    if (!error) return <DocumentPageSkeleton />;
+    return (
+      <div className="mx-auto max-w-md py-24 text-center">
+        <h1 className="font-display text-[24px] font-bold text-foreground">Page unavailable</h1>
+        <p className="mt-2 text-[14px] leading-relaxed text-dim">{error}</p>
+      </div>
+    );
+  }
   if (!page && !error) return <DocumentPageSkeleton />;
 
   const isHtml = page?.content_type === "html";
@@ -566,5 +634,40 @@ function HtmlGlyph() {
       <circle cx="6" cy="6.5" r="0.6" fill="currentColor" />
       <circle cx="8.2" cy="6.5" r="0.6" fill="currentColor" />
     </svg>
+  );
+}
+
+// Read-only render for viewers who can't reach the workspace endpoint —
+// usually because they aren't a workspace member. The content comes from
+// the public-stash payload, gated by the stash's readability rules.
+function StashFallbackPageView({
+  stashSlug,
+  stashTitle,
+  item,
+}: {
+  stashSlug: string;
+  stashTitle: string;
+  item: PublicStashItem;
+}) {
+  return (
+    <div className="scroll-thin flex-1 overflow-y-auto">
+      <div className="mx-auto max-w-[920px] px-12 pb-20 pt-6">
+        <Link
+          href={`/stashes/${stashSlug}`}
+          className="inline-flex items-center gap-1 text-[12.5px] text-muted hover:text-foreground"
+        >
+          ← {stashTitle}
+        </Link>
+        <h1 className="mt-3 m-0 font-display text-[22px] font-bold leading-tight tracking-[-0.015em] text-foreground">
+          {item.label || "(untitled)"}
+        </h1>
+        <div className="mt-1 text-[11.5px] uppercase tracking-wide text-muted">
+          page · read-only via Stash
+        </div>
+        <div className="mt-6">
+          <PageBody item={item} />
+        </div>
+      </div>
+    </div>
   );
 }

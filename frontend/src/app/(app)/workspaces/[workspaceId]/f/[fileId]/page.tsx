@@ -6,6 +6,7 @@ import { useBreadcrumbs } from "../../../../../../components/BreadcrumbContext";
 import { FileViewerSkeleton } from "../../../../../../components/SkeletonStates";
 import { useAuth } from "../../../../../../hooks/useAuth";
 import {
+  ApiError,
   getFile,
   getFolderContents,
   getPublicStash,
@@ -41,12 +42,11 @@ function FileViewerPageInner() {
   const searchParams = useSearchParams();
   const workspaceId = params.workspaceId as string;
   const fileId = params.fileId as string;
-  // When ?stash=<slug> is present, the viewer reads through the public
-  // stash payload instead of the workspace endpoint. This lets non-members
-  // of the owning workspace open files that the stash owner has shared,
-  // with the stash's permission gate the only authorization check.
+  // ?stash=<slug> is a back-link hint AND a permission fallback. We try
+  // the workspace endpoint first so workspace members get the full editor
+  // chrome (rename / move / trash / CSV ingest). Non-members fall back to
+  // the public-stash payload, read-only.
   const stashSlug = searchParams.get("stash");
-  const readOnly = !!stashSlug;
   const { user, loading, logout: _logout } = useAuth();
   // logout isn't used here; kept for parity with other workspace pages.
   void _logout;
@@ -55,6 +55,10 @@ function FileViewerPageInner() {
   const [folderChain, setFolderChain] = useState<FolderBreadcrumb[]>([]);
   const [error, setError] = useState("");
   const [stashTitle, setStashTitle] = useState<string | null>(null);
+  // readOnly flips on only when we fall back to the stash payload — i.e.
+  // the viewer can't reach the workspace endpoint. Workspace members who
+  // arrive via ?stash= still get full edit affordances.
+  const [readOnly, setReadOnly] = useState(false);
 
   useBreadcrumbs(
     readOnly
@@ -73,47 +77,53 @@ function FileViewerPageInner() {
     `${workspaceId}/file/${fileId}/${file?.name ?? ""}/${folderChain.map((c) => c.id).join(",")}/${stashSlug ?? ""}`
   );
 
+  const loadStashFallback = useCallback(async () => {
+    if (!stashSlug) return false;
+    try {
+      const stash = await getPublicStash(stashSlug);
+      setStashTitle(stash.stash.title);
+      const item = stash.items.find(
+        (it) => it.object_type === "file" && it.object_id === fileId
+      );
+      if (!item || !item.inline) {
+        setError("File isn't in this Stash.");
+        return false;
+      }
+      const inline = item.inline as {
+        name?: string;
+        content_type?: string;
+        size_bytes?: number;
+        url?: string;
+        created_at?: string;
+      };
+      const synth: FileInfo = {
+        id: fileId,
+        workspace_id: stash.stash.workspace_id,
+        folder_id: null,
+        name: inline.name ?? item.label,
+        content_type: inline.content_type ?? "",
+        size_bytes: inline.size_bytes ?? 0,
+        url: inline.url ?? "",
+        app_url: `/workspaces/${stash.stash.workspace_id}/f/${fileId}?stash=${stashSlug}`,
+        uploaded_by: "",
+        created_at: inline.created_at ?? "",
+      };
+      setFile(synth);
+      setFolderChain([]);
+      setReadOnly(true);
+      setError("");
+      return true;
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Stash not found");
+      return false;
+    }
+  }, [stashSlug, fileId]);
+
   const load = useCallback(async () => {
     try {
-      if (stashSlug) {
-        // Stash-scoped read. The backend inlines the file's metadata + a
-        // signed download URL when the stash is readable, so we synthesize
-        // a FileInfo from that and skip the workspace endpoint entirely.
-        const stash = await getPublicStash(stashSlug);
-        setStashTitle(stash.stash.title);
-        const item = stash.items.find(
-          (it) => it.object_type === "file" && it.object_id === fileId
-        );
-        if (!item || !item.inline) {
-          setError("File isn't in this Stash.");
-          return;
-        }
-        const inline = item.inline as {
-          name?: string;
-          content_type?: string;
-          size_bytes?: number;
-          url?: string;
-          created_at?: string;
-        };
-        const synth: FileInfo = {
-          id: fileId,
-          workspace_id: stash.stash.workspace_id,
-          folder_id: null,
-          name: inline.name ?? item.label,
-          content_type: inline.content_type ?? "",
-          size_bytes: inline.size_bytes ?? 0,
-          url: inline.url ?? "",
-          app_url: `/workspaces/${stash.stash.workspace_id}/f/${fileId}?stash=${stashSlug}`,
-          uploaded_by: "",
-          created_at: inline.created_at ?? "",
-        };
-        setFile(synth);
-        setFolderChain([]);
-        return;
-      }
-
       const f = await getFile(workspaceId, fileId);
       setFile(f);
+      setReadOnly(false);
       if (f.folder_id) {
         try {
           const contents = await getFolderContents(workspaceId, f.folder_id);
@@ -140,26 +150,29 @@ function FileViewerPageInner() {
         }
         return;
       }
-
     } catch (e) {
+      if (
+        stashSlug &&
+        e instanceof ApiError &&
+        (e.status === 401 || e.status === 403 || e.status === 404)
+      ) {
+        if (await loadStashFallback()) return;
+      }
       setError(e instanceof Error ? e.message : "Failed to load file");
     }
-  }, [workspaceId, fileId, router, stashSlug]);
+  }, [workspaceId, fileId, router, stashSlug, loadStashFallback]);
 
   useEffect(() => {
-    // Stash mode is anonymous-readable, so load eagerly. Workspace mode
-    // waits for the auth check before hitting the workspace endpoint.
-    if (readOnly || user) load();
-  }, [readOnly, user, load]);
+    if (user) load();
+    else if (!loading && stashSlug) void loadStashFallback();
+  }, [user, loading, load, loadStashFallback, stashSlug]);
 
   useEffect(() => {
-    // Only redirect to login in workspace mode. Stash-scoped readers can
-    // be anonymous when the stash is public.
-    if (!readOnly && !loading && !user) router.push("/login");
-  }, [readOnly, user, loading, router]);
+    if (!loading && !user && !stashSlug) router.push("/login");
+  }, [user, loading, router, stashSlug]);
 
-  if (loading && !readOnly) return <FileViewerSkeleton />;
-  if (!user && !readOnly) return null;
+  if (loading) return <FileViewerSkeleton />;
+  if (!user && !stashSlug) return null;
   if (!file && !error) return <FileViewerSkeleton />;
 
   const fileKindLabel = file ? kindLabel(file.content_type, file.name) : "";

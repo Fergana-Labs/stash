@@ -6,13 +6,11 @@ import remarkGfm from "remark-gfm";
 import HtmlPageView from "../../../../components/workspace/HtmlPageView";
 import type { PublicStashItem } from "../../../../lib/api";
 
-// Inline body renderers shared between two surfaces:
-//   1. The /stashes/[slug]/items/[type]/[id] viewer (one item, full page).
-//   2. The /stashes/[slug] detail page when the stash contains a single
-//      page or single session — we render the content inline instead of
-//      making the user click through.
-// Files are not here yet because the existing SingleFilePreview lives in
-// StashPageClient and renders a viewer (image/PDF) rather than markdown.
+// Inline body renderers used on the /stashes/[slug] detail page when the
+// stash contains a single page or single session — we render the content
+// inline (read-only) instead of making the user click through. Multi-item
+// tiles route to the native workspace viewer, which handles permissions
+// and edit affordances natively.
 
 interface InlineSessionEvent {
   agent_name?: string;
@@ -47,6 +45,92 @@ export function PageBody({ item }: { item: PublicStashItem }) {
       <Markdown remarkPlugins={[remarkGfm]}>{p.content_markdown || ""}</Markdown>
     </div>
   );
+}
+
+export function FolderBody({ item }: { item: PublicStashItem }) {
+  const inline = item.inline as {
+    pages?: {
+      id: string;
+      name: string;
+      content_type?: string;
+      content_markdown?: string;
+      content_html?: string;
+      html_layout?: "responsive" | "fixed-aspect";
+    }[];
+    files?: {
+      id: string;
+      name: string;
+      content_type?: string;
+      size_bytes?: number;
+      url?: string;
+    }[];
+  };
+  const pages = inline.pages ?? [];
+  const files = inline.files ?? [];
+  if (pages.length === 0 && files.length === 0) {
+    return <p className="text-[13px] text-muted">Folder is empty.</p>;
+  }
+  return (
+    <div className="space-y-4">
+      {pages.length > 0 && (
+        <section>
+          <h2 className="m-0 mb-2 font-display text-[14px] font-semibold text-foreground">
+            Pages
+          </h2>
+          <div className="space-y-3">
+            {pages.map((p) => (
+              <div key={p.id} className="rounded-lg border border-border bg-base px-4 py-3">
+                <h3 className="m-0 mb-2 font-display text-[14px] font-semibold text-foreground">
+                  {p.name}
+                </h3>
+                {p.content_type === "html" ? (
+                  <HtmlPageView
+                    html={p.content_html || ""}
+                    title={p.name}
+                    layout={p.html_layout}
+                  />
+                ) : (
+                  <div className="markdown-content">
+                    <Markdown remarkPlugins={[remarkGfm]}>{p.content_markdown || ""}</Markdown>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+      {files.length > 0 && (
+        <section>
+          <h2 className="m-0 mb-2 font-display text-[14px] font-semibold text-foreground">
+            Files
+          </h2>
+          <div className="space-y-1.5">
+            {files.map((f) => (
+              <a
+                key={f.id}
+                href={f.url}
+                target="_blank"
+                rel="noreferrer"
+                className="block rounded-md border border-border-subtle bg-base px-3 py-2 text-[13px] text-foreground hover:bg-raised"
+              >
+                <span className="block truncate font-medium">{f.name}</span>
+                <span className="mt-0.5 block text-[11.5px] text-muted">
+                  {f.content_type ?? "file"}
+                  {f.size_bytes != null ? ` · ${formatSize(f.size_bytes)}` : ""}
+                </span>
+              </a>
+            ))}
+          </div>
+        </section>
+      )}
+    </div>
+  );
+}
+
+function formatSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 }
 
 export function SessionBody({ item }: { item: PublicStashItem }) {
