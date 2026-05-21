@@ -1502,10 +1502,15 @@ type StashTreeItem = {
   key: string;
   href?: string;
   label: string;
+  nestedLabel?: string;
   icon: React.ReactNode;
   activeKind?: ActiveFileKind;
   activeId?: string;
   activeLinkedTableId?: string | null;
+  folderId?: string;
+  parentFolderId?: string | null;
+  containingFolderId?: string | null;
+  children?: StashTreeItem[];
   session?: WorkspaceSidebarSession;
 };
 
@@ -1529,6 +1534,78 @@ function resolveFolderPath(
   return next;
 }
 
+function nestedStashLabel(label: string): string {
+  const parts = label.split("/");
+  return parts[parts.length - 1]?.trim() || label;
+}
+
+function relativeNestedStashLabel(
+  label: string,
+  parentLabel: string,
+  fallback?: string
+): string {
+  const prefix = `${parentLabel}/`;
+  if (label.startsWith(prefix)) {
+    const relativeLabel = label.slice(prefix.length).trim();
+    if (relativeLabel) return relativeLabel;
+  }
+
+  return fallback ?? nestedStashLabel(label);
+}
+
+function explicitAncestorFolderId(
+  folderId: string | null | undefined,
+  folderRowsById: Map<string, StashTreeItem>,
+  folderById: Map<string, WorkspaceFolder>
+): string | null {
+  let currentId = folderId ?? null;
+  const seen = new Set<string>();
+
+  while (currentId && !seen.has(currentId)) {
+    if (folderRowsById.has(currentId)) return currentId;
+    seen.add(currentId);
+    currentId = folderById.get(currentId)?.parent_folder_id ?? null;
+  }
+
+  return null;
+}
+
+function nestStashTreeItems(
+  rows: StashTreeItem[],
+  folderById: Map<string, WorkspaceFolder>
+): StashTreeItem[] {
+  const treeRows = rows.map((row) => ({ ...row, children: [] }));
+  const rowByKey = new Map(treeRows.map((row) => [row.key, row]));
+  const folderRowsById = new Map<string, StashTreeItem>();
+
+  for (const row of treeRows) {
+    if (row.kind === "folder" && row.folderId) {
+      folderRowsById.set(row.folderId, row);
+    }
+  }
+
+  const nestedKeys = new Set<string>();
+
+  for (const row of rows) {
+    const parentFolderId =
+      row.kind === "folder"
+        ? explicitAncestorFolderId(row.parentFolderId, folderRowsById, folderById)
+        : explicitAncestorFolderId(row.containingFolderId, folderRowsById, folderById);
+
+    if (!parentFolderId) continue;
+
+    const parent = folderRowsById.get(parentFolderId);
+    const child = rowByKey.get(row.key);
+    if (!parent || !child || child.key === parent.key) continue;
+
+    child.label = relativeNestedStashLabel(child.label, parent.label, child.nestedLabel);
+    parent.children?.push(child);
+    nestedKeys.add(child.key);
+  }
+
+  return treeRows.filter((row) => !nestedKeys.has(row.key));
+}
+
 function buildStashTreeItems(
   workspaceId: string,
   items: StashItemSpec[],
@@ -1539,9 +1616,9 @@ function buildStashTreeItems(
   sessionBySessionId: Map<string, WorkspaceSidebarSession>
 ): StashTreeItem[] {
   const pathCache = new Map<string, string>();
-  return [...items]
+  const rows = [...items]
     .sort((a, b) => (a.position ?? 0) - (b.position ?? 0))
-    .map((item, index) => {
+    .map((item, index): StashTreeItem => {
       if (item.object_type === "session") {
         const session = sessionById.get(item.object_id) ?? sessionBySessionId.get(item.object_id);
         const fallback = `Session ${item.object_id}`;
@@ -1564,9 +1641,15 @@ function buildStashTreeItems(
           icon: <span className="text-muted"><FolderIcon /></span>,
           activeKind: "folder",
           activeId: item.object_id,
+          folderId: item.object_id,
+          parentFolderId: folder?.parent_folder_id ?? null,
           label:
             item.label_override ??
             (folder ? resolveFolderPath(folder.id, folderById, pathCache) : `Folder ${item.object_id}`),
+          nestedLabel:
+            item.label_override
+              ? nestedStashLabel(item.label_override)
+              : (folder ? folder.name : `Folder ${item.object_id}`),
         };
       }
 
@@ -1579,7 +1662,9 @@ function buildStashTreeItems(
             icon: <span className="text-muted"><PageIcon /></span>,
             activeKind: "page",
             activeId: item.object_id,
+            containingFolderId: null,
             label: item.label_override ?? `Page ${item.object_id}`,
+            nestedLabel: nestedStashLabel(item.label_override ?? `Page ${item.object_id}`),
           };
         }
 
@@ -1592,7 +1677,9 @@ function buildStashTreeItems(
           icon: <span className="text-muted"><PageIcon /></span>,
           activeKind: "page",
           activeId: page.id,
+          containingFolderId: page.folder_id,
           label: item.label_override ?? pagePath,
+          nestedLabel: nestedStashLabel(item.label_override ?? page.name),
         };
       }
 
@@ -1605,7 +1692,9 @@ function buildStashTreeItems(
             icon: <span className={fileIconClass(undefined)}><FileIcon /></span>,
             activeKind: "file",
             activeId: item.object_id,
+            containingFolderId: null,
             label: item.label_override ?? `File ${item.object_id}`,
+            nestedLabel: nestedStashLabel(item.label_override ?? `File ${item.object_id}`),
           };
         }
 
@@ -1619,7 +1708,9 @@ function buildStashTreeItems(
           activeKind: "file",
           activeId: file.id,
           activeLinkedTableId: file.linked_table_id,
+          containingFolderId: file.folder_id,
           label: item.label_override ?? filePath,
+          nestedLabel: nestedStashLabel(item.label_override ?? file.name),
         };
       }
 
@@ -1642,6 +1733,41 @@ function buildStashTreeItems(
         label: item.label_override ?? `${item.object_type} ${item.object_id}`,
       };
     });
+
+  return nestStashTreeItems(rows, folderById);
+}
+
+function stashTreeItemActive(
+  row: StashTreeItem,
+  workspaceId: string,
+  pathname: string
+): boolean {
+  if (!row.href) return false;
+
+  const activeFile = activeFileRef(pathname);
+  if (row.activeKind === "file") {
+    return workspaceFileMatchesActive(activeFile, workspaceId, {
+      id: row.activeId ?? "",
+      linked_table_id: row.activeLinkedTableId ?? null,
+    });
+  }
+
+  if (row.activeKind) {
+    return fileResourceMatchesActive(activeFile, workspaceId, row.activeKind, row.activeId);
+  }
+
+  return pathname === row.href;
+}
+
+function stashTreeItemOrChildActive(
+  row: StashTreeItem,
+  workspaceId: string,
+  pathname: string
+): boolean {
+  if (stashTreeItemActive(row, workspaceId, pathname)) return true;
+  return row.children?.some((child) =>
+    stashTreeItemOrChildActive(child, workspaceId, pathname)
+  ) ?? false;
 }
 
 function StashSidebarRow({
@@ -1741,6 +1867,22 @@ function StashTreeRow({
   row: StashTreeItem;
 }) {
   const pathname = usePathname();
+  const active = stashTreeItemActive(row, workspaceId, pathname);
+  const childActive = row.children?.some((child) =>
+    stashTreeItemOrChildActive(child, workspaceId, pathname)
+  ) ?? false;
+
+  if (row.children?.length) {
+    return (
+      <StashTreeBranch
+        workspaceId={workspaceId}
+        row={row}
+        active={active}
+        childActive={childActive}
+      />
+    );
+  }
+
   if (!row.href) {
     return (
       <div className="page-row flex items-center gap-2 rounded-md px-2 py-0.5 text-[12.5px] text-muted">
@@ -1751,16 +1893,6 @@ function StashTreeRow({
     );
   }
 
-  const activeFile = activeFileRef(pathname);
-  const active =
-    row.activeKind === "file"
-      ? workspaceFileMatchesActive(activeFile, workspaceId, {
-          id: row.activeId ?? "",
-          linked_table_id: row.activeLinkedTableId ?? null,
-        })
-      : row.activeKind
-        ? fileResourceMatchesActive(activeFile, workspaceId, row.activeKind, row.activeId)
-        : pathname === row.href;
   return (
     <NavRow
       href={row.href}
@@ -1771,6 +1903,84 @@ function StashTreeRow({
         row.session ? <SessionRowTrailing session={row.session} active={active} /> : null
       }
     />
+  );
+}
+
+function StashTreeBranch({
+  workspaceId,
+  row,
+  active,
+  childActive,
+}: {
+  workspaceId: string;
+  row: StashTreeItem;
+  active: boolean;
+  childActive: boolean;
+}) {
+  const [open, setOpen] = useState(true);
+
+  useEffect(() => {
+    if (childActive) setOpen(true);
+  }, [childActive]);
+
+  return (
+    <details open={open} className="text-[12.5px]">
+      <summary
+        onClick={(event) => {
+          event.preventDefault();
+          setOpen(true);
+        }}
+        className={
+          "page-row flex items-center gap-1 rounded-md px-2 py-0.5 " +
+          (active
+            ? "bg-[var(--color-brand-50)] text-[var(--color-brand-800)]"
+            : "hover:bg-raised")
+        }
+      >
+        <ChevronToggle
+          open={open}
+          ariaLabel={`${open ? "Collapse" : "Expand"} ${row.label}`}
+          onToggle={() => setOpen((current) => !current)}
+        />
+        <span
+          className={
+            "flex h-4 w-4 items-center justify-center text-[14px] " +
+            (active ? "text-[var(--color-brand-700)]" : "text-muted")
+          }
+        >
+          {row.icon}
+        </span>
+        {row.href ? (
+          <Link
+            href={row.href}
+            onClick={(event) => {
+              event.stopPropagation();
+              setOpen(true);
+            }}
+            className={
+              "min-w-0 flex-1 truncate " +
+              (active
+                ? "font-medium text-[var(--color-brand-800)]"
+                : "text-foreground hover:text-[var(--color-brand-700)]")
+            }
+          >
+            {row.label}
+          </Link>
+        ) : (
+          <span className="min-w-0 flex-1 truncate text-muted">{row.label}</span>
+        )}
+        {row.session ? <SessionRowTimestamp session={row.session} /> : null}
+      </summary>
+      <div className="ml-2.5 space-y-0.5 border-l border-border pl-2">
+        {row.children?.map((child) => (
+          <StashTreeRow
+            key={child.key}
+            workspaceId={workspaceId}
+            row={child}
+          />
+        ))}
+      </div>
+    </details>
   );
 }
 

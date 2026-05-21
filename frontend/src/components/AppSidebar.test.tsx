@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import type { MouseEvent, ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import AppSidebar from "./AppSidebar";
@@ -209,6 +209,74 @@ const sidebarWithStashFiles = {
           object_type: "file" as const,
           object_id: "file-csv",
           label_override: "Launch table file",
+          position: 2,
+        },
+      ],
+      updated_at: "2026-05-11T00:00:00Z",
+    },
+  ],
+};
+
+const sidebarWithNestedStashItems = {
+  sessions: [],
+  files: {
+    folders: [
+      {
+        id: "folder-product",
+        name: "Product",
+        parent_folder_id: null,
+        page_count: 1,
+        file_count: 0,
+        has_skill: false,
+      },
+    ],
+    pages: [
+      {
+        id: "page-polish",
+        name: "Sidebar polish notes",
+        content_type: "markdown" as const,
+        folder_id: "folder-product",
+      },
+      {
+        id: "page-hover",
+        name: "Hover QA notes",
+        content_type: "markdown" as const,
+        folder_id: null,
+      },
+    ],
+    files: [],
+  },
+  stashes: [
+    {
+      id: "stash-1",
+      workspace_id: "ws-1",
+      slug: "sidebar-review-kit",
+      title: "Sidebar Review Kit",
+      description: "",
+      access: "workspace" as const,
+      workspace_permission: "read" as const,
+      public_permission: "none" as const,
+      discoverable: false,
+      is_external: false,
+      forked_from_stash_id: null,
+      item_count: 3,
+      items: [
+        {
+          object_type: "page" as const,
+          object_id: "page-polish",
+          label_override: "Product/Sidebar polish notes",
+          position: 0,
+        },
+        {
+          object_type: "folder" as const,
+          object_id: "folder-product",
+          label_override: null,
+          position: 1,
+        },
+        {
+          object_type: "page" as const,
+          object_id: "page-hover",
+          label_override: "Hover QA notes",
           position: 2,
         },
       ],
@@ -984,6 +1052,27 @@ describe("AppSidebar tree expansion", () => {
     renderSidebar();
     await screen.findByText("Project Alpha");
     expect(await screen.findByText("Launch session")).toBeTruthy();
+  });
+
+  it("nests stash items under included parent folders", async () => {
+    vi.mocked(getWorkspaceSidebar).mockResolvedValue(sidebarWithNestedStashItems);
+
+    renderSidebar();
+
+    await screen.findByText("Sidebar Review Kit");
+    fireEvent.click(screen.getByLabelText("Expand Sidebar Review Kit"));
+
+    const stashes = detailsFor("Stashes");
+    const productDetails = within(stashes).getByText("Product").closest("details");
+    if (!productDetails) throw new Error("Product folder did not render as a tree");
+
+    expect(productDetails).toHaveAttribute("open");
+    expect(
+      within(productDetails).getByRole("link", { name: "Sidebar polish notes" })
+    ).toBeTruthy();
+    expect(
+      within(stashes).queryByRole("link", { name: "Product/Sidebar polish notes" })
+    ).toBeNull();
   });
 
   it("keeps an expanded stash open when another stash is clicked", async () => {
