@@ -23,12 +23,39 @@ _DENSITY_CACHE_TTL = timedelta(hours=24)
 _DENSITY_SIGNATURE_TOLERANCE = 0.1
 
 
-# Shared CTE for workspace access filtering on history_events.
-# When ws_idx is passed, the CTE narrows to a single workspace (the caller
-# must have already authorized access to it). Otherwise it returns every
-# event the user can see across all their workspaces.
-def _accessible_events_cte(ws_idx: int | None = None, user_idx: int = 1) -> str:
+# Shared CTE for workspace / stash access filtering on history_events.
+# Exactly one of ws_idx and stash_idx may be passed (caller responsibility):
+#   ws_idx    -> narrow to a single workspace's events (caller has already
+#                authorized membership).
+#   stash_idx -> narrow to events whose session is bundled into the stash
+#                (caller has already authorized stash readability).
+# Neither -> every event the user can see across all their workspaces.
+def _accessible_events_cte(
+    ws_idx: int | None = None,
+    user_idx: int = 1,
+    stash_idx: int | None = None,
+) -> str:
     readable_events = memory_service.readable_session_event_condition("he", user_idx)
+    if stash_idx is not None:
+        return f"""
+        WITH accessible_events AS (
+            SELECT he.id AS event_id
+            FROM history_events he
+            WHERE he.session_id IS NOT NULL
+              AND EXISTS (
+                SELECT 1
+                FROM sessions s
+                JOIN stash_items si
+                  ON si.object_type = 'session'
+                 AND si.object_id = s.id
+                WHERE si.stash_id = ${stash_idx}
+                  AND s.session_id = he.session_id
+                  AND s.workspace_id = he.workspace_id
+                  AND s.deleted_at IS NULL
+              )
+              AND {readable_events}
+        )
+        """
     if ws_idx is not None:
         return f"""
         WITH accessible_events AS (
@@ -49,8 +76,25 @@ def _accessible_events_cte(ws_idx: int | None = None, user_idx: int = 1) -> str:
     """
 
 
-def _accessible_pages_cte(ws_idx: int | None = None, user_idx: int = 1) -> str:
+def _accessible_pages_cte(
+    ws_idx: int | None = None,
+    user_idx: int = 1,
+    stash_idx: int | None = None,
+) -> str:
     readable_pages = permission_service.readable_content_condition("page", "p", user_idx)
+    if stash_idx is not None:
+        return f"""
+        WITH accessible_pages AS (
+            SELECT p.id AS page_id
+            FROM pages p
+            JOIN stash_items si
+              ON si.object_type = 'page'
+             AND si.object_id = p.id
+            WHERE si.stash_id = ${stash_idx}
+              AND COALESCE(p.metadata->>'shared_in_stash_id', '') = ''
+              AND {readable_pages}
+        )
+        """
     if ws_idx is not None:
         return f"""
         WITH accessible_pages AS (
@@ -72,8 +116,24 @@ def _accessible_pages_cte(ws_idx: int | None = None, user_idx: int = 1) -> str:
     """
 
 
-def _accessible_tables_cte(ws_idx: int | None = None, user_idx: int = 1) -> str:
+def _accessible_tables_cte(
+    ws_idx: int | None = None,
+    user_idx: int = 1,
+    stash_idx: int | None = None,
+) -> str:
     readable_tables = permission_service.readable_content_condition("table", "t", user_idx)
+    if stash_idx is not None:
+        return f"""
+        WITH accessible_tables AS (
+            SELECT t.id AS table_id
+            FROM tables t
+            JOIN stash_items si
+              ON si.object_type = 'table'
+             AND si.object_id = t.id
+            WHERE si.stash_id = ${stash_idx}
+              AND {readable_tables}
+        )
+        """
     if ws_idx is not None:
         return f"""
         WITH accessible_tables AS (
@@ -99,8 +159,13 @@ async def get_activity_timeline(
     days: int = 30,
     bucket: str = "day",
     workspace_id: UUID | None = None,
+    stash_id: UUID | None = None,
 ) -> dict:
-    """Human + coding-agent session commits bucketed by time."""
+    """Human + coding-agent session commits bucketed by time.
+
+    Pass ``workspace_id`` to scope to one workspace, or ``stash_id`` to scope
+    to the sessions bundled into a specific Stash. The two are mutually
+    exclusive — the router rejects the combination."""
     pool = get_pool()
     days = min(days, 365)
     if bucket not in ("hour", "day", "week"):
@@ -110,12 +175,16 @@ async def get_activity_timeline(
 
     args: list = [user_id, bucket, cutoff]
     ws_idx = None
-    if workspace_id is not None:
+    stash_idx = None
+    if stash_id is not None:
+        args.append(stash_id)
+        stash_idx = 4
+    elif workspace_id is not None:
         args.append(workspace_id)
         ws_idx = 4
 
     rows = await pool.fetch(
-        _accessible_events_cte(ws_idx=ws_idx) + """
+        _accessible_events_cte(ws_idx=ws_idx, stash_idx=stash_idx) + """
         , timeline_events AS (
             SELECT
                 me.workspace_id,
@@ -606,12 +675,18 @@ async def get_embedding_projection(
     max_points: int = 500,
     source: str | None = None,
     workspace_id: UUID | None = None,
+    stash_id: UUID | None = None,
 ) -> dict:
     """3D PCA projection of embeddings for the space explorer.
 
+    Pass ``workspace_id`` to scope to one workspace, or ``stash_id`` to scope
+    to the items bundled into a specific Stash (mutually exclusive — the
+    router rejects the combination).
+
     Workspace-scoped requests bypass the embedding_projections cache since
-    that table is keyed by (user_id, source_type) — extending the schema
-    for decorative visualizations isn't worth it."""
+    that table is keyed by (user_id, source_type, workspace_id). Stash-scoped
+    requests bypass it for the same reason — extending the schema for
+    decorative visualizations isn't worth it."""
     pool = get_pool()
     max_points = min(max_points, 2000)
 
@@ -619,31 +694,43 @@ async def get_embedding_projection(
 
     content_count_args = [user_id]
     content_count_ws_idx = None
-    if workspace_id is not None:
+    content_count_stash_idx = None
+    if stash_id is not None:
+        content_count_args.append(stash_id)
+        content_count_stash_idx = 2
+    elif workspace_id is not None:
         content_count_args.append(workspace_id)
         content_count_ws_idx = 2
     event_count_args = [user_id]
     event_ws_idx = None
-    if workspace_id is not None:
+    event_stash_idx = None
+    if stash_id is not None:
+        event_count_args.append(stash_id)
+        event_stash_idx = 2
+    elif workspace_id is not None:
         event_count_args.append(workspace_id)
         event_ws_idx = 2
 
     # Cache row keyed by (user_id, source_type, workspace_id) — NULL workspace
-    # is the user-wide row (migration 0018, NULLS NOT DISTINCT).
-    cache = await pool.fetchrow(
-        "SELECT points, embedding_count, computed_at FROM embedding_projections "
-        "WHERE user_id = $1 AND source_type = $2 "
-        "AND workspace_id IS NOT DISTINCT FROM $3",
-        user_id,
-        source_key,
-        workspace_id,
-    )
+    # is the user-wide row (migration 0018, NULLS NOT DISTINCT). Stash-scoped
+    # requests bypass the cache (no stash_id column).
+    cache = None
+    if stash_id is None:
+        cache = await pool.fetchrow(
+            "SELECT points, embedding_count, computed_at FROM embedding_projections "
+            "WHERE user_id = $1 AND source_type = $2 "
+            "AND workspace_id IS NOT DISTINCT FROM $3",
+            user_id,
+            source_key,
+            workspace_id,
+        )
 
     # Count current embeddings
     total_count = 0
     if source is None or source == "pages":
         row = await pool.fetchval(
-            _accessible_pages_cte(ws_idx=content_count_ws_idx) + """
+            _accessible_pages_cte(ws_idx=content_count_ws_idx, stash_idx=content_count_stash_idx)
+            + """
             SELECT COUNT(*) FROM pages np
             WHERE np.id IN (SELECT page_id FROM accessible_pages)
               AND np.embedding IS NOT NULL
@@ -654,7 +741,8 @@ async def get_embedding_projection(
 
     if source is None or source == "table_rows":
         row = await pool.fetchval(
-            _accessible_tables_cte(ws_idx=content_count_ws_idx) + """
+            _accessible_tables_cte(ws_idx=content_count_ws_idx, stash_idx=content_count_stash_idx)
+            + """
             SELECT COUNT(*) FROM table_rows tr
             WHERE tr.table_id IN (SELECT table_id FROM accessible_tables)
               AND tr.embedding IS NOT NULL
@@ -665,7 +753,7 @@ async def get_embedding_projection(
 
     if source is None or source == "history_events":
         row = await pool.fetchval(
-            _accessible_events_cte(ws_idx=event_ws_idx) + """
+            _accessible_events_cte(ws_idx=event_ws_idx, stash_idx=event_stash_idx) + """
             SELECT COUNT(*) FROM history_events me
             JOIN accessible_events a ON a.event_id = me.id
             WHERE me.embedding IS NOT NULL
@@ -693,18 +781,27 @@ async def get_embedding_projection(
     per_source_limit = max_points if source else max_points // 3
     content_fetch_args = [user_id, per_source_limit]
     content_fetch_ws_idx = None
-    if workspace_id is not None:
+    content_fetch_stash_idx = None
+    if stash_id is not None:
+        content_fetch_args.append(stash_id)
+        content_fetch_stash_idx = 3
+    elif workspace_id is not None:
         content_fetch_args.append(workspace_id)
         content_fetch_ws_idx = 3
     event_fetch_args = [user_id, per_source_limit]
     event_fetch_ws_idx = None
-    if workspace_id is not None:
+    event_fetch_stash_idx = None
+    if stash_id is not None:
+        event_fetch_args.append(stash_id)
+        event_fetch_stash_idx = 3
+    elif workspace_id is not None:
         event_fetch_args.append(workspace_id)
         event_fetch_ws_idx = 3
 
     if source is None or source == "pages":
         rows = await pool.fetch(
-            _accessible_pages_cte(ws_idx=content_fetch_ws_idx) + """
+            _accessible_pages_cte(ws_idx=content_fetch_ws_idx, stash_idx=content_fetch_stash_idx)
+            + """
             SELECT np.id, np.name AS label, np.embedding, np.created_at
             FROM pages np
             WHERE np.id IN (SELECT page_id FROM accessible_pages)
@@ -727,7 +824,8 @@ async def get_embedding_projection(
 
     if source is None or source == "table_rows":
         rows = await pool.fetch(
-            _accessible_tables_cte(ws_idx=content_fetch_ws_idx) + """
+            _accessible_tables_cte(ws_idx=content_fetch_ws_idx, stash_idx=content_fetch_stash_idx)
+            + """
             SELECT tr.id, t.name AS table_name, tr.embedding, tr.created_at
             FROM table_rows tr
             JOIN tables t ON t.id = tr.table_id
@@ -751,7 +849,7 @@ async def get_embedding_projection(
 
     if source is None or source == "history_events":
         rows = await pool.fetch(
-            _accessible_events_cte(ws_idx=event_fetch_ws_idx) + """
+            _accessible_events_cte(ws_idx=event_fetch_ws_idx, stash_idx=event_fetch_stash_idx) + """
             SELECT me.id, me.agent_name, me.event_type, me.embedding, me.created_at
             FROM history_events me
             JOIN accessible_events a ON a.event_id = me.id
@@ -810,20 +908,24 @@ async def get_embedding_projection(
             }
         )
 
-    await pool.execute(
-        "INSERT INTO embedding_projections "
-        "(user_id, source_type, workspace_id, points, embedding_count, computed_at) "
-        "VALUES ($1, $2, $3, $4, $5, NOW()) "
-        "ON CONFLICT (user_id, source_type, workspace_id) "
-        "DO UPDATE SET points = EXCLUDED.points, "
-        "              embedding_count = EXCLUDED.embedding_count, "
-        "              computed_at = NOW()",
-        user_id,
-        source_key,
-        workspace_id,
-        points,
-        total_count,
-    )
+    # Stash-scoped projections skip the cache table — its key is
+    # (user_id, source_type, workspace_id) so a stash result would either
+    # collide with the workspace-wide row or need a schema migration.
+    if stash_id is None:
+        await pool.execute(
+            "INSERT INTO embedding_projections "
+            "(user_id, source_type, workspace_id, points, embedding_count, computed_at) "
+            "VALUES ($1, $2, $3, $4, $5, NOW()) "
+            "ON CONFLICT (user_id, source_type, workspace_id) "
+            "DO UPDATE SET points = EXCLUDED.points, "
+            "              embedding_count = EXCLUDED.embedding_count, "
+            "              computed_at = NOW()",
+            user_id,
+            source_key,
+            workspace_id,
+            points,
+            total_count,
+        )
 
     return {
         "points": points,

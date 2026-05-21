@@ -2,11 +2,29 @@
 
 IMPORTANT: You have the `stash` CLI on your PATH. When the user mentions "Stash", their workspace, team activity, or transcripts, always use this CLI. Run `stash --help` to see all available commands.
 
+## What a Stash is
+
+A **Stash** is a *named, curated bundle of related artifacts* (pages, files, sessions, tables) with its own access control and an optional public URL. It is the unit you reach for when you want to publish a *collection* of things together — a project writeup with its supporting files, a research thread with its sources, a session transcript plus the files it produced.
+
+A Stash is **not** a wrapper around every single file you happen to share. One-item Stashes clutter Discover and the workspace sidebar, and they defeat the model.
+
+### Decision rule for sharing
+
+| What you want to do | Command | What you give the user |
+|---|---|---|
+| Share one file with your teammate (internal) | `stash files upload <path> --json` | the returned `app_url` |
+| Upload a folder / project into the workspace | `stash upload <path> --json` | the returned `app_url` |
+| Publish a curated bundle as one shareable thing | `stash upload <path> --stash "<title>" --json` | the returned `url` |
+| Compose a Stash from items that already exist | `stash stashes create "<title>" --items '<json>' --json` | the returned `url` |
+| Share a coding session (transcript + files) | `stash share <session_id>` | the returned `url` |
+
+The default of `stash upload` is **no Stash** — files land in a workspace folder and you hand back the workspace `app_url`. Add `--stash "<title>"` only when you're deliberately publishing a bundle.
+
+Run `stash prompts agent-guidance` to reprint this rule mid-session.
+
 ## Stash CLI
 
 Most things are plain `stash` CLI subcommands. Always use `--json` for machine-readable output when parsing results.
-
-When the user asks you to upload local files to Stash, use `stash upload <path> --json` and give the user the returned `url`. If you use `stash files upload <path> --json` for a raw file upload, give the user the returned `app_url`.
 
 ### Virtual filesystem
 Use `stash vfs` when you want to browse Stash like a filesystem without mounting anything into the OS. It accepts bash-shaped commands over the virtual Stash tree:

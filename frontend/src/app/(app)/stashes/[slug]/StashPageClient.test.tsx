@@ -384,13 +384,14 @@ describe("StashPageClient sharing", () => {
     renderStash(<StashPageClient slug="shared-stash" />);
 
     expect(
-      await screen.findByText("Human / agent commits — last 30 days"),
+      await screen.findByText("Activity in this Stash — last 30 days"),
     ).toBeInTheDocument();
     await waitFor(() =>
       expect(getActivityTimeline).toHaveBeenCalledWith(
         30,
         "day",
-        "workspace-1",
+        undefined,
+        "stash-1",
       ),
     );
   });
