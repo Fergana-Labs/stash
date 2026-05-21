@@ -1,14 +1,14 @@
 """Add indexes for CRUD hot paths.
 
-Revision ID: 0074
-Revises: 0073
+Revision ID: 0075
+Revises: 0074
 Create Date: 2026-05-21
 """
 
 from alembic import op
 
-revision = "0074"
-down_revision = "0073"
+revision = "0075"
+down_revision = "0074"
 branch_labels = None
 depends_on = None
 
