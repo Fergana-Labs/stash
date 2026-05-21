@@ -26,6 +26,9 @@ interface StashCardProps {
   cover: string;
   /** Optional badge in the upper-left of the cover (e.g. trending, EXTERNAL). */
   badge?: ReactNode;
+  /** Optional action in the upper-right of the cover (e.g. + Save button).
+   * Action components own their own click-propagation handling. */
+  cornerAction?: ReactNode;
   /** Custom footer; if omitted, defaults to `/{slug}` + relative-time. */
   footer?: ReactNode;
 }
@@ -36,7 +39,13 @@ const VIS_COLOR: Record<string, string> = {
   workspace: "var(--color-brand-500)",
 };
 
-export default function StashCard({ stash, cover, badge, footer }: StashCardProps) {
+export default function StashCard({
+  stash,
+  cover,
+  badge,
+  cornerAction,
+  footer,
+}: StashCardProps) {
   const itemCount = stash.item_count ?? stash.items?.length ?? 0;
   const visibility = stash.access;
   const dotColor = visibility ? VIS_COLOR[visibility] : null;
@@ -60,6 +69,9 @@ export default function StashCard({ stash, cover, badge, footer }: StashCardProp
         }
       >
         {badge}
+        {cornerAction && (
+          <div className="absolute right-2.5 top-2 z-10">{cornerAction}</div>
+        )}
         {stash.is_external && !badge && (
           <span className="absolute left-3 top-2.5 rounded-full border border-white/50 bg-white/70 px-2 py-0.5 font-mono text-[10.5px] text-foreground backdrop-blur">
             EXTERNAL

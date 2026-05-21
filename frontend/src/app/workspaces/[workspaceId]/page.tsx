@@ -14,10 +14,12 @@ import StashQuickAdd from "../../../components/StashQuickAdd";
 import DriveImportDialog from "../../../components/import/DriveImportDialog";
 import GitImportDialog from "../../../components/import/GitImportDialog";
 import NotionImportDialog from "../../../components/import/NotionImportDialog";
+import ObsidianImportDialog from "../../../components/import/ObsidianImportDialog";
 import {
   GitHubIcon,
   GoogleDriveIcon,
   NotionIcon,
+  ObsidianIcon,
 } from "../../../components/integrations/BrandIcons";
 import {
   IntegrationStatus,
@@ -70,9 +72,9 @@ export default function WorkspaceHomePage() {
   );
   const [insightsLoaded, setInsightsLoaded] = useState(false);
   const [error, setError] = useState("");
-  const [openImport, setOpenImport] = useState<"git" | "notion" | "drive" | null>(
-    null,
-  );
+  const [openImport, setOpenImport] = useState<
+    "git" | "notion" | "drive" | "obsidian" | null
+  >(null);
   const [integrationStatus, setIntegrationStatus] = useState<
     Record<string, IntegrationStatus | undefined>
   >({});
@@ -270,6 +272,7 @@ export default function WorkspaceHomePage() {
             onOpenGit={() => setOpenImport("git")}
             onOpenDrive={() => setOpenImport("drive")}
             onOpenNotion={() => setOpenImport("notion")}
+            onOpenObsidian={() => setOpenImport("obsidian")}
             pendingImports={pendingImports}
           />
         )}
@@ -292,6 +295,16 @@ export default function WorkspaceHomePage() {
           <DriveImportDialog
             workspaceId={workspaceId}
             onDispatched={trackImport}
+            onClose={() => setOpenImport(null)}
+          />
+        )}
+        {openImport === "obsidian" && (
+          <ObsidianImportDialog
+            workspaceId={workspaceId}
+            onUploaded={() => {
+              refreshWorkspaceSidebar(workspaceId).catch(() => {});
+              load();
+            }}
             onClose={() => setOpenImport(null)}
           />
         )}
@@ -403,12 +416,14 @@ function WorkspaceImportRow({
   onOpenGit,
   onOpenDrive,
   onOpenNotion,
+  onOpenObsidian,
   pendingImports,
 }: {
   integrationStatus: Record<string, IntegrationStatus | undefined>;
   onOpenGit: () => void;
   onOpenDrive: () => void;
   onOpenNotion: () => void;
+  onOpenObsidian: () => void;
   pendingImports: number;
 }) {
   return (
@@ -424,7 +439,7 @@ function WorkspaceImportRow({
           </span>
         )}
       </div>
-      <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4">
         <ImportCard
           connected={!!integrationStatus.github?.connected}
           provider="GitHub"
@@ -442,6 +457,13 @@ function WorkspaceImportRow({
           provider="Notion"
           icon={<NotionIcon size={20} className="text-foreground" />}
           onClick={onOpenNotion}
+        />
+        <ImportCard
+          connected={true}
+          provider="Obsidian"
+          icon={<ObsidianIcon size={20} />}
+          hint="Drop a vault folder"
+          onClick={onOpenObsidian}
         />
       </div>
     </section>
