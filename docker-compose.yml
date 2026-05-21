@@ -1,5 +1,3 @@
-version: "3.9"
-
 # Shared environment block — backend + worker + beat all need the same
 # secrets / API keys because tasks may run on the worker. Each service
 # overrides DATABASE_URL/REDIS_URL/CORS/PUBLIC_URL inline as needed.
@@ -48,8 +46,6 @@ services:
   postgres:
     image: pgvector/pgvector:pg16
     restart: unless-stopped
-    ports:
-      - "5432:5432"
     environment:
       POSTGRES_USER: stash
       POSTGRES_PASSWORD: stash
@@ -65,8 +61,6 @@ services:
   redis:
     image: redis:7-alpine
     restart: unless-stopped
-    ports:
-      - "6379:6379"
     volumes:
       - redis_data:/data
     command: ["redis-server", "--appendonly", "yes"]
