@@ -51,6 +51,21 @@ function formatSessionDate(date: Date): string {
   });
 }
 
+function cleanSessionTitle(title: string): string {
+  return title
+    .replace(/^\s*title:\s*/i, "")
+    .replace(/^\s{0,3}#{1,6}\s*/, "")
+    .replace(/\*\*/g, "")
+    .replace(/__/g, "")
+    .replace(/`/g, "")
+    .trim();
+}
+
+function sessionHeading(detail: SessionDetail | null, sessionId: string): string {
+  const raw = (detail?.title || sessionId).trim();
+  return cleanSessionTitle(raw) || sessionId.replace(/^acme-/, "");
+}
+
 function eventToTurn(ev: SessionEvent): MessageTurn {
   const createdAt = ev.created_at ? new Date(ev.created_at) : null;
 
@@ -220,7 +235,7 @@ export default function SessionViewerPage() {
                 ))}
               </div>
               <h1 className="mt-1.5 font-display text-[28px] font-bold leading-tight tracking-[-0.02em]">
-                #{sessionId.replace(/^acme-/, "")}
+                {sessionHeading(sessionDetail, sessionId)}
               </h1>
               {turns.length > 0 && (
                 <div className="mt-1.5 flex flex-wrap items-center gap-2.5 text-[12px] text-muted">
