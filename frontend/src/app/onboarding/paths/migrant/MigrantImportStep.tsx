@@ -87,6 +87,7 @@ function ProviderBlock({
 }) {
   const [providers, setProviders] = useState<IntegrationStatus[] | null>(null);
   const [showDialog, setShowDialog] = useState(false);
+  const [dispatched, setDispatched] = useState(false);
   const returnTo = returnToForSource(source);
 
   const { heading, subhead, integrationKey } = PROVIDER_COPY[source];
@@ -125,7 +126,7 @@ function ProviderBlock({
         <IntegrationCard status={provider} onChanged={refresh} returnTo={returnTo} />
       )}
 
-      {isConnected && workspaceId && (
+      {isConnected && workspaceId && !dispatched && (
         <button
           type="button"
           onClick={() => setShowDialog(true)}
@@ -135,11 +136,27 @@ function ProviderBlock({
         </button>
       )}
 
+      {dispatched && (
+        <div className="rounded-xl border border-brand bg-brand/5 px-4 py-3 flex items-start gap-3">
+          <span
+            className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-brand text-white text-[10px] font-bold"
+            aria-hidden
+          >
+            ✓
+          </span>
+          <div className="text-[12.5px] text-foreground leading-relaxed">
+            Your import is running in the background. Continue when
+            you&rsquo;re ready — it&rsquo;ll keep going.
+          </div>
+        </div>
+      )}
+
       {showDialog && workspaceId && source === "notion" && (
         <NotionImportDialog
           workspaceId={workspaceId}
           onDispatched={() => {
             setShowDialog(false);
+            setDispatched(true);
             onDispatched();
           }}
           onClose={() => setShowDialog(false)}
@@ -150,6 +167,7 @@ function ProviderBlock({
           workspaceId={workspaceId}
           onDispatched={() => {
             setShowDialog(false);
+            setDispatched(true);
             onDispatched();
           }}
           onClose={() => setShowDialog(false)}
@@ -160,6 +178,7 @@ function ProviderBlock({
           workspaceId={workspaceId}
           onDispatched={() => {
             setShowDialog(false);
+            setDispatched(true);
             onDispatched();
           }}
           onClose={() => setShowDialog(false)}
