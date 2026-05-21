@@ -244,7 +244,19 @@ const sidebarWithNestedStashItems = {
         folder_id: null,
       },
     ],
-    files: [],
+    files: [
+      {
+        id: "file-table",
+        workspace_id: "ws-1",
+        folder_id: "folder-product",
+        name: "service-matrix.csv",
+        size_bytes: 12,
+        content_type: "text/csv",
+        url: null,
+        created_at: "2026-05-11T00:00:00Z",
+        linked_table_id: "table-1",
+      },
+    ],
   },
   stashes: [
     {
@@ -259,7 +271,7 @@ const sidebarWithNestedStashItems = {
       discoverable: false,
       is_external: false,
       forked_from_stash_id: null,
-      item_count: 3,
+      item_count: 5,
       items: [
         {
           object_type: "page" as const,
@@ -270,7 +282,7 @@ const sidebarWithNestedStashItems = {
         {
           object_type: "folder" as const,
           object_id: "folder-product",
-          label_override: null,
+          label_override: "Custom product folder",
           position: 1,
         },
         {
@@ -278,6 +290,18 @@ const sidebarWithNestedStashItems = {
           object_id: "page-hover",
           label_override: "Hover QA notes",
           position: 2,
+        },
+        {
+          object_type: "file" as const,
+          object_id: "file-table",
+          label_override: "CSV-backed service matrix",
+          position: 3,
+        },
+        {
+          object_type: "table" as const,
+          object_id: "table-1",
+          label_override: "Feature readiness table",
+          position: 4,
         },
       ],
       updated_at: "2026-05-11T00:00:00Z",
@@ -1071,7 +1095,17 @@ describe("AppSidebar tree expansion", () => {
       within(productDetails).getByRole("link", { name: "Sidebar polish notes" })
     ).toBeTruthy();
     expect(
+      within(productDetails).getAllByRole("link", { name: "service-matrix.csv" })
+    ).toHaveLength(1);
+    expect(within(stashes).queryByText("Custom product folder")).toBeNull();
+    expect(
       within(stashes).queryByRole("link", { name: "Product/Sidebar polish notes" })
+    ).toBeNull();
+    expect(
+      within(stashes).queryByRole("link", { name: "CSV-backed service matrix" })
+    ).toBeNull();
+    expect(
+      within(stashes).queryByRole("link", { name: "Feature readiness table" })
     ).toBeNull();
   });
 

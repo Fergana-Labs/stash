@@ -1616,9 +1616,19 @@ function buildStashTreeItems(
   sessionBySessionId: Map<string, WorkspaceSidebarSession>
 ): StashTreeItem[] {
   const pathCache = new Map<string, string>();
+  const fileByLinkedTableId = new Map(
+    Array.from(fileById.values())
+      .filter((file) => file.linked_table_id)
+      .map((file) => [file.linked_table_id as string, file])
+  );
+  const fileItemIds = new Set(
+    items
+      .filter((item) => item.object_type === "file")
+      .map((item) => item.object_id)
+  );
   const rows = [...items]
     .sort((a, b) => (a.position ?? 0) - (b.position ?? 0))
-    .map((item, index): StashTreeItem => {
+    .map((item, index): StashTreeItem | null => {
       if (item.object_type === "session") {
         const session = sessionById.get(item.object_id) ?? sessionBySessionId.get(item.object_id);
         const fallback = `Session ${item.object_id}`;
@@ -1643,13 +1653,8 @@ function buildStashTreeItems(
           activeId: item.object_id,
           folderId: item.object_id,
           parentFolderId: folder?.parent_folder_id ?? null,
-          label:
-            item.label_override ??
-            (folder ? resolveFolderPath(folder.id, folderById, pathCache) : `Folder ${item.object_id}`),
-          nestedLabel:
-            item.label_override
-              ? nestedStashLabel(item.label_override)
-              : (folder ? folder.name : `Folder ${item.object_id}`),
+          label: folder ? folder.name : `Folder ${item.object_id}`,
+          nestedLabel: folder ? folder.name : `Folder ${item.object_id}`,
         };
       }
 
@@ -1663,8 +1668,8 @@ function buildStashTreeItems(
             activeKind: "page",
             activeId: item.object_id,
             containingFolderId: null,
-            label: item.label_override ?? `Page ${item.object_id}`,
-            nestedLabel: nestedStashLabel(item.label_override ?? `Page ${item.object_id}`),
+            label: `Page ${item.object_id}`,
+            nestedLabel: `Page ${item.object_id}`,
           };
         }
 
@@ -1678,8 +1683,8 @@ function buildStashTreeItems(
           activeKind: "page",
           activeId: page.id,
           containingFolderId: page.folder_id,
-          label: item.label_override ?? pagePath,
-          nestedLabel: nestedStashLabel(item.label_override ?? page.name),
+          label: pagePath,
+          nestedLabel: page.name,
         };
       }
 
@@ -1693,8 +1698,8 @@ function buildStashTreeItems(
             activeKind: "file",
             activeId: item.object_id,
             containingFolderId: null,
-            label: item.label_override ?? `File ${item.object_id}`,
-            nestedLabel: nestedStashLabel(item.label_override ?? `File ${item.object_id}`),
+            label: `File ${item.object_id}`,
+            nestedLabel: `File ${item.object_id}`,
           };
         }
 
@@ -1709,12 +1714,31 @@ function buildStashTreeItems(
           activeId: file.id,
           activeLinkedTableId: file.linked_table_id,
           containingFolderId: file.folder_id,
-          label: item.label_override ?? filePath,
-          nestedLabel: nestedStashLabel(item.label_override ?? file.name),
+          label: filePath,
+          nestedLabel: file.name,
         };
       }
 
       if (item.object_type === "table") {
+        const linkedFile = fileByLinkedTableId.get(item.object_id);
+        if (linkedFile && fileItemIds.has(linkedFile.id)) return null;
+
+        if (linkedFile) {
+          const folderPath = resolveFolderPath(linkedFile.folder_id, folderById, pathCache);
+          const filePath = folderPath ? `${folderPath}/${linkedFile.name}` : linkedFile.name;
+          return {
+            kind: "table",
+            key: `${item.object_id}:${index}`,
+            href: `/tables/${item.object_id}?workspaceId=${workspaceId}`,
+            icon: <span className={fileIconClass(linkedFile.content_type)}><TableIcon /></span>,
+            activeKind: "table",
+            activeId: item.object_id,
+            containingFolderId: linkedFile.folder_id,
+            label: filePath,
+            nestedLabel: linkedFile.name,
+          };
+        }
+
         return {
           kind: "table",
           key: `${item.object_id}:${index}`,
@@ -1722,7 +1746,7 @@ function buildStashTreeItems(
           icon: <span className="text-muted"><TableIcon /></span>,
           activeKind: "table",
           activeId: item.object_id,
-          label: item.label_override ?? `Table ${item.object_id}`,
+          label: `Table ${item.object_id}`,
         };
       }
 
@@ -1732,7 +1756,8 @@ function buildStashTreeItems(
         icon: <span className="text-muted"><FolderIcon /></span>,
         label: item.label_override ?? `${item.object_type} ${item.object_id}`,
       };
-    });
+    })
+    .filter((row): row is StashTreeItem => row !== null);
 
   return nestStashTreeItems(rows, folderById);
 }
