@@ -100,11 +100,43 @@ async def _reconcile_history_events() -> int:
     return len(ids)
 
 
+async def _reconcile_files() -> int:
+    # Files only get embeddings once `extract_one` lands the extracted text.
+    # The worker flips embed_stale to TRUE; this reconciler turns it back
+    # off after embedding the text.
+    pool = get_pool()
+    rows = await pool.fetch(
+        "SELECT id, extracted_text FROM files "
+        "WHERE embed_stale AND deleted_at IS NULL "
+        "AND extraction_status = 'done' "
+        "AND extracted_text IS NOT NULL AND extracted_text <> '' "
+        "LIMIT $1",
+        BATCH_SIZE,
+    )
+    if not rows:
+        return 0
+    ids = [r["id"] for r in rows]
+    texts = [r["extracted_text"] for r in rows]
+    vecs = await embedding_service.embed_batch(texts)
+    if not vecs:
+        return 0
+    await pool.executemany(
+        "UPDATE files SET embedding = $1, embed_stale = FALSE WHERE id = $2",
+        list(zip(vecs, ids)),
+    )
+    return len(ids)
+
+
 async def _reconcile() -> int:
     if not embedding_service.is_configured():
         return 0
     done = 0
-    for fn in (_reconcile_pages, _reconcile_table_rows, _reconcile_history_events):
+    for fn in (
+        _reconcile_pages,
+        _reconcile_table_rows,
+        _reconcile_history_events,
+        _reconcile_files,
+    ):
         done += await fn()
     if done:
         logger.info("embedding reconciler: refreshed %d row(s)", done)

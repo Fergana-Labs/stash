@@ -8,7 +8,7 @@ import subprocess
 # missing install can still self-heal on the next session start.
 if shutil.which("uv"):
     subprocess.Popen(
-        ["uv", "tool", "upgrade", "--quiet", "stashai"],
+        ["uv", "tool", "install", "--quiet", "stashai@latest"],
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
         start_new_session=True,

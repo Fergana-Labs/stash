@@ -39,7 +39,7 @@ const NAV: NavSection[] = [
           { href: "/docs/cli#files", label: "Files" },
           { href: "/docs/cli#sessions", label: "Sessions" },
           { href: "/docs/cli#tables", label: "Tables" },
-          { href: "/docs/cli#files", label: "Files" },
+          { href: "/docs/cli#uploaded-files", label: "Uploaded Files" },
           { href: "/docs/cli#invites", label: "Invites" },
           { href: "/docs/cli#keys", label: "Keys" },
           { href: "/docs/cli#streaming-hooks", label: "Streaming & hooks" },

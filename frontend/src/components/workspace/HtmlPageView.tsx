@@ -74,7 +74,9 @@ export default function HtmlPageView({
   editable = false,
 }: Props) {
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
+  const presentWrapRef = useRef<HTMLDivElement | null>(null);
   const [height, setHeight] = useState<number | null>(null);
+  const [isFullscreen, setIsFullscreen] = useState(false);
   const channel = `stash-resize-${useId()}`;
 
   // The iframe's DOM is authoritative for its lifetime. We pin srcDoc to the
@@ -208,10 +210,12 @@ export default function HtmlPageView({
     );
   }, [isDeck, activeSlide, channel]);
 
-  // Keyboard nav (←/→) when the deck is on screen. We bail when the
-  // user is typing somewhere (any input/textarea/contenteditable),
-  // otherwise arrow keys would silently steal focus from the comment
-  // composer, share modal, page-title editor, etc.
+  // Keyboard nav when the deck is on screen. We bail when the user is
+  // typing somewhere (any input/textarea/contenteditable), otherwise
+  // arrow keys would silently steal focus from the comment composer,
+  // share modal, page-title editor, etc. Fullscreen-only keys (Space,
+  // PageDown/Up, Home/End) work everywhere too so casual viewing also
+  // gets the upgrade.
   useEffect(() => {
     if (!isDeck) return;
     function isTypingTarget(node: Element | null): boolean {
@@ -225,15 +229,50 @@ export default function HtmlPageView({
     }
     function onKey(e: KeyboardEvent) {
       if (isTypingTarget(document.activeElement)) return;
-      if (e.key === "ArrowRight") {
+      if (e.key === "ArrowRight" || e.key === "PageDown" || e.key === " ") {
         setActiveSlide((s) => Math.min(slideCount - 1, s + 1));
-      } else if (e.key === "ArrowLeft") {
+        e.preventDefault();
+      } else if (e.key === "ArrowLeft" || e.key === "PageUp") {
         setActiveSlide((s) => Math.max(0, s - 1));
+        e.preventDefault();
+      } else if (e.key === "Home") {
+        setActiveSlide(0);
+        e.preventDefault();
+      } else if (e.key === "End") {
+        setActiveSlide(slideCount - 1);
+        e.preventDefault();
+      } else if (e.key === "f" || e.key === "F") {
+        // F toggles fullscreen. Esc exits (browser default).
+        const el = presentWrapRef.current;
+        if (!el) return;
+        if (document.fullscreenElement === el) {
+          document.exitFullscreen?.();
+        } else {
+          el.requestFullscreen?.();
+        }
+        e.preventDefault();
       }
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [isDeck, slideCount]);
+
+  // Track fullscreen state so we can letterbox the iframe and toggle the
+  // click-to-advance overlay.
+  useEffect(() => {
+    function onChange() {
+      setIsFullscreen(document.fullscreenElement === presentWrapRef.current);
+    }
+    document.addEventListener("fullscreenchange", onChange);
+    return () => document.removeEventListener("fullscreenchange", onChange);
+  }, []);
+
+  const enterPresent = () => {
+    presentWrapRef.current?.requestFullscreen?.();
+  };
+  const advanceInPresent = () => {
+    setActiveSlide((s) => Math.min(slideCount - 1, s + 1));
+  };
 
   function onIframeLoad() {
     iframeRef.current?.contentWindow?.postMessage(
@@ -245,14 +284,60 @@ export default function HtmlPageView({
   if (layout === "fixed-aspect") {
     return (
       <div style={{ position: "relative", width: "100%" }}>
-        <iframe
-          ref={iframeRef}
-          srcDoc={srcDoc}
-          sandbox="allow-scripts"
-          title={title}
-          onLoad={onIframeLoad}
-          style={{ width: "100%", aspectRatio: "16 / 9", border: 0, display: "block" }}
-        />
+        <div
+          ref={presentWrapRef}
+          data-fullscreen={isFullscreen ? "true" : "false"}
+          style={{
+            position: "relative",
+            width: "100%",
+            // Letterbox in fullscreen: black backdrop, 16:9 iframe centered.
+            background: isFullscreen ? "#000" : "transparent",
+            display: isFullscreen ? "flex" : "block",
+            alignItems: "center",
+            justifyContent: "center",
+            height: isFullscreen ? "100vh" : undefined,
+          }}
+        >
+          <iframe
+            ref={iframeRef}
+            srcDoc={srcDoc}
+            sandbox="allow-scripts"
+            title={title}
+            onLoad={onIframeLoad}
+            style={
+              isFullscreen
+                ? {
+                    width: "min(100vw, calc(100vh * 16 / 9))",
+                    aspectRatio: "16 / 9",
+                    border: 0,
+                    display: "block",
+                  }
+                : { width: "100%", aspectRatio: "16 / 9", border: 0, display: "block" }
+            }
+          />
+          {isDeck && isFullscreen && (
+            // Click-to-advance overlay sits on top of the iframe during
+            // present mode. The iframe captures its own clicks, so without
+            // this overlay the only way to advance is the keyboard.
+            <button
+              type="button"
+              aria-label="Next slide"
+              onClick={advanceInPresent}
+              style={{
+                position: "absolute",
+                inset: 0,
+                background: "transparent",
+                border: 0,
+                cursor: "pointer",
+                padding: 0,
+                margin: 0,
+                color: "transparent",
+              }}
+            >
+              Next
+            </button>
+          )}
+        </div>
         {isDeck && (
           <div
             style={{
@@ -306,6 +391,63 @@ export default function HtmlPageView({
             >
               ›
             </button>
+            <button
+              type="button"
+              onClick={enterPresent}
+              aria-label="Present (F)"
+              title="Present (F)"
+              style={{
+                padding: "4px 10px",
+                borderRadius: 6,
+                border: "1px solid var(--border, #ddd)",
+                background: "var(--surface, #fff)",
+                cursor: "pointer",
+                marginLeft: 8,
+                fontSize: 13,
+              }}
+            >
+              Present
+            </button>
+          </div>
+        )}
+        {isDeck && slideCount > 1 && (
+          // Progress bar: one clickable segment per slide. Filled segments
+          // are slides we've reached or passed; the active segment is
+          // accented. Doubles as a jump-to.
+          <div
+            style={{
+              display: "flex",
+              gap: 2,
+              padding: "0 0 12px",
+              userSelect: "none",
+            }}
+            aria-label="Slide progress"
+          >
+            {Array.from({ length: slideCount }, (_, i) => {
+              const isActive = i === activeSlide;
+              return (
+                <button
+                  key={i}
+                  type="button"
+                  onClick={() => setActiveSlide(i)}
+                  aria-label={`Jump to slide ${i + 1}`}
+                  title={`Slide ${i + 1} of ${slideCount}`}
+                  style={{
+                    flex: 1,
+                    height: 4,
+                    border: 0,
+                    padding: 0,
+                    cursor: "pointer",
+                    background: isActive
+                      ? "var(--accent, #1a73e8)"
+                      : i < activeSlide
+                        ? "var(--accent-muted, rgba(26,115,232,.35))"
+                        : "var(--border, #ddd)",
+                    borderRadius: 2,
+                  }}
+                />
+              );
+            })}
           </div>
         )}
       </div>
@@ -538,19 +680,51 @@ export function extractCommentIdsFromHtml(html: string): string[] {
 // `stash:slide-goto` from the parent and shows only that section.
 // Pages with zero `<section class="slide">` elements bypass this path.
 function injectSlideDeckBootstrap(html: string, channel: string): string {
-  const script = `<script>(function(){
+  // Defensive: a previous save round-trip may have left our bootstrap script
+  // or style tag embedded in `html`. Strip any prior copies so the iframe
+  // starts with exactly one fresh bootstrap.
+  const cleaned = html
+    .replace(/<script\s+id=["']__stash_slide_script__["'][\s\S]*?<\/script>/gi, "")
+    .replace(/<style\s+id=["']__stash_slide_css__["'][\s\S]*?<\/style>/gi, "");
+  const script = `<script id="__stash_slide_script__">(function(){
+    // Idempotency: the bootstrap script gets re-injected on every srcDoc
+    // build, and the iframe's saved HTML round-trip may already contain a
+    // previous copy. Exit on the second copy so we don't double-up the
+    // message handlers.
+    if(window.__stash_slide_bootstrapped__) return;
+    window.__stash_slide_bootstrapped__=true;
     var c=${JSON.stringify(channel)};
     var editable=false;
     var currentIdx=0;
+    // Canvas-enforcing CSS: every slide is a 1920x1080 box that clips its own
+    // overflow. Body is sized to 1920px so the slide design space is fixed;
+    // applyCanvasZoom() (below) sets document.body.style.zoom so the visual
+    // shrinks to the iframe width. CSS zoom:calc(100vw / 1920) evaluates
+    // to 1 in Chromium, so we drive zoom from JS instead.
+    var CANVAS_CSS = "html,body{margin:0;padding:0;overflow-x:hidden;}body{width:1920px;}section.slide{width:1920px;height:1080px;overflow:hidden;position:relative;box-sizing:border-box;display:block;}";
+    function applyCanvasZoom(){
+      if(!document.body) return;
+      // During export (Playwright @ 1920 viewport) ratio is 1 — pixel-perfect
+      // with author intent. In the viewer's responsive iframe ratio < 1.
+      var ratio = window.innerWidth / 1920;
+      document.body.style.zoom = ratio > 0 ? String(ratio) : "1";
+    }
+    window.addEventListener('resize', applyCanvasZoom);
     // Visual feedback for edit mode: dashed outline on the body, text caret
     // on all descendants, and let slides flow normally so the user can scroll
     // and click between them.
     var EDIT_CSS = "body[contenteditable=\\"true\\"]{outline:2px dashed rgba(59,130,246,.5);outline-offset:-4px;}body[contenteditable=\\"true\\"] *{cursor:text;}body[contenteditable=\\"true\\"] section.slide{display:flex !important;position:relative !important;inset:auto !important;margin-bottom:24px !important;}";
     (function injectStyle(){
+      if(document.getElementById("__stash_slide_css__")) return;
       var s=document.createElement('style');
-      s.textContent=EDIT_CSS;
+      s.id="__stash_slide_css__";
+      // Canvas rules first so any agent rules in the document can override
+      // by specificity or document order. Edit rules use !important so they
+      // win where needed.
+      s.textContent=CANVAS_CSS+EDIT_CSS;
       (document.head||document.documentElement).appendChild(s);
     })();
+    applyCanvasZoom();
     function applyIndex(idx){
       var slides=document.querySelectorAll('body > section.slide');
       if(!slides.length) return;
@@ -567,12 +741,23 @@ function injectSlideDeckBootstrap(html: string, channel: string): string {
     }
     var mutateTimer=null;
     function post(o){parent.postMessage(Object.assign({channel:c},o),'*');}
+    // Serialize the document without our injected bootstrap so saved HTML
+    // doesn't accumulate copies of the script/style on every edit.
+    function serializeClean(){
+      var clone=document.documentElement.cloneNode(true);
+      var nodes=clone.querySelectorAll('#__stash_slide_css__, #__stash_slide_script__');
+      for(var i=0;i<nodes.length;i++){
+        var n=nodes[i];
+        if(n.parentNode) n.parentNode.removeChild(n);
+      }
+      return clone.outerHTML;
+    }
     function scheduleMutate(){
       if(!editable) return;
       if(mutateTimer) clearTimeout(mutateTimer);
       mutateTimer=setTimeout(function(){
         mutateTimer=null;
-        post({type:'stash:html-mutated',html:document.documentElement.outerHTML});
+        post({type:'stash:html-mutated',html:serializeClean()});
       },500);
     }
     document.addEventListener('input',scheduleMutate);
@@ -593,7 +778,7 @@ function injectSlideDeckBootstrap(html: string, channel: string): string {
             if(mutateTimer){
               clearTimeout(mutateTimer);
               mutateTimer=null;
-              post({type:'stash:html-mutated',html:document.documentElement.outerHTML});
+              post({type:'stash:html-mutated',html:serializeClean()});
             }
           }
         }
@@ -602,6 +787,6 @@ function injectSlideDeckBootstrap(html: string, channel: string): string {
     });
     applyIndex(0);
   })();</script>`;
-  if (/<\/body\s*>/i.test(html)) return html.replace(/<\/body\s*>/i, script + "</body>");
-  return html + script;
+  if (/<\/body\s*>/i.test(cleaned)) return cleaned.replace(/<\/body\s*>/i, script + "</body>");
+  return cleaned + script;
 }

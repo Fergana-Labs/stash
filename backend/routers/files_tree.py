@@ -1,8 +1,9 @@
 """Files router: workspace-scoped folders (nested) and pages."""
 
+from urllib.parse import quote
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 
 from ..auth import get_current_user
 from ..database import get_pool
@@ -433,6 +434,38 @@ async def get_page(
     if not page:
         raise HTTPException(status_code=404, detail="Page not found")
     return PageResponse(**page)
+
+
+@router.get("/pages/{page_id}/download")
+async def download_page(
+    workspace_id: UUID,
+    page_id: UUID,
+    current_user: dict = Depends(get_current_user),
+):
+    """Raw page body, parallel to /files/{file_id}/download.
+
+    Returns the page's markdown source (or HTML, for html-typed pages) so
+    callers can export, diff, or feed it to other tools the same way they
+    would a binary file. Permission is the existing page-read check —
+    members of the workspace plus anyone the page is shared with.
+    """
+    await _check_ws_access(workspace_id, current_user["id"])
+    page = await files_tree_service.get_page(page_id, workspace_id, current_user["id"])
+    if not page:
+        raise HTTPException(status_code=404, detail="Page not found")
+    is_html = (page.get("content_type") or "").lower() == "html"
+    body = (page.get("content_html") if is_html else page.get("content_markdown")) or ""
+    suffix = ".html" if is_html else ".md"
+    media = "text/html; charset=utf-8" if is_html else "text/markdown; charset=utf-8"
+    name = page.get("name") or "page"
+    filename = name if name.lower().endswith(suffix) else f"{name}{suffix}"
+    return Response(
+        content=body,
+        media_type=media,
+        headers={
+            "Content-Disposition": f"inline; filename*=UTF-8''{quote(filename)}",
+        },
+    )
 
 
 @router.patch("/pages/{page_id}", response_model=PageResponse)

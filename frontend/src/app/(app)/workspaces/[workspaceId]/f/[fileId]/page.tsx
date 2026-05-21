@@ -2,14 +2,8 @@
 
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useState } from "react";
-import Markdown from "react-markdown";
-import remarkGfm from "remark-gfm";
 import { useBreadcrumbs } from "../../../../../../components/BreadcrumbContext";
-import {
-  DocumentBodySkeleton,
-  FileViewerSkeleton,
-  SkeletonBlock,
-} from "../../../../../../components/SkeletonStates";
+import { FileViewerSkeleton } from "../../../../../../components/SkeletonStates";
 import { useAuth } from "../../../../../../hooks/useAuth";
 import {
   getFile,
@@ -21,22 +15,16 @@ import {
   type FolderBreadcrumb,
 } from "../../../../../../lib/api";
 import type { FileInfo } from "../../../../../../lib/types";
+import FileContentRenderer, {
+  isImage,
+  isMarkdown,
+  isPdf,
+  isText,
+} from "../../../../../../components/workspace/FileContentRenderer";
 import FileViewerHeader from "../../../../../../components/workspace/FileViewerHeader";
 
 function isCsv(ct: string) {
   return ct?.includes("csv") || ct === "text/csv";
-}
-function isPdf(ct: string) {
-  return ct?.includes("pdf");
-}
-function isImage(ct: string) {
-  return ct?.startsWith("image/");
-}
-function isMarkdown(ct: string, name: string) {
-  return ct?.includes("markdown") || name.toLowerCase().endsWith(".md");
-}
-function isText(ct: string) {
-  return ct?.startsWith("text/");
 }
 
 export default function FileViewerPage() {
@@ -65,7 +53,6 @@ function FileViewerPageInner() {
 
   const [file, setFile] = useState<FileInfo | null>(null);
   const [folderChain, setFolderChain] = useState<FolderBreadcrumb[]>([]);
-  const [textBody, setTextBody] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [stashTitle, setStashTitle] = useState<string | null>(null);
 
@@ -122,10 +109,6 @@ function FileViewerPageInner() {
         };
         setFile(synth);
         setFolderChain([]);
-        if (synth.url && (isText(synth.content_type) || isMarkdown(synth.content_type, synth.name))) {
-          const res = await fetch(synth.url);
-          if (res.ok) setTextBody(await res.text());
-        }
         return;
       }
 
@@ -158,10 +141,6 @@ function FileViewerPageInner() {
         return;
       }
 
-      if (f.url && (isText(f.content_type) || isMarkdown(f.content_type, f.name))) {
-        const res = await fetch(f.url);
-        if (res.ok) setTextBody(await res.text());
-      }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load file");
     }
@@ -250,60 +229,14 @@ function FileViewerPageInner() {
       )}
 
       <div className="flex-1 overflow-auto bg-base scroll-thin">
-        {file && <FileBody file={file} text={textBody} />}
+        {file && (
+          <FileContentRenderer
+            url={file.url}
+            name={file.name}
+            contentType={file.content_type}
+          />
+        )}
       </div>
-    </div>
-  );
-}
-
-function FileBody({ file, text }: { file: FileInfo; text: string | null }) {
-  if (!file.url) return <p className="px-5 py-8 text-muted">No download URL.</p>;
-  if (isPdf(file.content_type)) {
-    return <iframe src={file.url} className="h-full w-full bg-gray-200" title={file.name} />;
-  }
-  if (isImage(file.content_type)) {
-    return (
-      <div className="flex items-center justify-center bg-gray-100 p-8">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={file.url} alt={file.name} className="max-h-full max-w-full" />
-      </div>
-    );
-  }
-  if (isMarkdown(file.content_type, file.name)) {
-    if (text === null) return <DocumentBodySkeleton className="mx-auto mt-8 max-w-[920px]" />;
-    return (
-      <article className="prose prose-sm markdown-content mx-auto max-w-[920px] px-12 py-8 text-foreground">
-        <Markdown remarkPlugins={[remarkGfm]}>{text || ""}</Markdown>
-      </article>
-    );
-  }
-  if (isText(file.content_type)) {
-    if (text === null) {
-      return (
-        <div className="space-y-2 px-5 py-4">
-          {[0, 1, 2, 3, 4, 5, 6, 7].map((row) => (
-            <SkeletonBlock key={row} className="h-4 w-full max-w-4xl" />
-          ))}
-        </div>
-      );
-    }
-    return (
-      <pre className="scroll-thin h-full overflow-auto px-5 py-4 font-mono text-[12.5px] text-foreground">
-        {text || ""}
-      </pre>
-    );
-  }
-  return (
-    <div className="mx-auto max-w-md px-8 py-12 text-center text-[13px] text-muted">
-      <p className="mb-3">No inline preview for this file type.</p>
-      <a
-        href={file.url}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="rounded-md bg-[var(--color-brand-600)] px-3 py-1.5 text-[12px] font-medium text-white hover:bg-[var(--color-brand-700)]"
-      >
-        Open original ↗
-      </a>
     </div>
   );
 }

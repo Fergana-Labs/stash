@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 900" width="1600" height="900">
+  <rect width="1600" height="900" fill="#FFFFFF"/>
+
+  <g transform="translate(544 104) scale(8)">
+    <ellipse cx="32" cy="24" rx="22" ry="18" fill="#F97316"/>
+    <circle cx="25" cy="22" r="4" fill="#fff"/>
+    <circle cx="39" cy="22" r="4" fill="#fff"/>
+    <circle cx="26" cy="22" r="2" fill="#0F172A"/>
+    <circle cx="40" cy="22" r="2" fill="#0F172A"/>
+    <path d="M12 38 Q8 52 4 60" stroke="#F97316" stroke-width="4" stroke-linecap="round" fill="none"/>
+    <path d="M20 40 Q18 54 14 62" stroke="#F97316" stroke-width="4" stroke-linecap="round" fill="none"/>
+    <path d="M32 42 Q32 56 32 64" stroke="#F97316" stroke-width="4" stroke-linecap="round" fill="none"/>
+    <path d="M44 40 Q46 54 50 62" stroke="#F97316" stroke-width="4" stroke-linecap="round" fill="none"/>
+    <path d="M52 38 Q56 52 60 60" stroke="#F97316" stroke-width="4" stroke-linecap="round" fill="none"/>
+  </g>
+
+  <g transform="rotate(-2 800 604)">
+    <rect x="424" y="498" width="752" height="212" rx="24" fill="#FFFFFF" stroke="#0F172A" stroke-width="8"/>
+    <text x="800" y="648" text-anchor="middle"
+      font-family="Satoshi, Instrument Sans, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
+      font-size="124" font-weight="900" fill="#0F172A">hiring</text>
+  </g>
+
+  <g transform="translate(544 104) scale(8)">
+    <path d="M12 38 Q8 52 4 60" stroke="#F97316" stroke-width="4" stroke-linecap="round" fill="none"/>
+    <path d="M52 38 Q56 52 60 60" stroke="#F97316" stroke-width="4" stroke-linecap="round" fill="none"/>
+  </g>
+</svg>
