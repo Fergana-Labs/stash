@@ -13,9 +13,9 @@ export default function Page() {
       <Hero />
       <Logos />
       <Problem />
-      <Comparisons />
       <HowItWorks />
       <KarpathyQuote />
+      <Comparisons />
       <VisualizationsShowcase />
       <Features />
       <DiscoverGrid />
@@ -75,6 +75,12 @@ function Nav() {
             className="hidden rounded-md px-3 py-2 transition hover:bg-raised hover:text-ink sm:inline-flex"
           >
             How it works
+          </ScrollLink>
+          <ScrollLink
+            to="#features"
+            className="hidden rounded-md px-3 py-2 transition hover:bg-raised hover:text-ink sm:inline-flex"
+          >
+            Features
           </ScrollLink>
           <Link
             href="/discover"
@@ -586,32 +592,31 @@ function KarpathyQuote() {
           </figcaption>
         </figure>
         <p className="mt-10 max-w-[680px] text-[18px] leading-[1.6] text-foreground">
-          Stash is that product. A personal knowledge base for the humans on
-          your team, a company brain for the agents working alongside them —
-          one workspace for the structured and unstructured information you
-          produce together, not a stack of shell scripts wrapped around a
-          folder of markdown.
+          Stash is that product. A company brain humans and agents both write
+          into — not a stack of shell scripts wrapped around a folder of
+          markdown.
         </p>
-        <div className="mt-12 max-w-[680px]">
-          <p className="font-mono text-[11px] font-medium uppercase tracking-[0.14em] text-muted">
+        <div className="mt-16 border-t border-border-subtle pt-12">
+          <EyebrowDot>Use cases</EyebrowDot>
+          <h3 className="mt-4 font-display text-[clamp(24px,2.8vw,36px)] font-bold tracking-[-0.02em] text-ink">
             Built for —
-          </p>
-          <ul className="mt-4 flex flex-col gap-2 font-mono text-[13.5px] leading-[1.55] text-foreground">
+          </h3>
+          <ul className="mt-8 flex flex-col gap-5 font-mono text-[14.5px] leading-[1.55]">
             {[
               ["Engineering live docs", "coding-agent plans, ADRs, and design notes that stay current"],
               ["Company brain", "the shared context every agent and teammate reads from"],
-              ["Research KB", "long-running PKBs with sources, transcripts, and tables"],
+              ["Research knowledge base", "long-running PKBs with sources, transcripts, and tables"],
               ["Ops playbooks", "release runbooks and on-call procedures"],
               ["Brand voice", "editorial guidelines and copy standards agents write to"],
-              ["Personal KM", "notes, drafts, and scratch files for a single operator"],
+              ["Personal knowledge management", "notes, drafts, and scratch files for a single operator"],
             ].map(([who, what]) => (
               <li
                 key={who}
-                className="grid grid-cols-[1fr] items-baseline gap-x-3 gap-y-0.5 md:grid-cols-[200px_auto_minmax(0,1fr)] md:gap-y-0"
+                className="grid grid-cols-1 items-baseline gap-1 md:grid-cols-[320px_auto_minmax(0,1fr)] md:gap-4"
               >
-                <span className="font-medium text-ink">{who}</span>
-                <span className="hidden text-muted md:inline">→</span>
-                <span className="text-dim">{what}</span>
+                <span className="font-semibold text-ink">{who}</span>
+                <span className="hidden text-brand md:inline">→</span>
+                <span className="text-foreground">{what}</span>
               </li>
             ))}
           </ul>
@@ -698,7 +703,7 @@ const FEATURES: Feature[] = [
 
 function Features() {
   return (
-    <section className="border-b border-border-subtle py-24 md:py-32">
+    <section id="features" className="border-b border-border-subtle py-24 md:py-32">
       <div className="mx-auto max-w-[920px] px-7">
         <EyebrowDot>Features</EyebrowDot>
         <h2 className="mt-4 font-display text-[clamp(32px,4.2vw,52px)] font-bold leading-[1.05] tracking-[-0.03em] text-ink text-balance">
