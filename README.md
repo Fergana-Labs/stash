@@ -60,11 +60,13 @@ With Stash, every agent on the repo has context about every session created from
 
 ```bash
 pip install stashai
-stash connect
+stash login
 ```
 
-`stash connect` walks you through account creation, picks a workspace, and
-wires up coding-agent plugins. That's it.
+`stash login` walks you through account creation, picks a workspace, connects
+your current repo when you want uploads, and wires up coding-agent plugins.
+Use `stash connect` later when you are already authenticated and only need to
+bind another repo to a workspace.
 
 <details>
 <summary>Prefer a one-liner?</summary>
@@ -73,7 +75,7 @@ wires up coding-agent plugins. That's it.
 bash -c "$(curl -fsSL https://raw.githubusercontent.com/Fergana-Labs/stash/main/install.sh)"
 ```
 
-The installer just runs `uv tool install stashai` and then `stash connect`.
+The installer just runs `uv tool install stashai` and then `stash login`.
 Use this when you don't already have a Python toolchain on your machine.
 
 </details>
@@ -115,18 +117,28 @@ See [here](https://www.joinstash.ai/docs/cli) for a CLI reference.
 
 ## Self-Hosted
 
-To self host, just run docker compose on infrastructure of your choice.
+Run Stash locally with Docker Compose:
 
 ```bash
 git clone https://github.com/Fergana-Labs/stash.git
 cd stash
-cp .env.example .env          # fill in credentials + API keys
-# edit Caddyfile → replace app.example.com with your domain
-docker compose -f docker-compose.prod.yml up -d
+docker compose up -d
 ```
-Set `EMBEDDING_PROVIDER` to use a third-party embedding provider (otherwise we'll just use local `sentence-transformers`). Set `S3_ENDPOINT`, `S3_BUCKET`, and `S3_ACCESS_KEY` to use S3-compatible object storage (R2, S3, MinIO) for file uploads.
 
-> Local development? Use `docker compose up -d` (no `-f` flag) — simple setup with hardcoded dev credentials.
+The local UI runs at `http://localhost:3457` and the API runs at
+`http://localhost:3456`.
+
+Install the CLI in the repo you want to connect. The CLI package is the same
+for managed and self-hosted Stash; `base_url` tells it to use your local API.
+
+```bash
+pip install stashai
+stash config base_url http://localhost:3456
+stash register alice --password 'choose-a-password'
+
+cd /path/to/the/repo/you/want/to/connect
+stash connect
+```
 
 ### Local seed data
 
