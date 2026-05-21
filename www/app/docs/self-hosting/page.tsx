@@ -1,4 +1,4 @@
-import { Code, CodeBlock, H3, Title, Subtitle } from "../components";
+import { Code, CodeBlock, H3, P, Title, Subtitle } from "../components";
 
 export default function SelfHostingPage() {
   return (

@@ -525,9 +525,7 @@ def _merge_snippet_into_toml(existing: str, snippet: str) -> str:
         if m:
             insert_at = m.end()
             injection = "\n".join(keys) + "\n"
-            merged_existing = (
-                merged_existing[:insert_at] + injection + merged_existing[insert_at:]
-            )
+            merged_existing = merged_existing[:insert_at] + injection + merged_existing[insert_at:]
 
     cleaned_snippet = "\n".join(merged_snippet_lines)
     cleaned_snippet = re.sub(r"\n{3,}", "\n\n", cleaned_snippet)
