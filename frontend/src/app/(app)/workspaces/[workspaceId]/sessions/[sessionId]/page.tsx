@@ -120,6 +120,28 @@ export default function SessionViewerPage() {
     `${workspaceId}/session/${sessionId}`
   );
 
+  const loadStashFallback = useCallback(async () => {
+    if (!stashSlug) return false;
+    try {
+      const data = await getPublicStash(stashSlug);
+      const item = data.items.find((it) => {
+        if (it.object_type !== "session") return false;
+        const s = (it.inline as { session?: { session_id?: string } }).session;
+        return s?.session_id === sessionId;
+      });
+      if (!item) {
+        setError("This session isn't part of the linked Stash.");
+        return false;
+      }
+      setStashFallback({ stash: data.stash, item });
+      setError("");
+      return true;
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Stash not found");
+      return false;
+    }
+  }, [stashSlug, sessionId]);
+
   const load = useCallback(async () => {
     try {
       const [events, sidebar, detail] = await Promise.all([
@@ -130,25 +152,52 @@ export default function SessionViewerPage() {
       setAgentName(detail.agent_name || events.find((event) => event.agent_name)?.agent_name || "");
       setSessionDetail(detail);
       setTurns(events.map(eventToTurn));
+      setStashFallback(null);
       const session = sidebar.sessions.find((item) => item.session_id === sessionId);
       setContainingStashes(
         session?.id ? await listObjectStashes(workspaceId, "session", session.id) : []
       );
     } catch (e) {
+      if (
+        stashSlug &&
+        e instanceof ApiError &&
+        (e.status === 401 || e.status === 403 || e.status === 404)
+      ) {
+        if (await loadStashFallback()) return;
+      }
       setError(e instanceof Error ? e.message : "Failed to load session");
     }
-  }, [workspaceId, sessionId]);
+  }, [workspaceId, sessionId, stashSlug, loadStashFallback]);
 
   useEffect(() => {
     if (user) load();
-  }, [user, load]);
+    else if (!loading && stashSlug) void loadStashFallback();
+  }, [user, loading, load, loadStashFallback, stashSlug]);
 
   useEffect(() => {
-    if (!loading && !user) router.push("/login");
-  }, [user, loading, router]);
+    if (!loading && !user && !stashSlug) router.push("/login");
+  }, [user, loading, router, stashSlug]);
 
   if (loading) return <SessionDetailSkeleton />;
-  if (!user) return null;
+  if (stashFallback) {
+    return (
+      <StashFallbackSessionView
+        stashSlug={stashSlug ?? ""}
+        stashTitle={stashFallback.stash.title}
+        item={stashFallback.item}
+      />
+    );
+  }
+  if (!user) {
+    if (!stashSlug) return null;
+    if (!error) return <SessionDetailSkeleton />;
+    return (
+      <div className="mx-auto max-w-md py-24 text-center">
+        <h1 className="font-display text-[24px] font-bold text-foreground">Session unavailable</h1>
+        <p className="mt-2 text-[14px] leading-relaxed text-dim">{error}</p>
+      </div>
+    );
+  }
   if (!sessionDetail && turns.length === 0 && !error) return <SessionDetailSkeleton />;
 
   const sessionDate = turns.find((turn) => turn.dateLabel)?.dateLabel;
