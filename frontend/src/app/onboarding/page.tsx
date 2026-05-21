@@ -86,7 +86,16 @@ function OnboardingInner() {
 
   const source = useMemo<MigrantSource | null>(() => {
     const q = searchParams.get("source");
-    return isMigrantSource(q) ? q : null;
+    if (isMigrantSource(q)) return q;
+    // OAuth callback recovery: if we just came back from connecting a
+    // provider but ?source= got lost (old tab with the pre-fix returnTo,
+    // browser strip, whatever), infer it from ?connected= so the user
+    // isn't trapped on "Pick a source first."
+    const connected = searchParams.get("connected");
+    if (connected === "github") return "github";
+    if (connected === "notion") return "notion";
+    if (connected === "google") return "drive";
+    return null;
   }, [searchParams]);
 
   const stepIdx = useMemo(() => {
