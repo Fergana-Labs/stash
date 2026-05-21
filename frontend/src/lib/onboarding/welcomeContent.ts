@@ -88,7 +88,7 @@ export function generateWelcomeHtml(inputs: WelcomeInputs): string {
     <ul>
       <li><strong>Stashes</strong> — virtual sub-workspaces. Bundle any subset of workspace data into a Stash; share to the public or make it private to everyone else in the workspace. This becomes the go-to point for teams, workstreams, or projects (e.g. LinkedIn marketing, Backend infra team, Kernel optimization reading group).</li>
       <li><strong>Files</strong> — a file system for documents (e.g. markdown, HTML, images, PDF, CSV). Built so agents can natively use it.</li>
-      <li><strong>Sessions</strong> — history of conversations between users and agents. Automatically pushed from your agent of choice (e.g. Claude Code, Codex, OpenCode).</li>
+      <li><strong>Sessions</strong> — history of conversations between users and agents. Automatically pushed from your agent of choice (e.g. Claude Code, Codex, Openclaw).</li>
     </ul>`,
   );
 
