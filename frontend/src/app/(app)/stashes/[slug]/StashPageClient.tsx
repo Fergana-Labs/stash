@@ -286,17 +286,25 @@ function StashPageBody({
         />
 
         {primary ? (
-          primary.kind === "file" ? (
-            <SingleFilePreview item={primary.item} />
-          ) : primary.kind === "page" ? (
-            <section className="mt-6">
-              <PageBody item={primary.item} />
-            </section>
-          ) : (
-            <section className="mt-6">
-              <SessionBody item={primary.item} />
-            </section>
-          )
+          <>
+            <PrimaryItemOpenLink
+              kind={primary.kind}
+              item={primary.item}
+              workspaceId={stash.workspace_id}
+              stashSlug={stash.slug}
+            />
+            {primary.kind === "file" ? (
+              <SingleFilePreview item={primary.item} />
+            ) : primary.kind === "page" ? (
+              <section className="mt-6">
+                <PageBody item={primary.item} />
+              </section>
+            ) : (
+              <section className="mt-6">
+                <SessionBody item={primary.item} />
+              </section>
+            )}
+          </>
         ) : (
           <>
             {/* Compact item lists by kind. Items deep-link to the editor /
@@ -415,6 +423,44 @@ function primaryItemForStash(data: PublicStashDetail): PrimaryItem | null {
   if (only.object_type === "page") return { kind: "page", item: only };
   if (only.object_type === "session") return { kind: "session", item: only };
   return null;
+}
+
+// Single-content stashes render the artifact inline (read-only). The
+// "Open in workspace" link is the escape hatch into the native viewer
+// where edit affordances live for workspace members.
+function PrimaryItemOpenLink({
+  kind,
+  item,
+  workspaceId,
+  stashSlug,
+}: {
+  kind: "file" | "page" | "session";
+  item: PublicStashItem;
+  workspaceId: string;
+  stashSlug: string;
+}) {
+  let href: string | null = null;
+  if (kind === "file") {
+    href = `/workspaces/${workspaceId}/f/${item.object_id}?stash=${encodeURIComponent(stashSlug)}`;
+  } else if (kind === "page") {
+    href = `/workspaces/${workspaceId}/p/${item.object_id}?stash=${encodeURIComponent(stashSlug)}`;
+  } else {
+    const session = (item.inline as { session?: { session_id?: string } }).session;
+    if (session?.session_id) {
+      href = `/workspaces/${workspaceId}/sessions/${encodeURIComponent(session.session_id)}?stash=${encodeURIComponent(stashSlug)}`;
+    }
+  }
+  if (!href) return null;
+  return (
+    <div className="mt-4 flex justify-end">
+      <Link
+        href={href}
+        className="inline-flex items-center gap-1 rounded-md border border-border bg-base px-3 py-1.5 text-[12.5px] font-medium text-foreground hover:bg-raised"
+      >
+        Open in workspace ↗
+      </Link>
+    </div>
+  );
 }
 
 function SingleFilePreview({ item }: { item: PublicStashItem }) {
