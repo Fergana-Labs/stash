@@ -141,6 +141,82 @@ const sidebarWithStash = {
   ],
 };
 
+const sidebarWithStashFiles = {
+  sessions: [],
+  files: {
+    folders: [],
+    pages: [
+      {
+        id: "page-root",
+        name: "Overview",
+        content_type: "markdown" as const,
+        folder_id: null,
+      },
+    ],
+    files: [
+      {
+        id: "file-1",
+        workspace_id: "ws-1",
+        folder_id: null,
+        name: "Launch brief.md",
+        size_bytes: 12,
+        content_type: "text/markdown",
+        url: null,
+        created_at: "2026-05-11T00:00:00Z",
+        linked_table_id: null,
+      },
+      {
+        id: "file-csv",
+        workspace_id: "ws-1",
+        folder_id: null,
+        name: "Launch data.csv",
+        size_bytes: 12,
+        content_type: "text/csv",
+        url: null,
+        created_at: "2026-05-11T00:00:00Z",
+        linked_table_id: "table-1",
+      },
+    ],
+  },
+  stashes: [
+    {
+      id: "stash-1",
+      workspace_id: "ws-1",
+      slug: "project-alpha",
+      title: "Project Alpha",
+      description: "",
+      access: "workspace" as const,
+      workspace_permission: "read" as const,
+      public_permission: "none" as const,
+      discoverable: false,
+      is_external: false,
+      forked_from_stash_id: null,
+      item_count: 3,
+      items: [
+        {
+          object_type: "page" as const,
+          object_id: "page-root",
+          label_override: "Launch page",
+          position: 0,
+        },
+        {
+          object_type: "file" as const,
+          object_id: "file-1",
+          label_override: "Launch file",
+          position: 1,
+        },
+        {
+          object_type: "file" as const,
+          object_id: "file-csv",
+          label_override: "Launch table file",
+          position: 2,
+        },
+      ],
+      updated_at: "2026-05-11T00:00:00Z",
+    },
+  ],
+};
+
 const sidebarWithTwoStashes = {
   ...sidebarWithStash,
   stashes: [
@@ -953,6 +1029,121 @@ describe("AppSidebar tree expansion", () => {
 
     expect(detailsFor("Henry")).toHaveAttribute("open");
     expect(sessionLink).toHaveClass("bg-[var(--color-brand-50)]");
+  });
+
+  it("selects Files rows on stash-scoped page and file item routes", async () => {
+    vi.mocked(getWorkspaceSidebar).mockResolvedValue(sidebarWithStashFiles);
+
+    for (const row of [
+      {
+        pathname: "/stashes/project-alpha/items/page/page-root",
+        label: "Overview",
+      },
+      {
+        pathname: "/stashes/project-alpha/items/file/file-1",
+        label: "Launch brief.md",
+      },
+      {
+        pathname: "/workspaces/ws-1/f/file-csv",
+        label: "Launch data.csv",
+      },
+    ]) {
+      cleanup();
+      resetStashNavigationCache();
+      nav.pathname = row.pathname;
+      vi.mocked(getWorkspaceSidebar).mockResolvedValue(sidebarWithStashFiles);
+
+      render(
+        <ShareModalProvider>
+          <AppSidebar
+            user={user}
+            activeWorkspaceId="ws-1"
+            onCmdkOpen={vi.fn()}
+          />
+        </ShareModalProvider>
+      );
+
+      const fileLink = await screen.findByRole("link", { name: row.label });
+
+      expect(fileLink).toHaveClass("bg-[var(--color-brand-50)]");
+    }
+  });
+
+  it("opens folders to reveal active nested Files rows on stash item routes", async () => {
+    const nestedFile = {
+      id: "nested-file",
+      workspace_id: "ws-1",
+      folder_id: "folder-1",
+      name: "Nested brief.md",
+      size_bytes: 12,
+      content_type: "text/markdown",
+      url: null,
+      created_at: "2026-05-11T00:00:00Z",
+      linked_table_id: null,
+    };
+
+    nav.pathname = "/stashes/project-alpha/items/file/nested-file";
+    vi.mocked(getWorkspaceSidebar).mockResolvedValue({
+      sessions: [],
+      files: {
+        folders: [
+          ...Array.from({ length: 10 }, (_, index) => ({
+            id: `filler-folder-${index + 1}`,
+            name: `${String(index + 1).padStart(2, "0")} Filler`,
+            parent_folder_id: null,
+            page_count: 0,
+            file_count: 0,
+            has_skill: false,
+          })),
+          {
+            id: "folder-1",
+            name: "Product Docs",
+            parent_folder_id: null,
+            page_count: 0,
+            file_count: 1,
+            has_skill: false,
+          },
+        ],
+        pages: [],
+        files: [nestedFile],
+      },
+      stashes: [
+        {
+          ...sidebarWithStashFiles.stashes[0],
+          item_count: 1,
+          items: [
+            {
+              object_type: "file" as const,
+              object_id: "nested-file",
+              label_override: "Nested launch file",
+              position: 0,
+            },
+          ],
+        },
+      ],
+    });
+    vi.mocked(getFolderContents).mockResolvedValue({
+      folder: { id: "folder-1", name: "Product Docs", parent_folder_id: null },
+      breadcrumbs: [],
+      subfolders: [],
+      pages: [],
+      files: [nestedFile],
+    });
+
+    render(
+      <ShareModalProvider>
+        <AppSidebar
+          user={user}
+          activeWorkspaceId="ws-1"
+          onCmdkOpen={vi.fn()}
+        />
+      </ShareModalProvider>
+    );
+
+    const fileLink = await screen.findByRole("link", { name: "Nested brief.md" });
+
+    expect(detailsFor("Product Docs")).toHaveAttribute("open");
+    expect(fileLink).toHaveClass("bg-[var(--color-brand-50)]");
   });
 
   it("rejects non-jsonl files dropped on the Sessions section", async () => {

@@ -769,6 +769,78 @@ function sessionBucketHasActiveSession(
   );
 }
 
+type ActiveFileKind = "folder" | "page" | "file" | "table";
+
+type ActiveFileRef = {
+  workspaceId: string | null;
+  kind: ActiveFileKind | null;
+  id: string | null;
+};
+
+function activeFileRef(pathname: string): ActiveFileRef {
+  const workspaceMatch = pathname.match(
+    /^\/workspaces\/([^/]+)\/(folders|p|f)\/([^/?#]+)/
+  );
+  if (workspaceMatch) {
+    const route = workspaceMatch[2];
+    const kind: ActiveFileKind =
+      route === "folders" ? "folder" : route === "p" ? "page" : "file";
+    return {
+      workspaceId: workspaceMatch[1],
+      kind,
+      id: decodeURIComponent(workspaceMatch[3]),
+    };
+  }
+
+  const tableMatch = pathname.match(/^\/tables\/([^/?#]+)/);
+  if (tableMatch) {
+    return {
+      workspaceId: null,
+      kind: "table",
+      id: decodeURIComponent(tableMatch[1]),
+    };
+  }
+
+  const stashItemMatch = pathname.match(
+    /^\/stashes\/[^/]+\/items\/(folder|page|file|table)\/([^/?#]+)/
+  );
+  if (stashItemMatch) {
+    return {
+      workspaceId: null,
+      kind: stashItemMatch[1] as ActiveFileKind,
+      id: decodeURIComponent(stashItemMatch[2]),
+    };
+  }
+
+  return { workspaceId: null, kind: null, id: null };
+}
+
+function fileResourceMatchesActive(
+  active: ActiveFileRef,
+  workspaceId: string,
+  kind: ActiveFileKind,
+  id: string | null | undefined
+): boolean {
+  if (!id) return false;
+  if (!active.kind || !active.id) return false;
+  if (active.workspaceId && active.workspaceId !== workspaceId) return false;
+  return active.kind === kind && active.id === id;
+}
+
+function workspaceFileMatchesActive(
+  active: ActiveFileRef,
+  workspaceId: string,
+  file: Pick<WorkspaceFile, "id" | "linked_table_id">
+): boolean {
+  if (fileResourceMatchesActive(active, workspaceId, "file", file.id)) return true;
+  return fileResourceMatchesActive(
+    active,
+    workspaceId,
+    "table",
+    file.linked_table_id
+  );
+}
+
 type SessionTreeDayGroup = {
   dateKey: string;
   label: string;
@@ -1431,6 +1503,9 @@ type StashTreeItem = {
   href?: string;
   label: string;
   icon: React.ReactNode;
+  activeKind?: ActiveFileKind;
+  activeId?: string;
+  activeLinkedTableId?: string | null;
   session?: WorkspaceSidebarSession;
 };
 
@@ -1487,6 +1562,8 @@ function buildStashTreeItems(
           key: `${item.object_id}:${index}`,
           href: folder ? `/workspaces/${workspaceId}/folders/${item.object_id}` : undefined,
           icon: <span className="text-muted"><FolderIcon /></span>,
+          activeKind: "folder",
+          activeId: item.object_id,
           label:
             item.label_override ??
             (folder ? resolveFolderPath(folder.id, folderById, pathCache) : `Folder ${item.object_id}`),
@@ -1500,6 +1577,8 @@ function buildStashTreeItems(
             kind: "page",
             key: `${item.object_id}:${index}`,
             icon: <span className="text-muted"><PageIcon /></span>,
+            activeKind: "page",
+            activeId: item.object_id,
             label: item.label_override ?? `Page ${item.object_id}`,
           };
         }
@@ -1511,6 +1590,8 @@ function buildStashTreeItems(
           key: `${item.object_id}:${index}`,
           href: `/workspaces/${workspaceId}/p/${page.id}`,
           icon: <span className="text-muted"><PageIcon /></span>,
+          activeKind: "page",
+          activeId: page.id,
           label: item.label_override ?? pagePath,
         };
       }
@@ -1522,6 +1603,8 @@ function buildStashTreeItems(
             kind: "file",
             key: `${item.object_id}:${index}`,
             icon: <span className={fileIconClass(undefined)}><FileIcon /></span>,
+            activeKind: "file",
+            activeId: item.object_id,
             label: item.label_override ?? `File ${item.object_id}`,
           };
         }
@@ -1533,6 +1616,9 @@ function buildStashTreeItems(
           key: `${item.object_id}:${index}`,
           href: `/workspaces/${workspaceId}/f/${file.id}`,
           icon: <span className={fileIconClass(file.content_type)}><FileIcon /></span>,
+          activeKind: "file",
+          activeId: file.id,
+          activeLinkedTableId: file.linked_table_id,
           label: item.label_override ?? filePath,
         };
       }
@@ -1543,6 +1629,8 @@ function buildStashTreeItems(
           key: `${item.object_id}:${index}`,
           href: `/tables/${item.object_id}?workspaceId=${workspaceId}`,
           icon: <span className="text-muted"><TableIcon /></span>,
+          activeKind: "table",
+          activeId: item.object_id,
           label: item.label_override ?? `Table ${item.object_id}`,
         };
       }
@@ -1632,7 +1720,11 @@ function StashSidebarRow({
             </div>
           ) : (
             children.map((item) => (
-              <StashTreeRow key={item.key} row={item} />
+              <StashTreeRow
+                key={item.key}
+                workspaceId={workspaceId}
+                row={item}
+              />
             ))
           )}
         </div>
@@ -1641,7 +1733,13 @@ function StashSidebarRow({
   );
 }
 
-function StashTreeRow({ row }: { row: StashTreeItem }) {
+function StashTreeRow({
+  workspaceId,
+  row,
+}: {
+  workspaceId: string;
+  row: StashTreeItem;
+}) {
   const pathname = usePathname();
   if (!row.href) {
     return (
@@ -1653,7 +1751,16 @@ function StashTreeRow({ row }: { row: StashTreeItem }) {
     );
   }
 
-  const active = pathname === row.href;
+  const activeFile = activeFileRef(pathname);
+  const active =
+    row.activeKind === "file"
+      ? workspaceFileMatchesActive(activeFile, workspaceId, {
+          id: row.activeId ?? "",
+          linked_table_id: row.activeLinkedTableId ?? null,
+        })
+      : row.activeKind
+        ? fileResourceMatchesActive(activeFile, workspaceId, row.activeKind, row.activeId)
+        : pathname === row.href;
   return (
     <NavRow
       href={row.href}
@@ -1686,11 +1793,11 @@ function FileNavRow({
   const href = isCsvLinked
     ? `/tables/${file.linked_table_id}?workspaceId=${workspaceId}`
     : `/workspaces/${workspaceId}/f/${file.id}`;
-  // Table files compare against pathname without query string; everything else
-  // is an exact match.
-  const active = isCsvLinked
-    ? pathname === `/tables/${file.linked_table_id}`
-    : pathname === href;
+  const active = workspaceFileMatchesActive(
+    activeFileRef(pathname),
+    workspaceId,
+    file
+  );
   return (
     <NavRow
       href={href}
@@ -1768,6 +1875,72 @@ function buildFileDirectoryItems(
   ];
 }
 
+function fileDirectoryItemMatchesActive(
+  active: ActiveFileRef,
+  workspaceId: string,
+  item: FileDirectoryItem
+): boolean {
+  if (item.kind === "file") {
+    return workspaceFileMatchesActive(active, workspaceId, item.file);
+  }
+
+  return fileResourceMatchesActive(active, workspaceId, item.kind, item.id);
+}
+
+function folderContainsFolder(
+  folderId: string,
+  descendantFolderId: string | null,
+  foldersById: Map<string, WorkspaceFolder>
+): boolean {
+  let currentId = descendantFolderId;
+
+  while (currentId) {
+    if (currentId === folderId) return true;
+    currentId = foldersById.get(currentId)?.parent_folder_id ?? null;
+  }
+
+  return false;
+}
+
+function activeFolderIdForFiles(
+  active: ActiveFileRef,
+  workspaceId: string,
+  folders: WorkspaceFolder[],
+  pages: WorkspacePage[],
+  files: WorkspaceFile[]
+): string | null {
+  if (!active.kind || !active.id) return null;
+  if (active.workspaceId && active.workspaceId !== workspaceId) return null;
+
+  if (active.kind === "folder") return active.id;
+  if (active.kind === "page") {
+    return pages.find((page) => page.id === active.id)?.folder_id ?? null;
+  }
+  if (active.kind === "file") {
+    return files.find((file) => file.id === active.id)?.folder_id ?? null;
+  }
+  return (
+    files.find((file) => file.linked_table_id === active.id)?.folder_id ?? null
+  );
+}
+
+function fileDirectoryItemOrActiveFolderMatches(
+  active: ActiveFileRef,
+  workspaceId: string,
+  item: FileDirectoryItem,
+  activeContainingFolderId: string | null,
+  foldersById: Map<string, WorkspaceFolder>
+): boolean {
+  if (
+    item.kind === "folder" &&
+    folderContainsFolder(item.id, activeContainingFolderId, foldersById)
+  ) {
+    return true;
+  }
+
+  return fileDirectoryItemMatchesActive(active, workspaceId, item);
+}
+
 function searchFileItems(
   folders: WorkspaceFolder[],
   pages: WorkspacePage[],
@@ -1817,6 +1990,8 @@ function searchFileItems(
 function FileDirectoryItemRow({
   workspaceId,
   item,
+  foldersById,
+  activeContainingFolderId,
   isFolderPinned,
   isFilePinned,
   onPinMenu,
@@ -1825,6 +2000,8 @@ function FileDirectoryItemRow({
 }: {
   workspaceId: string;
   item: FileDirectoryItem;
+  foldersById: Map<string, WorkspaceFolder>;
+  activeContainingFolderId: string | null;
   isFolderPinned: (folderId: string) => boolean;
   isFilePinned: (fileId: string) => boolean;
   onPinMenu?: (
@@ -1838,6 +2015,7 @@ function FileDirectoryItemRow({
   onFileClick?: () => void;
 }) {
   const pathname = usePathname();
+  const activeFile = activeFileRef(pathname);
 
   if (item.kind === "folder") {
     return (
@@ -1845,6 +2023,8 @@ function FileDirectoryItemRow({
         workspaceId={workspaceId}
         folderId={item.id}
         name={item.label}
+        foldersById={foldersById}
+        activeContainingFolderId={activeContainingFolderId}
         isFolderPinned={isFolderPinned}
         isFilePinned={isFilePinned}
         onPinMenu={onPinMenu}
@@ -1854,12 +2034,18 @@ function FileDirectoryItemRow({
 
   if (item.kind === "page") {
     const pageHref = `/workspaces/${workspaceId}/p/${item.id}`;
+    const active = fileResourceMatchesActive(
+      activeFile,
+      workspaceId,
+      "page",
+      item.id
+    );
     return (
       <NavRow
         href={pageHref}
         icon={<PageIcon className="text-muted" />}
         label={item.label}
-        active={pathname === pageHref}
+        active={active}
         onClick={onPageClick}
       />
     );
@@ -1896,6 +2082,7 @@ function FileSearchRow({
   ) => void;
 }) {
   const pathname = usePathname();
+  const activeFile = activeFileRef(pathname);
 
   if (item.kind === "folder") {
     const href = `/workspaces/${workspaceId}/folders/${item.id}`;
@@ -1904,7 +2091,7 @@ function FileSearchRow({
         href={href}
         icon={<FolderIcon />}
         label={item.hrefLabel}
-        active={pathname === href}
+        active={fileResourceMatchesActive(activeFile, workspaceId, "folder", item.id)}
         onContextMenu={(event) =>
           onPinMenu(event, "folder", item.id, item.label, pinned)
         }
@@ -1919,7 +2106,7 @@ function FileSearchRow({
         href={href}
         icon={<PageIcon className="text-muted" />}
         label={item.hrefLabel}
-        active={pathname === href}
+        active={fileResourceMatchesActive(activeFile, workspaceId, "page", item.id)}
       />
     );
   }
@@ -1940,6 +2127,8 @@ function FolderTreeNode({
   workspaceId,
   folderId,
   name,
+  foldersById,
+  activeContainingFolderId,
   isFolderPinned,
   isFilePinned,
   onPinMenu,
@@ -1947,6 +2136,8 @@ function FolderTreeNode({
   workspaceId: string;
   folderId: string;
   name: string;
+  foldersById: Map<string, WorkspaceFolder>;
+  activeContainingFolderId: string | null;
   isFolderPinned: (folderId: string) => boolean;
   isFilePinned: (fileId: string) => boolean;
   onPinMenu?: (
@@ -1960,16 +2151,37 @@ function FolderTreeNode({
   const cachedContents = readCachedFolderContents(folderId);
   const [contents, setContents] = useState<FolderContents | null>(cachedContents);
   const [loaded, setLoaded] = useState(!!cachedContents);
-  const [open, setOpen] = useState(false);
+  const shouldOpenForActive = folderContainsFolder(
+    folderId,
+    activeContainingFolderId,
+    foldersById
+  );
+  const [open, setOpen] = useState(shouldOpenForActive);
   const [visibleItemCount, setVisibleItemCount] = useState(PREVIEW_ITEM_LIMIT);
   const pathname = usePathname();
+  const activeFile = activeFileRef(pathname);
   const folderHref = `/workspaces/${workspaceId}/folders/${folderId}`;
-  const folderActive = pathname === folderHref;
+  const folderActive = fileResourceMatchesActive(
+    activeFile,
+    workspaceId,
+    "folder",
+    folderId
+  );
   const childFolders = (contents?.subfolders ?? []).filter((sub) => !isFolderPinned(sub.id));
   const childPages = contents?.pages ?? [];
   const childFiles = (contents?.files ?? []).filter((file) => !isFilePinned(file.id));
   const childItems = buildFileDirectoryItems(childFolders, childPages, childFiles);
-  const visibleChildItems = childItems.slice(0, visibleItemCount);
+  const activeChildIndex = childItems.findIndex((item) =>
+    fileDirectoryItemOrActiveFolderMatches(
+      activeFile,
+      workspaceId,
+      item,
+      activeContainingFolderId,
+      foldersById
+    )
+  );
+  const visibleChildItemLimit = Math.max(visibleItemCount, activeChildIndex + 1);
+  const visibleChildItems = childItems.slice(0, visibleChildItemLimit);
   const hiddenChildItemCount = childItems.length - visibleChildItems.length;
 
   const loadContents = useCallback(() => {
@@ -1998,6 +2210,12 @@ function FolderTreeNode({
     setOpen(next);
     if (next) loadContents();
   }, [open, loadContents]);
+
+  useEffect(() => {
+    if (!shouldOpenForActive) return;
+    setOpen(true);
+    loadContents();
+  }, [shouldOpenForActive, loadContents]);
 
   return (
     <details open={open} className="text-[12.5px]">
@@ -2055,6 +2273,8 @@ function FolderTreeNode({
             key={`${item.kind}-${item.id}`}
             workspaceId={workspaceId}
             item={item}
+            foldersById={foldersById}
+            activeContainingFolderId={activeContainingFolderId}
             isFolderPinned={isFolderPinned}
             isFilePinned={isFilePinned}
             onPinMenu={onPinMenu}
@@ -2111,6 +2331,7 @@ function FilesBlock({
   onAddPage: () => void;
 }) {
   const pathname = usePathname();
+  const activeFile = activeFileRef(pathname);
   const [query, setQuery] = useState("");
   const [visibleRootItemCount, setVisibleRootItemCount] = useState(PREVIEW_ITEM_LIMIT);
   const [visibleSearchCount, setVisibleSearchCount] = useState(PREVIEW_ITEM_LIMIT);
@@ -2122,17 +2343,34 @@ function FilesBlock({
   const pinnedFileSet = new Set(pinnedFiles);
   const visibleFolders = folders.filter((folder) => !pinnedFolderSet.has(folder.id));
   const visibleFiles = files.filter((file) => !pinnedFileSet.has(file.id));
+  const folderById = new Map((tree?.folders ?? []).map((folder) => [folder.id, folder]));
+  const activeContainingFolderId = activeFolderIdForFiles(
+    activeFile,
+    workspace.id,
+    folders,
+    pages,
+    files
+  );
   const rootFolders = visibleFolders.filter((f) => !f.parent_folder_id);
   const rootPages = pages.filter((p) => !p.folder_id);
   const rootFiles = visibleFiles.filter((f) => !f.folder_id);
   const rootItems = buildFileDirectoryItems(rootFolders, rootPages, rootFiles);
-  const visibleRootItems = rootItems.slice(0, visibleRootItemCount);
+  const activeRootIndex = rootItems.findIndex((item) =>
+    fileDirectoryItemOrActiveFolderMatches(
+      activeFile,
+      workspace.id,
+      item,
+      activeContainingFolderId,
+      folderById
+    )
+  );
+  const visibleRootItemLimit = Math.max(visibleRootItemCount, activeRootIndex + 1);
+  const visibleRootItems = rootItems.slice(0, visibleRootItemLimit);
   const hiddenRootItemCount = rootItems.length - visibleRootItems.length;
   const searchResults = searchFileItems(folders, pages, files, query);
   const queryActive = query.trim().length > 0;
   const visibleSearchResults = searchResults.slice(0, visibleSearchCount);
   const hiddenSearchCount = searchResults.length - visibleSearchResults.length;
-  const folderById = new Map((tree?.folders ?? []).map((folder) => [folder.id, folder]));
   const fileById = new Map((tree?.files ?? []).map((file) => [file.id, file]));
   const pinnedFileRows = pinnedFiles.map((id) => {
     const file = fileById.get(id);
@@ -2142,6 +2380,7 @@ function FilesBlock({
         label: "File",
         href: `/workspaces/${workspace.id}/f/${id}`,
         icon: <span className={fileIconClass(undefined)}><FileIcon /></span>,
+        active: fileResourceMatchesActive(activeFile, workspace.id, "file", id),
       };
     }
     const label = pinnedLabels.files[id] ?? file.name;
@@ -2152,6 +2391,7 @@ function FilesBlock({
       href: isCsvLinked
         ? `/tables/${file.linked_table_id}?workspaceId=${workspace.id}`
         : `/workspaces/${workspace.id}/f/${id}`,
+      active: workspaceFileMatchesActive(activeFile, workspace.id, file),
       icon:
         <span className={fileIconClass(file.content_type)}>
           {file.content_type?.includes("csv") ? <TableIcon /> : <FileIcon />}
@@ -2305,6 +2545,8 @@ function FilesBlock({
                       folderById.get(folderId)?.name ??
                       "Folder"
                     }
+                    foldersById={folderById}
+                    activeContainingFolderId={activeContainingFolderId}
                     isFolderPinned={(id) => pinnedFolderSet.has(id)}
                     isFilePinned={(id) => pinnedFileSet.has(id)}
                     onPinMenu={showPinMenu}
@@ -2316,7 +2558,7 @@ function FilesBlock({
                     href={file.href}
                     icon={file.icon}
                     label={file.label}
-                    active={pathname === file.href}
+                    active={file.active}
                     onContextMenu={(event) =>
                       showPinMenu(event, "file", file.id, file.label, true)
                     }
@@ -2329,6 +2571,8 @@ function FilesBlock({
                 key={`${item.kind}-${item.id}`}
                 workspaceId={workspace.id}
                 item={item}
+                foldersById={folderById}
+                activeContainingFolderId={activeContainingFolderId}
                 isFolderPinned={(folderId) => pinnedFolderSet.has(folderId)}
                 isFilePinned={(fileId) => pinnedFileSet.has(fileId)}
                 onPinMenu={showPinMenu}
