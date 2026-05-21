@@ -134,10 +134,34 @@ export default function StashShareModal() {
   }, [open, initial, refresh]);
 
   useEffect(() => {
-    if (!open || !spine || !initial?.some((item) => item.object_type === "session")) return;
-
-    setSelected((current) => resolveInitialSessions(current, initial, spine));
+    if (!open || !spine || !initial?.length) return;
+    // Refresh both rows and sessions with the now-loaded spine so labels
+    // reflect actual workspace names instead of generic 'Page'/'File'
+    // fallbacks. Sessions go through their existing resolver; rows are
+    // rebuilt via buildInitialSelection's spine lookup.
+    setSelected((current) => {
+      const rebuilt = buildInitialSelection(initial, spine);
+      const next = resolveInitialSessions(current, initial, spine);
+      // Preserve any rows the user added on top of the initial set —
+      // we only overwrite the originally-pre-selected rows' labels.
+      const rows = new Map(next.rows);
+      for (const [key, row] of rebuilt.rows.entries()) {
+        if (rows.has(key)) rows.set(key, row);
+      }
+      return { rows, sessions: next.sessions };
+    });
   }, [open, initial, spine]);
+
+  // Pre-fill the title input from the resolved default once it becomes
+  // meaningful (e.g. spine loaded → row label is the real page name).
+  // We only fill while the user hasn't typed anything yet; their input
+  // wins from then on.
+  const hasUserEditedTitle = useRef(false);
+  useEffect(() => {
+    if (!open) {
+      hasUserEditedTitle.current = false;
+    }
+  }, [open]);
 
   const rows: SelectableRow[] = useMemo(() => buildRows(spine), [spine]);
   const sessions: SessionRow[] = useMemo(() => buildSessions(spine), [spine]);
@@ -237,6 +261,15 @@ export default function StashShareModal() {
     return `Bundle of ${total} items`;
   }, [total, selected]);
 
+  // When defaultTitle resolves to a real name and the user hasn't edited
+  // the input yet, pre-fill the title. Auto-clear if the user removes
+  // their last selection so the input doesn't carry a stale name.
+  useEffect(() => {
+    if (!open) return;
+    if (hasUserEditedTitle.current) return;
+    setTitle(defaultTitle);
+  }, [open, defaultTitle]);
+
   const onSubmit = async () => {
     if (!workspaceId || total === 0) return;
     setSubmitting(true);
@@ -322,6 +355,9 @@ export default function StashShareModal() {
           onToggleGroupSessions={onToggleGroupSessions}
           title={title}
           setTitle={setTitle}
+          onTitleEdited={() => {
+            hasUserEditedTitle.current = true;
+          }}
           placeholderTitle={defaultTitle}
           visibility={visibility}
           setVisibility={setVisibility}
@@ -359,6 +395,7 @@ function NewShareTab(props: {
   onToggleGroupSessions: (sessions: SessionRow[]) => void;
   title: string;
   setTitle: (v: string) => void;
+  onTitleEdited: () => void;
   placeholderTitle: string;
   visibility: StashVisibility;
   setVisibility: (v: StashVisibility) => void;
@@ -388,6 +425,7 @@ function NewShareTab(props: {
     onToggleGroupSessions,
     title,
     setTitle,
+    onTitleEdited,
     placeholderTitle,
     visibility,
     setVisibility,
@@ -547,7 +585,10 @@ function NewShareTab(props: {
             <span className="font-medium text-foreground">Title</span>
             <input
               value={title}
-              onChange={(e) => setTitle(e.target.value)}
+              onChange={(e) => {
+                onTitleEdited();
+                setTitle(e.target.value);
+              }}
               placeholder={placeholderTitle || "Untitled Stash"}
               className="rounded-md border border-border bg-surface px-2 py-1.5"
             />
@@ -749,12 +790,36 @@ function buildInitialSelection(
       key,
       object_type: item.object_type,
       object_id: item.object_id,
-      label: item.label_override || titleCase(item.object_type),
+      label:
+        item.label_override ||
+        rowNameFromSpine(item.object_type, item.object_id, spine) ||
+        titleCase(item.object_type),
       sub: "",
       group: groupFor(item.object_type),
     });
   }
   return { rows, sessions };
+}
+
+// Look up the human name for a non-session item from the workspace
+// sidebar. Returns null if spine isn't loaded yet or the row isn't
+// in this user's tree (e.g. permission filtered).
+function rowNameFromSpine(
+  objectType: SelectableRow["object_type"],
+  objectId: string,
+  spine: WorkspaceSidebar | null
+): string | null {
+  if (!spine) return null;
+  if (objectType === "page") {
+    return spine.files.pages.find((p) => p.id === objectId)?.name ?? null;
+  }
+  if (objectType === "file") {
+    return spine.files.files.find((f) => f.id === objectId)?.name ?? null;
+  }
+  if (objectType === "folder") {
+    return spine.files.folders.find((f) => f.id === objectId)?.name ?? null;
+  }
+  return null;
 }
 
 function isSelectableRowType(
