@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from ..auth import get_current_user, get_current_user_optional
+from ..config import settings
 from ..models import (
     InviteTokenCreateRequest,
     InviteTokenCreateResponse,
@@ -18,7 +19,6 @@ from ..models import (
     WorkspaceResponse,
     WorkspaceUpdateRequest,
 )
-from ..config import settings
 from ..services import invite_token_service, workspace_service
 
 router = APIRouter(prefix="/api/v1/workspaces", tags=["workspaces"])
