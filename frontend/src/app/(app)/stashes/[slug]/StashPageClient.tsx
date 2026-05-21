@@ -36,6 +36,7 @@ import {
 } from "../../../../lib/api";
 import type { ActivityTimeline, EmbeddingProjection } from "../../../../lib/types";
 import AddToWorkspaceButton from "./AddToWorkspaceButton";
+import FileContentRenderer from "../../../../components/workspace/FileContentRenderer";
 import { PageBody, SessionBody } from "./StashItemBodies";
 
 type StashItemGroup = Partial<
@@ -400,34 +401,41 @@ type PrimaryItem =
   | { kind: "page"; item: PublicStashItem }
   | { kind: "session"; item: PublicStashItem };
 
-// "Single-content" stashes — one file, one page, or one session and nothing
-// else — open straight to that content's viewer instead of the bundle chrome
-// + viz section. The intuition is symmetric across kinds: a stash whose
-// whole point is one artifact should feel like that artifact.
+// "Single-content" stashes — the whole stash is really one artifact — open
+// straight to that artifact's viewer instead of the bundle chrome + viz
+// section. Three shapes count:
 //
-// The file variant also accepts file-plus-auto-folder bundles created by
-// `stash upload <single-file>` (description starts with "Uploaded from ").
-// Pages and sessions don't share that wrapper today, so we keep them strict.
+//   1. Exactly one item that is the artifact.
+//   2. One artifact + one folder, when the description starts with
+//      "Uploaded from " — this is what `stash upload <single>` and
+//      `stash publish <single>` produce; the folder is incidental
+//      packaging, not content.
+//   3. (sessions only) Always strict — a session-share is already
+//      a single item; we don't wrap it in a folder today.
 function primaryItemForStash(data: PublicStashDetail): PrimaryItem | null {
-  const fileItems = data.items.filter((item) => item.object_type === "file");
-  if (fileItems.length === 1) {
-    if (data.items.length === 1) return { kind: "file", item: fileItems[0] };
-    const onlyFileAndUploadFolder = data.items.every((item) =>
-      item.object_type === "file" || item.object_type === "folder"
-    );
-    if (
-      onlyFileAndUploadFolder &&
-      data.stash.description.includes("Uploaded from ")
-    ) {
-      return { kind: "file", item: fileItems[0] };
-    }
-  }
-  if (data.items.length === 1) {
-    const only = data.items[0];
-    if (only.object_type === "page") return { kind: "page", item: only };
-    if (only.object_type === "session") return { kind: "session", item: only };
+  const single = singleOfKindWithOptionalFolder(data, "file");
+  if (single) return { kind: "file", item: single };
+  const singlePage = singleOfKindWithOptionalFolder(data, "page");
+  if (singlePage) return { kind: "page", item: singlePage };
+  if (data.items.length === 1 && data.items[0].object_type === "session") {
+    return { kind: "session", item: data.items[0] };
   }
   return null;
+}
+
+function singleOfKindWithOptionalFolder(
+  data: PublicStashDetail,
+  kind: "file" | "page",
+): PublicStashItem | null {
+  const matches = data.items.filter((item) => item.object_type === kind);
+  if (matches.length !== 1) return null;
+  if (data.items.length === 1) return matches[0];
+  const onlyKindAndFolder = data.items.every(
+    (item) => item.object_type === kind || item.object_type === "folder",
+  );
+  if (!onlyKindAndFolder) return null;
+  if (!data.stash.description.includes("Uploaded from ")) return null;
+  return matches[0];
 }
 
 function SingleFilePreview({ item }: { item: PublicStashItem }) {
@@ -435,8 +443,6 @@ function SingleFilePreview({ item }: { item: PublicStashItem }) {
   const name = file.name || item.label || "Uploaded file";
   const contentType = file.content_type || "file";
   const size = formatFileSize(file.size_bytes ?? 0);
-  const isImage = contentType.startsWith("image/");
-  const isPdf = contentType.includes("pdf");
 
   return (
     <section className="mt-6">
@@ -461,27 +467,17 @@ function SingleFilePreview({ item }: { item: PublicStashItem }) {
         )}
       </div>
 
-      {!file.url && (
+      {!file.url ? (
         <div className="rounded-lg border border-dashed border-border bg-surface/30 px-4 py-10 text-center text-[13px] text-muted">
           This file is no longer available.
         </div>
-      )}
-      {file.url && isImage && (
-        <div className="overflow-auto rounded-lg border border-border bg-surface">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={file.url} alt={name} className="mx-auto h-auto max-w-full" />
-        </div>
-      )}
-      {file.url && isPdf && (
-        <iframe
-          src={file.url}
-          title={name}
-          className="h-[78vh] w-full rounded-lg border border-border bg-base"
-        />
-      )}
-      {file.url && !isImage && !isPdf && (
-        <div className="rounded-lg border border-border bg-base px-5 py-10 text-center text-[13px] text-muted">
-          No inline preview for this file type.
+      ) : (
+        <div className="overflow-hidden rounded-lg border border-border bg-surface">
+          <FileContentRenderer
+            url={file.url}
+            name={name}
+            contentType={contentType}
+          />
         </div>
       )}
     </section>
