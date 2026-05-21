@@ -62,7 +62,7 @@ def test_preexisting_features_section_no_duplicate(monkeypatch, tmp_path: Path) 
     codex_dir = tmp_path / ".codex"
     codex_dir.mkdir()
     cfg = codex_dir / "config.toml"
-    cfg.write_text('[features]\nsuppress_unstable_features_warning = true\n')
+    cfg.write_text("[features]\nsuppress_unstable_features_warning = true\n")
 
     cfg = _run_install(monkeypatch, tmp_path)
     body = cfg.read_text()
