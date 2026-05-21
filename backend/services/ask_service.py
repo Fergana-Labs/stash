@@ -19,7 +19,7 @@ async def stream_ask(
     workspace_name: str,
     messages: list[dict],
     user_id: UUID,
-    tool_set: tuple[str, ...] = prompts.STASH_TOOL_SET,
+    tool_set: tuple[str, ...] = prompts.ASK_TOOL_SET,
 ) -> AsyncIterator[str]:
     """Run the ask-the-workspace tool-use loop and yield SSE chunks."""
     prompt = _flatten_conversation(messages)

@@ -174,15 +174,20 @@ async def stream_tool_loop(
                 break
 
             # Execute each tool, build tool_result blocks for the next turn.
+            # Errors get a generic message in the wire payload — real
+            # exception detail (and stack) goes to the server log only.
+            # Leaking SQL / table names / stack frames into the model
+            # context risks them ending up in the user-visible response.
             tool_results: list[dict] = []
             for use in tool_uses:
                 executor = _TOOLS_BY_NAME.get(use["name"])
                 if executor is None:
+                    logger.warning("agent requested unknown tool: %s", use["name"])
                     tool_results.append(
                         {
                             "type": "tool_result",
                             "tool_use_id": use["id"],
-                            "content": json.dumps({"error": f"unknown tool: {use['name']}"}),
+                            "content": "tool not available",
                             "is_error": True,
                         }
                     )
@@ -190,13 +195,15 @@ async def stream_tool_loop(
                 try:
                     raw = await executor.handler(use["input"])
                     text = _tool_text(raw)
-                except Exception as e:
-                    logger.exception("tool %s failed", use["name"])
+                except Exception:
+                    logger.exception(
+                        "tool %s failed (args=%r)", use["name"], use["input"]
+                    )
                     tool_results.append(
                         {
                             "type": "tool_result",
                             "tool_use_id": use["id"],
-                            "content": json.dumps({"error": str(e)}),
+                            "content": "tool failed",
                             "is_error": True,
                         }
                     )
