@@ -90,6 +90,63 @@ async def test_list_files_tool_scopes_by_workspace(workspace: UUID, _db_pool):
 
 
 @pytest.mark.asyncio
+async def test_file_tools_hide_private_stash_files(workspace: UUID, _db_pool):
+    user_id = await _db_pool.fetchval("SELECT creator_id FROM workspaces WHERE id = $1", workspace)
+    visible_file_id = await _db_pool.fetchval(
+        "INSERT INTO files "
+        "(workspace_id, name, content_type, size_bytes, storage_key, uploaded_by, extracted_text) "
+        "VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id",
+        workspace,
+        "visible.txt",
+        "text/plain",
+        7,
+        f"key_{workspace.hex[:6]}_visible",
+        user_id,
+        "visible text",
+    )
+    private_file_id = await _db_pool.fetchval(
+        "INSERT INTO files "
+        "(workspace_id, name, content_type, size_bytes, storage_key, uploaded_by, extracted_text) "
+        "VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id",
+        workspace,
+        "private.txt",
+        "text/plain",
+        7,
+        f"key_{workspace.hex[:6]}_private",
+        user_id,
+        "private text",
+    )
+    await stash_service.create_stash(
+        workspace_id=workspace,
+        owner_id=user_id,
+        title="Private files",
+        description="",
+        workspace_permission="none",
+        public_permission="none",
+        discoverable=False,
+        cover_image_url=None,
+        items=[StashItem(object_type="file", object_id=private_file_id)],
+    )
+
+    workspace_token = agent_runtime._workspace_ctx.set(workspace)
+    user_token = agent_runtime._user_ctx.set(user_id)
+    try:
+        list_result = await agent_runtime._list_files.handler({})
+        visible_result = await agent_runtime._read_file.handler({"file_id": str(visible_file_id)})
+        private_result = await agent_runtime._read_file.handler({"file_id": str(private_file_id)})
+    finally:
+        agent_runtime._user_ctx.reset(user_token)
+        agent_runtime._workspace_ctx.reset(workspace_token)
+
+    listed_files = json.loads(list_result["content"][0]["text"])
+    listed_names = [file["name"] for file in listed_files]
+    assert "visible.txt" in listed_names
+    assert "private.txt" not in listed_names
+    assert json.loads(visible_result["content"][0]["text"])["text"] == "visible text"
+    assert json.loads(private_result["content"][0]["text"]) == {"error": "not found"}
+
+
+@pytest.mark.asyncio
 async def test_stash_tools_create_list_and_delete(workspace: UUID, _db_pool):
     user_id = await _db_pool.fetchval("SELECT creator_id FROM workspaces WHERE id = $1", workspace)
     folder_id = uuid4()
@@ -135,10 +192,33 @@ async def test_stash_tools_create_list_and_delete(workspace: UUID, _db_pool):
 
 
 @pytest.mark.asyncio
-async def test_external_stash_is_workspace_fork(workspace: UUID, _db_pool):
+async def test_external_stash_is_workspace_fork(workspace: UUID, _db_pool, monkeypatch):
+    copied_files = []
+    deleted_files = []
+
+    async def fake_copy_file(source_key, workspace_id, filename, content_type):
+        copied_key = f"{workspace_id}/copied/{filename}"
+        copied_files.append(
+            {
+                "source_key": source_key,
+                "workspace_id": workspace_id,
+                "filename": filename,
+                "content_type": content_type,
+                "copied_key": copied_key,
+            }
+        )
+        return copied_key
+
+    async def fake_delete_file(storage_key):
+        deleted_files.append(storage_key)
+
+    monkeypatch.setattr(stash_service.storage_service, "copy_file", fake_copy_file)
+    monkeypatch.setattr(stash_service.storage_service, "delete_file", fake_delete_file)
+
     owner_id = await _db_pool.fetchval("SELECT creator_id FROM workspaces WHERE id = $1", workspace)
     target_workspace = uuid4()
     page_id = uuid4()
+    file_id = uuid4()
     session_row_id = uuid4()
     await _db_pool.execute(
         "INSERT INTO workspaces (id, name, creator_id, invite_code) VALUES ($1, $2, $3, $4)",
@@ -162,6 +242,17 @@ async def test_external_stash_is_workspace_fork(workspace: UUID, _db_pool):
         owner_id,
     )
     await _db_pool.execute(
+        "INSERT INTO files "
+        "(id, workspace_id, name, content_type, size_bytes, storage_key, uploaded_by) "
+        "VALUES ($1, $2, $3, $4, 12, $5, $6)",
+        file_id,
+        workspace,
+        "source.txt",
+        "text/plain",
+        "source/file-key",
+        owner_id,
+    )
+    await _db_pool.execute(
         "INSERT INTO sessions (id, workspace_id, session_id, agent_name, created_by) "
         "VALUES ($1, $2, $3, $4, $5)",
         session_row_id,
@@ -181,18 +272,26 @@ async def test_external_stash_is_workspace_fork(workspace: UUID, _db_pool):
         "Copied session event",
         "session-external-source",
     )
+    await _db_pool.execute(
+        "INSERT INTO session_artifacts (session_id, file_path, storage_key, size_bytes) "
+        "VALUES ($1, $2, $3, 42)",
+        session_row_id,
+        "logs/source.log",
+        "source/artifact-key",
+    )
     source = await stash_service.create_stash(
         workspace_id=workspace,
         owner_id=owner_id,
         title="Fork source Stash",
         description="",
-        workspace_permission="read",
-        public_permission="read",
+        workspace_permission="view",
+        public_permission="view",
         discoverable=False,
         cover_image_url=None,
         items=[
             StashItem(object_type="page", object_id=page_id, position=0),
             StashItem(object_type="session", object_id=session_row_id, position=1),
+            StashItem(object_type="file", object_id=file_id, position=2),
         ],
     )
 
@@ -244,3 +343,31 @@ async def test_external_stash_is_workspace_fork(workspace: UUID, _db_pool):
     )
     assert fork_event["session_id"] == fork_session["session_id"]
     assert fork_event["content"] == "Copied session event"
+
+    fork_artifact_key = await _db_pool.fetchval(
+        "SELECT storage_key FROM session_artifacts WHERE session_id = $1",
+        fork_session_id,
+    )
+    assert fork_artifact_key == f"{target_workspace}/copied/source.log"
+
+    fork_file_id = attached["items"][2]["object_id"]
+    fork_file_key = await _db_pool.fetchval(
+        "SELECT storage_key FROM files WHERE id = $1",
+        fork_file_id,
+    )
+    assert fork_file_key == f"{target_workspace}/copied/source.txt"
+    assert {copy["source_key"] for copy in copied_files} == {
+        "source/file-key",
+        "source/artifact-key",
+    }
+
+    removed = await stash_service.remove_external_stash(
+        target_workspace,
+        attached["id"],
+        owner_id,
+    )
+
+    assert removed is True
+    assert "source/file-key" not in deleted_files
+    assert "source/artifact-key" not in deleted_files
+    assert set(deleted_files) == {fork_file_key, fork_artifact_key}

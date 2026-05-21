@@ -9,7 +9,7 @@ function publishCurl(apiKey: string, apiUrl: string, contentType: "html" | "mark
   "title": "<title>",
   "content_type": "${contentType}",
   "content": "<content>",
-  "public_permission": "read"
+  "public_permission": "view"
 }
 EOF`;
 }

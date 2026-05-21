@@ -18,9 +18,9 @@ class StashError(Exception):
 
 def stash_permissions_for_access(access: str) -> dict[str, str]:
     if access == "public":
-        return {"workspace_permission": "read", "public_permission": "read"}
+        return {"workspace_permission": "view", "public_permission": "view"}
     if access == "workspace":
-        return {"workspace_permission": "read", "public_permission": "none"}
+        return {"workspace_permission": "view", "public_permission": "none"}
     if access == "private":
         return {"workspace_permission": "none", "public_permission": "none"}
     raise ValueError("access must be public, workspace, or private")
@@ -159,7 +159,7 @@ class StashClient:
         workspace_id: str,
         title: str,
         description: str = "",
-        workspace_permission: str = "read",
+        workspace_permission: str = "view",
         public_permission: str = "none",
         discoverable: bool = False,
         items: list | None = None,
@@ -190,8 +190,8 @@ class StashClient:
             json={
                 "title": title,
                 "description": description,
-                "workspace_permission": "read",
-                "public_permission": "read",
+                "workspace_permission": "view",
+                "public_permission": "view",
                 "discoverable": discoverable,
                 "items": items or [],
             },

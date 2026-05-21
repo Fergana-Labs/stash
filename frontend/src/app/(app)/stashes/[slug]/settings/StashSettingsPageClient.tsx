@@ -112,14 +112,14 @@ export default function StashSettingsPageClient({ slug }: { slug: string }) {
     );
   }
 
-  if (!data.can_write) {
+  if (!data.can_manage) {
     return (
       <div className="mx-auto max-w-md px-8 py-20 text-center">
         <h1 className="font-display text-[26px] font-bold text-foreground">
           Stash settings
         </h1>
         <p className="mt-2 text-[13px] text-muted">
-          You do not have edit access to this Stash.
+          You do not have manage access to this Stash.
         </p>
         <Link
           href={`/stashes/${stash.slug}`}

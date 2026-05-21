@@ -1020,7 +1020,7 @@ export interface StashItemSpec {
 }
 
 export type StashVisibility = "workspace" | "private" | "public";
-export type StashGeneralPermission = "none" | "read" | "write";
+export type StashGeneralPermission = "none" | "view" | "comment" | "edit" | "manage";
 
 export interface CreatedStash {
   id: string;
@@ -1071,7 +1071,7 @@ export async function createStash(
       body: JSON.stringify({
         title,
         description: opts.description ?? "",
-        workspace_permission: opts.workspace_permission ?? "read",
+        workspace_permission: opts.workspace_permission ?? "view",
         public_permission: opts.public_permission ?? "none",
         discoverable: opts.discoverable ?? false,
         cover_image_url: null,
@@ -1111,8 +1111,8 @@ export async function publishStash(
       body: JSON.stringify({
         title,
         description: opts.description ?? "",
-        workspace_permission: opts.workspace_permission ?? "read",
-        public_permission: opts.public_permission ?? "read",
+        workspace_permission: opts.workspace_permission ?? "view",
+        public_permission: opts.public_permission ?? "view",
         discoverable: opts.discoverable ?? false,
         cover_image_url: null,
         items: items.map((it, i) => ({
@@ -1158,7 +1158,7 @@ export interface WorkspaceStash {
   updated_at: string;
 }
 
-export type StashMemberPermission = "read" | "write" | "admin";
+export type StashMemberPermission = "view" | "comment" | "edit" | "manage";
 
 export interface StashMember {
   user_id: string;
@@ -1181,7 +1181,9 @@ export interface PublicStashDetail {
   stash: WorkspaceStash;
   workspace_name: string;
   items: PublicStashItem[];
-  can_write: boolean;
+  can_comment: boolean;
+  can_edit: boolean;
+  can_manage: boolean;
 }
 
 export async function listStashes(workspaceId: string): Promise<WorkspaceStash[]> {
@@ -1365,6 +1367,30 @@ export async function searchWorkspacePages(
     `/api/v1/workspaces/${workspaceId}/pages/search?${params}`
   );
   return data.pages;
+}
+
+export interface WorkspaceFileSearchResult {
+  id: string;
+  workspace_id: string;
+  folder_id: string | null;
+  name: string;
+  content_type: string;
+  size_bytes: number;
+  search_text: string;
+  updated_at: string;
+  rank?: number;
+}
+
+export async function searchWorkspaceFiles(
+  workspaceId: string,
+  query: string,
+  limit = 20
+): Promise<WorkspaceFileSearchResult[]> {
+  const params = new URLSearchParams({ q: query, limit: String(limit) });
+  const data = await apiFetch<{ files: WorkspaceFileSearchResult[] }>(
+    `/api/v1/workspaces/${workspaceId}/files/search?${params}`
+  );
+  return data.files;
 }
 
 // --- Table Embeddings (workspace-only) ---

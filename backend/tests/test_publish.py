@@ -35,7 +35,7 @@ async def test_publish_falls_back_to_primary_workspace(client: AsyncClient):
             "title": "Untitled HTML",
             "content_type": "html",
             "content": "<h1>hi</h1>",
-            "public_permission": "read",
+            "public_permission": "view",
         },
         headers=_auth(key),
     )
@@ -61,7 +61,7 @@ async def test_publish_with_explicit_workspace(client: AsyncClient):
             "title": "Explicit-WS publish",
             "content_type": "markdown",
             "content": "# hello",
-            "public_permission": "read",
+            "public_permission": "view",
         },
         headers=_auth(key),
     )
@@ -85,7 +85,7 @@ async def test_publish_rejects_non_member_workspace(client: AsyncClient):
             "title": "Foreign publish",
             "content_type": "markdown",
             "content": "# nope",
-            "public_permission": "read",
+            "public_permission": "view",
         },
         headers=_auth(key_a),
     )

@@ -20,9 +20,12 @@ logger = logging.getLogger(__name__)
 
 # Workspace-owned page (excludes the read-only stash mirror rows).
 _OWNED_PAGE_PRED = "COALESCE(metadata->>'shared_in_stash_id', '') = ''"
+_OWNED_FOLDER_PRED = "COALESCE(metadata->>'shared_in_stash_id', '') = ''"
+_OWNED_FILE_PRED = "COALESCE(metadata->>'shared_in_stash_id', '') = ''"
 # All "live" reads filter both stash-mirror and trash. Every SELECT on
 # pages that wants the active set uses this.
 _WORKSPACE_PAGE_FILTER = f"{_OWNED_PAGE_PRED} AND deleted_at IS NULL"
+_WORKSPACE_FILE_FILTER = f"{_OWNED_FILE_PRED} AND deleted_at IS NULL"
 
 
 async def _filter_readable(
@@ -137,7 +140,7 @@ async def get_folder(folder_id: UUID) -> dict | None:
     pool = get_pool()
     row = await pool.fetchrow(
         "SELECT id, workspace_id, parent_folder_id, name, created_by, created_at, updated_at "
-        "FROM folders WHERE id = $1",
+        f"FROM folders WHERE id = $1 AND {_OWNED_FOLDER_PRED}",
         folder_id,
     )
     return dict(row) if row else None
@@ -152,7 +155,7 @@ async def list_folders(workspace_id: UUID, user_id: UUID | None = None) -> list[
         where += " AND " + permission_service.readable_content_condition("folder", "f", 2)
     rows = await pool.fetch(
         "SELECT id, workspace_id, parent_folder_id, name, created_by, created_at, updated_at "
-        f"FROM folders f WHERE {where} ORDER BY name",
+        f"FROM folders f WHERE {where} AND {_OWNED_FOLDER_PRED} ORDER BY name",
         *args,
     )
     return [dict(r) for r in rows]
@@ -563,11 +566,12 @@ async def list_workspace_pages(workspace_id: UUID, user_id: UUID | None = None) 
     rows = await pool.fetch(
         "WITH RECURSIVE chain AS ("
         "  SELECT id, parent_folder_id, name, ARRAY[name]::text[] AS path "
-        "  FROM folders WHERE workspace_id = $1 AND parent_folder_id IS NULL"
+        f"  FROM folders WHERE workspace_id = $1 AND parent_folder_id IS NULL "
+        f"  AND {_OWNED_FOLDER_PRED} "
         "  UNION ALL"
         "  SELECT f.id, f.parent_folder_id, f.name, c.path || f.name "
         "  FROM folders f JOIN chain c ON f.parent_folder_id = c.id "
-        "  WHERE f.workspace_id = $1"
+        f"  WHERE f.workspace_id = $1 AND {_OWNED_FOLDER_PRED} "
         ") "
         "SELECT p.id, p.name, p.content_type, p.workspace_id, p.folder_id, "
         "COALESCE(c.path, ARRAY[]::text[]) AS folder_path, p.updated_at "
@@ -589,10 +593,12 @@ async def list_user_pages(user_id: UUID) -> list[dict]:
         "), chain AS ("
         "  SELECT id, parent_folder_id, name, ARRAY[name]::text[] AS path, workspace_id "
         "  FROM folders WHERE parent_folder_id IS NULL "
-        "  AND workspace_id IN (SELECT workspace_id FROM member_workspaces)"
+        "  AND workspace_id IN (SELECT workspace_id FROM member_workspaces) "
+        f"  AND {_OWNED_FOLDER_PRED} "
         "  UNION ALL"
         "  SELECT f.id, f.parent_folder_id, f.name, c.path || f.name, f.workspace_id "
-        "  FROM folders f JOIN chain c ON f.parent_folder_id = c.id"
+        "  FROM folders f JOIN chain c ON f.parent_folder_id = c.id "
+        f"  WHERE {_OWNED_FOLDER_PRED} "
         ") "
         "SELECT p.id, p.name, p.content_type, p.workspace_id, p.folder_id, "
         "COALESCE(c.path, ARRAY[]::text[]) AS folder_path, "
@@ -687,6 +693,37 @@ async def search_pages_fts(
     if user_id is not None:
         pages = await _filter_readable(pages, "page", user_id, workspace_id)
     return pages[:limit]
+
+
+async def search_files_fts(
+    workspace_id: UUID,
+    query: str,
+    limit: int = 10,
+    user_id: UUID | None = None,
+) -> list[dict]:
+    pool = get_pool()
+    text_expr = "COALESCE(extracted_text, '')"
+    vec_expr = (
+        f"setweight(to_tsvector('english', name), 'A') || "
+        f"setweight(to_tsvector('english', {text_expr}), 'B')"
+    )
+    rows = await pool.fetch(
+        f"SELECT id, workspace_id, folder_id, name, content_type, size_bytes, "
+        f"{text_expr} AS search_text, created_at AS updated_at, "
+        f"ts_rank({vec_expr}, websearch_to_tsquery('english', $2)) AS rank "
+        f"FROM files "
+        f"WHERE workspace_id = $1 "
+        f"AND {_WORKSPACE_FILE_FILTER} "
+        f"AND ({vec_expr}) @@ websearch_to_tsquery('english', $2) "
+        f"ORDER BY rank DESC LIMIT $3",
+        workspace_id,
+        query,
+        limit * 3,
+    )
+    files = [dict(row) for row in rows]
+    if user_id is not None:
+        files = await _filter_readable(files, "file", user_id, workspace_id)
+    return files[:limit]
 
 
 # --- Page embeddings ---

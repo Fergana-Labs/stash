@@ -194,6 +194,17 @@ async def download_file(key: str) -> bytes:
     return resp.content
 
 
+async def copy_file(
+    source_key: str,
+    workspace_id: str | None,
+    filename: str,
+    content_type: str,
+) -> str:
+    """Copy a stored object into a new workspace-owned key."""
+    content = await download_file(source_key)
+    return await upload_file(workspace_id, filename, content, content_type)
+
+
 async def delete_file(key: str) -> None:
     """Delete a file from S3."""
     if not is_configured():

@@ -97,7 +97,10 @@ def _accessible_events_cte(
         WITH accessible_events AS (
             SELECT he.id AS event_id
             FROM history_events he
+            JOIN sessions s ON s.workspace_id = he.workspace_id
+              AND s.session_id = he.session_id
             WHERE he.workspace_id = ${ws_idx}
+              AND COALESCE(s.metadata->>'shared_in_stash_id', '') = ''
               AND {readable_events}
         )
         """
@@ -105,9 +108,12 @@ def _accessible_events_cte(
     WITH accessible_events AS (
         SELECT he.id AS event_id
         FROM history_events he
+        LEFT JOIN sessions s ON s.workspace_id = he.workspace_id
+          AND s.session_id = he.session_id
         WHERE (he.workspace_id IN (SELECT workspace_id FROM workspace_members WHERE user_id = $1)
            OR (he.workspace_id IS NULL AND he.created_by = $1))
           AND (he.workspace_id IS NULL OR {readable_events})
+          AND (he.workspace_id IS NULL OR COALESCE(s.metadata->>'shared_in_stash_id', '') = '')
     )
     """
 
@@ -137,8 +143,7 @@ def _accessible_pages_cte(
         accessible_pages AS (
             SELECT p.id AS page_id
             FROM pages p
-            WHERE COALESCE(p.metadata->>'shared_in_stash_id', '') = ''
-              AND {readable_pages}
+            WHERE {readable_pages}
               AND (
                 p.id IN (
                     SELECT object_id::uuid FROM stash_items
@@ -194,6 +199,7 @@ def _accessible_tables_cte(
             SELECT t.id AS table_id
             FROM tables t
             WHERE t.workspace_id = ${ws_idx}
+              AND COALESCE(t.metadata->>'shared_in_stash_id', '') = ''
               AND {readable_tables}
         )
         """
@@ -203,6 +209,7 @@ def _accessible_tables_cte(
         FROM tables t
         WHERE (t.workspace_id IN (SELECT workspace_id FROM workspace_members WHERE user_id = $1)
            OR (t.workspace_id IS NULL AND t.created_by = $1))
+          AND (t.workspace_id IS NULL OR COALESCE(t.metadata->>'shared_in_stash_id', '') = '')
           AND (t.workspace_id IS NULL OR {readable_tables})
     )
     """
@@ -251,6 +258,7 @@ def _accessible_files_cte(
             FROM files f
             WHERE f.workspace_id = ${ws_idx}
               AND f.deleted_at IS NULL
+              AND COALESCE(f.metadata->>'shared_in_stash_id', '') = ''
               AND {readable_files}
         )
         """
@@ -260,6 +268,7 @@ def _accessible_files_cte(
         FROM files f
         WHERE f.workspace_id IN (SELECT workspace_id FROM workspace_members WHERE user_id = $1)
           AND f.deleted_at IS NULL
+          AND COALESCE(f.metadata->>'shared_in_stash_id', '') = ''
           AND {readable_files}
     )
     """
@@ -523,12 +532,16 @@ async def _get_source_counts(user_id: UUID, workspace_id: UUID | None = None) ->
                  WHERE tr.table_id IN (
                    SELECT t.id FROM tables t
                    WHERE t.workspace_id = $2
+                     AND COALESCE(t.metadata->>'shared_in_stash_id', '') = ''
                      AND """
             + permission_service.readable_content_condition("table", "t", 1)
             + """)
                    AND tr.data IS NOT NULL) AS rows,
                 (SELECT COUNT(*) FROM history_events he
                  WHERE he.workspace_id = $2
+                   AND """
+            + memory_service.workspace_owned_session_event_condition("he")
+            + """
                    AND """
             + memory_service.readable_session_event_condition("he", 1)
             + """) AS events
@@ -552,6 +565,7 @@ async def _get_source_counts(user_id: UUID, workspace_id: UUID | None = None) ->
                      SELECT t.id FROM tables t
                      WHERE (t.workspace_id IN (SELECT workspace_id FROM workspace_members WHERE user_id = $1)
                         OR (t.workspace_id IS NULL AND t.created_by = $1))
+                       AND (t.workspace_id IS NULL OR COALESCE(t.metadata->>'shared_in_stash_id', '') = '')
                        AND (t.workspace_id IS NULL OR """
             + permission_service.readable_content_condition("table", "t", 1)
             + """))
@@ -559,6 +573,9 @@ async def _get_source_counts(user_id: UUID, workspace_id: UUID | None = None) ->
                 (SELECT COUNT(*) FROM history_events he
                  WHERE (he.workspace_id IN (SELECT workspace_id FROM workspace_members WHERE user_id = $1)
                     OR (he.workspace_id IS NULL AND he.created_by = $1))
+                   AND (he.workspace_id IS NULL OR """
+            + memory_service.workspace_owned_session_event_condition("he")
+            + """)
                    AND (he.workspace_id IS NULL OR """
             + memory_service.readable_session_event_condition("he", 1)
             + """)) AS events

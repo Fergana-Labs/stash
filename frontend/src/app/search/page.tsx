@@ -15,9 +15,11 @@ import {
   listStashes,
   listMyWorkspaces,
   searchWorkspaceEvents,
+  searchWorkspaceFiles,
   searchWorkspacePages,
   type PublicStashDetail,
   type SessionEvent,
+  type WorkspaceFileSearchResult,
   type WorkspaceHistoryEvent,
   type WorkspaceSidebar,
   type WorkspaceStash,
@@ -25,7 +27,7 @@ import {
 } from "../../lib/api";
 import type { Page, Workspace } from "../../lib/types";
 
-type ContentScope = "all" | "sessions" | "pages" | "stashes";
+type ContentScope = "all" | "sessions" | "files" | "pages" | "stashes";
 
 // Coarse buckets for analytics — actual counts have high cardinality
 // and add no signal beyond "no results / few / many."
@@ -39,7 +41,7 @@ function bucketCount(n: number): string {
 
 interface SearchResult {
   id: string;
-  kind: "Session" | "Page" | "Stash";
+  kind: "Session" | "File" | "Page" | "Stash";
   title: string;
   href: string;
   sourceName: string;
@@ -55,13 +57,16 @@ interface SearchableStash extends WorkspaceStash {
 const CONTENT_SCOPES: { id: ContentScope; label: string }[] = [
   { id: "all", label: "All" },
   { id: "sessions", label: "Sessions" },
+  { id: "files", label: "Files" },
   { id: "pages", label: "Pages" },
   { id: "stashes", label: "Stashes" },
 ];
 
 function initialContentScope(value: string | null, sessionId: string): ContentScope {
   if (sessionId) return "sessions";
-  if (value === "sessions" || value === "pages" || value === "stashes") return value;
+  if (value === "sessions" || value === "files" || value === "pages" || value === "stashes") {
+    return value;
+  }
   return "all";
 }
 
@@ -211,6 +216,7 @@ function SearchPageInner() {
     try {
       const nextResults: SearchResult[] = [];
       const includeSessions = contentScope === "all" || contentScope === "sessions";
+      const includeFiles = contentScope === "all" || contentScope === "files";
       const includePages = contentScope === "all" || contentScope === "pages";
       const includeStashes = contentScope === "all" || contentScope === "stashes";
       const workspace =
@@ -237,6 +243,7 @@ function SearchPageInner() {
         }
         nextResults.push(
           ...searchPublicStashItems(detail, q, {
+            includeFiles,
             includePages,
             includeSessions,
           })
@@ -288,6 +295,31 @@ function SearchPageInner() {
         );
         if (pageGroups.length < searchedWorkspaces.length) {
           setError("Page search is unavailable for one or more workspaces.");
+        }
+      }
+
+      if (includeFiles && !selectedPageId) {
+        const settledFileGroups = await Promise.allSettled(
+          searchedWorkspaces.map(async (workspace) => ({
+            workspace,
+            files: await searchWorkspaceFiles(workspace.id, q, 50),
+          }))
+        );
+        const fileGroups = settledFileGroups
+          .filter((result) => result.status === "fulfilled")
+          .map((result) => result.value);
+        const selectedSidebar = selectedWorkspaceId ? sidebars[selectedWorkspaceId] : undefined;
+        const folderIds = selectedSidebar
+          ? descendantFolderIds(selectedSidebar.files.folders, selectedFolderId)
+          : new Set<string>();
+        nextResults.push(
+          ...searchFiles(fileGroups, q, {
+            selectedFolderId,
+            folderIds,
+          })
+        );
+        if (fileGroups.length < searchedWorkspaces.length) {
+          setError("File search is unavailable for one or more workspaces.");
         }
       }
 
@@ -508,7 +540,7 @@ function SearchPageInner() {
             >
               <input
                 type="text"
-                placeholder="Search for a decision, transcript, Stash, or page..."
+                placeholder="Search for a decision, transcript, file, Stash, or page..."
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
                 className="min-w-0 flex-1 bg-transparent text-[15px] text-foreground placeholder:text-muted focus:outline-none"
@@ -745,6 +777,37 @@ function searchPages(
   );
 }
 
+function searchFiles(
+  groups: { workspace: Workspace; files: WorkspaceFileSearchResult[] }[],
+  query: string,
+  scope: {
+    selectedFolderId: string;
+    folderIds: Set<string>;
+  }
+): SearchResult[] {
+  return groups.flatMap(({ workspace, files }) =>
+    files
+      .filter((file) => {
+        if (!scope.selectedFolderId) return true;
+        return Boolean(file.folder_id && scope.folderIds.has(file.folder_id));
+      })
+      .map((file) => ({
+        id: file.id,
+        kind: "File" as const,
+        title: file.name,
+        href: `/workspaces/${workspace.id}/f/${file.id}`,
+        sourceName: workspace.name,
+        detail: file.search_text?.slice(0, 220) || file.content_type || "File",
+        updatedAt: file.updated_at,
+        relevance: scoreValues(query, [
+          { value: file.name, weight: 8 },
+          { value: file.search_text, weight: 3 },
+          { value: file.content_type, weight: 1 },
+        ]),
+      }))
+  );
+}
+
 function descendantFolderIds(
   folders: WorkspaceFolder[],
   selectedFolderId: string
@@ -774,11 +837,14 @@ function descendantFolderIds(
 function searchPublicStashItems(
   detail: PublicStashDetail,
   query: string,
-  scope: { includePages: boolean; includeSessions: boolean }
+  scope: { includeFiles: boolean; includePages: boolean; includeSessions: boolean }
 ): SearchResult[] {
   return detail.items.flatMap((item, index) => {
-    if (item.object_type === "folder" && scope.includePages) {
-      return searchPublicFolder(detail, item, index, query);
+    if (item.object_type === "folder" && (scope.includePages || scope.includeFiles)) {
+      return searchPublicFolder(detail, item, index, query, scope);
+    }
+    if (item.object_type === "file" && scope.includeFiles) {
+      return searchPublicFile(detail, item, index, query);
     }
     if (item.object_type === "page" && scope.includePages) {
       return searchPublicPage(detail, item, index, query);
@@ -790,11 +856,43 @@ function searchPublicStashItems(
   });
 }
 
-function searchPublicFolder(
+function searchPublicFile(
   detail: PublicStashDetail,
   item: PublicStashDetail["items"][number],
   index: number,
   query: string
+): SearchResult[] {
+  const inline = item.inline as {
+    name?: string;
+    content_type?: string;
+    size_bytes?: number;
+  };
+  const name = inline.name || item.label;
+  if (!textIncludes(query, name, inline.content_type)) return [];
+
+  return [
+    {
+      id: item.object_id,
+      kind: "File" as const,
+      title: name,
+      href: `/stashes/${detail.stash.slug}#item-${index}`,
+      sourceName: detail.stash.title,
+      detail: inline.content_type || "File in this Stash",
+      updatedAt: detail.stash.updated_at,
+      relevance: scoreValues(query, [
+        { value: name, weight: 8 },
+        { value: inline.content_type, weight: 1 },
+      ]),
+    },
+  ];
+}
+
+function searchPublicFolder(
+  detail: PublicStashDetail,
+  item: PublicStashDetail["items"][number],
+  index: number,
+  query: string,
+  scope: { includeFiles: boolean; includePages: boolean }
 ): SearchResult[] {
   const inline = item.inline as {
     pages?: {
@@ -804,9 +902,15 @@ function searchPublicFolder(
       content_html?: string | null;
       updated_at?: string | null;
     }[];
+    files?: {
+      id: string;
+      name: string;
+      content_type?: string | null;
+      created_at?: string | null;
+    }[];
   };
 
-  return (inline.pages ?? [])
+  const pageResults = scope.includePages ? (inline.pages ?? [])
     .filter((page) => textIncludes(query, page.name, page.content_markdown, page.content_html))
     .map((page) => ({
       id: `${item.object_id}:${page.id}`,
@@ -822,7 +926,24 @@ function searchPublicFolder(
         { value: stripHtml(page.content_html ?? ""), weight: 2 },
         { value: detail.stash.title, weight: 1 },
       ]),
-    }));
+    })) : [];
+  const fileResults = scope.includeFiles ? (inline.files ?? [])
+    .filter((file) => textIncludes(query, file.name, file.content_type))
+    .map((file) => ({
+      id: `${item.object_id}:${file.id}`,
+      kind: "File" as const,
+      title: file.name,
+      href: `/stashes/${detail.stash.slug}#item-${index}`,
+      sourceName: detail.stash.title,
+      detail: file.content_type || "File in this Stash",
+      updatedAt: file.created_at || detail.stash.updated_at,
+      relevance: scoreValues(query, [
+        { value: file.name, weight: 8 },
+        { value: file.content_type, weight: 1 },
+        { value: detail.stash.title, weight: 1 },
+      ]),
+    })) : [];
+  return [...pageResults, ...fileResults];
 }
 
 function searchPublicPage(

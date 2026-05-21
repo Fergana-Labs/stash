@@ -73,7 +73,32 @@ _STASH_COLS = (
 _STASH_FROM = "FROM stashes v JOIN users owner_user ON owner_user.id = v.owner_id"
 _STASH_SELECT = f"SELECT {_STASH_COLS} {_STASH_FROM}"
 
-_GENERAL_PERMISSION_VALUES = {"none", "read", "write"}
+_PERMISSION_RANK = {
+    "none": 0,
+    "view": 1,
+    "comment": 2,
+    "edit": 3,
+    "manage": 4,
+}
+_GENERAL_PERMISSION_VALUES = set(_PERMISSION_RANK)
+_MEMBER_PERMISSION_VALUES = {"view", "comment", "edit", "manage"}
+_OBJECT_TABLES = {
+    "folder": "folders",
+    "page": "pages",
+    "file": "files",
+    "table": "tables",
+    "session": "sessions",
+}
+
+
+def permission_allows(permission: str, required: str) -> bool:
+    return _PERMISSION_RANK[permission] >= _PERMISSION_RANK[required]
+
+
+def _storage_filename(path: str | None, default: str = "artifact") -> str:
+    if not path:
+        return default
+    return path.rstrip("/").rsplit("/", 1)[-1] or default
 
 
 def agent_install_pitch(stash_url: str) -> str:
@@ -140,7 +165,15 @@ async def _attach_items(stash: dict) -> dict:
 
 
 async def _is_anonymously_readable(stash: dict) -> bool:
-    return stash["public_permission"] != "none"
+    return permission_allows(stash["public_permission"], "view")
+
+
+def _is_isolated_stash(stash: dict) -> bool:
+    return (
+        stash.get("forked_from_stash_id") is not None
+        or _visibility_for_permissions(stash["workspace_permission"], stash["public_permission"])
+        == "private"
+    )
 
 
 def _mark_native(stash: dict) -> dict:
@@ -175,7 +208,15 @@ def _item_value(item, name: str):
     return getattr(item, name) if hasattr(item, name) else item[name]
 
 
-async def _validate_item_partition(conn, access: str, items: list, stash_id: UUID | None) -> None:
+async def _validate_item_partition(
+    conn,
+    access: str,
+    items: list,
+    stash_id: UUID | None,
+    *,
+    is_external: bool = False,
+) -> None:
+    target_isolated = is_external or access == "private"
     for item in items:
         object_type = _item_value(item, "object_type")
         object_id = _item_value(item, "object_id")
@@ -183,7 +224,7 @@ async def _validate_item_partition(conn, access: str, items: list, stash_id: UUI
         rows = []
         for target_type, target_id in targets:
             target_rows = await conn.fetch(
-                "SELECT s.id, CASE "
+                "SELECT s.id, s.forked_from_stash_id IS NOT NULL AS is_external, CASE "
                 "WHEN s.public_permission != 'none' THEN 'public' "
                 "WHEN s.workspace_permission != 'none' THEN 'workspace' "
                 "ELSE 'private' "
@@ -198,13 +239,14 @@ async def _validate_item_partition(conn, access: str, items: list, stash_id: UUI
             )
             rows.extend(target_rows)
         for row in rows:
-            if access == "private" and row["access"] != "private":
+            row_isolated = row["is_external"] or row["access"] == "private"
+            if target_isolated:
                 raise ValueError(
-                    "Private Stashes can only include items that are not in workspace or public Stashes"
+                    "Private and external Stashes can only include items that are not in another Stash"
                 )
-            if access != "private" and row["access"] == "private":
+            if row_isolated:
                 raise ValueError(
-                    "Items in private Stashes cannot be added to workspace or public Stashes"
+                    "Items in private or external Stashes cannot be added to workspace or public Stashes"
                 )
 
 
@@ -245,6 +287,81 @@ async def _partition_targets(conn, object_type: str, object_id: UUID) -> list[tu
     for target_type, target_id in targets:
         deduped[(target_type, target_id)] = None
     return list(deduped.keys())
+
+
+async def _set_object_isolation(
+    conn,
+    object_type: str,
+    object_id: UUID,
+    stash_id: UUID,
+    isolated: bool,
+) -> None:
+    if object_type not in _OBJECT_TABLES:
+        raise ValueError("Unsupported Stash item type")
+
+    table = _OBJECT_TABLES[object_type]
+    if isolated:
+        await conn.execute(
+            f"UPDATE {table} "
+            "SET metadata = jsonb_set(COALESCE(metadata, '{}'::jsonb), "
+            "'{shared_in_stash_id}', to_jsonb($2::text), true) "
+            "WHERE id = $1",
+            object_id,
+            str(stash_id),
+        )
+    else:
+        await conn.execute(
+            f"UPDATE {table} SET metadata = metadata - 'shared_in_stash_id' "
+            "WHERE id = $1 AND metadata->>'shared_in_stash_id' = $2",
+            object_id,
+            str(stash_id),
+        )
+
+    if object_type == "file":
+        linked_table_id = await conn.fetchval(
+            "SELECT linked_table_id FROM files WHERE id = $1",
+            object_id,
+        )
+        if linked_table_id:
+            await _set_object_isolation(conn, "table", linked_table_id, stash_id, isolated)
+
+
+async def _set_item_isolation(conn, stash_id: UUID, items: list, isolated: bool) -> None:
+    for item in items:
+        object_type = _item_value(item, "object_type")
+        object_id = _item_value(item, "object_id")
+        for target_type, target_id in await _partition_targets(conn, object_type, object_id):
+            await _set_object_isolation(conn, target_type, target_id, stash_id, isolated)
+
+
+async def _item_partition_set(conn, items: list) -> set[tuple[str, UUID]]:
+    targets = set()
+    for item in items:
+        object_type = _item_value(item, "object_type")
+        object_id = _item_value(item, "object_id")
+        for target_type, target_id in await _partition_targets(conn, object_type, object_id):
+            targets.add((target_type, target_id))
+    return targets
+
+
+async def _object_shared_in_stash(
+    conn,
+    object_type: str,
+    object_id: UUID,
+    stash_id: UUID,
+) -> bool:
+    if object_type not in _OBJECT_TABLES:
+        raise ValueError("Unsupported Stash item type")
+
+    table = _OBJECT_TABLES[object_type]
+    return (
+        await conn.fetchval(
+            f"SELECT metadata->>'shared_in_stash_id' = $2 FROM {table} WHERE id = $1",
+            object_id,
+            str(stash_id),
+        )
+        is True
+    )
 
 
 async def _containing_targets(conn, object_type: str, object_id: UUID) -> list[tuple[str, UUID]]:
@@ -316,6 +433,8 @@ async def create_stash(
                 cover_image_url,
                 icon_url,
             )
+            if access == "private":
+                await _set_item_isolation(conn, inserted["id"], items, True)
             await _replace_items(conn, inserted["id"], items)
     row = await pool.fetchrow(f"{_STASH_SELECT} WHERE v.id = $1", inserted["id"])
     out = dict(row)
@@ -352,16 +471,21 @@ async def _object_title(object_type: str, object_id: UUID) -> str:
 
 async def update_stash(
     stash_id: UUID,
-    user_id: UUID,
+    user_id: UUID | None,
     updates: dict,
 ) -> dict | None:
     pool = get_pool()
     stash = await pool.fetchrow(
-        "SELECT id, workspace_id, owner_id, workspace_permission, public_permission "
+        "SELECT id, workspace_id, owner_id, workspace_permission, public_permission, "
+        "forked_from_stash_id "
         "FROM stashes WHERE id = $1",
         stash_id,
     )
-    if not stash or not await user_can_manage(stash_id, user_id):
+    required_permission = "manage" if any(key != "items" for key in updates) else "edit"
+    if not stash or not permission_allows(
+        await _user_stash_permission(stash_id, user_id),
+        required_permission,
+    ):
         return None
     workspace_permission = updates.get("workspace_permission")
     public_permission = updates.get("public_permission")
@@ -377,6 +501,11 @@ async def update_stash(
     next_access = _visibility_for_permissions(next_workspace_permission, next_public_permission)
     if public_permission == "none" and updates.get("discoverable") is None:
         updates["discoverable"] = False
+
+    current_isolated = _is_isolated_stash(dict(stash))
+    is_external = stash["forked_from_stash_id"] is not None
+    next_isolated = next_access == "private" or is_external
+    storage_keys: list[str] = []
 
     sets, args, idx = [], [], 1
     clearable_fields = {"cover_image_url", "icon_url"}
@@ -400,6 +529,12 @@ async def update_stash(
 
     async with pool.acquire() as conn:
         async with conn.transaction():
+            current_items = []
+            if items is not None:
+                current_items = await conn.fetch(
+                    "SELECT object_type, object_id FROM stash_items WHERE stash_id = $1",
+                    stash_id,
+                )
             partition_items = items
             if partition_items is None and (
                 workspace_permission is not None or public_permission is not None
@@ -409,8 +544,22 @@ async def update_stash(
                     stash_id,
                 )
             if partition_items is not None:
-                await _validate_item_partition(conn, next_access, partition_items, stash_id)
+                await _validate_item_partition(
+                    conn,
+                    next_access,
+                    partition_items,
+                    stash_id,
+                    is_external=is_external,
+                )
+                await _set_item_isolation(conn, stash_id, partition_items, next_isolated)
             if items is not None:
+                storage_keys = await _release_removed_stash_items(
+                    conn,
+                    stash_id,
+                    current_items,
+                    items,
+                    delete_all_removed=current_isolated,
+                )
                 sets.append("updated_at = now()")
             if sets:
                 args.append(stash_id)
@@ -420,6 +569,9 @@ async def update_stash(
                 )
             if items is not None:
                 await _replace_items(conn, stash_id, items)
+
+    for storage_key in storage_keys:
+        await storage_service.delete_file(storage_key)
 
     row = await pool.fetchrow(f"{_STASH_SELECT} WHERE v.id = $1", stash_id)
     return await _attach_items(dict(row))
@@ -434,33 +586,57 @@ async def add_sessions_to_stash(
 ) -> None:
     if not session_ids:
         return
-    if not await user_can_manage(stash_id, user_id):
-        raise ValueError("Not allowed to manage this Stash")
+    if not await user_can_write(stash_id, user_id):
+        raise ValueError("Not allowed to edit this Stash")
 
     pool = get_pool()
-    stash = await pool.fetchrow(
-        "SELECT id, workspace_id FROM stashes WHERE id = $1",
-        stash_id,
-    )
-    if not stash or stash["workspace_id"] != workspace_id:
-        raise ValueError("Default Stash must be in this workspace")
-
-    rows = await pool.fetch(
-        "SELECT id, session_id FROM sessions "
-        "WHERE workspace_id = $1 AND session_id = ANY($2::varchar[]) "
-        "AND deleted_at IS NULL",
-        workspace_id,
-        session_ids,
-    )
-    if len(rows) != len(set(session_ids)):
-        raise ValueError("One or more sessions were not materialized")
-
-    start_position = await pool.fetchval(
-        "SELECT COALESCE(MAX(position), -1) + 1 FROM stash_items WHERE stash_id = $1",
-        stash_id,
-    )
     async with pool.acquire() as conn:
         async with conn.transaction():
+            stash = await conn.fetchrow(
+                "SELECT id, workspace_id, workspace_permission, public_permission, "
+                "forked_from_stash_id "
+                "FROM stashes WHERE id = $1",
+                stash_id,
+            )
+            if not stash or stash["workspace_id"] != workspace_id:
+                raise ValueError("Default Stash must be in this workspace")
+
+            rows = await conn.fetch(
+                "SELECT id, session_id FROM sessions "
+                "WHERE workspace_id = $1 AND session_id = ANY($2::varchar[]) "
+                "AND deleted_at IS NULL",
+                workspace_id,
+                session_ids,
+            )
+            if len(rows) != len(set(session_ids)):
+                raise ValueError("One or more sessions were not materialized")
+
+            access = _visibility_for_permissions(
+                stash["workspace_permission"],
+                stash["public_permission"],
+            )
+            is_external = stash["forked_from_stash_id"] is not None
+            items = [
+                {
+                    "object_type": "session",
+                    "object_id": row["id"],
+                    "label_override": row["session_id"],
+                }
+                for row in rows
+            ]
+            await _validate_item_partition(
+                conn,
+                access,
+                items,
+                stash_id,
+                is_external=is_external,
+            )
+            await _set_item_isolation(conn, stash_id, items, access == "private" or is_external)
+
+            start_position = await conn.fetchval(
+                "SELECT COALESCE(MAX(position), -1) + 1 FROM stash_items WHERE stash_id = $1",
+                stash_id,
+            )
             for offset, row in enumerate(rows):
                 await conn.execute(
                     "INSERT INTO stash_items "
@@ -474,11 +650,168 @@ async def add_sessions_to_stash(
                 )
 
 
-async def delete_stash(stash_id: UUID, user_id: UUID) -> bool:
+async def _delete_isolated_object(
+    conn,
+    object_type: str,
+    object_id: UUID,
+    storage_keys: list[str],
+    seen: dict[str, set[UUID]],
+) -> None:
+    if object_id in seen[object_type]:
+        return
+    seen[object_type].add(object_id)
+
+    if object_type == "folder":
+        child_folders = await conn.fetch(
+            "SELECT id FROM folders WHERE parent_folder_id = $1",
+            object_id,
+        )
+        for child in child_folders:
+            await _delete_isolated_object(conn, "folder", child["id"], storage_keys, seen)
+
+        pages = await conn.fetch("SELECT id FROM pages WHERE folder_id = $1", object_id)
+        for page in pages:
+            await _delete_isolated_object(conn, "page", page["id"], storage_keys, seen)
+
+        files = await conn.fetch("SELECT id FROM files WHERE folder_id = $1", object_id)
+        for file in files:
+            await _delete_isolated_object(conn, "file", file["id"], storage_keys, seen)
+
+        await conn.execute("DELETE FROM folders WHERE id = $1", object_id)
+        return
+
+    if object_type == "page":
+        await conn.execute("DELETE FROM pages WHERE id = $1", object_id)
+        return
+
+    if object_type == "table":
+        await conn.execute("DELETE FROM tables WHERE id = $1", object_id)
+        return
+
+    if object_type == "file":
+        file = await conn.fetchrow(
+            "SELECT storage_key, linked_table_id FROM files WHERE id = $1",
+            object_id,
+        )
+        if not file:
+            return
+        if file["storage_key"]:
+            storage_keys.append(file["storage_key"])
+        await conn.execute("DELETE FROM files WHERE id = $1", object_id)
+        if file["linked_table_id"]:
+            await _delete_isolated_object(
+                conn,
+                "table",
+                file["linked_table_id"],
+                storage_keys,
+                seen,
+            )
+        return
+
+    if object_type == "session":
+        session = await conn.fetchrow(
+            "SELECT workspace_id, session_id FROM sessions WHERE id = $1",
+            object_id,
+        )
+        if not session:
+            return
+        artifact_rows = await conn.fetch(
+            "SELECT storage_key FROM session_artifacts WHERE session_id = $1",
+            object_id,
+        )
+        storage_keys.extend(row["storage_key"] for row in artifact_rows if row["storage_key"])
+        await conn.execute("DELETE FROM session_artifacts WHERE session_id = $1", object_id)
+        await conn.execute(
+            "DELETE FROM history_events WHERE workspace_id = $1 AND session_id = $2",
+            session["workspace_id"],
+            session["session_id"],
+        )
+        await conn.execute("DELETE FROM sessions WHERE id = $1", object_id)
+        return
+
+    raise ValueError("Unsupported Stash item type")
+
+
+async def _delete_isolated_stash_contents(conn, stash_id: UUID) -> list[str]:
+    items = await conn.fetch(
+        "SELECT object_type, object_id FROM stash_items WHERE stash_id = $1 "
+        "ORDER BY object_type, object_id",
+        stash_id,
+    )
+    storage_keys: list[str] = []
+    seen = {object_type: set() for object_type in ("folder", "page", "table", "file", "session")}
+    for item in items:
+        await _delete_isolated_object(
+            conn,
+            item["object_type"],
+            item["object_id"],
+            storage_keys,
+            seen,
+        )
+    return storage_keys
+
+
+async def _release_removed_stash_items(
+    conn,
+    stash_id: UUID,
+    current_items: list,
+    next_items: list,
+    *,
+    delete_all_removed: bool,
+) -> list[str]:
+    current_targets = await _item_partition_set(conn, current_items)
+    next_targets = await _item_partition_set(conn, next_items)
+    removed_targets = current_targets - next_targets
+
+    storage_keys: list[str] = []
+    seen = {object_type: set() for object_type in _OBJECT_TABLES}
+    for object_type, object_id in sorted(
+        removed_targets,
+        key=lambda target: (target[0], str(target[1])),
+    ):
+        if delete_all_removed or await _object_shared_in_stash(
+            conn,
+            object_type,
+            object_id,
+            stash_id,
+        ):
+            await _delete_isolated_object(conn, object_type, object_id, storage_keys, seen)
+        else:
+            await _set_object_isolation(conn, object_type, object_id, stash_id, False)
+    return storage_keys
+
+
+async def delete_stash(stash_id: UUID, user_id: UUID | None) -> bool:
     pool = get_pool()
     if not await user_can_manage(stash_id, user_id):
         return False
-    result = await pool.execute("DELETE FROM stashes WHERE id = $1", stash_id)
+    storage_keys: list[str] = []
+    async with pool.acquire() as conn:
+        async with conn.transaction():
+            stash = await conn.fetchrow(
+                "SELECT id, workspace_permission, public_permission, forked_from_stash_id "
+                "FROM stashes WHERE id = $1",
+                stash_id,
+            )
+            if not stash:
+                return False
+            if _is_isolated_stash(dict(stash)):
+                storage_keys = await _delete_isolated_stash_contents(conn, stash_id)
+            else:
+                current_items = await conn.fetch(
+                    "SELECT object_type, object_id FROM stash_items WHERE stash_id = $1",
+                    stash_id,
+                )
+                storage_keys = await _release_removed_stash_items(
+                    conn,
+                    stash_id,
+                    current_items,
+                    [],
+                    delete_all_removed=False,
+                )
+            result = await conn.execute("DELETE FROM stashes WHERE id = $1", stash_id)
+    for storage_key in storage_keys:
+        await storage_service.delete_file(storage_key)
     return result == "DELETE 1"
 
 
@@ -579,6 +912,7 @@ async def _fork_page(
     workspace_id: UUID,
     folder_id: UUID | None,
     user_id: UUID,
+    shared_in_stash_id: UUID | None,
 ) -> UUID:
     page = await conn.fetchrow(
         "SELECT name, content_markdown, content_html, content_type, html_layout, metadata "
@@ -589,7 +923,10 @@ async def _fork_page(
         raise ValueError("Stash item page not found")
 
     metadata = dict(page["metadata"] or {})
-    metadata.pop("shared_in_stash_id", None)
+    if shared_in_stash_id:
+        metadata["shared_in_stash_id"] = str(shared_in_stash_id)
+    else:
+        metadata.pop("shared_in_stash_id", None)
     content_markdown = page["content_markdown"] or ""
     content_html = page["content_html"] or ""
     content_type = page["content_type"] or "markdown"
@@ -614,24 +951,37 @@ async def _fork_page(
     return row["id"]
 
 
-async def _fork_table(conn, source_table_id: UUID, *, workspace_id: UUID, user_id: UUID) -> UUID:
+async def _fork_table(
+    conn,
+    source_table_id: UUID,
+    *,
+    workspace_id: UUID,
+    user_id: UUID,
+    shared_in_stash_id: UUID | None,
+) -> UUID:
     table = await conn.fetchrow(
-        "SELECT name, description, columns, views, embedding_config FROM tables WHERE id = $1",
+        "SELECT name, description, columns, views, embedding_config, metadata FROM tables WHERE id = $1",
         source_table_id,
     )
     if not table:
         raise ValueError("Stash item table not found")
 
+    metadata = dict(table["metadata"] or {})
+    if shared_in_stash_id:
+        metadata["shared_in_stash_id"] = str(shared_in_stash_id)
+    else:
+        metadata.pop("shared_in_stash_id", None)
     new_table = await conn.fetchrow(
         "INSERT INTO tables "
-        "(workspace_id, name, description, columns, views, embedding_config, created_by, updated_by) "
-        "VALUES ($1, $2, $3, $4, $5, $6, $7, $7) RETURNING id",
+        "(workspace_id, name, description, columns, views, embedding_config, metadata, created_by, updated_by) "
+        "VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8, $8) RETURNING id",
         workspace_id,
         table["name"],
         table["description"],
         table["columns"],
         table["views"],
         table["embedding_config"],
+        metadata,
         user_id,
     )
     rows = await conn.fetch(
@@ -657,10 +1007,11 @@ async def _fork_file(
     workspace_id: UUID,
     folder_id: UUID | None,
     user_id: UUID,
+    shared_in_stash_id: UUID | None,
 ) -> UUID:
     file = await conn.fetchrow(
         "SELECT name, content_type, size_bytes, storage_key, extracted_text, extraction_status, "
-        "extraction_error, extraction_attempts, linked_table_id FROM files WHERE id = $1",
+        "extraction_error, extraction_attempts, linked_table_id, metadata FROM files WHERE id = $1",
         source_file_id,
     )
     if not file:
@@ -673,25 +1024,38 @@ async def _fork_file(
             file["linked_table_id"],
             workspace_id=workspace_id,
             user_id=user_id,
+            shared_in_stash_id=shared_in_stash_id,
         )
 
+    metadata = dict(file["metadata"] or {})
+    if shared_in_stash_id:
+        metadata["shared_in_stash_id"] = str(shared_in_stash_id)
+    else:
+        metadata.pop("shared_in_stash_id", None)
+    storage_key = await storage_service.copy_file(
+        file["storage_key"],
+        str(workspace_id),
+        file["name"],
+        file["content_type"],
+    )
     new_file = await conn.fetchrow(
         "INSERT INTO files "
         "(workspace_id, folder_id, name, content_type, size_bytes, storage_key, uploaded_by, "
-        "extracted_text, extraction_status, extraction_error, extraction_attempts, linked_table_id) "
-        "VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) RETURNING id",
+        "extracted_text, extraction_status, extraction_error, extraction_attempts, linked_table_id, metadata) "
+        "VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13::jsonb) RETURNING id",
         workspace_id,
         folder_id,
         file["name"],
         file["content_type"],
         file["size_bytes"],
-        file["storage_key"],
+        storage_key,
         user_id,
         file["extracted_text"],
         file["extraction_status"],
         file["extraction_error"],
         file["extraction_attempts"],
         linked_table_id,
+        metadata,
     )
     return new_file["id"]
 
@@ -703,17 +1067,26 @@ async def _fork_folder(
     workspace_id: UUID,
     parent_folder_id: UUID | None,
     user_id: UUID,
+    shared_in_stash_id: UUID | None,
 ) -> UUID:
-    folder = await conn.fetchrow("SELECT name FROM folders WHERE id = $1", source_folder_id)
+    folder = await conn.fetchrow(
+        "SELECT name, metadata FROM folders WHERE id = $1", source_folder_id
+    )
     if not folder:
         raise ValueError("Stash item folder not found")
 
+    metadata = dict(folder["metadata"] or {})
+    if shared_in_stash_id:
+        metadata["shared_in_stash_id"] = str(shared_in_stash_id)
+    else:
+        metadata.pop("shared_in_stash_id", None)
     new_folder = await conn.fetchrow(
-        "INSERT INTO folders (workspace_id, parent_folder_id, name, created_by) "
-        "VALUES ($1, $2, $3, $4) RETURNING id",
+        "INSERT INTO folders (workspace_id, parent_folder_id, name, metadata, created_by) "
+        "VALUES ($1, $2, $3, $4::jsonb, $5) RETURNING id",
         workspace_id,
         parent_folder_id,
         folder["name"],
+        metadata,
         user_id,
     )
 
@@ -728,6 +1101,7 @@ async def _fork_folder(
             workspace_id=workspace_id,
             parent_folder_id=new_folder["id"],
             user_id=user_id,
+            shared_in_stash_id=shared_in_stash_id,
         )
 
     pages = await conn.fetch(
@@ -741,6 +1115,7 @@ async def _fork_folder(
             workspace_id=workspace_id,
             folder_id=new_folder["id"],
             user_id=user_id,
+            shared_in_stash_id=shared_in_stash_id,
         )
 
     files = await conn.fetch(
@@ -754,6 +1129,7 @@ async def _fork_folder(
             workspace_id=workspace_id,
             folder_id=new_folder["id"],
             user_id=user_id,
+            shared_in_stash_id=shared_in_stash_id,
         )
 
     return new_folder["id"]
@@ -765,21 +1141,27 @@ async def _fork_session(
     *,
     workspace_id: UUID,
     user_id: UUID,
+    shared_in_stash_id: UUID | None,
 ) -> UUID:
     session = await conn.fetchrow(
         "SELECT workspace_id, session_id, agent_name, cwd, files_touched, started_at, "
-        "finished_at, created_by FROM sessions WHERE id = $1",
+        "finished_at, created_by, metadata FROM sessions WHERE id = $1",
         source_session_id,
     )
     if not session:
         raise ValueError("Stash item session not found")
 
     forked_session_id = f"{session['session_id']}-fork-{source_session_id.hex[:8]}"
+    metadata = dict(session["metadata"] or {})
+    if shared_in_stash_id:
+        metadata["shared_in_stash_id"] = str(shared_in_stash_id)
+    else:
+        metadata.pop("shared_in_stash_id", None)
     new_session = await conn.fetchrow(
         "INSERT INTO sessions "
         "(workspace_id, session_id, agent_name, cwd, files_touched, started_at, "
-        "finished_at, created_by) "
-        "VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7, $8) RETURNING id",
+        "finished_at, created_by, metadata) "
+        "VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7, $8, $9::jsonb) RETURNING id",
         workspace_id,
         forked_session_id,
         session["agent_name"],
@@ -788,6 +1170,7 @@ async def _fork_session(
         session["started_at"],
         session["finished_at"],
         session["created_by"] or user_id,
+        metadata,
     )
 
     events = await conn.fetch(
@@ -821,12 +1204,18 @@ async def _fork_session(
         source_session_id,
     )
     for artifact in artifacts:
+        storage_key = await storage_service.copy_file(
+            artifact["storage_key"],
+            str(workspace_id),
+            _storage_filename(artifact["file_path"]),
+            "application/octet-stream",
+        )
         await conn.execute(
             "INSERT INTO session_artifacts (session_id, file_path, storage_key, size_bytes, created_at) "
             "VALUES ($1, $2, $3, $4, $5)",
             new_session["id"],
             artifact["file_path"],
-            artifact["storage_key"],
+            storage_key,
             artifact["size_bytes"],
             artifact["created_at"],
         )
@@ -841,6 +1230,7 @@ async def _fork_object(
     *,
     workspace_id: UUID,
     user_id: UUID,
+    shared_in_stash_id: UUID | None = None,
 ) -> UUID:
     if object_type == "folder":
         return await _fork_folder(
@@ -849,6 +1239,7 @@ async def _fork_object(
             workspace_id=workspace_id,
             parent_folder_id=None,
             user_id=user_id,
+            shared_in_stash_id=shared_in_stash_id,
         )
     if object_type == "page":
         return await _fork_page(
@@ -857,6 +1248,7 @@ async def _fork_object(
             workspace_id=workspace_id,
             folder_id=None,
             user_id=user_id,
+            shared_in_stash_id=shared_in_stash_id,
         )
     if object_type == "file":
         return await _fork_file(
@@ -865,11 +1257,24 @@ async def _fork_object(
             workspace_id=workspace_id,
             folder_id=None,
             user_id=user_id,
+            shared_in_stash_id=shared_in_stash_id,
         )
     if object_type == "table":
-        return await _fork_table(conn, object_id, workspace_id=workspace_id, user_id=user_id)
+        return await _fork_table(
+            conn,
+            object_id,
+            workspace_id=workspace_id,
+            user_id=user_id,
+            shared_in_stash_id=shared_in_stash_id,
+        )
     if object_type == "session":
-        return await _fork_session(conn, object_id, workspace_id=workspace_id, user_id=user_id)
+        return await _fork_session(
+            conn,
+            object_id,
+            workspace_id=workspace_id,
+            user_id=user_id,
+            shared_in_stash_id=shared_in_stash_id,
+        )
     raise ValueError("Unsupported Stash item type")
 
 
@@ -906,7 +1311,7 @@ async def add_external_stash(workspace_id: UUID, slug: str, added_by: UUID) -> d
                 "(workspace_id, slug, title, description, owner_id, workspace_permission, "
                 "public_permission, discoverable, "
                 "cover_image_url, icon_url, forked_from_stash_id) "
-                "VALUES ($1, $2, $3, $4, $5, 'read', 'none', false, $6, $7, $8) "
+                "VALUES ($1, $2, $3, $4, $5, 'edit', 'none', false, $6, $7, $8) "
                 "RETURNING id",
                 workspace_id,
                 _slugify(stash["title"]),
@@ -925,6 +1330,7 @@ async def add_external_stash(workspace_id: UUID, slug: str, added_by: UUID) -> d
                     item["object_id"],
                     workspace_id=workspace_id,
                     user_id=added_by,
+                    shared_in_stash_id=inserted["id"],
                 )
                 forked_items.append(
                     {
@@ -955,10 +1361,9 @@ async def remove_external_stash(workspace_id: UUID, stash_id: UUID, user_id: UUI
         workspace_id,
         stash_id,
     )
-    if not stash or not await user_can_manage(stash_id, user_id):
+    if not stash:
         return False
-    result = await pool.execute("DELETE FROM stashes WHERE id = $1", stash_id)
-    return result == "DELETE 1"
+    return await delete_stash(stash_id, user_id)
 
 
 async def list_object_stashes(
@@ -1020,7 +1425,7 @@ async def get_public_stash(slug: str, viewer_id: UUID | None = None) -> dict | N
 
 async def create_shared_page(
     stash_id: UUID,
-    user_id: UUID,
+    user_id: UUID | None,
     *,
     name: str,
     content: str,
@@ -1033,6 +1438,10 @@ async def create_shared_page(
         return None
     if not await user_can_write(stash_id, user_id):
         raise PermissionError("Not allowed to edit this stash")
+    if user_id is None:
+        from . import user_service
+
+        user_id = await user_service.get_public_guest_user_id()
 
     page = await files_tree_service.create_page(
         stash["workspace_id"],
@@ -1493,23 +1902,42 @@ def items_to_text(title: str, items: list[dict]) -> str:
     return "\n\n".join(parts)
 
 
-async def user_can_manage(stash_id: UUID, user_id: UUID) -> bool:
-    return await user_can_write(stash_id, user_id)
-
-
-async def user_can_admin(stash_id: UUID, user_id: UUID) -> bool:
+async def _user_stash_permission(stash_id: UUID, user_id: UUID | None) -> str:
     pool = get_pool()
-    row = await pool.fetchrow("SELECT workspace_id, owner_id FROM stashes WHERE id = $1", stash_id)
+    row = await pool.fetchrow(
+        "SELECT workspace_id, owner_id, workspace_permission, public_permission "
+        "FROM stashes WHERE id = $1",
+        stash_id,
+    )
     if not row:
-        return False
+        return "none"
+    if permission_allows(row["public_permission"], "view"):
+        best = row["public_permission"]
+    else:
+        best = "none"
+    if user_id is None:
+        return best
     if row["owner_id"] == user_id:
-        return True
+        return "manage"
     member = await pool.fetchrow(
         "SELECT permission FROM stash_members WHERE stash_id = $1 AND user_id = $2",
         stash_id,
         user_id,
     )
-    return bool(member and member["permission"] == "admin")
+    if member and permission_allows(member["permission"], best):
+        best = member["permission"]
+    role = await workspace_service.get_member_role(row["workspace_id"], user_id)
+    if role is not None and permission_allows(row["workspace_permission"], best):
+        best = row["workspace_permission"]
+    return best
+
+
+async def user_can_manage(stash_id: UUID, user_id: UUID | None) -> bool:
+    return permission_allows(await _user_stash_permission(stash_id, user_id), "manage")
+
+
+async def user_can_comment(stash_id: UUID, user_id: UUID | None) -> bool:
+    return permission_allows(await _user_stash_permission(stash_id, user_id), "comment")
 
 
 async def list_members(stash_id: UUID) -> list[dict]:
@@ -1531,7 +1959,7 @@ async def add_member(
     permission: str,
     granted_by: UUID,
 ) -> dict | None:
-    if permission not in {"read", "write", "admin"}:
+    if permission not in _MEMBER_PERMISSION_VALUES:
         raise ValueError("Invalid Stash permission")
 
     pool = get_pool()
@@ -1588,54 +2016,9 @@ async def remove_member(stash_id: UUID, user_id: UUID) -> bool:
     return removed
 
 
-async def user_can_write(stash_id: UUID, user_id: UUID) -> bool:
-    """Stash writes require owner/admin, explicit write, or general edit access."""
-    pool = get_pool()
-    row = await pool.fetchrow(
-        "SELECT workspace_id, owner_id, workspace_permission, public_permission "
-        "FROM stashes WHERE id = $1",
-        stash_id,
-    )
-    if not row:
-        return False
-    if row["owner_id"] == user_id:
-        return True
-    member = await pool.fetchrow(
-        "SELECT permission FROM stash_members WHERE stash_id = $1 AND user_id = $2",
-        stash_id,
-        user_id,
-    )
-    if member and member["permission"] in ("write", "admin"):
-        return True
-    role = await workspace_service.get_member_role(row["workspace_id"], user_id)
-    if role is not None and row["workspace_permission"] == "write":
-        return True
-    return row["public_permission"] == "write"
+async def user_can_write(stash_id: UUID, user_id: UUID | None) -> bool:
+    return permission_allows(await _user_stash_permission(stash_id, user_id), "edit")
 
 
 async def user_can_read(stash_id: UUID, user_id: UUID | None) -> bool:
-    pool = get_pool()
-    row = await pool.fetchrow(
-        "SELECT workspace_id, owner_id, workspace_permission, public_permission "
-        "FROM stashes WHERE id = $1",
-        stash_id,
-    )
-    if not row:
-        return False
-    if row["public_permission"] != "none":
-        return True
-    if user_id is None:
-        return False
-    if row["owner_id"] == user_id:
-        return True
-    role = await workspace_service.get_member_role(row["workspace_id"], user_id)
-    member = await pool.fetchrow(
-        "SELECT 1 FROM stash_members WHERE stash_id = $1 AND user_id = $2",
-        stash_id,
-        user_id,
-    )
-    if member is not None:
-        return True
-    if row["workspace_permission"] != "none":
-        return role is not None
-    return False
+    return permission_allows(await _user_stash_permission(stash_id, user_id), "view")

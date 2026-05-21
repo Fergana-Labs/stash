@@ -15,11 +15,11 @@ def _post_stub_client():
 
 def test_stash_permissions_for_access() -> None:
     assert stash_permissions_for_access("public") == {
-        "workspace_permission": "read",
-        "public_permission": "read",
+        "workspace_permission": "view",
+        "public_permission": "view",
     }
     assert stash_permissions_for_access("workspace") == {
-        "workspace_permission": "read",
+        "workspace_permission": "view",
         "public_permission": "none",
     }
     assert stash_permissions_for_access("private") == {
@@ -39,7 +39,7 @@ def test_create_stash_uses_permission_fields() -> None:
             {
                 "title": "Launch notes",
                 "description": "",
-                "workspace_permission": "read",
+                "workspace_permission": "view",
                 "public_permission": "none",
                 "discoverable": False,
                 "items": [{"object_type": "folder", "object_id": "F1"}],
@@ -59,8 +59,8 @@ def test_publish_stash_uses_public_permission_fields() -> None:
             {
                 "title": "Launch notes",
                 "description": "",
-                "workspace_permission": "read",
-                "public_permission": "read",
+                "workspace_permission": "view",
+                "public_permission": "view",
                 "discoverable": False,
                 "items": [{"object_type": "folder", "object_id": "F1"}],
             },

@@ -13,7 +13,9 @@ async def delete_file(file_id: UUID, workspace_id: UUID, deleted_by: UUID) -> bo
     pool = get_pool()
     result = await pool.execute(
         "UPDATE files SET deleted_at = NOW(), deleted_by = $3 "
-        "WHERE id = $1 AND workspace_id = $2 AND deleted_at IS NULL",
+        "WHERE id = $1 AND workspace_id = $2 "
+        "AND COALESCE(metadata->>'shared_in_stash_id', '') = '' "
+        "AND deleted_at IS NULL",
         file_id,
         workspace_id,
         deleted_by,
@@ -25,7 +27,9 @@ async def restore_file(file_id: UUID, workspace_id: UUID) -> bool:
     pool = get_pool()
     result = await pool.execute(
         "UPDATE files SET deleted_at = NULL, deleted_by = NULL "
-        "WHERE id = $1 AND workspace_id = $2 AND deleted_at IS NOT NULL",
+        "WHERE id = $1 AND workspace_id = $2 "
+        "AND COALESCE(metadata->>'shared_in_stash_id', '') = '' "
+        "AND deleted_at IS NOT NULL",
         file_id,
         workspace_id,
     )
@@ -37,7 +41,9 @@ async def get_trashed_file(file_id: UUID, workspace_id: UUID) -> dict | None:
     pool = get_pool()
     row = await pool.fetchrow(
         "SELECT id, storage_key FROM files "
-        "WHERE id = $1 AND workspace_id = $2 AND deleted_at IS NOT NULL",
+        "WHERE id = $1 AND workspace_id = $2 "
+        "AND COALESCE(metadata->>'shared_in_stash_id', '') = '' "
+        "AND deleted_at IS NOT NULL",
         file_id,
         workspace_id,
     )
@@ -47,7 +53,9 @@ async def get_trashed_file(file_id: UUID, workspace_id: UUID) -> dict | None:
 async def purge_file(file_id: UUID, workspace_id: UUID) -> bool:
     pool = get_pool()
     result = await pool.execute(
-        "DELETE FROM files WHERE id = $1 AND workspace_id = $2 AND deleted_at IS NOT NULL",
+        "DELETE FROM files WHERE id = $1 AND workspace_id = $2 "
+        "AND COALESCE(metadata->>'shared_in_stash_id', '') = '' "
+        "AND deleted_at IS NOT NULL",
         file_id,
         workspace_id,
     )
@@ -59,7 +67,9 @@ async def list_trashed_files(workspace_id: UUID) -> list[dict]:
     rows = await pool.fetch(
         "SELECT id, workspace_id, folder_id, name, content_type, size_bytes, "
         "deleted_at, deleted_by "
-        "FROM files WHERE workspace_id = $1 AND deleted_at IS NOT NULL "
+        "FROM files WHERE workspace_id = $1 "
+        "AND COALESCE(metadata->>'shared_in_stash_id', '') = '' "
+        "AND deleted_at IS NOT NULL "
         "ORDER BY deleted_at DESC",
         workspace_id,
     )

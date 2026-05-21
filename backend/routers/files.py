@@ -276,6 +276,7 @@ async def list_ws_files(
     rows = await pool.fetch(
         "SELECT id, workspace_id, folder_id, name, content_type, size_bytes, storage_key, uploaded_by, created_at, linked_table_id "
         "FROM files f WHERE f.workspace_id = $1 AND f.deleted_at IS NULL "
+        "AND COALESCE(f.metadata->>'shared_in_stash_id', '') = '' "
         f"AND {readable_file} "
         "ORDER BY created_at DESC",
         workspace_id,
@@ -297,6 +298,7 @@ async def get_ws_file(
     row = await pool.fetchrow(
         "SELECT id, workspace_id, folder_id, name, content_type, size_bytes, storage_key, uploaded_by, created_at, linked_table_id "
         "FROM files f WHERE f.id = $1 AND f.workspace_id = $2 AND f.deleted_at IS NULL "
+        "AND COALESCE(f.metadata->>'shared_in_stash_id', '') = '' "
         f"AND {readable_file}",
         file_id,
         workspace_id,
@@ -317,7 +319,9 @@ async def download_ws_file(
     pool = get_pool()
     row = await pool.fetchrow(
         "SELECT name, content_type, storage_key FROM files "
-        "WHERE id = $1 AND workspace_id = $2 AND deleted_at IS NULL",
+        "WHERE id = $1 AND workspace_id = $2 "
+        "AND COALESCE(metadata->>'shared_in_stash_id', '') = '' "
+        "AND deleted_at IS NULL",
         file_id,
         workspace_id,
     )
@@ -352,6 +356,7 @@ async def get_ws_file_text(
     row = await pool.fetchrow(
         "SELECT extracted_text, extraction_status, extraction_error "
         "FROM files f WHERE f.id = $1 AND f.workspace_id = $2 AND f.deleted_at IS NULL "
+        "AND COALESCE(f.metadata->>'shared_in_stash_id', '') = '' "
         f"AND {readable_file}",
         file_id,
         workspace_id,
@@ -379,7 +384,9 @@ async def update_ws_file(
     await _check_write(workspace_id, current_user["id"])
     pool = get_pool()
     file_row = await pool.fetchrow(
-        "SELECT * FROM files WHERE id = $1 AND workspace_id = $2 AND deleted_at IS NULL",
+        "SELECT * FROM files WHERE id = $1 AND workspace_id = $2 "
+        "AND COALESCE(metadata->>'shared_in_stash_id', '') = '' "
+        "AND deleted_at IS NULL",
         file_id,
         workspace_id,
     )
@@ -424,7 +431,9 @@ async def update_ws_file(
     params.append(workspace_id)
     ws_pos = len(params)
     updated = await pool.fetchrow(
-        f"UPDATE files SET {', '.join(updates)} WHERE id = ${file_id_pos} AND workspace_id = ${ws_pos} RETURNING *",
+        f"UPDATE files SET {', '.join(updates)} "
+        f"WHERE id = ${file_id_pos} AND workspace_id = ${ws_pos} "
+        "AND COALESCE(metadata->>'shared_in_stash_id', '') = '' RETURNING *",
         *params,
     )
     return await _file_to_response(dict(updated))
@@ -497,7 +506,9 @@ async def ingest_csv_file(
     pool = get_pool()
     row = await pool.fetchrow(
         "SELECT id, workspace_id, name, content_type, storage_key, linked_table_id "
-        "FROM files WHERE id = $1 AND workspace_id = $2 AND deleted_at IS NULL",
+        "FROM files WHERE id = $1 AND workspace_id = $2 "
+        "AND COALESCE(metadata->>'shared_in_stash_id', '') = '' "
+        "AND deleted_at IS NULL",
         file_id,
         workspace_id,
     )

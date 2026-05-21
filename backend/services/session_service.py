@@ -8,8 +8,9 @@ from ..database import get_pool
 
 _SELECT_COLS = (
     "id, workspace_id, session_id, agent_name, cwd, files_touched, "
-    "started_at, finished_at, created_by"
+    "started_at, finished_at, created_by, metadata"
 )
+_WORKSPACE_SESSION_FILTER = "COALESCE(metadata->>'shared_in_stash_id', '') = ''"
 
 
 async def upsert_session(
@@ -46,7 +47,8 @@ async def get_session(workspace_id: UUID, session_id: str) -> dict | None:
     pool = get_pool()
     row = await pool.fetchrow(
         f"SELECT {_SELECT_COLS} FROM sessions "
-        "WHERE workspace_id = $1 AND session_id = $2 AND deleted_at IS NULL",
+        f"WHERE workspace_id = $1 AND session_id = $2 AND {_WORKSPACE_SESSION_FILTER} "
+        "AND deleted_at IS NULL",
         workspace_id,
         session_id,
     )
@@ -56,7 +58,8 @@ async def get_session(workspace_id: UUID, session_id: str) -> dict | None:
 async def get_session_by_id(session_row_id: UUID) -> dict | None:
     pool = get_pool()
     row = await pool.fetchrow(
-        f"SELECT {_SELECT_COLS} FROM sessions WHERE id = $1 AND deleted_at IS NULL",
+        f"SELECT {_SELECT_COLS} FROM sessions "
+        f"WHERE id = $1 AND {_WORKSPACE_SESSION_FILTER} AND deleted_at IS NULL",
         session_row_id,
     )
     return dict(row) if row else None
@@ -77,7 +80,8 @@ async def delete_session(session_row_id: UUID, workspace_id: UUID, deleted_by: U
     pool = get_pool()
     result = await pool.execute(
         "UPDATE sessions SET deleted_at = NOW(), deleted_by = $3 "
-        "WHERE id = $1 AND workspace_id = $2 AND deleted_at IS NULL",
+        f"WHERE id = $1 AND workspace_id = $2 AND {_WORKSPACE_SESSION_FILTER} "
+        "AND deleted_at IS NULL",
         session_row_id,
         workspace_id,
         deleted_by,
@@ -89,7 +93,8 @@ async def restore_session(session_row_id: UUID, workspace_id: UUID) -> bool:
     pool = get_pool()
     result = await pool.execute(
         "UPDATE sessions SET deleted_at = NULL, deleted_by = NULL "
-        "WHERE id = $1 AND workspace_id = $2 AND deleted_at IS NOT NULL",
+        f"WHERE id = $1 AND workspace_id = $2 AND {_WORKSPACE_SESSION_FILTER} "
+        "AND deleted_at IS NOT NULL",
         session_row_id,
         workspace_id,
     )

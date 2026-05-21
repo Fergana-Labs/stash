@@ -90,13 +90,13 @@ export default function StashPageClient({ slug }: { slug: string }) {
   // shell-chrome context would loop (AppShell re-renders → StashPageClient
   // re-renders → new node identity → setShareAction → AppShell re-renders).
   const stash = data?.stash ?? null;
-  const canWrite = data?.can_write ?? false;
+  const canManage = data?.can_manage ?? false;
   const shareAction = useMemo(
     () =>
       stash ? (
-        <StashShareButton stash={stash} canWrite={canWrite} onChanged={load} />
+        <StashShareButton stash={stash} canManage={canManage} onChanged={load} />
       ) : null,
-    [stash, canWrite, load],
+    [stash, canManage, load],
   );
   useShareAction(shareAction);
 
@@ -146,7 +146,7 @@ function StashPageBody({
   data: PublicStashDetail;
   onRefresh: () => Promise<void>;
 }) {
-  const { stash, workspace_name, items, can_write } = data;
+  const { stash, workspace_name, items, can_edit, can_manage } = data;
   const groups = groupStashItems(items);
   const primary = primaryItemForStash(data);
   const displayedItemCount = primary ? 1 : items.length;
@@ -197,11 +197,11 @@ function StashPageBody({
 
   return (
     <div className="scroll-thin min-h-screen bg-background">
-      {/* Cover banner — click to upload (when can_write). Mirrors the
+      {/* Cover banner — click to upload (when can_manage). Mirrors the
           workspace home identity strip but with edit affordance. */}
       <BannerImage
         cover={cover}
-        canWrite={can_write}
+        canWrite={can_manage}
         workspaceId={stash.workspace_id}
         stashId={stash.id}
         hasCustomCover={!!stash.cover_image_url}
@@ -214,7 +214,7 @@ function StashPageBody({
           <div className="flex min-w-0 items-center gap-3">
             <StashIconUpload
               iconUrl={stash.icon_url}
-              canWrite={can_write}
+              canWrite={can_manage}
               workspaceId={stash.workspace_id}
               stashId={stash.id}
               onChanged={onRefresh}
@@ -246,16 +246,18 @@ function StashPageBody({
             </div>
           </div>
           <div className="flex flex-shrink-0 items-center gap-1.5 pt-1">
-            {can_write ? (
+            {can_edit ? (
               <>
-                <Link
-                  href={`/stashes/${stash.slug}/settings`}
-                  title="Stash settings"
-                  aria-label="Stash settings"
-                  className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted hover:bg-raised hover:text-foreground"
-                >
-                  <SettingsIcon />
-                </Link>
+                {can_manage && (
+                  <Link
+                    href={`/stashes/${stash.slug}/settings`}
+                    title="Stash settings"
+                    aria-label="Stash settings"
+                    className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted hover:bg-raised hover:text-foreground"
+                  >
+                    <SettingsIcon />
+                  </Link>
+                )}
                 <button
                   type="button"
                   onClick={() => setAddOpen(true)}
@@ -266,7 +268,7 @@ function StashPageBody({
               </>
             ) : (
               // Forking only makes sense when the viewer doesn't already have
-              // write access to this stash in its own workspace.
+              // edit access to this stash in its own workspace.
               <AddToWorkspaceButton
                 slug={stash.slug}
                 sourceWorkspaceId={stash.workspace_id}
@@ -279,7 +281,7 @@ function StashPageBody({
           stashId={stash.id}
           workspaceId={stash.workspace_id}
           description={stash.description}
-          canEdit={can_write}
+          canEdit={can_manage}
           onSaved={() => {
             void onRefresh();
           }}
@@ -334,7 +336,7 @@ function StashPageBody({
               {items.length === 0 && (
                 <div className="rounded-lg border border-dashed border-border bg-surface/30 px-4 py-10 text-center text-[13px] text-muted">
                   No items yet.{" "}
-                  {can_write && (
+                  {can_edit && (
                     <button
                       type="button"
                       onClick={() => setAddOpen(true)}
@@ -388,7 +390,7 @@ function StashPageBody({
         )}
       </div>
 
-      {can_write && (
+      {can_edit && (
         <AddToStashModal
           open={addOpen}
           onClose={() => setAddOpen(false)}

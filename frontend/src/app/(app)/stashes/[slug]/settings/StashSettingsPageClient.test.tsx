@@ -90,8 +90,8 @@ function stashDetail(
       owner_name: "henry",
       owner_display_name: "Henry",
       access: "public",
-      workspace_permission: "read",
-      public_permission: "read",
+      workspace_permission: "view",
+      public_permission: "view",
       discoverable: false,
       cover_image_url: null,
       icon_url: null,
@@ -106,7 +106,9 @@ function stashDetail(
     },
     workspace_name: "Demo Workspace",
     items: [],
-    can_write: true,
+    can_comment: true,
+    can_edit: true,
+    can_manage: true,
   };
 }
 

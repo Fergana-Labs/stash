@@ -63,7 +63,7 @@ describe("StashShareModal session sharing", () => {
       owner_name: "henry",
       owner_display_name: "Henry",
       access: "workspace",
-      workspace_permission: "read",
+      workspace_permission: "view",
       public_permission: "none",
       discoverable: false,
       cover_image_url: null,
@@ -113,7 +113,7 @@ describe("StashShareModal session sharing", () => {
             label_override: "Debug auth flow",
           },
         ],
-        { workspace_permission: "read", public_permission: "none" }
+        { workspace_permission: "view", public_permission: "none" }
       )
     );
     await waitFor(() =>

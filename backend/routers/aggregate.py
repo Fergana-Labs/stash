@@ -82,7 +82,10 @@ async def list_activity(
                  aw.name AS workspace_name
           FROM history_events he
           JOIN accessible_workspaces aw ON aw.id = he.workspace_id
+          JOIN sessions s ON s.workspace_id = he.workspace_id
+            AND s.session_id = he.session_id
           WHERE he.session_id IS NOT NULL
+            AND COALESCE(s.metadata->>'shared_in_stash_id', '') = ''
             AND """
         + memory_service.readable_session_event_condition("he", 1)
         + """
@@ -117,6 +120,7 @@ async def list_activity(
           FROM files f
           JOIN accessible_workspaces aw ON aw.id = f.workspace_id
           WHERE f.deleted_at IS NULL
+            AND COALESCE(f.metadata->>'shared_in_stash_id', '') = ''
             AND """
         + permission_service.readable_content_condition("file", "f", 1)
         + """

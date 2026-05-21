@@ -22,9 +22,10 @@ type StashVisibility = "private" | "workspace" | "public";
 type HandoffStatus = "idle" | "copying" | "copied" | "error";
 
 const PERMISSION_OPTIONS: { value: StashMemberPermission; label: string }[] = [
-  { value: "read", label: "Read" },
-  { value: "write", label: "Write" },
-  { value: "admin", label: "Admin" },
+  { value: "view", label: "View" },
+  { value: "comment", label: "Comment" },
+  { value: "edit", label: "Edit" },
+  { value: "manage", label: "Manage" },
 ];
 
 const VISIBILITY_OPTIONS: { value: StashVisibility; label: string }[] = [
@@ -35,14 +36,18 @@ const VISIBILITY_OPTIONS: { value: StashVisibility; label: string }[] = [
 
 const WORKSPACE_PERMISSION_OPTIONS: { value: StashGeneralPermission; label: string }[] = [
   { value: "none", label: "No access" },
-  { value: "read", label: "Can view" },
-  { value: "write", label: "Can edit" },
+  { value: "view", label: "Can view" },
+  { value: "comment", label: "Can comment" },
+  { value: "edit", label: "Can edit" },
+  { value: "manage", label: "Can manage" },
 ];
 
 const PUBLIC_PERMISSION_OPTIONS: { value: StashGeneralPermission; label: string }[] = [
   { value: "none", label: "No access" },
-  { value: "read", label: "Can view" },
-  { value: "write", label: "Can edit" },
+  { value: "view", label: "Can view" },
+  { value: "comment", label: "Can comment" },
+  { value: "edit", label: "Can edit" },
+  { value: "manage", label: "Can manage" },
 ];
 
 const PALETTE = [
@@ -76,23 +81,23 @@ function permissionsForVisibility(
   }
   if (visibility === "workspace") {
     return {
-      workspacePermission: workspacePermission === "none" ? "read" : workspacePermission,
+      workspacePermission: workspacePermission === "none" ? "view" : workspacePermission,
       publicPermission: "none",
     };
   }
   return {
-    workspacePermission: workspacePermission === "none" ? "read" : workspacePermission,
-    publicPermission: publicPermission === "none" ? "read" : publicPermission,
+    workspacePermission: workspacePermission === "none" ? "view" : workspacePermission,
+    publicPermission: publicPermission === "none" ? "view" : publicPermission,
   };
 }
 
 export default function StashShareButton({
   stash,
-  canWrite,
+  canManage,
   onChanged,
 }: {
   stash: PublicStashDetail["stash"];
-  canWrite: boolean;
+  canManage: boolean;
   onChanged: () => Promise<void>;
 }) {
   const [open, setOpen] = useState(false);
@@ -115,7 +120,7 @@ export default function StashShareButton({
   const [userQuery, setUserQuery] = useState("");
   const [userResults, setUserResults] = useState<UserSearchResult[]>([]);
   const [newMemberPermission, setNewMemberPermission] =
-    useState<StashMemberPermission>("read");
+    useState<StashMemberPermission>("view");
   const popoverRef = useRef<HTMLDivElement>(null);
 
   useEscapeKey(open, () => setOpen(false));
@@ -130,12 +135,12 @@ export default function StashShareButton({
     setMembersLoading(true);
     setMemberMessage("");
     try {
-      const [nextMembers, me] = await Promise.all([
+      const [nextMembers, meResult] = await Promise.all([
         listStashMembers(stash.id),
-        getMe(),
+        getMe().catch(() => null),
       ]);
       setMembers(nextMembers);
-      setMeId(me.id);
+      setMeId(meResult?.id ?? null);
       setCanManageMembers(true);
     } catch (e) {
       if (e instanceof ApiError && e.status === 403) {
@@ -162,7 +167,7 @@ export default function StashShareButton({
   }, [open]);
 
   useEffect(() => {
-    if (!open || !canWrite) return;
+    if (!open || !canManage) return;
 
     setShareMessage("");
     setMemberMessage("");
@@ -170,7 +175,7 @@ export default function StashShareButton({
     setUserResults([]);
     setCopied(false);
     void loadMembers();
-  }, [open, canWrite, loadMembers]);
+  }, [open, canManage, loadMembers]);
 
   async function copyLink() {
     try {
@@ -189,13 +194,13 @@ export default function StashShareButton({
     setHandoffMessage("");
     try {
       if (publicPermission === "none") {
-        if (!canWrite) {
-          throw new Error("Only Stash editors can create public agent links.");
+        if (!canManage) {
+          throw new Error("Only Stash managers can create public agent links.");
         }
         const updated = await updateStash(stash.id, {
           workspace_permission:
-            workspacePermission === "none" ? "read" : workspacePermission,
-          public_permission: "read",
+            workspacePermission === "none" ? "view" : workspacePermission,
+          public_permission: "view",
           discoverable: false,
         });
         setWorkspacePermission(updated.workspace_permission);
@@ -394,7 +399,7 @@ export default function StashShareButton({
             </button>
           </div>
 
-          {canWrite && (
+          {canManage && (
             <>
               <div className="sys-label mb-1 mt-3">General access</div>
               <div className="flex flex-col gap-1">
@@ -525,7 +530,7 @@ export default function StashShareButton({
 
                 {!membersLoading && !canManageMembers && (
                   <div className="mt-2 rounded-md border border-border bg-surface px-2 py-1.5 text-[12px] text-muted">
-                    Only Stash admins can manage members.
+                    Only Stash managers can manage members.
                   </div>
                 )}
               </div>
@@ -556,7 +561,7 @@ function OwnerRow({ label, username }: { label: string; username: string }) {
         <span className="block truncate text-[11.5px] text-muted">@{username}</span>
       </span>
       <span className="rounded bg-base px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-muted ring-1 ring-border">
-        admin
+        manage
       </span>
     </div>
   );

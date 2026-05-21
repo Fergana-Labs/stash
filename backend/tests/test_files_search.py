@@ -78,3 +78,35 @@ async def test_search_pages_finds_html_page_text(client: AsyncClient) -> None:
     pages = resp.json()["pages"]
     assert [page["name"] for page in pages] == ["HTML Guide"]
     assert pages[0]["content_type"] == "html"
+
+
+@pytest.mark.asyncio
+async def test_search_files_finds_workspace_files(client: AsyncClient, pool) -> None:
+    api_key = await _register(client)
+    headers = _auth(api_key)
+    workspace = (
+        await client.post("/api/v1/workspaces", json={"name": "Searchable files"}, headers=headers)
+    ).json()
+    user = (await client.get("/api/v1/users/me", headers=headers)).json()
+
+    await pool.execute(
+        "INSERT INTO files "
+        "(workspace_id, name, content_type, size_bytes, storage_key, uploaded_by, "
+        "extracted_text, extraction_status) "
+        "VALUES ($1, 'pricing-matrix.txt', 'text/plain', 36, $2, $3, $4, 'completed')",
+        workspace["id"],
+        f"{workspace['id']}/pricing-matrix.txt",
+        user["id"],
+        "enterprise pricing tiers",
+    )
+
+    resp = await client.get(
+        f"/api/v1/workspaces/{workspace['id']}/files/search",
+        params={"q": "pricing", "limit": 10},
+        headers=headers,
+    )
+
+    assert resp.status_code == 200
+    files = resp.json()["files"]
+    assert [file["name"] for file in files] == ["pricing-matrix.txt"]
+    assert files[0]["search_text"] == "enterprise pricing tiers"
