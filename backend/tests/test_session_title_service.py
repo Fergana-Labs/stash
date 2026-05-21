@@ -3,7 +3,11 @@ from uuid import UUID
 import pytest
 
 from backend.services import session_title_service
-from backend.services.session_title_service import title_from_events, title_from_text
+from backend.services.session_title_service import (
+    clean_generated_title,
+    title_from_events,
+    title_from_text,
+)
 
 
 def test_title_from_text_uses_first_non_empty_line():
@@ -65,6 +69,15 @@ def test_title_from_text_uses_linear_issue_title():
 
 def test_title_from_text_falls_back_to_session_id_for_empty_text():
     assert title_from_text("", "session-1") == "session-1"
+
+
+def test_clean_generated_title_strips_markdown_heading_prefixes():
+    assert clean_generated_title("# Update CLI API Shape for Stash Publishing") == (
+        "Update CLI API Shape for Stash Publishing"
+    )
+    assert clean_generated_title("Title: **Review Stash PRD for Contradictions**") == (
+        "Review Stash PRD for Contradictions"
+    )
 
 
 @pytest.mark.asyncio

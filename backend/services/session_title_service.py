@@ -110,6 +110,15 @@ def title_from_events(events: list[dict], session_id: str) -> str:
     return session_id
 
 
+def clean_generated_title(text: str) -> str:
+    title = re.sub(r"\s+", " ", text).strip("`\"' ")
+    title = re.sub(r"^\s*title:\s*", "", title, flags=re.IGNORECASE)
+    title = _strip_markdown(title)
+    if not title:
+        return ""
+    return _truncate(_first_clause(title))
+
+
 def _title_from_first_matching_event(events: list[dict], event_types: tuple[str, ...]) -> str:
     for event in events:
         if event.get("event_type") not in event_types:

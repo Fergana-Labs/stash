@@ -262,7 +262,7 @@ function NavRow({
     <Link
       href={href}
       className={
-        "page-row group/nav flex min-w-0 items-center gap-2 rounded-md px-2 py-1 text-[13px] transition-colors " +
+        "page-row group/nav flex min-w-0 items-center gap-1.5 rounded-md px-2 py-1 text-[13px] transition-colors " +
         (active
           ? "bg-[var(--color-brand-50)] text-[var(--color-brand-800)]"
           : "text-dim hover:bg-raised hover:text-foreground")
@@ -270,8 +270,8 @@ function NavRow({
       onClick={onClick}
       onContextMenu={onContextMenu}
     >
-      <span className="flex h-4 w-4 items-center justify-center text-[14px]">{icon}</span>
-      <span className="min-w-0 flex-1 truncate">{label}</span>
+      <span className="flex h-4 w-4 shrink-0 items-center justify-center text-[14px]">{icon}</span>
+      <span className="min-w-0 flex-1 truncate" title={label}>{label}</span>
       {trailing}
     </Link>
   );
@@ -559,7 +559,17 @@ function fileIconClass(contentType: string | undefined): string {
 
 function sessionLabelForSidebar(session: WorkspaceSidebarSession): string {
   const raw = (session.title || session.session_id).trim();
-  return raw.length > 26 ? `${raw.slice(0, 26)}…` : raw;
+  return cleanSessionTitle(raw) || session.session_id;
+}
+
+function cleanSessionTitle(title: string): string {
+  return title
+    .replace(/^\s*title:\s*/i, "")
+    .replace(/^\s{0,3}#{1,6}\s*/, "")
+    .replace(/\*\*/g, "")
+    .replace(/__/g, "")
+    .replace(/`/g, "")
+    .trim();
 }
 
 function primarySessionTicket(session: WorkspaceSidebarSession) {
@@ -597,7 +607,7 @@ function sessionTimestamp(session: WorkspaceSidebarSession): number {
   return date ? date.getTime() : 0;
 }
 
-type SessionTimestampMode = "time" | "dateTime";
+type SessionTimestampMode = "time" | "date" | "dateTime";
 
 function formatSessionSidebarTimestamp(
   session: WorkspaceSidebarSession,
@@ -615,6 +625,7 @@ function formatSessionSidebarTimestamp(
   const time = `${hour}:${minutes}${suffix}`;
 
   if (mode === "time") return time;
+  if (mode === "date") return `${month}/${day}`;
   return `${month}/${day} ${time}`;
 }
 
@@ -672,7 +683,7 @@ function SessionRowTrailing({
   timestampMode?: SessionTimestampMode;
 }) {
   return (
-    <span className="ml-1 flex shrink-0 items-center gap-1">
+    <span className="ml-0.5 flex shrink-0 items-center gap-1">
       <SessionTicketPill ticket={primarySessionTicket(session)} />
       <SessionRowTimestamp session={session} active={active} mode={timestampMode} />
     </span>
@@ -1297,7 +1308,7 @@ function SessionTreeDetails({
   const visibleUsers = group.users.slice(0, visibleUserLimit);
   const hiddenUserCount = group.users.length - visibleUsers.length;
   const timestampMode: SessionTimestampMode =
-    group.bucket === "day" ? "time" : "dateTime";
+    group.bucket === "day" ? "time" : "date";
 
   useEffect(() => {
     if (hasActiveSession) setOpen(true);

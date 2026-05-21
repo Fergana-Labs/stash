@@ -19,10 +19,7 @@ def _clean_text(text: str) -> str:
 
 
 def _clean_title(text: str) -> str:
-    title = _clean_text(text).strip("`\"' ")
-    if title.lower().startswith("title:"):
-        title = title[6:].strip()
-    return session_title_service._truncate(title)
+    return session_title_service.clean_generated_title(text)
 
 
 async def _session_stats(workspace_id: UUID, session_id: str) -> dict | None:
