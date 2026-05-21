@@ -1,4 +1,4 @@
-import { Code, CodeBlock, H3, P, Title, Subtitle } from "../components";
+import { Code, CodeBlock, H3, Title, Subtitle } from "../components";
 
 export default function SelfHostingPage() {
   return (
@@ -28,10 +28,6 @@ stash login`}</CodeBlock>
       <H3>Upgrading</H3>
       <CodeBlock>{`git pull
 docker compose up -d --build`}</CodeBlock>
-      <P>
-        Migrations run automatically on backend startup.
-        See <Code>.env.example</Code> for all available configuration options.
-      </P>
     </>
   );
 }
