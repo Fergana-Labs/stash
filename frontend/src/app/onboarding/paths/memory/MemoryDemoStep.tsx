@@ -12,37 +12,24 @@ type Overview = {
   };
 };
 
-// Step 2: the elevator pitch. A side-by-side panel showing the cost of
-// re-explaining context to a stateless agent vs. asking a one-liner of an
-// agent that has memory. The "topic" is pulled from the user's actual
-// workspace when possible (a recent page name, or a recent session ID)
-// so the example feels personal; falls back to a canned example otherwise.
+// Step 2: the elevator pitch. Stylized timeline diagram contrasting the
+// long context-establishing dance you'd do without memory vs. the single
+// line you'd say with it. Topic is pulled from the user's workspace when
+// possible; falls back to a generic example.
 export default function MemoryDemoStep({ workspaceId }: StepCtx) {
   const [topic, setTopic] = useState<string | null>(null);
-  const [grounding, setGrounding] = useState<
-    | { kind: "none" }
-    | { kind: "sessions"; count: number }
-    | { kind: "pages"; count: number }
-  >({ kind: "none" });
 
   useEffect(() => {
     if (!workspaceId) return;
     apiFetch<Overview>(`/api/v1/workspaces/${workspaceId}/overview`)
       .then((o) => {
-        const sessions = o.sessions ?? [];
         const pages = o.files?.pages ?? [];
+        const sessions = o.sessions ?? [];
         if (pages.length > 0) {
           setTopic(pages[0].name);
         } else if (sessions.length > 0) {
           const s = sessions[0];
           setTopic(s.name || s.session_id || "your last session");
-        }
-        if (sessions.length > 0) {
-          setGrounding({ kind: "sessions", count: sessions.length });
-        } else if (pages.length > 0) {
-          setGrounding({ kind: "pages", count: pages.length });
-        } else {
-          setGrounding({ kind: "none" });
         }
       })
       .catch(() => {});
@@ -50,91 +37,105 @@ export default function MemoryDemoStep({ workspaceId }: StepCtx) {
 
   const displayTopic = topic ?? "the API gateway refactor";
 
+  const beforeSteps = [
+    `Paste 3,200 chars from last week's session about ${displayTopic}`,
+    "Restate the open questions",
+    "List the constraints again",
+    "Recap what we tried and what didn't work",
+    `“OK, now keep going on ${displayTopic}.”`,
+  ];
+
+  const afterSteps = [
+    {
+      text: `“Pick up where we left off on ${displayTopic}.”`,
+      emphasis: true,
+    },
+  ];
+
   return (
     <div className="space-y-6">
-      <div className="space-y-2">
-        <h1 className="font-display text-[28px] leading-[1.1] font-bold tracking-tight text-foreground">
-          Stop re-explaining yourself to your agent
-        </h1>
-        <p className="text-sm text-dim max-w-md">
-          Every conversation, the agent forgets. You re-paste context, restate
-          constraints, replay the last decision. With memory of your past
-          sessions, you just pick up the thread.
-        </p>
+      <h1 className="font-display text-[28px] leading-[1.1] font-bold tracking-tight text-foreground">
+        Stop re-explaining yourself
+      </h1>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <Column
+          label="Without memory"
+          tone="muted"
+          steps={beforeSteps.map((s) => ({ text: s, emphasis: false }))}
+        />
+        <Column label="With Stash" tone="brand" steps={afterSteps} />
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-        <div className="rounded-xl border border-border-subtle bg-background/40 p-4 opacity-70 min-h-[200px] flex flex-col">
-          <div className="text-[10px] font-mono uppercase tracking-wider text-muted mb-2">
-            Without memory
-          </div>
-          <pre className="font-mono text-[10.5px] text-muted leading-snug whitespace-pre-wrap flex-1">
-{`# Context
-
-Last week I was working on
-${displayTopic}. Here's where
-I left off:
-
-[paste 3,200 chars of the
- session transcript]
-[restate the open questions]
-[list the constraints again]
-[mention the dead ends]
-
-OK, continue from there.`}
-          </pre>
-        </div>
-
-        <div className="rounded-xl border border-brand bg-brand/5 p-4 min-h-[200px] flex flex-col">
-          <div className="text-[10px] font-mono uppercase tracking-wider text-brand mb-2">
-            With Stash
-          </div>
-          <div className="flex-1 flex flex-col gap-3">
-            <div className="font-mono text-[12.5px] text-foreground">
-              Pick up where we left off on{" "}
-              <span className="text-brand">{displayTopic}</span>.
-            </div>
-            <GroundingBadge grounding={grounding} />
-            <div className="mt-auto text-[11px] text-muted italic leading-relaxed">
-              Same conversation, no scaffolding. Your agent already knows the
-              context.
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <p className="text-[11.5px] text-dim leading-relaxed">
-        Stash saves you the prompt-writing tax: the long context dumps, the
-        repeated explanations, the back-and-forth to get your agent caught up.
+      <p className="text-center text-[15px] font-display font-semibold tracking-tight text-foreground pt-2">
+        Stop re-explaining. Start where you left off.
       </p>
     </div>
   );
 }
 
-function GroundingBadge({
-  grounding,
+type Step = { text: string; emphasis: boolean };
+
+function Column({
+  label,
+  tone,
+  steps,
 }: {
-  grounding:
-    | { kind: "none" }
-    | { kind: "sessions"; count: number }
-    | { kind: "pages"; count: number };
+  label: string;
+  tone: "muted" | "brand";
+  steps: Step[];
 }) {
-  if (grounding.kind === "none") {
-    return (
-      <div className="inline-flex items-center gap-1.5 self-start rounded-full bg-background/60 border border-border-subtle px-2 py-0.5 text-[10.5px] text-muted">
-        <span className="w-1 h-1 rounded-full bg-muted" />
-        what your agent would know
-      </div>
-    );
-  }
-  const label =
-    grounding.kind === "sessions"
-      ? `grounded on your ${grounding.count} session${grounding.count === 1 ? "" : "s"}`
-      : `grounded on your ${grounding.count} page${grounding.count === 1 ? "" : "s"}`;
+  const isBrand = tone === "brand";
   return (
-    <div className="inline-flex items-center gap-1.5 self-start rounded-full bg-background/60 border border-border-subtle px-2 py-0.5 text-[10.5px] text-muted">
-      <span className="w-1 h-1 rounded-full bg-brand" />
-      {label}
+    <div
+      className={`rounded-xl border p-5 min-h-[280px] flex flex-col ${
+        isBrand
+          ? "border-brand bg-brand/5"
+          : "border-border-subtle bg-background/40"
+      }`}
+    >
+      <div
+        className={`text-[10px] font-mono uppercase tracking-wider mb-4 ${
+          isBrand ? "text-brand" : "text-muted"
+        }`}
+      >
+        {label}
+      </div>
+
+      <ol className="relative flex flex-col gap-3">
+        {steps.map((step, i) => (
+          <li key={i} className="relative flex items-start gap-3">
+            {/* connector line down to next bullet */}
+            {i < steps.length - 1 && (
+              <span
+                className={`absolute left-[5px] top-[14px] bottom-[-12px] w-px ${
+                  isBrand ? "bg-brand/40" : "bg-border"
+                }`}
+                aria-hidden
+              />
+            )}
+            <span
+              className={`mt-[3px] block h-2.5 w-2.5 shrink-0 rounded-full border-2 ${
+                isBrand
+                  ? "border-brand bg-brand"
+                  : "border-border-subtle bg-background"
+              }`}
+              aria-hidden
+            />
+            <span
+              className={`text-[12.5px] leading-relaxed ${
+                step.emphasis
+                  ? "text-foreground font-medium"
+                  : isBrand
+                    ? "text-foreground"
+                    : "text-muted"
+              }`}
+            >
+              {step.text}
+            </span>
+          </li>
+        ))}
+      </ol>
     </div>
   );
 }
