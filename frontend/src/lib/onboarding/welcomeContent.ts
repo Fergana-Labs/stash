@@ -2,7 +2,7 @@
 // on first onboarding completion. The DescriptionEditor (Tiptap) accepts
 // standard HTML, so we author plain strings.
 //
-// Design intent: a starter doc the user will delete. Concise, no fluff.
+// Design intent: a starter doc the user can keep or delete. Concise.
 
 import type { PathId, MigrantSource } from "./paths";
 
@@ -68,43 +68,38 @@ export function generateWelcomeHtml(inputs: WelcomeInputs): string {
     parts.push(`<ul>${wrap.map((w) => `<li>${w}</li>`).join("")}</ul>`);
   }
 
-  // What to try next — imports lead, then Discover, invite, CLI.
   parts.push(`<h2>What to try next</h2>`);
   parts.push(
     `<ul>
-      <li><strong><a href="/onboarding?path=migrant&amp;step=2&amp;source=notion">Import from Notion</a></strong> — pages, databases, and sub-pages.</li>
-      <li><strong><a href="/onboarding?path=migrant&amp;step=2&amp;source=github">Import from GitHub</a></strong> — markdown becomes pages, everything else lands in Files.</li>
-      <li><strong><a href="/onboarding?path=migrant&amp;step=2&amp;source=obsidian">Import from Obsidian</a></strong> — drop your vault folder; every note becomes a collaboratively-edited page.</li>
-      <li><strong><a href="/onboarding?path=migrant&amp;step=2&amp;source=drive">Import from Google Drive</a></strong> — folders, Docs, Sheets.</li>
-      <li><strong><a href="/discover">Discover &amp; install Stashes</a></strong> — browse what others have published; copy any of them into your workspace.</li>
-      <li><strong>Invite a teammate</strong>${
+      <li><strong><a href="/onboarding?path=migrant">Import your existing data</a></strong> — Notion, GitHub, Obsidian, Google Drive.</li>
+      <li><strong><a href="/discover">Discover &amp; install Stashes</a></strong> — browse skills and knowledge others have published; copy into this workspace.</li>
+      <li><strong>Invite a teammate to this workspace</strong>${
         inviteLink
-          ? ` — share <a href="${escapeAttr(inviteLink)}">${escapeHtml(inviteLink)}</a>. Two cursors on the same markdown page is a real thing here.`
+          ? ` — share <a href="${escapeAttr(inviteLink)}">${escapeHtml(inviteLink)}</a>.`
           : ` from workspace settings.`
       }</li>
       <li><strong>Install the CLI</strong> — let your coding agent use Stash directly: <code>npm i -g @joinstash/cli</code></li>
     </ul>`,
   );
 
-  // 3-layer mental model.
   parts.push(`<h2>How Stash works</h2>`);
   parts.push(
-    `<p>Three layers, top down:</p>
+    `<p>Everything is organized within a <strong>Workspace</strong>. This is a shared hopper for everything agents produce or consume: session transcripts, HTML pages, markdown docs, images, tables, raw files. Structured or not. Within it, there are three main structures:</p>
     <ul>
-      <li><strong>Data</strong> — a hopper for everything your agent produces or consumes: <code>.jsonl</code> session transcripts, HTML pages, markdown docs, images, tables, raw files. Structured or not.</li>
-      <li><strong>Workspace</strong> — your private container. Everything you import or generate lands here; your agent reads from here.</li>
-      <li><strong>Stashes</strong> — virtual sub-workspaces. Bundle any subset of your workspace data into a Stash; share it with a public link (view or edit), or invite teammates to your workspace.</li>
+      <li><strong>Stashes</strong> — virtual sub-workspaces. Bundle any subset of workspace data into a Stash; share to the public or make it private to everyone else in the workspace. This becomes the go-to point for teams, workstreams, or projects (e.g. LinkedIn marketing, Backend infra team, Kernel optimization reading group).</li>
+      <li><strong>Files</strong> — a file system for documents (e.g. markdown, HTML, images, PDF, CSV). Built so agents can natively use it.</li>
+      <li><strong>Sessions</strong> — history of conversations between users and agents. Automatically pushed from your agent of choice (e.g. Claude Code, Codex, OpenCode).</li>
     </ul>`,
   );
 
-  // Compressed feature reference.
   parts.push(`<h2>What this product does</h2>`);
   parts.push(
     `<ul>
-      <li>Real-time collaborative editing on every markdown page (two cursors at once).</li>
-      <li>Ask questions about everything you&rsquo;ve imported — your agent is grounded on your stuff.</li>
-      <li>Search across your full corpus.</li>
-      <li>CLI &amp; coding-agent integrations.</li>
+      <li><strong>Real-time collaborative editing</strong> on every markdown page (two cursors at once).</li>
+      <li>Remember everything, not just the pretty docs — automatically <strong>store and index your agent sessions</strong>.</li>
+      <li><strong>Built for agents.</strong> Use what they&rsquo;re natively fluent in: markdown, HTML, and virtual filesystems.</li>
+      <li><strong>Search and ask about everything</strong> you&rsquo;ve added — your agent is grounded on your stuff.</li>
+      <li><strong>Sharing as a first-class feature.</strong> Share a deck with a client, or let your teams&rsquo; agents work together.</li>
     </ul>`,
   );
 
