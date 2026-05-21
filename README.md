@@ -130,17 +130,21 @@ The local UI runs at `http://localhost:3457` and the API runs at
 `http://localhost:3456`. Continue once the health check prints
 `{"status":"ok"}`.
 
-Install the CLI in the repo you want to connect. The CLI package is the same
-for managed and self-hosted Stash; `base_url` tells it to use your local API.
+Install the CLI, then run the first-run login flow from the repo you want to
+connect. The CLI package is the same for managed and self-hosted Stash;
+`base_url` tells it to use your local API.
 
 ```bash
 pip install stashai
-stash config base_url http://localhost:3456
-stash register alice --password 'choose-a-password'
 
 cd /path/to/the/repo/you/want/to/connect
-stash connect
+stash config base_url http://localhost:3456
+stash login
 ```
+
+`stash login` opens the local UI so you can register or sign in, then walks
+through agent and repo setup. If you are already logged in and only need to
+connect another repo, run `stash connect` from that repo.
 
 ### Local seed data
 
