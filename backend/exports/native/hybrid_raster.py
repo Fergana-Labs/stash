@@ -63,8 +63,86 @@ async def rasterize_targets(
                                         "raster target missing on slide %s: %s", slide_idx, sel
                                     )
                                     continue
-                                png = await handle.screenshot(type="png", omit_background=False)
-                                results[(slide_idx, sel)] = png
+                                # Bail early if the element isn't visible —
+                                # the screenshot call would otherwise spin
+                                # for the default 30 s timeout retrying
+                                # scrollIntoView on a hidden box.
+                                if not await handle.is_visible():
+                                    logger.warning(
+                                        "raster target not visible on slide %s: %s",
+                                        slide_idx,
+                                        sel,
+                                    )
+                                    continue
+                                # When capturing a slide-section background
+                                # we don't want the section's children in
+                                # the shot — we only need gradient / pattern.
+                                # Native text shapes get composited on top
+                                # by the builder. Without this strip the
+                                # raster contains the text TOO, leading to
+                                # visible duplicates in PowerPoint.
+                                is_section_bg = sel.startswith("body > section.slide")
+                                if is_section_bg:
+                                    await page.evaluate(
+                                        """(sel) => {
+                                            const el = document.querySelector(sel);
+                                            if (!el) return;
+                                            el.dataset.__nativeBgHidden = '1';
+                                            for (const c of Array.from(el.children)) {
+                                                c.dataset.__nativeBgPrevVis = c.style.visibility || '';
+                                                c.style.visibility = 'hidden';
+                                            }
+                                        }""",
+                                        sel,
+                                    )
+                                try:
+                                    # For non-background captures use a
+                                    # viewport-clipped screenshot rather than
+                                    # element-screenshot — Chart.js-style
+                                    # responsive elements can grow past the
+                                    # slide (canvas height 2186 in a 1080
+                                    # slide), so we want just the visible
+                                    # area, not the whole element.
+                                    if is_section_bg:
+                                        png = await handle.screenshot(
+                                            type="png", omit_background=False, timeout=5000
+                                        )
+                                    else:
+                                        box = await handle.bounding_box()
+                                        if not box:
+                                            continue
+                                        clip = {
+                                            "x": max(0.0, float(box["x"])),
+                                            "y": max(0.0, float(box["y"])),
+                                            "width": min(
+                                                float(SLIDE_WIDTH_PX) - max(0.0, float(box["x"])),
+                                                float(box["width"]),
+                                            ),
+                                            "height": min(
+                                                float(SLIDE_HEIGHT_PX) - max(0.0, float(box["y"])),
+                                                float(box["height"]),
+                                            ),
+                                        }
+                                        if clip["width"] < 4 or clip["height"] < 4:
+                                            continue
+                                        png = await page.screenshot(
+                                            type="png", clip=clip, timeout=5000
+                                        )
+                                    results[(slide_idx, sel)] = png
+                                finally:
+                                    if is_section_bg:
+                                        await page.evaluate(
+                                            """(sel) => {
+                                                const el = document.querySelector(sel);
+                                                if (!el || !el.dataset.__nativeBgHidden) return;
+                                                for (const c of Array.from(el.children)) {
+                                                    c.style.visibility = c.dataset.__nativeBgPrevVis || '';
+                                                    delete c.dataset.__nativeBgPrevVis;
+                                                }
+                                                delete el.dataset.__nativeBgHidden;
+                                            }""",
+                                            sel,
+                                        )
                             except Exception:
                                 logger.exception(
                                     "raster screenshot failed for %s on slide %s",

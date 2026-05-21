@@ -63,11 +63,19 @@ _PROBE_JS = r"""
 
   function relRect(el) {
     const r = el.getBoundingClientRect();
+    // Clip to the slide canvas. Chart.js + responsive grids can size
+    // elements far past the 1920x1080 slide; without clipping the
+    // builder maps the full extent into PPTX coordinates and the
+    // shape ends up extending below the visible page.
+    const x = Math.max(0, r.left - slideRect.left);
+    const y = Math.max(0, r.top - slideRect.top);
+    const right = Math.min(slideRect.width, r.right - slideRect.left);
+    const bottom = Math.min(slideRect.height, r.bottom - slideRect.top);
     return {
-      x: r.left - slideRect.left,
-      y: r.top - slideRect.top,
-      w: r.width,
-      h: r.height,
+      x,
+      y,
+      w: Math.max(0, right - x),
+      h: Math.max(0, bottom - y),
     };
   }
 
@@ -87,9 +95,15 @@ _PROBE_JS = r"""
     const parts = m[1].split(',').map(p => parseFloat(p.trim()));
     if (parts.length >= 3) {
       const [r, g, b, a = 1] = parts;
-      if (a < 0.05) return null;
+      // Use a low alpha cutoff so semi-transparent chip backgrounds
+      // (rgba(255,255,255,0.06) style) still get captured as a colour.
+      // We blend with white for the simple solid-fill case PPTX wants.
+      if (a < 0.02) return null;
+      const blend = (c) => Math.round(c * a + 255 * (1 - a));
       const h = (n) => Math.max(0, Math.min(255, Math.round(n))).toString(16).padStart(2, '0');
-      return '#' + h(r) + h(g) + h(b);
+      // For nearly-opaque fills, preserve original colour exactly.
+      if (a >= 0.95) return '#' + h(r) + h(g) + h(b);
+      return '#' + h(blend(r)) + h(blend(g)) + h(blend(b));
     }
     return s;
   }
@@ -124,6 +138,9 @@ _PROBE_JS = r"""
   function isTextLeaf(el) {
     for (const child of el.children) {
       if (!INLINE_TAGS.has(child.tagName)) return false;
+      // An inline child with its own background is a chip / pill — emit it
+      // as its own shape later, not absorbed into the parent paragraph.
+      if (colorToHex(getComputedStyle(child).backgroundColor)) return false;
     }
     return el.textContent.trim().length > 0;
   }
@@ -188,12 +205,17 @@ _PROBE_JS = r"""
         return v && fs ? v / fs : 1.2;
       })(),
     };
+    // If the text-leaf itself has a non-default background (chip / pill /
+    // labeled callout), bake it into the shape so the builder emits a real
+    // coloured rectangle with the text inside instead of a transparent
+    // textbox over the slide bg.
+    const ownBg = colorToHex(style.backgroundColor);
     return {
       kind: 'text',
       bbox: relRect(el),
       z: 0,
       paragraphs: [para],
-      bg_color: null,
+      bg_color: ownBg,
       padding_px: [
         parseFloat(style.paddingTop) || 0,
         parseFloat(style.paddingRight) || 0,
@@ -305,8 +327,21 @@ _PROBE_JS = r"""
     }
     if (el.tagName === 'TABLE') { shapes.push(tableShape(el)); return; }
 
+    // Promote an inline element to a standalone text shape when it has its
+    // own background — that's how the slides skill (and most decks) build
+    // chips and pills: <span class="chip" style="background:..."> ... </span>.
+    // Without this, the chip text gets absorbed into the parent paragraph
+    // and the background is lost entirely.
+    const ownBgHex = colorToHex(style.backgroundColor);
+    const looksLikeChip = (
+      INLINE_TAGS.has(el.tagName) &&
+      ownBgHex &&
+      el.textContent.trim().length > 0 &&
+      isTextLeaf(el)
+    );
+
     const textBlock = TEXT_BLOCK_TAGS.has(el.tagName) || CONTAINER_TAGS.has(el.tagName);
-    if (textBlock && isTextLeaf(el)) {
+    if ((textBlock && isTextLeaf(el)) || looksLikeChip) {
       const t = textShape(el, style);
       if (t) shapes.push(t);
       return;
@@ -382,7 +417,15 @@ def _raw_to_spec(index: int, raw: dict) -> SlideSpec:
     return SlideSpec(
         index=index,
         bg_color=raw.get("bg_color"),
-        bg_raster_selector=("body > section.slide" if raw.get("bg_complex") else None),
+        bg_raster_selector=(
+            # `_build_single_slide_html` sets display:none on every section
+            # except the active one. Without the :not() filter Playwright's
+            # screenshot retries against the first match (slide 0, hidden)
+            # until the 30 s timeout.
+            'body > section.slide:not([style*="display: none"])'
+            if raw.get("bg_complex")
+            else None
+        ),
         shapes=shapes,
     )
 

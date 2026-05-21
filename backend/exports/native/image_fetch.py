@@ -80,13 +80,34 @@ class ImageFetcher:
 def _decode_data_uri(uri: str) -> bytes | None:
     m = _DATA_URI_RE.match(uri)
     if m:
-        return base64.b64decode(m.group("b64"))
+        raw = base64.b64decode(m.group("b64"))
+        # python-pptx / PIL can't decode SVG — rasterize it via Pillow
+        # if we recognise the prefix. Fall through to None otherwise so
+        # the builder can skip rather than crash.
+        if raw[:5] == b"<?xml" or raw[:4] == b"<svg":
+            return _svg_to_png(raw)
+        return raw
     m2 = _DATA_URI_PLAIN_RE.match(uri)
     if m2:
         from urllib.parse import unquote_to_bytes
 
-        return unquote_to_bytes(m2.group("raw"))
+        raw = unquote_to_bytes(m2.group("raw"))
+        if raw[:5] == b"<?xml" or raw[:4] == b"<svg":
+            return _svg_to_png(raw)
+        return raw
     return None
+
+
+def _svg_to_png(svg: bytes) -> bytes | None:
+    """Render an SVG byte-string to PNG via Pillow's CairoSVG support if
+    available, otherwise None. Skipping is better than crashing."""
+    try:
+        import cairosvg  # type: ignore[import-untyped]
+
+        return cairosvg.svg2png(bytestring=svg)
+    except Exception:
+        logger.warning("cairosvg not available; SVG image will be skipped")
+        return None
 
 
 async def _download_stash_file(file_id: UUID) -> bytes | None:

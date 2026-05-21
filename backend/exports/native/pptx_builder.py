@@ -14,7 +14,7 @@ import logging
 from pptx import Presentation
 from pptx.dml.color import RGBColor
 from pptx.enum.shapes import MSO_SHAPE
-from pptx.enum.text import PP_ALIGN
+from pptx.enum.text import MSO_AUTO_SIZE, PP_ALIGN
 from pptx.util import Emu, Pt
 
 from ..constants import (
@@ -185,6 +185,12 @@ def _emit_text(slide, sh: ShapeSpec) -> None:
     tf.margin_top = Emu(int(px_to_emu_y(sh.padding_px[0])))
     tf.margin_bottom = Emu(int(px_to_emu_y(sh.padding_px[2])))
     tf.word_wrap = True
+    # The bbox came from getBoundingClientRect, which for tight-line-height
+    # elements (`<h1 style="line-height:0.95">`) is exactly text-height. PPTX
+    # textboxes with default auto_size will visually clip the descender row;
+    # tell python-pptx to keep the explicit dimensions but allow visible
+    # overflow.
+    tf.auto_size = MSO_AUTO_SIZE.NONE
 
     for i, para in enumerate(sh.paragraphs):
         p = tf.paragraphs[0] if i == 0 else tf.add_paragraph()
@@ -193,6 +199,10 @@ def _emit_text(slide, sh: ShapeSpec) -> None:
 
 def _populate_paragraph(p, para: Paragraph) -> None:
     p.alignment = _ALIGN_MAP.get(para.align, PP_ALIGN.LEFT)
+    # line_height in the spec is a multiplier (1.2 = 120% line height). PPTX
+    # paragraph.line_spacing accepts a multiplier directly when it's a float.
+    if para.line_height and 0.5 <= para.line_height <= 5.0:
+        p.line_spacing = float(para.line_height)
     # python-pptx's default paragraph already has one (empty) run; clear it
     # by replacing the text directly on the first run we add.
     first_run = None
@@ -205,7 +215,12 @@ def _populate_paragraph(p, para: Paragraph) -> None:
         if first_run is None:
             first_run = r
         r.text = text
-        r.font.size = Pt(max(6, int(run_spec.font_size_px * 72 / 96)))
+        # PPTX 13.333" slides hold a 1920 CSS-px viewport in our probe,
+        # so effective DPI = 1920 / 13.333 = 144. Converting font px → pt
+        # at 96 DPI (the html default) overshoots by 50% and the result
+        # is text that's too big for its own bounding box. The slide
+        # canvas uses px / 2 = pt instead.
+        r.font.size = Pt(max(6, int(run_spec.font_size_px * 72 / 144)))
         r.font.bold = run_spec.bold
         r.font.italic = run_spec.italic
         r.font.underline = run_spec.underline

@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><title>Chart fixture</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<style>
+  html,body{margin:0;padding:0;font-family:-apple-system,system-ui,sans-serif;}
+  section.slide{width:1920px;height:1080px;background:#f8fafc;color:#0f172a;padding:80px;box-sizing:border-box;position:relative;display:block;}
+  h1{font-size:72px;margin:0 0 16px;}
+  p.lead{font-size:24px;margin:0 0 32px;color:#475569;}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:40px;}
+  .panel{background:white;border:1px solid #e2e8f0;border-radius:16px;padding:24px;height:440px;box-sizing:border-box;}
+  .panel h3{font-size:22px;margin:0 0 16px;color:#0f172a;}
+  .chart-wrap{position:relative;width:100%;height:380px;}
+  canvas{width:100%;height:100%;display:block;}
+</style></head><body>
+<section class="slide">
+  <h1>Charts</h1>
+  <p class="lead">A bar chart and a line chart — both rendered on canvas. The exporter has to capture each as a raster (PPTX can't host live Chart.js).</p>
+  <div class="grid">
+    <div class="panel">
+      <h3>Weekly active users</h3>
+      <div class="chart-wrap"><canvas id="bar"></canvas></div>
+    </div>
+    <div class="panel">
+      <h3>Retention</h3>
+      <div class="chart-wrap"><canvas id="line"></canvas></div>
+    </div>
+  </div>
+</section>
+<script>
+  new Chart(document.getElementById('bar'), {
+    type: 'bar',
+    data: {
+      labels: ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'],
+      datasets: [{
+        label: 'WAU',
+        data: [420, 480, 530, 600, 720, 510, 460],
+        backgroundColor: '#3b82f6',
+        borderRadius: 6
+      }]
+    },
+    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }
+  });
+  new Chart(document.getElementById('line'), {
+    type: 'line',
+    data: {
+      labels: ['Day 1','Day 7','Day 14','Day 28','Day 60','Day 90'],
+      datasets: [{
+        label: 'Retention',
+        data: [100, 72, 58, 49, 41, 38],
+        borderColor: '#22c55e',
+        backgroundColor: 'rgba(34,197,94,0.18)',
+        fill: true, tension: 0.35, pointRadius: 4
+      }]
+    },
+    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, suggestedMax: 100 } } }
+  });
+</script>
+</body></html>

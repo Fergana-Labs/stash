@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><title>Table fixture</title>
+<style>
+  html,body{margin:0;padding:0;font-family:-apple-system,system-ui,sans-serif;}
+  section.slide{width:1920px;height:1080px;background:#fff;color:#0f172a;padding:80px;box-sizing:border-box;position:relative;display:block;}
+  h1{font-size:64px;margin:0 0 16px;}
+  p.lead{font-size:24px;margin:0 0 32px;color:#475569;}
+  table{width:100%;border-collapse:collapse;font-size:22px;}
+  th{text-align:left;padding:14px 16px;background:#f1f5f9;color:#0f172a;font-weight:600;border-bottom:2px solid #cbd5e1;}
+  td{padding:14px 16px;border-bottom:1px solid #e2e8f0;color:#334155;}
+  tr:nth-child(even) td{background:#f8fafc;}
+  .ok{color:#16a34a;font-weight:600;}
+  .warn{color:#d97706;font-weight:600;}
+  .bad{color:#dc2626;font-weight:600;}
+</style></head><body>
+<section class="slide">
+  <h1>Per-service rollup</h1>
+  <p class="lead">Native HTML table with header row, alternating row backgrounds, and inline status spans.</p>
+  <table>
+    <thead>
+      <tr><th>Service</th><th>p50 latency</th><th>p99 latency</th><th>Error rate</th><th>Status</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>api-gateway</td><td>42 ms</td><td>180 ms</td><td>0.04%</td><td><span class="ok">healthy</span></td></tr>
+      <tr><td>auth-svc</td><td>61 ms</td><td>240 ms</td><td>0.08%</td><td><span class="ok">healthy</span></td></tr>
+      <tr><td>search-svc</td><td>120 ms</td><td>610 ms</td><td>0.32%</td><td><span class="warn">slow</span></td></tr>
+      <tr><td>ingest-worker</td><td>n/a</td><td>n/a</td><td>1.40%</td><td><span class="bad">degraded</span></td></tr>
+      <tr><td>billing-svc</td><td>38 ms</td><td>120 ms</td><td>0.01%</td><td><span class="ok">healthy</span></td></tr>
+    </tbody>
+  </table>
+</section>
+</body></html>
