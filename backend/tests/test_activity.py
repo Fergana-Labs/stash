@@ -90,7 +90,7 @@ async def test_activity_timeline_pivots_on_human_and_agent_sessions(client: Asyn
     assert resp.status_code == 200
 
     timeline = resp.json()
-    assert timeline["contributors"] == ["Timeline Human / codex"]
+    assert timeline["contributors"] == ["Timeline Human (codex)"]
     assert "Pages" not in timeline["contributors"]
 
     totals = [
@@ -128,6 +128,19 @@ async def test_activity_timeline_uses_client_name_for_agent_label(client: AsyncC
     )
     assert event_resp.status_code == 201
 
+    claude_event_resp = await client.post(
+        f"/api/v1/workspaces/{workspace['id']}/sessions/events",
+        json={
+            "agent_name": "user",
+            "event_type": "assistant_message",
+            "content": "done",
+            "session_id": "claude-client-label-session",
+            "metadata": {"client": "claude_code"},
+        },
+        headers=_auth(api_key),
+    )
+    assert claude_event_resp.status_code == 201
+
     resp = await client.get(
         "/api/v1/me/activity-timeline",
         params={"days": 365, "workspace_id": workspace["id"]},
@@ -136,11 +149,14 @@ async def test_activity_timeline_uses_client_name_for_agent_label(client: AsyncC
     assert resp.status_code == 200
 
     timeline = resp.json()
-    assert timeline["contributors"] == ["Client Human / codex"]
+    assert timeline["contributors"] == [
+        "Client Human (claude code)",
+        "Client Human (codex)",
+    ]
 
 
 @pytest.mark.asyncio
-async def test_activity_timeline_counts_claude_subagents_as_claude(client: AsyncClient):
+async def test_activity_timeline_normalizes_claude_code_agent_names(client: AsyncClient):
     register_resp = await client.post(
         "/api/v1/users/register",
         json={
@@ -155,6 +171,7 @@ async def test_activity_timeline_counts_claude_subagents_as_claude(client: Async
 
     await _event(client, api_key, workspace["id"], "claude-parent", "claude")
     await _event(client, api_key, workspace["id"], "claude-child", "claude-subagent")
+    await _event(client, api_key, workspace["id"], "claude-prefixed", "sam-claude-code")
 
     resp = await client.get(
         "/api/v1/me/activity-timeline",
@@ -164,14 +181,14 @@ async def test_activity_timeline_counts_claude_subagents_as_claude(client: Async
     assert resp.status_code == 200
 
     timeline = resp.json()
-    assert timeline["contributors"] == ["Claude Human / claude"]
+    assert timeline["contributors"] == ["Claude Human (claude code)"]
 
     totals = [
         contributor["total"]
         for bucket in timeline["buckets"]
         for contributor in bucket["contributors"].values()
     ]
-    assert totals == [2]
+    assert totals == [3]
 
 
 @pytest.mark.asyncio
