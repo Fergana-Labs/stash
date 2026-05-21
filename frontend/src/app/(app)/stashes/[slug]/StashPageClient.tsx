@@ -36,6 +36,7 @@ import {
 } from "../../../../lib/api";
 import type { ActivityTimeline, EmbeddingProjection } from "../../../../lib/types";
 import AddToWorkspaceButton from "./AddToWorkspaceButton";
+import { PageBody, SessionBody } from "./StashItemBodies";
 
 type StashItemGroup = Partial<
   Record<PublicStashItem["object_type"], PublicStashItem[]>
@@ -146,8 +147,8 @@ function StashPageBody({
 }) {
   const { stash, workspace_name, items, can_write } = data;
   const groups = groupStashItems(items);
-  const primaryFile = primaryFileItemForStash(data);
-  const displayedItemCount = primaryFile ? 1 : items.length;
+  const primary = primaryItemForStash(data);
+  const displayedItemCount = primary ? 1 : items.length;
   const [addOpen, setAddOpen] = useState(false);
   const [timeline, setTimeline] = useState<ActivityTimeline | null>(null);
   const [projection, setProjection] = useState<EmbeddingProjection | null>(
@@ -156,7 +157,7 @@ function StashPageBody({
   const [insightsLoaded, setInsightsLoaded] = useState(false);
 
   useEffect(() => {
-    if (primaryFile) {
+    if (primary) {
       setTimeline(null);
       setProjection(null);
       setInsightsLoaded(true);
@@ -179,7 +180,7 @@ function StashPageBody({
     return () => {
       cancelled = true;
     };
-  }, [primaryFile, stash.id]);
+  }, [primary, stash.id]);
 
   const cover = stash.cover_image_url
     ? { backgroundImage: `url(${stash.cover_image_url})` }
@@ -283,8 +284,18 @@ function StashPageBody({
           }}
         />
 
-        {primaryFile ? (
-          <SingleFilePreview item={primaryFile} />
+        {primary ? (
+          primary.kind === "file" ? (
+            <SingleFilePreview item={primary.item} />
+          ) : primary.kind === "page" ? (
+            <section className="mt-6">
+              <PageBody item={primary.item} />
+            </section>
+          ) : (
+            <section className="mt-6">
+              <SessionBody item={primary.item} />
+            </section>
+          )
         ) : (
           <>
             {/* Compact item lists by kind. Items deep-link to the editor /
@@ -384,17 +395,39 @@ function StashPageBody({
   );
 }
 
-function primaryFileItemForStash(data: PublicStashDetail): PublicStashItem | null {
-  const fileItems = data.items.filter((item) => item.object_type === "file");
-  if (fileItems.length !== 1) return null;
-  if (data.items.length === 1) return fileItems[0];
+type PrimaryItem =
+  | { kind: "file"; item: PublicStashItem }
+  | { kind: "page"; item: PublicStashItem }
+  | { kind: "session"; item: PublicStashItem };
 
-  const onlyFileAndUploadFolder = data.items.every((item) =>
-    item.object_type === "file" || item.object_type === "folder"
-  );
-  if (!onlyFileAndUploadFolder) return null;
-  if (!data.stash.description.includes("Uploaded from ")) return null;
-  return fileItems[0];
+// "Single-content" stashes — one file, one page, or one session and nothing
+// else — open straight to that content's viewer instead of the bundle chrome
+// + viz section. The intuition is symmetric across kinds: a stash whose
+// whole point is one artifact should feel like that artifact.
+//
+// The file variant also accepts file-plus-auto-folder bundles created by
+// `stash upload <single-file>` (description starts with "Uploaded from ").
+// Pages and sessions don't share that wrapper today, so we keep them strict.
+function primaryItemForStash(data: PublicStashDetail): PrimaryItem | null {
+  const fileItems = data.items.filter((item) => item.object_type === "file");
+  if (fileItems.length === 1) {
+    if (data.items.length === 1) return { kind: "file", item: fileItems[0] };
+    const onlyFileAndUploadFolder = data.items.every((item) =>
+      item.object_type === "file" || item.object_type === "folder"
+    );
+    if (
+      onlyFileAndUploadFolder &&
+      data.stash.description.includes("Uploaded from ")
+    ) {
+      return { kind: "file", item: fileItems[0] };
+    }
+  }
+  if (data.items.length === 1) {
+    const only = data.items[0];
+    if (only.object_type === "page") return { kind: "page", item: only };
+    if (only.object_type === "session") return { kind: "session", item: only };
+  }
+  return null;
 }
 
 function SingleFilePreview({ item }: { item: PublicStashItem }) {
