@@ -743,6 +743,14 @@ function isHtmlUpload(file: File): boolean {
   return /\.html?$/i.test(file.name);
 }
 
+// Markdown gets the same page-create treatment as HTML — it's content,
+// not a blob. Without this routing, .md uploads land as Files and the
+// user can't edit them.
+function isMarkdownUpload(file: File): boolean {
+  if (file.type === "text/markdown") return true;
+  return /\.(md|markdown|mdx)$/i.test(file.name);
+}
+
 export async function uploadFileOrPage(
   workspaceId: string,
   file: File,
@@ -754,6 +762,15 @@ export async function uploadFileOrPage(
     const page = await createPage(workspaceId, name, folderId ?? null, "", {
       content_type: "html",
       content_html: text,
+    });
+    return { kind: "page", page };
+  }
+  if (isMarkdownUpload(file)) {
+    const text = await file.text();
+    const name =
+      file.name.replace(/\.(md|markdown|mdx)$/i, "") || file.name || "Untitled";
+    const page = await createPage(workspaceId, name, folderId ?? null, text, {
+      content_type: "markdown",
     });
     return { kind: "page", page };
   }

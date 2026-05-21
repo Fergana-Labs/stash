@@ -128,15 +128,10 @@ export default function EditorToolbar({
     editor.chain().focus().extendMarkRange("link").setLink({ href: url }).run();
   }
 
-  const inline = visibility === "when-focused";
   const toolbar = (
     <div
-      className={
-        inline
-          ? "inline-flex items-center gap-0.5 rounded-full border border-border bg-white px-2 py-1.5 shadow-[0_14px_36px_-8px_rgba(0,0,0,0.25),0_4px_12px_-4px_rgba(0,0,0,0.10)] ring-1 ring-black/[0.04]"
-          : "fixed left-1/2 z-40 inline-flex -translate-x-1/2 items-center gap-0.5 rounded-full border border-border bg-white px-2 py-1.5 shadow-[0_14px_36px_-8px_rgba(0,0,0,0.25),0_4px_12px_-4px_rgba(0,0,0,0.10)] ring-1 ring-black/[0.04]"
-      }
-      style={inline ? undefined : { bottom: 40 }}
+      className="fixed left-1/2 z-40 inline-flex -translate-x-1/2 items-center gap-0.5 rounded-full border border-border bg-white px-2 py-1.5 shadow-[0_14px_36px_-8px_rgba(0,0,0,0.25),0_4px_12px_-4px_rgba(0,0,0,0.10)] ring-1 ring-black/[0.04]"
+      style={{ bottom: 40 }}
       onMouseDown={(e) => e.preventDefault()}
     >
       <Btn
@@ -317,11 +312,11 @@ export default function EditorToolbar({
     </div>
   );
 
-  if (inline) {
-    // Render in the document flow under the editor so descriptions don't
-    // anchor their toolbar to the viewport bottom.
-    return <div className="mt-3 flex justify-start">{toolbar}</div>;
-  }
+  // Always float at the viewport bottom. For description editors
+  // (visibility="when-focused") this means the toolbar follows the user
+  // as they edit long content instead of stranding at the bottom of the
+  // editor's column. The focus gate above keeps multiple editors on the
+  // same page from stacking toolbars.
   return createPortal(toolbar, document.body);
 }
 
