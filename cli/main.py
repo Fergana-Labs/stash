@@ -41,6 +41,15 @@ app = typer.Typer(
 )
 
 
+@app.callback(invoke_without_command=True)
+def root(ctx: typer.Context) -> None:
+    if ctx.invoked_subcommand is not None:
+        return
+
+    typer.echo(ctx.get_help())
+    raise typer.Exit()
+
+
 def _client() -> StashClient:
     cfg = load_config()
     return StashClient(base_url=cfg["base_url"], api_key=cfg.get("api_key", ""))
