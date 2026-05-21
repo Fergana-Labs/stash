@@ -23,9 +23,14 @@ import {
   type StepCtx,
 } from "../../lib/onboarding/paths";
 
-const PATH_STORAGE_KEY = "stash_onboarding_path";
 const VALID_PATHS: PathId[] = ["migrant", "memory", "sharing"];
 const VALID_SOURCES: MigrantSource[] = ["notion", "obsidian", "github", "drive"];
+
+// Scoped per user so registering as a different account on the same
+// computer doesn't inherit the previous user's locked path.
+function pathStorageKey(userId: string): string {
+  return `stash_onboarding_path:${userId}`;
+}
 
 function useStashToken(): string | null {
   return useSyncExternalStore(
@@ -71,12 +76,12 @@ function OnboardingInner() {
   const path = useMemo<PathId | null>(() => {
     const q = searchParams.get("path");
     if (isPathId(q)) return q;
-    if (typeof window !== "undefined") {
-      const stored = window.localStorage.getItem(PATH_STORAGE_KEY);
+    if (typeof window !== "undefined" && user?.id) {
+      const stored = window.localStorage.getItem(pathStorageKey(user.id));
       if (isPathId(stored)) return stored;
     }
     return null;
-  }, [searchParams]);
+  }, [searchParams, user?.id]);
 
   const source = useMemo<MigrantSource | null>(() => {
     const q = searchParams.get("source");
@@ -106,12 +111,12 @@ function OnboardingInner() {
 
   const pickPath = useCallback(
     (next: PathId) => {
-      if (typeof window !== "undefined") {
-        window.localStorage.setItem(PATH_STORAGE_KEY, next);
+      if (typeof window !== "undefined" && user?.id) {
+        window.localStorage.setItem(pathStorageKey(user.id), next);
       }
       router.push(`/onboarding?path=${next}&step=1`);
     },
-    [router],
+    [router, user?.id],
   );
 
   const pickSource = useCallback(
@@ -175,6 +180,7 @@ function OnboardingInner() {
       try {
         await seedWelcomePage({
           workspaceId,
+          userId: user.id,
           displayName: user.display_name || user.name,
         });
       } catch {

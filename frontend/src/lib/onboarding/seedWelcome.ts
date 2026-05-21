@@ -12,14 +12,19 @@ import {
 import { generateWelcomeHtml } from "@/lib/onboarding/welcomeContent";
 import type { MigrantSource, PathId } from "@/lib/onboarding/paths";
 
-const PATH_STORAGE_KEY = "stash_onboarding_path";
 const SHARED_URL_KEY = "stash_onboarding_shared_url";
+
+// Must match page.tsx's pathStorageKey().
+function pathStorageKey(userId: string): string {
+  return `stash_onboarding_path:${userId}`;
+}
 
 export async function seedWelcomePage(args: {
   workspaceId: string;
+  userId: string;
   displayName: string;
 }): Promise<void> {
-  const { workspaceId, displayName } = args;
+  const { workspaceId, userId, displayName } = args;
 
   const [workspace, overview] = await Promise.all([
     getWorkspace(workspaceId),
@@ -34,7 +39,7 @@ export async function seedWelcomePage(args: {
       : null;
 
   const html = generateWelcomeHtml({
-    path: readPath(),
+    path: readPath(userId),
     source: readSource(),
     displayName,
     inviteLink,
@@ -52,9 +57,9 @@ export async function seedWelcomePage(args: {
   }
 }
 
-function readPath(): PathId | null {
+function readPath(userId: string): PathId | null {
   if (typeof window === "undefined") return null;
-  const v = window.localStorage.getItem(PATH_STORAGE_KEY);
+  const v = window.localStorage.getItem(pathStorageKey(userId));
   if (v === "migrant" || v === "memory" || v === "sharing") return v;
   return null;
 }

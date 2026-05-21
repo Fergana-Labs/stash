@@ -20,6 +20,7 @@ export default function DoneStep({ workspaceId }: Props) {
     seededRef.current = true;
     void seedWelcomePage({
       workspaceId,
+      userId: user.id,
       displayName: user.display_name || user.name,
     });
   }, [workspaceId, user]);
