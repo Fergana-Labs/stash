@@ -477,7 +477,7 @@ def _ask_codex_network_access() -> bool:
     return True if answer is None else bool(answer)
 
 
-def _merge_snippet_into_toml(existing: str, snippet: str) -> str:
+def _merge_snippet_into_toml(existing: str, snippet: str) -> tuple[str, str]:
     """Merge snippet sections into existing TOML without creating duplicates.
 
     If a section header like [features] already exists in the config, inject
@@ -486,48 +486,84 @@ def _merge_snippet_into_toml(existing: str, snippet: str) -> str:
     """
     import re
 
-    section_re = re.compile(r"^\[([^\]]+)\]\s*$", re.MULTILINE)
-    existing_sections: set[str] = {m.group(1) for m in section_re.finditer(existing)}
+    section_re = re.compile(r"^\[([^\]]+)\]\s*$")
+    key_re = re.compile(r"^([A-Za-z0-9_.-]+)\s*=")
+    existing_lines = existing.splitlines()
+    existing_sections: dict[str, int] = {}
+    section_end: dict[str, int] = {}
+    existing_keys: dict[str, set[str]] = {}
+    current_section: str | None = None
+
+    for idx, line in enumerate(existing_lines):
+        section_match = section_re.match(line)
+        if section_match:
+            if current_section is not None:
+                section_end[current_section] = idx
+            current_section = section_match.group(1)
+            existing_sections[current_section] = idx
+            existing_keys.setdefault(current_section, set())
+            continue
+
+        key_match = key_re.match(line.strip())
+        if current_section is not None and key_match:
+            existing_keys.setdefault(current_section, set()).add(key_match.group(1))
+
+    if current_section is not None:
+        section_end[current_section] = len(existing_lines)
 
     if not existing_sections:
         return existing, snippet
 
-    snippet_lines = snippet.split("\n")
-    merged_snippet_lines: list[str] = []
-    inject_into_existing: dict[str, list[str]] = {}
-    current_section: str | None = None
-    current_is_dupe = False
+    snippet_blocks: list[tuple[str, list[str]]] = []
+    pending: list[str] = []
+    current_block_section: str | None = None
+    current_block: list[str] = []
 
-    for line in snippet_lines:
-        m = section_re.match(line)
-        if m:
-            current_section = m.group(1)
-            if current_section in existing_sections:
-                current_is_dupe = True
-                inject_into_existing.setdefault(current_section, [])
-            else:
-                current_is_dupe = False
-                merged_snippet_lines.append(line)
-        elif current_is_dupe:
-            stripped = line.strip()
-            if stripped and not stripped.startswith("#"):
-                inject_into_existing[current_section].append(line)
+    for line in snippet.splitlines():
+        section_match = section_re.match(line)
+        if section_match:
+            if current_block_section is not None:
+                snippet_blocks.append((current_block_section, current_block))
+            current_block_section = section_match.group(1)
+            current_block = [*pending, line]
+            pending = []
+        elif current_block_section is None:
+            pending.append(line)
         else:
-            merged_snippet_lines.append(line)
+            current_block.append(line)
 
-    merged_existing = existing
-    for section, keys in inject_into_existing.items():
-        pattern = re.compile(
-            r"(\[" + re.escape(section) + r"\]\s*\n(?:[^\[]*?))",
-            re.DOTALL,
-        )
-        m = pattern.search(merged_existing)
-        if m:
-            insert_at = m.end()
-            injection = "\n".join(keys) + "\n"
-            merged_existing = merged_existing[:insert_at] + injection + merged_existing[insert_at:]
+    if current_block_section is not None:
+        snippet_blocks.append((current_block_section, current_block))
 
-    cleaned_snippet = "\n".join(merged_snippet_lines)
+    append_blocks: list[str] = []
+    inject_into_existing: dict[str, list[str]] = {}
+
+    for section, block in snippet_blocks:
+        if section not in existing_sections:
+            append_blocks.extend(block)
+            continue
+
+        for line in block:
+            stripped = line.strip()
+            key_match = key_re.match(stripped)
+            if not key_match:
+                continue
+            key = key_match.group(1)
+            if key in existing_keys.get(section, set()):
+                continue
+            inject_into_existing.setdefault(section, []).append(line)
+            existing_keys.setdefault(section, set()).add(key)
+
+    for section, keys in sorted(
+        inject_into_existing.items(),
+        key=lambda item: section_end[item[0]],
+        reverse=True,
+    ):
+        insert_at = section_end[section]
+        existing_lines[insert_at:insert_at] = keys
+
+    merged_existing = "\n".join(existing_lines)
+    cleaned_snippet = "\n".join(append_blocks)
     cleaned_snippet = re.sub(r"\n{3,}", "\n\n", cleaned_snippet)
     return merged_existing, cleaned_snippet
 

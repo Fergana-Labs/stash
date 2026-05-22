@@ -72,3 +72,43 @@ def test_preexisting_features_section_no_duplicate(monkeypatch, tmp_path: Path) 
         parsed = tomllib.load(f)
     assert parsed["features"]["hooks"] is True
     assert parsed["features"]["suppress_unstable_features_warning"] is True
+
+
+def test_preexisting_unmarked_stash_sections_do_not_duplicate(monkeypatch, tmp_path: Path) -> None:
+    """Older/manual installs may already contain the Stash sections without
+    the current marker. Reinstalling must not append duplicate TOML tables."""
+    codex_dir = tmp_path / ".codex"
+    codex_dir.mkdir()
+    cfg = codex_dir / "config.toml"
+    cfg.write_text(
+        "\n".join(
+            [
+                "[features]",
+                "suppress_unstable_features_warning = true",
+                "hooks = true",
+                "",
+                "[sandbox_workspace_write]",
+                "network_access = true",
+                "",
+                "[profiles.stash]",
+                'approval_policy = "on-failure"',
+                'sandbox_mode = "workspace-write"',
+                "",
+                "[profiles.stash.sandbox_workspace_write]",
+                "network_access = true",
+                "",
+            ]
+        )
+    )
+
+    cfg = _run_install(monkeypatch, tmp_path)
+    body = cfg.read_text()
+
+    assert body.count("[features]") == 1
+    assert body.count("[sandbox_workspace_write]") == 1
+    assert body.count("[profiles.stash]") == 1
+    assert body.count("[profiles.stash.sandbox_workspace_write]") == 1
+    with cfg.open("rb") as f:
+        parsed = tomllib.load(f)
+    assert parsed["features"]["hooks"] is True
+    assert parsed["features"]["suppress_unstable_features_warning"] is True
