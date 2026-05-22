@@ -5,13 +5,19 @@ export default function SelfHostingPage() {
     <>
       <Title>Self-Hosting</Title>
       <Subtitle>
-        Run Stash on your own machine with Docker Compose.
+        Run Stash on your own machine with Docker Compose and prebuilt GHCR images.
       </Subtitle>
+      <P>
+        The production Compose file pulls Stash application images from{" "}
+        <Code>ghcr.io/fergana-labs</Code>. You do not need to build the backend,
+        frontend, or collab containers locally.
+      </P>
 
       <H3>Local laptop dry run</H3>
       <CodeBlock>{`git clone https://github.com/Fergana-Labs/stash.git
 cd stash
 cp .env.example .env
+docker compose -f docker-compose.prod.yml -f docker-compose.local.yml pull
 docker compose -f docker-compose.prod.yml -f docker-compose.local.yml up -d
 curl http://localhost:3456/health   # wait for {"status":"ok"}`}</CodeBlock>
       <P>
@@ -22,6 +28,7 @@ curl http://localhost:3456/health   # wait for {"status":"ok"}`}</CodeBlock>
       <H3>Production domain</H3>
       <CodeBlock>{`cp .env.example .env
 # Set PUBLIC_URL and CORS_ORIGINS in .env, then replace app.example.com in Caddyfile.
+docker compose -f docker-compose.prod.yml pull
 docker compose -f docker-compose.prod.yml up -d
 curl https://app.example.com/health   # wait for {"status":"ok"}`}</CodeBlock>
       <P>

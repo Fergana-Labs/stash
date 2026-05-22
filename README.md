@@ -140,6 +140,7 @@ For a local laptop dry run:
 git clone https://github.com/Fergana-Labs/stash.git
 cd stash
 cp .env.example .env
+docker compose -f docker-compose.prod.yml -f docker-compose.local.yml pull
 docker compose -f docker-compose.prod.yml -f docker-compose.local.yml up -d
 curl http://localhost:3456/health
 open http://localhost:3457/login
@@ -149,6 +150,7 @@ For a public domain with Caddy and HTTPS:
 
 ```bash
 # Set PUBLIC_URL and CORS_ORIGINS in .env, then replace app.example.com in Caddyfile.
+docker compose -f docker-compose.prod.yml pull
 docker compose -f docker-compose.prod.yml up -d
 curl https://app.example.com/health
 ```
