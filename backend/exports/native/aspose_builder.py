@@ -229,15 +229,12 @@ async def _post_table(
     for row in sh.cells:
         row_payload: list[dict] = []
         for cell in row:
-            # Each table cell carries its own paragraphs in the spec; we
-            # only pass the first paragraph through. Multi-paragraph
-            # cells degrade to their leading paragraph — the sandbox
-            # doesn't emit those today.
             first = cell.paragraphs[0] if cell.paragraphs else None
-            if first is None:
-                row_payload.append({"runs": [], "align": "left", "line_height": 1.2})
-            else:
-                row_payload.append(asdict(first))
+            paragraph = asdict(first) if first else {"runs": [], "align": "left", "line_height": 1.2}
+            row_payload.append({
+                "paragraph": paragraph,
+                "bg_color": cell.bg_color,
+            })
         cells_payload.append(row_payload)
 
     resp = await client.post(

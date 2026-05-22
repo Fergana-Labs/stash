@@ -252,13 +252,25 @@ def add_table_shape(
     row_heights = _equal_split(h, rows)
     table = slide.shapes.add_table(x, y, col_widths, row_heights)
 
+    # Aspose seeds tables with a banded theme that overrides per-cell fills
+    # — strip it so HTML-driven backgrounds survive.
+    try:
+        table.style_id = 0
+        table.first_row = False
+        table.banding = False
+    except Exception:
+        pass
+
     for r, row in enumerate(req.cells):
-        for c, cell_para in enumerate(row[:cols]):
+        for c, cell_model in enumerate(row[:cols]):
             cell = table.rows[r][c]
             tf = cell.text_frame
             while tf.paragraphs.count > 0:
                 tf.paragraphs.remove_at(0)
-            tf.paragraphs.add(_build_paragraph(cell_para, canvas_h_px, slide_h_pt))
+            tf.paragraphs.add(_build_paragraph(cell_model.paragraph, canvas_h_px, slide_h_pt))
+            if cell_model.bg_color:
+                cell.cell_format.fill_format.fill_type = slides.FillType.SOLID
+                cell.cell_format.fill_format.solid_fill_color.color = _hex_to_color(cell_model.bg_color)
 
     return slide.shapes.index_of(table)
 

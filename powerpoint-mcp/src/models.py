@@ -77,10 +77,15 @@ class ImageShapeRequest(BaseModel):
     image_base64: str
 
 
+class TableCellModel(BaseModel):
+    paragraph: ParagraphModel = Field(default_factory=ParagraphModel)
+    bg_color: str | None = None
+
+
 class TableShapeRequest(BaseModel):
     bbox: BBoxModel
-    # rows × cols of cell text content (each cell is a single paragraph)
-    cells: list[list[ParagraphModel]] = Field(default_factory=list)
+    # rows × cols of cell content (single paragraph per cell + optional bg)
+    cells: list[list[TableCellModel]] = Field(default_factory=list)
 
 
 class SvgShapeRequest(BaseModel):

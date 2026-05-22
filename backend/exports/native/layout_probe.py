@@ -203,13 +203,19 @@ _PROBE_JS = r"""
       const inst = window.Chart.getChart(el);
       if (!inst) return null;
       const cfg = inst.config;
-      const type = cfg.type;
+      let type = cfg.type;
       // Map Chart.js types to PPTX-supported families.
       const typeMap = { bar: 'bar', line: 'line', pie: 'pie', doughnut: 'doughnut', area: 'area' };
+      const datasets = (cfg.data.datasets || []);
+      // Promote line → area when any dataset opts into fill:true. Chart.js
+      // renders that as a filled area, and Aspose only matches by chart kind.
+      if (type === 'line' && datasets.some(d => d.fill === true || (d.fill && d.fill !== false && d.fill !== 'none'))) {
+        type = 'area';
+      }
       const mapped = typeMap[type];
       if (!mapped) return null;
       const labels = (cfg.data.labels || []).map(String);
-      const datasets = (cfg.data.datasets || []).map(d => ({
+      const ds = datasets.map(d => ({
         label: String(d.label || ''),
         data: (d.data || []).map(v => Number(v) || 0),
         color: colorToHex(
@@ -219,7 +225,7 @@ _PROBE_JS = r"""
         ),
       }));
       const title = (cfg.options && cfg.options.plugins && cfg.options.plugins.title && cfg.options.plugins.title.text) || '';
-      return { type: mapped, labels, datasets, title: String(title || '') };
+      return { type: mapped, labels, datasets: ds, title: String(title || '') };
     } catch (e) { return null; }
   }
 
