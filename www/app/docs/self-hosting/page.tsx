@@ -8,10 +8,19 @@ export default function SelfHostingPage() {
         Run Stash on your own machine with Docker Compose.
       </Subtitle>
 
-      <H3>Quick start</H3>
+      <H3>Local laptop dry run</H3>
       <CodeBlock>{`git clone https://github.com/Fergana-Labs/stash.git
 cd stash
 cp .env.example .env
+docker compose -f docker-compose.prod.yml -f docker-compose.local.yml up -d
+curl http://localhost:3456/health   # wait for {"status":"ok"}`}</CodeBlock>
+      <P>
+        The local override exposes the app directly on localhost and disables
+        Caddy, so you do not need ports 80/443 or a public domain.
+      </P>
+
+      <H3>Production domain</H3>
+      <CodeBlock>{`cp .env.example .env
 # Set PUBLIC_URL and CORS_ORIGINS in .env, then replace app.example.com in Caddyfile.
 docker compose -f docker-compose.prod.yml up -d
 curl https://app.example.com/health   # wait for {"status":"ok"}`}</CodeBlock>
@@ -20,10 +29,11 @@ curl https://app.example.com/health   # wait for {"status":"ok"}`}</CodeBlock>
       </P>
       <CodeBlock>{`pip install stashai   # or: uv tool install stashai
 cd /path/to/your/repo
-stash config base_url https://app.example.com
+stash config base_url http://localhost:3456
 stash login`}</CodeBlock>
       <P>
-        The UI is at your <Code>PUBLIC_URL</Code>.{" "}
+        Use your public URL instead of <Code>http://localhost:3456</Code> for a
+        Caddy-backed install.{" "}
         <Code>stash login</Code> opens it to register and authorize the CLI.
       </P>
 

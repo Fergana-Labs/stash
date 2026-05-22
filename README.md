@@ -134,10 +134,20 @@ See [here](https://www.joinstash.ai/docs/cli) for a CLI reference.
 
 Run Stash with prebuilt GHCR images:
 
+For a local laptop dry run:
+
 ```bash
 git clone https://github.com/Fergana-Labs/stash.git
 cd stash
 cp .env.example .env
+docker compose -f docker-compose.prod.yml -f docker-compose.local.yml up -d
+curl http://localhost:3456/health
+open http://localhost:3457/login
+```
+
+For a public domain with Caddy and HTTPS:
+
+```bash
 # Set PUBLIC_URL and CORS_ORIGINS in .env, then replace app.example.com in Caddyfile.
 docker compose -f docker-compose.prod.yml up -d
 curl https://app.example.com/health
@@ -146,10 +156,17 @@ curl https://app.example.com/health
 Then install the CLI:
 
 ```bash
-pip install stashai / uv tool install stashai
+pip install stashai   # or: uv tool install stashai
 cd /path/to/the/repo/you/want/to/connect
-stash config base_url https://app.example.com
+stash config base_url http://localhost:3456
 stash login
+```
+
+Use your public URL instead of `http://localhost:3456` when connecting to a
+domain-backed install:
+
+```bash
+stash config base_url https://app.example.com
 ```
 
 Finally see it in action:

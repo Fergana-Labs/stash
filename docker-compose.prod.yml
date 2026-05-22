@@ -4,6 +4,9 @@
 #   cp .env.example .env        # fill in required values
 #   docker compose -f docker-compose.prod.yml up -d
 #
+# Local laptop dry run:
+#   docker compose -f docker-compose.prod.yml -f docker-compose.local.yml up -d
+#
 # Backend, frontend, and collab use pre-built images from GHCR.
 #
 # Required env vars in .env:

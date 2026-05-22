@@ -5,6 +5,9 @@ everything before it is captured in git history (`git log`), not here.
 
 ## Unreleased
 
+- Added a committed `docker-compose.local.yml` override for laptop
+  self-hosting dry runs. It exposes backend, frontend, and collab on
+  localhost ports and disables Caddy.
 - CLI onboarding now says to run `stash connect` when setup finishes
   without connecting a repo, instead of telling users to commit a
   `.stash` file that was never created.
