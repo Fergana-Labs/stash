@@ -1,9 +1,9 @@
-# Local laptop override for docker-compose.prod.yml.
+# Local hosting override for docker-compose.prod.yml.
 #
-# Use this when testing Stash on localhost without a public domain:
+# Use this when hosting Stash on localhost without a public domain:
 #   docker compose -f docker-compose.prod.yml -f docker-compose.local.yml up -d
 #
-# Caddy is disabled here because local dry runs do not need 80/443, HTTPS,
+# Caddy is disabled here because local hosting does not need 80/443, HTTPS,
 # or domain routing. The app is exposed directly on the product dev ports.
 
 services:

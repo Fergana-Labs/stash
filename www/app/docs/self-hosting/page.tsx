@@ -13,7 +13,7 @@ export default function SelfHostingPage() {
         frontend, or collab containers locally.
       </P>
 
-      <H3>Local laptop dry run</H3>
+      <H3>Host locally</H3>
       <CodeBlock>{`git clone https://github.com/Fergana-Labs/stash.git
 cd stash
 cp .env.example .env
@@ -21,7 +21,7 @@ docker compose -f docker-compose.prod.yml -f docker-compose.local.yml pull
 docker compose -f docker-compose.prod.yml -f docker-compose.local.yml up -d
 curl http://localhost:3456/health   # wait for {"status":"ok"}`}</CodeBlock>
       <P>
-        The local override exposes the app directly on localhost and disables
+        This local setup exposes the app directly on localhost and disables
         Caddy, so you do not need ports 80/443 or a public domain.
       </P>
 

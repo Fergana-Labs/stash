@@ -134,7 +134,7 @@ See [here](https://www.joinstash.ai/docs/cli) for a CLI reference.
 
 Run Stash with prebuilt GHCR images:
 
-For a local laptop dry run:
+To host locally:
 
 ```bash
 git clone https://github.com/Fergana-Labs/stash.git

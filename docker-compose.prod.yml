@@ -5,7 +5,7 @@
 #   docker compose -f docker-compose.prod.yml pull
 #   docker compose -f docker-compose.prod.yml up -d
 #
-# Local laptop dry run:
+# Host locally:
 #   docker compose -f docker-compose.prod.yml -f docker-compose.local.yml pull
 #   docker compose -f docker-compose.prod.yml -f docker-compose.local.yml up -d
 #
