@@ -21,7 +21,7 @@ from ..constants import (
     SLIDE_HEIGHT_PX,
     SLIDE_WIDTH_PX,
 )
-from ..pptx import _build_single_slide_html, _strip_body_state
+from ..html_canvas import build_single_slide_html, strip_body_state
 
 logger = logging.getLogger(__name__)
 
@@ -35,7 +35,7 @@ async def rasterize_targets(
     if not targets:
         return {}
 
-    html = _strip_body_state(html or "")
+    html = strip_body_state(html or "")
     # Bucket by slide index so we open each slide page once.
     by_slide: dict[int, list[str]] = {}
     for slide_idx, sel in targets:
@@ -53,7 +53,7 @@ async def rasterize_targets(
                 for slide_idx, selectors in sorted(by_slide.items()):
                     page = await context.new_page()
                     try:
-                        slide_html = _build_single_slide_html(html, slide_idx)
+                        slide_html = build_single_slide_html(html, slide_idx)
                         await page.set_content(slide_html, wait_until="networkidle")
                         for sel in selectors:
                             try:

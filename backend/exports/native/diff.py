@@ -42,10 +42,10 @@ from backend.exports.constants import SLIDE_HEIGHT_PX, SLIDE_WIDTH_PX  # noqa: E
 from backend.exports.native.aspose_builder import build_pptx_via_aspose  # noqa: E402
 from backend.exports.native.layout_probe import probe  # noqa: E402
 from backend.exports.native.pptx_builder import build_pptx  # noqa: E402
-from backend.exports.pptx import (  # noqa: E402
-    _build_single_slide_html,
-    _count_slides,
-    _strip_body_state,
+from backend.exports.html_canvas import (  # noqa: E402
+    build_single_slide_html as _build_single_slide_html,
+    count_slides as _count_slides,
+    strip_body_state as _strip_body_state,
 )
 
 log = logging.getLogger("native-diff")
@@ -243,7 +243,7 @@ def _render_diff_html(
 def _iframe_doc(html: str, slide_idx: int) -> str:
     """Build a tiny standalone HTML snippet for the diff iframe that
     shows only the Nth slide at a scaled size."""
-    from backend.exports.pptx import _strip_body_state as strip
+    from backend.exports.html_canvas import strip_body_state as strip
 
     body = strip(html)
     body = _build_single_slide_html(body, slide_idx)

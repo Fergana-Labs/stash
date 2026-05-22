@@ -12,7 +12,7 @@ from pathlib import Path
 
 import pytest
 
-from backend.exports import constants, pptx
+from backend.exports import constants, html_canvas
 
 REPO_BACKEND = Path(__file__).resolve().parents[1]
 
@@ -42,7 +42,7 @@ def test_pptx_export_injects_canvas_css():
     the content (and the resulting PPTX renders the slide as a thin
     band at the top of the page)."""
     html = '<!DOCTYPE html><html><body><section class="slide">x</section></body></html>'
-    rendered = pptx._build_single_slide_html(html, 0)
+    rendered = html_canvas.build_single_slide_html(html, 0)
     assert "section.slide" in rendered
     assert f"width: {constants.SLIDE_WIDTH_PX}px" in rendered
     assert f"height: {constants.SLIDE_HEIGHT_PX}px" in rendered
@@ -59,7 +59,7 @@ def test_strip_body_state_removes_viewer_pollution():
         'contenteditable="true" spellcheck="true">'
         '<section class="slide">x</section></body></html>'
     )
-    cleaned = pptx._strip_body_state(html)
+    cleaned = html_canvas.strip_body_state(html)
     assert "zoom" not in cleaned, cleaned
     assert "contenteditable" not in cleaned, cleaned
     assert "spellcheck" not in cleaned, cleaned
@@ -72,7 +72,7 @@ def test_strip_body_state_handles_only_zoom_style():
     """If style=zoom was the only inline style, the entire style attr
     should disappear instead of leaving an empty one."""
     html = '<body style="zoom: 0.4;"><p>x</p></body>'
-    cleaned = pptx._strip_body_state(html)
+    cleaned = html_canvas.strip_body_state(html)
     assert 'style=""' not in cleaned
     assert "zoom" not in cleaned
 

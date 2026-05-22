@@ -22,7 +22,7 @@ from ..constants import (
     SLIDE_HEIGHT_PX,
     SLIDE_WIDTH_PX,
 )
-from ..pptx import _build_single_slide_html, _count_slides, _strip_body_state
+from ..html_canvas import build_single_slide_html, count_slides, strip_body_state
 from .spec import (
     BBox,
     ChartDataset,
@@ -605,8 +605,8 @@ _PROBE_JS = r"""
 async def probe(html: str) -> list[SlideSpec]:
     """Render `html` slide-by-slide in a headless Chromium at 1920x1080
     and return a `SlideSpec` per `<section class="slide">`."""
-    html = _strip_body_state(html or "")
-    count = _count_slides(html)
+    html = strip_body_state(html or "")
+    count = count_slides(html)
 
     specs: list[SlideSpec] = []
     async with async_playwright() as p:
@@ -622,7 +622,7 @@ async def probe(html: str) -> list[SlideSpec]:
                 for i in range(count):
                     page = await context.new_page()
                     try:
-                        slide_html = _build_single_slide_html(html, i)
+                        slide_html = build_single_slide_html(html, i)
                         await page.set_content(slide_html, wait_until="networkidle")
                         raw = await page.evaluate(_PROBE_JS)
                         specs.append(_raw_to_spec(i, raw))
