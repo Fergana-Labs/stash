@@ -248,18 +248,30 @@ def add_table_shape(
     rows = len(req.cells)
     cols = len(req.cells[0])
     x, y, w, h = _bbox_to_pt(req.bbox, canvas_w_px, canvas_h_px, slide_w_pt, slide_h_pt)
-    col_widths = _equal_split(w, cols)
+
+    if req.col_widths_px and len(req.col_widths_px) == cols:
+        # Scale per-column px widths into pt, preserving HTML column proportions.
+        total_px = sum(req.col_widths_px) or float(cols)
+        col_widths = [w * (cw / total_px) for cw in req.col_widths_px]
+    else:
+        col_widths = _equal_split(w, cols)
     row_heights = _equal_split(h, rows)
     table = slide.shapes.add_table(x, y, col_widths, row_heights)
 
-    # Aspose seeds tables with a banded theme that overrides per-cell fills
-    # — strip it so HTML-driven backgrounds survive.
+    # Aspose's default banded theme overrides per-cell fills and adds its
+    # own borders. Switch to the "no style" preset before we set anything.
     try:
-        table.style_id = 0
-        table.first_row = False
-        table.banding = False
-    except Exception:
-        pass
+        table.set_table_format(slides.TableStylePreset.NONE)
+    except Exception as e:
+        logger.warning("could not set TableStylePreset.NONE: %s", e)
+    for flag in ("first_row", "first_col", "last_row", "last_col",
+                 "horizontal_banding", "vertical_banding"):
+        try:
+            setattr(table, flag, False)
+        except Exception:
+            pass
+
+    border_color = _hex_to_color(req.border_color) if req.border_color else None
 
     for r, row in enumerate(req.cells):
         for c, cell_model in enumerate(row[:cols]):
@@ -268,9 +280,23 @@ def add_table_shape(
             while tf.paragraphs.count > 0:
                 tf.paragraphs.remove_at(0)
             tf.paragraphs.add(_build_paragraph(cell_model.paragraph, canvas_h_px, slide_h_pt))
+            # Force-explicit fill even when bg_color is null so Aspose's
+            # default theme can't bleed through on odd rows.
             if cell_model.bg_color:
                 cell.cell_format.fill_format.fill_type = slides.FillType.SOLID
                 cell.cell_format.fill_format.solid_fill_color.color = _hex_to_color(cell_model.bg_color)
+            else:
+                cell.cell_format.fill_format.fill_type = slides.FillType.NO_FILL
+            # Uniform border on every side (HTML border-collapse model).
+            if border_color and req.border_width_px > 0:
+                for side in ("border_top", "border_bottom", "border_left", "border_right"):
+                    try:
+                        line = getattr(cell.cell_format, side)
+                        line.fill_format.fill_type = slides.FillType.SOLID
+                        line.fill_format.solid_fill_color.color = border_color
+                        line.width = float(req.border_width_px)
+                    except Exception as e:
+                        logger.warning("could not set %s: %s", side, e)
 
     return slide.shapes.index_of(table)
 
@@ -358,6 +384,38 @@ def add_chart_shape(
             if req.type in ("line", "area"):
                 series.format.line.fill_format.fill_type = slides.FillType.SOLID
                 series.format.line.fill_format.solid_fill_color.color = _hex_to_color(ds.color)
+        # Chart.js borderWidth maps to PPTX line width (points).
+        if req.type in ("line", "area") and ds.line_width_px:
+            try:
+                series.format.line.width = float(ds.line_width_px)
+            except Exception as e:
+                logger.warning("could not set series line width: %s", e)
+        # Chart.js pointRadius>0 maps to a circular marker. PowerPoint
+        # marker size is the symbol diameter in points (~2x the radius).
+        if req.type in ("line", "area") and ds.point_radius_px and ds.point_radius_px > 0:
+            try:
+                series.marker.symbol = slides.charts.MarkerStyleType.CIRCLE
+                series.marker.size = int(max(2, ds.point_radius_px * 2))
+                if ds.color:
+                    series.marker.format.fill.fill_type = slides.FillType.SOLID
+                    series.marker.format.fill.solid_fill_color.color = _hex_to_color(ds.color)
+            except Exception as e:
+                logger.warning("could not set series marker: %s", e)
+
+    # Pin axis label font to Chart.js's actual size (default 12px) so
+    # PowerPoint doesn't render labels 2x too big.
+    if req.axis_font_size_px:
+        # CSS px → pt via slide height ratio (canvas convention matches
+        # the rest of the builder).
+        font_height = _px_to_pt(req.axis_font_size_px, canvas_h_px, slide_h_pt)
+        for axis_attr in ("horizontal_axis", "vertical_axis"):
+            try:
+                axis = getattr(chart.axes, axis_attr, None)
+                if axis is None:
+                    continue
+                axis.text_format.portion_format.font_height = font_height
+            except Exception as e:
+                logger.warning("could not set %s font_height: %s", axis_attr, e)
 
     chart.has_title = bool(req.title)
     if req.title:

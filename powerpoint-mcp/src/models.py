@@ -86,6 +86,11 @@ class TableShapeRequest(BaseModel):
     bbox: BBoxModel
     # rows × cols of cell content (single paragraph per cell + optional bg)
     cells: list[list[TableCellModel]] = Field(default_factory=list)
+    # Optional per-column widths in CSS px. When empty the builder falls
+    # back to equal_split. Must equal len(cells[0]) when provided.
+    col_widths_px: list[float] = Field(default_factory=list)
+    border_color: str | None = None
+    border_width_px: float = 0.0
 
 
 class SvgShapeRequest(BaseModel):
@@ -98,6 +103,8 @@ class ChartDatasetModel(BaseModel):
     label: str = ""
     data: list[float] = Field(default_factory=list)
     color: str | None = None
+    line_width_px: float | None = None  # Chart.js borderWidth, line/area only
+    point_radius_px: float | None = None  # Chart.js pointRadius, line/area only
 
 
 class ChartShapeRequest(BaseModel):
@@ -106,6 +113,8 @@ class ChartShapeRequest(BaseModel):
     labels: list[str] = Field(default_factory=list)
     datasets: list[ChartDatasetModel] = Field(default_factory=list)
     title: str = ""
+    # CSS px size for axis tick + category labels. Chart.js default is 12.
+    axis_font_size_px: float | None = None
 
 
 class ShapeResponse(BaseModel):

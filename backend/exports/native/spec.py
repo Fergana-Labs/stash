@@ -82,6 +82,8 @@ class ChartDataset:
     label: str = ""
     data: list[float] = field(default_factory=list)
     color: str | None = None  # series fill / line color, hex
+    line_width_px: float | None = None  # Chart.js borderWidth (line/area)
+    point_radius_px: float | None = None  # Chart.js pointRadius (line/area)
 
 
 @dataclass
@@ -93,6 +95,7 @@ class ChartSpec:
     labels: list[str] = field(default_factory=list)
     datasets: list[ChartDataset] = field(default_factory=list)
     title: str = ""
+    axis_font_size_px: float | None = None  # Chart.js tick font size
 
 
 @dataclass
@@ -111,8 +114,13 @@ class ShapeSpec:
     # image:
     src: str | None = None
 
-    # table:
+    # table: per-cell ShapeSpec (text-only); col_widths_px maps the table
+    # bbox into per-column widths. border_* describe a uniform border to
+    # apply on every cell (HTML's per-cell border is collapsed into one).
     cells: list[list[ShapeSpec]] = field(default_factory=list)
+    col_widths_px: list[float] = field(default_factory=list)
+    border_color: str | None = None
+    border_width_px: float = 0.0
 
     # raster fallback:
     raster_selector: str | None = None  # CSS selector inside the slide

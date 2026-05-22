@@ -219,13 +219,21 @@ _PROBE_JS = r"""
         label: String(d.label || ''),
         data: (d.data || []).map(v => Number(v) || 0),
         color: colorToHex(
-          typeof d.backgroundColor === 'string' ? d.backgroundColor
-          : typeof d.borderColor === 'string' ? d.borderColor
+          typeof d.borderColor === 'string' ? d.borderColor
+          : typeof d.backgroundColor === 'string' ? d.backgroundColor
           : null
         ),
+        line_width_px: typeof d.borderWidth === 'number' ? d.borderWidth : null,
+        point_radius_px: typeof d.pointRadius === 'number' ? d.pointRadius : null,
       }));
       const title = (cfg.options && cfg.options.plugins && cfg.options.plugins.title && cfg.options.plugins.title.text) || '';
-      return { type: mapped, labels, datasets: ds, title: String(title || '') };
+      // Axis font: Chart.js defaults.font.size = 12. Per-scale override
+      // wins. We sample the X-axis since it's the most visually obvious.
+      const defaultFont = (window.Chart.defaults && window.Chart.defaults.font && window.Chart.defaults.font.size) || 12;
+      const xScale = cfg.options && cfg.options.scales && (cfg.options.scales.x || cfg.options.scales.xAxes && cfg.options.scales.xAxes[0]);
+      const tickFont = xScale && xScale.ticks && xScale.ticks.font && xScale.ticks.font.size;
+      const axisFontSize = typeof tickFont === 'number' ? tickFont : defaultFont;
+      return { type: mapped, labels, datasets: ds, title: String(title || ''), axis_font_size_px: axisFontSize };
     } catch (e) { return null; }
   }
 
@@ -462,10 +470,25 @@ _PROBE_JS = r"""
 
   function tableShape(el) {
     const rows = [];
+    let colWidths = [];
+    let borderColor = null;
+    let borderWidth = 0;
+    const tableRect = el.getBoundingClientRect();
+    let isFirstRow = true;
     for (const tr of el.querySelectorAll(':scope > thead > tr, :scope > tbody > tr, :scope > tr')) {
       const cells = [];
       for (const cell of tr.querySelectorAll(':scope > td, :scope > th')) {
         const cs = getComputedStyle(cell);
+        if (isFirstRow) {
+          colWidths.push(cell.getBoundingClientRect().width);
+          // Sample border once — assume table is uniform per HTML's
+          // border-collapse model.
+          const bw = parseFloat(cs.borderBottomWidth) || 0;
+          if (bw > borderWidth) {
+            borderWidth = bw;
+            borderColor = colorToHex(cs.borderBottomColor);
+          }
+        }
         const t = textShape(cell, cs);
         cells.push(t || {
           kind: 'text', bbox: relRect(cell), z: 0,
@@ -477,6 +500,7 @@ _PROBE_JS = r"""
         });
       }
       rows.push(cells);
+      isFirstRow = false;
     }
     return {
       kind: 'table',
@@ -491,6 +515,9 @@ _PROBE_JS = r"""
       raster_reason: null,
       svg: null,
       chart: null,
+      col_widths_px: colWidths,
+      border_color: borderColor,
+      border_width_px: borderWidth,
     };
   }
 
@@ -660,10 +687,13 @@ def _chart_from_raw(raw: dict | None) -> ChartSpec | None:
                 label=str(d.get("label") or ""),
                 data=[float(v) for v in (d.get("data") or [])],
                 color=d.get("color"),
+                line_width_px=(float(d["line_width_px"]) if d.get("line_width_px") is not None else None),
+                point_radius_px=(float(d["point_radius_px"]) if d.get("point_radius_px") is not None else None),
             )
             for d in (raw.get("datasets") or [])
         ],
         title=str(raw.get("title") or ""),
+        axis_font_size_px=(float(raw["axis_font_size_px"]) if raw.get("axis_font_size_px") is not None else None),
     )
 
 
@@ -688,6 +718,9 @@ def _shape_from_raw(s: dict) -> ShapeSpec:
         padding_px=tuple(s.get("padding_px") or [0, 0, 0, 0]),
         src=s.get("src"),
         cells=cells,
+        col_widths_px=[float(w) for w in (s.get("col_widths_px") or [])],
+        border_color=s.get("border_color"),
+        border_width_px=float(s.get("border_width_px") or 0.0),
         raster_selector=s.get("raster_selector"),
         raster_reason=s.get("raster_reason"),
         svg=s.get("svg"),

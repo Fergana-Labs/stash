@@ -174,6 +174,7 @@ async def _post_chart(
             "labels": chart.labels,
             "datasets": [asdict(d) for d in chart.datasets],
             "title": chart.title,
+            "axis_font_size_px": chart.axis_font_size_px,
         },
     )
     resp.raise_for_status()
@@ -239,7 +240,13 @@ async def _post_table(
 
     resp = await client.post(
         f"/sessions/{session_id}/slides/{slide_index}/table",
-        json={"bbox": asdict(sh.bbox), "cells": cells_payload},
+        json={
+            "bbox": asdict(sh.bbox),
+            "cells": cells_payload,
+            "col_widths_px": sh.col_widths_px,
+            "border_color": sh.border_color,
+            "border_width_px": sh.border_width_px,
+        },
     )
     resp.raise_for_status()
 
