@@ -132,13 +132,15 @@ See [here](https://www.joinstash.ai/docs/cli) for a CLI reference.
 
 ## Self-Hosted
 
-Run Stash locally with Docker Compose:
+Run Stash with prebuilt GHCR images:
 
 ```bash
 git clone https://github.com/Fergana-Labs/stash.git
 cd stash
-docker compose up -d --build
-curl http://localhost:3456/health
+cp .env.example .env
+# Set PUBLIC_URL and CORS_ORIGINS in .env, then replace app.example.com in Caddyfile.
+docker compose -f docker-compose.prod.yml up -d
+curl https://app.example.com/health
 ```
 
 Then install the CLI:
@@ -146,7 +148,7 @@ Then install the CLI:
 ```bash
 pip install stashai / uv tool install stashai
 cd /path/to/the/repo/you/want/to/connect
-stash config base_url http://localhost:3456
+stash config base_url https://app.example.com
 stash login
 ```
 

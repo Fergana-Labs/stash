@@ -2,9 +2,8 @@
 
 import { useState } from "react";
 
+import { usePublicApiBase } from "@/hooks/usePublicApiBase";
 import { buildPrompt, ShareKind } from "../prompts";
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3456";
 
 const TABS: { kind: ShareKind; label: string; hint: string }[] = [
   { kind: "html", label: "HTML page", hint: "Information-dense, optimized to read once." },
@@ -19,9 +18,11 @@ type Props = {
 export default function FirstShareStep({ apiKey }: Props) {
   const [kind, setKind] = useState<ShareKind>("html");
   const [copied, setCopied] = useState(false);
-  const prompt = buildPrompt(kind, apiKey, API_URL);
+  const apiUrl = usePublicApiBase();
+  const prompt = apiUrl ? buildPrompt(kind, apiKey, apiUrl) : "Preparing Stash URL...";
 
   async function handleCopy() {
+    if (!apiUrl) return;
     await navigator.clipboard.writeText(prompt);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
@@ -69,6 +70,7 @@ export default function FirstShareStep({ apiKey }: Props) {
           <button
             type="button"
             onClick={handleCopy}
+            disabled={!apiUrl}
             className="text-[11px] font-medium text-brand hover:text-brand-hover transition-colors"
           >
             {copied ? "Copied" : "Copy"}
@@ -83,7 +85,7 @@ export default function FirstShareStep({ apiKey }: Props) {
       <div className="rounded-xl border border-border-subtle bg-background/40 p-4 text-[12px] text-dim leading-relaxed">
         <strong className="text-foreground font-medium">What happens next:</strong>{" "}
         your agent runs the command and prints a URL like{" "}
-        <code className="text-foreground">{`${API_URL.replace(/\/$/, "")}/stashes/...`}</code>
+        <code className="text-foreground">{`${apiUrl || "https://your-stash-host"}/stashes/...`}</code>
         . Open it — your content is live and shareable.
       </div>
     </div>

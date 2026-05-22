@@ -8,10 +8,7 @@ import { BasicPageSkeleton, CardGridSkeleton } from "../../components/SkeletonSt
 import ForkStashCardButton from "../../components/stash/ForkStashCardButton";
 import StashCard from "../../components/stash/StashCard";
 import { useAuth } from "../../hooks/useAuth";
-import type { PublicStashCard } from "../../lib/api";
-
-const BACKEND_ORIGIN =
-  process.env.NEXT_PUBLIC_API_URL || "http://localhost:3456";
+import { API_BASE, type PublicStashCard } from "../../lib/api";
 
 const SORTS = ["trending", "newest", "popular"] as const;
 type Sort = (typeof SORTS)[number];
@@ -27,7 +24,7 @@ async function fetchPublicStashes(params: {
     if (value) qs.set(key, value);
   }
   const res = await fetch(
-    `${BACKEND_ORIGIN}/api/v1/discover/stashes${qs.size ? `?${qs}` : ""}`,
+    `${API_BASE}/api/v1/discover/stashes${qs.size ? `?${qs}` : ""}`,
   );
   if (!res.ok) return [];
   const data = await res.json();

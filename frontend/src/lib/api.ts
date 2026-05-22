@@ -20,7 +20,7 @@ import {
 } from "./types";
 
 const TOKEN_KEY = "stash_token";
-const API_BASE = "";
+export const API_BASE = "";
 
 // Local trampoline so api.ts can fire analytics without importing analytics.ts
 // (which would create a cycle — analytics.ts reads the auth token).

@@ -3,9 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
-import { listMyWorkspaces, setToken } from "@/lib/api";
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3456";
+import { API_BASE, listMyWorkspaces, setToken } from "@/lib/api";
 
 type Props = {
   cliSession?: string | null;
@@ -22,7 +20,7 @@ export default function ExchangeAndRedirect({ cliSession, onCliApproved }: Props
     if (!tokenRes.ok) throw new Error("Auth0 session missing");
     const { token } = await tokenRes.json();
 
-    const res = await fetch(`${API_URL}/api/v1/auth0/exchange`, {
+    const res = await fetch(`${API_BASE}/api/v1/auth0/exchange`, {
       method: "POST",
       headers: { Authorization: `Bearer ${token}` },
     });
@@ -70,7 +68,7 @@ export default function ExchangeAndRedirect({ cliSession, onCliApproved }: Props
     try {
       const apiKey = await exchange();
       const approveRes = await fetch(
-        `${API_URL}/api/v1/users/cli-auth/sessions/${cliSession}/approve`,
+        `${API_BASE}/api/v1/users/cli-auth/sessions/${cliSession}/approve`,
         {
           method: "POST",
           headers: { Authorization: `Bearer ${apiKey}` },

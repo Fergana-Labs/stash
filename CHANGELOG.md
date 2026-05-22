@@ -5,6 +5,10 @@ everything before it is captured in git history (`git log`), not here.
 
 ## Unreleased
 
+- Self-hosting now uses a prebuilt `ghcr.io/fergana-labs/stash-frontend`
+  image alongside the backend and collab images, so
+  `docker-compose.prod.yml` no longer builds application containers on the
+  target machine.
 - Backend now routes markdown and HTML uploads to the pages table on the
   one upload endpoint, so every surface (frontend drag-drop, CLI `stash
   files upload`, MCP `stash_upload_file`) gets the same behavior. The

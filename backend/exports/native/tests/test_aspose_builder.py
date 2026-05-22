@@ -51,16 +51,18 @@ class _Recorder:
 
         if request.method == "POST" and request.url.path == "/sessions":
             return httpx.Response(200, json={"session_id": self.session_id})
-        if request.method == "POST" and request.url.path.endswith("/slides") \
-                and not request.url.path.endswith("/slides/0/text"):
+        if (
+            request.method == "POST"
+            and request.url.path.endswith("/slides")
+            and not request.url.path.endswith("/slides/0/text")
+        ):
             # /sessions/{sid}/slides — add a blank slide
             if request.url.path == f"/sessions/{self.session_id}/slides":
                 idx = self.next_slide_index
                 self.next_slide_index += 1
                 return httpx.Response(200, json={"slide_index": idx})
         if request.method == "POST" and any(
-            request.url.path.endswith(suffix)
-            for suffix in ("/text", "/image", "/raster", "/table")
+            request.url.path.endswith(suffix) for suffix in ("/text", "/image", "/raster", "/table")
         ):
             idx = self.next_shape_index
             self.next_shape_index += 1
@@ -69,7 +71,9 @@ class _Recorder:
             return httpx.Response(
                 200,
                 content=b"PK\x03\x04stub-pptx-bytes",
-                headers={"content-type": "application/vnd.openxmlformats-officedocument.presentationml.presentation"},
+                headers={
+                    "content-type": "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+                },
             )
         if request.method == "DELETE" and request.url.path.startswith("/sessions/"):
             return httpx.Response(200, json={"ok": True})
@@ -93,7 +97,9 @@ def _build(specs: list[SlideSpec]) -> tuple[bytes, _Recorder]:
 
     async def _run() -> bytes:
         async with httpx.AsyncClient(
-            base_url="http://aspose.test", transport=transport, timeout=5.0,
+            base_url="http://aspose.test",
+            transport=transport,
+            timeout=5.0,
         ) as client:
             return await build_pptx_via_aspose(
                 specs,
@@ -198,10 +204,18 @@ def test_shapes_posted_in_z_order_low_to_high():
     spec = SlideSpec(
         index=0,
         shapes=[
-            ShapeSpec(kind="text", bbox=BBox(0, 0, 10, 10), z=5,
-                      paragraphs=[Paragraph(runs=[TextRun(text="top")])]),
-            ShapeSpec(kind="text", bbox=BBox(0, 0, 10, 10), z=1,
-                      paragraphs=[Paragraph(runs=[TextRun(text="bottom")])]),
+            ShapeSpec(
+                kind="text",
+                bbox=BBox(0, 0, 10, 10),
+                z=5,
+                paragraphs=[Paragraph(runs=[TextRun(text="top")])],
+            ),
+            ShapeSpec(
+                kind="text",
+                bbox=BBox(0, 0, 10, 10),
+                z=1,
+                paragraphs=[Paragraph(runs=[TextRun(text="bottom")])],
+            ),
         ],
     )
     _, recorder = _build([spec])
@@ -244,12 +258,17 @@ def test_teardown_runs_even_when_pptx_fetch_fails():
 
     async def _run():
         async with httpx.AsyncClient(
-            base_url="http://aspose.test", transport=transport, timeout=5.0,
+            base_url="http://aspose.test",
+            transport=transport,
+            timeout=5.0,
         ) as client:
             try:
                 await build_pptx_via_aspose(
-                    [spec], html="", base_url="http://aspose.test",
-                    image_fetcher=_StubFetcher(), http_client=client,
+                    [spec],
+                    html="",
+                    base_url="http://aspose.test",
+                    image_fetcher=_StubFetcher(),
+                    http_client=client,
                 )
             except httpx.HTTPStatusError:
                 pass

@@ -17,6 +17,7 @@ Usage:
 
 from __future__ import annotations
 
+# ruff: noqa: E402
 import argparse
 import asyncio
 import base64
@@ -37,16 +38,20 @@ load_dotenv(REPO_ROOT / "backend" / ".env")
 
 sys.path.insert(0, str(REPO_ROOT))
 
-from backend import database  # noqa: E402
-from backend.exports.constants import SLIDE_HEIGHT_PX, SLIDE_WIDTH_PX  # noqa: E402
-from backend.exports.native.aspose_builder import build_pptx_via_aspose  # noqa: E402
-from backend.exports.native.layout_probe import probe  # noqa: E402
-from backend.exports.native.pptx_builder import build_pptx  # noqa: E402
-from backend.exports.html_canvas import (  # noqa: E402
+from backend import database
+from backend.exports.constants import SLIDE_HEIGHT_PX, SLIDE_WIDTH_PX
+from backend.exports.html_canvas import (
     build_single_slide_html as _build_single_slide_html,
+)
+from backend.exports.html_canvas import (
     count_slides as _count_slides,
+)
+from backend.exports.html_canvas import (
     strip_body_state as _strip_body_state,
 )
+from backend.exports.native.aspose_builder import build_pptx_via_aspose
+from backend.exports.native.layout_probe import probe
+from backend.exports.native.pptx_builder import build_pptx
 
 log = logging.getLogger("native-diff")
 
@@ -176,7 +181,10 @@ async def main_async(args: argparse.Namespace) -> None:
             token = os.environ.get("ASPOSE_PPTX_TOKEN")
             log.info("running aspose builder against %s…", base_url)
             aspose_pptx = await build_pptx_via_aspose(
-                specs, html, base_url=base_url, token=token,
+                specs,
+                html,
+                base_url=base_url,
+                token=token,
             )
             log.info("rasterising aspose pptx via libreoffice…")
             aspose_pngs = _pptx_to_pngs(aspose_pptx)
@@ -257,7 +265,8 @@ def main() -> None:
         description="Diff: HTML render vs screenshot export vs native export."
     )
     parser.add_argument(
-        "page_id", nargs="?",
+        "page_id",
+        nargs="?",
         help="UUID of a fixed-aspect HTML slide page (omit if using --html-file)",
     )
     parser.add_argument(
@@ -268,7 +277,7 @@ def main() -> None:
         "--aspose",
         action="store_true",
         help="also build via the remote aspose-pptx service "
-             "(requires ASPOSE_PPTX_URL + optional ASPOSE_PPTX_TOKEN)",
+        "(requires ASPOSE_PPTX_URL + optional ASPOSE_PPTX_TOKEN)",
     )
     args = parser.parse_args()
     asyncio.run(main_async(args))

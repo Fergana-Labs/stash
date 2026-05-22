@@ -6,9 +6,8 @@ import Header from "../../components/Header";
 import { AuthPageSkeleton, SkeletonBlock } from "../../components/SkeletonStates";
 import { useAuth } from "../../hooks/useAuth";
 import { track } from "../../lib/analytics";
-import { getToken, setToken, listMyWorkspaces } from "../../lib/api";
+import { API_BASE, getToken, setToken, listMyWorkspaces } from "../../lib/api";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3456";
 const AUTH0_ENABLED = process.env.NEXT_PUBLIC_AUTH0_ENABLED === "true";
 
 // FastAPI returns `detail` as either a string or an array of validation errors
@@ -105,7 +104,7 @@ function LoginPageInner() {
       const body = mode === "login"
         ? { name, password }
         : { name, display_name: name, description: "", password };
-      const res = await fetch(`${API_URL}/api/v1/users/${endpoint}`, {
+      const res = await fetch(`${API_BASE}/api/v1/users/${endpoint}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
@@ -127,7 +126,7 @@ function LoginPageInner() {
 
       if (cliSession) {
         const approveRes = await fetch(
-          `${API_URL}/api/v1/users/cli-auth/sessions/${cliSession}/approve`,
+          `${API_BASE}/api/v1/users/cli-auth/sessions/${cliSession}/approve`,
           {
             method: "POST",
             headers: { Authorization: `Bearer ${data.api_key}` },
@@ -255,7 +254,7 @@ function AuthorizeCliPanel({
       const token = getToken();
       if (!token) throw new Error("Not signed in");
       const res = await fetch(
-        `${API_URL}/api/v1/users/cli-auth/sessions/${cliSession}/approve`,
+        `${API_BASE}/api/v1/users/cli-auth/sessions/${cliSession}/approve`,
         {
           method: "POST",
           headers: { Authorization: `Bearer ${token}` },

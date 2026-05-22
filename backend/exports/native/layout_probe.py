@@ -687,13 +687,19 @@ def _chart_from_raw(raw: dict | None) -> ChartSpec | None:
                 label=str(d.get("label") or ""),
                 data=[float(v) for v in (d.get("data") or [])],
                 color=d.get("color"),
-                line_width_px=(float(d["line_width_px"]) if d.get("line_width_px") is not None else None),
-                point_radius_px=(float(d["point_radius_px"]) if d.get("point_radius_px") is not None else None),
+                line_width_px=(
+                    float(d["line_width_px"]) if d.get("line_width_px") is not None else None
+                ),
+                point_radius_px=(
+                    float(d["point_radius_px"]) if d.get("point_radius_px") is not None else None
+                ),
             )
             for d in (raw.get("datasets") or [])
         ],
         title=str(raw.get("title") or ""),
-        axis_font_size_px=(float(raw["axis_font_size_px"]) if raw.get("axis_font_size_px") is not None else None),
+        axis_font_size_px=(
+            float(raw["axis_font_size_px"]) if raw.get("axis_font_size_px") is not None else None
+        ),
     )
 
 

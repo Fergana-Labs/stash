@@ -21,9 +21,17 @@ jobs:
           - image: stash-backend
             context: .
             dockerfile: backend/Dockerfile
+            build_args: ""
           - image: stash-collab
             context: ./collab
             dockerfile: Dockerfile
+            build_args: ""
+          - image: stash-frontend
+            context: ./frontend
+            dockerfile: Dockerfile
+            build_args: |
+              BACKEND_INTERNAL_URL=http://backend:3456
+              NEXT_PUBLIC_AUTH0_ENABLED=false
     steps:
       - uses: actions/checkout@v4
 
@@ -54,5 +62,6 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          build-args: ${{ matrix.build_args }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
