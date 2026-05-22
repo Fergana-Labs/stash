@@ -5,6 +5,9 @@ everything before it is captured in git history (`git log`), not here.
 
 ## Unreleased
 
+- CLI onboarding now says to run `stash connect` when setup finishes
+  without connecting a repo, instead of telling users to commit a
+  `.stash` file that was never created.
 - Self-hosting now uses a prebuilt `ghcr.io/fergana-labs/stash-frontend`
   image alongside the backend and collab images, so
   `docker-compose.prod.yml` no longer builds application containers on the

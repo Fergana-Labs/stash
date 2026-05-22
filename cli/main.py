@@ -4035,6 +4035,47 @@ def _onboarding_import_history(detected_agents: list[str]) -> None:
         console.print(f"  [yellow]{errors} failed — {last_error}[/yellow]")
 
 
+def _setup_complete_intro(ws_url: str) -> str:
+    workspace_link_section = (
+        "[bold]See your workspace[/bold]   [dim](transcripts and team activity)[/dim]\n"
+        f"  [link={ws_url}][bold #1e3a8a]{ws_url}[/bold #1e3a8a][/link]\n"
+        "\n"
+        if ws_url
+        else ""
+    )
+    memory_section = (
+        "It can read the transcripts your teammates' coding agents push to this\n"
+        "workspace — so it knows what the rest of your team is working on.\n"
+        "\n"
+        if ws_url
+        else "No repo is connected yet. Run [cyan]stash connect[/cyan] from a git repo when\n"
+        "you're ready to upload transcripts to a workspace.\n"
+        "\n"
+    )
+    team_section = (
+        "[bold]Share with your team[/bold]\n"
+        "Commit the [cyan].stash[/cyan] file and push. Teammates who clone the repo\n"
+        "will see a prompt to run [cyan]stash start[/cyan]."
+        if ws_url
+        else "[bold]Connect a repo when ready[/bold]\n"
+        "Run [cyan]stash connect[/cyan] from the repo you want Stash to remember."
+    )
+    return (
+        "[bold]What just happened[/bold]\n"
+        "Your coding agent now has the [bold #1e3a8a]stash[/bold #1e3a8a] CLI on its PATH.\n"
+        f"{memory_section}"
+        f"{workspace_link_section}"
+        "[bold]Commands your agent can now use[/bold]\n"
+        '  [#1e3a8a]stash vfs "find /workspaces -maxdepth 3 -type f"[/#1e3a8a]   browse Stash like a filesystem\n'
+        '  [#1e3a8a]stash sessions search "<query>"[/#1e3a8a]   full-text search across transcripts\n'
+        "  [#1e3a8a]stash sessions query --agent <name>[/#1e3a8a]   pull a specific agent's events\n"
+        "\n"
+        "Run [bold]stash --help[/bold] to see everything.\n"
+        "\n"
+        f"{team_section}"
+    )
+
+
 def _show_setup_complete_splash() -> None:
     """Show a clean success splash after first-run login."""
     console.clear()
@@ -4046,36 +4087,11 @@ def _show_setup_complete_splash() -> None:
     console.print("  [bold green]You're all set up.[/bold green]\n")
 
     ws_url = _current_workspace_url()
-    workspace_link_section = (
-        "[bold]See your workspace[/bold]   [dim](transcripts and team activity)[/dim]\n"
-        f"  [link={ws_url}][bold #1e3a8a]{ws_url}[/bold #1e3a8a][/link]\n"
-        "\n"
-        if ws_url
-        else ""
-    )
-    intro = (
-        "[bold]What just happened[/bold]\n"
-        "Your coding agent now has the [bold #1e3a8a]stash[/bold #1e3a8a] CLI on its PATH.\n"
-        "It can read the transcripts your teammates' coding agents push to this\n"
-        "workspace — so it knows what the rest of your team is working on.\n"
-        "\n"
-        f"{workspace_link_section}"
-        "[bold]Commands your agent can now use[/bold]\n"
-        '  [#1e3a8a]stash vfs "find /workspaces -maxdepth 3 -type f"[/#1e3a8a]   browse Stash like a filesystem\n'
-        '  [#1e3a8a]stash sessions search "<query>"[/#1e3a8a]   full-text search across transcripts\n'
-        "  [#1e3a8a]stash sessions query --agent <name>[/#1e3a8a]   pull a specific agent's events\n"
-        "\n"
-        "Run [bold]stash --help[/bold] to see everything.\n"
-        "\n"
-        "[bold]Share with your team[/bold]\n"
-        "Commit the [cyan].stash[/cyan] file and push. Teammates who clone the repo\n"
-        "will see a prompt to run [cyan]stash start[/cyan]."
-    )
-
+    title = "Your team's shared agent memory" if ws_url else "Stash CLI ready"
     console.print(
         Panel(
-            Text.from_markup(intro),
-            title="[bold #1e3a8a]Your team's shared agent memory[/bold #1e3a8a]",
+            Text.from_markup(_setup_complete_intro(ws_url)),
+            title=f"[bold #1e3a8a]{title}[/bold #1e3a8a]",
             border_style="#1e3a8a",
             padding=(1, 2),
         )
