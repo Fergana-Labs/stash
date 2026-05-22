@@ -33,9 +33,8 @@
   </g>
 
   <!-- Right side: Typography like the landing page -->
-  <text x="560" y="205" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="80" font-weight="800" fill="#0F172A" letter-spacing="-3">Your team's</text>
-  <text x="560" y="295" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="80" font-weight="800" fill="#0F172A" letter-spacing="-3">self-improving</text>
-  <text x="560" y="385" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="80" font-weight="800" fill="#F97316" letter-spacing="-3">memory.</text>
+  <text x="560" y="250" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="80" font-weight="800" fill="#0F172A" letter-spacing="-3">Knowledge bases for</text>
+  <text x="560" y="340" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="80" font-weight="800" fill="#0F172A" letter-spacing="-3">the <tspan fill="#F97316">agent era.</tspan></text>
 
   <!-- Subtle top border accent -->
   <rect x="0" y="0" width="1500" height="3" fill="#F97316" opacity="0.6"/>
