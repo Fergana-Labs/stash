@@ -1,14 +1,17 @@
 Write extremely easy to consume code. Optimize for readability: skimmable, no cleverness, early returns.
 
+> This file is the single source of truth for agent rules in this repo. `AGENTS.md` is a symlink to this file so Codex, OpenCode, and any other AGENTS.md-style tool get the same instructions as Claude Code. Edit this file; never edit AGENTS.md directly.
+
 ### Write simple code
 We are a startup. Therefore, code simplicity is our most important concern. Please NEVER
+ - Add backwards compatibility support of any kind. This includes migrations, compatibility shims, aliases, legacy format support, and fallback code paths.
  - Attempt to preserve backwards compatibility when making an edit.
  - Use fallbacks to save the UX when a primary path doesn't work (we'd rather fail fast, and this helps us to maintain as few codepaths as possible)
  - Support old formats. If a format changes, change it everywhere in one shot.
- 
+
 Here are some common code patterns that we need you to avoid:
  - Excessive try/catch: only use try/catch when there's a reasonable expectation that the code within might fail during normal usage. Every try/catch that we add adds another codepath that we need to maintain (the catch) and balloons complexity. In general, we follow the concept of "parse, don't validate" from TDD whenever possible. That is, we validate inputs at module boundaries, and within a module, we don't randomly add try/catch everywhere.
- 
+
  - Unhelpful comments that reiterate what the code does: The point of a comment is to explain information that is not obvious from reading the code. A good rule of thumb: if your comment is an action (eg: sets the diff viewer open state), it is probably a bad comment. If it is a description (eg: the diff viewer state must be synced to our ui interaction server) it is likely a good comment.
 
 ### Be self-sufficient
@@ -19,9 +22,9 @@ If you are about to ask the user to do something for you, think about whether yo
 - **Never speculate about env vars, API keys, or config.** If you need to know whether something is set, check it yourself (e.g. `env | grep`, read `.env`, etc.). Just do it. Do not guess or assume. Do not ask the user. Check it yourself.
 - **Never ask the user to test UI**. Use `agent-browser` as the default tool for manual E2E/QA browser checks: click through the changed workflow, inspect the page state, capture screenshots when useful, and check logs yourself. Use existing Playwright tests for scripted regression coverage when the repo already has them or when adding a durable test is part of the task.
 
-### . Past Conversation Context
+### Past Conversation Context
 
-Previous Claude coding sessions are stored as `.jsonl` files in your ~/.claude file. Read these to understand prior decisions, debugging sessions, and context that isn't in git history.
+Previous Claude coding sessions are stored as `.jsonl` files in your `~/.claude` directory. Read these to understand prior decisions, debugging sessions, and context that isn't in git history.
 
 When you create or update a PR, share the GitHub link with the user at the end of your session.
 When you make local changes for a task, commit them, push the branch, and open a ready-for-review PR before finishing unless the user explicitly says not to. Do not open draft PRs unless the user explicitly asks for a draft.
@@ -70,7 +73,40 @@ Two model tiers, configured in `backend/.env`:
   ask-the-stash.
 - `ANTHROPIC_FAST_MODEL` — fast tier (default `claude-haiku-4-5`).
 
-# CLAUDE.md — 12-rule template
+## Project layout
+
+- `backend/` — FastAPI app (Python 3.12), runs on port `3456`. Migrations via Alembic.
+- `frontend/` — Next.js app (the product UI), runs on port `3457`.
+- `www/` — Next.js landing page, runs on port `3100`.
+
+## Commands
+
+### Backend
+- Install deps: `pip install -r backend/requirements.txt -r backend/requirements-dev.txt && pip install -e .`
+- Migrate DB: `alembic upgrade head`
+- Run server: `uvicorn backend.main:app --host 0.0.0.0 --port 3456 --proxy-headers --forwarded-allow-ips '*'`
+- Tests: `pytest`
+- Lint: `ruff check .`
+
+### Frontend (`frontend/`)
+- Install: `cd frontend && npm ci`
+- Dev: `cd frontend && npm run dev` (port 3457)
+- Build: `cd frontend && npm run build`
+- Tests: `cd frontend && npm test` (vitest)
+- Lint: `cd frontend && npm run lint`
+- E2E: `cd frontend && npx playwright test` (requires `npx playwright install chromium` once)
+
+### Landing page (`www/`)
+- Install: `cd www && npm ci`
+- Dev: `cd www && npm run dev` (port 3100)
+- Build: `cd www && npm run build`
+- Lint: `cd www && npm run lint`
+
+### Local stack
+- One-shot start (migrations + backend + frontend): `./start.sh`
+- Docker compose: `docker compose up`
+
+# 12-rule template
 
 These rules apply to every task in this project unless explicitly overridden.
 Bias: caution over speed on non-trivial work. Use judgment on trivial tasks.

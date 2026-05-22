@@ -43,7 +43,7 @@ async def titles_for_sessions(
     pool = get_pool()
     session_ids = [s["session_id"] for s in sessions]
     rows = await pool.fetch(
-        "SELECT session_id, title, source_hash FROM session_titles "
+        "SELECT session_id, title, source_hash, user_set FROM session_titles "
         "WHERE workspace_id = $1 AND session_id = ANY($2::text[])",
         workspace_id,
         session_ids,
@@ -61,6 +61,8 @@ async def titles_for_sessions(
         else:
             titles[session_id] = title_from_text(session.get("title_source"), session_id)
 
+        if title_row and title_row.get("user_set"):
+            continue
         if title_row and title_row["source_hash"] == session_source_hash:
             continue
         stale_session_ids.append(session_id)
@@ -83,6 +85,31 @@ async def title_for_events(workspace_id: UUID, session_id: str, events: list[dic
 
     _enqueue_title_generation(workspace_id, [session_id])
     return title_from_events(events, session_id)
+
+
+async def set_user_title(workspace_id: UUID, session_id: str, title: str) -> str:
+    """Persist a user-provided title. Future auto-generation skips this row.
+
+    Returns the cleaned title that was stored.
+    """
+    cleaned = _truncate(title.strip())
+    if not cleaned:
+        raise ValueError("Title cannot be empty")
+    pool = get_pool()
+    await pool.execute(
+        """
+        INSERT INTO session_titles (workspace_id, session_id, title, source_hash, user_set)
+        VALUES ($1, $2, $3, '', TRUE)
+        ON CONFLICT (workspace_id, session_id) DO UPDATE SET
+          title = EXCLUDED.title,
+          user_set = TRUE,
+          updated_at = now()
+        """,
+        workspace_id,
+        session_id,
+        cleaned,
+    )
+    return cleaned
 
 
 def _enqueue_title_generation(workspace_id: UUID, session_ids: list[str]) -> None:

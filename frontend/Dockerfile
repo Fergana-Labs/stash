@@ -1,10 +1,15 @@
+# syntax=docker/dockerfile:1.7
 # ---------- Stage 1: Install dependencies ----------
 FROM node:20-alpine AS deps
 
 WORKDIR /app
 
-COPY package.json package-lock.json* ./
-RUN npm ci --legacy-peer-deps
+COPY package.json package-lock.json ./
+# Cache npm's package tarballs across builds. This survives layer-cache
+# invalidations (e.g. when package-lock.json changes), so npm ci stays fast
+# even when the COPY layer above can't be reused.
+RUN --mount=type=cache,target=/root/.npm,sharing=locked \
+    npm ci --legacy-peer-deps --prefer-offline --no-audit --fund=false
 
 # ---------- Stage 2: Build the application ----------
 FROM node:20-alpine AS builder
@@ -30,7 +35,9 @@ ARG BACKEND_INTERNAL_URL
 ENV BACKEND_INTERNAL_URL=$BACKEND_INTERNAL_URL
 
 ENV NEXT_TELEMETRY_DISABLED=1
-RUN npm run build
+# Persist Next.js / Turbopack's incremental build cache across builds.
+RUN --mount=type=cache,target=/app/.next/cache,sharing=locked \
+    npm run build
 
 # ---------- Stage 3: Production runner ----------
 FROM node:20-alpine AS runner

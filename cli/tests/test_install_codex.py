@@ -54,3 +54,21 @@ def test_install_preserves_unrelated_user_config(monkeypatch, tmp_path: Path) ->
     assert "[profiles.stash]" in body
     with cfg.open("rb") as f:
         tomllib.load(f)
+
+
+def test_preexisting_features_section_no_duplicate(monkeypatch, tmp_path: Path) -> None:
+    """If the user already has [features], the installer must merge into it
+    rather than appending a duplicate header (which breaks TOML parsing)."""
+    codex_dir = tmp_path / ".codex"
+    codex_dir.mkdir()
+    cfg = codex_dir / "config.toml"
+    cfg.write_text("[features]\nsuppress_unstable_features_warning = true\n")
+
+    cfg = _run_install(monkeypatch, tmp_path)
+    body = cfg.read_text()
+
+    assert body.count("[features]") == 1
+    with cfg.open("rb") as f:
+        parsed = tomllib.load(f)
+    assert parsed["features"]["hooks"] is True
+    assert parsed["features"]["suppress_unstable_features_warning"] is True

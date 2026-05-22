@@ -3442,7 +3442,15 @@ export default function AppSidebar({
       </nav>
 
       <div className="mt-6 border-t border-border px-2 py-2">
-        <NavRow href="/docs" icon={<HelpIcon />} label="Docs" active={pathname.startsWith("/docs")} />
+        <a
+          href="https://joinstash.ai/docs"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="page-row group/nav flex min-w-0 items-center gap-1.5 rounded-md px-2 py-1 text-[13px] transition-colors text-dim hover:bg-raised hover:text-foreground"
+        >
+          <span className="flex h-4 w-4 shrink-0 items-center justify-center text-[14px]"><HelpIcon /></span>
+          <span className="min-w-0 flex-1 truncate">Docs</span>
+        </a>
         {activeWorkspace ? (
           <NavRow
             href={settingsHref}

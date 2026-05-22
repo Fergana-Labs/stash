@@ -9,7 +9,6 @@ import csv
 import io
 import logging
 import re
-from datetime import datetime
 from urllib.parse import quote
 from uuid import UUID
 
@@ -23,6 +22,7 @@ from ..models import (
     FileListResponse,
     FileResponse,
     FileUpdateRequest,
+    TableListResponse,
     TableResponse,
     UploadResponse,
 )
@@ -34,6 +34,8 @@ from ..services import (
     table_service,
     workspace_service,
 )
+from ..services.csv_inference import coerce_value, infer_column_type
+from ..services.xlsx_ingest import ingest_xlsx_bytes
 
 logger = logging.getLogger(__name__)
 
@@ -483,56 +485,6 @@ async def purge_ws_file(
 # ===== CSV → Table ingest =====
 
 
-_NUMERIC_RE = re.compile(r"^-?\$?[\d,]+(\.\d+)?%?$")
-_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}(:\d{2})?(Z|[+-]\d{2}:?\d{2})?)?$")
-_BOOL_VALUES = {"true", "false", "yes", "no", "y", "n", "0", "1"}
-
-
-def _infer_column_type(samples: list[str]) -> str:
-    """Pick the narrowest fit across the sampled values.
-
-    Promotes upward on any miss: bool → number → date → text. Empty strings
-    don't contribute to the decision.
-    """
-    nonempty = [s for s in samples if s != ""]
-    if not nonempty:
-        return "text"
-
-    def matches(pred) -> bool:
-        return all(pred(s) for s in nonempty)
-
-    if matches(lambda s: s.lower() in _BOOL_VALUES):
-        return "boolean"
-    if matches(lambda s: bool(_NUMERIC_RE.match(s))):
-        return "number"
-    if matches(lambda s: bool(_DATE_RE.match(s))):
-        # 'YYYY-MM-DD' or full ISO — use 'date' for the former, 'datetime' for the latter.
-        if all("T" in s for s in nonempty):
-            return "datetime"
-        return "date"
-    return "text"
-
-
-def _coerce_value(raw: str, col_type: str):
-    if raw == "":
-        return None
-    if col_type == "boolean":
-        return raw.lower() in ("true", "yes", "y", "1")
-    if col_type == "number":
-        cleaned = raw.replace("$", "").replace(",", "").replace("%", "").strip()
-        try:
-            v = float(cleaned)
-            return int(v) if v.is_integer() else v
-        except ValueError:
-            return raw
-    if col_type in ("date", "datetime"):
-        try:
-            return datetime.fromisoformat(raw.replace("Z", "+00:00")).isoformat()
-        except ValueError:
-            return raw
-    return raw
-
-
 @ws_router.post("/{file_id}/ingest-csv", response_model=TableResponse)
 async def ingest_csv_file(
     workspace_id: UUID,
@@ -580,7 +532,7 @@ async def ingest_csv_file(
     columns = []
     for ci, name in enumerate(header):
         samples = [(r[ci] if ci < len(r) else "") for r in sample]
-        col_type = _infer_column_type(samples)
+        col_type = infer_column_type(samples)
         columns.append(
             {
                 "id": _slugify(name) or f"col_{ci}",
@@ -607,7 +559,7 @@ async def ingest_csv_file(
         rec = {}
         for ci, col in enumerate(columns):
             raw = r[ci] if ci < len(r) else ""
-            rec[col["id"]] = _coerce_value(raw, col["type"])
+            rec[col["id"]] = coerce_value(raw, col["type"])
         payload.append(rec)
     if payload:
         await table_service.create_rows_batch(
@@ -618,6 +570,77 @@ async def ingest_csv_file(
 
     refreshed = await table_service.get_table(table["id"])
     return TableResponse(**(refreshed or table))
+
+
+_XLSX_CONTENT_TYPES = {
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "application/vnd.ms-excel",
+}
+
+
+@ws_router.post("/{file_id}/ingest-xlsx", response_model=TableListResponse)
+async def ingest_xlsx_file(
+    workspace_id: UUID,
+    file_id: UUID,
+    current_user: dict = Depends(get_current_user),
+):
+    """Parse an .xlsx file into one table per sheet.
+
+    Idempotent on the file's `linked_table_id` field, which points at the
+    first sheet's table — re-running won't create duplicates, but it also
+    won't re-discover sheets added to the workbook after the first
+    ingest. (Re-import as a new file if the source workbook changes
+    sheets.)
+    """
+    await _check_write(workspace_id, current_user["id"])
+    pool = get_pool()
+    row = await pool.fetchrow(
+        "SELECT id, workspace_id, name, content_type, storage_key, linked_table_id "
+        "FROM files WHERE id = $1 AND workspace_id = $2 AND deleted_at IS NULL",
+        file_id,
+        workspace_id,
+    )
+    if not row:
+        raise HTTPException(status_code=404, detail="File not found")
+    if not await _can_access_file(file_id, workspace_id, current_user["id"], require_write=True):
+        raise HTTPException(status_code=404, detail="File not found")
+
+    ct = (row["content_type"] or "").lower()
+    if not (ct in _XLSX_CONTENT_TYPES or row["name"].lower().endswith((".xlsx", ".xls"))):
+        raise HTTPException(status_code=400, detail="File is not an Excel workbook")
+
+    if row["linked_table_id"]:
+        existing = await table_service.get_table(row["linked_table_id"])
+        if existing:
+            return TableListResponse(tables=[TableResponse(**existing)])
+
+    try:
+        content = await storage_service.download_file(row["storage_key"])
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"S3 download failed: {e}")
+
+    base_name = row["name"].rsplit(".", 1)[0] or row["name"]
+    try:
+        created = await ingest_xlsx_bytes(
+            workspace_id=workspace_id,
+            user_id=current_user["id"],
+            content=content,
+            base_name=base_name,
+            description_template=(f"Imported from {row['name']} (sheet: {{sheet}})"),
+        )
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Could not read workbook: {e}")
+
+    if not created:
+        raise HTTPException(status_code=400, detail="Workbook had no visible sheets with data")
+
+    await pool.execute(
+        "UPDATE files SET linked_table_id = $1 WHERE id = $2",
+        created[0]["id"],
+        file_id,
+    )
+
+    return TableListResponse(tables=[TableResponse(**t) for t in created])
 
 
 def _slugify(s: str) -> str:

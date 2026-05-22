@@ -1,24 +1,21 @@
-version: "3.9"
-
 # Stash — production / self-hosting deployment
 #
 # Usage:
-#   cp .env.example .env        # fill in required values (see README)
-#   docker compose -f docker-compose.prod.yml up -d
+#   cp .env.example .env        # fill in required values
+#   docker compose -f docker-compose.prod.yml up -d --build
+#
+# Backend and collab use pre-built images from GHCR (fast).
+# Frontend builds locally because NEXT_PUBLIC_API_URL must match your domain.
 #
 # Required env vars in .env:
 #   POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_DB
 #   PUBLIC_URL                  (your public frontend URL, e.g. https://app.example.com)
 #   CORS_ORIGINS                (comma-separated allowed origins)
-#   INTEGRATIONS_ENCRYPTION_KEY (Fernet key for OAuth tokens — generate once, never rotate without re-auth)
 #
-# Optional (embeddings default to local sentence-transformers — no key needed):
+# Optional:
+#   ANTHROPIC_API_KEY           (enables ask-the-workspace + session summarization)
 #   OPENAI_API_KEY or HF_TOKEN  (use hosted embedding provider instead of local)
 #   S3_ENDPOINT / S3_BUCKET / …  (enable file uploads)
-#   GOOGLE_OAUTH_CLIENT_ID / GOOGLE_OAUTH_CLIENT_SECRET / GOOGLE_OAUTH_REDIRECT_URI
-#   GITHUB_OAUTH_CLIENT_ID / GITHUB_OAUTH_CLIENT_SECRET / GITHUB_OAUTH_REDIRECT_URI
-#   NOTION_OAUTH_CLIENT_ID / NOTION_OAUTH_CLIENT_SECRET / NOTION_OAUTH_REDIRECT_URI
-#   GOOGLE_PICKER_API_KEY / GOOGLE_PICKER_APP_ID
 #   INTEGRATIONS_ENCRYPTION_KEY (Fernet key — encrypt OAuth tokens at rest)
 #   COLLAB_PUBLIC_URL           (WebSocket URL if collab is not routed under /collab)
 
@@ -27,7 +24,7 @@ services:
     image: pgvector/pgvector:pg16
     restart: always
     expose:
-      - "5432"        # not published to host — only reachable by other services
+      - "5432"
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
@@ -47,7 +44,6 @@ services:
       - "6379"
     volumes:
       - redis_data:/data
-    # AOF persistence so in-flight tasks survive a Redis restart.
     command: ["redis-server", "--appendonly", "yes"]
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
@@ -56,7 +52,7 @@ services:
       retries: 5
 
   backend:
-    image: ghcr.io/Fergana-Labs/stash-backend:latest
+    image: ghcr.io/fergana-labs/stash-backend:latest
     restart: always
     expose:
       - "3456"
@@ -73,10 +69,11 @@ services:
       test: ["CMD", "curl", "-f", "http://localhost:3456/health"]
       interval: 30s
       timeout: 10s
-      retries: 3
+      retries: 5
+      start_period: 30s
 
   worker:
-    image: ghcr.io/Fergana-Labs/stash-backend:latest
+    image: ghcr.io/fergana-labs/stash-backend:latest
     restart: always
     depends_on:
       postgres:
@@ -84,8 +81,6 @@ services:
       redis:
         condition: service_healthy
       backend:
-        # Wait for Alembic — the backend's /health only returns 200
-        # after init_db() (which runs migrations) completes.
         condition: service_healthy
     env_file: .env
     environment:
@@ -93,10 +88,8 @@ services:
       REDIS_URL: redis://redis:6379/0
     command: ["celery", "-A", "backend.celery_app", "worker", "--loglevel=info", "--concurrency=4"]
 
-  # Beat must run as exactly one instance. Multiple beat processes will
-  # fire the same scheduled task multiple times.
   beat:
-    image: ghcr.io/Fergana-Labs/stash-backend:latest
+    image: ghcr.io/fergana-labs/stash-backend:latest
     restart: always
     depends_on:
       redis:
@@ -110,21 +103,24 @@ services:
     command: ["celery", "-A", "backend.celery_app", "beat", "--loglevel=info"]
 
   frontend:
-    image: ghcr.io/Fergana-Labs/stash-frontend:latest
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        BACKEND_INTERNAL_URL: http://backend:3456
+        NEXT_PUBLIC_API_URL: ${PUBLIC_URL:-http://localhost:3456}
     restart: always
     expose:
       - "3457"
     depends_on:
       - backend
     environment:
-      NEXT_PUBLIC_API_URL: ${PUBLIC_URL}
-      # SSR requests must hit the backend over the docker network, not the
-      # public URL (which would loop through Caddy back into the container).
+      NEXT_PUBLIC_API_URL: ${PUBLIC_URL:-http://localhost:3456}
       BACKEND_INTERNAL_URL: http://backend:3456
       NEXT_PUBLIC_COLLAB_URL: ${COLLAB_PUBLIC_URL:-}
 
   collab:
-    image: ghcr.io/Fergana-Labs/stash-collab:latest
+    image: ghcr.io/fergana-labs/stash-collab:latest
     restart: always
     expose:
       - "3458"

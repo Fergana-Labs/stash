@@ -102,10 +102,13 @@ async def _generate_for_session(workspace_id: UUID, session_id: str) -> str:
     source_hash = session_title_service.source_hash(stats)
     pool = get_pool()
     cached = await pool.fetchrow(
-        "SELECT source_hash FROM session_titles WHERE workspace_id = $1 AND session_id = $2",
+        "SELECT source_hash, user_set FROM session_titles "
+        "WHERE workspace_id = $1 AND session_id = $2",
         workspace_id,
         session_id,
     )
+    if cached and cached["user_set"]:
+        return "user-set"
     if cached and cached["source_hash"] == source_hash:
         return "fresh"
 

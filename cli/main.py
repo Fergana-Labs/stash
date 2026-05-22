@@ -477,6 +477,61 @@ def _ask_codex_network_access() -> bool:
     return True if answer is None else bool(answer)
 
 
+def _merge_snippet_into_toml(existing: str, snippet: str) -> str:
+    """Merge snippet sections into existing TOML without creating duplicates.
+
+    If a section header like [features] already exists in the config, inject
+    the snippet's keys for that section into the existing section instead of
+    appending a duplicate header.
+    """
+    import re
+
+    section_re = re.compile(r"^\[([^\]]+)\]\s*$", re.MULTILINE)
+    existing_sections: set[str] = {m.group(1) for m in section_re.finditer(existing)}
+
+    if not existing_sections:
+        return existing, snippet
+
+    snippet_lines = snippet.split("\n")
+    merged_snippet_lines: list[str] = []
+    inject_into_existing: dict[str, list[str]] = {}
+    current_section: str | None = None
+    current_is_dupe = False
+
+    for line in snippet_lines:
+        m = section_re.match(line)
+        if m:
+            current_section = m.group(1)
+            if current_section in existing_sections:
+                current_is_dupe = True
+                inject_into_existing.setdefault(current_section, [])
+            else:
+                current_is_dupe = False
+                merged_snippet_lines.append(line)
+        elif current_is_dupe:
+            stripped = line.strip()
+            if stripped and not stripped.startswith("#"):
+                inject_into_existing[current_section].append(line)
+        else:
+            merged_snippet_lines.append(line)
+
+    merged_existing = existing
+    for section, keys in inject_into_existing.items():
+        pattern = re.compile(
+            r"(\[" + re.escape(section) + r"\]\s*\n(?:[^\[]*?))",
+            re.DOTALL,
+        )
+        m = pattern.search(merged_existing)
+        if m:
+            insert_at = m.end()
+            injection = "\n".join(keys) + "\n"
+            merged_existing = merged_existing[:insert_at] + injection + merged_existing[insert_at:]
+
+    cleaned_snippet = "\n".join(merged_snippet_lines)
+    cleaned_snippet = re.sub(r"\n{3,}", "\n\n", cleaned_snippet)
+    return merged_existing, cleaned_snippet
+
+
 def _strip_top_level_sandbox(snippet: str) -> str:
     """Call this when the user opts not to grant outbound network
     request access. It removes the toml that grants codex outbound
@@ -515,6 +570,7 @@ def _install_codex(force: bool) -> tuple[str, str]:
 
     cfg_path.parent.mkdir(parents=True, exist_ok=True)
     if _CODEX_MARKER not in existing:
+        existing, snippet = _merge_snippet_into_toml(existing, snippet)
         sep = "\n" if existing and not existing.endswith("\n") else ""
         cfg_path.write_text(f"{existing}{sep}\n{_CODEX_MARKER}\n{snippet}\n")
 
@@ -3416,9 +3472,13 @@ def _auto_connect_repo(repo_root: Path, cfg: dict) -> None:
                 return
             except StashError as e:
                 if e.status_code in (403, 404):
-                    _handle_not_member(ws_id)
-                    return
-                raise
+                    console.print(
+                        f"  [yellow]Workspace {ws_id[:8]}… not found — "
+                        f"replacing stale .stash[/yellow]"
+                    )
+                    manifest_path.unlink()
+                else:
+                    raise
 
         repo_name = repo_root.name
         my_workspaces = c.list_workspaces()

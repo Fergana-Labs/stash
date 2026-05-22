@@ -1,0 +1,13 @@
+node_modules
+.next
+.git
+*.tsbuildinfo
+.env*
+.DS_Store
+npm-debug.log*
+playwright-report
+test-results
+coverage
+.vercel
+README.md
+docs

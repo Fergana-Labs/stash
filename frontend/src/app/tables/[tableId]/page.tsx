@@ -22,6 +22,7 @@ import {
 } from "../../../lib/api";
 import type { Table, TableColumn, TableRow, TableView } from "../../../lib/types";
 import FileViewerHeader from "../../../components/workspace/FileViewerHeader";
+import { parseCsv, inferColumnType, detectDelimiter } from "../../../lib/csv";
 
 const TYPE_ICONS: Record<string, string> = {
   text: "Aa", number: "#", boolean: "\u2713", date: "\uD83D\uDCC5", datetime: "\uD83D\uDD53",
@@ -95,6 +96,7 @@ function TableEditorPageInner() {
 
   // Column menu, drag, visibility
   const [colMenu, setColMenu] = useState<{ colId: string; x: number; y: number } | null>(null);
+  const [colMenuTypeOpen, setColMenuTypeOpen] = useState(false);
   const [dragCol, setDragCol] = useState<string | null>(null);
   const [hiddenCols, setHiddenCols] = useState<Set<string>>(new Set());
   const [showColVisibility, setShowColVisibility] = useState(false);
@@ -124,6 +126,7 @@ function TableEditorPageInner() {
 
   // CSV import
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [dropping, setDropping] = useState(false);
 
   const wsId = resolvedWorkspaceId;
   const sortedColumns = table?.columns ? [...table.columns].sort((a, b) => a.order - b.order) : [];
@@ -133,6 +136,7 @@ function TableEditorPageInner() {
   const shareModal = useShareModal();
 
   useEscapeKey(!!colMenu, () => setColMenu(null));
+  useEffect(() => { if (!colMenu) setColMenuTypeOpen(false); }, [colMenu]);
   useEscapeKey(showColVisibility, () => setShowColVisibility(false));
   useEscapeKey(showEmbeddings, () => setShowEmbeddings(false));
   useEscapeKey(showAddCol, () => setShowAddCol(false));
@@ -281,7 +285,16 @@ function TableEditorPageInner() {
 
   useEffect(() => {
     if (!colMenu) return;
-    const handler = () => setColMenu(null);
+    // React's onClick stopPropagation runs in the synthetic event system,
+    // but this listener is on the native event chain — so without an
+    // explicit "is the click inside the menu?" check the listener fires
+    // for clicks on the menu's own items and tears the menu down before
+    // the inline submenu (e.g. Change type ›) can render.
+    const handler = (e: MouseEvent) => {
+      const menuEl = document.querySelector("[data-colmenu]");
+      if (menuEl && menuEl.contains(e.target as Node)) return;
+      setColMenu(null);
+    };
     document.addEventListener("click", handler);
     return () => document.removeEventListener("click", handler);
   }, [colMenu]);
@@ -334,6 +347,13 @@ function TableEditorPageInner() {
     const name = prompt("Column name:", col.name);
     if (!name || name === col.name) return;
     try { setTable(await updateTableColumn(wsId, tableId, colId, { name })); setColMenu(null); } catch (err) { setError(err instanceof Error ? err.message : "Failed"); }
+  };
+  const handleChangeColumnType = async (colId: string, type: string) => {
+    // Existing cell values stay in JSONB as-is; the new type only governs
+    // future writes (which the server validator coerces / rejects). The
+    // grid renderer treats unparseable values as plain strings, so a bad
+    // pick won't break the table — it'll just stop accepting new values.
+    try { setTable(await updateTableColumn(wsId, tableId, colId, { type })); setColMenu(null); } catch (err) { setError(err instanceof Error ? err.message : "Failed"); }
   };
   const handleColumnDrop = async (targetColId: string) => {
     if (!dragCol || dragCol === targetColId) { setDragCol(null); return; }
@@ -426,28 +446,104 @@ function TableEditorPageInner() {
     catch (err) { setError(err instanceof Error ? err.message : "Failed"); }
   };
 
-  // --- CSV ---
+  // --- CSV / TSV import ---
+  // Shared by the file picker, drag-drop, and clipboard paste. Auto-creates
+  // missing columns with inferred types; existing columns are matched by name.
+  const importTabular = async (text: string, delimiter: string) => {
+    const rows = parseCsv(text, delimiter);
+    if (rows.length < 2) { setError("Need a header row plus at least one data row"); return; }
+    const headers = rows[0];
+    const dataRows = rows.slice(1);
+
+    const existingNames = new Set(sortedColumns.map((c) => c.name));
+    let currentTable = table!;
+    for (let ci = 0; ci < headers.length; ci++) {
+      const name = headers[ci];
+      if (!name || existingNames.has(name)) continue;
+      const samples = dataRows.slice(0, 50).map((r) => r[ci] ?? "");
+      const colType = inferColumnType(samples);
+      currentTable = await addTableColumn(wsId, tableId, { name, type: colType });
+      existingNames.add(name);
+    }
+    setTable(currentTable);
+
+    const colIdByHeader: Record<string, string> = {};
+    for (const col of currentTable.columns) colIdByHeader[col.name] = col.id;
+
+    const payload: Record<string, unknown>[] = [];
+    for (const r of dataRows) {
+      const data: Record<string, unknown> = {};
+      headers.forEach((h, idx) => {
+        const colId = colIdByHeader[h];
+        if (!colId) return;
+        const raw = r[idx] ?? "";
+        // Server coerces raw strings per column type; empty cells become NULL.
+        data[colId] = raw === "" ? null : raw;
+      });
+      payload.push(data);
+    }
+
+    for (let i = 0; i < payload.length; i += 5000) {
+      await createTableRowsBatch(
+        wsId,
+        tableId,
+        payload.slice(i, i + 5000).map((d) => ({ data: d })),
+      );
+    }
+    await loadRows(); await loadTable();
+  };
+
   const handleCsvImport = async (file: File) => {
     try {
       const text = await file.text();
-      const lines = text.split("\n").filter((l) => l.trim());
-      if (lines.length < 2) { setError("CSV needs header + data"); return; }
-      const headers = lines[0].split(",").map((h) => h.trim().replace(/^"|"$/g, ""));
-      const existingNames = new Set(sortedColumns.map((c) => c.name));
-      let currentTable = table!;
-      for (const h of headers) { if (!existingNames.has(h)) currentTable = await addTableColumn(wsId, tableId, { name: h, type: "text" }); }
-      setTable(currentTable);
-      const colMap: Record<string, string> = {}; for (const col of currentTable.columns) colMap[col.name] = col.id;
-      const rowsData: Record<string, unknown>[] = [];
-      for (let i = 1; i < lines.length; i++) {
-        const values = lines[i].match(/(".*?"|[^,]+)/g)?.map((v) => v.trim().replace(/^"|"$/g, "")) || [];
-        const data: Record<string, unknown> = {};
-        headers.forEach((h, idx) => { if (colMap[h] && idx < values.length) data[colMap[h]] = values[idx]; });
-        rowsData.push(data);
-      }
-      for (let i = 0; i < rowsData.length; i += 5000) { await createTableRowsBatch(wsId, tableId, rowsData.slice(i, i + 5000).map((d) => ({ data: d }))); }
-      await loadRows(); await loadTable();
+      await importTabular(text, detectDelimiter(text));
     } catch (err) { setError(err instanceof Error ? err.message : "Failed to import"); }
+  };
+
+  const isFileDrag = (e: React.DragEvent) =>
+    Array.from(e.dataTransfer.types || []).includes("Files");
+
+  const handleFileDragOver = (e: React.DragEvent) => {
+    if (readOnly || !table || !isFileDrag(e)) return;
+    e.preventDefault();
+    if (!dropping) setDropping(true);
+  };
+
+  const handleFileDragLeave = (e: React.DragEvent) => {
+    // Only clear when the drag leaves the container, not when crossing
+    // child elements (relatedTarget within the container still counts).
+    if (e.currentTarget.contains(e.relatedTarget as Node)) return;
+    setDropping(false);
+  };
+
+  const handleFileDrop = async (e: React.DragEvent) => {
+    if (readOnly || !table || !isFileDrag(e)) return;
+    e.preventDefault();
+    setDropping(false);
+    const file = e.dataTransfer.files[0];
+    if (!file) return;
+    if (!/\.csv$/i.test(file.name) && !file.type.includes("csv")) {
+      setError("Drop a .csv file to append rows");
+      return;
+    }
+    await handleCsvImport(file);
+  };
+
+  const handlePasteTabular = async (e: React.ClipboardEvent) => {
+    if (readOnly || !table || editingCell) return;
+    // Ignore pastes inside inputs/textareas/contentEditable (cell editors,
+    // search, filter inputs). Only intercept the bare grid container.
+    const target = e.target as HTMLElement | null;
+    if (target) {
+      const tag = target.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || target.isContentEditable) return;
+    }
+    const text = e.clipboardData.getData("text/plain");
+    if (!text || !text.includes("\n")) return;
+    e.preventDefault();
+    try {
+      await importTabular(text, detectDelimiter(text));
+    } catch (err) { setError(err instanceof Error ? err.message : "Failed to paste"); }
   };
   const handleCsvExport = async () => {
     if (!table || !wsId) return;
@@ -577,7 +673,20 @@ function TableEditorPageInner() {
     : null;
 
   const tableContent = (
-      <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
+      <div
+        className="relative flex-1 flex flex-col min-h-0 overflow-hidden"
+        onPaste={handlePasteTabular}
+        onDragOver={handleFileDragOver}
+        onDragLeave={handleFileDragLeave}
+        onDrop={handleFileDrop}
+      >
+        {dropping && (
+          <div className="pointer-events-none absolute inset-0 z-40 flex items-center justify-center bg-brand/10 border-2 border-dashed border-brand">
+            <div className="rounded-lg bg-surface/95 px-6 py-3 text-sm font-medium text-brand shadow-lg">
+              Drop a CSV to append rows
+            </div>
+          </div>
+        )}
         <FileViewerHeader
           icon={<TableGlyph />}
           iconColor="#059669"
@@ -868,11 +977,37 @@ function TableEditorPageInner() {
 
         {/* Column context menu */}
         {colMenu && (
-          <div className="fixed z-50 bg-surface border border-border rounded-lg shadow-lg py-1 min-w-[160px]" style={{ left: colMenu.x, top: colMenu.y }} onClick={(e) => e.stopPropagation()}>
-            <button onClick={() => { handleSort(colMenu.colId); setColMenu(null); }} className="w-full text-left px-3 py-1.5 text-sm text-foreground hover:bg-raised">Sort {sortBy === colMenu.colId && sortOrder === "asc" ? "descending" : "ascending"}</button>
-            <button onClick={() => handleRenameColumn(colMenu.colId)} className="w-full text-left px-3 py-1.5 text-sm text-foreground hover:bg-raised">Rename</button>
-            <button onClick={() => { setHiddenCols((prev) => new Set([...prev, colMenu.colId])); setColMenu(null); }} className="w-full text-left px-3 py-1.5 text-sm text-foreground hover:bg-raised">Hide column</button>
-            <button onClick={() => handleDeleteColumn(colMenu.colId)} className="w-full text-left px-3 py-1.5 text-sm text-red-400 hover:bg-raised">Delete column</button>
+          <div data-colmenu className="fixed z-50 bg-surface border border-border rounded-lg shadow-lg py-1 min-w-[180px]" style={{ left: colMenu.x, top: colMenu.y }} onClick={(e) => e.stopPropagation()}>
+            {!colMenuTypeOpen ? (
+              <>
+                <button onClick={() => { handleSort(colMenu.colId); setColMenu(null); }} className="w-full text-left px-3 py-1.5 text-sm text-foreground hover:bg-raised">Sort {sortBy === colMenu.colId && sortOrder === "asc" ? "descending" : "ascending"}</button>
+                <button onClick={() => handleRenameColumn(colMenu.colId)} className="w-full text-left px-3 py-1.5 text-sm text-foreground hover:bg-raised">Rename</button>
+                <button onClick={() => setColMenuTypeOpen(true)} className="w-full text-left px-3 py-1.5 text-sm text-foreground hover:bg-raised flex items-center justify-between">
+                  <span>Change type</span>
+                  <span className="text-[10px] text-muted font-mono">{sortedColumns.find((c) => c.id === colMenu.colId)?.type ?? ""} ›</span>
+                </button>
+                <button onClick={() => { setHiddenCols((prev) => new Set([...prev, colMenu.colId])); setColMenu(null); }} className="w-full text-left px-3 py-1.5 text-sm text-foreground hover:bg-raised">Hide column</button>
+                <button onClick={() => handleDeleteColumn(colMenu.colId)} className="w-full text-left px-3 py-1.5 text-sm text-red-400 hover:bg-raised">Delete column</button>
+              </>
+            ) : (
+              <>
+                <button onClick={() => setColMenuTypeOpen(false)} className="w-full text-left px-3 py-1.5 text-xs text-muted hover:text-foreground hover:bg-raised">‹ Back</button>
+                {COLUMN_TYPES.map((t) => {
+                  const current = sortedColumns.find((c) => c.id === colMenu.colId)?.type;
+                  return (
+                    <button
+                      key={t}
+                      onClick={() => { void handleChangeColumnType(colMenu.colId, t); setColMenuTypeOpen(false); }}
+                      className={`w-full text-left px-3 py-1.5 text-sm hover:bg-raised flex items-center gap-2 ${current === t ? "text-brand" : "text-foreground"}`}
+                    >
+                      <span className="text-[10px] text-muted font-mono w-4 text-center">{TYPE_ICONS[t] ?? "?"}</span>
+                      <span>{t}</span>
+                      {current === t && <span className="ml-auto text-brand">✓</span>}
+                    </button>
+                  );
+                })}
+              </>
+            )}
           </div>
         )}
 

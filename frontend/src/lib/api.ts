@@ -896,6 +896,15 @@ export async function ingestCsvFile(workspaceId: string, fileId: string): Promis
   });
 }
 
+export async function ingestXlsxFile(
+  workspaceId: string,
+  fileId: string,
+): Promise<{ tables: Table[] }> {
+  return apiFetch(`/api/v1/workspaces/${workspaceId}/files/${fileId}/ingest-xlsx`, {
+    method: "POST",
+  });
+}
+
 export async function updateFile(
   workspaceId: string,
   fileId: string,
@@ -982,6 +991,21 @@ export async function getSessionDetail(
   sessionId: string
 ): Promise<SessionDetail> {
   return apiFetch(`/api/v1/workspaces/${workspaceId}/sessions/${encodeURIComponent(sessionId)}`);
+}
+
+export async function renameSession(
+  workspaceId: string,
+  sessionId: string,
+  title: string
+): Promise<{ title: string }> {
+  return apiFetch(
+    `/api/v1/workspaces/${workspaceId}/sessions/${encodeURIComponent(sessionId)}/title`,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ title }),
+    }
+  );
 }
 
 export async function materializeSession(
