@@ -3,10 +3,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { track } from "@/lib/analytics";
-import { apiFetch, getToken } from "@/lib/api";
+import { API_BASE, apiFetch, getToken } from "@/lib/api";
 import type { StepCtx } from "@/lib/onboarding/paths";
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3456";
 
 type Overview = {
   sessions: { session_id?: string; name?: string }[];
@@ -92,7 +90,7 @@ export default function MemoryAskStep({ workspaceId }: StepCtx) {
 
       try {
         const res = await fetch(
-          `${API_URL}/api/v1/workspaces/${workspaceId}/ask`,
+          `${API_BASE}/api/v1/workspaces/${workspaceId}/ask`,
           {
             method: "POST",
             headers: {

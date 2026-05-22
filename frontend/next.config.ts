@@ -6,7 +6,6 @@ import type { NextConfig } from "next";
 // browser uses.
 const backend =
   process.env.BACKEND_INTERNAL_URL ||
-  process.env.NEXT_PUBLIC_API_URL ||
   "http://localhost:3456";
 
 const acceptsJson = ".*application/json.*";

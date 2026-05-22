@@ -54,7 +54,9 @@ async def build_pptx_via_aspose(
 
     headers = {"Authorization": f"Bearer {token}"} if token else {}
     client = http_client or httpx.AsyncClient(
-        base_url=base_url, timeout=_DEFAULT_TIMEOUT_S, headers=headers,
+        base_url=base_url,
+        timeout=_DEFAULT_TIMEOUT_S,
+        headers=headers,
     )
     owns_client = http_client is None
 
@@ -62,7 +64,10 @@ async def build_pptx_via_aspose(
     try:
         resp = await client.post(
             "/sessions",
-            json={"slide_width_px": float(SLIDE_WIDTH_PX), "slide_height_px": float(SLIDE_HEIGHT_PX)},
+            json={
+                "slide_width_px": float(SLIDE_WIDTH_PX),
+                "slide_height_px": float(SLIDE_HEIGHT_PX),
+            },
         )
         resp.raise_for_status()
         session_id = resp.json()["session_id"]
@@ -104,7 +109,9 @@ async def _post_slide(
         png = rasters.get((spec.index, spec.bg_raster_selector))
         if png:
             await _post_raster(
-                client, session_id, slide_index,
+                client,
+                session_id,
+                slide_index,
                 bbox=BBox(x=0, y=0, w=SLIDE_WIDTH_PX, h=SLIDE_HEIGHT_PX),
                 png=png,
             )
@@ -151,7 +158,10 @@ async def _post_shape(
 
 
 async def _post_svg(
-    client: httpx.AsyncClient, session_id: str, slide_index: int, sh: ShapeSpec,
+    client: httpx.AsyncClient,
+    session_id: str,
+    slide_index: int,
+    sh: ShapeSpec,
 ) -> None:
     resp = await client.post(
         f"/sessions/{session_id}/slides/{slide_index}/svg",
@@ -161,7 +171,10 @@ async def _post_svg(
 
 
 async def _post_chart(
-    client: httpx.AsyncClient, session_id: str, slide_index: int, sh: ShapeSpec,
+    client: httpx.AsyncClient,
+    session_id: str,
+    slide_index: int,
+    sh: ShapeSpec,
 ) -> None:
     chart = sh.chart
     if chart is None:
@@ -181,7 +194,10 @@ async def _post_chart(
 
 
 async def _post_text(
-    client: httpx.AsyncClient, session_id: str, slide_index: int, sh: ShapeSpec,
+    client: httpx.AsyncClient,
+    session_id: str,
+    slide_index: int,
+    sh: ShapeSpec,
 ) -> None:
     resp = await client.post(
         f"/sessions/{session_id}/slides/{slide_index}/text",
@@ -196,8 +212,12 @@ async def _post_text(
 
 
 async def _post_raster(
-    client: httpx.AsyncClient, session_id: str, slide_index: int,
-    *, bbox: BBox, png: bytes,
+    client: httpx.AsyncClient,
+    session_id: str,
+    slide_index: int,
+    *,
+    bbox: BBox,
+    png: bytes,
 ) -> None:
     resp = await client.post(
         f"/sessions/{session_id}/slides/{slide_index}/raster",
@@ -210,8 +230,12 @@ async def _post_raster(
 
 
 async def _post_image(
-    client: httpx.AsyncClient, session_id: str, slide_index: int,
-    *, bbox: BBox, data: bytes,
+    client: httpx.AsyncClient,
+    session_id: str,
+    slide_index: int,
+    *,
+    bbox: BBox,
+    data: bytes,
 ) -> None:
     resp = await client.post(
         f"/sessions/{session_id}/slides/{slide_index}/image",
@@ -224,18 +248,25 @@ async def _post_image(
 
 
 async def _post_table(
-    client: httpx.AsyncClient, session_id: str, slide_index: int, sh: ShapeSpec,
+    client: httpx.AsyncClient,
+    session_id: str,
+    slide_index: int,
+    sh: ShapeSpec,
 ) -> None:
     cells_payload: list[list[dict]] = []
     for row in sh.cells:
         row_payload: list[dict] = []
         for cell in row:
             first = cell.paragraphs[0] if cell.paragraphs else None
-            paragraph = asdict(first) if first else {"runs": [], "align": "left", "line_height": 1.2}
-            row_payload.append({
-                "paragraph": paragraph,
-                "bg_color": cell.bg_color,
-            })
+            paragraph = (
+                asdict(first) if first else {"runs": [], "align": "left", "line_height": 1.2}
+            )
+            row_payload.append(
+                {
+                    "paragraph": paragraph,
+                    "bg_color": cell.bg_color,
+                }
+            )
         cells_payload.append(row_payload)
 
     resp = await client.post(

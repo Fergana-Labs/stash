@@ -65,7 +65,10 @@ async def build_pptx_bytes_for_page(page_id: UUID) -> tuple[str, bytes]:
     logger.info("probed %d slide(s) for page %s", len(specs), page_id)
 
     pptx_bytes = await build_pptx_via_aspose(
-        specs, source_html, base_url=base_url, token=token,
+        specs,
+        source_html,
+        base_url=base_url,
+        token=token,
     )
     return page_row["name"] or "slides", pptx_bytes
 

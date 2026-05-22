@@ -82,7 +82,10 @@ async def main_async(args: argparse.Namespace) -> None:
                 raise SystemExit("ASPOSE_PPTX_URL must be set when --builder=aspose")
             token = os.environ.get("ASPOSE_PPTX_TOKEN")
             pptx_bytes = await build_pptx_via_aspose(
-                specs, html, base_url=base_url, token=token,
+                specs,
+                html,
+                base_url=base_url,
+                token=token,
             )
             suffix = "aspose"
         else:
@@ -90,8 +93,7 @@ async def main_async(args: argparse.Namespace) -> None:
             suffix = "native"
 
         out_path = (
-            Path(args.out) if args.out
-            else Path(f"/tmp/{name.replace(' ', '_')}-{suffix}.pptx")
+            Path(args.out) if args.out else Path(f"/tmp/{name.replace(' ', '_')}-{suffix}.pptx")
         )
         out_path.write_bytes(pptx_bytes)
         log.info("wrote %s (%d bytes)", out_path, len(pptx_bytes))
@@ -104,7 +106,8 @@ def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     parser = argparse.ArgumentParser(description="Native-shape PPTX export sandbox driver.")
     parser.add_argument(
-        "page_id", nargs="?",
+        "page_id",
+        nargs="?",
         help="UUID of a fixed-aspect HTML slide page (omit if using --html-file)",
     )
     parser.add_argument(
@@ -120,7 +123,7 @@ def main() -> None:
         choices=["python-pptx", "aspose"],
         default="python-pptx",
         help="which builder to use; aspose hits the remote REST service "
-             "and requires ASPOSE_PPTX_URL (+ optional ASPOSE_PPTX_TOKEN)",
+        "and requires ASPOSE_PPTX_URL (+ optional ASPOSE_PPTX_TOKEN)",
     )
     args = parser.parse_args()
     asyncio.run(main_async(args))

@@ -3403,7 +3403,11 @@ def _self_host_walkthrough(cfg: dict) -> str:
         "  [dim]1.[/dim] [cyan]git clone https://github.com/Fergana-Labs/stash.git[/cyan]"
     )
     console.print("  [dim]2.[/dim] [cyan]cd stash[/cyan]")
-    console.print("  [dim]3.[/dim] [cyan]docker compose up -d[/cyan]")
+    console.print("  [dim]3.[/dim] [cyan]cp .env.example .env[/cyan]")
+    console.print(
+        "  [dim]4.[/dim] edit [cyan].env[/cyan] and [cyan]Caddyfile[/cyan] for your domain"
+    )
+    console.print("  [dim]5.[/dim] [cyan]docker compose -f docker-compose.prod.yml up -d[/cyan]")
     console.print("\n  [dim]Already running? Skip to the URL prompt below.[/dim]\n")
 
     _reserve_bottom_padding(6)

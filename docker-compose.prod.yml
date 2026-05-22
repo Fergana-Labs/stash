@@ -2,10 +2,9 @@
 #
 # Usage:
 #   cp .env.example .env        # fill in required values
-#   docker compose -f docker-compose.prod.yml up -d --build
+#   docker compose -f docker-compose.prod.yml up -d
 #
-# Backend and collab use pre-built images from GHCR (fast).
-# Frontend builds locally because NEXT_PUBLIC_API_URL must match your domain.
+# Backend, frontend, and collab use pre-built images from GHCR.
 #
 # Required env vars in .env:
 #   POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_DB
@@ -17,7 +16,6 @@
 #   OPENAI_API_KEY or HF_TOKEN  (use hosted embedding provider instead of local)
 #   S3_ENDPOINT / S3_BUCKET / …  (enable file uploads)
 #   INTEGRATIONS_ENCRYPTION_KEY (Fernet key — encrypt OAuth tokens at rest)
-#   COLLAB_PUBLIC_URL           (WebSocket URL if collab is not routed under /collab)
 
 services:
   postgres:
@@ -103,21 +101,14 @@ services:
     command: ["celery", "-A", "backend.celery_app", "beat", "--loglevel=info"]
 
   frontend:
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile
-      args:
-        BACKEND_INTERNAL_URL: http://backend:3456
-        NEXT_PUBLIC_API_URL: ${PUBLIC_URL:-http://localhost:3456}
+    image: ghcr.io/fergana-labs/stash-frontend:latest
     restart: always
     expose:
       - "3457"
     depends_on:
       - backend
     environment:
-      NEXT_PUBLIC_API_URL: ${PUBLIC_URL:-http://localhost:3456}
       BACKEND_INTERNAL_URL: http://backend:3456
-      NEXT_PUBLIC_COLLAB_URL: ${COLLAB_PUBLIC_URL:-}
 
   collab:
     image: ghcr.io/fergana-labs/stash-collab:latest

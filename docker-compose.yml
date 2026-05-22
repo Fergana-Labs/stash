@@ -139,13 +139,10 @@ services:
         # Next.js rewrites() is evaluated at build time, so the internal
         # URL must be present then — not only at runtime.
         BACKEND_INTERNAL_URL: http://backend:3456
-        NEXT_PUBLIC_API_URL: http://localhost:3456
     restart: unless-stopped
     ports:
       - "3457:3457"
     environment:
-      # Browser-side: what the user types into their browser.
-      NEXT_PUBLIC_API_URL: http://localhost:3456
       # Server-side (SSR): in-network hostname the frontend container
       # uses to reach the backend — localhost is the frontend itself
       # inside the container.

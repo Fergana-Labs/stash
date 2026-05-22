@@ -5,12 +5,11 @@ import { type DragEvent, type ReactNode, useRef, useState } from "react";
 import { createPage, uploadFileOrPage, uploadTranscript } from "@/lib/api";
 import type { StepCtx } from "@/lib/onboarding/paths";
 import { buildPrompt, type ShareKind } from "@/app/onboarding/prompts";
+import { usePublicApiBase } from "@/hooks/usePublicApiBase";
 
 function Ext({ children }: { children: string }) {
   return <code className="text-foreground">{children}</code>;
 }
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3456";
 
 type OptionId = "drop" | "html" | "markdown" | "session";
 
@@ -293,9 +292,11 @@ function matchesAllowed(name: string): boolean {
 
 function PromptPanel({ kind, apiKey }: { kind: ShareKind; apiKey: string }) {
   const [copied, setCopied] = useState(false);
-  const prompt = buildPrompt(kind, apiKey, API_URL);
+  const apiUrl = usePublicApiBase();
+  const prompt = apiUrl ? buildPrompt(kind, apiKey, apiUrl) : "Preparing Stash URL...";
 
   async function handleCopy() {
+    if (!apiUrl) return;
     await navigator.clipboard.writeText(prompt);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
@@ -310,6 +311,7 @@ function PromptPanel({ kind, apiKey }: { kind: ShareKind; apiKey: string }) {
         <button
           type="button"
           onClick={handleCopy}
+          disabled={!apiUrl}
           className="text-[11px] font-medium text-brand hover:text-brand-hover transition-colors"
         >
           {copied ? "Copied" : "Copy"}

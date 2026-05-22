@@ -1,11 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { ApiError, clearToken, getMe, getToken } from "../lib/api";
+import { API_BASE, ApiError, clearToken, getMe, getToken } from "../lib/api";
 import { User } from "../lib/types";
 
 const AUTH0_ENABLED = process.env.NEXT_PUBLIC_AUTH0_ENABLED === "true";
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "";
 
 /**
  * Auth hook. Reads the API key from localStorage and loads /users/me.
@@ -62,7 +61,7 @@ export function useAuth() {
     clearToken();
     setUser(null);
     if (token) {
-      fetch(`${API_URL}/api/v1/users/logout`, {
+      fetch(`${API_BASE}/api/v1/users/logout`, {
         method: "POST",
         headers: { Authorization: `Bearer ${token}` },
         keepalive: true,
