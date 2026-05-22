@@ -1,6 +1,6 @@
 "use client";
 
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { ReactNode, useEffect } from "react";
 
 import AppShell from "../../components/AppShell";
@@ -15,11 +15,20 @@ import { useAuth } from "../../hooks/useAuth";
 // between /stashes/[slug] and /workspaces/[workspaceId], so scroll position
 // and folder-open state survive the navigation. Public stash routes are
 // readable when signed out, so we render their children bare in that case.
+//
+// A workspace deep link with `?stash=<slug>` is also a public-stash route:
+// the page/session/file viewers fall back to the public stash payload when
+// they see that query param, so anonymous viewers can read the item without
+// workspace membership. Without this allowance the layout redirects to
+// /login before the viewer's stash-fallback can kick in.
 export default function AppGroupLayout({ children }: { children: ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
+  const searchParams = useSearchParams();
   const { user, loading, logout } = useAuth();
-  const isPublicStashRoute = pathname.startsWith("/stashes/");
+  const isPublicStashRoute =
+    pathname.startsWith("/stashes/") ||
+    (pathname.startsWith("/workspaces/") && searchParams.has("stash"));
 
   useEffect(() => {
     if (loading) return;
