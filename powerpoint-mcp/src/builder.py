@@ -28,6 +28,10 @@ from .models import (
     TextShapeRequest,
 )
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 # 1 inch = 72 points; default Aspose slide is 13.333"x7.5" = 960x540 pt for 16:9.
 # We read the actual size from the presentation each call so a future
@@ -96,13 +100,20 @@ def _apply_gradient_fill(background, gradient: GradientModel) -> None:
         gf.linear_gradient_angle = (float(gradient.angle) - 90.0) % 360
     else:  # radial
         gf.gradient_shape = slides.GradientShape.RECTANGLE
-    # Aspose's IGradientStopCollection: `count(item)` is list.count-style
-    # (takes an arg), `len()` works for sizing. `.add()` is preset colors
-    # only; arbitrary RGB needs `.add_pixel_stop()`.
+    # Aspose's IGradientStopCollection: len() for sizing (count() is
+    # list.count-style). Method name for an RGB stop varies across
+    # binding versions — try add_pixel_stop, fall back to add().
     while len(gf.gradient_stops) > 0:
         gf.gradient_stops.remove_at(0)
+    add_stop = getattr(gf.gradient_stops, "add_pixel_stop", None) \
+            or getattr(gf.gradient_stops, "add", None)
+    if add_stop is None:
+        # Surface the available API so the next deploy can wire it up.
+        logger.error("GradientStopCollection has no add/add_pixel_stop: dir=%s",
+                     [a for a in dir(gf.gradient_stops) if not a.startswith('_')])
+        return
     for stop in gradient.stops:
-        gf.gradient_stops.add_pixel_stop(float(stop.offset) * 100.0, _hex_to_color(stop.color))
+        add_stop(float(stop.offset) * 100.0, _hex_to_color(stop.color))
 
 
 def _set_canvas_size(pres: slides.Presentation, width_px: float, height_px: float) -> None:
