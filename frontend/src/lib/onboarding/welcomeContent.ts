@@ -78,7 +78,7 @@ export function generateWelcomeHtml(inputs: WelcomeInputs): string {
           ? ` — share <a href="${escapeAttr(inviteLink)}">${escapeHtml(inviteLink)}</a>.`
           : ` from workspace settings.`
       }</li>
-      <li><strong>Install the CLI</strong> — let your coding agent use Stash directly: <code>npm i -g @joinstash/cli</code></li>
+      <li><strong>Install the CLI</strong> — let your coding agent use Stash directly: <code>pip install stashai</code></li>
     </ul>`,
   );
 

@@ -20,7 +20,7 @@ export default function SharingHandoffStep() {
           automatically — no API key to copy around.
         </p>
         <pre className="rounded-md border border-border-subtle bg-background/40 px-3 py-2 text-[12px] font-mono text-foreground overflow-x-auto">
-          npm i -g @joinstash/cli
+          pip install stashai
         </pre>
         <p className="text-[11.5px] text-muted leading-relaxed">
           Need a raw API key for a different setup? Mint one anytime from{" "}
