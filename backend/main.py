@@ -19,6 +19,7 @@ from .routers import (
     aggregate,
     analytics,
     collab,
+    demo,
     discover,
     exports,
     files,
@@ -38,6 +39,7 @@ from .routers import (
     workspace_knowledge,
     workspaces,
 )
+from .services import demo_service
 from .services.row_validation import RowValidationError
 
 logger = logging.getLogger("stash")
@@ -49,6 +51,10 @@ async def lifespan(app: FastAPI):
     # precompute, session summarizer) now run in the Celery `worker` and
     # `beat` services — see backend/celery_app.py.
     await init_db()
+    try:
+        await demo_service.seed_demo_workspace()
+    except Exception:
+        logger.exception("seed_demo_workspace failed at startup")
     try:
         yield
     finally:
@@ -108,6 +114,7 @@ app.include_router(tasks.router)
 app.include_router(integrations_router)
 app.include_router(imports.router)
 app.include_router(exports.router)
+app.include_router(demo.router)
 
 if settings.AUTH0_ENABLED:
     from backend.managed.auth0 import router as auth0_router

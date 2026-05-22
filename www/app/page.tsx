@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 
+import LiveDemo from "./_components/LiveDemo";
 import ScrollLink from "./_components/ScrollLink";
 import VisualizationsShowcase from "./_components/VisualizationsShowcase";
 
@@ -11,6 +12,7 @@ export default function Page() {
     <main className="min-h-screen bg-background text-foreground">
       <Nav />
       <Hero />
+      <LiveDemo />
       <Logos />
       <Problem />
       <HowItWorks />
