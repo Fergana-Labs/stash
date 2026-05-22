@@ -45,10 +45,10 @@ export default function DoneStep({ workspaceId }: Props) {
           The CLI lets your agent push session transcripts automatically and
           gives you{" "}
           <code className="text-foreground">stash share</code>,{" "}
-          <code className="text-foreground">stash discover</code>, and more.
+          <code className="text-foreground">stash browse</code>, and more.
         </p>
         <pre className="rounded-md border border-border-subtle bg-background/40 px-3 py-2 text-[12px] font-mono text-foreground overflow-x-auto">
-          npm i -g @joinstash/cli
+          pip install stashai
         </pre>
         <a
           href="https://joinstash.ai/docs/cli"
@@ -80,4 +80,3 @@ export default function DoneStep({ workspaceId }: Props) {
     </div>
   );
 }
-

@@ -64,7 +64,7 @@ export default function MemoryImportStep(ctx: StepCtx) {
           Install the CLI
         </div>
         <pre className="rounded-md border border-border-subtle bg-background/40 px-3 py-2 text-[12px] font-mono text-foreground overflow-x-auto">
-          npm i -g @joinstash/cli
+          pip install stashai
         </pre>
         <p className="text-[11.5px] text-muted leading-relaxed">
           On first run the CLI offers to <strong>backfill all your past
