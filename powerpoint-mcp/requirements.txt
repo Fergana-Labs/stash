@@ -1,0 +1,11 @@
+# Web stack
+fastapi>=0.110.0
+uvicorn>=0.27.0
+pydantic>=2.0.0
+python-dotenv>=1.0.0
+
+# Aspose.Slides for Python via .NET (Linux-only at runtime)
+aspose-slides>=24.1.0
+
+# Image handling
+Pillow>=10.0.0

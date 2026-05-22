@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><title>Image fixture</title>
+<style>
+  html,body{margin:0;padding:0;font-family:-apple-system,system-ui,sans-serif;}
+  section.slide{width:1920px;height:1080px;background:#0f172a;color:#f8fafc;padding:80px;box-sizing:border-box;position:relative;display:block;}
+  h1{font-size:72px;margin:0 0 24px;}
+  p.lead{font-size:28px;margin:0 0 24px;color:#cbd5e1;}
+  .row{display:flex;gap:24px;margin-top:32px;}
+  .card{background:#1e293b;border-radius:16px;padding:32px;flex:1;}
+  .card img{display:block;width:100%;height:auto;border-radius:8px;}
+  .card h3{font-size:22px;margin:16px 0 8px;color:#f8fafc;}
+  .card p{font-size:18px;margin:0;color:#94a3b8;}
+</style></head><body>
+<section class="slide">
+  <h1>Image fixture</h1>
+  <p class="lead">Three image cards from different sources — exercising the fetcher's data: / http(s) / placeholder paths.</p>
+  <div class="row">
+    <div class="card">
+      <img alt="data uri red" src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxMDAgNjAiPjxyZWN0IHdpZHRoPSIxMDAiIGhlaWdodD0iNjAiIGZpbGw9IiNkYzI2MjYiLz48dGV4dCB4PSI1MCIgeT0iMzUiIGZvbnQtZmFtaWx5PSJzYW5zLXNlcmlmIiBmb250LXNpemU9IjE0IiBmaWxsPSJ3aGl0ZSIgdGV4dC1hbmNob3I9Im1pZGRsZSI+ZGF0YTo8L3RleHQ+PC9zdmc+">
+      <h3>Data URI</h3>
+      <p>SVG embedded inline.</p>
+    </div>
+    <div class="card">
+      <img alt="picsum" src="https://picsum.photos/seed/native-export-1/600/360">
+      <h3>HTTP URL</h3>
+      <p>Random photo from picsum.photos.</p>
+    </div>
+    <div class="card">
+      <img alt="picsum 2" src="https://picsum.photos/seed/native-export-2/600/360">
+      <h3>HTTP URL #2</h3>
+      <p>Second random photo.</p>
+    </div>
+  </div>
+</section>
+</body></html>
