@@ -2501,6 +2501,7 @@ def hist_import(
     workspace_id: str = typer.Option(None, "--ws"),
     agent_name: str = typer.Option(None, "--agent", help="Only import from this agent."),
     limit: int = typer.Option(0, "-n", "--limit", help="Max conversations to import (0 = all)."),
+    replace: bool = typer.Option(False, "--replace", help="Replace sessions that already exist."),
     yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation prompt."),
     as_json: bool = typer.Option(False, "--json"),
 ):
@@ -2554,7 +2555,13 @@ def hist_import(
         task = progress.add_task("Importing…", total=len(conversations))
         for conv in conversations:
             try:
-                upload_conversation(c, ws, conv, default_stash_id=_default_stash_id())
+                upload_conversation(
+                    c,
+                    ws,
+                    conv,
+                    default_stash_id=_default_stash_id(),
+                    replace=replace,
+                )
                 imported += 1
             except StashError:
                 errors += 1

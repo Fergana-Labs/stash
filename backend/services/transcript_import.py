@@ -59,17 +59,81 @@ def _text_from_content(content: Any) -> str:
     for block in content:
         if not isinstance(block, dict):
             continue
-        if block.get("type") == "text":
+        if block.get("type") in ("text", "input_text", "output_text"):
             txt = block.get("text", "")
             if isinstance(txt, str) and txt.strip():
                 parts.append(txt)
     return "\n\n".join(parts)
 
 
+def _content_repr(value: Any) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        return value
+    try:
+        return json.dumps(value, ensure_ascii=False)
+    except (TypeError, ValueError):
+        return str(value)
+
+
 def _tool_blocks(content: Any) -> list[dict]:
     if not isinstance(content, list):
         return []
     return [b for b in content if isinstance(b, dict) and b.get("type") == "tool_use"]
+
+
+def _parse_codex_response_item(obj: dict, *, session_id: str, agent_name: str) -> list[dict]:
+    payload = obj.get("payload") if isinstance(obj.get("payload"), dict) else {}
+    payload_type = payload.get("type")
+    created_at = _parse_ts(obj.get("timestamp")) or _parse_ts(payload.get("timestamp"))
+
+    if payload_type == "message":
+        role = payload.get("role")
+        if role not in ("user", "assistant"):
+            return []
+        text_content = _text_from_content(payload.get("content", ""))
+        if not text_content.strip():
+            return []
+        return [
+            {
+                "agent_name": agent_name,
+                "event_type": "user_message" if role == "user" else "assistant_message",
+                "content": text_content,
+                "session_id": session_id,
+                "tool_name": None,
+                "metadata": {"source": "transcript_import"},
+                "created_at": created_at,
+            }
+        ]
+
+    if payload_type == "function_call":
+        return [
+            {
+                "agent_name": agent_name,
+                "event_type": "tool_use",
+                "content": _content_repr(payload.get("arguments")),
+                "session_id": session_id,
+                "tool_name": payload.get("name") or None,
+                "metadata": {"source": "transcript_import"},
+                "created_at": created_at,
+            }
+        ]
+
+    if payload_type == "function_call_output":
+        return [
+            {
+                "agent_name": agent_name,
+                "event_type": "tool_result",
+                "content": _content_repr(payload.get("output")),
+                "session_id": session_id,
+                "tool_name": None,
+                "metadata": {"source": "transcript_import"},
+                "created_at": created_at,
+            }
+        ]
+
+    return []
 
 
 def parse_jsonl_to_events(
@@ -99,6 +163,12 @@ def parse_jsonl_to_events(
             continue
 
         entry_type = obj.get("type")
+        if entry_type == "response_item":
+            events.extend(
+                _parse_codex_response_item(obj, session_id=session_id, agent_name=agent_name)
+            )
+            continue
+
         if entry_type not in ("user", "assistant"):
             continue
 
@@ -126,17 +196,11 @@ def parse_jsonl_to_events(
         for tu in _tool_blocks(content_raw):
             tool_name = tu.get("name") or ""
             tool_input = tu.get("input")
-            try:
-                content_repr = (
-                    json.dumps(tool_input, ensure_ascii=False) if tool_input is not None else ""
-                )
-            except (TypeError, ValueError):
-                content_repr = str(tool_input)
             events.append(
                 {
                     "agent_name": agent_name,
                     "event_type": "tool_use",
-                    "content": content_repr,
+                    "content": _content_repr(tool_input),
                     "session_id": session_id,
                     "tool_name": tool_name or None,
                     "metadata": {"source": "transcript_import"},

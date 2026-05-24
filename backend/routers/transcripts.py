@@ -53,10 +53,14 @@ async def upload_transcript(
     agent_name: str = Form(...),
     cwd: str | None = Form(None),
     default_stash_id: UUID | None = Form(None),
+    replace: bool = Form(False),
     current_user: dict = Depends(get_current_user),
 ):
-    """Parse the uploaded JSONL into history_events rows. No-op if the
-    session already has events."""
+    """Parse the uploaded JSONL into history_events rows.
+
+    Existing sessions are left alone unless the caller explicitly asks to
+    replace them.
+    """
     await _check_member(workspace_id, current_user["id"])
     if not _is_jsonl(file.filename):
         raise HTTPException(status_code=400, detail="Session uploads must be .JSONL files")
@@ -76,6 +80,38 @@ async def upload_transcript(
     if existing:
         if not await memory_service.can_read_session(workspace_id, session_id, current_user["id"]):
             raise HTTPException(status_code=404, detail="Transcript not found")
+        if replace:
+            await pool.execute(
+                "DELETE FROM history_events WHERE workspace_id = $1 AND session_id = $2",
+                workspace_id,
+                session_id,
+            )
+        else:
+            await session_service.upsert_session(
+                workspace_id,
+                session_id,
+                agent_name=agent_name,
+                cwd=cwd,
+                created_by=current_user["id"],
+            )
+            if default_stash_id:
+                try:
+                    await stash_service.add_sessions_to_stash(
+                        stash_id=default_stash_id,
+                        workspace_id=workspace_id,
+                        user_id=current_user["id"],
+                        session_ids=[session_id],
+                    )
+                except ValueError as e:
+                    raise HTTPException(status_code=400, detail=str(e))
+            return {
+                "session_id": session_id,
+                "imported": 0,
+                "skipped": True,
+                "reason": "session already has events",
+            }
+
+    if not existing or replace:
         await session_service.upsert_session(
             workspace_id,
             session_id,
@@ -83,22 +119,6 @@ async def upload_transcript(
             cwd=cwd,
             created_by=current_user["id"],
         )
-        if default_stash_id:
-            try:
-                await stash_service.add_sessions_to_stash(
-                    stash_id=default_stash_id,
-                    workspace_id=workspace_id,
-                    user_id=current_user["id"],
-                    session_ids=[session_id],
-                )
-            except ValueError as e:
-                raise HTTPException(status_code=400, detail=str(e))
-        return {
-            "session_id": session_id,
-            "imported": 0,
-            "skipped": True,
-            "reason": "session already has events",
-        }
 
     events = transcript_import.parse_jsonl_to_events(
         body, session_id=session_id, agent_name=agent_name

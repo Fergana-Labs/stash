@@ -118,6 +118,50 @@ async def test_reupload_is_noop_when_events_exist(client: AsyncClient):
 
 
 @pytest.mark.asyncio
+async def test_replace_reimports_existing_session(client: AsyncClient):
+    key = await _register(client)
+    ws = await _workspace(client, key)
+    headers = {"Authorization": f"Bearer {key}"}
+    replacement = (
+        json.dumps(
+            {
+                "type": "user",
+                "message": {"content": "updated"},
+                "timestamp": "2026-05-10T20:00:02Z",
+            }
+        )
+        + "\n"
+    ).encode()
+
+    first = await client.post(
+        f"/api/v1/workspaces/{ws}/transcripts",
+        files={"file": ("s.jsonl", io.BytesIO(BODY), "application/jsonl")},
+        data={"session_id": "sess-replace", "agent_name": "claude"},
+        headers=headers,
+    )
+    assert first.status_code == 201
+    assert first.json()["imported"] == 2
+
+    second = await client.post(
+        f"/api/v1/workspaces/{ws}/transcripts",
+        files={"file": ("s.jsonl", io.BytesIO(replacement), "application/jsonl")},
+        data={"session_id": "sess-replace", "agent_name": "claude", "replace": "true"},
+        headers=headers,
+    )
+    assert second.status_code == 201, second.text
+    assert second.json()["skipped"] is False
+    assert second.json()["imported"] == 1
+
+    events_resp = await client.get(
+        f"/api/v1/workspaces/{ws}/transcripts/sess-replace/events",
+        headers=headers,
+    )
+    assert events_resp.status_code == 200
+    events = events_resp.json()["events"]
+    assert [event["content"] for event in events] == ["updated"]
+
+
+@pytest.mark.asyncio
 async def test_upload_adds_session_to_default_stash(client: AsyncClient):
     key = await _register(client)
     ws = await _workspace(client, key)

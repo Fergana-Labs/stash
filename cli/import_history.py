@@ -506,6 +506,7 @@ def upload_conversation(
     workspace_id: str,
     conv: ConversationInfo,
     default_stash_id: str = "",
+    replace: bool = False,
 ) -> dict:
     """Upload a single conversation transcript + push a summary event."""
     import os
@@ -525,6 +526,7 @@ def upload_conversation(
             agent_name=conv.agent,
             cwd=conv.cwd,
             default_stash_id=default_stash_id,
+            replace=replace,
         )
     finally:
         if materialized:

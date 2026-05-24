@@ -492,6 +492,7 @@ class Stash:
         cwd: str = "",
         workspace: str | None = None,
         default_stash_id: str | None = None,
+        replace: bool = False,
     ) -> dict:
         import gzip as _gzip
 
@@ -508,6 +509,7 @@ class Stash:
                 "session_id": session_id,
                 "agent_name": agent_name,
                 "cwd": cwd,
+                "replace": str(replace).lower(),
                 **({"default_stash_id": default_stash_id} if default_stash_id else {}),
             },
             files={"file": (name, body, "application/gzip")},

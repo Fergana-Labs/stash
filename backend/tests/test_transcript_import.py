@@ -63,6 +63,68 @@ def test_surfaces_tool_use_blocks_as_events():
     assert "x.py" in events[1]["content"]
 
 
+def test_parses_codex_response_items():
+    body = (
+        "\n".join(
+            [
+                _line(type="session_meta", payload={"id": "codex-1"}),
+                _line(
+                    type="response_item",
+                    payload={
+                        "type": "message",
+                        "role": "developer",
+                        "content": [{"type": "input_text", "text": "rules"}],
+                    },
+                ),
+                _line(
+                    type="response_item",
+                    payload={
+                        "type": "message",
+                        "role": "user",
+                        "content": [{"type": "input_text", "text": "fix the build"}],
+                    },
+                    timestamp="2026-05-10T00:00:00Z",
+                ),
+                _line(
+                    type="response_item",
+                    payload={
+                        "type": "message",
+                        "role": "assistant",
+                        "content": [{"type": "output_text", "text": "running tests"}],
+                    },
+                    timestamp="2026-05-10T00:00:01Z",
+                ),
+                _line(
+                    type="response_item",
+                    payload={
+                        "type": "function_call",
+                        "name": "exec_command",
+                        "arguments": {"cmd": "pytest"},
+                    },
+                ),
+                _line(
+                    type="response_item",
+                    payload={"type": "function_call_output", "output": "passed"},
+                ),
+            ]
+        )
+        + "\n"
+    ).encode()
+
+    events = parse_jsonl_to_events(body, session_id="codex-1", agent_name="codex")
+
+    assert [event["event_type"] for event in events] == [
+        "user_message",
+        "assistant_message",
+        "tool_use",
+        "tool_result",
+    ]
+    assert [event["content"] for event in events[:2]] == ["fix the build", "running tests"]
+    assert events[2]["tool_name"] == "exec_command"
+    assert events[2]["content"] == '{"cmd": "pytest"}'
+    assert events[3]["content"] == "passed"
+
+
 def test_skips_unknown_types_and_invalid_json():
     body = (
         _line(type="system", message={"content": "ignored"})
