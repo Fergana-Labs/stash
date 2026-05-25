@@ -133,6 +133,48 @@ function formatSize(bytes: number): string {
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 }
 
+// Project a history_events.event_type into the user/assistant axis the
+// session viewer renders. Mirrors backend/routers/transcripts.py
+// _event_role — tool_use/tool_result fold into "assistant" so the
+// timeline shows tool calls inline with assistant turns.
+function roleForEventType(t: string | undefined): "user" | "assistant" | null {
+  if (!t) return null;
+  if (t === "user_message" || t === "user_prompt" || t === "prompt" || t === "user") return "user";
+  if (
+    t === "assistant_message" ||
+    t === "assistant" ||
+    t === "tool_use" ||
+    t === "tool_call" ||
+    t === "tool_result"
+  )
+    return "assistant";
+  return null;
+}
+
+const AVATAR_PALETTE: { bg: string; fg: string }[] = [
+  { bg: "bg-rose-200", fg: "text-rose-800" },
+  { bg: "bg-orange-200", fg: "text-orange-800" },
+  { bg: "bg-emerald-200", fg: "text-emerald-800" },
+  { bg: "bg-amber-200", fg: "text-amber-900" },
+  { bg: "bg-sky-200", fg: "text-sky-800" },
+  { bg: "bg-teal-200", fg: "text-teal-800" },
+];
+
+function avatarFor(name: string) {
+  let h = 5381;
+  for (let i = 0; i < name.length; i++) h = (h * 33 + name.charCodeAt(i)) >>> 0;
+  return AVATAR_PALETTE[h % AVATAR_PALETTE.length];
+}
+
+function initials(name: string): string {
+  return name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((p) => p[0]?.toUpperCase() ?? "")
+    .join("");
+}
+
 export function SessionBody({ item }: { item: PublicStashItem }) {
   const s = (item.inline as {
     session?: {
@@ -153,27 +195,89 @@ export function SessionBody({ item }: { item: PublicStashItem }) {
           {s.finished_at && <span>ended · {new Date(s.finished_at).toLocaleString()}</span>}
         </div>
       </div>
-      <div className="space-y-2">
+      <div className="space-y-1">
         {events.map((event, i) => (
-          <div
+          <SessionTurn
             key={`${event.created_at ?? "evt"}-${i}`}
-            className="rounded-md border border-border-subtle bg-base/40 px-3 py-2 text-[12.5px]"
-          >
-            <div className="flex items-center gap-2 text-[10.5px] uppercase tracking-wide text-muted">
-              <span>{event.event_type || "event"}</span>
-              {event.tool_name && <span>· {event.tool_name}</span>}
-              {event.created_at && (
-                <span>· {new Date(event.created_at).toLocaleTimeString()}</span>
-              )}
-            </div>
-            <pre className="mt-1.5 m-0 whitespace-pre-wrap font-sans text-[12.5px] leading-relaxed text-foreground">
-              {event.content || ""}
-            </pre>
-          </div>
+            event={event}
+            agentName={s.agent_name}
+          />
         ))}
         {events.length === 0 && (
           <p className="text-[12.5px] text-muted">No events recorded.</p>
         )}
+      </div>
+    </div>
+  );
+}
+
+function SessionTurn({
+  event,
+  agentName,
+}: {
+  event: InlineSessionEvent;
+  agentName?: string;
+}) {
+  const role = roleForEventType(event.event_type);
+  // Skip event types the viewer can't classify (e.g. session_end) —
+  // they're metadata, not content the visitor needs to read inline.
+  if (!role) return null;
+
+  const isAgent = role === "assistant";
+  const isTool = event.event_type === "tool_use" || event.event_type === "tool_result";
+  const name = isAgent ? agentName || "agent" : "user";
+  const avatar = avatarFor(name);
+  const time = event.created_at
+    ? new Date(event.created_at).toLocaleTimeString(undefined, {
+        hour: "numeric",
+        minute: "2-digit",
+      })
+    : undefined;
+
+  return (
+    <div className="msg-row group scroll-mt-16 rounded-md px-2 py-2">
+      <div className="flex gap-3">
+        <span
+          className={
+            "inline-flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full text-[10px] font-semibold " +
+            avatar.bg +
+            " " +
+            avatar.fg
+          }
+        >
+          {initials(name)}
+        </span>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-baseline gap-2 text-[12.5px]">
+            <span className="font-semibold text-foreground">{name}</span>
+            {isAgent ? (
+              <span className="tag tag-agent">agent</span>
+            ) : (
+              <span className="tag tag-human">human</span>
+            )}
+            {event.tool_name && (
+              <span className="rounded bg-surface px-1.5 py-0 font-mono text-[10.5px] text-dim ring-1 ring-border">
+                {event.tool_name}
+              </span>
+            )}
+            <span className="flex-1" />
+            {time && (
+              <span className="sys-label" style={{ fontSize: 10 }}>
+                {time}
+              </span>
+            )}
+          </div>
+          <div
+            className={
+              "mt-1 whitespace-pre-wrap leading-relaxed text-foreground " +
+              (isTool
+                ? "rounded-md border border-border-subtle bg-surface px-2.5 py-2 font-mono text-[12px]"
+                : "text-[13.5px]")
+            }
+          >
+            {event.content || ""}
+          </div>
+        </div>
       </div>
     </div>
   );
