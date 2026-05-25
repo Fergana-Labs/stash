@@ -12,6 +12,7 @@ authenticated workspace routers — no parallel implementation.
 from __future__ import annotations
 
 import secrets
+from datetime import datetime
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request
@@ -60,6 +61,11 @@ class DemoSessionEvent(BaseModel):
     content: str = Field(..., max_length=100_000)
     tool_name: str | None = Field(None, max_length=128)
     metadata: dict | None = None
+    # Real captured sessions stream in over the conversation's actual
+    # duration. The agent should stamp each event with the time it
+    # happened; without this, every event lands at the moment of POST
+    # and the timeline collapses to a single instant — visibly fake.
+    created_at: datetime | None = None
 
 
 class DemoSessionCreate(BaseModel):
@@ -69,6 +75,10 @@ class DemoSessionCreate(BaseModel):
     # session viewer renders these as a chat thread.
     events: list[DemoSessionEvent] = Field(..., min_length=1, max_length=400)
     agent_name: str = Field("demo-visitor", min_length=1, max_length=64)
+    # The agent's actual cwd at the time of the demo — real captured
+    # sessions always carry this. Optional because some agents don't
+    # have a meaningful cwd to surface.
+    cwd: str | None = Field(None, max_length=1024)
 
 
 class DemoStashCreate(BaseModel):
@@ -129,29 +139,42 @@ async def create_page(request: Request, req: DemoPageCreate) -> dict[str, Any]:
 @router.post("/sessions", status_code=201)
 @limiter.limit(_POST_LIMIT)
 async def create_session(request: Request, req: DemoSessionCreate) -> dict[str, Any]:
+    from ..database import get_pool
+    from ..services import session_service
+
     workspace_id, owner_id = await demo_service.get_demo_workspace()
     # Random session_id keeps demos isolated within the shared workspace.
     session_id = f"demo-{secrets.token_urlsafe(10)}"
 
-    # Batch-insert one history_event per turn. push_events_batch upserts
-    # the session row for us via _upsert_sessions_for_events — no need to
-    # create the session separately. The first event's metadata carries
-    # the demo title so the session list view can show it.
+    # Upsert the session row first so cwd lands. push_events_batch will
+    # also call upsert (idempotent), but it doesn't know about cwd.
+    session = await session_service.upsert_session(
+        workspace_id=workspace_id,
+        session_id=session_id,
+        agent_name=req.agent_name,
+        cwd=req.cwd,
+        created_by=owner_id,
+    )
+
+    # Build the event payload. Per-event `created_at` is what gives the
+    # timeline a real shape — without it the chat thread collapses into
+    # one instant.
     payload = []
     for idx, event in enumerate(req.events):
         meta = dict(event.metadata or {})
         if idx == 0:
             meta.setdefault("demo_title", req.title)
-        payload.append(
-            {
-                "agent_name": req.agent_name,
-                "event_type": event.event_type,
-                "content": event.content,
-                "session_id": session_id,
-                "tool_name": event.tool_name,
-                "metadata": meta,
-            }
-        )
+        row = {
+            "agent_name": req.agent_name,
+            "event_type": event.event_type,
+            "content": event.content,
+            "session_id": session_id,
+            "tool_name": event.tool_name,
+            "metadata": meta,
+        }
+        if event.created_at is not None:
+            row["created_at"] = event.created_at
+        payload.append(row)
 
     inserted = await memory_service.push_events_batch(
         workspace_id=workspace_id,
@@ -159,13 +182,19 @@ async def create_session(request: Request, req: DemoSessionCreate) -> dict[str, 
         events=payload,
     )
 
-    # push_events_batch upserts sessions but doesn't return the row id;
-    # look it up so the caller can reference it from the stash items.
-    from ..services import session_service
+    # If the agent included a closing `session_end` event, stamp the
+    # session's finished_at to that event's time. Real captured sessions
+    # set finished_at when the agent's harness emits its end-of-session
+    # hook; the demo equivalent is the agent saying "I'm done."
+    last = req.events[-1]
+    if last.event_type == "session_end" and last.created_at is not None:
+        pool = get_pool()
+        await pool.execute(
+            "UPDATE sessions SET finished_at = $1 WHERE id = $2",
+            last.created_at,
+            session["id"],
+        )
 
-    session = await session_service.get_session(workspace_id, session_id)
-    if session is None:
-        raise HTTPException(status_code=500, detail="Session upsert failed")
     return {
         "session_id": session["id"],
         "session_external_id": session_id,

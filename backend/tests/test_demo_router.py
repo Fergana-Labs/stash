@@ -316,6 +316,111 @@ async def test_session_stores_full_event_timeline(client: AsyncClient, pool):
 
 
 @pytest.mark.asyncio
+async def test_session_preserves_event_timestamps(client: AsyncClient, pool):
+    """Per-event created_at must round-trip. Without this, all events
+    cluster at the moment of POST and the timeline looks fake."""
+    resp = await client.post(
+        "/api/v1/demo/sessions",
+        json={
+            "title": "Timestamp test",
+            "agent_name": "test-agent",
+            "events": [
+                {
+                    "event_type": "user_message",
+                    "created_at": "2026-05-25T18:20:00+00:00",
+                    "content": "first",
+                },
+                {
+                    "event_type": "assistant_message",
+                    "created_at": "2026-05-25T18:22:30+00:00",
+                    "content": "second",
+                },
+            ],
+        },
+    )
+    assert resp.status_code == 201, resp.text
+    session_row_id = resp.json()["session_id"]
+    rows = await pool.fetch(
+        "SELECT content, created_at FROM history_events "
+        "WHERE session_id = (SELECT session_id FROM sessions WHERE id = $1) "
+        "ORDER BY created_at ASC",
+        session_row_id,
+    )
+    assert len(rows) == 2
+    delta_seconds = (rows[1]["created_at"] - rows[0]["created_at"]).total_seconds()
+    assert delta_seconds == pytest.approx(150.0, abs=1.0)
+
+
+@pytest.mark.asyncio
+async def test_session_persists_cwd(client: AsyncClient, pool):
+    """The agent's cwd is part of what makes a real captured session
+    look real. Required on the session row."""
+    resp = await client.post(
+        "/api/v1/demo/sessions",
+        json={
+            "title": "cwd test",
+            "agent_name": "test-agent",
+            "cwd": "/Users/sam/code/myrepo",
+            "events": [{"event_type": "user_message", "content": "x"}],
+        },
+    )
+    assert resp.status_code == 201, resp.text
+    cwd = await pool.fetchval(
+        "SELECT cwd FROM sessions WHERE id = $1", resp.json()["session_id"]
+    )
+    assert cwd == "/Users/sam/code/myrepo"
+
+
+@pytest.mark.asyncio
+async def test_session_end_sets_finished_at(client: AsyncClient, pool):
+    """A closing session_end event with a timestamp marks the session
+    as finished, same as a real harness's end-of-session hook."""
+    end_ts = "2026-05-25T18:23:15+00:00"
+    resp = await client.post(
+        "/api/v1/demo/sessions",
+        json={
+            "title": "session_end test",
+            "agent_name": "test-agent",
+            "events": [
+                {"event_type": "user_message", "content": "kick off", "created_at": "2026-05-25T18:20:00+00:00"},
+                {"event_type": "session_end", "content": "done", "created_at": end_ts},
+            ],
+        },
+    )
+    assert resp.status_code == 201, resp.text
+    finished_at = await pool.fetchval(
+        "SELECT finished_at FROM sessions WHERE id = $1", resp.json()["session_id"]
+    )
+    assert finished_at is not None
+    assert finished_at.isoformat() == end_ts.replace("+00:00", "+00:00")
+
+
+@pytest.mark.asyncio
+async def test_session_end_without_timestamp_leaves_finished_at_null(
+    client: AsyncClient, pool
+):
+    """If the agent forgets to stamp the closing event, we don't guess.
+    finished_at stays null, which is the same as a session the harness
+    crashed before sending an end hook."""
+    resp = await client.post(
+        "/api/v1/demo/sessions",
+        json={
+            "title": "no end ts",
+            "agent_name": "test-agent",
+            "events": [
+                {"event_type": "user_message", "content": "kick off"},
+                {"event_type": "session_end", "content": "done"},
+            ],
+        },
+    )
+    assert resp.status_code == 201
+    finished_at = await pool.fetchval(
+        "SELECT finished_at FROM sessions WHERE id = $1", resp.json()["session_id"]
+    )
+    assert finished_at is None
+
+
+@pytest.mark.asyncio
 async def test_session_rejects_unknown_event_type(client: AsyncClient):
     """Constrained event_type means agents can't sneak in arbitrary types
     that the renderer doesn't handle."""
