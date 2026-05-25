@@ -10,7 +10,7 @@ authenticated workspace routers — no parallel implementation.
 """
 
 import secrets
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from fastapi import APIRouter, Body, HTTPException, Request
@@ -156,23 +156,28 @@ async def create_session(request: Request, req: DemoSessionCreate = Body(...)) -
 
     # Build the event payload. Per-event `created_at` is what gives the
     # timeline a real shape — without it the chat thread collapses into
-    # one instant.
+    # one instant. When the agent doesn't supply timestamps we still
+    # need monotonically increasing ones so ORDER BY created_at
+    # preserves the conversation order, so stagger each by a
+    # microsecond off `now()`.
+    fallback_base = datetime.now(UTC)
     payload = []
     for idx, event in enumerate(req.events):
         meta = dict(event.metadata or {})
         if idx == 0:
             meta.setdefault("demo_title", req.title)
-        row = {
-            "agent_name": req.agent_name,
-            "event_type": event.event_type,
-            "content": event.content,
-            "session_id": session_id,
-            "tool_name": event.tool_name,
-            "metadata": meta,
-        }
-        if event.created_at is not None:
-            row["created_at"] = event.created_at
-        payload.append(row)
+        ts = event.created_at or (fallback_base + timedelta(microseconds=idx))
+        payload.append(
+            {
+                "agent_name": req.agent_name,
+                "event_type": event.event_type,
+                "content": event.content,
+                "session_id": session_id,
+                "tool_name": event.tool_name,
+                "metadata": meta,
+                "created_at": ts,
+            }
+        )
 
     inserted = await memory_service.push_events_batch(
         workspace_id=workspace_id,
@@ -220,7 +225,7 @@ async def create_stash(request: Request, req: DemoStashCreate = Body(...)) -> di
         )
 
     for item in items:
-        _validate_item_belongs_to_demo(item, workspace_id)
+        await _validate_item_belongs_to_demo(item, workspace_id)
 
     try:
         stash = await stash_service.create_stash(

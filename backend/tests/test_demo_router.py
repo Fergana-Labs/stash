@@ -257,7 +257,10 @@ async def test_janitor_purges_orphans_keeps_referenced(client: AsyncClient, pool
     orphan_session = (
         await client.post(
             "/api/v1/demo/sessions",
-            json={"title": "Orphan Q&A", "transcript": "dropped on the floor"},
+            json={
+                "title": "Orphan Q&A",
+                "events": [{"event_type": "user_message", "content": "dropped on the floor"}],
+            },
         )
     ).json()
 
