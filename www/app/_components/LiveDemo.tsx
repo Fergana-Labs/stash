@@ -22,14 +22,11 @@ export default function LiveDemo() {
           </span>
         </div>
 
-        <pre className="m-0 max-h-[280px] overflow-y-auto whitespace-pre-wrap break-words px-5 pb-3 pt-4 font-mono text-[13px] leading-[1.6] text-ink">
+        <pre className="m-0 max-h-[1.7em] overflow-y-auto whitespace-pre-wrap break-words px-5 py-3 font-mono text-[13px] leading-[1.6] text-ink">
           {DEMO_PROMPT}
         </pre>
 
-        <div className="flex items-center justify-between gap-3 border-t border-border-subtle px-4 py-2.5">
-          <span className="truncate text-[11.5px] text-dim">
-            Works with Claude Code · Cursor · Codex · Aider
-          </span>
+        <div className="flex items-center justify-end gap-3 border-t border-border-subtle px-4 py-2.5">
           <CopyButton
             value={DEMO_PROMPT}
             label="Copy prompt →"
