@@ -321,6 +321,8 @@ def _agent_present(agent: str) -> bool:
 
     if shutil.which(_AGENT_BINARY[agent]):
         return True
+    if agent == "codex":
+        return (Path.home() / ".codex" / "sessions").is_dir()
     if agent == "cursor":
         return (Path.home() / ".cursor").is_dir()
     return False
