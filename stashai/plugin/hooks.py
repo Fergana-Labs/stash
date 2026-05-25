@@ -47,6 +47,7 @@ _UPLOADS_DISABLED_WARNING_MESSAGE = (
     "Stash is connected to this repo, but uploads aren't set up on this machine. "
     "Run `stash connect` to finish setup."
 )
+_ENDED_SESSION_ID_KEY = "ended_session_id"
 _YELLOW = "\033[33m"
 _RESET = "\033[0m"
 
@@ -154,6 +155,7 @@ _SESSION_STATE_KEYS = (
     "uploaded_workspace_id",
     "transcript_path",
     "cwd",
+    _ENDED_SESSION_ID_KEY,
 )
 
 
@@ -405,6 +407,12 @@ def stream_session_end(
     if skip:
         return None
 
+    sid = event.session_id or state.get("session_id", "")
+    if not sid.strip():
+        return None
+    if state.get(_ENDED_SESSION_ID_KEY) == sid:
+        return None
+
     stats = read_stats(state)
     tool_count = stats["tool_count"]
     files_touched = stats["files_touched"]
@@ -422,7 +430,7 @@ def stream_session_end(
             agent_name=cfg["agent_name"],
             event_type="session_end",
             content=" ".join(parts),
-            session_id=state.get("session_id", ""),
+            session_id=sid,
             metadata={
                 "cwd": event.cwd,
                 "tool_count": tool_count,
@@ -433,10 +441,11 @@ def stream_session_end(
         )
     except Exception:
         pass
+    else:
+        state[_ENDED_SESSION_ID_KEY] = sid
 
     tp = getattr(event, "transcript_path", "") or ""
-    sid = state.get("session_id", "") or ""
-    if not tp or not sid.strip():
+    if not tp:
         return None
     path = Path(tp)
     if not path.is_file():

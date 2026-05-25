@@ -118,6 +118,43 @@ async def test_reupload_is_noop_when_events_exist(client: AsyncClient):
 
 
 @pytest.mark.asyncio
+async def test_empty_session_shell_is_hidden_from_default_views(client: AsyncClient):
+    key = await _register(client)
+    ws = await _workspace(client, key)
+    headers = {"Authorization": f"Bearer {key}"}
+
+    created = await client.post(
+        f"/api/v1/workspaces/{ws}/sessions",
+        json={"session_id": "empty-shell", "agent_name": "claude"},
+        headers=headers,
+    )
+    assert created.status_code == 201
+
+    overview = await client.get(f"/api/v1/workspaces/{ws}/overview", headers=headers)
+    assert overview.status_code == 200
+    assert overview.json()["sessions"] == []
+
+    sidebar = await client.get(f"/api/v1/workspaces/{ws}/sidebar", headers=headers)
+    assert sidebar.status_code == 200
+    assert sidebar.json()["sessions"] == []
+
+    my_sessions = await client.get(
+        "/api/v1/me/sessions",
+        params={"workspace_id": ws},
+        headers=headers,
+    )
+    assert my_sessions.status_code == 200
+    assert my_sessions.json()["sessions"] == []
+
+    detail = await client.get(
+        f"/api/v1/workspaces/{ws}/sessions/empty-shell",
+        headers=headers,
+    )
+    assert detail.status_code == 200
+    assert detail.json()["session_id"] == "empty-shell"
+
+
+@pytest.mark.asyncio
 async def test_replace_reimports_existing_session(client: AsyncClient):
     key = await _register(client)
     ws = await _workspace(client, key)

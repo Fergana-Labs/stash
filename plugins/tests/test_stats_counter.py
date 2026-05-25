@@ -91,6 +91,17 @@ def test_stream_session_end_reads_counter(tmp_path):
     assert "stats_truncated" not in body["metadata"]
 
 
+def test_stream_session_end_is_idempotent_for_same_session(tmp_path):
+    cfg = {"workspace_id": "ws", "agent_name": "h", "client": "claude_code"}
+    state = {"session_id": "s1"}
+    c = _FakeClient()
+
+    stream_session_end(c, cfg, state, HookEvent(kind="session_end", session_id="s1"))
+    stream_session_end(c, cfg, state, HookEvent(kind="session_end", session_id="s1"))
+
+    assert [body["event_type"] for body in c.calls] == ["session_end"]
+
+
 def test_stream_session_end_with_no_prior_tool_use(tmp_path):
     cfg = {"workspace_id": "ws", "agent_name": "h", "client": "claude_code"}
     state = {"session_id": "s1"}

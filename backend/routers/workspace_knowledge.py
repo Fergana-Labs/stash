@@ -425,8 +425,15 @@ async def _sidebar_etag(workspace_id: UUID, user_id: UUID) -> str:
           (SELECT MAX(created_at) FROM files
             WHERE workspace_id = $1 AND deleted_at IS NULL)                       AS f,
           (SELECT MAX(updated_at) FROM folders WHERE workspace_id = $1)          AS d,
-          (SELECT MAX(GREATEST(COALESCE(finished_at, started_at), started_at)) FROM sessions
-            WHERE workspace_id = $1 AND deleted_at IS NULL)                       AS s,
+          (SELECT MAX(GREATEST(COALESCE(finished_at, started_at), started_at))
+           FROM sessions sidebar_session
+           WHERE sidebar_session.workspace_id = $1
+             AND sidebar_session.deleted_at IS NULL
+             AND EXISTS (
+               SELECT 1 FROM history_events sidebar_event
+               WHERE sidebar_event.workspace_id = sidebar_session.workspace_id
+                 AND sidebar_event.session_id = sidebar_session.session_id
+             ))                                                                   AS s,
           (SELECT MAX(he.created_at) FROM history_events he
             WHERE he.workspace_id = $1 AND he.session_id IS NOT NULL
             AND {memory_service.readable_session_event_condition('he', 2)})        AS he,
