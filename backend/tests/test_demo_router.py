@@ -103,15 +103,16 @@ async def test_full_publish_flow(client: AsyncClient):
 
 
 @pytest.mark.asyncio
-async def test_stash_is_public_unlisted_and_includes_kb_folder(
-    client: AsyncClient, pool
-):
+async def test_stash_is_public_unlisted_and_includes_kb_folder(client: AsyncClient, pool):
     """Demo Stashes must be public-link-shareable but not discoverable, and
     must auto-include the canonical Stash knowledge base folder."""
     page = (
         await client.post(
             "/api/v1/demo/pages",
-            json={"title": "T", "html": "<html><body><section class='slide'>x</section></body></html>"},
+            json={
+                "title": "T",
+                "html": "<html><body><section class='slide'>x</section></body></html>",
+            },
         )
     ).json()
     stash = (
@@ -153,7 +154,10 @@ async def test_kb_folder_is_reused_across_demos(client: AsyncClient, pool):
         page = (
             await client.post(
                 "/api/v1/demo/pages",
-                json={"title": "T", "html": "<html><body><section class='slide'>x</section></body></html>"},
+                json={
+                    "title": "T",
+                    "html": "<html><body><section class='slide'>x</section></body></html>",
+                },
             )
         ).json()
         resp = await client.post(
@@ -194,8 +198,7 @@ async def test_rejects_items_outside_demo_workspace(client: AsyncClient, pool):
         uuid4().hex[:8],
     )
     await pool.execute(
-        "INSERT INTO workspace_members (workspace_id, user_id, role) "
-        "VALUES ($1, $2, 'owner')",
+        "INSERT INTO workspace_members (workspace_id, user_id, role) " "VALUES ($1, $2, 'owner')",
         ws_id,
         user_id,
     )
@@ -228,7 +231,10 @@ async def test_janitor_purges_orphans_keeps_referenced(client: AsyncClient, pool
     referenced_page = (
         await client.post(
             "/api/v1/demo/pages",
-            json={"title": "Kept", "html": "<html><body><section class='slide'>x</section></body></html>"},
+            json={
+                "title": "Kept",
+                "html": "<html><body><section class='slide'>x</section></body></html>",
+            },
         )
     ).json()
     await client.post(
@@ -242,7 +248,10 @@ async def test_janitor_purges_orphans_keeps_referenced(client: AsyncClient, pool
     orphan_page = (
         await client.post(
             "/api/v1/demo/pages",
-            json={"title": "Orphan", "html": "<html><body><section class='slide'>x</section></body></html>"},
+            json={
+                "title": "Orphan",
+                "html": "<html><body><section class='slide'>x</section></body></html>",
+            },
         )
     ).json()
     orphan_session = (
@@ -272,9 +281,7 @@ async def test_janitor_purges_orphans_keeps_referenced(client: AsyncClient, pool
     )
     assert referenced_alive == 1
 
-    orphan_alive = await pool.fetchval(
-        "SELECT 1 FROM pages WHERE id = $1", orphan_page["page_id"]
-    )
+    orphan_alive = await pool.fetchval("SELECT 1 FROM pages WHERE id = $1", orphan_page["page_id"])
     assert orphan_alive is None
 
 
@@ -365,9 +372,7 @@ async def test_session_persists_cwd(client: AsyncClient, pool):
         },
     )
     assert resp.status_code == 201, resp.text
-    cwd = await pool.fetchval(
-        "SELECT cwd FROM sessions WHERE id = $1", resp.json()["session_id"]
-    )
+    cwd = await pool.fetchval("SELECT cwd FROM sessions WHERE id = $1", resp.json()["session_id"])
     assert cwd == "/Users/sam/code/myrepo"
 
 
@@ -382,7 +387,11 @@ async def test_session_end_sets_finished_at(client: AsyncClient, pool):
             "title": "session_end test",
             "agent_name": "test-agent",
             "events": [
-                {"event_type": "user_message", "content": "kick off", "created_at": "2026-05-25T18:20:00+00:00"},
+                {
+                    "event_type": "user_message",
+                    "content": "kick off",
+                    "created_at": "2026-05-25T18:20:00+00:00",
+                },
                 {"event_type": "session_end", "content": "done", "created_at": end_ts},
             ],
         },
@@ -396,9 +405,7 @@ async def test_session_end_sets_finished_at(client: AsyncClient, pool):
 
 
 @pytest.mark.asyncio
-async def test_session_end_without_timestamp_leaves_finished_at_null(
-    client: AsyncClient, pool
-):
+async def test_session_end_without_timestamp_leaves_finished_at_null(client: AsyncClient, pool):
     """If the agent forgets to stamp the closing event, we don't guess.
     finished_at stays null, which is the same as a session the harness
     crashed before sending an end hook."""

@@ -211,10 +211,7 @@ async def create_stash(request: Request, req: DemoStashCreate) -> dict[str, Any]
     # Auto-attach the canonical KB folder so every demo Stash ships with
     # the slides skill + about-Stash docs the agent used to build it.
     kb_folder_id = await demo_service.get_kb_folder_id()
-    if not any(
-        item.object_type == "folder" and item.object_id == kb_folder_id
-        for item in items
-    ):
+    if not any(item.object_type == "folder" and item.object_id == kb_folder_id for item in items):
         items.append(
             StashItem(
                 object_type="folder",

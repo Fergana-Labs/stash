@@ -188,8 +188,5 @@ async def get_demo_workspace() -> tuple[UUID, UUID]:
         DEMO_WORKSPACE_NAME,
     )
     if row is None:
-        raise RuntimeError(
-            "Demo workspace is not seeded. Did startup run "
-            "seed_demo_workspace?"
-        )
+        raise RuntimeError("Demo workspace is not seeded. Did startup run " "seed_demo_workspace?")
     return row["workspace_id"], row["owner_id"]
