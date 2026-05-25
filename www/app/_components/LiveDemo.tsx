@@ -33,10 +33,6 @@ export default function LiveDemo() {
           />
         </div>
       </div>
-      <p className="mt-3 text-center text-[12.5px] text-dim">
-        No signup. The agent asks you a few questions, builds you a deck,
-        hands back a public Stash URL.
-      </p>
     </div>
   );
 }
