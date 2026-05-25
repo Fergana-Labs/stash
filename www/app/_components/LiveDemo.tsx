@@ -23,11 +23,11 @@ export default function LiveDemo() {
 
         <div className="mt-3 flex items-center justify-between gap-3">
           <span className="text-[12.5px] text-dim">
-            A demo to try in your coding agent.
+            A demo to try in your agent.
           </span>
           <CopyButton
             value={DEMO_PROMPT}
-            label="Copy"
+            label="Copy prompt"
             copiedLabel="Copied ✓"
             className="inline-flex h-9 items-center gap-1.5 rounded-full bg-ink px-3.5 text-[13px] font-medium text-white transition hover:bg-brand"
           />
