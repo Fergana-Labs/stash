@@ -934,7 +934,7 @@ function chooseSessionBucket(sessions: WorkspaceSidebarSession[]): SessionBucket
 function groupSidebarSessions(sessions: WorkspaceSidebarSession[]): SessionTreeDayGroup[] {
   const bucket = chooseSessionBucket(sessions);
   const byBucket = new Map<string, Map<string, WorkspaceSidebarSession[]>>();
-  for (const session of sessions) {
+  for (const session of sortSessionsByRecency(sessions)) {
     const date = sessionDate(session.last_at || session.updated_at);
     const key = date ? bucketKey(date, bucket) : UNKNOWN_SESSION_DATE;
     const user = displaySidebarSessionUser(session.user_name);
@@ -960,7 +960,7 @@ function groupSidebarSessions(sessions: WorkspaceSidebarSession[]): SessionTreeD
         })
         .map(([user, sessionRows]) => ({
           user,
-          sessions: sortSessionsByRecency(sessionRows),
+          sessions: sessionRows,
         }));
       const total = users.reduce((sum, b) => sum + b.sessions.length, 0);
       return {

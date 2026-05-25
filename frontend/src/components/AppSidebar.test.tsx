@@ -665,6 +665,31 @@ describe("AppSidebar tree expansion", () => {
     expect(screen.getByText("Bucket session 10")).toBeTruthy();
   });
 
+  it("orders sessions newest-first within each day and user bucket", async () => {
+    vi.mocked(getWorkspaceSidebar).mockResolvedValue(
+      sidebarWithSessions([
+        sidebarSession("older", "Older session", "Henry", "2026-05-20T09:00:00Z"),
+        sidebarSession("newest", "Newest session", "Henry", "2026-05-20T15:00:00Z"),
+        sidebarSession("middle", "Middle session", "Henry", "2026-05-20T12:00:00Z"),
+      ])
+    );
+
+    renderSidebar();
+
+    expect(await screen.findByText("Newest session")).toBeTruthy();
+
+    const rows = screen
+      .getAllByRole("link")
+      .map((link) => link.textContent ?? "")
+      .filter((text) => /session/.test(text));
+
+    expect(rows).toEqual([
+      expect.stringContaining("Newest session"),
+      expect.stringContaining("Middle session"),
+      expect.stringContaining("Older session"),
+    ]);
+  });
+
   it("renders Linear ticket pills for session rows", async () => {
     vi.mocked(getWorkspaceSidebar).mockResolvedValue(
       sidebarWithSessions([
