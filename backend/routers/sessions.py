@@ -93,6 +93,7 @@ async def list_my_sessions(
         "he_title.session_id IS NOT NULL",
         "(he_title.workspace_id IN (SELECT workspace_id FROM workspace_members WHERE user_id = $1) "
         "OR he_title.created_by = $1)",
+        f"(he_title.workspace_id IS NULL OR {memory_service.workspace_owned_session_event_condition('he_title')})",
         f"(he_title.workspace_id IS NULL OR {memory_service.readable_session_event_condition('he_title', 1)})",
         "NULLIF(BTRIM(he_title.content), '') IS NOT NULL",
     ]
@@ -100,6 +101,7 @@ async def list_my_sessions(
         "he.session_id IS NOT NULL",
         "(he.workspace_id IN (SELECT workspace_id FROM workspace_members WHERE user_id = $1) "
         "OR he.created_by = $1)",
+        f"(he.workspace_id IS NULL OR {memory_service.workspace_owned_session_event_condition('he')})",
         f"(he.workspace_id IS NULL OR {memory_service.readable_session_event_condition('he', 1)})",
     ]
     if workspace_id is not None:

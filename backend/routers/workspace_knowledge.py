@@ -69,11 +69,13 @@ async def _files_tree(workspace_id: UUID, user_id: UUID) -> dict:
             "        AND COALESCE(p.metadata->>'shared_in_stash_id', '') = '' "
             "        AND p.deleted_at IS NULL) AS page_count, "
             "       (SELECT COUNT(*) FROM files fi WHERE fi.folder_id = f.id "
+            "        AND COALESCE(fi.metadata->>'shared_in_stash_id', '') = '' "
             "        AND fi.deleted_at IS NULL) AS file_count, "
             "       EXISTS(SELECT 1 FROM pages p WHERE p.folder_id = f.id AND p.name = 'SKILL.md' "
             "              AND COALESCE(p.metadata->>'shared_in_stash_id', '') = '' "
             "              AND p.deleted_at IS NULL) AS has_skill "
-            "FROM folders f WHERE f.workspace_id = $1 ORDER BY f.name",
+            "FROM folders f WHERE f.workspace_id = $1 "
+            "AND COALESCE(f.metadata->>'shared_in_stash_id', '') = '' ORDER BY f.name",
             workspace_id,
         ),
         pool.fetch(
@@ -85,7 +87,9 @@ async def _files_tree(workspace_id: UUID, user_id: UUID) -> dict:
         pool.fetch(
             "SELECT id, name, folder_id, size_bytes, content_type, "
             "       created_at, linked_table_id "
-            "FROM files WHERE workspace_id = $1 AND deleted_at IS NULL "
+            "FROM files WHERE workspace_id = $1 "
+            "AND COALESCE(metadata->>'shared_in_stash_id', '') = '' "
+            "AND deleted_at IS NULL "
             "ORDER BY created_at DESC",
             workspace_id,
         ),
@@ -423,15 +427,26 @@ async def _sidebar_etag(workspace_id: UUID, user_id: UUID) -> str:
             WHERE workspace_id = $1 AND COALESCE(metadata->>'shared_in_stash_id', '') = ''
             AND deleted_at IS NULL) AS p,
           (SELECT MAX(created_at) FROM files
-            WHERE workspace_id = $1 AND deleted_at IS NULL)                       AS f,
-          (SELECT MAX(updated_at) FROM folders WHERE workspace_id = $1)          AS d,
+            WHERE workspace_id = $1 AND COALESCE(metadata->>'shared_in_stash_id', '') = ''
+            AND deleted_at IS NULL)                                               AS f,
+          (SELECT MAX(updated_at) FROM folders
+            WHERE workspace_id = $1 AND COALESCE(metadata->>'shared_in_stash_id', '') = '') AS d,
           (SELECT MAX(GREATEST(COALESCE(finished_at, started_at), started_at)) FROM sessions
-            WHERE workspace_id = $1 AND deleted_at IS NULL)                       AS s,
+            WHERE workspace_id = $1 AND COALESCE(metadata->>'shared_in_stash_id', '') = ''
+            AND deleted_at IS NULL)                                               AS s,
           (SELECT MAX(he.created_at) FROM history_events he
+            JOIN sessions he_session
+              ON he_session.workspace_id = he.workspace_id
+             AND he_session.session_id = he.session_id
             WHERE he.workspace_id = $1 AND he.session_id IS NOT NULL
+            AND COALESCE(he_session.metadata->>'shared_in_stash_id', '') = ''
             AND {memory_service.readable_session_event_condition('he', 2)})        AS he,
           (SELECT COUNT(*) FROM history_events he
+            JOIN sessions he_session
+              ON he_session.workspace_id = he.workspace_id
+             AND he_session.session_id = he.session_id
             WHERE he.workspace_id = $1 AND he.session_id IS NOT NULL
+            AND COALESCE(he_session.metadata->>'shared_in_stash_id', '') = ''
             AND {memory_service.readable_session_event_condition('he', 2)})        AS hc,
           (SELECT MAX(stt.updated_at) FROM session_titles stt
            JOIN sessions stt_session
@@ -439,6 +454,7 @@ async def _sidebar_etag(workspace_id: UUID, user_id: UUID) -> str:
             AND stt_session.session_id = stt.session_id
            WHERE stt.workspace_id = $1
              AND stt_session.deleted_at IS NULL
+             AND COALESCE(stt_session.metadata->>'shared_in_stash_id', '') = ''
              AND {memory_service.readable_session_event_condition('stt_session', 2)}) AS tt,
           (SELECT COUNT(*) FROM session_titles stt
            JOIN sessions stt_session
@@ -446,6 +462,7 @@ async def _sidebar_etag(workspace_id: UUID, user_id: UUID) -> str:
             AND stt_session.session_id = stt.session_id
            WHERE stt.workspace_id = $1
              AND stt_session.deleted_at IS NULL
+             AND COALESCE(stt_session.metadata->>'shared_in_stash_id', '') = ''
              AND {memory_service.readable_session_event_condition('stt_session', 2)}) AS tc,
           (SELECT MAX(updated_at) FROM stashes WHERE workspace_id = $1)            AS st,
           (SELECT MAX(sm.created_at) FROM stash_members sm

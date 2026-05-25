@@ -5,7 +5,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 
-from ..auth import get_current_user
+from ..auth import get_current_user, get_current_user_optional
 from ..database import get_pool
 from ..models import (
     CommentReconcileRequest,
@@ -66,9 +66,10 @@ async def _check_content_access(
     object_type: str,
     object_id: UUID,
     workspace_id: UUID,
-    user_id: UUID,
+    user_id: UUID | None,
     *,
     require_write: bool = False,
+    required_permission: str | None = None,
 ) -> None:
     allowed = await permission_service.check_access(
         object_type,
@@ -76,6 +77,7 @@ async def _check_content_access(
         user_id,
         workspace_id=workspace_id,
         require_write=require_write,
+        required_permission=required_permission,
     )
     if allowed:
         return
@@ -199,10 +201,12 @@ async def get_folder_contents(
         "       ("
         "         SELECT COUNT(*) FROM files fi WHERE fi.folder_id = f.id "
         "         AND fi.workspace_id = $2 "
+        "         AND COALESCE(fi.metadata->>'shared_in_stash_id', '') = '' "
         "         AND fi.deleted_at IS NULL "
         f"         AND {readable_file}"
         "       ) AS file_count "
         "FROM folders f WHERE f.parent_folder_id = $1 AND f.workspace_id = $2 "
+        "AND COALESCE(f.metadata->>'shared_in_stash_id', '') = '' "
         f"AND {readable_folder} "
         "ORDER BY name",
         folder_id,
@@ -223,6 +227,7 @@ async def get_folder_contents(
     files = await pool.fetch(
         "SELECT id, name, size_bytes, content_type, created_at, linked_table_id "
         "FROM files fi WHERE fi.folder_id = $1 AND fi.workspace_id = $2 "
+        "AND COALESCE(fi.metadata->>'shared_in_stash_id', '') = '' "
         "AND fi.deleted_at IS NULL "
         f"AND {readable_file} "
         "ORDER BY created_at DESC",
@@ -406,6 +411,18 @@ async def search_pages(
     return {"pages": pages}
 
 
+@router.get("/files/search")
+async def search_files(
+    workspace_id: UUID,
+    q: str = Query(..., min_length=1),
+    limit: int = Query(20, ge=1, le=100),
+    current_user: dict = Depends(get_current_user),
+):
+    await _check_ws_access(workspace_id, current_user["id"])
+    files = await files_tree_service.search_files_fts(workspace_id, q, limit, current_user["id"])
+    return {"files": files}
+
+
 @router.get("/pages/{page_id}", response_model=PageResponse)
 async def get_page(
     workspace_id: UUID,
@@ -570,10 +587,10 @@ async def _check_page_in_workspace(workspace_id: UUID, page_id: UUID) -> None:
 async def list_comment_threads(
     workspace_id: UUID,
     page_id: UUID,
-    current_user: dict = Depends(get_current_user),
+    current_user: dict | None = Depends(get_current_user_optional),
 ):
-    await _check_ws_access(workspace_id, current_user["id"])
-    await _check_content_access("page", page_id, workspace_id, current_user["id"])
+    viewer_id = current_user["id"] if current_user else None
+    await _check_content_access("page", page_id, workspace_id, viewer_id)
     await _check_page_in_workspace(workspace_id, page_id)
     threads = await comment_service.list_threads(page_id)
     return CommentThreadListResponse(threads=[CommentThread(**t) for t in threads])
@@ -588,19 +605,30 @@ async def create_comment_thread(
     workspace_id: UUID,
     page_id: UUID,
     req: CommentThreadCreateRequest,
-    current_user: dict = Depends(get_current_user),
+    current_user: dict | None = Depends(get_current_user_optional),
 ):
-    # Comments are read-level permission — any workspace member can comment.
-    await _check_ws_access(workspace_id, current_user["id"])
-    await _check_content_access("page", page_id, workspace_id, current_user["id"])
+    viewer_id = current_user["id"] if current_user else None
+    await _check_content_access(
+        "page",
+        page_id,
+        workspace_id,
+        viewer_id,
+        required_permission="comment",
+    )
     await _check_page_in_workspace(workspace_id, page_id)
+    if current_user:
+        author_id = current_user["id"]
+    else:
+        from ..services import user_service
+
+        author_id = await user_service.get_public_guest_user_id()
     thread = await comment_service.create_thread(
         page_id,
         quoted_text=req.quoted_text,
         prefix=req.prefix,
         suffix=req.suffix,
         body=req.body,
-        created_by=current_user["id"],
+        created_by=author_id,
     )
     return CommentThread(**thread)
 
@@ -615,12 +643,24 @@ async def reply_to_thread(
     page_id: UUID,
     thread_id: UUID,
     req: CommentReplyRequest,
-    current_user: dict = Depends(get_current_user),
+    current_user: dict | None = Depends(get_current_user_optional),
 ):
-    await _check_ws_access(workspace_id, current_user["id"])
-    await _check_content_access("page", page_id, workspace_id, current_user["id"])
+    viewer_id = current_user["id"] if current_user else None
+    await _check_content_access(
+        "page",
+        page_id,
+        workspace_id,
+        viewer_id,
+        required_permission="comment",
+    )
     await _check_page_in_workspace(workspace_id, page_id)
-    thread = await comment_service.add_reply(thread_id, body=req.body, author_id=current_user["id"])
+    if current_user:
+        author_id = current_user["id"]
+    else:
+        from ..services import user_service
+
+        author_id = await user_service.get_public_guest_user_id()
+    thread = await comment_service.add_reply(thread_id, body=req.body, author_id=author_id)
     if thread is None:
         raise HTTPException(status_code=404, detail="Thread not found")
     return CommentThread(**thread)
@@ -637,8 +677,13 @@ async def update_thread_resolved(
     req: CommentResolveRequest,
     current_user: dict = Depends(get_current_user),
 ):
-    await _check_ws_access(workspace_id, current_user["id"])
-    await _check_content_access("page", page_id, workspace_id, current_user["id"])
+    await _check_content_access(
+        "page",
+        page_id,
+        workspace_id,
+        current_user["id"],
+        required_permission="comment",
+    )
     await _check_page_in_workspace(workspace_id, page_id)
     thread = await comment_service.set_resolved(
         thread_id, resolved=req.resolved, user_id=current_user["id"]
@@ -659,7 +704,6 @@ async def delete_comment_thread(
     current_user: dict = Depends(get_current_user),
 ):
     """Delete an entire thread. Only the thread creator is allowed."""
-    await _check_ws_access(workspace_id, current_user["id"])
     await _check_content_access("page", page_id, workspace_id, current_user["id"])
     await _check_page_in_workspace(workspace_id, page_id)
     result = await comment_service.delete_thread(thread_id, user_id=current_user["id"])
@@ -683,7 +727,6 @@ async def delete_comment_message(
     response body's `thread` field is null — the frontend should then
     strip the inline anchor from the page content.
     """
-    await _check_ws_access(workspace_id, current_user["id"])
     await _check_content_access("page", page_id, workspace_id, current_user["id"])
     await _check_page_in_workspace(workspace_id, page_id)
     status, thread = await comment_service.delete_message(message_id, user_id=current_user["id"])

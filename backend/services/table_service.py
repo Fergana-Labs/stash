@@ -12,6 +12,7 @@ from . import permission_service
 from .row_validation import RowValidationError, validate_row_data
 
 logger = logging.getLogger(__name__)
+_OWNED_TABLE_PRED = "COALESCE(t.metadata->>'shared_in_stash_id', '') = ''"
 
 
 def _text_hash(text: str) -> str:
@@ -76,7 +77,7 @@ async def get_table(table_id: UUID) -> dict | None:
     row = await pool.fetchrow(
         f"SELECT t.{_TABLE_FIELDS.replace(', ', ', t.')}, "
         "(SELECT COUNT(*) FROM table_rows tr WHERE tr.table_id = t.id) AS row_count "
-        "FROM tables t WHERE t.id = $1",
+        f"FROM tables t WHERE t.id = $1 AND {_OWNED_TABLE_PRED}",
         table_id,
     )
     return dict(row) if row else None
@@ -144,7 +145,8 @@ async def list_tables(workspace_id: UUID | None, user_id: UUID | None = None) ->
             "SELECT t.id, t.workspace_id, t.name, t.description, t.columns, "
             "t.created_by, t.updated_by, t.created_at, t.updated_at, "
             "(SELECT COUNT(*) FROM table_rows tr WHERE tr.table_id = t.id) AS row_count "
-            f"FROM tables t WHERE {where} ORDER BY t.updated_at DESC",
+            f"FROM tables t WHERE {where} AND {_OWNED_TABLE_PRED} "
+            "ORDER BY t.updated_at DESC",
             *args,
         )
     else:
@@ -152,7 +154,8 @@ async def list_tables(workspace_id: UUID | None, user_id: UUID | None = None) ->
             "SELECT t.id, t.workspace_id, t.name, t.description, t.columns, "
             "t.created_by, t.updated_by, t.created_at, t.updated_at, "
             "(SELECT COUNT(*) FROM table_rows tr WHERE tr.table_id = t.id) AS row_count "
-            "FROM tables t WHERE t.workspace_id IS NULL AND t.created_by = $1 "
+            f"FROM tables t WHERE t.workspace_id IS NULL AND t.created_by = $1 "
+            f"AND {_OWNED_TABLE_PRED} "
             "ORDER BY t.updated_at DESC",
             user_id,
         )
@@ -170,14 +173,15 @@ async def list_all_user_tables(user_id: UUID) -> list[dict]:
         "(SELECT COUNT(*) FROM table_rows tr WHERE tr.table_id = t.id) AS row_count "
         "FROM tables t "
         "LEFT JOIN workspaces w ON w.id = t.workspace_id "
-        "WHERE ("
+        "WHERE (("
         "  t.workspace_id IS NOT NULL "
         "  AND EXISTS ("
         "    SELECT 1 FROM workspace_members wm "
         "    WHERE wm.workspace_id = t.workspace_id AND wm.user_id = $1"
         "  ) "
         f"  AND {readable_table}"
-        ") OR (t.workspace_id IS NULL AND t.created_by = $1) "
+        ") OR (t.workspace_id IS NULL AND t.created_by = $1)) "
+        f"AND {_OWNED_TABLE_PRED} "
         "ORDER BY t.updated_at DESC",
         user_id,
     )

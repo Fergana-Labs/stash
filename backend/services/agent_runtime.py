@@ -215,6 +215,7 @@ async def _list_files(args: dict) -> dict:
     rows = await get_pool().fetch(
         "SELECT id, name, content_type, size_bytes FROM files WHERE workspace_id = $1 "
         "AND deleted_at IS NULL "
+        "AND COALESCE(metadata->>'shared_in_stash_id', '') = '' "
         "ORDER BY created_at DESC LIMIT 50",
         workspace_id,
     )
@@ -256,7 +257,8 @@ async def _read_file(args: dict) -> dict:
     file_id = UUID(args["file_id"])
     row = await get_pool().fetchrow(
         "SELECT name, extracted_text FROM files "
-        "WHERE id = $1 AND workspace_id = $2 AND deleted_at IS NULL",
+        "WHERE id = $1 AND workspace_id = $2 AND deleted_at IS NULL "
+        "AND COALESCE(metadata->>'shared_in_stash_id', '') = ''",
         file_id,
         workspace_id,
     )
@@ -363,12 +365,12 @@ async def _list_stashes(args: dict) -> dict:
             "description": {"type": "string", "default": ""},
             "workspace_permission": {
                 "type": "string",
-                "enum": ["none", "read", "write"],
-                "default": "read",
+                "enum": ["none", "view", "comment", "edit", "manage"],
+                "default": "view",
             },
             "public_permission": {
                 "type": "string",
-                "enum": ["none", "read", "write"],
+                "enum": ["none", "view", "comment", "edit", "manage"],
                 "default": "none",
             },
             "discoverable": {"type": "boolean", "default": False},
@@ -396,7 +398,7 @@ async def _list_stashes(args: dict) -> dict:
 async def _create_stash(args: dict) -> dict:
     workspace_id = _current_workspace()
     user_id = _current_user()
-    workspace_permission = args.get("workspace_permission") or "read"
+    workspace_permission = args.get("workspace_permission") or "view"
     public_permission = args.get("public_permission") or "none"
     discoverable = bool(args.get("discoverable", False))
     if discoverable and public_permission == "none":
@@ -427,11 +429,11 @@ async def _create_stash(args: dict) -> dict:
             "description": {"type": "string"},
             "workspace_permission": {
                 "type": "string",
-                "enum": ["none", "read", "write"],
+                "enum": ["none", "view", "comment", "edit", "manage"],
             },
             "public_permission": {
                 "type": "string",
-                "enum": ["none", "read", "write"],
+                "enum": ["none", "view", "comment", "edit", "manage"],
             },
             "discoverable": {"type": "boolean"},
             "items": {

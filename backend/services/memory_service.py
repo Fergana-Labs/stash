@@ -289,6 +289,22 @@ def readable_session_event_condition(event_alias: str, user_arg: int) -> str:
     """
 
 
+def workspace_owned_session_event_condition(event_alias: str) -> str:
+    return f"""
+        (
+          {event_alias}.session_id IS NULL
+          OR EXISTS (
+            SELECT 1
+            FROM sessions workspace_owned_session
+            WHERE workspace_owned_session.workspace_id = {event_alias}.workspace_id
+              AND workspace_owned_session.session_id = {event_alias}.session_id
+              AND workspace_owned_session.deleted_at IS NULL
+              AND COALESCE(workspace_owned_session.metadata->>'shared_in_stash_id', '') = ''
+          )
+        )
+    """
+
+
 async def can_read_session(workspace_id: UUID, session_id: str, user_id: UUID) -> bool:
     session = await session_service.get_session(workspace_id, session_id)
     if not session:
@@ -360,6 +376,7 @@ async def list_workspace_sessions(workspace_id: UUID, user_id: UUID) -> list[dic
         "  AND title_sources.session_id = h.session_id "
         "LEFT JOIN users u ON u.id = h.created_by "
         "WHERE h.workspace_id = $1 AND h.session_id IS NOT NULL "
+        "AND COALESCE(s.metadata->>'shared_in_stash_id', '') = '' "
         f"AND {readable_session_event_condition('h', 2)} "
         "GROUP BY h.session_id, s.id, title_sources.title_source "
         "ORDER BY last_at DESC, user_name ASC, session_id ASC",
@@ -377,6 +394,7 @@ async def get_workspace_event(event_id: UUID, workspace_id: UUID, user_id: UUID)
     pool = get_pool()
     row = await pool.fetchrow(
         "SELECT * FROM history_events he WHERE he.id = $1 AND he.workspace_id = $2 "
+        f"AND {workspace_owned_session_event_condition('he')} "
         f"AND {readable_session_event_condition('he', 3)}",
         event_id,
         workspace_id,
@@ -472,7 +490,9 @@ async def query_workspace_events(
     """Query events in a workspace. Returns (events, has_more)."""
     limit = min(limit, 200)
     where, args, next_idx = _build_event_filters(
-        f"workspace_id = $1 AND {readable_session_event_condition('history_events', 2)}",
+        "workspace_id = $1 "
+        f"AND {workspace_owned_session_event_condition('history_events')} "
+        f"AND {readable_session_event_condition('history_events', 2)}",
         [workspace_id, user_id],
         agent_name,
         session_id,
@@ -522,6 +542,12 @@ async def search_workspace_events(
         "ts_rank(to_tsvector('english', content), websearch_to_tsquery('english', $2)) AS rank "
         "FROM history_events "
         "WHERE workspace_id = $1 "
+        "AND EXISTS ("
+        "  SELECT 1 FROM sessions searchable_session "
+        "  WHERE searchable_session.workspace_id = history_events.workspace_id "
+        "    AND searchable_session.session_id = history_events.session_id "
+        "    AND COALESCE(searchable_session.metadata->>'shared_in_stash_id', '') = ''"
+        ") "
         f"AND {readable_session_event_condition('history_events', 4)} "
         "AND to_tsvector('english', content) @@ websearch_to_tsquery('english', $2) "
         "ORDER BY rank DESC LIMIT $3",
@@ -571,6 +597,7 @@ async def search_workspace_events_vector(
         "1 - (embedding <=> $2) AS similarity "
         "FROM history_events "
         "WHERE workspace_id = $1 "
+        f"AND {workspace_owned_session_event_condition('history_events')} "
         f"AND {readable_session_event_condition('history_events', 4)} "
         "AND embedding IS NOT NULL "
         "ORDER BY embedding <=> $2 LIMIT $3",
@@ -624,6 +651,7 @@ async def query_all_user_events(
     conditions = [
         "(he.workspace_id IN (SELECT workspace_id FROM workspace_members WHERE user_id = $1) "
         "OR (he.workspace_id IS NULL AND he.created_by = $1))",
+        f"(he.workspace_id IS NULL OR {workspace_owned_session_event_condition('he')})",
         f"(he.workspace_id IS NULL OR {readable_session_event_condition('he', 1)})",
     ]
     args: list = [user_id]
@@ -673,7 +701,9 @@ async def delete_workspace_agent_events(agent_name: str, workspace_id: UUID) -> 
     """Delete all workspace events for a given agent. Returns count deleted."""
     pool = get_pool()
     result = await pool.execute(
-        "DELETE FROM history_events WHERE agent_name = $1 AND workspace_id = $2",
+        "DELETE FROM history_events "
+        "WHERE agent_name = $1 AND workspace_id = $2 "
+        f"AND {workspace_owned_session_event_condition('history_events')}",
         agent_name,
         workspace_id,
     )

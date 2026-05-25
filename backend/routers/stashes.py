@@ -172,15 +172,21 @@ async def list_object_stashes(
 async def update_stash(
     stash_id: UUID,
     req: StashUpdateRequest,
-    current_user: dict = Depends(get_current_user),
+    current_user: dict | None = Depends(get_current_user_optional),
 ):
-    if not await stash_service.user_can_manage(stash_id, current_user["id"]):
-        raise HTTPException(status_code=403, detail="Not allowed to manage this stash")
+    viewer_id = current_user["id"] if current_user else None
+    updates = req.model_dump(exclude_unset=True)
+    if any(key != "items" for key in updates):
+        allowed = await stash_service.user_can_manage(stash_id, viewer_id)
+    else:
+        allowed = await stash_service.user_can_write(stash_id, viewer_id)
+    if not allowed:
+        raise HTTPException(status_code=403, detail="Not allowed to update this stash")
     try:
         stash = await stash_service.update_stash(
             stash_id,
-            current_user["id"],
-            req.model_dump(exclude_unset=True),
+            viewer_id,
+            updates,
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -192,29 +198,30 @@ async def update_stash(
 @public_router.delete("/{stash_id}", status_code=204)
 async def delete_stash(
     stash_id: UUID,
-    current_user: dict = Depends(get_current_user),
+    current_user: dict | None = Depends(get_current_user_optional),
 ):
-    if not await stash_service.user_can_manage(stash_id, current_user["id"]):
+    viewer_id = current_user["id"] if current_user else None
+    if not await stash_service.user_can_manage(stash_id, viewer_id):
         raise HTTPException(status_code=403, detail="Not allowed to manage this stash")
-    deleted = await stash_service.delete_stash(stash_id, current_user["id"])
+    deleted = await stash_service.delete_stash(stash_id, viewer_id)
     if not deleted:
         raise HTTPException(status_code=404, detail="Stash not found")
 
 
-async def _require_can_manage_stash(stash_id: UUID, user_id: UUID) -> None:
+async def _require_can_manage_stash(stash_id: UUID, user_id: UUID | None) -> None:
     stash = await stash_service.get_stash(stash_id)
     if not stash:
         raise HTTPException(status_code=404, detail="Stash not found")
-    if not await stash_service.user_can_admin(stash_id, user_id):
+    if not await stash_service.user_can_manage(stash_id, user_id):
         raise HTTPException(status_code=403, detail="Not allowed to manage this stash")
 
 
 @public_router.get("/{stash_id}/members", response_model=StashMembersResponse)
 async def list_stash_members(
     stash_id: UUID,
-    current_user: dict = Depends(get_current_user),
+    current_user: dict | None = Depends(get_current_user_optional),
 ):
-    await _require_can_manage_stash(stash_id, current_user["id"])
+    await _require_can_manage_stash(stash_id, current_user["id"] if current_user else None)
     members = await stash_service.list_members(stash_id)
     return StashMembersResponse(members=[StashMemberResponse(**member) for member in members])
 
@@ -223,9 +230,14 @@ async def list_stash_members(
 async def add_stash_member(
     stash_id: UUID,
     req: StashMemberRequest,
-    current_user: dict = Depends(get_current_user),
+    current_user: dict | None = Depends(get_current_user_optional),
 ):
-    await _require_can_manage_stash(stash_id, current_user["id"])
+    manager_id = current_user["id"] if current_user else None
+    await _require_can_manage_stash(stash_id, manager_id)
+    if manager_id is None:
+        from ..services import user_service
+
+        manager_id = await user_service.get_public_guest_user_id()
 
     pool = get_pool()
     user = await pool.fetchrow("SELECT id FROM users WHERE id = $1", req.user_id)
@@ -237,7 +249,7 @@ async def add_stash_member(
             stash_id,
             req.user_id,
             req.permission,
-            current_user["id"],
+            manager_id,
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -250,9 +262,9 @@ async def add_stash_member(
 async def remove_stash_member(
     stash_id: UUID,
     user_id: UUID,
-    current_user: dict = Depends(get_current_user),
+    current_user: dict | None = Depends(get_current_user_optional),
 ):
-    await _require_can_manage_stash(stash_id, current_user["id"])
+    await _require_can_manage_stash(stash_id, current_user["id"] if current_user else None)
     await stash_service.remove_member(stash_id, user_id)
 
 
@@ -260,12 +272,12 @@ async def remove_stash_member(
 async def create_shared_stash_page(
     stash_id: UUID,
     req: PageCreateRequest,
-    current_user: dict = Depends(get_current_user),
+    current_user: dict | None = Depends(get_current_user_optional),
 ):
     try:
         page = await stash_service.create_shared_page(
             stash_id,
-            current_user["id"],
+            current_user["id"] if current_user else None,
             name=req.name,
             content=req.content,
             content_type=req.content_type,
@@ -305,14 +317,13 @@ async def get_public_stash(
         )
 
     workspace_name = stash.pop("_workspace_name", "")
-    can_write = bool(
-        current_user and await stash_service.user_can_write(stash["id"], current_user["id"])
-    )
     return StashPublicResponse(
         stash=StashResponse(**stash),
         workspace_name=workspace_name,
         items=items,
-        can_write=can_write,
+        can_comment=await stash_service.user_can_comment(stash["id"], viewer_id),
+        can_edit=await stash_service.user_can_write(stash["id"], viewer_id),
+        can_manage=await stash_service.user_can_manage(stash["id"], viewer_id),
     )
 
 
@@ -352,14 +363,13 @@ async def get_public_stash_item(
         )
 
     workspace_name = stash.pop("_workspace_name", "")
-    can_write = bool(
-        current_user and await stash_service.user_can_write(stash["id"], current_user["id"])
-    )
     return {
         "stash": StashResponse(**stash),
         "workspace_name": workspace_name,
         "item": item,
-        "can_write": can_write,
+        "can_comment": await stash_service.user_can_comment(stash["id"], viewer_id),
+        "can_edit": await stash_service.user_can_write(stash["id"], viewer_id),
+        "can_manage": await stash_service.user_can_manage(stash["id"], viewer_id),
     }
 
 

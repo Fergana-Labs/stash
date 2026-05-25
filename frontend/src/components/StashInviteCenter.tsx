@@ -157,7 +157,7 @@ export default function StashInviteCenter() {
                           {invite.stash_description || "No description."}
                         </p>
                         <p className="mt-2 text-[11px] text-muted">
-                          {inviter} has given you view access to their Stash.
+                          {inviter} has given you {invite.permission} access to their Stash.
                         </p>
                         <p className="mt-1 text-[11px] text-muted">
                           From {invite.source_workspace_name}

@@ -105,7 +105,8 @@ class WorkspaceListResponse(BaseModel):
 # --- Stashes (publishable subsets of a workspace) ---
 
 StashObjectType = str  # 'folder' | 'page' | 'table' | 'file' | 'session'
-StashGeneralPermission = str  # 'none' | 'read' | 'write'
+StashGeneralPermission = str  # 'none' | 'view' | 'comment' | 'edit' | 'manage'
+StashMemberPermission = str  # 'view' | 'comment' | 'edit' | 'manage'
 
 
 class StashItem(BaseModel):
@@ -118,8 +119,12 @@ class StashItem(BaseModel):
 class StashCreateRequest(BaseModel):
     title: str = Field(..., min_length=1, max_length=160)
     description: str = Field("", max_length=2000)
-    workspace_permission: StashGeneralPermission = Field("read", pattern=r"^(none|read|write)$")
-    public_permission: StashGeneralPermission = Field("none", pattern=r"^(none|read|write)$")
+    workspace_permission: StashGeneralPermission = Field(
+        "view", pattern=r"^(none|view|comment|edit|manage)$"
+    )
+    public_permission: StashGeneralPermission = Field(
+        "none", pattern=r"^(none|view|comment|edit|manage)$"
+    )
     discoverable: bool = False
     cover_image_url: str | None = None
     icon_url: str | None = None
@@ -130,9 +135,11 @@ class StashUpdateRequest(BaseModel):
     title: str | None = Field(None, min_length=1, max_length=160)
     description: str | None = Field(None, max_length=2000)
     workspace_permission: StashGeneralPermission | None = Field(
-        None, pattern=r"^(none|read|write)$"
+        None, pattern=r"^(none|view|comment|edit|manage)$"
     )
-    public_permission: StashGeneralPermission | None = Field(None, pattern=r"^(none|read|write)$")
+    public_permission: StashGeneralPermission | None = Field(
+        None, pattern=r"^(none|view|comment|edit|manage)$"
+    )
     discoverable: bool | None = None
     cover_image_url: str | None = None
     icon_url: str | None = None
@@ -169,14 +176,14 @@ class StashListResponse(BaseModel):
 
 class StashMemberRequest(BaseModel):
     user_id: UUID
-    permission: str = Field("read", pattern=r"^(read|write|admin)$")
+    permission: StashMemberPermission = Field("view", pattern=r"^(view|comment|edit|manage)$")
 
 
 class StashMemberResponse(BaseModel):
     user_id: UUID
     name: str
     display_name: str
-    permission: str
+    permission: StashMemberPermission
     granted_by: UUID | None
     created_at: datetime
 
@@ -203,7 +210,9 @@ class StashPublicResponse(BaseModel):
     stash: StashResponse
     workspace_name: str
     items: list[StashItemInlined]
-    can_write: bool = False
+    can_comment: bool = False
+    can_edit: bool = False
+    can_manage: bool = False
 
 
 class AddExternalStashRequest(BaseModel):
@@ -221,7 +230,7 @@ class StashInviteResponse(BaseModel):
     invited_by_user_id: UUID
     invited_by_name: str
     invited_by_display_name: str
-    permission: str
+    permission: StashMemberPermission
     created_at: datetime
 
 
@@ -643,8 +652,12 @@ class PublishRequest(BaseModel):
     content: str = ""
     content_type: str = Field("markdown", pattern=r"^(markdown|html)$")
     html_layout: str = Field("responsive", pattern=r"^(responsive|fixed-aspect)$")
-    workspace_permission: StashGeneralPermission = Field("read", pattern=r"^(none|read|write)$")
-    public_permission: StashGeneralPermission = Field("read", pattern=r"^(none|read|write)$")
+    workspace_permission: StashGeneralPermission = Field(
+        "view", pattern=r"^(none|view|comment|edit|manage)$"
+    )
+    public_permission: StashGeneralPermission = Field(
+        "view", pattern=r"^(none|view|comment|edit|manage)$"
+    )
     folder_id: UUID | None = None
 
 

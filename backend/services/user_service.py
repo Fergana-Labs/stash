@@ -4,6 +4,17 @@ from ..auth import create_api_key, hash_password, verify_password
 from ..database import get_pool
 
 
+async def get_public_guest_user_id() -> UUID:
+    pool = get_pool()
+    row = await pool.fetchrow(
+        "INSERT INTO users (name, display_name, description) "
+        "VALUES ('public-guest', 'Public guest', 'Unauthenticated public Stash actor') "
+        "ON CONFLICT (name) DO UPDATE SET display_name = EXCLUDED.display_name "
+        "RETURNING id"
+    )
+    return row["id"]
+
+
 async def register_user(
     name: str,
     display_name: str | None,

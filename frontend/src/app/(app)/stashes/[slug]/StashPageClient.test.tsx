@@ -130,8 +130,8 @@ function stashDetail(
       owner_name: "henry",
       owner_display_name: "Henry",
       access: "public",
-      workspace_permission: "read",
-      public_permission: "read",
+      workspace_permission: "view",
+      public_permission: "view",
       discoverable: false,
       cover_image_url: null,
       icon_url: null,
@@ -146,7 +146,9 @@ function stashDetail(
     },
     workspace_name: "Demo Workspace",
     items: [],
-    can_write: false,
+    can_comment: false,
+    can_edit: false,
+    can_manage: false,
   };
 }
 
@@ -182,7 +184,7 @@ describe("StashPageClient sharing", () => {
         user_id: "user-2",
         name: "sam",
         display_name: "Sam",
-        permission: "write",
+        permission: "edit",
         granted_by: "user-1",
         created_at: "2026-05-12T00:00:00Z",
       },
@@ -198,7 +200,7 @@ describe("StashPageClient sharing", () => {
       user_id: "user-3",
       name: "alex",
       display_name: "Alex",
-      permission: "read",
+      permission: "view",
       granted_by: "user-1",
       created_at: "2026-05-13T00:00:00Z",
     });
@@ -256,7 +258,9 @@ describe("StashPageClient sharing", () => {
         public_permission: "none",
         discoverable: false,
       }),
-      can_write: true,
+      can_comment: true,
+      can_edit: true,
+      can_manage: true,
     });
 
     renderStash(<StashPageClient slug="shared-stash" />);
@@ -267,8 +271,8 @@ describe("StashPageClient sharing", () => {
 
     await waitFor(() =>
       expect(updateStash).toHaveBeenCalledWith("stash-1", {
-        workspace_permission: "read",
-        public_permission: "read",
+        workspace_permission: "view",
+        public_permission: "view",
         discoverable: false,
       }),
     );
@@ -284,10 +288,12 @@ describe("StashPageClient sharing", () => {
     vi.mocked(getPublicStash).mockResolvedValueOnce({
       ...stashDetail({
         access: "public",
-        workspace_permission: "write",
-        public_permission: "read",
+        workspace_permission: "edit",
+        public_permission: "view",
       }),
-      can_write: true,
+      can_comment: true,
+      can_edit: true,
+      can_manage: true,
     });
 
     renderStash(<StashPageClient slug="shared-stash" />);
@@ -316,7 +322,9 @@ describe("StashPageClient sharing", () => {
         workspace_permission: "none",
         public_permission: "none",
       }),
-      can_write: true,
+      can_comment: true,
+      can_edit: true,
+      can_manage: true,
     });
 
     renderStash(<StashPageClient slug="shared-stash" />);
@@ -336,7 +344,7 @@ describe("StashPageClient sharing", () => {
     fireEvent.click(await within(dialog).findByRole("button", { name: /Alex/ }));
 
     await waitFor(() =>
-      expect(addStashMember).toHaveBeenCalledWith("stash-1", "user-3", "read"),
+      expect(addStashMember).toHaveBeenCalledWith("stash-1", "user-3", "view"),
     );
   });
 
@@ -344,10 +352,12 @@ describe("StashPageClient sharing", () => {
     vi.mocked(getPublicStash).mockResolvedValueOnce({
       ...stashDetail({
         access: "workspace",
-        workspace_permission: "read",
+        workspace_permission: "view",
         public_permission: "none",
       }),
-      can_write: true,
+      can_comment: true,
+      can_edit: true,
+      can_manage: true,
     });
 
     renderStash(<StashPageClient slug="shared-stash" />);
@@ -370,7 +380,7 @@ describe("StashPageClient sharing", () => {
     vi.mocked(getPublicStash).mockResolvedValueOnce(
       stashDetail({
         access: "workspace",
-        workspace_permission: "read",
+        workspace_permission: "view",
         public_permission: "none",
       }),
     );

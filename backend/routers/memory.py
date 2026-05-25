@@ -194,6 +194,7 @@ async def list_ws_agent_names(
     rows = await pool.fetch(
         "SELECT DISTINCT agent_name FROM history_events "
         "WHERE workspace_id = $1 "
+        f"AND {memory_service.workspace_owned_session_event_condition('history_events')} "
         f"AND {memory_service.readable_session_event_condition('history_events', 2)} "
         "ORDER BY agent_name",
         workspace_id,

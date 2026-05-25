@@ -2654,8 +2654,13 @@ function StashesBlock({
     sessionBySessionId.set(session.session_id, session);
   }
 
-  const nativeStashes = stashes.filter((stash) => !stash.forked_from_stash_id);
-  const forkedStashes = stashes.filter((stash) => stash.forked_from_stash_id);
+  const workspaceStashes = stashes.filter(
+    (stash) => !stash.is_external && stash.access !== "private"
+  );
+  const privateStashes = stashes.filter(
+    (stash) => !stash.is_external && stash.access === "private"
+  );
+  const externalStashes = stashes.filter((stash) => stash.is_external);
   const [openStashes, setOpenStashes] = useState<Record<string, boolean>>(() =>
     readBooleanMap(OPEN_STASHES_KEY)
   );
@@ -2731,11 +2736,14 @@ function StashesBlock({
         <ChevronToggle open={open} onToggle={() => onOpenChange(!open)} hoverOnly />
       </summary>
       <div className="ml-3 space-y-0.5 border-l border-border pl-2">
-        {nativeStashes.length === 0 && forkedStashes.length === 0 ? (
+        {workspaceStashes.length === 0 &&
+        privateStashes.length === 0 &&
+        externalStashes.length === 0 ? (
           <div className="px-2 py-1 text-[11px] italic text-muted">empty</div>
         ) : null}
-        {renderStashGroup(null, nativeStashes, false)}
-        {renderStashGroup("Forked stashes", forkedStashes, false)}
+        {renderStashGroup("Workspace and public", workspaceStashes, false)}
+        {renderStashGroup("External", externalStashes, false)}
+        {renderStashGroup("Private", privateStashes, false)}
         <SectionAddRow label="New Stash" onClick={onAddStash} />
       </div>
     </details>

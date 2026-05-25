@@ -62,8 +62,8 @@ async def test_discover_lists_discoverable_public_product_stashes(client: AsyncC
         f"/api/v1/workspaces/{workspace['id']}/stashes/publish",
         json={
             "title": "Public but unlisted",
-            "workspace_permission": "read",
-            "public_permission": "read",
+            "workspace_permission": "view",
+            "public_permission": "view",
             "items": [{"object_type": "page", "object_id": public_page["id"]}],
         },
         headers=_auth(api_key),
@@ -75,8 +75,8 @@ async def test_discover_lists_discoverable_public_product_stashes(client: AsyncC
         json={
             "title": "Public notes",
             "description": "A public Stash",
-            "workspace_permission": "read",
-            "public_permission": "read",
+            "workspace_permission": "view",
+            "public_permission": "view",
             "discoverable": True,
             "items": [{"object_type": "page", "object_id": public_page["id"]}],
         },
@@ -128,7 +128,7 @@ async def test_discover_opt_in_requires_public_product_stash(client: AsyncClient
         f"/api/v1/workspaces/{workspace['id']}/stashes",
         json={
             "title": "Workspace Discover attempt",
-            "workspace_permission": "read",
+            "workspace_permission": "view",
             "public_permission": "none",
             "discoverable": True,
             "items": [{"object_type": "page", "object_id": page["id"]}],
@@ -163,8 +163,8 @@ async def test_discover_search_filters_product_stashes(client: AsyncClient):
             f"/api/v1/workspaces/{workspace['id']}/stashes/publish",
             json={
                 "title": title,
-                "workspace_permission": "read",
-                "public_permission": "read",
+                "workspace_permission": "view",
+                "public_permission": "view",
                 "discoverable": True,
                 "items": [{"object_type": "page", "object_id": page["id"]}],
             },

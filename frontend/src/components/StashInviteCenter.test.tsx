@@ -30,7 +30,7 @@ const invite = {
   invited_by_user_id: "user-1",
   invited_by_name: "henry",
   invited_by_display_name: "Henry",
-  permission: "read" as const,
+  permission: "view" as const,
   created_at: "2026-05-17T12:00:00Z",
 };
 

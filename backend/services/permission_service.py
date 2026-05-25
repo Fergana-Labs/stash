@@ -18,6 +18,17 @@ _WORKSPACE_LOOKUP = {
 }
 
 _CONTENT_TYPES = {"folder", "page", "session", "table", "file"}
+_PERMISSION_RANK = {
+    "none": 0,
+    "view": 1,
+    "comment": 2,
+    "edit": 3,
+    "manage": 4,
+}
+
+
+def _permission_allows(permission: str, required: str) -> bool:
+    return _PERMISSION_RANK[permission] >= _PERMISSION_RANK[required]
 
 
 def _folder_chain_sql(folder_id_expr: str) -> str:
@@ -174,10 +185,10 @@ async def _stash_member_permission(stash_id: UUID, user_id: UUID) -> str | None:
     return row["permission"] if row else None
 
 
-async def _stash_allows(stash: dict, user_id: UUID | None, require_write: bool) -> bool:
+async def _stash_allows(stash: dict, user_id: UUID | None, required_permission: str) -> bool:
     workspace_permission = stash["workspace_permission"]
     public_permission = stash["public_permission"]
-    if public_permission != "none" and not require_write:
+    if _permission_allows(public_permission, required_permission):
         return True
     if user_id is None:
         return False
@@ -186,16 +197,10 @@ async def _stash_allows(stash: dict, user_id: UUID | None, require_write: bool) 
 
     role = await get_workspace_role(stash["workspace_id"], user_id)
     permission = await _stash_member_permission(stash["id"], user_id)
-    if role is not None and workspace_permission != "none" and not require_write:
+    if role is not None and _permission_allows(workspace_permission, required_permission):
         return True
-    if role is not None and workspace_permission == "write" and require_write:
+    if permission and _permission_allows(permission, required_permission):
         return True
-    if require_write and public_permission == "write":
-        return True
-    if permission:
-        if not require_write:
-            return True
-        return permission in ("write", "admin")
     return False
 
 
@@ -205,7 +210,10 @@ async def check_access(
     user_id: UUID | None,
     workspace_id: UUID | None = None,
     require_write: bool = False,
+    required_permission: str | None = None,
 ) -> bool:
+    required_permission = required_permission or ("edit" if require_write else "view")
+
     if workspace_id is None:
         workspace_id = await resolve_workspace_id(object_type, object_id)
 
@@ -218,7 +226,7 @@ async def check_access(
         )
         if not row:
             return False
-        return await _stash_allows(dict(row), user_id, require_write)
+        return await _stash_allows(dict(row), user_id, required_permission)
 
     if object_type not in _CONTENT_TYPES:
         return False
@@ -226,7 +234,7 @@ async def check_access(
     stashes = await _containing_stashes(object_type, object_id)
     if stashes:
         for stash in stashes:
-            if await _stash_allows(stash, user_id, require_write):
+            if await _stash_allows(stash, user_id, required_permission):
                 return True
         return False
 

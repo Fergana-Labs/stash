@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 import { apiFetch, getWorkspace, publishStash, updateStash } from "@/lib/api";
 import type { StepCtx } from "@/lib/onboarding/paths";
 
-type PublicPerm = "read" | "write";
+type PublicPerm = "view" | "edit";
 
 type Page = { id: string; name: string; content_type: string };
 type FileRow = { id: string; name: string };
@@ -105,7 +105,7 @@ function ItemRow({
 }) {
   const [publicUrl, setPublicUrl] = useState<string | null>(null);
   const [publicStashId, setPublicStashId] = useState<string | null>(null);
-  const [perm, setPerm] = useState<PublicPerm>("read");
+  const [perm, setPerm] = useState<PublicPerm>("view");
   const [busy, setBusy] = useState(false);
   const [shareError, setShareError] = useState<string | null>(null);
 
@@ -259,8 +259,8 @@ function AccessRow({
         onChange={(e) => onChange(e.target.value as PublicPerm)}
         className="rounded-md border border-border-subtle bg-background/40 px-2 py-1 text-[11.5px] text-foreground focus:border-brand focus:outline-none disabled:opacity-60"
       >
-        <option value="read">can view</option>
-        <option value="write">can edit</option>
+        <option value="view">can view</option>
+        <option value="edit">can edit</option>
       </select>
     </div>
   );

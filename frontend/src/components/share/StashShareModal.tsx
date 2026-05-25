@@ -28,14 +28,18 @@ const VISIBILITY_OPTIONS = [
 
 const WORKSPACE_PERMISSION_OPTIONS = [
   { value: "none", label: "No access" },
-  { value: "read", label: "Can view" },
-  { value: "write", label: "Can edit" },
+  { value: "view", label: "Can view" },
+  { value: "comment", label: "Can comment" },
+  { value: "edit", label: "Can edit" },
+  { value: "manage", label: "Can manage" },
 ];
 
 const PUBLIC_PERMISSION_OPTIONS = [
   { value: "none", label: "No access" },
-  { value: "read", label: "Can view" },
-  { value: "write", label: "Can edit" },
+  { value: "view", label: "Can view" },
+  { value: "comment", label: "Can comment" },
+  { value: "edit", label: "Can edit" },
+  { value: "manage", label: "Can manage" },
 ];
 
 interface SelectableRow {
@@ -88,13 +92,13 @@ function permissionsForVisibility(
   }
   if (visibility === "workspace") {
     return {
-      workspacePermission: workspacePermission === "none" ? "read" : workspacePermission,
+      workspacePermission: workspacePermission === "none" ? "view" : workspacePermission,
       publicPermission: "none",
     };
   }
   return {
-    workspacePermission: workspacePermission === "none" ? "read" : workspacePermission,
-    publicPermission: publicPermission === "none" ? "read" : publicPermission,
+    workspacePermission: workspacePermission === "none" ? "view" : workspacePermission,
+    publicPermission: publicPermission === "none" ? "view" : publicPermission,
   };
 }
 
@@ -107,7 +111,7 @@ export default function StashShareModal() {
   const [selected, setSelected] = useState<SelectedState>(EMPTY_SELECTED);
   const [title, setTitle] = useState("");
   const [workspacePermission, setWorkspacePermission] =
-    useState<StashGeneralPermission>("read");
+    useState<StashGeneralPermission>("view");
   const [publicPermission, setPublicPermission] =
     useState<StashGeneralPermission>("none");
   const [shareToDiscover, setShareToDiscover] = useState(false);
@@ -126,7 +130,7 @@ export default function StashShareModal() {
     setSearch("");
     setError("");
     setTitle("");
-    setWorkspacePermission("read");
+    setWorkspacePermission("view");
     setPublicPermission("none");
     setShareToDiscover(false);
     setSelected(buildInitialSelection(initial, null));
@@ -292,7 +296,9 @@ export default function StashShareModal() {
           label_override: sess.label,
         });
       }
-      const finalTitle = title.trim() || defaultTitle;
+      const finalTitle = hasUserEditedTitle.current
+        ? title.trim() || defaultTitle
+        : defaultTitle;
       const stash =
         publicPermission !== "none"
           ? (await publishStash(workspaceId, finalTitle, items, {

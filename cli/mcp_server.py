@@ -726,8 +726,8 @@ def stash_set_stash_access(
     client, _ = _client()
     fields: dict = {
         "access": access,
-        "public_permission": "read" if access == "public" else "none",
-        "workspace_permission": "read" if access in {"workspace", "public"} else "none",
+        "public_permission": "view" if access == "public" else "none",
+        "workspace_permission": "view" if access in {"workspace", "public"} else "none",
         "discoverable": discoverable,
     }
     return _json(client.update_stash(stash_id, **fields))

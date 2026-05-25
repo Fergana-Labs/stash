@@ -61,7 +61,7 @@ async def test_stash_invite_grants_view_access_before_adding(client: AsyncClient
 
     added_member = await client.post(
         f"/api/v1/stashes/{stash['id']}/members",
-        json={"user_id": recipient["id"], "permission": "read"},
+        json={"user_id": recipient["id"], "permission": "view"},
         headers=_auth(owner_key),
     )
     assert added_member.status_code == 201
@@ -72,7 +72,7 @@ async def test_stash_invite_grants_view_access_before_adding(client: AsyncClient
     assert invite["stash_id"] == stash["id"]
     assert invite["stash_title"] == "Partner Stash"
     assert invite["source_workspace_id"] == source_workspace["id"]
-    assert invite["permission"] == "read"
+    assert invite["permission"] == "view"
 
     viewed = await client.get(
         f"/api/v1/stashes/{stash['slug']}",
@@ -132,7 +132,7 @@ async def test_stash_invite_can_be_dismissed(client: AsyncClient):
     ).json()
     await client.post(
         f"/api/v1/stashes/{stash['id']}/members",
-        json={"user_id": recipient["id"], "permission": "read"},
+        json={"user_id": recipient["id"], "permission": "view"},
         headers=_auth(owner_key),
     )
 
