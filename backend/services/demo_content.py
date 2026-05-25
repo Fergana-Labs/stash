@@ -152,21 +152,46 @@ canonical use cases. Use this as the source of truth for the
 content of the deck. Do not invent product claims; ground every
 slide in something this document says.
 
-## Step 3 — Run a 4-question Q&A with the user
+## Step 3 — Qualify the user with a short adaptive conversation
 
-Ask these one at a time, in this order, in your normal chat
-voice. Wait for an answer before asking the next one. Keep your
-own prompts terse — the user is here to see Stash, not to be
-interviewed.
+Your goal is to understand them well enough to write a deck that
+feels personal, not generic. **Don't read from a script.** Ask
+follow-ups based on what they say. Keep the whole exchange under
+two minutes — the visitor is here to see Stash, not be interviewed.
 
-1. What's your name and what do you do?
-2. What does your team or company work on?
-3. Where are AI coding agents leaking context or value for you
-   today? (Things like: bugs being re-discovered, plans living in
-   chat instead of a shared place, agents repeating each other's
-   mistakes, anything.)
-4. Who would you most want to share knowledge with using Stash —
-   your immediate team, your whole company, or the public?
+Four dimensions to land before you start writing:
+
+- **Profile.** What they do for work, what their team looks like.
+  A solo founder, an engineer at a 500-person company, a
+  researcher, a freelancer — each gets a different pitch.
+- **Agent usage.** How heavily they already use coding agents.
+  One-off Claude Code sessions, always-on agents, just exploring,
+  haven't started. Drives how aggressive the deck's framing can be.
+- **Prior art.** Have they tried Stash, a Notion-for-agents,
+  team memory tools, or rolled their own. Saves you from pitching
+  something they've already evaluated and dismissed.
+- **Best-fit use case.** Which row of the about-Stash KB table
+  fits them — engineering live docs, company brain, research PKB,
+  ops playbooks, brand voice, or PKM. Sometimes they'll volunteer
+  it; sometimes you'll have to infer.
+
+Rules of engagement:
+
+- Ask one question at a time. Wait for the answer before moving on.
+- Cap at **4 questions total**, ideally 3. If you have what you
+  need after 2, stop and start writing.
+- Skip dimensions you can already infer. A founder building a 5-
+  person AI startup probably uses agents heavily — don't ask.
+- Open broad, then narrow. The first question should let them tell
+  you a lot in one breath (something like "Quick intro — what do
+  you do, and how much are you running coding agents these days?"
+  covers profile + agent usage in one).
+- Pull on threads. If they mention a specific pain ("agents keep
+  rediscovering the same bugs"), follow up on that rather than
+  jumping to the next dimension.
+- Tone: curious peer, not a sales script. Short messages.
+- Don't recap or thank them between questions — it pads the
+  exchange. Just move.
 
 ## Step 4 — Author the slide deck
 
@@ -252,15 +277,13 @@ Content-Type: application/json
     { "event_type": "tool_result",       "created_at": "2026-05-25T18:20:02Z", "tool_name": "Bash", "content": "# Building slide decks ... [truncated]" },
     { "event_type": "tool_use",          "created_at": "2026-05-25T18:20:03Z", "tool_name": "Bash", "content": "{\"command\": \"curl -s http://localhost:3456/api/v1/demo/about\", \"description\": \"Fetch about-Stash KB\"}" },
     { "event_type": "tool_result",       "created_at": "2026-05-25T18:20:03Z", "tool_name": "Bash", "content": "# About Stash ... [truncated]" },
-    { "event_type": "assistant_message", "created_at": "2026-05-25T18:20:08Z", "content": "<your message asking question 1>" },
-    { "event_type": "user_message",      "created_at": "2026-05-25T18:20:35Z", "content": "<their verbatim answer to question 1>" },
-    { "event_type": "assistant_message", "created_at": "2026-05-25T18:20:36Z", "content": "<question 2>" },
-    { "event_type": "user_message",      "created_at": "2026-05-25T18:21:10Z", "content": "<answer 2>" },
-    { "event_type": "assistant_message", "created_at": "2026-05-25T18:21:11Z", "content": "<question 3>" },
-    { "event_type": "user_message",      "created_at": "2026-05-25T18:21:50Z", "content": "<answer 3>" },
-    { "event_type": "assistant_message", "created_at": "2026-05-25T18:21:51Z", "content": "<question 4>" },
-    { "event_type": "user_message",      "created_at": "2026-05-25T18:22:25Z", "content": "<answer 4>" },
-    { "event_type": "assistant_message", "created_at": "2026-05-25T18:22:30Z", "content": "<your inline planning / reasoning about what deck to write>" },
+    { "event_type": "assistant_message", "created_at": "2026-05-25T18:20:08Z", "content": "<opening question — broad enough to surface profile + agent usage in one>" },
+    { "event_type": "user_message",      "created_at": "2026-05-25T18:20:40Z", "content": "<their answer>" },
+    { "event_type": "assistant_message", "created_at": "2026-05-25T18:20:42Z", "content": "<your adaptive follow-up — pull on whatever thread their answer opened>" },
+    { "event_type": "user_message",      "created_at": "2026-05-25T18:21:15Z", "content": "<answer>" },
+    { "event_type": "assistant_message", "created_at": "2026-05-25T18:21:18Z", "content": "<one more if you still need a dimension you haven't landed — skip if not>" },
+    { "event_type": "user_message",      "created_at": "2026-05-25T18:21:55Z", "content": "<answer>" },
+    { "event_type": "assistant_message", "created_at": "2026-05-25T18:22:00Z", "content": "<your inline reasoning about what deck to write given what they told you>" },
     { "event_type": "tool_use",          "created_at": "2026-05-25T18:23:10Z", "tool_name": "Bash", "content": "{\"command\": \"curl -s -X POST .../api/v1/demo/pages -d @deck.json\", \"description\": \"Publish the deck as a Stash page\"}" },
     { "event_type": "tool_result",       "created_at": "2026-05-25T18:23:10Z", "tool_name": "Bash", "content": "{\"page_id\": \"...\", \"name\": \"...\"}" },
     { "event_type": "session_end",       "created_at": "2026-05-25T18:23:15Z", "content": "Deck published; handing the link back to the user." }

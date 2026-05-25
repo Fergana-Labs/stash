@@ -12,7 +12,6 @@ export default function Page() {
     <main className="min-h-screen bg-background text-foreground">
       <Nav />
       <Hero />
-      <LiveDemo />
       <Logos />
       <Problem />
       <HowItWorks />
@@ -189,34 +188,6 @@ function StashKindTag({ kind }: { kind: StashItem["kind"] }) {
   );
 }
 
-function HeroFunnel() {
-  return (
-    <div className="relative w-full max-w-[565px]">
-      <div
-        className="overflow-hidden rounded-[18px] border border-border-subtle bg-background"
-        style={{
-          aspectRatio: "1086 / 1280",
-          boxShadow:
-            "rgba(15, 23, 42, 0.04) 0px 1px 2px 0px, rgba(15, 23, 42, 0.10) 0px 24px 48px -24px",
-          WebkitMaskImage:
-            "linear-gradient(to bottom, black 0%, black 88%, transparent 100%)",
-          maskImage:
-            "linear-gradient(to bottom, black 0%, black 88%, transparent 100%)",
-        }}
-      >
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src="/hero-funnel.png"
-          alt="A blurred fan of customer-feedback sources funnelling into a single, crisp Stash article that synthesizes the recurring asks."
-          width={1086}
-          height={1676}
-          className="block h-full w-full object-cover object-top"
-        />
-      </div>
-    </div>
-  );
-}
-
 function Hero() {
   return (
     <section className="relative overflow-hidden">
@@ -266,7 +237,9 @@ function Hero() {
             </Link>
           </div>
         </div>
-        <HeroFunnel />
+        <div className="flex justify-center lg:justify-end">
+          <LiveDemo />
+        </div>
       </div>
     </section>
   );
