@@ -147,6 +147,13 @@ export default function DescriptionEditor({
       },
     },
     onUpdate: ({ editor: ed }) => {
+      // Read-only viewers (public-stash anonymous readers, workspace
+      // viewers without write access) still mount the editor so they
+      // can see the rendered description, but must never hit the
+      // authenticated save endpoint. TipTap's mount-time normalization
+      // emits onUpdate even when nobody touched the content, so this
+      // gate is load-bearing.
+      if (!canEditRef.current) return;
       const html = ed.isEmpty ? "" : ed.getHTML();
       if (html === lastSaved.current) return;
       queueSave(html);

@@ -29,6 +29,7 @@ import {
   getActivityTimeline,
   getEmbeddingProjection,
   getPublicStash,
+  getToken,
   updateStash,
   uploadFile,
   type PublicStashDetail,
@@ -159,6 +160,16 @@ function StashPageBody({
 
   useEffect(() => {
     if (primary) {
+      setTimeline(null);
+      setProjection(null);
+      setInsightsLoaded(true);
+      return;
+    }
+
+    // Insight panels are workspace-member only — both endpoints require
+    // auth. Anonymous public-stash viewers should skip the fetch entirely
+    // (the panels render their empty-state without it).
+    if (!getToken()) {
       setTimeline(null);
       setProjection(null);
       setInsightsLoaded(true);
@@ -348,7 +359,12 @@ function StashPageBody({
             </div>
 
             {/* Visualizations: human/agent session activity + 3D embedding
-                view scoped to this Stash's items. */}
+                view scoped to this Stash's items. Both panels are
+                workspace-member features — hide them from anonymous
+                public-stash viewers entirely so they don't see empty
+                "no data" placeholders for tools they can't use. */}
+            {getToken() && (
+              <>
             <section className="mt-8">
               <div className="sys-label mb-1.5">
                 Activity in this Stash — last 30 days
@@ -384,6 +400,8 @@ function StashPageBody({
                 )}
               </div>
             </section>
+              </>
+            )}
           </>
         )}
       </div>
