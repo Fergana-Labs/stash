@@ -3,10 +3,14 @@ import type { NextConfig } from "next";
 // Rewrites are evaluated by the Next.js node server (server-side). In
 // docker / self-host setups the frontend container reaches the backend
 // via the internal docker network hostname — not the public URL the
-// browser uses.
+// browser uses. Managed Auth0 deploys fall back to the public API origin
+// if no internal hostname is configured.
 const backend =
   process.env.BACKEND_INTERNAL_URL ||
-  "http://localhost:3456";
+  process.env.NEXT_PUBLIC_API_URL ||
+  (process.env.NEXT_PUBLIC_AUTH0_ENABLED === "true"
+    ? "https://api.joinstash.ai"
+    : "http://localhost:3456");
 
 const acceptsJson = ".*application/json.*";
 const acceptsMarkdown = ".*(text/markdown|text/plain).*";

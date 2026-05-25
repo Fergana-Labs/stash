@@ -5,6 +5,10 @@ everything before it is captured in git history (`git log`), not here.
 
 ## Unreleased
 
+- Frontend managed Auth0 deploys now fall back to `https://api.joinstash.ai`
+  when no internal backend URL is configured, so public Stash pages do not
+  crash from localhost backend fetches while generic self-hosts keep their
+  localhost fallback.
 - Added a committed `docker-compose.local.yml` override for laptop
   self-hosting dry runs. It exposes backend, frontend, and collab on
   localhost ports and disables Caddy.

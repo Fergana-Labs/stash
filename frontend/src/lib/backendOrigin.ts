@@ -5,7 +5,16 @@
 // not via the public URL the browser uses. Set BACKEND_INTERNAL_URL in
 // the frontend container's env to point at the in-network hostname.
 //
-// Falls back to localhost:3456 for vanilla `npm run dev`.
-export const SSR_BACKEND_ORIGIN =
-  process.env.BACKEND_INTERNAL_URL ||
-  "http://localhost:3456";
+// Managed Auth0 deploys use the public API origin when no internal backend
+// hostname is configured. Generic self-hosts still fall back to localhost.
+export function resolveBackendOrigin(env: NodeJS.ProcessEnv = process.env): string {
+  return (
+    env.BACKEND_INTERNAL_URL ||
+    env.NEXT_PUBLIC_API_URL ||
+    (env.NEXT_PUBLIC_AUTH0_ENABLED === "true"
+      ? "https://api.joinstash.ai"
+      : "http://localhost:3456")
+  );
+}
+
+export const SSR_BACKEND_ORIGIN = resolveBackendOrigin();
