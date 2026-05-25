@@ -15,7 +15,7 @@ import secrets
 from datetime import datetime
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Body, HTTPException, Request
 from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel, Field
 
@@ -116,7 +116,7 @@ async def about(request: Request) -> str:
 
 @router.post("/pages", status_code=201)
 @limiter.limit(_POST_LIMIT)
-async def create_page(request: Request, req: DemoPageCreate) -> dict[str, Any]:
+async def create_page(request: Request, req: DemoPageCreate = Body(...)) -> dict[str, Any]:
     workspace_id, owner_id = await demo_service.get_demo_workspace()
     name = _unique_page_name(req.title)
     try:
@@ -138,7 +138,7 @@ async def create_page(request: Request, req: DemoPageCreate) -> dict[str, Any]:
 
 @router.post("/sessions", status_code=201)
 @limiter.limit(_POST_LIMIT)
-async def create_session(request: Request, req: DemoSessionCreate) -> dict[str, Any]:
+async def create_session(request: Request, req: DemoSessionCreate = Body(...)) -> dict[str, Any]:
     from ..database import get_pool
     from ..services import session_service
 
@@ -204,7 +204,7 @@ async def create_session(request: Request, req: DemoSessionCreate) -> dict[str, 
 
 @router.post("/stashes", status_code=201)
 @limiter.limit(_POST_LIMIT)
-async def create_stash(request: Request, req: DemoStashCreate) -> dict[str, Any]:
+async def create_stash(request: Request, req: DemoStashCreate = Body(...)) -> dict[str, Any]:
     workspace_id, owner_id = await demo_service.get_demo_workspace()
 
     items = list(req.items)

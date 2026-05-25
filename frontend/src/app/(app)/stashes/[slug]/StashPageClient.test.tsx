@@ -75,6 +75,9 @@ vi.mock("../../../../lib/api", () => ({
   uploadFile: vi.fn(),
   getActivityTimeline: vi.fn(),
   getEmbeddingProjection: vi.fn(),
+  // Tests render the authenticated view of the page; pretend the
+  // viewer has a token so insight panels mount as before.
+  getToken: vi.fn(() => "test-token"),
 }));
 
 vi.mock("../../../../components/viz/ContributorActivityTimeline", () => ({
