@@ -26,7 +26,6 @@ from ..services import (
     demo_service,
     files_tree_service,
     memory_service,
-    session_service,
     stash_service,
 )
 from ..services.files_tree_service import DuplicatePageName
@@ -48,9 +47,27 @@ class DemoPageCreate(BaseModel):
     html_layout: str = Field("fixed-aspect", pattern=r"^(responsive|fixed-aspect)$")
 
 
+# Constrained to the event types the Stash session viewer knows how to
+# render. Anything outside this set would just show up as a generic block
+# and confuse the visitor.
+_DEMO_EVENT_TYPE_RE = (
+    r"^(user_message|user_prompt|assistant_message|tool_use|tool_result|session_end)$"
+)
+
+
+class DemoSessionEvent(BaseModel):
+    event_type: str = Field(..., pattern=_DEMO_EVENT_TYPE_RE)
+    content: str = Field(..., max_length=100_000)
+    tool_name: str | None = Field(None, max_length=128)
+    metadata: dict | None = None
+
+
 class DemoSessionCreate(BaseModel):
     title: str = Field(..., min_length=1, max_length=200)
-    transcript: str = Field(..., min_length=1)
+    # Full turn-by-turn timeline of the coding-agent conversation from
+    # the user's first paste through to right before publish. The Stash
+    # session viewer renders these as a chat thread.
+    events: list[DemoSessionEvent] = Field(..., min_length=1, max_length=400)
     agent_name: str = Field("demo-visitor", min_length=1, max_length=64)
 
 
@@ -115,25 +132,45 @@ async def create_session(request: Request, req: DemoSessionCreate) -> dict[str, 
     workspace_id, owner_id = await demo_service.get_demo_workspace()
     # Random session_id keeps demos isolated within the shared workspace.
     session_id = f"demo-{secrets.token_urlsafe(10)}"
-    session = await session_service.upsert_session(
+
+    # Batch-insert one history_event per turn. push_events_batch upserts
+    # the session row for us via _upsert_sessions_for_events — no need to
+    # create the session separately. The first event's metadata carries
+    # the demo title so the session list view can show it.
+    payload = []
+    for idx, event in enumerate(req.events):
+        meta = dict(event.metadata or {})
+        if idx == 0:
+            meta.setdefault("demo_title", req.title)
+        payload.append(
+            {
+                "agent_name": req.agent_name,
+                "event_type": event.event_type,
+                "content": event.content,
+                "session_id": session_id,
+                "tool_name": event.tool_name,
+                "metadata": meta,
+            }
+        )
+
+    inserted = await memory_service.push_events_batch(
         workspace_id=workspace_id,
-        session_id=session_id,
-        agent_name=req.agent_name,
-        cwd=None,
         created_by=owner_id,
+        events=payload,
     )
-    # Single event captures the full Q&A markdown. The stash inline
-    # session renderer will surface it as the session's transcript.
-    await memory_service.push_event(
-        workspace_id=workspace_id,
-        agent_name=req.agent_name,
-        event_type="assistant_message",
-        content=req.transcript,
-        created_by=owner_id,
-        session_id=session_id,
-        metadata={"demo_title": req.title},
-    )
-    return {"session_id": session["id"], "session_external_id": session_id}
+
+    # push_events_batch upserts sessions but doesn't return the row id;
+    # look it up so the caller can reference it from the stash items.
+    from ..services import session_service
+
+    session = await session_service.get_session(workspace_id, session_id)
+    if session is None:
+        raise HTTPException(status_code=500, detail="Session upsert failed")
+    return {
+        "session_id": session["id"],
+        "session_external_id": session_id,
+        "event_count": len(inserted),
+    }
 
 
 @router.post("/stashes", status_code=201)

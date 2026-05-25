@@ -74,8 +74,12 @@ async def test_full_publish_flow(client: AsyncClient):
         "/api/v1/demo/sessions",
         json={
             "title": "Stash demo Q&A with Test Visitor",
-            "transcript": "**Q:** What's your name?\n**A:** Test Visitor",
             "agent_name": "test-agent",
+            "events": [
+                {"event_type": "user_message", "content": "Paste of demo prompt"},
+                {"event_type": "assistant_message", "content": "What's your name?"},
+                {"event_type": "user_message", "content": "Test Visitor"},
+            ],
         },
     )
     assert session_resp.status_code == 201, session_resp.text
@@ -275,23 +279,52 @@ async def test_janitor_purges_orphans_keeps_referenced(client: AsyncClient, pool
 
 
 @pytest.mark.asyncio
-async def test_session_event_is_visible(client: AsyncClient, pool):
-    """Session create should also push an event so the Q&A actually shows
-    up when the Stash renders the session inline."""
+async def test_session_stores_full_event_timeline(client: AsyncClient, pool):
+    """Each turn must land as its own history_event so the Stash session
+    viewer renders the conversation as a chat thread. This is what makes
+    the demo show *how* the deck was built, not just a summary."""
+    events_in = [
+        {"event_type": "user_message", "content": "the-paste-marker"},
+        {"event_type": "tool_use", "tool_name": "curl", "content": "GET /api/v1/demo/start"},
+        {"event_type": "tool_result", "tool_name": "curl", "content": "instructions ..."},
+        {"event_type": "assistant_message", "content": "Q1?"},
+        {"event_type": "user_message", "content": "A1"},
+    ]
     resp = await client.post(
         "/api/v1/demo/sessions",
         json={
-            "title": "Event sanity check",
-            "transcript": "the-transcript-marker",
+            "title": "Timeline check",
             "agent_name": "test-agent",
+            "events": events_in,
         },
     )
+    assert resp.status_code == 201, resp.text
+    assert resp.json()["event_count"] == len(events_in)
+
     session_row_id = resp.json()["session_id"]
-    content = await pool.fetchval(
-        "SELECT content FROM history_events WHERE session_id = ("
-        "  SELECT session_id FROM sessions WHERE id = $1"
-        ") LIMIT 1",
+    rows = await pool.fetch(
+        "SELECT event_type, content, tool_name FROM history_events "
+        "WHERE session_id = (SELECT session_id FROM sessions WHERE id = $1) "
+        "ORDER BY created_at ASC, id ASC",
         session_row_id,
     )
-    assert content is not None
-    assert "the-transcript-marker" in content
+    assert len(rows) == len(events_in)
+    assert [r["event_type"] for r in rows] == [e["event_type"] for e in events_in]
+    assert rows[0]["content"] == "the-paste-marker"
+    # Tool name preserved on tool_use rows
+    assert rows[1]["tool_name"] == "curl"
+
+
+@pytest.mark.asyncio
+async def test_session_rejects_unknown_event_type(client: AsyncClient):
+    """Constrained event_type means agents can't sneak in arbitrary types
+    that the renderer doesn't handle."""
+    resp = await client.post(
+        "/api/v1/demo/sessions",
+        json={
+            "title": "Bad type",
+            "agent_name": "test-agent",
+            "events": [{"event_type": "not_a_real_type", "content": "x"}],
+        },
+    )
+    assert resp.status_code == 422

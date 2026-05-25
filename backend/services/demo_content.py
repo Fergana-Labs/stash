@@ -168,9 +168,6 @@ interviewed.
 4. Who would you most want to share knowledge with using Stash —
    your immediate team, your whole company, or the public?
 
-Save the full Q&A as a markdown transcript in memory — you'll
-upload it in step 5.
-
 ## Step 4 — Author the slide deck
 
 Write a single HTML page following the slide skill. Aim for 6–8
@@ -205,7 +202,17 @@ Content-Type: application/json
 
 Returns `{ "page_id": "<uuid>" }`.
 
-### 5b. Create the session transcript
+### 5b. Create the session — full conversation timeline
+
+This is **not** a summary. Serialize *every turn* of the conversation
+between you and the user from the moment they pasted the demo prompt
+through to right before this call: the original user paste, your
+fetches of `/skill` and `/about`, each Q&A question you asked and
+each answer they gave, your deck-authoring step, and the publish
+calls. The Stash session viewer renders the array as a chat thread,
+so the visitor (and any agent forking the Stash later) can see
+*how* the deck was actually built, not just a tidy after-the-fact
+recap.
 
 ```
 POST /api/v1/demo/sessions
@@ -213,12 +220,45 @@ Content-Type: application/json
 
 {
   "title": "Stash demo Q&A with <user name>",
-  "transcript": "<the full Q&A as markdown>",
-  "agent_name": "<your agent name, e.g. claude-code>"
+  "agent_name": "<your agent name, e.g. claude-code>",
+  "events": [
+    { "event_type": "user_message",      "content": "<the verbatim demo prompt the user pasted>" },
+    { "event_type": "tool_use",          "tool_name": "curl", "content": "GET /api/v1/demo/start" },
+    { "event_type": "tool_result",       "tool_name": "curl", "content": "<the markdown you got back, truncated to ~2000 chars is fine>" },
+    { "event_type": "tool_use",          "tool_name": "curl", "content": "GET /api/v1/demo/skill" },
+    { "event_type": "tool_result",       "tool_name": "curl", "content": "<truncated skill md>" },
+    { "event_type": "tool_use",          "tool_name": "curl", "content": "GET /api/v1/demo/about" },
+    { "event_type": "tool_result",       "tool_name": "curl", "content": "<truncated about md>" },
+    { "event_type": "assistant_message", "content": "<your message asking question 1>" },
+    { "event_type": "user_message",      "content": "<their answer to question 1>" },
+    { "event_type": "assistant_message", "content": "<your message asking question 2>" },
+    { "event_type": "user_message",      "content": "<their answer to question 2>" },
+    { "event_type": "assistant_message", "content": "<question 3>" },
+    { "event_type": "user_message",      "content": "<answer 3>" },
+    { "event_type": "assistant_message", "content": "<question 4>" },
+    { "event_type": "user_message",      "content": "<answer 4>" },
+    { "event_type": "assistant_message", "content": "<your reasoning about what deck to write and any inline planning you did>" },
+    { "event_type": "tool_use",          "tool_name": "curl", "content": "POST /api/v1/demo/pages with deck HTML" },
+    { "event_type": "tool_result",       "tool_name": "curl", "content": "<the page_id response>" }
+  ]
 }
 ```
 
-Returns `{ "session_id": "<uuid>" }`.
+Allowed `event_type` values: `user_message`, `user_prompt`,
+`assistant_message`, `tool_use`, `tool_result`, `session_end`.
+
+Hard rules:
+- Include the user's original paste verbatim as the first event.
+- Include every Q&A turn end-to-end. Don't paraphrase or condense
+  the user's answers — store them as they typed them.
+- Tool calls and their outputs are events too. The visitor wants
+  to see that you actually read `/skill` before authoring HTML.
+- Truncate huge tool results (the full skill markdown, the full
+  deck HTML) to a few thousand characters with a clear `…
+  [truncated]` marker. Keep events under 100KB each; total under
+  400 events.
+
+Returns `{ "session_id": "<uuid>", "event_count": N }`.
 
 ### 5c. Create the public Stash
 
