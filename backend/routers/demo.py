@@ -9,8 +9,6 @@ and delegates straight into the same service functions used by the
 authenticated workspace routers — no parallel implementation.
 """
 
-from __future__ import annotations
-
 import secrets
 from datetime import datetime
 from typing import Any
