@@ -188,6 +188,34 @@ function StashKindTag({ kind }: { kind: StashItem["kind"] }) {
   );
 }
 
+function HeroFunnel() {
+  return (
+    <div className="relative w-full max-w-[565px]">
+      <div
+        className="overflow-hidden rounded-[18px] border border-border-subtle bg-background"
+        style={{
+          aspectRatio: "1086 / 1280",
+          boxShadow:
+            "rgba(15, 23, 42, 0.04) 0px 1px 2px 0px, rgba(15, 23, 42, 0.10) 0px 24px 48px -24px",
+          WebkitMaskImage:
+            "linear-gradient(to bottom, black 0%, black 88%, transparent 100%)",
+          maskImage:
+            "linear-gradient(to bottom, black 0%, black 88%, transparent 100%)",
+        }}
+      >
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src="/hero-funnel.png"
+          alt="A blurred fan of customer-feedback sources funnelling into a single, crisp Stash article that synthesizes the recurring asks."
+          width={1086}
+          height={1676}
+          className="block h-full w-full object-cover object-top"
+        />
+      </div>
+    </div>
+  );
+}
+
 function Hero() {
   return (
     <section className="relative overflow-hidden">
@@ -199,45 +227,49 @@ function Hero() {
             "radial-gradient(ellipse 80% 60% at 20% 10%, rgba(249,115,22,0.09), transparent 60%)",
         }}
       />
-      <div className="relative z-10 mx-auto grid max-w-[1200px] grid-cols-1 gap-12 px-7 pb-8 pt-20 lg:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)] lg:items-center lg:gap-16 lg:pb-16 lg:pt-28">
-        <div>
-          <h1 className="text-balance font-display text-[clamp(44px,6.2vw,80px)] font-black leading-[0.95] tracking-[-0.045em] text-ink">
-            Knowledge bases for
-            <br />
-            the <span className="text-brand">agent era.</span>
-          </h1>
+      <div className="relative z-10 mx-auto max-w-[1200px] px-7 pb-12 pt-20 lg:pb-20 lg:pt-28">
+        <div className="grid grid-cols-1 gap-12 lg:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)] lg:items-center lg:gap-16">
+          <div>
+            <h1 className="text-balance font-display text-[clamp(44px,6.2vw,80px)] font-black leading-[0.95] tracking-[-0.045em] text-ink">
+              Knowledge bases for
+              <br />
+              the <span className="text-brand">agent era.</span>
+            </h1>
 
-          <p className="mt-7 max-w-[540px] text-[18px] leading-[1.55] text-foreground">
-            Built for the era where your agents write more than your team does.
-            Files, sessions, and Stashes. A company brain agents and humans
-            both write into.
-          </p>
+            <p className="mt-7 max-w-[540px] text-[18px] leading-[1.55] text-foreground">
+              Built for the era where your agents write more than your team does.
+              Files, sessions, and Stashes. A company brain agents and humans
+              both write into.
+            </p>
 
-          <div className="mt-9 flex flex-wrap items-center gap-3">
-            <Link
-              href={APP_URL}
-              className="inline-flex h-11 items-center rounded-lg bg-brand px-5 text-[14px] font-medium text-white shadow-sm transition hover:bg-brand-hover"
-            >
-              Start free →
-            </Link>
-            <Link
-              href="/contact-sales"
-              className="inline-flex h-11 items-center rounded-lg border border-border bg-background px-5 text-[14px] font-medium text-ink transition hover:border-ink"
-            >
-              Talk to us
-            </Link>
-            <Link
-              href="https://github.com/Fergana-Labs/stash"
-              className="inline-flex h-11 items-center gap-2 rounded-lg border border-border bg-background px-4 text-[14px] font-medium text-ink transition hover:border-ink"
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
-                <path d="M12 .5C5.65.5.5 5.65.5 12a11.5 11.5 0 0 0 7.86 10.92c.57.11.78-.25.78-.55v-1.94c-3.2.7-3.87-1.54-3.87-1.54-.52-1.33-1.28-1.69-1.28-1.69-1.04-.71.08-.7.08-.7 1.16.08 1.77 1.19 1.77 1.19 1.03 1.77 2.7 1.26 3.36.96.1-.75.4-1.26.73-1.55-2.55-.29-5.24-1.28-5.24-5.68 0-1.26.45-2.29 1.19-3.1-.12-.29-.52-1.47.11-3.07 0 0 .97-.31 3.18 1.18a11 11 0 0 1 5.79 0c2.21-1.49 3.18-1.18 3.18-1.18.63 1.6.23 2.78.12 3.07.74.81 1.19 1.84 1.19 3.1 0 4.41-2.69 5.38-5.26 5.67.41.35.77 1.05.77 2.12v3.14c0 .3.21.67.79.55A11.5 11.5 0 0 0 23.5 12C23.5 5.65 18.35.5 12 .5Z" />
-              </svg>
-              Open source
-            </Link>
+            <div className="mt-9 flex flex-wrap items-center gap-3">
+              <Link
+                href={APP_URL}
+                className="inline-flex h-11 items-center rounded-lg bg-brand px-5 text-[14px] font-medium text-white shadow-sm transition hover:bg-brand-hover"
+              >
+                Start free →
+              </Link>
+              <Link
+                href="/contact-sales"
+                className="inline-flex h-11 items-center rounded-lg border border-border bg-background px-5 text-[14px] font-medium text-ink transition hover:border-ink"
+              >
+                Talk to us
+              </Link>
+              <Link
+                href="https://github.com/Fergana-Labs/stash"
+                className="inline-flex h-11 items-center gap-2 rounded-lg border border-border bg-background px-4 text-[14px] font-medium text-ink transition hover:border-ink"
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+                  <path d="M12 .5C5.65.5.5 5.65.5 12a11.5 11.5 0 0 0 7.86 10.92c.57.11.78-.25.78-.55v-1.94c-3.2.7-3.87-1.54-3.87-1.54-.52-1.33-1.28-1.69-1.28-1.69-1.04-.71.08-.7.08-.7 1.16.08 1.77 1.19 1.77 1.19 1.03 1.77 2.7 1.26 3.36.96.1-.75.4-1.26.73-1.55-2.55-.29-5.24-1.28-5.24-5.68 0-1.26.45-2.29 1.19-3.1-.12-.29-.52-1.47.11-3.07 0 0 .97-.31 3.18 1.18a11 11 0 0 1 5.79 0c2.21-1.49 3.18-1.18 3.18-1.18.63 1.6.23 2.78.12 3.07.74.81 1.19 1.84 1.19 3.1 0 4.41-2.69 5.38-5.26 5.67.41.35.77 1.05.77 2.12v3.14c0 .3.21.67.79.55A11.5 11.5 0 0 0 23.5 12C23.5 5.65 18.35.5 12 .5Z" />
+                </svg>
+                Open source
+              </Link>
+            </div>
           </div>
+          <HeroFunnel />
         </div>
-        <div className="flex justify-center lg:justify-end">
+
+        <div className="mt-14 flex justify-center lg:mt-20">
           <LiveDemo />
         </div>
       </div>

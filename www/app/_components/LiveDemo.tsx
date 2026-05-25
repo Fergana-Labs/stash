@@ -13,7 +13,7 @@ When you're done, print the link.`;
 // a single primary action copies it ready for the user's coding agent.
 export default function LiveDemo() {
   return (
-    <div className="w-full max-w-[540px]">
+    <div className="w-full max-w-[680px]">
       <div className="relative rounded-2xl border border-border bg-background shadow-[0_1px_3px_rgba(15,23,42,0.04),0_24px_48px_-24px_rgba(15,23,42,0.18)]">
         <div className="flex items-center gap-2 border-b border-border-subtle px-4 py-2.5">
           <span className="inline-flex h-1.5 w-1.5 rounded-full bg-brand" />
