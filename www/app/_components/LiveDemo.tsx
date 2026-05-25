@@ -22,17 +22,14 @@ export default function LiveDemo() {
         </div>
 
         <div className="mt-3 flex items-center justify-between gap-3">
-          <div className="flex items-center gap-2 text-[12px] text-dim">
-            <span className="inline-flex items-center gap-1.5 rounded-full border border-border bg-background px-2.5 py-1 text-[11.5px] font-medium text-ink">
-              <span className="inline-flex h-1.5 w-1.5 rounded-full bg-brand" />
-              Paste into your coding agent
-            </span>
-          </div>
+          <span className="text-[12.5px] text-dim">
+            A demo to try in your coding agent.
+          </span>
           <CopyButton
             value={DEMO_PROMPT}
-            label="↑"
-            copiedLabel="✓"
-            className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-ink text-[16px] font-medium text-white transition hover:bg-brand"
+            label="Copy"
+            copiedLabel="Copied ✓"
+            className="inline-flex h-9 items-center gap-1.5 rounded-full bg-ink px-3.5 text-[13px] font-medium text-white transition hover:bg-brand"
           />
         </div>
       </div>
