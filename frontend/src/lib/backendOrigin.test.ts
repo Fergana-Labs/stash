@@ -1,6 +1,20 @@
-import { describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-import { resolveBackendOrigin } from "./backendOrigin";
+let resolveBackendOrigin: typeof import("./backendOrigin").resolveBackendOrigin;
+const originalBackendInternalUrl = process.env.BACKEND_INTERNAL_URL;
+
+beforeAll(async () => {
+  process.env.BACKEND_INTERNAL_URL = "http://localhost:3456";
+  ({ resolveBackendOrigin } = await import("./backendOrigin"));
+});
+
+afterAll(() => {
+  if (originalBackendInternalUrl === undefined) {
+    delete process.env.BACKEND_INTERNAL_URL;
+  } else {
+    process.env.BACKEND_INTERNAL_URL = originalBackendInternalUrl;
+  }
+});
 
 describe("resolveBackendOrigin", () => {
   it("prefers the internal backend URL", () => {
@@ -22,24 +36,9 @@ describe("resolveBackendOrigin", () => {
     ).toBe("https://api.example.com");
   });
 
-  it("uses the managed API for Auth0 deploys when no backend URL is configured", () => {
-    expect(
-      resolveBackendOrigin({
-        NEXT_PUBLIC_AUTH0_ENABLED: "true",
-        NODE_ENV: "production",
-      } as NodeJS.ProcessEnv),
-    ).toBe("https://api.joinstash.ai");
-  });
-
-  it("uses localhost for generic production self-hosts", () => {
-    expect(resolveBackendOrigin({ NODE_ENV: "production" } as NodeJS.ProcessEnv)).toBe(
-      "http://localhost:3456",
-    );
-  });
-
-  it("uses localhost for local development", () => {
-    expect(resolveBackendOrigin({ NODE_ENV: "development" } as NodeJS.ProcessEnv)).toBe(
-      "http://localhost:3456",
+  it("fails loud when no backend URL is configured", () => {
+    expect(() => resolveBackendOrigin({} as NodeJS.ProcessEnv)).toThrow(
+      "Set BACKEND_INTERNAL_URL or NEXT_PUBLIC_API_URL",
     );
   });
 });

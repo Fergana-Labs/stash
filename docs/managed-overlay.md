@@ -33,6 +33,7 @@ AUTH0_CLIENT_SECRET=<from Auth0 dashboard>
 APP_BASE_URL=https://www.joinstash.ai
 
 NEXT_PUBLIC_AUTH0_ENABLED=true
+NEXT_PUBLIC_API_URL=https://api.joinstash.ai
 ```
 
 `start.sh` runs the managed alembic chain (`backend/managed/alembic.ini`) automatically when `AUTH0_ENABLED=true`.
