@@ -1,0 +1,821 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Stash Vulnerability Dashboard</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f6f7f9;
+      --panel: #ffffff;
+      --ink: #17202a;
+      --muted: #667085;
+      --line: #d9dee8;
+      --high: #b42318;
+      --high-bg: #fff1f0;
+      --moderate: #b54708;
+      --moderate-bg: #fff7ed;
+      --clear: #067647;
+      --clear-bg: #ecfdf3;
+      --gap: #475467;
+      --gap-bg: #f2f4f7;
+      --accent: #175cd3;
+      --accent-bg: #eff8ff;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      line-height: 1.45;
+    }
+
+    main {
+      width: min(1180px, calc(100% - 32px));
+      margin: 0 auto;
+      padding: 32px 0 48px;
+    }
+
+    header {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 20px;
+      align-items: start;
+      margin-bottom: 24px;
+    }
+
+    h1 {
+      margin: 0 0 8px;
+      font-size: clamp(28px, 4vw, 44px);
+      line-height: 1.05;
+      letter-spacing: 0;
+    }
+
+    h2 {
+      margin: 0 0 14px;
+      font-size: 18px;
+      letter-spacing: 0;
+    }
+
+    h3 {
+      margin: 0 0 6px;
+      font-size: 15px;
+      letter-spacing: 0;
+    }
+
+    p {
+      margin: 0;
+    }
+
+    a {
+      color: var(--accent);
+      font-weight: 650;
+      text-decoration: none;
+    }
+
+    a:hover {
+      text-decoration: underline;
+    }
+
+    code {
+      padding: 2px 5px;
+      border: 1px solid var(--line);
+      border-radius: 5px;
+      background: #f8fafc;
+      font-size: 0.92em;
+    }
+
+    .timestamp {
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+      min-width: 220px;
+      padding: 12px 14px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .timestamp strong {
+      color: var(--ink);
+      font-size: 14px;
+    }
+
+    .summary {
+      color: var(--muted);
+      max-width: 800px;
+      font-size: 16px;
+    }
+
+    .grid {
+      display: grid;
+      gap: 16px;
+    }
+
+    .metrics {
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      margin-bottom: 18px;
+    }
+
+    .metric,
+    .panel {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+    }
+
+    .metric {
+      padding: 16px;
+    }
+
+    .metric span {
+      display: block;
+      margin-bottom: 7px;
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 700;
+      text-transform: uppercase;
+    }
+
+    .metric strong {
+      display: block;
+      font-size: 34px;
+      line-height: 1;
+    }
+
+    .metric small {
+      display: block;
+      margin-top: 8px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .metric.high {
+      border-color: #fecdca;
+      background: var(--high-bg);
+      color: var(--high);
+    }
+
+    .metric.moderate {
+      border-color: #fedf89;
+      background: var(--moderate-bg);
+      color: var(--moderate);
+    }
+
+    .metric.clear {
+      border-color: #abefc6;
+      background: var(--clear-bg);
+      color: var(--clear);
+    }
+
+    .metric.gap {
+      background: var(--gap-bg);
+      color: var(--gap);
+    }
+
+    .two-column {
+      grid-template-columns: minmax(0, 1.08fr) minmax(300px, 0.92fr);
+      margin-bottom: 16px;
+    }
+
+    .panel {
+      padding: 18px;
+    }
+
+    .priority-list,
+    .gap-list,
+    .command-list {
+      display: grid;
+      gap: 10px;
+      margin: 0;
+      padding: 0;
+      list-style: none;
+    }
+
+    .priority-list li,
+    .gap-list li,
+    .command-list li {
+      padding: 11px 12px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fbfcfe;
+    }
+
+    .priority-list strong,
+    .gap-list strong {
+      display: block;
+      margin-bottom: 3px;
+    }
+
+    .priority-list span,
+    .gap-list span {
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .systems {
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      margin-bottom: 16px;
+    }
+
+    .system-card {
+      padding: 14px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+    }
+
+    .system-card header {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      margin: 0 0 10px;
+    }
+
+    .system-card h3 {
+      word-break: break-word;
+    }
+
+    .path {
+      color: var(--muted);
+      font-size: 13px;
+      word-break: break-word;
+    }
+
+    .bar {
+      display: flex;
+      height: 9px;
+      overflow: hidden;
+      border-radius: 999px;
+      background: #e4e7ec;
+    }
+
+    .bar span {
+      display: block;
+      min-width: 0;
+    }
+
+    .bar span:nth-child(1) {
+      background: var(--high);
+    }
+
+    .bar span:nth-child(2) {
+      background: var(--moderate);
+    }
+
+    .bar span:nth-child(3) {
+      background: #98a2b3;
+    }
+
+    .system-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 10px;
+    }
+
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      min-height: 26px;
+      padding: 4px 8px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: #ffffff;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+
+    .pill.high {
+      border-color: #fecdca;
+      background: var(--high-bg);
+      color: var(--high);
+    }
+
+    .pill.moderate {
+      border-color: #fedf89;
+      background: var(--moderate-bg);
+      color: var(--moderate);
+    }
+
+    .pill.clear {
+      border-color: #abefc6;
+      background: var(--clear-bg);
+      color: var(--clear);
+    }
+
+    .pill.direct {
+      border-color: #b2ddff;
+      background: var(--accent-bg);
+      color: var(--accent);
+    }
+
+    .filters {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+
+    button {
+      min-height: 34px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #ffffff;
+      color: var(--ink);
+      font: inherit;
+      font-size: 14px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    button[aria-pressed="true"] {
+      border-color: #84caff;
+      background: var(--accent-bg);
+      color: var(--accent);
+    }
+
+    .table-wrap {
+      overflow-x: auto;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+    }
+
+    table {
+      width: 100%;
+      min-width: 920px;
+      border-collapse: collapse;
+      background: var(--panel);
+    }
+
+    th,
+    td {
+      padding: 12px;
+      border-bottom: 1px solid var(--line);
+      text-align: left;
+      vertical-align: top;
+    }
+
+    th {
+      background: #f8fafc;
+      color: #344054;
+      font-size: 12px;
+      font-weight: 800;
+      text-transform: uppercase;
+    }
+
+    tbody tr:last-child td {
+      border-bottom: 0;
+    }
+
+    .package {
+      font-weight: 800;
+    }
+
+    .details {
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .empty-state {
+      padding: 24px;
+      border: 1px dashed var(--line);
+      border-radius: 8px;
+      background: #ffffff;
+      color: var(--muted);
+      text-align: center;
+    }
+
+    footer {
+      margin-top: 18px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    @media (max-width: 920px) {
+      header,
+      .two-column {
+        grid-template-columns: 1fr;
+      }
+
+      .metrics,
+      .systems {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+    }
+
+    @media (max-width: 560px) {
+      main {
+        width: min(100% - 20px, 1180px);
+        padding-top: 20px;
+      }
+
+      .metrics,
+      .systems {
+        grid-template-columns: 1fr;
+      }
+
+      .timestamp {
+        min-width: 0;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <div>
+        <h1>Vulnerability Dashboard</h1>
+        <p class="summary">
+          Snapshot of dependency vulnerabilities found in Stash package lockfiles.
+          Counts are from package-level audit results, not individual advisory count.
+        </p>
+      </div>
+      <div class="timestamp">
+        <strong>Generated May 27, 2026</strong>
+        <span>Audit time: 14:23 PDT</span>
+        <span>Tooling: npm 11.9.0</span>
+      </div>
+    </header>
+
+    <section class="grid metrics" aria-label="Vulnerability totals">
+      <div class="metric high">
+        <span>High</span>
+        <strong id="highTotal">0</strong>
+        <small>Upgrade before broad release</small>
+      </div>
+      <div class="metric moderate">
+        <span>Moderate</span>
+        <strong id="moderateTotal">0</strong>
+        <small>Patch in the same dependency pass</small>
+      </div>
+      <div class="metric">
+        <span>Total</span>
+        <strong id="totalIssues">0</strong>
+        <small>Across audited lockfiles</small>
+      </div>
+      <div class="metric clear">
+        <span>Clean</span>
+        <strong id="cleanSystems">0</strong>
+        <small>Audited package surfaces</small>
+      </div>
+      <div class="metric gap">
+        <span>Gaps</span>
+        <strong id="scanGaps">0</strong>
+        <small>Surfaces needing follow-up scans</small>
+      </div>
+    </section>
+
+    <section class="grid two-column">
+      <div class="panel">
+        <h2>Fix Order</h2>
+        <ol class="priority-list">
+          <li>
+            <strong>Upgrade Next.js in <code>frontend/</code> and <code>www/</code>.</strong>
+            <span><code>npm audit</code> recommends <code>next@16.2.6</code> to clear the high-severity Next.js and bundled PostCSS findings.</span>
+          </li>
+          <li>
+            <strong>Patch direct web dependencies.</strong>
+            <span>Update <code>@auth0/nextjs-auth0</code> in <code>frontend/</code> and <code>markdown-it</code> in <code>collab/</code>; both are direct dependencies with fixes available.</span>
+          </li>
+          <li>
+            <strong>Refresh frontend transitive dependency graph.</strong>
+            <span>Re-run install/audit after direct upgrades to confirm <code>flatted</code>, <code>minimatch</code>, <code>picomatch</code>, <code>vite</code>, <code>ajv</code>, and <code>brace-expansion</code> are resolved.</span>
+          </li>
+          <li>
+            <strong>Restore Python audit coverage.</strong>
+            <span><code>pip-audit</code> failed during temporary venv setup on this machine, so backend, SDK, and MCP Python surfaces still need a clean dependency audit.</span>
+          </li>
+        </ol>
+      </div>
+
+      <div class="panel">
+        <h2>Scan Gaps</h2>
+        <ul class="gap-list" id="gapList"></ul>
+      </div>
+    </section>
+
+    <section class="grid systems" id="systems" aria-label="Audited systems"></section>
+
+    <section class="panel">
+      <h2>Findings</h2>
+      <div class="filters" aria-label="Finding filters">
+        <button type="button" data-filter="all" aria-pressed="true">All</button>
+        <button type="button" data-filter="high" aria-pressed="false">High</button>
+        <button type="button" data-filter="moderate" aria-pressed="false">Moderate</button>
+        <button type="button" data-filter="direct" aria-pressed="false">Direct only</button>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Surface</th>
+              <th>Package</th>
+              <th>Severity</th>
+              <th>Exposure</th>
+              <th>Finding</th>
+              <th>Fix</th>
+              <th>Reference</th>
+            </tr>
+          </thead>
+          <tbody id="findingRows"></tbody>
+        </table>
+      </div>
+      <div class="empty-state" id="emptyState" hidden>No findings match the active filter.</div>
+    </section>
+
+    <section class="panel" style="margin-top: 16px;">
+      <h2>Commands Run</h2>
+      <ul class="command-list">
+        <li><code>npm audit --json</code> in repo root, <code>frontend/</code>, <code>www/</code>, and <code>collab/</code></li>
+        <li><code>npm audit --json</code> in package folders without lockfiles returned <code>ENOLOCK</code></li>
+        <li><code>uvx pip-audit -r ... -f json</code> failed while creating temporary audit virtualenvs</li>
+      </ul>
+    </section>
+
+    <footer>
+      This dashboard is a point-in-time report. Re-run the audit commands after dependency updates.
+    </footer>
+  </main>
+
+  <script>
+    const systems = [
+      {
+        name: "Root package",
+        path: "package-lock.json",
+        high: 0,
+        moderate: 0,
+        dependencies: 0,
+        status: "Clean npm audit"
+      },
+      {
+        name: "Frontend app",
+        path: "frontend/package-lock.json",
+        high: 5,
+        moderate: 4,
+        dependencies: 822,
+        status: "Fixes available"
+      },
+      {
+        name: "Landing page",
+        path: "www/package-lock.json",
+        high: 1,
+        moderate: 1,
+        dependencies: 480,
+        status: "Fixes available"
+      },
+      {
+        name: "Collab package",
+        path: "collab/package-lock.json",
+        high: 0,
+        moderate: 1,
+        dependencies: 135,
+        status: "Fix available"
+      }
+    ];
+
+    const findings = [
+      {
+        surface: "frontend",
+        pkg: "next",
+        severity: "high",
+        direct: true,
+        finding: "Multiple App Router, Middleware/Proxy, RSC DoS, SSRF, XSS, cache poisoning, and PostCSS-linked advisories.",
+        fix: "Upgrade to next@16.2.6.",
+        reference: "https://github.com/advisories/GHSA-26hh-7cqf-hhc6"
+      },
+      {
+        surface: "frontend",
+        pkg: "flatted",
+        severity: "high",
+        direct: false,
+        finding: "Unbounded recursion DoS and prototype pollution in parse paths.",
+        fix: "Refresh transitive dependency to a fixed release.",
+        reference: "https://github.com/advisories/GHSA-25h7-pfq9-p65f"
+      },
+      {
+        surface: "frontend",
+        pkg: "minimatch",
+        severity: "high",
+        direct: false,
+        finding: "ReDoS risk from repeated wildcard and extglob pattern handling.",
+        fix: "Refresh transitive dependency to a fixed release.",
+        reference: "https://github.com/advisories/GHSA-23c5-xmqv-rm74"
+      },
+      {
+        surface: "frontend",
+        pkg: "picomatch",
+        severity: "high",
+        direct: false,
+        finding: "Glob matching method injection and ReDoS advisories.",
+        fix: "Refresh transitive dependency to a fixed release.",
+        reference: "https://github.com/advisories/GHSA-c2c7-rcm5-vvqj"
+      },
+      {
+        surface: "frontend",
+        pkg: "vite",
+        severity: "high",
+        direct: false,
+        finding: "Dev server path traversal and arbitrary file read advisories.",
+        fix: "Refresh transitive dependency to a fixed release.",
+        reference: "https://github.com/advisories/GHSA-p9ff-h696-f583"
+      },
+      {
+        surface: "frontend",
+        pkg: "@auth0/nextjs-auth0",
+        severity: "moderate",
+        direct: true,
+        finding: "Improper proxy cache lookup.",
+        fix: "Upgrade beyond the vulnerable 4.12.0-4.17.0 range.",
+        reference: "https://github.com/advisories/GHSA-xq8m-7c5p-c2r6"
+      },
+      {
+        surface: "frontend",
+        pkg: "ajv",
+        severity: "moderate",
+        direct: false,
+        finding: "ReDoS risk when using the $data option.",
+        fix: "Refresh transitive dependency to a fixed release.",
+        reference: "https://github.com/advisories/GHSA-2g4f-4pwh-qvx6"
+      },
+      {
+        surface: "frontend",
+        pkg: "brace-expansion",
+        severity: "moderate",
+        direct: false,
+        finding: "Zero-step sequence can hang the process and exhaust memory.",
+        fix: "Refresh transitive dependency to a fixed release.",
+        reference: "https://github.com/advisories/GHSA-f886-m6hf-6m8v"
+      },
+      {
+        surface: "frontend",
+        pkg: "postcss",
+        severity: "moderate",
+        direct: false,
+        finding: "CSS stringify output can emit unescaped style terminators.",
+        fix: "Resolved by the recommended Next.js upgrade.",
+        reference: "https://github.com/advisories/GHSA-qx2v-qp2m-jg93"
+      },
+      {
+        surface: "www",
+        pkg: "next",
+        severity: "high",
+        direct: true,
+        finding: "Same current Next.js advisory set as the frontend app.",
+        fix: "Upgrade to next@16.2.6.",
+        reference: "https://github.com/advisories/GHSA-492v-c6pp-mqqv"
+      },
+      {
+        surface: "www",
+        pkg: "postcss",
+        severity: "moderate",
+        direct: false,
+        finding: "Bundled PostCSS advisory via Next.js.",
+        fix: "Resolved by the recommended Next.js upgrade.",
+        reference: "https://github.com/advisories/GHSA-qx2v-qp2m-jg93"
+      },
+      {
+        surface: "collab",
+        pkg: "markdown-it",
+        severity: "moderate",
+        direct: true,
+        finding: "Regular expression denial of service.",
+        fix: "Upgrade to markdown-it@14.2.0.",
+        reference: "https://github.com/advisories/GHSA-38c4-r59v-3vqw"
+      }
+    ];
+
+    const gaps = [
+      {
+        title: "Python dependency audit",
+        detail: "backend/requirements*.txt, pyproject.toml, sdk/pyproject.toml, and powerpoint-mcp manifests were not audited because pip-audit crashed while creating temporary virtualenvs."
+      },
+      {
+        title: "Node package folders without lockfiles",
+        detail: "plugins/opencode-plugin, plugins/openclaw-plugin, and stashai/plugin/assets/opencode returned npm ENOLOCK."
+      },
+      {
+        title: "Static code analysis",
+        detail: "This page covers dependency advisories only. It does not include Bandit, Semgrep, secret scanning, or custom code-path review."
+      }
+    ];
+
+    const severityOrder = { high: 0, moderate: 1 };
+
+    function countTotals() {
+      const high = findings.filter((finding) => finding.severity === "high").length;
+      const moderate = findings.filter((finding) => finding.severity === "moderate").length;
+      const clean = systems.filter((system) => system.high + system.moderate === 0).length;
+
+      document.getElementById("highTotal").textContent = high;
+      document.getElementById("moderateTotal").textContent = moderate;
+      document.getElementById("totalIssues").textContent = findings.length;
+      document.getElementById("cleanSystems").textContent = clean;
+      document.getElementById("scanGaps").textContent = gaps.length;
+    }
+
+    function renderSystems() {
+      const container = document.getElementById("systems");
+      container.innerHTML = systems.map((system) => {
+        const total = system.high + system.moderate;
+        const denominator = total || 1;
+        const highWidth = system.high / denominator * 100;
+        const moderateWidth = system.moderate / denominator * 100;
+        const emptyWidth = total === 0 ? 100 : 0;
+        const labelClass = total === 0 ? "clear" : system.high > 0 ? "high" : "moderate";
+
+        return `
+          <article class="system-card">
+            <header>
+              <div>
+                <h3>${system.name}</h3>
+                <div class="path">${system.path}</div>
+              </div>
+              <span class="pill ${labelClass}">${system.status}</span>
+            </header>
+            <div class="bar" aria-label="${system.name} severity distribution">
+              <span style="width: ${highWidth}%"></span>
+              <span style="width: ${moderateWidth}%"></span>
+              <span style="width: ${emptyWidth}%"></span>
+            </div>
+            <div class="system-meta">
+              <span class="pill high">${system.high} high</span>
+              <span class="pill moderate">${system.moderate} moderate</span>
+              <span class="pill">${system.dependencies} dependencies</span>
+            </div>
+          </article>
+        `;
+      }).join("");
+    }
+
+    function renderGaps() {
+      document.getElementById("gapList").innerHTML = gaps.map((gap) => `
+        <li>
+          <strong>${gap.title}</strong>
+          <span>${gap.detail}</span>
+        </li>
+      `).join("");
+    }
+
+    function renderFindings(filter = "all") {
+      const rows = document.getElementById("findingRows");
+      const emptyState = document.getElementById("emptyState");
+      const filtered = findings
+        .filter((finding) => {
+          if (filter === "direct") return finding.direct;
+          if (filter === "all") return true;
+          return finding.severity === filter;
+        })
+        .sort((left, right) => {
+          return severityOrder[left.severity] - severityOrder[right.severity]
+            || left.surface.localeCompare(right.surface)
+            || left.pkg.localeCompare(right.pkg);
+        });
+
+      rows.innerHTML = filtered.map((finding) => `
+        <tr>
+          <td><code>${finding.surface}</code></td>
+          <td>
+            <div class="package">${finding.pkg}</div>
+          </td>
+          <td><span class="pill ${finding.severity}">${finding.severity}</span></td>
+          <td><span class="pill ${finding.direct ? "direct" : ""}">${finding.direct ? "direct" : "transitive"}</span></td>
+          <td class="details">${finding.finding}</td>
+          <td class="details">${finding.fix}</td>
+          <td><a href="${finding.reference}">Advisory</a></td>
+        </tr>
+      `).join("");
+
+      emptyState.hidden = filtered.length > 0;
+    }
+
+    function bindFilters() {
+      document.querySelectorAll("[data-filter]").forEach((button) => {
+        button.addEventListener("click", () => {
+          document.querySelectorAll("[data-filter]").forEach((candidate) => {
+            candidate.setAttribute("aria-pressed", String(candidate === button));
+          });
+
+          renderFindings(button.dataset.filter);
+        });
+      });
+    }
+
+    countTotals();
+    renderSystems();
+    renderGaps();
+    renderFindings();
+    bindFilters();
+  </script>
+</body>
+</html>
