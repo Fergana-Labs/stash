@@ -44,7 +44,7 @@ export default function WorkspaceStashesPage() {
   const workspaceId = params.workspaceId as string;
   const shareModal = useShareModal();
   const shareVersion = shareModal.version;
-  const pins = usePins("stash_stashes_pins", workspaceId);
+  const pins = usePins("stashes", workspaceId);
 
   const [stashes, setStashes] = useState<WorkspaceStash[] | null>(null);
   const [filter, setFilter] = useState<Filter>("all");

@@ -543,9 +543,9 @@ export default function AppSidebar({
     (shared[0] ? { ...shared[0], shared: true } : null);
   const activeWorkspaceKey = activeWorkspace?.id ?? "";
 
-  const stashPins = usePins("stash_stashes_pins", activeWorkspaceKey);
-  const sessionPins = usePins("stash_sessions_pins", activeWorkspaceKey);
-  const filePins = usePins("stash_files_pins", activeWorkspaceKey);
+  const stashPins = usePins("stashes", activeWorkspaceKey);
+  const sessionPins = usePins("sessions", activeWorkspaceKey);
+  const filePins = usePins("files", activeWorkspaceKey);
   const [openSections, setOpenSections] = useState<Record<string, boolean>>(() =>
     readOpenSections()
   );

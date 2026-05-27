@@ -24,6 +24,7 @@ import type {
 } from "../../../lib/types";
 import { refreshWorkspaceSidebar } from "../../../lib/stashNavigationCache";
 import { useFilePins } from "../../../lib/filePins";
+import { useWorkspaceRecents } from "../../../lib/pins";
 import { FileBrowserSkeleton } from "../../SkeletonStates";
 import EditableTitle from "../EditableTitle";
 import FolderItemGrid, { type GridItem, type ItemKind } from "./FolderItemGrid";
@@ -64,6 +65,7 @@ export default function WorkspaceFileBrowser({ workspaceId, folderId }: Props) {
   const [view, setView] = useState<View>("grid");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const pins = useFilePins(workspaceId);
+  const recents = useWorkspaceRecents(workspaceId);
 
   // Selection is scoped to the current listing, so reset it when the folder
   // (or workspace) changes.
@@ -259,16 +261,15 @@ export default function WorkspaceFileBrowser({ workspaceId, folderId }: Props) {
     [pins.pinnedIds, itemById],
   );
 
+  // Recent is per-user: the server returns this user's recently-viewed object
+  // ids (most-recent first); we resolve them to items, drop pinned ones, and
+  // cap the strip. Items that aren't files (or are gone) simply don't resolve.
   const recentItems = useMemo(() => {
-    return allItems
-      .filter((item) => item.updatedAt && !pins.pinnedSet.has(item.id))
-      .sort(
-        (a, b) =>
-          new Date(b.updatedAt ?? 0).getTime() -
-          new Date(a.updatedAt ?? 0).getTime(),
-      )
+    return recents
+      .map((entry) => itemById.get(entry.object_id))
+      .filter((item): item is GridItem => !!item && !pins.pinnedSet.has(item.id))
       .slice(0, 8);
-  }, [allItems, pins.pinnedSet]);
+  }, [recents, itemById, pins.pinnedSet]);
 
   const loadingItems = folderId ? contents === null : !contentsLoaded;
 

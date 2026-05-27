@@ -46,7 +46,7 @@ export default function StashSessionsPage() {
   const router = useRouter();
   const workspaceId = params.workspaceId as string;
   const { user, loading } = useAuth();
-  const pins = usePins("stash_sessions_pins", workspaceId);
+  const pins = usePins("sessions", workspaceId);
 
   const [sessions, setSessions] = useState<SessionSummary[] | null>(null);
   const [error, setError] = useState("");

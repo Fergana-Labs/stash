@@ -26,6 +26,7 @@ from .routers import (
     files_tree,
     imports,
     memory,
+    pins,
     publish,
     sessions,
     skill,
@@ -109,6 +110,7 @@ app.include_router(admin.router)
 app.include_router(analytics.router)
 app.include_router(sessions.router)
 app.include_router(trash.router)
+app.include_router(pins.router)
 app.include_router(publish.router)
 app.include_router(tasks.router)
 app.include_router(integrations_router)

@@ -22,6 +22,7 @@ import {
   readCachedWorkspaces,
 } from "../lib/stashNavigationCache";
 import { useEscapeKey } from "../hooks/useEscapeKey";
+import { recordRecent } from "../lib/pins";
 
 interface AppShellProps {
   user: User;
@@ -302,6 +303,15 @@ export default function AppShell({
   useEffect(() => {
     const m = pathname.match(/^\/workspaces\/([^/]+)/);
     if (m?.[1]) setActiveWorkspaceId(m[1]);
+  }, [pathname]);
+
+  // Record per-user "recently viewed" whenever a page/file/folder opens, so
+  // the Files Recent strip reflects this user's activity (not global mtime).
+  useEffect(() => {
+    const m = pathname.match(/^\/workspaces\/([^/]+)\/(p|f|folders)\/([^/?#]+)/);
+    if (!m) return;
+    const kind = m[2] === "p" ? "page" : m[2] === "f" ? "file" : "folder";
+    recordRecent(m[1], decodeURIComponent(m[3]), kind);
   }, [pathname]);
 
   useEffect(() => {

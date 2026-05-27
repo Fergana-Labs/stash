@@ -1029,6 +1029,51 @@ export async function materializeSession(
   });
 }
 
+// --- Pins + recents (per user, per workspace) ---
+
+export type PinKind = "stashes" | "sessions" | "files";
+
+export interface WorkspacePins {
+  stashes: string[];
+  sessions: string[];
+  files: string[];
+}
+
+export interface RecentEntry {
+  object_id: string;
+  kind: string;
+}
+
+export async function getWorkspacePins(workspaceId: string): Promise<WorkspacePins> {
+  return apiFetch(`/api/v1/workspaces/${workspaceId}/pins`);
+}
+
+export async function setWorkspacePins(
+  workspaceId: string,
+  kind: PinKind,
+  ids: string[]
+): Promise<void> {
+  await apiFetch(`/api/v1/workspaces/${workspaceId}/pins/${kind}`, {
+    method: "PUT",
+    body: JSON.stringify({ ids }),
+  });
+}
+
+export async function getWorkspaceRecents(workspaceId: string): Promise<RecentEntry[]> {
+  return apiFetch(`/api/v1/workspaces/${workspaceId}/recents`);
+}
+
+export async function recordWorkspaceRecent(
+  workspaceId: string,
+  objectId: string,
+  kind: string
+): Promise<void> {
+  await apiFetch(`/api/v1/workspaces/${workspaceId}/recents`, {
+    method: "POST",
+    body: JSON.stringify({ object_id: objectId, kind }),
+  });
+}
+
 // --- Stashes (publishable bundles of pages, sessions, and files) ---
 
 export type CollectableObjectType = "folder" | "page" | "table" | "file" | "session";
