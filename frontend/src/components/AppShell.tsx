@@ -246,11 +246,11 @@ function TopSearchButton({
     <button
       type="button"
       onClick={onClick}
-      className="flex h-7 w-full items-center gap-2 rounded-md border border-border bg-surface px-2.5 text-left text-[12.5px] text-muted hover:border-[var(--color-brand-300)] hover:bg-raised hover:text-foreground"
+      className="flex h-10 w-full items-center gap-2.5 rounded-full border border-border bg-surface px-4 text-left text-[14px] text-muted shadow-sm transition-colors hover:border-[var(--color-brand-300)] hover:bg-raised hover:text-foreground"
       aria-label="Search"
     >
       <svg
-        className="h-3.5 w-3.5 shrink-0"
+        className="h-4 w-4 shrink-0"
         viewBox="0 0 24 24"
         fill="none"
         stroke="currentColor"
@@ -260,7 +260,7 @@ function TopSearchButton({
         <path d="m21 21-4.3-4.3" />
       </svg>
       <span className="min-w-0 flex-1 truncate">{label}</span>
-      <span className="rounded bg-base px-1.5 py-0.5 font-mono text-[10px] text-muted ring-1 ring-border">
+      <span className="rounded bg-base px-1.5 py-0.5 font-mono text-[11px] text-muted ring-1 ring-border">
         ⌘K
       </span>
     </button>
@@ -412,8 +412,8 @@ export default function AppShell({
 
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-base">
-      <header className="sticky top-0 z-30 grid h-11 flex-shrink-0 grid-cols-[minmax(0,1fr)_minmax(220px,460px)_minmax(0,1fr)] items-center gap-3 border-b border-border bg-base/85 px-3 backdrop-blur-md">
-        <div className="flex min-w-0 items-center gap-1.5 text-[13px]">
+      <header className="sticky top-0 z-30 flex h-14 flex-shrink-0 items-center gap-3 border-b border-border bg-base/85 px-4 backdrop-blur-md">
+        <div className="flex min-w-0 max-w-[30%] shrink items-center gap-1.5 text-[13px]">
           <button
             onClick={() => {
               setSidebarCollapsed((c) => {
@@ -435,13 +435,15 @@ export default function AppShell({
           />
         </div>
 
-        <TopSearchButton
-          scope={searchScope}
-          workspace={activeWorkspace}
-          onClick={() => setCmdkOpen(true)}
-        />
+        <div className="flex min-w-0 flex-1 items-center">
+          <TopSearchButton
+            scope={searchScope}
+            workspace={activeWorkspace}
+            onClick={() => setCmdkOpen(true)}
+          />
+        </div>
 
-        <div className="flex items-center justify-end gap-1">
+        <div className="flex shrink-0 items-center justify-end gap-1">
           <StashInviteCenter />
           {shareAction ?? defaultShareAction}
           <UserMenu

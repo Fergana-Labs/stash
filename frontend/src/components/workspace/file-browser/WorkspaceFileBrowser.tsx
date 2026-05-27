@@ -23,11 +23,13 @@ import type {
   WorkspaceTree,
 } from "../../../lib/types";
 import { refreshWorkspaceSidebar } from "../../../lib/stashNavigationCache";
+import { useFilePins } from "../../../lib/filePins";
 import { FileBrowserSkeleton } from "../../SkeletonStates";
 import EditableTitle from "../EditableTitle";
 import FolderItemGrid, { type GridItem, type ItemKind } from "./FolderItemGrid";
 import ItemsList from "./ItemsList";
 import ItemsColumns from "./ItemsColumns";
+import QuickAccess from "./QuickAccess";
 
 interface Props {
   workspaceId: string;
@@ -55,7 +57,9 @@ export default function WorkspaceFileBrowser({ workspaceId, folderId }: Props) {
   const [contents, setContents] = useState<FolderContents | null>(null);
   const [contentsLoaded, setContentsLoaded] = useState(false);
   const [rootFiles, setRootFiles] = useState<GridItem[]>([]);
+  const [allFiles, setAllFiles] = useState<GridItem[]>([]);
   const [view, setView] = useState<View>("grid");
+  const pins = useFilePins(workspaceId);
 
   // Restore last-used view from localStorage on mount.
   useEffect(() => {
@@ -117,10 +121,10 @@ export default function WorkspaceFileBrowser({ workspaceId, folderId }: Props) {
         ]);
         setTree(t);
         setContents(null);
-        const roots = allFiles
-          .filter((f) => !f.folder_id)
-          .map((f) => fileToGridItem(f));
-        setRootFiles(roots);
+        setAllFiles(allFiles.map((f) => fileToGridItem(f)));
+        setRootFiles(
+          allFiles.filter((f) => !f.folder_id).map((f) => fileToGridItem(f)),
+        );
       } catch (e) {
         setError(e instanceof Error ? e.message : "Failed to load root");
       } finally {
@@ -195,6 +199,53 @@ export default function WorkspaceFileBrowser({ workspaceId, folderId }: Props) {
       ...rootFiles,
     ];
   }, [folderId, contents, tree, rootFiles]);
+
+  // Every folder/page/file in the workspace, flattened, so Pinned + Recent can
+  // resolve and surface items that live anywhere — not just at the root.
+  const allItems: GridItem[] = useMemo(() => {
+    if (!tree) return [];
+    const folders = flattenFolders(tree.folders);
+    const pages = [
+      ...tree.pages,
+      ...folders.flatMap((f) => f.pages ?? []),
+    ];
+    return [
+      ...folders.map((sub) => ({
+        kind: "folder" as const,
+        id: sub.id,
+        name: sub.name,
+        subtitle: subtitleForFolder(sub.pages?.length ?? 0, 0),
+        updatedAt: sub.updated_at,
+      })),
+      ...pages.map((p) => pageToGridItem(p)),
+      ...allFiles,
+    ];
+  }, [tree, allFiles]);
+
+  const itemById = useMemo(() => {
+    const map = new Map<string, GridItem>();
+    for (const item of allItems) map.set(item.id, item);
+    return map;
+  }, [allItems]);
+
+  const pinnedItems = useMemo(
+    () =>
+      pins.pinnedIds
+        .map((id) => itemById.get(id))
+        .filter((item): item is GridItem => !!item),
+    [pins.pinnedIds, itemById],
+  );
+
+  const recentItems = useMemo(() => {
+    return allItems
+      .filter((item) => item.updatedAt && !pins.pinnedSet.has(item.id))
+      .sort(
+        (a, b) =>
+          new Date(b.updatedAt ?? 0).getTime() -
+          new Date(a.updatedAt ?? 0).getTime(),
+      )
+      .slice(0, 8);
+  }, [allItems, pins.pinnedSet]);
 
   const loadingItems = folderId ? contents === null : !contentsLoaded;
 
@@ -350,82 +401,104 @@ export default function WorkspaceFileBrowser({ workspaceId, folderId }: Props) {
 
   if (loadingItems && !error) return <FileBrowserSkeleton />;
 
+  const showQuickAccess =
+    !folderId &&
+    view !== "column" &&
+    (pinnedItems.length > 0 || recentItems.length > 0);
+
   return (
-    <div className="flex h-full min-h-0 flex-col">
-      {/* Top strip: current folder name (rename target) + toolbar. The page
-          path is shown in AppShell's top-bar breadcrumb, so we only repeat
-          the *current* folder here as an inline-editable title. */}
-      <div className="flex flex-wrap items-center gap-3 border-b border-border bg-surface px-4 py-2.5">
-        {folderId && contents?.folder ? (
-          <h2 className="m-0 min-w-0 font-display text-[15px] font-semibold leading-tight text-foreground">
-            <EditableTitle
-              value={contents.folder.name}
-              onSave={(next) => renameItem("folder", folderId, next)}
-            />
-          </h2>
-        ) : (
-          <span className="text-[12.5px] font-medium text-muted">Files</span>
-        )}
-        <span className="flex-1" />
-        <ViewToggle view={view} onChange={setViewPersisted} />
-        <button
-          type="button"
-          onClick={handleUploadFile}
-          className="rounded-md border border-border bg-base px-2.5 py-1 text-[12px] font-medium text-foreground hover:bg-raised"
-        >
-          + Upload
-        </button>
-        <button
-          type="button"
-          onClick={handleNewPage}
-          className="rounded-md border border-border bg-base px-2.5 py-1 text-[12px] font-medium text-foreground hover:bg-raised"
-        >
-          + New page
-        </button>
-        <button
-          type="button"
-          onClick={handleNewFolder}
-          className="rounded-md border border-border bg-base px-2.5 py-1 text-[12px] font-medium text-foreground hover:bg-raised"
-        >
-          + New folder
-        </button>
-      </div>
-
-      {error && (
-        <div className="border-b border-red-200 bg-red-50 px-4 py-2 text-[12px] text-red-700">
-          {error}
+    <div className="scroll-thin flex-1 overflow-y-auto">
+      <div className="mx-auto max-w-5xl px-8 py-7">
+        {/* Header: the page path lives in AppShell's top-bar breadcrumb, so we
+            only show the current folder name (rename target) or the section
+            title here, alongside the view toggle + create actions. */}
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          {folderId && contents?.folder ? (
+            <h1 className="m-0 min-w-0 font-display text-[22px] font-semibold leading-tight tracking-tight text-foreground">
+              <EditableTitle
+                value={contents.folder.name}
+                onSave={(next) => renameItem("folder", folderId, next)}
+              />
+            </h1>
+          ) : (
+            <h1 className="m-0 font-display text-[28px] font-bold tracking-tight text-foreground">
+              Files
+            </h1>
+          )}
+          <div className="flex flex-wrap items-center gap-2">
+            <ViewToggle view={view} onChange={setViewPersisted} />
+            <button
+              type="button"
+              onClick={handleUploadFile}
+              className="rounded-md border border-border bg-base px-2.5 py-1 text-[12px] font-medium text-foreground hover:bg-raised"
+            >
+              + Upload
+            </button>
+            <button
+              type="button"
+              onClick={handleNewPage}
+              className="rounded-md border border-border bg-base px-2.5 py-1 text-[12px] font-medium text-foreground hover:bg-raised"
+            >
+              + New page
+            </button>
+            <button
+              type="button"
+              onClick={handleNewFolder}
+              className="rounded-md border border-border bg-base px-2.5 py-1 text-[12px] font-medium text-foreground hover:bg-raised"
+            >
+              + New folder
+            </button>
+          </div>
         </div>
-      )}
 
-      <div className="flex min-h-0 flex-1 flex-col">
-        {view === "list" && (
-          <ItemsList
-            items={items}
-            onNavigate={navigateTo}
-            onReparent={reparent}
-            onDelete={handleDelete}
+        {error && (
+          <div className="mt-4 rounded-lg border border-red-300/40 bg-red-500/10 px-4 py-2 text-[13px] text-red-500">
+            {error}
+          </div>
+        )}
+
+        {showQuickAccess && (
+          <QuickAccess
+            pinned={pinnedItems}
+            recent={recentItems}
+            onOpen={navigateTo}
+            isPinned={(item) => pins.isPinned(item.id)}
+            onTogglePin={(item) => pins.toggle(item.id)}
           />
         )}
-        {view === "grid" && (
-          <FolderItemGrid
-            items={items}
-            selectedId={null}
-            onSelect={navigateTo}
-            onNavigate={navigateTo}
-            onReparent={reparent}
-            onDelete={handleDelete}
-          />
-        )}
-        {view === "column" && (
-          <ItemsColumns
-            workspaceId={workspaceId}
-            tree={tree}
-            rootItems={rootItems}
-            onNavigate={navigateTo}
-            onReparent={reparent}
-            onDelete={handleDelete}
-          />
-        )}
+
+        <div className={view === "column" ? "mt-5 h-[68vh]" : "mt-5"}>
+          {view === "list" && (
+            <ItemsList
+              items={items}
+              onNavigate={navigateTo}
+              onReparent={reparent}
+              onDelete={handleDelete}
+              isPinned={(item) => pins.isPinned(item.id)}
+              onTogglePin={(item) => pins.toggle(item.id)}
+            />
+          )}
+          {view === "grid" && (
+            <FolderItemGrid
+              items={items}
+              selectedId={null}
+              onSelect={navigateTo}
+              onNavigate={navigateTo}
+              onReparent={reparent}
+              onDelete={handleDelete}
+            />
+          )}
+          {view === "column" && (
+            <ItemsColumns
+              workspaceId={workspaceId}
+              tree={tree}
+              rootItems={rootItems}
+              onNavigate={navigateTo}
+              onReparent={reparent}
+              onDelete={handleDelete}
+            />
+          )}
+        </div>
       </div>
       {undo && (
         <div className="pointer-events-none fixed inset-x-0 bottom-6 z-50 flex justify-center">
@@ -516,6 +589,10 @@ function pageToGridItem(page: {
     subtitle: isHtml ? "html page" : "page",
     updatedAt: page.updated_at,
   };
+}
+
+function flattenFolders(folders: FolderTreeNode[]): FolderTreeNode[] {
+  return folders.flatMap((folder) => [folder, ...flattenFolders(folder.folders ?? [])]);
 }
 
 function subtitleForFolder(pages: number, files: number): string {
