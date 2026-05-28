@@ -15,11 +15,12 @@ from __future__ import annotations
 import json
 import platform
 import sqlite3
+import subprocess
 import tempfile
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
-from urllib.parse import unquote
+from urllib.parse import unquote, urlparse
 
 CLAUDE_PROJECTS_DIR = Path.home() / ".claude" / "projects"
 CURSOR_PROJECTS_DIR = Path.home() / ".cursor" / "projects"
@@ -406,6 +407,7 @@ def _parse_codex_meta(path: Path) -> ConversationInfo | None:
     session_id = ""
     cwd = ""
     timestamp = None
+    repository_url = ""
 
     with open(path) as f:
         raw = f.readline()
@@ -419,6 +421,8 @@ def _parse_codex_meta(path: Path) -> ConversationInfo | None:
             payload = line.get("payload", {})
             session_id = payload.get("id", "")
             cwd = payload.get("cwd", "")
+            git = payload.get("git") if isinstance(payload.get("git"), dict) else {}
+            repository_url = git.get("repository_url", "")
             ts_str = payload.get("timestamp") or line.get("timestamp")
             if ts_str:
                 timestamp = _parse_iso(ts_str)
@@ -436,6 +440,7 @@ def _parse_codex_meta(path: Path) -> ConversationInfo | None:
         cwd=cwd,
         timestamp=timestamp,
         size_bytes=size,
+        extras={"repository_url": repository_url} if repository_url else {},
     )
 
 
@@ -462,6 +467,70 @@ def _cwd_matches(cwd: str, prefix: str, cursor_prefix: str) -> bool:
     return cwd.startswith(cursor_prefix)
 
 
+def _normalize_git_url(url: str) -> str:
+    url = url.strip().rstrip("/")
+    if not url:
+        return ""
+
+    if "://" in url:
+        parsed = urlparse(url)
+        host = parsed.hostname or ""
+        path = parsed.path.strip("/")
+        normalized = f"{host}/{path}"
+    elif "@" in url and ":" in url:
+        user_host, path = url.split(":", 1)
+        normalized = f"{user_host.split('@', 1)[1]}/{path.strip('/')}"
+    else:
+        normalized = url
+
+    if normalized.endswith(".git"):
+        normalized = normalized[:-4]
+    return normalized.lower()
+
+
+def _repo_git_urls(repo_dir: Path) -> set[str]:
+    try:
+        result = subprocess.run(
+            ["git", "config", "--get-regexp", r"^remote\..*\.url$"],
+            cwd=repo_dir,
+            capture_output=True,
+            text=True,
+        )
+    except OSError:
+        return set()
+
+    if result.returncode != 0:
+        return set()
+
+    urls = set()
+    for line in result.stdout.splitlines():
+        parts = line.split(maxsplit=1)
+        if len(parts) != 2:
+            continue
+        normalized = _normalize_git_url(parts[1])
+        if normalized:
+            urls.add(normalized)
+    return urls
+
+
+def _conversation_matches_repo(
+    conversation: ConversationInfo,
+    prefix: str,
+    cursor_prefix: str,
+    repo_git_urls: set[str],
+) -> bool:
+    if _cwd_matches(conversation.cwd, prefix, cursor_prefix):
+        return True
+
+    if conversation.agent != "codex":
+        return False
+
+    repository_url = conversation.extras.get("repository_url", "")
+    if not repository_url:
+        return False
+    return _normalize_git_url(repository_url) in repo_git_urls
+
+
 def discover_conversations(
     agents: list[str] | None = None,
     repo_dir: str | Path | None = None,
@@ -478,7 +547,10 @@ def discover_conversations(
         resolved = Path(repo_dir).resolve()
         prefix = str(resolved)
         cursor_prefix = _encode_cursor_dir(prefix)
-        results = [c for c in results if _cwd_matches(c.cwd, prefix, cursor_prefix)]
+        repo_git_urls = _repo_git_urls(resolved)
+        results = [
+            c for c in results if _conversation_matches_repo(c, prefix, cursor_prefix, repo_git_urls)
+        ]
 
         if "cursor" in targets:
             sqlite_ids = {c.session_id for c in results if c.agent == "cursor"}
