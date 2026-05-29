@@ -15,7 +15,7 @@ export default function ExchangeAndRedirect({ cliSession, onCliApproved }: Props
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
-  async function exchange(): Promise<string> {
+  async function exchange(): Promise<{ apiKey: string; created: boolean }> {
     const tokenRes = await fetch("/auth/access-token");
     if (!tokenRes.ok) throw new Error("Auth0 session missing");
     const { token } = await tokenRes.json();
@@ -30,7 +30,7 @@ export default function ExchangeAndRedirect({ cliSession, onCliApproved }: Props
     }
     const data = await res.json();
     setToken(data.api_key);
-    return data.api_key;
+    return { apiKey: data.api_key, created: !!data.created };
   }
 
   // Non-CLI path: exchange silently and redirect. The user is already signed
@@ -39,16 +39,23 @@ export default function ExchangeAndRedirect({ cliSession, onCliApproved }: Props
     if (cliSession) return;
     let cancelled = false;
     (async () => {
+      let created = false;
       try {
-        await exchange();
+        ({ created } = await exchange());
       } catch (e) {
         if (!cancelled) setError(e instanceof Error ? e.message : "Sign-in failed");
         return;
       }
       if (cancelled) return;
-      // Exchange succeeded — the user is signed in. If the workspace lookup
-      // hiccups (transient backend), don't flash a "sign-in failed" error;
-      // just land on /, which can reload the list itself.
+      // First-time sign-in goes through onboarding, same as the password
+      // register flow. The exchange already created their workspace.
+      if (created) {
+        router.push("/onboarding");
+        return;
+      }
+      // Returning user. If the workspace lookup hiccups (transient backend),
+      // don't flash a "sign-in failed" error; just land on /, which can
+      // reload the list itself.
       const target = await listMyWorkspaces()
         .then(({ workspaces }) =>
           workspaces.length === 1 ? `/workspaces/${workspaces[0].id}` : "/",
@@ -66,7 +73,7 @@ export default function ExchangeAndRedirect({ cliSession, onCliApproved }: Props
     setError("");
     setSubmitting(true);
     try {
-      const apiKey = await exchange();
+      const { apiKey } = await exchange();
       const approveRes = await fetch(
         `${API_BASE}/api/v1/users/cli-auth/sessions/${cliSession}/approve`,
         {
