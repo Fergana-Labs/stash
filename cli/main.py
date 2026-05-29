@@ -314,6 +314,51 @@ _AGENT_BINARY = {
     "opencode": "opencode",
 }
 
+_CODEX_HOME_MARKERS = (
+    "sessions",
+    "config.toml",
+    "auth.json",
+    ".codex-global-state.json",
+    "state_5.sqlite",
+)
+
+_CODEX_MACOS_DESKTOP_MARKERS = (
+    "Library/Application Support/Codex",
+    "Library/Caches/com.openai.codex",
+    "Library/Logs/com.openai.codex",
+    "Library/Preferences/com.openai.codex.plist",
+)
+
+_CODEX_LINUX_DESKTOP_MARKERS = (
+    ".config/Codex",
+    ".cache/com.openai.codex",
+)
+
+_CODEX_WINDOWS_DESKTOP_MARKERS = (
+    "AppData/Roaming/Codex",
+    "AppData/Local/Codex",
+    "AppData/Local/com.openai.codex",
+)
+
+
+def _codex_present() -> bool:
+    home = Path.home()
+    codex_home = home / ".codex"
+    if any((codex_home / marker).exists() for marker in _CODEX_HOME_MARKERS):
+        return True
+
+    if sys.platform == "darwin":
+        return any((home / marker).exists() for marker in _CODEX_MACOS_DESKTOP_MARKERS)
+    if sys.platform.startswith("linux"):
+        return any((home / marker).exists() for marker in _CODEX_LINUX_DESKTOP_MARKERS)
+    if sys.platform.startswith("win"):
+        if any((home / marker).exists() for marker in _CODEX_WINDOWS_DESKTOP_MARKERS):
+            return True
+        packages = home / "AppData" / "Local" / "Packages"
+        return packages.is_dir() and any(packages.glob("OpenAI.Codex_*"))
+
+    return False
+
 
 def _agent_present(agent: str) -> bool:
     """True if the agent is usable on this machine (binary on PATH or config dir exists)."""
@@ -322,7 +367,7 @@ def _agent_present(agent: str) -> bool:
     if shutil.which(_AGENT_BINARY[agent]):
         return True
     if agent == "codex":
-        return (Path.home() / ".codex" / "sessions").is_dir()
+        return _codex_present()
     if agent == "cursor":
         return (Path.home() / ".cursor").is_dir()
     return False
