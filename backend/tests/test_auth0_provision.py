@@ -39,8 +39,24 @@ async def test_first_exchange_reports_created(pool):
 @pytest.mark.asyncio
 async def test_repeat_exchange_reports_not_created(pool):
     sub = f"google-oauth2|{unique_name()}"
-    await get_or_create_user_from_auth0(auth0_sub=sub, email=None, name="Returning Person")
-    user, _api_key, created = await get_or_create_user_from_auth0(
+    first_user, _api_key, _created = await get_or_create_user_from_auth0(
+        auth0_sub=sub, email=None, name="Returning Person"
+    )
+    await pool.execute(
+        "UPDATE users SET created_at = now() - interval '1 hour' WHERE id = $1",
+        first_user["id"],
+    )
+    _user, _api_key, created = await get_or_create_user_from_auth0(
         auth0_sub=sub, email=None, name="Returning Person"
     )
     assert created is False
+
+
+@pytest.mark.asyncio
+async def test_immediate_duplicate_exchange_still_reports_created(pool):
+    sub = f"google-oauth2|{unique_name()}"
+    await get_or_create_user_from_auth0(auth0_sub=sub, email=None, name="Strict Mode Person")
+    _user, _api_key, created = await get_or_create_user_from_auth0(
+        auth0_sub=sub, email=None, name="Strict Mode Person"
+    )
+    assert created is True
