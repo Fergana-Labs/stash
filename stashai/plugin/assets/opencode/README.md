@@ -66,8 +66,8 @@ opencode agents have shell access. Point the agent at the `stash` CLI for reads 
 stash vfs "find /workspaces -maxdepth 3 -type f"
 stash vfs "rg \"database migration\" /workspaces"
 stash vfs "cat '/workspaces/<workspace>/README.md' | sed -n '1,80p'"
-stash history query --ws <id> --limit 20 --json
-stash history search "<query>" --ws <id> --json
+stash sessions query --ws <id> --limit 20 --json
+stash sessions search "<query>" --ws <id> --json
 stash whoami --json
 stash workspaces list --json
 ```

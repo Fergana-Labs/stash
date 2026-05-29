@@ -83,6 +83,7 @@ async def test_public_stash_text_is_agent_homepage(client: AsyncClient):
     assert ('bash -c "$(curl -fsSL https://joinstash.ai/install)" -- signin --no-browser') in text
     assert "This prints a browser consent URL for the user" in text
     assert "Do not complete setup without user approval." in text
+    assert 'stash vfs "find /workspaces -maxdepth 3 -type f"' in text
     assert "stash connect" in text
     assert '"$HOME/.local/bin/stash" connect' in text
     assert f"stash read http://localhost:3457/stashes/{slug}" in text
@@ -119,6 +120,7 @@ async def test_public_stash_item_text_strips_html_page_content(client: AsyncClie
     assert (
         'bash -c "$(curl -fsSL https://joinstash.ai/install)" -- signin --no-browser'
     ) in resp.text
+    assert 'stash vfs "find /workspaces -maxdepth 3 -type f"' in resp.text
     assert f"stash read http://localhost:3457/stashes/{body['stash_slug']}" in resp.text
 
     json_resp = await client.get(
@@ -140,6 +142,7 @@ async def test_llms_txt_documents_agent_stash_reads(client: AsyncClient):
         'bash -c "$(curl -fsSL https://joinstash.ai/install)" -- signin --no-browser'
     ) in resp.text
     assert "stash signin --no-browser" in resp.text
+    assert 'stash vfs "find /workspaces -maxdepth 3 -type f"' in resp.text
     assert "stash read https://app.joinstash.ai/stashes/example" in resp.text
 
 

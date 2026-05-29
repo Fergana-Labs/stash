@@ -35,7 +35,7 @@ with `${PLUGIN_ROOT}` replaced by the absolute path.
 ```
 # In Cursor, open a new chat and send any message.
 # Then from a shell:
-stash history query --limit 5
+stash sessions query --limit 5
 ```
 
 You should see a `user_message` event with the prompt you just sent.
@@ -83,8 +83,8 @@ shell out to the `stash` CLI. Use `stash vfs` for filesystem-style browsing with
 stash vfs "find /workspaces -maxdepth 3 -type f"
 stash vfs "rg \"database migration\" /workspaces"
 stash vfs "cat '/workspaces/<workspace>/README.md' | sed -n '1,80p'"
-stash history query --ws <id> --limit 20 --json
-stash history search "<query>" --ws <id> --json
+stash sessions query --ws <id> --limit 20 --json
+stash sessions search "<query>" --ws <id> --json
 stash whoami --json
 stash workspaces list --json
 ```

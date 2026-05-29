@@ -29,7 +29,7 @@ Use `stash vfs` when you want to browse Stash like a filesystem without mounting
 
 ## Common reads (all support `--json`)
 
-- `stash history search "<query>"` — full-text search across transcripts
-- `stash history query --limit 20` — recent events
-- `stash history agents` — who's been active
-- `stash pages --all` — shared pages
+- `stash sessions search "<query>"` — full-text search across transcripts
+- `stash sessions query --limit 20` — recent events
+- `stash sessions agents` — who's been active
+- `stash files pages --all` — shared pages

@@ -47,7 +47,7 @@ codex --profile stash
 ```
 
 The profile sets `sandbox_mode = "workspace-write"` with `network_access =
-true` (so `stash history …` can reach `api.joinstash.ai`) and
+true` (so `stash sessions …` can reach `api.joinstash.ai`) and
 `approval_policy = "on-failure"` (so successful reads don't prompt; failures
 still do). Run plain `codex` — without the flag — if you want Codex's default
 approval behavior.
@@ -79,8 +79,8 @@ the `stash` CLI. Use `stash vfs` for filesystem-style browsing without an OS mou
 stash vfs "find /workspaces -maxdepth 3 -type f"
 stash vfs "rg \"database migration\" /workspaces"
 stash vfs "cat '/workspaces/<workspace>/README.md' | sed -n '1,80p'"
-stash history query --ws <id> --limit 20 --json
-stash history search "<query>" --ws <id> --json
+stash sessions query --ws <id> --limit 20 --json
+stash sessions search "<query>" --ws <id> --json
 stash whoami --json
 stash workspaces list --json
 ```

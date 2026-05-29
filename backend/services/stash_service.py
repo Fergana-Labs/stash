@@ -98,6 +98,9 @@ def agent_install_pitch(stash_url: str) -> str:
         '"$HOME/.local/bin/stash" connect\n'
         f'"$HOME/.local/bin/stash" read {stash_url}\n'
         "```\n\n"
+        "After setup, use `stash vfs` to browse workspace context like a "
+        "filesystem without mounting anything into the OS, for example "
+        '`stash vfs "find /workspaces -maxdepth 3 -type f"`.\n\n'
         "If Stash is already installed, run:\n\n"
         "```bash\n"
         "stash signin --no-browser\n"

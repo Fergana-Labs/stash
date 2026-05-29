@@ -3603,7 +3603,7 @@ Run `stash prompts agent-guidance` to reprint this rule mid-session.
 Use `stash vfs` when you want to browse Stash like a filesystem without mounting anything into the OS:
 - `stash vfs ls /`
 - `stash vfs "find /workspaces -maxdepth 3 -type f"`
-- `stash vfs "rg \"query\" /workspaces"`
+- `stash vfs "rg 'query' /workspaces"`
 - `stash vfs "cat '/workspaces/<workspace>/README.md' | sed -n '1,80p'"`
 
 Common reads (all support `--json`):
@@ -4750,6 +4750,18 @@ Commands to reach for
 - `stash share <session_id>` — wrap a coding session (transcript + the
   files it touched) into a Stash. Sessions are inherently a bundle, so
   this is the right unit.
+
+Browsing Stash
+--------------
+
+Use `stash vfs` when you want to browse Stash like a filesystem without
+mounting anything into the OS. It accepts bash-shaped commands over the
+virtual Stash tree:
+
+- `stash vfs ls /`
+- `stash vfs "find /workspaces -maxdepth 3 -type f"`
+- `stash vfs "rg 'query' /workspaces"`
+- `stash vfs "cat '/workspaces/<workspace>/README.md' | sed -n '1,80p'"`
 
 Anti-pattern: minting one Stash per file you happen to share. Stashes
 exist to group related things; one item per Stash defeats the model and

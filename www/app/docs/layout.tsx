@@ -34,6 +34,7 @@ const NAV: NavSection[] = [
         children: [
           { href: "/docs/cli#install", label: "Install" },
           { href: "/docs/cli#first-time-setup", label: "First-time setup" },
+          { href: "/docs/cli#virtual-filesystem", label: "Virtual filesystem" },
           { href: "/docs/cli#authentication", label: "Authentication" },
           { href: "/docs/cli#workspaces", label: "Workspaces" },
           { href: "/docs/cli#files", label: "Files" },

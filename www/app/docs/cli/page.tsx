@@ -29,6 +29,27 @@ export default function CLIPage() {
         commands like <Code>stash sessions push</Code> work without extra flags.
       </P>
 
+      <H2>Virtual filesystem</H2>
+      <P>
+        Use <Code>stash vfs</Code> when an agent needs to browse workspace files, pages,
+        sessions, stashes, and tables through one filesystem-shaped interface without
+        mounting anything into the OS.
+      </P>
+      <CodeBlock>{`stash vfs ls /
+stash vfs "find /workspaces -maxdepth 3 -type f"
+stash vfs "rg 'database migration' /workspaces"
+stash vfs "cat '/workspaces/<workspace>/README.md' | sed -n '1,80p'"`}</CodeBlock>
+      <CommandRef
+        command="stash vfs"
+        args={'[--ws ID] [--cwd PATH] "command"'}
+        description="Run bash-shaped read and write commands against the virtual Stash tree."
+        params={[
+          { name: "--ws", type: "string", desc: "Expose one workspace by ID. By default all accessible workspaces are exposed." },
+          { name: "--cwd", type: "string", desc: "Virtual working directory. Defaults to /." },
+          { name: "command", type: "string", desc: "Bash-shaped command such as ls, find, rg, cat, sed, tee, or redirection." },
+        ]}
+      />
+
       <H2>Authentication</H2>
 
       <CommandRef
