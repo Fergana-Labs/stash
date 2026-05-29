@@ -549,7 +549,9 @@ def discover_conversations(
         cursor_prefix = _encode_cursor_dir(prefix)
         repo_git_urls = _repo_git_urls(resolved)
         results = [
-            c for c in results if _conversation_matches_repo(c, prefix, cursor_prefix, repo_git_urls)
+            c
+            for c in results
+            if _conversation_matches_repo(c, prefix, cursor_prefix, repo_git_urls)
         ]
 
         if "cursor" in targets:
