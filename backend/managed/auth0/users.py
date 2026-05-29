@@ -33,8 +33,11 @@ async def get_or_create_user_from_auth0(
     email: str | None,
     name: str | None,
     key_name: str = "Auth0 login",
-) -> tuple[dict, str]:
-    """Return (user_row, new_api_key). Mints a fresh key per exchange; prior keys stay valid.
+) -> tuple[dict, str, bool]:
+    """Return (user_row, new_api_key, created). Mints a fresh key per exchange; prior keys stay valid.
+
+    `created` is True only when this exchange inserted the user — the frontend
+    uses it to route first-time sign-ins into onboarding.
 
     Multi-device sign-in must keep both devices working, so we don't touch
     prior keys here. Users clean up stale sessions from the settings page,
@@ -58,7 +61,7 @@ async def get_or_create_user_from_auth0(
         else:
             await pool.execute("UPDATE users SET last_seen = now() WHERE id = $1", row["id"])
         api_key = await create_api_key(row["id"], name=key_name)
-        return dict(row), api_key
+        return dict(row), api_key, False
 
     base = _slugify_name((email or "").split("@")[0] or name or "user")
     username = await _unique_name(base)
@@ -91,4 +94,4 @@ async def get_or_create_user_from_auth0(
         except Exception:
             logger.exception("Failed to send welcome email to %s", email)
 
-    return user, api_key
+    return user, api_key, True

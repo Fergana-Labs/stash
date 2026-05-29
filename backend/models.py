@@ -19,6 +19,7 @@ class UserRegisterResponse(BaseModel):
     name: str
     display_name: str
     api_key: str
+    created: bool = False
 
 
 class UserProfile(BaseModel):

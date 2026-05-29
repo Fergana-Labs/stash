@@ -35,7 +35,7 @@ async def exchange(
     profile = await _fetch_userinfo(credentials.credentials)
     device = request.query_params.get("device", "").strip()[:96]
     key_name = f"CLI ({device})" if device else "Auth0 login"
-    user, api_key = await get_or_create_user_from_auth0(
+    user, api_key, created = await get_or_create_user_from_auth0(
         auth0_sub=claims["sub"],
         email=profile.get("email"),
         name=profile.get("name"),
@@ -46,4 +46,5 @@ async def exchange(
         name=user["name"],
         display_name=user["display_name"],
         api_key=api_key,
+        created=created,
     )
