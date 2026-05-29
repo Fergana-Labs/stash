@@ -11,6 +11,7 @@ from backend.services.email_service import send_welcome_email
 logger = logging.getLogger(__name__)
 
 _NAME_CHARS = re.compile(r"[^a-zA-Z0-9_-]")
+_NEW_USER_WINDOW_SQL = "2 minutes"
 
 
 def _slugify_name(raw: str) -> str:
@@ -36,8 +37,9 @@ async def get_or_create_user_from_auth0(
 ) -> tuple[dict, str, bool]:
     """Return (user_row, new_api_key, created). Mints a fresh key per exchange; prior keys stay valid.
 
-    `created` is True only when this exchange inserted the user — the frontend
-    uses it to route first-time sign-ins into onboarding.
+    `created` is True when this exchange inserted the user, or when the user
+    was inserted moments ago and the signup callback exchanged twice. The
+    frontend uses it to route first-time sign-ins into onboarding.
 
     Multi-device sign-in must keep both devices working, so we don't touch
     prior keys here. Users clean up stale sessions from the settings page,
@@ -47,7 +49,8 @@ async def get_or_create_user_from_auth0(
     pool = get_pool()
 
     row = await pool.fetchrow(
-        "SELECT id, name, display_name, description, created_at, last_seen "
+        "SELECT id, name, display_name, description, created_at, last_seen, "
+        f"created_at >= now() - interval '{_NEW_USER_WINDOW_SQL}' AS is_new_user "
         "FROM users WHERE auth0_sub = $1",
         auth0_sub,
     )
@@ -61,7 +64,9 @@ async def get_or_create_user_from_auth0(
         else:
             await pool.execute("UPDATE users SET last_seen = now() WHERE id = $1", row["id"])
         api_key = await create_api_key(row["id"], name=key_name)
-        return dict(row), api_key, False
+        user = dict(row)
+        is_new_user = bool(user.pop("is_new_user"))
+        return user, api_key, is_new_user
 
     base = _slugify_name((email or "").split("@")[0] or name or "user")
     username = await _unique_name(base)

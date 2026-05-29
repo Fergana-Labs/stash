@@ -292,7 +292,9 @@ export default function StashShareModal() {
           label_override: sess.label,
         });
       }
-      const finalTitle = title.trim() || defaultTitle;
+      const finalTitle = hasUserEditedTitle.current
+        ? title.trim() || defaultTitle
+        : defaultTitle;
       const stash =
         publicPermission !== "none"
           ? (await publishStash(workspaceId, finalTitle, items, {
