@@ -1,12 +1,15 @@
-name: Bump Claude plugin version
+name: Bump release versions
 
 on:
   push:
     branches: [main]
     paths:
-      - 'plugins/**'
-      - 'src/stash_cli/**'
-      - 'pyproject.toml'
+      - 'cli/**'
+      - 'stashai/**'
+      - 'plugins/claude-plugin/**'
+      - 'plugins/codex-plugin/**'
+      - 'plugins/cursor-plugin/**'
+      - 'plugins/opencode-plugin/**'
 
 jobs:
   bump:
@@ -18,33 +21,68 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Bump patch version in plugin.json
+      - name: Check triggering commit
+        id: trigger
         run: |
-          FILE="plugins/claude-plugin/.claude-plugin/plugin.json"
-          CUR=$(python3 -c "import json; print(json.load(open('$FILE'))['version'])")
-          MAJOR=$(echo "$CUR" | cut -d. -f1)
-          MINOR=$(echo "$CUR" | cut -d. -f2)
-          PATCH=$(echo "$CUR" | cut -d. -f3)
-          NEW="$MAJOR.$MINOR.$((PATCH + 1))"
-          python3 -c "
-          import json, pathlib
-          p = pathlib.Path('$FILE')
-          d = json.loads(p.read_text())
-          d['version'] = '$NEW'
-          p.write_text(json.dumps(d, indent=2) + '\n')
-          "
-          echo "Bumped plugin version $CUR → $NEW"
+          if git log -1 --pretty=%s | grep -q "^chore: bump stash release"; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Bump package and Claude plugin versions
+        id: bump
+        if: steps.trigger.outputs.skip != 'true'
+        run: |
+          python3 <<'PY'
+          import json
+          import os
+          import pathlib
+          import re
+
+          def bump_patch(version: str) -> str:
+              major, minor, patch = version.split(".")
+              return f"{major}.{minor}.{int(patch) + 1}"
+
+          pyproject = pathlib.Path("pyproject.toml")
+          pyproject_text = pyproject.read_text()
+          pyproject_match = re.search(r'(?m)^version = "([^"]+)"$', pyproject_text)
+          if pyproject_match is None:
+              raise SystemExit("pyproject.toml has no project version")
+          package_old = pyproject_match.group(1)
+          package_new = bump_patch(package_old)
+          pyproject.write_text(
+              pyproject_text[: pyproject_match.start(1)]
+              + package_new
+              + pyproject_text[pyproject_match.end(1) :]
+          )
+
+          plugin_path = pathlib.Path("plugins/claude-plugin/.claude-plugin/plugin.json")
+          plugin = json.loads(plugin_path.read_text())
+          plugin_old = plugin["version"]
+          plugin_new = bump_patch(plugin_old)
+          plugin["version"] = plugin_new
+          plugin_path.write_text(json.dumps(plugin, indent=2) + "\n")
+
+          marketplace_path = pathlib.Path(".claude-plugin/marketplace.json")
+          marketplace = json.loads(marketplace_path.read_text())
+          marketplace["plugins"][0]["version"] = plugin_new
+          marketplace_path.write_text(json.dumps(marketplace, indent=2) + "\n")
+
+          with open(os.environ["GITHUB_OUTPUT"], "a") as output:
+              print(f"package_version={package_new}", file=output)
+              print(f"plugin_version={plugin_new}", file=output)
+
+          print(f"Bumped stashai {package_old} -> {package_new}")
+          print(f"Bumped Claude plugin {plugin_old} -> {plugin_new}")
+          PY
 
       - name: Commit and push
+        if: steps.trigger.outputs.skip != 'true'
         run: |
-          # Skip if the triggering commit was already a plugin bump (avoid infinite loop)
-          if git log -1 --pretty=%s | grep -q "^chore: bump claude plugin"; then
-            echo "Last commit was a plugin bump — skipping"
-            exit 0
-          fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add plugins/claude-plugin/.claude-plugin/plugin.json
+          git add pyproject.toml plugins/claude-plugin/.claude-plugin/plugin.json .claude-plugin/marketplace.json
           git diff --cached --quiet && echo "No change" && exit 0
-          git commit -m "chore: bump claude plugin to $(python3 -c "import json; print(json.load(open('plugins/claude-plugin/.claude-plugin/plugin.json'))['version'])")"
+          git commit -m "chore: bump stash release to ${{ steps.bump.outputs.package_version }} and plugin to ${{ steps.bump.outputs.plugin_version }}"
           git push
