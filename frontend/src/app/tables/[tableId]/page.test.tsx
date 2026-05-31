@@ -179,4 +179,40 @@ describe("TableEditorPage row creation", () => {
       expect.objectContaining({ offset: 2 }),
     );
   });
+
+  it("creates a row when typing into an empty tail row", async () => {
+    const typedRow = {
+      ...createdRow,
+      id: "row-4",
+      data: { name: "Charlie" },
+    };
+    api.createTableRow.mockResolvedValue(typedRow);
+
+    render(<TableEditorPage />);
+
+    const [emptyCell] = await screen.findAllByLabelText(/^Empty row \d+ Name$/);
+    expect(screen.queryByText("\\u2014")).not.toBeInTheDocument();
+    fireEvent.click(emptyCell);
+
+    const input = await screen.findByLabelText(/^Edit row \d+ Name$/);
+    fireEvent.change(input, { target: { value: "Charlie" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    await waitFor(() =>
+      expect(api.createTableRow).toHaveBeenCalledWith("ws-1", "table-1", {
+        name: "Charlie",
+      }),
+    );
+    expect(screen.getByText("Charlie")).toBeInTheDocument();
+  });
+
+  it("does not create a row when an empty tail row is left blank", async () => {
+    render(<TableEditorPage />);
+
+    const [emptyCell] = await screen.findAllByLabelText(/^Empty row \d+ Name$/);
+    fireEvent.click(emptyCell);
+    fireEvent.blur(await screen.findByLabelText(/^Edit row \d+ Name$/));
+
+    expect(api.createTableRow).not.toHaveBeenCalled();
+  });
 });

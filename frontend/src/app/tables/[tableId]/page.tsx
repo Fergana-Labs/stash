@@ -30,12 +30,16 @@ const TYPE_ICONS: Record<string, string> = {
 };
 const COLUMN_TYPES = ["text", "number", "boolean", "date", "datetime", "url", "email", "select", "multiselect", "json"] as const;
 const PAGE_SIZE = 100;
+const DRAFT_ROW_COUNT = 20;
+const DRAFT_ROW_PREFIX = "draft-row-";
 const FILTER_OPS = ["eq", "neq", "gt", "gte", "lt", "lte", "contains", "is_empty", "is_not_empty"] as const;
 const COLUMN_TYPE_OPTIONS = COLUMN_TYPES.map((type) => ({ value: type, label: type }));
 const FILTER_OP_OPTIONS = FILTER_OPS.map((op) => ({ value: op, label: op }));
 
 interface FilterDef { column_id: string; op: string; value: string }
 type SummaryData = { total_rows: number; columns: Record<string, { name: string; filled: number; sum?: number; avg?: number; min?: number; max?: number }> };
+
+const isDraftRowId = (rowId: string) => rowId.startsWith(DRAFT_ROW_PREFIX);
 
 export default function TableEditorPage() {
   return (
@@ -394,10 +398,23 @@ function TableEditorPageInner() {
     if (!editingCell) return;
     const { rowId, colId } = editingCell;
     const col = sortedColumns.find((c) => c.id === colId);
+    if (isDraftRowId(rowId) && nextValue === "") {
+      setEditingCell(null);
+      return;
+    }
     let typedValue: unknown = nextValue;
     if (col) {
       if (col.type === "number") typedValue = nextValue === "" ? null : Number(nextValue);
       else if (col.type === "boolean") typedValue = nextValue === "true" || nextValue === "1";
+    }
+    if (isDraftRowId(rowId)) {
+      try {
+        const created = await createTableRow(wsId, tableId, { [colId]: typedValue });
+        setRows((prev) => [...prev, created]);
+        setTotalCount((c) => c + 1);
+      } catch (err) { setError(err instanceof Error ? err.message : "Failed to add row"); }
+      setEditingCell(null);
+      return;
     }
     try { const updated = await updateTableRow(wsId, tableId, rowId, { [colId]: typedValue }); setRows((prev) => prev.map((r) => (r.id === rowId ? updated : r))); }
     catch (err) { setError(err instanceof Error ? err.message : "Failed"); }
@@ -579,6 +596,7 @@ function TableEditorPageInner() {
     }
     return groups;
   })();
+  const showDraftRows = !readOnly && !hasMore && !groupedRows;
   const toggleGroupCollapse = (key: string) => setCollapsedGroups((prev) => { const n = new Set(prev); if (n.has(key)) n.delete(key); else n.add(key); return n; });
 
   // --- Conditional formatting helper ---
@@ -616,43 +634,58 @@ function TableEditorPageInner() {
   }
 
   // --- Render row ---
+  const renderEditableCell = (rowId: string, rowNumber: number, col: TableColumn, value: unknown, cellBg = "") => {
+    const isEditing = editingCell?.rowId === rowId && editingCell?.colId === col.id;
+    const startCellEditing = () => { if (!isEditing) startEditing(rowId, col.id, value); };
+    return (
+      <td key={col.id} className={`px-1 py-0 border-r border-border/50 min-w-[140px] ${cellBg}`} onClick={startCellEditing}>
+        {isEditing ? (
+          col.type === "boolean" ? (
+            <label className="flex items-center h-8 px-2 cursor-pointer"><input aria-label={`Edit row ${rowNumber} ${col.name}`} type="checkbox" checked={cellValue === "true" || cellValue === "1"} onChange={(e) => setCellValue(String(e.target.checked))} onBlur={() => void commitEdit()} onKeyDown={(e) => { if (e.key === "Enter") commitEdit(); if (e.key === "Escape") cancelEdit(); }} className="accent-brand" autoFocus /></label>
+          ) : col.type === "select" && col.options ? (
+            <CustomSelect
+              value={cellValue}
+              options={[
+                { value: "", label: "--" },
+                ...col.options.map((opt) => ({ value: opt, label: opt })),
+              ]}
+              onChange={(next) => void commitEdit(next)}
+              ariaLabel={`Edit row ${rowNumber} ${col.name}`}
+              className="h-8 w-full rounded border border-brand bg-surface px-2 text-sm font-mono text-foreground"
+              menuClassName="text-sm"
+              autoFocus
+            />
+          ) : (
+            <input aria-label={`Edit row ${rowNumber} ${col.name}`} ref={cellInputRef} type={col.type === "number" ? "number" : col.type === "date" ? "date" : col.type === "datetime" ? "datetime-local" : "text"} value={cellValue} onChange={(e) => setCellValue(e.target.value)} onBlur={() => void commitEdit()} onKeyDown={(e) => { if (e.key === "Enter") commitEdit(); if (e.key === "Escape") cancelEdit(); if (e.key === "Tab") { e.preventDefault(); commitEdit(); } }} className="w-full h-8 px-2 text-sm bg-transparent outline-none ring-1 ring-brand rounded font-mono text-foreground" />
+          )
+        ) : isDraftRowId(rowId) ? (
+          <button
+            type="button"
+            aria-label={`Empty row ${rowNumber} ${col.name}`}
+            onClick={(e) => { e.stopPropagation(); startCellEditing(); }}
+            className={`${wrapCells ? "min-h-[32px] py-1" : "h-8"} w-full px-2 flex items-center text-left text-sm font-mono text-foreground ${wrapCells ? "whitespace-normal break-words" : "truncate"} cursor-text bg-transparent focus:outline-none focus:ring-1 focus:ring-brand`}
+          >
+            <span className="text-muted/30">{"\u2014"}</span>
+          </button>
+        ) : (
+          <div className={`${wrapCells ? "min-h-[32px] py-1" : "h-8"} px-2 flex items-center text-sm font-mono text-foreground ${wrapCells ? "whitespace-normal break-words" : "truncate"} cursor-text`}>
+            {col.type === "boolean" ? <span className={value ? "text-green-400" : "text-muted"}>{value ? "\u2713" : "\u2717"}</span>
+            : col.type === "url" && value ? <a href={String(value)} target="_blank" rel="noopener noreferrer" className="text-brand hover:underline truncate" onClick={(e) => e.stopPropagation()}>{String(value)}</a>
+            : <span className={value != null && value !== "" ? "" : "text-muted/30"}>{value != null && value !== "" ? String(value) : "\u2014"}</span>}
+          </div>
+        )}
+      </td>
+    );
+  };
+
   const renderRow = (row: TableRow, idx: number) => (
     <tr key={row.id} className={`border-b border-border/50 hover:bg-raised/50 transition-colors group ${selectedRows.has(row.id) ? "bg-brand/5" : ""}`}>
       <td className="px-1 py-0 text-center border-r border-border sticky left-0 z-[5] bg-surface"><input type="checkbox" checked={selectedRows.has(row.id)} onChange={() => toggleSelectRow(row.id)} className="accent-brand" /></td>
       <td className="px-2 py-1.5 text-[10px] text-muted text-center border-r border-border font-mono cursor-pointer hover:text-brand sticky left-8 z-[5] bg-surface shadow-[2px_0_4px_-2px_rgba(0,0,0,0.1)]" onClick={() => openDetail(row)} title="Open row detail">{idx + 1}</td>
       {visibleColumns.map((col) => {
-        const isEditing = editingCell?.rowId === row.id && editingCell?.colId === col.id;
         const value = row.data[col.id];
         const cellBg = showSummary ? getCellBg(col, value) : "";
-        return (
-          <td key={col.id} className={`px-1 py-0 border-r border-border/50 min-w-[140px] ${cellBg}`} onClick={() => { if (!isEditing) startEditing(row.id, col.id, value); }}>
-            {isEditing ? (
-              col.type === "boolean" ? (
-                <label className="flex items-center h-8 px-2 cursor-pointer"><input type="checkbox" checked={cellValue === "true" || cellValue === "1"} onChange={(e) => setCellValue(String(e.target.checked))} onBlur={() => void commitEdit()} onKeyDown={(e) => { if (e.key === "Enter") commitEdit(); if (e.key === "Escape") cancelEdit(); }} className="accent-brand" autoFocus /></label>
-              ) : col.type === "select" && col.options ? (
-                <CustomSelect
-                  value={cellValue}
-                  options={[
-                    { value: "", label: "--" },
-                    ...col.options.map((opt) => ({ value: opt, label: opt })),
-                  ]}
-                  onChange={(next) => void commitEdit(next)}
-                  className="h-8 w-full rounded border border-brand bg-surface px-2 text-sm font-mono text-foreground"
-                  menuClassName="text-sm"
-                  autoFocus
-                />
-              ) : (
-                <input ref={cellInputRef} type={col.type === "number" ? "number" : col.type === "date" ? "date" : col.type === "datetime" ? "datetime-local" : "text"} value={cellValue} onChange={(e) => setCellValue(e.target.value)} onBlur={() => void commitEdit()} onKeyDown={(e) => { if (e.key === "Enter") commitEdit(); if (e.key === "Escape") cancelEdit(); if (e.key === "Tab") { e.preventDefault(); commitEdit(); } }} className="w-full h-8 px-2 text-sm bg-transparent outline-none ring-1 ring-brand rounded font-mono text-foreground" />
-              )
-            ) : (
-              <div className={`${wrapCells ? "min-h-[32px] py-1" : "h-8"} px-2 flex items-center text-sm font-mono text-foreground ${wrapCells ? "whitespace-normal break-words" : "truncate"} cursor-text`}>
-                {col.type === "boolean" ? <span className={value ? "text-green-400" : "text-muted"}>{value ? "\u2713" : "\u2717"}</span>
-                : col.type === "url" && value ? <a href={String(value)} target="_blank" rel="noopener noreferrer" className="text-brand hover:underline truncate" onClick={(e) => e.stopPropagation()}>{String(value)}</a>
-                : <span className={value != null && value !== "" ? "" : "text-muted/30"}>{value != null && value !== "" ? String(value) : "\u2014"}</span>}
-              </div>
-            )}
-          </td>
-        );
+        return renderEditableCell(row.id, idx + 1, col, value, cellBg);
       })}
       <td className="px-1 py-0" />
       <td className="px-1 py-0 whitespace-nowrap">
@@ -665,6 +698,20 @@ function TableEditorPageInner() {
       </td>
     </tr>
   );
+
+  const renderDraftRow = (idx: number) => {
+    const rowNumber = rows.length + idx + 1;
+    const rowId = `${DRAFT_ROW_PREFIX}${idx}`;
+    return (
+      <tr key={rowId} className="border-b border-border/50 hover:bg-raised/30 transition-colors">
+        <td className="px-1 py-0 border-r border-border sticky left-0 z-[5] bg-surface" />
+        <td className="px-2 py-1.5 text-[10px] text-muted/60 text-center border-r border-border font-mono sticky left-8 z-[5] bg-surface shadow-[2px_0_4px_-2px_rgba(0,0,0,0.1)]">{rowNumber}</td>
+        {visibleColumns.map((col) => renderEditableCell(rowId, rowNumber, col, null))}
+        <td className="px-1 py-0" />
+        <td className="px-1 py-0" />
+      </tr>
+    );
+  };
 
   const tableUpdatedAt = table?.updated_at
     ? new Date(table.updated_at).toLocaleString(undefined, {
@@ -931,7 +978,10 @@ function TableEditorPageInner() {
                     </>
                   ))
                 ) : (
-                  rows.map((row, idx) => renderRow(row, idx))
+                  <>
+                    {rows.map((row, idx) => renderRow(row, idx))}
+                    {showDraftRows && Array.from({ length: DRAFT_ROW_COUNT }, (_, idx) => renderDraftRow(idx))}
+                  </>
                 )}
               </tbody>
               {/* Summary row */}
