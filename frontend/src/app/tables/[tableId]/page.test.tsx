@@ -180,6 +180,37 @@ describe("TableEditorPage row creation", () => {
     );
   });
 
+  it("undoes a committed cell edit with command-z", async () => {
+    const editedRow = {
+      ...existingRows[0],
+      data: { name: "Alicia" },
+    };
+    api.updateTableRow.mockResolvedValueOnce(editedRow).mockResolvedValueOnce(existingRows[0]);
+
+    render(<TableEditorPage />);
+
+    fireEvent.click(await screen.findByText("Alice"));
+    const input = await screen.findByLabelText("Edit row 1 Name");
+    fireEvent.change(input, { target: { value: "Alicia" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    await waitFor(() =>
+      expect(api.updateTableRow).toHaveBeenCalledWith("ws-1", "table-1", "row-1", {
+        name: "Alicia",
+      }),
+    );
+    expect(screen.getByText("Alicia")).toBeInTheDocument();
+
+    fireEvent.keyDown(document, { key: "z", metaKey: true });
+
+    await waitFor(() =>
+      expect(api.updateTableRow).toHaveBeenLastCalledWith("ws-1", "table-1", "row-1", {
+        name: "Alice",
+      }),
+    );
+    expect(screen.getByText("Alice")).toBeInTheDocument();
+  });
+
   it("creates a row when typing into an empty tail row", async () => {
     const typedRow = {
       ...createdRow,
@@ -204,6 +235,33 @@ describe("TableEditorPage row creation", () => {
       }),
     );
     expect(screen.getByText("Charlie")).toBeInTheDocument();
+  });
+
+  it("undoes a row created from the tail row with command-z", async () => {
+    const typedRow = {
+      ...createdRow,
+      id: "row-4",
+      data: { name: "Charlie" },
+    };
+    api.createTableRow.mockResolvedValue(typedRow);
+
+    render(<TableEditorPage />);
+
+    const [emptyCell] = await screen.findAllByLabelText(/^Empty row \d+ Name$/);
+    fireEvent.click(emptyCell);
+
+    const input = await screen.findByLabelText(/^Edit row \d+ Name$/);
+    fireEvent.change(input, { target: { value: "Charlie" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    await waitFor(() => expect(screen.getByText("Charlie")).toBeInTheDocument());
+
+    fireEvent.keyDown(document, { key: "z", metaKey: true });
+
+    await waitFor(() =>
+      expect(api.deleteTableRow).toHaveBeenCalledWith("ws-1", "table-1", "row-4"),
+    );
+    expect(screen.queryByText("Charlie")).not.toBeInTheDocument();
   });
 
   it("does not create a row when an empty tail row is left blank", async () => {
