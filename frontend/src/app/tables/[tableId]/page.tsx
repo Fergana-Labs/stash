@@ -131,7 +131,7 @@ function TableEditorPageInner() {
   const wsId = resolvedWorkspaceId;
   const sortedColumns = table?.columns ? [...table.columns].sort((a, b) => a.order - b.order) : [];
   const visibleColumns = sortedColumns.filter((c) => !hiddenCols.has(c.id));
-  const hasMore = offset < totalCount;
+  const hasMore = rows.length < totalCount;
 
   const shareModal = useShareModal();
 
@@ -241,7 +241,10 @@ function TableEditorPageInner() {
         ? await searchTableRows(wsId, tableId, searchQuery, { limit: PAGE_SIZE, offset })
         : await listTableRows(wsId, tableId, buildRowParams(offset));
       const newRows = res?.rows ?? [];
-      setRows((prev) => [...prev, ...newRows]);
+      setRows((prev) => {
+        const existingIds = new Set(prev.map((row) => row.id));
+        return [...prev, ...newRows.filter((row) => !existingIds.has(row.id))];
+      });
       setOffset((prev) => prev + newRows.length);
     } catch (err) { setError(err instanceof Error ? err.message : "Failed to load rows"); }
     setLoadingMore(false);
