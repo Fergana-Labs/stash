@@ -24,7 +24,6 @@ from .routers import (
     exports,
     files,
     files_tree,
-    imports,
     memory,
     pins,
     publish,
@@ -115,7 +114,6 @@ app.include_router(pins.router)
 app.include_router(publish.router)
 app.include_router(tasks.router)
 app.include_router(integrations_router)
-app.include_router(imports.router)
 app.include_router(sources.router)
 app.include_router(exports.router)
 app.include_router(demo.router)
