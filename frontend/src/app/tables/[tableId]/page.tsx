@@ -38,8 +38,18 @@ const FILTER_OP_OPTIONS = FILTER_OPS.map((op) => ({ value: op, label: op }));
 
 interface FilterDef { column_id: string; op: string; value: string }
 type SummaryData = { total_rows: number; columns: Record<string, { name: string; filled: number; sum?: number; avg?: number; min?: number; max?: number }> };
+type TableUndoAction =
+  | { kind: "row-create"; row: TableRow }
+  | { kind: "row-update"; row: TableRow };
 
 const isDraftRowId = (rowId: string) => rowId.startsWith(DRAFT_ROW_PREFIX);
+const cloneTableRow = (row: TableRow): TableRow => ({ ...row, data: { ...row.data } });
+
+function isTextEntryTarget(target: EventTarget | null) {
+  if (!(target instanceof HTMLElement)) return false;
+  const tag = target.tagName;
+  return tag === "INPUT" || tag === "TEXTAREA" || target.isContentEditable;
+}
 
 export default function TableEditorPage() {
   return (
@@ -87,6 +97,8 @@ function TableEditorPageInner() {
   const [editingCell, setEditingCell] = useState<{ rowId: string; colId: string } | null>(null);
   const [cellValue, setCellValue] = useState("");
   const cellInputRef = useRef<HTMLInputElement>(null);
+  const undoStackRef = useRef<TableUndoAction[]>([]);
+  const undoInFlightRef = useRef(false);
 
   // Row detail modal
   const [detailRow, setDetailRow] = useState<TableRow | null>(null);
@@ -138,6 +150,53 @@ function TableEditorPageInner() {
   const hasMore = rows.length < totalCount;
 
   const shareModal = useShareModal();
+
+  const rememberUndo = useCallback((action: TableUndoAction) => {
+    undoStackRef.current.push(action);
+    if (undoStackRef.current.length > 50) undoStackRef.current.shift();
+  }, []);
+
+  const undoLastTableAction = useCallback(async () => {
+    if (readOnly || undoInFlightRef.current) return;
+    const action = undoStackRef.current[undoStackRef.current.length - 1];
+    if (!action) return;
+
+    undoInFlightRef.current = true;
+    try {
+      if (action.kind === "row-update") {
+        const restored = await updateTableRow(wsId, tableId, action.row.id, action.row.data);
+        setRows((prev) => prev.map((row) => (row.id === restored.id ? restored : row)));
+        setDetailRow((prev) => (prev?.id === restored.id ? restored : prev));
+      } else {
+        await deleteTableRow(wsId, tableId, action.row.id);
+        setRows((prev) => prev.filter((row) => row.id !== action.row.id));
+        setTotalCount((count) => Math.max(0, count - 1));
+        setSelectedRows((prev) => {
+          const next = new Set(prev);
+          next.delete(action.row.id);
+          return next;
+        });
+      }
+      undoStackRef.current.pop();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to undo");
+    } finally {
+      undoInFlightRef.current = false;
+    }
+  }, [readOnly, tableId, wsId]);
+
+  useEffect(() => {
+    if (readOnly) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.defaultPrevented) return;
+      if (!(e.metaKey || e.ctrlKey) || e.altKey || e.shiftKey || e.key.toLowerCase() !== "z") return;
+      if (isTextEntryTarget(e.target)) return;
+      e.preventDefault();
+      void undoLastTableAction();
+    };
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [readOnly, undoLastTableAction]);
 
   useEscapeKey(!!colMenu, () => setColMenu(null));
   useEffect(() => { if (!colMenu) setColMenuTypeOpen(false); }, [colMenu]);
@@ -373,7 +432,12 @@ function TableEditorPageInner() {
   };
 
   const handleAddRow = async () => {
-    try { const row = await createTableRow(wsId, tableId, {}); setRows((prev) => [...prev, row]); setTotalCount((c) => c + 1); }
+    try {
+      const row = await createTableRow(wsId, tableId, {});
+      setRows((prev) => [...prev, row]);
+      setTotalCount((c) => c + 1);
+      rememberUndo({ kind: "row-create", row: cloneTableRow(row) });
+    }
     catch (err) { setError(err instanceof Error ? err.message : "Failed to add row"); }
   };
   const handleDeleteRow = async (rowId: string) => {
@@ -381,7 +445,12 @@ function TableEditorPageInner() {
     catch (err) { setError(err instanceof Error ? err.message : "Failed"); }
   };
   const handleDuplicateRow = async (rowId: string) => {
-    try { const row = await duplicateTableRow(wsId, tableId, rowId); setRows((prev) => [...prev, row]); setTotalCount((c) => c + 1); }
+    try {
+      const row = await duplicateTableRow(wsId, tableId, rowId);
+      setRows((prev) => [...prev, row]);
+      setTotalCount((c) => c + 1);
+      rememberUndo({ kind: "row-create", row: cloneTableRow(row) });
+    }
     catch (err) { setError(err instanceof Error ? err.message : "Failed to duplicate"); }
   };
   const handleBulkDelete = async () => {
@@ -412,11 +481,17 @@ function TableEditorPageInner() {
         const created = await createTableRow(wsId, tableId, { [colId]: typedValue });
         setRows((prev) => [...prev, created]);
         setTotalCount((c) => c + 1);
+        rememberUndo({ kind: "row-create", row: cloneTableRow(created) });
       } catch (err) { setError(err instanceof Error ? err.message : "Failed to add row"); }
       setEditingCell(null);
       return;
     }
-    try { const updated = await updateTableRow(wsId, tableId, rowId, { [colId]: typedValue }); setRows((prev) => prev.map((r) => (r.id === rowId ? updated : r))); }
+    const previousRow = rows.find((row) => row.id === rowId);
+    try {
+      const updated = await updateTableRow(wsId, tableId, rowId, { [colId]: typedValue });
+      setRows((prev) => prev.map((r) => (r.id === rowId ? updated : r)));
+      if (previousRow) rememberUndo({ kind: "row-update", row: cloneTableRow(previousRow) });
+    }
     catch (err) { setError(err instanceof Error ? err.message : "Failed"); }
     setEditingCell(null);
   };
@@ -438,7 +513,13 @@ function TableEditorPageInner() {
       else if (c.type === "boolean") data[c.id] = v === "true" || v === "1";
       else data[c.id] = v;
     });
-    try { const updated = await updateTableRow(wsId, tableId, detailRow.id, data); setRows((prev) => prev.map((r) => (r.id === detailRow.id ? updated : r))); setDetailRow(null); }
+    const previousRow = rows.find((row) => row.id === detailRow.id) ?? detailRow;
+    try {
+      const updated = await updateTableRow(wsId, tableId, detailRow.id, data);
+      setRows((prev) => prev.map((r) => (r.id === detailRow.id ? updated : r)));
+      rememberUndo({ kind: "row-update", row: cloneTableRow(previousRow) });
+      setDetailRow(null);
+    }
     catch (err) { setError(err instanceof Error ? err.message : "Failed"); }
   };
 
