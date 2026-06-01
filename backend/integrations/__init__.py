@@ -17,6 +17,7 @@ for a new provider — only the explicit list of providers grows.
 from . import (
     github,  # noqa: F401 — import for side-effect (provider self-registration)
     google,  # noqa: F401
+    granola,  # noqa: F401
     notion,  # noqa: F401
     slack,  # noqa: F401
 )

@@ -44,6 +44,13 @@ async def _resolve_slack_source(user_id) -> tuple[str, str]:
     return info["team_id"], info["team_name"]
 
 
+async def _resolve_granola_source(user_id) -> tuple[str, str]:
+    """Granola source external_ref = workspace id, from the connected token."""
+    token = await integration_storage.get_valid_token(user_id, "granola")
+    info = await get_provider("granola").account_info(token)
+    return info["workspace_id"], info["workspace_name"]
+
+
 @router.get("")
 async def list_sources(workspace_id: UUID, current_user: dict = Depends(get_current_user)):
     """Sources this user can see here: native files + sessions, plus their own
@@ -65,8 +72,11 @@ async def add_source(
     external_ref = body.external_ref
     display_name = body.display_name
     if body.source_type == "slack" and not external_ref:
-        external_ref, team_name = await _resolve_slack_source(current_user["id"])
-        display_name = display_name or team_name
+        external_ref, resolved_name = await _resolve_slack_source(current_user["id"])
+        display_name = display_name or resolved_name
+    elif body.source_type == "granola" and not external_ref:
+        external_ref, resolved_name = await _resolve_granola_source(current_user["id"])
+        display_name = display_name or resolved_name
 
     if not external_ref:
         raise HTTPException(status_code=400, detail="external_ref is required")

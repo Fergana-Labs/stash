@@ -19,6 +19,7 @@ from uuid import UUID
 from ..celery_app import celery
 from ..integrations.github.indexer import index_github_repo
 from ..integrations.google.indexer import index_google_drive
+from ..integrations.granola.indexer import index_granola
 from ..integrations.notion.indexer import index_notion
 from ..integrations.slack.indexer import index_slack, ingest_slack_message
 from ..services import source_service
@@ -32,6 +33,7 @@ INDEXERS: dict[str, Callable[[dict], Awaitable[str | None]]] = {
     "google_drive": index_google_drive,
     "notion": index_notion,
     "slack": index_slack,
+    "granola": index_granola,
 }
 
 
