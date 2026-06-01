@@ -13,41 +13,33 @@ from ..database import get_pool
 
 # Canonical funnel order. Reads top-of-funnel → bottom; missing steps render
 # as gaps so dashboards can show drop-off honestly.
+# Canonical funnel for the linear Connect → Ask onboarding (no path picker).
 ONBOARDING_FUNNEL_STAGES: list[tuple[str, str]] = [
     ("viewed", "onboarding.viewed"),
-    ("path_selected", "onboarding.path_selected"),
     ("step_viewed", "onboarding.step_viewed"),
     ("completed", "onboarding.completed"),
 ]
 
 
-async def get_onboarding_funnel(*, days: int = 30, path: str | None = None) -> dict:
+async def get_onboarding_funnel(*, days: int = 30) -> dict:
     """Distinct-user counts per stage in the canonical onboarding order.
 
     A user 'enters' a stage if they emitted *any* event of that name in the
-    window. step_viewed compresses every step into one bucket because
-    individual step counts come from path-mix; the funnel is meant to read
-    at a glance.
+    window. step_viewed compresses every step into one bucket so the funnel
+    reads at a glance.
     """
     pool = get_pool()
     since = datetime.now(UTC) - timedelta(days=days)
-    path_filter = ""
-    args: list = [since]
-    if path:
-        path_filter = "AND (properties->>'path' = $2 OR event_name = 'onboarding.viewed')"
-        args.append(path)
-
-    sql = f"""
+    rows = await pool.fetch(
+        """
         SELECT event_name, COUNT(DISTINCT user_id) AS users
         FROM analytics_events
-        WHERE created_at >= $1
-          AND event_name = ANY($%d::text[])
-          {path_filter}
+        WHERE created_at >= $1 AND event_name = ANY($2::text[])
         GROUP BY event_name
-    """ % (len(args) + 1)
-    args.append([name for _, name in ONBOARDING_FUNNEL_STAGES])
-
-    rows = await pool.fetch(sql, *args)
+        """,
+        since,
+        [name for _, name in ONBOARDING_FUNNEL_STAGES],
+    )
     counts = {r["event_name"]: r["users"] for r in rows}
 
     stages = []
@@ -67,38 +59,7 @@ async def get_onboarding_funnel(*, days: int = 30, path: str | None = None) -> d
 
     return {
         "days": days,
-        "path": path,
         "stages": stages,
-        "generated_at": datetime.now(UTC).isoformat(),
-    }
-
-
-async def get_path_mix(*, days: int = 30, bucket: str = "day") -> dict:
-    """Daily/weekly counts of onboarding.path_selected, grouped by path."""
-    if bucket not in ("day", "week"):
-        raise ValueError(f"unknown bucket: {bucket}")
-    trunc = "day" if bucket == "day" else "week"
-    pool = get_pool()
-    since = datetime.now(UTC) - timedelta(days=days)
-    rows = await pool.fetch(
-        f"""
-        SELECT date_trunc('{trunc}', created_at) AS ts,
-               properties->>'path' AS path,
-               COUNT(*) AS n
-        FROM analytics_events
-        WHERE event_name = 'onboarding.path_selected'
-          AND created_at >= $1
-        GROUP BY 1, 2
-        ORDER BY 1 ASC
-        """,
-        since,
-    )
-    return {
-        "days": days,
-        "bucket": bucket,
-        "rows": [
-            {"ts": r["ts"].isoformat(), "path": r["path"], "count": int(r["n"])} for r in rows
-        ],
         "generated_at": datetime.now(UTC).isoformat(),
     }
 

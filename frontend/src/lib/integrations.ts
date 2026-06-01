@@ -8,7 +8,12 @@
 
 import { apiFetch } from "./api";
 
-export type IntegrationProvider = "google" | "github" | "notion";
+export type IntegrationProvider =
+  | "google"
+  | "github"
+  | "notion"
+  | "slack"
+  | "granola";
 
 export type IntegrationStatus = {
   provider: string;

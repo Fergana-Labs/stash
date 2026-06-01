@@ -230,6 +230,16 @@ export async function listWorkspaceSources(
   return data.sources.filter((s) => !NATIVE_SOURCE_TYPES.has(s.type));
 }
 
+export async function addWorkspaceSource(
+  workspaceId: string,
+  body: { source_type: string; external_ref?: string; display_name?: string },
+): Promise<{ id: string }> {
+  return apiFetch(`/api/v1/workspaces/${workspaceId}/sources`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
 export async function joinWorkspace(inviteCode: string): Promise<Workspace> {
   return apiFetch(`/api/v1/workspaces/join/${inviteCode}`, { method: "POST" });
 }

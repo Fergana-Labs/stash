@@ -20,12 +20,10 @@ ALLOWED_SURFACES = {"web", "cli", "system"}
 # Closed set of event names we accept from clients. Adding a new event means
 # adding a row here AND wiring the call site — keeps the dashboard honest.
 ALLOWED_EVENT_NAMES = {
-    # Onboarding funnel
+    # Onboarding funnel (linear Connect → Ask; no path picker)
     "onboarding.viewed",
-    "onboarding.path_selected",
     "onboarding.step_viewed",
     "onboarding.source_selected",
-    "onboarding.import_dispatched",
     "onboarding.skipped",
     "onboarding.completed",
     # Web actions
