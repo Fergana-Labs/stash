@@ -89,6 +89,17 @@ class Settings:
     NOTION_OAUTH_CLIENT_SECRET: str | None = os.getenv("NOTION_OAUTH_CLIENT_SECRET")
     NOTION_OAUTH_REDIRECT_URI: str | None = os.getenv("NOTION_OAUTH_REDIRECT_URI")
 
+    SLACK_OAUTH_CLIENT_ID: str | None = os.getenv("SLACK_OAUTH_CLIENT_ID")
+    SLACK_OAUTH_CLIENT_SECRET: str | None = os.getenv("SLACK_OAUTH_CLIENT_SECRET")
+    SLACK_OAUTH_REDIRECT_URI: str | None = os.getenv("SLACK_OAUTH_REDIRECT_URI")
+    # Verifies inbound Events API webhook signatures (X-Slack-Signature).
+    SLACK_SIGNING_SECRET: str | None = os.getenv("SLACK_SIGNING_SECRET")
+
+    # Granola uses WorkOS-backed OAuth (refresh-token rotation, 1h access TTL).
+    GRANOLA_OAUTH_CLIENT_ID: str | None = os.getenv("GRANOLA_OAUTH_CLIENT_ID")
+    GRANOLA_OAUTH_CLIENT_SECRET: str | None = os.getenv("GRANOLA_OAUTH_CLIENT_SECRET")
+    GRANOLA_OAUTH_REDIRECT_URI: str | None = os.getenv("GRANOLA_OAUTH_REDIRECT_URI")
+
     # Google Drive Picker requires TWO things distinct from the OAuth
     # client: a browser API key (`PICKER_API_KEY`) and the GCP project
     # number (`PICKER_APP_ID`). Both are visible in the Google Cloud

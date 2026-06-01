@@ -20,6 +20,7 @@ from ..celery_app import celery
 from ..integrations.github.indexer import index_github_repo
 from ..integrations.google.indexer import index_google_drive
 from ..integrations.notion.indexer import index_notion
+from ..integrations.slack.indexer import index_slack, ingest_slack_message
 from ..services import source_service
 from ._celery_helpers import run_async
 
@@ -30,6 +31,7 @@ INDEXERS: dict[str, Callable[[dict], Awaitable[str | None]]] = {
     "github_repo": index_github_repo,
     "google_drive": index_google_drive,
     "notion": index_notion,
+    "slack": index_slack,
 }
 
 
@@ -75,3 +77,9 @@ def sync_source(source_id: str) -> dict:
 @celery.task(name="backend.tasks.sources.reconcile_due")
 def reconcile_due() -> int:
     return run_async(_reconcile_due())
+
+
+@celery.task(name="backend.tasks.sources.ingest_slack_event")
+def ingest_slack_event(team_id: str, event: dict) -> int:
+    """Upsert a single Slack Events-API message (enqueued by the webhook)."""
+    return run_async(ingest_slack_message(team_id, event))

@@ -16,6 +16,8 @@ from pydantic import BaseModel
 
 from ..auth import get_current_user
 from ..celery_app import celery
+from ..integrations import storage as integration_storage
+from ..integrations.registry import get_provider
 from ..services import permission_service, source_service
 
 router = APIRouter(prefix="/api/v1/workspaces/{workspace_id}/sources", tags=["sources"])
@@ -28,8 +30,18 @@ async def _require_member(workspace_id: UUID, user_id: UUID) -> None:
 
 class AddSourceRequest(BaseModel):
     source_type: str
-    external_ref: str
-    display_name: str
+    # Optional for Slack/Granola — their workspace id + name are resolved from
+    # the connected token (the user can't easily supply them).
+    external_ref: str | None = None
+    display_name: str | None = None
+
+
+async def _resolve_slack_source(user_id) -> tuple[str, str]:
+    """Slack source external_ref = team id, display_name = team name, both from
+    the connected user token."""
+    token = await integration_storage.get_valid_token(user_id, "slack")
+    info = await get_provider("slack").team_info(token)
+    return info["team_id"], info["team_name"]
 
 
 @router.get("")
@@ -49,12 +61,21 @@ async def add_source(
     await _require_member(workspace_id, current_user["id"])
     if body.source_type not in source_service.SOURCE_CAPABILITY:
         raise HTTPException(status_code=400, detail=f"unknown source type: {body.source_type}")
+
+    external_ref = body.external_ref
+    display_name = body.display_name
+    if body.source_type == "slack" and not external_ref:
+        external_ref, team_name = await _resolve_slack_source(current_user["id"])
+        display_name = display_name or team_name
+
+    if not external_ref:
+        raise HTTPException(status_code=400, detail="external_ref is required")
     return await source_service.create_source(
         workspace_id=workspace_id,
         owner_user_id=current_user["id"],
         source_type=body.source_type,
-        external_ref=body.external_ref,
-        display_name=body.display_name,
+        external_ref=external_ref,
+        display_name=display_name or external_ref,
     )
 
 

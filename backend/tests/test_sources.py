@@ -5,8 +5,11 @@ owner), idempotent re-sync of source_documents, and the agent tools that span
 native (files, sessions) + connected sources.
 """
 
+import hashlib
+import hmac
 import io
 import json
+import time
 import zipfile
 from pathlib import Path
 from uuid import UUID
@@ -335,7 +338,7 @@ async def test_github_indexer_crawls_text_files_and_resyncs(client, monkeypatch)
 
 
 @pytest.mark.asyncio
-async def test_sync_source_unknown_type_is_noop(client: AsyncClient):
+async def test_sync_source_unknown_type_is_noop(client: AsyncClient, monkeypatch):
     from backend.tasks import sources as sources_task
 
     api_key, owner_id = await _register(client)
@@ -343,12 +346,92 @@ async def test_sync_source_unknown_type_is_noop(client: AsyncClient):
     src = await source_service.create_source(
         workspace_id=ws,
         owner_user_id=owner_id,
-        source_type="slack",  # no indexer registered yet
-        external_ref="T1",
-        display_name="Slack",
+        source_type="github_repo",
+        external_ref="acme/x",
+        display_name="x",
     )
+    # With no indexer registered for the type, sync is a clean no-op, not a crash.
+    monkeypatch.setattr(sources_task, "INDEXERS", {})
     result = await sources_task._sync_source(UUID(src["id"]))
     assert result["status"] == "no_indexer"
+
+
+# --- slack webhook + event ingest -------------------------------------------
+
+
+def _slack_sign(secret: str, body: bytes) -> tuple[str, str]:
+    ts = str(int(time.time()))
+    digest = hmac.new(secret.encode(), b"v0:" + ts.encode() + b":" + body, hashlib.sha256).hexdigest()
+    return ts, f"v0={digest}"
+
+
+@pytest.mark.asyncio
+async def test_slack_webhook_url_verification(client: AsyncClient, monkeypatch):
+    from backend.config import settings
+
+    monkeypatch.setattr(settings, "SLACK_SIGNING_SECRET", "shhh")
+    body = json.dumps({"type": "url_verification", "challenge": "abc123"}).encode()
+    ts, sig = _slack_sign("shhh", body)
+    resp = await client.post(
+        "/api/v1/integrations/slack/events",
+        content=body,
+        headers={
+            "Content-Type": "application/json",
+            "X-Slack-Request-Timestamp": ts,
+            "X-Slack-Signature": sig,
+        },
+    )
+    assert resp.status_code == 200
+    assert resp.json()["challenge"] == "abc123"
+
+
+@pytest.mark.asyncio
+async def test_slack_webhook_rejects_bad_signature(client: AsyncClient, monkeypatch):
+    from backend.config import settings
+
+    monkeypatch.setattr(settings, "SLACK_SIGNING_SECRET", "shhh")
+    body = json.dumps({"type": "url_verification", "challenge": "x"}).encode()
+    resp = await client.post(
+        "/api/v1/integrations/slack/events",
+        content=body,
+        headers={
+            "Content-Type": "application/json",
+            "X-Slack-Request-Timestamp": str(int(time.time())),
+            "X-Slack-Signature": "v0=deadbeef",
+        },
+    )
+    assert resp.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_slack_event_ingest_fans_out_per_owner(client: AsyncClient):
+    from backend.integrations.slack.indexer import ingest_slack_message
+
+    # Two members each connect the same Slack team — each gets their own source.
+    owner_a_key, owner_a = await _register(client, "a")
+    owner_b_key, owner_b = await _register(client, "b")
+    ws = await _create_workspace(client, owner_a_key)
+    src_a = await source_service.create_source(
+        workspace_id=ws, owner_user_id=owner_a, source_type="slack",
+        external_ref="T_SHARED", display_name="Acme",
+    )
+    src_b = await source_service.create_source(
+        workspace_id=ws, owner_user_id=owner_b, source_type="slack",
+        external_ref="T_SHARED", display_name="Acme",
+    )
+
+    n = await ingest_slack_message(
+        "T_SHARED",
+        {"type": "message", "channel": "C1", "ts": "1717.0001", "text": "ship the sources PR"},
+    )
+    assert n == 2  # both team sources updated
+
+    # Each owner sees the message only in their own source.
+    a_hits = await source_service.search_documents(
+        workspace_id=ws, user_id=owner_a, query="ship sources"
+    )
+    assert any(h["source_id"] == src_a["id"] for h in a_hits)
+    assert all(h["source_id"] != src_b["id"] for h in a_hits)
 
 
 @pytest.mark.asyncio

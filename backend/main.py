@@ -37,6 +37,7 @@ from .routers import (
     transcripts,
     trash,
     users,
+    webhooks,
     workspace_knowledge,
     workspaces,
 )
@@ -115,6 +116,7 @@ app.include_router(publish.router)
 app.include_router(tasks.router)
 app.include_router(integrations_router)
 app.include_router(sources.router)
+app.include_router(webhooks.router)
 app.include_router(exports.router)
 app.include_router(demo.router)
 

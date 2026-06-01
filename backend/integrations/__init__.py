@@ -18,4 +18,5 @@ from . import (
     github,  # noqa: F401 — import for side-effect (provider self-registration)
     google,  # noqa: F401
     notion,  # noqa: F401
+    slack,  # noqa: F401
 )
