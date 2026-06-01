@@ -5,7 +5,10 @@ owner), idempotent re-sync of source_documents, and the agent tools that span
 native (files, sessions) + connected sources.
 """
 
+import io
 import json
+import zipfile
+from pathlib import Path
 from uuid import UUID
 
 import pytest
@@ -264,6 +267,88 @@ async def test_source_tools_span_native_and_connected(client: AsyncClient):
     finally:
         agent_runtime._user_ctx.reset(utoken)
         agent_runtime._workspace_ctx.reset(wtoken)
+
+
+# --- github indexer + sync pipeline -----------------------------------------
+
+
+def _make_repo_zip(files: dict[str, bytes]) -> bytes:
+    """A GitHub-style zipball: every entry under a common `owner-repo-sha/` top."""
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as zf:
+        for rel, content in files.items():
+            zf.writestr(f"acme-widgets-deadbeef/{rel}", content)
+    return buf.getvalue()
+
+
+@pytest.mark.asyncio
+async def test_github_indexer_crawls_text_files_and_resyncs(client, monkeypatch):
+    from backend.integrations.github import indexer
+    from backend.tasks import sources as sources_task
+
+    api_key, owner_id = await _register(client)
+    ws = await _create_workspace(client, api_key)
+    src = await source_service.create_source(
+        workspace_id=ws,
+        owner_user_id=owner_id,
+        source_type="github_repo",
+        external_ref="acme/widgets",
+        display_name="acme/widgets",
+    )
+
+    zip_v1 = _make_repo_zip(
+        {
+            "README.md": b"# Widgets\nrun the migration",
+            "src/app.py": b"print('hello')",
+            "logo.png": b"\x89PNG\x00\x01\x02\x03\xff\xfe",  # binary → skipped
+            ".git/config": b"[core]",  # dotdir → skipped
+        }
+    )
+
+    async def fake_download(url, headers, dest):
+        Path(dest).write_bytes(zip_v1)
+        return len(zip_v1)
+
+    monkeypatch.setattr(indexer, "_download_archive", fake_download)
+
+    result = await sources_task._sync_source(UUID(src["id"]))
+    assert result["status"] == "done"
+
+    docs = await source_service.list_documents(UUID(src["id"]))
+    paths = {d["path"] for d in docs}
+    assert paths == {"README.md", "src/app.py"}  # binary + .git skipped
+
+    readme = await source_service.read_document(UUID(src["id"]), "README.md")
+    assert "run the migration" in readme["content"]
+
+    # Re-sync with src/app.py removed → it should be soft-deleted.
+    zip_v2 = _make_repo_zip({"README.md": b"# Widgets\nrun the migration"})
+
+    async def fake_download_v2(url, headers, dest):
+        Path(dest).write_bytes(zip_v2)
+        return len(zip_v2)
+
+    monkeypatch.setattr(indexer, "_download_archive", fake_download_v2)
+    await sources_task._sync_source(UUID(src["id"]))
+    paths_after = {d["path"] for d in await source_service.list_documents(UUID(src["id"]))}
+    assert paths_after == {"README.md"}
+
+
+@pytest.mark.asyncio
+async def test_sync_source_unknown_type_is_noop(client: AsyncClient):
+    from backend.tasks import sources as sources_task
+
+    api_key, owner_id = await _register(client)
+    ws = await _create_workspace(client, api_key)
+    src = await source_service.create_source(
+        workspace_id=ws,
+        owner_user_id=owner_id,
+        source_type="slack",  # no indexer registered yet
+        external_ref="T1",
+        display_name="Slack",
+    )
+    result = await sources_task._sync_source(UUID(src["id"]))
+    assert result["status"] == "no_indexer"
 
 
 @pytest.mark.asyncio

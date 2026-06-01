@@ -15,6 +15,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from ..auth import get_current_user
+from ..celery_app import celery
 from ..services import permission_service, source_service
 
 router = APIRouter(prefix="/api/v1/workspaces/{workspace_id}/sources", tags=["sources"])
@@ -55,6 +56,23 @@ async def add_source(
         external_ref=body.external_ref,
         display_name=body.display_name,
     )
+
+
+@router.post("/{source_id}/sync")
+async def sync_source_now(
+    workspace_id: UUID,
+    source_id: UUID,
+    current_user: dict = Depends(get_current_user),
+):
+    """Trigger an immediate re-index of an owned source."""
+    await _require_member(workspace_id, current_user["id"])
+    if await source_service.get_owned_source(source_id, current_user["id"]) is None:
+        raise HTTPException(status_code=404, detail="Source not found")
+    result = celery.send_task(
+        "backend.tasks.sources.sync_source",
+        kwargs={"source_id": str(source_id)},
+    )
+    return {"task_id": result.id}
 
 
 @router.delete("/{source_id}")

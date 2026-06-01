@@ -138,6 +138,26 @@ async def delete_source(source_id: UUID, user_id: UUID) -> bool:
     return result.endswith("1")
 
 
+async def get_source_for_sync(source_id: UUID) -> dict | None:
+    """Everything a sync task needs to crawl one source. Not owner-gated —
+    sync runs server-side on behalf of the owner via their stored token."""
+    row = await get_pool().fetchrow(
+        "SELECT id, workspace_id, owner_user_id, source_type, external_ref, sync_cursor "
+        "FROM workspace_sources WHERE id = $1",
+        source_id,
+    )
+    if not row:
+        return None
+    return {
+        "id": str(row["id"]),
+        "workspace_id": str(row["workspace_id"]),
+        "owner_user_id": str(row["owner_user_id"]),
+        "source_type": row["source_type"],
+        "external_ref": row["external_ref"],
+        "sync_cursor": row["sync_cursor"],
+    }
+
+
 async def due_sources(limit: int = 50) -> list[dict]:
     """Pull sources whose scheduled sync is due (for the Beat reconciler)."""
     rows = await get_pool().fetch(
