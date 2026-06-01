@@ -325,10 +325,6 @@ details > summary::-webkit-details-marker {
   font-family: var(--font-display), sans-serif;
   letter-spacing: -0.015em;
 }
-.prose :where(h2):not(:where([class~="not-prose"] *)) {
-  padding-bottom: 0.2rem;
-  border-bottom: 1px solid var(--border-subtle-color, rgba(0, 0, 0, 0.06));
-}
 
 /* Inline code: orange chip with a thin tinted border to match the
    rest of the brand-accent treatment. */
