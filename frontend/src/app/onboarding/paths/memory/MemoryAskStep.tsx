@@ -18,9 +18,13 @@ const READ_TOOLS = new Set([
   "grep_pages",
   "read_file",
   "search_history",
+  // Source-aware tools (the ask agent's current tool set).
+  "search",
+  "read_source",
+  "list_source",
 ]);
 
-type Citation = { tool: string; label: string };
+type Citation = { id: string; tool: string; label: string };
 
 // Step 3: one live agentic search. Show a few personalized suggestions
 // (or let user type their own), stream the answer with citations, then
@@ -127,14 +131,16 @@ export default function MemoryAskStep({ workspaceId }: StepCtx) {
               if (evt.type === "text" && typeof evt.delta === "string") {
                 setAnswer((prev) => prev + evt.delta);
               } else if (evt.type === "tool" && READ_TOOLS.has(evt.name)) {
+                const id = String(evt.id ?? describeToolCall(evt.name, evt.args));
                 const label = describeToolCall(evt.name, evt.args);
-                if (label) {
-                  setCitations((prev) =>
-                    prev.find((c) => c.label === label && c.tool === evt.name)
-                      ? prev
-                      : [...prev, { tool: evt.name, label }],
-                  );
-                }
+                setCitations((prev) =>
+                  prev.some((c) => c.id === id)
+                    ? prev
+                    : [...prev, { id, tool: evt.name, label }],
+                );
+              } else if (evt.type === "tool_result" && evt.ok === false) {
+                // The tool errored — don't claim it grounded the answer.
+                setCitations((prev) => prev.filter((c) => c.id !== String(evt.id)));
               }
             } catch {
               // Partial chunks — resume on next loop.
@@ -238,7 +244,7 @@ export default function MemoryAskStep({ workspaceId }: StepCtx) {
                     Grounded on:
                   </span>{" "}
                   {citations.map((c, i) => (
-                    <span key={`${c.tool}-${c.label}-${i}`}>
+                    <span key={c.id}>
                       {i > 0 && ", "}
                       <span className="font-mono">{c.label}</span>
                     </span>
@@ -266,10 +272,17 @@ function describeToolCall(
     return `file ${shortId(args.file_id)}`;
   }
   if (
-    (name === "grep_pages" || name === "search_history") &&
+    (name === "grep_pages" || name === "search_history" || name === "search") &&
     typeof args.query === "string"
   ) {
     return `search "${args.query.slice(0, 40)}"`;
+  }
+  if (name === "read_source" && typeof args.ref === "string") {
+    return `read ${args.ref.slice(0, 48)}`;
+  }
+  if (name === "list_source" && typeof args.source === "string") {
+    const path = typeof args.path === "string" && args.path ? `/${args.path}` : "";
+    return `browse ${args.source}${path}`;
   }
   return name;
 }
