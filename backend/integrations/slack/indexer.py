@@ -1,9 +1,10 @@
-"""Slack → source_documents: one-time backfill + per-event ingest.
+"""Slack → slack_messages: one-time backfill + per-event ingest.
 
 `index_slack` backfills recent history across the user's channels (also the
 periodic safety re-sync). Live updates arrive via the Events API webhook, which
-enqueues `ingest_slack_message` per message. Each message is a document at
-`{channel}/{ts}` so the agent can navigate by channel and search across them.
+enqueues `ingest_slack_message` per message. Each message is a row at
+`{channel}/{ts}` (with native channel_id/channel_name/ts columns) so the agent
+can navigate by channel and search across them.
 """
 
 from __future__ import annotations
@@ -83,7 +84,8 @@ async def _upsert_message(
     ts: str,
     text: str,
 ) -> None:
-    await source_service.upsert_document(
+    await source_service.upsert_content_document(
+        table="slack_messages",
         source_id=source_id,
         workspace_id=workspace_id,
         path=f"{channel_name}/{ts}",
@@ -91,6 +93,7 @@ async def _upsert_message(
         kind="message",
         content=text,
         external_ref=f"{channel_id}:{ts}",
+        extra={"channel_id": channel_id, "channel_name": channel_name, "ts": ts},
     )
 
 

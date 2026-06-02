@@ -8,8 +8,11 @@ owner sees them.
 
 This module owns:
 - the `workspace_sources` registry (CRUD + sync bookkeeping),
-- the `source_documents` index store (idempotent upsert, soft-delete, navigate,
-  search) where connected-source content lives, separate from pages/files.
+- the per-integration document store. Each source type has its own table
+  (migration 0084): github/slack/granola COPY content (FTS + embeddings live in
+  the table), drive/notion store an INDEX ONLY and fetch the body lazily from
+  the provider at read time. Every table shares the navigation shape
+  (path/name/kind/deleted_at) so the agent's list/read tools stay uniform.
 
 Native adapters (files, sessions) live in the source tools in agent_runtime and
 delegate to files_tree_service / memory_service; this module is the connected-
@@ -129,7 +132,7 @@ async def get_owned_source(source_id: UUID, user_id: UUID) -> dict | None:
 
 
 async def delete_source(source_id: UUID, user_id: UUID) -> bool:
-    """Remove a connected source the user owns. `source_documents` cascade."""
+    """Remove a connected source the user owns. Its documents cascade."""
     result = await get_pool().execute(
         "DELETE FROM workspace_sources WHERE id = $1 AND owner_user_id = $2",
         source_id,
@@ -207,109 +210,200 @@ async def mark_sync_failed(source_id: UUID, error: str) -> None:
     )
 
 
-# --- source_documents index store ------------------------------------------
+# --- per-integration document store -----------------------------------------
+
+# source_type -> the table holding its documents.
+SOURCE_TABLE = {
+    "github_repo": "github_documents",
+    "google_drive": "drive_index",
+    "notion": "notion_index",
+    "slack": "slack_messages",
+    "granola": "granola_notes",
+}
+
+# Tables that COPY content (FTS + embeddings live in them). The rest are
+# index-only and fetch their body lazily from the provider at read time.
+CONTENT_TABLES = {"github_documents", "slack_messages", "granola_notes"}
 
 
-async def upsert_document(
+def _table_for(source_type: str) -> str:
+    table = SOURCE_TABLE.get(source_type)
+    if table is None:
+        raise ValueError(f"no document table for source type {source_type!r}")
+    return table
+
+
+async def upsert_content_document(
     *,
+    table: str,
     source_id: UUID,
     workspace_id: UUID,
     path: str,
     name: str,
     kind: str = "file",
     content: str | None = None,
-    blob_storage_key: str | None = None,
     external_ref: str | None = None,
     external_updated_at=None,
+    extra: dict | None = None,
 ) -> str:
-    """Idempotent upsert keyed by (source_id, path). Returns 'unchanged',
-    'inserted', or 'updated'. Flips `embed_stale` only when content changes so
-    the embedding reconciler re-embeds exactly what moved."""
+    """Idempotent upsert into a copied-content table (github/slack/granola),
+    keyed by (source_id, path). Returns 'unchanged', 'inserted', or 'updated'.
+    Flips `embed_stale` only when content changes so the embedding reconciler
+    re-embeds exactly what moved. `extra` carries native columns (Slack's
+    channel_id/channel_name/ts)."""
     pool = get_pool()
     new_hash = _content_hash(content)
     existing = await pool.fetchrow(
-        "SELECT content_hash, deleted_at FROM source_documents "
-        "WHERE source_id = $1 AND path = $2",
+        f"SELECT content_hash, deleted_at FROM {table} WHERE source_id = $1 AND path = $2",
         source_id,
         path,
     )
     if existing and existing["content_hash"] == new_hash and existing["deleted_at"] is None:
         return "unchanged"
 
+    cols = [
+        "source_id", "workspace_id", "path", "name", "kind", "content",
+        "content_hash", "external_ref", "external_updated_at", "embed_stale",
+    ]
+    vals = [
+        source_id, workspace_id, path, name, kind, content,
+        new_hash, external_ref, external_updated_at, True,
+    ]
+    for col, val in (extra or {}).items():
+        cols.append(col)
+        vals.append(val)
+    placeholders = ", ".join(f"${i + 1}" for i in range(len(vals)))
+    updates = ", ".join(f"{c} = EXCLUDED.{c}" for c in cols if c not in ("source_id", "path"))
     await pool.execute(
-        """
-        INSERT INTO source_documents (
-            source_id, workspace_id, path, name, kind, content, content_hash,
-            blob_storage_key, external_ref, external_updated_at, embed_stale
-        )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, TRUE)
-        ON CONFLICT (source_id, path) DO UPDATE SET
-            name = EXCLUDED.name,
-            kind = EXCLUDED.kind,
-            content = EXCLUDED.content,
-            content_hash = EXCLUDED.content_hash,
-            blob_storage_key = EXCLUDED.blob_storage_key,
-            external_ref = EXCLUDED.external_ref,
-            external_updated_at = EXCLUDED.external_updated_at,
-            embed_stale = TRUE,
-            deleted_at = NULL,
-            updated_at = now()
-        """,
+        f"INSERT INTO {table} ({', '.join(cols)}) VALUES ({placeholders}) "
+        f"ON CONFLICT (source_id, path) DO UPDATE SET {updates}, "
+        f"deleted_at = NULL, updated_at = now()",
+        *vals,
+    )
+    return "inserted" if existing is None else "updated"
+
+
+async def upsert_index_row(
+    *,
+    table: str,
+    source_id: UUID,
+    workspace_id: UUID,
+    path: str,
+    name: str,
+    kind: str = "file",
+    external_ref: str | None = None,
+    external_updated_at=None,
+) -> str:
+    """Idempotent upsert into an index-only table (drive/notion). Stores just
+    the path/name + the provider's external_ref; the body is fetched lazily."""
+    pool = get_pool()
+    existing = await pool.fetchrow(
+        f"SELECT external_ref, external_updated_at, deleted_at FROM {table} "
+        f"WHERE source_id = $1 AND path = $2",
+        source_id,
+        path,
+    )
+    if (
+        existing
+        and existing["deleted_at"] is None
+        and existing["external_ref"] == external_ref
+        and existing["external_updated_at"] == external_updated_at
+    ):
+        return "unchanged"
+    await pool.execute(
+        f"INSERT INTO {table} "
+        f"(source_id, workspace_id, path, name, kind, external_ref, external_updated_at) "
+        f"VALUES ($1, $2, $3, $4, $5, $6, $7) "
+        f"ON CONFLICT (source_id, path) DO UPDATE SET "
+        f"name = EXCLUDED.name, kind = EXCLUDED.kind, external_ref = EXCLUDED.external_ref, "
+        f"external_updated_at = EXCLUDED.external_updated_at, deleted_at = NULL, updated_at = now()",
         source_id,
         workspace_id,
         path,
         name,
         kind,
-        content,
-        new_hash,
-        blob_storage_key,
         external_ref,
         external_updated_at,
     )
     return "inserted" if existing is None else "updated"
 
 
-async def soft_delete_missing(source_id: UUID, present_paths: list[str]) -> int:
+async def soft_delete_missing(table: str, source_id: UUID, present_paths: list[str]) -> int:
     """Soft-delete live docs whose path wasn't in the latest crawl — the tail
     of an idempotent re-sync. Returns the number removed."""
     result = await get_pool().execute(
-        "UPDATE source_documents SET deleted_at = now() "
-        "WHERE source_id = $1 AND deleted_at IS NULL AND path <> ALL($2::text[])",
+        f"UPDATE {table} SET deleted_at = now() "
+        f"WHERE source_id = $1 AND deleted_at IS NULL AND path <> ALL($2::text[])",
         source_id,
         present_paths,
     )
     return int(result.split()[-1]) if result.startswith("UPDATE") else 0
 
 
-async def list_documents(source_id: UUID, prefix: str = "", limit: int = 200) -> list[dict]:
-    """List a source's live documents, optionally under a path prefix."""
+async def list_documents(source: dict, prefix: str = "", limit: int = 200) -> list[dict]:
+    """List a source's live documents, optionally under a path prefix. `source`
+    is the registry row (from get_owned_source / get_source_for_sync)."""
+    table = _table_for(source["source_type"])
     rows = await get_pool().fetch(
-        "SELECT path, name, kind FROM source_documents "
-        "WHERE source_id = $1 AND deleted_at IS NULL AND path LIKE $2 "
-        "ORDER BY path LIMIT $3",
-        source_id,
+        f"SELECT path, name, kind FROM {table} "
+        f"WHERE source_id = $1 AND deleted_at IS NULL AND path LIKE $2 "
+        f"ORDER BY path LIMIT $3",
+        UUID(source["id"]),
         f"{prefix}%",
         limit,
     )
     return [{"path": r["path"], "name": r["name"], "kind": r["kind"]} for r in rows]
 
 
-async def read_document(source_id: UUID, path: str) -> dict | None:
+async def read_document(source: dict, path: str) -> dict | None:
+    """Read one document. Content tables return their stored body; index-only
+    tables (drive/notion) fetch it lazily from the provider with the owner's
+    token."""
+    table = _table_for(source["source_type"])
+    if table in CONTENT_TABLES:
+        row = await get_pool().fetchrow(
+            f"SELECT path, name, kind, content FROM {table} "
+            f"WHERE source_id = $1 AND path = $2 AND deleted_at IS NULL",
+            UUID(source["id"]),
+            path,
+        )
+        if not row:
+            return None
+        return {
+            "path": row["path"],
+            "name": row["name"],
+            "kind": row["kind"],
+            "content": row["content"] or "",
+        }
+
     row = await get_pool().fetchrow(
-        "SELECT path, name, kind, content, blob_storage_key FROM source_documents "
-        "WHERE source_id = $1 AND path = $2 AND deleted_at IS NULL",
-        source_id,
+        f"SELECT path, name, kind, external_ref FROM {table} "
+        f"WHERE source_id = $1 AND path = $2 AND deleted_at IS NULL",
+        UUID(source["id"]),
         path,
     )
     if not row:
         return None
-    return {
-        "path": row["path"],
-        "name": row["name"],
-        "kind": row["kind"],
-        "content": row["content"] or "",
-        "has_blob": row["blob_storage_key"] is not None,
-    }
+    content = await _lazy_fetch(
+        source["source_type"], UUID(source["owner_user_id"]), row["external_ref"]
+    )
+    return {"path": row["path"], "name": row["name"], "kind": row["kind"], "content": content}
+
+
+async def _lazy_fetch(source_type: str, owner_user_id: UUID, external_ref: str | None) -> str:
+    """Fetch an index-only document's body from the provider. Local import keeps
+    the integration indexers (which import this module) free of a cycle."""
+    if not external_ref:
+        return ""
+    if source_type == "google_drive":
+        from ..integrations.google.indexer import fetch_drive_content
+
+        return await fetch_drive_content(owner_user_id, external_ref)
+    if source_type == "notion":
+        from ..integrations.notion.indexer import fetch_notion_content
+
+        return await fetch_notion_content(owner_user_id, external_ref)
+    return ""
 
 
 async def search_documents(
@@ -317,24 +411,42 @@ async def search_documents(
     workspace_id: UUID,
     user_id: UUID,
     query: str,
-    source_id: UUID | None = None,
+    source: dict | None = None,
     limit: int = 20,
 ) -> list[dict]:
-    """FTS over the user's own connected-source documents. The owner join is
-    the user-scoping guard — never returns another member's source content."""
+    """FTS over the user's own copied-content sources (github/slack/granola),
+    UNIONed across their tables. The owner join is the user-scoping guard. Pass
+    `source` to scope to one; an index-only source has nothing to FTS, so it
+    returns []."""
     limit = min(limit, 100)
+    tables = sorted(CONTENT_TABLES)
+    source_id: UUID | None = None
+    if source is not None:
+        table = _table_for(source["source_type"])
+        if table not in CONTENT_TABLES:
+            return []
+        tables = [table]
+        source_id = UUID(source["id"])
+
+    parts = [
+        f"""
+        SELECT d.source_id, d.path, d.name, LEFT(d.content, 400) AS snippet,
+               ts_rank(to_tsvector('english', coalesce(d.content, '')),
+                       websearch_to_tsquery('english', $3)) AS rank
+        FROM {t} d
+        JOIN workspace_sources s ON s.id = d.source_id
+        WHERE d.workspace_id = $1 AND s.owner_user_id = $2 AND d.deleted_at IS NULL
+          AND ($4::uuid IS NULL OR d.source_id = $4)
+          AND to_tsvector('english', coalesce(d.content, ''))
+              @@ websearch_to_tsquery('english', $3)
+        """
+        for t in tables
+    ]
+    union = " UNION ALL ".join(parts)
     rows = await get_pool().fetch(
-        "SELECT d.source_id, s.display_name AS source_name, d.path, d.name, "
-        "       LEFT(d.content, 400) AS snippet, "
-        "       ts_rank(to_tsvector('english', coalesce(d.content, '')), "
-        "               websearch_to_tsquery('english', $3)) AS rank "
-        "FROM source_documents d "
-        "JOIN workspace_sources s ON s.id = d.source_id "
-        "WHERE d.workspace_id = $1 AND s.owner_user_id = $2 AND d.deleted_at IS NULL "
-        "  AND ($4::uuid IS NULL OR d.source_id = $4) "
-        "  AND to_tsvector('english', coalesce(d.content, '')) "
-        "      @@ websearch_to_tsquery('english', $3) "
-        "ORDER BY rank DESC LIMIT $5",
+        f"SELECT u.source_id, ws.display_name AS source_name, u.path, u.name, u.snippet "
+        f"FROM ({union}) u JOIN workspace_sources ws ON ws.id = u.source_id "
+        f"ORDER BY u.rank DESC LIMIT $5",
         workspace_id,
         user_id,
         query,

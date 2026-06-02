@@ -1,7 +1,7 @@
 """Repo archive helpers — streaming download + path-walk rules.
 
 Reused by backend/integrations/github/indexer.py to crawl a connected repo's
-zipball into source_documents. (Formerly also held the one-shot
+zipball into github_documents. (Formerly also held the one-shot
 import-into-the-file-system task; that path was removed when repos became a
 connected, indexed source.)
 

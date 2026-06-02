@@ -1,8 +1,9 @@
 """Phase 1 sources foundation: registry, index store, and source-aware tools.
 
 Covers the user-scoping invariant (a connected source is visible only to its
-owner), idempotent re-sync of source_documents, and the agent tools that span
-native (files, sessions) + connected sources.
+owner), idempotent re-sync of the per-integration tables, lazy reads for the
+index-only sources (drive/notion), and the agent tools that span native (files,
+sessions) + connected sources.
 """
 
 import hashlib
@@ -137,7 +138,8 @@ async def test_search_documents_owner_scoped(client: AsyncClient):
         external_ref="T1",
         display_name="Slack",
     )
-    await source_service.upsert_document(
+    await source_service.upsert_content_document(
+        table="slack_messages",
         source_id=UUID(src["id"]),
         workspace_id=ws,
         path="#eng/1.ts",
@@ -172,34 +174,27 @@ async def test_upsert_idempotency_and_soft_delete(client: AsyncClient):
     )
     sid = UUID(src["id"])
 
-    assert (
-        await source_service.upsert_document(
-            source_id=sid, workspace_id=ws, path="README.md", name="README.md", content="v1"
+    def _upsert(path: str, name: str, content: str):
+        return source_service.upsert_content_document(
+            table="github_documents",
+            source_id=sid,
+            workspace_id=ws,
+            path=path,
+            name=name,
+            content=content,
         )
-        == "inserted"
-    )
+
+    assert await _upsert("README.md", "README.md", "v1") == "inserted"
     # Same content → no work, no re-embed.
-    assert (
-        await source_service.upsert_document(
-            source_id=sid, workspace_id=ws, path="README.md", name="README.md", content="v1"
-        )
-        == "unchanged"
-    )
+    assert await _upsert("README.md", "README.md", "v1") == "unchanged"
     # Changed content → updated.
-    assert (
-        await source_service.upsert_document(
-            source_id=sid, workspace_id=ws, path="README.md", name="README.md", content="v2"
-        )
-        == "updated"
-    )
-    await source_service.upsert_document(
-        source_id=sid, workspace_id=ws, path="docs/old.md", name="old.md", content="stale"
-    )
+    assert await _upsert("README.md", "README.md", "v2") == "updated"
+    await _upsert("docs/old.md", "old.md", "stale")
 
     # A re-sync that only saw README.md soft-deletes docs/old.md.
-    removed = await source_service.soft_delete_missing(sid, ["README.md"])
+    removed = await source_service.soft_delete_missing("github_documents", sid, ["README.md"])
     assert removed == 1
-    live = await source_service.list_documents(sid)
+    live = await source_service.list_documents(src)
     assert {d["path"] for d in live} == {"README.md"}
 
 
@@ -219,15 +214,17 @@ async def test_source_tools_span_native_and_connected(client: AsyncClient):
     )
     assert page.status_code == 201
 
-    # A connected source with one document.
+    # A connected source with one document (github copies content, so list/
+    # read/search all resolve from the stored body).
     src = await source_service.create_source(
         workspace_id=ws,
         owner_user_id=owner_id,
-        source_type="notion",
-        external_ref="db123",
+        source_type="github_repo",
+        external_ref="acme/specs",
         display_name="Specs",
     )
-    await source_service.upsert_document(
+    await source_service.upsert_content_document(
+        table="github_documents",
         source_id=UUID(src["id"]),
         workspace_id=ws,
         path="specs/auth.md",
@@ -317,11 +314,11 @@ async def test_github_indexer_crawls_text_files_and_resyncs(client, monkeypatch)
     result = await sources_task._sync_source(UUID(src["id"]))
     assert result["status"] == "done"
 
-    docs = await source_service.list_documents(UUID(src["id"]))
+    docs = await source_service.list_documents(src)
     paths = {d["path"] for d in docs}
     assert paths == {"README.md", "src/app.py"}  # binary + .git skipped
 
-    readme = await source_service.read_document(UUID(src["id"]), "README.md")
+    readme = await source_service.read_document(src, "README.md")
     assert "run the migration" in readme["content"]
 
     # Re-sync with src/app.py removed → it should be soft-deleted.
@@ -333,7 +330,7 @@ async def test_github_indexer_crawls_text_files_and_resyncs(client, monkeypatch)
 
     monkeypatch.setattr(indexer, "_download_archive", fake_download_v2)
     await sources_task._sync_source(UUID(src["id"]))
-    paths_after = {d["path"] for d in await source_service.list_documents(UUID(src["id"]))}
+    paths_after = {d["path"] for d in await source_service.list_documents(src)}
     assert paths_after == {"README.md"}
 
 
@@ -434,6 +431,47 @@ async def test_slack_event_ingest_fans_out_per_owner(client: AsyncClient):
     assert all(h["source_id"] != src_b["id"] for h in a_hits)
 
 
+# --- index-only sources (drive/notion): lazy read ---------------------------
+
+
+@pytest.mark.asyncio
+async def test_notion_index_only_reads_lazily(client: AsyncClient, monkeypatch):
+    """Notion stores an index row only; reading triggers a lazy provider fetch."""
+    from backend.integrations.notion import indexer
+
+    api_key, owner_id = await _register(client)
+    ws = await _create_workspace(client, api_key)
+    src = await source_service.create_source(
+        workspace_id=ws,
+        owner_user_id=owner_id,
+        source_type="notion",
+        external_ref="page-root",
+        display_name="Specs",
+    )
+    # Index row: path + provider id, no body stored.
+    await source_service.upsert_index_row(
+        table="notion_index",
+        source_id=UUID(src["id"]),
+        workspace_id=ws,
+        path="Auth",
+        name="Auth",
+        kind="note",
+        external_ref="page-123",
+    )
+
+    fetched: list[str] = []
+
+    async def fake_fetch(owner, page_id):
+        fetched.append(page_id)
+        return "rotate tokens hourly"
+
+    monkeypatch.setattr(indexer, "fetch_notion_content", fake_fetch)
+
+    doc = await source_service.read_document(src, "Auth")
+    assert doc["content"] == "rotate tokens hourly"
+    assert fetched == ["page-123"]  # lazily fetched the provider page on read
+
+
 @pytest.mark.asyncio
 async def test_read_source_rejects_unowned_connected_source(client: AsyncClient):
     owner_key, owner_id = await _register(client, "owner")
@@ -446,7 +484,8 @@ async def test_read_source_rejects_unowned_connected_source(client: AsyncClient)
         external_ref="acme/secret",
         display_name="secret",
     )
-    await source_service.upsert_document(
+    await source_service.upsert_content_document(
+        table="github_documents",
         source_id=UUID(src["id"]),
         workspace_id=ws,
         path="README.md",

@@ -567,9 +567,10 @@ async def _list_source(args: dict) -> dict:
         ]
         return _text_result(json.dumps(out))
 
-    if await _resolve_connected_source(source) is None:
+    connected = await _resolve_connected_source(source)
+    if connected is None:
         return _text_result(json.dumps({"error": "source not found"}))
-    entries = await source_service.list_documents(UUID(source), prefix=args.get("path") or "")
+    entries = await source_service.list_documents(connected, prefix=args.get("path") or "")
     return _text_result(json.dumps(entries))
 
 
@@ -612,9 +613,10 @@ async def _read_source(args: dict) -> dict:
         )
         return _text_result(json.dumps({"session": ref, "transcript": transcript[:8000]}))
 
-    if await _resolve_connected_source(source) is None:
+    connected = await _resolve_connected_source(source)
+    if connected is None:
         return _text_result(json.dumps({"error": "source not found"}))
-    doc = await source_service.read_document(UUID(source), ref)
+    doc = await source_service.read_document(connected, ref)
     if not doc:
         return _text_result(json.dumps({"error": "not found"}))
     return _text_result(json.dumps(doc))
@@ -672,17 +674,17 @@ async def _search(args: dict) -> dict:
         ]
 
     # Connected sources: all of the user's own when unscoped, else the one named.
-    connected_id: UUID | None = None
+    connected: dict | None = None
     if source not in (None, source_service.NATIVE_FILES, source_service.NATIVE_SESSIONS):
-        if await _resolve_connected_source(source) is None:
+        connected = await _resolve_connected_source(source)
+        if connected is None:
             return _text_result(json.dumps({"error": "source not found"}))
-        connected_id = UUID(source)
-    if source is None or connected_id is not None:
+    if source is None or connected is not None:
         docs = await source_service.search_documents(
             workspace_id=workspace_id,
             user_id=user_id,
             query=query,
-            source_id=connected_id,
+            source=connected,
             limit=limit,
         )
         results += [

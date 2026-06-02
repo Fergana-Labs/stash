@@ -1,8 +1,8 @@
-"""Granola → source_documents indexer (scheduled pull).
+"""Granola → granola_notes indexer (scheduled pull).
 
-Lists the workspace's notes and upserts each (title + content + transcript) as a
-searchable document. Idempotent re-sync is handled upstream (content-hash dedupe
-+ soft-delete of vanished notes).
+Lists the workspace's notes and copies each (title + content + transcript) into
+granola_notes as a searchable row. Idempotent re-sync is handled upstream
+(content-hash dedupe + soft-delete of vanished notes).
 
 NOTE: the notes/transcript endpoint shapes below must be confirmed against
 docs.granola.ai. The indexer is inert until a Granola source is connected.
@@ -51,7 +51,8 @@ async def index_granola(source: dict) -> str | None:
                 body = note.get("content") or note.get("notes") or ""
                 transcript = note.get("transcript") or ""
                 content = f"# {title}\n\n{body}\n\n{transcript}".strip()
-                await source_service.upsert_document(
+                await source_service.upsert_content_document(
+                    table="granola_notes",
                     source_id=source_id,
                     workspace_id=workspace_id,
                     path=f"{note_id}",
@@ -65,6 +66,6 @@ async def index_granola(source: dict) -> str | None:
             if not cursor:
                 break
 
-    await source_service.soft_delete_missing(source_id, present)
+    await source_service.soft_delete_missing("granola_notes", source_id, present)
     logger.info("granola source %s: indexed %d note(s)", source_id, len(present))
     return None

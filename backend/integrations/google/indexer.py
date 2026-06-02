@@ -1,9 +1,10 @@
-"""Google Drive → source_documents indexer.
+"""Google Drive → drive_index indexer (index only; body fetched lazily).
 
 A Drive source's `external_ref` is a folder id ("root" for My Drive). We walk
-the folder tree, export Google Docs to markdown, and upsert each as a source
-document keyed by its Drive-relative path so the agent navigates it like a file
-system. Non-Doc files are listed (navigable) but not text-indexed.
+the folder tree and store an INDEX ROW per file — its Drive-relative path, name,
+and the Drive file id (`external_ref`). We never store the body; `read_source`
+calls `fetch_drive_content` at read time, exporting the Google Doc to markdown
+with the owner's token. The agent still navigates it like a file system.
 
 Listing a folder requires the `drive.readonly` scope (the connect scope is being
 widened from `drive.file`); a token without it simply sees fewer files.
@@ -12,6 +13,7 @@ widened from `drive.file`); a token without it simply sees fewer files.
 from __future__ import annotations
 
 import logging
+from datetime import datetime
 from uuid import UUID
 
 import httpx
@@ -28,6 +30,13 @@ MIME_GOOGLE_DOC = "application/vnd.google-apps.document"
 MAX_FOLDER_DEPTH = 8
 
 
+def _parse_time(value: str | None) -> datetime | None:
+    """Drive returns RFC3339 ('...Z'); the column is timestamptz."""
+    if not value:
+        return None
+    return datetime.fromisoformat(value.replace("Z", "+00:00"))
+
+
 async def _list_folder(client: httpx.AsyncClient, folder_id: str) -> list[dict]:
     """All non-trashed children of a Drive folder."""
     out: list[dict] = []
@@ -35,7 +44,7 @@ async def _list_folder(client: httpx.AsyncClient, folder_id: str) -> list[dict]:
     while True:
         params = {
             "q": f"'{folder_id}' in parents and trashed = false",
-            "fields": "nextPageToken, files(id, name, mimeType)",
+            "fields": "nextPageToken, files(id, name, mimeType, modifiedTime)",
             "pageSize": 200,
         }
         if page_token:
@@ -70,27 +79,33 @@ async def index_google_drive(source: dict) -> str | None:
                 if entry["mimeType"] == MIME_FOLDER:
                     await _walk(entry["id"], f"{path}/", depth + 1)
                     continue
-                content = None
-                if entry["mimeType"] == MIME_GOOGLE_DOC:
-                    export = await client.get(
-                        DRIVE_EXPORT_URL.format(file_id=entry["id"]),
-                        params={"mimeType": "text/markdown"},
-                    )
-                    if export.status_code == 200:
-                        content = export.text
-                await source_service.upsert_document(
+                await source_service.upsert_index_row(
+                    table="drive_index",
                     source_id=source_id,
                     workspace_id=workspace_id,
                     path=path,
                     name=name,
                     kind="file",
-                    content=content,
                     external_ref=entry["id"],
+                    external_updated_at=_parse_time(entry.get("modifiedTime")),
                 )
                 present.append(path)
 
         await _walk(root, "", 0)
 
-    await source_service.soft_delete_missing(source_id, present)
+    await source_service.soft_delete_missing("drive_index", source_id, present)
     logger.info("google drive source %s: indexed %d file(s)", root, len(present))
     return None
+
+
+async def fetch_drive_content(owner_user_id: UUID, file_id: str) -> str:
+    """Lazy read: export a Drive file to markdown with the owner's token.
+    Non-Doc files have no markdown export and come back empty."""
+    token = await get_valid_token(owner_user_id, "google")
+    headers = {"Authorization": f"Bearer {token}"}
+    async with httpx.AsyncClient(timeout=120.0, headers=headers) as client:
+        export = await client.get(
+            DRIVE_EXPORT_URL.format(file_id=file_id),
+            params={"mimeType": "text/markdown"},
+        )
+        return export.text if export.status_code == 200 else ""

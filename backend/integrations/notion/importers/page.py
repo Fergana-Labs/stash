@@ -6,7 +6,7 @@ toggles, bookmarks, images. Anything fancier falls back to its
 plain-text representation rather than failing.
 
 Reused by backend/integrations/notion/indexer.py to render connected Notion
-pages into source_documents. (Formerly also held the import-into-the-file-system
+pages into notion_index. (Formerly also held the import-into-the-file-system
 walk; that path was removed when Notion became a connected, indexed source.)
 """
 

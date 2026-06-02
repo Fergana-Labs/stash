@@ -1,8 +1,8 @@
-"""GitHub repo → source_documents indexer.
+"""GitHub repo → github_documents indexer.
 
 The repo is a *connected source*, kept separate from the native file system.
 We crawl the zipball (reusing the importer's streaming download + skip rules)
-and upsert each text file as a source document keyed by its repo-relative path,
+and copy each text file into github_documents keyed by its repo-relative path,
 so the agent navigates the repo like a file system via the source tools.
 
 Binary files are skipped — code and docs are text, and we don't want to push
@@ -71,7 +71,7 @@ async def _crawl_archive(
 
 
 async def index_github_repo(source: dict) -> str | None:
-    """Crawl a connected GitHub repo into source_documents. `source` is the
+    """Crawl a connected GitHub repo into github_documents. `source` is the
     shape from source_service.get_source_for_sync. Returns the sync cursor."""
     from uuid import UUID
 
@@ -92,7 +92,8 @@ async def index_github_repo(source: dict) -> str | None:
         raise RuntimeError(str(e))
 
     async def _on_text_file(rel: str, text: str) -> None:
-        await source_service.upsert_document(
+        await source_service.upsert_content_document(
+            table="github_documents",
             source_id=source_id,
             workspace_id=workspace_id,
             path=rel,
@@ -102,6 +103,6 @@ async def index_github_repo(source: dict) -> str | None:
         )
 
     present = await _crawl_archive(resolved.archive_url, resolved.headers, _on_text_file)
-    await source_service.soft_delete_missing(source_id, present)
+    await source_service.soft_delete_missing("github_documents", source_id, present)
     logger.info("github source %s: indexed %d file(s)", external_ref, len(present))
     return None

@@ -3,8 +3,8 @@
 `reconcile_due` (Beat) finds pull sources whose scheduled sync is due and
 dispatches `sync_source` for each. `sync_source` loads the source, runs the
 indexer registered for its type, and records sync status. Indexers crawl the
-upstream and upsert into source_documents (idempotent — content-hash dedupe +
-soft-delete of vanished paths).
+upstream and upsert into the per-integration tables (idempotent — content-hash
+dedupe + soft-delete of vanished paths).
 
 Push sources (Slack/Granola) stream via webhooks and don't appear here; their
 periodic safety re-backfill, if any, registers an indexer like the pull types.

@@ -127,14 +127,18 @@ async def _reconcile_files() -> int:
     return len(ids)
 
 
-async def _reconcile_source_documents() -> int:
-    # Connected-source documents (GitHub/Drive/Notion/Slack/Granola) get
-    # embedded after each sync flips embed_stale TRUE on changed rows.
+# Copied-content source tables get embedded after each sync flips embed_stale
+# TRUE on changed rows. Index-only tables (drive/notion) hold no content here —
+# their bodies are fetched lazily at read time, so they aren't embedded.
+_SOURCE_CONTENT_TABLES = ("github_documents", "slack_messages", "granola_notes")
+
+
+async def _reconcile_source_table(table: str) -> int:
     pool = get_pool()
     rows = await pool.fetch(
-        "SELECT id, content FROM source_documents "
-        "WHERE embed_stale AND deleted_at IS NULL "
-        "AND content IS NOT NULL AND content <> '' LIMIT $1",
+        f"SELECT id, content FROM {table} "
+        f"WHERE embed_stale AND deleted_at IS NULL "
+        f"AND content IS NOT NULL AND content <> '' LIMIT $1",
         BATCH_SIZE,
     )
     if not rows:
@@ -145,10 +149,17 @@ async def _reconcile_source_documents() -> int:
     if not vecs:
         return 0
     await pool.executemany(
-        "UPDATE source_documents SET embedding = $1, embed_stale = FALSE WHERE id = $2",
+        f"UPDATE {table} SET embedding = $1, embed_stale = FALSE WHERE id = $2",
         list(zip(vecs, ids)),
     )
     return len(ids)
+
+
+async def _reconcile_source_documents() -> int:
+    done = 0
+    for table in _SOURCE_CONTENT_TABLES:
+        done += await _reconcile_source_table(table)
+    return done
 
 
 async def _reconcile() -> int:

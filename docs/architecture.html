@@ -74,19 +74,19 @@ else                                                         → denied</pre>
   <table>
     <tr><th>Table</th><th>Key columns</th><th>Purpose</th></tr>
     <tr><td><code>workspace_sources</code></td><td>id, workspace_id, owner_user_id, source_type, external_ref, capability, sync_status, sync_cursor</td><td>Registry of connected sources (user-scoped). Native files/sessions are virtual.</td></tr>
-    <tr><td><code>source_documents</code> <span class="tag">current</span></td><td>source_id, path, name, kind, content, content_hash, embedding</td><td>Unified index for connected-source content. <span class="todo">Being split per integration ↓</span></td></tr>
     <tr><td><code>session_folders</code></td><td>id, workspace_id, owner_user_id, name (+ <code>sessions.session_folder_id</code>)</td><td>Shareable grouping for sessions.</td></tr>
   </table>
-  <h3>Per-integration storage <span class="tag">planned (C8)</span></h3>
+  <h3>Per-integration storage</h3>
+  <p>One table per integration, grouped by storage strategy. They share a navigation shape (<code>path</code>/<code>name</code>/<code>kind</code>/<code>deleted_at</code>) so the agent's list/read tools stay uniform; the copied-content tables add <code>content</code>/<code>content_hash</code>/<code>embedding</code>/<code>embed_stale</code>.</p>
   <table>
-    <tr><th>Integration</th><th>Table / store</th><th>Strategy</th></tr>
-    <tr><td>GitHub</td><td><code>github_documents</code></td><td>Repo tree copied in; navigable like a filesystem.</td></tr>
-    <tr><td>Google Drive</td><td><code>drive_index</code></td><td>Index only (path/name/external_ref); document data fetched <b>lazily</b> at read time via the owner's token.</td></tr>
-    <tr><td>Notion</td><td><code>notion_index</code></td><td>Index only; page/db data fetched lazily.</td></tr>
-    <tr><td>Slack</td><td><code>slack_messages</code></td><td>Full copy via Events-API webhook + backfill.</td></tr>
-    <tr><td>Granola</td><td><code>granola_notes</code></td><td>Full copy via webhook/scheduled pull.</td></tr>
+    <tr><th>Integration</th><th>Table</th><th>Strategy</th></tr>
+    <tr><td>GitHub</td><td><code>github_documents</code></td><td><b>Copied content.</b> Repo tree crawled in; navigable like a filesystem; FTS + embeddings.</td></tr>
+    <tr><td>Slack</td><td><code>slack_messages</code></td><td><b>Copied content.</b> Own columns (channel_id/channel_name/ts); Events-API webhook + backfill; FTS + embeddings.</td></tr>
+    <tr><td>Granola</td><td><code>granola_notes</code></td><td><b>Copied content.</b> Scheduled pull; FTS + embeddings.</td></tr>
+    <tr><td>Google Drive</td><td><code>drive_index</code></td><td><b>Index only.</b> Stores path/name + Drive file id; document body exported to markdown <b>lazily</b> at read time via the owner's token.</td></tr>
+    <tr><td>Notion</td><td><code>notion_index</code></td><td><b>Index only.</b> Stores path/name + Notion page id; page blocks rendered to markdown lazily at read time.</td></tr>
   </table>
-  <p class="note">Adding source content to a cartridge writes a point-in-time <b>snapshot</b> (Drive/Notion fetched+copied; Slack/Granola/GitHub copied from our tables) so the cartridge is self-contained and grantees never need their own connection.</p>
+  <p class="note">Search (FTS + embeddings) spans the copied-content tables; the index-only sources are navigable, not searched. <span class="todo">Planned:</span> a cartridge snapshot-on-add that copies a point-in-time body into the cartridge (Drive/Notion fetched, others copied from our tables) so the bundle stays self-contained and curl-able.</p>
 
   <h2>4. The agent surface</h2>
   <p>The <code>/ask</code> agent (a direct Anthropic tool-use loop) reads across sources through one source-aware tool set, scoped to <code>_current_user()</code> + the sharing rules above:</p>
@@ -110,8 +110,8 @@ search(query, source?)          FTS + vector across sources, owner/share scoped<
   </table>
 
   <h2>6. Status</h2>
-  <p><span class="ok">Shipped:</span> Cartridge rename; user-scoped UI (no workspace switcher/Members); the <code>shares</code> permission model + per-object/folder sharing; session folders; Agents view with the CLI/MCP/API install tab; connector sources (GitHub/Drive/Notion/Slack/Granola) on the unified store; cleanup of the legacy import UI.</p>
-  <p><span class="todo">Planned:</span> split <code>source_documents</code> into the per-integration tables above (lazy Drive/Notion, own tables for Slack/Granola), and the cartridge snapshot-on-add.</p>
+  <p><span class="ok">Shipped:</span> Cartridge rename; user-scoped UI (no workspace switcher/Members); the <code>shares</code> permission model + per-object/folder sharing; session folders; Agents view with the CLI/MCP/API install tab; per-integration source storage (copied content for GitHub/Slack/Granola, index-only + lazy read for Drive/Notion); cleanup of the legacy import UI.</p>
+  <p><span class="todo">Planned:</span> the cartridge snapshot-on-add (copy source content into a cartridge at bundle time).</p>
 </div>
 </body>
 </html>
