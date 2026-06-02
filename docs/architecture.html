@@ -86,7 +86,7 @@ else                                                         → denied</pre>
     <tr><td>Google Drive</td><td><code>drive_index</code></td><td><b>Index only.</b> Stores path/name + Drive file id; document body exported to markdown <b>lazily</b> at read time via the owner's token.</td></tr>
     <tr><td>Notion</td><td><code>notion_index</code></td><td><b>Index only.</b> Stores path/name + Notion page id; page blocks rendered to markdown lazily at read time.</td></tr>
   </table>
-  <p class="note">Search (FTS + embeddings) spans the copied-content tables; the index-only sources are navigable, not searched. <span class="todo">Planned:</span> a cartridge snapshot-on-add that copies a point-in-time body into the cartridge (Drive/Notion fetched, others copied from our tables) so the bundle stays self-contained and curl-able.</p>
+  <p class="note">Search (FTS + embeddings) spans the copied-content tables; the index-only sources are navigable, not searched. <b>Snapshot-on-add</b> (<code>POST /cartridges/{id}/snapshot-source</code>) copies a point-in-time body into the cartridge as a page — Drive/Notion fetched at add time, others copied from our tables — so the bundle stays self-contained and curl-able.</p>
 
   <h2>4. The agent surface</h2>
   <p>The <code>/ask</code> agent (a direct Anthropic tool-use loop) reads across sources through one source-aware tool set, scoped to <code>_current_user()</code> + the sharing rules above:</p>
@@ -102,7 +102,8 @@ search(query, source?)          FTS + vector across sources, owner/share scoped<
     <tr><td><code>POST /api/v1/workspaces/{ws}/sources</code></td><td>Add a connected source (begins indexing).</td></tr>
     <tr><td><code>POST /api/v1/workspaces/{ws}/sources/{id}/sync</code></td><td>Re-index a source now.</td></tr>
     <tr><td><code>POST /api/v1/integrations/slack/events</code></td><td>Slack Events-API webhook (signature-verified).</td></tr>
-    <tr><td><code>POST /api/v1/share</code> · <code>DELETE</code> · <code>GET</code></td><td>Share an object with a person by email; revoke; list shares.</td></tr>
+    <tr><td><code>POST /api/v1/share</code> · <code>DELETE</code> · <code>GET</code></td><td>Share an object with a person by email (a pending invite if they're not a user yet, converting on signup); revoke; list shares.</td></tr>
+    <tr><td><code>POST /api/v1/workspaces/{ws}/cartridges/{id}/snapshot-source</code></td><td>Copy a source document into a cartridge as a self-contained page.</td></tr>
     <tr><td><code>POST /api/v1/workspaces/{ws}/session-folders</code> · <code>/assign</code></td><td>Create a session folder; assign sessions.</td></tr>
     <tr><td><code>POST /api/v1/workspaces/{ws}/cartridges</code> · <code>/publish</code></td><td>Create / publish a cartridge bundle.</td></tr>
     <tr><td><code>GET /stashes/{slug}.md</code> · <code>.json</code></td><td>Agent-readable cartridge (curl without the CLI).</td></tr>
@@ -110,8 +111,7 @@ search(query, source?)          FTS + vector across sources, owner/share scoped<
   </table>
 
   <h2>6. Status</h2>
-  <p><span class="ok">Shipped:</span> Cartridge rename; user-scoped UI (no workspace switcher/Members); the <code>shares</code> permission model + per-object/folder sharing; session folders; Agents view with the CLI/MCP/API install tab; per-integration source storage (copied content for GitHub/Slack/Granola, index-only + lazy read for Drive/Notion); cleanup of the legacy import UI.</p>
-  <p><span class="todo">Planned:</span> the cartridge snapshot-on-add (copy source content into a cartridge at bundle time).</p>
+  <p><span class="ok">Shipped:</span> Cartridge rename; user-scoped UI (no workspace switcher/Members); the <code>shares</code> permission model + per-object/folder sharing, share-by-email with pending invites that convert on signup; session folders with a "By folder" view on the Sessions page; Agents view with the CLI/MCP/API install tab; per-integration source storage (copied content for GitHub/Slack/Granola, index-only + lazy read for Drive/Notion); cartridge snapshot-on-add for source content; cleanup of the legacy import UI.</p>
 </div>
 </body>
 </html>
