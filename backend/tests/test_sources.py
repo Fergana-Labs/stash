@@ -504,3 +504,62 @@ async def test_read_source_rejects_unowned_connected_source(client: AsyncClient)
     finally:
         agent_runtime._user_ctx.reset(utoken)
         agent_runtime._workspace_ctx.reset(wtoken)
+
+
+# --- cartridge snapshot-on-add ----------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_snapshot_source_into_cartridge_copies_lazy_content(client: AsyncClient, monkeypatch):
+    """Adding an index-only (Notion) source doc to a cartridge fetches its body
+    at add time and copies it in as a page, so the bundle is self-contained."""
+    from backend.integrations.notion import indexer
+
+    api_key, owner_id = await _register(client)
+    ws = await _create_workspace(client, api_key)
+
+    src = await source_service.create_source(
+        workspace_id=ws,
+        owner_user_id=owner_id,
+        source_type="notion",
+        external_ref="page-root",
+        display_name="Specs",
+    )
+    await source_service.upsert_index_row(
+        table="notion_index",
+        source_id=UUID(src["id"]),
+        workspace_id=ws,
+        path="Auth",
+        name="Auth",
+        kind="note",
+        external_ref="page-abc",
+    )
+
+    async def fake_fetch(owner, page_id):
+        return f"snapshot body for {page_id}"
+
+    monkeypatch.setattr(indexer, "fetch_notion_content", fake_fetch)
+
+    cartridge = await client.post(
+        f"/api/v1/workspaces/{ws}/cartridges",
+        json={"title": "Bundle", "public_permission": "read", "items": []},
+        headers=_auth(api_key),
+    )
+    assert cartridge.status_code == 201
+    cartridge_id = cartridge.json()["id"]
+
+    snap = await client.post(
+        f"/api/v1/workspaces/{ws}/cartridges/{cartridge_id}/snapshot-source",
+        json={"source_id": src["id"], "path": "Auth"},
+        headers=_auth(api_key),
+    )
+    assert snap.status_code == 201
+    page = snap.json()
+    assert page["name"] == "Auth"
+    # The body was copied in (a point-in-time snapshot), not left as a live ref.
+    assert "snapshot body for page-abc" in page["content_markdown"]
+
+    # And the page is now an item in the cartridge.
+    public = await client.get(f"/api/v1/cartridges/{cartridge.json()['slug']}")
+    item_ids = {i["object_id"] for i in public.json()["items"]}
+    assert page["id"] in item_ids

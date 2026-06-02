@@ -4,6 +4,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import PlainTextResponse
+from pydantic import BaseModel
 
 from ..auth import get_current_user, get_current_user_optional
 from ..config import settings
@@ -143,6 +144,37 @@ async def remove_external_cartridge(
     )
     if not deleted:
         raise HTTPException(status_code=404, detail="Forked Stash not found")
+
+
+class SnapshotSourceRequest(BaseModel):
+    source_id: UUID
+    path: str
+
+
+@ws_router.post(
+    "/{workspace_id}/cartridges/{cartridge_id}/snapshot-source",
+    response_model=PageResponse,
+    status_code=201,
+)
+async def snapshot_source(
+    workspace_id: UUID,
+    cartridge_id: UUID,
+    req: SnapshotSourceRequest,
+    current_user: dict = Depends(get_current_user),
+):
+    """Copy a point-in-time snapshot of one connected-source document into the
+    cartridge as a page, so the bundle stays self-contained and curl-able."""
+    if not await workspace_service.is_member(workspace_id, current_user["id"]):
+        raise HTTPException(status_code=403, detail="Not a workspace member")
+    try:
+        page = await cartridge_service.snapshot_source_into_cartridge(
+            cartridge_id, current_user["id"], source_id=req.source_id, path=req.path
+        )
+    except PermissionError:
+        raise HTTPException(status_code=403, detail="Not allowed to edit this cartridge")
+    if page is None:
+        raise HTTPException(status_code=404, detail="Source document not found")
+    return PageResponse(**page)
 
 
 @ws_router.get("/{workspace_id}/cartridges/objects/{object_type}/{object_id}")

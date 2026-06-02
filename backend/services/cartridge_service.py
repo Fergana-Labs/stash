@@ -14,6 +14,7 @@ from . import (
     files_tree_service,
     linear_ticket_service,
     permission_service,
+    source_service,
     storage_service,
     workspace_service,
 )
@@ -1060,6 +1061,36 @@ async def create_shared_page(
         name,
     )
     return page
+
+
+async def snapshot_source_into_cartridge(
+    cartridge_id: UUID,
+    user_id: UUID,
+    *,
+    source_id: UUID,
+    path: str,
+) -> dict | None:
+    """Copy a point-in-time snapshot of one connected-source document into the
+    cartridge as a native page, so the bundle stays self-contained and curl-able
+    (the grantee never needs their own connection). Drive/Notion are fetched
+    lazily at this moment; Slack/Granola/GitHub are copied from our tables.
+
+    Returns None if the user doesn't own the source or the document is gone."""
+    source = await source_service.get_owned_source(source_id, user_id)
+    if source is None:
+        return None
+    doc = await source_service.read_document(source, path)
+    if doc is None:
+        return None
+    return await create_shared_page(
+        cartridge_id,
+        user_id,
+        name=doc["name"],
+        content=doc["content"],
+        content_type="markdown",
+        content_html="",
+        html_layout="responsive",
+    )
 
 
 async def inline_items(stash: dict, viewer_id: UUID | None = None) -> list[dict]:
