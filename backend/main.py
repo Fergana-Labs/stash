@@ -16,6 +16,7 @@ from .integrations.router import router as integrations_router
 from .middleware import limiter
 from .routers import (
     admin,
+    agent_chat,
     aggregate,
     analytics,
     cartridge_invites,
@@ -118,6 +119,7 @@ app.include_router(publish.router)
 app.include_router(tasks.router)
 app.include_router(integrations_router)
 app.include_router(sources.router)
+app.include_router(agent_chat.router)
 app.include_router(session_folders.router)
 app.include_router(shares.router)
 app.include_router(webhooks.router)

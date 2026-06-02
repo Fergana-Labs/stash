@@ -13,15 +13,14 @@ tools via Anthropic's native tool-use API: model returns tool_use blocks
 → we execute Python functions in-process → send tool_result back → loop
 until end_turn.
 
-Yields SSE-encoded events: `text` (assistant text delta), `tool` (a tool call
-with its complete args, emitted once the input JSON is fully accumulated),
-`tool_result` (that tool finished; `ok` says whether it succeeded), and a final
-`end` marker.
+Yields structured event dicts (the caller SSE-encodes them): `text` (assistant
+text delta), `tool` (a tool call with its complete args, emitted once the input
+JSON is fully accumulated), `tool_result` (that tool finished; `ok` says whether
+it succeeded), and a final `end` marker.
 """
 
 from __future__ import annotations
 
-import json
 import logging
 from collections.abc import AsyncIterator
 from uuid import UUID
@@ -44,10 +43,6 @@ def _get_client() -> AsyncAnthropic:
             raise RuntimeError("ANTHROPIC_API_KEY is not set")
         _client = AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY)
     return _client
-
-
-def _sse(event: dict) -> str:
-    return f"data: {json.dumps(event)}\n\n"
 
 
 def _anthropic_tools(tool_names: tuple[str, ...]) -> list[dict]:
@@ -80,30 +75,34 @@ async def stream_tool_loop(
     *,
     tier: ModelTier,
     system: str,
-    prompt: str,
+    prompt: str | None = None,
+    history: list[dict] | None = None,
     workspace_id: UUID,
     user_id: UUID | None = None,
     tool_set: tuple[str, ...],
     max_turns: int = 8,
-) -> AsyncIterator[str]:
-    """Run an Anthropic tool-use loop and yield SSE chunks."""
+) -> AsyncIterator[dict]:
+    """Run an Anthropic tool-use loop, yielding structured events (dicts):
+    `text` / `tool` / `tool_result` / `end`. The caller is responsible for
+    SSE-encoding. Pass `history` (a full [{role, content}] conversation) for a
+    multi-turn chat, or `prompt` for a single user turn."""
     if not settings.ANTHROPIC_API_KEY:
-        yield _sse(
-            {
-                "type": "text",
-                "delta": (
-                    "Ask-the-workspace needs ANTHROPIC_API_KEY set on the backend. "
-                    "Drop a key into backend/.env and restart."
-                ),
-            }
-        )
-        yield _sse({"type": "end"})
+        yield {
+            "type": "text",
+            "delta": (
+                "Ask-the-workspace needs ANTHROPIC_API_KEY set on the backend. "
+                "Drop a key into backend/.env and restart."
+            ),
+        }
+        yield {"type": "end"}
         return
 
     client = _get_client()
     model = _model_for(tier)
     tools = _anthropic_tools(tool_set)
-    messages: list[dict] = [{"role": "user", "content": prompt}]
+    messages: list[dict] = (
+        [dict(m) for m in history] if history else [{"role": "user", "content": prompt or ""}]
+    )
 
     workspace_token = _workspace_ctx.set(workspace_id)
     user_token = _user_ctx.set(user_id)
@@ -141,18 +140,16 @@ async def stream_tool_loop(
                         if turn_idx > 0 and not produced_text:
                             delta = "\n\n" + delta
                         produced_text = True
-                        yield _sse({"type": "text", "delta": delta})
+                        yield {"type": "text", "delta": delta}
                     elif etype == "content_block_stop":
                         block = getattr(event, "content_block", None)
                         if block is not None and getattr(block, "type", None) == "tool_use":
-                            yield _sse(
-                                {
-                                    "type": "tool",
-                                    "id": block.id,
-                                    "name": block.name,
-                                    "args": block.input or {},
-                                }
-                            )
+                            yield {
+                                "type": "tool",
+                                "id": block.id,
+                                "name": block.name,
+                                "args": block.input or {},
+                            }
 
                 final = await stream.get_final_message()
 
@@ -232,13 +229,11 @@ async def stream_tool_loop(
                 # a slow tool (e.g. a lazy Drive/Notion fetch) runs — which reads
                 # as a hang. The flag lets the UI drop a citation for a tool that
                 # errored rather than claim it grounded the answer.
-                yield _sse(
-                    {"type": "tool_result", "id": use["id"], "name": use["name"], "ok": ok}
-                )
+                yield {"type": "tool_result", "id": use["id"], "name": use["name"], "ok": ok}
 
             messages.append({"role": "user", "content": tool_results})
     finally:
         _user_ctx.reset(user_token)
         _workspace_ctx.reset(workspace_token)
 
-    yield _sse({"type": "end"})
+    yield {"type": "end"}
