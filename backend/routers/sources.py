@@ -60,6 +60,63 @@ async def list_sources(workspace_id: UUID, current_user: dict = Depends(get_curr
     return {"sources": await source_service.list_sources(workspace_id, current_user["id"])}
 
 
+@router.get("/search")
+async def search_sources(
+    workspace_id: UUID,
+    q: str,
+    source: str | None = None,
+    limit: int = 20,
+    current_user: dict = Depends(get_current_user),
+):
+    """Unified search. Omit `source` to search everything the user can see
+    (files + sessions + their connected sources), or pass a handle to scope."""
+    await _require_member(workspace_id, current_user["id"])
+    results = await source_service.search_all(
+        workspace_id, current_user["id"], q, source=source, limit=limit
+    )
+    if results is None:
+        raise HTTPException(status_code=404, detail="Source not found")
+    return {"results": results}
+
+
+@router.get("/{source}/entries")
+async def list_source_entries(
+    workspace_id: UUID,
+    source: str,
+    path: str = "",
+    current_user: dict = Depends(get_current_user),
+):
+    """List a source's entries like a file system. `source` is 'files',
+    'sessions', or a connected-source id; `path` scopes connected sources."""
+    await _require_member(workspace_id, current_user["id"])
+    entries = await source_service.source_entries(
+        workspace_id, current_user["id"], source, prefix=path
+    )
+    if entries is None:
+        raise HTTPException(status_code=404, detail="Source not found")
+    return {"entries": entries}
+
+
+@router.get("/{source}/doc")
+async def read_source_doc(
+    workspace_id: UUID,
+    source: str,
+    ref: str,
+    current_user: dict = Depends(get_current_user),
+):
+    """Read one document. `ref` is a page id (files), a session id (sessions),
+    or a document path (connected sources)."""
+    await _require_member(workspace_id, current_user["id"])
+    source_ok, doc = await source_service.source_document(
+        workspace_id, current_user["id"], source, ref
+    )
+    if not source_ok:
+        raise HTTPException(status_code=404, detail="Source not found")
+    if doc is None:
+        raise HTTPException(status_code=404, detail="Document not found")
+    return doc
+
+
 @router.post("")
 async def add_source(
     workspace_id: UUID,

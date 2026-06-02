@@ -563,3 +563,121 @@ async def test_snapshot_source_into_cartridge_copies_lazy_content(client: AsyncC
     public = await client.get(f"/api/v1/cartridges/{cartridge.json()['slug']}")
     item_ids = {i["object_id"] for i in public.json()["items"]}
     assert page["id"] in item_ids
+
+
+# --- VFS REST endpoints (browse / read / search) ----------------------------
+
+
+@pytest.mark.asyncio
+async def test_vfs_endpoints_browse_read_search(client: AsyncClient):
+    """The unified VFS surface the agent uses is also reachable over REST so the
+    CLI + MCP can browse, read, and search sources the same way."""
+    api_key, owner_id = await _register(client)
+    ws = await _create_workspace(client, api_key)
+
+    page = await client.post(
+        f"/api/v1/workspaces/{ws}/pages/new",
+        json={"name": "Runbook", "content": "# Deploy\nrun the migration first"},
+        headers=_auth(api_key),
+    )
+    assert page.status_code == 201
+    page_id = page.json()["id"]
+
+    src = await source_service.create_source(
+        workspace_id=ws,
+        owner_user_id=owner_id,
+        source_type="github_repo",
+        external_ref="acme/specs",
+        display_name="Specs",
+    )
+    await source_service.upsert_content_document(
+        table="github_documents",
+        source_id=UUID(src["id"]),
+        workspace_id=ws,
+        path="specs/auth.md",
+        name="auth.md",
+        content="auth spec: rotate tokens hourly",
+    )
+
+    # Browse a connected source like a file system.
+    entries = await client.get(
+        f"/api/v1/workspaces/{ws}/sources/{src['id']}/entries", headers=_auth(api_key)
+    )
+    assert entries.status_code == 200
+    assert any(e["path"] == "specs/auth.md" for e in entries.json()["entries"])
+
+    # Browse native files.
+    files = await client.get(
+        f"/api/v1/workspaces/{ws}/sources/{source_service.NATIVE_FILES}/entries",
+        headers=_auth(api_key),
+    )
+    assert any(e["name"] == "Runbook" for e in files.json()["entries"])
+
+    # Read a connected-source document and a native page.
+    doc = await client.get(
+        f"/api/v1/workspaces/{ws}/sources/{src['id']}/doc",
+        params={"ref": "specs/auth.md"},
+        headers=_auth(api_key),
+    )
+    assert doc.status_code == 200
+    assert "rotate tokens hourly" in doc.json()["content"]
+
+    native_doc = await client.get(
+        f"/api/v1/workspaces/{ws}/sources/{source_service.NATIVE_FILES}/doc",
+        params={"ref": page_id},
+        headers=_auth(api_key),
+    )
+    assert native_doc.status_code == 200
+    assert "migration" in native_doc.json()["content"]
+
+    # Unscoped search spans native pages + the connected source.
+    everything = await client.get(
+        f"/api/v1/workspaces/{ws}/sources/search", params={"q": "migration"}, headers=_auth(api_key)
+    )
+    assert everything.status_code == 200
+    assert any(h["source"] == source_service.NATIVE_FILES for h in everything.json()["results"])
+
+    # Scoped search hits only the named source.
+    scoped = await client.get(
+        f"/api/v1/workspaces/{ws}/sources/search",
+        params={"q": "rotate tokens", "source": src["id"]},
+        headers=_auth(api_key),
+    )
+    assert any(h["ref"] == "specs/auth.md" for h in scoped.json()["results"])
+
+
+@pytest.mark.asyncio
+async def test_vfs_endpoints_reject_unowned_source(client: AsyncClient):
+    """A member can't browse / read / search another member's connected source —
+    every VFS endpoint resolves it as a not-found source."""
+    owner_key, owner_id = await _register(client, "owner")
+    ws = await _create_workspace(client, owner_key)
+    src = await source_service.create_source(
+        workspace_id=ws,
+        owner_user_id=owner_id,
+        source_type="github_repo",
+        external_ref="acme/private",
+        display_name="Private",
+    )
+
+    # A second member of the same workspace.
+    other_key, _ = await _register(client, "other")
+    invite = await client.post(
+        f"/api/v1/workspaces/{ws}/invite-tokens", json={"max_uses": 1}, headers=_auth(owner_key)
+    )
+    token = invite.json()["token"]
+    await client.post(
+        "/api/v1/workspaces/redeem-invite", json={"token": token}, headers=_auth(other_key)
+    )
+
+    for path, params in (
+        (f"/api/v1/workspaces/{ws}/sources/{src['id']}/entries", {}),
+        (f"/api/v1/workspaces/{ws}/sources/{src['id']}/doc", {"ref": "x"}),
+        (f"/api/v1/workspaces/{ws}/sources/search", {"q": "anything", "source": src["id"]}),
+    ):
+        resp = await client.get(path, params=params, headers=_auth(other_key))
+        assert resp.status_code == 404, path
+
+    # The owner still does not see it leak into the other member's listing.
+    other_listing = await client.get(f"/api/v1/workspaces/{ws}/sources", headers=_auth(other_key))
+    assert src["id"] not in {s["source"] for s in other_listing.json()["sources"]}

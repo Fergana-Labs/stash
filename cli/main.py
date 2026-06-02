@@ -1922,33 +1922,6 @@ def files_pages(
             console.print(f"  {label}{ws}  (id: {str(p['id'])[:8]})")
 
 
-@files_app.command("search")
-def files_search(
-    query: str = typer.Argument(..., help="Search query."),
-    workspace_id: str = typer.Option(None, "--ws"),
-    limit: int = typer.Option(20, "-n", "--limit"),
-    as_json: bool = typer.Option(False, "--json"),
-):
-    """Full-text search across pages in a workspace."""
-    ws = workspace_id or _resolve_workspace()
-    with _client() as c:
-        try:
-            data = c.search_pages(ws, query, limit=limit)
-        except CartridgeError as e:
-            _err(e)
-    if _use_json(as_json):
-        output_json(data)
-        return
-    if not data:
-        console.print("[dim]No matching pages.[/dim]")
-        return
-    for page in data:
-        snippet = (page.get("content_markdown") or "")[:200].replace("\n", " ")
-        console.print(f"  [bold]{page['name']}[/bold]  [dim](page: {str(page['id'])[:8]})[/dim]")
-        if snippet:
-            console.print(f"    {snippet}...")
-
-
 def _markdown_snippet(file_resp: dict) -> str:
     """Build an image or link markdown snippet from an uploaded FileResponse."""
     name = file_resp["name"]
@@ -2321,30 +2294,6 @@ def hist_query(
             )
 
 
-@hist_app.command("search")
-def hist_search(
-    query: str = typer.Argument(...),
-    workspace_id: str = typer.Option(None, "--ws"),
-    limit: int = typer.Option(50, "-n", "--limit"),
-    as_json: bool = typer.Option(False, "--json"),
-):
-    """Full-text search on events in a workspace."""
-    telemetry.record("history.search")
-    ws = workspace_id or _resolve_workspace()
-    with _client() as c:
-        try:
-            data = c.search_events(ws, query, limit=limit)
-        except CartridgeError as e:
-            _err(e)
-    if _use_json(as_json):
-        output_json(data)
-    else:
-        for ev in data:
-            console.print(
-                f"  [{ev['created_at'][:19]}] {ev['agent_name']}/{ev['event_type']}: {ev['content'][:200]}"
-            )
-
-
 @hist_app.command("transcript")
 def hist_transcript(
     session_id: str = typer.Argument(...),
@@ -2629,6 +2578,189 @@ def hist_purge(
         except CartridgeError as e:
             _err(e)
     console.print("[green]Session permanently deleted.[/green]")
+
+
+# ===========================================================================
+# Sources — unified VFS over native files/sessions + connected sources
+# ===========================================================================
+
+sources_app = typer.Typer(
+    help="Sources — browse, read, and search files, sessions, and connected sources."
+)
+app.add_typer(sources_app, name="sources")
+
+
+def _print_search(query: str, source: str, workspace_id: str, limit: int, as_json: bool) -> None:
+    """Shared body for `stash search` and `stash sources search`."""
+    telemetry.record("sources.search")
+    ws = workspace_id or _resolve_workspace()
+    with _client() as c:
+        try:
+            data = c.search_sources(ws, query, source=source or None, limit=limit)
+        except CartridgeError as e:
+            _err(e)
+    if _use_json(as_json):
+        output_json(data)
+        return
+    if not data:
+        console.print("[dim]No matches.[/dim]")
+        return
+    for hit in data:
+        label = hit.get("source_name") or hit.get("source")
+        name = hit.get("name") or hit.get("ref") or ""
+        console.print(f"  [bold]{name}[/bold]  [dim]({label}: {hit.get('ref')})[/dim]")
+        snippet = (hit.get("snippet") or "").replace("\n", " ").strip()
+        if snippet:
+            console.print(f"    {snippet}")
+
+
+@app.command("search")
+def search(
+    query: str = typer.Argument(..., help="Search query."),
+    source: str = typer.Option(
+        "", "--source", help="Scope to one source handle (omit to search everything)."
+    ),
+    workspace_id: str = typer.Option(None, "--ws"),
+    limit: int = typer.Option(20, "-n", "--limit"),
+    as_json: bool = typer.Option(False, "--json"),
+):
+    """Search everything you can see — files, sessions, and connected sources."""
+    _print_search(query, source, workspace_id, limit, as_json)
+
+
+@sources_app.command("ls")
+def sources_ls(
+    workspace_id: str = typer.Option(None, "--ws"), as_json: bool = typer.Option(False, "--json")
+):
+    """List every source you can read here."""
+    ws = workspace_id or _resolve_workspace()
+    with _client() as c:
+        try:
+            data = c.list_sources(ws)
+        except CartridgeError as e:
+            _err(e)
+    if _use_json(as_json):
+        output_json(data)
+        return
+    for s in data:
+        console.print(
+            f"  [bold]{s['display_name']}[/bold]  [dim]({s['type']}, {s['capability']}) "
+            f"→ {s['source']}[/dim]"
+        )
+
+
+@sources_app.command("add")
+def sources_add(
+    source_type: str = typer.Argument(
+        ..., help="github_repo | google_drive | notion | slack | granola"
+    ),
+    ref: str = typer.Option("", "--ref", help="external_ref, e.g. a repo 'owner/name'."),
+    name: str = typer.Option("", "--name", help="Display name."),
+    workspace_id: str = typer.Option(None, "--ws"),
+    as_json: bool = typer.Option(False, "--json"),
+):
+    """Connect a source. Slack/Granola resolve their ref from your token."""
+    ws = workspace_id or _resolve_workspace()
+    with _client() as c:
+        try:
+            data = c.add_source(ws, source_type, external_ref=ref or None, display_name=name or None)
+        except CartridgeError as e:
+            _err(e)
+    if _use_json(as_json):
+        output_json(data)
+        return
+    console.print(f"[green]Connected[/green] {data['display_name']}  [dim]→ {data['id']}[/dim]")
+
+
+@sources_app.command("sync")
+def sources_sync(
+    source_id: str = typer.Argument(...),
+    workspace_id: str = typer.Option(None, "--ws"),
+    as_json: bool = typer.Option(False, "--json"),
+):
+    """Trigger an immediate re-index of a connected source you own."""
+    ws = workspace_id or _resolve_workspace()
+    with _client() as c:
+        try:
+            data = c.sync_source(ws, source_id)
+        except CartridgeError as e:
+            _err(e)
+    if _use_json(as_json):
+        output_json(data)
+        return
+    console.print(f"[green]Sync queued[/green]  [dim]task: {data.get('task_id')}[/dim]")
+
+
+@sources_app.command("rm")
+def sources_rm(
+    source_id: str = typer.Argument(...),
+    workspace_id: str = typer.Option(None, "--ws"),
+):
+    """Disconnect a source you own (its indexed documents cascade away)."""
+    ws = workspace_id or _resolve_workspace()
+    with _client() as c:
+        try:
+            c.delete_source(ws, source_id)
+        except CartridgeError as e:
+            _err(e)
+    console.print("[green]Source removed.[/green]")
+
+
+@sources_app.command("browse")
+def sources_browse(
+    source: str = typer.Argument(..., help="A source handle from `stash sources ls`."),
+    path: str = typer.Argument("", help="Path prefix (connected sources only)."),
+    workspace_id: str = typer.Option(None, "--ws"),
+    as_json: bool = typer.Option(False, "--json"),
+):
+    """List a source's entries like a file system."""
+    ws = workspace_id or _resolve_workspace()
+    with _client() as c:
+        try:
+            data = c.list_source_entries(ws, source, path=path)
+        except CartridgeError as e:
+            _err(e)
+    if _use_json(as_json):
+        output_json(data)
+        return
+    if not data:
+        console.print("[dim]Empty.[/dim]")
+        return
+    for entry in data:
+        ref = entry.get("path") or entry.get("id")
+        console.print(f"  [{entry.get('kind', 'file')}] {entry['name']}  [dim]({ref})[/dim]")
+
+
+@sources_app.command("read")
+def sources_read(
+    source: str = typer.Argument(..., help="A source handle from `stash sources ls`."),
+    ref: str = typer.Argument(..., help="Page id (files), session id (sessions), or doc path."),
+    workspace_id: str = typer.Option(None, "--ws"),
+    as_json: bool = typer.Option(False, "--json"),
+):
+    """Read one document from a source."""
+    ws = workspace_id or _resolve_workspace()
+    with _client() as c:
+        try:
+            data = c.read_source_doc(ws, source, ref)
+        except CartridgeError as e:
+            _err(e)
+    if _use_json(as_json):
+        output_json(data)
+        return
+    console.print(data.get("content") or data.get("transcript") or "")
+
+
+@sources_app.command("search")
+def sources_search(
+    query: str = typer.Argument(...),
+    source: str = typer.Option("", "--source", help="Scope to one source handle."),
+    workspace_id: str = typer.Option(None, "--ws"),
+    limit: int = typer.Option(20, "-n", "--limit"),
+    as_json: bool = typer.Option(False, "--json"),
+):
+    """Search across sources (alias of `stash search`)."""
+    _print_search(query, source, workspace_id, limit, as_json)
 
 
 # ===========================================================================

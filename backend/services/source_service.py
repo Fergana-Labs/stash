@@ -14,9 +14,10 @@ This module owns:
   the provider at read time. Every table shares the navigation shape
   (path/name/kind/deleted_at) so the agent's list/read tools stay uniform.
 
-Native adapters (files, sessions) live in the source tools in agent_runtime and
-delegate to files_tree_service / memory_service; this module is the connected-
-source half plus `list_sources`, which composes both.
+This module also owns the unified VFS surface (`source_entries`, `source_document`,
+`search_all`) over BOTH native and connected sources — the single codepath the
+agent tools and the REST endpoints both call. Native reads delegate to
+files_tree_service / memory_service (imported lazily to avoid an import cycle).
 """
 
 from __future__ import annotations
@@ -495,3 +496,145 @@ async def list_sources(workspace_id: UUID, user_id: UUID) -> list[dict]:
             }
         )
     return sources
+
+
+# --- unified VFS over native + connected sources ----------------------------
+
+
+async def _resolve_connected(source: str, user_id: UUID) -> dict | None:
+    """A non-native handle is a workspace_sources id, resolved only if `user_id`
+    owns it. Returns None for unknown / not-owned (callers surface a not-found,
+    never another user's source)."""
+    try:
+        source_id = UUID(source)
+    except ValueError:
+        return None
+    return await get_owned_source(source_id, user_id)
+
+
+async def source_entries(
+    workspace_id: UUID, user_id: UUID, source: str, prefix: str = ""
+) -> list[dict] | None:
+    """List a source's entries like a file system. `source` is a handle from
+    `list_sources` ('files', 'sessions', or a connected-source id); `prefix`
+    scopes connected sources to a path. Returns None for an unknown source."""
+    if source == NATIVE_FILES:
+        from .files_tree_service import list_workspace_pages
+
+        pages = await list_workspace_pages(workspace_id, user_id)
+        return [{"id": str(p["id"]), "name": p["name"], "kind": "page"} for p in pages]
+
+    if source == NATIVE_SESSIONS:
+        from .memory_service import list_workspace_sessions
+
+        sessions = await list_workspace_sessions(workspace_id, user_id)
+        return [
+            {"id": s["session_id"], "name": s.get("agent_name") or "session", "kind": "session"}
+            for s in sessions
+        ]
+
+    connected = await _resolve_connected(source, user_id)
+    if connected is None:
+        return None
+    return await list_documents(connected, prefix=prefix)
+
+
+async def source_document(
+    workspace_id: UUID, user_id: UUID, source: str, ref: str
+) -> tuple[bool, dict | None]:
+    """Read one document. `ref` is a page id (files), a session id (sessions),
+    or a document path (connected sources). Returns `(source_ok, doc)`:
+    `source_ok` is False when the handle is unknown / not owned, and `doc` is
+    None when the source is valid but the document is missing — callers keep the
+    two not-found cases distinct (an unowned source must never look like a typo)."""
+    if source == NATIVE_FILES:
+        from .files_tree_service import get_page
+
+        page = await get_page(UUID(ref), workspace_id, user_id)
+        if not page:
+            return True, None
+        return True, {
+            "name": page["name"],
+            "content": page.get("content_markdown") or page.get("content_html") or "",
+        }
+
+    if source == NATIVE_SESSIONS:
+        from .memory_service import read_session_events
+
+        events = await read_session_events(workspace_id, ref, user_id)
+        transcript = "\n".join(
+            f"[{e.get('event_type')}] {(e.get('content') or '')[:2000]}" for e in events
+        )
+        return True, {"session": ref, "transcript": transcript[:8000]}
+
+    connected = await _resolve_connected(source, user_id)
+    if connected is None:
+        return False, None
+    return True, await read_document(connected, ref)
+
+
+async def search_all(
+    workspace_id: UUID,
+    user_id: UUID,
+    query: str,
+    source: str | None = None,
+    limit: int = 20,
+) -> list[dict] | None:
+    """Search across sources. Omit `source` to search everything the user can
+    see (native files + sessions + their connected sources), or pass a handle to
+    scope to one. Returns None when a named source is unknown / not owned."""
+    results: list[dict] = []
+
+    if source in (None, NATIVE_SESSIONS):
+        from .memory_service import search_workspace_events
+
+        events = await search_workspace_events(workspace_id, user_id, query, limit=limit)
+        results += [
+            {
+                "source": NATIVE_SESSIONS,
+                "ref": e.get("session_id"),
+                "snippet": (e.get("content") or "")[:300],
+            }
+            for e in events
+        ]
+
+    if source in (None, NATIVE_FILES):
+        from .files_tree_service import search_pages_fts
+
+        pages = await search_pages_fts(workspace_id, query, limit=limit, user_id=user_id)
+        results += [
+            {
+                "source": NATIVE_FILES,
+                "ref": str(p["id"]),
+                "name": p["name"],
+                "snippet": (p.get("search_text") or p.get("content_markdown") or "")[:300],
+            }
+            for p in pages
+        ]
+
+    # Connected sources: all of the user's own when unscoped, else the one named.
+    connected: dict | None = None
+    if source not in (None, NATIVE_FILES, NATIVE_SESSIONS):
+        connected = await _resolve_connected(source, user_id)
+        if connected is None:
+            return None
+    if source is None or connected is not None:
+        docs = await search_documents(
+            workspace_id=workspace_id,
+            user_id=user_id,
+            query=query,
+            source=connected,
+            limit=limit,
+        )
+        results += [
+            {
+                "source": d["source_id"],
+                "source_name": d["source_name"],
+                "ref": d["path"],
+                "name": d["name"],
+                "snippet": d["snippet"],
+            }
+            for d in docs
+        ]
+
+    return results

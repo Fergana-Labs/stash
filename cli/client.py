@@ -332,14 +332,6 @@ class CartridgeClient:
     def list_pages(self, workspace_id: str) -> list:
         return self._list(f"/api/v1/workspaces/{workspace_id}/pages", "pages")
 
-    def search_pages(self, workspace_id: str, query: str, limit: int = 20) -> list:
-        return self._list(
-            f"/api/v1/workspaces/{workspace_id}/pages/search",
-            "pages",
-            q=query,
-            limit=limit,
-        )
-
     def get_page(self, workspace_id: str, page_id: str) -> dict:
         return self._get(f"/api/v1/workspaces/{workspace_id}/pages/{page_id}")
 
@@ -412,14 +404,6 @@ class CartridgeClient:
         if before:
             params["before"] = before
         return self._list(f"/api/v1/workspaces/{workspace_id}/sessions/events", "events", **params)
-
-    def search_events(self, workspace_id: str, query: str, limit: int = 50) -> list:
-        return self._list(
-            f"/api/v1/workspaces/{workspace_id}/sessions/events/search",
-            "events",
-            q=query,
-            limit=limit,
-        )
 
     def all_events(
         self,
@@ -537,6 +521,47 @@ class CartridgeClient:
             "GET",
             f"/api/v1/workspaces/{workspace_id}/files/{file_id}/download",
         ).content
+
+    # --- Sources (unified VFS: native files/sessions + connected sources) ---
+
+    def list_sources(self, workspace_id: str) -> list:
+        return self._list(f"/api/v1/workspaces/{workspace_id}/sources", "sources")
+
+    def add_source(
+        self,
+        workspace_id: str,
+        source_type: str,
+        external_ref: str | None = None,
+        display_name: str | None = None,
+    ) -> dict:
+        body: dict = {"source_type": source_type}
+        if external_ref:
+            body["external_ref"] = external_ref
+        if display_name:
+            body["display_name"] = display_name
+        return self._post(f"/api/v1/workspaces/{workspace_id}/sources", json=body)
+
+    def sync_source(self, workspace_id: str, source_id: str) -> dict:
+        return self._post(f"/api/v1/workspaces/{workspace_id}/sources/{source_id}/sync")
+
+    def delete_source(self, workspace_id: str, source_id: str) -> None:
+        self._delete(f"/api/v1/workspaces/{workspace_id}/sources/{source_id}")
+
+    def list_source_entries(self, workspace_id: str, source: str, path: str = "") -> list:
+        return self._list(
+            f"/api/v1/workspaces/{workspace_id}/sources/{source}/entries", "entries", path=path
+        )
+
+    def read_source_doc(self, workspace_id: str, source: str, ref: str) -> dict:
+        return self._get(f"/api/v1/workspaces/{workspace_id}/sources/{source}/doc", ref=ref)
+
+    def search_sources(
+        self, workspace_id: str, query: str, source: str | None = None, limit: int = 20
+    ) -> list:
+        params: dict = {"q": query, "limit": limit}
+        if source:
+            params["source"] = source
+        return self._list(f"/api/v1/workspaces/{workspace_id}/sources/search", "results", **params)
 
     # --- Tables ---
 

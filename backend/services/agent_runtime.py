@@ -512,17 +512,6 @@ async def _delete_cartridge(args: dict) -> dict:
 # user-scoping guard.
 
 
-async def _resolve_connected_source(handle: str) -> dict | None:
-    """A non-native handle is a workspace_sources id — resolved only if the
-    current user owns it. Returns None for unknown/not-owned (callers surface
-    a not-found, never another user's source)."""
-    try:
-        source_id = UUID(handle)
-    except ValueError:
-        return None
-    return await source_service.get_owned_source(source_id, _current_user())
-
-
 @tool(
     "list_sources",
     "List every source this user can read: native 'files' and 'sessions', plus "
@@ -550,27 +539,11 @@ async def _list_sources(args: dict) -> dict:
     },
 )
 async def _list_source(args: dict) -> dict:
-    source = args.get("source", "")
-    workspace_id = _current_workspace()
-    user_id = _current_user()
-
-    if source == source_service.NATIVE_FILES:
-        pages = await files_tree_service.list_workspace_pages(workspace_id, user_id)
-        out = [{"id": str(p["id"]), "name": p["name"], "kind": "page"} for p in pages]
-        return _text_result(json.dumps(out))
-
-    if source == source_service.NATIVE_SESSIONS:
-        sessions = await memory_service.list_workspace_sessions(workspace_id, user_id)
-        out = [
-            {"id": s["session_id"], "name": s.get("agent_name") or "session", "kind": "session"}
-            for s in sessions
-        ]
-        return _text_result(json.dumps(out))
-
-    connected = await _resolve_connected_source(source)
-    if connected is None:
+    entries = await source_service.source_entries(
+        _current_workspace(), _current_user(), args.get("source", ""), prefix=args.get("path") or ""
+    )
+    if entries is None:
         return _text_result(json.dumps({"error": "source not found"}))
-    entries = await source_service.list_documents(connected, prefix=args.get("path") or "")
     return _text_result(json.dumps(entries))
 
 
@@ -588,36 +561,12 @@ async def _list_source(args: dict) -> dict:
     },
 )
 async def _read_source(args: dict) -> dict:
-    source = args.get("source", "")
-    ref = args.get("ref", "")
-    workspace_id = _current_workspace()
-    user_id = _current_user()
-
-    if source == source_service.NATIVE_FILES:
-        page = await files_tree_service.get_page(UUID(ref), workspace_id, user_id)
-        if not page:
-            return _text_result(json.dumps({"error": "not found"}))
-        return _text_result(
-            json.dumps(
-                {
-                    "name": page["name"],
-                    "content": page.get("content_markdown") or page.get("content_html") or "",
-                }
-            )
-        )
-
-    if source == source_service.NATIVE_SESSIONS:
-        events = await memory_service.read_session_events(workspace_id, ref, user_id)
-        transcript = "\n".join(
-            f"[{e.get('event_type')}] {(e.get('content') or '')[:2000]}" for e in events
-        )
-        return _text_result(json.dumps({"session": ref, "transcript": transcript[:8000]}))
-
-    connected = await _resolve_connected_source(source)
-    if connected is None:
+    source_ok, doc = await source_service.source_document(
+        _current_workspace(), _current_user(), args.get("source", ""), args.get("ref", "")
+    )
+    if not source_ok:
         return _text_result(json.dumps({"error": "source not found"}))
-    doc = await source_service.read_document(connected, ref)
-    if not doc:
+    if doc is None:
         return _text_result(json.dumps({"error": "not found"}))
     return _text_result(json.dumps(doc))
 
@@ -638,66 +587,15 @@ async def _read_source(args: dict) -> dict:
     },
 )
 async def _search(args: dict) -> dict:
-    query = args.get("query", "")
-    source = args.get("source")
-    limit = int(args.get("limit", 20))
-    workspace_id = _current_workspace()
-    user_id = _current_user()
-
-    results: list[dict] = []
-
-    if source in (None, source_service.NATIVE_SESSIONS):
-        events = await memory_service.search_workspace_events(
-            workspace_id, user_id, query, limit=limit
-        )
-        results += [
-            {
-                "source": source_service.NATIVE_SESSIONS,
-                "ref": e.get("session_id"),
-                "snippet": (e.get("content") or "")[:300],
-            }
-            for e in events
-        ]
-
-    if source in (None, source_service.NATIVE_FILES):
-        pages = await files_tree_service.search_pages_fts(
-            workspace_id, query, limit=limit, user_id=user_id
-        )
-        results += [
-            {
-                "source": source_service.NATIVE_FILES,
-                "ref": str(p["id"]),
-                "name": p["name"],
-                "snippet": (p.get("search_text") or p.get("content_markdown") or "")[:300],
-            }
-            for p in pages
-        ]
-
-    # Connected sources: all of the user's own when unscoped, else the one named.
-    connected: dict | None = None
-    if source not in (None, source_service.NATIVE_FILES, source_service.NATIVE_SESSIONS):
-        connected = await _resolve_connected_source(source)
-        if connected is None:
-            return _text_result(json.dumps({"error": "source not found"}))
-    if source is None or connected is not None:
-        docs = await source_service.search_documents(
-            workspace_id=workspace_id,
-            user_id=user_id,
-            query=query,
-            source=connected,
-            limit=limit,
-        )
-        results += [
-            {
-                "source": d["source_id"],
-                "source_name": d["source_name"],
-                "ref": d["path"],
-                "name": d["name"],
-                "snippet": d["snippet"],
-            }
-            for d in docs
-        ]
-
+    results = await source_service.search_all(
+        _current_workspace(),
+        _current_user(),
+        args.get("query", ""),
+        source=args.get("source"),
+        limit=int(args.get("limit", 20)),
+    )
+    if results is None:
+        return _text_result(json.dumps({"error": "source not found"}))
     return _text_result(json.dumps(results))
 
 

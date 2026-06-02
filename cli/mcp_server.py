@@ -29,15 +29,84 @@ def _json(obj: object) -> str:
     return json.dumps(obj, default=str)
 
 
-# ── Sessions / search ──────────────────────────────────────────────
+# ── Sources (unified VFS) + search ─────────────────────────────────
 
 
 @mcp.tool()
-def stash_search(query: str, limit: int = 20, workspace_id: str = "") -> str:
-    """Full-text + semantic search across workspace session events."""
+def stash_search(query: str, source: str = "", limit: int = 20, workspace_id: str = "") -> str:
+    """Search across all your sources — native files + session transcripts +
+    connected sources (GitHub/Drive/Notion/Slack/Granola).
+
+    Pass `source` to scope to one (a handle from stash_list_sources: 'files',
+    'sessions', or a connected-source id); omit it to search everything.
+    """
     client, default_ws = _client()
     ws = _require_ws(workspace_id or default_ws)
-    return _json(client.search_events(ws, query, limit=limit))
+    return _json(client.search_sources(ws, query, source=source or None, limit=limit))
+
+
+@mcp.tool()
+def stash_list_sources(workspace_id: str = "") -> str:
+    """List every source you can read here: native 'files' and 'sessions', plus
+    your connected sources. Use a returned `source` handle with the browse /
+    read / search tools."""
+    client, default_ws = _client()
+    ws = _require_ws(workspace_id or default_ws)
+    return _json(client.list_sources(ws))
+
+
+@mcp.tool()
+def stash_browse_source(source: str, path: str = "", workspace_id: str = "") -> str:
+    """List a source's entries like a file system. `source` is a handle from
+    stash_list_sources; `path` is an optional path prefix for connected sources."""
+    client, default_ws = _client()
+    ws = _require_ws(workspace_id or default_ws)
+    return _json(client.list_source_entries(ws, source, path=path))
+
+
+@mcp.tool()
+def stash_read_source(source: str, ref: str, workspace_id: str = "") -> str:
+    """Read one document from a source. `ref` is a page id (files), a session id
+    (sessions), or a document path (connected sources)."""
+    client, default_ws = _client()
+    ws = _require_ws(workspace_id or default_ws)
+    return _json(client.read_source_doc(ws, source, ref))
+
+
+@mcp.tool()
+def stash_add_source(
+    source_type: str,
+    external_ref: str = "",
+    display_name: str = "",
+    workspace_id: str = "",
+) -> str:
+    """Connect a source. source_type: github_repo | google_drive | notion |
+    slack | granola. Slack/Granola resolve external_ref from your connected
+    token; the rest need an external_ref (e.g. a repo 'owner/name')."""
+    client, default_ws = _client()
+    ws = _require_ws(workspace_id or default_ws)
+    return _json(
+        client.add_source(
+            ws, source_type, external_ref=external_ref or None, display_name=display_name or None
+        )
+    )
+
+
+@mcp.tool()
+def stash_sync_source(source_id: str, workspace_id: str = "") -> str:
+    """Trigger an immediate re-index of a connected source you own."""
+    client, default_ws = _client()
+    ws = _require_ws(workspace_id or default_ws)
+    return _json(client.sync_source(ws, source_id))
+
+
+@mcp.tool()
+def stash_remove_source(source_id: str, workspace_id: str = "") -> str:
+    """Disconnect a source you own (its indexed documents cascade away)."""
+    client, default_ws = _client()
+    ws = _require_ws(workspace_id or default_ws)
+    client.delete_source(ws, source_id)
+    return _json({"deleted": source_id})
 
 
 @mcp.tool()
@@ -690,18 +759,6 @@ def stash_delete_session(session_row_id: str, workspace_id: str = "") -> str:
     ws = _require_ws(workspace_id or default_ws)
     client.delete_session(ws, session_row_id)
     return _json({"deleted": session_row_id})
-
-
-# ── Pages: full-text search ───────────────────────────────────────
-
-
-@mcp.tool()
-def stash_search_pages(query: str, workspace_id: str = "", limit: int = 20) -> str:
-    """Full-text search across pages in a workspace. Returns ranked page
-    summaries — use stash_read_page to fetch the body of any hit."""
-    client, default_ws = _client()
-    ws = _require_ws(workspace_id or default_ws)
-    return _json(client.search_pages(ws, query, limit=limit))
 
 
 # ── Stash access control ──────────────────────────────────────────
