@@ -412,7 +412,9 @@ async def get_page(
     page_id: UUID,
     current_user: dict = Depends(get_current_user),
 ):
-    await _check_ws_access(workspace_id, current_user["id"])
+    # No workspace-membership pre-gate: a page may be shared with someone who
+    # isn't a member (the primary collaboration path). get_page enforces
+    # check_access (owner OR share OR open cartridge) and returns None otherwise.
     page = await files_tree_service.get_page(page_id, workspace_id, current_user["id"])
     if not page:
         raise HTTPException(status_code=404, detail="Page not found")
@@ -432,7 +434,6 @@ async def download_page(
     would a binary file. Permission is the existing page-read check —
     members of the workspace plus anyone the page is shared with.
     """
-    await _check_ws_access(workspace_id, current_user["id"])
     page = await files_tree_service.get_page(page_id, workspace_id, current_user["id"])
     if not page:
         raise HTTPException(status_code=404, detail="Page not found")

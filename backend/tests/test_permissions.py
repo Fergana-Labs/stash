@@ -309,3 +309,51 @@ async def test_session_folder_share_cascades_to_sessions(pool):
     # Share the folder → cascades to the session.
     await _share(pool, ws, "session_folder", folder, friend, "read", by=owner)
     assert await permission_service.check_access("session", session_row, friend)
+
+
+@pytest.mark.asyncio
+async def test_share_by_email_grants_page_read_over_http(client: AsyncClient, pool):
+    """The primary collaboration path, end-to-end through the REST API: a page
+    is private to its owner until shared by email; the grantee (not a workspace
+    member) then reads it, and a stranger still cannot.
+
+    Regression for the single-item read endpoints gating on workspace
+    membership and so ignoring shares."""
+    owner_key, _ = await _register(client)
+    ws = (await client.get("/api/v1/workspaces/mine", headers=_auth(owner_key))).json()[
+        "workspaces"
+    ][0]["id"]
+    page_id = (
+        await client.post(
+            f"/api/v1/workspaces/{ws}/pages/new",
+            json={"name": "Plan", "content": "private roadmap"},
+            headers=_auth(owner_key),
+        )
+    ).json()["id"]
+
+    grantee_key, grantee = await _register(client)
+    await pool.execute(
+        "UPDATE users SET email = 'grantee@example.com' WHERE id = $1", grantee["id"]
+    )
+    stranger_key, _ = await _register(client)
+
+    page_url = f"/api/v1/workspaces/{ws}/pages/{page_id}"
+    assert (await client.get(page_url, headers=_auth(owner_key))).status_code == 200
+    # Private before any share.
+    assert (await client.get(page_url, headers=_auth(grantee_key))).status_code == 404
+
+    share = await client.post(
+        "/api/v1/share",
+        json={
+            "object_type": "page",
+            "object_id": page_id,
+            "email": "grantee@example.com",
+            "permission": "read",
+        },
+        headers=_auth(owner_key),
+    )
+    assert share.status_code == 200
+
+    # The share grants the non-member read access; the stranger is still denied.
+    assert (await client.get(page_url, headers=_auth(grantee_key))).status_code == 200
+    assert (await client.get(page_url, headers=_auth(stranger_key))).status_code == 404

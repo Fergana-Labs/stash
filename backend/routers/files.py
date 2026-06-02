@@ -293,7 +293,9 @@ async def get_ws_file(
     file_id: UUID,
     current_user: dict = Depends(get_current_user),
 ):
-    await _check_member(workspace_id, current_user["id"])
+    # No workspace-membership pre-gate: the readable_content_condition below
+    # already grants the owner (member), share grantees, and open-cartridge
+    # readers — and 404s everyone else.
     pool = get_pool()
     readable_file = permission_service.readable_content_condition("file", "f", 3)
     row = await pool.fetchrow(

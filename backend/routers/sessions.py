@@ -204,8 +204,9 @@ async def get_workspace_session(
     session_id: str,
     current_user: dict = Depends(get_current_user),
 ):
-    if not await workspace_service.is_member(workspace_id, current_user["id"]):
-        raise HTTPException(status_code=403, detail="Not a workspace member")
+    # No workspace-membership pre-gate: a session may be shared with a
+    # non-member. can_read_session enforces check_access (owner OR share OR
+    # open cartridge).
     if not await memory_service.can_read_session(workspace_id, session_id, current_user["id"]):
         raise HTTPException(status_code=404, detail="Session not found")
 
