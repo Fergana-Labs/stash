@@ -61,7 +61,7 @@ def send_welcome_email(user_email: str, first_name: str | None = None) -> None:
 <p><strong>Three ways to get to a first &ldquo;aha&rdquo;:</strong></p>
 
 <ol>
-  <li><a href="{app_url}"><strong>Bring your existing knowledge base in</strong></a> &mdash; one-click import from Notion, Obsidian, GitHub, or Google Drive. Your workspace is useful from day one instead of starting empty.</li>
+  <li><a href="{app_url}"><strong>Connect your data sources</strong></a> &mdash; GitHub, Google Drive, Notion, Slack, or Granola. Your agent reads across everything you connect from day one instead of starting empty.</li>
   <li><a href="{app_url}"><strong>Give your agent memory</strong></a> &mdash; install the CLI, run a coding agent like you normally would, then ask it something only Stash would know.</li>
   <li><a href="{app_url}"><strong>Publish your first artifact</strong></a> &mdash; drop a doc or deck, get a shareable link. Sharing is a first-class feature here, not an afterthought.</li>
 </ol>

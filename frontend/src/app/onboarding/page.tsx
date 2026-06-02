@@ -117,7 +117,6 @@ function OnboardingInner() {
       try {
         await seedWelcomePage({
           workspaceId,
-          userId: user.id,
           displayName: user.display_name || user.name,
         });
       } catch {

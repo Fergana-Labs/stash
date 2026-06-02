@@ -4,14 +4,9 @@
 //
 // Design intent: a starter doc the user can keep or delete. Concise.
 
-import type { PathId, MigrantSource } from "./paths";
-
 export type WelcomeInputs = {
-  path: PathId | null;
-  source: MigrantSource | null;
   displayName: string;
   inviteLink: string | null;
-  sharedUrl: string | null;
   counts: {
     pages: number;
     files: number;
@@ -19,15 +14,8 @@ export type WelcomeInputs = {
   };
 };
 
-const SOURCE_LABELS: Record<MigrantSource, string> = {
-  notion: "Notion",
-  obsidian: "Obsidian",
-  github: "GitHub",
-  drive: "Google Drive",
-};
-
 export function generateWelcomeHtml(inputs: WelcomeInputs): string {
-  const { path, source, displayName, inviteLink, sharedUrl, counts } = inputs;
+  const { displayName, inviteLink, counts } = inputs;
 
   const parts: string[] = [];
 
@@ -38,40 +26,20 @@ export function generateWelcomeHtml(inputs: WelcomeInputs): string {
     `<p><em>This is your About page. It&rsquo;s editable like any other doc — keep what&rsquo;s useful, delete the rest.</em></p>`,
   );
 
-  // What you just did — only show the bits that actually happened.
-  const wrap: string[] = [];
-  if (path === "migrant" && source) {
-    const total = counts.pages + counts.files;
-    if (total > 0) {
-      wrap.push(
-        `You imported <strong>${total} ${pluralize("item", total)}</strong> from ${SOURCE_LABELS[source]}.`,
-      );
-    } else {
-      wrap.push(`Your ${SOURCE_LABELS[source]} import is running.`);
-    }
-  }
-  if (path === "sharing" && sharedUrl) {
-    wrap.push(
-      `You published your first artifact — <a href="${escapeAttr(sharedUrl)}">${escapeHtml(sharedUrl)}</a>.`,
-    );
-  }
-  if (path === "memory") {
-    wrap.push(`You asked your first question. Your agent has memory now.`);
-  }
   if (counts.sessions > 0) {
-    wrap.push(
-      `You&rsquo;ve got <strong>${counts.sessions} ${pluralize("session", counts.sessions)}</strong> uploaded.`,
-    );
-  }
-  if (wrap.length > 0) {
     parts.push(`<h2>What you just did</h2>`);
-    parts.push(`<ul>${wrap.map((w) => `<li>${w}</li>`).join("")}</ul>`);
+    parts.push(
+      `<ul><li>You&rsquo;ve got <strong>${counts.sessions} ${pluralize(
+        "session",
+        counts.sessions,
+      )}</strong> uploaded.</li></ul>`,
+    );
   }
 
   parts.push(`<h2>What to try next</h2>`);
   parts.push(
     `<ul>
-      <li><strong><a href="/onboarding?path=migrant">Import your existing data</a></strong> — Notion, GitHub, Obsidian, Google Drive.</li>
+      <li><strong><a href="/settings/integrations">Connect a data source</a></strong> — GitHub, Google Drive, Notion, Slack, Granola. Your agent reads across everything you connect.</li>
       <li><strong><a href="/discover">Discover &amp; install Cartridges</a></strong> — browse skills and knowledge others have published; copy into this workspace.</li>
       <li><strong>Invite a teammate to this workspace</strong>${
         inviteLink
@@ -86,7 +54,7 @@ export function generateWelcomeHtml(inputs: WelcomeInputs): string {
   parts.push(
     `<p>Everything is organized within a <strong>Workspace</strong>. This is a shared hopper for everything agents produce or consume: session transcripts, HTML pages, markdown docs, images, tables, raw files. Structured or not. Within it, there are three main structures:</p>
     <ul>
-      <li><strong>Cartridges</strong> — virtual sub-workspaces. Bundle any subset of workspace data into a Stash; share to the public or make it private to everyone else in the workspace. This becomes the go-to point for teams, workstreams, or projects (e.g. LinkedIn marketing, Backend infra team, Kernel optimization reading group).</li>
+      <li><strong>Cartridges</strong> — virtual sub-workspaces. Bundle any subset of workspace data into a Cartridge; share to the public or make it private to everyone else in the workspace. This becomes the go-to point for teams, workstreams, or projects (e.g. LinkedIn marketing, Backend infra team, Kernel optimization reading group).</li>
       <li><strong>Files</strong> — a file system for documents (e.g. markdown, HTML, images, PDF, CSV). Built so agents can natively use it.</li>
       <li><strong>Sessions</strong> — history of conversations between users and agents. Automatically pushed from your agent of choice (e.g. Claude Code, Codex, Openclaw).</li>
     </ul>`,
