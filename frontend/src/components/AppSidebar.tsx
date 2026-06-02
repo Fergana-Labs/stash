@@ -459,9 +459,11 @@ export default function AppSidebar({
   const sourceRows = useMemo<PinnedRow[]>(() => {
     if (!activeWorkspaceKey) return [];
     const sources = sourceMap[activeWorkspaceKey] ?? [];
+    // Connected sources are managed (reconnect, sync, remove) on the
+    // integrations settings page — the same target as "Add a new source".
     return sources.map((s) => ({
       key: s.source,
-      href: `/workspaces/${activeWorkspaceKey}/settings`,
+      href: "/settings/integrations",
       label: s.display_name,
       icon: <span className="inline-block h-1.5 w-1.5 rounded-full bg-foreground/40" />,
       active: false,

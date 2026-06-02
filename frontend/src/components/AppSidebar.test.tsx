@@ -3,7 +3,12 @@ import type { MouseEvent, ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import AppSidebar from "./AppSidebar";
 import { resetStashNavigationCache } from "../lib/stashNavigationCache";
-import { getWorkspacePins, getWorkspaceSidebar, listMyWorkspaces } from "../lib/api";
+import {
+  getWorkspacePins,
+  getWorkspaceSidebar,
+  listMyWorkspaces,
+  listWorkspaceSources,
+} from "../lib/api";
 
 const nav = vi.hoisted(() => ({
   pathname: "/",
@@ -45,6 +50,7 @@ vi.mock("../lib/api", () => ({
   setWorkspacePins: vi.fn(),
   getWorkspaceRecents: vi.fn(),
   recordWorkspaceRecent: vi.fn(),
+  listWorkspaceSources: vi.fn(),
 }));
 
 const user = {
@@ -84,6 +90,7 @@ beforeEach(() => {
     cartridges: [],
   });
   vi.mocked(getWorkspacePins).mockResolvedValue({ cartridges: [], sessions: [], files: [] });
+  vi.mocked(listWorkspaceSources).mockResolvedValue([]);
 });
 
 afterEach(() => {
