@@ -22,6 +22,7 @@ import {
   type WorkspaceSource,
 } from "../lib/api";
 import type { User, Workspace } from "../lib/types";
+import AddSourceModal from "./integrations/AddSourceModal";
 import {
   ActivityIcon,
   DiscoverIcon,
@@ -132,6 +133,7 @@ export default function AppSidebar({
 }: AppSidebarProps) {
   const pathname = usePathname();
   const userId = user?.id;
+  const [addSourceOpen, setAddSourceOpen] = useState(false);
   const cachedWorkspaces = readCachedWorkspaces(userId);
   const routeWorkspaceId = pathname.match(/^\/workspaces\/([^/]+)/)?.[1] ?? null;
   // Persisted "last-viewed workspace" so navigation to non-workspace routes
@@ -261,12 +263,12 @@ export default function AppSidebar({
       : false;
 
   return (
+    <>
     <aside className="scroll-thin overflow-y-auto border-r border-border bg-surface">
       <div className="px-3 pt-3 pb-1">
         <div className="truncate text-[14px] font-semibold text-foreground">
           {user?.display_name || user?.name || "You"}
         </div>
-        <div className="text-[11px] text-muted">Personal</div>
       </div>
 
       <nav className="px-2 pt-2 text-[13px]">
@@ -327,12 +329,16 @@ export default function AppSidebar({
               active={row.active}
             />
           ))}
-          <NavRow
-            href="/settings/integrations"
-            icon={<span aria-hidden>＋</span>}
-            label="Add a new source"
-            active={false}
-          />
+          <button
+            type="button"
+            onClick={() => setAddSourceOpen(true)}
+            className="page-row group/nav flex w-full min-w-0 items-center gap-1.5 rounded-md px-2 py-1 text-left text-[13px] text-dim transition-colors hover:bg-raised hover:text-foreground"
+          >
+            <span className="flex h-4 w-4 shrink-0 items-center justify-center text-[14px]" aria-hidden>
+              ＋
+            </span>
+            <span className="min-w-0 flex-1 truncate">Add a new source</span>
+          </button>
         </nav>
       ) : (
         <div className="mt-4 px-3 py-1.5 text-[12px] italic text-muted">
@@ -370,5 +376,13 @@ export default function AppSidebar({
         )}
       </div>
     </aside>
+    {addSourceOpen && activeWorkspace && (
+      <AddSourceModal
+        workspaceId={activeWorkspace.id}
+        returnTo={pathname}
+        onClose={() => setAddSourceOpen(false)}
+      />
+    )}
+    </>
   );
 }
