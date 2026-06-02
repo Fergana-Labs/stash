@@ -38,12 +38,17 @@ _TOOL_MAP = {
     "Delete": "delete",
     "Task": "agent",
 }
+_EXTRA_KEYS = ("model", "cursor_version", "generation_id")
 
 
 def _normalize(name: str) -> str:
     if name.startswith("MCP:"):
         return name
     return _TOOL_MAP.get(name, name.lower())
+
+
+def _extras(data: dict) -> dict:
+    return {key: data[key] for key in _EXTRA_KEYS if isinstance(data.get(key), str) and data[key]}
 
 
 def _cwd(data: dict) -> str:
@@ -61,6 +66,7 @@ def adapt_session_start(data: dict) -> HookEvent:
         session_id=data.get("session_id", ""),
         cwd=_cwd(data),
         transcript_path=data.get("transcript_path", ""),
+        extras=_extras(data),
     )
 
 
@@ -70,6 +76,7 @@ def adapt_prompt(data: dict) -> HookEvent:
         session_id=data.get("session_id", ""),
         cwd=_cwd(data),
         prompt_text=data.get("prompt", ""),
+        extras=_extras(data),
     )
 
 
@@ -100,6 +107,7 @@ def adapt_tool_use(data: dict) -> HookEvent:
         tool_name=_normalize(data.get("tool_name", "")),
         tool_input=tool_input,
         tool_response=_parse_tool_output(data.get("tool_output")),
+        extras=_extras(data),
     )
 
 
@@ -111,6 +119,7 @@ def adapt_agent_response(data: dict) -> HookEvent:
         cwd=_cwd(data),
         last_assistant_message=data.get("text", ""),
         transcript_path=data.get("transcript_path", ""),
+        extras=_extras(data),
     )
 
 
@@ -120,4 +129,5 @@ def adapt_session_end(data: dict) -> HookEvent:
         session_id=data.get("session_id", ""),
         cwd=_cwd(data),
         transcript_path=data.get("transcript_path", ""),
+        extras=_extras(data),
     )

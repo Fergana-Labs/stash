@@ -137,6 +137,36 @@ def test_cursor_tool_output_json_string_parses():
     assert event2.tool_response == {"raw": "not-json-text"}
 
 
+def test_model_extras_flow_from_agent_adapters():
+    codex = _load_adapt("codex")
+    for fixture_name in ("session_start", "prompt", "tool_use", "stop"):
+        event = getattr(
+            codex,
+            {
+                "session_start": "adapt_session_start",
+                "prompt": "adapt_prompt",
+                "tool_use": "adapt_tool_use",
+                "stop": "adapt_stop",
+            }[fixture_name],
+        )(_load_fixture("codex", fixture_name))
+        assert event.extras["model"] == "gpt-5-codex"
+        assert event.extras["permission_mode"] == "default"
+
+    cursor = _load_adapt("cursor")
+    cursor_cases = [
+        ("session_start", "adapt_session_start"),
+        ("prompt", "adapt_prompt"),
+        ("tool_use", "adapt_tool_use"),
+        ("agent_response", "adapt_agent_response"),
+        ("stop", "adapt_session_end"),
+    ]
+    for fixture_name, adapter_name in cursor_cases:
+        event = getattr(cursor, adapter_name)(_load_fixture("cursor", fixture_name))
+        assert event.extras["model"] == "claude-3.7-sonnet"
+        assert event.extras["cursor_version"] == "1.7.0"
+        assert event.extras["generation_id"].startswith("gen-")
+
+
 def test_push_event_stamps_client_into_metadata():
     """StashClient.push_event should merge the `client` facet into metadata."""
     from stashai.plugin.stash_client import StashClient
@@ -257,6 +287,79 @@ def test_client_facet_flows_through_stream_paths():
             assert body.get("metadata", {}).get("client") == client_name, (
                 f"{client_name}: missing client facet in {body}"
             )
+
+
+def test_model_metadata_flows_through_stream_paths():
+    from stashai.plugin.event import HookEvent
+    from stashai.plugin.hooks import (
+        _event_metadata,
+        stream_assistant_message,
+        stream_session_end,
+        stream_tool_use,
+        stream_user_message,
+    )
+    from stashai.plugin.stash_client import StashClient
+
+    calls = []
+
+    class FakeClient(StashClient):
+        def _post(self, path, **kwargs):
+            calls.append(kwargs.get("json", {}))
+            return {}
+
+    cfg = {"workspace_id": "ws1", "agent_name": "henry", "client": "codex_cli"}
+    state = {"session_id": "s1"}
+    c = FakeClient(base_url="http://x", api_key="k")
+    extras = {"model": "gpt-4o", "permission_mode": "default"}
+    cwd = str(Path.cwd())
+    assert _event_metadata(HookEvent(kind="prompt", extras=extras)) == extras
+
+    stream_user_message(
+        c,
+        cfg,
+        state,
+        "hello",
+        HookEvent(kind="prompt", prompt_text="hello", cwd=cwd, extras=extras),
+    )
+    stream_tool_use(
+        c,
+        cfg,
+        state,
+        HookEvent(
+            kind="tool_use",
+            tool_name="bash",
+            cwd=cwd,
+            tool_input={"command": "echo hi"},
+            tool_response={"stdout": "hi"},
+            extras=extras,
+        ),
+    )
+    stream_assistant_message(
+        c,
+        cfg,
+        state,
+        HookEvent(
+            kind="stop",
+            cwd=cwd,
+            last_assistant_message="done.",
+            extras=extras,
+        ),
+    )
+    stream_session_end(
+        c,
+        cfg,
+        state,
+        HookEvent(
+            kind="session_end",
+            cwd=cwd,
+            extras=extras,
+        ),
+    )
+
+    for body in calls:
+        assert body["metadata"].get("model") == "gpt-4o", body
+        assert body["metadata"]["permission_mode"] == "default"
+        assert body["metadata"]["client"] == "codex_cli"
 
 
 def test_stream_session_end_not_emitted_on_assistant_message():
