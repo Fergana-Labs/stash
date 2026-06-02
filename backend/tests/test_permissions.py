@@ -288,3 +288,24 @@ async def test_share_then_unshare_revokes(pool):
         page, friend,
     )
     assert not await permission_service.check_access("page", page, friend)
+
+
+@pytest.mark.asyncio
+async def test_session_folder_share_cascades_to_sessions(pool):
+    owner = await _make_user(pool)
+    friend = await _make_user(pool)
+    ws = await _make_workspace(pool, owner)
+    folder = await pool.fetchval(
+        "INSERT INTO session_folders (workspace_id, owner_user_id, name) "
+        "VALUES ($1, $2, 'launch') RETURNING id",
+        ws, owner,
+    )
+    session_row = await _make_session(pool, ws, owner, session_id="s-folder-1")
+    await pool.execute(
+        "UPDATE sessions SET session_folder_id = $2 WHERE id = $1", session_row, folder
+    )
+    # Not shared yet → friend denied.
+    assert not await permission_service.check_access("session", session_row, friend)
+    # Share the folder → cascades to the session.
+    await _share(pool, ws, "session_folder", folder, friend, "read", by=owner)
+    assert await permission_service.check_access("session", session_row, friend)

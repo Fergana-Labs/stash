@@ -16,6 +16,7 @@ _WORKSPACE_LOOKUP = {
     "table": ("tables", "workspace_id"),
     "file": ("files", "workspace_id"),
     "session": ("sessions", "workspace_id"),
+    "session_folder": ("session_folders", "workspace_id"),
     "stash": ("cartridges", "workspace_id"),
     "folder": ("folders", "workspace_id"),
     "page": ("pages", "workspace_id"),
@@ -48,6 +49,15 @@ def _item_target_condition(object_type: str, object_alias: str, item_alias: str)
             f"OR ({item_alias}.object_type = 'folder' "
             f"AND {object_alias}.folder_id IS NOT NULL "
             f"AND {item_alias}.object_id IN ({folder_chain})))"
+        )
+    if object_type == "session":
+        # A session inherits a share/item on its session folder.
+        return (
+            f"(({item_alias}.object_type = 'session' "
+            f"AND {item_alias}.object_id = {object_alias}.id) "
+            f"OR ({item_alias}.object_type = 'session_folder' "
+            f"AND {object_alias}.session_folder_id IS NOT NULL "
+            f"AND {item_alias}.object_id = {object_alias}.session_folder_id))"
         )
     if object_type in _CONTENT_TYPES:
         return (
@@ -143,6 +153,11 @@ async def _object_targets(object_type: str, object_id: UUID) -> list[tuple[str, 
         return [("file", object_id)] + [
             ("folder", fid) for fid in await _folder_chain_for_file(object_id)
         ]
+    if object_type == "session":
+        pool = get_pool()
+        row = await pool.fetchrow("SELECT session_folder_id FROM sessions WHERE id = $1", object_id)
+        if row and row["session_folder_id"]:
+            return [("session", object_id), ("session_folder", row["session_folder_id"])]
     return [(object_type, object_id)]
 
 
@@ -233,6 +248,12 @@ async def check_access(
         if require_write:
             return row["owner_id"] == user_id
         return await _cartridge_open(dict(row), user_id)
+
+    # A session folder is shareable like a file folder (no cartridge containment).
+    if object_type == "session_folder":
+        return user_id is not None and await _user_share_grants(
+            "session_folder", object_id, user_id, require_write
+        )
 
     if object_type not in _CONTENT_TYPES:
         return False

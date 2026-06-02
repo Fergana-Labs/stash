@@ -29,6 +29,7 @@ from .routers import (
     memory,
     pins,
     publish,
+    session_folders,
     sessions,
     shares,
     skill,
@@ -117,6 +118,7 @@ app.include_router(publish.router)
 app.include_router(tasks.router)
 app.include_router(integrations_router)
 app.include_router(sources.router)
+app.include_router(session_folders.router)
 app.include_router(shares.router)
 app.include_router(webhooks.router)
 app.include_router(exports.router)
