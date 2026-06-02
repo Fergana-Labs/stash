@@ -158,7 +158,7 @@ async def test_search_documents_owner_scoped(client: AsyncClient):
     assert other_hits == []
 
 
-# --- source_documents idempotent re-sync ------------------------------------
+# --- copied-content idempotent re-sync --------------------------------------
 
 
 @pytest.mark.asyncio
