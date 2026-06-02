@@ -70,7 +70,7 @@ export default function AddToWorkspaceButton({ slug, sourceWorkspaceId }: Props)
       setAttached(result);
       router.refresh();
     } catch (e) {
-      const message = e instanceof ApiError ? e.message : "Could not add Stash";
+      const message = e instanceof ApiError ? e.message : "Could not add cartridge";
       setError(message);
     } finally {
       setBusy(false);
@@ -135,7 +135,7 @@ export default function AddToWorkspaceButton({ slug, sourceWorkspaceId }: Props)
                 onClick={() => void attachToWorkspace(selectedWorkspaceId)}
                 className="w-full rounded-md bg-brand px-3 py-2 text-[13px] font-medium text-white disabled:opacity-50"
               >
-                Add Stash
+                Add Cartridge
               </button>
             </div>
           ) : (

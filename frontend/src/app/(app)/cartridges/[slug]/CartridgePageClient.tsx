@@ -113,7 +113,7 @@ export default function CartridgePageClient({ slug }: { slug: string }) {
         </h1>
         <p className="mt-2 text-[14px] leading-relaxed text-dim">
           {error ||
-            "This Stash is private, revoked, or unavailable to the current user."}
+            "This cartridge is private, revoked, or unavailable to the current user."}
         </p>
       </div>
     );
@@ -176,7 +176,7 @@ function CartridgePageBody({
       return;
     }
 
-    // Visualizations are scoped to this Stash's items — the sessions and
+    // Visualizations are scoped to this cartridge's items — the sessions and
     // pages bundled into the Stash, not the owning workspace's full activity.
     let cancelled = false;
     setInsightsLoaded(false);
@@ -277,7 +277,7 @@ function CartridgePageBody({
               </>
             ) : (
               // Forking only makes sense when the viewer doesn't already have
-              // write access to this stash in its own workspace.
+              // write access to this cartridge in its own workspace.
               <AddToWorkspaceButton
                 slug={stash.slug}
                 sourceWorkspaceId={stash.workspace_id}
@@ -359,7 +359,7 @@ function CartridgePageBody({
             </div>
 
             {/* Visualizations: human/agent session activity + 3D embedding
-                view scoped to this Stash's items. Both panels are
+                view scoped to this cartridge's items. Both panels are
                 workspace-member features — hide them from anonymous
                 public-stash viewers entirely so they don't see empty
                 "no data" placeholders for tools they can't use. */}
@@ -367,7 +367,7 @@ function CartridgePageBody({
               <>
             <section className="mt-8">
               <div className="sys-label mb-1.5">
-                Activity in this Stash — last 30 days
+                Activity in this cartridge — last 30 days
               </div>
               <div className="card-soft overflow-x-auto p-3">
                 {!insightsLoaded ? (
@@ -376,7 +376,7 @@ function CartridgePageBody({
                   <ContributorActivityTimeline data={timeline} />
                 ) : (
                   <div className="px-2 py-6 text-center text-[12.5px] text-muted">
-                    No session activity in this Stash yet. Add a session to
+                    No session activity in this cartridge yet. Add a session to
                     surface its agent commits here.
                   </div>
                 )}
@@ -385,7 +385,7 @@ function CartridgePageBody({
 
             <section className="mt-6">
               <div className="sys-label mb-1.5">
-                Embedding map for this Stash
+                Embedding map for this cartridge
               </div>
               <div className="card-soft p-3">
                 {!insightsLoaded ? (
@@ -394,7 +394,7 @@ function CartridgePageBody({
                   <EmbeddingSpaceExplorer data={projection} />
                 ) : (
                   <div className="px-2 py-6 text-center text-[12.5px] text-muted">
-                    No embeddings in this Stash yet. Pages, table rows, and
+                    No embeddings in this cartridge yet. Pages, table rows, and
                     session events get embedded as they&apos;re added.
                   </div>
                 )}
@@ -432,7 +432,7 @@ type PrimaryItem =
 // bundle chrome + viz section.
 //
 // Folders are intentionally NOT treated as incidental packaging. A folder
-// is an open container the user may keep adding to; promising "this stash
+// is an open container the user may keep adding to; promising "this cartridge
 // IS the page inside that folder" only stays true until the next upload.
 function primaryItemForCartridge(data: PublicCartridgeDetail): PrimaryItem | null {
   if (data.items.length !== 1) return null;
@@ -690,7 +690,7 @@ function CartridgeDescriptionEditor({
       <DescriptionEditor
         value={description}
         canEdit={canEdit}
-        placeholder="Describe this Stash…"
+        placeholder="Describe this cartridge…"
         ariaLabel="Stash description"
         workspaceId={workspaceId}
         onSave={async (html) => {

@@ -171,7 +171,7 @@ export default function WorkspaceStashesPage() {
             onClick={() => shareModal.open({ workspaceId })}
             className="inline-flex items-center gap-1.5 rounded-md bg-[var(--color-brand-600)] px-2.5 py-1.5 text-[12.5px] font-medium text-white hover:bg-[var(--color-brand-700)]"
           >
-            <PlusGlyph /> New Stash
+            <PlusGlyph /> New Cartridge
           </button>
         </div>
 
@@ -331,7 +331,7 @@ function ExternalCartridgeLinkForm({
       );
       onAdded();
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : "Could not add Stash");
+      setError(e instanceof ApiError ? e.message : "Could not add cartridge");
     } finally {
       setBusy(false);
     }
@@ -345,7 +345,7 @@ function ExternalCartridgeLinkForm({
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
         <div className="min-w-0 flex-1">
           <label className="text-[12px] font-medium text-foreground" htmlFor="external-stash-link">
-            Add external Stash by link
+            Add external cartridge by link
           </label>
           <input
             id="external-stash-link"
@@ -360,7 +360,7 @@ function ExternalCartridgeLinkForm({
           disabled={busy || !input.trim()}
           className="rounded-md bg-[var(--color-brand-600)] px-3 py-2 text-[12.5px] font-medium text-white hover:bg-[var(--color-brand-700)] disabled:opacity-45 sm:mt-6"
         >
-          {busy ? "Adding…" : "Add Stash"}
+          {busy ? "Adding…" : "Add Cartridge"}
         </button>
       </div>
       {error ? <p className="mt-2 text-[12px] text-red-500">{error}</p> : null}

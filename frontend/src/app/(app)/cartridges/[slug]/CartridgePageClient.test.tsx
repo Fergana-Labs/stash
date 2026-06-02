@@ -387,7 +387,7 @@ describe("CartridgePageClient sharing", () => {
     renderCartridge(<CartridgePageClient slug="shared-stash" />);
 
     expect(
-      await screen.findByText("Activity in this Stash — last 30 days"),
+      await screen.findByText("Activity in this cartridge — last 30 days"),
     ).toBeInTheDocument();
     await waitFor(() =>
       expect(getActivityTimeline).toHaveBeenCalledWith(
@@ -444,7 +444,7 @@ describe("CartridgePageClient sharing", () => {
 
   it("shows bundle chrome for a file-plus-folder stash (no primary shortcut)", async () => {
     // The folder is an open container — adding more items would invalidate
-    // any "this stash IS the file" promise — so we render the bundle list
+    // any "this cartridge IS the file" promise — so we render the bundle list
     // and the viz section, not the file preview.
     const detail = stashDetail({
       description: "<p>Uploaded from shot.png</p>",

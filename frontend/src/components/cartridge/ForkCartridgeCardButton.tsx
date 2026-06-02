@@ -92,7 +92,7 @@ export default function ForkCartridgeCardButton({ slug, sourceWorkspaceId }: Pro
       await addExternalCartridge(slug, workspaceId);
       setPhase({ kind: "done", workspaceId });
     } catch (e) {
-      const message = e instanceof ApiError ? e.message : "Could not add Stash";
+      const message = e instanceof ApiError ? e.message : "Could not add cartridge";
       setPhase({ kind: "error", message });
     }
   }

@@ -91,8 +91,8 @@ export default function CartridgeInviteCenter() {
         type="button"
         onClick={() => setOpen((value) => !value)}
         className="relative rounded p-1 text-muted hover:bg-raised hover:text-foreground"
-        aria-label={`Stash access${invites.length ? ` (${invites.length})` : ""}`}
-        title="Stash access"
+        aria-label={`Cartridge access${invites.length ? ` (${invites.length})` : ""}`}
+        title="Cartridge access"
       >
         <NotificationsIcon className="h-4 w-4" />
         {invites.length > 0 ? (
@@ -106,7 +106,7 @@ export default function CartridgeInviteCenter() {
         <div className="absolute right-0 top-8 z-50 w-[360px] rounded-lg border border-border bg-base shadow-xl">
           <div className="flex items-center justify-between border-b border-border px-4 py-3">
             <div>
-              <h2 className="text-[14px] font-semibold text-foreground">Stash access</h2>
+              <h2 className="text-[14px] font-semibold text-foreground">Cartridge access</h2>
               <p className="mt-0.5 text-[11.5px] text-muted">
                 Review Cartridges shared directly with you.
               </p>
@@ -139,7 +139,7 @@ export default function CartridgeInviteCenter() {
               </div>
             ) : invites.length === 0 ? (
               <p className="px-2 py-8 text-center text-[12.5px] text-muted">
-                No new Stash access.
+                No new cartridge access.
               </p>
             ) : (
               <div className="flex flex-col gap-2">

@@ -266,7 +266,7 @@ export default function AddToCartridgeModal({
       if (e instanceof ApiError && e.status === 404) {
         setError("Couldn't find that stash. Check the URL.");
       } else {
-        setError(e instanceof Error ? e.message : "Couldn't attach external stash");
+        setError(e instanceof Error ? e.message : "Couldn't attach external cartridge");
       }
     } finally {
       setSubmitting(false);
@@ -321,7 +321,7 @@ export default function AddToCartridgeModal({
           <ModeBtn label="Paste URL" active={mode === "url"} onClick={() => setMode("url")} />
           <ModeBtn label="Upload file" active={mode === "file"} onClick={() => setMode("file")} />
           <ModeBtn label="New note" active={mode === "note"} onClick={() => setMode("note")} />
-          <ModeBtn label="External Stash" active={mode === "external"} onClick={() => setMode("external")} />
+          <ModeBtn label="External cartridge" active={mode === "external"} onClick={() => setMode("external")} />
         </div>
 
         {mode === "existing" ? (
@@ -389,7 +389,7 @@ export default function AddToCartridgeModal({
         ) : mode === "url" ? (
           <div className="px-4 py-4">
             <p className="m-0 text-[12.5px] text-muted">
-              Save a URL as a page in this workspace and add it to this Stash.
+              Save a URL as a page in this workspace and add it to this cartridge.
             </p>
             <input
               type="url"
@@ -403,7 +403,7 @@ export default function AddToCartridgeModal({
         ) : mode === "file" ? (
           <div className="px-4 py-4">
             <p className="m-0 text-[12.5px] text-muted">
-              Upload files to this workspace and add them to this Stash.
+              Upload files to this workspace and add them to this cartridge.
             </p>
             <div className="mt-3 flex items-center gap-2">
               <button
@@ -439,7 +439,7 @@ export default function AddToCartridgeModal({
         ) : mode === "note" ? (
           <div className="px-4 py-4">
             <p className="m-0 text-[12.5px] text-muted">
-              Create a page from a note and add it to this Stash.
+              Create a page from a note and add it to this cartridge.
             </p>
             <textarea
               value={noteValue}
@@ -452,8 +452,8 @@ export default function AddToCartridgeModal({
         ) : (
           <div className="px-4 py-4">
             <p className="m-0 text-[12.5px] text-muted">
-              Paste a public Stash URL or slug. We&apos;ll fork its items into a new Stash inside
-              this workspace and link it as an external Stash.
+              Paste a public cartridge URL or slug. We&apos;ll fork its items into a new cartridge inside
+              this workspace and link it as an external cartridge.
             </p>
             <input
               type="text"

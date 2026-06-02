@@ -96,7 +96,7 @@ function FileViewerPageInner() {
         (it) => it.object_type === "file" && it.object_id === fileId
       );
       if (!item || !item.inline) {
-        setError("File isn't in this Stash.");
+        setError("File isn't in this cartridge.");
         return false;
       }
       const inline = item.inline as {

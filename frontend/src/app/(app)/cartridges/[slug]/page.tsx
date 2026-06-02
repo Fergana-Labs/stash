@@ -15,7 +15,7 @@ export async function generateMetadata({
   const title = `${data.stash.title} · Stash`;
   const description =
     data.stash.description ||
-    `A Stash of ${data.items.length} item${data.items.length === 1 ? "" : "s"} from ${data.workspace_name}.`;
+    `A cartridge of ${data.items.length} item${data.items.length === 1 ? "" : "s"} from ${data.workspace_name}.`;
   return {
     title,
     description,
@@ -54,7 +54,7 @@ export default async function CartridgePage({
   return (
     <>
       <div className="sr-only">
-        Agent-readable Stash versions are available at {`/cartridges/${slug}.md`} and{" "}
+        Agent-readable cartridge versions are available at {`/cartridges/${slug}.md`} and{" "}
         {`/cartridges/${slug}.json`}.
       </div>
       <CartridgePageClient slug={slug} />

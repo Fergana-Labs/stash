@@ -639,7 +639,7 @@ function NewShareTab(props: {
             <span className="min-w-0">
               <span className="block font-medium text-foreground">Share to Discover</span>
               <span className="block text-muted">
-                List this public Stash in the catalog for anyone to browse.
+                List this public cartridge in the catalog for anyone to browse.
               </span>
             </span>
           </label>

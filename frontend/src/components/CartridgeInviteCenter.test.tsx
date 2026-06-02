@@ -48,7 +48,7 @@ describe("CartridgeInviteCenter", () => {
   it("opens a shared Stash for review", async () => {
     render(<CartridgeInviteCenter />);
 
-    fireEvent.click(await screen.findByRole("button", { name: "Stash access (1)" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Cartridge access (1)" }));
 
     await screen.findByText("Partner Stash");
     expect(
@@ -63,7 +63,7 @@ describe("CartridgeInviteCenter", () => {
   it("dismisses an access notification", async () => {
     render(<CartridgeInviteCenter />);
 
-    fireEvent.click(await screen.findByRole("button", { name: "Stash access (1)" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Cartridge access (1)" }));
     await screen.findByText("Partner Stash");
     fireEvent.click(screen.getByRole("button", { name: "Dismiss" }));
 

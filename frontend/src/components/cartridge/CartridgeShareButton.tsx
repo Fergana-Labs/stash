@@ -400,7 +400,7 @@ export default function CartridgeShareButton({
               <div className="flex flex-col gap-1">
                 <VisibilityAccessRow
                   label="Visibility"
-                  hint="Choose who can open this Stash"
+                  hint="Choose who can open this cartridge"
                   value={visibility}
                   options={VISIBILITY_OPTIONS}
                   onChange={applyVisibility}

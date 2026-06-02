@@ -14,7 +14,7 @@ interface CartridgeQuickAddProps {
   workspaceId: string;
   onAdded?: () => void;
   // When set, newly-created pages and files are also appended to this
-  // stash's items so the quick-add doubles as "add to this stash".
+  // stash's items so the quick-add doubles as "add to this cartridge".
   stashId?: string;
   existingItems?: CartridgeItemSpec[];
 }

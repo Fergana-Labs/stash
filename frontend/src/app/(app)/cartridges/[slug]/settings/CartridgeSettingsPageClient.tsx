@@ -100,7 +100,7 @@ export default function CartridgeSettingsPageClient({ slug }: { slug: string }) 
           Stash settings
         </h1>
         <p className="mt-2 text-[13px] text-muted">
-          {error || "This Stash is unavailable."}
+          {error || "This cartridge is unavailable."}
         </p>
         <Link
           href={`/cartridges/${slug}`}
@@ -119,7 +119,7 @@ export default function CartridgeSettingsPageClient({ slug }: { slug: string }) 
           Stash settings
         </h1>
         <p className="mt-2 text-[13px] text-muted">
-          You do not have edit access to this Stash.
+          You do not have edit access to this cartridge.
         </p>
         <Link
           href={`/cartridges/${stash.slug}`}
@@ -274,7 +274,7 @@ export default function CartridgeSettingsPageClient({ slug }: { slug: string }) 
             />
             <ImageField
               label="Icon"
-              sub="Square logo for this Stash."
+              sub="Square logo for this cartridge."
               url={stash.icon_url}
               onUpload={(file) => uploadAndSet(file, "icon_url")}
               onClear={() => clearImage("icon_url")}
@@ -289,7 +289,7 @@ export default function CartridgeSettingsPageClient({ slug }: { slug: string }) 
               disabled={saving === "delete"}
               className="rounded-md border border-red-300 bg-red-50 px-3 py-2 text-[13px] font-medium text-red-700 hover:bg-red-100 disabled:opacity-50"
             >
-              {saving === "delete" ? "Deleting..." : "Delete this Stash"}
+              {saving === "delete" ? "Deleting..." : "Delete this cartridge"}
             </button>
           </Section>
         </div>

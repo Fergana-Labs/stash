@@ -150,8 +150,8 @@ function inferSearchScope(
     const slug = decodeURIComponent(stashMatch[1]);
     return {
       kind: "stash",
-      label: "this Stash",
-      detail: "Search only in this Stash",
+      label: "this cartridge",
+      detail: "Search only in this cartridge",
       params: { stash: slug },
     };
   }

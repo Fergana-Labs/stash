@@ -155,7 +155,7 @@ function TableEditorPageInner() {
           (it) => it.object_type === "table" && it.object_id === tableId
         );
         if (!item || !item.inline) {
-          setError("Table isn't in this Stash.");
+          setError("Table isn't in this cartridge.");
           return;
         }
         const inline = item.inline as {

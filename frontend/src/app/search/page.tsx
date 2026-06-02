@@ -925,7 +925,7 @@ function textIncludes(query: string, ...values: (string | null | undefined)[]): 
 function pageSnippet(markdown?: string | null, html?: string | null): string {
   if (markdown?.trim()) return markdown.slice(0, 220);
   if (html?.trim()) return stripHtml(html).slice(0, 220);
-  return "Page in this Stash";
+  return "Page in this cartridge";
 }
 
 function sessionSnippet(session: {
@@ -933,7 +933,7 @@ function sessionSnippet(session: {
   events?: { event_type: string; tool_name?: string | null; content: string }[];
 }): string {
   const firstEvent = session.events?.find((event) => event.content.trim());
-  if (!firstEvent) return `${session.agent_name || "Agent"} session in this Stash`;
+  if (!firstEvent) return `${session.agent_name || "Agent"} session in this cartridge`;
   return firstEvent.content.slice(0, 220);
 }
 
