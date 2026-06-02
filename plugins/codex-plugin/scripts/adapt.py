@@ -27,10 +27,15 @@ from stashai.plugin.event import HookEvent
 _TOOL_MAP = {
     "Bash": "bash",
 }
+_EXTRA_KEYS = ("model", "permission_mode")
 
 
 def _normalize(name: str) -> str:
     return _TOOL_MAP.get(name, name.lower())
+
+
+def _extras(data: dict) -> dict:
+    return {key: data[key] for key in _EXTRA_KEYS if isinstance(data.get(key), str) and data[key]}
 
 
 def adapt_session_start(data: dict) -> HookEvent:
@@ -39,6 +44,7 @@ def adapt_session_start(data: dict) -> HookEvent:
         session_id=data.get("session_id", ""),
         cwd=data.get("cwd", ""),
         transcript_path=data.get("transcript_path", ""),
+        extras=_extras(data),
     )
 
 
@@ -48,6 +54,7 @@ def adapt_prompt(data: dict) -> HookEvent:
         session_id=data.get("session_id", ""),
         cwd=data.get("cwd", ""),
         prompt_text=data.get("prompt", ""),
+        extras=_extras(data),
     )
 
 
@@ -62,6 +69,7 @@ def adapt_tool_use(data: dict) -> HookEvent:
         tool_name=_normalize(data.get("tool_name", "")),
         tool_input=tool_input,
         tool_response=data.get("tool_response"),
+        extras=_extras(data),
     )
 
 
@@ -72,4 +80,5 @@ def adapt_stop(data: dict) -> HookEvent:
         cwd=data.get("cwd", ""),
         last_assistant_message=data.get("last_assistant_message", ""),
         transcript_path=data.get("transcript_path", ""),
+        extras=_extras(data),
     )

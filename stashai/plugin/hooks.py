@@ -50,6 +50,7 @@ _UPLOADS_DISABLED_WARNING_MESSAGE = (
 _ENDED_SESSION_ID_KEY = "ended_session_id"
 _YELLOW = "\033[33m"
 _RESET = "\033[0m"
+_METADATA_EXTRA_KEYS = ("model", "permission_mode", "cursor_version", "generation_id")
 
 
 def _read_user_config() -> dict:
@@ -111,6 +112,18 @@ def _short_circuit(cfg: dict, event: HookEvent | None) -> tuple[bool, str | None
         return True, None
 
     return False, workspace_id
+
+
+def _event_metadata(event: HookEvent | None, base: dict | None = None) -> dict:
+    metadata = dict(base or {})
+    if event is None:
+        return metadata
+
+    for key in _METADATA_EXTRA_KEYS:
+        value = event.extras.get(key)
+        if isinstance(value, str) and value:
+            metadata[key] = value
+    return metadata
 
 
 def uploads_enabled(cfg: dict, event: HookEvent | None) -> bool:
@@ -294,6 +307,7 @@ def stream_user_message(
             event_type="user_message",
             content=prompt_text,
             session_id=state.get("session_id", ""),
+            metadata=_event_metadata(event),
             client=cfg.get("client") or None,
         )
     except Exception:
@@ -315,6 +329,7 @@ def stream_tool_use(
     content, metadata = summarize_tool_use(
         event.tool_name, event.tool_input, event.tool_response,
     )
+    metadata = _event_metadata(event, metadata)
     metadata["cwd"] = event.cwd
 
     if data_dir is not None:
@@ -355,6 +370,7 @@ def stream_assistant_message(
             event_type="assistant_message",
             content=event.last_assistant_message,
             session_id=state.get("session_id", ""),
+            metadata=_event_metadata(event),
             client=cfg.get("client") or None,
         )
     except Exception:
@@ -431,12 +447,15 @@ def stream_session_end(
             event_type="session_end",
             content=" ".join(parts),
             session_id=sid,
-            metadata={
-                "cwd": event.cwd,
-                "tool_count": tool_count,
-                "files_touched": files_touched,
-                "tools_used": tools_used,
-            },
+            metadata=_event_metadata(
+                event,
+                {
+                    "cwd": event.cwd,
+                    "tool_count": tool_count,
+                    "files_touched": files_touched,
+                    "tools_used": tools_used,
+                },
+            ),
             client=cfg.get("client") or None,
         )
     except Exception:
