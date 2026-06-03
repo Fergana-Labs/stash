@@ -1,7 +1,17 @@
 "use client";
 
 import { useParams, useRouter, useSearchParams } from "next/navigation";
-import { Suspense, useCallback, useEffect, useRef, useState } from "react";
+import {
+  Suspense,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type AnchorHTMLAttributes,
+  type HTMLAttributes,
+  type KeyboardEvent as ReactKeyboardEvent,
+} from "react";
+import Markdown from "react-markdown";
 import AppShell from "../../../components/AppShell";
 import CustomSelect from "../../../components/CustomSelect";
 import { downloadBlob } from "../../../components/DownloadMenu";
@@ -35,6 +45,21 @@ const DRAFT_ROW_PREFIX = "draft-row-";
 const FILTER_OPS = ["eq", "neq", "gt", "gte", "lt", "lte", "contains", "is_empty", "is_not_empty"] as const;
 const COLUMN_TYPE_OPTIONS = COLUMN_TYPES.map((type) => ({ value: type, label: type }));
 const FILTER_OP_OPTIONS = FILTER_OPS.map((op) => ({ value: op, label: op }));
+const MARKDOWN_LINK_RE = /\[[^\]\n]+\]\([^)]+\)/;
+const TABLE_CELL_MARKDOWN_COMPONENTS = {
+  p: ({ children }: HTMLAttributes<HTMLParagraphElement>) => <>{children}</>,
+  a: ({ href, children }: AnchorHTMLAttributes<HTMLAnchorElement>) => (
+    <a
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="text-brand hover:underline"
+      onClick={(e) => e.stopPropagation()}
+    >
+      {children}
+    </a>
+  ),
+};
 
 interface FilterDef { column_id: string; op: string; value: string }
 type SummaryData = { total_rows: number; columns: Record<string, { name: string; filled: number; sum?: number; avg?: number; min?: number; max?: number }> };
@@ -49,6 +74,54 @@ function isTextEntryTarget(target: EventTarget | null) {
   if (!(target instanceof HTMLElement)) return false;
   const tag = target.tagName;
   return tag === "INPUT" || tag === "TEXTAREA" || target.isContentEditable;
+}
+
+function canLinkCellText(col: TableColumn) {
+  return col.type === "text";
+}
+
+function cellInputType(col: TableColumn) {
+  if (col.type === "number") return "number";
+  if (col.type === "date") return "date";
+  if (col.type === "datetime") return "datetime-local";
+  return "text";
+}
+
+function markdownLinkText(text: string) {
+  return text.replace(/([\\[\]])/g, "\\$1");
+}
+
+function markdownLinkHref(href: string) {
+  return href.replace(/\s/g, "%20").replace(/\)/g, "%29");
+}
+
+function linkMarkdownSelection(
+  value: string,
+  selectionStart: number | null,
+  selectionEnd: number | null,
+  href: string,
+) {
+  const hasSelection =
+    selectionStart != null && selectionEnd != null && selectionStart !== selectionEnd;
+  const start = hasSelection ? Math.min(selectionStart, selectionEnd) : 0;
+  const end = hasSelection ? Math.max(selectionStart, selectionEnd) : value.length;
+  const label = value.slice(start, end) || href;
+  return `${value.slice(0, start)}[${markdownLinkText(label)}](${markdownLinkHref(
+    href,
+  )})${value.slice(end)}`;
+}
+
+function TableCellText({ value }: { value: string }) {
+  if (!MARKDOWN_LINK_RE.test(value)) return <>{value}</>;
+  return (
+    <Markdown
+      allowedElements={["a", "p"]}
+      unwrapDisallowed
+      components={TABLE_CELL_MARKDOWN_COMPONENTS}
+    >
+      {value}
+    </Markdown>
+  );
 }
 
 export default function TableEditorPage() {
@@ -496,6 +569,44 @@ function TableEditorPageInner() {
     setEditingCell(null);
   };
   const cancelEdit = () => setEditingCell(null);
+  const applyCellLink = async (input: HTMLInputElement, col: TableColumn) => {
+    if (!canLinkCellText(col)) return;
+    const href = window.prompt("Link URL", "https://");
+    if (href == null) return;
+    const trimmedHref = href.trim();
+    if (!trimmedHref) return;
+    const nextValue = linkMarkdownSelection(
+      cellValue,
+      input.selectionStart,
+      input.selectionEnd,
+      trimmedHref,
+    );
+    setCellValue(nextValue);
+    await commitEdit(nextValue);
+  };
+  const handleCellInputKeyDown = (
+    e: ReactKeyboardEvent<HTMLInputElement>,
+    col: TableColumn,
+  ) => {
+    if (
+      canLinkCellText(col) &&
+      (e.metaKey || e.ctrlKey) &&
+      !e.altKey &&
+      !e.shiftKey &&
+      e.key.toLowerCase() === "k"
+    ) {
+      e.preventDefault();
+      void applyCellLink(e.currentTarget, col);
+      return;
+    }
+
+    if (e.key === "Enter") void commitEdit();
+    if (e.key === "Escape") cancelEdit();
+    if (e.key === "Tab") {
+      e.preventDefault();
+      void commitEdit();
+    }
+  };
 
   // --- Row detail ---
   const openDetail = (row: TableRow) => {
@@ -737,7 +848,16 @@ function TableEditorPageInner() {
               autoFocus
             />
           ) : (
-            <input aria-label={`Edit row ${rowNumber} ${col.name}`} ref={cellInputRef} type={col.type === "number" ? "number" : col.type === "date" ? "date" : col.type === "datetime" ? "datetime-local" : "text"} value={cellValue} onChange={(e) => setCellValue(e.target.value)} onBlur={() => void commitEdit()} onKeyDown={(e) => { if (e.key === "Enter") commitEdit(); if (e.key === "Escape") cancelEdit(); if (e.key === "Tab") { e.preventDefault(); commitEdit(); } }} className="w-full h-8 px-2 text-sm bg-transparent outline-none ring-1 ring-brand rounded font-mono text-foreground" />
+            <input
+              aria-label={`Edit row ${rowNumber} ${col.name}`}
+              ref={cellInputRef}
+              type={cellInputType(col)}
+              value={cellValue}
+              onChange={(e) => setCellValue(e.target.value)}
+              onBlur={() => void commitEdit()}
+              onKeyDown={(e) => handleCellInputKeyDown(e, col)}
+              className="w-full h-8 px-2 text-sm bg-transparent outline-none ring-1 ring-brand rounded font-mono text-foreground"
+            />
           )
         ) : isDraftRowId(rowId) ? (
           <button
@@ -752,7 +872,7 @@ function TableEditorPageInner() {
           <div className={`${wrapCells ? "min-h-[32px] py-1" : "h-8"} px-2 flex items-center text-sm font-mono text-foreground ${wrapCells ? "whitespace-normal break-words" : "truncate"} cursor-text`}>
             {col.type === "boolean" ? <span className={value ? "text-green-400" : "text-muted"}>{value ? "\u2713" : "\u2717"}</span>
             : col.type === "url" && value ? <a href={String(value)} target="_blank" rel="noopener noreferrer" className="text-brand hover:underline truncate" onClick={(e) => e.stopPropagation()}>{String(value)}</a>
-            : <span className={value != null && value !== "" ? "" : "text-muted/30"}>{value != null && value !== "" ? String(value) : "\u2014"}</span>}
+            : <span className={value != null && value !== "" ? "" : "text-muted/30"}>{value != null && value !== "" ? <TableCellText value={String(value)} /> : "\u2014"}</span>}
           </div>
         )}
       </td>

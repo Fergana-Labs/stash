@@ -1,4 +1,5 @@
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -209,6 +210,51 @@ describe("TableEditorPage row creation", () => {
       }),
     );
     expect(screen.getByText("Alice")).toBeInTheDocument();
+  });
+
+  it("links selected text in a text cell with command-k", async () => {
+    const linkedValue = "[Alice](https://example.com)";
+    const linkedRow = {
+      ...existingRows[0],
+      data: { name: linkedValue },
+    };
+    api.updateTableRow.mockResolvedValue(linkedRow);
+    vi.stubGlobal("prompt", vi.fn(() => "https://example.com"));
+
+    render(<TableEditorPage />);
+
+    fireEvent.click(await screen.findByText("Alice"));
+    const input = await screen.findByLabelText("Edit row 1 Name");
+    if (!(input instanceof HTMLInputElement)) throw new Error("Expected cell input");
+    input.setSelectionRange(0, input.value.length);
+    await act(async () => {
+      fireEvent.keyDown(input, { key: "k", metaKey: true });
+      await Promise.resolve();
+    });
+
+    await waitFor(() =>
+      expect(api.updateTableRow).toHaveBeenCalledWith("ws-1", "table-1", "row-1", {
+        name: linkedValue,
+      }),
+    );
+  });
+
+  it("renders markdown links in text cells", async () => {
+    api.listTableRows.mockResolvedValue({
+      rows: [
+        {
+          ...existingRows[0],
+          data: { name: "[Alice](https://example.com)" },
+        },
+      ],
+      total_count: 1,
+      has_more: false,
+    });
+
+    render(<TableEditorPage />);
+
+    const link = await screen.findByRole("link", { name: "Alice" });
+    expect(link).toHaveAttribute("href", "https://example.com");
   });
 
   it("creates a row when typing into an empty tail row", async () => {
