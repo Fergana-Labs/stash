@@ -249,6 +249,7 @@ export default function MarkdownEditor({
       attributes: {
         class:
           "prose prose-sm max-w-none min-h-[200px] focus:outline-none file-page-body",
+        spellcheck: "false",
       },
       handleDOMEvents: {
         paste: (_view, event) => {
