@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useBreadcrumbs } from "../../../../../../components/BreadcrumbContext";
 import { PageBody } from "../../../../stashes/[slug]/StashItemBodies";
 import {
@@ -62,6 +62,31 @@ function escapeHtml(s: string): string {
   );
 }
 
+function readCommentAnchorTops(
+  container: HTMLElement,
+  relativeTo: HTMLElement,
+): Record<string, number> {
+  const rootRect = relativeTo.getBoundingClientRect();
+  const next: Record<string, number> = {};
+  const anchors = container.querySelectorAll<HTMLElement>("[data-comment-id]");
+  anchors.forEach((anchor) => {
+    const id = anchor.getAttribute("data-comment-id");
+    if (!id) return;
+    const rects = anchor.getClientRects();
+    const rect = rects[0] ?? anchor.getBoundingClientRect();
+    const top = Math.max(0, Math.round(rect.top - rootRect.top));
+    if (next[id] === undefined || top < next[id]) next[id] = top;
+  });
+  return next;
+}
+
+function sameAnchorTops(a: Record<string, number>, b: Record<string, number>): boolean {
+  const aKeys = Object.keys(a);
+  const bKeys = Object.keys(b);
+  if (aKeys.length !== bKeys.length) return false;
+  return aKeys.every((key) => a[key] === b[key]);
+}
+
 export default function StashPageView() {
   const params = useParams();
   const router = useRouter();
@@ -86,6 +111,9 @@ export default function StashPageView() {
   // slow save is still in flight. Treat the most-recently-issued seq as
   // the source of truth so older responses can't roll back the page.
   const saveSeq = useRef(0);
+  const pageLayoutRef = useRef<HTMLDivElement | null>(null);
+  const articleRef = useRef<HTMLElement | null>(null);
+  const [commentAnchorTops, setCommentAnchorTops] = useState<Record<string, number>>({});
 
   const [threads, setThreads] = useState<CommentThread[]>([]);
   const [activeThreadId, setActiveThreadId] = useState<string | null>(null);
@@ -110,6 +138,10 @@ export default function StashPageView() {
   useEffect(() => {
     htmlSelectionRef.current = htmlSelection;
   }, [htmlSelection]);
+
+  useEffect(() => {
+    setCommentAnchorTops({});
+  }, [workspaceId, pageId]);
 
   useBreadcrumbs(
     [
@@ -342,6 +374,53 @@ export default function StashPageView() {
     if (!loading && !user && !stashSlug) router.push("/login");
   }, [user, loading, router, stashSlug]);
 
+  const handleHtmlAnchorTops = useCallback((iframeAnchorTops: Record<string, number>) => {
+    const layout = pageLayoutRef.current;
+    const iframeBox = iframeBoxRef.current;
+    if (!layout || !iframeBox) return;
+    const offset = iframeBox.getBoundingClientRect().top - layout.getBoundingClientRect().top;
+    const next: Record<string, number> = {};
+    for (const [id, top] of Object.entries(iframeAnchorTops)) {
+      next[id] = Math.max(0, Math.round(offset + top));
+    }
+    setCommentAnchorTops((current) => (sameAnchorTops(current, next) ? current : next));
+  }, []);
+
+  useLayoutEffect(() => {
+    if (!page || page.content_type === "html") return;
+    const article = articleRef.current;
+    const layout = pageLayoutRef.current;
+    if (!article || !layout) return;
+
+    const update = () => {
+      const next = readCommentAnchorTops(article, layout);
+      setCommentAnchorTops((current) => (sameAnchorTops(current, next) ? current : next));
+    };
+
+    update();
+    const resizeObserver =
+      typeof ResizeObserver === "undefined" ? null : new ResizeObserver(update);
+    resizeObserver?.observe(article);
+
+    const mutationObserver =
+      typeof MutationObserver === "undefined"
+        ? null
+        : new MutationObserver(update);
+    mutationObserver?.observe(article, {
+      attributes: true,
+      attributeFilter: ["data-comment-id"],
+      childList: true,
+      subtree: true,
+    });
+
+    window.addEventListener("resize", update);
+    return () => {
+      resizeObserver?.disconnect();
+      mutationObserver?.disconnect();
+      window.removeEventListener("resize", update);
+    };
+  }, [page]);
+
   if (loading) return <DocumentPageSkeleton />;
   if (stashFallback) {
     return (
@@ -483,7 +562,10 @@ export default function StashPageView() {
             : undefined
         }
       />
-      <div className="mx-auto mt-6 grid max-w-[1200px] gap-7 px-12 pb-20 lg:grid-cols-[minmax(0,1fr)_240px]">
+      <div
+        ref={pageLayoutRef}
+        className="mx-auto mt-6 grid max-w-[1200px] gap-7 px-12 pb-20 lg:grid-cols-[minmax(0,1fr)_240px]"
+      >
         <main className="min-w-0">
           {error && (
             <div className="mb-4 rounded-lg border border-red-300/40 bg-red-500/10 px-4 py-2 text-[13px] text-red-500">
@@ -491,7 +573,7 @@ export default function StashPageView() {
             </div>
           )}
 
-          <article className="text-[15px] leading-relaxed text-foreground">
+          <article ref={articleRef} className="text-[15px] leading-relaxed text-foreground">
             {page ? (
               isHtml ? (
                 <div ref={iframeBoxRef} className="relative">
@@ -502,6 +584,7 @@ export default function StashPageView() {
                     layout={page.html_layout}
                     onSelection={setHtmlSelection}
                     onActivateThread={setActiveThreadId}
+                    onAnchorTops={handleHtmlAnchorTops}
                     activeThreadId={activeThreadId}
                     pendingWrapId={pendingWrapId}
                     onWrapComplete={() => setPendingWrapId(null)}
@@ -563,18 +646,21 @@ export default function StashPageView() {
           </article>
         </main>
 
-        <div className="mt-20 hidden flex-col gap-4 lg:flex">
-          <StashAside stashes={containingStashes} />
+        <div className="hidden lg:block">
           <CommentsSidebar
             threads={threads}
             activeThreadId={activeThreadId}
             currentUserId={user.id}
+            anchorTops={commentAnchorTops}
             onActivate={setActiveThreadId}
             onReply={handleReply}
             onSetResolved={handleSetResolved}
             onDeleteThread={handleDeleteThread}
             onDeleteMessage={handleDeleteMessage}
           />
+          <div className={threads.length > 0 ? "mt-6" : "mt-20"}>
+            <StashAside stashes={containingStashes} />
+          </div>
         </div>
       </div>
     </div>

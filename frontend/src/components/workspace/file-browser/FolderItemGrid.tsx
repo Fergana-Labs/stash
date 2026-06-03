@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, type DragEvent } from "react";
+import { shouldOpenInNewTab, type NavigateOptions } from "../../../lib/linkNavigation";
 import { FileIcon, FolderIcon, PageIcon, TableIcon } from "../../StashIcons";
 import { type FBDragPayload } from "./WorkspaceFileBrowser";
 import { SelectBox, handleFolderDrop, isFbDrag, startItemDrag } from "./ItemsList";
@@ -23,8 +24,8 @@ export interface GridItem {
 interface Props {
   items: GridItem[];
   selectedId: string | null;
-  onSelect: (item: GridItem) => void;
-  onNavigate: (item: GridItem) => void;
+  onSelect: (item: GridItem, options?: NavigateOptions) => void;
+  onNavigate: (item: GridItem, options?: NavigateOptions) => void;
   onReparent: (payload: FBDragPayload, targetFolderId: string | null) => Promise<void>;
   onReparentMany?: (payloads: FBDragPayload[], targetFolderId: string | null) => Promise<void>;
   onDelete?: (item: GridItem) => Promise<void>;
@@ -64,8 +65,8 @@ export default function FolderItemGrid({
             item={item}
             selected={item.id === selectedId}
             multiSelected={!!selectedIds?.has(item.id)}
-            onSelect={() => onSelect(item)}
-            onNavigate={() => onNavigate(item)}
+            onSelect={(options) => onSelect(item, options)}
+            onNavigate={(options) => onNavigate(item, options)}
             onReparent={onReparent}
             onReparentMany={onReparentMany}
             onDelete={onDelete}
@@ -93,8 +94,8 @@ function Tile({
   item: GridItem;
   selected: boolean;
   multiSelected: boolean;
-  onSelect: () => void;
-  onNavigate: () => void;
+  onSelect: (options?: NavigateOptions) => void;
+  onNavigate: (options?: NavigateOptions) => void;
   onReparent: (payload: FBDragPayload, targetFolderId: string | null) => Promise<void>;
   onReparentMany?: (payloads: FBDragPayload[], targetFolderId: string | null) => Promise<void>;
   onDelete?: (item: GridItem) => Promise<void>;
@@ -106,8 +107,11 @@ function Tile({
 
   return (
     <div
-      onClick={onSelect}
-      onDoubleClick={onNavigate}
+      onClick={(e) => onSelect({ newTab: shouldOpenInNewTab(e) })}
+      onAuxClick={(e) => {
+        if (shouldOpenInNewTab(e)) onSelect({ newTab: true });
+      }}
+      onDoubleClick={() => onNavigate()}
       role="button"
       tabIndex={0}
       onKeyDown={(e) => {

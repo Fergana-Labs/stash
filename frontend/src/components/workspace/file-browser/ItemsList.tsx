@@ -6,6 +6,7 @@ import {
   FB_DRAG_MULTI_MIME,
   type FBDragPayload,
 } from "./WorkspaceFileBrowser";
+import { shouldOpenInNewTab, type NavigateOptions } from "../../../lib/linkNavigation";
 import { FileIcon, FolderIcon, PageIcon, PinIcon, TableIcon } from "../../StashIcons";
 import type { GridItem, ItemKind } from "./FolderItemGrid";
 
@@ -70,7 +71,7 @@ const LIST_GRID_COLS = "minmax(0,2fr) minmax(0,1fr) minmax(0,1fr) 64px";
 
 interface Props {
   items: GridItem[];
-  onNavigate: (item: GridItem) => void;
+  onNavigate: (item: GridItem, options?: NavigateOptions) => void;
   onReparent: (payload: FBDragPayload, targetFolderId: string | null) => Promise<void>;
   onReparentMany: (payloads: FBDragPayload[], targetFolderId: string | null) => Promise<void>;
   onDelete: (item: GridItem) => Promise<void>;
@@ -231,7 +232,7 @@ function Row({
   selectedDragPayloads,
 }: {
   item: GridItem;
-  onNavigate: (item: GridItem) => void;
+  onNavigate: (item: GridItem, options?: NavigateOptions) => void;
   onReparent: (payload: FBDragPayload, targetFolderId: string | null) => Promise<void>;
   onReparentMany: (payloads: FBDragPayload[], targetFolderId: string | null) => Promise<void>;
   onDelete: (item: GridItem) => Promise<void>;
@@ -246,7 +247,10 @@ function Row({
 
   return (
     <div
-      onClick={() => onNavigate(item)}
+      onClick={(e) => onNavigate(item, { newTab: shouldOpenInNewTab(e) })}
+      onAuxClick={(e) => {
+        if (shouldOpenInNewTab(e)) onNavigate(item, { newTab: true });
+      }}
       role="button"
       tabIndex={0}
       onKeyDown={(e) => {

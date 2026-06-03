@@ -25,6 +25,7 @@ type Props = {
   /** Click on a `[data-comment-id]` span inside the iframe asks the
    *  parent to surface the matching thread. */
   onActivateThread?: (threadId: string) => void;
+  onAnchorTops?: (anchorTops: Record<string, number>) => void;
   /** Wraps the most recently reported selection with a
    *  `<span data-comment-id>` and posts the resulting full HTML back
    *  via `onHtmlMutated`. Called by the parent after the thread is
@@ -65,6 +66,7 @@ export default function HtmlPageView({
   layout = "responsive",
   onSelection,
   onActivateThread,
+  onAnchorTops,
   pendingWrapId,
   onWrapComplete,
   onHtmlMutated,
@@ -136,6 +138,14 @@ export default function HtmlPageView({
         onActivateThread?.(data.id);
         return;
       }
+      if (data.type === "stash:anchor-tops" && data.anchorTops) {
+        const anchorTops: Record<string, number> = {};
+        for (const [id, top] of Object.entries(data.anchorTops)) {
+          if (typeof top === "number") anchorTops[id] = top;
+        }
+        onAnchorTops?.(anchorTops);
+        return;
+      }
       if (data.type === "stash:html-mutated" && typeof data.html === "string") {
         onHtmlMutated?.(data.html);
         onWrapComplete?.();
@@ -157,6 +167,7 @@ export default function HtmlPageView({
     channel,
     onSelection,
     onActivateThread,
+    onAnchorTops,
     onHtmlMutated,
     onWrapComplete,
     onNavigateLink,
@@ -511,6 +522,21 @@ function injectResizeBootstrap(
         document.body ? document.body.scrollHeight : 0
       );
       post({type:"stash:resize",height:h});
+      reportAnchorTops();
+    }
+    function reportAnchorTops(){
+      var anchorTops={};
+      var nodes=document.querySelectorAll("[data-comment-id]");
+      for(var i=0;i<nodes.length;i++){
+        var el=nodes[i];
+        var id=el.getAttribute("data-comment-id");
+        if(!id) continue;
+        var rects=el.getClientRects();
+        var rect=rects[0]||el.getBoundingClientRect();
+        var top=Math.max(0,Math.round(rect.top));
+        if(anchorTops[id]===undefined || top<anchorTops[id]) anchorTops[id]=top;
+      }
+      post({type:"stash:anchor-tops",anchorTops:anchorTops});
     }
     function injectStyle(){
       if(document.getElementById("__stash_comments_css__")) return;
@@ -592,6 +618,7 @@ function injectResizeBootstrap(
         range.insertNode(span);
       }
       sel.removeAllRanges();
+      reportAnchorTops();
       post({type:"stash:html-mutated",html:serializeClean()});
     }
     function unwrap(id){
@@ -604,6 +631,7 @@ function injectResizeBootstrap(
         while(el.firstChild) parent.insertBefore(el.firstChild,el);
         parent.removeChild(el);
       }
+      reportAnchorTops();
       post({type:"stash:html-mutated",html:serializeClean()});
     }
     function applyActive(id){

@@ -91,7 +91,7 @@ export default function FileContentRenderer({ url, name, contentType, className 
       );
     }
     return (
-      <pre className="scroll-thin overflow-auto rounded-lg border border-border bg-base px-5 py-4 font-mono text-[12.5px] text-foreground">
+      <pre className="scroll-thin overflow-x-auto rounded-lg border border-border bg-base px-5 py-4 font-mono text-[12.5px] text-foreground">
         {text || ""}
       </pre>
     );

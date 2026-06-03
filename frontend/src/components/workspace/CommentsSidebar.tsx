@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useLayoutEffect, useMemo, useRef, useState } from "react";
 
 import type { CommentThread } from "../../lib/types";
 
@@ -8,6 +8,7 @@ interface CommentsSidebarProps {
   threads: CommentThread[];
   activeThreadId: string | null;
   currentUserId: string;
+  anchorTops?: Record<string, number>;
   onActivate: (threadId: string) => void;
   onReply: (threadId: string, body: string) => Promise<void>;
   onSetResolved: (threadId: string, resolved: boolean) => Promise<void>;
@@ -15,10 +16,14 @@ interface CommentsSidebarProps {
   onDeleteMessage: (threadId: string, messageId: string) => Promise<void>;
 }
 
+const CARD_GAP = 8;
+const ESTIMATED_CARD_HEIGHT = 124;
+
 export default function CommentsSidebar({
   threads,
   activeThreadId,
   currentUserId,
+  anchorTops = {},
   onActivate,
   onReply,
   onSetResolved,
@@ -30,6 +35,24 @@ export default function CommentsSidebar({
   const resolved = threads.filter((t) => t.resolved_at);
 
   if (threads.length === 0) return null;
+
+  if (open.some((thread) => hasAnchorTop(anchorTops, thread.id))) {
+    return (
+      <AlignedComments
+        open={open}
+        orphaned={orphaned}
+        resolved={resolved}
+        activeThreadId={activeThreadId}
+        currentUserId={currentUserId}
+        anchorTops={anchorTops}
+        onActivate={onActivate}
+        onReply={onReply}
+        onSetResolved={onSetResolved}
+        onDeleteThread={onDeleteThread}
+        onDeleteMessage={onDeleteMessage}
+      />
+    );
+  }
 
   return (
     <aside>
@@ -81,6 +104,160 @@ export default function CommentsSidebar({
       </div>
     </aside>
   );
+}
+
+function AlignedComments({
+  open,
+  orphaned,
+  resolved,
+  activeThreadId,
+  currentUserId,
+  anchorTops,
+  onActivate,
+  onReply,
+  onSetResolved,
+  onDeleteThread,
+  onDeleteMessage,
+}: {
+  open: CommentThread[];
+  orphaned: CommentThread[];
+  resolved: CommentThread[];
+  activeThreadId: string | null;
+  currentUserId: string;
+  anchorTops: Record<string, number>;
+  onActivate: (threadId: string) => void;
+  onReply: (threadId: string, body: string) => Promise<void>;
+  onSetResolved: (threadId: string, resolved: boolean) => Promise<void>;
+  onDeleteThread: (threadId: string) => Promise<void>;
+  onDeleteMessage: (threadId: string, messageId: string) => Promise<void>;
+}) {
+  const cardRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  const [cardHeights, setCardHeights] = useState<Record<string, number>>({});
+  const sortedOpen = useMemo(
+    () => sortThreadsByAnchorTop(open, anchorTops),
+    [open, anchorTops],
+  );
+  const layout = useMemo(
+    () => buildThreadLayout(sortedOpen, anchorTops, cardHeights),
+    [sortedOpen, anchorTops, cardHeights],
+  );
+
+  useLayoutEffect(() => {
+    const next: Record<string, number> = {};
+    for (const thread of sortedOpen) {
+      const node = cardRefs.current[thread.id];
+      if (node) next[thread.id] = Math.ceil(node.getBoundingClientRect().height);
+    }
+    setCardHeights((current) => (sameNumberMap(current, next) ? current : next));
+  }, [sortedOpen]);
+
+  return (
+    <aside className="relative">
+      <div className="relative" style={{ minHeight: layout.height }}>
+        {layout.items.map(({ thread, top }) => (
+          <div
+            key={thread.id}
+            ref={(node) => {
+              cardRefs.current[thread.id] = node;
+            }}
+            className="absolute left-0 right-0"
+            style={{ top }}
+          >
+            <ThreadCard
+              thread={thread}
+              active={thread.id === activeThreadId}
+              currentUserId={currentUserId}
+              onActivate={onActivate}
+              onReply={onReply}
+              onSetResolved={onSetResolved}
+              onDeleteThread={onDeleteThread}
+              onDeleteMessage={onDeleteMessage}
+            />
+          </div>
+        ))}
+      </div>
+
+      {(orphaned.length > 0 || resolved.length > 0) && (
+        <div className="card-soft mt-4 p-3.5">
+          <div className="sys-label">Comments</div>
+          <div className="mt-3 flex flex-col gap-4">
+            {orphaned.length > 0 && (
+              <Group
+                label="Orphaned"
+                threads={orphaned}
+                activeThreadId={activeThreadId}
+                currentUserId={currentUserId}
+                onActivate={onActivate}
+                onReply={onReply}
+                onSetResolved={onSetResolved}
+                onDeleteThread={onDeleteThread}
+                onDeleteMessage={onDeleteMessage}
+                hint="The anchored text was deleted from the page. Resolve to clear."
+              />
+            )}
+            {resolved.length > 0 && (
+              <Group
+                label="Resolved"
+                threads={resolved}
+                activeThreadId={activeThreadId}
+                currentUserId={currentUserId}
+                onActivate={onActivate}
+                onReply={onReply}
+                onSetResolved={onSetResolved}
+                onDeleteThread={onDeleteThread}
+                onDeleteMessage={onDeleteMessage}
+                collapsedByDefault
+              />
+            )}
+          </div>
+        </div>
+      )}
+    </aside>
+  );
+}
+
+function sortThreadsByAnchorTop(
+  threads: CommentThread[],
+  anchorTops: Record<string, number>,
+): CommentThread[] {
+  return [...threads].sort((a, b) => {
+    const aTop = anchorTops[a.id];
+    const bTop = anchorTops[b.id];
+    const aHasTop = typeof aTop === "number";
+    const bHasTop = typeof bTop === "number";
+    if (aHasTop && bHasTop) return aTop - bTop;
+    if (aHasTop) return -1;
+    if (bHasTop) return 1;
+    return 0;
+  });
+}
+
+function buildThreadLayout(
+  threads: CommentThread[],
+  anchorTops: Record<string, number>,
+  cardHeights: Record<string, number>,
+): { items: { thread: CommentThread; top: number }[]; height: number } {
+  let nextTop = 0;
+  const items = threads.map((thread) => {
+    const anchorTop = anchorTops[thread.id];
+    const desiredTop = typeof anchorTop === "number" ? Math.max(0, anchorTop) : nextTop;
+    const top = Math.max(desiredTop, nextTop);
+    const height = cardHeights[thread.id] ?? ESTIMATED_CARD_HEIGHT;
+    nextTop = top + height + CARD_GAP;
+    return { thread, top };
+  });
+  return { items, height: Math.max(0, nextTop - CARD_GAP) };
+}
+
+function hasAnchorTop(anchorTops: Record<string, number>, threadId: string): boolean {
+  return typeof anchorTops[threadId] === "number";
+}
+
+function sameNumberMap(a: Record<string, number>, b: Record<string, number>): boolean {
+  const aKeys = Object.keys(a);
+  const bKeys = Object.keys(b);
+  if (aKeys.length !== bKeys.length) return false;
+  return aKeys.every((key) => a[key] === b[key]);
 }
 
 function Group({
@@ -189,6 +366,7 @@ function ThreadCard({
 
   return (
     <div
+      data-comment-thread-id={thread.id}
       onClick={() => onActivate(thread.id)}
       className={`rounded-md border px-2.5 py-2 text-[12.5px] ${
         active

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { type MouseEvent, useEffect, useRef, useState } from "react";
 
 interface Props {
   top: number;
@@ -37,9 +37,14 @@ export default function CommentComposerPopover({
     }
   }
 
+  function keepAnchorSelectionAlive(e: MouseEvent<HTMLDivElement>) {
+    if (isTextControl(e.target)) return;
+    e.preventDefault();
+  }
+
   return (
     <div
-      onMouseDown={(e) => e.preventDefault()}
+      onMouseDown={keepAnchorSelectionAlive}
       className="absolute z-30 w-[260px] rounded-md border border-border-subtle bg-raised p-2 shadow-md"
       style={{ top, left }}
     >
@@ -82,4 +87,8 @@ export default function CommentComposerPopover({
       </div>
     </div>
   );
+}
+
+function isTextControl(target: EventTarget | null) {
+  return target instanceof HTMLElement && !!target.closest("textarea, input");
 }

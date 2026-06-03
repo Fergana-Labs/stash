@@ -28,6 +28,7 @@ import {
   uploadFile,
   workspaceFileDownloadUrl,
 } from "../../lib/api";
+import { openInNewTab, shouldOpenInNewTab } from "../../lib/linkNavigation";
 
 const AUTOSAVE_DEBOUNCE_MS = 1500;
 const ANCHOR_CONTEXT_CHARS = 32;
@@ -292,13 +293,17 @@ export default function MarkdownEditor({
 
           if (isStashAbsolute || isRouteRelative) {
             event.preventDefault();
-            onNavigateInternal?.(href);
+            if (shouldOpenInNewTab(event)) {
+              openInNewTab(href);
+            } else {
+              onNavigateInternal?.(href);
+            }
             return true;
           }
 
           if (hasScheme) {
             event.preventDefault();
-            window.open(href, "_blank", "noopener,noreferrer");
+            openInNewTab(href);
             return true;
           }
 
