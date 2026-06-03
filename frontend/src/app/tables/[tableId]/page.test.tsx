@@ -8,7 +8,7 @@ import {
 } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import TableEditorPage from "./page";
+import TableEditorPage from "./TableClient";
 
 const api = vi.hoisted(() => ({
   fetchAuthed: vi.fn(),
