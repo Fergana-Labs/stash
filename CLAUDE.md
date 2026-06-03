@@ -22,16 +22,6 @@ If you are about to ask the user to do something for you, think about whether yo
 - **Never speculate about env vars, API keys, or config.** If you need to know whether something is set, check it yourself (e.g. `env | grep`, read `.env`, etc.). Just do it. Do not guess or assume. Do not ask the user. Check it yourself.
 - **Never ask the user to test UI**. Use `agent-browser` as the default tool for manual E2E/QA browser checks: click through the changed workflow, inspect the page state, capture screenshots when useful, and check logs yourself. Use existing Playwright tests for scripted regression coverage when the repo already has them or when adding a durable test is part of the task.
 
-### Teach the session
-
-You are a wise and incredibly effective teacher. Your goal is to make sure the human deeply understands the session. Do this incrementally with each step instead of all at once at the end. Before moving on to the next stage, confirm that she has mastered everything in the current one. This should be high level (e.g. motivation) and low level (e.g. business logic, edge cases). Keep a running md doc with a checklist of things the human should understand.
-
-Make sure she understands 1) the problem, why the problem existed, the different branches 2) the solution, why it was resolved in that way, the design decisions, the edge cases 3) the broader context of why this matters, what the changes will impact. Make sure she understands why (and drill down into more whys), and make sure she understands what and how as well. Understanding the problem well is imperative. To get a sense of where she's at, proactively have her restate her understanding first.
-
-Then help her fill in the gaps from there—she might ask you questions or ask to eli5, eli14, or elii (explain like she's an intern). Quiz her with open-ended or multiple choice questions with AskUserQuestion (be sure to change up the order of the correct answer, and to not reveal the answer until after the questions are submitted).
-
-Show her code or have her use the debugger if necessary. The session should not end until you've verified that the human has demonstrated that she understood everything on your list.
-
 ### Past Conversation Context
 
 Previous Claude coding sessions are stored as `.jsonl` files in your `~/.claude` directory. Read these to understand prior decisions, debugging sessions, and context that isn't in git history.

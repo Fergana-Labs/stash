@@ -53,7 +53,7 @@ vi.mock("../lib/api", () => ({
 
 const sidebar = {
   sessions: [],
-  stashes: [],
+  cartridges: [],
   files: {
     folders: [],
     pages: [

@@ -19,13 +19,13 @@ from pydantic import BaseModel, Field
 
 from ..config import settings
 from ..middleware import limiter
-from ..models import StashItem
+from ..models import CartridgeItem
 from ..services import (
+    cartridge_service,
     demo_content,
     demo_service,
     files_tree_service,
     memory_service,
-    stash_service,
 )
 from ..services.files_tree_service import DuplicatePageName
 
@@ -79,10 +79,10 @@ class DemoSessionCreate(BaseModel):
     cwd: str | None = Field(None, max_length=1024)
 
 
-class DemoStashCreate(BaseModel):
+class DemoCartridgeCreate(BaseModel):
     title: str = Field(..., min_length=1, max_length=160)
     description: str = Field("", max_length=2000)
-    items: list[StashItem] = Field(..., min_length=1)
+    items: list[CartridgeItem] = Field(..., min_length=1)
 
 
 # --- Static reads (skill / about / instructions) ---
@@ -205,9 +205,11 @@ async def create_session(request: Request, req: DemoSessionCreate = Body(...)) -
     }
 
 
-@router.post("/stashes", status_code=201)
+@router.post("/cartridges", status_code=201)
 @limiter.limit(_POST_LIMIT)
-async def create_stash(request: Request, req: DemoStashCreate = Body(...)) -> dict[str, Any]:
+async def create_cartridge(
+    request: Request, req: DemoCartridgeCreate = Body(...)
+) -> dict[str, Any]:
     workspace_id, owner_id = await demo_service.get_demo_workspace()
 
     items = list(req.items)
@@ -216,7 +218,7 @@ async def create_stash(request: Request, req: DemoStashCreate = Body(...)) -> di
     kb_folder_id = await demo_service.get_kb_folder_id()
     if not any(item.object_type == "folder" and item.object_id == kb_folder_id for item in items):
         items.append(
-            StashItem(
+            CartridgeItem(
                 object_type="folder",
                 object_id=kb_folder_id,
                 position=len(items),
@@ -228,7 +230,7 @@ async def create_stash(request: Request, req: DemoStashCreate = Body(...)) -> di
         await _validate_item_belongs_to_demo(item, workspace_id)
 
     try:
-        stash = await stash_service.create_stash(
+        stash = await cartridge_service.create_cartridge(
             workspace_id=workspace_id,
             owner_id=owner_id,
             title=req.title,
@@ -245,9 +247,9 @@ async def create_stash(request: Request, req: DemoStashCreate = Body(...)) -> di
 
     base = settings.PUBLIC_URL.rstrip("/")
     return {
-        "stash_id": stash["id"],
+        "cartridge_id": stash["id"],
         "slug": stash["slug"],
-        "app_url": f"{base}/stashes/{stash['slug']}",
+        "app_url": f"{base}/cartridges/{stash['slug']}",
     }
 
 
@@ -265,7 +267,7 @@ def _unique_page_name(title: str) -> str:
     return f"{base} — {suffix}"
 
 
-async def _validate_item_belongs_to_demo(item: StashItem, workspace_id) -> None:
+async def _validate_item_belongs_to_demo(item: CartridgeItem, workspace_id) -> None:
     """Reject attempts to bundle objects from outside the Demo workspace."""
     from ..services import permission_service
 

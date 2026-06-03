@@ -4,8 +4,8 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from ..auth import get_current_user
 from ..config import settings
-from ..models import PublishRequest, PublishResponse, StashItem
-from ..services import files_tree_service, stash_service, workspace_service
+from ..models import CartridgeItem, PublishRequest, PublishResponse
+from ..services import cartridge_service, files_tree_service, workspace_service
 
 router = APIRouter(prefix="/api/v1", tags=["publish"])
 
@@ -51,7 +51,7 @@ async def publish(
     )
 
     try:
-        stash = await stash_service.create_stash(
+        stash = await cartridge_service.create_cartridge(
             workspace_id=workspace_id,
             owner_id=current_user["id"],
             title=req.title,
@@ -60,7 +60,7 @@ async def publish(
             public_permission=req.public_permission,
             discoverable=False,
             cover_image_url=None,
-            items=[StashItem(object_type="page", object_id=page["id"], position=0)],
+            items=[CartridgeItem(object_type="page", object_id=page["id"], position=0)],
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -73,7 +73,7 @@ async def publish(
         visibility=stash["access"],
         workspace_permission=stash["workspace_permission"],
         public_permission=stash["public_permission"],
-        url=f"{base}/stashes/{stash['slug']}",
-        stash_id=stash["id"],
-        stash_slug=stash["slug"],
+        url=f"{base}/cartridges/{stash['slug']}",
+        cartridge_id=stash["id"],
+        cartridge_slug=stash["slug"],
     )

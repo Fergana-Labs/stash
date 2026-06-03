@@ -28,14 +28,7 @@ export interface Workspace {
   cover_image_url?: string | null;
   icon_url?: string | null;
   color_gradient?: string | null;
-}
-
-export interface WorkspaceMember {
-  user_id: string;
-  name: string;
-  display_name: string;
-  role: string;
-  joined_at: string;
+  is_primary?: boolean;
 }
 
 // --- Files: folders (nested) and pages ---

@@ -83,6 +83,9 @@ class ProviderListItem(BaseModel):
     display_name: str
     scopes: list[str]
     connected: bool
+    # "oauth" (the default redirect flow) or "mcp_oauth" (DCR+PKCE via an MCP
+    # server, e.g. Granola).
+    auth_kind: str = "oauth"
     account_email: str | None = None
     account_display_name: str | None = None
     expires_at: str | None = None
@@ -107,6 +110,7 @@ async def list_integrations(current_user: dict = Depends(get_current_user)):
                 display_name=p.display_name,
                 scopes=p.scopes,
                 connected=conn is not None,
+                auth_kind=getattr(p, "auth_kind", "oauth"),
                 account_email=conn["account_email"] if conn else None,
                 account_display_name=conn["account_display_name"] if conn else None,
                 expires_at=conn["expires_at"] if conn else None,
@@ -147,6 +151,11 @@ async def integration_connect(
     started (e.g. /onboarding) instead of /settings.
     """
     p = get_provider(provider)
+    # MCP OAuth providers (Granola) register a client + carry PKCE through their
+    # own state, so they own the connect step end-to-end.
+    if getattr(p, "auth_kind", "oauth") == "mcp_oauth":
+        url = await p.start_authorization(current_user["id"], _safe_return_to(return_to))
+        return ConnectStartResponse(authorize_url=url)
     state = _encode_state(current_user["id"], provider, _safe_return_to(return_to))
     return ConnectStartResponse(authorize_url=p.authorize_url(state))
 
@@ -158,11 +167,14 @@ async def integration_callback(
     state: str = Query(...),
 ):
     p = get_provider(provider)
-    user_id, return_to = _decode_state(state, expected_provider=provider)
-
-    token = await p.exchange_code(code)
-    account = await p.fetch_account(token.access_token)
-    await storage.store_token(user_id, provider, token, account)
+    if getattr(p, "auth_kind", "oauth") == "mcp_oauth":
+        # The provider owns the exchange + storage and returns where to land.
+        return_to = await p.finish_authorization(code, state)
+    else:
+        user_id, return_to = _decode_state(state, expected_provider=provider)
+        token = await p.exchange_code(code)
+        account = await p.fetch_account(token.access_token)
+        await storage.store_token(user_id, provider, token, account)
 
     base = settings.PUBLIC_URL.rstrip("/")
     target = _safe_return_to(return_to) or "/settings"

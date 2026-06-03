@@ -9,6 +9,7 @@ async def register_user(
     display_name: str | None,
     description: str = "",
     password: str | None = None,
+    email: str | None = None,
 ) -> tuple[dict, str]:
     """Register a new user. Returns (user_row, raw_api_key)."""
     pool = get_pool()
@@ -17,13 +18,14 @@ async def register_user(
     pw_hash = hash_password(password) if password else None
     try:
         row = await pool.fetchrow(
-            "INSERT INTO users (name, display_name, password_hash, description) "
-            "VALUES ($1, $2, $3, $4) "
+            "INSERT INTO users (name, display_name, password_hash, description, email) "
+            "VALUES ($1, $2, $3, $4, $5) "
             "RETURNING id, name, display_name, description, created_at, last_seen",
             name,
             display_name or name,
             pw_hash,
             description,
+            email,
         )
     except Exception as e:
         if "unique" in str(e).lower() and "name" in str(e).lower():
@@ -44,6 +46,11 @@ async def register_user(
         creator_id=user["id"],
         is_primary=True,
     )
+
+    # Turn any pending share invites for this email into real shares.
+    from . import share_service
+
+    await share_service.convert_pending_invites(user["id"], email)
     return user, api_key
 
 

@@ -89,10 +89,11 @@ async def list_user_workspaces(user_id: UUID) -> list[dict]:
     rows = await pool.fetch(
         "SELECT w.id, w.name, w.description, w.creator_id, w.invite_code, "
         "w.created_at, w.updated_at, w.cover_image_url, w.icon_url, w.color_gradient, "
+        "wm.is_primary, "
         "(SELECT COUNT(*) FROM workspace_members wm WHERE wm.workspace_id = w.id) AS member_count "
         "FROM workspaces w "
         "JOIN workspace_members wm ON wm.workspace_id = w.id "
-        "WHERE wm.user_id = $1 ORDER BY w.created_at DESC",
+        "WHERE wm.user_id = $1 ORDER BY wm.is_primary DESC, w.created_at DESC",
         user_id,
     )
     return [dict(r) for r in rows]

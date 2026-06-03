@@ -103,6 +103,36 @@ export function groupSessionsByLinearTicket(sessions: SessionSummary[]): Session
   });
 }
 
+// Folder grouping keys on session_folder_id and includes every folder — even
+// empty ones — so the view doubles as a place to move sessions into. Sessions
+// with no folder land in a trailing "Unfiled" group.
+export function groupSessionsByFolder(
+  sessions: SessionSummary[],
+  folders: { id: string; name: string }[],
+): SessionFlatGroup[] {
+  const byFolder = new Map<string, SessionSummary[]>();
+  const unfiled: SessionSummary[] = [];
+  for (const s of sortedSessions(sessions)) {
+    if (s.session_folder_id) {
+      byFolder.set(s.session_folder_id, [...(byFolder.get(s.session_folder_id) ?? []), s]);
+    } else {
+      unfiled.push(s);
+    }
+  }
+  const groups = [...folders]
+    .sort((a, b) => a.name.localeCompare(b.name))
+    .map((f) => ({
+      key: f.id,
+      label: f.name,
+      count: byFolder.get(f.id)?.length ?? 0,
+      sessions: byFolder.get(f.id) ?? [],
+    }));
+  if (unfiled.length > 0) {
+    groups.push({ key: "__unfiled__", label: "Unfiled", count: unfiled.length, sessions: unfiled });
+  }
+  return groups;
+}
+
 // Groups + sorts: largest groups first, sessions inside groups reverse-chronological.
 function groupBy(
   sessions: SessionSummary[],

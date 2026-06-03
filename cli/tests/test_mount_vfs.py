@@ -2,9 +2,9 @@ import os
 from pathlib import Path
 
 from cli.mount import (
-    StashFuseOperations,
-    StashMountError,
-    StashVfsModel,
+    CartridgeFuseOperations,
+    CartridgeMountError,
+    CartridgeVfsModel,
     _require_macos_fskit_mountpoint,
 )
 
@@ -38,7 +38,7 @@ class FakeClient:
                     }
                 ],
             },
-            "stashes": [
+            "cartridges": [
                 {
                     "id": "stash-12345678",
                     "slug": "demo-stash",
@@ -70,7 +70,7 @@ class FakeClient:
         assert file_id == "file-12345678"
         return b"diagram body"
 
-    def get_stash_text(self, slug):
+    def get_cartridge_text(self, slug):
         assert slug == "demo-stash"
         return "# Demo Stash\n"
 
@@ -115,7 +115,7 @@ class FakeClient:
 
 
 def _model():
-    model = StashVfsModel(FakeClient())
+    model = CartridgeVfsModel(FakeClient())
     model.refresh()
     return model
 
@@ -129,10 +129,12 @@ def test_vfs_exposes_workspace_sections():
         "README.md",
         "files",
         "sessions",
-        "stashes",
+        "cartridges",
         "tables",
     }
-    assert model.read_file(f"{workspace_path}/stashes/Demo Stash--stash-12.md") == b"# Demo Stash\n"
+    assert (
+        model.read_file(f"{workspace_path}/cartridges/Demo Stash--stash-12.md") == b"# Demo Stash\n"
+    )
     assert b"hello" in model.read_file(
         f"{workspace_path}/sessions/Fix login--session-/transcript.md"
     )
@@ -143,7 +145,7 @@ def test_vfs_exposes_workspace_sections():
 
 def test_vfs_reads_files_and_writes_pages():
     client = FakeClient()
-    model = StashVfsModel(client)
+    model = CartridgeVfsModel(client)
     model.refresh()
     workspace_name = model.list_dir("/workspaces")[0]
     files_path = f"/workspaces/{workspace_name}/files"
@@ -169,7 +171,7 @@ def test_vfs_reads_files_and_writes_pages():
 
 def test_fuse_operations_commit_page_writes_on_flush():
     client = FakeClient()
-    model = StashVfsModel(client)
+    model = CartridgeVfsModel(client)
     model.refresh()
     workspace_name = model.list_dir("/workspaces")[0]
     files_path = f"/workspaces/{workspace_name}/files"
@@ -178,7 +180,7 @@ def test_fuse_operations_commit_page_writes_on_flush():
     page_name = next(name for name in model.list_dir(folder_path) if name.startswith("Plan--"))
     page_path = f"{folder_path}/{page_name}"
 
-    ops = StashFuseOperations(model)
+    ops = CartridgeFuseOperations(model)
     handle = ops.open(page_path, os.O_RDWR | os.O_TRUNC)
     ops.write(page_path, b"# Edited through FUSE\n", 0, handle)
     ops.flush(page_path, handle)
@@ -197,7 +199,7 @@ def test_fuse_operations_support_fusepy_dispatch():
     model = _model()
     workspace_name = model.list_dir("/workspaces")[0]
     workspace_path = f"/workspaces/{workspace_name}"
-    ops = StashFuseOperations(model)
+    ops = CartridgeFuseOperations(model)
 
     assert ops("getattr", "/")["st_nlink"] == 2
     assert "files" in [entry[0] for entry in ops("readdir", workspace_path, None)]
@@ -213,8 +215,8 @@ def test_macos_fskit_mountpoints_must_live_under_volumes():
     _require_macos_fskit_mountpoint(Path("/Volumes/Stash"))
 
     try:
-        _require_macos_fskit_mountpoint(Path("~/StashMount"))
-    except StashMountError as e:
+        _require_macos_fskit_mountpoint(Path("~/CartridgeMount"))
+    except CartridgeMountError as e:
         assert "/Volumes/Stash" in str(e)
     else:
         raise AssertionError("expected a mountpoint error")

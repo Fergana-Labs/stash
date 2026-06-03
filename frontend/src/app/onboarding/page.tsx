@@ -1,13 +1,6 @@
 "use client";
 
-import {
-  Suspense,
-  useCallback,
-  useEffect,
-  useMemo,
-  useState,
-  useSyncExternalStore,
-} from "react";
+import { Suspense, useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 
 import Header from "../../components/Header";
@@ -15,23 +8,13 @@ import { useAuth } from "../../hooks/useAuth";
 import { track } from "../../lib/analytics";
 import { getToken, listMyWorkspaces } from "../../lib/api";
 import { seedWelcomePage } from "../../lib/onboarding/seedWelcome";
+import SourceConnectorList from "../../components/integrations/SourceConnectorList";
 
-import IntentStep from "./IntentStep";
-import {
-  PATHS,
-  type MigrantSource,
-  type PathId,
-  type StepCtx,
-} from "../../lib/onboarding/paths";
+import MemoryAskStep from "./paths/memory/MemoryAskStep";
 
-const VALID_PATHS: PathId[] = ["migrant", "memory", "sharing"];
-const VALID_SOURCES: MigrantSource[] = ["notion", "obsidian", "github", "drive"];
-
-// Scoped per user so registering as a different account on the same
-// computer doesn't inherit the previous user's locked path.
-function pathStorageKey(userId: string): string {
-  return `stash_onboarding_path:${userId}`;
-}
+// The linear flow: explain Stash, connect a source, then ask the agent a real
+// question over your data, then launch into the workspace.
+const STEP_NAMES = ["intro", "connect", "ask"] as const;
 
 function useStashToken(): string | null {
   return useSyncExternalStore(
@@ -44,21 +27,11 @@ function useStashToken(): string | null {
   );
 }
 
-function isPathId(v: string | null): v is PathId {
-  return !!v && (VALID_PATHS as string[]).includes(v);
-}
-
-function isMigrantSource(v: string | null): v is MigrantSource {
-  return !!v && (VALID_SOURCES as string[]).includes(v);
-}
-
 export default function OnboardingPage() {
   return (
     <Suspense
       fallback={
-        <div className="min-h-screen flex items-center justify-center text-muted">
-          Loading…
-        </div>
+        <div className="min-h-screen flex items-center justify-center text-muted">Loading…</div>
       }
     >
       <OnboardingInner />
@@ -72,33 +45,9 @@ function OnboardingInner() {
   const { user, loading, logout } = useAuth();
   const apiKey = useStashToken();
   const [workspaceId, setWorkspaceId] = useState<string | null>(null);
-  const [sharedUrl, setSharedUrl] = useState<string | null>(null);
-  const [canContinue, setCanContinue] = useState(true);
-  const userId = user?.id;
-
-  const path = useMemo<PathId | null>(() => {
-    const q = searchParams.get("path");
-    if (isPathId(q)) return q;
-    if (typeof window !== "undefined" && userId) {
-      const stored = window.localStorage.getItem(pathStorageKey(userId));
-      if (isPathId(stored)) return stored;
-    }
-    return null;
-  }, [searchParams, userId]);
-
-  const source = useMemo<MigrantSource | null>(() => {
-    const q = searchParams.get("source");
-    if (isMigrantSource(q)) return q;
-    // OAuth callback recovery: if we just came back from connecting a
-    // provider but ?source= got lost (old tab with the pre-fix returnTo,
-    // browser strip, whatever), infer it from ?connected= so the user
-    // isn't trapped on "Pick a source first."
-    const connected = searchParams.get("connected");
-    if (connected === "github") return "github";
-    if (connected === "notion") return "notion";
-    if (connected === "google") return "drive";
-    return null;
-  }, [searchParams]);
+  const [sourceCount, setSourceCount] = useState(0);
+  const [obsidianAdded, setObsidianAdded] = useState(false);
+  const [answered, setAnswered] = useState(false);
 
   const stepIdx = useMemo(() => {
     const raw = searchParams.get("step");
@@ -107,91 +56,28 @@ function OnboardingInner() {
   }, [searchParams]);
 
   useEffect(() => {
-    if (!loading && apiKey === null) {
-      router.replace("/login");
-    }
+    if (!loading && apiKey === null) router.replace("/login");
   }, [loading, apiKey, router]);
 
   useEffect(() => {
     if (!apiKey) return;
     listMyWorkspaces()
       .then(({ workspaces }) => {
-        if (workspaces.length > 0) setWorkspaceId(workspaces[0].id);
+        const primary = workspaces.find((workspace) => workspace.is_primary) ?? workspaces[0];
+        if (primary) setWorkspaceId(primary.id);
       })
       .catch(() => {});
   }, [apiKey]);
 
-  // Reset the per-step canContinue gate on every step transition. Steps
-  // that want to block call setCanContinue(false) in their own effects.
-  useEffect(() => {
-    setCanContinue(true);
-  }, [stepIdx]);
-
-  // Onboarding.viewed once per page entry, after we know whether a path
-  // is already locked in (returning user vs. fresh chooser).
   useEffect(() => {
     if (loading || !apiKey) return;
-    track("onboarding.viewed", { has_path: !!path });
-  }, [loading, apiKey, path]);
+    track("onboarding.viewed", { has_path: false });
+  }, [loading, apiKey]);
 
-  // Step view fires per step transition, including step 0 of a fresh path.
   useEffect(() => {
-    if (!path) return;
-    const stepName = PATHS[path].stepNames[stepIdx];
-    if (!stepName) return;
-    track("onboarding.step_viewed", {
-      path,
-      step_idx: stepIdx,
-      step_name: stepName,
-    });
-  }, [path, stepIdx]);
-
-  // Canonicalize the URL after an OAuth callback. If we inferred source
-  // from ?connected= but the URL doesn't have ?source= explicitly, write
-  // it in and strip ?connected= in the same replace. Without this, the
-  // first re-render works (inference catches it) but subsequent URL
-  // mutations downstream lose the source signal.
-  useEffect(() => {
-    if (!source) return;
-    const sourceInUrl = searchParams.get("source") === source;
-    const connectedInUrl = searchParams.has("connected");
-    if (sourceInUrl && !connectedInUrl) return;
-    const params = new URLSearchParams(searchParams.toString());
-    params.set("source", source);
-    params.delete("connected");
-    router.replace(`/onboarding?${params.toString()}`);
-  }, [source, searchParams, router]);
-
-  const pickPath = useCallback(
-    (next: PathId) => {
-      if (typeof window !== "undefined" && userId) {
-        window.localStorage.setItem(pathStorageKey(userId), next);
-      }
-      track("onboarding.path_selected", { path: next });
-      router.push(`/onboarding?path=${next}&step=1`);
-    },
-    [router, userId],
-  );
-
-  const pickSource = useCallback(
-    (s: MigrantSource) => {
-      const params = new URLSearchParams(searchParams.toString());
-      params.set("source", s);
-      const current = parseInt(params.get("step") ?? "1", 10) || 1;
-      params.set("step", String(current + 1));
-      router.push(`/onboarding?${params.toString()}`);
-    },
-    [router, searchParams],
-  );
-
-  const setSource = useCallback(
-    (s: MigrantSource) => {
-      const params = new URLSearchParams(searchParams.toString());
-      params.set("source", s);
-      router.push(`/onboarding?${params.toString()}`);
-    },
-    [router, searchParams],
-  );
+    const name = STEP_NAMES[stepIdx];
+    if (name) track("onboarding.step_viewed", { step_idx: stepIdx, step_name: name });
+  }, [stepIdx]);
 
   const goToStep = useCallback(
     (idx: number) => {
@@ -207,83 +93,43 @@ function OnboardingInner() {
     else router.push("/");
   }, [router, workspaceId]);
 
-  const skipToWorkspace = useCallback(() => {
-    if (path) {
-      track("onboarding.skipped", { path, step_idx: stepIdx });
-    }
-    exitToWorkspace();
-  }, [exitToWorkspace, path, stepIdx]);
-
-  if (loading || !apiKey) {
-    return (
-      <div className="min-h-screen flex items-center justify-center text-muted">
-        Loading…
-      </div>
-    );
-  }
-
-  // No path picked yet — show the chooser.
-  if (!path) {
-    return (
-      <div className="min-h-screen flex flex-col">
-        <Header user={user} onLogout={logout} />
-        <IntentStep onPick={pickPath} />
-      </div>
-    );
-  }
-
-  const pathDef = PATHS[path];
-  const totalSteps = pathDef.steps.length;
-  const isDone = stepIdx >= totalSteps;
-
-  async function finishAndExit() {
-    if (path) {
-      track("onboarding.completed", {
-        path,
-        total_steps: PATHS[path].steps.length,
-      });
-    }
+  const finishAndExit = useCallback(async () => {
+    track("onboarding.completed", { total_steps: STEP_NAMES.length });
     if (workspaceId && user) {
       try {
         await seedWelcomePage({
           workspaceId,
-          userId: user.id,
           displayName: user.display_name || user.name,
         });
       } catch {
-        // Seeding is best-effort. If it fails (network, permission),
-        // still redirect — the user can edit the description anytime.
+        // Best-effort — the user can edit the workspace description anytime.
       }
     }
     exitToWorkspace();
+  }, [workspaceId, user, exitToWorkspace]);
+
+  const skip = useCallback(() => {
+    track("onboarding.skipped", { step_idx: stepIdx });
+    exitToWorkspace();
+  }, [exitToWorkspace, stepIdx]);
+
+  if (loading || !apiKey) {
+    return (
+      <div className="min-h-screen flex items-center justify-center text-muted">Loading…</div>
+    );
   }
 
-  function nextStep() {
-    if (stepIdx + 1 >= totalSteps) {
-      if (pathDef.doneStep) {
-        // Path has a Done UI — render it.
-        goToStep(totalSteps);
-      } else {
-        // No Done UI — seed the welcome page and redirect to workspace.
-        void finishAndExit();
-      }
-    } else {
-      goToStep(stepIdx + 1);
-    }
-  }
+  // 0 = intro, 1 = connect, 2 = ask.
+  const isIntro = stepIdx <= 0;
+  const isConnect = stepIdx === 1;
+  const isAsk = stepIdx >= 2;
 
-  const stepCtx: StepCtx = {
-    apiKey,
-    workspaceId,
-    source,
-    pickSource,
-    setSource,
-    sharedUrl,
-    setSharedUrl,
-    onContinue: nextStep,
-    onSkipAll: skipToWorkspace,
-    canContinue,
-    setCanContinue,
+  const continueLabel = isIntro ? "Get started" : isAsk ? "Launch workspace" : "Continue";
+  // On the ask step, only let them launch once the agent has actually replied.
+  const canContinue = isIntro || (isAsk ? answered : sourceCount > 0 || obsidianAdded);
+  const onContinue = () => {
+    if (isAsk) return void finishAndExit();
+    goToStep(stepIdx + 1);
   };
 
   return (
@@ -291,114 +137,173 @@ function OnboardingInner() {
       <Header user={user} onLogout={logout} />
       <main className="flex-1 px-4 py-10">
         <div className="mx-auto w-full max-w-2xl space-y-8">
-          <ProgressBar
-            path={path}
-            totalSteps={totalSteps}
-            stepIdx={stepIdx}
-            onJump={goToStep}
-            isDone={isDone}
-            showDone={!!pathDef.doneStep}
-          />
-
-          {isDone && pathDef.doneStep ? (
-            <pathDef.doneStep workspaceId={workspaceId} />
-          ) : (
-            <>
-              {renderStep(pathDef.steps[stepIdx], stepCtx)}
-              <StepControls
-                onContinue={nextStep}
-                onSkipAll={skipToWorkspace}
-                canContinue={canContinue}
-              />
-            </>
+          <ProgressBar stepIdx={stepIdx} />
+          {isIntro && <IntroStep />}
+          {isConnect && (
+            <ConnectStep
+              workspaceId={workspaceId}
+              onSourceCountChange={setSourceCount}
+              onObsidianAdded={() => setObsidianAdded(true)}
+            />
           )}
+          {isAsk && (
+            <AskStep workspaceId={workspaceId} onAnswered={() => setAnswered(true)} />
+          )}
+          <StepControls
+            onContinue={onContinue}
+            onSkip={skip}
+            continueLabel={continueLabel}
+            canContinue={canContinue}
+          />
         </div>
       </main>
     </div>
   );
 }
 
-function renderStep(
-  Step: React.ComponentType<StepCtx>,
-  ctx: StepCtx,
-): React.ReactNode {
-  return <Step {...ctx} />;
+function IntroStep() {
+  return (
+    <div className="space-y-5">
+      <div className="space-y-2">
+        <h1 className="font-display text-[28px] leading-[1.1] font-bold tracking-tight text-foreground">
+          Welcome to Stash
+        </h1>
+        <p className="text-sm text-dim max-w-lg">
+          Stash gives your agents one place to reach everything they need — in the
+          format they&rsquo;re fluent in.
+        </p>
+      </div>
+      <ul className="space-y-3">
+        <IntroPoint title="Connect any data source">
+          GitHub, Google Drive, Notion, Slack, Granola, an Obsidian vault. Your
+          agent navigates each like a file system and searches across all of them.
+        </IntroPoint>
+        <IntroPoint title="A workspace built for agents">
+          Pages in HTML and markdown, files, and your agent session transcripts —
+          stored the way agents read and write, not buried in a UI.
+        </IntroPoint>
+        <IntroPoint title="Share when you need to">
+          Bundle anything into a Cartridge with a shareable link, or give specific
+          people access to a folder — so teammates and their agents work from the
+          same context.
+        </IntroPoint>
+      </ul>
+      <div className="rounded-lg border border-border bg-surface px-4 py-3 text-[13px] text-muted">
+        Two quick steps: <span className="text-foreground">connect a source</span>,
+        then <span className="text-foreground">ask your agent a question</span> over
+        it. You can skip and do this later anytime.
+      </div>
+    </div>
+  );
 }
 
-function ProgressBar({
-  path,
-  totalSteps,
-  stepIdx,
-  onJump,
-  isDone,
-  showDone,
-}: {
-  path: PathId;
-  totalSteps: number;
-  stepIdx: number;
-  onJump: (idx: number) => void;
-  isDone: boolean;
-  showDone: boolean;
-}) {
-  const labels = Array.from({ length: totalSteps }, (_, i) => `Step ${i + 1}`);
-  if (showDone) labels.push("Done");
-  const currentIdx = isDone ? totalSteps : stepIdx;
-
+function IntroPoint({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div className="flex items-center gap-3">
-      <div className="text-[10px] font-mono uppercase tracking-[0.18em] text-muted">
-        {PATHS[path].label}
+    <li className="flex gap-3">
+      <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-brand" />
+      <div>
+        <div className="text-[14px] font-medium text-foreground">{title}</div>
+        <div className="text-[13px] text-dim">{children}</div>
       </div>
-      <div className="flex items-center gap-2">
-        {labels.map((label, i) => {
-          const reached = i <= currentIdx;
-          const isCurrent = i === currentIdx;
-          return (
-            <button
-              key={label}
-              type="button"
-              onClick={() => onJump(i)}
-              disabled={i > currentIdx}
-              className={`flex items-center gap-1.5 text-[10px] font-mono uppercase tracking-[0.18em] transition-colors ${
-                isCurrent
-                  ? "text-foreground"
-                  : reached
-                    ? "text-muted hover:text-foreground"
-                    : "text-muted/50"
+    </li>
+  );
+}
+
+function ConnectStep({
+  workspaceId,
+  onSourceCountChange,
+  onObsidianAdded,
+}: {
+  workspaceId: string | null;
+  onSourceCountChange: (n: number) => void;
+  onObsidianAdded: () => void;
+}) {
+  return (
+    <div className="space-y-6">
+      <div className="space-y-2">
+        <h1 className="font-display text-[28px] leading-[1.1] font-bold tracking-tight text-foreground">
+          Connect a data source
+        </h1>
+        <p className="text-sm text-dim max-w-md">
+          Connect a source and your agent can read it — navigate it like a file system
+          and search across everything you connect.
+        </p>
+      </div>
+      <SourceConnectorList
+        workspaceId={workspaceId}
+        returnTo="/onboarding?step=2"
+        onSourceCountChange={onSourceCountChange}
+        onObsidianUploaded={onObsidianAdded}
+      />
+    </div>
+  );
+}
+
+function AskStep({
+  workspaceId,
+  onAnswered,
+}: {
+  workspaceId: string | null;
+  onAnswered: () => void;
+}) {
+  return (
+    <div className="space-y-4">
+      <div className="space-y-2">
+        <h1 className="font-display text-[28px] leading-[1.1] font-bold tracking-tight text-foreground">
+          Ask your agent
+        </h1>
+        <p className="text-sm text-dim max-w-md">
+          Ask it something about your knowledge base.
+        </p>
+      </div>
+      <MemoryAskStep workspaceId={workspaceId} onAnswered={onAnswered} />
+    </div>
+  );
+}
+
+function ProgressBar({ stepIdx }: { stepIdx: number }) {
+  const labels = ["Welcome", "Connect", "Ask"];
+  return (
+    <div className="flex items-center gap-2">
+      {labels.map((label, i) => {
+        const isCurrent = i === Math.min(stepIdx, labels.length - 1);
+        const reached = i <= stepIdx;
+        return (
+          <span
+            key={label}
+            className={`flex items-center gap-1.5 text-[10px] font-mono uppercase tracking-[0.18em] ${
+              isCurrent ? "text-foreground" : reached ? "text-muted" : "text-muted/50"
+            }`}
+          >
+            <span
+              className={`h-1.5 w-1.5 rounded-full ${
+                isCurrent ? "bg-brand" : reached ? "bg-foreground/40" : "bg-border"
               }`}
-            >
-              <span
-                className={`h-1.5 w-1.5 rounded-full ${
-                  isCurrent
-                    ? "bg-brand"
-                    : reached
-                      ? "bg-foreground/40"
-                      : "bg-border"
-                }`}
-              />
-              {label}
-            </button>
-          );
-        })}
-      </div>
+            />
+            {label}
+          </span>
+        );
+      })}
     </div>
   );
 }
 
 function StepControls({
   onContinue,
-  onSkipAll,
+  onSkip,
+  continueLabel,
   canContinue,
 }: {
   onContinue: () => void;
-  onSkipAll: () => void;
+  onSkip: () => void;
+  continueLabel: string;
   canContinue: boolean;
 }) {
   return (
     <div className="flex items-center justify-between pt-2">
       <button
         type="button"
-        onClick={onSkipAll}
+        onClick={onSkip}
         className="text-[12px] text-muted hover:text-foreground transition-colors"
       >
         Skip onboarding
@@ -407,9 +312,9 @@ function StepControls({
         type="button"
         onClick={onContinue}
         disabled={!canContinue}
-        className="rounded-md bg-brand px-4 py-2 text-[12px] font-medium text-white hover:bg-brand-hover transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-brand"
+        className="rounded-md bg-brand px-4 py-2 text-[12px] font-medium text-white hover:bg-brand-hover transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
       >
-        Continue
+        {continueLabel}
       </button>
     </div>
   );

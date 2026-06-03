@@ -12,7 +12,7 @@ are not garbage.
 
 The canonical `Stash knowledge base/` folder (seeded by
 demo_service.seed_demo_workspace) is also kept indefinitely because
-new Stashes need to attach it.
+new Cartridges need to attach it.
 """
 
 from __future__ import annotations
@@ -56,7 +56,7 @@ async def _purge_demo_orphans() -> dict:
         "WHERE p.workspace_id = $1 "
         f"  AND p.created_at < now() - interval '{ORPHAN_AGE_HOURS} hours' "
         "  AND NOT EXISTS ("
-        "    SELECT 1 FROM stash_items si "
+        "    SELECT 1 FROM cartridge_items si "
         "    WHERE si.object_type = 'page' AND si.object_id = p.id"
         "  ) "
         "  AND NOT EXISTS ("
@@ -71,7 +71,7 @@ async def _purge_demo_orphans() -> dict:
         "WHERE s.workspace_id = $1 "
         f"  AND s.started_at < now() - interval '{ORPHAN_AGE_HOURS} hours' "
         "  AND NOT EXISTS ("
-        "    SELECT 1 FROM stash_items si "
+        "    SELECT 1 FROM cartridge_items si "
         "    WHERE si.object_type = 'session' AND si.object_id = s.id"
         "  )",
         workspace_id,

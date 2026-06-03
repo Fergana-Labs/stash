@@ -21,9 +21,9 @@ from fastapi.responses import PlainTextResponse
 from ..auth import get_current_user
 from ..database import get_pool
 from ..services import (
+    cartridge_service,
     memory_service,
     session_service,
-    stash_service,
     transcript_import,
     workspace_service,
 )
@@ -52,7 +52,7 @@ async def upload_transcript(
     session_id: str = Form(...),
     agent_name: str = Form(...),
     cwd: str | None = Form(None),
-    default_stash_id: UUID | None = Form(None),
+    default_cartridge_id: UUID | None = Form(None),
     replace: bool = Form(False),
     current_user: dict = Depends(get_current_user),
 ):
@@ -94,10 +94,10 @@ async def upload_transcript(
                 cwd=cwd,
                 created_by=current_user["id"],
             )
-            if default_stash_id:
+            if default_cartridge_id:
                 try:
-                    await stash_service.add_sessions_to_stash(
-                        stash_id=default_stash_id,
+                    await cartridge_service.add_sessions_to_cartridge(
+                        cartridge_id=default_cartridge_id,
                         workspace_id=workspace_id,
                         user_id=current_user["id"],
                         session_ids=[session_id],
@@ -128,10 +128,10 @@ async def upload_transcript(
             e["metadata"] = {**(e.get("metadata") or {}), "cwd": cwd}
 
     inserted = await memory_service.push_events_batch(workspace_id, current_user["id"], events)
-    if default_stash_id:
+    if default_cartridge_id:
         try:
-            await stash_service.add_sessions_to_stash(
-                stash_id=default_stash_id,
+            await cartridge_service.add_sessions_to_cartridge(
+                cartridge_id=default_cartridge_id,
                 workspace_id=workspace_id,
                 user_id=current_user["id"],
                 session_ids=[session_id],

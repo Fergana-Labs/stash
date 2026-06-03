@@ -1,7 +1,7 @@
 import shlex
 
-from cli.app_vfs import StashAppVfsShell
-from cli.mount import StashVfsModel
+from cli.app_vfs import CartridgeAppVfsShell
+from cli.mount import CartridgeVfsModel
 from cli.tests.test_mount_vfs import FakeClient
 
 
@@ -18,9 +18,9 @@ class CountingClient(FakeClient):
         self.lazy_loads += 1
         return super().download_ws_file(workspace_id, file_id)
 
-    def get_stash_text(self, slug):
+    def get_cartridge_text(self, slug):
         self.lazy_loads += 1
-        return super().get_stash_text(slug)
+        return super().get_cartridge_text(slug)
 
     def get_transcript_events(self, workspace_id, session_id):
         self.lazy_loads += 1
@@ -58,12 +58,12 @@ class CountingClient(FakeClient):
 
 def _shell(client=None):
     client = client or FakeClient()
-    model = StashVfsModel(client)
+    model = CartridgeVfsModel(client)
     model.refresh()
-    return StashAppVfsShell(model), client
+    return CartridgeAppVfsShell(model), client
 
 
-def _page_path(shell: StashAppVfsShell) -> str:
+def _page_path(shell: CartridgeAppVfsShell) -> str:
     workspace_name = shell.model.list_dir("/workspaces")[0]
     files_path = f"/workspaces/{workspace_name}/files"
     folder_name = next(

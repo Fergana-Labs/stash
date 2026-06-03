@@ -19,13 +19,13 @@ import {
   type ActivityEvent,
 } from "../../lib/api";
 
-type FilterKey = "all" | "sessions" | "pages" | "stashes";
+type FilterKey = "all" | "sessions" | "pages" | "cartridges";
 
 const FILTERS: { key: FilterKey; label: string }[] = [
   { key: "all", label: "Everything" },
   { key: "sessions", label: "Sessions" },
   { key: "pages", label: "Pages" },
-  { key: "stashes", label: "Stashes" },
+  { key: "cartridges", label: "Cartridges" },
 ];
 
 const AVATAR_CLASSES = [
@@ -124,7 +124,7 @@ function ActivityPageInner() {
       return events.filter(
         (e) => e.kind === "page.updated" || e.kind === "file.uploaded"
       );
-    if (filter === "stashes")
+    if (filter === "cartridges")
       return events.filter((e) => e.kind === "stash.published");
     return events;
   }, [events, filter]);

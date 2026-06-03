@@ -44,6 +44,7 @@ async def register(request: Request, req: UserRegisterRequest):
             display_name=req.display_name,
             description=req.description,
             password=req.password,
+            email=req.email,
         )
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e))

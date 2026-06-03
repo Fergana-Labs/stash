@@ -103,4 +103,4 @@ async def test_invalid_api_key_rejected(client: AsyncClient):
 @pytest.mark.asyncio
 async def test_missing_auth_rejected(client: AsyncClient):
     resp = await client.get("/api/v1/users/me")
-    assert resp.status_code == 403
+    assert resp.status_code == 401

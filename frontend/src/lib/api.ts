@@ -13,7 +13,6 @@ import {
   TableRow,
   TableWithWorkspace,
   Workspace,
-  WorkspaceMember,
   ActivityTimeline,
   KnowledgeDensity,
   EmbeddingProjection,
@@ -210,6 +209,54 @@ export async function getWorkspace(workspaceId: string): Promise<Workspace> {
   return apiFetch(`/api/v1/workspaces/${workspaceId}`);
 }
 
+export interface WorkspaceSource {
+  source: string; // native handle ("files"/"sessions") or connected-source id
+  type: string; // 'native_files' | 'native_sessions' | 'github_repo' | ...
+  capability: string; // 'navigable' | 'searchable'
+  display_name: string;
+}
+
+const NATIVE_SOURCE_TYPES = new Set(["native_files", "native_sessions"]);
+
+export async function listWorkspaceSources(
+  workspaceId: string,
+): Promise<WorkspaceSource[]> {
+  const data = await apiFetch<{ sources: WorkspaceSource[] }>(
+    `/api/v1/workspaces/${workspaceId}/sources`,
+  );
+  // The sidebar's Sources section shows only connected sources; the native
+  // file system and session transcripts already have their own sections.
+  return data.sources.filter((s) => !NATIVE_SOURCE_TYPES.has(s.type));
+}
+
+export async function addWorkspaceSource(
+  workspaceId: string,
+  body: { source_type: string; external_ref?: string; display_name?: string },
+): Promise<{ id: string }> {
+  return apiFetch(`/api/v1/workspaces/${workspaceId}/sources`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+export async function syncWorkspaceSource(
+  workspaceId: string,
+  sourceId: string,
+): Promise<{ task_id: string }> {
+  return apiFetch(`/api/v1/workspaces/${workspaceId}/sources/${sourceId}/sync`, {
+    method: "POST",
+  });
+}
+
+export async function deleteWorkspaceSource(
+  workspaceId: string,
+  sourceId: string,
+): Promise<void> {
+  await apiFetch(`/api/v1/workspaces/${workspaceId}/sources/${sourceId}`, {
+    method: "DELETE",
+  });
+}
+
 export async function joinWorkspace(inviteCode: string): Promise<Workspace> {
   return apiFetch(`/api/v1/workspaces/join/${inviteCode}`, { method: "POST" });
 }
@@ -233,10 +280,6 @@ export async function leaveWorkspace(workspaceId: string): Promise<void> {
   await apiFetch(`/api/v1/workspaces/${workspaceId}/leave`, { method: "POST" });
 }
 
-export async function getWorkspaceMembers(workspaceId: string): Promise<WorkspaceMember[]> {
-  return apiFetch(`/api/v1/workspaces/${workspaceId}/members`);
-}
-
 export async function updateWorkspace(
   workspaceId: string,
   data: {
@@ -257,31 +300,16 @@ export async function deleteWorkspace(workspaceId: string): Promise<void> {
   await apiFetch(`/api/v1/workspaces/${workspaceId}`, { method: "DELETE" });
 }
 
-export async function kickWorkspaceMember(workspaceId: string, userId: string): Promise<void> {
-  await apiFetch(`/api/v1/workspaces/${workspaceId}/kick/${userId}`, { method: "POST" });
-}
-
-export async function setWorkspaceMemberRole(
-  workspaceId: string,
-  userId: string,
-  role: "owner" | "editor" | "viewer"
-): Promise<void> {
-  await apiFetch(`/api/v1/workspaces/${workspaceId}/members/${userId}`, {
-    method: "PATCH",
-    body: JSON.stringify({ role }),
-  });
-}
-
 // --- Discover (public catalog, no auth required) ---
 
-export interface PublicStashCard {
+export interface PublicCartridgeCard {
   id: string;
   slug: string;
   title: string;
   description: string;
-  access: StashVisibility;
-  workspace_permission: StashGeneralPermission;
-  public_permission: StashGeneralPermission;
+  access: CartridgeVisibility;
+  workspace_permission: CartridgeGeneralPermission;
+  public_permission: CartridgeGeneralPermission;
   discoverable: boolean;
   cover_image_url: string | null;
   view_count: number;
@@ -933,6 +961,42 @@ export interface SessionSummary {
   event_count: number;
   started_at: string;
   last_event_at: string;
+  session_folder_id: string | null;
+  session_folder_name: string | null;
+}
+
+export interface SessionFolder {
+  id: string;
+  name: string;
+  session_count: number;
+}
+
+export async function listSessionFolders(workspaceId: string): Promise<SessionFolder[]> {
+  const data = await apiFetch<{ folders: SessionFolder[] }>(
+    `/api/v1/workspaces/${workspaceId}/session-folders`,
+  );
+  return data.folders;
+}
+
+export async function createSessionFolder(
+  workspaceId: string,
+  name: string,
+): Promise<SessionFolder> {
+  return apiFetch<SessionFolder>(`/api/v1/workspaces/${workspaceId}/session-folders`, {
+    method: "POST",
+    body: JSON.stringify({ name }),
+  });
+}
+
+export async function assignSessionFolder(
+  workspaceId: string,
+  sessionRowId: string,
+  folderId: string | null,
+): Promise<void> {
+  await apiFetch(`/api/v1/workspaces/${workspaceId}/session-folders/assign`, {
+    method: "POST",
+    body: JSON.stringify({ session_row_id: sessionRowId, folder_id: folderId }),
+  });
 }
 
 export interface LinearTicketLabel {
@@ -1031,10 +1095,10 @@ export async function materializeSession(
 
 // --- Pins + recents (per user, per workspace) ---
 
-export type PinKind = "stashes" | "sessions" | "files";
+export type PinKind = "cartridges" | "sessions" | "files";
 
 export interface WorkspacePins {
-  stashes: string[];
+  cartridges: string[];
   sessions: string[];
   files: string[];
 }
@@ -1074,21 +1138,21 @@ export async function recordWorkspaceRecent(
   });
 }
 
-// --- Stashes (publishable bundles of pages, sessions, and files) ---
+// --- Cartridges (publishable bundles of pages, sessions, and files) ---
 
 export type CollectableObjectType = "folder" | "page" | "table" | "file" | "session";
 
-export interface StashItemSpec {
+export interface CartridgeItemSpec {
   object_type: CollectableObjectType;
   object_id: string;
   position?: number;
   label_override?: string | null;
 }
 
-export type StashVisibility = "workspace" | "private" | "public";
-export type StashGeneralPermission = "none" | "read" | "write";
+export type CartridgeVisibility = "workspace" | "private" | "public";
+export type CartridgeGeneralPermission = "none" | "read" | "write";
 
-export interface CreatedStash {
+export interface CreatedCartridge {
   id: string;
   workspace_id: string;
   slug: string;
@@ -1097,41 +1161,41 @@ export interface CreatedStash {
   owner_id: string;
   owner_name: string;
   owner_display_name: string | null;
-  access: StashVisibility;
-  workspace_permission: StashGeneralPermission;
-  public_permission: StashGeneralPermission;
+  access: CartridgeVisibility;
+  workspace_permission: CartridgeGeneralPermission;
+  public_permission: CartridgeGeneralPermission;
   discoverable: boolean;
   cover_image_url: string | null;
   icon_url: string | null;
   view_count: number;
-  items: StashItemSpec[];
+  items: CartridgeItemSpec[];
   is_external: boolean;
   added_to_workspace_id: string | null;
-  forked_from_stash_id: string | null;
+  forked_from_cartridge_id: string | null;
   created_at: string;
   updated_at: string;
 }
 
-export interface PublishedStashResult {
-  stash: CreatedStash;
+export interface PublishedCartridgeResult {
+  cartridge: CreatedCartridge;
   url: string;
-  stash_id: string;
-  stash_slug: string;
+  cartridge_id: string;
+  cartridge_slug: string;
 }
 
-export async function createStash(
+export async function createCartridge(
   workspaceId: string,
   title: string,
-  items: StashItemSpec[],
+  items: CartridgeItemSpec[],
   opts: {
     description?: string;
-    workspace_permission?: StashGeneralPermission;
-    public_permission?: StashGeneralPermission;
+    workspace_permission?: CartridgeGeneralPermission;
+    public_permission?: CartridgeGeneralPermission;
     discoverable?: boolean;
   } = {}
-): Promise<CreatedStash> {
-  const stash = await apiFetch<CreatedStash>(
-    `/api/v1/workspaces/${workspaceId}/stashes`,
+): Promise<CreatedCartridge> {
+  const cartridge = await apiFetch<CreatedCartridge>(
+    `/api/v1/workspaces/${workspaceId}/cartridges`,
     {
       method: "POST",
       body: JSON.stringify({
@@ -1156,22 +1220,22 @@ export async function createStash(
     public: (opts.public_permission ?? "none") !== "none",
     kind: "manual",
   });
-  return stash;
+  return cartridge;
 }
 
-export async function publishStash(
+export async function publishCartridge(
   workspaceId: string,
   title: string,
-  items: StashItemSpec[],
+  items: CartridgeItemSpec[],
   opts: {
     description?: string;
-    workspace_permission?: StashGeneralPermission;
-    public_permission?: Exclude<StashGeneralPermission, "none">;
+    workspace_permission?: CartridgeGeneralPermission;
+    public_permission?: Exclude<CartridgeGeneralPermission, "none">;
     discoverable?: boolean;
   } = {}
-): Promise<PublishedStashResult> {
-  const result = await apiFetch<PublishedStashResult>(
-    `/api/v1/workspaces/${workspaceId}/stashes/publish`,
+): Promise<PublishedCartridgeResult> {
+  const result = await apiFetch<PublishedCartridgeResult>(
+    `/api/v1/workspaces/${workspaceId}/cartridges/publish`,
     {
       method: "POST",
       body: JSON.stringify({
@@ -1200,7 +1264,7 @@ export async function publishStash(
   return result;
 }
 
-export interface WorkspaceStash {
+export interface WorkspaceCartridge {
   id: string;
   workspace_id: string;
   slug: string;
@@ -1209,33 +1273,33 @@ export interface WorkspaceStash {
   owner_id: string;
   owner_name: string;
   owner_display_name: string | null;
-  access: StashVisibility;
-  workspace_permission: StashGeneralPermission;
-  public_permission: StashGeneralPermission;
+  access: CartridgeVisibility;
+  workspace_permission: CartridgeGeneralPermission;
+  public_permission: CartridgeGeneralPermission;
   discoverable: boolean;
   cover_image_url: string | null;
   icon_url: string | null;
   view_count: number;
-  items: StashItemSpec[];
+  items: CartridgeItemSpec[];
   is_external: boolean;
   added_to_workspace_id: string | null;
-  forked_from_stash_id: string | null;
+  forked_from_cartridge_id: string | null;
   created_at: string;
   updated_at: string;
 }
 
-export type StashMemberPermission = "read" | "write" | "admin";
+export type CartridgeMemberPermission = "read" | "write" | "admin";
 
-export interface StashMember {
+export interface CartridgeMember {
   user_id: string;
   name: string;
   display_name: string;
-  permission: StashMemberPermission;
+  permission: CartridgeMemberPermission;
   granted_by: string | null;
   created_at: string;
 }
 
-export interface PublicStashItem {
+export interface PublicCartridgeItem {
   object_type: CollectableObjectType;
   object_id: string;
   position: number;
@@ -1243,81 +1307,81 @@ export interface PublicStashItem {
   inline: Record<string, unknown>;
 }
 
-export interface PublicStashDetail {
-  stash: WorkspaceStash;
+export interface PublicCartridgeDetail {
+  cartridge: WorkspaceCartridge;
   workspace_name: string;
-  items: PublicStashItem[];
+  items: PublicCartridgeItem[];
   can_write: boolean;
 }
 
-export async function listStashes(workspaceId: string): Promise<WorkspaceStash[]> {
-  const data = await apiFetch<{ stashes: WorkspaceStash[] }>(
-    `/api/v1/workspaces/${workspaceId}/stashes`
+export async function listStashes(workspaceId: string): Promise<WorkspaceCartridge[]> {
+  const data = await apiFetch<{ cartridges: WorkspaceCartridge[] }>(
+    `/api/v1/workspaces/${workspaceId}/cartridges`
   );
-  return data.stashes;
+  return data.cartridges;
 }
 
 export async function listObjectStashes(
   workspaceId: string,
   objectType: CollectableObjectType,
   objectId: string
-): Promise<WorkspaceStash[]> {
-  const data = await apiFetch<{ stashes: WorkspaceStash[] }>(
-    `/api/v1/workspaces/${workspaceId}/stashes/objects/${objectType}/${objectId}`
+): Promise<WorkspaceCartridge[]> {
+  const data = await apiFetch<{ cartridges: WorkspaceCartridge[] }>(
+    `/api/v1/workspaces/${workspaceId}/cartridges/objects/${objectType}/${objectId}`
   );
-  return data.stashes;
+  return data.cartridges;
 }
 
-export async function deleteStash(stashId: string): Promise<void> {
-  await apiFetch(`/api/v1/stashes/${stashId}`, { method: "DELETE" });
+export async function deleteCartridge(stashId: string): Promise<void> {
+  await apiFetch(`/api/v1/cartridges/${stashId}`, { method: "DELETE" });
 }
 
-export async function updateStash(
+export async function updateCartridge(
   stashId: string,
   data: {
     title?: string;
     description?: string;
-    workspace_permission?: StashGeneralPermission;
-    public_permission?: StashGeneralPermission;
+    workspace_permission?: CartridgeGeneralPermission;
+    public_permission?: CartridgeGeneralPermission;
     discoverable?: boolean;
     cover_image_url?: string | null;
     icon_url?: string | null;
-    items?: StashItemSpec[];
+    items?: CartridgeItemSpec[];
   }
-): Promise<WorkspaceStash> {
-  return apiFetch(`/api/v1/stashes/${stashId}`, {
+): Promise<WorkspaceCartridge> {
+  return apiFetch(`/api/v1/cartridges/${stashId}`, {
     method: "PATCH",
     body: JSON.stringify(data),
   });
 }
 
-export async function listStashMembers(stashId: string): Promise<StashMember[]> {
-  const data = await apiFetch<{ members: StashMember[] }>(
-    `/api/v1/stashes/${stashId}/members`
+export async function listCartridgeMembers(stashId: string): Promise<CartridgeMember[]> {
+  const data = await apiFetch<{ members: CartridgeMember[] }>(
+    `/api/v1/cartridges/${stashId}/members`
   );
   return data.members;
 }
 
-export async function addStashMember(
+export async function addCartridgeMember(
   stashId: string,
   userId: string,
-  permission: StashMemberPermission
-): Promise<StashMember> {
-  return apiFetch(`/api/v1/stashes/${stashId}/members`, {
+  permission: CartridgeMemberPermission
+): Promise<CartridgeMember> {
+  return apiFetch(`/api/v1/cartridges/${stashId}/members`, {
     method: "POST",
     body: JSON.stringify({ user_id: userId, permission }),
   });
 }
 
-export async function removeStashMember(stashId: string, userId: string): Promise<void> {
-  await apiFetch(`/api/v1/stashes/${stashId}/members/${userId}`, { method: "DELETE" });
+export async function removeCartridgeMember(stashId: string, userId: string): Promise<void> {
+  await apiFetch(`/api/v1/cartridges/${stashId}/members/${userId}`, { method: "DELETE" });
 }
 
-export async function getPublicStash(slug: string): Promise<PublicStashDetail> {
-  return apiFetch(`/api/v1/stashes/${slug}`);
+export async function getPublicCartridge(slug: string): Promise<PublicCartridgeDetail> {
+  return apiFetch(`/api/v1/cartridges/${slug}`);
 }
 
-export async function createSharedStashPage(
+export async function createSharedCartridgePage(
   stashId: string,
   data: {
     name: string;
@@ -1327,7 +1391,7 @@ export async function createSharedStashPage(
     html_layout?: "responsive" | "fixed-aspect";
   }
 ): Promise<Page> {
-  return apiFetch(`/api/v1/stashes/${stashId}/shared-pages`, {
+  return apiFetch(`/api/v1/cartridges/${stashId}/shared-pages`, {
     method: "POST",
     body: JSON.stringify({
       name: data.name,
@@ -1339,49 +1403,49 @@ export async function createSharedStashPage(
   });
 }
 
-export async function addExternalStash(
+export async function addExternalCartridge(
   slug: string,
   workspaceId: string
-): Promise<WorkspaceStash> {
-  return apiFetch(`/api/v1/stashes/${slug}/add-to-workspace`, {
+): Promise<WorkspaceCartridge> {
+  return apiFetch(`/api/v1/cartridges/${slug}/add-to-workspace`, {
     method: "POST",
     body: JSON.stringify({ workspace_id: workspaceId }),
   });
 }
 
-export async function removeExternalStash(
+export async function removeExternalCartridge(
   workspaceId: string,
   stashId: string
 ): Promise<void> {
-  await apiFetch(`/api/v1/workspaces/${workspaceId}/external-stashes/${stashId}`, {
+  await apiFetch(`/api/v1/workspaces/${workspaceId}/external-cartridges/${stashId}`, {
     method: "DELETE",
   });
 }
 
 // --- Stash invites ---
 
-export interface StashInvite {
+export interface CartridgeInvite {
   id: string;
-  stash_id: string;
-  stash_slug: string;
-  stash_title: string;
-  stash_description: string;
+  cartridge_id: string;
+  cartridge_slug: string;
+  cartridge_title: string;
+  cartridge_description: string;
   source_workspace_id: string;
   source_workspace_name: string;
   invited_by_user_id: string;
   invited_by_name: string;
   invited_by_display_name: string;
-  permission: StashMemberPermission;
+  permission: CartridgeMemberPermission;
   created_at: string;
 }
 
-export async function listStashInvites(): Promise<StashInvite[]> {
-  const data = await apiFetch<{ invites: StashInvite[] }>("/api/v1/stash-invites");
+export async function listCartridgeInvites(): Promise<CartridgeInvite[]> {
+  const data = await apiFetch<{ invites: CartridgeInvite[] }>("/api/v1/cartridge-invites");
   return data.invites;
 }
 
-export async function dismissStashInvite(inviteId: string): Promise<void> {
-  await apiFetch(`/api/v1/stash-invites/${inviteId}/dismiss`, { method: "POST" });
+export async function dismissCartridgeInvite(inviteId: string): Promise<void> {
+  await apiFetch(`/api/v1/cartridge-invites/${inviteId}/dismiss`, { method: "POST" });
 }
 
 // --- Workspace-wide page index ---
@@ -1607,7 +1671,7 @@ export async function uploadTranscript(
   return resp.json();
 }
 
-// --- Workspace overview, sessions, files, and stashes ---
+// --- Workspace overview, sessions, files, and cartridges ---
 
 export interface WorkspaceSidebarSession {
   id: string | null;
@@ -1654,27 +1718,27 @@ export interface WorkspaceFiles {
   files: WorkspaceFile[];
 }
 
-export interface WorkspaceSidebarStash {
+export interface WorkspaceSidebarCartridge {
   id: string;
   workspace_id: string;
   slug: string;
   title: string;
   description: string;
-  access: StashVisibility;
-  workspace_permission: StashGeneralPermission;
-  public_permission: StashGeneralPermission;
+  access: CartridgeVisibility;
+  workspace_permission: CartridgeGeneralPermission;
+  public_permission: CartridgeGeneralPermission;
   discoverable: boolean;
   is_external: boolean;
-  forked_from_stash_id: string | null;
+  forked_from_cartridge_id: string | null;
   item_count: number;
-  items?: StashItemSpec[];
+  items?: CartridgeItemSpec[];
   updated_at: string;
 }
 
 export interface WorkspaceOverview {
   sessions: WorkspaceSidebarSession[];
   files: WorkspaceFiles;
-  stashes?: WorkspaceSidebarStash[];
+  cartridges?: WorkspaceSidebarCartridge[];
 }
 
 export async function getWorkspaceOverview(workspaceId: string): Promise<WorkspaceOverview> {
@@ -1684,7 +1748,7 @@ export async function getWorkspaceOverview(workspaceId: string): Promise<Workspa
 export interface WorkspaceSidebar {
   sessions: WorkspaceSidebarSession[];
   files: WorkspaceFiles;
-  stashes?: WorkspaceSidebarStash[];
+  cartridges?: WorkspaceSidebarCartridge[];
 }
 
 // In-memory store for the last ETag seen per workspace, so navigating between

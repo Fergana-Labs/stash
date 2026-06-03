@@ -8,7 +8,12 @@
 
 import { apiFetch } from "./api";
 
-export type IntegrationProvider = "google" | "github" | "notion";
+export type IntegrationProvider =
+  | "google"
+  | "github"
+  | "notion"
+  | "slack"
+  | "granola";
 
 export type IntegrationStatus = {
   provider: string;
@@ -19,6 +24,8 @@ export type IntegrationStatus = {
   account_display_name: string | null;
   expires_at: string | null;
   connected_at: string | null;
+  // "oauth" (redirect flow) or "mcp_oauth" (DCR+PKCE via an MCP server, e.g. Granola).
+  auth_kind: "oauth" | "mcp_oauth";
 };
 
 export type IntegrationsList = {
@@ -110,78 +117,6 @@ export async function waitForTask(
     }
     await new Promise((r) => setTimeout(r, intervalMs));
   }
-}
-
-// --- Git import ---
-
-export type GitImportRequest = {
-  url: string;
-  ref?: string;
-  subpath?: string;
-  pat?: string;
-  folder_id?: string;
-};
-
-export type GitImportResponse = { task_id: string };
-
-export async function importGitRepo(
-  workspaceId: string,
-  body: GitImportRequest,
-): Promise<GitImportResponse> {
-  return apiFetch<GitImportResponse>(
-    `/api/v1/workspaces/${workspaceId}/imports/git`,
-    { method: "POST", body: JSON.stringify(body) },
-  );
-}
-
-// --- Google Drive import (Picker flow) ---
-
-export type GooglePickerToken = {
-  access_token: string;
-  api_key: string | null;
-  app_id: string | null;
-};
-
-export async function getGooglePickerToken(): Promise<GooglePickerToken> {
-  return apiFetch<GooglePickerToken>("/api/v1/integrations/google/picker-token");
-}
-
-export type GoogleDriveImportRequest = {
-  file_ids: string[];
-  folder_id?: string;
-};
-
-export type GoogleDriveImportResponse = { task_ids: string[] };
-
-export async function importGoogleDrive(
-  workspaceId: string,
-  body: GoogleDriveImportRequest,
-): Promise<GoogleDriveImportResponse> {
-  return apiFetch<GoogleDriveImportResponse>(
-    `/api/v1/workspaces/${workspaceId}/imports/google-drive`,
-    { method: "POST", body: JSON.stringify(body) },
-  );
-}
-
-// --- Notion import ---
-
-export type NotionImportRequest = {
-  /** URLs or bare IDs for Notion pages OR databases. The backend
-   * task auto-detects which kind and routes accordingly. */
-  urls: string[];
-  folder_id?: string;
-};
-
-export type NotionImportResponse = { task_ids: string[] };
-
-export async function importNotion(
-  workspaceId: string,
-  body: NotionImportRequest,
-): Promise<NotionImportResponse> {
-  return apiFetch<NotionImportResponse>(
-    `/api/v1/workspaces/${workspaceId}/imports/notion`,
-    { method: "POST", body: JSON.stringify(body) },
-  );
 }
 
 // --- Slide deck export ---

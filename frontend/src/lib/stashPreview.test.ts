@@ -12,7 +12,7 @@ import {
 
 function detail(): StashPreviewData {
   return {
-    stash: {
+    cartridge: {
       id: "stash-1",
       workspace_id: "workspace-1",
       slug: "launch-plan",

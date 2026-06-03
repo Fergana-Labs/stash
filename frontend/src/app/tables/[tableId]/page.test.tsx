@@ -12,7 +12,7 @@ import TableEditorPage from "./TableClient";
 
 const api = vi.hoisted(() => ({
   fetchAuthed: vi.fn(),
-  getPublicStash: vi.fn(),
+  getPublicCartridge: vi.fn(),
   getTable: vi.fn(),
   updateTable: vi.fn(),
   deleteTable: vi.fn(),

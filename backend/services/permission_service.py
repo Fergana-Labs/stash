@@ -1,7 +1,11 @@
-"""Permission service for workspace content objects.
+"""Permission service.
 
-Stashes are the only privacy boundary for files, pages, folders, sessions,
-and tables. Content with no Stash membership is workspace-visible.
+Private by default. A user owns everything in their (single, implicit) workspace
+— workspace membership == ownership. Beyond that, access comes from the `shares`
+table: a row grants a principal (a user, or a cartridge) access to an object.
+Folder / session-folder shares cascade to contents via the recursive folder chain.
+Cartridges are read-only bundles: anyone who can *open* a cartridge can read every
+object that cartridge contains (cartridge_items), but a cartridge never grants write.
 """
 
 from uuid import UUID
@@ -12,7 +16,8 @@ _WORKSPACE_LOOKUP = {
     "table": ("tables", "workspace_id"),
     "file": ("files", "workspace_id"),
     "session": ("sessions", "workspace_id"),
-    "stash": ("stashes", "workspace_id"),
+    "session_folder": ("session_folders", "workspace_id"),
+    "stash": ("cartridges", "workspace_id"),
     "folder": ("folders", "workspace_id"),
     "page": ("pages", "workspace_id"),
 }
@@ -32,61 +37,73 @@ def _folder_chain_sql(folder_id_expr: str) -> str:
     )
 
 
-def _stash_item_target_condition(object_type: str, object_alias: str, stash_item_alias: str) -> str:
-    if object_type == "page":
-        folder_chain = _folder_chain_sql(f"{object_alias}.folder_id")
+def _item_target_condition(object_type: str, object_alias: str, item_alias: str) -> str:
+    """Does a (object_type, object_id) row in `item_alias` (shares OR cartridge_items)
+    target the object at `object_alias`? Page/file also match a share/item on any
+    ancestor folder (inheritance)."""
+    if object_type == "folder":
+        folder_chain = _folder_chain_sql(f"{object_alias}.id")
         return (
-            f"(({stash_item_alias}.object_type = 'page' "
-            f"AND {stash_item_alias}.object_id = {object_alias}.id) "
-            f"OR ({stash_item_alias}.object_type = 'folder' "
-            f"AND {object_alias}.folder_id IS NOT NULL "
-            f"AND {stash_item_alias}.object_id IN ({folder_chain})))"
+            f"({item_alias}.object_type = 'folder' "
+            f"AND {item_alias}.object_id IN ({folder_chain}))"
         )
-    if object_type == "file":
+    if object_type in ("page", "file"):
         folder_chain = _folder_chain_sql(f"{object_alias}.folder_id")
         return (
-            f"(({stash_item_alias}.object_type = 'file' "
-            f"AND {stash_item_alias}.object_id = {object_alias}.id) "
-            f"OR ({stash_item_alias}.object_type = 'folder' "
+            f"(({item_alias}.object_type = '{object_type}' "
+            f"AND {item_alias}.object_id = {object_alias}.id) "
+            f"OR ({item_alias}.object_type = 'folder' "
             f"AND {object_alias}.folder_id IS NOT NULL "
-            f"AND {stash_item_alias}.object_id IN ({folder_chain})))"
+            f"AND {item_alias}.object_id IN ({folder_chain})))"
+        )
+    if object_type == "session":
+        # A session inherits a share/item on its session folder.
+        return (
+            f"(({item_alias}.object_type = 'session' "
+            f"AND {item_alias}.object_id = {object_alias}.id) "
+            f"OR ({item_alias}.object_type = 'session_folder' "
+            f"AND {object_alias}.session_folder_id IS NOT NULL "
+            f"AND {item_alias}.object_id = {object_alias}.session_folder_id))"
         )
     if object_type in _CONTENT_TYPES:
         return (
-            f"({stash_item_alias}.object_type = '{object_type}' "
-            f"AND {stash_item_alias}.object_id = {object_alias}.id)"
+            f"({item_alias}.object_type = '{object_type}' "
+            f"AND {item_alias}.object_id = {object_alias}.id)"
         )
     return "FALSE"
 
 
 def readable_content_condition(object_type: str, object_alias: str, user_arg: int) -> str:
-    target_condition = _stash_item_target_condition(object_type, object_alias, "content_stash_item")
+    """SQL predicate: may user ${user_arg} READ the content row at object_alias?
+    Owner (workspace member) OR a user share (direct/ancestor folder) OR the object
+    is in a cartridge the user can open."""
+    share_target = _item_target_condition(object_type, object_alias, "content_share")
+    ci_target = _item_target_condition(object_type, object_alias, "content_ci")
     return f"""
         (
-          NOT EXISTS (
-            SELECT 1
-            FROM stash_items content_stash_item
-            WHERE {target_condition}
+          EXISTS (
+            SELECT 1 FROM workspace_members content_wm
+            WHERE content_wm.workspace_id = {object_alias}.workspace_id
+              AND content_wm.user_id = ${user_arg}
+          )
+          OR EXISTS (
+            SELECT 1 FROM shares content_share
+            WHERE content_share.principal_type = 'user'
+              AND content_share.principal_id = ${user_arg}
+              AND {share_target}
           )
           OR EXISTS (
             SELECT 1
-            FROM stash_items content_stash_item
-            JOIN stashes content_stash ON content_stash.id = content_stash_item.stash_id
-            LEFT JOIN workspace_members content_workspace_member
-              ON content_workspace_member.workspace_id = content_stash.workspace_id
-             AND content_workspace_member.user_id = ${user_arg}
-            LEFT JOIN stash_members content_stash_member
-              ON content_stash_member.stash_id = content_stash.id
-             AND content_stash_member.user_id = ${user_arg}
-            WHERE {target_condition}
+            FROM cartridge_items content_ci
+            JOIN cartridges content_cartridge ON content_cartridge.id = content_ci.cartridge_id
+            LEFT JOIN cartridge_members content_cm
+              ON content_cm.cartridge_id = content_cartridge.id
+             AND content_cm.user_id = ${user_arg}
+            WHERE {ci_target}
               AND (
-                content_stash.public_permission != 'none'
-                OR (
-                  content_stash.workspace_permission != 'none'
-                  AND content_workspace_member.user_id IS NOT NULL
-                )
-                OR content_stash.owner_id = ${user_arg}
-                OR content_stash_member.user_id IS NOT NULL
+                content_cartridge.public_permission != 'none'
+                OR content_cartridge.owner_id = ${user_arg}
+                OR content_cm.user_id IS NOT NULL
               )
           )
         )
@@ -132,31 +149,70 @@ async def _folder_chain_for_file(file_id: UUID) -> list[UUID]:
     return [row["id"] for row in rows]
 
 
+async def _folder_chain_for_folder(folder_id: UUID) -> list[UUID]:
+    pool = get_pool()
+    rows = await pool.fetch(
+        "WITH RECURSIVE chain AS ("
+        "  SELECT id, parent_folder_id FROM folders WHERE id = $1"
+        "  UNION ALL"
+        "  SELECT f.id, f.parent_folder_id FROM folders f "
+        "  JOIN chain c ON f.id = c.parent_folder_id"
+        ") SELECT id FROM chain",
+        folder_id,
+    )
+    return [row["id"] for row in rows]
+
+
 async def _object_targets(object_type: str, object_id: UUID) -> list[tuple[str, UUID]]:
+    """The object itself plus any ancestor folders (for inheritance)."""
+    if object_type == "folder":
+        return [("folder", fid) for fid in await _folder_chain_for_folder(object_id)]
     if object_type == "page":
         return [("page", object_id)] + [
-            ("folder", folder_id) for folder_id in await _folder_chain_for_page(object_id)
+            ("folder", fid) for fid in await _folder_chain_for_page(object_id)
         ]
     if object_type == "file":
         return [("file", object_id)] + [
-            ("folder", folder_id) for folder_id in await _folder_chain_for_file(object_id)
+            ("folder", fid) for fid in await _folder_chain_for_file(object_id)
         ]
+    if object_type == "session":
+        pool = get_pool()
+        row = await pool.fetchrow("SELECT session_folder_id FROM sessions WHERE id = $1", object_id)
+        if row and row["session_folder_id"]:
+            return [("session", object_id), ("session_folder", row["session_folder_id"])]
     return [(object_type, object_id)]
 
 
-async def _containing_stashes(object_type: str, object_id: UUID) -> list[dict]:
+async def _user_share_grants(
+    object_type: str, object_id: UUID, user_id: UUID, require_write: bool
+) -> bool:
+    """A user share on the object or any ancestor folder."""
+    pool = get_pool()
+    for target_type, target_id in await _object_targets(object_type, object_id):
+        row = await pool.fetchrow(
+            "SELECT permission FROM shares "
+            "WHERE principal_type = 'user' AND principal_id = $1 "
+            "AND object_type = $2 AND object_id = $3",
+            user_id,
+            target_type,
+            target_id,
+        )
+        if row and (not require_write or row["permission"] == "write"):
+            return True
+    return False
+
+
+async def _containing_cartridges(object_type: str, object_id: UUID) -> list[dict]:
     if object_type not in _CONTENT_TYPES:
         return []
-
     pool = get_pool()
     rows = []
     for target_type, target_id in await _object_targets(object_type, object_id):
         target_rows = await pool.fetch(
-            "SELECT s.id, s.workspace_id, s.owner_id, "
-            "s.workspace_permission, s.public_permission "
-            "FROM stashes s "
-            "JOIN stash_items si ON si.stash_id = s.id "
-            "WHERE si.object_type = $1 AND si.object_id = $2",
+            "SELECT c.id, c.workspace_id, c.owner_id, c.public_permission "
+            "FROM cartridges c "
+            "JOIN cartridge_items ci ON ci.cartridge_id = c.id "
+            "WHERE ci.object_type = $1 AND ci.object_id = $2",
             target_type,
             target_id,
         )
@@ -164,39 +220,26 @@ async def _containing_stashes(object_type: str, object_id: UUID) -> list[dict]:
     return rows
 
 
-async def _stash_member_permission(stash_id: UUID, user_id: UUID) -> str | None:
+async def _cartridge_member_permission(cartridge_id: UUID, user_id: UUID) -> str | None:
     pool = get_pool()
     row = await pool.fetchrow(
-        "SELECT permission FROM stash_members WHERE stash_id = $1 AND user_id = $2",
-        stash_id,
+        "SELECT permission FROM cartridge_members WHERE cartridge_id = $1 AND user_id = $2",
+        cartridge_id,
         user_id,
     )
     return row["permission"] if row else None
 
 
-async def _stash_allows(stash: dict, user_id: UUID | None, require_write: bool) -> bool:
-    workspace_permission = stash["workspace_permission"]
-    public_permission = stash["public_permission"]
-    if public_permission != "none" and not require_write:
+async def _cartridge_open(cartridge: dict, user_id: UUID | None) -> bool:
+    """Can the user OPEN this cartridge (read its contents)? Cartridges are
+    read-only links: public, owned, or a cartridge member."""
+    if cartridge["public_permission"] != "none":
         return True
     if user_id is None:
         return False
-    if stash["owner_id"] == user_id:
+    if cartridge["owner_id"] == user_id:
         return True
-
-    role = await get_workspace_role(stash["workspace_id"], user_id)
-    permission = await _stash_member_permission(stash["id"], user_id)
-    if role is not None and workspace_permission != "none" and not require_write:
-        return True
-    if role is not None and workspace_permission == "write" and require_write:
-        return True
-    if require_write and public_permission == "write":
-        return True
-    if permission:
-        if not require_write:
-            return True
-        return permission in ("write", "admin")
-    return False
+    return await _cartridge_member_permission(cartridge["id"], user_id) is not None
 
 
 async def check_access(
@@ -209,33 +252,49 @@ async def check_access(
     if workspace_id is None:
         workspace_id = await resolve_workspace_id(object_type, object_id)
 
+    # Owner = the (single) workspace member. Full read/write.
+    if (
+        user_id is not None
+        and workspace_id is not None
+        and await is_workspace_member(workspace_id, user_id)
+    ):
+        return True
+
+    # The cartridge bundle itself: gated by cartridge access (read-only).
     if object_type == "stash":
         pool = get_pool()
         row = await pool.fetchrow(
-            "SELECT id, workspace_id, owner_id, workspace_permission, public_permission "
-            "FROM stashes WHERE id = $1",
+            "SELECT id, workspace_id, owner_id, public_permission FROM cartridges WHERE id = $1",
             object_id,
         )
         if not row:
             return False
-        return await _stash_allows(dict(row), user_id, require_write)
+        if require_write:
+            return row["owner_id"] == user_id
+        return await _cartridge_open(dict(row), user_id)
+
+    # A session folder is shareable like a file folder (no cartridge containment).
+    if object_type == "session_folder":
+        return user_id is not None and await _user_share_grants(
+            "session_folder", object_id, user_id, require_write
+        )
 
     if object_type not in _CONTENT_TYPES:
         return False
 
-    stashes = await _containing_stashes(object_type, object_id)
-    if stashes:
-        for stash in stashes:
-            if await _stash_allows(stash, user_id, require_write):
-                return True
-        return False
+    # Direct or inherited user share.
+    if user_id is not None and await _user_share_grants(
+        object_type, object_id, user_id, require_write
+    ):
+        return True
 
-    if user_id is None or workspace_id is None:
-        return False
-    role = await get_workspace_role(workspace_id, user_id)
-    if require_write:
-        return role in ("owner", "admin", "editor")
-    return role is not None
+    # Read-only access via a cartridge that contains the object.
+    if not require_write:
+        for cartridge in await _containing_cartridges(object_type, object_id):
+            if await _cartridge_open(cartridge, user_id):
+                return True
+
+    return False
 
 
 async def get_workspace_role(workspace_id: UUID, user_id: UUID) -> str | None:
@@ -253,12 +312,17 @@ async def is_workspace_member(workspace_id: UUID, user_id: UUID) -> bool:
 
 
 async def get_visibility(object_type: str, object_id: UUID) -> str:
-    stashes = await _containing_stashes(object_type, object_id)
-    if any(
-        stash["workspace_permission"] == "none" and stash["public_permission"] == "none"
-        for stash in stashes
-    ):
-        return "private"
-    if any(stash["public_permission"] != "none" for stash in stashes):
+    """'public' if in any public cartridge, 'shared' if shared with anyone,
+    else 'private'."""
+    pool = get_pool()
+    cartridges = await _containing_cartridges(object_type, object_id)
+    if any(c["public_permission"] != "none" for c in cartridges):
         return "public"
-    return "workspace"
+    shared = await pool.fetchrow(
+        "SELECT 1 FROM shares WHERE object_type = $1 AND object_id = $2 LIMIT 1",
+        object_type,
+        object_id,
+    )
+    if shared or cartridges:
+        return "shared"
+    return "private"

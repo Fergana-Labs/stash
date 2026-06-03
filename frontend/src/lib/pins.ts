@@ -16,7 +16,7 @@ import {
 // toggle updates the cache and broadcasts an event so every hook re-reads.
 const PINS_EVENT = "stash-pins-change";
 const RECENTS_EVENT = "stash-recents-change";
-const EMPTY_PINS: WorkspacePins = { stashes: [], sessions: [], files: [] };
+const EMPTY_PINS: WorkspacePins = { cartridges: [], sessions: [], files: [] };
 
 const pinsCache = new Map<string, WorkspacePins>();
 const pinsInflight = new Map<string, Promise<WorkspacePins>>();

@@ -5,15 +5,15 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   getSessionDetail,
-  publishStash,
+  publishCartridge,
   type SessionDetail,
-  type StashItemSpec,
+  type CartridgeItemSpec,
 } from "../lib/api";
 import { track } from "../lib/analytics";
 import { User, Workspace } from "../lib/types";
 import AppSidebar from "./AppSidebar";
 import CommandPalette from "./CommandPalette";
-import StashInviteCenter from "./StashInviteCenter";
+import CartridgeInviteCenter from "./CartridgeInviteCenter";
 import { useShareModal } from "../lib/shareModalContext";
 import { type Crumb, useBreadcrumbsValue } from "./BreadcrumbContext";
 import { useShellChromeValue } from "./ShellChromeContext";
@@ -40,7 +40,7 @@ export interface SearchScope {
     | "session"
     | "stash"
     | "sessions"
-    | "stashes";
+    | "cartridges";
   label: string;
   detail: string;
   params: Record<string, string>;
@@ -60,7 +60,7 @@ function readBool(key: string): boolean {
 // Pre-select the current page/folder/file/session when the Share button is
 // clicked from a detail route, so "share this" is one click instead of a hunt
 // through the picker.
-function inferShareInitial(pathname: string): StashItemSpec[] | undefined {
+function inferShareInitial(pathname: string): CartridgeItemSpec[] | undefined {
   const pageMatch = pathname.match(/^\/workspaces\/[^/]+\/p\/([^/?#]+)/);
   if (pageMatch)
     return [{ object_type: "page", object_id: pageMatch[1], position: 0 }];
@@ -145,13 +145,13 @@ function inferSearchScope(
   activeWorkspace: Workspace | undefined,
   breadcrumbs: Crumb[] | null,
 ): SearchScope | null {
-  const stashMatch = pathname.match(/^\/stashes\/([^/?#]+)/);
+  const stashMatch = pathname.match(/^\/cartridges\/([^/?#]+)/);
   if (stashMatch) {
     const slug = decodeURIComponent(stashMatch[1]);
     return {
       kind: "stash",
-      label: "this Stash",
-      detail: "Search only in this Stash",
+      label: "this cartridge",
+      detail: "Search only in this cartridge",
       params: { stash: slug },
     };
   }
@@ -204,14 +204,14 @@ function inferSearchScope(
   }
 
   const stashesMatch = pathname.match(
-    /^\/workspaces\/([^/]+)\/stashes(?:\/)?$/,
+    /^\/workspaces\/([^/]+)\/cartridges(?:\/)?$/,
   );
   if (stashesMatch) {
     return {
-      kind: "stashes",
-      label: "Stashes",
-      detail: "Search Stashes in this workspace",
-      params: { workspace: stashesMatch[1], content: "stashes" },
+      kind: "cartridges",
+      label: "Cartridges",
+      detail: "Search Cartridges in this workspace",
+      params: { workspace: stashesMatch[1], content: "cartridges" },
     };
   }
 
@@ -358,7 +358,7 @@ export default function AppShell({
     try {
       const result =
         target.kind === "page"
-          ? await publishStash(
+          ? await publishCartridge(
               target.workspaceId,
               target.title,
               [
@@ -371,10 +371,10 @@ export default function AppShell({
               ],
               { discoverable: false },
             )
-          : await publishSessionStash(target);
+          : await publishSessionCartridge(target);
       track("web.session_shared", {
         workspace_id: target.workspaceId,
-        stash_id: result.stash_id,
+        cartridge_id: result.cartridge_id,
       });
       await navigator.clipboard.writeText(result.url);
       setShareStatus("copied");
@@ -458,7 +458,7 @@ export default function AppShell({
         </div>
 
         <div className="flex shrink-0 items-center justify-end gap-1">
-          <StashInviteCenter />
+          <CartridgeInviteCenter />
           {shareAction ?? defaultShareAction}
           <UserMenu
             initial={initial}
@@ -499,12 +499,12 @@ export default function AppShell({
   );
 }
 
-async function publishSessionStash(
+async function publishSessionCartridge(
   target: Extract<DirectShareTarget, { kind: "session" }>,
 ) {
   const session = await getSessionDetail(target.workspaceId, target.sessionId);
   const title = sessionShareTitle(session);
-  return publishStash(
+  return publishCartridge(
     target.workspaceId,
     title,
     [

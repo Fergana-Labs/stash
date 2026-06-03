@@ -17,8 +17,8 @@ from uuid import UUID, uuid4
 import pytest
 import pytest_asyncio
 
-from backend.models import StashItem
-from backend.services import agent_runtime, prompts, stash_service
+from backend.models import CartridgeItem
+from backend.services import agent_runtime, cartridge_service, prompts
 
 
 def test_tool_catalog_matches_prompts_set():
@@ -90,7 +90,7 @@ async def test_list_files_tool_scopes_by_workspace(workspace: UUID, _db_pool):
 
 
 @pytest.mark.asyncio
-async def test_stash_tools_create_list_and_delete(workspace: UUID, _db_pool):
+async def test_cartridge_tools_create_list_and_delete(workspace: UUID, _db_pool):
     user_id = await _db_pool.fetchval("SELECT creator_id FROM workspaces WHERE id = $1", workspace)
     folder_id = uuid4()
     await _db_pool.execute(
@@ -104,7 +104,7 @@ async def test_stash_tools_create_list_and_delete(workspace: UUID, _db_pool):
     workspace_token = agent_runtime._workspace_ctx.set(workspace)
     user_token = agent_runtime._user_ctx.set(user_id)
     try:
-        create_result = await agent_runtime._create_stash.handler(
+        create_result = await agent_runtime._create_cartridge.handler(
             {
                 "title": "Launch bundle",
                 "description": "Published launch context",
@@ -125,17 +125,19 @@ async def test_stash_tools_create_list_and_delete(workspace: UUID, _db_pool):
     workspace_token = agent_runtime._workspace_ctx.set(workspace)
     user_token = agent_runtime._user_ctx.set(user_id)
     try:
-        delete_result = await agent_runtime._delete_stash.handler({"stash_id": created["id"]})
+        delete_result = await agent_runtime._delete_cartridge.handler(
+            {"cartridge_id": created["id"]}
+        )
     finally:
         agent_runtime._user_ctx.reset(user_token)
         agent_runtime._workspace_ctx.reset(workspace_token)
 
     deleted = json.loads(delete_result["content"][0]["text"])
-    assert deleted == {"deleted": True, "stash_id": created["id"]}
+    assert deleted == {"deleted": True, "cartridge_id": created["id"]}
 
 
 @pytest.mark.asyncio
-async def test_external_stash_is_workspace_fork(workspace: UUID, _db_pool):
+async def test_external_cartridge_is_workspace_fork(workspace: UUID, _db_pool):
     owner_id = await _db_pool.fetchval("SELECT creator_id FROM workspaces WHERE id = $1", workspace)
     target_workspace = uuid4()
     page_id = uuid4()
@@ -181,7 +183,7 @@ async def test_external_stash_is_workspace_fork(workspace: UUID, _db_pool):
         "Copied session event",
         "session-external-source",
     )
-    source = await stash_service.create_stash(
+    source = await cartridge_service.create_cartridge(
         workspace_id=workspace,
         owner_id=owner_id,
         title="Fork source Stash",
@@ -191,21 +193,21 @@ async def test_external_stash_is_workspace_fork(workspace: UUID, _db_pool):
         discoverable=False,
         cover_image_url=None,
         items=[
-            StashItem(object_type="page", object_id=page_id, position=0),
-            StashItem(object_type="session", object_id=session_row_id, position=1),
+            CartridgeItem(object_type="page", object_id=page_id, position=0),
+            CartridgeItem(object_type="session", object_id=session_row_id, position=1),
         ],
     )
 
-    attached = await stash_service.add_external_stash(
+    attached = await cartridge_service.add_external_cartridge(
         target_workspace, source["slug"], added_by=owner_id
     )
-    target_stashes = await stash_service.list_workspace_stashes(target_workspace, owner_id)
+    target_stashes = await cartridge_service.list_workspace_stashes(target_workspace, owner_id)
 
     assert attached is not None
     assert attached["id"] != source["id"]
     assert attached["is_external"] is True
     assert attached["added_to_workspace_id"] == target_workspace
-    assert attached["forked_from_stash_id"] == source["id"]
+    assert attached["forked_from_cartridge_id"] == source["id"]
     assert [stash["id"] for stash in target_stashes] == [attached["id"]]
     assert target_stashes[0]["workspace_id"] == target_workspace
 

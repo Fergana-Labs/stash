@@ -9,11 +9,20 @@ import { SessionsListSkeleton } from "../../../../../components/SkeletonStates";
 import { PinIcon } from "../../../../../components/StashIcons";
 import { SelectBox } from "../../../../../components/workspace/file-browser/ItemsList";
 import { useAuth } from "../../../../../hooks/useAuth";
-import { deleteSession, listMySessions, type SessionSummary } from "../../../../../lib/api";
+import {
+  assignSessionFolder,
+  createSessionFolder,
+  deleteSession,
+  listMySessions,
+  listSessionFolders,
+  type SessionFolder,
+  type SessionSummary,
+} from "../../../../../lib/api";
 import { usePins } from "../../../../../lib/pins";
 import {
   groupSessionsByAgent,
   groupSessionsByDayAndUser,
+  groupSessionsByFolder,
   groupSessionsByLinearTicket,
   groupSessionsByUser,
   requireSessionUserName,
@@ -21,7 +30,7 @@ import {
   type SessionFlatGroup,
 } from "../../../../../lib/sessionGrouping";
 
-type ViewKey = "list" | "day" | "user" | "agent" | "ticket";
+type ViewKey = "list" | "day" | "user" | "agent" | "ticket" | "folder";
 type SortKey = "recent" | "oldest" | "events" | "name";
 
 const VIEW_STORAGE_KEY = "stash_sessions_view";
@@ -32,6 +41,7 @@ const VIEWS: { key: ViewKey; label: string }[] = [
   { key: "user", label: "By user" },
   { key: "agent", label: "By agent" },
   { key: "ticket", label: "By ticket" },
+  { key: "folder", label: "By folder" },
 ];
 
 const SORTS: { key: SortKey; label: string }[] = [
@@ -41,7 +51,7 @@ const SORTS: { key: SortKey; label: string }[] = [
   { key: "name", label: "Name" },
 ];
 
-export default function StashSessionsPage() {
+export default function CartridgeSessionsPage() {
   const params = useParams();
   const router = useRouter();
   const workspaceId = params.workspaceId as string;
@@ -49,6 +59,7 @@ export default function StashSessionsPage() {
   const pins = usePins("sessions", workspaceId);
 
   const [sessions, setSessions] = useState<SessionSummary[] | null>(null);
+  const [folders, setFolders] = useState<SessionFolder[]>([]);
   const [error, setError] = useState("");
   const [view, setView] = useState<ViewKey>("list");
   const [sort, setSort] = useState<SortKey>("recent");
@@ -76,8 +87,12 @@ export default function StashSessionsPage() {
 
   const load = useCallback(async () => {
     try {
-      const list = await listMySessions(workspaceId, 200);
+      const [list, folderList] = await Promise.all([
+        listMySessions(workspaceId, 200),
+        listSessionFolders(workspaceId).catch(() => [] as SessionFolder[]),
+      ]);
       setSessions(list);
+      setFolders(folderList);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load sessions");
     }
@@ -144,6 +159,33 @@ export default function StashSessionsPage() {
     }
   }
 
+  // Move the selected sessions into a folder (or out of one, with folderId
+  // null). `__new__` prompts for a folder name and creates it first.
+  async function moveSelectedToFolder(folderId: string | null) {
+    const targets = selectedSessions.filter((s) => s.id);
+    if (targets.length === 0) return;
+    let destination = folderId;
+    if (folderId === "__new__") {
+      const name = window.prompt("New folder name")?.trim();
+      if (!name) return;
+      try {
+        destination = (await createSessionFolder(workspaceId, name)).id;
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Could not create folder");
+        return;
+      }
+    }
+    try {
+      for (const session of targets) {
+        await assignSessionFolder(workspaceId, session.id!, destination);
+      }
+      clearSelection();
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not move sessions");
+    }
+  }
+
   return (
     <div className="scroll-thin flex-1 overflow-y-auto">
       <div className="mx-auto max-w-5xl px-12 py-8">
@@ -203,6 +245,7 @@ export default function StashSessionsPage() {
           <SessionsView
             view={view}
             sessions={sorted}
+            folders={folders}
             workspaceId={workspaceId}
             isPinned={pins.isPinned}
             onTogglePin={pins.toggle}
@@ -216,6 +259,25 @@ export default function StashSessionsPage() {
         <div className="pointer-events-none fixed inset-x-0 bottom-6 z-50 flex justify-center">
           <div className="pointer-events-auto flex items-center gap-3 rounded-lg border border-border bg-foreground px-4 py-2 text-[13px] text-background shadow-lg">
             <span className="font-medium">{selectedSessions.length} selected</span>
+            <select
+              aria-label="Move to folder"
+              value=""
+              onChange={(e) => {
+                const v = e.target.value;
+                if (v) void moveSelectedToFolder(v === "__none__" ? null : v);
+                e.target.value = "";
+              }}
+              className="rounded-md border border-background/40 bg-foreground px-2 py-0.5 text-[12px] font-semibold text-background hover:bg-background/10"
+            >
+              <option value="">Move to folder…</option>
+              <option value="__new__">+ New folder</option>
+              <option value="__none__">Unfiled</option>
+              {folders.map((f) => (
+                <option key={f.id} value={f.id}>
+                  {f.name}
+                </option>
+              ))}
+            </select>
             <button
               type="button"
               onClick={() => void bulkDeleteSessions()}
@@ -241,6 +303,7 @@ export default function StashSessionsPage() {
 function SessionsView({
   view,
   sessions,
+  folders,
   workspaceId,
   isPinned,
   onTogglePin,
@@ -249,6 +312,7 @@ function SessionsView({
 }: {
   view: ViewKey;
   sessions: SessionSummary[];
+  folders: SessionFolder[];
   workspaceId: string;
   isPinned: (sessionId: string) => boolean;
   onTogglePin: (sessionId: string) => void;
@@ -301,6 +365,8 @@ function SessionsView({
       ? groupSessionsByUser(sessions)
       : view === "ticket"
       ? groupSessionsByLinearTicket(sessions)
+      : view === "folder"
+      ? groupSessionsByFolder(sessions, folders)
       : groupSessionsByAgent(sessions);
   return (
     <div className="flex flex-col gap-4">

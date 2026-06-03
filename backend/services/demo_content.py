@@ -25,7 +25,7 @@ DEMO_ABOUT_FILENAME = "about-stash.md"
 ABOUT_STASH_MARKDOWN = """# About Stash
 
 Stash is a knowledge base built for the era where coding agents write
-more than the humans they work with. Sessions, files, and Stashes —
+more than the humans they work with. Sessions, files, and Cartridges —
 a company brain that humans and agents both write into, query
 semantically, and publish from.
 
@@ -45,7 +45,7 @@ other agent had already tried.
   edit them via the CLI or MCP server. Both sides see updates in
   real time.
 
-- **Stashes.** A shareable bundle of files and sessions. Public link,
+- **Cartridges.** A shareable bundle of files and sessions. Public link,
   workspace-scoped, or private. Forkable into someone else's
   workspace. The unit of "I want to share this slice of what we
   know."
@@ -310,7 +310,7 @@ Returns `{ "session_id": "<uuid>", "event_count": N }`.
 ### 5c. Create the public Stash
 
 ```
-POST /api/v1/demo/stashes
+POST /api/v1/demo/cartridges
 Content-Type: application/json
 
 {
@@ -327,7 +327,7 @@ The server auto-attaches a `Stash knowledge base/` folder with the
 slides skill and about-Stash markdown so the visitor can keep
 editing the deck later from their own agent.
 
-Returns `{ "app_url": "<https://app.joinstash.ai/stashes/...>" }`.
+Returns `{ "app_url": "<https://app.joinstash.ai/cartridges/...>" }`.
 
 ## Step 6 — Hand the link back
 

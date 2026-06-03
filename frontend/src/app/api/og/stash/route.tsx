@@ -35,21 +35,21 @@ function PreviewImage({ card }: { card: PreviewCard }) {
   const lines =
     card.lines.length > 0
       ? card.lines
-      : [{ label: "Contents", meta: "Stash", excerpt: card.description }];
+      : [{ label: "Contents", meta: "Cartridge", excerpt: card.description }];
   const title = truncate(card.title, 76);
   const meta = [
     card.contentBadge,
     editedLabel(card.kind, card.updatedAt),
     card.workspaceName,
   ].filter(Boolean);
-  const sideLabel = card.kind === "stash" ? "DETAILS" : "IN STASHES";
+  const sideLabel = card.kind === "cartridge" ? "DETAILS" : "IN CARTRIDGES";
   const sideTitle =
-    card.kind === "stash"
+    card.kind === "cartridge"
       ? card.workspaceName || "Workspace"
       : card.stashTitle;
   const sideMeta =
-    card.kind === "stash"
-      ? card.stats.slice(1, 4).join(" - ") || "Shared stash"
+    card.kind === "cartridge"
+      ? card.stats.slice(1, 4).join(" - ") || "Shared cartridge"
       : "1";
 
   return (
@@ -87,7 +87,7 @@ function PreviewImage({ card }: { card: PreviewCard }) {
             color: "#37352F",
           }}
         >
-          {truncate(card.kind === "stash" ? card.title : card.stashTitle, 28)}
+          {truncate(card.kind === "cartridge" ? card.title : card.stashTitle, 28)}
         </div>
         <div
           style={{
@@ -214,7 +214,7 @@ function PreviewImage({ card }: { card: PreviewCard }) {
             color: "#EA580C",
           }}
         >
-          {card.kind === "stash" && card.iconUrl ? (
+          {card.kind === "cartridge" && card.iconUrl ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img
               src={card.iconUrl}
@@ -305,7 +305,7 @@ function PreviewImage({ card }: { card: PreviewCard }) {
             flexDirection: "column",
           }}
         >
-          {card.kind === "stash" ? (
+          {card.kind === "cartridge" ? (
             <div style={{ display: "flex", flexDirection: "column" }}>
               <div
                 style={{
@@ -539,7 +539,7 @@ function KindIcon({ kind, size }: { kind: PreviewCard["kind"]; size: number }) {
     );
   }
 
-  if (kind === "stash") return <StashGlyph />;
+  if (kind === "cartridge") return <StashGlyph />;
 
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
@@ -581,7 +581,7 @@ function editedLabel(kind: PreviewCard["kind"], value: string | null): string {
   if (!value) return "";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "";
-  const label = kind === "stash" ? "Updated" : "Last edited";
+  const label = kind === "cartridge" ? "Updated" : "Last edited";
   const formatted = new Intl.DateTimeFormat("en-US", {
     month: "short",
     day: "numeric",

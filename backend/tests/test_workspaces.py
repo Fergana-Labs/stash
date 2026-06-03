@@ -49,7 +49,7 @@ async def test_create_workspace(client: AsyncClient):
 @pytest.mark.asyncio
 async def test_create_workspace_requires_auth(client: AsyncClient):
     resp = await client.post("/api/v1/workspaces", json={"name": "X"})
-    assert resp.status_code == 403
+    assert resp.status_code == 401
 
 
 # --- Listing ---
@@ -84,6 +84,7 @@ async def test_registration_auto_provisions_default_workspace(client: AsyncClien
 
 
 @pytest.mark.asyncio
+@pytest.mark.skip(reason="obsolete under single-owner model (C3): no workspace roles/multi-member")
 async def test_join_by_invite_code(client: AsyncClient):
     owner_key, _ = await _register(client)
     joiner_key, _ = await _register(client)
@@ -159,6 +160,7 @@ async def test_rotate_invite_code_member_forbidden(client: AsyncClient):
 
 
 @pytest.mark.asyncio
+@pytest.mark.skip(reason="obsolete under single-owner model (C3): no workspace roles/multi-member")
 async def test_magic_invite_redeem_assigns_editor_role(client: AsyncClient):
     owner_key, _ = await _register(client)
     joiner_key, joiner = await _register(client)
@@ -210,6 +212,7 @@ async def test_update_workspace(client: AsyncClient):
 
 
 @pytest.mark.asyncio
+@pytest.mark.skip(reason="obsolete under single-owner model (C3): no workspace roles/multi-member")
 async def test_viewer_cannot_update_workspace(client: AsyncClient):
     owner_key, _ = await _register(client)
     member_key, member_body = await _register(client)

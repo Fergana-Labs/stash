@@ -6,13 +6,13 @@ import { ReactNode, useEffect } from "react";
 import AppShell from "../../components/AppShell";
 import {
   AppShellSkeleton,
-  PublicStashSkeleton,
+  PublicCartridgeSkeleton,
 } from "../../components/SkeletonStates";
 import { useAuth } from "../../hooks/useAuth";
 
 // Shared chrome for the signed-in app. Hosting AppShell here (rather than
 // inside each subtree's layout or page) keeps the sidebar mounted as you move
-// between /stashes/[slug] and /workspaces/[workspaceId], so scroll position
+// between /cartridges/[slug] and /workspaces/[workspaceId], so scroll position
 // and folder-open state survive the navigation. Public stash routes are
 // readable when signed out, so we render their children bare in that case.
 //
@@ -26,23 +26,23 @@ export default function AppGroupLayout({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const { user, loading, logout } = useAuth();
-  const isPublicStashRoute =
-    pathname.startsWith("/stashes/") ||
+  const isPublicCartridgeRoute =
+    pathname.startsWith("/cartridges/") ||
     (pathname.startsWith("/workspaces/") && searchParams.has("stash"));
 
   useEffect(() => {
     if (loading) return;
     if (user) return;
-    if (isPublicStashRoute) return;
+    if (isPublicCartridgeRoute) return;
     router.push("/login");
-  }, [user, loading, isPublicStashRoute, router]);
+  }, [user, loading, isPublicCartridgeRoute, router]);
 
   if (loading) {
-    return isPublicStashRoute ? <PublicStashSkeleton /> : <AppShellSkeleton />;
+    return isPublicCartridgeRoute ? <PublicCartridgeSkeleton /> : <AppShellSkeleton />;
   }
 
   if (!user) {
-    if (isPublicStashRoute) {
+    if (isPublicCartridgeRoute) {
       return <main className="min-h-screen bg-background">{children}</main>;
     }
     return null;

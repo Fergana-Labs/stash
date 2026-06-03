@@ -30,14 +30,15 @@ from claude_agent_sdk import (
 )
 
 from ..config import settings
-from ..models import StashItem
+from ..models import CartridgeItem
 from . import (
+    cartridge_service,
     files_tree_service,
     memory_service,
     permission_service,
     prompts,
     skill_service,
-    stash_service,
+    source_service,
     table_service,
 )
 
@@ -69,7 +70,7 @@ def _text_result(text: str) -> dict:
     return {"content": [{"type": "text", "text": text}]}
 
 
-def _stash_item_to_dict(item: dict) -> dict:
+def _cartridge_item_to_dict(item: dict) -> dict:
     return {
         "object_type": item["object_type"],
         "object_id": str(item["object_id"]),
@@ -78,7 +79,7 @@ def _stash_item_to_dict(item: dict) -> dict:
     }
 
 
-def _stash_to_dict(stash: dict) -> dict:
+def _cartridge_to_dict(stash: dict) -> dict:
     return {
         "id": str(stash["id"]),
         "workspace_id": str(stash["workspace_id"]),
@@ -90,14 +91,14 @@ def _stash_to_dict(stash: dict) -> dict:
         "public_permission": stash["public_permission"],
         "discoverable": bool(stash["discoverable"]),
         "view_count": stash["view_count"],
-        "items": [_stash_item_to_dict(item) for item in stash.get("items", [])],
+        "items": [_cartridge_item_to_dict(item) for item in stash.get("items", [])],
         "created_at": str(stash["created_at"]),
         "updated_at": str(stash["updated_at"]),
     }
 
 
-async def _parse_stash_items(raw_items: list[dict], workspace_id: UUID) -> list[StashItem]:
-    items = [StashItem(**item) for item in raw_items]
+async def _parse_cartridge_items(raw_items: list[dict], workspace_id: UUID) -> list[CartridgeItem]:
+    items = [CartridgeItem(**item) for item in raw_items]
     for item in items:
         item_workspace_id = await permission_service.resolve_workspace_id(
             item.object_type, item.object_id
@@ -343,18 +344,18 @@ async def _read_skill(args: dict) -> dict:
 
 @tool(
     "list_stashes",
-    "List Stashes from the active Stash Workspace.",
+    "List Cartridges from the active Stash Workspace.",
     {"type": "object", "properties": {}},
 )
 async def _list_stashes(args: dict) -> dict:
     workspace_id = _current_workspace()
     user_id = _current_user()
-    stashes = await stash_service.list_workspace_stashes(workspace_id, user_id)
-    return _text_result(json.dumps([_stash_to_dict(stash) for stash in stashes]))
+    cartridges = await cartridge_service.list_workspace_stashes(workspace_id, user_id)
+    return _text_result(json.dumps([_cartridge_to_dict(stash) for stash in cartridges]))
 
 
 @tool(
-    "create_stash",
+    "create_cartridge",
     "Create a Stash from workspace items.",
     {
         "type": "object",
@@ -393,16 +394,16 @@ async def _list_stashes(args: dict) -> dict:
         "required": ["title"],
     },
 )
-async def _create_stash(args: dict) -> dict:
+async def _create_cartridge(args: dict) -> dict:
     workspace_id = _current_workspace()
     user_id = _current_user()
     workspace_permission = args.get("workspace_permission") or "read"
     public_permission = args.get("public_permission") or "none"
     discoverable = bool(args.get("discoverable", False))
     if discoverable and public_permission == "none":
-        return _text_result(json.dumps({"error": "Discover Stashes must be public"}))
-    items = await _parse_stash_items(args.get("items") or [], workspace_id)
-    stash = await stash_service.create_stash(
+        return _text_result(json.dumps({"error": "Discover Cartridges must be public"}))
+    items = await _parse_cartridge_items(args.get("items") or [], workspace_id)
+    stash = await cartridge_service.create_cartridge(
         workspace_id=workspace_id,
         owner_id=user_id,
         title=args["title"],
@@ -413,16 +414,16 @@ async def _create_stash(args: dict) -> dict:
         cover_image_url=None,
         items=items,
     )
-    return _text_result(json.dumps(_stash_to_dict(stash)))
+    return _text_result(json.dumps(_cartridge_to_dict(stash)))
 
 
 @tool(
-    "update_stash",
+    "update_cartridge",
     "Update Stash metadata or replace its item list.",
     {
         "type": "object",
         "properties": {
-            "stash_id": {"type": "string"},
+            "cartridge_id": {"type": "string"},
             "title": {"type": "string"},
             "description": {"type": "string"},
             "workspace_permission": {
@@ -451,14 +452,14 @@ async def _create_stash(args: dict) -> dict:
                 },
             },
         },
-        "required": ["stash_id"],
+        "required": ["cartridge_id"],
     },
 )
-async def _update_stash(args: dict) -> dict:
+async def _update_cartridge(args: dict) -> dict:
     workspace_id = _current_workspace()
     user_id = _current_user()
-    stash_id = UUID(args["stash_id"])
-    if not await stash_service.user_can_manage(stash_id, user_id):
+    cartridge_id = UUID(args["cartridge_id"])
+    if not await cartridge_service.user_can_manage(cartridge_id, user_id):
         return _text_result(json.dumps({"error": "not allowed"}))
 
     updates = {
@@ -473,33 +474,129 @@ async def _update_stash(args: dict) -> dict:
         if key in args
     }
     if "items" in args:
-        updates["items"] = await _parse_stash_items(args.get("items") or [], workspace_id)
-    stash = await stash_service.update_stash(
-        stash_id,
+        updates["items"] = await _parse_cartridge_items(args.get("items") or [], workspace_id)
+    stash = await cartridge_service.update_cartridge(
+        cartridge_id,
         user_id,
         updates,
     )
     if not stash:
         return _text_result(json.dumps({"error": "not found"}))
-    return _text_result(json.dumps(_stash_to_dict(stash)))
+    return _text_result(json.dumps(_cartridge_to_dict(stash)))
 
 
 @tool(
-    "delete_stash",
+    "delete_cartridge",
     "Delete a Stash by id.",
     {
         "type": "object",
-        "properties": {"stash_id": {"type": "string"}},
-        "required": ["stash_id"],
+        "properties": {"cartridge_id": {"type": "string"}},
+        "required": ["cartridge_id"],
     },
 )
-async def _delete_stash(args: dict) -> dict:
+async def _delete_cartridge(args: dict) -> dict:
     user_id = _current_user()
-    stash_id = UUID(args["stash_id"])
-    if not await stash_service.user_can_manage(stash_id, user_id):
+    cartridge_id = UUID(args["cartridge_id"])
+    if not await cartridge_service.user_can_manage(cartridge_id, user_id):
         return _text_result(json.dumps({"error": "not allowed"}))
-    deleted = await stash_service.delete_stash(stash_id, user_id)
-    return _text_result(json.dumps({"deleted": deleted, "stash_id": str(stash_id)}))
+    deleted = await cartridge_service.delete_cartridge(cartridge_id, user_id)
+    return _text_result(json.dumps({"deleted": deleted, "cartridge_id": str(cartridge_id)}))
+
+
+# --- Source-aware tools ----------------------------------------------------
+#
+# One surface over every source: the two native sources (files, session
+# transcripts — workspace-scoped) and the user's own connected sources
+# (GitHub/Drive/Notion/Slack/Granola — user-scoped). Connected-source access
+# always goes through source_service.get_owned_source, which is the single
+# user-scoping guard.
+
+
+@tool(
+    "list_sources",
+    "List every source this user can read: native 'files' and 'sessions', plus "
+    "their connected sources (GitHub, Drive, Notion, Slack, Granola). Use the "
+    "returned `source` handle with list_source / read_source / search.",
+    {"type": "object", "properties": {}},
+)
+async def _list_sources(args: dict) -> dict:
+    sources = await source_service.list_sources(_current_workspace(), _current_user())
+    return _text_result(json.dumps(sources))
+
+
+@tool(
+    "list_source",
+    "List entries in a source like a file system. `source` is a handle from "
+    "list_sources ('files', 'sessions', or a connected-source id); `path` is an "
+    "optional path prefix for connected sources.",
+    {
+        "type": "object",
+        "properties": {
+            "source": {"type": "string"},
+            "path": {"type": "string", "default": ""},
+        },
+        "required": ["source"],
+    },
+)
+async def _list_source(args: dict) -> dict:
+    entries = await source_service.source_entries(
+        _current_workspace(), _current_user(), args.get("source", ""), prefix=args.get("path") or ""
+    )
+    if entries is None:
+        return _text_result(json.dumps({"error": "source not found"}))
+    return _text_result(json.dumps(entries))
+
+
+@tool(
+    "read_source",
+    "Read one document from a source. `ref` is a page id (files), a session id "
+    "(sessions), or a document path (connected sources).",
+    {
+        "type": "object",
+        "properties": {
+            "source": {"type": "string"},
+            "ref": {"type": "string"},
+        },
+        "required": ["source", "ref"],
+    },
+)
+async def _read_source(args: dict) -> dict:
+    source_ok, doc = await source_service.source_document(
+        _current_workspace(), _current_user(), args.get("source", ""), args.get("ref", "")
+    )
+    if not source_ok:
+        return _text_result(json.dumps({"error": "source not found"}))
+    if doc is None:
+        return _text_result(json.dumps({"error": "not found"}))
+    return _text_result(json.dumps(doc))
+
+
+@tool(
+    "search",
+    "Search across sources. Omit `source` to search everything the user can see "
+    "(native files + sessions + their connected sources), or pass a source handle "
+    "to scope to one.",
+    {
+        "type": "object",
+        "properties": {
+            "query": {"type": "string"},
+            "source": {"type": "string"},
+            "limit": {"type": "integer", "default": 20},
+        },
+        "required": ["query"],
+    },
+)
+async def _search(args: dict) -> dict:
+    results = await source_service.search_all(
+        _current_workspace(),
+        _current_user(),
+        args.get("query", ""),
+        source=args.get("source"),
+        limit=int(args.get("limit", 20)),
+    )
+    if results is None:
+        return _text_result(json.dumps({"error": "source not found"}))
+    return _text_result(json.dumps(results))
 
 
 _TOOLS_BY_NAME = {
@@ -512,9 +609,13 @@ _TOOLS_BY_NAME = {
     "list_skills": _list_skills,
     "read_skill": _read_skill,
     "list_stashes": _list_stashes,
-    "create_stash": _create_stash,
-    "update_stash": _update_stash,
-    "delete_stash": _delete_stash,
+    "create_cartridge": _create_cartridge,
+    "update_cartridge": _update_cartridge,
+    "delete_cartridge": _delete_cartridge,
+    "list_sources": _list_sources,
+    "list_source": _list_source,
+    "read_source": _read_source,
+    "search": _search,
 }
 
 
@@ -522,7 +623,7 @@ def _build_options(*, system: str) -> ClaudeAgentOptions:
     tools = [_TOOLS_BY_NAME[name] for name in prompts.STASH_TOOL_SET]
     mcp_server = create_sdk_mcp_server(name="stash", version="1.0.0", tools=tools)
     # The SDK exposes MCP tools as `mcp__{server}__{tool_name}` in allowed_tools.
-    allowed = [f"mcp__stash__{name}" for name in prompts.STASH_TOOL_SET]
+    allowed = [f"mcp__cartridge__{name}" for name in prompts.STASH_TOOL_SET]
     return ClaudeAgentOptions(
         system_prompt=system,
         model=settings.ANTHROPIC_MODEL,
@@ -567,8 +668,8 @@ async def stream_agent(
                         # Strip the SDK's MCP prefix so the wire format
                         # stays readable in the UI.
                         name = block.name
-                        if name.startswith("mcp__stash__"):
-                            name = name[len("mcp__stash__") :]
+                        if name.startswith("mcp__cartridge__"):
+                            name = name[len("mcp__cartridge__") :]
                         yield _sse(
                             {
                                 "type": "tool",

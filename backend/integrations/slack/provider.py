@@ -1,0 +1,110 @@
+"""Slack OAuth provider (OAuth v2).
+
+We store the **user** token (`authed_user.access_token`), not the bot token —
+reading a member's channels/history to index them needs the user token. Slack
+user tokens don't expire unless token rotation is enabled on the app, so
+`supports_refresh = False`.
+"""
+
+from __future__ import annotations
+
+from urllib.parse import urlencode
+
+import httpx
+
+from ...config import settings
+from ..base import AccountInfo, Integration, TokenSet
+
+AUTHORIZE_URL = "https://slack.com/oauth/v2/authorize"
+TOKEN_URL = "https://slack.com/api/oauth.v2.access"
+AUTH_TEST_URL = "https://slack.com/api/auth.test"
+REVOKE_URL = "https://slack.com/api/auth.revoke"
+
+# User-token scopes: read channel/group history + resolve user names. We index
+# rather than search live, so search:read is not required.
+USER_SCOPES = ["channels:history", "groups:history", "im:history", "users:read"]
+
+
+class SlackIntegration(Integration):
+    name = "slack"
+    display_name = "Slack"
+    scopes = USER_SCOPES
+    supports_refresh = False
+
+    def _client_id(self) -> str:
+        if not settings.SLACK_OAUTH_CLIENT_ID:
+            raise RuntimeError("SLACK_OAUTH_CLIENT_ID is not set")
+        return settings.SLACK_OAUTH_CLIENT_ID
+
+    def _client_secret(self) -> str:
+        if not settings.SLACK_OAUTH_CLIENT_SECRET:
+            raise RuntimeError("SLACK_OAUTH_CLIENT_SECRET is not set")
+        return settings.SLACK_OAUTH_CLIENT_SECRET
+
+    def _redirect_uri(self) -> str:
+        if not settings.SLACK_OAUTH_REDIRECT_URI:
+            raise RuntimeError("SLACK_OAUTH_REDIRECT_URI is not set")
+        return settings.SLACK_OAUTH_REDIRECT_URI
+
+    def authorize_url(self, state: str) -> str:
+        params = {
+            "client_id": self._client_id(),
+            "user_scope": " ".join(self.scopes),
+            "redirect_uri": self._redirect_uri(),
+            "state": state,
+        }
+        return f"{AUTHORIZE_URL}?{urlencode(params)}"
+
+    async def exchange_code(self, code: str) -> TokenSet:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            resp = await client.post(
+                TOKEN_URL,
+                data={
+                    "client_id": self._client_id(),
+                    "client_secret": self._client_secret(),
+                    "code": code,
+                    "redirect_uri": self._redirect_uri(),
+                },
+            )
+            resp.raise_for_status()
+            payload = resp.json()
+        if not payload.get("ok"):
+            raise RuntimeError(f"Slack OAuth error: {payload.get('error')}")
+        authed_user = payload.get("authed_user") or {}
+        user_token = authed_user.get("access_token")
+        if not user_token:
+            raise RuntimeError("Slack OAuth returned no user token (check user_scope)")
+        return TokenSet(
+            access_token=user_token,
+            refresh_token=None,
+            expires_at=None,
+            scopes=[s for s in (authed_user.get("scope") or "").split(",") if s],
+        )
+
+    async def refresh(self, refresh_token: str) -> TokenSet:
+        raise RuntimeError("Slack user tokens are not refreshable")
+
+    async def revoke(self, access_token: str) -> None:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            await client.post(REVOKE_URL, headers={"Authorization": f"Bearer {access_token}"})
+
+    async def fetch_account(self, access_token: str) -> AccountInfo:
+        info = await self.team_info(access_token)
+        return AccountInfo(email=None, display_name=info["team_name"])
+
+    async def team_info(self, access_token: str) -> dict:
+        """auth.test → {team_id, team_name, user_id}. Used both for the account
+        card and to derive a Slack source's external_ref (the team id)."""
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            resp = await client.post(
+                AUTH_TEST_URL, headers={"Authorization": f"Bearer {access_token}"}
+            )
+            resp.raise_for_status()
+            payload = resp.json()
+        if not payload.get("ok"):
+            raise RuntimeError(f"Slack auth.test error: {payload.get('error')}")
+        return {
+            "team_id": payload.get("team_id"),
+            "team_name": payload.get("team"),
+            "user_id": payload.get("user_id"),
+        }

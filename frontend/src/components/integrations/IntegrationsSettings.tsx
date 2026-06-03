@@ -1,96 +1,60 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 
-import { IntegrationStatus, listIntegrations } from "@/lib/integrations";
+import { listMyWorkspaces } from "@/lib/api";
 
-import IntegrationCard from "./IntegrationCard";
+import SourceConnectorList from "./SourceConnectorList";
 
 type Props = {
-  /** When true, render without the outer section chrome — for embedding
-   *  inline in the main /settings page alongside other sections. */
   embedded?: boolean;
 };
 
-/**
- * Generic Integrations panel. Iterates every provider returned by
- * `/api/v1/integrations` — adding a new provider on the backend
- * automatically shows up here.
- */
 export default function IntegrationsSettings({ embedded = false }: Props) {
-  const [providers, setProviders] = useState<IntegrationStatus[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [workspaceId, setWorkspaceId] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
 
-  const refresh = useCallback(async () => {
-    try {
-      const r = await listIntegrations();
-      setProviders(r.providers);
-      setError(null);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    }
+  useEffect(() => {
+    listMyWorkspaces()
+      .then(({ workspaces }) => {
+        const primary = workspaces.find((workspace) => workspace.is_primary) ?? workspaces[0];
+        setWorkspaceId(primary?.id ?? null);
+      })
+      .catch(() => setWorkspaceId(null))
+      .finally(() => setLoading(false));
   }, []);
-
-  useEffect(() => {
-    void refresh();
-  }, [refresh]);
-
-  // Re-fetch when the user comes back from an OAuth callback (the
-  // callback redirects to /settings/integrations?connected=<provider>).
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const params = new URLSearchParams(window.location.search);
-    if (params.get("connected")) {
-      void refresh();
-      // Strip the query param so a manual refresh doesn't keep firing.
-      const url = new URL(window.location.href);
-      url.searchParams.delete("connected");
-      window.history.replaceState({}, "", url.pathname + url.search);
-    }
-  }, [refresh]);
 
   const body = (
     <>
       <div>
-        <h2 className="text-base font-semibold text-foreground">Integrations</h2>
-        <p className="text-xs text-muted mt-0.5">
-          Connect third-party accounts so Stash can import content and
-          export your decks. Disconnect revokes the token on the provider
-          too.
+        <h2 className="text-base font-semibold text-foreground">Sources</h2>
+        <p className="mt-0.5 text-xs text-muted">
+          Connect accounts and choose the sources your agent can read.
         </p>
       </div>
 
-      {error && (
-        <div className="text-xs text-error rounded-lg border border-error/30 bg-error/10 px-3 py-2">
-          {error}
-        </div>
-      )}
-
-      {providers === null ? (
-        <div className="text-xs text-muted">Loading…</div>
-      ) : providers.length === 0 ? (
-        <div className="text-xs text-muted">No integrations registered.</div>
+      {loading ? (
+        <div className="text-xs text-muted">Loading...</div>
+      ) : workspaceId ? (
+        <SourceConnectorList workspaceId={workspaceId} returnTo="/settings" />
       ) : (
-        <div className="space-y-2">
-          {providers.map((p) => (
-            <IntegrationCard key={p.provider} status={p} onChanged={refresh} />
-          ))}
-        </div>
+        <div className="text-xs text-muted">No workspace is available for sources.</div>
       )}
     </>
   );
 
   if (embedded) {
     return (
-      <section className="rounded-2xl border border-border bg-surface p-6 space-y-4">
+      <section className="space-y-4 rounded-2xl border border-border bg-surface p-6">
         {body}
       </section>
     );
   }
+
   return (
-    <div className="min-h-screen flex flex-col">
+    <div className="flex min-h-screen flex-col">
       <main className="flex-1 px-4 py-10">
-        <div className="w-full max-w-2xl mx-auto space-y-4">{body}</div>
+        <div className="mx-auto w-full max-w-2xl space-y-4">{body}</div>
       </main>
     </div>
   );

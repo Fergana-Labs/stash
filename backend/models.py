@@ -12,6 +12,9 @@ class UserRegisterRequest(BaseModel):
     display_name: str | None = Field(None, min_length=1, max_length=128)
     description: str = Field("", max_length=500)
     password: str | None = Field(None, min_length=8, max_length=128)
+    # Optional: lets others share with this account by email and converts any
+    # pending share invites addressed to it.
+    email: str | None = Field(None, max_length=320)
 
 
 class UserRegisterResponse(BaseModel):
@@ -97,50 +100,53 @@ class WorkspaceResponse(BaseModel):
     cover_image_url: str | None = None
     icon_url: str | None = None
     color_gradient: str | None = None
+    is_primary: bool = False
 
 
 class WorkspaceListResponse(BaseModel):
     workspaces: list[WorkspaceResponse]
 
 
-# --- Stashes (publishable subsets of a workspace) ---
+# --- Cartridges (publishable subsets of a workspace) ---
 
-StashObjectType = str  # 'folder' | 'page' | 'table' | 'file' | 'session'
-StashGeneralPermission = str  # 'none' | 'read' | 'write'
+CartridgeObjectType = str  # 'folder' | 'page' | 'table' | 'file' | 'session'
+CartridgeGeneralPermission = str  # 'none' | 'read' | 'write'
 
 
-class StashItem(BaseModel):
-    object_type: StashObjectType = Field(..., pattern=r"^(folder|page|table|file|session)$")
+class CartridgeItem(BaseModel):
+    object_type: CartridgeObjectType = Field(..., pattern=r"^(folder|page|table|file|session)$")
     object_id: UUID
     position: int = 0
     label_override: str | None = Field(None, max_length=160)
 
 
-class StashCreateRequest(BaseModel):
+class CartridgeCreateRequest(BaseModel):
     title: str = Field(..., min_length=1, max_length=160)
     description: str = Field("", max_length=2000)
-    workspace_permission: StashGeneralPermission = Field("read", pattern=r"^(none|read|write)$")
-    public_permission: StashGeneralPermission = Field("none", pattern=r"^(none|read|write)$")
+    workspace_permission: CartridgeGeneralPermission = Field("read", pattern=r"^(none|read|write)$")
+    public_permission: CartridgeGeneralPermission = Field("none", pattern=r"^(none|read|write)$")
     discoverable: bool = False
     cover_image_url: str | None = None
     icon_url: str | None = None
-    items: list[StashItem] = Field(default_factory=list)
+    items: list[CartridgeItem] = Field(default_factory=list)
 
 
-class StashUpdateRequest(BaseModel):
+class CartridgeUpdateRequest(BaseModel):
     title: str | None = Field(None, min_length=1, max_length=160)
     description: str | None = Field(None, max_length=2000)
-    workspace_permission: StashGeneralPermission | None = Field(
+    workspace_permission: CartridgeGeneralPermission | None = Field(
         None, pattern=r"^(none|read|write)$"
     )
-    public_permission: StashGeneralPermission | None = Field(None, pattern=r"^(none|read|write)$")
+    public_permission: CartridgeGeneralPermission | None = Field(
+        None, pattern=r"^(none|read|write)$"
+    )
     discoverable: bool | None = None
     cover_image_url: str | None = None
     icon_url: str | None = None
-    items: list[StashItem] | None = None
+    items: list[CartridgeItem] | None = None
 
 
-class StashResponse(BaseModel):
+class CartridgeResponse(BaseModel):
     id: UUID
     workspace_id: UUID
     slug: str
@@ -150,30 +156,30 @@ class StashResponse(BaseModel):
     owner_name: str
     owner_display_name: str | None = None
     access: str
-    workspace_permission: StashGeneralPermission
-    public_permission: StashGeneralPermission
+    workspace_permission: CartridgeGeneralPermission
+    public_permission: CartridgeGeneralPermission
     discoverable: bool
     cover_image_url: str | None = None
     icon_url: str | None = None
     view_count: int
-    items: list[StashItem]
+    items: list[CartridgeItem]
     is_external: bool = False
     added_to_workspace_id: UUID | None = None
-    forked_from_stash_id: UUID | None = None
+    forked_from_cartridge_id: UUID | None = None
     created_at: datetime
     updated_at: datetime
 
 
-class StashListResponse(BaseModel):
-    stashes: list[StashResponse]
+class CartridgeListResponse(BaseModel):
+    cartridges: list[CartridgeResponse]
 
 
-class StashMemberRequest(BaseModel):
+class CartridgeMemberRequest(BaseModel):
     user_id: UUID
     permission: str = Field("read", pattern=r"^(read|write|admin)$")
 
 
-class StashMemberResponse(BaseModel):
+class CartridgeMemberResponse(BaseModel):
     user_id: UUID
     name: str
     display_name: str
@@ -182,8 +188,8 @@ class StashMemberResponse(BaseModel):
     created_at: datetime
 
 
-class StashMembersResponse(BaseModel):
-    members: list[StashMemberResponse]
+class CartridgeMembersResponse(BaseModel):
+    members: list[CartridgeMemberResponse]
 
 
 # Public renderer payload — items are inlined with their content where it
@@ -192,31 +198,31 @@ class StashMembersResponse(BaseModel):
 # type/id/label plus an `inline` blob whose contents depend on the type.
 
 
-class StashItemInlined(BaseModel):
-    object_type: StashObjectType
+class CartridgeItemInlined(BaseModel):
+    object_type: CartridgeObjectType
     object_id: UUID
     position: int
     label: str
     inline: dict
 
 
-class StashPublicResponse(BaseModel):
-    stash: StashResponse
+class CartridgePublicResponse(BaseModel):
+    cartridge: CartridgeResponse
     workspace_name: str
-    items: list[StashItemInlined]
+    items: list[CartridgeItemInlined]
     can_write: bool = False
 
 
-class AddExternalStashRequest(BaseModel):
+class AddExternalCartridgeRequest(BaseModel):
     workspace_id: UUID
 
 
-class StashInviteResponse(BaseModel):
+class CartridgeInviteResponse(BaseModel):
     id: UUID
-    stash_id: UUID
-    stash_slug: str
-    stash_title: str
-    stash_description: str
+    cartridge_id: UUID
+    cartridge_slug: str
+    cartridge_title: str
+    cartridge_description: str
     source_workspace_id: UUID
     source_workspace_name: str
     invited_by_user_id: UUID
@@ -226,8 +232,8 @@ class StashInviteResponse(BaseModel):
     created_at: datetime
 
 
-class StashInviteListResponse(BaseModel):
-    invites: list[StashInviteResponse]
+class CartridgeInviteListResponse(BaseModel):
+    invites: list[CartridgeInviteResponse]
 
 
 class WorkspaceMember(BaseModel):
@@ -588,7 +594,7 @@ class HistoryEventCreateRequest(BaseModel):
     event_type: str = Field(..., min_length=1, max_length=64)
     content: str = Field(..., min_length=1)
     session_id: str | None = Field(None, max_length=64)
-    default_stash_id: UUID | None = None
+    default_cartridge_id: UUID | None = None
     tool_name: str | None = Field(None, max_length=128)
     metadata: dict = Field(default_factory=dict)
     attachments: list[Attachment] | None = None
@@ -599,7 +605,7 @@ class HistoryEventCreateRequest(BaseModel):
 
 class HistoryEventBatchRequest(BaseModel):
     events: list[HistoryEventCreateRequest] = Field(..., min_length=1, max_length=100)
-    default_stash_id: UUID | None = None
+    default_cartridge_id: UUID | None = None
 
 
 class HistoryEventResponse(BaseModel):
@@ -644,8 +650,8 @@ class PublishRequest(BaseModel):
     content: str = ""
     content_type: str = Field("markdown", pattern=r"^(markdown|html)$")
     html_layout: str = Field("responsive", pattern=r"^(responsive|fixed-aspect)$")
-    workspace_permission: StashGeneralPermission = Field("read", pattern=r"^(none|read|write)$")
-    public_permission: StashGeneralPermission = Field("read", pattern=r"^(none|read|write)$")
+    workspace_permission: CartridgeGeneralPermission = Field("read", pattern=r"^(none|read|write)$")
+    public_permission: CartridgeGeneralPermission = Field("read", pattern=r"^(none|read|write)$")
     folder_id: UUID | None = None
 
 
@@ -654,11 +660,11 @@ class PublishResponse(BaseModel):
     folder_id: UUID | None
     workspace_id: UUID
     visibility: str
-    workspace_permission: StashGeneralPermission
-    public_permission: StashGeneralPermission
+    workspace_permission: CartridgeGeneralPermission
+    public_permission: CartridgeGeneralPermission
     url: str
-    stash_id: UUID | None = None
-    stash_slug: str | None = None
+    cartridge_id: UUID | None = None
+    cartridge_slug: str | None = None
 
 
 # --- Files ---

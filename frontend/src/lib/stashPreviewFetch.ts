@@ -4,7 +4,7 @@ import type { StashPreviewData } from "./stashPreview";
 export async function loadPublicStashPreview(
   slug: string,
 ): Promise<StashPreviewData | null> {
-  const res = await fetch(`${BACKEND_ORIGIN}/api/v1/stashes/${encodeURIComponent(slug)}`, {
+  const res = await fetch(`${BACKEND_ORIGIN}/api/v1/cartridges/${encodeURIComponent(slug)}`, {
     cache: "no-store",
   });
   if (!res.ok) return null;

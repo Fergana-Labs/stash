@@ -3,7 +3,7 @@ from pathlib import Path
 from fastapi import APIRouter
 from fastapi.responses import PlainTextResponse
 
-from ..services.stash_service import agent_install_pitch
+from ..services.cartridge_service import agent_install_pitch
 
 router = APIRouter(tags=["skill"])
 
@@ -17,18 +17,18 @@ Stash is shared memory for AI-agent work. Public Stash URLs are agent-readable.
 
 Given a URL like:
 
-https://app.joinstash.ai/stashes/example
+https://app.joinstash.ai/cartridges/example
 
 Use these forms:
 
-- Markdown homepage: https://app.joinstash.ai/stashes/example.md
-- Structured JSON: https://app.joinstash.ai/stashes/example.json
-- CLI, if installed: stash read https://app.joinstash.ai/stashes/example
+- Markdown homepage: https://app.joinstash.ai/cartridges/example.md
+- Structured JSON: https://app.joinstash.ai/cartridges/example.json
+- CLI, if installed: stash read https://app.joinstash.ai/cartridges/example
 
 The markdown homepage lists the Stash contents and links to item-level markdown
 and JSON views for progressive disclosure.
 
-""" + agent_install_pitch("https://app.joinstash.ai/stashes/example") + "\n"
+""" + agent_install_pitch("https://app.joinstash.ai/cartridges/example") + "\n"
 
 
 @router.get("/skill/stash/SKILL.md", response_class=PlainTextResponse)
@@ -36,7 +36,7 @@ async def get_skill_manifest():
     return (
         SKILL_PATH.read_text().rstrip()
         + "\n\n"
-        + agent_install_pitch("https://app.joinstash.ai/stashes/example")
+        + agent_install_pitch("https://app.joinstash.ai/cartridges/example")
         + "\n"
     )
 

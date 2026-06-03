@@ -21,7 +21,7 @@ import { useShareModal } from "../../../lib/shareModalContext";
 import { SkeletonBlock, TableEditorSkeleton } from "../../../components/SkeletonStates";
 import {
   fetchAuthed,
-  getPublicStash,
+  getPublicCartridge,
   getTable, updateTable,
   deleteTable, addTableColumn, updateTableColumn,
   deleteTableColumn, reorderTableColumns, listTableRows, searchTableRows,
@@ -292,8 +292,8 @@ function TableEditorPageInner() {
         // Synthesize a Table from the stash's inlined item content. The
         // backend serializes columns + the first 500 rows when the stash
         // is readable; that's the source of truth in stash mode.
-        const stash = await getPublicStash(stashSlug);
-        setStashTitle(stash.stash.title);
+        const stash = await getPublicCartridge(stashSlug);
+        setStashTitle(stash.cartridge.title);
         const item = stash.items.find(
           (it) => it.object_type === "table" && it.object_id === tableId
         );
@@ -308,7 +308,7 @@ function TableEditorPageInner() {
         };
         const synth: Table = {
           id: tableId,
-          workspace_id: stash.stash.workspace_id,
+          workspace_id: stash.cartridge.workspace_id,
           name: item.label || "Table",
           description: inline.description ?? "",
           columns: (inline.columns ?? []).map((c) => ({ ...c })),
@@ -316,7 +316,7 @@ function TableEditorPageInner() {
           created_at: "",
           updated_at: "",
         } as unknown as Table;
-        setResolvedWorkspaceId(stash.stash.workspace_id);
+        setResolvedWorkspaceId(stash.cartridge.workspace_id);
         setTable(synth);
         const synthRows: TableRow[] = (inline.rows ?? []).map((r, i) => ({
           id: `stash-${i}`,
@@ -964,7 +964,7 @@ function TableEditorPageInner() {
           readOnlyLabel="read-only · via Stash"
           backLink={
             readOnly && stashSlug
-              ? { label: stashTitle ?? "Stash", href: `/stashes/${stashSlug}` }
+              ? { label: stashTitle ?? "Stash", href: `/cartridges/${stashSlug}` }
               : undefined
           }
           tags={[{ label: "table", tone: "muted" }]}

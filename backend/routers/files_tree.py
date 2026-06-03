@@ -127,9 +127,17 @@ async def create_folder(
     req: FolderCreateRequest,
     current_user: dict = Depends(get_current_user),
 ):
-    await _check_ws_write(workspace_id, current_user["id"])
-    if req.parent_folder_id is not None:
+    if req.parent_folder_id is None:
+        await _check_ws_write(workspace_id, current_user["id"])
+    else:
         await _check_ws_owns_folder(workspace_id, req.parent_folder_id)
+        await _check_content_access(
+            "folder",
+            req.parent_folder_id,
+            workspace_id,
+            current_user["id"],
+            require_write=True,
+        )
     try:
         folder = await files_tree_service.create_folder(
             workspace_id,
@@ -148,7 +156,6 @@ async def get_folder(
     folder_id: UUID,
     current_user: dict = Depends(get_current_user),
 ):
-    await _check_ws_access(workspace_id, current_user["id"])
     folder = await _check_ws_owns_folder(workspace_id, folder_id)
     await _check_content_access("folder", folder_id, workspace_id, current_user["id"])
     return FolderResponse(**folder)
@@ -163,7 +170,6 @@ async def get_folder_contents(
     """Immediate children of a folder — subfolders, pages, files — plus
     the breadcrumb chain from workspace root down to this folder. Powers
     the unified Files tree (sidebar lazy-expand + folder detail page)."""
-    await _check_ws_access(workspace_id, current_user["id"])
     folder = await _check_ws_owns_folder(workspace_id, folder_id)
     await _check_content_access("folder", folder_id, workspace_id, current_user["id"])
     pool = get_pool()
@@ -192,7 +198,7 @@ async def get_folder_contents(
         "       ("
         "         SELECT COUNT(*) FROM pages p WHERE p.folder_id = f.id "
         "         AND p.workspace_id = $2 "
-        "         AND COALESCE(p.metadata->>'shared_in_stash_id', '') = '' "
+        "         AND COALESCE(p.metadata->>'shared_in_cartridge_id', '') = '' "
         "         AND p.deleted_at IS NULL "
         f"         AND {readable_page}"
         "       ) AS page_count, "
@@ -212,7 +218,7 @@ async def get_folder_contents(
     pages = await pool.fetch(
         "SELECT id, name, content_type FROM pages p WHERE p.folder_id = $1 "
         "AND p.workspace_id = $2 "
-        "AND COALESCE(p.metadata->>'shared_in_stash_id', '') = '' "
+        "AND COALESCE(p.metadata->>'shared_in_cartridge_id', '') = '' "
         "AND p.deleted_at IS NULL "
         f"AND {readable_page} "
         "ORDER BY name",
@@ -280,7 +286,6 @@ async def update_folder(
     req: FolderUpdateRequest,
     current_user: dict = Depends(get_current_user),
 ):
-    await _check_ws_write(workspace_id, current_user["id"])
     await _check_ws_owns_folder(workspace_id, folder_id)
     await _check_content_access(
         "folder",
@@ -321,7 +326,6 @@ async def delete_folder(
     folder_id: UUID,
     current_user: dict = Depends(get_current_user),
 ):
-    await _check_ws_write(workspace_id, current_user["id"])
     await _check_ws_owns_folder(workspace_id, folder_id)
     await _check_content_access(
         "folder",
@@ -344,8 +348,9 @@ async def create_page(
     req: PageCreateRequest,
     current_user: dict = Depends(get_current_user),
 ):
-    await _check_ws_write(workspace_id, current_user["id"])
-    if req.folder_id is not None:
+    if req.folder_id is None:
+        await _check_ws_write(workspace_id, current_user["id"])
+    else:
         await _check_ws_owns_folder(workspace_id, req.folder_id)
         await _check_content_access(
             "folder",
@@ -412,7 +417,9 @@ async def get_page(
     page_id: UUID,
     current_user: dict = Depends(get_current_user),
 ):
-    await _check_ws_access(workspace_id, current_user["id"])
+    # No workspace-membership pre-gate: a page may be shared with someone who
+    # isn't a member (the primary collaboration path). get_page enforces
+    # check_access (owner OR share OR open cartridge) and returns None otherwise.
     page = await files_tree_service.get_page(page_id, workspace_id, current_user["id"])
     if not page:
         raise HTTPException(status_code=404, detail="Page not found")
@@ -432,7 +439,6 @@ async def download_page(
     would a binary file. Permission is the existing page-read check —
     members of the workspace plus anyone the page is shared with.
     """
-    await _check_ws_access(workspace_id, current_user["id"])
     page = await files_tree_service.get_page(page_id, workspace_id, current_user["id"])
     if not page:
         raise HTTPException(status_code=404, detail="Page not found")
@@ -458,7 +464,6 @@ async def update_page(
     req: PageUpdateRequest,
     current_user: dict = Depends(get_current_user),
 ):
-    await _check_ws_write(workspace_id, current_user["id"])
     await _check_content_access(
         "page",
         page_id,
@@ -505,7 +510,6 @@ async def delete_page(
     page_id: UUID,
     current_user: dict = Depends(get_current_user),
 ):
-    await _check_ws_write(workspace_id, current_user["id"])
     await _check_content_access(
         "page",
         page_id,
@@ -524,7 +528,6 @@ async def restore_page(
     page_id: UUID,
     current_user: dict = Depends(get_current_user),
 ):
-    await _check_ws_write(workspace_id, current_user["id"])
     await _check_content_access(
         "page", page_id, workspace_id, current_user["id"], require_write=True
     )
@@ -540,7 +543,6 @@ async def purge_page(
     current_user: dict = Depends(get_current_user),
 ):
     """Permanent delete — only callable on a page already in trash."""
-    await _check_ws_write(workspace_id, current_user["id"])
     await _check_content_access(
         "page", page_id, workspace_id, current_user["id"], require_write=True
     )

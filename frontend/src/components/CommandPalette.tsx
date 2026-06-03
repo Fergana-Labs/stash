@@ -238,7 +238,7 @@ export default function CommandPalette({
           </div>
         ) : (
           <div className="px-4 py-6 text-center text-[13px] text-muted">
-            Start typing to search this stash...
+            Start typing to search this cartridge...
           </div>
         )}
       </div>

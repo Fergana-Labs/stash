@@ -3,7 +3,6 @@
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
 
 from ..auth import get_current_user, get_current_user_optional
 from ..config import settings
@@ -15,7 +14,6 @@ from ..models import (
     RedeemInviteAuthedRequest,
     WorkspaceCreateRequest,
     WorkspaceListResponse,
-    WorkspaceMember,
     WorkspaceResponse,
     WorkspaceUpdateRequest,
 )
@@ -148,75 +146,6 @@ async def leave_workspace(
     left = await workspace_service.leave_workspace(workspace_id, current_user["id"])
     if not left:
         raise HTTPException(status_code=400, detail="Cannot leave as the last workspace admin")
-
-
-@router.get("/{workspace_id}/members", response_model=list[WorkspaceMember])
-async def get_members(
-    workspace_id: UUID,
-    current_user: dict = Depends(get_current_user),
-):
-    if not await workspace_service.is_member(workspace_id, current_user["id"]):
-        raise HTTPException(status_code=403, detail="Not a workspace member")
-    members = await workspace_service.get_members(workspace_id)
-    return [WorkspaceMember(**m) for m in members]
-
-
-@router.post("/{workspace_id}/members")
-async def add_member(
-    workspace_id: UUID,
-    req: dict,
-    current_user: dict = Depends(get_current_user),
-):
-    """Add a registered user to the workspace by username."""
-    if not await workspace_service.is_owner(workspace_id, current_user["id"]):
-        raise HTTPException(status_code=403, detail="Only workspace admins can add members")
-    username = req.get("username", "").strip()
-    if not username:
-        raise HTTPException(status_code=400, detail="username is required")
-    from ..database import get_pool
-
-    pool = get_pool()
-    user = await pool.fetchrow("SELECT id FROM users WHERE name = $1", username)
-    if not user:
-        raise HTTPException(status_code=404, detail=f"User '{username}' not found")
-    result = await workspace_service.join_workspace(workspace_id, user["id"])
-    if not result:
-        raise HTTPException(status_code=409, detail="User is already a member")
-    return {"status": "ok", "user_id": str(user["id"])}
-
-
-@router.post("/{workspace_id}/kick/{user_id}", status_code=204)
-async def kick_member(
-    workspace_id: UUID,
-    user_id: UUID,
-    current_user: dict = Depends(get_current_user),
-):
-    kicked = await workspace_service.kick_member(workspace_id, user_id, current_user["id"])
-    if not kicked:
-        raise HTTPException(status_code=403, detail="Cannot kick this member")
-
-
-class SetRoleRequest(BaseModel):
-    role: str  # 'owner' is the product-facing workspace admin role.
-
-
-@router.patch("/{workspace_id}/members/{user_id}")
-async def set_member_role(
-    workspace_id: UUID,
-    user_id: UUID,
-    req: SetRoleRequest,
-    current_user: dict = Depends(get_current_user),
-):
-    """Admin-only: change a member's role."""
-    ok = await workspace_service.set_member_role(
-        workspace_id, user_id, current_user["id"], req.role
-    )
-    if not ok:
-        raise HTTPException(
-            status_code=403,
-            detail="Couldn't set role — either not admin, invalid role, or last admin",
-        )
-    return {"status": "ok", "role": req.role}
 
 
 # ---------------------------------------------------------------------------

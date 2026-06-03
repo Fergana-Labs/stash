@@ -5,7 +5,7 @@ import LiveDemo from "./_components/LiveDemo";
 import ScrollLink from "./_components/ScrollLink";
 import VisualizationsShowcase from "./_components/VisualizationsShowcase";
 
-const APP_URL = "https://app.joinstash.ai";
+const APP_URL = process.env.MANAGED_APP_URL || "https://app.joinstash.ai";
 
 export default function Page() {
   return (

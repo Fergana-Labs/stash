@@ -1,9 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import Markdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 
 import { track } from "@/lib/analytics";
 import { API_BASE, apiFetch, getToken } from "@/lib/api";
+import { READ_TOOLS, describeToolCall } from "@/lib/agentChat";
 import type { StepCtx } from "@/lib/onboarding/paths";
 
 type Overview = {
@@ -13,20 +16,16 @@ type Overview = {
   };
 };
 
-const READ_TOOLS = new Set([
-  "read_page",
-  "grep_pages",
-  "read_file",
-  "search_history",
-]);
-
-type Citation = { tool: string; label: string };
+type Citation = { id: string; tool: string; label: string };
 
 // Step 3: one live agentic search. Show a few personalized suggestions
 // (or let user type their own), stream the answer with citations, then
 // the wizard's "Continue" hands off to /workspaces/{id}. Single question
 // by design — this is the demo, not the workspace itself.
-export default function MemoryAskStep({ workspaceId }: StepCtx) {
+export default function MemoryAskStep({
+  workspaceId,
+  onAnswered,
+}: StepCtx & { onAnswered?: () => void }) {
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const [question, setQuestion] = useState("");
   const [submitted, setSubmitted] = useState(false);
@@ -127,20 +126,24 @@ export default function MemoryAskStep({ workspaceId }: StepCtx) {
               if (evt.type === "text" && typeof evt.delta === "string") {
                 setAnswer((prev) => prev + evt.delta);
               } else if (evt.type === "tool" && READ_TOOLS.has(evt.name)) {
+                const id = String(evt.id ?? describeToolCall(evt.name, evt.args));
                 const label = describeToolCall(evt.name, evt.args);
-                if (label) {
-                  setCitations((prev) =>
-                    prev.find((c) => c.label === label && c.tool === evt.name)
-                      ? prev
-                      : [...prev, { tool: evt.name, label }],
-                  );
-                }
+                setCitations((prev) =>
+                  prev.some((c) => c.id === id)
+                    ? prev
+                    : [...prev, { id, tool: evt.name, label }],
+                );
+              } else if (evt.type === "tool_result" && evt.ok === false) {
+                // The tool errored — don't claim it grounded the answer.
+                setCitations((prev) => prev.filter((c) => c.id !== String(evt.id)));
               }
             } catch {
               // Partial chunks — resume on next loop.
             }
           }
         }
+        // The agent finished — unblock "Launch workspace".
+        onAnswered?.();
       } catch (e) {
         if ((e as Error).name !== "AbortError") {
           setError(e instanceof Error ? e.message : String(e));
@@ -156,22 +159,13 @@ export default function MemoryAskStep({ workspaceId }: StepCtx) {
         });
       }
     },
-    [workspaceId, streaming],
+    [workspaceId, streaming, onAnswered],
   );
 
   useEffect(() => () => abortRef.current?.abort(), []);
 
   return (
     <div className="space-y-6">
-      <div className="space-y-2">
-        <h1 className="font-display text-[28px] leading-[1.1] font-bold tracking-tight text-foreground">
-          Your agent can search anything
-        </h1>
-        <p className="text-sm text-dim max-w-md">
-          This is what your agent has access to anytime it does work for you.
-        </p>
-      </div>
-
       {!submitted && (
         <div className="space-y-3">
           {suggestions.length > 0 && (
@@ -224,12 +218,21 @@ export default function MemoryAskStep({ workspaceId }: StepCtx) {
             <div className="text-[12px] text-error rounded-lg border border-error/30 bg-error/10 px-3 py-2">
               {error}
             </div>
+          ) : streaming && !answer ? (
+            <div className="flex items-center gap-2 py-2 text-[13px] text-muted">
+              <span className="flex gap-1" aria-hidden>
+                <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-brand [animation-delay:-0.3s]" />
+                <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-brand [animation-delay:-0.15s]" />
+                <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-brand" />
+              </span>
+              Thinking…
+            </div>
           ) : (
             <>
-              <div className="text-[13px] text-foreground whitespace-pre-wrap leading-relaxed min-h-[60px]">
-                {answer}
+              <div className="prose prose-sm max-w-none text-[13px] leading-relaxed text-foreground">
+                <Markdown remarkPlugins={[remarkGfm]}>{answer}</Markdown>
                 {streaming && (
-                  <span className="inline-block w-1.5 h-3 bg-brand ml-0.5 align-baseline animate-pulse" />
+                  <span className="inline-block h-3 w-1.5 animate-pulse bg-brand align-baseline" />
                 )}
               </div>
               {citations.length > 0 && (
@@ -238,7 +241,7 @@ export default function MemoryAskStep({ workspaceId }: StepCtx) {
                     Grounded on:
                   </span>{" "}
                   {citations.map((c, i) => (
-                    <span key={`${c.tool}-${c.label}-${i}`}>
+                    <span key={c.id}>
                       {i > 0 && ", "}
                       <span className="font-mono">{c.label}</span>
                     </span>
@@ -252,28 +255,4 @@ export default function MemoryAskStep({ workspaceId }: StepCtx) {
 
     </div>
   );
-}
-
-function describeToolCall(
-  name: string,
-  args: Record<string, unknown> | undefined,
-): string {
-  if (!args) return name;
-  if (name === "read_page" && typeof args.page_id === "string") {
-    return `page ${shortId(args.page_id)}`;
-  }
-  if (name === "read_file" && typeof args.file_id === "string") {
-    return `file ${shortId(args.file_id)}`;
-  }
-  if (
-    (name === "grep_pages" || name === "search_history") &&
-    typeof args.query === "string"
-  ) {
-    return `search "${args.query.slice(0, 40)}"`;
-  }
-  return name;
-}
-
-function shortId(id: string): string {
-  return id.length > 8 ? id.slice(0, 8) : id;
 }

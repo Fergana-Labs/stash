@@ -3,7 +3,12 @@ import type { MouseEvent, ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import AppSidebar from "./AppSidebar";
 import { resetStashNavigationCache } from "../lib/stashNavigationCache";
-import { getWorkspacePins, getWorkspaceSidebar, listMyWorkspaces } from "../lib/api";
+import {
+  getWorkspacePins,
+  getWorkspaceSidebar,
+  listMyWorkspaces,
+  listWorkspaceSources,
+} from "../lib/api";
 
 const nav = vi.hoisted(() => ({
   pathname: "/",
@@ -45,6 +50,7 @@ vi.mock("../lib/api", () => ({
   setWorkspacePins: vi.fn(),
   getWorkspaceRecents: vi.fn(),
   recordWorkspaceRecent: vi.fn(),
+  listWorkspaceSources: vi.fn(),
 }));
 
 const user = {
@@ -81,9 +87,10 @@ beforeEach(() => {
   vi.mocked(getWorkspaceSidebar).mockResolvedValue({
     sessions: [],
     files: { folders: [], pages: [], files: [] },
-    stashes: [],
+    cartridges: [],
   });
-  vi.mocked(getWorkspacePins).mockResolvedValue({ stashes: [], sessions: [], files: [] });
+  vi.mocked(getWorkspacePins).mockResolvedValue({ cartridges: [], sessions: [], files: [] });
+  vi.mocked(listWorkspaceSources).mockResolvedValue([]);
 });
 
 afterEach(() => {
@@ -92,13 +99,13 @@ afterEach(() => {
 });
 
 describe("AppSidebar workspace nav", () => {
-  it("links Stashes, Sessions, and Files straight to their list pages", async () => {
+  it("links Cartridges, Sessions, and Files straight to their list pages", async () => {
     render(<AppSidebar user={user} />);
 
-    await waitFor(() => expect(navLink("Stashes")).toBeTruthy());
+    await waitFor(() => expect(navLink("Cartridges")).toBeTruthy());
 
-    expect(navLink("Stashes").getAttribute("href")).toBe("/workspaces/ws-1/stashes");
-    expect(navLink("Sessions").getAttribute("href")).toBe("/workspaces/ws-1/sessions");
+    expect(navLink("Cartridges").getAttribute("href")).toBe("/workspaces/ws-1/cartridges");
+    expect(navLink("Agent Sessions").getAttribute("href")).toBe("/workspaces/ws-1/sessions");
     expect(navLink("Files").getAttribute("href")).toBe("/workspaces/ws-1/files");
     expect(navLink("Trash").getAttribute("href")).toBe("/workspaces/ws-1/trash");
   });
@@ -118,6 +125,6 @@ describe("AppSidebar workspace nav", () => {
     await waitFor(() => expect(navLink("Files")).toBeTruthy());
 
     expect(navLink("Files").className).toContain("color-brand-800");
-    expect(navLink("Sessions").className).not.toContain("color-brand-800");
+    expect(navLink("Agent Sessions").className).not.toContain("color-brand-800");
   });
 });

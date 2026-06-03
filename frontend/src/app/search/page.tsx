@@ -10,22 +10,22 @@ import { useAuth } from "../../hooks/useAuth";
 import { track } from "../../lib/analytics";
 import {
   getWorkspaceSidebar,
-  getPublicStash,
+  getPublicCartridge,
   getSessionEvents,
   listStashes,
   listMyWorkspaces,
   searchWorkspaceEvents,
   searchWorkspacePages,
-  type PublicStashDetail,
+  type PublicCartridgeDetail,
   type SessionEvent,
   type WorkspaceHistoryEvent,
   type WorkspaceSidebar,
-  type WorkspaceStash,
+  type WorkspaceCartridge,
   type WorkspaceFolder,
 } from "../../lib/api";
 import type { Page, Workspace } from "../../lib/types";
 
-type ContentScope = "all" | "sessions" | "pages" | "stashes";
+type ContentScope = "all" | "sessions" | "pages" | "cartridges";
 
 // Coarse buckets for analytics — actual counts have high cardinality
 // and add no signal beyond "no results / few / many."
@@ -48,7 +48,7 @@ interface SearchResult {
   relevance: number;
 }
 
-interface SearchableStash extends WorkspaceStash {
+interface SearchableCartridge extends WorkspaceCartridge {
   workspace_name: string;
 }
 
@@ -56,12 +56,12 @@ const CONTENT_SCOPES: { id: ContentScope; label: string }[] = [
   { id: "all", label: "All" },
   { id: "sessions", label: "Sessions" },
   { id: "pages", label: "Pages" },
-  { id: "stashes", label: "Stashes" },
+  { id: "cartridges", label: "Cartridges" },
 ];
 
 function initialContentScope(value: string | null, sessionId: string): ContentScope {
   if (sessionId) return "sessions";
-  if (value === "sessions" || value === "pages" || value === "stashes") return value;
+  if (value === "sessions" || value === "pages" || value === "cartridges") return value;
   return "all";
 }
 
@@ -81,13 +81,13 @@ function SearchPageInner() {
   const { user, loading, logout } = useAuth();
   const initialSessionId = searchParams.get("session") ?? "";
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
-  const [workspaceStashes, setWorkspaceStashes] = useState<SearchableStash[]>([]);
+  const [workspaceStashes, setWorkspaceStashes] = useState<SearchableCartridge[]>([]);
   const [sidebars, setSidebars] = useState<Record<string, WorkspaceSidebar>>({});
   const [selectedWorkspaceId, setSelectedWorkspaceId] = useState(
     searchParams.get("workspace") ?? ""
   );
-  const [selectedProductStashId, setSelectedProductStashId] = useState("");
-  const [selectedProductStashSlug, setSelectedProductStashSlug] = useState(
+  const [selectedProductCartridgeId, setSelectedProductCartridgeId] = useState("");
+  const [selectedProductCartridgeSlug, setSelectedProductCartridgeSlug] = useState(
     searchParams.get("stash") ?? ""
   );
   const [selectedFolderId, setSelectedFolderId] = useState(searchParams.get("folder") ?? "");
@@ -164,32 +164,32 @@ function SearchPageInner() {
     });
   }, [internalOnly, searchedWorkspaces, workspaceStashes]);
 
-  const selectedProductStash = useMemo(
+  const selectedProductCartridge = useMemo(
     () =>
       searchedStashes.find(
         (stash) =>
-          stash.id === selectedProductStashId ||
-          (selectedProductStashSlug && stash.slug === selectedProductStashSlug)
+          stash.id === selectedProductCartridgeId ||
+          (selectedProductCartridgeSlug && stash.slug === selectedProductCartridgeSlug)
       ) ?? null,
-    [searchedStashes, selectedProductStashId, selectedProductStashSlug]
+    [searchedStashes, selectedProductCartridgeId, selectedProductCartridgeSlug]
   );
 
   useEffect(() => {
-    if (!selectedProductStashId) return;
-    if (selectedProductStash) return;
-    setSelectedProductStashId("");
-  }, [selectedProductStash, selectedProductStashId]);
+    if (!selectedProductCartridgeId) return;
+    if (selectedProductCartridge) return;
+    setSelectedProductCartridgeId("");
+  }, [selectedProductCartridge, selectedProductCartridgeId]);
 
   useEffect(() => {
-    if (!selectedProductStashSlug || !selectedProductStash || selectedProductStashId) return;
-    setSelectedProductStashId(selectedProductStash.id);
-  }, [selectedProductStash, selectedProductStashId, selectedProductStashSlug]);
+    if (!selectedProductCartridgeSlug || !selectedProductCartridge || selectedProductCartridgeId) return;
+    setSelectedProductCartridgeId(selectedProductCartridge.id);
+  }, [selectedProductCartridge, selectedProductCartridgeId, selectedProductCartridgeSlug]);
 
   useEffect(() => {
-    if (!selectedProductStashId && !selectedProductStashSlug) return;
+    if (!selectedProductCartridgeId && !selectedProductCartridgeSlug) return;
     setSelectedFolderId("");
     setSelectedPageId("");
-  }, [selectedProductStashId, selectedProductStashSlug]);
+  }, [selectedProductCartridgeId, selectedProductCartridgeSlug]);
 
   const folderOptions = useMemo(() => {
     if (!selectedWorkspaceId) return [];
@@ -212,7 +212,7 @@ function SearchPageInner() {
       const nextResults: SearchResult[] = [];
       const includeSessions = contentScope === "all" || contentScope === "sessions";
       const includePages = contentScope === "all" || contentScope === "pages";
-      const includeStashes = contentScope === "all" || contentScope === "stashes";
+      const includeStashes = contentScope === "all" || contentScope === "cartridges";
       const workspace =
         workspaces.find((item) => item.id === selectedWorkspaceId) ??
         searchedWorkspaces[0] ??
@@ -227,16 +227,16 @@ function SearchPageInner() {
         return;
       }
 
-      const selectedStashSlug = selectedProductStash?.slug ?? selectedProductStashSlug;
-      if (selectedStashSlug) {
-        const detail = await getPublicStash(selectedStashSlug);
+      const selectedCartridgeSlug = selectedProductCartridge?.slug ?? selectedProductCartridgeSlug;
+      if (selectedCartridgeSlug) {
+        const detail = await getPublicCartridge(selectedCartridgeSlug);
         if (includeStashes) {
           nextResults.push(
-            ...searchStashes([{ ...detail.stash, workspace_name: detail.workspace_name }], q)
+            ...searchStashes([{ ...detail.cartridge, workspace_name: detail.workspace_name }], q)
           );
         }
         nextResults.push(
-          ...searchPublicStashItems(detail, q, {
+          ...searchPublicCartridgeItems(detail, q, {
             includePages,
             includeSessions,
           })
@@ -310,8 +310,8 @@ function SearchPageInner() {
     searchedWorkspaces,
     selectedFolderId,
     selectedPageId,
-    selectedProductStash,
-    selectedProductStashSlug,
+    selectedProductCartridge,
+    selectedProductCartridgeSlug,
     selectedSessionId,
     selectedWorkspaceId,
     workspaces,
@@ -344,7 +344,7 @@ function SearchPageInner() {
             Search
           </p>
           <h1 className="mt-3 font-display text-[34px] font-bold tracking-tight text-foreground">
-            Search pages, sessions, and Stashes.
+            Search pages, sessions, and Cartridges.
           </h1>
           <p className="mt-2 max-w-[700px] text-[14.5px] leading-relaxed text-muted">
             Search one workspace, one Stash, a folder inside a workspace, or
@@ -371,8 +371,8 @@ function SearchPageInner() {
                     setSelectedWorkspaceId(next);
                     setSelectedFolderId("");
                     setSelectedPageId("");
-                    setSelectedProductStashId("");
-                    setSelectedProductStashSlug("");
+                    setSelectedProductCartridgeId("");
+                    setSelectedProductCartridgeSlug("");
                     setSelectedSessionId("");
                   }}
                   ariaLabel="Workspace"
@@ -384,17 +384,17 @@ function SearchPageInner() {
               <div className="flex flex-col gap-1.5">
                 <span className="text-[12px] font-medium text-foreground">Stash</span>
                 <CustomSelect
-                  value={selectedProductStashId}
+                  value={selectedProductCartridgeId}
                   options={[
-                    { value: "", label: "All Stashes" },
+                    { value: "", label: "All Cartridges" },
                     ...searchedStashes.map((stash) => ({
                       value: stash.id,
-                      label: stash.title + (stash.forked_from_stash_id ? " (Fork)" : ""),
+                      label: stash.title + (stash.forked_from_cartridge_id ? " (Fork)" : ""),
                     })),
                   ]}
                   onChange={(next) => {
-                    setSelectedProductStashId(next);
-                    setSelectedProductStashSlug("");
+                    setSelectedProductCartridgeId(next);
+                    setSelectedProductCartridgeSlug("");
                   }}
                   ariaLabel="Stash"
                   className="w-full rounded-md border border-border bg-base px-2 py-2 text-[13px] text-foreground focus:border-brand focus:outline-none"
@@ -418,7 +418,7 @@ function SearchPageInner() {
                   options={[
                     {
                       value: "",
-                      label: selectedProductStashId ? "Stash selected" : "Entire workspace",
+                      label: selectedProductCartridgeId ? "Stash selected" : "Entire workspace",
                     },
                     ...folderOptions.map((folder) => ({
                       value: folder.id,
@@ -429,7 +429,7 @@ function SearchPageInner() {
                     setSelectedFolderId(next);
                     if (next) setSelectedPageId("");
                   }}
-                  disabled={!selectedWorkspaceId || Boolean(selectedProductStashId || selectedPageId)}
+                  disabled={!selectedWorkspaceId || Boolean(selectedProductCartridgeId || selectedPageId)}
                   ariaLabel="Folder"
                   className="w-full rounded-md border border-border bg-base px-2 py-2 text-[13px] text-foreground focus:border-brand focus:outline-none"
                   menuClassName="text-[13px]"
@@ -443,7 +443,7 @@ function SearchPageInner() {
                   options={[
                     {
                       value: "",
-                      label: selectedProductStashId
+                      label: selectedProductCartridgeId
                         ? "Stash selected"
                         : selectedFolderId
                           ? "Folder selected"
@@ -458,7 +458,7 @@ function SearchPageInner() {
                     setSelectedPageId(next);
                     if (next) setSelectedFolderId("");
                   }}
-                  disabled={!selectedWorkspaceId || Boolean(selectedProductStashId || selectedFolderId)}
+                  disabled={!selectedWorkspaceId || Boolean(selectedProductCartridgeId || selectedFolderId)}
                   ariaLabel="Page"
                   className="w-full rounded-md border border-border bg-base px-2 py-2 text-[13px] text-foreground focus:border-brand focus:outline-none"
                   menuClassName="text-[13px]"
@@ -624,8 +624,8 @@ function searchSingleSession(
   ];
 }
 
-function searchStashes(stashes: SearchableStash[], query: string): SearchResult[] {
-  return stashes
+function searchStashes(cartridges: SearchableCartridge[], query: string): SearchResult[] {
+  return cartridges
     .map((stash) => {
       const relevance = scoreValues(query, [
         { value: stash.title, weight: 8 },
@@ -639,10 +639,10 @@ function searchStashes(stashes: SearchableStash[], query: string): SearchResult[
       id: stash.id,
       kind: "Stash" as const,
       title: stash.title,
-      href: `/stashes/${stash.slug}`,
+      href: `/cartridges/${stash.slug}`,
       sourceName: stash.workspace_name,
       detail:
-        (stash.forked_from_stash_id ? "Forked Stash" : "Stash") +
+        (stash.forked_from_cartridge_id ? "Forked Stash" : "Stash") +
         ` / ${stash.description || `${stash.items.length} items`}`,
       updatedAt: stash.updated_at,
       relevance,
@@ -771,8 +771,8 @@ function descendantFolderIds(
   return ids;
 }
 
-function searchPublicStashItems(
-  detail: PublicStashDetail,
+function searchPublicCartridgeItems(
+  detail: PublicCartridgeDetail,
   query: string,
   scope: { includePages: boolean; includeSessions: boolean }
 ): SearchResult[] {
@@ -791,8 +791,8 @@ function searchPublicStashItems(
 }
 
 function searchPublicFolder(
-  detail: PublicStashDetail,
-  item: PublicStashDetail["items"][number],
+  detail: PublicCartridgeDetail,
+  item: PublicCartridgeDetail["items"][number],
   index: number,
   query: string
 ): SearchResult[] {
@@ -812,22 +812,22 @@ function searchPublicFolder(
       id: `${item.object_id}:${page.id}`,
       kind: "Page" as const,
       title: page.name,
-      href: `/stashes/${detail.stash.slug}#item-${index}`,
-      sourceName: detail.stash.title,
+      href: `/cartridges/${detail.cartridge.slug}#item-${index}`,
+      sourceName: detail.cartridge.title,
       detail: pageSnippet(page.content_markdown, page.content_html),
-      updatedAt: page.updated_at || detail.stash.updated_at,
+      updatedAt: page.updated_at || detail.cartridge.updated_at,
       relevance: scoreValues(query, [
         { value: page.name, weight: 8 },
         { value: page.content_markdown, weight: 2 },
         { value: stripHtml(page.content_html ?? ""), weight: 2 },
-        { value: detail.stash.title, weight: 1 },
+        { value: detail.cartridge.title, weight: 1 },
       ]),
     }));
 }
 
 function searchPublicPage(
-  detail: PublicStashDetail,
-  item: PublicStashDetail["items"][number],
+  detail: PublicCartridgeDetail,
+  item: PublicCartridgeDetail["items"][number],
   index: number,
   query: string
 ): SearchResult[] {
@@ -849,23 +849,23 @@ function searchPublicPage(
       id: item.object_id,
       kind: "Page" as const,
       title: page.name,
-      href: `/stashes/${detail.stash.slug}#item-${index}`,
-      sourceName: detail.stash.title,
+      href: `/cartridges/${detail.cartridge.slug}#item-${index}`,
+      sourceName: detail.cartridge.title,
       detail: pageSnippet(page.content_markdown, page.content_html),
-      updatedAt: page.updated_at || detail.stash.updated_at,
+      updatedAt: page.updated_at || detail.cartridge.updated_at,
       relevance: scoreValues(query, [
         { value: page.name, weight: 8 },
         { value: page.content_markdown, weight: 2 },
         { value: stripHtml(page.content_html ?? ""), weight: 2 },
-        { value: detail.stash.title, weight: 1 },
+        { value: detail.cartridge.title, weight: 1 },
       ]),
     },
   ];
 }
 
 function searchPublicSession(
-  detail: PublicStashDetail,
-  item: PublicStashDetail["items"][number],
+  detail: PublicCartridgeDetail,
+  item: PublicCartridgeDetail["items"][number],
   index: number,
   query: string
 ): SearchResult[] {
@@ -899,15 +899,15 @@ function searchPublicSession(
       id: session.id || item.object_id,
       kind: "Session" as const,
       title: sessionTitle(session),
-      href: `/stashes/${detail.stash.slug}#item-${index}`,
-      sourceName: detail.stash.title,
+      href: `/cartridges/${detail.cartridge.slug}#item-${index}`,
+      sourceName: detail.cartridge.title,
       detail: sessionSnippet(session),
-      updatedAt: session.finished_at || session.started_at || detail.stash.updated_at,
+      updatedAt: session.finished_at || session.started_at || detail.cartridge.updated_at,
       relevance: scoreValues(query, [
         { value: session.session_id, weight: 5 },
         { value: session.agent_name, weight: 2 },
         { value: eventText, weight: 3 },
-        { value: detail.stash.title, weight: 1 },
+        { value: detail.cartridge.title, weight: 1 },
       ]),
     },
   ];
@@ -925,7 +925,7 @@ function textIncludes(query: string, ...values: (string | null | undefined)[]): 
 function pageSnippet(markdown?: string | null, html?: string | null): string {
   if (markdown?.trim()) return markdown.slice(0, 220);
   if (html?.trim()) return stripHtml(html).slice(0, 220);
-  return "Page in this Stash";
+  return "Page in this cartridge";
 }
 
 function sessionSnippet(session: {
@@ -933,7 +933,7 @@ function sessionSnippet(session: {
   events?: { event_type: string; tool_name?: string | null; content: string }[];
 }): string {
   const firstEvent = session.events?.find((event) => event.content.trim());
-  if (!firstEvent) return `${session.agent_name || "Agent"} session in this Stash`;
+  if (!firstEvent) return `${session.agent_name || "Agent"} session in this cartridge`;
   return firstEvent.content.slice(0, 220);
 }
 

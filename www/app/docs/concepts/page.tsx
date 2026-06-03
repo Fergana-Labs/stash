@@ -5,7 +5,7 @@ const CONCEPTS: { name: string; badge: string; badgeColor: string; desc: React.R
     name: "Workspace",
     badge: "Container",
     badgeColor: "bg-blue-500/10 text-blue-500",
-    desc: "Top-level permissioned container. Members share all resources: pages, sessions, tables, files, and Stashes. Invite others with a short code.",
+    desc: "Top-level permissioned container. Members share workspace resources: pages, sessions, tables, and files. Invite others with a short code.",
   },
   {
     name: "Sessions",
@@ -37,10 +37,36 @@ const CONCEPTS: { name: string; badge: string; badgeColor: string; desc: React.R
     desc: "Images, PDFs, and documents stored in S3-compatible storage (Cloudflare R2, AWS S3, or MinIO). Uploadable as attachments via the API or files editor.",
   },
   {
+    name: "Source",
+    badge: "Virtual FS",
+    badgeColor: "bg-amber-500/10 text-amber-600",
+    desc: (
+      <>
+        Anything an agent can read, exposed as a virtual file system. Two native sources —{" "}
+        <Code>files</Code> and <Code>sessions</Code> — are always present; connected sources
+        (GitHub, Google Drive, Notion, Slack, Granola) are added per member and indexed on a
+        schedule. Pick a source like a drive, browse it by path, read a document, or search one
+        source — or everything at once.
+      </>
+    ),
+  },
+  {
+    name: "Cartridge",
+    badge: "Bundle",
+    badgeColor: "bg-purple-500/10 text-purple-500",
+    desc: "A shareable bundle of pages, sessions, tables, and files — the unit you publish to a public link, list in Discover, or share with specific people. Formerly called a Stash; the resource was renamed but the CLI name is unchanged.",
+  },
+  {
+    name: "Sharing",
+    badge: "Access",
+    badgeColor: "bg-rose-500/10 text-rose-500",
+    desc: "Resources are private by default. Grant a person access to a single folder, page, file, session, or table by email — pending invites convert automatically when they sign up — or bundle items into a Cartridge to share them together.",
+  },
+  {
     name: "Search",
     badge: "Cross-cutting",
     badgeColor: "bg-muted/20 text-muted",
-    desc: "Universal cross-resource AI search. Ask a natural language question and get a synthesized answer across pages, tables, sessions, files, and Stashes. Supports workspace scoping and resource type filtering.",
+    desc: "Unified search across every source. Scope to one source or search everything — native files and sessions plus your connected sources — in a single query.",
   },
 ];
 

@@ -5,10 +5,10 @@ import { useEffect, useState } from "react";
 import AppShell from "../../components/AppShell";
 import { useBreadcrumbs } from "../../components/BreadcrumbContext";
 import { BasicPageSkeleton, CardGridSkeleton } from "../../components/SkeletonStates";
-import ForkStashCardButton from "../../components/stash/ForkStashCardButton";
-import StashCard from "../../components/stash/StashCard";
+import ForkCartridgeCardButton from "../../components/cartridge/ForkCartridgeCardButton";
+import CartridgeCard from "../../components/cartridge/CartridgeCard";
 import { useAuth } from "../../hooks/useAuth";
-import { API_BASE, type PublicStashCard } from "../../lib/api";
+import { API_BASE, type PublicCartridgeCard } from "../../lib/api";
 
 const SORTS = ["trending", "newest", "popular"] as const;
 type Sort = (typeof SORTS)[number];
@@ -18,24 +18,24 @@ const COVERS = ["cover-1", "cover-2", "cover-3", "cover-4", "cover-5", "cover-6"
 async function fetchPublicStashes(params: {
   q?: string;
   sort: Sort;
-}): Promise<PublicStashCard[]> {
+}): Promise<PublicCartridgeCard[]> {
   const qs = new URLSearchParams();
   for (const [key, value] of Object.entries(params)) {
     if (value) qs.set(key, value);
   }
   const res = await fetch(
-    `${API_BASE}/api/v1/discover/stashes${qs.size ? `?${qs}` : ""}`,
+    `${API_BASE}/api/v1/discover/cartridges${qs.size ? `?${qs}` : ""}`,
   );
   if (!res.ok) return [];
   const data = await res.json();
-  return data.stashes ?? [];
+  return data.cartridges ?? [];
 }
 
 export default function DiscoverPage() {
   const { user, loading, logout } = useAuth();
   const [sort, setSort] = useState<Sort>("trending");
   const [query, setQuery] = useState("");
-  const [stashes, setStashes] = useState<PublicStashCard[]>([]);
+  const [cartridges, setStashes] = useState<PublicCartridgeCard[]>([]);
   const [fetching, setFetching] = useState(true);
 
   useBreadcrumbs([{ label: "Discover" }], "discover");
@@ -56,7 +56,7 @@ export default function DiscoverPage() {
             type="text"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search public Stashes…"
+            placeholder="Search public Cartridges…"
             className="min-w-0 flex-1 border-0 bg-transparent text-[13px] text-foreground placeholder:text-muted focus:outline-none"
           />
         </div>
@@ -79,16 +79,16 @@ export default function DiscoverPage() {
         </div>
         <span className="flex-1" />
         <span className="sys-label" style={{ fontSize: 10.5 }}>
-          {stashes.length} result{stashes.length === 1 ? "" : "s"}
+          {cartridges.length} result{cartridges.length === 1 ? "" : "s"}
         </span>
       </div>
 
       {fetching ? (
         <CardGridLoading />
-      ) : stashes.length === 0 ? (
+      ) : cartridges.length === 0 ? (
         <EmptyState />
       ) : (
-        <DiscoverGrid stashes={stashes} sort={sort} />
+        <DiscoverGrid cartridges={cartridges} sort={sort} />
       )}
     </div>
   );
@@ -113,19 +113,19 @@ function CardGridLoading() {
 }
 
 function DiscoverGrid({
-  stashes,
+  cartridges,
   sort,
 }: {
-  stashes: PublicStashCard[];
+  cartridges: PublicCartridgeCard[];
   sort: Sort;
 }) {
   return (
     <div className="mt-6 grid grid-cols-1 gap-3.5 sm:grid-cols-2 lg:grid-cols-3">
-      {stashes.map((stash, i) => {
+      {cartridges.map((stash, i) => {
         const owner = stash.owner_display_name;
         const trending = sort === "trending" && i < 2;
         return (
-          <StashCard
+          <CartridgeCard
             key={stash.id}
             stash={{
               id: stash.id,
@@ -149,7 +149,7 @@ function DiscoverGrid({
               ) : undefined
             }
             cornerAction={
-              <ForkStashCardButton
+              <ForkCartridgeCardButton
                 slug={stash.slug}
                 sourceWorkspaceId={stash.workspace_id}
               />
@@ -181,10 +181,10 @@ function EmptyState() {
   return (
     <section className="mt-12 rounded-lg border border-dashed border-border bg-base px-6 py-12 text-center">
       <h2 className="font-display text-[20px] font-bold text-foreground">
-        No public Stashes yet.
+        No public Cartridges yet.
       </h2>
       <p className="mx-auto mt-2 max-w-[420px] text-[13.5px] leading-[1.6] text-muted">
-        Public Stashes appear here after their contents are readable from a public link.
+        Public Cartridges appear here after their contents are readable from a public link.
       </p>
     </section>
   );

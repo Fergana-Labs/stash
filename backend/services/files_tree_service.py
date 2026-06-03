@@ -19,7 +19,7 @@ from . import permission_service
 logger = logging.getLogger(__name__)
 
 # Workspace-owned page (excludes the read-only stash mirror rows).
-_OWNED_PAGE_PRED = "COALESCE(metadata->>'shared_in_stash_id', '') = ''"
+_OWNED_PAGE_PRED = "COALESCE(metadata->>'shared_in_cartridge_id', '') = ''"
 # All "live" reads filter both stash-mirror and trash. Every SELECT on
 # pages that wants the active set uses this.
 _WORKSPACE_PAGE_FILTER = f"{_OWNED_PAGE_PRED} AND deleted_at IS NULL"
@@ -554,7 +554,7 @@ async def list_workspace_pages(workspace_id: UUID, user_id: UUID | None = None) 
     args: list = [workspace_id]
     where = (
         "p.workspace_id = $1 "
-        "AND COALESCE(p.metadata->>'shared_in_stash_id', '') = '' "
+        "AND COALESCE(p.metadata->>'shared_in_cartridge_id', '') = '' "
         "AND p.deleted_at IS NULL"
     )
     if user_id is not None:
@@ -601,7 +601,7 @@ async def list_user_pages(user_id: UUID) -> list[dict]:
         "JOIN member_workspaces mw ON mw.workspace_id = p.workspace_id "
         "JOIN workspaces w ON w.id = p.workspace_id "
         "LEFT JOIN chain c ON c.id = p.folder_id "
-        "WHERE COALESCE(p.metadata->>'shared_in_stash_id', '') = '' "
+        "WHERE COALESCE(p.metadata->>'shared_in_cartridge_id', '') = '' "
         "AND p.deleted_at IS NULL "
         f"AND {readable_page} "
         "ORDER BY w.name, c.path NULLS FIRST, p.name",
@@ -617,7 +617,7 @@ async def list_workspace_tree(workspace_id: UUID, user_id: UUID | None = None) -
     args: list = [workspace_id]
     where = (
         "p.workspace_id = $1 "
-        "AND COALESCE(p.metadata->>'shared_in_stash_id', '') = '' "
+        "AND COALESCE(p.metadata->>'shared_in_cartridge_id', '') = '' "
         "AND p.deleted_at IS NULL"
     )
     if user_id is not None:

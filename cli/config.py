@@ -19,7 +19,7 @@ PRODUCTION_BASE_URL = "https://api.joinstash.ai"
 
 class Manifest(TypedDict, total=False):
     workspace_id: str
-    default_stash_id: str
+    default_cartridge_id: str
     base_url: str
 
 

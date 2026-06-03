@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useBreadcrumbs } from "../../../../../../components/BreadcrumbContext";
-import { PageBody } from "../../../../stashes/[slug]/StashItemBodies";
+import { PageBody } from "../../../../cartridges/[slug]/CartridgeItemBodies";
 import {
   downloadBlob,
   downloadRenderedPdf,
@@ -33,7 +33,7 @@ import {
   deleteCommentThread,
   getFolderContents,
   getPage,
-  getPublicStash,
+  getPublicCartridge,
   listCommentThreads,
   listObjectStashes,
   reconcileCommentAnchors,
@@ -42,8 +42,8 @@ import {
   trashItem,
   updatePage,
   type FolderBreadcrumb,
-  type PublicStashItem,
-  type WorkspaceStash,
+  type PublicCartridgeItem,
+  type WorkspaceCartridge,
 } from "../../../../../../lib/api";
 import type { CommentThread, Page } from "../../../../../../lib/types";
 
@@ -101,9 +101,9 @@ export default function StashPageView() {
 
   const [page, setPage] = useState<Page | null>(null);
   const [folderChain, setFolderChain] = useState<FolderBreadcrumb[]>([]);
-  const [containingStashes, setContainingStashes] = useState<WorkspaceStash[]>([]);
+  const [containingStashes, setContainingStashes] = useState<WorkspaceCartridge[]>([]);
   const [stashFallback, setStashFallback] = useState<
-    { stash: WorkspaceStash; item: PublicStashItem } | null
+    { stash: WorkspaceCartridge; item: PublicCartridgeItem } | null
   >(null);
   const [saveStatus, setSaveStatus] = useState<SaveStatus>("saved");
   const [error, setError] = useState("");
@@ -166,7 +166,7 @@ export default function StashPageView() {
   const loadStashFallback = useCallback(async () => {
     if (!stashSlug) return false;
     try {
-      const data = await getPublicStash(stashSlug);
+      const data = await getPublicCartridge(stashSlug);
       const item = data.items.find(
         (it) => it.object_type === "page" && it.object_id === pageId,
       );
@@ -174,7 +174,7 @@ export default function StashPageView() {
         setError("This page isn't part of the linked Stash.");
         return false;
       }
-      setStashFallback({ stash: data.stash, item });
+      setStashFallback({ stash: data.cartridge, item });
       setError("");
       return true;
     } catch (e) {
@@ -667,7 +667,7 @@ export default function StashPageView() {
   );
 }
 
-function StashAside({ stashes }: { stashes: WorkspaceStash[] }) {
+function StashAside({ stashes }: { stashes: WorkspaceCartridge[] }) {
   return (
     <aside>
       <div className="card-soft p-3.5">
@@ -677,7 +677,7 @@ function StashAside({ stashes }: { stashes: WorkspaceStash[] }) {
             {stashes.map((stash) => (
               <Link
                 key={stash.id}
-                href={`/stashes/${stash.slug}`}
+                href={`/cartridges/${stash.slug}`}
                 className="linkrow px-2 py-1.5"
               >
                 <span className="text-[var(--color-brand-600)]">
@@ -733,13 +733,13 @@ function StashFallbackPageView({
 }: {
   stashSlug: string;
   stashTitle: string;
-  item: PublicStashItem;
+  item: PublicCartridgeItem;
 }) {
   return (
     <div className="scroll-thin flex-1 overflow-y-auto">
       <div className="mx-auto max-w-[920px] px-12 pb-20 pt-6">
         <Link
-          href={`/stashes/${stashSlug}`}
+          href={`/cartridges/${stashSlug}`}
           className="inline-flex items-center gap-1 text-[12.5px] text-muted hover:text-foreground"
         >
           ← {stashTitle}

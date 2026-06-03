@@ -65,7 +65,7 @@ class ImageFetcher:
 
         stash = _STASH_FILE_RE.match(src)
         if stash:
-            return await _download_stash_file(UUID(stash.group("fid")))
+            return await _download_cartridge_file(UUID(stash.group("fid")))
 
         if src.startswith("http://") or src.startswith("https://"):
             return await _download_http(src)
@@ -110,7 +110,7 @@ def _svg_to_png(svg: bytes) -> bytes | None:
         return None
 
 
-async def _download_stash_file(file_id: UUID) -> bytes | None:
+async def _download_cartridge_file(file_id: UUID) -> bytes | None:
     pool = get_pool()
     row = await pool.fetchrow("SELECT storage_key FROM files WHERE id = $1", file_id)
     if not row or not row["storage_key"]:

@@ -13,10 +13,12 @@ def test_upload_text_file_detection() -> None:
     assert not _is_upload_text_file(Path("diagram.png"))
 
 
-def test_stash_url_uses_web_app_url(monkeypatch) -> None:
+def test_cartridge_url_uses_web_app_url(monkeypatch) -> None:
     monkeypatch.setattr(main, "_web_app_url", lambda: "https://app.example")
 
-    assert main._stash_url({"slug": "demo-stash"}) == "https://app.example/stashes/demo-stash"
+    assert (
+        main._cartridge_url({"slug": "demo-stash"}) == "https://app.example/cartridges/demo-stash"
+    )
 
 
 def test_file_app_url_points_to_workspace_file_viewer(monkeypatch) -> None:
@@ -53,18 +55,18 @@ def test_single_blob_upload_publishes_only_the_file_item(monkeypatch, tmp_path) 
         def create_page(self, *_args, **_kwargs):
             return {"id": "page-1"}
 
-        def publish_stash(self, _workspace_id, title, description, items):
+        def publish_cartridge(self, _workspace_id, title, description, items):
             published_items.extend(items)
             return {
-                "stash": {"id": "stash-1", "slug": "shot"},
-                "url": "https://app.example/stashes/shot",
+                "cartridge": {"id": "stash-1", "slug": "shot"},
+                "url": "https://app.example/cartridges/shot",
             }
 
     monkeypatch.setattr(main, "_require_auth", lambda: None)
     monkeypatch.setattr(main, "_resolve_workspace", lambda: "workspace-1")
     monkeypatch.setattr(main, "_client", lambda: FakeClient())
 
-    main.upload(str(uploaded), name="", workspace_id=None, public=True, as_json=False)
+    main.upload(str(uploaded), name="", workspace_id=None, stash="shot", public=True, as_json=False)
 
     assert published_items == [
         {
@@ -98,18 +100,20 @@ def test_single_text_upload_publishes_only_the_page_item(monkeypatch, tmp_path) 
             assert folder_id == "folder-1"
             return {"id": "page-1"}
 
-        def publish_stash(self, _workspace_id, title, description, items):
+        def publish_cartridge(self, _workspace_id, title, description, items):
             published_items.extend(items)
             return {
-                "stash": {"id": "stash-1", "slug": "notes"},
-                "url": "https://app.example/stashes/notes",
+                "cartridge": {"id": "stash-1", "slug": "notes"},
+                "url": "https://app.example/cartridges/notes",
             }
 
     monkeypatch.setattr(main, "_require_auth", lambda: None)
     monkeypatch.setattr(main, "_resolve_workspace", lambda: "workspace-1")
     monkeypatch.setattr(main, "_client", lambda: FakeClient())
 
-    main.upload(str(uploaded), name="", workspace_id=None, public=True, as_json=False)
+    main.upload(
+        str(uploaded), name="", workspace_id=None, stash="notes", public=True, as_json=False
+    )
 
     assert published_items == [
         {

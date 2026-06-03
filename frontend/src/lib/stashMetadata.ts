@@ -50,7 +50,7 @@ export async function metadataForPublicStashItem({
   if (!data) return { title: "Stash - Stash" };
 
   const item = findStashItem(data.items, itemType, itemId);
-  if (!item) return metadataForPublicStash({ slug, path: `/stashes/${slug}` });
+  if (!item) return metadataForPublicStash({ slug, path: `/cartridges/${slug}` });
 
   const title = itemMetadataTitle(data, item);
   const description = itemMetadataDescription(data, item);

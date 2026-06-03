@@ -48,7 +48,7 @@ export default function NewWorkspacePage() {
         </h1>
         <p className="mt-3 text-[15px] leading-relaxed text-foreground/80">
           A Stash Workspace is your team&apos;s shared home for agent work: sessions,
-          Files, folders, and the Stashes you publish from them.
+          Files, folders, and the Cartridges you publish from them.
         </p>
 
         <form onSubmit={submit} className="mt-8 flex flex-col gap-4">

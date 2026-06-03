@@ -58,8 +58,8 @@ async def test_ingest_records_events(client: AsyncClient):
                 },
                 {
                     "surface": "web",
-                    "event_name": "onboarding.path_selected",
-                    "properties": {"path": "migrant"},
+                    "event_name": "onboarding.step_viewed",
+                    "properties": {"step_idx": 0, "step_name": "connect"},
                 },
             ]
         },
@@ -164,7 +164,6 @@ async def test_admin_endpoints_require_token(client: AsyncClient):
     for path in [
         "/api/v1/admin/analytics/summary",
         "/api/v1/admin/analytics/onboarding-funnel",
-        "/api/v1/admin/analytics/path-mix",
         "/api/v1/admin/analytics/surface-mix",
         "/api/v1/admin/analytics/top-events",
     ]:
@@ -188,18 +187,13 @@ async def test_funnel_reflects_recorded_events(client: AsyncClient):
                 },
                 {
                     "surface": "web",
-                    "event_name": "onboarding.path_selected",
-                    "properties": {"path": "memory"},
-                },
-                {
-                    "surface": "web",
                     "event_name": "onboarding.step_viewed",
-                    "properties": {"path": "memory", "step_idx": 0, "step_name": "install"},
+                    "properties": {"step_idx": 0, "step_name": "connect"},
                 },
                 {
                     "surface": "web",
                     "event_name": "onboarding.completed",
-                    "properties": {"path": "memory", "total_steps": 3},
+                    "properties": {"total_steps": 2},
                 },
             ]
         },
@@ -214,7 +208,6 @@ async def test_funnel_reflects_recorded_events(client: AsyncClient):
     stages = resp.json()["stages"]
     by_stage = {s["stage"]: s["users"] for s in stages}
     assert by_stage["viewed"] == 1
-    assert by_stage["path_selected"] == 1
     assert by_stage["step_viewed"] == 1
     assert by_stage["completed"] == 1
 

@@ -1,4 +1,4 @@
-"""Workspace knowledge router: overview, sessions, files, stashes, and skills."""
+"""Workspace knowledge router: overview, sessions, files, cartridges, and skills."""
 
 import asyncio
 import json
@@ -15,13 +15,13 @@ from ..config import settings
 from ..database import get_pool
 from ..services import (
     ask_service,
+    cartridge_service,
     files_tree_service,
     linear_ticket_service,
     llm,
     memory_service,
     session_title_service,
     skill_service,
-    stash_service,
     workspace_service,
 )
 
@@ -33,7 +33,7 @@ SIDEBAR_ETAG_VERSION = "sidebar-generated-title-linear-ticket-v2"
 # ---------------------------------------------------------------------------
 # Overview + Sidebar — the per-workspace view shapes
 #
-# `/overview` is what the workspace home page loads: sessions + files + stashes. `/sidebar`
+# `/overview` is what the workspace home page loads: sessions + files + cartridges. `/sidebar`
 # is a smaller payload for the nav tree, served with an ETag so it can be
 # cached cheaply across navigation.
 # ---------------------------------------------------------------------------
@@ -66,19 +66,19 @@ async def _files_tree(workspace_id: UUID, user_id: UUID) -> dict:
         pool.fetch(
             "SELECT f.id, f.name, f.parent_folder_id, "
             "       (SELECT COUNT(*) FROM pages p WHERE p.folder_id = f.id "
-            "        AND COALESCE(p.metadata->>'shared_in_stash_id', '') = '' "
+            "        AND COALESCE(p.metadata->>'shared_in_cartridge_id', '') = '' "
             "        AND p.deleted_at IS NULL) AS page_count, "
             "       (SELECT COUNT(*) FROM files fi WHERE fi.folder_id = f.id "
             "        AND fi.deleted_at IS NULL) AS file_count, "
             "       EXISTS(SELECT 1 FROM pages p WHERE p.folder_id = f.id AND p.name = 'SKILL.md' "
-            "              AND COALESCE(p.metadata->>'shared_in_stash_id', '') = '' "
+            "              AND COALESCE(p.metadata->>'shared_in_cartridge_id', '') = '' "
             "              AND p.deleted_at IS NULL) AS has_skill "
             "FROM folders f WHERE f.workspace_id = $1 ORDER BY f.name",
             workspace_id,
         ),
         pool.fetch(
             "SELECT id, name, content_type, folder_id FROM pages WHERE workspace_id = $1 "
-            "AND COALESCE(metadata->>'shared_in_stash_id', '') = '' "
+            "AND COALESCE(metadata->>'shared_in_cartridge_id', '') = '' "
             "AND deleted_at IS NULL ORDER BY name",
             workspace_id,
         ),
@@ -150,7 +150,7 @@ async def _files_tree(workspace_id: UUID, user_id: UUID) -> dict:
 
 
 async def _list_stashes(workspace_id: UUID, user_id: UUID) -> list[dict]:
-    stashes = await stash_service.list_workspace_stashes(workspace_id, user_id)
+    cartridges = await cartridge_service.list_workspace_stashes(workspace_id, user_id)
     return [
         {
             "id": str(stash["id"]),
@@ -175,7 +175,7 @@ async def _list_stashes(workspace_id: UUID, user_id: UUID) -> list[dict]:
             ],
             "updated_at": stash["updated_at"],
         }
-        for stash in stashes
+        for stash in cartridges
     ]
 
 
@@ -361,19 +361,19 @@ async def memory_demo(
 async def get_workspace_overview(
     workspace_id: UUID, current_user: dict = Depends(get_current_user)
 ):
-    """{sessions, files, stashes} for the workspace home page.
+    """{sessions, files, cartridges} for the workspace home page.
 
     `files` is the flat folder + page + file row set; the frontend builds the tree
     from parent_folder_id.
     """
     await _check_overview_access(workspace_id, current_user["id"])
 
-    sessions, files, stashes = await asyncio.gather(
+    sessions, files, cartridges = await asyncio.gather(
         _list_sessions(workspace_id, current_user["id"]),
         _files_tree(workspace_id, current_user["id"]),
         _list_stashes(workspace_id, current_user["id"]),
     )
-    return {"sessions": sessions, "files": files, "stashes": stashes}
+    return {"sessions": sessions, "files": files, "cartridges": cartridges}
 
 
 @router.get("/{workspace_id}/sidebar")
@@ -382,7 +382,7 @@ async def get_workspace_sidebar(
     request: Request,
     current_user: dict = Depends(get_current_user),
 ):
-    """Lighter payload for the nav sidebar: sessions + files + stashes. Carries an
+    """Lighter payload for the nav sidebar: sessions + files + cartridges. Carries an
     ETag derived from the workspace's mutation timestamps so navigation
     between workspaces hits 304 instead of re-fetching."""
     await _check_overview_access(workspace_id, current_user["id"])
@@ -391,14 +391,14 @@ async def get_workspace_sidebar(
     if request.headers.get("if-none-match") == etag:
         return Response(status_code=304, headers={"ETag": etag})
 
-    sessions, files, stashes = await asyncio.gather(
+    sessions, files, cartridges = await asyncio.gather(
         _list_sessions(workspace_id, current_user["id"]),
         _files_tree(workspace_id, current_user["id"]),
         _list_stashes(workspace_id, current_user["id"]),
     )
     return Response(
         content=json.dumps(
-            {"sessions": sessions, "files": files, "stashes": stashes},
+            {"sessions": sessions, "files": files, "cartridges": cartridges},
             default=_json_default,
         ),
         media_type="application/json",
@@ -420,7 +420,7 @@ async def _sidebar_etag(workspace_id: UUID, user_id: UUID) -> str:
         f"""
         SELECT
           (SELECT MAX(updated_at) FROM pages
-            WHERE workspace_id = $1 AND COALESCE(metadata->>'shared_in_stash_id', '') = ''
+            WHERE workspace_id = $1 AND COALESCE(metadata->>'shared_in_cartridge_id', '') = ''
             AND deleted_at IS NULL) AS p,
           (SELECT MAX(created_at) FROM files
             WHERE workspace_id = $1 AND deleted_at IS NULL)                       AS f,
@@ -454,9 +454,9 @@ async def _sidebar_etag(workspace_id: UUID, user_id: UUID) -> str:
            WHERE stt.workspace_id = $1
              AND stt_session.deleted_at IS NULL
              AND {memory_service.readable_session_event_condition('stt_session', 2)}) AS tc,
-          (SELECT MAX(updated_at) FROM stashes WHERE workspace_id = $1)            AS st,
-          (SELECT MAX(sm.created_at) FROM stash_members sm
-           JOIN stashes s ON s.id = sm.stash_id
+          (SELECT MAX(updated_at) FROM cartridges WHERE workspace_id = $1)            AS st,
+          (SELECT MAX(sm.created_at) FROM cartridge_members sm
+           JOIN cartridges s ON s.id = sm.cartridge_id
            WHERE s.workspace_id = $1 AND sm.user_id = $2)                          AS sm,
           (SELECT updated_at FROM workspaces WHERE id = $1)                       AS w
         """,

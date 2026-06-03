@@ -8,7 +8,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from .database import get_pool
 
-security = HTTPBearer()
+security = HTTPBearer(auto_error=False)
 
 _LAST_SEEN_DEBOUNCE_SECONDS = 60
 _LAST_SEEN_CACHE_SIZE = 4096
@@ -126,8 +126,14 @@ async def _get_user_from_jwt(token: str) -> dict:
 
 
 async def get_current_user(
-    credentials: HTTPAuthorizationCredentials = Depends(security),
+    credentials: HTTPAuthorizationCredentials | None = Depends(security),
 ) -> dict:
+    if credentials is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Missing Authorization header",
+        )
+
     token: str = credentials.credentials
 
     if token.startswith("mc_"):

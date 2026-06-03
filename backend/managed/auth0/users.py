@@ -5,7 +5,7 @@ import re
 
 from backend.auth import create_api_key
 from backend.database import get_pool
-from backend.services import workspace_service
+from backend.services import share_service, workspace_service
 from backend.services.email_service import send_welcome_email
 
 logger = logging.getLogger(__name__)
@@ -61,6 +61,9 @@ async def get_or_create_user_from_auth0(
                 row["id"],
                 email,
             )
+            # An invite may have been addressed to this email after the account
+            # existed (e.g. before its email was recorded) — convert on login.
+            await share_service.convert_pending_invites(row["id"], email)
         else:
             await pool.execute("UPDATE users SET last_seen = now() WHERE id = $1", row["id"])
         api_key = await create_api_key(row["id"], name=key_name)
@@ -91,6 +94,8 @@ async def get_or_create_user_from_auth0(
         description="",
         creator_id=user["id"],
     )
+
+    await share_service.convert_pending_invites(user["id"], email)
 
     if email:
         try:

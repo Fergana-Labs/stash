@@ -272,14 +272,39 @@ stash vfs "cat '/workspaces/<workspace>/README.md' | sed -n '1,80p'"`}</CodeBloc
         ]}
       />
 
+      <Callout type="tip">
+        To search sessions, use the unified <Code>stash search</Code> with{" "}
+        <Code>--source sessions</Code> (see <strong>Sources &amp; search</strong> below). It replaces
+        the old per-resource search commands.
+      </Callout>
+
       <CommandRef
-        command="stash sessions search"
-        args="<query> [--ws ID] [-n 50]"
-        description="Full-text search across workspace sessions."
+        command="stash sessions folders"
+        args="[--ws ID]"
+        description="List session folders — shareable groupings of sessions."
         params={[
-          { name: "<query>", type: "string", desc: "Search query.", required: true },
           { name: "--ws", type: "string", desc: "Workspace ID override." },
-          { name: "-n, --limit", type: "number", desc: "Maximum number of results. Defaults to 50." },
+        ]}
+      />
+
+      <CommandRef
+        command="stash sessions new-folder"
+        args="<name> [--ws ID]"
+        description="Create a session folder."
+        params={[
+          { name: "<name>", type: "string", desc: "Folder name.", required: true },
+          { name: "--ws", type: "string", desc: "Workspace ID override." },
+        ]}
+      />
+
+      <CommandRef
+        command="stash sessions assign"
+        args="<session_row_id> [--folder ID]"
+        description="Move a session into a session folder, or omit --folder to move it back to the ungrouped root."
+        params={[
+          { name: "<session_row_id>", type: "string", desc: "The session row id to move.", required: true },
+          { name: "--folder", type: "string", desc: "Target folder id. Omit to ungroup." },
+          { name: "--ws", type: "string", desc: "Workspace ID override." },
         ]}
       />
 
@@ -300,6 +325,89 @@ stash vfs "cat '/workspaces/<workspace>/README.md' | sed -n '1,80p'"`}</CodeBloc
           { name: "<session_id>", type: "string", desc: "ID of the session.", required: true },
           { name: "--ws", type: "string", desc: "Workspace ID override." },
           { name: "--save", type: "path", desc: "Save the transcript to a file instead of printing." },
+        ]}
+      />
+
+      <H2>Sources &amp; search</H2>
+      <P>
+        A <strong>source</strong> is anything the agent can read, exposed as a virtual file
+        system: the two native sources — <Code>files</Code> and <Code>sessions</Code> — plus your
+        connected sources (GitHub, Google Drive, Notion, Slack, Granola). Pick a source like a
+        drive, browse it by path, read a document, or search one source — or everything at once.
+      </P>
+
+      <CommandRef
+        command="stash sources ls"
+        args="[--ws ID]"
+        description="List every source you can read here: the native files and sessions sources plus your connected sources. Each row prints a source handle to use with the other commands."
+        params={[
+          { name: "--ws", type: "string", desc: "Workspace ID override." },
+        ]}
+      />
+
+      <CommandRef
+        command="stash sources add"
+        args="<source_type> [--ref REF] [--name NAME]"
+        description="Connect a source. Slack and Granola resolve their reference from your connected token; the others need a --ref (e.g. a repo 'owner/name')."
+        params={[
+          { name: "<source_type>", type: "string", desc: "github_repo | google_drive | notion | slack | granola.", required: true },
+          { name: "--ref", type: "string", desc: "External reference, e.g. a repo 'owner/name'." },
+          { name: "--name", type: "string", desc: "Display name for the source." },
+          { name: "--ws", type: "string", desc: "Workspace ID override." },
+        ]}
+      />
+
+      <CommandRef
+        command="stash sources browse"
+        args="<source> [path] [--ws ID]"
+        description="List a source's entries like a file system."
+        params={[
+          { name: "<source>", type: "string", desc: "A source handle from stash sources ls.", required: true },
+          { name: "path", type: "string", desc: "Path prefix (connected sources only)." },
+          { name: "--ws", type: "string", desc: "Workspace ID override." },
+        ]}
+      />
+
+      <CommandRef
+        command="stash sources read"
+        args="<source> <ref> [--ws ID]"
+        description="Read one document from a source."
+        params={[
+          { name: "<source>", type: "string", desc: "A source handle from stash sources ls.", required: true },
+          { name: "<ref>", type: "string", desc: "Page id (files), session id (sessions), or document path (connected sources).", required: true },
+          { name: "--ws", type: "string", desc: "Workspace ID override." },
+        ]}
+      />
+
+      <CommandRef
+        command="stash sources sync"
+        args="<source_id> [--ws ID]"
+        description="Trigger an immediate re-index of a connected source you own."
+        params={[
+          { name: "<source_id>", type: "string", desc: "ID of the connected source.", required: true },
+          { name: "--ws", type: "string", desc: "Workspace ID override." },
+        ]}
+      />
+
+      <CommandRef
+        command="stash sources rm"
+        args="<source_id> [--ws ID]"
+        description="Disconnect a source you own. Its indexed documents are removed."
+        params={[
+          { name: "<source_id>", type: "string", desc: "ID of the connected source.", required: true },
+          { name: "--ws", type: "string", desc: "Workspace ID override." },
+        ]}
+      />
+
+      <CommandRef
+        command="stash search"
+        args="<query> [--source HANDLE] [--ws ID] [-n 20]"
+        description="Search across everything you can see — files, sessions, and connected sources. Pass --source to scope to one; omit it to search everything."
+        params={[
+          { name: "<query>", type: "string", desc: "Search query.", required: true },
+          { name: "--source", type: "string", desc: "Scope to one source handle (from stash sources ls). Omit to search everything." },
+          { name: "-n, --limit", type: "number", desc: "Maximum number of results. Defaults to 20." },
+          { name: "--ws", type: "string", desc: "Workspace ID override." },
         ]}
       />
 
@@ -497,6 +605,153 @@ stash vfs "cat '/workspaces/<workspace>/README.md' | sed -n '1,80p'"`}</CodeBloc
         description="Print extracted text for a file (PDF, image OCR, or plain text)."
         params={[
           { name: "<file_id>", type: "string", desc: "ID of the file.", required: true },
+        ]}
+      />
+
+      <H2>Cartridges</H2>
+      <P>
+        A <strong>Cartridge</strong> is a shareable bundle of pages, sessions, tables, and files —
+        the unit you publish to a public link or share with specific people. (Cartridges are what
+        earlier versions called &ldquo;Stashes&rdquo;; the <Code>stash</Code> CLI name is unchanged.)
+      </P>
+
+      <CommandRef
+        command="stash cartridges list"
+        args="[--ws ID]"
+        description="List Cartridges in the workspace."
+        params={[
+          { name: "--ws", type: "string", desc: "Workspace ID override." },
+        ]}
+      />
+
+      <CommandRef
+        command="stash cartridges create"
+        args="<title> [--public/--private] [--discover] [--items JSON]"
+        description="Create a Cartridge. Pass --items as JSON to attach resources up front."
+        params={[
+          { name: "<title>", type: "string", desc: "Cartridge title.", required: true },
+          { name: "--public/--private", type: "flag", desc: "Visibility. --public mints a shareable link." },
+          { name: "--discover", type: "flag", desc: "List a public Cartridge in the Discover catalog (requires --public)." },
+          { name: "--items", type: "JSON", desc: 'Items as a JSON array of {object_type, object_id}.' },
+          { name: "--ws", type: "string", desc: "Workspace ID override." },
+        ]}
+      />
+
+      <CommandRef
+        command="stash cartridges members"
+        args="<cartridge_id>"
+        description="List the people granted access to a Cartridge."
+        params={[
+          { name: "<cartridge_id>", type: "string", desc: "ID of the Cartridge.", required: true },
+        ]}
+      />
+
+      <CommandRef
+        command="stash cartridges add-member"
+        args="<cartridge_id> <user_id> [--permission read]"
+        description="Grant a user access to a Cartridge."
+        params={[
+          { name: "<cartridge_id>", type: "string", desc: "ID of the Cartridge.", required: true },
+          { name: "<user_id>", type: "string", desc: "The user to grant access.", required: true },
+          { name: "--permission", type: "string", desc: "read | write | admin. Defaults to read." },
+        ]}
+      />
+
+      <CommandRef
+        command="stash cartridges remove-member"
+        args="<cartridge_id> <user_id>"
+        description="Revoke a user's access to a Cartridge."
+        params={[
+          { name: "<cartridge_id>", type: "string", desc: "ID of the Cartridge.", required: true },
+          { name: "<user_id>", type: "string", desc: "The user to revoke.", required: true },
+        ]}
+      />
+
+      <CommandRef
+        command="stash cartridges invites"
+        args=""
+        description="List Cartridge invites pending for you — Cartridges shared with you, awaiting accept or dismiss."
+        params={[]}
+      />
+
+      <CommandRef
+        command="stash cartridges dismiss-invite"
+        args="<invite_id>"
+        description="Dismiss a pending Cartridge invite."
+        params={[
+          { name: "<invite_id>", type: "string", desc: "ID of the pending invite.", required: true },
+        ]}
+      />
+
+      <CommandRef
+        command="stash cartridges snapshot-source"
+        args="<cartridge_id> --source ID --path PATH [--ws ID]"
+        description="Copy a point-in-time snapshot of one connected-source document into the Cartridge as a page, so the bundle stays self-contained."
+        params={[
+          { name: "<cartridge_id>", type: "string", desc: "ID of the Cartridge.", required: true },
+          { name: "--source", type: "string", desc: "Connected-source id (from stash sources ls).", required: true },
+          { name: "--path", type: "string", desc: "Document path within the source.", required: true },
+          { name: "--ws", type: "string", desc: "Workspace ID override." },
+        ]}
+      />
+
+      <CommandRef
+        command="stash cartridges add-external"
+        args="<slug> [--ws ID]"
+        description="Fork a public Cartridge into a workspace by its slug."
+        params={[
+          { name: "<slug>", type: "string", desc: "Public Cartridge slug.", required: true },
+          { name: "--ws", type: "string", desc: "Workspace ID override." },
+        ]}
+      />
+
+      <CommandRef
+        command="stash cartridges delete"
+        args="<cartridge_id>"
+        description="Delete a Cartridge."
+        params={[
+          { name: "<cartridge_id>", type: "string", desc: "ID of the Cartridge.", required: true },
+        ]}
+      />
+
+      <H2>Shares</H2>
+      <P>
+        Share a single object — a folder, page, file, session, or table — with a specific person by
+        email. If they don&apos;t have an account yet the share is recorded as pending and converts
+        when they sign up. (To share a whole bundle, use a <strong>Cartridge</strong> above.)
+      </P>
+
+      <CommandRef
+        command="stash shares ls"
+        args="<object_type> <object_id>"
+        description="List who an object is shared with."
+        params={[
+          { name: "<object_type>", type: "string", desc: "folder | page | file | session | table.", required: true },
+          { name: "<object_id>", type: "string", desc: "ID of the object.", required: true },
+        ]}
+      />
+
+      <CommandRef
+        command="stash shares add"
+        args="<object_type> <object_id> <email> [--permission read]"
+        description="Share an object with a person by email."
+        params={[
+          { name: "<object_type>", type: "string", desc: "folder | page | file | session | table.", required: true },
+          { name: "<object_id>", type: "string", desc: "ID of the object.", required: true },
+          { name: "<email>", type: "string", desc: "Recipient email (pending until they sign up).", required: true },
+          { name: "--permission", type: "string", desc: "read | write | admin. Defaults to read." },
+        ]}
+      />
+
+      <CommandRef
+        command="stash shares rm"
+        args="<object_type> <object_id> <principal_id> [--principal-type user]"
+        description="Revoke a person's access to an object."
+        params={[
+          { name: "<object_type>", type: "string", desc: "folder | page | file | session | table.", required: true },
+          { name: "<object_id>", type: "string", desc: "ID of the object.", required: true },
+          { name: "<principal_id>", type: "string", desc: "The user id to revoke (from stash shares ls).", required: true },
+          { name: "--principal-type", type: "string", desc: 'Principal kind. Defaults to "user".' },
         ]}
       />
 

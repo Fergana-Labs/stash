@@ -29,10 +29,8 @@ celery = Celery(
         "backend.tasks.session_titles",
         "backend.tasks.viz",
         "backend.tasks.demo_janitor",
-        "backend.integrations.github.importers.repo",
-        "backend.integrations.google.importers.drive_file",
+        "backend.tasks.sources",
         "backend.integrations.google.exporters.slides",
-        "backend.integrations.notion.importers.resource",
         "backend.exports.pdf",
         "backend.exports.pptx",
     ],
@@ -79,6 +77,10 @@ celery.conf.update(
         "demo-janitor-purge-orphans": {
             "task": "backend.tasks.demo_janitor.purge_orphans",
             "schedule": 3600.0,
+        },
+        "sources-reconcile-due": {
+            "task": "backend.tasks.sources.reconcile_due",
+            "schedule": 120.0,
         },
     },
 )

@@ -3,6 +3,7 @@ import type { SessionSummary } from "./api";
 import {
   groupSessionsByAgent,
   groupSessionsByDayAndUser,
+  groupSessionsByFolder,
   groupSessionsByLinearTicket,
   groupSessionsByUser,
   requireSessionUserName,
@@ -21,6 +22,8 @@ function session(fields: Partial<SessionSummary> & { session_id: string }): Sess
     event_count: fields.event_count ?? 1,
     started_at: fields.started_at ?? "2026-05-14T09:00:00Z",
     last_event_at: fields.last_event_at ?? fields.started_at ?? "2026-05-14T09:00:00Z",
+    session_folder_id: fields.session_folder_id ?? null,
+    session_folder_name: fields.session_folder_name ?? null,
   };
 }
 
@@ -139,5 +142,38 @@ describe("groupSessionsByLinearTicket", () => {
       "Unlabeled",
     ]);
     expect(grouped[0].count).toBe(2);
+  });
+});
+
+describe("groupSessionsByFolder", () => {
+  it("lists every folder (even empty), keys on folder id, and trails Unfiled", () => {
+    const folders = [
+      { id: "f-launch", name: "Launch" },
+      { id: "f-empty", name: "Empty" },
+    ];
+    const grouped = groupSessionsByFolder(
+      [
+        session({ session_id: "a", session_folder_id: "f-launch" }),
+        session({ session_id: "b" }), // no folder → Unfiled
+      ],
+      folders,
+    );
+    // Folders alphabetical, then Unfiled last.
+    expect(grouped.map((g) => g.label)).toEqual(["Empty", "Launch", "Unfiled"]);
+    expect(grouped.find((g) => g.key === "f-empty")!.count).toBe(0);
+    expect(grouped.find((g) => g.key === "f-launch")!.sessions.map((s) => s.session_id)).toEqual([
+      "a",
+    ]);
+    expect(grouped.find((g) => g.key === "__unfiled__")!.sessions.map((s) => s.session_id)).toEqual(
+      ["b"],
+    );
+  });
+
+  it("omits Unfiled when every session is filed", () => {
+    const grouped = groupSessionsByFolder(
+      [session({ session_id: "a", session_folder_id: "f1" })],
+      [{ id: "f1", name: "F1" }],
+    );
+    expect(grouped.map((g) => g.key)).toEqual(["f1"]);
   });
 });

@@ -124,7 +124,7 @@ function Card({ stash }: { stash: PublicStashCard }) {
 
   return (
     <Link
-      href={`${APP_URL}/stashes/${stash.slug}`}
+      href={`${APP_URL}/cartridges/${stash.slug}`}
       className="group flex flex-col rounded-xl border border-border-subtle bg-raised/40 p-5 transition hover:border-ink"
     >
       <Cover stash={stash} />

@@ -9,7 +9,7 @@ export type StashPreviewItem = {
 };
 
 export type StashPreviewData = {
-  stash: {
+  cartridge: {
     id: string;
     workspace_id: string;
     slug: string;
@@ -33,7 +33,7 @@ export type PreviewLine = {
 };
 
 export type PreviewCard = {
-  kind: "stash" | StashItemType;
+  kind: "cartridge" | StashItemType;
   title: string;
   description: string;
   workspaceName: string;
@@ -72,11 +72,11 @@ export function findStashItem(
 }
 
 export function stashMetadataTitle(data: StashPreviewData): string {
-  return `${data.stash.title} - Stash`;
+  return `${data.cartridge.title} - Stash`;
 }
 
 export function stashMetadataDescription(data: StashPreviewData): string {
-  const description = cleanText(data.stash.description);
+  const description = cleanText(data.cartridge.description);
   if (description) return truncateText(description, 220);
 
   const itemCount = data.items.length;
@@ -91,7 +91,7 @@ export function itemMetadataTitle(
   item: StashPreviewItem,
 ): string {
   const label = item.label || formatItemType(item.object_type);
-  return `${label} - ${data.stash.title} - Stash`;
+  return `${label} - ${data.cartridge.title} - Stash`;
 }
 
 export function itemMetadataDescription(
@@ -99,7 +99,7 @@ export function itemMetadataDescription(
   item: StashPreviewItem,
 ): string {
   const summary = itemSummary(item);
-  const prefix = `${formatItemType(item.object_type)} in ${data.stash.title}`;
+  const prefix = `${formatItemType(item.object_type)} in ${data.cartridge.title}`;
   return truncateText(summary ? `${prefix}: ${summary}` : prefix, 220);
 }
 
@@ -125,16 +125,16 @@ export function buildStashPreviewCard(data: StashPreviewData): PreviewCard {
   const lines = data.items.slice(0, 4).map(itemPreviewLine);
 
   return {
-    kind: "stash",
-    title: data.stash.title,
+    kind: "cartridge",
+    title: data.cartridge.title,
     description,
     workspaceName: data.workspace_name,
-    stashTitle: data.stash.title,
+    stashTitle: data.cartridge.title,
     authorName: stashAuthorName(data),
-    updatedAt: data.stash.updated_at ?? null,
-    coverImageUrl: data.stash.cover_image_url ?? null,
-    iconUrl: data.stash.icon_url ?? null,
-    contentBadge: "STASH",
+    updatedAt: data.cartridge.updated_at ?? null,
+    coverImageUrl: data.cartridge.cover_image_url ?? null,
+    iconUrl: data.cartridge.icon_url ?? null,
+    contentBadge: "CARTRIDGE",
     bodyTitle: data.items.length > 0 ? "Contents" : "No items yet",
     bodyText: description,
     stats,
@@ -153,15 +153,15 @@ export function buildItemPreviewCard(
     title: label,
     description: itemMetadataDescription(data, item),
     workspaceName: data.workspace_name,
-    stashTitle: data.stash.title,
+    stashTitle: data.cartridge.title,
     authorName: stashAuthorName(data),
-    updatedAt: itemUpdatedAt(item) ?? data.stash.updated_at ?? null,
-    coverImageUrl: data.stash.cover_image_url ?? null,
-    iconUrl: data.stash.icon_url ?? null,
+    updatedAt: itemUpdatedAt(item) ?? data.cartridge.updated_at ?? null,
+    coverImageUrl: data.cartridge.cover_image_url ?? null,
+    iconUrl: data.cartridge.icon_url ?? null,
     contentBadge: itemContentBadge(item),
     bodyTitle: body.title,
     bodyText: body.text,
-    stats: [data.workspace_name, data.stash.title, formatItemType(item.object_type)],
+    stats: [data.workspace_name, data.cartridge.title, formatItemType(item.object_type)],
     lines: itemPreviewLines(item),
   };
 }
@@ -550,7 +550,7 @@ function cleanText(text: string): string {
 }
 
 function stashAuthorName(data: StashPreviewData): string {
-  return data.stash.owner_display_name || data.stash.owner_name || "";
+  return data.cartridge.owner_display_name || data.cartridge.owner_name || "";
 }
 
 function truncateText(text: string, limit: number): string {

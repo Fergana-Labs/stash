@@ -9,7 +9,7 @@ import {
   ApiError,
   getFile,
   getFolderContents,
-  getPublicStash,
+  getPublicCartridge,
   ingestCsvFile,
   ingestXlsxFile,
   trashItem,
@@ -73,8 +73,8 @@ function FileViewerPageInner() {
   useBreadcrumbs(
     readOnly
       ? [
-          { label: "Stashes", href: "/stashes" },
-          { label: stashTitle ?? "Stash", href: stashSlug ? `/stashes/${stashSlug}` : "/stashes" },
+          { label: "Cartridges", href: "/cartridges" },
+          { label: stashTitle ?? "Cartridge", href: stashSlug ? `/cartridges/${stashSlug}` : "/cartridges" },
           { label: file ? file.name : "File" },
         ]
       : [
@@ -90,8 +90,8 @@ function FileViewerPageInner() {
   const loadStashFallback = useCallback(async () => {
     if (!stashSlug) return false;
     try {
-      const stash = await getPublicStash(stashSlug);
-      setStashTitle(stash.stash.title);
+      const stash = await getPublicCartridge(stashSlug);
+      setStashTitle(stash.cartridge.title);
       const item = stash.items.find(
         (it) => it.object_type === "file" && it.object_id === fileId
       );
@@ -108,13 +108,13 @@ function FileViewerPageInner() {
       };
       const synth: FileInfo = {
         id: fileId,
-        workspace_id: stash.stash.workspace_id,
+        workspace_id: stash.cartridge.workspace_id,
         folder_id: null,
         name: inline.name ?? item.label,
         content_type: inline.content_type ?? "",
         size_bytes: inline.size_bytes ?? 0,
         url: inline.url ?? "",
-        app_url: `/workspaces/${stash.stash.workspace_id}/f/${fileId}?stash=${stashSlug}`,
+        app_url: `/workspaces/${stash.cartridge.workspace_id}/f/${fileId}?stash=${stashSlug}`,
         uploaded_by: "",
         created_at: inline.created_at ?? "",
       };
@@ -236,7 +236,7 @@ function FileViewerPageInner() {
           }
           readOnly={readOnly}
           readOnlyLabel="read-only · via Stash"
-          backLink={readOnly && stashSlug ? { label: stashTitle ?? "Stash", href: `/stashes/${stashSlug}` } : undefined}
+          backLink={readOnly && stashSlug ? { label: stashTitle ?? "Stash", href: `/cartridges/${stashSlug}` } : undefined}
           tags={tags}
           meta={meta}
           downloadOptions={

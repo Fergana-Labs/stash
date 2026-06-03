@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Header from "../../components/Header";
 import IntegrationsSettings from "../../components/integrations/IntegrationsSettings";
+import WorkspaceSection from "../../components/settings/WorkspaceSection";
 import { AccountSettingsSkeleton, ApiKeysSkeleton } from "../../components/SkeletonStates";
 import { useAuth } from "../../hooks/useAuth";
 import {
@@ -44,12 +45,13 @@ export default function SettingsPage() {
             <span aria-hidden>←</span> Home
           </button>
           <div>
-            <h1 className="text-2xl font-semibold text-foreground">Account settings</h1>
+            <h1 className="text-2xl font-semibold text-foreground">Settings</h1>
             <p className="text-sm text-muted mt-1">
-              Update your profile, manage active sessions, and change your password.
+              Your profile and workspace, connected sources, sessions, and password.
             </p>
           </div>
           <Profile user={user} onUpdated={refresh} />
+          <WorkspaceSection />
           <IntegrationsSettings embedded />
           <ActiveSessions />
           {!AUTH0_ENABLED && <ChangePassword />}

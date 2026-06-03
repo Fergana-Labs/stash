@@ -257,30 +257,30 @@ def readable_session_event_condition(event_alias: str, user_arg: int) -> str:
               AND (
                 NOT EXISTS (
                   SELECT 1
-                  FROM stash_items session_stash_item
-                  WHERE session_stash_item.object_type = 'session'
-                    AND session_stash_item.object_id = readable_session.id
+                  FROM cartridge_items session_cartridge_item
+                  WHERE session_cartridge_item.object_type = 'session'
+                    AND session_cartridge_item.object_id = readable_session.id
                 )
                 OR EXISTS (
                   SELECT 1
-                  FROM stash_items session_stash_item
-                  JOIN stashes session_stash ON session_stash.id = session_stash_item.stash_id
+                  FROM cartridge_items session_cartridge_item
+                  JOIN cartridges session_cartridge ON session_cartridge.id = session_cartridge_item.cartridge_id
                   LEFT JOIN workspace_members session_workspace_member
-                    ON session_workspace_member.workspace_id = session_stash.workspace_id
+                    ON session_workspace_member.workspace_id = session_cartridge.workspace_id
                    AND session_workspace_member.user_id = ${user_arg}
-                  LEFT JOIN stash_members session_stash_member
-                    ON session_stash_member.stash_id = session_stash.id
-                   AND session_stash_member.user_id = ${user_arg}
-                  WHERE session_stash_item.object_type = 'session'
-                    AND session_stash_item.object_id = readable_session.id
+                  LEFT JOIN cartridge_members session_cartridge_member
+                    ON session_cartridge_member.cartridge_id = session_cartridge.id
+                   AND session_cartridge_member.user_id = ${user_arg}
+                  WHERE session_cartridge_item.object_type = 'session'
+                    AND session_cartridge_item.object_id = readable_session.id
                     AND (
-                      session_stash.public_permission != 'none'
+                      session_cartridge.public_permission != 'none'
                       OR (
-                        session_stash.workspace_permission != 'none'
+                        session_cartridge.workspace_permission != 'none'
                         AND session_workspace_member.user_id IS NOT NULL
                       )
-                      OR session_stash.owner_id = ${user_arg}
-                      OR session_stash_member.user_id IS NOT NULL
+                      OR session_cartridge.owner_id = ${user_arg}
+                      OR session_cartridge_member.user_id IS NOT NULL
                     )
                 )
               )
@@ -527,6 +527,31 @@ async def search_workspace_events(
         "ORDER BY rank DESC LIMIT $3",
         workspace_id,
         query,
+        limit,
+        user_id,
+    )
+    return [dict(r) for r in rows]
+
+
+async def recent_workspace_events(
+    workspace_id: UUID,
+    user_id: UUID,
+    days: int = 7,
+    limit: int = 20,
+) -> list[dict]:
+    """Most recent readable events in a window — the temporal counterpart to
+    full-text search, for "what was I working on lately" questions."""
+    pool = get_pool()
+    limit = min(limit, 100)
+    rows = await pool.fetch(
+        "SELECT id, agent_name, event_type, session_id, tool_name, content, created_at "
+        "FROM history_events "
+        "WHERE workspace_id = $1 "
+        f"AND {readable_session_event_condition('history_events', 4)} "
+        "AND created_at >= now() - ($2 || ' days')::interval "
+        "ORDER BY created_at DESC LIMIT $3",
+        workspace_id,
+        str(days),
         limit,
         user_id,
     )

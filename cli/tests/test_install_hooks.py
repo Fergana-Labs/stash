@@ -29,7 +29,7 @@ CURSOR_TEMPLATE = json.dumps(
 )
 
 
-def _stash_entry(plugin_root: str) -> dict:
+def _cartridge_entry(plugin_root: str) -> dict:
     return {
         "command": f"bash {plugin_root}/scripts/_run.sh on_session_start",
         "timeout": 5,
@@ -53,8 +53,8 @@ def test_merge_sweeps_stale_entries_from_other_roots(tmp_path: Path) -> None:
     _write_hooks(
         dest,
         [
-            _stash_entry(octopus_root),
-            _stash_entry(disco_root),
+            _cartridge_entry(octopus_root),
+            _cartridge_entry(disco_root),
             user_entry,
         ],
     )

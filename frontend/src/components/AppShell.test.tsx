@@ -12,7 +12,7 @@ import AppShell from "./AppShell";
 import { BreadcrumbProvider, useBreadcrumbs } from "./BreadcrumbContext";
 import { ShellChromeProvider, useShareAction } from "./ShellChromeContext";
 import { ShareModalProvider } from "../lib/shareModalContext";
-import { getSessionDetail, publishStash } from "../lib/api";
+import { getSessionDetail, publishCartridge } from "../lib/api";
 import {
   getCachedWorkspaces,
   readCachedWorkspaces,
@@ -55,7 +55,7 @@ vi.mock("../lib/stashNavigationCache", () => ({
 
 vi.mock("../lib/api", () => ({
   getSessionDetail: vi.fn(),
-  publishStash: vi.fn(),
+  publishCartridge: vi.fn(),
 }));
 
 vi.mock("./AppSidebar", () => ({
@@ -76,7 +76,7 @@ vi.mock("./CommandPalette", () => ({
   },
 }));
 
-vi.mock("./StashInviteCenter", () => ({
+vi.mock("./CartridgeInviteCenter", () => ({
   default: () => <button aria-label="Stash invites">Invites</button>,
 }));
 
@@ -133,8 +133,8 @@ describe("AppShell sidebar collapse", () => {
       configurable: true,
       value: { writeText: vi.fn().mockResolvedValue(undefined) },
     });
-    vi.mocked(publishStash).mockResolvedValue(
-      publishedStashResult("shared-link"),
+    vi.mocked(publishCartridge).mockResolvedValue(
+      publishedCartridgeResult("shared-link"),
     );
     vi.mocked(readCachedWorkspaces).mockReturnValue({
       userId: user.id,
@@ -207,7 +207,7 @@ describe("AppShell sidebar collapse", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Share" }));
 
     await waitFor(() =>
-      expect(publishStash).toHaveBeenCalledWith(
+      expect(publishCartridge).toHaveBeenCalledWith(
         "ws-1",
         "Shared page",
         [
@@ -222,7 +222,7 @@ describe("AppShell sidebar collapse", () => {
       ),
     );
     expect(navigator.clipboard.writeText).toHaveBeenCalledWith(
-      "https://app.joinstash.ai/stashes/shared-link",
+      "https://app.joinstash.ai/cartridges/shared-link",
     );
   });
 
@@ -255,7 +255,7 @@ describe("AppShell sidebar collapse", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Share" }));
 
     await waitFor(() =>
-      expect(publishStash).toHaveBeenCalledWith(
+      expect(publishCartridge).toHaveBeenCalledWith(
         "ws-1",
         "Debug auth flow",
         [
@@ -271,7 +271,7 @@ describe("AppShell sidebar collapse", () => {
     );
     expect(getSessionDetail).toHaveBeenCalledWith("ws-1", "session-route-id");
     expect(navigator.clipboard.writeText).toHaveBeenCalledWith(
-      "https://app.joinstash.ai/stashes/shared-link",
+      "https://app.joinstash.ai/cartridges/shared-link",
     );
   });
 
@@ -315,29 +315,11 @@ describe("AppShell sidebar collapse", () => {
     expect(
       screen.queryByRole("button", { name: "Share" }),
     ).not.toBeInTheDocument();
-    expect(publishStash).not.toHaveBeenCalled();
-  });
-
-  it("hides the default Share action on the workspace members route", async () => {
-    nav.pathname = "/workspaces/ws-1/members";
-    mockWorkspaceCache();
-
-    render(
-      <ShareModalProvider>
-        <AppShell user={user} onLogout={vi.fn()}>
-          <div>Members content</div>
-        </AppShell>
-      </ShareModalProvider>,
-    );
-
-    await screen.findByText("Members content");
-    expect(
-      screen.queryByRole("button", { name: "Share" }),
-    ).not.toBeInTheDocument();
+    expect(publishCartridge).not.toHaveBeenCalled();
   });
 
   it("renders a custom header Share action outside workspace routes", async () => {
-    nav.pathname = "/stashes/shared-stash";
+    nav.pathname = "/cartridges/shared-stash";
     mockWorkspaceCache();
 
     function PageWithShareAction() {
@@ -397,9 +379,9 @@ describe("AppShell sidebar collapse", () => {
   });
 });
 
-function publishedStashResult(slug: string) {
+function publishedCartridgeResult(slug: string) {
   return {
-    stash: {
+    cartridge: {
       id: "stash-1",
       workspace_id: "ws-1",
       slug,
@@ -418,12 +400,12 @@ function publishedStashResult(slug: string) {
       items: [],
       is_external: false,
       added_to_workspace_id: null,
-      forked_from_stash_id: null,
+      forked_from_cartridge_id: null,
       created_at: "2026-05-11T00:00:00Z",
       updated_at: "2026-05-11T00:00:00Z",
     },
-    url: `https://app.joinstash.ai/stashes/${slug}`,
-    stash_id: "stash-1",
-    stash_slug: slug,
+    url: `https://app.joinstash.ai/cartridges/${slug}`,
+    cartridge_id: "stash-1",
+    cartridge_slug: slug,
   };
 }

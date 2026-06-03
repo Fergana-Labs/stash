@@ -17,7 +17,7 @@ from ..models import (
     HistoryEventListResponse,
     HistoryEventResponse,
 )
-from ..services import memory_service, stash_service, workspace_service
+from ..services import cartridge_service, memory_service, workspace_service
 from ..tasks.session_titles import generate_session_title
 
 ws_router = APIRouter(prefix="/api/v1/workspaces/{workspace_id}/sessions", tags=["sessions"])
@@ -56,10 +56,10 @@ async def push_ws_event(
         attachments=attachments,
         created_at=req.created_at,
     )
-    if req.default_stash_id and req.session_id:
+    if req.default_cartridge_id and req.session_id:
         try:
-            await stash_service.add_sessions_to_stash(
-                stash_id=req.default_stash_id,
+            await cartridge_service.add_sessions_to_cartridge(
+                cartridge_id=req.default_cartridge_id,
                 workspace_id=workspace_id,
                 user_id=current_user["id"],
                 session_ids=[req.session_id],
@@ -80,11 +80,11 @@ async def push_ws_events_batch(
     await _check_member(workspace_id, current_user["id"])
     events_data = [e.model_dump() for e in req.events]
     events = await memory_service.push_events_batch(workspace_id, current_user["id"], events_data)
-    if req.default_stash_id:
+    if req.default_cartridge_id:
         session_ids = sorted({event.session_id for event in req.events if event.session_id})
         try:
-            await stash_service.add_sessions_to_stash(
-                stash_id=req.default_stash_id,
+            await cartridge_service.add_sessions_to_cartridge(
+                cartridge_id=req.default_cartridge_id,
                 workspace_id=workspace_id,
                 user_id=current_user["id"],
                 session_ids=session_ids,

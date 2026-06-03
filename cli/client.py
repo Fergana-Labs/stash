@@ -9,7 +9,7 @@ from pathlib import Path
 import httpx
 
 
-class StashError(Exception):
+class CartridgeError(Exception):
     def __init__(self, status_code: int, detail):
         self.status_code = status_code
         self.detail = detail
@@ -26,7 +26,7 @@ def stash_permissions_for_access(access: str) -> dict[str, str]:
     raise ValueError("access must be public, workspace, or private")
 
 
-class StashClient:
+class CartridgeClient:
     def __init__(self, base_url: str, api_key: str = ""):
         self._base_url = base_url.rstrip("/")
         self._api_key = api_key
@@ -56,7 +56,7 @@ class StashClient:
                 detail = resp.json().get("detail", resp.text)
             except Exception:
                 detail = resp.text
-            raise StashError(resp.status_code, detail)
+            raise CartridgeError(resp.status_code, detail)
         return resp
 
     def _get(self, path: str, **params) -> dict | list:
@@ -147,14 +147,14 @@ class StashClient:
         params: dict = {"sort": sort}
         if query:
             params["q"] = query
-        return self._get("/api/v1/discover/stashes", **params)
+        return self._get("/api/v1/discover/cartridges", **params)
 
-    # --- Stashes (publishable subsets) ---
+    # --- Cartridges (publishable subsets) ---
 
     def list_stashes(self, workspace_id: str) -> list:
-        return self._list(f"/api/v1/workspaces/{workspace_id}/stashes", "stashes")
+        return self._list(f"/api/v1/workspaces/{workspace_id}/cartridges", "cartridges")
 
-    def create_stash(
+    def create_cartridge(
         self,
         workspace_id: str,
         title: str,
@@ -165,7 +165,7 @@ class StashClient:
         items: list | None = None,
     ) -> dict:
         return self._post(
-            f"/api/v1/workspaces/{workspace_id}/stashes",
+            f"/api/v1/workspaces/{workspace_id}/cartridges",
             json={
                 "title": title,
                 "description": description,
@@ -176,7 +176,7 @@ class StashClient:
             },
         )
 
-    def publish_stash(
+    def publish_cartridge(
         self,
         workspace_id: str,
         title: str,
@@ -186,7 +186,7 @@ class StashClient:
     ) -> dict:
         """Create a public Stash in one atomic call."""
         return self._post(
-            f"/api/v1/workspaces/{workspace_id}/stashes/publish",
+            f"/api/v1/workspaces/{workspace_id}/cartridges/publish",
             json={
                 "title": title,
                 "description": description,
@@ -197,27 +197,107 @@ class StashClient:
             },
         )
 
-    def update_stash(self, stash_id: str, **fields) -> dict:
-        return self._patch(f"/api/v1/stashes/{stash_id}", json=fields)
+    def update_cartridge(self, cartridge_id: str, **fields) -> dict:
+        return self._patch(f"/api/v1/cartridges/{cartridge_id}", json=fields)
 
-    def delete_stash(self, stash_id: str) -> None:
-        self._delete(f"/api/v1/stashes/{stash_id}")
+    def delete_cartridge(self, cartridge_id: str) -> None:
+        self._delete(f"/api/v1/cartridges/{cartridge_id}")
 
-    def add_external_stash(self, slug: str, workspace_id: str) -> dict:
+    def add_external_cartridge(self, slug: str, workspace_id: str) -> dict:
         return self._post(
-            f"/api/v1/stashes/{slug}/add-to-workspace",
+            f"/api/v1/cartridges/{slug}/add-to-workspace",
             json={"workspace_id": workspace_id},
         )
 
-    def remove_external_stash(self, workspace_id: str, stash_id: str) -> None:
-        self._delete(f"/api/v1/workspaces/{workspace_id}/external-stashes/{stash_id}")
+    def remove_external_cartridge(self, workspace_id: str, cartridge_id: str) -> None:
+        self._delete(f"/api/v1/workspaces/{workspace_id}/external-cartridges/{cartridge_id}")
 
-    def get_public_stash(self, slug: str) -> dict:
-        return self._get(f"/api/v1/stashes/{slug}")
+    def get_public_cartridge(self, slug: str) -> dict:
+        return self._get(f"/api/v1/cartridges/{slug}")
 
-    def get_stash_text(self, slug: str) -> str:
-        resp = self._request("GET", f"/api/v1/stashes/{slug}", params={"format": "text"})
+    def get_cartridge_text(self, slug: str) -> str:
+        resp = self._request("GET", f"/api/v1/cartridges/{slug}", params={"format": "text"})
         return resp.text
+
+    def snapshot_source_into_cartridge(
+        self, workspace_id: str, cartridge_id: str, source_id: str, path: str
+    ) -> dict:
+        return self._post(
+            f"/api/v1/workspaces/{workspace_id}/cartridges/{cartridge_id}/snapshot-source",
+            json={"source_id": source_id, "path": path},
+        )
+
+    # --- Cartridge members (per-person access on a cartridge) ---
+
+    def list_cartridge_members(self, cartridge_id: str) -> list:
+        return self._list(f"/api/v1/cartridges/{cartridge_id}/members", "members")
+
+    def add_cartridge_member(
+        self, cartridge_id: str, user_id: str, permission: str = "read"
+    ) -> dict:
+        return self._post(
+            f"/api/v1/cartridges/{cartridge_id}/members",
+            json={"user_id": user_id, "permission": permission},
+        )
+
+    def remove_cartridge_member(self, cartridge_id: str, user_id: str) -> None:
+        self._delete(f"/api/v1/cartridges/{cartridge_id}/members/{user_id}")
+
+    # --- Cartridge invites (pending invites awaiting the current user) ---
+
+    def list_cartridge_invites(self) -> list:
+        return self._list("/api/v1/cartridge-invites", "invites")
+
+    def dismiss_cartridge_invite(self, invite_id: str) -> None:
+        self._post(f"/api/v1/cartridge-invites/{invite_id}/dismiss")
+
+    # --- Object sharing (grant a person access to a folder/file/session by email) ---
+
+    def share_object(
+        self, object_type: str, object_id: str, email: str, permission: str = "read"
+    ) -> dict:
+        return self._post(
+            "/api/v1/share",
+            json={
+                "object_type": object_type,
+                "object_id": object_id,
+                "email": email,
+                "permission": permission,
+            },
+        )
+
+    def unshare_object(
+        self, object_type: str, object_id: str, principal_type: str, principal_id: str
+    ) -> None:
+        self._request(
+            "DELETE",
+            "/api/v1/share",
+            json={
+                "object_type": object_type,
+                "object_id": object_id,
+                "principal_type": principal_type,
+                "principal_id": principal_id,
+            },
+        )
+
+    def list_object_shares(self, object_type: str, object_id: str) -> list:
+        return self._list("/api/v1/share", "shares", object_type=object_type, object_id=object_id)
+
+    # --- Session folders (shareable grouping for sessions) ---
+
+    def list_session_folders(self, workspace_id: str) -> list:
+        return self._list(f"/api/v1/workspaces/{workspace_id}/session-folders", "folders")
+
+    def create_session_folder(self, workspace_id: str, name: str) -> dict:
+        return self._post(f"/api/v1/workspaces/{workspace_id}/session-folders", json={"name": name})
+
+    def assign_session_folder(
+        self, workspace_id: str, session_row_id: str, folder_id: str | None = None
+    ) -> dict:
+        return self._post(
+            f"/api/v1/workspaces/{workspace_id}/session-folders/assign",
+            json={"session_row_id": session_row_id, "folder_id": folder_id},
+        )
 
     # --- Magic-link invite tokens ---
 
@@ -251,7 +331,7 @@ class StashClient:
                 detail = resp.json().get("detail", resp.text)
             except Exception:
                 detail = resp.text
-            raise StashError(resp.status_code, detail)
+            raise CartridgeError(resp.status_code, detail)
         return resp.json()
 
     # --- Aggregate ---
@@ -332,14 +412,6 @@ class StashClient:
     def list_pages(self, workspace_id: str) -> list:
         return self._list(f"/api/v1/workspaces/{workspace_id}/pages", "pages")
 
-    def search_pages(self, workspace_id: str, query: str, limit: int = 20) -> list:
-        return self._list(
-            f"/api/v1/workspaces/{workspace_id}/pages/search",
-            "pages",
-            q=query,
-            limit=limit,
-        )
-
     def get_page(self, workspace_id: str, page_id: str) -> dict:
         return self._get(f"/api/v1/workspaces/{workspace_id}/pages/{page_id}")
 
@@ -371,7 +443,7 @@ class StashClient:
         event_type: str,
         content: str,
         session_id: str | None = None,
-        default_stash_id: str | None = None,
+        default_cartridge_id: str | None = None,
         tool_name: str | None = None,
         metadata: dict | None = None,
         attachments: list[dict] | None = None,
@@ -380,8 +452,8 @@ class StashClient:
         body: dict = {"agent_name": agent_name, "event_type": event_type, "content": content}
         if session_id:
             body["session_id"] = session_id
-        if default_stash_id:
-            body["default_stash_id"] = default_stash_id
+        if default_cartridge_id:
+            body["default_cartridge_id"] = default_cartridge_id
         if tool_name:
             body["tool_name"] = tool_name
         if metadata:
@@ -413,14 +485,6 @@ class StashClient:
             params["before"] = before
         return self._list(f"/api/v1/workspaces/{workspace_id}/sessions/events", "events", **params)
 
-    def search_events(self, workspace_id: str, query: str, limit: int = 50) -> list:
-        return self._list(
-            f"/api/v1/workspaces/{workspace_id}/sessions/events/search",
-            "events",
-            q=query,
-            limit=limit,
-        )
-
     def all_events(
         self,
         agent_name: str | None = None,
@@ -445,11 +509,11 @@ class StashClient:
         self,
         workspace_id: str,
         events: list[dict],
-        default_stash_id: str | None = None,
+        default_cartridge_id: str | None = None,
     ) -> list:
         body: dict = {"events": events}
-        if default_stash_id:
-            body["default_stash_id"] = default_stash_id
+        if default_cartridge_id:
+            body["default_cartridge_id"] = default_cartridge_id
         return self._post(
             f"/api/v1/workspaces/{workspace_id}/sessions/events/batch",
             json=body,
@@ -462,7 +526,7 @@ class StashClient:
         transcript_path: str | Path,
         agent_name: str,
         cwd: str = "",
-        default_stash_id: str | None = None,
+        default_cartridge_id: str | None = None,
         replace: bool = False,
     ) -> dict:
         import gzip as _gzip
@@ -481,7 +545,7 @@ class StashClient:
                 "agent_name": agent_name,
                 "cwd": cwd,
                 "replace": str(replace).lower(),
-                **({"default_stash_id": default_stash_id} if default_stash_id else {}),
+                **({"default_cartridge_id": default_cartridge_id} if default_cartridge_id else {}),
             },
             files={"file": (name, body, "application/gzip")},
             timeout=120,
@@ -537,6 +601,47 @@ class StashClient:
             "GET",
             f"/api/v1/workspaces/{workspace_id}/files/{file_id}/download",
         ).content
+
+    # --- Sources (unified VFS: native files/sessions + connected sources) ---
+
+    def list_sources(self, workspace_id: str) -> list:
+        return self._list(f"/api/v1/workspaces/{workspace_id}/sources", "sources")
+
+    def add_source(
+        self,
+        workspace_id: str,
+        source_type: str,
+        external_ref: str | None = None,
+        display_name: str | None = None,
+    ) -> dict:
+        body: dict = {"source_type": source_type}
+        if external_ref:
+            body["external_ref"] = external_ref
+        if display_name:
+            body["display_name"] = display_name
+        return self._post(f"/api/v1/workspaces/{workspace_id}/sources", json=body)
+
+    def sync_source(self, workspace_id: str, source_id: str) -> dict:
+        return self._post(f"/api/v1/workspaces/{workspace_id}/sources/{source_id}/sync")
+
+    def delete_source(self, workspace_id: str, source_id: str) -> None:
+        self._delete(f"/api/v1/workspaces/{workspace_id}/sources/{source_id}")
+
+    def list_source_entries(self, workspace_id: str, source: str, path: str = "") -> list:
+        return self._list(
+            f"/api/v1/workspaces/{workspace_id}/sources/{source}/entries", "entries", path=path
+        )
+
+    def read_source_doc(self, workspace_id: str, source: str, ref: str) -> dict:
+        return self._get(f"/api/v1/workspaces/{workspace_id}/sources/{source}/doc", ref=ref)
+
+    def search_sources(
+        self, workspace_id: str, query: str, source: str | None = None, limit: int = 20
+    ) -> list:
+        params: dict = {"q": query, "limit": limit}
+        if source:
+            params["source"] = source
+        return self._list(f"/api/v1/workspaces/{workspace_id}/sources/search", "results", **params)
 
     # --- Tables ---
 

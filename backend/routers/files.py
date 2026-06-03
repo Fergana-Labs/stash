@@ -293,7 +293,9 @@ async def get_ws_file(
     file_id: UUID,
     current_user: dict = Depends(get_current_user),
 ):
-    await _check_member(workspace_id, current_user["id"])
+    # No workspace-membership pre-gate: the readable_content_condition below
+    # already grants the owner (member), share grantees, and open-cartridge
+    # readers — and 404s everyone else.
     pool = get_pool()
     readable_file = permission_service.readable_content_condition("file", "f", 3)
     row = await pool.fetchrow(
@@ -378,7 +380,6 @@ async def update_ws_file(
     """Update a file. Supports rename (`name`) and reparent
     (`folder_id` / `move_to_root`). Any subset can be passed; an empty
     request returns the file unchanged."""
-    await _check_write(workspace_id, current_user["id"])
     pool = get_pool()
     file_row = await pool.fetchrow(
         "SELECT * FROM files WHERE id = $1 AND workspace_id = $2 AND deleted_at IS NULL",
@@ -415,6 +416,15 @@ async def update_ws_file(
         )
         if not owner or owner["workspace_id"] != workspace_id:
             raise HTTPException(status_code=404, detail="Folder not found")
+        can_write_folder = await permission_service.check_access(
+            "folder",
+            req.folder_id,
+            current_user["id"],
+            workspace_id=workspace_id,
+            require_write=True,
+        )
+        if not can_write_folder:
+            raise HTTPException(status_code=404, detail="Folder not found")
         params.append(req.folder_id)
         updates.append(f"folder_id = ${len(params)}")
 
@@ -441,7 +451,6 @@ async def delete_ws_file(
     """Soft delete: stamps deleted_at + deleted_by. Object storage blob stays
     so a restore is fully reversible. Use POST /restore to undo or DELETE
     /purge to wipe permanently."""
-    await _check_write(workspace_id, current_user["id"])
     if not await _can_access_file(file_id, workspace_id, current_user["id"], require_write=True):
         raise HTTPException(status_code=404, detail="File not found")
     trashed = await files_service.delete_file(file_id, workspace_id, current_user["id"])
@@ -455,7 +464,6 @@ async def restore_ws_file(
     file_id: UUID,
     current_user: dict = Depends(get_current_user),
 ):
-    await _check_write(workspace_id, current_user["id"])
     if not await _can_access_file(file_id, workspace_id, current_user["id"], require_write=True):
         raise HTTPException(status_code=404, detail="File not found")
     restored = await files_service.restore_file(file_id, workspace_id)
@@ -470,7 +478,6 @@ async def purge_ws_file(
     current_user: dict = Depends(get_current_user),
 ):
     """Permanent delete — only callable on a file already in trash."""
-    await _check_write(workspace_id, current_user["id"])
     if not await _can_access_file(file_id, workspace_id, current_user["id"], require_write=True):
         raise HTTPException(status_code=404, detail="File not found")
     row = await files_service.get_trashed_file(file_id, workspace_id)

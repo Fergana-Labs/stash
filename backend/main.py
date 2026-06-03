@@ -16,27 +16,31 @@ from .integrations.router import router as integrations_router
 from .middleware import limiter
 from .routers import (
     admin,
+    agent_chat,
     aggregate,
     analytics,
+    cartridge_invites,
+    cartridges,
     collab,
     demo,
     discover,
     exports,
     files,
     files_tree,
-    imports,
     memory,
     pins,
     publish,
+    session_folders,
     sessions,
+    shares,
     skill,
-    stash_invites,
-    stashes,
+    sources,
     tables,
     tasks,
     transcripts,
     trash,
     users,
+    webhooks,
     workspace_knowledge,
     workspaces,
 )
@@ -96,9 +100,9 @@ app.include_router(collab.router)
 app.include_router(workspaces.router)
 app.include_router(workspace_knowledge.router)
 app.include_router(discover.router)
-app.include_router(stash_invites.router)
-app.include_router(stashes.ws_router)
-app.include_router(stashes.public_router)
+app.include_router(cartridge_invites.router)
+app.include_router(cartridges.ws_router)
+app.include_router(cartridges.public_router)
 app.include_router(files_tree.router)
 app.include_router(memory.ws_router)
 app.include_router(tables.ws_router)
@@ -114,7 +118,11 @@ app.include_router(pins.router)
 app.include_router(publish.router)
 app.include_router(tasks.router)
 app.include_router(integrations_router)
-app.include_router(imports.router)
+app.include_router(sources.router)
+app.include_router(agent_chat.router)
+app.include_router(session_folders.router)
+app.include_router(shares.router)
+app.include_router(webhooks.router)
 app.include_router(exports.router)
 app.include_router(demo.router)
 

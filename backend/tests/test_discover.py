@@ -48,18 +48,18 @@ async def test_discover_lists_discoverable_public_product_stashes(client: AsyncC
     public_page = await _create_page(client, api_key, workspace["id"], "Public brief")
     private_page = await _create_page(client, api_key, workspace["id"], "Private brief")
 
-    private_stash = await client.post(
-        f"/api/v1/workspaces/{workspace['id']}/stashes",
+    private_cartridge = await client.post(
+        f"/api/v1/workspaces/{workspace['id']}/cartridges",
         json={
             "title": "Private notes",
             "items": [{"object_type": "page", "object_id": private_page["id"]}],
         },
         headers=_auth(api_key),
     )
-    assert private_stash.status_code == 201
+    assert private_cartridge.status_code == 201
 
     public_unlisted = await client.post(
-        f"/api/v1/workspaces/{workspace['id']}/stashes/publish",
+        f"/api/v1/workspaces/{workspace['id']}/cartridges/publish",
         json={
             "title": "Public but unlisted",
             "workspace_permission": "read",
@@ -71,7 +71,7 @@ async def test_discover_lists_discoverable_public_product_stashes(client: AsyncC
     assert public_unlisted.status_code == 201
 
     published = await client.post(
-        f"/api/v1/workspaces/{workspace['id']}/stashes/publish",
+        f"/api/v1/workspaces/{workspace['id']}/cartridges/publish",
         json={
             "title": "Public notes",
             "description": "A public Stash",
@@ -83,49 +83,51 @@ async def test_discover_lists_discoverable_public_product_stashes(client: AsyncC
         headers=_auth(api_key),
     )
     assert published.status_code == 201
-    published_stash = published.json()["stash"]
-    slug = published_stash["slug"]
-    assert published_stash["owner_name"] == user["name"]
-    assert published_stash["owner_display_name"] == user["display_name"]
+    published_cartridge = published.json()["cartridge"]
+    slug = published_cartridge["slug"]
+    assert published_cartridge["owner_name"] == user["name"]
+    assert published_cartridge["owner_display_name"] == user["display_name"]
 
     workspace_stashes = await client.get(
-        f"/api/v1/workspaces/{workspace['id']}/stashes",
+        f"/api/v1/workspaces/{workspace['id']}/cartridges",
         headers=_auth(api_key),
     )
     assert workspace_stashes.status_code == 200
-    workspace_stash = next(
-        stash for stash in workspace_stashes.json()["stashes"] if stash["slug"] == slug
+    workspace_cartridge = next(
+        stash for stash in workspace_stashes.json()["cartridges"] if stash["slug"] == slug
     )
-    assert workspace_stash["owner_name"] == user["name"]
-    assert workspace_stash["owner_display_name"] == user["display_name"]
+    assert workspace_cartridge["owner_name"] == user["name"]
+    assert workspace_cartridge["owner_display_name"] == user["display_name"]
 
-    catalog = await client.get("/api/v1/discover/stashes")
+    catalog = await client.get("/api/v1/discover/cartridges")
     assert catalog.status_code == 200
-    stashes = catalog.json()["stashes"]
-    assert [stash["title"] for stash in stashes] == ["Public notes"]
-    assert stashes[0]["slug"] == slug
-    assert stashes[0]["discoverable"] is True
-    assert stashes[0]["item_count"] == 1
-    assert stashes[0]["workspace_name"] == workspace["name"]
+    cartridges = catalog.json()["cartridges"]
+    assert [stash["title"] for stash in cartridges] == ["Public notes"]
+    assert cartridges[0]["slug"] == slug
+    assert cartridges[0]["discoverable"] is True
+    assert cartridges[0]["item_count"] == 1
+    assert cartridges[0]["workspace_name"] == workspace["name"]
 
-    detail = await client.get(f"/api/v1/stashes/{slug}")
+    detail = await client.get(f"/api/v1/cartridges/{slug}")
     assert detail.status_code == 200
-    assert detail.json()["stash"]["discoverable"] is True
-    assert detail.json()["stash"]["owner_name"] == user["name"]
-    assert detail.json()["stash"]["owner_display_name"] == user["display_name"]
+    assert detail.json()["cartridge"]["discoverable"] is True
+    assert detail.json()["cartridge"]["owner_name"] == user["name"]
+    assert detail.json()["cartridge"]["owner_display_name"] == user["display_name"]
 
-    unlisted_detail = await client.get(f"/api/v1/stashes/{public_unlisted.json()['stash']['slug']}")
+    unlisted_detail = await client.get(
+        f"/api/v1/cartridges/{public_unlisted.json()['cartridge']['slug']}"
+    )
     assert unlisted_detail.status_code == 200
 
 
 @pytest.mark.asyncio
-async def test_discover_opt_in_requires_public_product_stash(client: AsyncClient):
+async def test_discover_opt_in_requires_public_product_cartridge(client: AsyncClient):
     api_key, _ = await _register(client)
     workspace = await _create_workspace(client, api_key, "Private Discover workspace")
     page = await _create_page(client, api_key, workspace["id"], "Private Discover brief")
 
-    workspace_stash = await client.post(
-        f"/api/v1/workspaces/{workspace['id']}/stashes",
+    workspace_cartridge = await client.post(
+        f"/api/v1/workspaces/{workspace['id']}/cartridges",
         json={
             "title": "Workspace Discover attempt",
             "workspace_permission": "read",
@@ -135,10 +137,10 @@ async def test_discover_opt_in_requires_public_product_stash(client: AsyncClient
         },
         headers=_auth(api_key),
     )
-    assert workspace_stash.status_code == 400
+    assert workspace_cartridge.status_code == 400
 
-    private_stash = await client.post(
-        f"/api/v1/workspaces/{workspace['id']}/stashes",
+    private_cartridge = await client.post(
+        f"/api/v1/workspaces/{workspace['id']}/cartridges",
         json={
             "title": "Private Discover attempt",
             "workspace_permission": "none",
@@ -148,7 +150,7 @@ async def test_discover_opt_in_requires_public_product_stash(client: AsyncClient
         },
         headers=_auth(api_key),
     )
-    assert private_stash.status_code == 400
+    assert private_cartridge.status_code == 400
 
 
 @pytest.mark.asyncio
@@ -160,7 +162,7 @@ async def test_discover_search_filters_product_stashes(client: AsyncClient):
 
     for title, page in (("Alpha launch notes", alpha), ("Beta roadmap", beta)):
         resp = await client.post(
-            f"/api/v1/workspaces/{workspace['id']}/stashes/publish",
+            f"/api/v1/workspaces/{workspace['id']}/cartridges/publish",
             json={
                 "title": title,
                 "workspace_permission": "read",
@@ -172,6 +174,6 @@ async def test_discover_search_filters_product_stashes(client: AsyncClient):
         )
         assert resp.status_code == 201
 
-    filtered = await client.get("/api/v1/discover/stashes?q=alpha")
+    filtered = await client.get("/api/v1/discover/cartridges?q=alpha")
     assert filtered.status_code == 200
-    assert [stash["title"] for stash in filtered.json()["stashes"]] == ["Alpha launch notes"]
+    assert [stash["title"] for stash in filtered.json()["cartridges"]] == ["Alpha launch notes"]

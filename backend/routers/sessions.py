@@ -130,6 +130,8 @@ async def list_my_sessions(
         SELECT
           he.session_id,
           s.id AS id,
+          s.session_folder_id,
+          sf.name AS session_folder_name,
           he.workspace_id,
           w.name AS workspace_name,
           {linear_ticket_service.sql_json_agg('s')} AS linear_tickets,
@@ -148,8 +150,10 @@ async def list_my_sessions(
         LEFT JOIN sessions s ON s.workspace_id IS NOT DISTINCT FROM he.workspace_id
           AND s.session_id = he.session_id
           AND s.deleted_at IS NULL
+        LEFT JOIN session_folders sf ON sf.id = s.session_folder_id
         WHERE {' AND '.join(where)}
-        GROUP BY he.session_id, he.workspace_id, w.name, s.id, title_sources.title_source
+        GROUP BY he.session_id, he.workspace_id, w.name, s.id, s.session_folder_id,
+          sf.name, title_sources.title_source
         ORDER BY last_event_at DESC, user_name ASC, session_id ASC
         LIMIT {int(limit)}
         """,
@@ -204,8 +208,9 @@ async def get_workspace_session(
     session_id: str,
     current_user: dict = Depends(get_current_user),
 ):
-    if not await workspace_service.is_member(workspace_id, current_user["id"]):
-        raise HTTPException(status_code=403, detail="Not a workspace member")
+    # No workspace-membership pre-gate: a session may be shared with a
+    # non-member. can_read_session enforces check_access (owner OR share OR
+    # open cartridge).
     if not await memory_service.can_read_session(workspace_id, session_id, current_user["id"]):
         raise HTTPException(status_code=404, detail="Session not found")
 
@@ -234,8 +239,6 @@ async def rename_workspace_session(
     body: SessionTitleRequest,
     current_user: dict = Depends(get_current_user),
 ):
-    if not await workspace_service.can_write(workspace_id, current_user["id"]):
-        raise HTTPException(status_code=403, detail="Viewers can read but not modify sessions")
     if not await memory_service.can_read_session(workspace_id, session_id, current_user["id"]):
         raise HTTPException(status_code=404, detail="Session not found")
 
@@ -270,8 +273,6 @@ async def _check_session_write(
     Returns the raw row (including trashed). The trash flows need to
     operate on rows the live-only `get_session_by_id` won't return.
     """
-    if not await workspace_service.can_write(workspace_id, user_id):
-        raise HTTPException(status_code=403, detail="Viewers can read but not modify sessions")
     pool = get_pool()
     row = await pool.fetchrow(
         "SELECT id, workspace_id FROM sessions WHERE id = $1",

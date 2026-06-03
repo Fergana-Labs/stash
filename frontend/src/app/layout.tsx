@@ -4,7 +4,7 @@ import "./globals.css";
 import { BreadcrumbProvider } from "../components/BreadcrumbContext";
 import { ShellChromeProvider } from "../components/ShellChromeContext";
 import { ShareModalProvider } from "../lib/shareModalContext";
-import StashShareModal from "../components/share/StashShareModal";
+import CartridgeShareModal from "../components/share/CartridgeShareModal";
 
 const instrumentSans = Instrument_Sans({
   variable: "--font-instrument-sans",
@@ -47,7 +47,7 @@ export default function RootLayout({
           <ShellChromeProvider>
             <ShareModalProvider>
               {children}
-              <StashShareModal />
+              <CartridgeShareModal />
             </ShareModalProvider>
           </ShellChromeProvider>
         </BreadcrumbProvider>

@@ -4,16 +4,16 @@ import json
 
 from mcp.server.fastmcp import FastMCP
 
-from cli.client import StashClient, stash_permissions_for_access
+from cli.client import CartridgeClient, stash_permissions_for_access
 from cli.config import load_config, load_manifest
 
 mcp = FastMCP("stash", instructions="Stash — shared memory for AI coding agents")
 
 
-def _client() -> tuple[StashClient, str]:
-    """Build a StashClient + resolve the active workspace id."""
+def _client() -> tuple[CartridgeClient, str]:
+    """Build a CartridgeClient + resolve the active workspace id."""
     cfg = load_config()
-    client = StashClient(cfg["base_url"], cfg.get("api_key", ""))
+    client = CartridgeClient(cfg["base_url"], cfg.get("api_key", ""))
     manifest = load_manifest()
     ws_id = (manifest or {}).get("workspace_id", "")
     return client, ws_id
@@ -29,15 +29,84 @@ def _json(obj: object) -> str:
     return json.dumps(obj, default=str)
 
 
-# ── Sessions / search ──────────────────────────────────────────────
+# ── Sources (unified VFS) + search ─────────────────────────────────
 
 
 @mcp.tool()
-def stash_search(query: str, limit: int = 20, workspace_id: str = "") -> str:
-    """Full-text + semantic search across workspace session events."""
+def stash_search(query: str, source: str = "", limit: int = 20, workspace_id: str = "") -> str:
+    """Search across all your sources — native files + session transcripts +
+    connected sources (GitHub/Drive/Notion/Slack/Granola).
+
+    Pass `source` to scope to one (a handle from stash_list_sources: 'files',
+    'sessions', or a connected-source id); omit it to search everything.
+    """
     client, default_ws = _client()
     ws = _require_ws(workspace_id or default_ws)
-    return _json(client.search_events(ws, query, limit=limit))
+    return _json(client.search_sources(ws, query, source=source or None, limit=limit))
+
+
+@mcp.tool()
+def stash_list_sources(workspace_id: str = "") -> str:
+    """List every source you can read here: native 'files' and 'sessions', plus
+    your connected sources. Use a returned `source` handle with the browse /
+    read / search tools."""
+    client, default_ws = _client()
+    ws = _require_ws(workspace_id or default_ws)
+    return _json(client.list_sources(ws))
+
+
+@mcp.tool()
+def stash_browse_source(source: str, path: str = "", workspace_id: str = "") -> str:
+    """List a source's entries like a file system. `source` is a handle from
+    stash_list_sources; `path` is an optional path prefix for connected sources."""
+    client, default_ws = _client()
+    ws = _require_ws(workspace_id or default_ws)
+    return _json(client.list_source_entries(ws, source, path=path))
+
+
+@mcp.tool()
+def stash_read_source(source: str, ref: str, workspace_id: str = "") -> str:
+    """Read one document from a source. `ref` is a page id (files), a session id
+    (sessions), or a document path (connected sources)."""
+    client, default_ws = _client()
+    ws = _require_ws(workspace_id or default_ws)
+    return _json(client.read_source_doc(ws, source, ref))
+
+
+@mcp.tool()
+def stash_add_source(
+    source_type: str,
+    external_ref: str = "",
+    display_name: str = "",
+    workspace_id: str = "",
+) -> str:
+    """Connect a source. source_type: github_repo | google_drive | notion |
+    slack | granola. Slack/Granola resolve external_ref from your connected
+    token; the rest need an external_ref (e.g. a repo 'owner/name')."""
+    client, default_ws = _client()
+    ws = _require_ws(workspace_id or default_ws)
+    return _json(
+        client.add_source(
+            ws, source_type, external_ref=external_ref or None, display_name=display_name or None
+        )
+    )
+
+
+@mcp.tool()
+def stash_sync_source(source_id: str, workspace_id: str = "") -> str:
+    """Trigger an immediate re-index of a connected source you own."""
+    client, default_ws = _client()
+    ws = _require_ws(workspace_id or default_ws)
+    return _json(client.sync_source(ws, source_id))
+
+
+@mcp.tool()
+def stash_remove_source(source_id: str, workspace_id: str = "") -> str:
+    """Disconnect a source you own (its indexed documents cascade away)."""
+    client, default_ws = _client()
+    ws = _require_ws(workspace_id or default_ws)
+    client.delete_source(ws, source_id)
+    return _json({"deleted": source_id})
 
 
 @mcp.tool()
@@ -74,7 +143,7 @@ def stash_push_event(
     event_type: str,
     content: str,
     session_id: str = "",
-    default_stash_id: str = "",
+    default_cartridge_id: str = "",
     tool_name: str = "",
     workspace_id: str = "",
 ) -> str:
@@ -88,7 +157,7 @@ def stash_push_event(
             event_type=event_type,
             content=content,
             session_id=session_id or None,
-            default_stash_id=default_stash_id or None,
+            default_cartridge_id=default_cartridge_id or None,
             tool_name=tool_name or None,
         )
     )
@@ -446,19 +515,19 @@ def stash_delete_file(file_id: str, workspace_id: str = "") -> str:
     return _json({"deleted": file_id})
 
 
-# ── Stashes ───────────────────────────────────────────────
+# ── Cartridges ───────────────────────────────────────────────
 
 
 @mcp.tool()
-def stash_list_stashes(workspace_id: str = "") -> str:
-    """List Stashes in the workspace."""
+def stash_list_cartridges(workspace_id: str = "") -> str:
+    """List Cartridges in the workspace."""
     client, default_ws = _client()
     ws = _require_ws(workspace_id or default_ws)
     return _json(client.list_stashes(ws))
 
 
 @mcp.tool()
-def stash_create_stash(
+def stash_create_cartridge(
     title: str,
     description: str = "",
     access: str = "workspace",
@@ -472,7 +541,7 @@ def stash_create_stash(
     item_list = json.loads(items) if isinstance(items, str) else items
     if access == "public":
         return _json(
-            client.publish_stash(
+            client.publish_cartridge(
                 ws,
                 title,
                 description=description,
@@ -481,7 +550,7 @@ def stash_create_stash(
             )
         )
     return _json(
-        client.create_stash(
+        client.create_cartridge(
             ws,
             title,
             description=description,
@@ -493,8 +562,8 @@ def stash_create_stash(
 
 
 @mcp.tool()
-def stash_update_stash(
-    stash_id: str,
+def stash_update_cartridge(
+    cartridge_id: str,
     title: str = "",
     description: str = "",
     access: str = "",
@@ -516,39 +585,39 @@ def stash_update_stash(
         fields["items"] = json.loads(items)
     if not fields:
         raise ValueError("Pass at least one field to update")
-    return _json(client.update_stash(stash_id, **fields))
+    return _json(client.update_cartridge(cartridge_id, **fields))
 
 
 @mcp.tool()
-def stash_delete_stash(stash_id: str) -> str:
+def stash_delete_cartridge(cartridge_id: str) -> str:
     """Delete a Stash."""
     client, _ = _client()
-    client.delete_stash(stash_id)
-    return _json({"deleted": stash_id})
+    client.delete_cartridge(cartridge_id)
+    return _json({"deleted": cartridge_id})
 
 
 @mcp.tool()
-def stash_get_stash(slug: str) -> str:
+def stash_get_cartridge(slug: str) -> str:
     """Get a public Stash by its slug."""
     client, _ = _client()
-    return _json(client.get_public_stash(slug))
+    return _json(client.get_public_cartridge(slug))
 
 
 @mcp.tool()
-def stash_add_external_stash(slug: str, workspace_id: str = "") -> str:
+def stash_add_external_cartridge(slug: str, workspace_id: str = "") -> str:
     """Fork an external Stash into a workspace."""
     client, default_ws = _client()
     ws = _require_ws(workspace_id or default_ws)
-    return _json(client.add_external_stash(slug, ws))
+    return _json(client.add_external_cartridge(slug, ws))
 
 
 @mcp.tool()
-def stash_remove_external_stash(stash_id: str, workspace_id: str = "") -> str:
+def stash_remove_external_cartridge(cartridge_id: str, workspace_id: str = "") -> str:
     """Remove a forked external Stash from a workspace."""
     client, default_ws = _client()
     ws = _require_ws(workspace_id or default_ws)
-    client.remove_external_stash(ws, stash_id)
-    return _json({"removed": stash_id})
+    client.remove_external_cartridge(ws, cartridge_id)
+    return _json({"removed": cartridge_id})
 
 
 # ── Invites ───────────────────────────────────────────────────────
@@ -650,24 +719,24 @@ def stash_publish_markdown(
 
 
 @mcp.tool()
-def stash_search_public_stashes(query: str = "", sort: str = "trending") -> str:
-    """Search the public Stash catalog (Discover).
+def stash_search_public_cartridges(query: str = "", sort: str = "trending") -> str:
+    """Search the public Cartridge catalog (Discover).
 
     sort: trending | newest | popular. Pass an empty query to browse by
     sort order. Returns the catalog entries — fork into a workspace with
-    stash_add_external_stash to follow up.
+    stash_add_external_cartridge to follow up.
     """
     client, _ = _client()
     return _json(client.list_discover_stashes(query=query, sort=sort))
 
 
 @mcp.tool()
-def stash_read_public_stash(slug: str) -> str:
+def stash_read_public_cartridge(slug: str) -> str:
     """Fetch a public Stash by slug as plain text (markdown-formatted
     transcript + pages). Use this instead of WebFetch for joinstash.ai/v/
-    or any /stashes/<slug> URL."""
+    or any /cartridges/<slug> URL."""
     client, _ = _client()
-    return client.get_stash_text(slug)
+    return client.get_cartridge_text(slug)
 
 
 # ── Sessions: full surface (transcript + soft-delete) ─────────────
@@ -692,18 +761,6 @@ def stash_delete_session(session_row_id: str, workspace_id: str = "") -> str:
     return _json({"deleted": session_row_id})
 
 
-# ── Pages: full-text search ───────────────────────────────────────
-
-
-@mcp.tool()
-def stash_search_pages(query: str, workspace_id: str = "", limit: int = 20) -> str:
-    """Full-text search across pages in a workspace. Returns ranked page
-    summaries — use stash_read_page to fetch the body of any hit."""
-    client, default_ws = _client()
-    ws = _require_ws(workspace_id or default_ws)
-    return _json(client.search_pages(ws, query, limit=limit))
-
-
 # ── Stash access control ──────────────────────────────────────────
 
 
@@ -711,8 +768,8 @@ _STASH_ACCESS = {"private", "workspace", "public"}
 
 
 @mcp.tool()
-def stash_set_stash_access(
-    stash_id: str,
+def stash_set_cartridge_access(
+    cartridge_id: str,
     access: str = "workspace",
     discoverable: bool = False,
 ) -> str:
@@ -730,7 +787,7 @@ def stash_set_stash_access(
         "workspace_permission": "read" if access in {"workspace", "public"} else "none",
         "discoverable": discoverable,
     }
-    return _json(client.update_stash(stash_id, **fields))
+    return _json(client.update_cartridge(cartridge_id, **fields))
 
 
 # ── Tables: rename + export ───────────────────────────────────────
@@ -806,6 +863,119 @@ def stash_purge(kind: str, id: str, workspace_id: str = "") -> str:
     else:
         client.purge_session(ws, id)
     return _json({"ok": True, "kind": kind, "id": id})
+
+
+# ── Object sharing (grant a person access by email) ───────────────
+
+
+@mcp.tool()
+def stash_share_object(
+    object_type: str, object_id: str, email: str, permission: str = "read"
+) -> str:
+    """Share a folder/page/file/session/table with a person by email. If they
+    don't have an account yet the share is recorded as pending and converts when
+    they sign up. permission: read | write | admin."""
+    client, _ = _client()
+    return _json(client.share_object(object_type, object_id, email, permission=permission))
+
+
+@mcp.tool()
+def stash_unshare_object(
+    object_type: str, object_id: str, principal_type: str, principal_id: str
+) -> str:
+    """Revoke a share. principal_type is 'user' (principal_id is the user id from
+    stash_list_shares)."""
+    client, _ = _client()
+    client.unshare_object(object_type, object_id, principal_type, principal_id)
+    return _json({"unshared": object_id})
+
+
+@mcp.tool()
+def stash_list_shares(object_type: str, object_id: str) -> str:
+    """List who an object is shared with."""
+    client, _ = _client()
+    return _json(client.list_object_shares(object_type, object_id))
+
+
+# ── Cartridge members + invites ───────────────────────────────────
+
+
+@mcp.tool()
+def stash_list_cartridge_members(cartridge_id: str) -> str:
+    """List the people granted access to a Cartridge."""
+    client, _ = _client()
+    return _json(client.list_cartridge_members(cartridge_id))
+
+
+@mcp.tool()
+def stash_add_cartridge_member(cartridge_id: str, user_id: str, permission: str = "read") -> str:
+    """Grant a user access to a Cartridge. permission: read | write | admin."""
+    client, _ = _client()
+    return _json(client.add_cartridge_member(cartridge_id, user_id, permission=permission))
+
+
+@mcp.tool()
+def stash_remove_cartridge_member(cartridge_id: str, user_id: str) -> str:
+    """Revoke a user's access to a Cartridge."""
+    client, _ = _client()
+    client.remove_cartridge_member(cartridge_id, user_id)
+    return _json({"removed": user_id})
+
+
+@mcp.tool()
+def stash_list_cartridge_invites() -> str:
+    """List Cartridge invites pending for the current user (shared with you,
+    awaiting accept/dismiss)."""
+    client, _ = _client()
+    return _json(client.list_cartridge_invites())
+
+
+@mcp.tool()
+def stash_dismiss_cartridge_invite(invite_id: str) -> str:
+    """Dismiss a pending Cartridge invite."""
+    client, _ = _client()
+    client.dismiss_cartridge_invite(invite_id)
+    return _json({"dismissed": invite_id})
+
+
+@mcp.tool()
+def stash_snapshot_source(
+    cartridge_id: str, source_id: str, path: str, workspace_id: str = ""
+) -> str:
+    """Copy a point-in-time snapshot of one connected-source document (source_id
+    + path from the source tools) into a Cartridge as a page, so the bundle stays
+    self-contained."""
+    client, default_ws = _client()
+    ws = _require_ws(workspace_id or default_ws)
+    return _json(client.snapshot_source_into_cartridge(ws, cartridge_id, source_id, path))
+
+
+# ── Session folders ───────────────────────────────────────────────
+
+
+@mcp.tool()
+def stash_list_session_folders(workspace_id: str = "") -> str:
+    """List session folders (shareable groupings of sessions) in the workspace."""
+    client, default_ws = _client()
+    ws = _require_ws(workspace_id or default_ws)
+    return _json(client.list_session_folders(ws))
+
+
+@mcp.tool()
+def stash_create_session_folder(name: str, workspace_id: str = "") -> str:
+    """Create a session folder."""
+    client, default_ws = _client()
+    ws = _require_ws(workspace_id or default_ws)
+    return _json(client.create_session_folder(ws, name))
+
+
+@mcp.tool()
+def stash_assign_session(session_row_id: str, folder_id: str = "", workspace_id: str = "") -> str:
+    """Move a session into a session folder, or pass an empty folder_id to move
+    it back to the ungrouped root."""
+    client, default_ws = _client()
+    ws = _require_ws(workspace_id or default_ws)
+    return _json(client.assign_session_folder(ws, session_row_id, folder_id=folder_id or None))
 
 
 # ── Entry point ───────────────────────────────────────────────────

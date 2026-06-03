@@ -1,10 +1,10 @@
-from cli.client import StashClient
+from cli.client import CartridgeClient
 
 
 def _stub_client():
-    """A StashClient with _patch stubbed to capture calls. We bypass __init__
+    """A CartridgeClient with _patch stubbed to capture calls. We bypass __init__
     so we don't need real config; only _patch is exercised."""
-    client = StashClient.__new__(StashClient)
+    client = CartridgeClient.__new__(CartridgeClient)
     calls: list[tuple[str, dict]] = []
 
     def fake_patch(path: str, json=None) -> dict:

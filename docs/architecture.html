@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Stash — Architecture</title>
+<style>
+  :root{--bg:#fff;--surface:#fafafa;--border:#ececea;--fg:#1c1b1a;--muted:#8c8a85;--dim:#6b6966;--brand:#f5811f;--mono:ui-monospace,Menlo,monospace;--font:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;}
+  *{box-sizing:border-box}
+  body{margin:0;font-family:var(--font);color:var(--fg);background:var(--bg);line-height:1.55;}
+  .wrap{max-width:860px;margin:0 auto;padding:40px 28px 80px;}
+  h1{font-size:30px;margin:0 0 4px;}
+  .sub{color:var(--muted);font-size:14px;margin-bottom:28px;}
+  h2{font-size:19px;margin:34px 0 10px;padding-top:14px;border-top:1px solid var(--border);}
+  h3{font-size:14px;text-transform:uppercase;letter-spacing:.08em;color:var(--dim);margin:20px 0 8px;}
+  p,li{font-size:14px;}
+  code{font-family:var(--mono);font-size:12.5px;background:var(--surface);border:1px solid var(--border);border-radius:4px;padding:1px 5px;}
+  pre{font-family:var(--mono);font-size:12px;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:12px 14px;overflow-x:auto;line-height:1.5;}
+  table{border-collapse:collapse;width:100%;font-size:13px;margin:8px 0 16px;}
+  th,td{border:1px solid var(--border);padding:6px 10px;text-align:left;vertical-align:top;}
+  th{background:var(--surface);font-weight:600;}
+  .tag{display:inline-block;font-size:11px;border:1px solid var(--border);border-radius:999px;padding:1px 8px;color:var(--dim);background:var(--surface);}
+  .ok{color:#1a8f5c;font-weight:600;}
+  .todo{color:var(--brand);font-weight:600;}
+  .tree{font-family:var(--mono);font-size:12.5px;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:14px;white-space:pre;color:var(--dim);}
+  .note{font-size:13px;color:var(--dim);background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:10px 12px;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Stash — Architecture</h1>
+  <div class="sub">One place your agent connects to see all your company data. Input pipes (sources) → output pipes (CLI, MCP, API, UI). This documents the information hierarchy, sharing model, database schema, and API as of the Cartridges / user-scoped redesign.</div>
+
+  <h2>1. Information hierarchy</h2>
+  <p>Everything is scoped to a <b>user</b> (one implicit, private <b>workspace</b> per user — hidden from the UI; it remains the internal scoping key). Within it:</p>
+  <div class="tree">user
+└─ workspace                         (implicit; hidden; the scoping key)
+   ├─ Agents                         chat over all sources; primary use is via your own agent (CLI/MCP/API)
+   ├─ Sources                        what the agent can read
+   │  ├─ Files          (native)     folders + pages + uploaded files
+   │  ├─ Sessions       (native)     agent transcripts, grouped into session folders
+   │  ├─ GitHub         (connected)  repos exposed as a filesystem
+   │  ├─ Google Drive   (connected)  index only; document data fetched lazily
+   │  ├─ Notion         (connected)  index only; page/db data fetched lazily
+   │  ├─ Slack          (connected)  full copy via webhook
+   │  └─ Granola        (connected)  full copy via webhook/pull
+   └─ Cartridges                     read-only, disposable, curl-able bundles (PLG sharing)</div>
+  <p class="note">Native sources are workspace-scoped (owned by the user). Connected sources are user-scoped (only their owner sees them). The file system is "just another source."</p>
+
+  <h2>2. Sharing &amp; permissions</h2>
+  <p><b>Private by default.</b> A user owns everything in their workspace (workspace membership == ownership). Nobody else sees anything until a <code>shares</code> row exists.</p>
+  <h3>The two-table model</h3>
+  <ul>
+    <li><b><code>shares</code></b> — grants a <b>principal</b> (a <code>user</code>, or a <code>cartridge</code>) access to an object. This is the primary, team-collaboration path: <i>share a folder/file/session with a person by email</i>. Folder &amp; session-folder shares <b>cascade</b> to their contents.</li>
+    <li><b><code>cartridges</code> + <code>cartridge_members</code> + <code>cartridge_items</code></b> — a read-only bundle (what it contains + who can open it). Secondary, PLG: a link you hand to an agent (curl-able). Adding a source to a cartridge copies a <b>snapshot</b> in so it's self-contained.</li>
+  </ul>
+  <h3>Access resolution — <code>check_access(object, user)</code></h3>
+  <pre>owner (user is the workspace member)                         → read + write
+OR a user share on the object or an ancestor folder         → per share (read/write)
+OR the object is in a cartridge the user can open            → read only
+else                                                         → denied</pre>
+  <p class="note">A cartridge is "openable" if it is public/unlisted, owned by the user, or the user is a cartridge member. Cartridges never grant write.</p>
+
+  <h2>3. Database schema</h2>
+  <h3>Sharing &amp; bundles</h3>
+  <table>
+    <tr><th>Table</th><th>Key columns</th><th>Purpose</th></tr>
+    <tr><td><code>shares</code></td><td>object_type, object_id, principal_type (user|cartridge), principal_id, permission</td><td>Per-object access grants (the permission model).</td></tr>
+    <tr><td><code>cartridges</code></td><td>id, workspace_id, owner_id, slug, title, public_permission</td><td>Bundle metadata + public-link visibility. (Renamed from <code>stashes</code>.)</td></tr>
+    <tr><td><code>cartridge_members</code></td><td>cartridge_id, user_id, permission</td><td>Who can open a cartridge.</td></tr>
+    <tr><td><code>cartridge_items</code></td><td>cartridge_id, object_type, object_id</td><td>What a cartridge contains.</td></tr>
+  </table>
+  <h3>Sources</h3>
+  <table>
+    <tr><th>Table</th><th>Key columns</th><th>Purpose</th></tr>
+    <tr><td><code>workspace_sources</code></td><td>id, workspace_id, owner_user_id, source_type, external_ref, capability, sync_status, sync_cursor</td><td>Registry of connected sources (user-scoped). Native files/sessions are virtual.</td></tr>
+    <tr><td><code>session_folders</code></td><td>id, workspace_id, owner_user_id, name (+ <code>sessions.session_folder_id</code>)</td><td>Shareable grouping for sessions.</td></tr>
+  </table>
+  <h3>Per-integration storage</h3>
+  <p>One table per integration, grouped by storage strategy. They share a navigation shape (<code>path</code>/<code>name</code>/<code>kind</code>/<code>deleted_at</code>) so the agent's list/read tools stay uniform; the copied-content tables add <code>content</code>/<code>content_hash</code>/<code>embedding</code>/<code>embed_stale</code>.</p>
+  <table>
+    <tr><th>Integration</th><th>Table</th><th>Strategy</th></tr>
+    <tr><td>GitHub</td><td><code>github_documents</code></td><td><b>Copied content.</b> Repo tree crawled in; navigable like a filesystem; FTS + embeddings.</td></tr>
+    <tr><td>Slack</td><td><code>slack_messages</code></td><td><b>Copied content.</b> Own columns (channel_id/channel_name/ts); Events-API webhook + backfill; FTS + embeddings.</td></tr>
+    <tr><td>Granola</td><td><code>granola_notes</code></td><td><b>Copied content.</b> Scheduled pull; FTS + embeddings.</td></tr>
+    <tr><td>Google Drive</td><td><code>drive_index</code></td><td><b>Index only.</b> Stores path/name + Drive file id; document body exported to markdown <b>lazily</b> at read time via the owner's token.</td></tr>
+    <tr><td>Notion</td><td><code>notion_index</code></td><td><b>Index only.</b> Stores path/name + Notion page id; page blocks rendered to markdown lazily at read time.</td></tr>
+  </table>
+  <p class="note">Search (FTS + embeddings) spans the copied-content tables; the index-only sources are navigable, not searched. <b>Snapshot-on-add</b> (<code>POST /cartridges/{id}/snapshot-source</code>) copies a point-in-time body into the cartridge as a page — Drive/Notion fetched at add time, others copied from our tables — so the bundle stays self-contained and curl-able.</p>
+
+  <h2>4. The agent surface</h2>
+  <p>The <code>/ask</code> agent (a direct Anthropic tool-use loop) reads across sources through one source-aware tool set, scoped to <code>_current_user()</code> + the sharing rules above:</p>
+  <pre>list_sources()                  native (files, sessions) + the user's connected sources
+list_source(source, path?)      navigate a source like a file system
+read_source(source, ref)        read one document (lazy-fetched for Drive/Notion)
+search(query, source?)          FTS + vector across sources, owner/share scoped</pre>
+
+  <h2>5. Key API calls</h2>
+  <table>
+    <tr><th>Method &amp; path</th><th>Purpose</th></tr>
+    <tr><td><code>GET /api/v1/workspaces/{ws}/sources</code></td><td>List sources (native + the user's connected).</td></tr>
+    <tr><td><code>POST /api/v1/workspaces/{ws}/sources</code></td><td>Add a connected source (begins indexing).</td></tr>
+    <tr><td><code>POST /api/v1/workspaces/{ws}/sources/{id}/sync</code></td><td>Re-index a source now.</td></tr>
+    <tr><td><code>POST /api/v1/integrations/slack/events</code></td><td>Slack Events-API webhook (signature-verified).</td></tr>
+    <tr><td><code>POST /api/v1/share</code> · <code>DELETE</code> · <code>GET</code></td><td>Share an object with a person by email (a pending invite if they're not a user yet, converting on signup); revoke; list shares.</td></tr>
+    <tr><td><code>POST /api/v1/workspaces/{ws}/cartridges/{id}/snapshot-source</code></td><td>Copy a source document into a cartridge as a self-contained page.</td></tr>
+    <tr><td><code>POST /api/v1/workspaces/{ws}/session-folders</code> · <code>/assign</code></td><td>Create a session folder; assign sessions.</td></tr>
+    <tr><td><code>POST /api/v1/workspaces/{ws}/cartridges</code> · <code>/publish</code></td><td>Create / publish a cartridge bundle.</td></tr>
+    <tr><td><code>GET /stashes/{slug}.md</code> · <code>.json</code></td><td>Agent-readable cartridge (curl without the CLI).</td></tr>
+    <tr><td><code>POST /api/v1/workspaces/{ws}/ask</code></td><td>SSE stream — ask the agent across sources.</td></tr>
+  </table>
+
+  <h2>6. Status</h2>
+  <p><span class="ok">Shipped:</span> Cartridge rename; user-scoped UI (no workspace switcher/Members); the <code>shares</code> permission model + per-object/folder sharing, share-by-email with pending invites that convert on signup; session folders with a "By folder" view on the Sessions page; Agents view with the CLI/MCP/API install tab; per-integration source storage (copied content for GitHub/Slack/Granola, index-only + lazy read for Drive/Notion); cartridge snapshot-on-add for source content; cleanup of the legacy import UI.</p>
+</div>
+</body>
+</html>

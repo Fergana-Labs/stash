@@ -11,10 +11,20 @@ from __future__ import annotations
 # ---------------------------------------------------------------------------
 
 
-def render_ask_system(stash_name: str) -> str:
+def render_ask_system(stash_name: str, sources: list[dict] | None = None) -> str:
+    source_line = ""
+    if sources:
+        listed = ", ".join(f"{s['display_name']} ({s['source']})" for s in sources)
+        source_line = (
+            "This user can read these sources — call list_sources to (re)discover them, "
+            "then list_source / read_source to navigate one like a file system, or "
+            f"search to look across them: {listed}. "
+        )
     return (
         f"You are an expert assistant for the '{stash_name}' Stash Workspace. Answer "
-        "questions by calling tools to ground every claim. Use Stashes when "
+        "questions by calling tools to ground every claim. "
+        f"{source_line}"
+        "Use Cartridges when "
         "the user asks to collect, bundle, publish, or organize a shareable subset of "
         "workspace material. Reference what you found by name (e.g., the page "
         "name, session id, Stash title, or table). Be concise. "
@@ -27,7 +37,7 @@ def render_ask_system(stash_name: str) -> str:
 # Tool set names — schemas + executors live in agent_runtime.
 
 # Full tool set including mutators. Use for surfaces where the agent is
-# allowed to create / update / delete stashes on the user's behalf.
+# allowed to create / update / delete cartridges on the user's behalf.
 STASH_TOOL_SET = (
     "search_history",
     "read_page",
@@ -38,9 +48,13 @@ STASH_TOOL_SET = (
     "list_skills",
     "read_skill",
     "list_stashes",
-    "create_stash",
-    "update_stash",
-    "delete_stash",
+    "create_cartridge",
+    "update_cartridge",
+    "delete_cartridge",
+    "list_sources",
+    "list_source",
+    "read_source",
+    "search",
 )
 
 # Read-only subset for ask-the-workspace and other Q&A surfaces. Drops
@@ -57,4 +71,8 @@ ASK_TOOL_SET = (
     "list_skills",
     "read_skill",
     "list_stashes",
+    "list_sources",
+    "list_source",
+    "read_source",
+    "search",
 )

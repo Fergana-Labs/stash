@@ -43,17 +43,8 @@ async def analytics_summary(days: int = Query(7, ge=1, le=90)):
 @router.get("/analytics/onboarding-funnel", dependencies=[Depends(require_admin_token)])
 async def analytics_onboarding_funnel(
     days: int = Query(30, ge=1, le=180),
-    path: str | None = Query(None, pattern="^(migrant|memory|sharing)$"),
 ):
-    return await admin_analytics_service.get_onboarding_funnel(days=days, path=path)
-
-
-@router.get("/analytics/path-mix", dependencies=[Depends(require_admin_token)])
-async def analytics_path_mix(
-    days: int = Query(30, ge=1, le=180),
-    bucket: str = Query("day", pattern="^(day|week)$"),
-):
-    return await admin_analytics_service.get_path_mix(days=days, bucket=bucket)
+    return await admin_analytics_service.get_onboarding_funnel(days=days)
 
 
 @router.get("/analytics/surface-mix", dependencies=[Depends(require_admin_token)])
