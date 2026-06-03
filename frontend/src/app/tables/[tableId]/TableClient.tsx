@@ -51,6 +51,11 @@ function isTextEntryTarget(target: EventTarget | null) {
   return tag === "INPUT" || tag === "TEXTAREA" || target.isContentEditable;
 }
 
+function isTableCellEditorTarget(target: EventTarget | null) {
+  if (!(target instanceof HTMLElement)) return false;
+  return !!target.closest("[data-table-cell-editor]");
+}
+
 export default function TableEditorPage() {
   return (
     <Suspense fallback={<TableEditorSkeleton />}>
@@ -190,7 +195,9 @@ function TableEditorPageInner() {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.defaultPrevented) return;
       if (!(e.metaKey || e.ctrlKey) || e.altKey || e.shiftKey || e.key.toLowerCase() !== "z") return;
-      if (isTextEntryTarget(e.target)) return;
+      const isCellEditorTarget = isTableCellEditorTarget(e.target);
+      if (isTextEntryTarget(e.target) && !isCellEditorTarget) return;
+      if (isCellEditorTarget && undoStackRef.current.length === 0) return;
       e.preventDefault();
       void undoLastTableAction();
     };
@@ -721,24 +728,26 @@ function TableEditorPageInner() {
     return (
       <td key={col.id} className={`px-1 py-0 border-r border-border/50 min-w-[140px] ${cellBg}`} onClick={startCellEditing}>
         {isEditing ? (
-          col.type === "boolean" ? (
-            <label className="flex items-center h-8 px-2 cursor-pointer"><input aria-label={`Edit row ${rowNumber} ${col.name}`} type="checkbox" checked={cellValue === "true" || cellValue === "1"} onChange={(e) => setCellValue(String(e.target.checked))} onBlur={() => void commitEdit()} onKeyDown={(e) => { if (e.key === "Enter") commitEdit(); if (e.key === "Escape") cancelEdit(); }} className="accent-brand" autoFocus /></label>
-          ) : col.type === "select" && col.options ? (
-            <CustomSelect
-              value={cellValue}
-              options={[
-                { value: "", label: "--" },
-                ...col.options.map((opt) => ({ value: opt, label: opt })),
-              ]}
-              onChange={(next) => void commitEdit(next)}
-              ariaLabel={`Edit row ${rowNumber} ${col.name}`}
-              className="h-8 w-full rounded border border-brand bg-surface px-2 text-sm font-mono text-foreground"
-              menuClassName="text-sm"
-              autoFocus
-            />
-          ) : (
-            <input aria-label={`Edit row ${rowNumber} ${col.name}`} ref={cellInputRef} type={col.type === "number" ? "number" : col.type === "date" ? "date" : col.type === "datetime" ? "datetime-local" : "text"} value={cellValue} onChange={(e) => setCellValue(e.target.value)} onBlur={() => void commitEdit()} onKeyDown={(e) => { if (e.key === "Enter") commitEdit(); if (e.key === "Escape") cancelEdit(); if (e.key === "Tab") { e.preventDefault(); commitEdit(); } }} className="w-full h-8 px-2 text-sm bg-transparent outline-none ring-1 ring-brand rounded font-mono text-foreground" />
-          )
+          <div data-table-cell-editor>
+            {col.type === "boolean" ? (
+              <label className="flex items-center h-8 px-2 cursor-pointer"><input aria-label={`Edit row ${rowNumber} ${col.name}`} type="checkbox" checked={cellValue === "true" || cellValue === "1"} onChange={(e) => setCellValue(String(e.target.checked))} onBlur={() => void commitEdit()} onKeyDown={(e) => { if (e.key === "Enter") commitEdit(); if (e.key === "Escape") cancelEdit(); }} className="accent-brand" autoFocus /></label>
+            ) : col.type === "select" && col.options ? (
+              <CustomSelect
+                value={cellValue}
+                options={[
+                  { value: "", label: "--" },
+                  ...col.options.map((opt) => ({ value: opt, label: opt })),
+                ]}
+                onChange={(next) => void commitEdit(next)}
+                ariaLabel={`Edit row ${rowNumber} ${col.name}`}
+                className="h-8 w-full rounded border border-brand bg-surface px-2 text-sm font-mono text-foreground"
+                menuClassName="text-sm"
+                autoFocus
+              />
+            ) : (
+              <input aria-label={`Edit row ${rowNumber} ${col.name}`} ref={cellInputRef} type={col.type === "number" ? "number" : col.type === "date" ? "date" : col.type === "datetime" ? "datetime-local" : "text"} value={cellValue} onChange={(e) => setCellValue(e.target.value)} onBlur={() => void commitEdit()} onKeyDown={(e) => { if (e.key === "Enter") commitEdit(); if (e.key === "Escape") cancelEdit(); if (e.key === "Tab") { e.preventDefault(); commitEdit(); } }} className="w-full h-8 px-2 text-sm bg-transparent outline-none ring-1 ring-brand rounded font-mono text-foreground" />
+            )}
+          </div>
         ) : isDraftRowId(rowId) ? (
           <button
             type="button"
