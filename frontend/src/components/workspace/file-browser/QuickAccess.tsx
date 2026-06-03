@@ -1,5 +1,6 @@
 "use client";
 
+import { shouldOpenInNewTab, type NavigateOptions } from "../../../lib/linkNavigation";
 import { PinIcon } from "../../StashIcons";
 import type { GridItem } from "./FolderItemGrid";
 import { KindIcon, tintFor, typeFor } from "./ItemsList";
@@ -7,7 +8,7 @@ import { KindIcon, tintFor, typeFor } from "./ItemsList";
 interface Props {
   pinned: GridItem[];
   recent: GridItem[];
-  onOpen: (item: GridItem) => void;
+  onOpen: (item: GridItem, options?: NavigateOptions) => void;
   isPinned: (item: GridItem) => boolean;
   onTogglePin: (item: GridItem) => void;
 }
@@ -74,14 +75,17 @@ function Card({
 }: {
   item: GridItem;
   pinned: boolean;
-  onOpen: (item: GridItem) => void;
+  onOpen: (item: GridItem, options?: NavigateOptions) => void;
   onTogglePin: (item: GridItem) => void;
 }) {
   return (
     <div
       role="button"
       tabIndex={0}
-      onClick={() => onOpen(item)}
+      onClick={(e) => onOpen(item, { newTab: shouldOpenInNewTab(e) })}
+      onAuxClick={(e) => {
+        if (shouldOpenInNewTab(e)) onOpen(item, { newTab: true });
+      }}
       onKeyDown={(e) => {
         if (e.key === "Enter") onOpen(item);
       }}

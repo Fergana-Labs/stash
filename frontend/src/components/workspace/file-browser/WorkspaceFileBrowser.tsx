@@ -24,6 +24,7 @@ import type {
 } from "../../../lib/types";
 import { refreshWorkspaceSidebar } from "../../../lib/stashNavigationCache";
 import { useFilePins } from "../../../lib/filePins";
+import { openInNewTab, type NavigateOptions } from "../../../lib/linkNavigation";
 import { useWorkspaceRecents } from "../../../lib/pins";
 import { FileBrowserSkeleton } from "../../SkeletonStates";
 import EditableTitle from "../EditableTitle";
@@ -329,16 +330,26 @@ export default function WorkspaceFileBrowser({ workspaceId, folderId }: Props) {
     }
   }
 
-  function navigateTo(item: GridItem) {
+  function hrefForItem(item: GridItem): string {
     if (item.kind === "folder") {
-      router.push(`/workspaces/${workspaceId}/folders/${item.id}`);
-    } else if (item.kind === "page" || item.kind === "html") {
-      router.push(`/workspaces/${workspaceId}/p/${item.id}`);
-    } else if (item.kind === "table" && item.linkedTableId) {
-      router.push(`/tables/${item.linkedTableId}?workspaceId=${workspaceId}`);
-    } else {
-      router.push(`/workspaces/${workspaceId}/f/${item.id}`);
+      return `/workspaces/${workspaceId}/folders/${item.id}`;
     }
+    if (item.kind === "page" || item.kind === "html") {
+      return `/workspaces/${workspaceId}/p/${item.id}`;
+    }
+    if (item.kind === "table" && item.linkedTableId) {
+      return `/tables/${item.linkedTableId}?workspaceId=${workspaceId}`;
+    }
+    return `/workspaces/${workspaceId}/f/${item.id}`;
+  }
+
+  function navigateTo(item: GridItem, options?: NavigateOptions) {
+    const href = hrefForItem(item);
+    if (options?.newTab) {
+      openInNewTab(href);
+      return;
+    }
+    router.push(href);
   }
 
   async function handleUploadFile() {
@@ -573,7 +584,6 @@ export default function WorkspaceFileBrowser({ workspaceId, folderId }: Props) {
           {view === "column" && (
             <ItemsColumns
               workspaceId={workspaceId}
-              tree={tree}
               rootItems={rootItems}
               onNavigate={navigateTo}
               onReparent={reparent}

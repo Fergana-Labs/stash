@@ -1,17 +1,16 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type DragEvent } from "react";
 import { getFolderContents, type FolderContents } from "../../../lib/api";
-import type { FolderTreeNode, WorkspaceTree } from "../../../lib/types";
+import { shouldOpenInNewTab, type NavigateOptions } from "../../../lib/linkNavigation";
 import { FileIcon, FolderIcon, PageIcon, TableIcon } from "../../StashIcons";
 import type { GridItem, ItemKind } from "./FolderItemGrid";
 import { FB_DRAG_MIME, type FBDragPayload } from "./WorkspaceFileBrowser";
 
 interface Props {
   workspaceId: string;
-  tree: WorkspaceTree | null;
   rootItems: GridItem[];
-  onNavigate: (item: GridItem) => void;
+  onNavigate: (item: GridItem, options?: NavigateOptions) => void;
   onReparent: (payload: FBDragPayload, targetFolderId: string | null) => Promise<void>;
   onDelete?: (item: GridItem) => Promise<void>;
 }
@@ -23,7 +22,6 @@ interface Props {
 // a non-folder selects it for the preview.
 export default function ItemsColumns({
   workspaceId,
-  tree,
   rootItems,
   onNavigate,
   onReparent,
@@ -85,9 +83,9 @@ export default function ItemsColumns({
     setSelected({ columnIdx, item });
   }
 
-  function handleOpen(item: GridItem) {
-    if (item.kind === "folder") return; // drilling handled above
-    onNavigate(item);
+  function handleOpen(item: GridItem, options?: NavigateOptions) {
+    if (item.kind === "folder" && !options?.newTab) return; // drilling handled above
+    onNavigate(item, options);
   }
 
   // Build column data: root + one per element of path.
@@ -132,7 +130,6 @@ export default function ItemsColumns({
       </div>
       <PreviewPanel
         selected={selected?.item ?? null}
-        tree={tree}
         onOpen={() => selected && handleOpen(selected.item)}
         onDelete={onDelete ? () => selected && onDelete(selected.item) : undefined}
       />
@@ -153,7 +150,7 @@ function Column({
   items: GridItem[];
   activeId: string | null;
   onPick: (item: GridItem) => void;
-  onOpen: (item: GridItem) => void;
+  onOpen: (item: GridItem, options?: NavigateOptions) => void;
   onReparent: (payload: FBDragPayload, targetFolderId: string | null) => Promise<void>;
   onDelete?: (item: GridItem) => Promise<void>;
   folderIdForDrop: string | null;
@@ -202,7 +199,7 @@ function Column({
           item={item}
           active={item.id === activeId}
           onPick={() => onPick(item)}
-          onOpen={() => onOpen(item)}
+          onOpen={(options) => onOpen(item, options)}
           onReparent={onReparent}
           onDelete={onDelete}
         />
@@ -222,7 +219,7 @@ function ColumnRow({
   item: GridItem;
   active: boolean;
   onPick: () => void;
-  onOpen: () => void;
+  onOpen: (options?: NavigateOptions) => void;
   onReparent: (payload: FBDragPayload, targetFolderId: string | null) => Promise<void>;
   onDelete?: (item: GridItem) => Promise<void>;
 }) {
@@ -230,8 +227,17 @@ function ColumnRow({
   const isFolder = item.kind === "folder";
   return (
     <div
-      onClick={onPick}
-      onDoubleClick={onOpen}
+      onClick={(e) => {
+        if (shouldOpenInNewTab(e)) {
+          onOpen({ newTab: true });
+          return;
+        }
+        onPick();
+      }}
+      onAuxClick={(e) => {
+        if (shouldOpenInNewTab(e)) onOpen({ newTab: true });
+      }}
+      onDoubleClick={() => onOpen()}
       role="button"
       tabIndex={0}
       onKeyDown={(e) => {
@@ -306,12 +312,10 @@ function ColumnRow({
 
 function PreviewPanel({
   selected,
-  tree: _tree,
   onOpen,
   onDelete,
 }: {
   selected: GridItem | null;
-  tree: WorkspaceTree | null;
   onOpen: () => void;
   onDelete?: () => void;
 }) {
