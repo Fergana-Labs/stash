@@ -257,7 +257,8 @@ describe("TableEditorPage row creation", () => {
       data: { name: linkedValue },
     };
     api.updateTableRow.mockResolvedValue(linkedRow);
-    vi.stubGlobal("prompt", vi.fn(() => "https://example.com"));
+    const prompt = vi.fn();
+    vi.stubGlobal("prompt", prompt);
 
     render(<TableEditorPage />);
 
@@ -269,12 +270,17 @@ describe("TableEditorPage row creation", () => {
       fireEvent.keyDown(input, { key: "k", metaKey: true });
       await Promise.resolve();
     });
+    const linkInput = await screen.findByLabelText("Link URL");
+    expect(linkInput).toHaveValue("https://");
+    fireEvent.change(linkInput, { target: { value: "https://example.com" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
 
     await waitFor(() =>
       expect(api.updateTableRow).toHaveBeenCalledWith("ws-1", "table-1", "row-1", {
         name: linkedValue,
       }),
     );
+    expect(prompt).not.toHaveBeenCalled();
   });
 
   it("renders markdown links in text cells", async () => {

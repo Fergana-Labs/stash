@@ -8,8 +8,10 @@ import {
   useRef,
   useState,
   type AnchorHTMLAttributes,
+  type FormEvent,
   type HTMLAttributes,
   type KeyboardEvent as ReactKeyboardEvent,
+  type RefObject,
 } from "react";
 import Markdown from "react-markdown";
 import AppShell from "../../../components/AppShell";
@@ -66,6 +68,16 @@ type SummaryData = { total_rows: number; columns: Record<string, { name: string;
 type TableUndoAction =
   | { kind: "row-create"; row: TableRow }
   | { kind: "row-update"; row: TableRow };
+type CellLinkEditorState = {
+  value: string;
+  selectionStart: number | null;
+  selectionEnd: number | null;
+  top: number;
+  left: number;
+};
+
+const LINK_EDITOR_DEFAULT_HREF = "https://";
+const LINK_EDITOR_WIDTH = 320;
 
 const isDraftRowId = (rowId: string) => rowId.startsWith(DRAFT_ROW_PREFIX);
 const cloneTableRow = (row: TableRow): TableRow => ({ ...row, data: { ...row.data } });
@@ -109,6 +121,80 @@ function linkMarkdownSelection(
   return `${value.slice(0, start)}[${markdownLinkText(label)}](${markdownLinkHref(
     href,
   )})${value.slice(end)}`;
+}
+
+function linkEditorPositionFor(input: HTMLInputElement) {
+  const rect = input.getBoundingClientRect();
+  const viewportPadding = 12;
+  const maxLeft = Math.max(viewportPadding, window.innerWidth - LINK_EDITOR_WIDTH - viewportPadding);
+  const left = Math.min(Math.max(viewportPadding, rect.left), maxLeft);
+  return {
+    top: rect.bottom + 6,
+    left,
+  };
+}
+
+interface CellLinkEditorPopoverProps {
+  href: string;
+  inputRef: RefObject<HTMLInputElement | null>;
+  popoverRef: RefObject<HTMLFormElement | null>;
+  top: number;
+  left: number;
+  onCancel: () => void;
+  onHrefChange: (href: string) => void;
+  onSubmit: () => void;
+}
+
+function CellLinkEditorPopover({
+  href,
+  inputRef,
+  popoverRef,
+  top,
+  left,
+  onCancel,
+  onHrefChange,
+  onSubmit,
+}: CellLinkEditorPopoverProps) {
+  function submit(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    onSubmit();
+  }
+
+  return (
+    <form
+      ref={popoverRef}
+      role="dialog"
+      aria-label="Edit link"
+      onSubmit={submit}
+      className="fixed z-50 w-[320px] rounded-lg border border-border bg-base p-2 shadow-[0_12px_32px_-10px_rgba(0,0,0,0.35),0_4px_12px_-6px_rgba(0,0,0,0.18)]"
+      style={{ top, left }}
+    >
+      <div className="flex items-center gap-1.5">
+        <input
+          ref={inputRef}
+          aria-label="Link URL"
+          value={href}
+          onChange={(e) => onHrefChange(e.target.value)}
+          placeholder="Paste link or URL"
+          className="min-w-0 flex-1 rounded-md border border-border bg-surface px-2 py-1.5 text-[13px] text-foreground outline-none focus:border-brand focus:ring-1 focus:ring-brand"
+        />
+        <button
+          type="button"
+          onClick={onCancel}
+          className="rounded-md px-2 py-1.5 text-[12.5px] font-medium text-muted hover:bg-raised hover:text-foreground"
+        >
+          Cancel
+        </button>
+        <button
+          type="submit"
+          disabled={!href.trim()}
+          className="rounded-md bg-brand px-2.5 py-1.5 text-[12.5px] font-medium text-white hover:bg-brand-hover disabled:opacity-50"
+        >
+          Save
+        </button>
+      </div>
+    </form>
+  );
 }
 
 function TableCellText({ value }: { value: string }) {
@@ -175,6 +261,10 @@ function TableEditorPageInner() {
   const [editingCell, setEditingCell] = useState<{ rowId: string; colId: string } | null>(null);
   const [cellValue, setCellValue] = useState("");
   const cellInputRef = useRef<HTMLInputElement>(null);
+  const linkHrefInputRef = useRef<HTMLInputElement>(null);
+  const linkEditorRef = useRef<HTMLFormElement>(null);
+  const [linkEditor, setLinkEditor] = useState<CellLinkEditorState | null>(null);
+  const [linkHref, setLinkHref] = useState(LINK_EDITOR_DEFAULT_HREF);
   const undoStackRef = useRef<TableUndoAction[]>([]);
   const undoInFlightRef = useRef(false);
 
@@ -541,12 +631,14 @@ function TableEditorPageInner() {
 
   const startEditing = (rowId: string, colId: string, currentValue: unknown) => {
     if (readOnly) return;
+    setLinkEditor(null);
     setEditingCell({ rowId, colId }); setCellValue(currentValue != null ? String(currentValue) : "");
   };
-  const commitEdit = async (nextValue = cellValue) => {
+  const commitEdit = useCallback(async (nextValue = cellValue) => {
     if (!editingCell) return;
+    setLinkEditor(null);
     const { rowId, colId } = editingCell;
-    const col = sortedColumns.find((c) => c.id === colId);
+    const col = table?.columns.find((c) => c.id === colId);
     if (isDraftRowId(rowId) && nextValue === "") {
       setEditingCell(null);
       return;
@@ -574,23 +666,70 @@ function TableEditorPageInner() {
     }
     catch (err) { setError(err instanceof Error ? err.message : "Failed"); }
     setEditingCell(null);
+  }, [cellValue, editingCell, rememberUndo, rows, table, tableId, wsId]);
+  const cancelEdit = () => {
+    setLinkEditor(null);
+    setEditingCell(null);
   };
-  const cancelEdit = () => setEditingCell(null);
-  const applyCellLink = async (input: HTMLInputElement, col: TableColumn) => {
-    if (!canLinkCellText(col)) return;
-    const href = window.prompt("Link URL", "https://");
-    if (href == null) return;
-    const trimmedHref = href.trim();
+  const openCellLinkEditor = (input: HTMLInputElement, col: TableColumn) => {
+    if (!canLinkCellText(col) || !editingCell) return;
+    const position = linkEditorPositionFor(input);
+    setLinkHref(LINK_EDITOR_DEFAULT_HREF);
+    setLinkEditor({
+      value: cellValue,
+      selectionStart: input.selectionStart,
+      selectionEnd: input.selectionEnd,
+      top: position.top,
+      left: position.left,
+    });
+  };
+  const cancelCellLink = () => {
+    const selectionStart = linkEditor?.selectionStart;
+    const selectionEnd = linkEditor?.selectionEnd;
+    setLinkEditor(null);
+    window.requestAnimationFrame(() => {
+      cellInputRef.current?.focus();
+      if (selectionStart != null && selectionEnd != null) {
+        cellInputRef.current?.setSelectionRange(selectionStart, selectionEnd);
+      }
+    });
+  };
+  const submitCellLink = async () => {
+    if (!linkEditor) return;
+    const trimmedHref = linkHref.trim();
     if (!trimmedHref) return;
     const nextValue = linkMarkdownSelection(
-      cellValue,
-      input.selectionStart,
-      input.selectionEnd,
+      linkEditor.value,
+      linkEditor.selectionStart,
+      linkEditor.selectionEnd,
       trimmedHref,
     );
     setCellValue(nextValue);
     await commitEdit(nextValue);
   };
+
+  useEffect(() => {
+    if (!linkEditor) return;
+    linkHrefInputRef.current?.focus();
+    linkHrefInputRef.current?.select();
+  }, [linkEditor]);
+
+  useEffect(() => {
+    if (!linkEditor) return;
+    const handler = (e: MouseEvent) => {
+      if (linkEditorRef.current?.contains(e.target as Node)) return;
+      if (isTableCellEditorTarget(e.target)) {
+        setLinkEditor(null);
+        return;
+      }
+      void commitEdit();
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [linkEditor, commitEdit]);
+
+  useEscapeKey(!!linkEditor, cancelCellLink);
+
   const handleCellInputKeyDown = (
     e: ReactKeyboardEvent<HTMLInputElement>,
     col: TableColumn,
@@ -603,7 +742,7 @@ function TableEditorPageInner() {
       e.key.toLowerCase() === "k"
     ) {
       e.preventDefault();
-      void applyCellLink(e.currentTarget, col);
+      openCellLinkEditor(e.currentTarget, col);
       return;
     }
 
@@ -862,7 +1001,7 @@ function TableEditorPageInner() {
                 type={cellInputType(col)}
                 value={cellValue}
                 onChange={(e) => setCellValue(e.target.value)}
-                onBlur={() => void commitEdit()}
+                onBlur={() => { if (!linkEditor) void commitEdit(); }}
                 onKeyDown={(e) => handleCellInputKeyDown(e, col)}
                 className="w-full h-8 px-2 text-sm bg-transparent outline-none ring-1 ring-brand rounded font-mono text-foreground"
               />
@@ -1236,6 +1375,19 @@ function TableEditorPageInner() {
               </div>
             )}
           </div>
+        )}
+
+        {linkEditor && (
+          <CellLinkEditorPopover
+            href={linkHref}
+            inputRef={linkHrefInputRef}
+            popoverRef={linkEditorRef}
+            top={linkEditor.top}
+            left={linkEditor.left}
+            onCancel={cancelCellLink}
+            onHrefChange={setLinkHref}
+            onSubmit={() => void submitCellLink()}
+          />
         )}
 
         {/* Column context menu */}
