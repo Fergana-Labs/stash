@@ -476,9 +476,11 @@ export function DocumentBodySkeleton({ className }: SkeletonProps) {
 export function FileViewerSkeleton() {
   return (
     <div className="scroll-thin flex min-h-0 flex-1 flex-col overflow-hidden">
-      <ViewerHeaderSkeleton />
-      <div className="flex-1 overflow-auto bg-base p-8">
-        <SkeletonBlock className="h-full min-h-[420px] w-full rounded-lg" />
+      <div className="flex-1 overflow-auto bg-base">
+        <ViewerHeaderSkeleton />
+        <div className="p-8">
+          <SkeletonBlock className="h-full min-h-[420px] w-full rounded-lg" />
+        </div>
       </div>
     </div>
   );

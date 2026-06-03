@@ -220,57 +220,57 @@ function FileViewerPageInner() {
 
   return (
     <div className="scroll-thin flex flex-1 min-h-0 flex-col overflow-hidden">
-      <FileViewerHeader
-        icon={<KindGlyph contentType={file?.content_type ?? ""} name={file?.name ?? ""} />}
-        iconColor={kindIconColor(file?.content_type ?? "")}
-        title={file?.name ?? "File"}
-        onRenameTitle={
-          file
-            ? async (next) => {
-                const updated = await updateFile(workspaceId, file.id, { name: next });
-                setFile(updated);
-                return updated.name;
-              }
-            : undefined
-        }
-        readOnly={readOnly}
-        readOnlyLabel="read-only · via Stash"
-        backLink={readOnly && stashSlug ? { label: stashTitle ?? "Stash", href: `/stashes/${stashSlug}` } : undefined}
-        tags={tags}
-        meta={meta}
-        downloadOptions={
-          file?.url
-            ? [
-                { label: "Download", onSelect: () => triggerDownload(file.url, file.name) },
-                ...(readOnly
-                  ? []
-                  : [
-                      {
-                        label: "Delete",
-                        destructive: true,
-                        onSelect: async () => {
-                          if (!window.confirm(`Move "${file.name}" to trash?`)) return;
-                          try {
-                            await trashItem(workspaceId, "file", fileId);
-                            router.push(`/workspaces/${workspaceId}`);
-                          } catch (e) {
-                            setError(e instanceof Error ? e.message : "Delete failed");
-                          }
-                        },
-                      },
-                    ]),
-              ]
-            : undefined
-        }
-      />
-
-      {error && (
-        <div className="border-b border-red-300/40 bg-red-500/10 px-5 py-2 text-[13px] text-red-500">
-          {error}
-        </div>
-      )}
-
       <div className="flex-1 overflow-auto bg-base scroll-thin">
+        <FileViewerHeader
+          icon={<KindGlyph contentType={file?.content_type ?? ""} name={file?.name ?? ""} />}
+          iconColor={kindIconColor(file?.content_type ?? "")}
+          title={file?.name ?? "File"}
+          onRenameTitle={
+            file
+              ? async (next) => {
+                  const updated = await updateFile(workspaceId, file.id, { name: next });
+                  setFile(updated);
+                  return updated.name;
+                }
+              : undefined
+          }
+          readOnly={readOnly}
+          readOnlyLabel="read-only · via Stash"
+          backLink={readOnly && stashSlug ? { label: stashTitle ?? "Stash", href: `/stashes/${stashSlug}` } : undefined}
+          tags={tags}
+          meta={meta}
+          downloadOptions={
+            file?.url
+              ? [
+                  { label: "Download", onSelect: () => triggerDownload(file.url, file.name) },
+                  ...(readOnly
+                    ? []
+                    : [
+                        {
+                          label: "Delete",
+                          destructive: true,
+                          onSelect: async () => {
+                            if (!window.confirm(`Move "${file.name}" to trash?`)) return;
+                            try {
+                              await trashItem(workspaceId, "file", fileId);
+                              router.push(`/workspaces/${workspaceId}`);
+                            } catch (e) {
+                              setError(e instanceof Error ? e.message : "Delete failed");
+                            }
+                          },
+                        },
+                      ]),
+                ]
+              : undefined
+          }
+        />
+
+        {error && (
+          <div className="border-b border-red-300/40 bg-red-500/10 px-5 py-2 text-[13px] text-red-500">
+            {error}
+          </div>
+        )}
+
         {file && (
           <FileContentRenderer
             url={file.url}
