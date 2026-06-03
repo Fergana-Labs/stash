@@ -3,11 +3,12 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
-import { semanticSearchPages, type WorkspaceSidebar } from "../lib/api";
+import { listAllTables, semanticSearchPages, type WorkspaceSidebar } from "../lib/api";
 import {
   getCachedWorkspaceSidebar,
   readCachedWorkspaceSidebar,
 } from "../lib/stashNavigationCache";
+import type { TableWithWorkspace } from "../lib/types";
 import type { SearchScope } from "./AppShell";
 import { useEscapeKey } from "../hooks/useEscapeKey";
 
@@ -20,7 +21,7 @@ interface CommandPaletteProps {
 }
 
 interface Result {
-  kind: "search" | "page" | "session" | "folder" | "file";
+  kind: "search" | "page" | "session" | "folder" | "file" | "table";
   label: string;
   href: string;
   detail?: string;
@@ -38,6 +39,7 @@ export default function CommandPalette({
   const [spine, setSpine] = useState<WorkspaceSidebar | null>(() =>
     workspaceId ? readCachedWorkspaceSidebar(workspaceId) : null
   );
+  const [tables, setTables] = useState<TableWithWorkspace[]>([]);
   const [results, setResults] = useState<Result[]>([]);
   const [selected, setSelected] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -46,21 +48,35 @@ export default function CommandPalette({
 
   useEffect(() => {
     if (!open) return;
+    let cancelled = false;
     setQuery("");
     setResults([]);
     setSelected(0);
+    setTables([]);
     inputRef.current?.focus();
     const cached = workspaceId ? readCachedWorkspaceSidebar(workspaceId) : null;
     if (cached) {
       setSpine(cached);
-      return;
+    } else {
+      setSpine(null);
     }
-    setSpine(null);
-    if (workspaceId) {
+    if (workspaceId && !cached) {
       getCachedWorkspaceSidebar(workspaceId)
-        .then(setSpine)
+        .then((nextSpine) => {
+          if (!cancelled) setSpine(nextSpine);
+        })
         .catch(() => {});
     }
+    listAllTables()
+      .then((data) => {
+        if (!cancelled) setTables(data.tables);
+      })
+      .catch(() => {
+        if (!cancelled) setTables([]);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [open, workspaceId]);
 
   useEffect(() => {
@@ -120,6 +136,16 @@ export default function CommandPalette({
           });
       });
     }
+    tables.forEach((table) => {
+      if (workspaceId && table.workspace_id !== workspaceId) return;
+      if (!tableMatchesQuery(table, q)) return;
+      local.push({
+        kind: "table",
+        label: table.name,
+        href: tableHref(table),
+        detail: tableDetail(table),
+      });
+    });
     setResults(local.slice(0, 12));
     setSelected(0);
 
@@ -143,7 +169,7 @@ export default function CommandPalette({
       }
     }, 250);
     return () => clearTimeout(timer);
-  }, [query, open, spine, workspaceId, workspaceName, searchScope]);
+  }, [query, open, spine, tables, workspaceId, workspaceName, searchScope]);
 
   useEffect(() => {
     if (!open) return;
@@ -171,6 +197,7 @@ export default function CommandPalette({
     session: "#",
     skill: "⚙︎",
     file: "📁",
+    table: "T",
   };
 
   return (
@@ -190,7 +217,7 @@ export default function CommandPalette({
             ref={inputRef}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search Stash or jump to a page, session, or file..."
+            placeholder="Search Stash or jump to a page, session, file, or table..."
             className="min-w-0 flex-1 bg-transparent text-[14px] text-foreground placeholder:text-muted focus:outline-none"
             autoFocus
           />
@@ -267,4 +294,25 @@ function fullPageSearchResult(
     href: hrefParams ? `/search?${hrefParams}` : "/search",
     detail: scope?.detail ?? (workspaceId ? "Search this workspace" : "Search all workspaces"),
   };
+}
+
+function tableMatchesQuery(table: TableWithWorkspace, query: string): boolean {
+  const columns = table.columns.map((column) => column.name).join(" ");
+  return [table.name, table.description, columns].some((value) =>
+    value.toLowerCase().includes(query)
+  );
+}
+
+function tableHref(table: TableWithWorkspace): string {
+  if (!table.workspace_id) return `/tables/${table.id}`;
+  return `/tables/${table.id}?workspaceId=${table.workspace_id}`;
+}
+
+function tableDetail(table: TableWithWorkspace): string {
+  const parts = ["Table"];
+  if (typeof table.row_count === "number") {
+    parts.push(`${table.row_count} row${table.row_count === 1 ? "" : "s"}`);
+  }
+  if (table.workspace_name) parts.push(table.workspace_name);
+  return parts.join(" · ");
 }

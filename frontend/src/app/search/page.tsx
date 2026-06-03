@@ -12,6 +12,7 @@ import {
   getWorkspaceSidebar,
   getPublicCartridge,
   getSessionEvents,
+  listAllTables,
   listStashes,
   listMyWorkspaces,
   searchWorkspaceEvents,
@@ -23,9 +24,9 @@ import {
   type WorkspaceCartridge,
   type WorkspaceFolder,
 } from "../../lib/api";
-import type { Page, Workspace } from "../../lib/types";
+import type { Page, TableWithWorkspace, Workspace } from "../../lib/types";
 
-type ContentScope = "all" | "sessions" | "pages" | "cartridges";
+type ContentScope = "all" | "sessions" | "pages" | "tables" | "cartridges";
 
 // Coarse buckets for analytics — actual counts have high cardinality
 // and add no signal beyond "no results / few / many."
@@ -39,7 +40,7 @@ function bucketCount(n: number): string {
 
 interface SearchResult {
   id: string;
-  kind: "Session" | "Page" | "Stash";
+  kind: "Session" | "Page" | "Table" | "Stash";
   title: string;
   href: string;
   sourceName: string;
@@ -57,11 +58,14 @@ const CONTENT_SCOPES: { id: ContentScope; label: string }[] = [
   { id: "sessions", label: "Sessions" },
   { id: "pages", label: "Pages" },
   { id: "cartridges", label: "Cartridges" },
+  { id: "tables", label: "Tables" },
 ];
 
 function initialContentScope(value: string | null, sessionId: string): ContentScope {
   if (sessionId) return "sessions";
-  if (value === "sessions" || value === "pages" || value === "cartridges") return value;
+  if (value === "sessions" || value === "pages" || value === "tables" || value === "cartridges") {
+    return value;
+  }
   return "all";
 }
 
@@ -212,6 +216,7 @@ function SearchPageInner() {
       const nextResults: SearchResult[] = [];
       const includeSessions = contentScope === "all" || contentScope === "sessions";
       const includePages = contentScope === "all" || contentScope === "pages";
+      const includeTables = contentScope === "all" || contentScope === "tables";
       const includeStashes = contentScope === "all" || contentScope === "cartridges";
       const workspace =
         workspaces.find((item) => item.id === selectedWorkspaceId) ??
@@ -239,6 +244,7 @@ function SearchPageInner() {
           ...searchPublicCartridgeItems(detail, q, {
             includePages,
             includeSessions,
+            includeTables,
           })
         );
         setResults(sortResults(nextResults));
@@ -289,6 +295,20 @@ function SearchPageInner() {
         if (pageGroups.length < searchedWorkspaces.length) {
           setError("Page search is unavailable for one or more workspaces.");
         }
+      }
+
+      if (includeTables && !selectedFolderId && !selectedPageId) {
+        const workspaceIds = new Set(searchedWorkspaces.map((item) => item.id));
+        const { tables } = await listAllTables();
+        nextResults.push(
+          ...searchTables(
+            tables.filter((table) => {
+              if (!table.workspace_id) return !selectedWorkspaceId;
+              return workspaceIds.has(table.workspace_id);
+            }),
+            q
+          )
+        );
       }
 
       setResults(sortResults(nextResults));
@@ -344,12 +364,12 @@ function SearchPageInner() {
             Search
           </p>
           <h1 className="mt-3 font-display text-[34px] font-bold tracking-tight text-foreground">
-            Search pages, sessions, and Cartridges.
+            Search pages, sessions, tables, and Cartridges.
           </h1>
           <p className="mt-2 max-w-[700px] text-[14.5px] leading-relaxed text-muted">
             Search one workspace, one Stash, a folder inside a workspace, or
             internal knowledge only. Stash results are published bundles created from
-            workspace pages and sessions.
+            workspace pages, tables, and sessions.
           </p>
         </header>
 
@@ -508,7 +528,7 @@ function SearchPageInner() {
             >
               <input
                 type="text"
-                placeholder="Search for a decision, transcript, Stash, or page..."
+                placeholder="Search for a decision, transcript, table, Stash, or page..."
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
                 className="min-w-0 flex-1 bg-transparent text-[15px] text-foreground placeholder:text-muted focus:outline-none"
@@ -745,6 +765,44 @@ function searchPages(
   );
 }
 
+function searchTables(tables: TableWithWorkspace[], query: string): SearchResult[] {
+  return tables
+    .map((table) => {
+      const relevance = scoreValues(query, [
+        { value: table.name, weight: 8 },
+        { value: table.description, weight: 3 },
+        { value: table.columns.map((column) => column.name).join(" "), weight: 2 },
+        { value: table.workspace_name ?? undefined, weight: 1 },
+      ]);
+      return { table, relevance };
+    })
+    .filter(({ relevance }) => relevance > 0)
+    .map(({ table, relevance }) => ({
+      id: table.id,
+      kind: "Table" as const,
+      title: table.name,
+      href: tableSearchHref(table),
+      sourceName: table.workspace_name ?? "Personal",
+      detail: tableSearchDetail(table),
+      updatedAt: table.updated_at,
+      relevance,
+    }));
+}
+
+function tableSearchHref(table: TableWithWorkspace): string {
+  if (!table.workspace_id) return `/tables/${table.id}`;
+  return `/tables/${table.id}?workspaceId=${table.workspace_id}`;
+}
+
+function tableSearchDetail(table: TableWithWorkspace): string {
+  if (table.description.trim()) return table.description;
+  const parts = [`${table.columns.length} column${table.columns.length === 1 ? "" : "s"}`];
+  if (typeof table.row_count === "number") {
+    parts.push(`${table.row_count} row${table.row_count === 1 ? "" : "s"}`);
+  }
+  return parts.join(" / ");
+}
+
 function descendantFolderIds(
   folders: WorkspaceFolder[],
   selectedFolderId: string
@@ -774,7 +832,7 @@ function descendantFolderIds(
 function searchPublicCartridgeItems(
   detail: PublicCartridgeDetail,
   query: string,
-  scope: { includePages: boolean; includeSessions: boolean }
+  scope: { includePages: boolean; includeSessions: boolean; includeTables: boolean }
 ): SearchResult[] {
   return detail.items.flatMap((item, index) => {
     if (item.object_type === "folder" && scope.includePages) {
@@ -785,6 +843,9 @@ function searchPublicCartridgeItems(
     }
     if (item.object_type === "session" && scope.includeSessions) {
       return searchPublicSession(detail, item, index, query);
+    }
+    if (item.object_type === "table" && scope.includeTables) {
+      return searchPublicTable(detail, item, index, query);
     }
     return [];
   });
@@ -911,6 +972,80 @@ function searchPublicSession(
       ]),
     },
   ];
+}
+
+type PublicTableColumn = { name?: string | null };
+type PublicTableRow = { data?: Record<string, unknown> | null };
+
+function searchPublicTable(
+  detail: PublicCartridgeDetail,
+  item: PublicCartridgeDetail["items"][number],
+  index: number,
+  query: string
+): SearchResult[] {
+  const inline = item.inline as {
+    description?: string | null;
+    columns?: PublicTableColumn[];
+    rows?: PublicTableRow[];
+  };
+  const columns = inline.columns ?? [];
+  const rows = inline.rows ?? [];
+  const columnText = columns.map((column) => column.name ?? "").join(" ");
+  const rowsText = rows.map(tableRowText).join(" ");
+  if (!textIncludes(query, item.label, inline.description, columnText, rowsText)) return [];
+
+  return [
+    {
+      id: item.object_id,
+      kind: "Table" as const,
+      title: item.label,
+      href: `/cartridges/${detail.cartridge.slug}#item-${index}`,
+      sourceName: detail.cartridge.title,
+      detail: publicTableSnippet(inline.description, columns, rows, query),
+      updatedAt: detail.cartridge.updated_at,
+      relevance: scoreValues(query, [
+        { value: item.label, weight: 8 },
+        { value: inline.description, weight: 3 },
+        { value: columnText, weight: 2 },
+        { value: rowsText, weight: 1 },
+        { value: detail.cartridge.title, weight: 1 },
+      ]),
+    },
+  ];
+}
+
+function publicTableSnippet(
+  description: string | null | undefined,
+  columns: PublicTableColumn[],
+  rows: PublicTableRow[],
+  query: string
+): string {
+  if (description?.trim()) return description.slice(0, 220);
+
+  const matchingRow = rows.find((row) => textIncludes(query, tableRowText(row)));
+  if (matchingRow) return tableRowText(matchingRow).slice(0, 220);
+
+  return `${columns.length} column${columns.length === 1 ? "" : "s"}, ${rows.length} row${
+    rows.length === 1 ? "" : "s"
+  }`;
+}
+
+function tableRowText(row: PublicTableRow): string {
+  return Object.values(row.data ?? {}).map(searchValueText).filter(Boolean).join(" ");
+}
+
+function searchValueText(value: unknown): string {
+  if (value == null) return "";
+  if (typeof value === "string") return value;
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  if (Array.isArray(value)) return value.map(searchValueText).filter(Boolean).join(" ");
+  if (typeof value === "object") {
+    return Object.values(value as Record<string, unknown>)
+      .map(searchValueText)
+      .filter(Boolean)
+      .join(" ");
+  }
+  return "";
 }
 
 function textIncludes(query: string, ...values: (string | null | undefined)[]): boolean {

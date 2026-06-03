@@ -6,9 +6,9 @@ import {
   getCachedWorkspaceSidebar,
   readCachedWorkspaceSidebar,
 } from "../lib/stashNavigationCache";
-import { semanticSearchPages } from "../lib/api";
+import { listAllTables, semanticSearchPages } from "../lib/api";
 
-const searchPlaceholder = "Search Stash or jump to a page, session, or file...";
+const searchPlaceholder = "Search Stash or jump to a page, session, file, or table...";
 
 const router = vi.hoisted(() => ({
   push: vi.fn(),
@@ -48,6 +48,7 @@ vi.mock("../lib/stashNavigationCache", () => ({
 }));
 
 vi.mock("../lib/api", () => ({
+  listAllTables: vi.fn(),
   semanticSearchPages: vi.fn(),
 }));
 
@@ -91,6 +92,7 @@ describe("CommandPalette search", () => {
     vi.clearAllMocks();
     vi.mocked(readCachedWorkspaceSidebar).mockReturnValue(sidebar);
     vi.mocked(getCachedWorkspaceSidebar).mockResolvedValue(sidebar);
+    vi.mocked(listAllTables).mockResolvedValue({ tables: [] });
     vi.mocked(semanticSearchPages).mockResolvedValue([]);
   });
 
@@ -119,5 +121,38 @@ describe("CommandPalette search", () => {
     fireEvent.keyDown(window, { key: "Enter" });
 
     expect(router.push).toHaveBeenCalledWith("/workspaces/ws-1/p/page-1");
+  });
+
+  it("finds matching tables in the active workspace", async () => {
+    vi.mocked(listAllTables).mockResolvedValue({
+      tables: [
+        {
+          id: "table-1",
+          workspace_id: "ws-1",
+          workspace_name: "Demo Workspace",
+          name: "Hiring Outreach CRM",
+          description: "",
+          columns: [],
+          views: [],
+          created_by: "user-1",
+          updated_by: null,
+          created_at: "2026-01-01T00:00:00Z",
+          updated_at: "2026-01-02T00:00:00Z",
+          row_count: 177,
+        },
+      ],
+    });
+    renderPalette();
+
+    fireEvent.change(screen.getByPlaceholderText(searchPlaceholder), {
+      target: { value: "hiring outreach" },
+    });
+
+    expect(await screen.findByText("Hiring Outreach CRM")).toBeInTheDocument();
+
+    fireEvent.keyDown(window, { key: "ArrowDown" });
+    fireEvent.keyDown(window, { key: "Enter" });
+
+    expect(router.push).toHaveBeenCalledWith("/tables/table-1?workspaceId=ws-1");
   });
 });
