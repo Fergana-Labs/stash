@@ -83,7 +83,7 @@ export default function HtmlPageView({
   // first `html` we see so saves (wrap, edit, unwrap) don't reload the iframe
   // and trash the user's caret. Switching pages remounts this component, so
   // a new page picks up its own initial html cleanly.
-  const [initialHtml] = useState(html);
+  const [initialHtml] = useState(() => stripHtmlPageRuntimeState(html));
 
   // Slide-deck detection: any fixed-aspect HTML page whose body contains
   // <section class="slide"> elements gets prev/next navigation. Pages
@@ -706,6 +706,35 @@ export function extractCommentIdsFromHtml(html: string): string[] {
   let m: RegExpExecArray | null;
   while ((m = re.exec(html)) !== null) ids.push(m[1]);
   return Array.from(new Set(ids));
+}
+
+export function stripHtmlPageRuntimeState(html: string): string {
+  return stripBodyAttribute(
+    stripBodyAttribute(stripRuntimeTags(html), "contenteditable"),
+    "spellcheck",
+  );
+}
+
+function stripRuntimeTags(html: string): string {
+  return html
+    .replace(
+      /<script\b(?=[^>]*\bid=["']__stash_(?:resize|slide)_script__["'])[^>]*>[\s\S]*?<\/script>/gi,
+      "",
+    )
+    .replace(
+      /<style\b(?=[^>]*\bid=["']__stash_(?:comments|slide)_css__["'])[^>]*>[\s\S]*?<\/style>/gi,
+      "",
+    );
+}
+
+function stripBodyAttribute(html: string, attr: "contenteditable" | "spellcheck"): string {
+  const attrPattern = new RegExp(
+    `\\s${attr}(?:\\s*=\\s*(?:"[^"]*"|'[^']*'|[^\\s>]+))?`,
+    "gi",
+  );
+  return html.replace(/<body\b[^>]*>/gi, (bodyTag) =>
+    bodyTag.replace(attrPattern, ""),
+  );
 }
 
 // Bootstrap injected into fixed-aspect slide decks. Listens for
