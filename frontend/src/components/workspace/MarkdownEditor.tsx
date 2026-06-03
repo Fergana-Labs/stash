@@ -1,13 +1,6 @@
 "use client";
 
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type MouseEvent,
-} from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { EditorContent, useEditor } from "@tiptap/react";
 import Collaboration from "@tiptap/extension-collaboration";
 import CollaborationCaret from "@tiptap/extension-collaboration-caret";
@@ -35,10 +28,6 @@ import {
   uploadFile,
   workspaceFileDownloadUrl,
 } from "../../lib/api";
-import {
-  getEditorFrameFocusPosition,
-  shouldFocusEditorFrame,
-} from "../../lib/editorClick";
 import { openInNewTab, shouldOpenInNewTab } from "../../lib/linkNavigation";
 
 const AUTOSAVE_DEBOUNCE_MS = 1500;
@@ -171,10 +160,11 @@ export default function MarkdownEditor({
     () => colorFromId(collaborationUser.id),
     [collaborationUser.id],
   );
+  const canEdit = !!collaboration && !readOnly;
 
   const editor = useEditor({
     immediatelyRender: false,
-    editable: !!collaboration && !readOnly,
+    editable: canEdit,
     extensions: [
       StarterKit.configure({
         blockquote: false,
@@ -259,7 +249,8 @@ export default function MarkdownEditor({
     editorProps: {
       attributes: {
         class:
-          "prose prose-sm max-w-none min-h-[200px] focus:outline-none file-page-body",
+          "prose prose-sm max-w-none min-h-full px-12 pt-10 pb-24 focus:outline-none file-page-body" +
+          (canEdit ? " cursor-text" : ""),
       },
       handleDOMEvents: {
         paste: (_view, event) => {
@@ -337,7 +328,7 @@ export default function MarkdownEditor({
         saveMarkdownRef.current(md);
       }, AUTOSAVE_DEBOUNCE_MS);
     },
-  }, [collaboration, collaborationUser.name, collaborationUserColor, readOnly]);
+  }, [collaboration, collaborationUser.name, collaborationUserColor, canEdit, readOnly]);
 
   const saveMarkdown = useCallback(
     async (md: string) => {
@@ -512,15 +503,6 @@ export default function MarkdownEditor({
     setComposerState(null);
   }
 
-  function handleEditorFrameClick(event: MouseEvent<HTMLDivElement>) {
-    if (!editor || !editor.isEditable) return;
-    if (!shouldFocusEditorFrame(editor.view.dom, event.target)) return;
-
-    editor.commands.focus(
-      getEditorFrameFocusPosition(editor.view.dom, event.clientY),
-    );
-  }
-
   // Ctrl/Cmd+S → flush immediately
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -560,14 +542,8 @@ export default function MarkdownEditor({
         ref={scrollContainerRef}
         className="relative flex-1 overflow-y-auto bg-background"
       >
-        <div
-          onClick={handleEditorFrameClick}
-          className={
-            "mx-auto w-full max-w-[920px] px-12 pt-10 pb-24 " +
-            (editor?.isEditable ? "cursor-text" : "")
-          }
-        >
-          <EditorContent editor={editor} className="file-page-content" />
+        <div className="mx-auto min-h-full w-full max-w-[920px]">
+          <EditorContent editor={editor} className="file-page-content min-h-full" />
         </div>
         {composerState && onAddComment && (
           <CommentComposerPopover
