@@ -23,6 +23,8 @@ DEV_DB_PORT="5432"
 STARTED_DEV_DB=false
 
 cleanup() {
+    local exit_code="${1:-0}"
+
     echo ""
     echo "Shutting down all services..."
     for pid in "${PIDS[@]}"; do
@@ -34,10 +36,10 @@ cleanup() {
         docker stop "$DEV_DB_CONTAINER" >/dev/null 2>&1 || true
     fi
     echo "All services stopped."
-    exit 0
+    exit "$exit_code"
 }
 
-trap cleanup SIGINT SIGTERM
+trap 'cleanup 0' SIGINT SIGTERM
 
 # Load .env if present
 if [ -f "$PROJECT_ROOT/.env" ]; then
@@ -206,6 +208,30 @@ choose_dev_ports() {
     fi
 }
 
+wait_for_services() {
+    local pid
+    local status
+
+    while true; do
+        for pid in "${PIDS[@]}"; do
+            if jobs -pr | grep -qx "$pid"; then
+                continue
+            fi
+
+            if wait "$pid"; then
+                status=0
+            else
+                status=$?
+            fi
+
+            echo "[start]  Process ${pid} exited with status ${status}."
+            cleanup "$status"
+        done
+
+        sleep 1
+    done
+}
+
 echo "Starting Stash services..."
 echo "================================"
 
@@ -245,5 +271,5 @@ echo "  Backend  -> http://localhost:${BACKEND_PORT}"
 echo "  Frontend -> http://localhost:${FRONTEND_PORT}"
 echo "================================"
 
-# Wait for all background processes
-wait
+# Wait for both app processes; if either exits, stop the other one too.
+wait_for_services
