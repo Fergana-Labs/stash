@@ -19,6 +19,7 @@ export type StashPreviewData = {
     owner_display_name?: string | null;
     cover_image_url?: string | null;
     icon_url?: string | null;
+    updated_at?: string;
   };
   workspace_name: string;
   items: StashPreviewItem[];
@@ -32,27 +33,23 @@ export type PreviewLine = {
 };
 
 export type PreviewCard = {
-  eyebrow: string;
+  kind: "cartridge" | StashItemType;
   title: string;
   description: string;
+  workspaceName: string;
+  stashTitle: string;
+  authorName: string;
+  updatedAt: string | null;
+  coverImageUrl: string | null;
+  iconUrl: string | null;
+  contentBadge: string;
+  bodyTitle: string;
+  bodyText: string;
   stats: string[];
   lines: PreviewLine[];
-  accent: {
-    primary: string;
-    secondary: string;
-    wash: string;
-  };
 };
 
 const ITEM_TYPES = new Set(["folder", "page", "table", "file", "session"]);
-
-const ACCENTS = [
-  { primary: "#2563EB", secondary: "#14B8A6", wash: "#DBEAFE" },
-  { primary: "#059669", secondary: "#F97316", wash: "#D1FAE5" },
-  { primary: "#7C3AED", secondary: "#06B6D4", wash: "#EDE9FE" },
-  { primary: "#EA580C", secondary: "#2563EB", wash: "#FFEDD5" },
-  { primary: "#0F766E", secondary: "#E11D48", wash: "#CCFBF1" },
-];
 
 export function isStashItemType(value: string | null): value is StashItemType {
   return !!value && ITEM_TYPES.has(value);
@@ -125,14 +122,23 @@ export function buildStashPreviewCard(data: StashPreviewData): PreviewCard {
     data.workspace_name,
     ...itemTypeCounts(data.items).slice(0, 3),
   ].filter(Boolean);
+  const lines = data.items.slice(0, 4).map(itemPreviewLine);
 
   return {
-    eyebrow: "Stash",
+    kind: "cartridge",
     title: data.cartridge.title,
     description,
+    workspaceName: data.workspace_name,
+    stashTitle: data.cartridge.title,
+    authorName: stashAuthorName(data),
+    updatedAt: data.cartridge.updated_at ?? null,
+    coverImageUrl: data.cartridge.cover_image_url ?? null,
+    iconUrl: data.cartridge.icon_url ?? null,
+    contentBadge: "CARTRIDGE",
+    bodyTitle: data.items.length > 0 ? "Contents" : "No items yet",
+    bodyText: description,
     stats,
-    lines: data.items.slice(0, 4).map(itemPreviewLine),
-    accent: accentFor(data.cartridge.id || data.cartridge.slug),
+    lines,
   };
 }
 
@@ -141,13 +147,22 @@ export function buildItemPreviewCard(
   item: StashPreviewItem,
 ): PreviewCard {
   const label = item.label || formatItemType(item.object_type);
+  const body = itemPreviewBody(item, label);
   return {
-    eyebrow: `${formatItemType(item.object_type)} in ${data.cartridge.title}`,
+    kind: item.object_type,
     title: label,
     description: itemMetadataDescription(data, item),
+    workspaceName: data.workspace_name,
+    stashTitle: data.cartridge.title,
+    authorName: stashAuthorName(data),
+    updatedAt: itemUpdatedAt(item) ?? data.cartridge.updated_at ?? null,
+    coverImageUrl: data.cartridge.cover_image_url ?? null,
+    iconUrl: data.cartridge.icon_url ?? null,
+    contentBadge: itemContentBadge(item),
+    bodyTitle: body.title,
+    bodyText: body.text,
     stats: [data.workspace_name, data.cartridge.title, formatItemType(item.object_type)],
     lines: itemPreviewLines(item),
-    accent: accentFor(`${data.cartridge.id}:${item.object_type}:${item.object_id}`),
   };
 }
 
@@ -293,6 +308,125 @@ function itemPreviewLines(item: StashPreviewItem): PreviewLine[] {
   return [itemPreviewLine(item)];
 }
 
+function itemPreviewBody(
+  item: StashPreviewItem,
+  fallbackTitle: string,
+): { title: string; text: string } {
+  const inline = item.inline ?? {};
+
+  if (item.object_type === "page") {
+    const page = objectValue(inline.page);
+    return pagePreviewBody(page, fallbackTitle);
+  }
+
+  if (item.object_type === "session") {
+    const session = objectValue(inline.session);
+    const events = arrayValue(session.events).map(objectValue);
+    const firstEvent = events
+      .map((event) => cleanText(stringValue(event.content)))
+      .find(Boolean);
+    return {
+      title: fallbackTitle,
+      text: firstEvent ? truncateText(firstEvent, 260) : itemSummary(item),
+    };
+  }
+
+  if (item.object_type === "table") {
+    const columns = arrayValue(inline.columns).map(objectValue);
+    const rows = arrayValue(inline.rows).map(objectValue);
+    return {
+      title: fallbackTitle,
+      text: `${columns.length} columns, ${rows.length} rows. ${firstTableRow(columns, rows)}`,
+    };
+  }
+
+  return {
+    title: fallbackTitle,
+    text: itemSummary(item),
+  };
+}
+
+function pagePreviewBody(
+  page: Record<string, unknown>,
+  fallbackTitle: string,
+): { title: string; text: string } {
+  const markdown = stringValue(page.content_markdown).trim();
+  if (!markdown) {
+    return htmlPreviewBody(stringValue(page.content_html), fallbackTitle);
+  }
+
+  const rawLines = markdown
+    .split(/\n+/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  const headingIndex = rawLines.findIndex((line) => /^#{1,6}\s+/.test(line));
+  if (headingIndex >= 0) {
+    const title = stripMarkdownLine(rawLines[headingIndex]);
+    const text = rawLines
+      .slice(headingIndex + 1)
+      .map(stripMarkdownLine)
+      .filter(Boolean)
+      .join(" ");
+    return {
+      title: title || fallbackTitle,
+      text: truncateText(text || pageText(page), 260),
+    };
+  }
+
+  return {
+    title: fallbackTitle,
+    text: truncateText(markdownPreviewText(markdown), 260),
+  };
+}
+
+function htmlPreviewBody(
+  html: string,
+  fallbackTitle: string,
+): { title: string; text: string } {
+  const lines = htmlTextLines(html);
+  const firstLine = lines[0] ?? "";
+  const firstLineLooksLikeTitle = firstLine.length > 0 && firstLine.length <= 140;
+  const title = firstLineLooksLikeTitle ? firstLine : fallbackTitle;
+  const textLines = firstLineLooksLikeTitle ? lines.slice(1) : lines;
+  return {
+    title,
+    text: truncateText(textLines.join(" "), 260),
+  };
+}
+
+function itemContentBadge(item: StashPreviewItem): string {
+  const inline = item.inline ?? {};
+  if (item.object_type === "page") {
+    const page = objectValue(inline.page);
+    const contentType = stringValue(page.content_type);
+    return contentType.toLowerCase() === "html" ? "HTML" : "PAGE";
+  }
+  if (item.object_type === "file") return fileContentBadge(inline);
+  return formatItemType(item.object_type).toUpperCase();
+}
+
+function fileContentBadge(file: Record<string, unknown>): string {
+  const contentType = stringValue(file.content_type).toLowerCase();
+  if (contentType.includes("pdf")) return "PDF";
+  if (contentType.startsWith("image/")) return "IMAGE";
+  if (contentType.includes("html")) return "HTML";
+  if (contentType.startsWith("text/")) return "TEXT";
+  return "FILE";
+}
+
+function itemUpdatedAt(item: StashPreviewItem): string | null {
+  const inline = item.inline ?? {};
+  if (item.object_type === "page") {
+    return stringValue(objectValue(inline.page).updated_at) || null;
+  }
+  if (item.object_type === "file") return stringValue(inline.created_at) || null;
+  if (item.object_type === "session") {
+    const session = objectValue(inline.session);
+    return stringValue(session.finished_at) || stringValue(session.started_at) || null;
+  }
+  return null;
+}
+
 function itemMeta(item: StashPreviewItem): string {
   const inline = item.inline ?? {};
   if (item.object_type === "folder") {
@@ -349,8 +483,8 @@ function fileSummary(file: Record<string, unknown>): string {
 }
 
 function pageText(page: Record<string, unknown>): string {
-  const markdown = cleanText(stringValue(page.content_markdown));
-  if (markdown) return markdown;
+  const markdown = stringValue(page.content_markdown);
+  if (markdown.trim()) return markdownPreviewText(markdown);
   return stripHtml(stringValue(page.content_html));
 }
 
@@ -365,33 +499,58 @@ function itemTypeCounts(items: StashPreviewItem[]): string[] {
   });
 }
 
-function accentFor(seed: string) {
-  let hash = 5381;
-  for (let i = 0; i < seed.length; i++) {
-    hash = (hash * 33 + seed.charCodeAt(i)) >>> 0;
-  }
-  return ACCENTS[hash % ACCENTS.length];
+function stripHtml(html: string): string {
+  return cleanText(htmlTextLines(html).join(" "));
 }
 
-function stripHtml(html: string): string {
+function htmlTextLines(html: string): string[] {
+  return html
+    .replace(/<head[\s\S]*?<\/head>/gi, " ")
+    .replace(/<script[\s\S]*?<\/script>/gi, " ")
+    .replace(/<style[\s\S]*?<\/style>/gi, " ")
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/(p|div|li|h[1-6]|tr)>/gi, "\n")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .split(/\n+/)
+    .map(cleanText)
+    .filter(Boolean);
+}
+
+function markdownPreviewText(markdown: string): string {
   return cleanText(
-    html
-      .replace(/<script[\s\S]*?<\/script>/gi, " ")
-      .replace(/<style[\s\S]*?<\/style>/gi, " ")
-      .replace(/<br\s*\/?>/gi, "\n")
-      .replace(/<\/(p|div|li|h[1-6]|tr)>/gi, "\n")
-      .replace(/<[^>]+>/g, " ")
-      .replace(/&nbsp;/g, " ")
-      .replace(/&amp;/g, "&")
-      .replace(/&lt;/g, "<")
-      .replace(/&gt;/g, ">")
-      .replace(/&quot;/g, '"')
-      .replace(/&#39;/g, "'"),
+    markdown
+      .replace(/```[\s\S]*?```/g, " ")
+      .split(/\n+/)
+      .map(stripMarkdownLine)
+      .join(" "),
+  );
+}
+
+function stripMarkdownLine(line: string): string {
+  return cleanText(
+    line
+      .replace(/^#{1,6}\s+/, "")
+      .replace(/^[-*]\s+/, "")
+      .replace(/^>\s+/, "")
+      .replace(/`([^`]+)`/g, "$1")
+      .replace(/\*\*([^*]+)\*\*/g, "$1")
+      .replace(/\*([^*]+)\*/g, "$1")
+      .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1"),
   );
 }
 
 function cleanText(text: string): string {
   return text.replace(/\s+/g, " ").trim();
+}
+
+function stashAuthorName(data: StashPreviewData): string {
+  return data.cartridge.owner_display_name || data.cartridge.owner_name || "";
 }
 
 function truncateText(text: string, limit: number): string {

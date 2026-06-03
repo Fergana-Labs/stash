@@ -109,4 +109,30 @@ describe("stash preview metadata", () => {
     expect(stashCard.lines.map((line) => line.label)).toContain("Announcement Draft");
     expect(itemCard.lines[0].excerpt).toContain("The beta launch targets");
   });
+
+  it("uses visible HTML content for the product-style preview body", () => {
+    const data = detail();
+    const item = {
+      object_type: "page" as const,
+      object_id: "html-page-1",
+      position: 0,
+      label: "HTML Share",
+      inline: {
+        page: {
+          name: "HTML Share",
+          content_type: "html",
+          content_html:
+            "<html><head><title>Head Title</title><style>body{}</style></head><body><h1>Visible Heading</h1><p>Visible body copy.</p></body></html>",
+          updated_at: "2026-06-02T06:53:17.953882+00:00",
+        },
+      },
+    };
+
+    const card = buildItemPreviewCard(data, item);
+
+    expect(card.contentBadge).toBe("HTML");
+    expect(card.bodyTitle).toBe("Visible Heading");
+    expect(card.bodyText).toContain("Visible body copy");
+    expect(card.bodyText).not.toContain("Head Title");
+  });
 });
