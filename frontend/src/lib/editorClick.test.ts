@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { shouldFocusEditorFrame } from "./editorClick";
+import {
+  getEditorFrameFocusPosition,
+  shouldFocusEditorFrame,
+} from "./editorClick";
 
 describe("shouldFocusEditorFrame", () => {
   it("does not focus the frame for clicks inside editor content", () => {
@@ -22,5 +25,23 @@ describe("shouldFocusEditorFrame", () => {
     expect(
       shouldFocusEditorFrame(document.createElement("div"), new EventTarget()),
     ).toBe(false);
+  });
+});
+
+describe("getEditorFrameFocusPosition", () => {
+  it("focuses the start for clicks above the editor body", () => {
+    const editorElement = document.createElement("div");
+    editorElement.getBoundingClientRect = () =>
+      ({ top: 100 }) as DOMRect;
+
+    expect(getEditorFrameFocusPosition(editorElement, 80)).toBe("start");
+  });
+
+  it("focuses the end for clicks below the editor body", () => {
+    const editorElement = document.createElement("div");
+    editorElement.getBoundingClientRect = () =>
+      ({ top: 100 }) as DOMRect;
+
+    expect(getEditorFrameFocusPosition(editorElement, 120)).toBe("end");
   });
 });
