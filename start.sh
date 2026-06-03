@@ -9,9 +9,9 @@ set -euo pipefail
 
 PROJECT_ROOT="$(cd "$(dirname "$0")" && pwd)"
 PIDS=()
-# Keep local dev ports aligned with backend defaults and docker compose.
-BACKEND_PORT=3456
-FRONTEND_PORT=3457
+# Keep local dev ports aligned with backend defaults and docker compose when free.
+DEFAULT_BACKEND_PORT=3456
+DEFAULT_FRONTEND_PORT=3457
 LOCAL_DATABASE_URL="postgresql://stash:stash@localhost:5432/stash"
 DEV_DB_CONTAINER="stash-dev-postgres"
 DEV_DB_IMAGE="pgvector/pgvector:pg16"
@@ -49,6 +49,8 @@ if [ -f "$PROJECT_ROOT/.env" ]; then
 fi
 
 export DATABASE_URL="${DATABASE_URL:-$LOCAL_DATABASE_URL}"
+BACKEND_PORT="${BACKEND_PORT:-$DEFAULT_BACKEND_PORT}"
+FRONTEND_PORT="${FRONTEND_PORT:-$DEFAULT_FRONTEND_PORT}"
 
 database_is_ready() {
     python - <<'PY' >/dev/null 2>&1
@@ -146,11 +148,72 @@ ensure_local_database() {
     exit 1
 }
 
+port_is_free() {
+    python - "$1" <<'PY' >/dev/null 2>&1
+import errno
+import socket
+import sys
+
+port = int(sys.argv[1])
+
+for family, host in ((socket.AF_INET6, "::"), (socket.AF_INET, "0.0.0.0")):
+    sock = socket.socket(family, socket.SOCK_STREAM)
+    try:
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        if family == socket.AF_INET6:
+            try:
+                sock.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, 0)
+            except OSError:
+                pass
+        sock.bind((host, port))
+    except OSError as exc:
+        if family == socket.AF_INET6 and exc.errno in {
+            errno.EAFNOSUPPORT,
+            errno.EADDRNOTAVAIL,
+            errno.EPROTONOSUPPORT,
+        }:
+            continue
+        raise
+    finally:
+        sock.close()
+PY
+}
+
+find_free_port() {
+    local candidate="$1"
+    local avoid="${2:-}"
+
+    while [ "$candidate" = "$avoid" ] || ! port_is_free "$candidate"; do
+        candidate=$((candidate + 1))
+    done
+
+    echo "$candidate"
+}
+
+choose_dev_ports() {
+    local requested_backend_port="$BACKEND_PORT"
+    local requested_frontend_port="$FRONTEND_PORT"
+
+    BACKEND_PORT="$(find_free_port "$requested_backend_port")"
+    FRONTEND_PORT="$(find_free_port "$requested_frontend_port" "$BACKEND_PORT")"
+
+    if [ "$BACKEND_PORT" != "$requested_backend_port" ]; then
+        echo "[ports]   Backend port ${requested_backend_port} is busy; using ${BACKEND_PORT}."
+    fi
+
+    if [ "$FRONTEND_PORT" != "$requested_frontend_port" ]; then
+        echo "[ports]   Frontend port ${requested_frontend_port} is busy; using ${FRONTEND_PORT}."
+    fi
+}
+
 echo "Starting Stash services..."
 echo "================================"
 
 # --- Database ---
 ensure_local_database
+
+# --- Ports ---
+choose_dev_ports
 
 # --- Migrations ---
 cd "$PROJECT_ROOT"
@@ -164,6 +227,8 @@ fi
 
 # --- Backend (FastAPI) ---
 echo "[backend]  Starting on port ${BACKEND_PORT}..."
+PUBLIC_URL="http://localhost:${FRONTEND_PORT}" \
+CORS_ORIGINS="http://localhost:${FRONTEND_PORT},http://localhost:${BACKEND_PORT},http://localhost:3000" \
 uvicorn backend.main:app --host 0.0.0.0 --port "$BACKEND_PORT" \
     --proxy-headers --forwarded-allow-ips '*' &
 PIDS+=($!)
@@ -171,7 +236,7 @@ PIDS+=($!)
 # --- Frontend (Next.js) ---
 echo "[frontend] Starting on port ${FRONTEND_PORT}..."
 cd "$PROJECT_ROOT/frontend"
-PORT="$FRONTEND_PORT" npm run dev &
+BACKEND_INTERNAL_URL="http://localhost:${BACKEND_PORT}" PORT="$FRONTEND_PORT" npm run dev &
 PIDS+=($!)
 
 echo "================================"
