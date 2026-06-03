@@ -1,9 +1,9 @@
 import { SSR_BACKEND_ORIGIN as BACKEND_ORIGIN } from "@/lib/backendOrigin";
-import type { StashPreviewData } from "./stashPreview";
+import type { CartridgePreviewData } from "./cartridgePreview";
 
-export async function loadPublicStashPreview(
+export async function loadPublicCartridgePreview(
   slug: string,
-): Promise<StashPreviewData | null> {
+): Promise<CartridgePreviewData | null> {
   const res = await fetch(`${BACKEND_ORIGIN}/api/v1/cartridges/${encodeURIComponent(slug)}`, {
     cache: "no-store",
   });

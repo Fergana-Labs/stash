@@ -1,16 +1,16 @@
 import { describe, expect, it } from "vitest";
 import {
   buildItemPreviewCard,
-  buildStashPreviewCard,
-  findStashItem,
+  buildCartridgePreviewCard,
+  findCartridgeItem,
   itemMetadataDescription,
   itemMetadataTitle,
-  stashMetadataDescription,
-  stashMetadataTitle,
-  type StashPreviewData,
-} from "./stashPreview";
+  cartridgeMetadataDescription,
+  cartridgeMetadataTitle,
+  type CartridgePreviewData,
+} from "./cartridgePreview";
 
-function detail(): StashPreviewData {
+function detail(): CartridgePreviewData {
   return {
     cartridge: {
       id: "stash-1",
@@ -75,8 +75,8 @@ describe("stash preview metadata", () => {
   it("builds stash-level titles and descriptions from item counts", () => {
     const data = detail();
 
-    expect(stashMetadataTitle(data)).toBe("Launch Plan - Stash");
-    expect(stashMetadataDescription(data)).toBe(
+    expect(cartridgeMetadataTitle(data)).toBe("Launch Plan - Stash");
+    expect(cartridgeMetadataDescription(data)).toBe(
       "A Stash with 3 items: 1 page, 1 file, 1 session from Product.",
     );
   });
@@ -96,14 +96,14 @@ describe("stash preview metadata", () => {
   it("matches session routes by session_id", () => {
     const data = detail();
 
-    expect(findStashItem(data.items, "session", "agent-session-1")?.label).toBe(
+    expect(findCartridgeItem(data.items, "session", "agent-session-1")?.label).toBe(
       "Launch research",
     );
   });
 
   it("builds preview cards with content lines", () => {
     const data = detail();
-    const stashCard = buildStashPreviewCard(data);
+    const stashCard = buildCartridgePreviewCard(data);
     const itemCard = buildItemPreviewCard(data, data.items[0]);
 
     expect(stashCard.lines.map((line) => line.label)).toContain("Announcement Draft");

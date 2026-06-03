@@ -1,14 +1,14 @@
-export type StashItemType = "folder" | "page" | "table" | "file" | "session";
+export type CartridgeItemType = "folder" | "page" | "table" | "file" | "session";
 
-export type StashPreviewItem = {
-  object_type: StashItemType;
+export type CartridgePreviewItem = {
+  object_type: CartridgeItemType;
   object_id: string;
   position: number;
   label: string;
   inline: Record<string, unknown>;
 };
 
-export type StashPreviewData = {
+export type CartridgePreviewData = {
   cartridge: {
     id: string;
     workspace_id: string;
@@ -21,7 +21,7 @@ export type StashPreviewData = {
     icon_url?: string | null;
   };
   workspace_name: string;
-  items: StashPreviewItem[];
+  items: CartridgePreviewItem[];
   can_write?: boolean;
 };
 
@@ -54,15 +54,15 @@ const ACCENTS = [
   { primary: "#0F766E", secondary: "#E11D48", wash: "#CCFBF1" },
 ];
 
-export function isStashItemType(value: string | null): value is StashItemType {
+export function isCartridgeItemType(value: string | null): value is CartridgeItemType {
   return !!value && ITEM_TYPES.has(value);
 }
 
-export function findStashItem(
-  items: StashPreviewItem[],
-  objectType: StashItemType,
+export function findCartridgeItem(
+  items: CartridgePreviewItem[],
+  objectType: CartridgeItemType,
   objectId: string,
-): StashPreviewItem | null {
+): CartridgePreviewItem | null {
   return (
     items.find((item) => {
       if (item.object_type !== objectType) return false;
@@ -74,11 +74,11 @@ export function findStashItem(
   );
 }
 
-export function stashMetadataTitle(data: StashPreviewData): string {
+export function cartridgeMetadataTitle(data: CartridgePreviewData): string {
   return `${data.cartridge.title} - Stash`;
 }
 
-export function stashMetadataDescription(data: StashPreviewData): string {
+export function cartridgeMetadataDescription(data: CartridgePreviewData): string {
   const description = cleanText(data.cartridge.description);
   if (description) return truncateText(description, 220);
 
@@ -90,25 +90,25 @@ export function stashMetadataDescription(data: StashPreviewData): string {
 }
 
 export function itemMetadataTitle(
-  data: StashPreviewData,
-  item: StashPreviewItem,
+  data: CartridgePreviewData,
+  item: CartridgePreviewItem,
 ): string {
   const label = item.label || formatItemType(item.object_type);
   return `${label} - ${data.cartridge.title} - Stash`;
 }
 
 export function itemMetadataDescription(
-  data: StashPreviewData,
-  item: StashPreviewItem,
+  data: CartridgePreviewData,
+  item: CartridgePreviewItem,
 ): string {
   const summary = itemSummary(item);
   const prefix = `${formatItemType(item.object_type)} in ${data.cartridge.title}`;
   return truncateText(summary ? `${prefix}: ${summary}` : prefix, 220);
 }
 
-export function stashOgImagePath(
+export function cartridgeOgImagePath(
   slug: string,
-  itemType?: StashItemType,
+  itemType?: CartridgeItemType,
   itemId?: string,
 ): string {
   const params = new URLSearchParams({ slug });
@@ -116,11 +116,11 @@ export function stashOgImagePath(
     params.set("type", itemType);
     params.set("id", itemId);
   }
-  return `/api/og/stash?${params.toString()}`;
+  return `/api/og/cartridge?${params.toString()}`;
 }
 
-export function buildStashPreviewCard(data: StashPreviewData): PreviewCard {
-  const description = stashMetadataDescription(data);
+export function buildCartridgePreviewCard(data: CartridgePreviewData): PreviewCard {
+  const description = cartridgeMetadataDescription(data);
   const stats = [
     data.workspace_name,
     ...itemTypeCounts(data.items).slice(0, 3),
@@ -137,8 +137,8 @@ export function buildStashPreviewCard(data: StashPreviewData): PreviewCard {
 }
 
 export function buildItemPreviewCard(
-  data: StashPreviewData,
-  item: StashPreviewItem,
+  data: CartridgePreviewData,
+  item: CartridgePreviewItem,
 ): PreviewCard {
   const label = item.label || formatItemType(item.object_type);
   return {
@@ -151,12 +151,12 @@ export function buildItemPreviewCard(
   };
 }
 
-export function formatItemType(type: StashItemType): string {
+export function formatItemType(type: CartridgeItemType): string {
   if (type === "session") return "Session";
   return type[0].toUpperCase() + type.slice(1);
 }
 
-export function itemPreviewLine(item: StashPreviewItem): PreviewLine {
+export function itemPreviewLine(item: CartridgePreviewItem): PreviewLine {
   return {
     label: item.label || formatItemType(item.object_type),
     meta: itemMeta(item),
@@ -164,7 +164,7 @@ export function itemPreviewLine(item: StashPreviewItem): PreviewLine {
   };
 }
 
-export function itemSummary(item: StashPreviewItem): string {
+export function itemSummary(item: CartridgePreviewItem): string {
   const inline = item.inline ?? {};
 
   if (item.object_type === "folder") {
@@ -214,7 +214,7 @@ export function itemSummary(item: StashPreviewItem): string {
   return item.label;
 }
 
-function itemPreviewLines(item: StashPreviewItem): PreviewLine[] {
+function itemPreviewLines(item: CartridgePreviewItem): PreviewLine[] {
   const inline = item.inline ?? {};
 
   if (item.object_type === "folder") {
@@ -293,7 +293,7 @@ function itemPreviewLines(item: StashPreviewItem): PreviewLine[] {
   return [itemPreviewLine(item)];
 }
 
-function itemMeta(item: StashPreviewItem): string {
+function itemMeta(item: CartridgePreviewItem): string {
   const inline = item.inline ?? {};
   if (item.object_type === "folder") {
     const pages = arrayValue(inline.pages).length;
@@ -354,8 +354,8 @@ function pageText(page: Record<string, unknown>): string {
   return stripHtml(stringValue(page.content_html));
 }
 
-function itemTypeCounts(items: StashPreviewItem[]): string[] {
-  const counts = new Map<StashItemType, number>();
+function itemTypeCounts(items: CartridgePreviewItem[]): string[] {
+  const counts = new Map<CartridgeItemType, number>();
   for (const item of items) {
     counts.set(item.object_type, (counts.get(item.object_type) ?? 0) + 1);
   }

@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 
-import { metadataForPublicStash } from "@/lib/stashMetadata";
+import { metadataForPublicCartridge } from "@/lib/cartridgeMetadata";
 
 import CartridgePageClient from "./CartridgePageClient";
 
@@ -10,7 +10,7 @@ export async function generateMetadata({
   params: Promise<{ slug: string }>;
 }): Promise<Metadata> {
   const { slug } = await params;
-  const metadata = await metadataForPublicStash({
+  const metadata = await metadataForPublicCartridge({
     slug,
     path: `/cartridges/${slug}`,
   });

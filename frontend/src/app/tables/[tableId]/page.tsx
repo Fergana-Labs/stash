@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 
 import {
   firstSearchParam,
-  metadataForPublicStashItem,
-} from "../../../lib/stashMetadata";
+  metadataForPublicCartridgeItem,
+} from "../../../lib/cartridgeMetadata";
 import TableClient from "./TableClient";
 
 type PageProps = {
@@ -24,7 +24,7 @@ export async function generateMetadata({
 
   const workspaceId = firstSearchParam(query.workspaceId);
   const workspacePart = workspaceId ? `&workspaceId=${encodeURIComponent(workspaceId)}` : "";
-  return metadataForPublicStashItem({
+  return metadataForPublicCartridgeItem({
     slug,
     itemType: "table",
     itemId: tableId,

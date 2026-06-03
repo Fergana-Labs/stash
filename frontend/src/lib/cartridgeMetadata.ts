@@ -1,17 +1,17 @@
 import type { Metadata } from "next";
 import { headers } from "next/headers";
 
-import { loadPublicStashPreview } from "./stashPreviewFetch";
+import { loadPublicCartridgePreview } from "./cartridgePreviewFetch";
 import {
-  findStashItem,
-  isStashItemType,
+  findCartridgeItem,
+  isCartridgeItemType,
   itemMetadataDescription,
   itemMetadataTitle,
-  stashMetadataDescription,
-  stashMetadataTitle,
-  stashOgImagePath,
-  type StashItemType,
-} from "./stashPreview";
+  cartridgeMetadataDescription,
+  cartridgeMetadataTitle,
+  cartridgeOgImagePath,
+  type CartridgeItemType,
+} from "./cartridgePreview";
 
 type MetadataInput = {
   slug: string;
@@ -19,38 +19,38 @@ type MetadataInput = {
 };
 
 type ItemMetadataInput = MetadataInput & {
-  itemType: StashItemType;
+  itemType: CartridgeItemType;
   itemId: string;
 };
 
-export async function metadataForPublicStash({
+export async function metadataForPublicCartridge({
   slug,
   path,
 }: MetadataInput): Promise<Metadata> {
-  const data = await loadPublicStashPreview(slug);
+  const data = await loadPublicCartridgePreview(slug);
   if (!data) return { title: "Stash - Stash" };
 
-  const title = stashMetadataTitle(data);
-  const description = stashMetadataDescription(data);
+  const title = cartridgeMetadataTitle(data);
+  const description = cartridgeMetadataDescription(data);
   return metadataForPreview({
     title,
     description,
     path,
-    imagePath: stashOgImagePath(slug),
+    imagePath: cartridgeOgImagePath(slug),
   });
 }
 
-export async function metadataForPublicStashItem({
+export async function metadataForPublicCartridgeItem({
   slug,
   itemType,
   itemId,
   path,
 }: ItemMetadataInput): Promise<Metadata> {
-  const data = await loadPublicStashPreview(slug);
+  const data = await loadPublicCartridgePreview(slug);
   if (!data) return { title: "Stash - Stash" };
 
-  const item = findStashItem(data.items, itemType, itemId);
-  if (!item) return metadataForPublicStash({ slug, path: `/cartridges/${slug}` });
+  const item = findCartridgeItem(data.items, itemType, itemId);
+  if (!item) return metadataForPublicCartridge({ slug, path: `/cartridges/${slug}` });
 
   const title = itemMetadataTitle(data, item);
   const description = itemMetadataDescription(data, item);
@@ -58,7 +58,7 @@ export async function metadataForPublicStashItem({
     title,
     description,
     path,
-    imagePath: stashOgImagePath(slug, itemType, itemId),
+    imagePath: cartridgeOgImagePath(slug, itemType, itemId),
   });
 }
 
@@ -67,9 +67,9 @@ export function firstSearchParam(value: string | string[] | undefined): string {
   return value ?? "";
 }
 
-export function typedSearchParam(value: string | string[] | undefined): StashItemType | null {
+export function typedSearchParam(value: string | string[] | undefined): CartridgeItemType | null {
   const first = firstSearchParam(value);
-  return isStashItemType(first) ? first : null;
+  return isCartridgeItemType(first) ? first : null;
 }
 
 async function metadataForPreview({

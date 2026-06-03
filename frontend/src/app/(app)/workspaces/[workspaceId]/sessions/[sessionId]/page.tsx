@@ -4,8 +4,8 @@ import { Suspense } from "react";
 import { SessionDetailSkeleton } from "../../../../../../components/SkeletonStates";
 import {
   firstSearchParam,
-  metadataForPublicStashItem,
-} from "../../../../../../lib/stashMetadata";
+  metadataForPublicCartridgeItem,
+} from "../../../../../../lib/cartridgeMetadata";
 import SessionClient from "./SessionClient";
 
 type PageProps = {
@@ -25,7 +25,7 @@ export async function generateMetadata({
   if (!slug) return { title: "Session - Stash" };
 
   const sessionId = decodeURIComponent(encodedSessionId);
-  return metadataForPublicStashItem({
+  return metadataForPublicCartridgeItem({
     slug,
     itemType: "session",
     itemId: sessionId,

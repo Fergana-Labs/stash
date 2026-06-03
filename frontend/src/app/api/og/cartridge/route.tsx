@@ -1,14 +1,14 @@
 import { ImageResponse } from "next/og";
 import type { NextRequest } from "next/server";
 
-import { loadPublicStashPreview } from "@/lib/stashPreviewFetch";
+import { loadPublicCartridgePreview } from "@/lib/cartridgePreviewFetch";
 import {
   buildItemPreviewCard,
-  buildStashPreviewCard,
-  findStashItem,
-  isStashItemType,
+  buildCartridgePreviewCard,
+  findCartridgeItem,
+  isCartridgeItemType,
   type PreviewCard,
-} from "@/lib/stashPreview";
+} from "@/lib/cartridgePreview";
 
 export const dynamic = "force-dynamic";
 
@@ -16,14 +16,14 @@ export async function GET(request: NextRequest) {
   const slug = request.nextUrl.searchParams.get("slug") ?? "";
   if (!slug) return new Response("Missing slug", { status: 400 });
 
-  const data = await loadPublicStashPreview(slug);
+  const data = await loadPublicCartridgePreview(slug);
   if (!data) return new Response("Stash not found", { status: 404 });
 
   const itemType = request.nextUrl.searchParams.get("type");
   const itemId = request.nextUrl.searchParams.get("id");
   const item =
-    isStashItemType(itemType) && itemId ? findStashItem(data.items, itemType, itemId) : null;
-  const card = item ? buildItemPreviewCard(data, item) : buildStashPreviewCard(data);
+    isCartridgeItemType(itemType) && itemId ? findCartridgeItem(data.items, itemType, itemId) : null;
+  const card = item ? buildItemPreviewCard(data, item) : buildCartridgePreviewCard(data);
 
   return new ImageResponse(<PreviewImage card={card} />, {
     width: 1200,

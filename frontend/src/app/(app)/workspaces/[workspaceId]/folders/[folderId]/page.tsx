@@ -4,8 +4,8 @@ import { Suspense } from "react";
 import { FileBrowserSkeleton } from "../../../../../../components/SkeletonStates";
 import {
   firstSearchParam,
-  metadataForPublicStashItem,
-} from "../../../../../../lib/stashMetadata";
+  metadataForPublicCartridgeItem,
+} from "../../../../../../lib/cartridgeMetadata";
 import FolderClient from "./FolderClient";
 
 type PageProps = {
@@ -21,7 +21,7 @@ export async function generateMetadata({
   const slug = firstSearchParam(query.stash);
   if (!slug) return { title: "Folder - Stash" };
 
-  return metadataForPublicStashItem({
+  return metadataForPublicCartridgeItem({
     slug,
     itemType: "folder",
     itemId: folderId,

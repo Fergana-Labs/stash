@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 
 import {
   firstSearchParam,
-  metadataForPublicStashItem,
-} from "../../../../../../lib/stashMetadata";
+  metadataForPublicCartridgeItem,
+} from "../../../../../../lib/cartridgeMetadata";
 import FileClient from "./FileClient";
 
 type PageProps = {
@@ -19,7 +19,7 @@ export async function generateMetadata({
   const slug = firstSearchParam(query.stash);
   if (!slug) return { title: "File - Stash" };
 
-  return metadataForPublicStashItem({
+  return metadataForPublicCartridgeItem({
     slug,
     itemType: "file",
     itemId: fileId,
