@@ -251,6 +251,7 @@ export default function MarkdownEditor({
         class:
           "prose prose-sm max-w-none min-h-full px-12 pt-10 pb-24 focus:outline-none file-page-body" +
           (canEdit ? " cursor-text" : ""),
+        spellcheck: "false",
       },
       handleDOMEvents: {
         paste: (_view, event) => {

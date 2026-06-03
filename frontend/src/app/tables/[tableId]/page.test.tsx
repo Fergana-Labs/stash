@@ -7,7 +7,7 @@ import {
 } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import TableEditorPage from "./page";
+import TableEditorPage from "./TableClient";
 
 const api = vi.hoisted(() => ({
   fetchAuthed: vi.fn(),
@@ -209,6 +209,44 @@ describe("TableEditorPage row creation", () => {
       }),
     );
     expect(screen.getByText("Alice")).toBeInTheDocument();
+  });
+
+  it("undoes a committed cell edit while another cell editor is focused", async () => {
+    const editedRow = {
+      ...existingRows[0],
+      data: { name: "Alicia" },
+    };
+    api.updateTableRow.mockResolvedValueOnce(editedRow).mockResolvedValueOnce(existingRows[0]);
+
+    render(<TableEditorPage />);
+
+    fireEvent.click(await screen.findByText("Alice"));
+    const input = await screen.findByLabelText("Edit row 1 Name");
+    fireEvent.change(input, { target: { value: "Alicia" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    await waitFor(() => expect(screen.getByText("Alicia")).toBeInTheDocument());
+
+    fireEvent.click(screen.getByText("Bob"));
+    const nextInput = await screen.findByLabelText("Edit row 2 Name");
+    fireEvent.keyDown(nextInput, { key: "z", metaKey: true });
+
+    await waitFor(() =>
+      expect(api.updateTableRow).toHaveBeenLastCalledWith("ws-1", "table-1", "row-1", {
+        name: "Alice",
+      }),
+    );
+    expect(screen.getByText("Alice")).toBeInTheDocument();
+  });
+
+  it("leaves native cell input undo alone when there is no table undo history", async () => {
+    render(<TableEditorPage />);
+
+    fireEvent.click(await screen.findByText("Alice"));
+    const input = await screen.findByLabelText("Edit row 1 Name");
+
+    expect(fireEvent.keyDown(input, { key: "z", metaKey: true })).toBe(true);
+    expect(api.updateTableRow).not.toHaveBeenCalled();
   });
 
   it("creates a row when typing into an empty tail row", async () => {
