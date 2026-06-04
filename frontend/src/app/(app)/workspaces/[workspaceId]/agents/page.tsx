@@ -76,12 +76,7 @@ export default function AgentsPage() {
   return (
     <div className="scroll-thin flex-1 overflow-y-auto">
       <div className="mx-auto w-full max-w-3xl px-8 py-8">
-        <h1 className="font-display text-[26px] font-bold tracking-tight text-foreground">Agents</h1>
-        <p className="mt-1 text-[13px] text-muted">
-          Use Stash through your own agent. Connect once, then ask it anything about your company data.
-        </p>
-
-        <div className="mt-5 flex items-center gap-1 border-b border-border">
+        <div className="flex items-center gap-1 border-b border-border">
           <button
             type="button"
             onClick={() => setActive("connect")}
