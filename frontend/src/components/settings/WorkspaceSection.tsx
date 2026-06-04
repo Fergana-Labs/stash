@@ -70,14 +70,14 @@ export default function WorkspaceSection() {
     <>
       <section className="rounded-2xl border border-border bg-surface p-6 space-y-4">
         <div>
-          <h2 className="text-base font-semibold text-foreground">Workspace</h2>
+          <h2 className="text-base font-semibold text-foreground">General</h2>
           <p className="text-xs text-muted mt-0.5">
             Branding for <span className="font-medium text-foreground">{workspace.name}</span>.
           </p>
         </div>
         <ImageField
           label="Banner"
-          sub="Wide image rendered above the workspace header."
+          sub="Wide image rendered above the header."
           url={workspace.cover_image_url ?? null}
           onUpload={(f) => uploadAndSet(f, "cover_image_url")}
           onClear={() => clearField("cover_image_url")}
@@ -85,7 +85,7 @@ export default function WorkspaceSection() {
         />
         <ImageField
           label="Icon"
-          sub="Square logo for the workspace hero."
+          sub="Square logo for the hero."
           url={workspace.icon_url ?? null}
           onUpload={(f) => uploadAndSet(f, "icon_url")}
           onClear={() => clearField("icon_url")}
@@ -125,7 +125,7 @@ export default function WorkspaceSection() {
         <div>
           <h2 className="text-base font-semibold text-foreground">Danger zone</h2>
           <p className="text-xs text-muted mt-0.5">
-            Deleting a workspace removes its pages, sessions, tables, and files. This cannot be
+            Deleting this removes its pages, sessions, tables, and files. This cannot be
             undone.
           </p>
         </div>

@@ -47,7 +47,7 @@ export default function SettingsPage() {
           <div>
             <h1 className="text-2xl font-semibold text-foreground">Settings</h1>
             <p className="text-sm text-muted mt-1">
-              Your profile and workspace, connected sources, sessions, and password.
+              Your profile, branding, connected sources, sessions, and password.
             </p>
           </div>
           <Profile user={user} onUpdated={refresh} />
