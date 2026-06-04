@@ -259,6 +259,16 @@ export default function SessionViewerPage() {
               )}
             </div>
             <div className="flex flex-shrink-0 items-center gap-1.5">
+              {sessionId.startsWith("agent-") && (
+                // Web chats (started in the Agents tab) can be resumed and
+                // continued server-side from where they left off.
+                <Link
+                  href={`/workspaces/${workspaceId}/agents?resume=${encodeURIComponent(sessionId)}`}
+                  className="inline-flex items-center gap-1 rounded-md bg-[var(--color-brand-600)] px-2.5 py-1.5 text-[12.5px] font-medium text-white hover:bg-[var(--color-brand-700)]"
+                >
+                  Resume in chat →
+                </Link>
+              )}
               <DownloadMenu
                 options={[
                   {
