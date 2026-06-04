@@ -17,9 +17,11 @@ from collections.abc import Awaitable, Callable
 from uuid import UUID
 
 from ..celery_app import celery
+from ..integrations.asana.indexer import index_asana
 from ..integrations.github.indexer import index_github_repo
 from ..integrations.google.indexer import index_google_drive
 from ..integrations.granola.indexer import index_granola
+from ..integrations.jira.indexer import index_jira
 from ..integrations.notion.indexer import index_notion
 from ..integrations.slack.indexer import index_slack, ingest_slack_message
 from ..services import source_service
@@ -34,6 +36,8 @@ INDEXERS: dict[str, Callable[[dict], Awaitable[str | None]]] = {
     "notion": index_notion,
     "slack": index_slack,
     "granola": index_granola,
+    "jira_project": index_jira,
+    "asana_project": index_asana,
 }
 
 

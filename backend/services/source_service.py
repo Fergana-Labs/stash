@@ -39,6 +39,8 @@ DEFAULT_SYNC_INTERVAL_S = {
     "notion": 1800,
     "slack": 21600,
     "granola": 21600,
+    "jira_project": 1800,
+    "asana_project": 1800,
 }
 
 # Which capability each connected source type exposes.
@@ -48,6 +50,8 @@ SOURCE_CAPABILITY = {
     "notion": "navigable",
     "slack": "searchable",
     "granola": "searchable",
+    "jira_project": "searchable",
+    "asana_project": "navigable",
 }
 
 
@@ -220,11 +224,19 @@ SOURCE_TABLE = {
     "notion": "notion_index",
     "slack": "slack_messages",
     "granola": "granola_notes",
+    "jira_project": "jira_documents",
+    "asana_project": "asana_documents",
 }
 
 # Tables that COPY content (FTS + embeddings live in them). The rest are
 # index-only and fetch their body lazily from the provider at read time.
-CONTENT_TABLES = {"github_documents", "slack_messages", "granola_notes"}
+CONTENT_TABLES = {
+    "github_documents",
+    "slack_messages",
+    "granola_notes",
+    "jira_documents",
+    "asana_documents",
+}
 
 
 def _table_for(source_type: str) -> str:
