@@ -35,6 +35,7 @@ import EditableTitle from "../EditableTitle";
 import FolderItemGrid, { type GridItem, type ItemKind } from "./FolderItemGrid";
 import ItemsList from "./ItemsList";
 import ItemsColumns from "./ItemsColumns";
+import SharedWithMeFiles from "../SharedWithMeFiles";
 import QuickAccess from "./QuickAccess";
 
 interface Props {
@@ -640,6 +641,7 @@ export default function WorkspaceFileBrowser({ workspaceId, folderId }: Props) {
             />
           )}
         </div>
+        {!folderId ? <SharedWithMeFiles /> : null}
       </div>
       {selectedItems.length > 0 && (
         <div className="pointer-events-none fixed inset-x-0 bottom-6 z-50 flex justify-center">

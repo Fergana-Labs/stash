@@ -15,8 +15,12 @@ import {
   deleteSession,
   listMySessions,
   listSessionFolders,
+  listSharedSessionFolderSessions,
+  listSharedWithMe,
   type SessionFolder,
   type SessionSummary,
+  type SharedSession,
+  type SharedWithMeItem,
 } from "../../../../../lib/api";
 import { usePins } from "../../../../../lib/pins";
 import {
@@ -60,6 +64,8 @@ export default function CartridgeSessionsPage() {
 
   const [sessions, setSessions] = useState<SessionSummary[] | null>(null);
   const [folders, setFolders] = useState<SessionFolder[]>([]);
+  const [sharedFolders, setSharedFolders] = useState<SharedWithMeItem[]>([]);
+  const [openFolder, setOpenFolder] = useState<OpenFolder | null>(null);
   const [error, setError] = useState("");
   const [view, setView] = useState<ViewKey>("list");
   const [sort, setSort] = useState<SortKey>("recent");
@@ -87,12 +93,14 @@ export default function CartridgeSessionsPage() {
 
   const load = useCallback(async () => {
     try {
-      const [list, folderList] = await Promise.all([
+      const [list, folderList, sharedAll] = await Promise.all([
         listMySessions(workspaceId, 200),
         listSessionFolders(workspaceId).catch(() => [] as SessionFolder[]),
+        listSharedWithMe().catch(() => [] as SharedWithMeItem[]),
       ]);
       setSessions(list);
       setFolders(folderList);
+      setSharedFolders(sharedAll.filter((i) => i.object_type === "session_folder"));
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load sessions");
     }
@@ -225,33 +233,55 @@ export default function CartridgeSessionsPage() {
           </section>
         )}
 
-        {/* Toolbar: View · Sort. Drives the rendering below. */}
-        <div className="mb-3 flex flex-wrap items-center gap-3 border-b border-border pb-2.5">
-          <SegmentedControl
-            label="View"
-            value={view}
-            options={VIEWS}
-            onChange={(v) => setViewPersisted(v as ViewKey)}
-          />
-          <SegmentedControl
-            label="Sort"
-            value={sort}
-            options={SORTS}
-            onChange={(v) => setSort(v as SortKey)}
-          />
-        </div>
-
-        {sorted && (
-          <SessionsView
-            view={view}
-            sessions={sorted}
-            folders={folders}
+        {openFolder ? (
+          <FolderDrill
+            folder={openFolder}
+            sessions={sorted ?? []}
             workspaceId={workspaceId}
+            onBack={() => setOpenFolder(null)}
             isPinned={pins.isPinned}
             onTogglePin={pins.toggle}
             selectedIds={selectedIds}
             onToggleSelect={toggleSelect}
           />
+        ) : (
+          <>
+            <FoldersSection
+              ownFolders={folders}
+              sharedFolders={sharedFolders}
+              workspaceId={workspaceId}
+              onOpen={setOpenFolder}
+            />
+
+            {/* Toolbar: View · Sort. Drives the rendering below. */}
+            <div className="mb-3 flex flex-wrap items-center gap-3 border-b border-border pb-2.5">
+              <SegmentedControl
+                label="View"
+                value={view}
+                options={VIEWS}
+                onChange={(v) => setViewPersisted(v as ViewKey)}
+              />
+              <SegmentedControl
+                label="Sort"
+                value={sort}
+                options={SORTS}
+                onChange={(v) => setSort(v as SortKey)}
+              />
+            </div>
+
+            {sorted && (
+              <SessionsView
+                view={view}
+                sessions={sorted}
+                folders={folders}
+                workspaceId={workspaceId}
+                isPinned={pins.isPinned}
+                onTogglePin={pins.toggle}
+                selectedIds={selectedIds}
+                onToggleSelect={toggleSelect}
+              />
+            )}
+          </>
         )}
       </div>
 
@@ -782,4 +812,163 @@ function formatDate(iso: string | null): string {
     month: "short",
     day: "numeric",
   });
+}
+
+// --- Session folders as navigable "vaults" (own + shared-with-me) ---
+
+type OpenFolder = { id: string; name: string; workspaceId: string; shared: boolean };
+
+function FoldersSection({
+  ownFolders,
+  sharedFolders,
+  workspaceId,
+  onOpen,
+}: {
+  ownFolders: SessionFolder[];
+  sharedFolders: SharedWithMeItem[];
+  workspaceId: string;
+  onOpen: (f: OpenFolder) => void;
+}) {
+  if (ownFolders.length === 0 && sharedFolders.length === 0) return null;
+  return (
+    <section className="mb-5">
+      <h2 className="m-0 mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted">
+        Folders
+      </h2>
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4">
+        {ownFolders.map((f) => (
+          <FolderCard
+            key={f.id}
+            name={f.name}
+            subtitle={`${f.session_count} session${f.session_count === 1 ? "" : "s"}`}
+            onClick={() => onOpen({ id: f.id, name: f.name, workspaceId, shared: false })}
+          />
+        ))}
+        {sharedFolders.map((f) => (
+          <FolderCard
+            key={f.object_id}
+            name={f.name}
+            subtitle={f.shared_by ? `shared by ${f.shared_by}` : "shared"}
+            shared
+            onClick={() =>
+              onOpen({ id: f.object_id, name: f.name, workspaceId: f.workspace_id, shared: true })
+            }
+          />
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function FolderCard({
+  name,
+  subtitle,
+  shared = false,
+  onClick,
+}: {
+  name: string;
+  subtitle: string;
+  shared?: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="flex items-center gap-2.5 rounded-lg border border-border bg-surface/50 px-3 py-2.5 text-left hover:bg-raised/50"
+    >
+      <span aria-hidden className="text-[16px]">
+        {shared ? "🗂️" : "📁"}
+      </span>
+      <span className="min-w-0">
+        <span className="block truncate text-[13px] font-medium text-foreground">{name}</span>
+        <span className="block truncate text-[11px] text-muted">{subtitle}</span>
+      </span>
+    </button>
+  );
+}
+
+function FolderDrill({
+  folder,
+  sessions,
+  workspaceId,
+  onBack,
+  isPinned,
+  onTogglePin,
+  selectedIds,
+  onToggleSelect,
+}: {
+  folder: OpenFolder;
+  sessions: SessionSummary[];
+  workspaceId: string;
+  onBack: () => void;
+  isPinned: (sessionId: string) => boolean;
+  onTogglePin: (sessionId: string) => void;
+  selectedIds: Set<string>;
+  onToggleSelect: (sessionId: string) => void;
+}) {
+  const [shared, setShared] = useState<SharedSession[] | null>(null);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    if (!folder.shared) return;
+    setShared(null);
+    listSharedSessionFolderSessions(folder.id)
+      .then(setShared)
+      .catch((e) => setError(e instanceof Error ? e.message : "Failed to load sessions"));
+  }, [folder]);
+
+  const ownSessions = folder.shared
+    ? []
+    : sessions.filter((s) => s.session_folder_id === folder.id);
+
+  return (
+    <div>
+      <button
+        type="button"
+        onClick={onBack}
+        className="mb-3 inline-flex items-center gap-1 text-[12.5px] text-muted hover:text-foreground"
+      >
+        ← Sessions
+      </button>
+      <h2 className="m-0 mb-3 flex items-center gap-2 font-display text-[18px] font-semibold text-foreground">
+        <span aria-hidden>{folder.shared ? "🗂️" : "📁"}</span>
+        {folder.name}
+      </h2>
+      {error ? <p className="text-[13px] text-rose-500">{error}</p> : null}
+      {folder.shared ? (
+        shared === null ? (
+          <p className="text-[12.5px] text-muted">Loading…</p>
+        ) : shared.length === 0 ? (
+          <div className="rounded-lg border border-dashed border-border bg-surface/30 px-4 py-6 text-center text-[12.5px] text-muted">
+            No sessions in this folder.
+          </div>
+        ) : (
+          <div className="overflow-hidden rounded-lg border border-border bg-surface">
+            {shared.map((s) => (
+              <Link
+                key={s.id}
+                href={`/workspaces/${s.workspace_id}/sessions/${encodeURIComponent(s.session_id)}`}
+                className="flex items-center gap-3 border-b border-border px-3 py-2.5 text-[13px] last:border-b-0 hover:bg-[var(--color-brand-50)]"
+              >
+                <span className="min-w-0 flex-1 truncate font-medium text-foreground">
+                  {s.title || s.session_id}
+                </span>
+                <span className="shrink-0 text-[11.5px] text-muted">{s.agent_name}</span>
+              </Link>
+            ))}
+          </div>
+        )
+      ) : (
+        <SessionsTable
+          workspaceId={workspaceId}
+          sessions={ownSessions}
+          isPinned={isPinned}
+          onTogglePin={onTogglePin}
+          selectedIds={selectedIds}
+          onToggleSelect={onToggleSelect}
+        />
+      )}
+    </div>
+  );
 }

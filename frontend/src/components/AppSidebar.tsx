@@ -300,12 +300,6 @@ export default function AppSidebar({
           label="Activity"
           active={pathname.startsWith("/activity")}
         />
-        <NavRow
-          href="/shared"
-          icon={<span aria-hidden>👥</span>}
-          label="Shared with me"
-          active={pathname.startsWith("/shared")}
-        />
         {activeWorkspace ? (
           <NavRow
             href={`/workspaces/${activeWorkspace.id}/cartridges`}
