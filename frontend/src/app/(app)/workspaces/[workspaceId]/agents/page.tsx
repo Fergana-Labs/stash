@@ -1,7 +1,7 @@
 "use client";
 
-import { useParams } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useParams, useSearchParams } from "next/navigation";
+import { Suspense, useEffect, useRef, useState } from "react";
 
 import ChatPanel from "../../../../../components/agents/ChatPanel";
 
@@ -17,32 +17,62 @@ function tabsKey(workspaceId: string): string {
 }
 
 export default function AgentsPage() {
+  return (
+    <Suspense fallback={null}>
+      <AgentsPageInner />
+    </Suspense>
+  );
+}
+
+function AgentsPageInner() {
   const params = useParams();
   const workspaceId = params.workspaceId as string;
 
+  const searchParams = useSearchParams();
   const [chats, setChats] = useState<ChatTab[]>([]);
   const [nextId, setNextId] = useState(1);
   const [active, setActive] = useState<"connect" | number>("connect");
   const restored = useRef(false);
+  // Resume a specific chat from a `?resume=<sessionId>` link (e.g. from the
+  // Agent Sessions list).
 
-  // Restore open tabs (+ their session ids) for this workspace.
+  // Restore open tabs (+ their session ids) for this workspace, then apply any
+  // `?resume=<sessionId>` in one pass so a resume can't race the restore into a
+  // duplicate tab.
   useEffect(() => {
     if (restored.current) return;
     restored.current = true;
+    let chats: ChatTab[] = [];
+    let next = 1;
+    let active: "connect" | number = "connect";
     try {
       const raw = window.localStorage.getItem(tabsKey(workspaceId));
       if (raw) {
         const p = JSON.parse(raw) as PersistedTabs;
         if (Array.isArray(p.chats)) {
-          setChats(p.chats);
-          setNextId(p.nextId ?? p.chats.length + 1);
-          setActive(p.active ?? "connect");
+          chats = p.chats;
+          next = p.nextId ?? p.chats.length + 1;
+          active = p.active ?? "connect";
         }
       }
     } catch {
       /* ignore malformed cache */
     }
-  }, [workspaceId]);
+    const resume = searchParams.get("resume");
+    if (resume) {
+      const existing = chats.find((t) => t.sessionId === resume);
+      if (existing) {
+        active = existing.id;
+      } else {
+        chats = [...chats, { id: next, sessionId: resume, title: "Chat" }];
+        active = next;
+        next += 1;
+      }
+    }
+    setChats(chats);
+    setNextId(next);
+    setActive(active);
+  }, [workspaceId, searchParams]);
 
   // Persist whenever tabs change (after the initial restore).
   useEffect(() => {
