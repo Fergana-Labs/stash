@@ -20,6 +20,8 @@ export type IntegrationStatus = {
   display_name: string;
   scopes: string[];
   connected: boolean;
+  enabled: boolean;
+  disabled_reason: string | null;
   account_email: string | null;
   account_display_name: string | null;
   expires_at: string | null;

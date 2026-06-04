@@ -132,6 +132,13 @@ export default function SourceConnectorList({
     onSourceCountChange?.(sources.length);
   }, [onSourceCountChange, sources.length]);
 
+  const disabledReasons = useMemo(() => {
+    const reasons = Object.values(statuses)
+      .map((status) => status.disabled_reason)
+      .filter((reason): reason is string => Boolean(reason));
+    return Array.from(new Set(reasons));
+  }, [statuses]);
+
   async function addSource(connector: Connector, body?: { external_ref?: string; display_name?: string }) {
     if (!workspaceId) return false;
     setBusy(connector.provider);
@@ -148,6 +155,17 @@ export default function SourceConnectorList({
       setError(e instanceof Error ? e.message : "Could not add source");
       return false;
     } finally {
+      setBusy(null);
+    }
+  }
+
+  async function connect(connector: Connector) {
+    setBusy(connector.provider);
+    setError(null);
+    try {
+      await startConnect(connector.provider, returnTo);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not start connection");
       setBusy(null);
     }
   }
@@ -182,9 +200,18 @@ export default function SourceConnectorList({
 
   return (
     <div className="space-y-2">
+      {disabledReasons.length > 0 && (
+        <div className="rounded-md border border-border bg-base px-3 py-2 text-[12px] text-muted">
+          {disabledReasons.length === 1
+            ? disabledReasons[0]
+            : "Some integrations need server configuration before they can be connected."}
+        </div>
+      )}
+
       {CONNECTORS.map((connector) => {
         const status = statuses[connector.provider];
         const connected = !!status?.connected;
+        const enabled = status?.enabled ?? true;
         const count = sources.filter((source) => source.type === connector.sourceType).length;
         return (
           <div key={connector.provider} className="rounded-lg border border-border bg-surface px-3 py-2.5">
@@ -206,10 +233,12 @@ export default function SourceConnectorList({
               <ConnectorAction
                 connector={connector}
                 connected={connected}
+                enabled={enabled}
+                disabledReason={status?.disabled_reason ?? null}
                 busy={busy === connector.provider}
                 workspaceReady={!!workspaceId}
                 expanded={expanded === connector.provider}
-                onConnect={() => void startConnect(connector.provider, returnTo)}
+                onConnect={() => void connect(connector)}
                 onExpand={() => setExpanded((value) => value === connector.provider ? null : connector.provider)}
                 onAdd={() => void addSource(connector, connector.kind === "drive" ? {
                   external_ref: "root",
@@ -288,6 +317,8 @@ export default function SourceConnectorList({
 function ConnectorAction({
   connector,
   connected,
+  enabled,
+  disabledReason,
   busy,
   workspaceReady,
   expanded,
@@ -297,6 +328,8 @@ function ConnectorAction({
 }: {
   connector: Connector;
   connected: boolean;
+  enabled: boolean;
+  disabledReason: string | null;
   busy: boolean;
   workspaceReady: boolean;
   expanded: boolean;
@@ -304,10 +337,17 @@ function ConnectorAction({
   onExpand: () => void;
   onAdd: () => void;
 }) {
+  if (!enabled) {
+    return (
+      <button type="button" disabled title={disabledReason ?? undefined} className={secondaryButton()}>
+        Unavailable
+      </button>
+    );
+  }
   if (!connected) {
     return (
-      <button type="button" onClick={onConnect} className={primaryButton()}>
-        Connect
+      <button type="button" onClick={onConnect} disabled={busy} className={primaryButton()}>
+        {busy ? "Connecting..." : "Connect"}
       </button>
     );
   }
@@ -547,7 +587,7 @@ function labelForSourceType(type: string): string {
 }
 
 function primaryButton(): string {
-  return "shrink-0 rounded-md bg-brand px-3 py-1.5 text-[12px] font-medium text-white hover:bg-brand-hover";
+  return "shrink-0 rounded-md bg-brand px-3 py-1.5 text-[12px] font-medium text-white hover:bg-brand-hover disabled:opacity-60";
 }
 
 function secondaryButton(): string {

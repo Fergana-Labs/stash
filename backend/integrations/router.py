@@ -83,6 +83,8 @@ class ProviderListItem(BaseModel):
     display_name: str
     scopes: list[str]
     connected: bool
+    enabled: bool
+    disabled_reason: str | None = None
     # "oauth" (the default redirect flow) or "mcp_oauth" (DCR+PKCE via an MCP
     # server, e.g. Granola).
     auth_kind: str = "oauth"
@@ -96,6 +98,59 @@ class IntegrationsListResponse(BaseModel):
     providers: list[ProviderListItem]
 
 
+def _provider_disabled_reason(provider: str) -> str | None:
+    if not settings.INTEGRATIONS_ENCRYPTION_KEY:
+        return (
+            "OAuth integrations are not configured for this server. "
+            "Set INTEGRATIONS_ENCRYPTION_KEY to enable them."
+        )
+    try:
+        Fernet(settings.INTEGRATIONS_ENCRYPTION_KEY.encode())
+    except ValueError:
+        return "INTEGRATIONS_ENCRYPTION_KEY must be a valid Fernet key."
+
+    required: dict[str, list[str]] = {
+        "github": [
+            "GITHUB_OAUTH_CLIENT_ID",
+            "GITHUB_OAUTH_CLIENT_SECRET",
+            "GITHUB_OAUTH_REDIRECT_URI",
+        ],
+        "google": [
+            "GOOGLE_OAUTH_CLIENT_ID",
+            "GOOGLE_OAUTH_CLIENT_SECRET",
+            "GOOGLE_OAUTH_REDIRECT_URI",
+        ],
+        "notion": [
+            "NOTION_OAUTH_CLIENT_ID",
+            "NOTION_OAUTH_CLIENT_SECRET",
+            "NOTION_OAUTH_REDIRECT_URI",
+        ],
+        "slack": [
+            "SLACK_OAUTH_CLIENT_ID",
+            "SLACK_OAUTH_CLIENT_SECRET",
+            "SLACK_OAUTH_REDIRECT_URI",
+        ],
+        "granola": ["GRANOLA_OAUTH_REDIRECT_URI"],
+    }
+    missing = [name for name in required.get(provider, []) if not getattr(settings, name)]
+    if missing:
+        display_names = {
+            "github": "GitHub",
+            "google": "Google",
+            "notion": "Notion",
+            "slack": "Slack",
+            "granola": "Granola",
+        }
+        return f"{display_names.get(provider, provider)} OAuth is not configured for this server."
+    return None
+
+
+def _ensure_provider_enabled(provider: str) -> None:
+    disabled_reason = _provider_disabled_reason(provider)
+    if disabled_reason:
+        raise HTTPException(status_code=503, detail=disabled_reason)
+
+
 @router.get("", response_model=IntegrationsListResponse)
 async def list_integrations(current_user: dict = Depends(get_current_user)):
     user_connections = {
@@ -104,12 +159,15 @@ async def list_integrations(current_user: dict = Depends(get_current_user)):
     items = []
     for p in list_providers():
         conn = user_connections.get(p.name)
+        disabled_reason = _provider_disabled_reason(p.name)
         items.append(
             ProviderListItem(
                 provider=p.name,
                 display_name=p.display_name,
                 scopes=p.scopes,
                 connected=conn is not None,
+                enabled=disabled_reason is None,
+                disabled_reason=disabled_reason,
                 auth_kind=getattr(p, "auth_kind", "oauth"),
                 account_email=conn["account_email"] if conn else None,
                 account_display_name=conn["account_display_name"] if conn else None,
@@ -151,6 +209,7 @@ async def integration_connect(
     started (e.g. /onboarding) instead of /settings.
     """
     p = get_provider(provider)
+    _ensure_provider_enabled(provider)
     # MCP OAuth providers (Granola) register a client + carry PKCE through their
     # own state, so they own the connect step end-to-end.
     if getattr(p, "auth_kind", "oauth") == "mcp_oauth":
