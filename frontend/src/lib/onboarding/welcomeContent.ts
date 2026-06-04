@@ -52,11 +52,16 @@ export function generateWelcomeHtml(inputs: WelcomeInputs): string {
 
   parts.push(`<h2>How Stash works</h2>`);
   parts.push(
-    `<p>Everything is organized within a <strong>Workspace</strong>. This is a shared hopper for everything agents produce or consume: session transcripts, HTML pages, markdown docs, images, tables, raw files. Structured or not. Within it, there are three main structures:</p>
+    `<p>Stash is built around <strong>sources</strong> your agents read and write, <strong>cartridges</strong> you share on top of them, and the <strong>agents</strong> you talk to over all of it.</p>
     <ul>
-      <li><strong>Cartridges</strong> — virtual sub-workspaces. Bundle any subset of workspace data into a Cartridge; share to the public or make it private to everyone else in the workspace. This becomes the go-to point for teams, workstreams, or projects (e.g. LinkedIn marketing, Backend infra team, Kernel optimization reading group).</li>
-      <li><strong>Files</strong> — a file system for documents (e.g. markdown, HTML, images, PDF, CSV). Built so agents can natively use it.</li>
-      <li><strong>Sessions</strong> — history of conversations between users and agents. Automatically pushed from your agent of choice (e.g. Claude Code, Codex, Openclaw).</li>
+      <li><strong>Sources</strong> — everything your agents produce or consume, all searchable:
+        <ul>
+          <li><strong>Agent Sessions</strong> — the history of your agent conversations, automatically pushed in from Claude Code, Codex, and friends.</li>
+          <li><strong>Files</strong> — a file system for documents (markdown, HTML, images, PDF, CSV, tables), plus connected sources like Notion, Google Drive, Slack, and GitHub. Built so agents can use it natively.</li>
+        </ul>
+      </li>
+      <li><strong>Cartridges</strong> — curated bundles you share on top of your sources: pick any subset and publish it, or share it with specific people. The go-to surface for a team, workstream, or project.</li>
+      <li><strong>Agents</strong> — talk to an agent grounded on everything above: search it, ask about it, and let your coding agents work against it.</li>
     </ul>`,
   );
 
