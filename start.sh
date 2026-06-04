@@ -51,6 +51,55 @@ if [ -f "$PROJECT_ROOT/.env" ]; then
     echo "Loaded environment from .env"
 fi
 
+generate_integrations_encryption_key() {
+    python - <<'PY'
+import base64
+import secrets
+
+print(base64.urlsafe_b64encode(secrets.token_bytes(32)).decode())
+PY
+}
+
+ensure_integrations_encryption_key() {
+    if [ -n "${INTEGRATIONS_ENCRYPTION_KEY:-}" ]; then
+        return
+    fi
+
+    local env_file="$PROJECT_ROOT/.env"
+    local generated_key
+    local tmp_file
+
+    generated_key="$(generate_integrations_encryption_key)"
+
+    if [ -f "$env_file" ]; then
+        tmp_file="$(mktemp)"
+        awk -v key="$generated_key" '
+            BEGIN { written = 0 }
+            /^INTEGRATIONS_ENCRYPTION_KEY=/ {
+                if (!written) {
+                    print "INTEGRATIONS_ENCRYPTION_KEY=" key
+                    written = 1
+                }
+                next
+            }
+            { print }
+            END {
+                if (!written) {
+                    print "INTEGRATIONS_ENCRYPTION_KEY=" key
+                }
+            }
+        ' "$env_file" > "$tmp_file"
+        mv "$tmp_file" "$env_file"
+    else
+        printf 'INTEGRATIONS_ENCRYPTION_KEY=%s\n' "$generated_key" > "$env_file"
+    fi
+
+    export INTEGRATIONS_ENCRYPTION_KEY="$generated_key"
+    echo "[secrets] Generated INTEGRATIONS_ENCRYPTION_KEY in .env."
+}
+
+ensure_integrations_encryption_key
+
 export DATABASE_URL="${DATABASE_URL:-$LOCAL_DATABASE_URL}"
 BACKEND_PORT="${BACKEND_PORT:-$DEFAULT_BACKEND_PORT}"
 FRONTEND_PORT="${FRONTEND_PORT:-$DEFAULT_FRONTEND_PORT}"
