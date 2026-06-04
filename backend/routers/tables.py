@@ -118,13 +118,17 @@ async def create_ws_table(
 ):
     await _check_member(workspace_id, current_user["id"])
     columns = [c.model_dump() for c in req.columns]
-    table = await table_service.create_table(
-        workspace_id,
-        req.name,
-        req.description,
-        columns,
-        current_user["id"],
-    )
+    try:
+        table = await table_service.create_table(
+            workspace_id,
+            req.name,
+            req.description,
+            columns,
+            current_user["id"],
+            folder_id=req.folder_id,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     return TableResponse(**table)
 
 
@@ -165,6 +169,8 @@ async def update_ws_table(
         current_user["id"],
         name=req.name,
         description=req.description,
+        folder_id=req.folder_id,
+        move_to_root=req.move_to_root,
     )
     if not table:
         raise HTTPException(status_code=404, detail="Table not found")

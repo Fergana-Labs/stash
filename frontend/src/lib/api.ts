@@ -591,7 +591,7 @@ export async function getTable(
 export async function updateTable(
   workspaceId: string | null,
   tableId: string,
-  data: { name?: string; description?: string }
+  data: { name?: string; description?: string; folder_id?: string | null; move_to_root?: boolean }
 ): Promise<Table> {
   return apiFetch(`${scope(workspaceId)}/tables/${tableId}`, {
     method: "PATCH", body: JSON.stringify(data),
@@ -1792,6 +1792,7 @@ export interface FolderContents {
   subfolders: FolderSubfolder[];
   pages: { id: string; name: string; content_type: "markdown" | "html" }[];
   files: Omit<WorkspaceFile, "folder_id">[];
+  tables: { id: string; name: string; row_count: number }[];
 }
 
 export async function getFolderContents(

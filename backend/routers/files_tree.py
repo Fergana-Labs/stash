@@ -193,6 +193,7 @@ async def get_folder_contents(
     readable_folder = permission_service.readable_content_condition("folder", "f", 3)
     readable_page = permission_service.readable_content_condition("page", "p", 3)
     readable_file = permission_service.readable_content_condition("file", "fi", 3)
+    readable_table = permission_service.readable_content_condition("table", "t", 3)
     subfolders = await pool.fetch(
         "SELECT id, name, "
         "       ("
@@ -236,9 +237,20 @@ async def get_folder_contents(
         workspace_id,
         current_user["id"],
     )
+    tables = await pool.fetch(
+        "SELECT id, name, "
+        "(SELECT COUNT(*) FROM table_rows tr WHERE tr.table_id = t.id) AS row_count "
+        "FROM tables t WHERE t.folder_id = $1 AND t.workspace_id = $2 "
+        f"AND {readable_table} "
+        "ORDER BY name",
+        folder_id,
+        workspace_id,
+        current_user["id"],
+    )
     subfolders = [dict(r) for r in subfolders]
     pages = [dict(r) for r in pages]
     files = [dict(r) for r in files]
+    tables = [dict(r) for r in tables]
 
     file_payload = [
         {
@@ -276,6 +288,10 @@ async def get_folder_contents(
             for r in pages
         ],
         "files": file_payload,
+        "tables": [
+            {"id": str(r["id"]), "name": r["name"], "row_count": int(r["row_count"] or 0)}
+            for r in tables
+        ],
     }
 
 

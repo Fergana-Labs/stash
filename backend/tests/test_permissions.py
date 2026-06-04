@@ -114,10 +114,12 @@ async def _make_session(pool, workspace_id, created_by, session_id="session-1"):
     return row["id"]
 
 
-async def _make_table(pool, workspace_id, created_by, name="table"):
+async def _make_table(pool, workspace_id, created_by, folder_id=None, name="table"):
     row = await pool.fetchrow(
-        "INSERT INTO tables (workspace_id, name, created_by) VALUES ($1, $2, $3) RETURNING id",
+        "INSERT INTO tables (workspace_id, folder_id, name, created_by) "
+        "VALUES ($1, $2, $3, $4) RETURNING id",
         workspace_id,
+        folder_id,
         name,
         created_by,
     )
@@ -259,9 +261,46 @@ async def test_folder_share_cascades_to_children(pool):
     folder = await _make_folder(pool, ws, owner)
     page = await _make_page(pool, ws, owner, folder_id=folder)
     file_id = await _make_file(pool, ws, owner, folder_id=folder)
+    table = await _make_table(pool, ws, owner, folder_id=folder)
     await _share(pool, ws, "folder", folder, friend, "read", by=owner)
     assert await permission_service.check_access("page", page, friend)
     assert await permission_service.check_access("file", file_id, friend)
+    assert await permission_service.check_access("table", table, friend)
+
+
+@pytest.mark.asyncio
+async def test_table_folder_share_cascades_and_write_inherits(pool):
+    """A table inside a shared folder inherits the folder's grant — read from a
+    read share, write from a write share — just like pages and files. A table
+    at the workspace root is unaffected by the folder share."""
+    owner = await _make_user(pool)
+    friend = await _make_user(pool)
+    ws = await _make_workspace(pool, owner)
+    folder = await _make_folder(pool, ws, owner)
+    table = await _make_table(pool, ws, owner, folder_id=folder)
+    root_table = await _make_table(pool, ws, owner, name="root-table")
+
+    # Before any share the non-member can't see either table.
+    assert not await permission_service.check_access("table", table, friend)
+
+    await _share(pool, ws, "folder", folder, friend, "read", by=owner)
+    assert await permission_service.check_access("table", table, friend)
+    # Read share is not a write grant, and the root table is outside the folder.
+    assert not await permission_service.check_access(
+        "table", table, friend, require_write=True
+    )
+    assert not await permission_service.check_access("table", root_table, friend)
+
+    # Upgrading the folder share to write cascades write to the table.
+    await pool.execute(
+        "UPDATE shares SET permission='write' WHERE object_type='folder' "
+        "AND object_id=$1 AND principal_id=$2",
+        folder,
+        friend,
+    )
+    assert await permission_service.check_access(
+        "table", table, friend, require_write=True
+    )
 
 
 @pytest.mark.asyncio
