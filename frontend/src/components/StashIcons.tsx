@@ -8,6 +8,7 @@ import InsertDriveFileOutlinedIcon from "@mui/icons-material/InsertDriveFileOutl
 import NotificationsNoneOutlinedIcon from "@mui/icons-material/NotificationsNoneOutlined";
 import PersonOutlineOutlinedIcon from "@mui/icons-material/PersonOutlineOutlined";
 import CloseOutlinedIcon from "@mui/icons-material/CloseOutlined";
+import DashboardOutlinedIcon from "@mui/icons-material/DashboardOutlined";
 import PushPinOutlinedIcon from "@mui/icons-material/PushPinOutlined";
 import SearchOutlinedIcon from "@mui/icons-material/SearchOutlined";
 import ScheduleOutlinedIcon from "@mui/icons-material/ScheduleOutlined";
@@ -97,6 +98,10 @@ export function TableIcon(props: IconProps) {
 
 export function ActivityIcon(props: IconProps) {
   return <MaterialIcon icon={ScheduleOutlinedIcon} {...props} />;
+}
+
+export function DashboardIcon(props: IconProps) {
+  return <MaterialIcon icon={DashboardOutlinedIcon} {...props} />;
 }
 
 export function DiscoverIcon(props: IconProps) {

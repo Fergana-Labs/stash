@@ -26,11 +26,13 @@ load_dotenv(REPO_ROOT / "backend" / ".env")
 sys.path.insert(0, str(REPO_ROOT))
 
 from backend import database  # noqa: E402
+from backend.auth import hash_password  # noqa: E402
+from backend.services import cartridge_service as stash_service  # noqa: E402
 from backend.services import (  # noqa: E402
     files_tree_service,
     memory_service,
     session_service,
-    stash_service,
+    source_service,
     storage_service,
     table_service,
     user_service,
@@ -394,6 +396,342 @@ SAMPLE_FILES = [
     },
 ]
 
+WEBFLOW_WORKSPACE_NAME = "Webflow MCP Launch Room"
+WEBFLOW_WORKSPACE_DESCRIPTION = (
+    "Demo project dataset for tracking Webflow MCP engineering work, Slack "
+    "launch-room messages, and Gong sales-call evidence."
+)
+
+WEBFLOW_USERS = [
+    {
+        "name": "demo_nadia",
+        "display_name": "Nadia Brooks",
+        "description": "Platform engineer leading Webflow MCP auth.",
+        "password": "demo",
+    },
+    {
+        "name": "demo_eli",
+        "display_name": "Eli Foster",
+        "description": "Frontend engineer building Designer context tools.",
+        "password": "demo",
+    },
+    {
+        "name": "demo_sam",
+        "display_name": "Sam Rivera",
+        "description": "Solutions engineer collecting customer evidence.",
+        "password": "demo",
+    },
+    {
+        "name": "demo_zoe",
+        "display_name": "Zoe Kim",
+        "description": "Product lead for the Webflow MCP rollout.",
+        "password": "demo",
+    },
+]
+
+WEBFLOW_FOLDERS = [
+    ("Project", None),
+    ("Engineering Sessions", None),
+    ("Customer Signals", None),
+    ("Slack", "Customer Signals"),
+    ("Gong Calls", "Customer Signals"),
+    ("Specs", None),
+]
+
+WEBFLOW_PAGES = [
+    {
+        "name": "Webflow MCP Project Brief",
+        "folder": "Project",
+        "content": (
+            "# Webflow MCP Project Brief\n\n"
+            "Goal: add MCP tools that let trusted agents inspect Webflow sites, "
+            "CMS collections, Designer context, and publish readiness.\n\n"
+            "Demo scope is local-only and uses fake customer evidence."
+        ),
+    },
+    {
+        "name": "Slack Launch Room Digest",
+        "folder": "Customer Signals / Slack",
+        "content": (
+            "# Slack Launch Room Digest\n\n"
+            "- Agencies want dry-run collection writes before production access.\n"
+            "- Sales engineers need clear read versus mutate positioning.\n"
+            "- Designer context must stay current while a human edits the canvas."
+        ),
+    },
+    {
+        "name": "Gong Call - Acme Sites",
+        "folder": "Customer Signals / Gong Calls",
+        "content": (
+            "# Gong Call - Acme Sites\n\n"
+            "Buyer asked for CMS migration audits, locale readiness checks, and "
+            "plain-language explanations of which Webflow objects an agent can read."
+        ),
+    },
+    {
+        "name": "Gong Call - Northstar Commerce",
+        "folder": "Customer Signals / Gong Calls",
+        "content": (
+            "# Gong Call - Northstar Commerce\n\n"
+            "The team launches every Friday and wants an agent to inspect publish "
+            "blockers across locales before a launch manager presses publish."
+        ),
+    },
+    {
+        "name": "MCP Tool Contract",
+        "folder": "Specs",
+        "content": (
+            "# MCP Tool Contract\n\n"
+            "Tools are grouped into auth, site inventory, Designer context, CMS "
+            "schema, draft writes, and publish readiness."
+        ),
+    },
+]
+
+WEBFLOW_TABLES = [
+    {
+        "name": "Webflow MCP Workstreams",
+        "description": "Demo readiness tracker for the Webflow MCP rollout.",
+        "columns": [
+            {"name": "Workstream", "type": "text", "required": True},
+            {"name": "Owner", "type": "text", "required": True},
+            {"name": "Status", "type": "text", "required": True},
+            {"name": "Progress", "type": "number", "required": True},
+            {"name": "Next", "type": "text", "required": False},
+        ],
+        "rows": [
+            {
+                "Workstream": "OAuth and site picker",
+                "Owner": "Nadia",
+                "Status": "On track",
+                "Progress": 86,
+                "Next": "Consent copy review",
+            },
+            {
+                "Workstream": "Designer context tools",
+                "Owner": "Eli",
+                "Status": "Watch",
+                "Progress": 61,
+                "Next": "Iframe message contract",
+            },
+            {
+                "Workstream": "CMS schema and publish readiness",
+                "Owner": "Maya",
+                "Status": "On track",
+                "Progress": 74,
+                "Next": "Reference field validation",
+            },
+            {
+                "Workstream": "Sales engineering pilot",
+                "Owner": "Sam",
+                "Status": "Blocked",
+                "Progress": 38,
+                "Next": "Sandbox credentials",
+            },
+        ],
+    },
+    {
+        "name": "Webflow MCP Customer Signals",
+        "description": "Fake Slack and Gong evidence for the demo dashboard.",
+        "columns": [
+            {"name": "Source", "type": "text", "required": True},
+            {"name": "Account", "type": "text", "required": True},
+            {"name": "Signal", "type": "text", "required": True},
+            {"name": "Priority", "type": "number", "required": True},
+            {"name": "Owner", "type": "text", "required": True},
+        ],
+        "rows": [
+            {
+                "Source": "Slack",
+                "Account": "Internal launch room",
+                "Signal": "Dry-run collection writes are required before pilot access.",
+                "Priority": 1,
+                "Owner": "Maya",
+            },
+            {
+                "Source": "Gong",
+                "Account": "Acme Sites",
+                "Signal": "CMS migration audit is the strongest agency use case.",
+                "Priority": 1,
+                "Owner": "Sam",
+            },
+            {
+                "Source": "Gong",
+                "Account": "Northstar Commerce",
+                "Signal": "Publish readiness across locales matters more than page generation.",
+                "Priority": 2,
+                "Owner": "Zoe",
+            },
+            {
+                "Source": "Slack",
+                "Account": "Solutions engineering",
+                "Signal": "Need a one-screen read-versus-mutate explanation.",
+                "Priority": 2,
+                "Owner": "Nadia",
+            },
+        ],
+    },
+]
+
+WEBFLOW_SESSIONS = [
+    {
+        "session_id": "webflow-mcp-auth-handshake",
+        "agent_name": "codex",
+        "cwd": "/workspace/webflow-mcp",
+        "created_by": "demo_nadia",
+        "files_touched": ["backend/integrations/webflow/oauth.py", "cli/mcp_server.py"],
+        "events": [
+            ("prompt", "Trace the Webflow OAuth handshake and site picker for the MCP demo."),
+            ("assistant", "I mapped the token exchange and found the per-site scope boundary."),
+            ("tool_call", "rg", "rg -n \"webflow|oauth|site\" backend cli"),
+            ("assistant", "The local flow can store workspace and site ids; consent copy still needs review."),
+        ],
+    },
+    {
+        "session_id": "webflow-mcp-designer-context",
+        "agent_name": "claude",
+        "cwd": "/workspace/frontend",
+        "created_by": "demo_eli",
+        "files_touched": ["frontend/src/designer/bridge.ts", "frontend/src/mcp/context.ts"],
+        "events": [
+            ("prompt", "Prototype Designer context reads for selected element and page tree."),
+            ("assistant", "I added a message contract for selected element, active page, and style panel state."),
+            ("tool_call", "npm test", "npm test -- designer bridge"),
+            ("assistant", "Selection changes work; page tree updates need debouncing before dogfood."),
+        ],
+    },
+    {
+        "session_id": "webflow-mcp-cms-schema",
+        "agent_name": "assistant",
+        "cwd": "/workspace/backend",
+        "created_by": "demo_nadia",
+        "files_touched": ["backend/services/webflow_cms.py", "backend/tests/test_webflow_cms.py"],
+        "events": [
+            ("prompt", "Add fake CMS schema introspection for Webflow collections."),
+            ("assistant", "I modeled collection fields, references, option fields, and draft-only writes."),
+            ("assistant", "The schema parser now fails loudly on unknown field types."),
+        ],
+    },
+    {
+        "session_id": "webflow-mcp-publish-readiness",
+        "agent_name": "codex",
+        "cwd": "/workspace/webflow-mcp",
+        "created_by": "demo_zoe",
+        "files_touched": ["product/readiness.md", "backend/services/webflow_publish.py"],
+        "events": [
+            ("prompt", "Use customer evidence to define publish readiness checks."),
+            ("assistant", "I grouped checks around locales, draft status, missing fields, and queued publish jobs."),
+            ("assistant", "Gong calls suggest readiness checks are stronger than generic page generation."),
+        ],
+    },
+    {
+        "session_id": "webflow-mcp-sales-pilot",
+        "agent_name": "claude",
+        "cwd": "/workspace/solutions",
+        "created_by": "demo_sam",
+        "files_touched": ["solutions/pilot-script.md", "docs/webflow-demo.md"],
+        "events": [
+            ("prompt", "Prepare the sales engineering pilot script from Slack and Gong notes."),
+            ("assistant", "I drafted a pilot script that starts with CMS audit and ends with read-only Designer context."),
+            ("assistant", "The blocker is still sandbox credentials for enterprise site permissions."),
+        ],
+    },
+    {
+        "session_id": "webflow-mcp-dry-run-writes",
+        "agent_name": "assistant",
+        "cwd": "/workspace/backend",
+        "created_by": "demo_nadia",
+        "files_touched": ["backend/services/webflow_actions.py", "backend/tests/test_webflow_actions.py"],
+        "events": [
+            ("prompt", "Define dry-run writes for CMS items before enabling mutations."),
+            ("assistant", "I added a dry-run response shape that lists field changes and validation errors."),
+            ("tool_call", "pytest", "pytest backend/tests/test_webflow_actions.py"),
+            ("assistant", "Dry-run responses now show exactly what would change without writing to Webflow."),
+        ],
+    },
+]
+
+WEBFLOW_SLACK_MESSAGES = [
+    {
+        "channel_id": "CWEBFLOW",
+        "channel_name": "webflow-mcp",
+        "ts": "1790851200.000100",
+        "name": "Dry-run writes before pilot",
+        "content": (
+            "Maya: If collection writes stay behind a dry-run preview, agencies will "
+            "try this in production sooner.\n"
+            "Nadia: Agreed. The MCP should return the exact fields it would mutate."
+        ),
+    },
+    {
+        "channel_id": "CWEBFLOW",
+        "channel_name": "webflow-mcp",
+        "ts": "1790854800.000200",
+        "name": "Designer context drift",
+        "content": (
+            "Eli: Designer context is useful only if selected element and page tree "
+            "stay current while the human edits.\n"
+            "Zoe: Call this out as a launch risk until the bridge settles."
+        ),
+    },
+    {
+        "channel_id": "CSE",
+        "channel_name": "solutions-eng",
+        "ts": "1790937600.000300",
+        "name": "Read versus mutate positioning",
+        "content": (
+            "Sam: Sales engineers need a one-screen explanation of what the MCP can "
+            "read versus mutate.\n"
+            "Nadia: I can seed examples for site inventory, CMS schema, and dry-run writes."
+        ),
+    },
+    {
+        "channel_id": "CWEBFLOW",
+        "channel_name": "webflow-mcp",
+        "ts": "1791020400.000400",
+        "name": "Agency migration workflow",
+        "content": (
+            "Zoe: The strongest demo is auditing CMS fields before migration, then "
+            "showing publish readiness across locales."
+        ),
+    },
+]
+
+WEBFLOW_GONG_CALLS = [
+    {
+        "path": "gong/acme-sites-agency-pilot.md",
+        "name": "Gong - Acme Sites agency pilot",
+        "content": (
+            "# Acme Sites agency pilot\n\n"
+            "Summary: buyer wants an agent that audits CMS fields before migration.\n\n"
+            "**Buyer:** We do not need another page generator. We need to know which "
+            "fields block migration and what will break on publish.\n\n"
+            "**Sam:** The Webflow MCP pilot can start read-only, then add dry-run "
+            "collection writes."
+        ),
+    },
+    {
+        "path": "gong/northstar-commerce-discovery.md",
+        "name": "Gong - Northstar Commerce discovery",
+        "content": (
+            "# Northstar Commerce discovery\n\n"
+            "Summary: Friday launches need publish readiness checks across locales.\n\n"
+            "**Buyer:** If the agent can tell us what is missing before launch day, "
+            "that is worth testing immediately."
+        ),
+    },
+    {
+        "path": "gong/brightlane-webflow-admin.md",
+        "name": "Gong - Brightlane Webflow admin",
+        "content": (
+            "# Brightlane Webflow admin\n\n"
+            "Summary: admin team wants transparent permissions and audit logs.\n\n"
+            "**Buyer:** We need to see which workspace, site, and collection the "
+            "agent touched before we approve writes."
+        ),
+    },
+]
+
 
 def _folder_path(parts: str) -> tuple[str, ...]:
     return tuple(part.strip() for part in parts.split("/") if part.strip())
@@ -421,16 +759,70 @@ def _item(
     return SimpleNamespace(object_type=object_type, object_id=object_id, position=position, label_override=label_override)
 
 
+def _permission_pair(access: str) -> tuple[str, str]:
+    if access == "private":
+        return "none", "none"
+    if access == "workspace":
+        return "read", "none"
+    if access == "public":
+        return "read", "read"
+    raise ValueError(f"Unsupported cartridge access: {access}")
+
+
+async def _create_seed_cartridge(
+    *,
+    workspace_id: UUID,
+    owner_id: UUID,
+    title: str,
+    description: str,
+    access: str,
+    discoverable: bool,
+    cover_image_url: str | None,
+    items: list[SimpleNamespace],
+) -> dict:
+    workspace_permission, public_permission = _permission_pair(access)
+    return await stash_service.create_cartridge(
+        workspace_id=workspace_id,
+        owner_id=owner_id,
+        title=title,
+        description=description,
+        workspace_permission=workspace_permission,
+        public_permission=public_permission,
+        discoverable=discoverable,
+        cover_image_url=cover_image_url,
+        items=items,
+    )
+
+
+async def _update_seed_cartridge(
+    *,
+    cartridge_id: UUID,
+    user_id: UUID,
+    items: list[SimpleNamespace],
+) -> dict | None:
+    return await stash_service.update_cartridge(
+        cartridge_id=cartridge_id,
+        user_id=user_id,
+        updates={"items": items},
+    )
+
+
 async def _ensure_user(pool, user: dict) -> tuple[dict, str | None, bool]:
     row = await pool.fetchrow("SELECT id, name, display_name FROM users WHERE name = $1", user["name"])
     if row:
+        if user.get("password"):
+            await pool.execute(
+                "UPDATE users SET password_hash = COALESCE(password_hash, $1) WHERE id = $2",
+                hash_password(user["password"]),
+                row["id"],
+            )
         return dict(row), None, False
 
     new_user, api_key = await user_service.register_user(
         name=user["name"],
         display_name=user["display_name"],
         description=user["description"],
-        password=None,
+        password=user.get("password"),
     )
     return new_user, api_key, True
 
@@ -483,10 +875,14 @@ async def _get_folder(
     )
 
 
-async def _ensure_folders(workspace_id: UUID, creator_id: UUID) -> dict[str, dict]:
+async def _ensure_folders(
+    workspace_id: UUID,
+    creator_id: UUID,
+    folder_specs: list[tuple[str, str | None]] | None = None,
+) -> dict[str, dict]:
     created: dict[str, dict] = {}
     folders_by_name: dict[str, UUID | None] = {}
-    for item in SAMPLE_FOLDERS:
+    for item in folder_specs or SAMPLE_FOLDERS:
         name, parent_name = item
         if parent_name is None:
             parent_id = None
@@ -509,9 +905,14 @@ async def _ensure_folders(workspace_id: UUID, creator_id: UUID) -> dict[str, dic
     return created
 
 
-async def _ensure_pages(workspace_id: UUID, creator_id: UUID, folders: dict[str, dict]) -> dict[str, dict]:
+async def _ensure_pages(
+    workspace_id: UUID,
+    creator_id: UUID,
+    folders: dict[str, dict],
+    page_specs: list[dict[str, Any]] | None = None,
+) -> dict[str, dict]:
     out: dict[str, dict] = {}
-    for spec in SAMPLE_PAGES:
+    for spec in page_specs or SAMPLE_PAGES:
         folder_key = spec["folder"]
         parent_parts = _folder_path(folder_key)
         if len(parent_parts) == 1:
@@ -554,9 +955,13 @@ async def _ensure_pages(workspace_id: UUID, creator_id: UUID, folders: dict[str,
     return out
 
 
-async def _ensure_tables(workspace_id: UUID, creator_id: UUID) -> dict[str, dict]:
+async def _ensure_tables(
+    workspace_id: UUID,
+    creator_id: UUID,
+    table_specs: list[dict[str, Any]] | None = None,
+) -> dict[str, dict]:
     out: dict[str, dict] = {}
-    for spec in SAMPLE_TABLES:
+    for spec in table_specs or SAMPLE_TABLES:
         table = await database.get_pool().fetchrow(
             "SELECT t.id, t.workspace_id, t.name, t.description, t.columns, t.created_by, "
             "t.updated_by, t.created_at, t.updated_at, "
@@ -603,9 +1008,14 @@ async def _session_time_offset(index: int, event_offset: int) -> datetime:
     return base
 
 
-async def _ensure_sessions(workspace_id: UUID, users: dict[str, dict], folders: dict[str, dict]) -> dict[str, dict]:
+async def _ensure_sessions(
+    workspace_id: UUID,
+    users: dict[str, dict],
+    folders: dict[str, dict],
+    session_specs: list[dict[str, Any]] | None = None,
+) -> dict[str, dict]:
     created: dict[str, dict] = {}
-    for i, spec in enumerate(SAMPLE_SESSIONS):
+    for i, spec in enumerate(session_specs or SAMPLE_SESSIONS):
         existing = await session_service.get_session(workspace_id, spec["session_id"])
         if existing:
             created[spec["session_id"]] = existing
@@ -651,6 +1061,7 @@ async def _ensure_files(
     creator_id: UUID,
     folders: dict[str, dict],
     tables: dict[str, dict],
+    file_specs: list[dict[str, Any]] | None = None,
 ) -> dict[str, dict]:
     if not storage_service.is_configured():
         log.warning(
@@ -659,7 +1070,7 @@ async def _ensure_files(
         return {}
 
     out: dict[str, dict] = {}
-    for spec in SAMPLE_FILES:
+    for spec in file_specs or SAMPLE_FILES:
         parent_id = folders.get(spec["folder"], {}).get("id")
         storage_key = await storage_service.upload_file(
             str(workspace_id),
@@ -751,24 +1162,24 @@ async def _ensure_stashes(workspace_id: UUID, user: dict, folders: dict[str, dic
 
     for spec in stash_defs:
         exists = await database.get_pool().fetchrow(
-            "SELECT id FROM stashes WHERE workspace_id = $1 AND title = $2",
+            "SELECT id FROM cartridges WHERE workspace_id = $1 AND title = $2",
             workspace_id,
             spec["title"],
         )
         if exists:
             item_count = await database.get_pool().fetchval(
-                "SELECT COUNT(*) FROM stash_items WHERE stash_id = $1",
+                "SELECT COUNT(*) FROM cartridge_items WHERE cartridge_id = $1",
                 exists["id"],
             )
             if item_count:
                 continue
-            await stash_service.update_stash(
-                stash_id=exists["id"],
+            await _update_seed_cartridge(
+                cartridge_id=exists["id"],
                 user_id=user["id"],
                 items=spec["items"],
             )
             continue
-        await stash_service.create_stash(
+        await _create_seed_cartridge(
             workspace_id=workspace_id,
             owner_id=user["id"],
             title=spec["title"],
@@ -811,6 +1222,149 @@ async def _seed_workspace_bundle(
     }
 
 
+async def _ensure_webflow_connected_sources(workspace_id: UUID, owner_id: UUID) -> int:
+    pool = database.get_pool()
+    slack_source = await source_service.create_source(
+        workspace_id=workspace_id,
+        owner_user_id=owner_id,
+        source_type="slack",
+        external_ref="T_WEBFLOW_DEMO",
+        display_name="Webflow MCP Slack",
+    )
+    gong_source = await source_service.create_source(
+        workspace_id=workspace_id,
+        owner_user_id=owner_id,
+        source_type="granola",
+        external_ref="gong-webflow-demo",
+        display_name="Gong Sales Calls",
+    )
+
+    await pool.execute(
+        "UPDATE workspace_sources SET sync_enabled = false, sync_status = 'idle', "
+        "last_synced_at = now(), updated_at = now() WHERE id = ANY($1::uuid[])",
+        [UUID(slack_source["id"]), UUID(gong_source["id"])],
+    )
+
+    docs = 0
+    for message in WEBFLOW_SLACK_MESSAGES:
+        await source_service.upsert_content_document(
+            table="slack_messages",
+            source_id=UUID(slack_source["id"]),
+            workspace_id=workspace_id,
+            path=f"#{message['channel_name']}/{message['ts']}.md",
+            name=message["name"],
+            kind="message",
+            content=message["content"],
+            external_ref=message["ts"],
+            extra={
+                "channel_id": message["channel_id"],
+                "channel_name": message["channel_name"],
+                "ts": message["ts"],
+            },
+        )
+        docs += 1
+
+    for call in WEBFLOW_GONG_CALLS:
+        await source_service.upsert_content_document(
+            table="granola_notes",
+            source_id=UUID(gong_source["id"]),
+            workspace_id=workspace_id,
+            path=call["path"],
+            name=call["name"],
+            kind="meeting",
+            content=call["content"],
+            external_ref=call["path"],
+        )
+        docs += 1
+
+    return docs
+
+
+async def _ensure_webflow_stashes(
+    workspace_id: UUID,
+    owner_id: UUID,
+    pages: dict[str, dict],
+    tables: dict[str, dict],
+    sessions: dict[str, dict],
+) -> None:
+    session_items = [
+        _item("session", sessions[session_key]["id"], position)
+        for position, session_key in enumerate(
+            [
+                "webflow-mcp-auth-handshake",
+                "webflow-mcp-designer-context",
+                "webflow-mcp-cms-schema",
+                "webflow-mcp-publish-readiness",
+                "webflow-mcp-sales-pilot",
+            ]
+        )
+        if session_key in sessions
+    ]
+    items = [
+        _item("page", pages["Webflow MCP Project Brief"]["id"], 0),
+        _item("table", tables["Webflow MCP Workstreams"]["id"], 1),
+        _item("table", tables["Webflow MCP Customer Signals"]["id"], 2),
+        _item("page", pages["Slack Launch Room Digest"]["id"], 3),
+        _item("page", pages["Gong Call - Acme Sites"]["id"], 4),
+    ] + [
+        _item(item.object_type, item.object_id, index + 5, item.label_override)
+        for index, item in enumerate(session_items)
+    ]
+
+    title = "Webflow MCP Demo Evidence"
+    existing = await database.get_pool().fetchrow(
+        "SELECT id FROM cartridges WHERE workspace_id = $1 AND title = $2",
+        workspace_id,
+        title,
+    )
+    if existing:
+        item_count = await database.get_pool().fetchval(
+            "SELECT COUNT(*) FROM cartridge_items WHERE cartridge_id = $1",
+            existing["id"],
+        )
+        if item_count:
+            return
+        await _update_seed_cartridge(
+            cartridge_id=existing["id"],
+            user_id=owner_id,
+            items=items,
+        )
+        return
+
+    await _create_seed_cartridge(
+        workspace_id=workspace_id,
+        owner_id=owner_id,
+        title=title,
+        description="Fake project evidence for the Webflow MCP dashboard demo.",
+        access="workspace",
+        discoverable=False,
+        cover_image_url=None,
+        items=items,
+    )
+
+
+async def _seed_webflow_workspace_bundle(
+    workspace_id: UUID,
+    workspace_owner_id: UUID,
+    created_users: dict[str, dict],
+) -> dict[str, int]:
+    folders = await _ensure_folders(workspace_id, workspace_owner_id, WEBFLOW_FOLDERS)
+    pages = await _ensure_pages(workspace_id, workspace_owner_id, folders, WEBFLOW_PAGES)
+    tables = await _ensure_tables(workspace_id, workspace_owner_id, WEBFLOW_TABLES)
+    sessions = await _ensure_sessions(workspace_id, created_users, folders, WEBFLOW_SESSIONS)
+    source_docs = await _ensure_webflow_connected_sources(workspace_id, workspace_owner_id)
+    await _ensure_webflow_stashes(workspace_id, workspace_owner_id, pages, tables, sessions)
+
+    return {
+        "folders": len(folders),
+        "pages": len(pages),
+        "tables": len(tables),
+        "files": 0,
+        "sessions": len(sessions),
+        "source_docs": source_docs,
+    }
+
+
 async def _ensure_external_stash_sample(
     workspace_id: UUID,
     workspace_owner: dict,
@@ -849,24 +1403,24 @@ async def _ensure_external_stash_sample(
 
     external_stash_title = "Partner Briefs"
     existing_external = await database.get_pool().fetchrow(
-        "SELECT id, slug FROM stashes WHERE workspace_id = $1 AND title = $2",
+        "SELECT id, slug FROM cartridges WHERE workspace_id = $1 AND title = $2",
         external_workspace_id,
         external_stash_title,
     )
     if existing_external:
         external_slug = existing_external["slug"]
         item_count = await database.get_pool().fetchval(
-            "SELECT COUNT(*) FROM stash_items WHERE stash_id = $1",
+            "SELECT COUNT(*) FROM cartridge_items WHERE cartridge_id = $1",
             existing_external["id"],
         )
         if not item_count:
-            await stash_service.update_stash(
-                stash_id=existing_external["id"],
+            await _update_seed_cartridge(
+                cartridge_id=existing_external["id"],
                 user_id=external_owner["id"],
                 items=[_item("page", page["id"], 0)],
             )
     else:
-        created_external = await stash_service.create_stash(
+        created_external = await _create_seed_cartridge(
             workspace_id=external_workspace_id,
             owner_id=external_owner["id"],
             title=external_stash_title,
@@ -878,7 +1432,7 @@ async def _ensure_external_stash_sample(
         )
         external_slug = created_external["slug"]
 
-    attached = await stash_service.add_external_stash(
+    attached = await stash_service.add_external_cartridge(
         workspace_id,
         external_slug,
         workspace_owner["id"],
@@ -913,7 +1467,7 @@ async def main() -> int:
         created_users: dict[str, dict] = {}
         created_api_keys: dict[str, str] = {}
 
-        for user in SAMPLE_USERS:
+        for user in [*SAMPLE_USERS, *WEBFLOW_USERS]:
             row, api_key, created = await _ensure_user(pool, user)
             created_users[row["name"]] = row
             if api_key:
@@ -924,6 +1478,7 @@ async def main() -> int:
         seeded_workspace_count = 0
         seeded_session_total = 0
         seeded_file_total = 0
+        seeded_source_doc_total = 0
 
         if args.workspace_id:
             target_workspace = await database.get_pool().fetchrow(
@@ -953,7 +1508,8 @@ async def main() -> int:
             )
             workspace_name = workspace["name"]
             workspace_id = workspace["id"]
-            await _ensure_membership(workspace_id, list(created_users.values()), workspace_owner)
+            sample_members = [created_users[user["name"]] for user in SAMPLE_USERS]
+            await _ensure_membership(workspace_id, sample_members, workspace_owner)
 
             if created:
                 log.info("Created workspace: %s", workspace_name)
@@ -966,12 +1522,38 @@ async def main() -> int:
             seeded_session_total += metrics["sessions"]
             seeded_file_total += metrics["files"]
 
+            webflow_owner = created_users[WEBFLOW_USERS[0]["name"]]
+            webflow_workspace, webflow_created = await _ensure_workspace(
+                pool,
+                webflow_owner,
+                workspace_name=WEBFLOW_WORKSPACE_NAME,
+                workspace_description=WEBFLOW_WORKSPACE_DESCRIPTION,
+            )
+            webflow_workspace_id = webflow_workspace["id"]
+            webflow_members = [created_users[user["name"]] for user in WEBFLOW_USERS]
+            await _ensure_membership(webflow_workspace_id, webflow_members, webflow_owner)
+
+            if webflow_created:
+                log.info("Created Webflow MCP demo workspace: %s", webflow_workspace["name"])
+            else:
+                log.info("Reusing Webflow MCP demo workspace: %s", webflow_workspace["name"])
+
+            webflow_metrics = await _seed_webflow_workspace_bundle(
+                webflow_workspace_id,
+                webflow_owner["id"],
+                created_users,
+            )
+            seeded_workspace_count += 1
+            seeded_session_total += webflow_metrics["sessions"]
+            seeded_file_total += webflow_metrics["files"]
+            seeded_source_doc_total += webflow_metrics["source_docs"]
+
             if args.seed_empty_workspaces:
                 empty_workspaces = await pool.fetch(
                     """
                     SELECT w.id, w.name, w.creator_id
                     FROM workspaces w
-                    LEFT JOIN stashes s ON s.workspace_id = w.id
+                    LEFT JOIN cartridges s ON s.workspace_id = w.id
                     WHERE s.id IS NULL
                     ORDER BY w.created_at
                     """
@@ -998,7 +1580,7 @@ async def main() -> int:
                 log.info("  %s: %s", username, key)
 
         stash_count = await database.get_pool().fetchval(
-            "SELECT count(*) FROM stashes WHERE workspace_id = $1",
+            "SELECT count(*) FROM cartridges WHERE workspace_id = $1",
             workspace_id,
         )
         print(
@@ -1006,6 +1588,7 @@ async def main() -> int:
             f"users={len(created_users)} "
             f"sessions={seeded_session_total} "
             f"files={seeded_file_total} "
+            f"source_docs={seeded_source_doc_total} "
             f"stashes={stash_count}"
         )
     finally:

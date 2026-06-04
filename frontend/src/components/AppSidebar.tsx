@@ -25,6 +25,7 @@ import type { User, Workspace } from "../lib/types";
 import AddSourceModal from "./integrations/AddSourceModal";
 import {
   ActivityIcon,
+  DashboardIcon,
   FileIcon,
   HelpIcon,
   SessionsIcon,
@@ -279,6 +280,14 @@ export default function AppSidebar({
               : pathname === "/"
           }
         />
+        {activeWorkspace ? (
+          <NavRow
+            href={`/workspaces/${activeWorkspace.id}/dashboard`}
+            icon={<DashboardIcon />}
+            label="Dashboard"
+            active={pathname === `/workspaces/${activeWorkspace.id}/dashboard`}
+          />
+        ) : null}
         {activeWorkspace ? (
           <NavRow
             href={`/workspaces/${activeWorkspace.id}/agents`}
