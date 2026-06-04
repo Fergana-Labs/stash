@@ -286,9 +286,7 @@ async def test_table_folder_share_cascades_and_write_inherits(pool):
     await _share(pool, ws, "folder", folder, friend, "read", by=owner)
     assert await permission_service.check_access("table", table, friend)
     # Read share is not a write grant, and the root table is outside the folder.
-    assert not await permission_service.check_access(
-        "table", table, friend, require_write=True
-    )
+    assert not await permission_service.check_access("table", table, friend, require_write=True)
     assert not await permission_service.check_access("table", root_table, friend)
 
     # Upgrading the folder share to write cascades write to the table.
@@ -298,9 +296,7 @@ async def test_table_folder_share_cascades_and_write_inherits(pool):
         folder,
         friend,
     )
-    assert await permission_service.check_access(
-        "table", table, friend, require_write=True
-    )
+    assert await permission_service.check_access("table", table, friend, require_write=True)
 
 
 @pytest.mark.asyncio
