@@ -184,18 +184,9 @@ export default function StashPageView() {
   }, [stashSlug, pageId]);
 
   const load = useCallback(async () => {
+    let p;
     try {
-      const p = await getPage(workspaceId, pageId);
-      setPage(p);
-      setStashFallback(null);
-      setContainingStashes(await listObjectStashes(workspaceId, "page", pageId));
-      if (p.folder_id) {
-        const contents = await getFolderContents(workspaceId, p.folder_id);
-        setFolderChain(contents.breadcrumbs);
-      } else {
-        setFolderChain([]);
-      }
-      await refreshThreads();
+      p = await getPage(workspaceId, pageId);
     } catch (e) {
       // Non-members of the workspace fall back to the stash payload when
       // a ?stash=<slug> hint is present. The stash's readability check is
@@ -208,7 +199,26 @@ export default function StashPageView() {
         if (await loadStashFallback()) return;
       }
       setError(e instanceof Error ? e.message : "Failed to load page");
+      return;
     }
+    // getPage is the authorization gate (member OR share OR cartridge). The
+    // rest is enrichment — a shared viewer may not have access to every related
+    // resource (folder, containing cartridges), and that must never blank the
+    // page they were legitimately shared.
+    setPage(p);
+    setStashFallback(null);
+    setError("");
+    listObjectStashes(workspaceId, "page", pageId)
+      .then(setContainingStashes)
+      .catch(() => {});
+    if (p.folder_id) {
+      getFolderContents(workspaceId, p.folder_id)
+        .then((contents) => setFolderChain(contents.breadcrumbs))
+        .catch(() => setFolderChain([]));
+    } else {
+      setFolderChain([]);
+    }
+    refreshThreads().catch(() => {});
   }, [workspaceId, pageId, refreshThreads, stashSlug, loadStashFallback]);
 
   const reconcileAfterSave = useCallback(
