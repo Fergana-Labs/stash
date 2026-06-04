@@ -610,3 +610,52 @@ async def test_share_by_email_pending_invite_converts_on_signup(client: AsyncCli
     rows = after.json()["shares"]
     assert all(not s["pending"] for s in rows)
     assert any(s["email"] == "newcomer@example.com" for s in rows)
+
+
+@pytest.mark.asyncio
+async def test_shared_with_me_lists_incoming_not_outgoing(pool):
+    from backend.services import share_service
+
+    owner = await _make_user(pool)
+    friend = await _make_user(pool)
+    ws = await _make_workspace(pool, owner)
+    folder = await _make_folder(pool, ws, owner, name="Shared Folder")
+    await _share(pool, ws, "folder", folder, friend, "write", by=owner)
+
+    items = await share_service.list_shared_with_user(friend)
+    match = [i for i in items if i["object_id"] == str(folder)]
+    assert len(match) == 1
+    assert match[0]["object_type"] == "folder"
+    assert match[0]["name"] == "Shared Folder"
+    assert match[0]["permission"] == "write"
+    assert match[0]["workspace_id"] == str(ws)
+    # The owner is on the giving end — nothing is shared *with* them.
+    assert await share_service.list_shared_with_user(owner) == []
+
+
+@pytest.mark.asyncio
+async def test_shared_session_folder_sessions_gated_on_share(pool):
+    from fastapi import HTTPException
+
+    from backend.services import share_service
+
+    owner = await _make_user(pool)
+    friend = await _make_user(pool)
+    stranger = await _make_user(pool)
+    ws = await _make_workspace(pool, owner)
+    sf = await pool.fetchval(
+        "INSERT INTO session_folders (workspace_id, owner_user_id, name) "
+        "VALUES ($1, $2, 'SF') RETURNING id",
+        ws,
+        owner,
+    )
+    session_row = await _make_session(pool, ws, owner, session_id="shared-sess-1")
+    await pool.execute("UPDATE sessions SET session_folder_id = $2 WHERE id = $1", session_row, sf)
+    await _share(pool, ws, "session_folder", sf, friend, "read", by=owner)
+
+    rows = await share_service.list_shared_session_folder_sessions(sf, friend)
+    assert [r["id"] for r in rows] == [str(session_row)]
+
+    # A stranger with no share is denied.
+    with pytest.raises(HTTPException):
+        await share_service.list_shared_session_folder_sessions(sf, stranger)
