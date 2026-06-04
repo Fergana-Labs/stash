@@ -15,7 +15,10 @@ export interface GridItem {
   subtitle: string;
   sizeBytes?: number;
   contentType?: string;
+  tableId?: string;
+  tableBackedBy?: "file" | "table";
   linkedTableId?: string;
+  movable?: boolean;
   /** ISO timestamp. Renders as "Modified" in the Drive-style List view.
    *  Not all rows have one — FolderContents.pages currently omits it. */
   updatedAt?: string;
@@ -119,7 +122,7 @@ function Tile({
       }}
       // Drag source — carries the multi-selection when this tile is part of
       // one, else just this item.
-      draggable
+      draggable={item.movable !== false}
       onDragStart={(e: DragEvent<HTMLDivElement>) =>
         startItemDrag(e, item, multiSelected, selectedDragPayloads)
       }

@@ -3,12 +3,15 @@
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
+  createTable,
   createFolder,
   createPage,
+  deleteTable,
   deleteFolder,
   getFolderContents,
   getWorkspaceTree,
   listFiles,
+  listTables,
   restoreItem,
   trashItem,
   updateFile,
@@ -18,8 +21,10 @@ import {
   type FolderContents,
 } from "../../../lib/api";
 import type {
+  FileInfo,
   FolderTreeNode,
   PageSummary,
+  Table,
   WorkspaceTree,
 } from "../../../lib/types";
 import { refreshWorkspaceSidebar } from "../../../lib/stashNavigationCache";
@@ -63,6 +68,7 @@ export default function WorkspaceFileBrowser({ workspaceId, folderId }: Props) {
   const [contentsLoaded, setContentsLoaded] = useState(false);
   const [rootFiles, setRootFiles] = useState<GridItem[]>([]);
   const [allFiles, setAllFiles] = useState<GridItem[]>([]);
+  const [standaloneTables, setStandaloneTables] = useState<GridItem[]>([]);
   const [view, setView] = useState<View>("grid");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const pins = useFilePins(workspaceId);
@@ -131,9 +137,15 @@ export default function WorkspaceFileBrowser({ workspaceId, folderId }: Props) {
     setContentsLoaded(false);
     if (folderId) {
       try {
-        const c = await getFolderContents(workspaceId, folderId);
+        const [c, files, tables] = await Promise.all([
+          getFolderContents(workspaceId, folderId),
+          listFiles(workspaceId),
+          listTables(workspaceId),
+        ]);
         setContents(c);
         setRootFiles([]);
+        setAllFiles(files.map((f) => fileToGridItem(f)));
+        setStandaloneTables(standaloneTableItems(tables.tables, files));
       } catch (e) {
         setError(e instanceof Error ? e.message : "Failed to load folder");
       } finally {
@@ -141,13 +153,15 @@ export default function WorkspaceFileBrowser({ workspaceId, folderId }: Props) {
       }
     } else {
       try {
-        const [t, allFiles] = await Promise.all([
+        const [t, allFiles, tables] = await Promise.all([
           getWorkspaceTree(workspaceId),
           listFiles(workspaceId),
+          listTables(workspaceId),
         ]);
         setTree(t);
         setContents(null);
         setAllFiles(allFiles.map((f) => fileToGridItem(f)));
+        setStandaloneTables(standaloneTableItems(tables.tables, allFiles));
         setRootFiles(
           allFiles.filter((f) => !f.folder_id).map((f) => fileToGridItem(f)),
         );
@@ -181,9 +195,10 @@ export default function WorkspaceFileBrowser({ workspaceId, folderId }: Props) {
         updatedAt: sub.updated_at,
       })),
       ...tree.pages.map((p: PageSummary) => pageToGridItem(p)),
+      ...standaloneTables,
       ...rootFiles,
     ];
-  }, [tree, rootFiles]);
+  }, [tree, rootFiles, standaloneTables]);
 
   const items: GridItem[] = useMemo(() => {
     if (folderId) {
@@ -222,9 +237,10 @@ export default function WorkspaceFileBrowser({ workspaceId, folderId }: Props) {
         updatedAt: sub.updated_at,
       })),
       ...tree.pages.map((p: PageSummary) => pageToGridItem(p)),
+      ...standaloneTables,
       ...rootFiles,
     ];
-  }, [folderId, contents, tree, rootFiles]);
+  }, [folderId, contents, tree, rootFiles, standaloneTables]);
 
   // Every folder/page/file in the workspace, flattened, so Pinned + Recent can
   // resolve and surface items that live anywhere — not just at the root.
@@ -244,9 +260,10 @@ export default function WorkspaceFileBrowser({ workspaceId, folderId }: Props) {
         updatedAt: sub.updated_at,
       })),
       ...pages.map((p) => pageToGridItem(p)),
+      ...standaloneTables,
       ...allFiles,
     ];
-  }, [tree, allFiles]);
+  }, [tree, allFiles, standaloneTables]);
 
   const itemById = useMemo(() => {
     const map = new Map<string, GridItem>();
@@ -281,6 +298,12 @@ export default function WorkspaceFileBrowser({ workspaceId, folderId }: Props) {
   // Move a single folder/page/file into the target folder (or root when
   // targetFolderId === null). No refresh — callers batch that.
   async function moveOne(payload: FBDragPayload, targetFolderId: string | null) {
+    if (
+      payload.kind === "table" &&
+      standaloneTables.some((table) => table.id === payload.id)
+    ) {
+      return;
+    }
     if (payload.kind === "folder" && payload.id === targetFolderId) return;
     if (payload.kind === "folder") {
       await updateFolder(
@@ -337,8 +360,8 @@ export default function WorkspaceFileBrowser({ workspaceId, folderId }: Props) {
     if (item.kind === "page" || item.kind === "html") {
       return `/workspaces/${workspaceId}/p/${item.id}`;
     }
-    if (item.kind === "table" && item.linkedTableId) {
-      return `/tables/${item.linkedTableId}?workspaceId=${workspaceId}`;
+    if (item.kind === "table") {
+      return `/tables/${item.tableId ?? item.linkedTableId ?? item.id}?workspaceId=${workspaceId}`;
     }
     return `/workspaces/${workspaceId}/f/${item.id}`;
   }
@@ -382,6 +405,16 @@ export default function WorkspaceFileBrowser({ workspaceId, folderId }: Props) {
     }
   }
 
+  async function handleNewTable() {
+    try {
+      const table = await createTable(workspaceId, "Untitled table");
+      refreshWorkspaceSidebar(workspaceId).catch(() => {});
+      router.push(`/tables/${table.id}?workspaceId=${workspaceId}`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to create table");
+    }
+  }
+
   async function handleNewFolder() {
     const name = window.prompt("Folder name?");
     if (!name?.trim()) return;
@@ -406,6 +439,17 @@ export default function WorkspaceFileBrowser({ workspaceId, folderId }: Props) {
       }
       return;
     }
+    if (item.kind === "table" && item.tableBackedBy === "table" && item.tableId) {
+      const yes = window.confirm(`Delete table "${item.name}" and all its data?`);
+      if (!yes) return;
+      try {
+        await deleteTable(workspaceId, item.tableId);
+        await refreshAll();
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Delete failed");
+      }
+      return;
+    }
     const kind = item.kind === "page" || item.kind === "html" ? "page" : "file";
     try {
       await trashItem(workspaceId, kind, item.id);
@@ -416,8 +460,8 @@ export default function WorkspaceFileBrowser({ workspaceId, folderId }: Props) {
     }
   }
 
-  // Bulk delete the current selection after one confirm. Folders are a hard
-  // delete (matching single delete), pages/files go to trash.
+  // Bulk delete the current selection after one confirm. Folders and
+  // standalone tables are hard deletes; pages/files go to trash.
   async function bulkDelete(targets: GridItem[]) {
     if (targets.length === 0) return;
     const hasFolder = targets.some((t) => t.kind === "folder");
@@ -432,6 +476,8 @@ export default function WorkspaceFileBrowser({ workspaceId, folderId }: Props) {
       for (const item of targets) {
         if (item.kind === "folder") {
           await deleteFolder(workspaceId, item.id);
+        } else if (item.kind === "table" && item.tableBackedBy === "table" && item.tableId) {
+          await deleteTable(workspaceId, item.tableId);
         } else {
           const kind = item.kind === "page" || item.kind === "html" ? "page" : "file";
           await trashItem(workspaceId, kind, item.id);
@@ -486,10 +532,12 @@ export default function WorkspaceFileBrowser({ workspaceId, folderId }: Props) {
     (pinnedItems.length > 0 || recentItems.length > 0);
 
   const selectedItems = items.filter((item) => selectedIds.has(item.id));
-  const selectedDragPayloads: FBDragPayload[] = selectedItems.map((item) => ({
-    kind: item.kind,
-    id: item.id,
-  }));
+  const selectedDragPayloads: FBDragPayload[] = selectedItems
+    .filter((item) => item.movable !== false)
+    .map((item) => ({
+      kind: item.kind,
+      id: item.id,
+    }));
 
   return (
     <div className="scroll-thin flex-1 overflow-y-auto">
@@ -526,6 +574,15 @@ export default function WorkspaceFileBrowser({ workspaceId, folderId }: Props) {
             >
               + New page
             </button>
+            {!folderId && (
+              <button
+                type="button"
+                onClick={handleNewTable}
+                className="rounded-md border border-border bg-base px-2.5 py-1 text-[12px] font-medium text-foreground hover:bg-raised"
+              >
+                + New table
+              </button>
+            )}
             <button
               type="button"
               onClick={handleNewFolder}
@@ -688,10 +745,31 @@ function fileToGridItem(file: {
     name: file.name,
     subtitle: `${file.content_type || "file"} · ${formatBytes(file.size_bytes)}`,
     sizeBytes: file.size_bytes,
-    linkedTableId: file.linked_table_id ?? undefined,
+    tableId: file.linked_table_id ?? undefined,
+    tableBackedBy: isCsvLinked ? "file" : undefined,
     contentType: file.content_type,
     updatedAt: file.created_at,
   };
+}
+
+function standaloneTableItems(tables: Table[], files: FileInfo[]): GridItem[] {
+  const linkedTableIds = new Set(
+    files
+      .map((file) => file.linked_table_id)
+      .filter((tableId): tableId is string => !!tableId)
+  );
+  return tables
+    .filter((table) => !linkedTableIds.has(table.id))
+    .map((table) => ({
+      kind: "table" as const,
+      id: table.id,
+      name: table.name,
+      subtitle: table.row_count === 1 ? "1 row" : `${table.row_count ?? 0} rows`,
+      tableId: table.id,
+      tableBackedBy: "table" as const,
+      movable: false,
+      updatedAt: table.updated_at,
+    }));
 }
 
 function pageToGridItem(page: {
