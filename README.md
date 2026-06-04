@@ -146,6 +146,10 @@ curl http://localhost:3456/health
 open http://localhost:3457/login
 ```
 
+Docker Compose generates and persists the OAuth token encryption key when
+`INTEGRATIONS_ENCRYPTION_KEY` is unset. Set it yourself only if you manage
+deployment secrets outside Compose.
+
 For a public domain with Caddy and HTTPS:
 
 ```bash

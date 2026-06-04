@@ -20,7 +20,7 @@
 #   ANTHROPIC_API_KEY           (enables ask-the-workspace + session summarization)
 #   OPENAI_API_KEY or HF_TOKEN  (use hosted embedding provider instead of local)
 #   S3_ENDPOINT / S3_BUCKET / …  (enable file uploads)
-#   INTEGRATIONS_ENCRYPTION_KEY (Fernet key — encrypt OAuth tokens at rest)
+#   INTEGRATIONS_ENCRYPTION_KEY (optional override; generated durably when unset)
 
 services:
   postgres:
@@ -68,6 +68,8 @@ services:
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
       REDIS_URL: redis://redis:6379/0
+    volumes:
+      - backend_secrets:/app/.secrets
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3456/health"]
       interval: 30s
@@ -89,6 +91,8 @@ services:
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
       REDIS_URL: redis://redis:6379/0
+    volumes:
+      - backend_secrets:/app/.secrets
     command: ["celery", "-A", "backend.celery_app", "worker", "--loglevel=info", "--concurrency=4"]
 
   beat:
@@ -103,6 +107,8 @@ services:
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
       REDIS_URL: redis://redis:6379/0
+    volumes:
+      - backend_secrets:/app/.secrets
     command: ["celery", "-A", "backend.celery_app", "beat", "--loglevel=info"]
 
   frontend:
@@ -148,5 +154,6 @@ services:
 volumes:
   postgres_data:
   redis_data:
+  backend_secrets:
   caddy_data:
   caddy_config:

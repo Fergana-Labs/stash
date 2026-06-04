@@ -88,6 +88,8 @@ services:
       REDIS_URL: redis://redis:6379/0
       PUBLIC_URL: http://localhost:3457
       CORS_ORIGINS: "http://localhost:3457,http://localhost:3456"
+    volumes:
+      - backend_secrets:/app/.secrets
     # /health returns 200 only after Alembic finishes inside the
     # lifespan, so worker + beat can wait on this before starting.
     healthcheck:
@@ -113,6 +115,8 @@ services:
       <<: *stash-env
       DATABASE_URL: postgresql://stash:stash@postgres:5432/stash
       REDIS_URL: redis://redis:6379/0
+    volumes:
+      - backend_secrets:/app/.secrets
     command: ["celery", "-A", "backend.celery_app", "worker", "--loglevel=info", "--concurrency=4"]
 
   beat:
@@ -129,6 +133,8 @@ services:
       <<: *stash-env
       DATABASE_URL: postgresql://stash:stash@postgres:5432/stash
       REDIS_URL: redis://redis:6379/0
+    volumes:
+      - backend_secrets:/app/.secrets
     command: ["celery", "-A", "backend.celery_app", "beat", "--loglevel=info"]
 
   frontend:
@@ -169,3 +175,4 @@ services:
 volumes:
   postgres_data:
   redis_data:
+  backend_secrets:

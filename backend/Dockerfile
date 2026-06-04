@@ -33,11 +33,16 @@ ENV PLAYWRIGHT_BROWSERS_PATH=/opt/playwright
 RUN playwright install chromium && chown -R stash:stash /opt/playwright
 
 COPY backend/ ./backend/
+COPY backend/entrypoint.sh ./entrypoint.sh
 COPY alembic.ini ./alembic.ini
 
-RUN chown -R stash:stash /app
+RUN mkdir -p /app/.secrets && \
+    chmod 700 /app/.secrets && \
+    chmod +x /app/entrypoint.sh && \
+    chown -R stash:stash /app
 USER stash
 
 EXPOSE 3456
 
+ENTRYPOINT ["/app/entrypoint.sh"]
 CMD ["uvicorn", "backend.main:app", "--host", "0.0.0.0", "--port", "3456", "--proxy-headers", "--forwarded-allow-ips", "*"]
