@@ -20,7 +20,7 @@ export function generateWelcomeHtml(inputs: WelcomeInputs): string {
   const parts: string[] = [];
 
   parts.push(
-    `<h1>Welcome to your workspace, ${escapeHtml(displayName)}</h1>`,
+    `<h1>Welcome to Stash, ${escapeHtml(displayName)}</h1>`,
   );
   parts.push(
     `<p><em>This is your About page. It&rsquo;s editable like any other doc — keep what&rsquo;s useful, delete the rest.</em></p>`,
@@ -40,11 +40,11 @@ export function generateWelcomeHtml(inputs: WelcomeInputs): string {
   parts.push(
     `<ul>
       <li><strong><a href="/settings/integrations">Connect a data source</a></strong> — GitHub, Google Drive, Notion, Slack, Granola. Your agent reads across everything you connect.</li>
-      <li><strong><a href="/discover">Discover &amp; install Cartridges</a></strong> — browse skills and knowledge others have published; copy into this workspace.</li>
-      <li><strong>Invite a teammate to this workspace</strong>${
+      <li><strong><a href="/discover">Discover &amp; install Cartridges</a></strong> — browse skills and knowledge others have published; add them to your Stash.</li>
+      <li><strong>Invite a teammate</strong>${
         inviteLink
           ? ` — share <a href="${escapeAttr(inviteLink)}">${escapeHtml(inviteLink)}</a>.`
-          : ` from workspace settings.`
+          : ` from settings.`
       }</li>
       <li><strong>Install the CLI</strong> — let your coding agent use Stash directly: <code>pip install stashai</code></li>
     </ul>`,
