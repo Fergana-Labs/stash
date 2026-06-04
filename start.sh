@@ -12,6 +12,7 @@ PIDS=()
 # Keep local dev ports aligned with backend defaults and docker compose when free.
 DEFAULT_BACKEND_PORT=3456
 DEFAULT_FRONTEND_PORT=3457
+DEFAULT_COLLAB_PORT=3458
 LOCAL_DATABASE_URL="postgresql://stash:stash@localhost:5432/stash"
 DEV_DB_CONTAINER="stash-dev-postgres"
 DEV_DB_IMAGE="pgvector/pgvector:pg16"
@@ -53,6 +54,7 @@ fi
 export DATABASE_URL="${DATABASE_URL:-$LOCAL_DATABASE_URL}"
 BACKEND_PORT="${BACKEND_PORT:-$DEFAULT_BACKEND_PORT}"
 FRONTEND_PORT="${FRONTEND_PORT:-$DEFAULT_FRONTEND_PORT}"
+COLLAB_PORT="${COLLAB_PORT:-$DEFAULT_COLLAB_PORT}"
 
 database_is_ready() {
     python - <<'PY' >/dev/null 2>&1
@@ -185,7 +187,7 @@ find_free_port() {
     local candidate="$1"
     local avoid="${2:-}"
 
-    while [ "$candidate" = "$avoid" ] || ! port_is_free "$candidate"; do
+    while [[ ",${avoid}," == *",${candidate},"* ]] || ! port_is_free "$candidate"; do
         candidate=$((candidate + 1))
     done
 
@@ -195,9 +197,11 @@ find_free_port() {
 choose_dev_ports() {
     local requested_backend_port="$BACKEND_PORT"
     local requested_frontend_port="$FRONTEND_PORT"
+    local requested_collab_port="$COLLAB_PORT"
 
     BACKEND_PORT="$(find_free_port "$requested_backend_port")"
     FRONTEND_PORT="$(find_free_port "$requested_frontend_port" "$BACKEND_PORT")"
+    COLLAB_PORT="$(find_free_port "$requested_collab_port" "${BACKEND_PORT},${FRONTEND_PORT}")"
 
     if [ "$BACKEND_PORT" != "$requested_backend_port" ]; then
         echo "[ports]   Backend port ${requested_backend_port} is busy; using ${BACKEND_PORT}."
@@ -205,6 +209,10 @@ choose_dev_ports() {
 
     if [ "$FRONTEND_PORT" != "$requested_frontend_port" ]; then
         echo "[ports]   Frontend port ${requested_frontend_port} is busy; using ${FRONTEND_PORT}."
+    fi
+
+    if [ "$COLLAB_PORT" != "$requested_collab_port" ]; then
+        echo "[ports]   Collab port ${requested_collab_port} is busy; using ${COLLAB_PORT}."
     fi
 }
 
@@ -259,15 +267,28 @@ uvicorn backend.main:app --host 0.0.0.0 --port "$BACKEND_PORT" \
     --proxy-headers --forwarded-allow-ips '*' &
 PIDS+=($!)
 
+# --- Collab (Hocuspocus) ---
+echo "[collab]   Starting on port ${COLLAB_PORT}..."
+cd "$PROJECT_ROOT/collab"
+PORT="$COLLAB_PORT" \
+BACKEND_URL="http://localhost:${BACKEND_PORT}" \
+DATABASE_URL="$DATABASE_URL" \
+npm run dev &
+PIDS+=($!)
+
 # --- Frontend (Next.js) ---
 echo "[frontend] Starting on port ${FRONTEND_PORT}..."
 cd "$PROJECT_ROOT/frontend"
-BACKEND_INTERNAL_URL="http://localhost:${BACKEND_PORT}" PORT="$FRONTEND_PORT" npm run dev &
+BACKEND_INTERNAL_URL="http://localhost:${BACKEND_PORT}" \
+NEXT_PUBLIC_COLLAB_URL="ws://localhost:${COLLAB_PORT}" \
+PORT="$FRONTEND_PORT" \
+npm run dev &
 PIDS+=($!)
 
 echo "================================"
 echo "All services started. Press Ctrl+C to stop."
 echo "  Backend  -> http://localhost:${BACKEND_PORT}"
+echo "  Collab   -> ws://localhost:${COLLAB_PORT}"
 echo "  Frontend -> http://localhost:${FRONTEND_PORT}"
 echo "================================"
 
