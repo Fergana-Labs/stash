@@ -556,9 +556,8 @@ export default function WorkspaceFileBrowser({ workspaceId, folderId }: Props) {
               />
             </h1>
           ) : (
-            <h1 className="m-0 font-display text-[28px] font-bold tracking-tight text-foreground">
-              Files
-            </h1>
+            // Root: the breadcrumb + sidebar already say "Files"; no redundant title.
+            <div />
           )}
           <div className="flex flex-wrap items-center gap-2">
             <ViewToggle view={view} onChange={setViewPersisted} />

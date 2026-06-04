@@ -163,9 +163,8 @@ export default function WorkspaceStashesPage() {
     <div className="scroll-thin flex-1 overflow-y-auto">
       <div className="mx-auto max-w-[1120px] px-12 pb-20 pt-8">
         <div className="flex items-center justify-between gap-4">
-          <h1 className="m-0 font-display text-[34px] font-bold tracking-[-0.02em]">
-            Cartridges
-          </h1>
+          {/* Breadcrumb + sidebar already say "Cartridges"; no redundant title. */}
+          <div />
           <button
             type="button"
             onClick={() => shareModal.open({ workspaceId })}

@@ -128,7 +128,6 @@ export default function CartridgeSessionsPage() {
   if (!user) return null;
   if (sorted === null) return <SessionsListSkeleton />;
 
-  const total = sessions?.length ?? 0;
   const pinnedSessions = (sorted ?? []).filter((s) =>
     pins.pinnedSet.has(s.session_id),
   );
@@ -197,15 +196,6 @@ export default function CartridgeSessionsPage() {
   return (
     <div className="scroll-thin flex-1 overflow-y-auto">
       <div className="mx-auto max-w-5xl px-12 py-8">
-        <div className="flex items-baseline justify-between gap-4">
-          <h1 className="font-display text-[28px] font-bold tracking-tight text-foreground">
-            Sessions
-          </h1>
-          <span className="sys-label" style={{ fontSize: 10.5 }}>
-            {total} total
-          </span>
-        </div>
-
         {error && (
           <div className="mt-4 rounded-lg border border-red-300/40 bg-red-500/10 px-4 py-2 text-[13px] text-red-500">
             {error}
