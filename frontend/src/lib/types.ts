@@ -119,6 +119,7 @@ export interface TableView {
 export interface Table {
   id: string;
   workspace_id: string | null;
+  folder_id: string | null;
   name: string;
   description: string;
   columns: TableColumn[];

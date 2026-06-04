@@ -6,14 +6,17 @@ import {
   createFolder,
   createPage,
   deleteFolder,
+  deleteTable,
   getFolderContents,
   getWorkspaceTree,
   listFiles,
+  listTables,
   restoreItem,
   trashItem,
   updateFile,
   updateFolder,
   updatePage,
+  updateTable,
   uploadFileOrPage,
   type FolderContents,
 } from "../../../lib/api";
@@ -62,6 +65,7 @@ export default function WorkspaceFileBrowser({ workspaceId, folderId }: Props) {
   const [contents, setContents] = useState<FolderContents | null>(null);
   const [contentsLoaded, setContentsLoaded] = useState(false);
   const [rootFiles, setRootFiles] = useState<GridItem[]>([]);
+  const [rootTables, setRootTables] = useState<GridItem[]>([]);
   const [allFiles, setAllFiles] = useState<GridItem[]>([]);
   const [view, setView] = useState<View>("grid");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -134,6 +138,7 @@ export default function WorkspaceFileBrowser({ workspaceId, folderId }: Props) {
         const c = await getFolderContents(workspaceId, folderId);
         setContents(c);
         setRootFiles([]);
+        setRootTables([]);
       } catch (e) {
         setError(e instanceof Error ? e.message : "Failed to load folder");
       } finally {
@@ -141,15 +146,19 @@ export default function WorkspaceFileBrowser({ workspaceId, folderId }: Props) {
       }
     } else {
       try {
-        const [t, allFiles] = await Promise.all([
+        const [t, allFiles, tablesResp] = await Promise.all([
           getWorkspaceTree(workspaceId),
           listFiles(workspaceId),
+          listTables(workspaceId),
         ]);
         setTree(t);
         setContents(null);
         setAllFiles(allFiles.map((f) => fileToGridItem(f)));
         setRootFiles(
           allFiles.filter((f) => !f.folder_id).map((f) => fileToGridItem(f)),
+        );
+        setRootTables(
+          tablesResp.tables.filter((t) => !t.folder_id).map((t) => tableToGridItem(t)),
         );
       } catch (e) {
         setError(e instanceof Error ? e.message : "Failed to load root");
@@ -182,8 +191,9 @@ export default function WorkspaceFileBrowser({ workspaceId, folderId }: Props) {
       })),
       ...tree.pages.map((p: PageSummary) => pageToGridItem(p)),
       ...rootFiles,
+      ...rootTables,
     ];
-  }, [tree, rootFiles]);
+  }, [tree, rootFiles, rootTables]);
 
   const items: GridItem[] = useMemo(() => {
     if (folderId) {
@@ -206,6 +216,7 @@ export default function WorkspaceFileBrowser({ workspaceId, folderId }: Props) {
             created_at: f.created_at,
           })
         ),
+        ...contents.tables.map((t) => tableToGridItem(t)),
       ];
     }
     if (!tree) return [];
@@ -223,8 +234,9 @@ export default function WorkspaceFileBrowser({ workspaceId, folderId }: Props) {
       })),
       ...tree.pages.map((p: PageSummary) => pageToGridItem(p)),
       ...rootFiles,
+      ...rootTables,
     ];
-  }, [folderId, contents, tree, rootFiles]);
+  }, [folderId, contents, tree, rootFiles, rootTables]);
 
   // Every folder/page/file in the workspace, flattened, so Pinned + Recent can
   // resolve and surface items that live anywhere — not just at the root.
@@ -298,8 +310,18 @@ export default function WorkspaceFileBrowser({ workspaceId, folderId }: Props) {
           ? { move_to_root: true }
           : { folder_id: targetFolderId }
       );
+    } else if (payload.kind === "datatable") {
+      // Standalone tables live in their own `tables` table.
+      await updateTable(
+        workspaceId,
+        payload.id,
+        targetFolderId === null
+          ? { move_to_root: true }
+          : { folder_id: targetFolderId }
+      );
     } else {
-      // table + file both live in the files table at the data layer.
+      // A "table" item here is a CSV file linked to a table — it lives in the
+      // files table, so it moves like any other file.
       await updateFile(
         workspaceId,
         payload.id,
@@ -336,6 +358,9 @@ export default function WorkspaceFileBrowser({ workspaceId, folderId }: Props) {
     }
     if (item.kind === "page" || item.kind === "html") {
       return `/workspaces/${workspaceId}/p/${item.id}`;
+    }
+    if (item.kind === "datatable") {
+      return `/tables/${item.id}?workspaceId=${workspaceId}`;
     }
     if (item.kind === "table" && item.linkedTableId) {
       return `/tables/${item.linkedTableId}?workspaceId=${workspaceId}`;
@@ -406,6 +431,18 @@ export default function WorkspaceFileBrowser({ workspaceId, folderId }: Props) {
       }
       return;
     }
+    if (item.kind === "datatable") {
+      // Standalone tables have no trash — hard delete behind a confirm.
+      const yes = window.confirm(`Delete table "${item.name}"? This can't be undone.`);
+      if (!yes) return;
+      try {
+        await deleteTable(workspaceId, item.id);
+        await refreshAll();
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Delete failed");
+      }
+      return;
+    }
     const kind = item.kind === "page" || item.kind === "html" ? "page" : "file";
     try {
       await trashItem(workspaceId, kind, item.id);
@@ -432,6 +469,8 @@ export default function WorkspaceFileBrowser({ workspaceId, folderId }: Props) {
       for (const item of targets) {
         if (item.kind === "folder") {
           await deleteFolder(workspaceId, item.id);
+        } else if (item.kind === "datatable") {
+          await deleteTable(workspaceId, item.id);
         } else {
           const kind = item.kind === "page" || item.kind === "html" ? "page" : "file";
           await trashItem(workspaceId, kind, item.id);
@@ -459,7 +498,7 @@ export default function WorkspaceFileBrowser({ workspaceId, folderId }: Props) {
   // Rename callback used by the folder strip + per-item context menus.
   // Dispatches by kind since each lives in its own table with its own API.
   async function renameItem(
-    kind: "folder" | "page" | "html" | "table" | "file",
+    kind: "folder" | "page" | "html" | "table" | "datatable" | "file",
     id: string,
     next: string
   ): Promise<string> {
@@ -470,6 +509,11 @@ export default function WorkspaceFileBrowser({ workspaceId, folderId }: Props) {
     }
     if (kind === "page" || kind === "html") {
       const updated = await updatePage(workspaceId, id, { name: next });
+      await refreshAll();
+      return updated.name;
+    }
+    if (kind === "datatable") {
+      const updated = await updateTable(workspaceId, id, { name: next });
       await refreshAll();
       return updated.name;
     }
@@ -691,6 +735,16 @@ function fileToGridItem(file: {
     linkedTableId: file.linked_table_id ?? undefined,
     contentType: file.content_type,
     updatedAt: file.created_at,
+  };
+}
+
+function tableToGridItem(table: { id: string; name: string; row_count: number | null }): GridItem {
+  const rows = table.row_count ?? 0;
+  return {
+    kind: "datatable",
+    id: table.id,
+    name: table.name,
+    subtitle: `table · ${rows} row${rows === 1 ? "" : "s"}`,
   };
 }
 

@@ -129,6 +129,7 @@ describe("CommandPalette search", () => {
         {
           id: "table-1",
           workspace_id: "ws-1",
+          folder_id: null,
           workspace_name: "Demo Workspace",
           name: "Hiring Outreach CRM",
           description: "",
