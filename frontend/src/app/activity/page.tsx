@@ -4,20 +4,30 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useMemo, useState } from "react";
 import AppShell from "../../components/AppShell";
-import { ActivitySkeleton, BasicPageSkeleton } from "../../components/SkeletonStates";
+import {
+  ActivitySkeleton,
+  BasicPageSkeleton,
+  SkeletonBlock,
+} from "../../components/SkeletonStates";
 import {
   FileIcon,
   PageIcon,
   SessionsIcon,
   StashIcon,
 } from "../../components/StashIcons";
+import ContributorActivityTimeline from "../../components/viz/ContributorActivityTimeline";
+import EmbeddingSpaceExplorer from "../../components/viz/EmbeddingSpaceExplorer";
 import { useAuth } from "../../hooks/useAuth";
 import {
+  getActivityTimeline,
+  getEmbeddingProjection,
   getWorkspace,
   listActivity,
+  listMyWorkspaces,
   listWorkspaceActivity,
   type ActivityEvent,
 } from "../../lib/api";
+import type { ActivityTimeline, EmbeddingProjection } from "../../lib/types";
 
 type FilterKey = "all" | "sessions" | "pages" | "cartridges";
 
@@ -73,6 +83,9 @@ function ActivityPageInner() {
   const [workspaceName, setWorkspaceName] = useState("");
   const [fetching, setFetching] = useState(true);
   const [filter, setFilter] = useState<FilterKey>("all");
+  const [timeline, setTimeline] = useState<ActivityTimeline | null>(null);
+  const [projection, setProjection] = useState<EmbeddingProjection | null>(null);
+  const [insightsLoaded, setInsightsLoaded] = useState(false);
   // Captured once so the "last 24h" window doesn't drift across re-renders.
   const [nowMs] = useState(() => Date.now());
 
@@ -95,6 +108,34 @@ function ActivityPageInner() {
         if (!cancelled) setFetching(false);
       });
 
+    return () => {
+      cancelled = true;
+    };
+  }, [user, workspaceId]);
+
+  // Visualizations of what's been going on. They're workspace-scoped, so for
+  // the global view we resolve the user's own workspace.
+  useEffect(() => {
+    if (!user) return;
+    let cancelled = false;
+    setInsightsLoaded(false);
+    (async () => {
+      const wsId = workspaceId || (await listMyWorkspaces()).workspaces[0]?.id;
+      if (!wsId) {
+        if (!cancelled) setInsightsLoaded(true);
+        return;
+      }
+      const [t, p] = await Promise.allSettled([
+        getActivityTimeline(30, "day", wsId),
+        getEmbeddingProjection(500, undefined, wsId),
+      ]);
+      if (cancelled) return;
+      if (t.status === "fulfilled") setTimeline(t.value);
+      if (p.status === "fulfilled") setProjection(p.value);
+      setInsightsLoaded(true);
+    })().catch(() => {
+      if (!cancelled) setInsightsLoaded(true);
+    });
     return () => {
       cancelled = true;
     };
@@ -142,24 +183,54 @@ function ActivityPageInner() {
   return (
     <AppShell user={user} onLogout={logout}>
       <div className="mx-auto max-w-[920px] px-12 pb-20 pt-9">
-        {/* Hero */}
-        <div className="sys-label">Activity</div>
-        <h1 className="mt-1.5 font-display text-[32px] font-black leading-[1.05] tracking-[-0.025em]">
-          {workspaceId
-            ? `What's new in ${workspaceName || "this workspace"}.`
-            : "Recent work across your workspaces."}
+        {/* Header — a calm summary line, not a billboard. */}
+        <h1 className="font-display text-[22px] font-semibold tracking-tight text-foreground">
+          {workspaceId ? workspaceName || "Activity" : "Activity"}
         </h1>
-        <p className="mt-1 max-w-[620px] text-[14.5px] text-dim">
+        <p className="mt-1 text-[13.5px] text-muted">
           {`${stats.sessions24h} session${stats.sessions24h === 1 ? "" : "s"}, ${stats.pages24h} page edit${stats.pages24h === 1 ? "" : "s"}, and ${stats.files24h} file upload${stats.files24h === 1 ? "" : "s"} in the last 24 hours.`}
         </p>
 
         {/* Stat strip */}
-        <div className="mt-5 grid grid-cols-4 gap-2.5">
+        <div className="mt-5 grid grid-cols-2 gap-2.5 sm:grid-cols-4">
           <StatCard label="Sessions today" value={stats.sessions24h} tint="var(--color-agent)" />
           <StatCard label="Pages edited" value={stats.pages24h} tint="var(--color-human)" />
           <StatCard label="Files uploaded" value={stats.files24h} tint="#16A34A" />
           <StatCard label="Total events" value={stats.total} tint="var(--text-muted)" />
         </div>
+
+        {/* Visualizations — what's been going on, over time and across the
+            knowledge map. (Decorative; moved here from the workspace home.) */}
+        <section className="mt-7">
+          <div className="sys-label mb-1.5">Human / agent commits — last 30 days</div>
+          <div className="card-soft overflow-x-auto p-3">
+            {!insightsLoaded ? (
+              <SkeletonBlock className="h-40 w-full" />
+            ) : timeline && timeline.contributors.length > 0 ? (
+              <ContributorActivityTimeline data={timeline} />
+            ) : (
+              <div className="px-2 py-6 text-center text-[12.5px] text-muted">
+                No agent session commits yet. Push a transcript to populate this view.
+              </div>
+            )}
+          </div>
+        </section>
+
+        <section className="mt-5">
+          <div className="sys-label mb-1.5">Embedding space — knowledge map</div>
+          <div className="card-soft p-3">
+            {!insightsLoaded ? (
+              <SkeletonBlock className="h-40 w-full" />
+            ) : projection && projection.points.length > 0 ? (
+              <EmbeddingSpaceExplorer data={projection} />
+            ) : (
+              <div className="px-2 py-6 text-center text-[12.5px] text-muted">
+                No embeddings indexed yet. Pages, table rows, and session events get embedded as
+                they&apos;re added.
+              </div>
+            )}
+          </div>
+        </section>
 
         {/* Filters */}
         <div className="mt-8 flex items-center justify-between border-b border-border pb-2">

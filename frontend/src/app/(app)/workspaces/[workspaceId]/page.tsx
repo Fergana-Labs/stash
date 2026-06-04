@@ -7,27 +7,16 @@ import DescriptionEditor, {
   isBlankDescription,
 } from "../../../../components/DescriptionEditor";
 import { seedWelcomePage } from "../../../../lib/onboarding/seedWelcome";
-import {
-  SkeletonBlock,
-  WorkspaceHomeSkeleton,
-} from "../../../../components/SkeletonStates";
+import { WorkspaceHomeSkeleton } from "../../../../components/SkeletonStates";
 import CartridgeQuickAdd from "../../../../components/CartridgeQuickAdd";
 import { WorkspaceIcon } from "../../../../components/StashIcons";
-import ContributorActivityTimeline from "../../../../components/viz/ContributorActivityTimeline";
-import EmbeddingSpaceExplorer from "../../../../components/viz/EmbeddingSpaceExplorer";
 import { useAuth } from "../../../../hooks/useAuth";
 import {
-  getActivityTimeline,
-  getEmbeddingProjection,
   getWorkspace,
   joinWorkspace,
   updateWorkspace,
 } from "../../../../lib/api";
-import type {
-  ActivityTimeline,
-  EmbeddingProjection,
-  Workspace,
-} from "../../../../lib/types";
+import type { Workspace } from "../../../../lib/types";
 
 function relativeTime(iso: string): string {
   const ms = Date.now() - new Date(iso).getTime();
@@ -48,25 +37,14 @@ export default function WorkspaceHomePage() {
   const { user, loading } = useAuth();
 
   const [workspace, setWorkspace] = useState<Workspace | null>(null);
-  const [timeline, setTimeline] = useState<ActivityTimeline | null>(null);
-  const [projection, setProjection] = useState<EmbeddingProjection | null>(
-    null,
-  );
-  const [insightsLoaded, setInsightsLoaded] = useState(false);
   const [error, setError] = useState("");
 
   const load = useCallback(async () => {
-    setInsightsLoaded(false);
-    const [w, t, p] = await Promise.allSettled([
-      getWorkspace(workspaceId),
-      getActivityTimeline(30, "day", workspaceId),
-      getEmbeddingProjection(500, undefined, workspaceId),
-    ]);
-    if (w.status === "fulfilled") setWorkspace(w.value);
-    else setError("Workspace not found");
-    if (t.status === "fulfilled") setTimeline(t.value);
-    if (p.status === "fulfilled") setProjection(p.value);
-    setInsightsLoaded(true);
+    try {
+      setWorkspace(await getWorkspace(workspaceId));
+    } catch {
+      setError("Workspace not found");
+    }
   }, [workspaceId]);
 
   useEffect(() => {
@@ -208,44 +186,6 @@ export default function WorkspaceHomePage() {
         )}
 
 
-        {/* Visualizations: human/agent session activity + 3D embedding view.
-              Section renders even when empty so users see the placeholder
-              and know what's coming once data exists. */}
-        <section className="mt-8">
-          <div className="sys-label mb-1.5">
-            Human / agent commits — last 30 days
-          </div>
-          <div className="card-soft overflow-x-auto p-3">
-            {!insightsLoaded ? (
-              <SkeletonBlock className="h-40 w-full" />
-            ) : timeline && timeline.contributors.length > 0 ? (
-              <ContributorActivityTimeline data={timeline} />
-            ) : (
-              <div className="px-2 py-6 text-center text-[12.5px] text-muted">
-                No agent session commits yet. Push a transcript via Quick add or
-                the CLI to populate this view.
-              </div>
-            )}
-          </div>
-        </section>
-
-        <section className="mt-6">
-          <div className="sys-label mb-1.5">
-            Embedding space — workspace knowledge map
-          </div>
-          <div className="card-soft p-3">
-            {!insightsLoaded ? (
-              <SkeletonBlock className="h-40 w-full" />
-            ) : projection && projection.points.length > 0 ? (
-              <EmbeddingSpaceExplorer data={projection} />
-            ) : (
-              <div className="px-2 py-6 text-center text-[12.5px] text-muted">
-                No embeddings indexed yet. Pages, table rows, and session events
-                get embedded as they&apos;re added.
-              </div>
-            )}
-          </div>
-        </section>
       </div>
     </div>
   );
