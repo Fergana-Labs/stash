@@ -75,7 +75,13 @@ export default function AgentsPage() {
 
   return (
     <div className="scroll-thin flex-1 overflow-y-auto">
-      <div className="mx-auto w-full max-w-3xl px-8 py-8">
+      <div
+        className={
+          // Chats want room to breathe (ChatGPT-style); the Connect guide reads
+          // better narrow.
+          "mx-auto w-full px-8 py-8 " + (active === "connect" ? "max-w-3xl" : "max-w-5xl")
+        }
+      >
         <div className="flex items-center gap-1 border-b border-border">
           <button
             type="button"
