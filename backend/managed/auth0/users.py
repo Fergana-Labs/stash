@@ -87,10 +87,9 @@ async def get_or_create_user_from_auth0(
     user = dict(row)
     api_key = await create_api_key(user["id"], name=key_name)
 
-    suffix = "'s Workspace"
-    ws_name = f"{user['display_name'][: 128 - len(suffix)]}{suffix}"
+    # Named "Stash" — we don't surface "workspace" terminology in the product.
     await workspace_service.create_workspace(
-        name=ws_name,
+        name="Stash",
         description="",
         creator_id=user["id"],
     )

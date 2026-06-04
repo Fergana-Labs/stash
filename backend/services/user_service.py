@@ -34,14 +34,12 @@ async def register_user(
     user = dict(row)
     api_key = await create_api_key(user["id"], name="password register")
 
-    # Auto-provision a default workspace for new users.
-    # workspaces.name is VARCHAR(128); trim the display so the suffix always fits.
+    # Auto-provision a default space for new users. Named "Stash" — we don't
+    # surface "workspace" terminology in the product anymore.
     from . import workspace_service
 
-    suffix = "'s Workspace"
-    ws_name = f"{user['display_name'][: 128 - len(suffix)]}{suffix}"
     await workspace_service.create_workspace(
-        name=ws_name,
+        name="Stash",
         description="",
         creator_id=user["id"],
         is_primary=True,
