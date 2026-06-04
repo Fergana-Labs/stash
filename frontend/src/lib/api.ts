@@ -1804,6 +1804,42 @@ export async function getFolderContents(
   );
 }
 
+// --- Shared with me ---
+
+export type SharedObjectType = "folder" | "session_folder" | "page" | "file" | "table" | "session";
+
+export interface SharedWithMeItem {
+  object_type: SharedObjectType;
+  object_id: string;
+  name: string;
+  workspace_id: string;
+  workspace_name: string;
+  shared_by: string | null;
+  permission: "read" | "write";
+}
+
+export interface SharedSession {
+  id: string;
+  workspace_id: string;
+  session_id: string;
+  agent_name: string;
+  title: string | null;
+  started_at: string | null;
+  finished_at: string | null;
+}
+
+export async function listSharedWithMe(): Promise<SharedWithMeItem[]> {
+  const res = await apiFetch<{ items: SharedWithMeItem[] }>("/api/v1/share/with-me");
+  return res.items;
+}
+
+export async function listSharedSessionFolderSessions(folderId: string): Promise<SharedSession[]> {
+  const res = await apiFetch<{ sessions: SharedSession[] }>(
+    `/api/v1/share/session-folders/${folderId}/sessions`
+  );
+  return res.sessions;
+}
+
 // --- Trash ---
 
 // All three flavors share the same URL shape (`/{kind}s/{id}`), so a single

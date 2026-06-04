@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
+  ApiError,
   createFolder,
   createPage,
   deleteFolder,
@@ -118,12 +119,16 @@ export default function WorkspaceFileBrowser({ workspaceId, folderId }: Props) {
     return () => window.clearTimeout(t);
   }, [undo]);
 
-  // Load workspace tree once per workspace; powers the Column view.
+  // Load workspace tree once per workspace; powers the Column view + Quick
+  // Access. It's supplementary — a non-member opening a *shared* folder can't
+  // read the whole tree (403), but the folder's own contents still load below,
+  // so a tree failure must not surface a blocking "Not a workspace member" error.
   const loadTree = useCallback(async () => {
     try {
       const t = await getWorkspaceTree(workspaceId);
       setTree(t);
     } catch (e) {
+      if (e instanceof ApiError && e.status === 403) return;
       setError(e instanceof Error ? e.message : "Failed to load workspace");
     }
   }, [workspaceId]);
