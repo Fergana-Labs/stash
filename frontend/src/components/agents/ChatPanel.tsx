@@ -114,13 +114,10 @@ export default function ChatPanel({
   );
 
   return (
-    <div className="flex h-[60vh] flex-col rounded-xl border border-border bg-base">
+    <div className="flex h-full min-h-[520px] flex-col rounded-xl border border-border bg-base">
       <div ref={scrollRef} className="scroll-thin flex-1 space-y-4 overflow-y-auto p-4">
         {messages.length === 0 && !streaming ? (
-          <div className="flex h-full items-center justify-center px-6 text-center text-[13px] text-muted">
-            Ask your agent anything about your sources — files, sessions, GitHub,
-            Drive, Notion, Slack, Granola. It searches across everything.
-          </div>
+          <EmptyChatState onPrompt={(prompt) => void send(prompt)} />
         ) : (
           messages.map((m, i) => <MessageBubble key={i} message={m} />)
         )}
@@ -138,6 +135,111 @@ export default function ChatPanel({
         disabled={streaming}
       />
     </div>
+  );
+}
+
+const suggestedPrompts = [
+  "Catch me up on this workspace",
+  "What changed recently?",
+  "Find the planning docs",
+];
+
+function EmptyChatState({ onPrompt }: { onPrompt: (prompt: string) => void }) {
+  return (
+    <div className="flex min-h-full items-center justify-center px-2 py-8">
+      <div className="w-full max-w-3xl">
+        <div className="text-center">
+          <div className="text-[20px] font-semibold text-foreground">
+            Chat with your agent
+          </div>
+          <p className="mx-auto mt-2 max-w-xl text-[13px] leading-5 text-dim">
+            Ask about files, sessions, pages, tables, and connected sources in this workspace.
+          </p>
+        </div>
+
+        <div className="mt-5 grid gap-2 sm:grid-cols-3">
+          {suggestedPrompts.map((prompt) => (
+            <button
+              key={prompt}
+              type="button"
+              onClick={() => onPrompt(prompt)}
+              className="min-h-12 rounded-md border border-border bg-surface px-3 py-2 text-left text-[12.5px] leading-4 text-foreground hover:border-[var(--color-brand-300)] hover:bg-raised"
+            >
+              {prompt}
+            </button>
+          ))}
+        </div>
+
+        <div className="mt-7 border-t border-border pt-5 text-left">
+          <div className="text-[13.5px] font-semibold text-foreground">
+            Connect your local agent
+          </div>
+          <p className="mt-1.5 text-[13px] leading-5 text-dim">
+            Install the CLI when you want Codex, Claude Code, or another coding agent to push
+            sessions into Stash and search this workspace directly.
+          </p>
+          <div className="mt-4 grid gap-4 md:grid-cols-2">
+            <SetupStep n={1} title="Install the Stash CLI">
+              <Code>{`bash -c "$(curl -fsSL https://joinstash.ai/install)"`}</Code>
+            </SetupStep>
+            <SetupStep n={2} title="Sign in">
+              <Code>stash signin</Code>
+            </SetupStep>
+            <SetupStep n={3} title="Point your agent at Stash">
+              <a
+                className="text-[var(--color-brand-700)] underline"
+                href="https://joinstash.ai/docs/mcp"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                MCP setup docs
+              </a>
+            </SetupStep>
+            <SetupStep n={4} title="Use the API directly">
+              <a className="text-[var(--color-brand-700)] underline" href="/settings">
+                Settings
+              </a>
+              <span className="text-dim"> and </span>
+              <a
+                className="text-[var(--color-brand-700)] underline"
+                href="https://joinstash.ai/docs/api"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                API docs
+              </a>
+            </SetupStep>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SetupStep({
+  n,
+  title,
+  children,
+}: {
+  n: number;
+  title: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div>
+      <div className="text-[12.5px] font-semibold text-foreground">
+        {n}. {title}
+      </div>
+      <div className="mt-1.5 text-[12.5px] text-dim">{children}</div>
+    </div>
+  );
+}
+
+function Code({ children }: { children: string }) {
+  return (
+    <pre className="overflow-x-auto rounded-md border border-border bg-surface px-2.5 py-1.5 font-mono text-[11.5px] text-foreground">
+      {children}
+    </pre>
   );
 }
 
@@ -197,7 +299,7 @@ function Composer({
             }
           }}
           rows={2}
-          placeholder="Message your agent…  (Enter to send, Shift+Enter for newline)"
+          placeholder="Ask your agent anything..."
           className="flex-1 resize-none rounded-md border border-border bg-base px-3 py-2 text-[13px] text-foreground placeholder:text-muted focus:border-brand focus:outline-none"
         />
         <button
