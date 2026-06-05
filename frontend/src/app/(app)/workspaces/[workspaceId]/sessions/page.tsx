@@ -521,7 +521,7 @@ function SegmentedControl<T extends string>({
       <span className="sys-label" style={{ fontSize: 10 }}>
         {label}
       </span>
-      <div className="inline-flex gap-0.5 rounded-md border border-border bg-base p-[2px]">
+      <div className="inline-flex gap-1 rounded-full border border-border bg-surface/60 p-1 shadow-sm">
         {options.map((opt) => {
           const active = value === opt.key;
           return (
@@ -530,10 +530,10 @@ function SegmentedControl<T extends string>({
               type="button"
               onClick={() => onChange(opt.key)}
               className={
-                "rounded px-2 py-[3px] text-[12px] " +
+                "rounded-full px-2.5 py-1 text-[12px] leading-none transition-colors " +
                 (active
-                  ? "bg-raised font-semibold text-foreground"
-                  : "text-muted hover:text-foreground")
+                  ? "bg-base font-semibold text-foreground shadow-sm"
+                  : "text-muted hover:bg-raised/70 hover:text-foreground")
               }
             >
               {opt.label}
