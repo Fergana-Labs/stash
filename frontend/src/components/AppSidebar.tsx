@@ -26,6 +26,7 @@ import AddSourceModal from "./integrations/AddSourceModal";
 import { providerForSourceType } from "./integrations/connectors";
 import {
   ActivityIcon,
+  DiscoverIcon,
   FileIcon,
   HelpIcon,
   SessionsIcon,
@@ -282,6 +283,14 @@ export default function AppSidebar({
               ? pathname === `/workspaces/${activeWorkspace.id}`
               : pathname === "/"
           }
+        />
+        {/* Discover is global (not workspace-scoped) — the front door to public
+            Cartridges across Stash, so it sits up top next to Home. */}
+        <NavRow
+          href="/discover"
+          icon={<DiscoverIcon />}
+          label="Discover"
+          active={pathname.startsWith("/discover")}
         />
         {activeWorkspace ? (
           <NavRow
