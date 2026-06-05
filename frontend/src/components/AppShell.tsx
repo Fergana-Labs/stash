@@ -1,6 +1,13 @@
 "use client";
 
-import { ReactNode, useEffect, useRef, useState } from "react";
+import {
+  ReactNode,
+  useEffect,
+  useRef,
+  useState,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type PointerEvent as ReactPointerEvent,
+} from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
@@ -31,6 +38,11 @@ interface AppShellProps {
 }
 
 const SIDEBAR_KEY = "stash_sidebar_collapsed";
+const SIDEBAR_WIDTH_KEY = "stash_sidebar_width";
+const SIDEBAR_DEFAULT_WIDTH = 300;
+const SIDEBAR_MIN_WIDTH = 220;
+const SIDEBAR_MAX_WIDTH = 520;
+const SIDEBAR_KEYBOARD_STEP = 16;
 
 export interface SearchScope {
   kind:
@@ -55,6 +67,22 @@ type ShareStatus = "idle" | "creating" | "copied" | "error";
 function readBool(key: string): boolean {
   if (typeof window === "undefined") return false;
   return localStorage.getItem(key) === "1";
+}
+
+function clampSidebarWidth(width: number): number {
+  return Math.min(
+    SIDEBAR_MAX_WIDTH,
+    Math.max(SIDEBAR_MIN_WIDTH, Math.round(width)),
+  );
+}
+
+function readSidebarWidth(): number {
+  if (typeof window === "undefined") return SIDEBAR_DEFAULT_WIDTH;
+  const stored = localStorage.getItem(SIDEBAR_WIDTH_KEY);
+  if (!stored) return SIDEBAR_DEFAULT_WIDTH;
+  const width = Number(stored);
+  if (!Number.isFinite(width)) return SIDEBAR_DEFAULT_WIDTH;
+  return clampSidebarWidth(width);
 }
 
 // Pre-select the current page/folder/file/session when the Share button is
@@ -104,6 +132,33 @@ function SidebarToggleIcon({ collapsed }: { collapsed: boolean }) {
         <path d="M14 9l3 3-3 3" strokeLinecap="round" strokeLinejoin="round" />
       )}
     </svg>
+  );
+}
+
+function SidebarResizeHandle({
+  width,
+  onPointerDown,
+  onKeyDown,
+}: {
+  width: number;
+  onPointerDown: (event: ReactPointerEvent<HTMLDivElement>) => void;
+  onKeyDown: (event: ReactKeyboardEvent<HTMLDivElement>) => void;
+}) {
+  return (
+    <div
+      role="separator"
+      aria-label="Resize sidebar"
+      aria-orientation="vertical"
+      aria-valuemin={SIDEBAR_MIN_WIDTH}
+      aria-valuemax={SIDEBAR_MAX_WIDTH}
+      aria-valuenow={width}
+      tabIndex={0}
+      onPointerDown={onPointerDown}
+      onKeyDown={onKeyDown}
+      className="group absolute inset-y-0 right-0 z-20 w-2 translate-x-1/2 cursor-col-resize touch-none outline-none"
+    >
+      <div className="mx-auto h-full w-px bg-border transition-colors group-hover:bg-[var(--color-brand-300)] group-focus-visible:bg-[var(--color-brand-400)]" />
+    </div>
   );
 }
 
@@ -279,6 +334,7 @@ export default function AppShell({
     useShellChromeValue();
   const shareModal = useShareModal();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [sidebarWidth, setSidebarWidth] = useState(SIDEBAR_DEFAULT_WIDTH);
   const [activeWorkspaceId, setActiveWorkspaceId] = useState<string | null>(
     preferredWorkspaceId,
   );
@@ -291,6 +347,7 @@ export default function AppShell({
 
   useEffect(() => {
     setSidebarCollapsed(readBool(SIDEBAR_KEY));
+    setSidebarWidth(readSidebarWidth());
     getCachedWorkspaces(user.id)
       .then((r) => setWorkspaces(r.all))
       .catch(() => {});
@@ -339,6 +396,65 @@ export default function AppShell({
   const initial = user.display_name[0].toUpperCase();
   const directShareTarget = inferDirectShareTarget(pathname, breadcrumbs);
   const shareInitial = inferShareInitial(pathname);
+
+  function applySidebarWidth(width: number) {
+    const next = clampSidebarWidth(width);
+    setSidebarWidth(next);
+    if (typeof window !== "undefined") {
+      localStorage.setItem(SIDEBAR_WIDTH_KEY, String(next));
+    }
+  }
+
+  function startSidebarResize(event: ReactPointerEvent<HTMLDivElement>) {
+    if (event.button !== 0) return;
+    event.preventDefault();
+
+    const startX = event.clientX;
+    const startWidth = sidebarWidth;
+    const previousCursor = document.body.style.cursor;
+    const previousUserSelect = document.body.style.userSelect;
+
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+
+    function onPointerMove(moveEvent: PointerEvent) {
+      applySidebarWidth(startWidth + moveEvent.clientX - startX);
+    }
+
+    function stopResize() {
+      window.removeEventListener("pointermove", onPointerMove);
+      window.removeEventListener("pointerup", stopResize);
+      window.removeEventListener("pointercancel", stopResize);
+      document.body.style.cursor = previousCursor;
+      document.body.style.userSelect = previousUserSelect;
+    }
+
+    window.addEventListener("pointermove", onPointerMove);
+    window.addEventListener("pointerup", stopResize);
+    window.addEventListener("pointercancel", stopResize);
+  }
+
+  function resizeSidebarWithKeyboard(event: ReactKeyboardEvent<HTMLDivElement>) {
+    if (event.key === "ArrowLeft") {
+      event.preventDefault();
+      applySidebarWidth(sidebarWidth - SIDEBAR_KEYBOARD_STEP);
+      return;
+    }
+    if (event.key === "ArrowRight") {
+      event.preventDefault();
+      applySidebarWidth(sidebarWidth + SIDEBAR_KEYBOARD_STEP);
+      return;
+    }
+    if (event.key === "Home") {
+      event.preventDefault();
+      applySidebarWidth(SIDEBAR_MIN_WIDTH);
+      return;
+    }
+    if (event.key === "End") {
+      event.preventDefault();
+      applySidebarWidth(SIDEBAR_MAX_WIDTH);
+    }
+  }
 
   async function copyCurrentViewLink() {
     if (!activeWorkspaceId) return;
@@ -473,15 +589,22 @@ export default function AppShell({
         style={{
           gridTemplateColumns: sidebarCollapsed
             ? "minmax(0, 1fr)"
-            : "300px minmax(0, 1fr)",
+            : `${sidebarWidth}px minmax(0, 1fr)`,
         }}
       >
         {!sidebarCollapsed && (
-          <AppSidebar
-            user={user}
-            onLogout={onLogout}
-            activeWorkspaceId={activeWorkspaceId}
-          />
+          <div className="relative min-h-0">
+            <AppSidebar
+              user={user}
+              onLogout={onLogout}
+              activeWorkspaceId={activeWorkspaceId}
+            />
+            <SidebarResizeHandle
+              width={sidebarWidth}
+              onPointerDown={startSidebarResize}
+              onKeyDown={resizeSidebarWithKeyboard}
+            />
+          </div>
         )}
         <main className="flex min-w-0 flex-col overflow-y-auto bg-base">
           {children}

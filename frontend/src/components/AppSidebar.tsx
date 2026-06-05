@@ -265,7 +265,7 @@ export default function AppSidebar({
 
   return (
     <>
-    <aside className="scroll-thin overflow-y-auto border-r border-border bg-surface">
+    <aside className="scroll-thin h-full overflow-y-auto border-r border-border bg-surface">
       <div className="px-3 pt-3 pb-1">
         <div className="truncate text-[14px] font-semibold text-foreground">
           {user?.display_name || user?.name || "You"}

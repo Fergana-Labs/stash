@@ -172,6 +172,37 @@ describe("AppShell sidebar collapse", () => {
     });
   });
 
+  it("restores and persists the resized sidebar width", async () => {
+    localStorage.setItem("stash_sidebar_width", "340");
+
+    render(
+      <ShareModalProvider>
+        <AppShell user={user} onLogout={vi.fn()}>
+          <div>Page content</div>
+        </AppShell>
+      </ShareModalProvider>,
+    );
+
+    const grid = screen.getByText("Page content").closest("main")?.parentElement;
+    await waitFor(() =>
+      expect(grid).toHaveStyle({
+        gridTemplateColumns: "340px minmax(0, 1fr)",
+      }),
+    );
+
+    const handle = screen.getByRole("separator", { name: "Resize sidebar" });
+    fireEvent.pointerDown(handle, { button: 0, clientX: 340 });
+    fireEvent.pointerMove(window, { clientX: 380 });
+    fireEvent.pointerUp(window);
+
+    await waitFor(() =>
+      expect(grid).toHaveStyle({
+        gridTemplateColumns: "380px minmax(0, 1fr)",
+      }),
+    );
+    expect(localStorage.getItem("stash_sidebar_width")).toBe("380");
+  });
+
   it("opens top-bar search with session scope", () => {
     nav.pathname = "/workspaces/ws-1/sessions/session-123";
     mockWorkspaceCache();
