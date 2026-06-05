@@ -82,6 +82,59 @@ async def index_slack(source: dict) -> str | None:
     return None
 
 
+async def fetch_history(source: dict, since, until, limit: int = 500) -> dict:
+    """On-demand: pull messages in [since, until] across the user's channels —
+    older than the recent backfill window. Caches them (upsert) so they're
+    searchable afterward, and returns the refs found."""
+    source_id = UUID(source["id"])
+    workspace_id = UUID(source["workspace_id"])
+    owner_user_id = UUID(source["owner_user_id"])
+    token = await get_valid_token(owner_user_id, "slack")
+    headers = {"Authorization": f"Bearer {token}"}
+    oldest = f"{since.timestamp():.6f}"
+    latest = f"{until.timestamp():.6f}" if until else None
+
+    refs: list[str] = []
+    async with httpx.AsyncClient(timeout=30.0, headers=headers) as client:
+        channels = (
+            await _slack_get(client, CONVERSATIONS_LIST_URL, {"types": CHANNEL_TYPES, "limit": MAX_CHANNELS})
+        ).get("channels", [])
+        for channel in channels:
+            if len(refs) >= limit:
+                break
+            channel_id = channel["id"]
+            channel_name = channel.get("name") or channel_id
+            params = {"channel": channel_id, "oldest": oldest, "limit": MAX_MESSAGES_PER_CHANNEL}
+            if latest:
+                params["latest"] = latest
+            try:
+                history = await _slack_get(client, CONVERSATIONS_HISTORY_URL, params)
+            except RuntimeError as e:
+                logger.info("slack history: skipping channel %s (%s)", channel_name, e)
+                continue
+            for msg in history.get("messages", []):
+                if msg.get("type") != "message" or not msg.get("ts"):
+                    continue
+                await _upsert_message(
+                    source_id=source_id,
+                    workspace_id=workspace_id,
+                    channel_id=channel_id,
+                    channel_name=channel_name,
+                    ts=msg["ts"],
+                    text=msg.get("text") or "",
+                )
+                refs.append(f"{channel_name}/{msg['ts']}")
+                if len(refs) >= limit:
+                    break
+
+    return {
+        "fetched": len(refs),
+        "since": since.isoformat(),
+        "until": until.isoformat() if until else None,
+        "results": [{"ref": r} for r in refs[:25]],
+    }
+
+
 async def _upsert_message(
     *,
     source_id: UUID,

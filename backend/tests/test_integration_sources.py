@@ -226,3 +226,20 @@ def test_query_source_tool_is_registered_and_in_tool_sets():
     assert "query_source" in agent_runtime._TOOLS_BY_NAME
     assert "query_source" in prompts.STASH_TOOL_SET
     assert "query_source" in prompts.ASK_TOOL_SET
+
+
+def test_fetch_history_wiring():
+    # Copied, time-windowed sources support on-demand history fetch.
+    assert source_service.HISTORY_FETCH_TYPES == {"slack", "gong_calls"}
+    # Both are copied-content (the cache) AND now fetchable for older data.
+    assert source_service.SOURCE_TABLE["slack"] in source_service.CONTENT_TABLES
+    assert source_service.SOURCE_TABLE["gong_calls"] in source_service.CONTENT_TABLES
+    assert "fetch_history" in agent_runtime._TOOLS_BY_NAME
+    assert "fetch_history" in prompts.STASH_TOOL_SET
+    assert "fetch_history" in prompts.ASK_TOOL_SET
+
+
+def test_parse_dt_accepts_iso_dates():
+    assert source_service._parse_dt("2026-01-01").year == 2026
+    assert source_service._parse_dt("2026-01-01T08:00:00Z").hour == 8
+    assert source_service._parse_dt(None) is None

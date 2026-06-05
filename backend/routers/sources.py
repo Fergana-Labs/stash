@@ -158,6 +158,30 @@ async def query_source(
     return result
 
 
+class FetchHistoryRequest(BaseModel):
+    since: str  # ISO-8601 date/datetime
+    until: str | None = None
+    limit: int = 500
+
+
+@router.post("/{source}/history")
+async def fetch_source_history(
+    workspace_id: UUID,
+    source: str,
+    body: FetchHistoryRequest,
+    current_user: dict = Depends(get_current_user),
+):
+    """Pull older data for a time range from a copied source that supports it
+    (Slack/Gong), caching it so it becomes searchable."""
+    await _require_member(workspace_id, current_user["id"])
+    result = await source_service.fetch_history(
+        workspace_id, current_user["id"], source, body.since, until=body.until, limit=body.limit
+    )
+    if result is None:
+        raise HTTPException(status_code=404, detail="Source not found")
+    return result
+
+
 @router.post("")
 async def add_source(
     workspace_id: UUID,

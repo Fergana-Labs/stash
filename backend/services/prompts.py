@@ -56,6 +56,7 @@ STASH_TOOL_SET = (
     "read_source",
     "search",
     "query_source",
+    "fetch_history",
 )
 
 # Read-only subset for ask-the-workspace and other Q&A surfaces. Drops
@@ -77,4 +78,5 @@ ASK_TOOL_SET = (
     "read_source",
     "search",
     "query_source",
+    "fetch_history",
 )

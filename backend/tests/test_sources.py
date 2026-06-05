@@ -560,6 +560,41 @@ async def test_jira_is_index_only_with_federated_search(client: AsyncClient, mon
 
 
 @pytest.mark.asyncio
+async def test_fetch_history_routes_to_provider_and_rejects_unsupported(client, monkeypatch):
+    """fetch_history reaches the provider for a copied, time-windowed source
+    (Slack), and is rejected for sources that don't support it (GitHub)."""
+    from backend.integrations.slack import indexer
+
+    api_key, owner_id = await _register(client)
+    ws = await _create_workspace(client, api_key)
+    slack = await source_service.create_source(
+        workspace_id=ws, owner_user_id=owner_id, source_type="slack",
+        external_ref="T123", display_name="Slack",
+    )
+    github = await source_service.create_source(
+        workspace_id=ws, owner_user_id=owner_id, source_type="github_repo",
+        external_ref="acme/x", display_name="x",
+    )
+
+    captured = {}
+
+    async def fake_fetch(source, since, until, limit):
+        captured["since"] = since.isoformat()
+        captured["limit"] = limit
+        return {"fetched": 2, "since": since.isoformat(), "results": [{"ref": "general/1"}]}
+
+    monkeypatch.setattr(indexer, "fetch_history", fake_fetch)
+
+    res = await source_service.fetch_history(ws, owner_id, slack["id"], "2026-01-01", until="2026-02-01")
+    assert res["fetched"] == 2
+    assert captured["since"].startswith("2026-01-01")
+
+    # GitHub copies the full tree — no time-window history fetch.
+    bad = await source_service.fetch_history(ws, owner_id, github["id"], "2026-01-01")
+    assert "error" in bad
+
+
+@pytest.mark.asyncio
 async def test_read_source_rejects_unowned_connected_source(client: AsyncClient):
     owner_key, owner_id = await _register(client, "owner")
     _, other_id = await _register(client, "other")

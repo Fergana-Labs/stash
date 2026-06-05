@@ -114,3 +114,42 @@ async def index_gong(source: dict) -> str | None:
     await source_service.soft_delete_missing("gong_documents", source_id, present)
     logger.info("gong source: indexed %d call(s)", len(present))
     return None
+
+
+async def fetch_history(source: dict, since, until, limit: int = 500) -> dict:
+    """On-demand: pull calls in [since, until] — older than the rolling window
+    the scheduled sync keeps. Caches them (upsert) so they're searchable
+    afterward, and returns the call ids found. No soft-delete: this adds to the
+    cache, it doesn't define the live set."""
+    source_id = UUID(source["id"])
+    workspace_id = UUID(source["workspace_id"])
+    owner_user_id = UUID(source["owner_user_id"])
+    creds = json.loads(await get_valid_token(owner_user_id, "gong"))
+    headers = {"Authorization": basic_auth_header(creds["access_key"], creds["access_key_secret"])}
+    from_dt = since.isoformat()
+    to_dt = (until or datetime.now(UTC)).isoformat()
+
+    async with httpx.AsyncClient(timeout=120.0, headers=headers) as client:
+        meta_by_id = await _fetch_call_meta(client, from_dt, to_dt)
+        transcript_by_id = await _fetch_transcripts(client, from_dt, to_dt)
+
+    refs: list[str] = []
+    for call_id, meta in list(meta_by_id.items())[:limit]:
+        await source_service.upsert_content_document(
+            table="gong_documents",
+            source_id=source_id,
+            workspace_id=workspace_id,
+            path=call_id,
+            name=meta.get("title") or call_id,
+            kind="call",
+            content=_render_call(meta, transcript_by_id.get(call_id, [])),
+            external_ref=call_id,
+        )
+        refs.append(call_id)
+
+    return {
+        "fetched": len(refs),
+        "since": since.isoformat(),
+        "until": until.isoformat() if until else None,
+        "results": [{"ref": r} for r in refs[:25]],
+    }

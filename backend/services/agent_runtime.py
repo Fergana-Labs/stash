@@ -630,6 +630,38 @@ async def _query_source(args: dict) -> dict:
     return _text_result(json.dumps(result))
 
 
+@tool(
+    "fetch_history",
+    "Pull OLDER data from a source for a time range, beyond what's already "
+    "cached/searchable (Slack messages, Gong calls). Use when the user asks "
+    "about something before the recent window. `since`/`until` are ISO-8601 "
+    "dates (e.g. '2026-01-01'); until defaults to now. Fetched items are cached, "
+    "so afterward you can find them with search/read_source.",
+    {
+        "type": "object",
+        "properties": {
+            "source": {"type": "string"},
+            "since": {"type": "string"},
+            "until": {"type": "string"},
+            "limit": {"type": "integer", "default": 500},
+        },
+        "required": ["source", "since"],
+    },
+)
+async def _fetch_history(args: dict) -> dict:
+    result = await source_service.fetch_history(
+        _current_workspace(),
+        _current_user(),
+        args.get("source", ""),
+        args.get("since", ""),
+        until=args.get("until"),
+        limit=int(args.get("limit", 500)),
+    )
+    if result is None:
+        return _text_result(json.dumps({"error": "source not found"}))
+    return _text_result(json.dumps(result))
+
+
 _TOOLS_BY_NAME = {
     "search_history": _search_history,
     "read_page": _read_page,
@@ -648,6 +680,7 @@ _TOOLS_BY_NAME = {
     "read_source": _read_source,
     "search": _search,
     "query_source": _query_source,
+    "fetch_history": _fetch_history,
 }
 
 

@@ -258,6 +258,11 @@ CONTENT_TABLES = {
 # provider search coroutine, resolved lazily to avoid an import cycle.
 FEDERATED_SEARCH_TYPES = {"google_drive", "jira_project", "asana_project"}
 
+# Copied-content sources that only cache a bounded recent window. The agent can
+# pull OLDER data on demand from the provider for an explicit time range — what
+# it fetches is cached (upserted) so it's searchable afterward too.
+HISTORY_FETCH_TYPES = {"slack", "gong_calls"}
+
 
 def _table_for(source_type: str) -> str:
     table = SOURCE_TABLE.get(source_type)
@@ -696,6 +701,49 @@ async def query_source(
         return await run_query(connected, sql, limit)
     except ValueError as e:
         return {"error": str(e)}
+
+
+def _parse_dt(value: str | None):
+    """Parse an ISO-8601 date/datetime (with or without 'Z'). Naive → UTC."""
+    from datetime import UTC, datetime
+
+    if not value or not value.strip():
+        return None
+    dt = datetime.fromisoformat(value.strip().replace("Z", "+00:00"))
+    return dt.replace(tzinfo=UTC) if dt.tzinfo is None else dt
+
+
+async def fetch_history(
+    workspace_id: UUID,
+    user_id: UUID,
+    source: str,
+    since: str,
+    until: str | None = None,
+    limit: int = 500,
+) -> dict | None:
+    """Pull older provider data for a time range, beyond the cached window, for a
+    copied source that supports it (Slack/Gong). Fetched items are upserted into
+    the local table (so they become searchable) and returned. Returns None when
+    the handle is unknown / not owned; an error dict for unsupported sources or
+    bad input."""
+    connected = await _resolve_connected(source, user_id)
+    if connected is None:
+        return None
+    if connected["source_type"] not in HISTORY_FETCH_TYPES:
+        return {"error": "source does not support history fetch"}
+    try:
+        since_dt = _parse_dt(since)
+        until_dt = _parse_dt(until)
+    except ValueError:
+        return {"error": "since/until must be ISO-8601 dates (e.g. 2026-01-01)"}
+    if since_dt is None:
+        return {"error": "since is required"}
+
+    if connected["source_type"] == "slack":
+        from ..integrations.slack.indexer import fetch_history as fn
+    else:
+        from ..integrations.gong.indexer import fetch_history as fn
+    return await fn(connected, since_dt, until_dt, min(limit, 1000))
 
 
 async def search_all(
