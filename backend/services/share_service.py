@@ -16,18 +16,16 @@ from uuid import UUID
 from fastapi import HTTPException
 
 from ..database import get_pool
-from . import permission_service
+from . import permission_service, workspace_service
 
 _SHAREABLE = {"file", "page", "folder", "session", "session_folder"}
 _PERMISSIONS = {"read", "write"}
 
 
 async def _require_owner(object_type: str, object_id: UUID, user_id: UUID) -> UUID:
-    """The caller must own the object (be its workspace member). Returns workspace_id."""
+    """The caller must be an owner of the object's workspace."""
     workspace_id = await permission_service.resolve_workspace_id(object_type, object_id)
-    if workspace_id is None or not await permission_service.is_workspace_member(
-        workspace_id, user_id
-    ):
+    if workspace_id is None or not await workspace_service.is_owner(workspace_id, user_id):
         raise HTTPException(status_code=404, detail="Not found")
     return workspace_id
 

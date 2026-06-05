@@ -51,7 +51,6 @@ async def test_collab_authorizes_markdown_page_writer(client: AsyncClient):
 
 
 @pytest.mark.asyncio
-@pytest.mark.skip(reason="obsolete under single-owner model (C3): no workspace roles/multi-member")
 async def test_collab_authorizes_workspace_viewer_as_read_only(
     client: AsyncClient,
     pool,

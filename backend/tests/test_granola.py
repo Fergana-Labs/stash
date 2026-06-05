@@ -7,6 +7,7 @@ meetings + transcripts into granola_notes.
 """
 
 from contextlib import asynccontextmanager
+from types import SimpleNamespace
 from urllib.parse import parse_qs, urlparse
 from uuid import UUID
 
@@ -136,9 +137,17 @@ async def test_integrations_are_unavailable_with_invalid_encryption_key(
 
 
 def _fake_session(tool_routes: dict):
+    tool_names = [SimpleNamespace(name=name) for name in tool_routes]
+    session = SimpleNamespace()
+
+    async def _list_tools():
+        return SimpleNamespace(tools=tool_names)
+
+    session.list_tools = _list_tools
+
     @asynccontextmanager
     async def _factory(access_token):
-        yield object()  # the session is opaque; call_tool_json is mocked too
+        yield session
 
     async def _call(session, name, arguments=None):
         return tool_routes[name](arguments or {})
@@ -191,7 +200,7 @@ async def test_indexer_pulls_meetings_and_transcripts(client: AsyncClient, monke
     factory, call = _fake_session(routes)
     monkeypatch.setattr(granola_indexer, "get_valid_access_token", _async("at_live"))
     monkeypatch.setattr(granola_indexer, "granola_session", factory)
-    monkeypatch.setattr(granola_indexer, "call_tool_json", call)
+    monkeypatch.setattr(granola_indexer, "call_tool_data", call)
 
     await granola_indexer.index_granola(
         {

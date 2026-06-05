@@ -22,6 +22,7 @@ from ..constants import (
     SLIDE_WIDTH_PX,
 )
 from ..html_canvas import build_single_slide_html, strip_body_state
+from ..playwright_network import abort_network_request
 
 logger = logging.getLogger(__name__)
 
@@ -50,6 +51,7 @@ async def rasterize_targets(
                 device_scale_factor=EXPORT_DEVICE_SCALE_FACTOR,
             )
             try:
+                await context.route("**/*", abort_network_request)
                 for slide_idx, selectors in sorted(by_slide.items()):
                     page = await context.new_page()
                     try:

@@ -1,11 +1,12 @@
 """Permission service.
 
-Private by default. A user owns everything in their (single, implicit) workspace
-— workspace membership == ownership. Beyond that, access comes from the `shares`
-table: a row grants a principal (a user, or a cartridge) access to an object.
-Folder / session-folder shares cascade to contents via the recursive folder chain.
-Cartridges are read-only bundles: anyone who can *open* a cartridge can read every
-object that cartridge contains (cartridge_items), but a cartridge never grants write.
+Private by default. Workspace roles grant baseline access: owners/editors can
+read and write, viewers can read only. Beyond that, access comes from the
+`shares` table: a row grants a principal (a user, or a cartridge) access to an
+object. Folder / session-folder shares cascade to contents via the recursive
+folder chain. Cartridges are read-only bundles: anyone who can *open* a cartridge
+can read every object that cartridge contains (cartridge_items), but a cartridge
+never grants write.
 """
 
 from uuid import UUID
@@ -23,6 +24,8 @@ _WORKSPACE_LOOKUP = {
 }
 
 _CONTENT_TYPES = {"folder", "page", "session", "table", "file"}
+_ROLES_CAN_READ = {"owner", "editor", "viewer"}
+_ROLES_CAN_WRITE = {"owner", "editor"}
 
 
 def _folder_chain_sql(folder_id_expr: str) -> str:
@@ -289,13 +292,12 @@ async def check_access(
     if workspace_id is None:
         workspace_id = await resolve_workspace_id(object_type, object_id)
 
-    # Owner = the (single) workspace member. Full read/write.
-    if (
-        user_id is not None
-        and workspace_id is not None
-        and await is_workspace_member(workspace_id, user_id)
-    ):
-        return True
+    if user_id is not None and workspace_id is not None:
+        role = await get_workspace_role(workspace_id, user_id)
+        if require_write and role in _ROLES_CAN_WRITE:
+            return True
+        if not require_write and role in _ROLES_CAN_READ:
+            return True
 
     # The cartridge bundle itself: gated by cartridge access (read-only).
     if object_type == "stash":
