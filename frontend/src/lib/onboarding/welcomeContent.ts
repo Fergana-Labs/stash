@@ -22,9 +22,6 @@ export function generateWelcomeHtml(inputs: WelcomeInputs): string {
   parts.push(
     `<h1>Welcome to Stash, ${escapeHtml(displayName)}</h1>`,
   );
-  parts.push(
-    `<p><em>This is your About page. It&rsquo;s editable like any other doc — keep what&rsquo;s useful, delete the rest.</em></p>`,
-  );
 
   if (counts.sessions > 0) {
     parts.push(`<h2>What you just did</h2>`);
