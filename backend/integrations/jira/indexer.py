@@ -1,10 +1,10 @@
-"""Jira project → jira_documents indexer (copied content; FTS-searchable).
+"""Jira project → jira_documents indexer (index only; search federated to JQL).
 
-A Jira source's external_ref is "{cloudId}:{projectKey}". We page through the
-project's issues newest-first and copy each one into jira_documents as a text
-document keyed by its issue key (e.g. PROJ-123), so the agent can search and
-read them like any other source. Idempotent re-sync via source_service
-(content-hash dedupe + soft-delete of issues that vanished).
+A Jira source's external_ref is "{cloudId}:{projectKey}". We don't copy issue
+bodies — Jira's own search (JQL `text ~`) is strong, so search is federated live
+(see `search_jira`) and the body is fetched lazily on read (`fetch_jira_content`).
+The sync only builds the navigable index: one row per issue keyed by its key
+(PROJ-123), storing the cloudId:key in external_ref for lazy fetch.
 """
 
 from __future__ import annotations
@@ -20,10 +20,15 @@ from ..storage import get_valid_token
 logger = logging.getLogger(__name__)
 
 API_BASE = "https://api.atlassian.com/ex/jira/{cloud_id}/rest/api/3"
-# The enhanced JQL search endpoint (token-paginated). Requires explicit fields.
+# Fields rendered for a full read (lazy fetch).
 ISSUE_FIELDS = "summary,status,assignee,updated,description,comment"
 PAGE_SIZE = 100
 MAX_ISSUES = 2000
+SEARCH_LIMIT = 25
+
+
+def _jql_escape(text: str) -> str:
+    return text.replace("\\", "\\\\").replace('"', '\\"')
 
 
 def _adf_to_text(node: dict | None) -> str:
@@ -74,22 +79,27 @@ def _render_issue(issue: dict) -> str:
     return "\n".join(parts)
 
 
+def _headers(token: str) -> dict:
+    return {"Authorization": f"Bearer {token}", "Accept": "application/json"}
+
+
 async def index_jira(source: dict) -> str | None:
+    """Build the navigable index only — one row per issue (key + title), no body.
+    The body is fetched lazily on read and search is federated to JQL."""
     source_id = UUID(source["id"])
     workspace_id = UUID(source["workspace_id"])
     owner_user_id = UUID(source["owner_user_id"])
     cloud_id, _, project_key = source["external_ref"].partition(":")
 
     token = await get_valid_token(owner_user_id, "jira")
-    headers = {"Authorization": f"Bearer {token}", "Accept": "application/json"}
     base = API_BASE.format(cloud_id=cloud_id)
     jql = f"project = {project_key} ORDER BY updated DESC"
 
     present: list[str] = []
     next_page_token: str | None = None
-    async with httpx.AsyncClient(timeout=60.0, headers=headers) as client:
+    async with httpx.AsyncClient(timeout=60.0, headers=_headers(token)) as client:
         while len(present) < MAX_ISSUES:
-            params = {"jql": jql, "maxResults": PAGE_SIZE, "fields": ISSUE_FIELDS}
+            params = {"jql": jql, "maxResults": PAGE_SIZE, "fields": "summary"}
             if next_page_token:
                 params["nextPageToken"] = next_page_token
             resp = await client.get(f"{base}/search/jql", params=params)
@@ -99,15 +109,15 @@ async def index_jira(source: dict) -> str | None:
                 key = issue.get("key")
                 if not key:
                     continue
-                await source_service.upsert_content_document(
+                summary = (issue.get("fields") or {}).get("summary") or key
+                await source_service.upsert_index_row(
                     table="jira_documents",
                     source_id=source_id,
                     workspace_id=workspace_id,
                     path=key,
-                    name=key,
+                    name=f"{key}: {summary}",
                     kind="issue",
-                    content=_render_issue(issue),
-                    external_ref=key,
+                    external_ref=f"{cloud_id}:{key}",
                 )
                 present.append(key)
             if payload.get("isLast") or not payload.get("nextPageToken"):
@@ -117,3 +127,39 @@ async def index_jira(source: dict) -> str | None:
     await source_service.soft_delete_missing("jira_documents", source_id, present)
     logger.info("jira source %s: indexed %d issue(s)", project_key, len(present))
     return None
+
+
+async def search_jira(source: dict, query: str, limit: int = SEARCH_LIMIT) -> list[dict]:
+    """Federated search: run JQL `text ~` against the project, live. Returns hits
+    keyed by issue key (which is the index path, so read_source resolves them)."""
+    owner_user_id = UUID(source["owner_user_id"])
+    cloud_id, _, project_key = source["external_ref"].partition(":")
+    token = await get_valid_token(owner_user_id, "jira")
+    base = API_BASE.format(cloud_id=cloud_id)
+    jql = f'project = "{project_key}" AND text ~ "{_jql_escape(query)}" ORDER BY updated DESC'
+    async with httpx.AsyncClient(timeout=30.0, headers=_headers(token)) as client:
+        resp = await client.get(
+            f"{base}/search/jql",
+            params={"jql": jql, "maxResults": min(limit, 50), "fields": "summary"},
+        )
+        resp.raise_for_status()
+        issues = resp.json().get("issues", [])
+    hits = []
+    for issue in issues:
+        key = issue.get("key")
+        if not key:
+            continue
+        summary = (issue.get("fields") or {}).get("summary") or ""
+        hits.append({"ref": key, "name": f"{key}: {summary}", "snippet": summary})
+    return hits
+
+
+async def fetch_jira_content(owner_user_id: UUID, external_ref: str) -> str:
+    """Lazy read: render a single issue. `external_ref` is "{cloudId}:{key}"."""
+    cloud_id, _, key = external_ref.partition(":")
+    token = await get_valid_token(owner_user_id, "jira")
+    base = API_BASE.format(cloud_id=cloud_id)
+    async with httpx.AsyncClient(timeout=30.0, headers=_headers(token)) as client:
+        resp = await client.get(f"{base}/issue/{key}", params={"fields": ISSUE_FIELDS})
+        resp.raise_for_status()
+        return _render_issue(resp.json())

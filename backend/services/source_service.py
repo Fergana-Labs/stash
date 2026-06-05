@@ -23,10 +23,14 @@ files_tree_service / memory_service (imported lazily to avoid an import cycle).
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
+import logging
 from uuid import UUID
 
 from ..database import get_pool
+
+logger = logging.getLogger(__name__)
 
 # Native source handles. Connected sources use their workspace_sources.id (str).
 NATIVE_FILES = "files"
@@ -238,16 +242,21 @@ SOURCE_TABLE = {
 # Tables that COPY content (FTS + embeddings live in them). The rest are
 # index-only and fetch their body lazily from the provider at read time.
 # Notion copies content too — its crawl already renders each page's text to
-# discover sub-pages, so storing it for FTS is nearly free.
+# discover sub-pages, so storing it for FTS is nearly free. Jira/Asana/Drive do
+# NOT copy: they're index-only and search is federated to the provider's own
+# search API (see FEDERATED_SEARCH_TYPES) so we don't duplicate their content.
 CONTENT_TABLES = {
     "github_documents",
     "slack_messages",
     "granola_notes",
-    "jira_documents",
-    "asana_documents",
     "gong_documents",
     "notion_index",
 }
+
+# Index-only source types whose `search` is federated live to the provider's
+# native search instead of our FTS (no copied content). source_type -> the
+# provider search coroutine, resolved lazily to avoid an import cycle.
+FEDERATED_SEARCH_TYPES = {"google_drive", "jira_project", "asana_project"}
 
 
 def _table_for(source_type: str) -> str:
@@ -439,7 +448,62 @@ async def _lazy_fetch(source_type: str, owner_user_id: UUID, external_ref: str |
         from ..integrations.google.indexer import fetch_drive_content
 
         return await fetch_drive_content(owner_user_id, external_ref)
+    if source_type == "jira_project":
+        from ..integrations.jira.indexer import fetch_jira_content
+
+        return await fetch_jira_content(owner_user_id, external_ref)
+    if source_type == "asana_project":
+        from ..integrations.asana.indexer import fetch_asana_content
+
+        return await fetch_asana_content(owner_user_id, external_ref)
     return ""
+
+
+async def index_paths_for_refs(
+    table: str, source_id: UUID, external_refs: list[str]
+) -> dict[str, tuple[str, str]]:
+    """Map provider external_refs back to (path, name) for a source's live index
+    rows. Federated search returns provider ids; this resolves them to the paths
+    `read_source` understands (and drops anything not in our index)."""
+    if not external_refs:
+        return {}
+    rows = await get_pool().fetch(
+        f"SELECT external_ref, path, name FROM {table} "
+        f"WHERE source_id = $1 AND external_ref = ANY($2) AND deleted_at IS NULL",
+        source_id,
+        external_refs,
+    )
+    return {r["external_ref"]: (r["path"], r["name"]) for r in rows}
+
+
+async def _federated_search(source: dict, query: str, limit: int) -> list[dict]:
+    """Run a federated source's native provider search. Returns unified hits
+    ({source, source_name, ref, name, snippet}); never raises — a provider error
+    (e.g. Asana on a free tier) logs and yields no hits so search stays alive."""
+    source_type = source["source_type"]
+    try:
+        if source_type == "google_drive":
+            from ..integrations.google.indexer import search_drive as fn
+        elif source_type == "jira_project":
+            from ..integrations.jira.indexer import search_jira as fn
+        elif source_type == "asana_project":
+            from ..integrations.asana.indexer import search_asana as fn
+        else:
+            return []
+        hits = await fn(source, query, limit)
+    except Exception:
+        logger.warning("federated search failed for source %s", source["id"], exc_info=True)
+        return []
+    return [
+        {
+            "source": source["id"],
+            "source_name": source["display_name"],
+            "ref": h["ref"],
+            "name": h.get("name", ""),
+            "snippet": h.get("snippet", ""),
+        }
+        for h in hits
+    ]
 
 
 async def search_documents(
@@ -680,6 +744,8 @@ async def search_all(
         if connected is None:
             return None
     if source is None or connected is not None:
+        # Copied-content sources go through our FTS (returns [] for index-only /
+        # federated sources, which have no stored content to match).
         docs = await search_documents(
             workspace_id=workspace_id,
             user_id=user_id,
@@ -697,5 +763,22 @@ async def search_all(
             }
             for d in docs
         ]
+
+        # Federated sources search the provider's native API live. Scoped → the
+        # one source; unscoped → fan out across the user's federated sources
+        # (each call is independent and already swallows its own errors).
+        if connected is not None:
+            if connected["source_type"] in FEDERATED_SEARCH_TYPES:
+                results += await _federated_search(connected, query, limit)
+        else:
+            federated = [
+                s
+                for s in await list_connected_sources(workspace_id, user_id)
+                if s["source_type"] in FEDERATED_SEARCH_TYPES
+            ]
+            for hits in await asyncio.gather(
+                *(_federated_search(s, query, limit) for s in federated)
+            ):
+                results += hits
 
     return results

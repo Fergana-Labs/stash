@@ -514,6 +514,52 @@ async def test_notion_is_full_text_searchable(client: AsyncClient):
 
 
 @pytest.mark.asyncio
+async def test_jira_is_index_only_with_federated_search(client: AsyncClient, monkeypatch):
+    """Jira doesn't copy content: search is federated to the provider live, and
+    the issue body is fetched lazily on read."""
+    from backend.integrations.jira import indexer
+
+    api_key, owner_id = await _register(client)
+    ws = await _create_workspace(client, api_key)
+    src = await source_service.create_source(
+        workspace_id=ws,
+        owner_user_id=owner_id,
+        source_type="jira_project",
+        external_ref="cloud-1:PROJ",
+        display_name="PROJ",
+    )
+    # Index row only — no body stored; external_ref carries cloudId:key for read.
+    await source_service.upsert_index_row(
+        table="jira_documents",
+        source_id=UUID(src["id"]),
+        workspace_id=ws,
+        path="PROJ-9",
+        name="PROJ-9: login bug",
+        kind="issue",
+        external_ref="cloud-1:PROJ-9",
+    )
+
+    async def fake_search(source, query, limit):
+        assert source["id"] == src["id"]
+        return [{"ref": "PROJ-9", "name": "PROJ-9: login bug", "snippet": "login is broken"}]
+
+    async def fake_fetch(owner, external_ref):
+        assert external_ref == "cloud-1:PROJ-9"
+        return "full issue body: login is broken"
+
+    monkeypatch.setattr(indexer, "search_jira", fake_search)
+    monkeypatch.setattr(indexer, "fetch_jira_content", fake_fetch)
+
+    # Search is federated (not our FTS — jira_documents holds no content).
+    hits = await source_service.search_all(ws, owner_id, "login", source=src["id"])
+    assert any(h["ref"] == "PROJ-9" for h in hits)
+
+    # Read lazily fetches the body from the provider.
+    doc = await source_service.read_document(src, "PROJ-9")
+    assert "login is broken" in doc["content"]
+
+
+@pytest.mark.asyncio
 async def test_read_source_rejects_unowned_connected_source(client: AsyncClient):
     owner_key, owner_id = await _register(client, "owner")
     _, other_id = await _register(client, "other")

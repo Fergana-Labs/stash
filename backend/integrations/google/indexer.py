@@ -98,6 +98,43 @@ async def index_google_drive(source: dict) -> str | None:
     return None
 
 
+def _drive_q_escape(text: str) -> str:
+    return text.replace("\\", "\\\\").replace("'", "\\'")
+
+
+async def search_drive(source: dict, query: str, limit: int = 25) -> list[dict]:
+    """Federated search via Drive's `fullText contains` — Google full-text-indexes
+    file contents server-side, so we never copy them. Maps the matched file ids
+    back to our index paths (so read_source resolves them) and only returns files
+    we've indexed for this source."""
+    owner_user_id = UUID(source["owner_user_id"])
+    source_id = UUID(source["id"])
+    token = await get_valid_token(owner_user_id, "google")
+    headers = {"Authorization": f"Bearer {token}"}
+    async with httpx.AsyncClient(timeout=30.0, headers=headers) as client:
+        resp = await client.get(
+            DRIVE_LIST_URL,
+            params={
+                "q": f"fullText contains '{_drive_q_escape(query)}' and trashed = false",
+                "fields": "files(id, name)",
+                "pageSize": min(limit, 50),
+            },
+        )
+        resp.raise_for_status()
+        files = resp.json().get("files", [])
+
+    file_ids = [f["id"] for f in files]
+    paths = await source_service.index_paths_for_refs("drive_index", source_id, file_ids)
+    hits = []
+    for f in files:
+        entry = paths.get(f["id"])
+        if entry is None:
+            continue  # outside the indexed scope of this source
+        path, name = entry
+        hits.append({"ref": path, "name": name, "snippet": ""})
+    return hits
+
+
 async def fetch_drive_content(owner_user_id: UUID, file_id: str) -> str:
     """Lazy read: export a Drive file to markdown with the owner's token.
     Non-Doc files have no markdown export and come back empty."""

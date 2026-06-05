@@ -114,31 +114,30 @@ def test_connected_source_types_are_fully_wired():
         assert source_type in source_service.SOURCE_TABLE, source_type
         assert source_type in source_tasks.INDEXERS, source_type
 
-    # Every document table is exactly one storage strategy.
+    # Every document table is exactly one storage strategy: it either copies
+    # content (FTS) or is index-only (lazy read). Index-only sources are either
+    # federated-searchable (drive/jira/asana) or not searchable at all.
     for source_type, table in source_service.SOURCE_TABLE.items():
         assert source_type in source_service.SOURCE_CAPABILITY, source_type
-        # content tables hold the body; index-only tables fetch it lazily — a
-        # table that's in neither set would break read_document.
         is_content = table in source_service.CONTENT_TABLES
-        is_index_only = source_type in ("google_drive",)
+        is_index_only = source_type in source_service.FEDERATED_SEARCH_TYPES
         assert is_content or is_index_only, table
 
 
 def test_notion_is_searchable_content_source():
-    # Notion moved from index-only to copied-content so it's full-text searchable;
-    # Drive is now the only remaining lazy-fetch index-only source.
+    # Notion copies content (its crawl already renders the text), so it's FTS
+    # searchable rather than federated.
     assert source_service.SOURCE_TABLE["notion"] == "notion_index"
     assert "notion_index" in source_service.CONTENT_TABLES
-    assert source_service.SOURCE_CAPABILITY["notion"] == "navigable"
+    assert "notion" not in source_service.FEDERATED_SEARCH_TYPES
 
 
-def test_jira_and_asana_are_searchable_content_sources():
-    assert source_service.SOURCE_TABLE["jira_project"] == "jira_documents"
-    assert source_service.SOURCE_TABLE["asana_project"] == "asana_documents"
-    assert "jira_documents" in source_service.CONTENT_TABLES
-    assert "asana_documents" in source_service.CONTENT_TABLES
-    assert source_service.SOURCE_CAPABILITY["jira_project"] == "searchable"
-    assert source_service.SOURCE_CAPABILITY["asana_project"] == "navigable"
+def test_jira_asana_drive_are_index_only_federated():
+    # Jira/Asana/Drive don't copy content — search is federated to the provider's
+    # own search API and bodies are fetched lazily on read.
+    for st in ("jira_project", "asana_project", "google_drive"):
+        assert st in source_service.FEDERATED_SEARCH_TYPES, st
+        assert source_service.SOURCE_TABLE[st] not in source_service.CONTENT_TABLES, st
 
 
 def test_render_call_labels_speakers_and_keeps_transcript():
