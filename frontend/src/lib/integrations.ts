@@ -13,7 +13,9 @@ export type IntegrationProvider =
   | "github"
   | "notion"
   | "slack"
-  | "granola";
+  | "granola"
+  | "jira"
+  | "asana";
 
 export type IntegrationStatus = {
   provider: string;
@@ -86,6 +88,27 @@ export type NotionPageSummary = {
 export async function listNotionPages(q: string = ""): Promise<NotionPageSummary[]> {
   const query = q.trim() ? `?q=${encodeURIComponent(q.trim())}` : "";
   return apiFetch<NotionPageSummary[]>(`/api/v1/integrations/notion/pages${query}`);
+}
+
+export type JiraProjectSummary = {
+  external_ref: string;
+  key: string;
+  name: string;
+  site_name: string;
+};
+
+export async function listJiraProjects(): Promise<JiraProjectSummary[]> {
+  return apiFetch<JiraProjectSummary[]>("/api/v1/integrations/jira/projects");
+}
+
+export type AsanaProjectSummary = {
+  gid: string;
+  name: string;
+  workspace_name: string;
+};
+
+export async function listAsanaProjects(): Promise<AsanaProjectSummary[]> {
+  return apiFetch<AsanaProjectSummary[]>("/api/v1/integrations/asana/projects");
 }
 
 // --- Task polling ---

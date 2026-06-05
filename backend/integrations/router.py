@@ -131,6 +131,16 @@ def _provider_disabled_reason(provider: str) -> str | None:
             "SLACK_OAUTH_REDIRECT_URI",
         ],
         "granola": ["GRANOLA_OAUTH_REDIRECT_URI"],
+        "jira": [
+            "JIRA_OAUTH_CLIENT_ID",
+            "JIRA_OAUTH_CLIENT_SECRET",
+            "JIRA_OAUTH_REDIRECT_URI",
+        ],
+        "asana": [
+            "ASANA_OAUTH_CLIENT_ID",
+            "ASANA_OAUTH_CLIENT_SECRET",
+            "ASANA_OAUTH_REDIRECT_URI",
+        ],
     }
     missing = [name for name in required.get(provider, []) if not getattr(settings, name)]
     if missing:
@@ -140,6 +150,8 @@ def _provider_disabled_reason(provider: str) -> str | None:
             "notion": "Notion",
             "slack": "Slack",
             "granola": "Granola",
+            "jira": "Jira",
+            "asana": "Asana",
         }
         return f"{display_names.get(provider, provider)} OAuth is not configured for this server."
     return None
@@ -384,4 +396,89 @@ async def notion_list_pages(
                 last_edited_time=p.get("last_edited_time"),
             )
         )
+    return out
+
+
+class JiraProjectSummary(BaseModel):
+    # external_ref is "{cloudId}:{projectKey}" — carries the site so the indexer
+    # needs no extra lookup.
+    external_ref: str
+    key: str
+    name: str
+    site_name: str
+
+
+@router.get("/jira/projects", response_model=list[JiraProjectSummary])
+async def jira_list_projects(current_user: dict = Depends(get_current_user)):
+    """List projects across every Atlassian site the user granted us, so the
+    frontend can render a picker. Jira REST calls are per-cloudId, so we first
+    resolve the accessible sites, then page each site's projects."""
+    import httpx
+
+    access_token = await storage.get_valid_token(current_user["id"], "jira")
+    headers = {"Authorization": f"Bearer {access_token}", "Accept": "application/json"}
+    out: list[JiraProjectSummary] = []
+    async with httpx.AsyncClient(timeout=30.0, headers=headers) as client:
+        sites_resp = await client.get(
+            "https://api.atlassian.com/oauth/token/accessible-resources"
+        )
+        sites_resp.raise_for_status()
+        for site in sites_resp.json():
+            cloud_id = site["id"]
+            site_name = site.get("name") or cloud_id
+            start_at = 0
+            while True:
+                resp = await client.get(
+                    f"https://api.atlassian.com/ex/jira/{cloud_id}/rest/api/3/project/search",
+                    params={"startAt": start_at, "maxResults": 50},
+                )
+                resp.raise_for_status()
+                payload = resp.json()
+                for proj in payload.get("values", []):
+                    out.append(
+                        JiraProjectSummary(
+                            external_ref=f"{cloud_id}:{proj['key']}",
+                            key=proj["key"],
+                            name=proj.get("name") or proj["key"],
+                            site_name=site_name,
+                        )
+                    )
+                if payload.get("isLast", True):
+                    break
+                start_at += payload.get("maxResults", 50)
+    return out
+
+
+class AsanaProjectSummary(BaseModel):
+    gid: str
+    name: str
+    workspace_name: str
+
+
+@router.get("/asana/projects", response_model=list[AsanaProjectSummary])
+async def asana_list_projects(current_user: dict = Depends(get_current_user)):
+    """List the user's Asana projects across all their workspaces for the picker.
+    external_ref is the project gid."""
+    import httpx
+
+    access_token = await storage.get_valid_token(current_user["id"], "asana")
+    headers = {"Authorization": f"Bearer {access_token}"}
+    out: list[AsanaProjectSummary] = []
+    async with httpx.AsyncClient(timeout=30.0, headers=headers) as client:
+        ws_resp = await client.get("https://app.asana.com/api/1.0/workspaces")
+        ws_resp.raise_for_status()
+        for ws in ws_resp.json().get("data", []):
+            resp = await client.get(
+                "https://app.asana.com/api/1.0/projects",
+                params={"workspace": ws["gid"], "opt_fields": "name", "limit": 100},
+            )
+            resp.raise_for_status()
+            for proj in resp.json().get("data", []):
+                out.append(
+                    AsanaProjectSummary(
+                        gid=proj["gid"],
+                        name=proj.get("name") or proj["gid"],
+                        workspace_name=ws.get("name") or ws["gid"],
+                    )
+                )
     return out

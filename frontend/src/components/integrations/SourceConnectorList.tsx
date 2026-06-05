@@ -11,27 +11,33 @@ import {
   type WorkspaceSource,
 } from "@/lib/api";
 import {
+  listAsanaProjects,
   listGitHubRepos,
   listIntegrations,
+  listJiraProjects,
   listNotionPages,
   startConnect,
+  type AsanaProjectSummary,
   type GitHubRepoSummary,
   type IntegrationProvider,
   type IntegrationStatus,
+  type JiraProjectSummary,
   type NotionPageSummary,
 } from "@/lib/integrations";
 
 import {
+  AsanaIcon,
   GitHubIcon,
   GoogleDriveIcon,
   GranolaIcon,
+  JiraIcon,
   NotionIcon,
   ObsidianIcon,
   SlackIcon,
 } from "./BrandIcons";
 import ObsidianVaultDropZone from "./ObsidianVaultDropZone";
 
-type ConnectorKind = "github" | "drive" | "notion" | "auto";
+type ConnectorKind = "github" | "drive" | "notion" | "jira" | "asana" | "auto";
 
 type Connector = {
   provider: IntegrationProvider;
@@ -74,6 +80,22 @@ const CONNECTORS: Connector[] = [
     icon: <NotionIcon />,
     kind: "notion",
     blurb: "Pick pages or databases shared with Stash.",
+  },
+  {
+    provider: "jira",
+    label: "Jira",
+    sourceType: "jira_project",
+    icon: <JiraIcon />,
+    kind: "jira",
+    blurb: "Search issues from a project.",
+  },
+  {
+    provider: "asana",
+    label: "Asana",
+    sourceType: "asana_project",
+    icon: <AsanaIcon />,
+    kind: "asana",
+    blurb: "Navigate tasks from a project.",
   },
   {
     provider: "slack",
@@ -265,6 +287,24 @@ export default function SourceConnectorList({
                 })}
               />
             )}
+            {expanded === connector.provider && connector.kind === "jira" && workspaceId && (
+              <JiraProjectPicker
+                busy={busy}
+                onAdd={(project) => addSource(connector, {
+                  external_ref: project.external_ref,
+                  display_name: `${project.name} (${project.key})`,
+                })}
+              />
+            )}
+            {expanded === connector.provider && connector.kind === "asana" && workspaceId && (
+              <AsanaProjectPicker
+                busy={busy}
+                onAdd={(project) => addSource(connector, {
+                  external_ref: project.gid,
+                  display_name: project.name,
+                })}
+              />
+            )}
           </div>
         );
       })}
@@ -362,6 +402,13 @@ function ConnectorAction({
     return (
       <button type="button" onClick={onExpand} disabled={!workspaceReady} className={secondaryButton()}>
         {expanded ? "Hide pages" : "Add page"}
+      </button>
+    );
+  }
+  if (connector.kind === "jira" || connector.kind === "asana") {
+    return (
+      <button type="button" onClick={onExpand} disabled={!workspaceReady} className={secondaryButton()}>
+        {expanded ? "Hide projects" : "Add project"}
       </button>
     );
   }
@@ -506,6 +553,132 @@ function NotionPagePicker({
   );
 }
 
+function JiraProjectPicker({
+  busy,
+  onAdd,
+}: {
+  busy: string | null;
+  onAdd: (project: JiraProjectSummary) => Promise<boolean>;
+}) {
+  const [projects, setProjects] = useState<JiraProjectSummary[] | null>(null);
+  const [query, setQuery] = useState("");
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    let cancelled = false;
+    listJiraProjects()
+      .then((next) => {
+        if (!cancelled) setProjects(next);
+      })
+      .catch((e) => {
+        if (!cancelled) setError(e instanceof Error ? e.message : "Could not load projects");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return projects ?? [];
+    return (projects ?? []).filter(
+      (p) => p.name.toLowerCase().includes(q) || p.key.toLowerCase().includes(q),
+    );
+  }, [query, projects]);
+
+  return (
+    <PickerShell
+      error={error}
+      loading={projects === null && !error}
+      query={query}
+      placeholder="Search projects..."
+      onQuery={setQuery}
+      empty="No Jira projects found."
+    >
+      {filtered.map((project) => (
+        <button
+          key={project.external_ref}
+          type="button"
+          disabled={busy === "jira"}
+          onClick={() => void onAdd(project)}
+          className="flex w-full items-start gap-2 rounded-md px-2 py-1.5 text-left hover:bg-raised disabled:opacity-60"
+        >
+          <JiraIcon className="mt-0.5" size={14} />
+          <span className="min-w-0 flex-1">
+            <span className="block truncate text-[12.5px] font-medium text-foreground">
+              {project.name} <span className="text-muted">({project.key})</span>
+            </span>
+            <span className="block truncate text-[11.5px] text-muted">{project.site_name}</span>
+          </span>
+        </button>
+      ))}
+    </PickerShell>
+  );
+}
+
+function AsanaProjectPicker({
+  busy,
+  onAdd,
+}: {
+  busy: string | null;
+  onAdd: (project: AsanaProjectSummary) => Promise<boolean>;
+}) {
+  const [projects, setProjects] = useState<AsanaProjectSummary[] | null>(null);
+  const [query, setQuery] = useState("");
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    let cancelled = false;
+    listAsanaProjects()
+      .then((next) => {
+        if (!cancelled) setProjects(next);
+      })
+      .catch((e) => {
+        if (!cancelled) setError(e instanceof Error ? e.message : "Could not load projects");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return projects ?? [];
+    return (projects ?? []).filter((p) => p.name.toLowerCase().includes(q));
+  }, [query, projects]);
+
+  return (
+    <PickerShell
+      error={error}
+      loading={projects === null && !error}
+      query={query}
+      placeholder="Search projects..."
+      onQuery={setQuery}
+      empty="No Asana projects found."
+    >
+      {filtered.map((project) => (
+        <button
+          key={project.gid}
+          type="button"
+          disabled={busy === "asana"}
+          onClick={() => void onAdd(project)}
+          className="flex w-full items-start gap-2 rounded-md px-2 py-1.5 text-left hover:bg-raised disabled:opacity-60"
+        >
+          <AsanaIcon className="mt-0.5" size={14} />
+          <span className="min-w-0 flex-1">
+            <span className="block truncate text-[12.5px] font-medium text-foreground">
+              {project.name}
+            </span>
+            <span className="block truncate text-[11.5px] text-muted">
+              {project.workspace_name}
+            </span>
+          </span>
+        </button>
+      ))}
+    </PickerShell>
+  );
+}
+
 function PickerShell({
   error,
   loading,
@@ -583,6 +756,8 @@ function labelForSourceType(type: string): string {
   if (type === "notion") return "Notion";
   if (type === "slack") return "Slack";
   if (type === "granola") return "Granola";
+  if (type === "jira_project") return "Jira";
+  if (type === "asana_project") return "Asana";
   return type;
 }
 
