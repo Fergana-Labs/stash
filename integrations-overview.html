@@ -1,0 +1,346 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Stash Integrations — Auth, UI &amp; Data Overview</title>
+<style>
+  :root {
+    --bg: #f6f7f9;
+    --surface: #ffffff;
+    --border: #e4e7ec;
+    --ink: #1a1d23;
+    --muted: #667085;
+    --brand: #f97316;
+    --oauth: #2563eb;
+    --mcp: #7c3aed;
+    --apikey: #d97706;
+    --nav: #059669;
+    --search: #0d9488;
+    --query: #ea580c;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    background: var(--bg);
+    color: var(--ink);
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 980px; margin: 0 auto; padding: 48px 24px 80px; }
+  header.page { margin-bottom: 8px; }
+  h1 { font-size: 30px; margin: 0 0 6px; letter-spacing: -0.02em; }
+  .sub { color: var(--muted); font-size: 15px; margin: 0 0 32px; }
+  h2 {
+    font-size: 20px; margin: 44px 0 14px; letter-spacing: -0.01em;
+    padding-bottom: 8px; border-bottom: 1px solid var(--border);
+  }
+  h3 { font-size: 15px; margin: 22px 0 8px; }
+  p { margin: 10px 0; }
+  code { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: 0.86em;
+         background: #eef1f4; padding: 1px 5px; border-radius: 4px; }
+  .card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 12px; padding: 18px 20px; margin: 14px 0;
+  }
+  .grid3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+  .grid2 { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; }
+  @media (max-width: 760px) { .grid3, .grid2 { grid-template-columns: 1fr; } }
+  .card h3 { margin-top: 0; display: flex; align-items: center; gap: 8px; }
+  .badge {
+    display: inline-block; font-size: 11px; font-weight: 600; letter-spacing: 0.02em;
+    padding: 2px 8px; border-radius: 999px; color: #fff; vertical-align: middle;
+    white-space: nowrap;
+  }
+  .b-oauth { background: var(--oauth); } .b-mcp { background: var(--mcp); } .b-apikey { background: var(--apikey); }
+  .b-nav { background: var(--nav); } .b-search { background: var(--search); } .b-query { background: var(--query); }
+  .pill {
+    display: inline-block; font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 6px;
+    border: 1px solid var(--border); color: var(--muted); background: #fafbfc;
+  }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; margin: 12px 0; background: var(--surface);
+          border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+  th, td { text-align: left; padding: 9px 11px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  th { background: #fafbfc; font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); }
+  tr:last-child td { border-bottom: none; }
+  .flow { counter-reset: step; margin: 14px 0; padding: 0; list-style: none; }
+  .flow li {
+    position: relative; padding: 10px 14px 10px 46px; margin: 8px 0;
+    background: var(--surface); border: 1px solid var(--border); border-radius: 10px; font-size: 14px;
+  }
+  .flow li::before {
+    counter-increment: step; content: counter(step);
+    position: absolute; left: 12px; top: 50%; transform: translateY(-50%);
+    width: 22px; height: 22px; border-radius: 50%; background: var(--brand); color: #fff;
+    font-size: 12px; font-weight: 700; display: flex; align-items: center; justify-content: center;
+  }
+  .mono-box {
+    background: #1a1d23; color: #e6e8eb; border-radius: 10px; padding: 14px 16px; margin: 12px 0;
+    font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 12.5px; line-height: 1.7;
+    overflow-x: auto; white-space: pre;
+  }
+  .mono-box .c { color: #7d8590; }
+  .mono-box .k { color: #79c0ff; }
+  .mono-box .g { color: #7ee787; }
+  .ui-mock {
+    border: 1px solid var(--border); border-radius: 10px; background: var(--surface); overflow: hidden; margin: 10px 0;
+  }
+  .ui-row { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-bottom: 1px solid var(--border); }
+  .ui-row:last-child { border-bottom: none; }
+  .ui-ico { width: 26px; height: 26px; border-radius: 7px; flex: 0 0 auto; display: flex; align-items: center;
+            justify-content: center; font-size: 13px; font-weight: 700; color: #fff; }
+  .ui-text { flex: 1; min-width: 0; }
+  .ui-text .t { font-size: 13.5px; font-weight: 600; }
+  .ui-text .d { font-size: 12px; color: var(--muted); }
+  .ui-btn { font-size: 12px; font-weight: 600; padding: 5px 12px; border-radius: 7px; border: none;
+            background: var(--brand); color: #fff; }
+  .ui-btn.ghost { background: #fafbfc; color: var(--ink); border: 1px solid var(--border); }
+  .ui-form { padding: 12px 14px 14px 52px; background: #fafbfc; border-bottom: 1px solid var(--border); }
+  .ui-input { display: block; width: 100%; max-width: 360px; padding: 7px 10px; margin: 6px 0;
+              border: 1px solid var(--border); border-radius: 7px; font-size: 12px; color: var(--muted); background: #fff; }
+  .note { font-size: 13px; color: var(--muted); background: #fff8f0; border: 1px solid #fde4c8;
+          border-left: 3px solid var(--brand); border-radius: 8px; padding: 10px 14px; margin: 12px 0; }
+  ul.tight { margin: 8px 0; padding-left: 20px; }
+  ul.tight li { margin: 4px 0; }
+  .legend { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0 0; }
+  footer { margin-top: 56px; color: var(--muted); font-size: 12px; border-top: 1px solid var(--border); padding-top: 16px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="page">
+  <h1>Stash Integrations</h1>
+  <p class="sub">How authentication, the connect UI, and data flow work across every source the agent can read.</p>
+</header>
+
+<p>The agent reads from <strong>sources</strong>. Two are native to every workspace — <strong>Files</strong> and
+<strong>Session transcripts</strong>. The rest are <strong>connected sources</strong>: third-party services a user links
+to their own account. Every connected source is <strong>user-scoped</strong> — only the person who connected it can see or
+read it, even within a shared workspace.</p>
+
+<div class="legend">
+  <span class="badge b-oauth">OAuth</span>
+  <span class="badge b-mcp">MCP OAuth</span>
+  <span class="badge b-apikey">API key</span>
+  <span style="width:14px"></span>
+  <span class="badge b-nav">navigable</span>
+  <span class="badge b-search">searchable</span>
+  <span class="badge b-query">queryable</span>
+</div>
+
+<!-- ============ AUTH ============ -->
+<h2>1 · How authentication works</h2>
+<p>Integrations authenticate one of three ways. The connect flow differs, but the result is identical: a credential
+encrypted at rest, owned by the user, used by the server on their behalf.</p>
+
+<div class="grid3">
+  <div class="card">
+    <h3><span class="badge b-oauth">OAuth</span></h3>
+    <p style="font-size:13px;">Standard redirect-and-consent. The user is sent to the provider, approves, and is sent back.</p>
+    <p class="pill">GitHub · Google · Notion · Slack · Jira · Asana</p>
+  </div>
+  <div class="card">
+    <h3><span class="badge b-mcp">MCP OAuth</span></h3>
+    <p style="font-size:13px;">OAuth 2.0 over an MCP server with Dynamic Client Registration + PKCE — no pre-shared client secret.</p>
+    <p class="pill">Granola</p>
+  </div>
+  <div class="card">
+    <h3><span class="badge b-apikey">API key</span></h3>
+    <p style="font-size:13px;">No redirect. The user pastes credentials into an in-app form; the server validates them upstream.</p>
+    <p class="pill">Gong · Snowflake</p>
+  </div>
+</div>
+
+<h3>The OAuth redirect flow (GitHub, Google, Notion, Slack, Jira, Asana)</h3>
+<ol class="flow">
+  <li>User clicks <strong>Connect</strong>. The app calls <code>GET /api/v1/integrations/{provider}/connect</code> with its bearer token and gets back an <code>authorize_url</code>.</li>
+  <li>The browser navigates to the provider's consent screen. The request carries an encrypted <code>state</code> blob.</li>
+  <li>User approves. The provider redirects to <code>…/integrations/{provider}/callback?code=…&amp;state=…</code>.</li>
+  <li>The backend decrypts <code>state</code> to recover the user identity and verify the request (CSRF), then exchanges the <code>code</code> for tokens.</li>
+  <li>Tokens are encrypted and stored; the user lands back in <strong>Settings</strong>, now connected.</li>
+</ol>
+<div class="note"><strong>Why <code>state</code> matters.</strong> It's a Fernet-encrypted token carrying <code>{user_id, provider, nonce, return_to}</code> with a 10-minute TTL. Fernet's built-in HMAC gives CSRF protection for free, and it lets the callback — which the browser hits with no auth header — recover who the user is.</div>
+
+<h3>The API-key flow (Gong, Snowflake)</h3>
+<ol class="flow">
+  <li>User clicks <strong>Connect</strong>; an inline form appears, built from fields the provider declares (e.g. Gong's Access Key + Secret).</li>
+  <li>The app <code>POST</code>s the values to <code>…/integrations/{provider}/credentials</code>.</li>
+  <li>The provider validates them against the upstream API (Gong → <code>/v2/workspaces</code>; Snowflake → <code>SELECT CURRENT_USER()</code>). Bad credentials return a clean 400.</li>
+  <li>On success the credential bundle is stored — JSON-encoded into the same encrypted column OAuth tokens use, with no expiry.</li>
+</ol>
+
+<h3>Storage &amp; security (all three models)</h3>
+<ul class="tight">
+  <li><strong>Encrypted at rest.</strong> Every access/refresh token (and every pasted credential bundle) is encrypted with Fernet using a single server key, <code>INTEGRATIONS_ENCRYPTION_KEY</code>.</li>
+  <li><strong>Refresh-on-use.</strong> For providers that issue refresh tokens (Google, Jira, Asana, Granola), the server refreshes automatically when a token is within 60s of expiry and writes the rotated token back — so Atlassian/Asana token rotation is transparent.</li>
+  <li><strong>User-scoped.</strong> A credential belongs to one <code>(user_id, provider)</code>. Sync and reads run server-side on behalf of that owner; no other member can use or see it.</li>
+  <li><strong>Provider-agnostic core.</strong> One OAuth router, one storage layer, one set of agent tools serve every provider — adding a source doesn't touch them.</li>
+</ul>
+
+<!-- ============ UI ============ -->
+<h2>2 · What the user sees</h2>
+<p>Everything lives under <strong>Settings → Sources</strong>. Each integration is a card with an icon, a one-line blurb,
+and an action that changes with its state.</p>
+
+<div class="ui-mock">
+  <div class="ui-row">
+    <span class="ui-ico" style="background:#24292f;">GH</span>
+    <span class="ui-text"><span class="t">GitHub</span><span class="d">Pick repos your agent can navigate.</span></span>
+    <button class="ui-btn ghost">Add repo</button>
+  </div>
+  <div class="ui-row">
+    <span class="ui-ico" style="background:#2684ff;">Ji</span>
+    <span class="ui-text"><span class="t">Jira</span><span class="d">Search issues from a project.</span></span>
+    <button class="ui-btn ghost">Add project</button>
+  </div>
+  <div class="ui-row">
+    <span class="ui-ico" style="background:#8039df;">Go</span>
+    <span class="ui-text"><span class="t">Gong</span><span class="d">Call transcripts, kept in sync.</span></span>
+    <button class="ui-btn">Connect</button>
+  </div>
+  <div class="ui-form">
+    <div style="font-size:12px;color:#667085;margin-bottom:2px;">Access Key</div>
+    <input class="ui-input" type="password" placeholder="Gong API access key" />
+    <div style="font-size:12px;color:#667085;margin:6px 0 2px;">Access Key Secret</div>
+    <input class="ui-input" type="password" placeholder="Gong API secret" />
+    <button class="ui-btn" style="margin-top:8px;">Connect</button>
+  </div>
+  <div class="ui-row">
+    <span class="ui-ico" style="background:#29b5e8;">Sf</span>
+    <span class="ui-text"><span class="t">Snowflake</span><span class="d">Run read-only SQL against your warehouse.</span></span>
+    <button class="ui-btn">Connect</button>
+  </div>
+</div>
+
+<div class="grid2">
+  <div class="card">
+    <h3>Connect states</h3>
+    <ul class="tight">
+      <li><strong>Not connected, OAuth</strong> → <span class="pill">Connect</span> redirects to the provider.</li>
+      <li><strong>Not connected, API key</strong> → <span class="pill">Connect</span> reveals the inline credential form shown above.</li>
+      <li><strong>Connected, picker</strong> → <span class="pill">Add repo / page / project</span> opens a searchable list.</li>
+      <li><strong>Connected, workspace-wide</strong> → <span class="pill">Add</span> creates the source in one click (Slack, Granola, Gong, Snowflake).</li>
+      <li><strong>Misconfigured server</strong> → <span class="pill">Unavailable</span> with a tooltip explaining what env var is missing.</li>
+    </ul>
+  </div>
+  <div class="card">
+    <h3>Pickers</h3>
+    <p style="font-size:13px;">After connecting, sources that have many “things” show a searchable picker so the user chooses exactly what to expose:</p>
+    <ul class="tight">
+      <li><strong>GitHub</strong> → repositories</li>
+      <li><strong>Notion</strong> → pages &amp; databases shared with the integration</li>
+      <li><strong>Jira</strong> → projects (across all Atlassian sites)</li>
+      <li><strong>Asana</strong> → projects (across all workspaces)</li>
+    </ul>
+  </div>
+</div>
+
+<h3>Connected sources list</h3>
+<p>Below the connectors, each added source appears with its name and a <span class="pill">Sync</span> (re-index now) and
+<span class="pill">Remove</span> action. Snowflake appears here too, but it has no picker or browse view — the agent uses it
+through query tools rather than the UI.</p>
+
+<!-- ============ DATA ============ -->
+<h2>3 · How data works</h2>
+<p>What happens to a source's data depends on its <strong>capability</strong>. There are three, and they map to three
+storage strategies.</p>
+
+<div class="grid3">
+  <div class="card">
+    <h3><span class="badge b-nav">navigable</span></h3>
+    <p style="font-size:13px;">Browsed like a file system (<code>list_source</code> → <code>read_source</code>). Repos, Drive folders, Notion trees, Asana projects.</p>
+  </div>
+  <div class="card">
+    <h3><span class="badge b-search">searchable</span></h3>
+    <p style="font-size:13px;">A flat pool searched by full text (<code>search</code>). Slack/Granola messages, Jira issues, Gong calls.</p>
+  </div>
+  <div class="card">
+    <h3><span class="badge b-query">queryable</span></h3>
+    <p style="font-size:13px;">Queried live with read-only SQL (<code>query_source</code>). Snowflake only — nothing is copied or indexed.</p>
+  </div>
+</div>
+
+<h3>Two storage strategies for documents</h3>
+<table>
+  <tr><th>Strategy</th><th>What's stored</th><th>How a read resolves</th><th>Sources</th></tr>
+  <tr>
+    <td><strong>Copied content</strong></td>
+    <td>The document body, a content hash, and a vector embedding — in a per-integration table.</td>
+    <td>Returned straight from the table. Full-text search + embeddings work directly.</td>
+    <td>GitHub, Slack, Granola, Jira, Asana, Gong</td>
+  </tr>
+  <tr>
+    <td><strong>Index-only</strong></td>
+    <td>Just the path/name + the provider's reference id — never the body.</td>
+    <td>The body is fetched lazily from the provider at read time, with the owner's token.</td>
+    <td>Google Drive, Notion</td>
+  </tr>
+  <tr>
+    <td><strong>None (live)</strong></td>
+    <td>Nothing. No table, no index.</td>
+    <td>The agent runs a read-only SQL query against the warehouse on demand.</td>
+    <td>Snowflake</td>
+  </tr>
+</table>
+
+<h3>How data stays fresh (sync)</h3>
+<div class="grid2">
+  <div class="card">
+    <h3>Pull sources</h3>
+    <p style="font-size:13px;">A scheduler periodically finds sources whose sync is due and runs their indexer, which crawls the
+    provider and upserts documents. Re-syncs are idempotent — unchanged docs are skipped (content-hash), and docs that
+    disappeared upstream are soft-deleted.</p>
+    <p class="pill">GitHub · Drive · Notion · Jira · Asana · Gong</p>
+  </div>
+  <div class="card">
+    <h3>Push sources</h3>
+    <p style="font-size:13px;">New activity streams in via webhooks as it happens, so the data is near-real-time. A periodic
+    backfill runs as a safety net to catch anything missed.</p>
+    <p class="pill">Slack · Granola</p>
+  </div>
+</div>
+
+<h3>How the agent reaches it</h3>
+<p>All sources — native and connected — sit behind one uniform toolset, so the agent treats a GitHub repo, a Notion
+tree, and a Snowflake warehouse the same way until it needs their specific capability:</p>
+<div class="mono-box"><span class="c"># discover what's available</span>
+<span class="k">list_sources</span>()                          <span class="c">→ files, sessions, + the user's connected sources (each with a capability)</span>
+
+<span class="c"># navigable / searchable</span>
+<span class="k">list_source</span>(source, path)              <span class="c">→ entries, like ls</span>
+<span class="k">read_source</span>(source, ref)               <span class="c">→ one document's content</span>
+<span class="k">search</span>(query, source?)                 <span class="c">→ full-text across one source or everything</span>
+
+<span class="c"># queryable (Snowflake)</span>
+<span class="k">query_source</span>(source, sql)              <span class="c">→ runs read-only SQL, returns capped rows</span></div>
+<div class="note"><strong>Snowflake is read-only by construction.</strong> Only <code>SELECT / WITH / SHOW / DESCRIBE / EXPLAIN</code> are
+allowed; multiple statements (a piggy-backed <code>; DROP …</code>) are rejected, table identifiers are validated against
+injection, and result rows are capped. Pairing it with a read-only Snowflake role is the recommended second layer.</div>
+
+<!-- ============ MATRIX ============ -->
+<h2>4 · Every integration at a glance</h2>
+<table>
+  <tr>
+    <th>Integration</th><th>Auth</th><th>Refresh</th><th>You connect</th><th>Capability</th><th>Storage</th><th>Freshness</th>
+  </tr>
+  <tr><td><strong>GitHub</strong></td><td><span class="badge b-oauth">OAuth</span></td><td>—</td><td>a repository</td><td><span class="badge b-nav">navigable</span></td><td>copied content</td><td>pull · hourly</td></tr>
+  <tr><td><strong>Google Drive</strong></td><td><span class="badge b-oauth">OAuth</span></td><td>yes</td><td>My Drive / a folder</td><td><span class="badge b-nav">navigable</span></td><td>index-only (lazy)</td><td>pull · 30 min</td></tr>
+  <tr><td><strong>Notion</strong></td><td><span class="badge b-oauth">OAuth</span></td><td>—</td><td>a page / database</td><td><span class="badge b-nav">navigable</span></td><td>index-only (lazy)</td><td>pull · 30 min</td></tr>
+  <tr><td><strong>Slack</strong></td><td><span class="badge b-oauth">OAuth</span></td><td>—</td><td>your workspace</td><td><span class="badge b-search">searchable</span></td><td>copied content</td><td>push + backfill</td></tr>
+  <tr><td><strong>Granola</strong></td><td><span class="badge b-mcp">MCP OAuth</span></td><td>yes</td><td>your account</td><td><span class="badge b-search">searchable</span></td><td>copied content</td><td>push + backfill</td></tr>
+  <tr><td><strong>Jira</strong></td><td><span class="badge b-oauth">OAuth</span></td><td>yes</td><td>a project</td><td><span class="badge b-search">searchable</span></td><td>copied content</td><td>pull · 30 min</td></tr>
+  <tr><td><strong>Asana</strong></td><td><span class="badge b-oauth">OAuth</span></td><td>yes</td><td>a project</td><td><span class="badge b-nav">navigable</span></td><td>copied content</td><td>pull · 30 min</td></tr>
+  <tr><td><strong>Gong</strong></td><td><span class="badge b-apikey">API key</span></td><td>—</td><td>all calls</td><td><span class="badge b-search">searchable</span></td><td>copied content</td><td>pull · 6 hr</td></tr>
+  <tr><td><strong>Snowflake</strong></td><td><span class="badge b-apikey">API key</span></td><td>—</td><td>your warehouse</td><td><span class="badge b-query">queryable</span></td><td>none — live SQL</td><td>live</td></tr>
+</table>
+
+<footer>
+  Stash · integrations reference. Auth = how the credential is obtained; Capability = how the agent reads;
+  Storage = what (if anything) is persisted; Freshness = how data is kept current.
+</footer>
+
+</div>
+</body>
+</html>

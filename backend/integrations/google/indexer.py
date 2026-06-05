@@ -6,8 +6,8 @@ and the Drive file id (`external_ref`). We never store the body; `read_source`
 calls `fetch_drive_content` at read time, exporting the Google Doc to markdown
 with the owner's token. The agent still navigates it like a file system.
 
-Listing a folder requires the `drive.readonly` scope (the connect scope is being
-widened from `drive.file`); a token without it simply sees fewer files.
+Listing a folder + federated `fullText` search use the `drive.readonly` scope,
+so the crawl and search see the user's whole Drive (not just app-picked files).
 """
 
 from __future__ import annotations
