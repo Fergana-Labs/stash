@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ApiError,
+  createTable,
   createFolder,
   createPage,
   deleteFolder,
@@ -163,8 +164,15 @@ export default function WorkspaceFileBrowser({ workspaceId, folderId }: Props) {
         setRootFiles(
           allFiles.filter((f) => !f.folder_id).map((f) => fileToGridItem(f)),
         );
+        const linkedTableIds = new Set(
+          allFiles
+            .map((file) => file.linked_table_id)
+            .filter((tableId): tableId is string => !!tableId)
+        );
         setRootTables(
-          tablesResp.tables.filter((t) => !t.folder_id).map((t) => tableToGridItem(t)),
+          tablesResp.tables
+            .filter((t) => !t.folder_id && !linkedTableIds.has(t.id))
+            .map((t) => tableToGridItem(t)),
         );
       } catch (e) {
         setError(e instanceof Error ? e.message : "Failed to load root");
@@ -413,6 +421,16 @@ export default function WorkspaceFileBrowser({ workspaceId, folderId }: Props) {
     }
   }
 
+  async function handleNewTable() {
+    try {
+      const table = await createTable(workspaceId, "Untitled table");
+      refreshWorkspaceSidebar(workspaceId).catch(() => {});
+      router.push(`/tables/${table.id}?workspaceId=${workspaceId}`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to create table");
+    }
+  }
+
   async function handleNewFolder() {
     const name = window.prompt("Folder name?");
     if (!name?.trim()) return;
@@ -459,8 +477,8 @@ export default function WorkspaceFileBrowser({ workspaceId, folderId }: Props) {
     }
   }
 
-  // Bulk delete the current selection after one confirm. Folders are a hard
-  // delete (matching single delete), pages/files go to trash.
+  // Bulk delete the current selection after one confirm. Folders and
+  // standalone tables are hard deletes; pages/files go to trash.
   async function bulkDelete(targets: GridItem[]) {
     if (targets.length === 0) return;
     const hasFolder = targets.some((t) => t.kind === "folder");
@@ -536,10 +554,12 @@ export default function WorkspaceFileBrowser({ workspaceId, folderId }: Props) {
     (pinnedItems.length > 0 || recentItems.length > 0);
 
   const selectedItems = items.filter((item) => selectedIds.has(item.id));
-  const selectedDragPayloads: FBDragPayload[] = selectedItems.map((item) => ({
-    kind: item.kind,
-    id: item.id,
-  }));
+  const selectedDragPayloads: FBDragPayload[] = selectedItems
+    .filter((item) => item.movable !== false)
+    .map((item) => ({
+      kind: item.kind,
+      id: item.id,
+    }));
 
   return (
     <div className="scroll-thin flex-1 overflow-y-auto">
@@ -575,6 +595,15 @@ export default function WorkspaceFileBrowser({ workspaceId, folderId }: Props) {
             >
               + New page
             </button>
+            {!folderId && (
+              <button
+                type="button"
+                onClick={handleNewTable}
+                className="rounded-md border border-border bg-base px-2.5 py-1 text-[12px] font-medium text-foreground hover:bg-raised"
+              >
+                + New table
+              </button>
+            )}
             <button
               type="button"
               onClick={handleNewFolder}

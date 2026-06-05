@@ -15,10 +15,14 @@ import type { GridItem, ItemKind } from "./FolderItemGrid";
 // selection so a folder drop moves everything; otherwise carry just the item.
 export function startItemDrag(
   e: DragEvent<HTMLElement>,
-  item: { kind: ItemKind; id: string },
+  item: { kind: ItemKind; id: string; movable?: boolean },
   selected: boolean,
   selectedDragPayloads: FBDragPayload[],
 ) {
+  if (item.movable === false) {
+    e.preventDefault();
+    return;
+  }
   if (selected && selectedDragPayloads.length > 1) {
     e.dataTransfer.setData(FB_DRAG_MULTI_MIME, JSON.stringify(selectedDragPayloads));
   } else {
@@ -256,7 +260,7 @@ function Row({
       onKeyDown={(e) => {
         if (e.key === "Enter") onNavigate(item);
       }}
-      draggable
+      draggable={item.movable !== false}
       onDragStart={(e: DragEvent<HTMLDivElement>) =>
         startItemDrag(e, item, selected, selectedDragPayloads)
       }

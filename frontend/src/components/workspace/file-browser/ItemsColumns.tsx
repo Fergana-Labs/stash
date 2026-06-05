@@ -243,8 +243,12 @@ function ColumnRow({
       onKeyDown={(e) => {
         if (e.key === "Enter") onOpen();
       }}
-      draggable
+      draggable={item.movable !== false}
       onDragStart={(e: DragEvent<HTMLDivElement>) => {
+        if (item.movable === false) {
+          e.preventDefault();
+          return;
+        }
         const payload: FBDragPayload = { kind: item.kind, id: item.id };
         e.dataTransfer.setData(FB_DRAG_MIME, JSON.stringify(payload));
         e.dataTransfer.effectAllowed = "move";
@@ -403,7 +407,8 @@ function folderContentsToItems(contents: FolderContents): GridItem[] {
         subtitle: `${f.content_type || "file"} · ${formatBytes(f.size_bytes)}`,
         sizeBytes: f.size_bytes,
         contentType: f.content_type,
-        linkedTableId: f.linked_table_id ?? undefined,
+        tableId: f.linked_table_id ?? undefined,
+        tableBackedBy: isCsvLinked ? "file" : undefined,
         updatedAt: f.created_at,
       };
     }),

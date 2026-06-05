@@ -412,6 +412,28 @@ async def test_share_by_email_grants_page_read_over_http(client: AsyncClient, po
 
 
 @pytest.mark.asyncio
+async def test_unshared_file_read_returns_forbidden_over_http(client: AsyncClient, pool):
+    owner_key, owner = await _register(client)
+    ws = (await client.get("/api/v1/workspaces/mine", headers=_auth(owner_key))).json()[
+        "workspaces"
+    ][0]["id"]
+    file_id = await _make_file(pool, uuid.UUID(ws), uuid.UUID(owner["id"]))
+    stranger_key, _ = await _register(client)
+
+    file_url = f"/api/v1/workspaces/{ws}/files/{file_id}"
+    denied = await client.get(file_url, headers=_auth(stranger_key))
+    assert denied.status_code == 403
+    assert denied.json()["detail"] == "You don't have access to this file"
+
+    missing = await client.get(
+        f"/api/v1/workspaces/{ws}/files/{uuid.uuid4()}",
+        headers=_auth(owner_key),
+    )
+    assert missing.status_code == 404
+    assert missing.json()["detail"] == "File not found"
+
+
+@pytest.mark.asyncio
 async def test_folder_share_by_email_allows_non_member_browse_over_http(client: AsyncClient):
     """Folder shares must let a non-member open the shared folder and see the
     readable children; otherwise the folder cascade only works for known child
